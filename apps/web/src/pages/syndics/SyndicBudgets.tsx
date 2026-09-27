@@ -195,7 +195,9 @@ export const SyndicBudgets: React.FC = () => {
         period: values.period,
         dueDate: new Date(values.dueDate).toISOString(),
         batchType: values.batchType,
-        currency: values.currency || 'XOF'
+        currency: values.currency || 'XOF',
+        periodsPerYear: values.periodsPerYear || 1,
+        periodIndex: values.periodIndex || 1
       });
       message.success(t("Campagne d'appels générée"));
       setOpenGenerateModal(false);
@@ -328,7 +330,9 @@ export const SyndicBudgets: React.FC = () => {
                               label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
                               period: `${budget.fiscalYear}-01`,
                               batchType: 'REGULAR',
-                              currency: budget.currency || 'XOF'
+                              currency: budget.currency || 'XOF',
+                              periodsPerYear: 1,
+                              periodIndex: 1
                             });
                           }}
                         >
@@ -487,7 +491,7 @@ export const SyndicBudgets: React.FC = () => {
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
-        <Form form={generateForm} layout="vertical">
+        <Form form={generateForm} layout="vertical" initialValues={{ periodsPerYear: 1, periodIndex: 1 }}>
           <Form.Item label={t('Libellé de la campagne')} name="label" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -509,6 +513,39 @@ export const SyndicBudgets: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Devise')} name="currency">
             <Input />
+          </Form.Item>
+          <Form.Item
+            label={t('Répartir sur')}
+            name="periodsPerYear"
+            tooltip={t(
+              "Découpe le montant annuel du budget en plusieurs appels égaux (le dernier absorbe l'arrondi). « 1 » reproduit le comportement précédent : un appel annuel unique."
+            )}
+            rules={[{ required: true }]}
+          >
+            <Select
+              onChange={() => generateForm.setFieldsValue({ periodIndex: 1 })}
+              options={[
+                { value: 1, label: t('1 période (annuel)') },
+                { value: 2, label: t('2 périodes (semestriel)') },
+                { value: 4, label: t('4 périodes (trimestriel)') },
+                { value: 12, label: t('12 périodes (mensuel)') }
+              ]}
+            />
+          </Form.Item>
+          <Form.Item noStyle dependencies={['periodsPerYear']}>
+            {({ getFieldValue }) => {
+              const periodsPerYear = getFieldValue('periodsPerYear') || 1;
+              return (
+                <Form.Item
+                  label={t('Période n°')}
+                  name="periodIndex"
+                  tooltip={t('Quelle part générer maintenant, de 1 à la valeur choisie ci-dessus.')}
+                  rules={[{ required: true }]}
+                >
+                  <InputNumber min={1} max={periodsPerYear} style={{ width: '100%' }} />
+                </Form.Item>
+              );
+            }}
           </Form.Item>
         </Form>
       </Modal>

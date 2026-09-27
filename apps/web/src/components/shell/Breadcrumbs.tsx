@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useContext, useMemo } from 'react';
 import { Breadcrumb, Button } from 'antd';
 import { LeftOutlined } from '@ant-design/icons';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { isIdSegment, labelForSegment } from '../../navigation/route-labels';
 import { TENANT_PORTAL_SEGMENTS } from '../../navigation/resolve';
 import { t } from '../../i18n/t';
+import { LanguageContext } from '../../i18n/LanguageProvider';
 
 /**
  * `<Breadcrumbs>` — dérivé du routeur (REFONTE_UI_UX.md §4.3).
@@ -83,7 +84,12 @@ export const Breadcrumbs: React.FC = () => {
   const navigate = useNavigate();
   const { isDesktop } = useBreakpoint();
 
-  const crumbs = useMemo(() => buildCrumbs(location.pathname), [location.pathname]);
+  // Contexte facultatif (tests sans provider) : la langue ne sert qu'à
+  // recalculer les libellés quand elle change.
+  const language = useContext(LanguageContext)?.language;
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const crumbs = useMemo(() => buildCrumbs(location.pathname), [location.pathname, language]);
 
   // Un seul niveau : le titre de l'écran suffit, le fil n'apprend rien.
   if (crumbs.length < 2) return null;

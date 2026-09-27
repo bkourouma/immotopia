@@ -160,3 +160,252 @@ export async function downloadCoOwnerDocument(
     filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
   };
 }
+
+// ---------------------------------------------------------------------------
+// Lot S5 (besoin 2) — paiements, quittances, suivi mensuel, fiche de la
+// copropriété. Toujours limité aux lots du copropriétaire connecté, jamais de
+// paiement en ligne. Types alignés sur
+// `packages/api/src/lib/syndics/coowner-portal-finance.ts` et
+// `coowner-portal-syndicate.ts`.
+// ---------------------------------------------------------------------------
+
+export type CoOwnerAllocationSource = 'PAYMENT' | 'ADVANCE';
+export type CoOwnerDocumentKind = 'RECEIPT' | 'QUITTANCE';
+
+export interface CoOwnerPaymentAllocation {
+  chargeCallId: string;
+  period: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  dueDate: string;
+  amount: number;
+  source: CoOwnerAllocationSource;
+}
+
+export interface CoOwnerPaymentDocument {
+  id: string;
+  kind: CoOwnerDocumentKind;
+  number: string;
+  /** Relatif à la base de l'API : à passer tel quel à `apiClient`. */
+  downloadPath: string;
+}
+
+export interface CoOwnerPayment {
+  id: string;
+  paidAt: string;
+  amount: number;
+  currency: string;
+  method: string | null;
+  methodLabel: string | null;
+  reference: string | null;
+  lot: { id: string; lotNumber: string };
+  syndicate: { id: string; name: string | null };
+  allocations: CoOwnerPaymentAllocation[];
+  /** Part du paiement non affectée à un appel : devient une avance sur le lot. */
+  remainingAdvance: number;
+  documents: CoOwnerPaymentDocument[];
+}
+
+export interface CoOwnerAdvance {
+  lot: { id: string; lotNumber: string };
+  syndicate: { id: string; name: string | null };
+  advance: number;
+  currency: string;
+}
+
+export interface CoOwnerPaymentsResult {
+  items: CoOwnerPayment[];
+  advances: CoOwnerAdvance[];
+}
+
+/** `GET /paiements?lotId=&year=` */
+export async function listMyPayments(params: { lotId?: string; year?: number } = {}): Promise<CoOwnerPaymentsResult> {
+  const response = await apiClient.get<ApiResponse<CoOwnerPaymentsResult>>(`${BASE}/paiements`, { params });
+  return response.data.data;
+}
+
+export interface CoOwnerReceipt {
+  id: string;
+  kind: CoOwnerDocumentKind;
+  number: string;
+  lot: { id: string; lotNumber: string };
+  syndicate: { id: string; name: string | null };
+  chargeCallId: string | null;
+  chargePaymentId: string | null;
+  periodLabel: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  amount: number;
+  currency: string;
+  issuedAt: string;
+  emailedAt: string | null;
+  downloadPath: string;
+}
+
+export interface CoOwnerPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface CoOwnerReceiptsResult {
+  items: CoOwnerReceipt[];
+  pagination: CoOwnerPagination;
+}
+
+export interface CoOwnerReceiptsQuery {
+  lotId?: string;
+  kind?: CoOwnerDocumentKind;
+  /** `AAAA-MM-JJ` */
+  from?: string;
+  /** `AAAA-MM-JJ` */
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+/** `GET /quittances?lotId=&kind=&from=&to=&page=&limit=` */
+export async function listMyReceipts(params: CoOwnerReceiptsQuery = {}): Promise<CoOwnerReceiptsResult> {
+  const response = await apiClient.get<ApiResponse<CoOwnerReceiptsResult>>(`${BASE}/quittances`, { params });
+  return response.data.data;
+}
+
+/** Télécharge le PDF d'un reçu/d'une quittance ; `downloadPath` vient de la liste. */
+export async function downloadCoOwnerReceiptFile(
+  downloadPath: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(downloadPath, { responseType: 'blob' });
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}
+
+/** `GET /lots/:lotId/releve?from=&to=` — relevé de compte du lot, en PDF. */
+export async function downloadCoOwnerLotStatement(
+  lotId: string,
+  params: { from?: string; to?: string } = {},
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(`${BASE}/lots/${encodeURIComponent(lotId)}/releve`, {
+    params,
+    responseType: 'blob'
+  });
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}
+
+export type CoOwnerMonthStatus = 'NONE' | 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
+
+export interface CoOwnerMonthCell {
+  month: number;
+  due: number;
+  paid: number;
+  status: CoOwnerMonthStatus;
+}
+
+export interface CoOwnerLotMonthlyTracking {
+  year: number;
+  currency: string;
+  lot: { id: string; lotNumber: string };
+  syndicate: { id: string; name: string | null };
+  /**
+   * `AAAA-MM-JJ` : date d'acquisition du lot par le copropriétaire connecté.
+   * Les mois qui la précèdent arrivent à zéro (`NONE`) — ceux de l'ancien
+   * propriétaire, jamais montrés ici (audit S5).
+   */
+  ownedSince: string;
+  advance: number;
+  totals: { due: number; paid: number; outstanding: number };
+  months: CoOwnerMonthCell[];
+}
+
+/** `GET /lots/:lotId/suivi-mensuel?year=` */
+export async function getCoOwnerLotMonthlyTracking(lotId: string, year: number): Promise<CoOwnerLotMonthlyTracking> {
+  const response = await apiClient.get<ApiResponse<CoOwnerLotMonthlyTracking>>(
+    `${BASE}/lots/${encodeURIComponent(lotId)}/suivi-mensuel`,
+    { params: { year } }
+  );
+  return response.data.data;
+}
+
+export type CoOwnerIssuerKind = 'MANDANT' | 'AGENCY';
+
+export interface CoOwnerSyndicateIssuer {
+  kind: CoOwnerIssuerKind;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+/** Contact du syndic : nom et e-mail seulement (audit S5, pas de téléphone). */
+export interface CoOwnerSyndicateContact {
+  name: string | null;
+  email: string | null;
+}
+
+export interface CoOwnerSyndicateSheet {
+  id: string;
+  name: string;
+  address: string;
+  registrationNo: string | null;
+  cadastralReference: string | null;
+  lotCount: number;
+  myLots: Array<{ id: string; lotNumber: string; lotType: CoOwnerLotType }>;
+  issuer: CoOwnerSyndicateIssuer;
+  syndicContact: CoOwnerSyndicateContact | null;
+  hasLogo: boolean;
+  logoDownloadPath: string | null;
+  hasIssuerLogo: boolean;
+  issuerLogoDownloadPath: string | null;
+}
+
+/** `GET /coproprietes/:syndicId` */
+export async function getCoOwnerSyndicate(syndicId: string): Promise<CoOwnerSyndicateSheet> {
+  const response = await apiClient.get<ApiResponse<CoOwnerSyndicateSheet>>(
+    `${BASE}/coproprietes/${encodeURIComponent(syndicId)}`
+  );
+  return response.data.data;
+}
+
+/**
+ * Logos de la copropriété et de l'émetteur : images privées, chargées en
+ * blob et jamais posées en `<img src>` direct (l'URL exigerait le cookie de
+ * session sur une balise qui ne l'envoie pas partout).
+ */
+export async function fetchCoOwnerSyndicateLogo(syndicId: string): Promise<Blob> {
+  const response = await apiClient.get<Blob>(`${BASE}/coproprietes/${encodeURIComponent(syndicId)}/logo`, {
+    responseType: 'blob'
+  });
+  return response.data;
+}
+
+export async function fetchCoOwnerIssuerLogo(syndicId: string): Promise<Blob> {
+  const response = await apiClient.get<Blob>(`${BASE}/coproprietes/${encodeURIComponent(syndicId)}/logo-emetteur`, {
+    responseType: 'blob'
+  });
+  return response.data;
+}
+
+/**
+ * Avis d'appel (PDF) — route `GET /appels/:chargeCallId/avis` posée par un
+ * autre lot en parallèle : peut répondre 404 tant qu'elle n'existe pas
+ * encore, à traiter comme « indisponible », pas comme une erreur.
+ */
+export async function downloadCoOwnerChargeCallNotice(
+  chargeCallId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(`${BASE}/appels/${encodeURIComponent(chargeCallId)}/avis`, {
+    responseType: 'blob'
+  });
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}

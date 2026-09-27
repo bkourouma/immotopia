@@ -37,9 +37,23 @@ function money(value: number, currency: string) {
  */
 export function describeBalanceForPdf(value: number): { amount: number; label: string } {
   const rounded = Math.round(value * 100) / 100;
-  if (rounded > 0) return { amount: rounded, label: 'Debiteur' };
-  if (rounded < 0) return { amount: Math.abs(rounded), label: 'Crediteur' };
-  return { amount: 0, label: 'Solde a jour' };
+  if (rounded > 0) return { amount: rounded, label: 'Débiteur' };
+  if (rounded < 0) return { amount: Math.abs(rounded), label: 'Créditeur' };
+  return { amount: 0, label: 'Solde à jour' };
+}
+
+/** Libellé français d'un type de mouvement (le code brut « CHARGE_CALL » n'a pas sa place sur un relevé). */
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  CHARGE_CALL: 'Appel',
+  PAYMENT: 'Paiement',
+  PENALTY: 'Pénalité',
+  WAIVER: 'Remise',
+  ADJUSTMENT: 'Ajustement',
+  FUND_TRANSFER: 'Virement'
+};
+
+export function movementTypeLabel(type: string): string {
+  return MOVEMENT_TYPE_LABELS[type] ?? type;
 }
 
 // Déplacé dans lib/documents/pdf-text.ts (lot S1) pour être partagé par
@@ -69,29 +83,29 @@ export async function buildOwnerAccountStatementPdf(
 
   if (branding) {
     // L'en-tête porte déjà le nom de la copropriété et ses références.
-    y = await drawDocumentHeader(pdfDoc, page, branding, { title: 'Releve de Compte Lot' });
+    y = await drawDocumentHeader(pdfDoc, page, branding, { title: 'Relevé de compte du lot' });
   } else {
-    draw('Releve de Compte Lot', { x: left, y, size: 18, font: bold, color: rgb(0.1, 0.1, 0.1) });
+    draw('Relevé de compte du lot', { x: left, y, size: 18, font: bold, color: rgb(0.1, 0.1, 0.1) });
     y -= 28;
-    draw(`Copropriete: ${payload.syndicateName}`, { x: left, y, size: 10, font });
+    draw(`Copropriété : ${payload.syndicateName}`, { x: left, y, size: 10, font });
     y -= 16;
   }
-  draw(`Lot: ${payload.lotNumber}`, { x: left, y, size: 10, font });
+  draw(`Lot : ${payload.lotNumber}`, { x: left, y, size: 10, font });
   y -= 16;
-  draw(`Proprietaire: ${payload.ownerName}`, { x: left, y, size: 10, font });
+  draw(`Propriétaire : ${payload.ownerName}`, { x: left, y, size: 10, font });
   y -= 24;
 
   const opening = describeBalanceForPdf(payload.openingBalance);
   const closing = describeBalanceForPdf(payload.closingBalance);
 
-  draw(`Solde initial: ${money(opening.amount, payload.currency)} (${opening.label})`, {
+  draw(`Solde initial : ${money(opening.amount, payload.currency)} (${opening.label})`, {
     x: left,
     y,
     size: 10,
     font: bold
   });
   y -= 16;
-  draw(`Solde final: ${money(closing.amount, payload.currency)} (${closing.label})`, {
+  draw(`Solde final : ${money(closing.amount, payload.currency)} (${closing.label})`, {
     x: left,
     y,
     size: 10,
@@ -101,15 +115,15 @@ export async function buildOwnerAccountStatementPdf(
 
   draw('Date', { x: left, y, size: 9, font: bold });
   draw('Type', { x: left + 70, y, size: 9, font: bold });
-  draw('Libelle', { x: left + 140, y, size: 9, font: bold });
-  draw('Debit', { x: left + 330, y, size: 9, font: bold });
-  draw('Credit', { x: left + 410, y, size: 9, font: bold });
+  draw('Libellé', { x: left + 140, y, size: 9, font: bold });
+  draw('Débit', { x: left + 330, y, size: 9, font: bold });
+  draw('Crédit', { x: left + 410, y, size: 9, font: bold });
   draw('Solde', { x: left + 490, y, size: 9, font: bold });
   y -= 11;
   // Legende plutot qu'une mention repetee sur chaque ligne (la colonne est
   // trop etroite pour "12 345 FCFA (Debiteur)" a 8pt) : le signe du solde
   // courant de chaque mouvement se lit ainsi sans connaitre la convention.
-  draw('(positif = le coproprietaire doit, negatif = il a une avance)', {
+  draw('(positif = le copropriétaire doit, négatif = il a une avance)', {
     x: left + 140,
     y,
     size: 7,
@@ -126,7 +140,7 @@ export async function buildOwnerAccountStatementPdf(
       break;
     }
     draw(new Date(tx.transactionDate).toLocaleDateString('fr-FR'), { x: left, y, size: 8, font });
-    draw(tx.type, { x: left + 70, y, size: 8, font });
+    draw(movementTypeLabel(tx.type), { x: left + 70, y, size: 8, font });
     draw(tx.label.slice(0, 38), { x: left + 140, y, size: 8, font });
     draw(tx.debit ? money(Number(tx.debit), payload.currency) : '-', { x: left + 330, y, size: 8, font });
     draw(tx.credit ? money(Number(tx.credit), payload.currency) : '-', { x: left + 410, y, size: 8, font });

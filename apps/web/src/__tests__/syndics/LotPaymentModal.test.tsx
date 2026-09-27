@@ -30,6 +30,18 @@ const getLotAdvance = vi.fn();
 const previewLotPayment = vi.fn();
 const recordLotPayment = vi.fn();
 
+const downloadReceiptFile = vi.fn();
+
+vi.mock('../../services/syndic-receipt-service', () => ({
+  downloadReceiptFile: (...args: unknown[]) => downloadReceiptFile(...args)
+}));
+
+const saveBlob = vi.fn();
+
+vi.mock('../../utils/save-blob', () => ({
+  saveBlob: (...args: unknown[]) => saveBlob(...args)
+}));
+
 vi.mock('../../services/syndic-lot-payment-service', () => ({
   listOpenLotCharges: (...args: unknown[]) => listOpenLotCharges(...args),
   getLotAdvance: (...args: unknown[]) => getLotAdvance(...args),
@@ -142,7 +154,15 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
       updatedAt: new Date().toISOString()
     });
     listSyndicateLots.mockResolvedValue([
-      { id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A-01', lotType: 'APARTMENT', generalShares: 100, createdAt: '', updatedAt: '' }
+      {
+        id: 'lot-1',
+        syndicateId: 'syndic-1',
+        lotNumber: 'A-01',
+        lotType: 'APARTMENT',
+        generalShares: 100,
+        createdAt: '',
+        updatedAt: ''
+      }
     ]);
     listChargeCalls.mockResolvedValue([baseCharge]);
     listOpenLotCharges.mockResolvedValue([olderOpenCall, targetOpenCall]);
@@ -153,8 +173,22 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     previewLotPayment.mockResolvedValue({
       payment: { id: null, lotId: 'lot-1', chargeCallId: 'charge-0', amount: 250000, unallocatedAmount: 0 },
       allocations: [
-        { paymentId: null, chargeCallId: 'charge-0', period: '2026-Q1', amount: 100000, source: 'PAYMENT', callStatusAfter: 'PAID' },
-        { paymentId: null, chargeCallId: 'charge-1', period: '2026-Q2', amount: 150000, source: 'PAYMENT', callStatusAfter: 'PARTIAL' }
+        {
+          paymentId: null,
+          chargeCallId: 'charge-0',
+          period: '2026-Q1',
+          amount: 100000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PAID'
+        },
+        {
+          paymentId: null,
+          chargeCallId: 'charge-1',
+          period: '2026-Q2',
+          amount: 150000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PARTIAL'
+        }
       ],
       advance: 0,
       lotAdvanceBalance: 0,
@@ -184,8 +218,22 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     recordLotPayment.mockResolvedValue({
       payment: { id: 'payment-1', lotId: 'lot-1', chargeCallId: 'charge-0', amount: 250000, unallocatedAmount: 0 },
       allocations: [
-        { paymentId: 'payment-1', chargeCallId: 'charge-0', period: '2026-Q1', amount: 100000, source: 'PAYMENT', callStatusAfter: 'PAID' },
-        { paymentId: 'payment-1', chargeCallId: 'charge-1', period: '2026-Q2', amount: 150000, source: 'PAYMENT', callStatusAfter: 'PARTIAL' }
+        {
+          paymentId: 'payment-1',
+          chargeCallId: 'charge-0',
+          period: '2026-Q1',
+          amount: 100000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PAID'
+        },
+        {
+          paymentId: 'payment-1',
+          chargeCallId: 'charge-1',
+          period: '2026-Q2',
+          amount: 150000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PARTIAL'
+        }
       ],
       advance: 0,
       lotAdvanceBalance: 0,
@@ -207,7 +255,14 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     previewLotPayment.mockResolvedValue({
       payment: { id: null, lotId: 'lot-1', chargeCallId: 'charge-1', amount: 200000, unallocatedAmount: 0 },
       allocations: [
-        { paymentId: null, chargeCallId: 'charge-1', period: '2026-Q2', amount: 200000, source: 'PAYMENT', callStatusAfter: 'PAID' }
+        {
+          paymentId: null,
+          chargeCallId: 'charge-1',
+          period: '2026-Q2',
+          amount: 200000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PAID'
+        }
       ],
       advance: 0,
       lotAdvanceBalance: 0,
@@ -216,7 +271,14 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     recordLotPayment.mockResolvedValue({
       payment: { id: 'payment-2', lotId: 'lot-1', chargeCallId: 'charge-1', amount: 200000, unallocatedAmount: 0 },
       allocations: [
-        { paymentId: 'payment-2', chargeCallId: 'charge-1', period: '2026-Q2', amount: 200000, source: 'PAYMENT', callStatusAfter: 'PAID' }
+        {
+          paymentId: 'payment-2',
+          chargeCallId: 'charge-1',
+          period: '2026-Q2',
+          amount: 200000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PAID'
+        }
       ],
       advance: 0,
       lotAdvanceBalance: 0,
@@ -240,13 +302,21 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     // Coche uniquement l'appel du deuxième trimestre (2026-Q2), pas le premier.
     const row = (await screen.findByText('2026-Q2 (01/04/2026 – 30/06/2026)')).closest('tr');
     const checkbox = within(row as HTMLElement).getByRole('checkbox');
+    // BUG-003 : statut traduit, cases et montant nommés en français.
+    expect(within(row as HTMLElement).getByText('En attente')).toBeTruthy();
+    expect(checkbox.getAttribute('aria-label')).toBe("Sélectionner l'appel 2026-Q2");
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner tous les appels' })).toBeTruthy();
+    expect(screen.getAllByText('Période').length).toBeGreaterThan(0);
     fireEvent.click(checkbox);
 
-    const amountInput = document.getElementById('lot-payment-amount') as HTMLInputElement;
+    const amountInput = screen.getByRole('spinbutton', { name: 'Montant' }) as HTMLInputElement;
     fireEvent.change(amountInput, { target: { value: '200000' } });
     fireEvent.blur(amountInput);
 
     await waitFor(() => expect(previewLotPayment).toHaveBeenCalled(), { timeout: 2000 });
+    // « Statut après » de l'aperçu : libellé, jamais le code brut.
+    await waitFor(() => expect(screen.getAllByText('Payé').some(element => element.closest('.ant-tag'))).toBe(true));
+    expect(screen.queryByText('PAID')).toBeNull();
 
     const submitButton = await screen.findByText('Enregistrer');
     fireEvent.click(submitButton);
@@ -259,5 +329,85 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
         expect.objectContaining({ amount: 200000, chargeCallIds: ['charge-1'] })
       );
     });
+  });
+
+  it('affiche la synthèse avec les documents émis (lot S3) et ne rafraîchit la liste qu’à la fermeture', async () => {
+    previewLotPayment.mockResolvedValue({
+      payment: { id: null, lotId: 'lot-1', chargeCallId: 'charge-1', amount: 200000, unallocatedAmount: 0 },
+      allocations: [
+        {
+          paymentId: null,
+          chargeCallId: 'charge-1',
+          period: '2026-Q2',
+          amount: 200000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PAID'
+        }
+      ],
+      advance: 0,
+      lotAdvanceBalance: 0,
+      currency: 'XOF'
+    });
+    recordLotPayment.mockResolvedValue({
+      payment: { id: 'payment-3', lotId: 'lot-1', chargeCallId: 'charge-1', amount: 200000, unallocatedAmount: 0 },
+      allocations: [
+        {
+          paymentId: 'payment-3',
+          chargeCallId: 'charge-1',
+          period: '2026-Q2',
+          amount: 200000,
+          source: 'PAYMENT',
+          callStatusAfter: 'PAID'
+        }
+      ],
+      advance: 0,
+      lotAdvanceBalance: 0,
+      currency: 'XOF',
+      documents: [{ id: 'receipt-1', kind: 'QUITTANCE', number: 'Q-2026-000001' }]
+    });
+
+    renderWithRoute();
+
+    const openButtons = await screen.findAllByRole('button', { name: 'Enregistrer un paiement' });
+    fireEvent.click(openButtons[0]);
+
+    const lotSelect = await screen.findByLabelText('Lot');
+    fireEvent.mouseDown(lotSelect);
+    fireEvent.click(await screen.findByText(/A-01/));
+
+    await waitFor(() => expect(listOpenLotCharges).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'lot-1'));
+
+    const amountInput = document.getElementById('lot-payment-amount') as HTMLInputElement;
+    fireEvent.change(amountInput, { target: { value: '200000' } });
+    fireEvent.blur(amountInput);
+    await waitFor(() => expect(previewLotPayment).toHaveBeenCalled(), { timeout: 2000 });
+
+    fireEvent.click(await screen.findByText('Enregistrer'));
+    await waitFor(() => expect(recordLotPayment).toHaveBeenCalled());
+
+    // La synthèse remplace le formulaire : titre, numéro de document, action
+    // de téléchargement — et `listChargeCalls` (rafraîchissement du parent)
+    // n'a pas encore été rejoué.
+    expect(await screen.findByText('Paiement enregistré')).toBeTruthy();
+    expect(await screen.findByText('Q-2026-000001')).toBeTruthy();
+    const callsBeforeClose = listChargeCalls.mock.calls.length;
+
+    downloadReceiptFile.mockResolvedValue({ blob: new Blob(['%PDF-1.4']), filename: 'Quittance Q-2026-000001.pdf' });
+    fireEvent.click(screen.getByRole('button', { name: /Télécharger/ }));
+    await waitFor(() =>
+      expect(downloadReceiptFile).toHaveBeenCalledWith(
+        'tenant-1',
+        'syndic-1',
+        'receipt-1',
+        'Quittance Q-2026-000001.pdf'
+      )
+    );
+    await waitFor(() => expect(saveBlob).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }));
+
+    await waitFor(() => expect(listChargeCalls.mock.calls.length).toBeGreaterThan(callsBeforeClose));
+    // BUG-003 : avance formatée comme les autres montants, avec la devise.
+    expect(await screen.findByText('Paiement enregistré : 1 appel(s) soldé(s), avance de 0 XOF')).toBeTruthy();
   });
 });

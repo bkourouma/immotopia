@@ -187,4 +187,18 @@ describe('SyndicMandatingAgencies — liste et création', () => {
       expect(mockApiClient.delete).toHaveBeenCalledWith('/tenants/tenant-1/syndic-mandating-agencies/agency-2');
     });
   });
+  it('explique par une infobulle pourquoi un mandant rattaché ne peut être supprimé', async () => {
+    const user = userEvent.setup();
+    mockApiClient.get.mockResolvedValue({ data: { success: true, data: [AGENCY_ONE] } });
+
+    renderPage();
+
+    await screen.findByText('Agence Alpha');
+
+    const deleteButton = screen.getByRole('button', { name: 'Supprimer' }) as HTMLButtonElement;
+    expect(deleteButton.disabled).toBe(true);
+
+    await user.hover(screen.getByTestId('mandant-delete-blocked-agency-1'));
+    expect(await screen.findByText("Détachez d'abord ses copropriétés pour pouvoir le supprimer.")).toBeTruthy();
+  });
 });

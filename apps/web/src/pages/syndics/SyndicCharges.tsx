@@ -17,11 +17,12 @@ import {
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
-import { MoneyValue, StatCard } from '../../components/primitives';
+import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
 import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
+import { downloadChargeCallNotice } from '../../services/syndic-charge-schedule-service';
 import {
   ChargeCall,
   ChargeCallStatus,
@@ -55,6 +56,11 @@ const recurrenceFrequencyOptions = [
   { label: t('Annuelle'), value: 'ANNUAL' }
 ];
 
+/** Vrai quand l'échéance choisie est antérieure à aujourd'hui (l'appel naîtra en retard). */
+function isPastDueDate(value: Dayjs | null | undefined): boolean {
+  return Boolean(value && dayjs(value).isBefore(dayjs(), 'day'));
+}
+
 export const SyndicCharges: React.FC = () => {
   const { message } = App.useApp();
 
@@ -70,6 +76,7 @@ export const SyndicCharges: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  const dueDateValue = Form.useWatch('dueDate', form) as Dayjs | null | undefined;
 
   // Lot S2 : la modale de paiement travaille PAR LOT. `paymentContext` porte
   // le lot et, si elle a été ouverte depuis un dossier précis, l'appel à
@@ -152,7 +159,14 @@ export const SyndicCharges: React.FC = () => {
       return;
     }
 
-    const values = await form.validateFields();
+    let values: any;
+    try {
+      values = await form.validateFields();
+    } catch {
+      // Champs invalides : Ant Design affiche déjà les messages sous chaque
+      // champ ; le rejet est absorbé ici pour ne pas remonter en « Uncaught ».
+      return;
+    }
     const targetMode = values.targetMode as 'single' | 'multiple' | 'all';
     // Lot S2 : les bornes de période sont désormais facultatives (les deux ou
     // aucune). Quand elles sont renseignées et que le libellé n'a pas été
@@ -197,6 +211,15 @@ export const SyndicCharges: React.FC = () => {
     }
   };
 
+  const handleDownloadNotice = async (charge: ChargeCall) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      await downloadChargeCallNotice(effectiveTenantId, syndicId, charge.id);
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t("Téléchargement de l'avis d'appel impossible"));
+    }
+  };
+
   const handleOpenPaymentForCharge = (charge: ChargeCall) => {
     setPaymentContext({ lotId: charge.lotId, chargeCallId: charge.id });
     setPaymentOpen(true);
@@ -210,15 +233,15 @@ export const SyndicCharges: React.FC = () => {
   const handlePaymentRecorded = (result: LotPaymentResult) => {
     setPaymentOpen(false);
     const settledCount = result.allocations.filter(item => item.callStatusAfter === 'PAID').length;
+    // Même rendu que les montants de l'écran : séparateur de la langue active et devise de la copropriété.
+    const advance = formatMoney(result.lotAdvanceBalance, { currency: result.currency || undefined });
     message.success(
       settledCount > 0
         ? t('Paiement enregistré : {{settledCount}} appel(s) soldé(s), avance de {{advance}}', {
             settledCount,
-            advance: new Intl.NumberFormat('fr-FR').format(result.lotAdvanceBalance)
+            advance
           })
-        : t('Paiement enregistré : avance de {{advance}}', {
-            advance: new Intl.NumberFormat('fr-FR').format(result.lotAdvanceBalance)
-          })
+        : t('Paiement enregistré : avance de {{advance}}', { advance })
     );
     void loadCharges();
   };
@@ -293,7 +316,11 @@ export const SyndicCharges: React.FC = () => {
             </Card>
 
             <Card title={t('Liste des appels de charges')}>
-              <ChargeCallTable items={charges} onRecordPayment={handleOpenPaymentForCharge} />
+              <ChargeCallTable
+                items={charges}
+                onRecordPayment={handleOpenPaymentForCharge}
+                onDownloadNotice={charge => void handleDownloadNotice(charge)}
+              />
             </Card>
           </>
         )}
@@ -433,12 +460,16 @@ export const SyndicCharges: React.FC = () => {
             label={t("Date d'échéance")}
             name="dueDate"
             rules={[{ required: true, message: t('La date est obligatoire') }]}
+            // Échéance passée autorisée (saisie d'arriérés) : simple avertissement, non bloquant.
+            extra={
+              isPastDueDate(dueDateValue) ? (
+                <Typography.Text type="warning">
+                  {t("Échéance passée : l'appel sera immédiatement en retard.")}
+                </Typography.Text>
+              ) : undefined
+            }
           >
-            <DatePicker
-              style={{ width: '100%' }}
-              format="DD/MM/YYYY"
-              disabledDate={current => current && current < dayjs().startOf('day')}
-            />
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
 
           <Form.Item label={t('Charge récurrente')} name="isRecurring">
@@ -446,8 +477,8 @@ export const SyndicCharges: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { label: 'Non', value: false },
-                { label: 'Oui', value: true }
+                { label: t('Non'), value: false },
+                { label: t('Oui'), value: true }
               ]}
             />
           </Form.Item>

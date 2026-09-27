@@ -1,3 +1,4 @@
+import type { Request } from 'express';
 import rateLimit from 'express-rate-limit';
 
 /**
@@ -151,4 +152,106 @@ export const globalApiRateLimiter = rateLimit({
   legacyHeaders: false,
   // Health checks and static uploads must not consume the budget.
   skip: req => req.path === '/health' || req.path.startsWith('/uploads/')
+});
+
+/**
+ * Portail copropriétaire : routes qui produisent ou servent un PDF
+ * (`/quittances/:receiptId/fichier`, `/lots/:lotId/releve`). 30 par minute
+ * et par utilisateur — posé APRÈS `authenticate` et la garde du portail,
+ * donc `req.user` est connu ; l'adresse IP ne sert que de repli.
+ */
+export const coOwnerPortalPdfRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  keyGenerator: req => `coowner-pdf:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Lot S4 : avis d'appel de charges PDF du portail copropriétaire. Chaque
+ * demande rend un PDF (identité, images) : 20 par minute et par compte
+ * (repli sur l'adresse IP sans session), bien au-dessus d'un usage normal.
+ */
+export const coOwnerChargeNoticeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => (req.user?.userId ? `user:${req.user.userId}` : `ip:${req.ip}`),
+  message: {
+    success: false,
+    message: 'Trop de téléchargements. Veuillez réessayer dans une minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Clé d'un limiteur « par utilisateur et par agence » (routes authentifiées,
+ * après `authenticate` et `requireTenantAccess`) : un collaborateur de deux
+ * agences a un budget dans chacune, et deux collaborateurs derrière la même
+ * IP ne se partagent pas le leur.
+ */
+function userTenantKey(req: Request): string {
+  const tenantId = req.params?.tenantId || req.tenantContext?.tenantId || 'aucune-agence';
+  return `${req.user?.userId ?? 'anonyme'}:${tenantId}`;
+}
+
+/** Lot S3 : impression groupée des quittances, coûteuse (PDF de centaines de pages). 5 par minute. */
+export const receiptPrintRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'impressions de quittances en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S3 : renvoi par e-mail d'un reçu ou d'une quittance. 30 par heure. */
+export const receiptResendRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de renvois d'e-mails en peu de temps. Réessayez plus tard."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S4 : exécution manuelle d'une programmation d'appels de charges (relit et réécrit les répartitions budgétaires). 10 par minute. */
+export const chargeScheduleExecuteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'exécutions de programmations en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S4 : avis d'appel de charges PDF côté gestion (génère un PDF à chaque appel). 30 par minute. */
+export const chargeCallNoticeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de téléchargements d'avis d'appel en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
 });

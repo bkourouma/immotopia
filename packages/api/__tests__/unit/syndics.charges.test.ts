@@ -5,36 +5,49 @@ jest.mock('@prisma/client', () => {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
-      create: jest.fn(),
+      create: jest.fn()
     },
     chargePayment: {
       create: jest.fn(),
       findMany: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn()
     },
     // Lot S2 : le regle d'un appel se lit dans ses affectations.
     chargePaymentAllocation: {
       create: jest.fn(),
       findMany: jest.fn(),
       findFirst: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn()
     },
     syndicateLot: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
+    },
+    // Lot S3 : identite figee et documents emis dans la transaction du paiement.
+    syndicate: {
+      findFirst: jest.fn()
+    },
+    tenant: {
+      findUnique: jest.fn()
+    },
+    syndicChargeReceipt: {
+      findMany: jest.fn(),
+      create: jest.fn()
     },
     // Verrou consultatif du lot (affectation) : no-op sans Postgres.
     $executeRaw: jest.fn(),
+    // Lot S3 : compteur des numeros de recus et quittances.
+    $queryRaw: jest.fn()
   };
 
   const prisma = {
     ...tx,
-    $transaction: jest.fn(async (callback: any) => callback(tx)),
+    $transaction: jest.fn(async (callback: any) => callback(tx))
   };
 
   return {
     PrismaClient: jest.fn(() => prisma),
     __mockPrisma: prisma,
-    __mockTx: tx,
+    __mockTx: tx
   };
 });
 
@@ -48,7 +61,10 @@ const { __mockPrisma: mockPrisma, __mockTx: mockTx } = jest.requireMock('@prisma
     chargePayment: MockModel;
     chargePaymentAllocation: MockModel;
     syndicateLot: MockModel;
+    syndicate: MockModel;
+    syndicChargeReceipt: MockModel;
     $executeRaw: jest.Mock;
+    $queryRaw: jest.Mock;
   };
 };
 
@@ -63,7 +79,7 @@ function lotCall(id: string, amount: number) {
     createdAt: new Date('2026-04-01T00:00:00.000Z'),
     amount,
     currency: 'XOF',
-    status: 'PENDING',
+    status: 'PENDING'
   };
 }
 
@@ -73,15 +89,31 @@ function arrangePayment(callId: string, amount: number, alreadyPaid: number) {
   mockTx.chargeCall.findMany.mockResolvedValue([lotCall(callId, amount)]);
   // Affectations relues : celles d'avant ce paiement, plus celles qu'il cree.
   mockTx.chargePaymentAllocation.findMany.mockImplementation(async () => [
-    ...(alreadyPaid > 0 ? [{ chargeCallId: callId, amount: alreadyPaid }] : []),
-    ...mockTx.chargePaymentAllocation.create.mock.calls.map(([args]: any) => args.data)
+    ...(alreadyPaid > 0
+      ? [{ chargeCallId: callId, amount: alreadyPaid, paymentId: 'payment-0', createdAt: new Date('2026-04-01') }]
+      : []),
+    ...mockTx.chargePaymentAllocation.create.mock.calls.map(([args]: any) => ({ ...args.data, createdAt: new Date() }))
   ]);
+  // Lot S3 : identite du lot et de la copropriete figee dans les documents.
+  mockTx.syndicateLot.findFirst.mockResolvedValue({
+    lotNumber: 'A-01',
+    lotType: 'APARTMENT',
+    owner: null,
+    coowner: null
+  });
   mockTx.chargePayment.create.mockImplementation(async ({ data }: any) => ({ id: 'payment-1', ...data }));
   // Avances du lot relues apres affectation : celle du paiement en cours s'il en laisse une.
   mockTx.chargePayment.findMany.mockImplementation(async () => {
     const created = mockTx.chargePayment.create.mock.calls[0]?.[0]?.data;
     return created && created.unallocatedAmount > 0
-      ? [{ id: 'payment-1', paidAt: created.paidAt, createdAt: new Date(), unallocatedAmount: created.unallocatedAmount }]
+      ? [
+          {
+            id: 'payment-1',
+            paidAt: created.paidAt,
+            createdAt: new Date(),
+            unallocatedAmount: created.unallocatedAmount
+          }
+        ]
       : [];
   });
 }
@@ -90,6 +122,15 @@ describe('Syndics charges queries - US2', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockTx));
+    // Lot S3 : aucun document existant ; numero et creation simules.
+    mockTx.syndicate.findFirst.mockResolvedValue({ name: 'Residence', address: 'Abidjan', mandatingAgencyId: null });
+    mockTx.syndicChargeReceipt.findMany.mockResolvedValue([]);
+    mockTx.syndicChargeReceipt.create.mockImplementation(async ({ data }: any) => ({
+      id: `doc-${data.number}`,
+      kind: data.kind,
+      number: data.number
+    }));
+    mockTx.$queryRaw.mockResolvedValue([{ last_value: 1 }]);
   });
 
   it('creates a charge call when lot belongs to tenant syndicate', async () => {
@@ -101,7 +142,7 @@ describe('Syndics charges queries - US2', () => {
       lotId: 'lot-1',
       period: '2026-Q1',
       amount: 120000,
-      status: 'PENDING',
+      status: 'PENDING'
     });
 
     const result = await createChargeCallAndUpdateStatus('tenant-a', {
@@ -110,23 +151,23 @@ describe('Syndics charges queries - US2', () => {
       period: '2026-Q1',
       amount: 120000,
       currency: 'XOF',
-      dueDate: new Date('2026-04-15T00:00:00.000Z'),
+      dueDate: new Date('2026-04-15T00:00:00.000Z')
     });
 
     expect(mockTx.syndicateLot.findFirst).toHaveBeenCalledWith({
       where: {
         id: 'lot-1',
         syndicateId: 'syndic-1',
-        syndicate: { tenantId: 'tenant-a' },
+        syndicate: { tenantId: 'tenant-a' }
       },
-      select: { id: true },
+      select: { id: true }
     });
     // Lot S2 : bornes deduites du libelle « 2026-Q1 ».
     expect(mockTx.chargeCall.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         periodStart: new Date('2026-01-01T00:00:00.000Z'),
-        periodEnd: new Date('2026-03-31T00:00:00.000Z'),
-      }),
+        periodEnd: new Date('2026-03-31T00:00:00.000Z')
+      })
     });
     expect(result.id).toBe('call-1');
   });
@@ -139,15 +180,15 @@ describe('Syndics charges queries - US2', () => {
       amount: 30000,
       paidAt: new Date('2026-04-10T00:00:00.000Z'),
       method: 'VIREMENT',
-      reference: 'PAY-001',
+      reference: 'PAY-001'
     });
 
     expect(mockTx.chargeCall.update).toHaveBeenCalledWith({
       where: { id: 'call-1' },
-      data: { status: 'PARTIAL' },
+      data: { status: 'PARTIAL' }
     });
     expect(mockTx.chargePaymentAllocation.create).toHaveBeenCalledWith({
-      data: { paymentId: 'payment-1', chargeCallId: 'call-1', amount: 30000, source: 'PAYMENT' },
+      data: { paymentId: 'payment-1', chargeCallId: 'call-1', amount: 30000, source: 'PAYMENT' }
     });
   });
 
@@ -161,15 +202,15 @@ describe('Syndics charges queries - US2', () => {
       amount: 70000,
       paidAt: new Date('2026-04-11T00:00:00.000Z'),
       method: 'VIREMENT',
-      reference: 'PAY-002',
+      reference: 'PAY-002'
     });
 
     expect(mockTx.chargeCall.update).toHaveBeenCalledWith({
       where: { id: 'call-2' },
-      data: { status: 'PAID' },
+      data: { status: 'PAID' }
     });
     expect(mockTx.chargePayment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ amount: 70000, unallocatedAmount: 0, chargeCallId: 'call-2' }),
+      data: expect.objectContaining({ amount: 70000, unallocatedAmount: 0, chargeCallId: 'call-2' })
     });
   });
 
@@ -183,18 +224,23 @@ describe('Syndics charges queries - US2', () => {
       chargeCallId: 'call-3',
       amount: 25000,
       paidAt: new Date('2026-04-12T00:00:00.000Z'),
-      method: 'VIREMENT',
+      method: 'VIREMENT'
     });
 
     expect(mockTx.chargePayment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ amount: 25000, unallocatedAmount: 5000, chargeCallId: 'call-3' }),
+      data: expect.objectContaining({ amount: 25000, unallocatedAmount: 5000, chargeCallId: 'call-3' })
     });
     expect(mockTx.chargePaymentAllocation.create).toHaveBeenCalledWith({
-      data: { paymentId: 'payment-1', chargeCallId: 'call-3', amount: 20000, source: 'PAYMENT' },
+      data: { paymentId: 'payment-1', chargeCallId: 'call-3', amount: 20000, source: 'PAYMENT' }
     });
     expect(mockTx.chargeCall.update).toHaveBeenCalledWith({ where: { id: 'call-3' }, data: { status: 'PAID' } });
     expect(result.advance).toBe(5000);
     expect(result.lotAdvanceBalance).toBe(5000);
+    // Lot S3 : appel solde -> quittance ; excedent en avance -> recu.
+    expect(result.documents).toEqual([
+      { id: 'doc-Q-2026-000001', kind: 'QUITTANCE', number: 'Q-2026-000001' },
+      { id: 'doc-R-2026-000001', kind: 'RECEIPT', number: 'R-2026-000001' }
+    ]);
   });
 
   it('rejects payment when charge call is outside tenant scope', async () => {
@@ -204,7 +250,7 @@ describe('Syndics charges queries - US2', () => {
       recordChargePaymentWithStatusUpdate('tenant-a', {
         chargeCallId: 'call-other-tenant',
         amount: 15000,
-        paidAt: new Date('2026-04-11T00:00:00.000Z'),
+        paidAt: new Date('2026-04-11T00:00:00.000Z')
       })
     ).rejects.toMatchObject({ status: 404 });
 

@@ -53,6 +53,14 @@ export const requireCoOwnerPortalAccess = async (req: Request, _res: Response, n
       return;
     }
 
+    // Un compte désactivé perd le portail immédiatement, même avec une session
+    // encore valide (audit S5). Compte introuvable : même refus.
+    const account = await prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+    if (!account || account.isActive === false) {
+      next(new ForbiddenError('Accès portail copropriétaire refusé.'));
+      return;
+    }
+
     const clients = await prisma.tenantClient.findMany({
       where: { userId },
       orderBy: { createdAt: 'asc' },

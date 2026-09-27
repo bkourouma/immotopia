@@ -376,9 +376,25 @@ export const generateBudgetChargeCallsSchema = z
     ...periodBoundsFields,
     dueDate: z.coerce.date(),
     batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-    currency: z.string().default('XOF')
+    currency: z.string().default('XOF'),
+    // Lot S4 : quote-part annuelle divisee par le nombre de periodes (defaut 1 = annee entiere).
+    periodsPerYear: z
+      .number()
+      .int()
+      .refine(value => [1, 2, 4, 12].includes(value), 'Nombre de periodes par an attendu : 1, 2, 4 ou 12')
+      .default(1),
+    periodIndex: z.number().int().min(1).max(12).optional()
   })
-  .superRefine(checkPeriodBounds);
+  .superRefine((value, ctx) => {
+    checkPeriodBounds(value, ctx);
+    if (value.periodIndex !== undefined && value.periodIndex > value.periodsPerYear) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Le rang de la periode depasse le nombre de periodes par an',
+        path: ['periodIndex']
+      });
+    }
+  });
 
 export const budgetListQuerySchema = z.object({
   fiscalYear: z.coerce.number().int().min(2000).optional(),

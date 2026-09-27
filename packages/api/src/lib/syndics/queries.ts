@@ -32,8 +32,23 @@ import {
   withAllocationPayments
 } from './charge-allocation';
 import { toCents, fromCents } from './charge-allocation-plan';
+import {
+  applyChronologicalBalances,
+  chronologicalBalanceStrictlyBefore,
+  type RunningBalanceMovement
+} from './owner-account-running-balance';
+// Lot S3 : recus et quittances emis dans la transaction, livres apres le commit.
+import {
+  issueQuittancesAfterAdvanceTx,
+  issueReceiptsForPaymentTx,
+  toDocumentRefs,
+  type IssuedChargeDocument
+} from './charge-receipts';
+import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
-import { QuotaExceededError } from '../../middleware/error-middleware';
+// Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
+import { annualShareForPeriod } from './charge-schedule-periods';
+import { ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -1103,6 +1118,10 @@ export async function getChargeCallByTenant(tenantId: string, syndicateId: strin
  * Le verrou du lot est pris avant le debit : meme ordre (lot, puis compte)
  * que `recordLotPaymentTx`, donc pas d'interblocage avec un paiement
  * concurrent sur le meme lot.
+ *
+ * Lot S3 : chaque appel que l'avance vient de solder recoit sa quittance,
+ * dans la meme transaction ; les documents emis sont ajoutes a `issued`,
+ * que l'appelant livre (PDF, e-mail) apres le commit.
  */
 async function createLotChargeCallTx(
   tx: PrismaTransactionClient,
@@ -1116,7 +1135,8 @@ async function createLotChargeCallTx(
     amount: number;
     currency: string;
     dueDate: Date;
-  }
+  },
+  issued: IssuedChargeDocument[] = []
 ) {
   await lockLotTx(tx, data.lotId);
   const chargeCall = await tx.chargeCall.create({
@@ -1146,6 +1166,14 @@ async function createLotChargeCallTx(
   }
 
   const application = await applyLotAdvanceTx(tx, data.lotId);
+  issued.push(
+    ...(await issueQuittancesAfterAdvanceTx(tx, {
+      tenantId,
+      syndicateId: data.syndicateId,
+      lotId: data.lotId,
+      imputedCallIds: application.imputations.map(imputation => imputation.chargeCallId)
+    }))
+  );
   if (application.imputations.some(imputation => imputation.chargeCallId === chargeCall.id)) {
     return (await tx.chargeCall.findUnique({ where: { id: chargeCall.id } })) ?? chargeCall;
   }
@@ -1194,17 +1222,25 @@ export async function createChargeCallAndUpdateStatus(
       throw notFound('Lot introuvable ou inaccessible pour cette copropriete');
     }
 
-    return prisma.$transaction(tx =>
-      createLotChargeCallTx(tx, tenantId, {
-        syndicateId: data.syndicateId,
-        lotId: data.lotId!,
-        period: data.period,
-        bounds: baseBounds,
-        amount: data.amount,
-        currency: data.currency,
-        dueDate: data.dueDate
-      })
+    const issued: IssuedChargeDocument[] = [];
+    const chargeCall = await prisma.$transaction(tx =>
+      createLotChargeCallTx(
+        tx,
+        tenantId,
+        {
+          syndicateId: data.syndicateId,
+          lotId: data.lotId!,
+          period: data.period,
+          bounds: baseBounds,
+          amount: data.amount,
+          currency: data.currency,
+          dueDate: data.dueDate
+        },
+        issued
+      )
     );
+    scheduleChargeDocumentDelivery(tenantId, issued);
+    return chargeCall;
   }
 
   await assertSyndicateTenantOwnership(tenantId, data.syndicateId);
@@ -1281,20 +1317,27 @@ export async function createChargeCallAndUpdateStatus(
     const period = resolvePeriodLabel(occurrenceIndex);
     const bounds = resolveBounds(occurrenceIndex);
 
+    const issued: IssuedChargeDocument[] = [];
     await prisma.$transaction(async tx => {
       for (const lotId of lotIdsInLockOrder) {
-        const chargeCall = await createLotChargeCallTx(tx, tenantId, {
-          syndicateId: data.syndicateId,
-          lotId,
-          period,
-          bounds,
-          amount: data.amount,
-          currency: data.currency,
-          dueDate
-        });
+        const chargeCall = await createLotChargeCallTx(
+          tx,
+          tenantId,
+          {
+            syndicateId: data.syndicateId,
+            lotId,
+            period,
+            bounds,
+            amount: data.amount,
+            currency: data.currency,
+            dueDate
+          },
+          issued
+        );
         createdChargeCalls.push(chargeCall);
       }
     });
+    scheduleChargeDocumentDelivery(tenantId, issued);
   }
 
   return {
@@ -1326,7 +1369,7 @@ export async function recordChargePaymentWithStatusUpdate(
     actorUserId?: string | null;
   }
 ) {
-  return prisma.$transaction(async tx => {
+  const { response, documents } = await prisma.$transaction(async tx => {
     const call = await tx.chargeCall.findFirst({
       where: {
         id: data.chargeCallId,
@@ -1354,13 +1397,29 @@ export async function recordChargePaymentWithStatusUpdate(
       actorUserId: data.actorUserId ?? null
     });
 
+    // Lot S3 : recu et quittances de ce paiement, dans la meme transaction.
+    const issued = await issueReceiptsForPaymentTx(tx, {
+      tenantId,
+      syndicateId: call.syndicateId,
+      lotId: call.lotId,
+      paymentId: record.id,
+      result,
+      actorUserId: data.actorUserId ?? null
+    });
+
     return {
-      ...record,
-      allocations: result.allocations,
-      advance: result.advance,
-      lotAdvanceBalance: result.lotAdvanceBalance
+      documents: issued,
+      response: {
+        ...record,
+        allocations: result.allocations,
+        advance: result.advance,
+        lotAdvanceBalance: result.lotAdvanceBalance,
+        documents: toDocumentRefs(issued)
+      }
     };
   });
+  scheduleChargeDocumentDelivery(tenantId, documents);
+  return response;
 }
 
 export async function listMeetingsBySyndicate(
@@ -3060,14 +3119,29 @@ export async function listOwnerAccountTransactionsByLot(
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
   const pager = buildPagination(filters?.pagination);
 
+  const [rows, movements] = await Promise.all([
+    prisma.ownerAccountTransaction.findMany({
+      where: {
+        accountId: account.id,
+        ...buildDateRangeFilter('transactionDate', filters?.range)
+      },
+      skip: pager.skip,
+      take: pager.take,
+      // Plus récent d'abord ; même critère secondaire (création) que le cumul.
+      orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+    }),
+    loadOwnerAccountMovements(account.id)
+  ]);
+
+  // BUG-006 : solde cumulé recalculé dans l'ordre chronologique affiché.
+  return applyChronologicalBalances(rows, movements);
+}
+
+/** Tous les mouvements d'un compte de lot, réduits à ce qu'exige le calcul du solde cumulé. */
+async function loadOwnerAccountMovements(accountId: string): Promise<RunningBalanceMovement[]> {
   return prisma.ownerAccountTransaction.findMany({
-    where: {
-      accountId: account.id,
-      ...buildDateRangeFilter('transactionDate', filters?.range)
-    },
-    skip: pager.skip,
-    take: pager.take,
-    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }]
+    where: { accountId },
+    select: { id: true, transactionDate: true, createdAt: true, debit: true, credit: true, balanceAfter: true }
   });
 }
 
@@ -3114,18 +3188,14 @@ export async function createOwnerAccountAdjustmentByLot(
  * grand livre des comptes de tiers (`lib/finance/reports.ts`), auquel ce
  * releve s'aligne.
  */
-async function getOwnerBalanceStrictlyBefore(accountId: string, before?: Date): Promise<number> {
+function getOwnerBalanceStrictlyBefore(movements: RunningBalanceMovement[], before?: Date): number {
   if (!before) {
     return 0;
   }
 
-  const dernier = await prisma.ownerAccountTransaction.findFirst({
-    where: { accountId, transactionDate: { lt: before } },
-    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
-    select: { balanceAfter: true }
-  });
-
-  return dernier ? roundMoney(Number(dernier.balanceAfter ?? 0)) : 0;
+  // BUG-006 : somme des mouvements antérieurs, et non plus le `balanceAfter`
+  // stocké (figé dans l'ordre de création).
+  return chronologicalBalanceStrictlyBefore(movements, before);
 }
 
 /**
@@ -3153,13 +3223,18 @@ export async function getOwnerAccountStatementByLot(
 ) {
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
 
-  const transactions = await prisma.ownerAccountTransaction.findMany({
-    where: {
-      accountId: account.id,
-      ...buildDateRangeFilter('transactionDate', range)
-    },
-    orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }]
-  });
+  const [rows, movements] = await Promise.all([
+    prisma.ownerAccountTransaction.findMany({
+      where: {
+        accountId: account.id,
+        ...buildDateRangeFilter('transactionDate', range)
+      },
+      orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
+    }),
+    loadOwnerAccountMovements(account.id)
+  ]);
+  // BUG-006 : solde cumulé dans l'ordre chronologique, cohérent avec l'ordre du relevé.
+  const transactions = applyChronologicalBalances(rows, movements);
 
   // Periode mouvementee : le premier mouvement porte deja l'ouverture, par
   // soustraction de son propre montant. Une lecture de moins, et un resultat
@@ -3171,7 +3246,7 @@ export async function getOwnerAccountStatementByLot(
             Number(transactions[0].debit ?? 0) +
             Number(transactions[0].credit ?? 0)
         )
-      : await getOwnerBalanceStrictlyBefore(account.id, range?.from);
+      : getOwnerBalanceStrictlyBefore(movements, range?.from);
 
   const closingBalance =
     transactions.length > 0 ? roundMoney(Number(transactions[transactions.length - 1].balanceAfter)) : openingBalance;
@@ -3929,6 +4004,101 @@ export async function createChargeCallBatchBySyndicate(
   });
 }
 
+/** Lot S4 : montant a appeler pour un lot dans un lot d'appels. */
+export interface LotCallAmount {
+  lotId: string;
+  amount: number;
+}
+
+/**
+ * Lot S4 (audit) : un seul lot d'appels ORDINAIRE par copropriete et par
+ * periode (memes bornes), qu'il vienne d'une programmation ou de la
+ * generation manuelle depuis le budget. Un appel exceptionnel reste possible,
+ * et une periode sans bornes n'est pas controlee. 409 sinon.
+ */
+export async function assertNoRegularBatchForPeriodTx(
+  tx: PrismaTransactionClient,
+  syndicateId: string,
+  bounds: PeriodBounds | null
+): Promise<void> {
+  if (!bounds) return;
+  const duplicate = await tx.chargeCallBatch.findFirst({
+    where: { syndicateId, batchType: 'REGULAR', periodStart: bounds.start, periodEnd: bounds.end },
+    select: { id: true }
+  });
+  if (duplicate) {
+    throw new ConflictError(
+      "Un lot d'appels ordinaire existe déjà pour cette copropriété sur cette période : aucun appel émis."
+    );
+  }
+}
+
+/**
+ * Lot S4 : cree un lot d'appels (`ChargeCallBatch`) et un appel par lot, dans
+ * la transaction de l'appelant, par le chemin commun `createLotChargeCallTx`
+ * (debit du compte du lot, imputation de l'avance, quittances S3 ajoutees a
+ * `issued`). Verrous des lots pris dans l'ordre global des identifiants.
+ * Partage par la generation depuis le budget et par la programmation
+ * automatique (`charge-schedules.ts`).
+ */
+export async function createChargeCallBatchWithCallsTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  data: {
+    syndicateId: string;
+    label: string;
+    period: string;
+    bounds: PeriodBounds | null;
+    dueDate: Date;
+    batchType: 'REGULAR' | 'EXCEPTIONAL';
+    budgetId?: string | null;
+    totalAmount: number;
+    currency: string;
+    lots: LotCallAmount[];
+  },
+  issued: IssuedChargeDocument[] = []
+) {
+  if (data.batchType === 'REGULAR') await assertNoRegularBatchForPeriodTx(tx, data.syndicateId, data.bounds);
+  const batch = await tx.chargeCallBatch.create({
+    data: {
+      syndicateId: data.syndicateId,
+      label: data.label,
+      period: data.period,
+      periodStart: data.bounds?.start ?? null,
+      periodEnd: data.bounds?.end ?? null,
+      dueDate: data.dueDate,
+      batchType: data.batchType,
+      ...(data.budgetId ? { budgetId: data.budgetId } : {}),
+      totalAmount: roundMoney(data.totalAmount),
+      currency: data.currency,
+      status: 'SENT'
+    }
+  });
+
+  const lotsInLockOrder = [...data.lots].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
+  const chargeCalls: Array<Awaited<ReturnType<typeof createLotChargeCallTx>>> = [];
+  for (const lot of lotsInLockOrder) {
+    chargeCalls.push(
+      await createLotChargeCallTx(
+        tx,
+        tenantId,
+        {
+          syndicateId: data.syndicateId,
+          lotId: lot.lotId,
+          batchId: batch.id,
+          period: data.period,
+          bounds: data.bounds,
+          amount: roundMoney(lot.amount),
+          currency: data.currency,
+          dueDate: data.dueDate
+        },
+        issued
+      )
+    );
+  }
+  return { batch, chargeCalls };
+}
+
 export async function generateChargeCallsFromBudget(
   tenantId: string,
   syndicateId: string,
@@ -3941,6 +4111,16 @@ export async function generateChargeCallsFromBudget(
     dueDate: Date;
     batchType: 'REGULAR' | 'EXCEPTIONAL';
     currency?: string;
+    /**
+     * Lot S4 : nombre de periodes par an (1, 2, 4 ou 12). Chaque appel porte
+     * la quote-part annuelle du lot divisee par ce nombre ; la derniere
+     * periode de l'annee (`periodIndex` = `periodsPerYear`) absorbe
+     * l'arrondi. Defaut 1 : la quote-part annuelle entiere (comportement
+     * historique de la route manuelle).
+     */
+    periodsPerYear?: number;
+    /** Rang de la periode dans l'annee (1 a `periodsPerYear`), defaut 1. */
+    periodIndex?: number;
   }
 ) {
   logger.info('Audit: generate charge calls from budget requested', {
@@ -3979,47 +4159,44 @@ export async function generateChargeCallsFromBudget(
   }
 
   const bounds = resolvePeriodBounds(data);
-  return prisma.$transaction(async tx => {
-    const batch = await tx.chargeCallBatch.create({
-      data: {
+  const periodsPerYear = data.periodsPerYear ?? 1;
+  const periodIndex = data.periodIndex ?? 1;
+  const lots = allocations.map(allocation => ({
+    lotId: allocation.lotId,
+    amount:
+      periodsPerYear === 1
+        ? roundMoney(Number(allocation.totalAllocated))
+        : annualShareForPeriod(Number(allocation.totalAllocated), periodsPerYear, periodIndex)
+  }));
+  // Annee entiere : total du budget, comme avant le lot S4 ; sinon la somme des parts de la periode.
+  const totalAmount =
+    periodsPerYear === 1
+      ? Number(budget.totalAmount)
+      : fromCents(lots.reduce((sum, lot) => sum + toCents(lot.amount), 0));
+  const issued: IssuedChargeDocument[] = [];
+  const generated = await prisma.$transaction(async tx => {
+    // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
+    // le nombre de lignes inserees, jamais leurs identifiants — impossible
+    // d'y accrocher une ecriture de grand livre. Chaque appel est donc cree
+    // un par un (createChargeCallBatchWithCallsTx -> createLotChargeCallTx),
+    // qui debite le compte du lot et impute aussitot son avance (lot S2).
+    const { batch } = await createChargeCallBatchWithCallsTx(
+      tx,
+      tenantId,
+      {
         syndicateId,
         label: data.label,
         period: data.period,
-        periodStart: bounds?.start ?? null,
-        periodEnd: bounds?.end ?? null,
-        dueDate: data.dueDate,
-        batchType: data.batchType as any,
-        budgetId,
-        totalAmount: roundMoney(Number(budget.totalAmount)),
-        currency: data.currency || budget.currency || 'XOF',
-        status: 'SENT'
-      }
-    });
-
-    // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
-    // le nombre de lignes inserees, jamais leurs identifiants — impossible
-    // d'y accrocher une ecriture de grand livre. Un appel cree ainsi ne
-    // debitait donc jamais le compte du lot concerne, contrairement a un
-    // appel direct (createChargeCallAndUpdateStatus, plus haut) qui cree
-    // chaque ChargeCall un par un pour la meme raison. On boucle ici de la
-    // meme facon : le nombre de lots d'une copropriete reste modeste, et
-    // c'est deja le choix fait pour la creation directe multi-lots.
-    // Lot S2 : chaque appel impute aussitot l'avance du lot (createLotChargeCallTx).
-    const currency = data.currency || budget.currency || 'XOF';
-    // Verrous par lot dans l'ordre des identifiants (voir sortLotIdsForLocking).
-    const allocationsInLockOrder = [...allocations].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
-    for (const allocation of allocationsInLockOrder) {
-      await createLotChargeCallTx(tx, tenantId, {
-        syndicateId,
-        lotId: allocation.lotId,
-        batchId: batch.id,
-        period: data.period,
         bounds,
-        amount: roundMoney(Number(allocation.totalAllocated)),
-        currency,
-        dueDate: data.dueDate
-      });
-    }
+        dueDate: data.dueDate,
+        batchType: data.batchType,
+        budgetId,
+        totalAmount,
+        currency: data.currency || budget.currency || 'XOF',
+        lots
+      },
+      issued
+    );
 
     logger.info('Audit: charge calls batch generated from budget', {
       tenantId,
@@ -4037,6 +4214,8 @@ export async function generateChargeCallsFromBudget(
       }
     });
   });
+  scheduleChargeDocumentDelivery(tenantId, issued);
+  return generated;
 }
 
 async function assertLotOwnershipForSyndicate(tenantId: string, syndicateId: string, lotId: string) {

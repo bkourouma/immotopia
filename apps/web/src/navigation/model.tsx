@@ -124,7 +124,7 @@ export type SectionId =
 export const SECTION_LABELS: Record<SectionId, string> = {
   parc: t('Parc immobilier'),
   locatif: t('Gestion locative'),
-  finance: 'Finance',
+  finance: t('Finance'),
   ventes: t('Ventes'),
   patrimoine: t('Patrimoine et entretien'),
   commercial: t('Commercial et communication'),
@@ -324,7 +324,10 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         href: financeWorkspaceHref('facturation-balances'),
         children: [
           financeLeaf('finance-clients', t('Facturation et balances'), 'facturation-balances'),
-          { ...financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions'), feature: 'RENTAL' }
+          {
+            ...financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions'),
+            feature: 'RENTAL'
+          }
         ]
       },
       {
@@ -531,6 +534,8 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             href: '/tenant/:tenantId/syndics/:syndicId/budgets',
             activeFor: [
               '/tenant/:tenantId/syndics/:syndicId/charges',
+              '/tenant/:tenantId/syndics/:syndicId/suivi-mensuel',
+              '/tenant/:tenantId/syndics/:syndicId/quittances',
               '/tenant/:tenantId/syndics/:syndicId/recouvrement',
               '/tenant/:tenantId/syndics/:syndicId/finances',
               '/tenant/:tenantId/syndics/:syndicId/comptabilite'
@@ -669,12 +674,14 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
     id: 'coproprietaire',
     label: t('Copropriétaire'),
     // Portail en lecture seule, surtout consulté sur téléphone : quatre
-    // onglets couvrent ses quatre destinations, comme le portail locataire.
+    // onglets couvrent les destinations les plus fréquentes, la cinquième
+    // (« Plus ») ouvre les quatre écrans ajoutés par le lot S5.
     tabs: [
       { key: 'tab-lots', label: t('Mes lots'), href: '/copropriete', icon: <ApartmentOutlined /> },
       { key: 'tab-appels', label: t('Appels'), href: '/copropriete/appels', icon: <WalletOutlined /> },
       { key: 'tab-assemblees', label: t('Assemblées'), href: '/copropriete/assemblees', icon: <TeamOutlined /> },
-      { key: 'tab-documents', label: t('Documents'), href: '/copropriete/documents', icon: <FolderOutlined /> }
+      { key: 'tab-documents', label: t('Documents'), href: '/copropriete/documents', icon: <FolderOutlined /> },
+      { key: 'tab-plus', label: t('Plus'), href: MORE_TAB_HREF, icon: <EllipsisOutlined /> }
     ],
     tree: [
       { key: 'lots', label: t('Mes lots'), icon: <ApartmentOutlined />, zone: 'primary', href: '/copropriete' },
@@ -698,6 +705,20 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <FolderOutlined />,
         zone: 'primary',
         href: '/copropriete/documents'
+      },
+      // Lot S5 (besoin 2) : paiements, quittances, suivi mensuel, fiche de la
+      // copropriété. Derrière « Plus », comme le fait le portail propriétaire.
+      {
+        key: 'plus',
+        label: t('Plus'),
+        icon: <EllipsisOutlined />,
+        zone: 'more',
+        children: [
+          { key: 'coprop-paiements', label: t('Mes paiements'), href: '/copropriete/paiements' },
+          { key: 'coprop-quittances', label: t('Mes quittances'), href: '/copropriete/quittances' },
+          { key: 'coprop-suivi-mensuel', label: t('Suivi mensuel'), href: '/copropriete/suivi-mensuel' },
+          { key: 'coprop-ma-copropriete', label: t('Ma copropriété'), href: '/copropriete/ma-copropriete' }
+        ]
       }
     ]
   }
