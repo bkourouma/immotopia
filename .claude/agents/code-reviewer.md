@@ -67,6 +67,15 @@ revue en attendant qu'il apparaisse.
   devient orpheline (`npm run i18n:extract` la deplace dans un
   `*.orphans.json`, elle ne se reporte pas seule).
 
+**Wiki des fonctionnalites**
+
+- Un diff qui ajoute, modifie ou retire une route, un ecran, une permission
+  ou une entree de menu sans toucher
+  `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` (et son miroir
+  `docs/fonctionnalites/sous-fonctionnalites.md`) est un constat, sauf si la
+  PR indique explicitement qu'il s'agit d'un correctif sans effet
+  fonctionnel. Voir `docs/fonctionnalites/README.md`.
+
 **Taille et forme du code**
 
 - Une fonction nouvellement ajoutee ou fortement modifiee depasse rarement

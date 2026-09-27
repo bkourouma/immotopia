@@ -20,6 +20,8 @@ Ne pas tout lire d'avance. Charger le document quand la tâche le demande :
 | Un libellé affiché                       | [docs/architecture/i18n.md](docs/architecture/i18n.md)                       |
 | Une décision d'architecture              | [docs/architecture/adr/](docs/architecture/adr/ADR-000-template.md)          |
 | Une fonctionnalité métier                | `specs/<module>/`                                                            |
+| Savoir ce que fait l'application         | [docs/fonctionnalites/README.md](docs/fonctionnalites/README.md)             |
+| Après avoir livré une fonctionnalité     | [docs/fonctionnalites/README.md](docs/fonctionnalites/README.md)             |
 | Piloter seul un objectif de bout en bout | [docs/workflows/LEAD_PROCESS.md](docs/workflows/LEAD_PROCESS.md)             |
 
 Les règles de `.claude/rules/` se chargent seules selon les fichiers touchés
