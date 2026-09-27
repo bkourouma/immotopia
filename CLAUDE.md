@@ -64,3 +64,11 @@ ou l'index (`stash`,
 arrière » (s'arrêter et signaler). Découper par territoire de fichiers, jamais
 deux agents sur le même fichier. Ne pas commiter pendant qu'un agent écrit : le
 hook lint-staged sauvegarde et restaure les fichiers non indexés.
+
+**Modèle des sous-agents : Sonnet 5 dès que c'est possible.** Les profils
+`dev-complex`, `dev-orchestrator`, `demo-orchestrator`, `ui-tester`,
+`security-auditor` et `lead` de `.claude/agents/` sont réglés sur Opus :
+passer explicitement `model: "sonnet"` à chaque lancement d'agent (réalisation,
+tests, relecture, recette), sinon le profil l'emporte. Opus se réserve à un
+chantier transverse difficile (schéma, contrats, API et écrans à la fois) ou à
+une relecture de sécurité délicate, et se justifie dans le rapport.
