@@ -320,50 +320,64 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     return processed;
   };
 
+  /**
+   * Construit le corps d'enregistrement (création ou mise à jour) à partir de
+   * `formData`.
+   *
+   * Point unique pour l'enregistrement automatique de l'étape « Médias »
+   * (`autoSaveForMedia`) et pour « Terminer » (`handleFinish`) : avant ce
+   * commit, chacun construisait son propre corps à la main, et leur
+   * divergence sur `address` (absent d'un côté, chaîne vide de l'autre) a
+   * causé le 500 corrigé par 335658e. Même `formData`, même corps, quel que
+   * soit l'appelant.
+   */
+  const construireCorpsBien = (pourCreation: boolean): CreatePropertyRequest | UpdatePropertyRequest => ({
+    ...(pourCreation ? { propertyType: formData.propertyType, ownershipType: formData.ownershipType } : {}),
+    ownerUserId:
+      formData.ownerUserId && !String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
+    ownerEmail: formData.ownerUserId && String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
+    title: formData.title.trim(),
+    description: formData.description.trim(),
+    address: formData.address.trim() || undefined,
+    locationZone: formData.locationZone.trim() || undefined,
+    latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
+    longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+    transactionModes: formData.transactionModes,
+    price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
+    fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
+    currency: formData.currency,
+    surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
+    surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
+    surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
+    rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
+    bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
+    bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
+    furnishingStatus: formData.furnishingStatus,
+    availability: formData.availability,
+    typeSpecificData: processTypeSpecificData({
+      ...formData.typeSpecificData,
+      country: formData.location?.country,
+      countryId: formData.location?.countryId,
+      region: formData.location?.region,
+      regionId: formData.location?.regionId,
+      commune: formData.location?.commune,
+      communeId: formData.location?.communeId,
+      pointsOfInterest: formData.pointsOfInterest,
+      constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
+      generalCondition: formData.generalCondition,
+      standing: formData.standing,
+      deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
+      commissionMode: formData.commissionMode,
+      commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined
+    })
+  });
+
   const handleFinish = async () => {
     if (finishInFlightRef.current) return;
     finishInFlightRef.current = true;
     setIsLoading(true);
     try {
-      const submitData: CreatePropertyRequest | UpdatePropertyRequest = {
-        ...(property ? {} : { propertyType: formData.propertyType, ownershipType: formData.ownershipType }),
-        ownerUserId: formData.ownerUserId && !formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
-        ownerEmail: formData.ownerUserId && formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        address: formData.address.trim() || undefined,
-        locationZone: formData.locationZone.trim() || undefined,
-        latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-        transactionModes: formData.transactionModes,
-        price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
-        fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
-        currency: formData.currency,
-        surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
-        surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
-        surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
-        rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
-        bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
-        bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
-        furnishingStatus: formData.furnishingStatus,
-        availability: formData.availability,
-        typeSpecificData: processTypeSpecificData({
-          ...formData.typeSpecificData,
-          country: formData.location?.country,
-          countryId: formData.location?.countryId,
-          region: formData.location?.region,
-          regionId: formData.location?.regionId,
-          commune: formData.location?.commune,
-          communeId: formData.location?.communeId,
-          pointsOfInterest: formData.pointsOfInterest,
-          constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
-          generalCondition: formData.generalCondition,
-          standing: formData.standing,
-          deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
-          commissionMode: formData.commissionMode,
-          commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined
-        })
-      };
+      const submitData: CreatePropertyRequest | UpdatePropertyRequest = construireCorpsBien(!property);
 
       let finalPropertyId = savedPropertyId;
       if (finalPropertyId) {
@@ -1456,52 +1470,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
           autoSaveAttemptedRef.current = true;
           setIsLoading(true);
           try {
-            const processedTypeSpecificData = processTypeSpecificData({
-              ...formData.typeSpecificData,
-              country: formData.location?.country,
-              countryId: formData.location?.countryId,
-              region: formData.location?.region,
-              regionId: formData.location?.regionId,
-              commune: formData.location?.commune,
-              communeId: formData.location?.communeId,
-              pointsOfInterest: formData.pointsOfInterest,
-              constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
-              generalCondition: formData.generalCondition,
-              standing: formData.standing,
-              deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
-              commissionMode: formData.commissionMode,
-              commissionAmount: formData.commissionAmount
-                ? parseFloat(parseNumber(formData.commissionAmount))
-                : undefined
-            });
-
-            const submitData: CreatePropertyRequest = {
-              propertyType: formData.propertyType,
-              ownershipType: formData.ownershipType,
-              ownerUserId:
-                formData.ownerUserId && !String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
-              ownerEmail:
-                formData.ownerUserId && String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
-              title: formData.title.trim() || 'Brouillon',
-              description: formData.description.trim() || '',
-              address: formData.address.trim() || '',
-              locationZone: formData.locationZone.trim() || undefined,
-              latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-              longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-              transactionModes: formData.transactionModes,
-              price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
-              fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
-              currency: formData.currency,
-              surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
-              surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
-              surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
-              rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
-              bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
-              bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
-              furnishingStatus: formData.furnishingStatus,
-              availability: formData.availability,
-              typeSpecificData: processedTypeSpecificData
-            };
+            const submitData = construireCorpsBien(true) as CreatePropertyRequest;
 
             const newProperty = await createProperty(tenantId, submitData);
             setSavedPropertyId(newProperty.id);
