@@ -38,7 +38,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({ tabs, context, onOpe
   const isActive = (href: string | null): boolean => {
     if (!href || href === MORE_TAB_HREF) return false;
     const [path] = href.split('?');
-    if (path === '/dashboard' || path === '/tenant' || path === '/owner') {
+    if (path === '/dashboard' || path === '/tenant' || path === '/owner' || path === '/copropriete') {
       return location.pathname === path;
     }
     return location.pathname === path || location.pathname.startsWith(`${path}/`);

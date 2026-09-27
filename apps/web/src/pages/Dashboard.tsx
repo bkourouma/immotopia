@@ -120,7 +120,14 @@ export const Dashboard: React.FC = () => {
     clientType: tenantClient?.clientType,
     isLoadingMembership: isLoading || isLoadingMembership
   });
-  const portail = persona === 'proprietaire' ? '/owner' : persona === 'locataire' ? '/tenant' : null;
+  const portail =
+    persona === 'proprietaire'
+      ? '/owner'
+      : persona === 'locataire'
+        ? '/tenant'
+        : persona === 'coproprietaire'
+          ? '/copropriete'
+          : null;
 
   useEffect(() => {
     if (portail) {

@@ -669,5 +669,20 @@
   "Crédit (augmenter le solde)": "دائن (زيادة الرصيد)",
   "Débit (diminuer le solde)": "مدين (تخفيض الرصيد)",
   "Motif": "السبب",
-  "Le montant dépasse le reste dû ({{value}})": "المبلغ يتجاوز المبلغ المتبقي ({{value}})"
+  "Le montant dépasse le reste dû ({{value}})": "المبلغ يتجاوز المبلغ المتبقي ({{value}})",
+  "Paye": "مدفوع",
+  "Accès au portail ouvert": "تم فتح الوصول إلى البوابة",
+  "{{name}} ({{email}}) peut consulter {{count}} lot(s) en lecture seule.": "يمكن لـ {{name}} ({{email}}) الاطلاع على {{count}} وحدة للقراءة فقط.",
+  "Lien de connexion": "رابط تسجيل الدخول",
+  "Le copropriétaire définit son mot de passe avec ce lien, valable jusqu’au {{date}}.": "يعيّن المالك المشترك كلمة مروره بهذا الرابط، الصالح حتى {{date}}.",
+  "Ce contact a déjà un compte ImmoTopia : il se connecte avec son adresse e-mail et son mot de passe habituels (« Mot de passe oublié » au besoin).": "لدى جهة الاتصال هذه حساب على ImmoTopia بالفعل: يسجّل الدخول ببريده الإلكتروني وكلمة مروره المعتادين («نسيت كلمة المرور» عند الحاجة).",
+  "Invitation au portail impossible": "تعذّرت الدعوة إلى البوابة",
+  "Accès au portail révoqué": "تم إلغاء الوصول إلى البوابة",
+  "Révocation de l'accès impossible": "تعذّر إلغاء الوصول",
+  "Révoquer l'accès au portail ?": "إلغاء الوصول إلى البوابة؟",
+  "{{name}} ne pourra plus consulter aucun de ses lots dans l'agence. Son compte utilisateur n'est pas supprimé.": "لن يتمكن {{name}} بعد الآن من الاطلاع على أي من وحداته لدى الوكالة. لا يُحذف حساب المستخدم الخاص به.",
+  "Accès portail": "الوصول إلى البوابة",
+  "Inviter au portail": "دعوة إلى البوابة",
+  "Révoquer l'accès": "إلغاء الوصول",
+  "Inviter au portail copropriétaire": "دعوة إلى بوابة الملاك المشتركين"
 }
