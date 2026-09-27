@@ -7756,3 +7756,39 @@ model SubscriptionExtensionRequest {
   @@index([tenantId, status])
   @@map("subscription_extension_requests")
 }
+
+enum TenantDataExportStatus {
+  QUEUED
+  RUNNING
+  READY
+  FAILED
+  EXPIRED
+}
+
+/// Lot S7 (besoin 8) : archive ZIP de toutes les donnees et de tous les
+/// fichiers d'une agence, preparee en tache de fond a la demande du
+/// super-admin. L'archive vit sous `<UPLOADS_DIR>/exports/<tenantId>/`, jamais
+/// servie en statique ; `filePath` ne sort jamais dans une reponse d'API.
+/// Aucune relation Prisma vers Tenant : l'historique des exports survit a la
+/// suppression de l'agence, comme `AuditLog`.
+model TenantDataExport {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  status           TenantDataExportStatus @default(QUEUED)
+  requestedById    String                 @map("requested_by_id")
+  filePath         String?                @map("file_path")
+  sizeBytes        BigInt?                @map("size_bytes")
+  modelCount       Int?                   @map("model_count")
+  rowCount         Int?                   @map("row_count")
+  fileCount        Int?                   @map("file_count")
+  missingFileCount Int?                   @map("missing_file_count")
+  error            String?                @db.Text
+  startedAt        DateTime?              @map("started_at")
+  finishedAt       DateTime?              @map("finished_at")
+  expiresAt        DateTime?              @map("expires_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@map("tenant_data_exports")
+}
