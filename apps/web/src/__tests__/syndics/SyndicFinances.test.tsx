@@ -294,7 +294,7 @@ describe('SyndicFinances — indicateurs et tableaux de détail', () => {
     mount();
 
     expect(
-      (await screen.findAllByText('Impossible de charger la synthese financiere', {}, { timeout: 8000 })).length
+      (await screen.findAllByText('Impossible de charger la synthèse financière', {}, { timeout: 8000 })).length
     ).toBe(4);
     expect(screen.getAllByText('Réessayer').length).toBe(4);
   });

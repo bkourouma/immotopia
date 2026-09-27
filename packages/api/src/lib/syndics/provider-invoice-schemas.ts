@@ -20,7 +20,7 @@ const optionalDate = z
 
 /** Plafond de `Decimal(14,2)` : au-dela, Postgres refuserait la valeur. */
 export const MAX_AMOUNT = 999_999_999_999.99;
-const money = z.coerce.number().finite().max(MAX_AMOUNT, 'Montant trop eleve');
+const money = z.coerce.number().finite().max(MAX_AMOUNT, 'Montant trop élevé');
 
 /** Devises admises (le module syndic travaille en XOF par defaut). */
 export const SYNDIC_CURRENCIES = ['XOF', 'XAF', 'EUR', 'USD'] as const;
@@ -34,7 +34,7 @@ export function latestAllowedDate(now: Date = new Date()): Date {
 
 const pieceDate = z.coerce
   .date()
-  .refine(value => value <= latestAllowedDate(), { message: "La date ne peut pas depasser d'un an la date du jour" });
+  .refine(value => value <= latestAllowedDate(), { message: "La date ne peut pas dépasser d'un an la date du jour" });
 
 export const PAYMENT_METHODS = ['MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'CHECK', 'CARD', 'OTHER'] as const;
 export const INVOICE_STATUSES = ['RECORDED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED'] as const;
@@ -49,17 +49,17 @@ export const createProviderInvoiceSchema = z
     expenseAccountId: optionalUuid,
     /** CURRENT : charges courantes (624). WORKS : travaux (6241). */
     expenseKind: z.enum(['CURRENT', 'WORKS']).optional().default('CURRENT'),
-    number: z.string().trim().min(1, 'Le numero de facture est obligatoire').max(100),
-    label: z.string().trim().min(1, 'Le libelle de la facture est obligatoire').max(300),
+    number: z.string().trim().min(1, 'Le numéro de facture est obligatoire').max(100),
+    label: z.string().trim().min(1, 'Le libellé de la facture est obligatoire').max(300),
     invoiceDate: pieceDate,
     dueDate: optionalDate,
-    amountHT: money.positive('Le montant HT doit etre positif'),
+    amountHT: money.positive('Le montant HT doit être positif'),
     vatAmount: money.nonnegative().optional().default(0),
     amountTTC: money.positive().optional(),
     currency: z.enum(SYNDIC_CURRENCIES).optional().default('XOF')
   })
   .refine(value => !value.dueDate || value.dueDate >= value.invoiceDate, {
-    message: "L'echeance ne peut pas preceder la date de facture",
+    message: "L'échéance ne peut pas précéder la date de facture",
     path: ['dueDate']
   });
 
@@ -71,7 +71,7 @@ export const updateProviderInvoiceSchema = z
     fundId: z.union([z.string().uuid(), z.null()]).optional()
   })
   .refine(value => Object.values(value).some(field => field !== undefined), {
-    message: 'Aucune modification demandee'
+    message: 'Aucune modification demandée'
   });
 
 export const cancelSchema = z.object({
@@ -79,7 +79,7 @@ export const cancelSchema = z.object({
 });
 
 export const createProviderPaymentSchema = z.object({
-  amount: money.positive('Le montant du paiement doit etre positif'),
+  amount: money.positive('Le montant du paiement doit être positif'),
   paidAt: pieceDate,
   method: z.enum(PAYMENT_METHODS),
   reference: z
@@ -103,7 +103,7 @@ export const listProviderInvoicesQuerySchema = z
     limit: z.coerce.number().int().positive().max(100).optional().default(20)
   })
   .refine(value => !value.from || !value.to || value.from <= value.to, {
-    message: 'La date de debut doit etre inferieure ou egale a la date de fin'
+    message: 'La date de début doit être inférieure ou égale à la date de fin'
   });
 
 export const fundMovementsQuerySchema = z.object({

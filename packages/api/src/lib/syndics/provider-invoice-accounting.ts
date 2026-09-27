@@ -143,7 +143,7 @@ export async function assertFiscalYearOpenTx(tx: PrismaTransactionClient, syndic
     select: { id: true }
   });
   if (closed) {
-    throw new ConflictError('Exercice clos : aucune ecriture ne peut y etre passee');
+    throw new ConflictError('Exercice clos : aucune écriture ne peut y être passée');
   }
 }
 

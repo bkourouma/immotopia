@@ -63,7 +63,7 @@ async function assertSyndicate(tenantId: string, syndicateId: string) {
     where: { id: syndicateId, tenantId },
     select: { id: true, name: true }
   });
-  if (!syndicate) throw new NotFoundError('Copropriete introuvable ou inaccessible');
+  if (!syndicate) throw new NotFoundError('Copropriété introuvable ou inaccessible');
   return syndicate;
 }
 
@@ -81,7 +81,7 @@ async function assertFund(syndicateId: string, fundId: string) {
     where: { id: fundId, syndicateId },
     select: { id: true, name: true, currency: true }
   });
-  if (!fund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriete');
+  if (!fund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriété');
   return fund;
 }
 
@@ -90,7 +90,7 @@ async function assertBudgetLine(syndicateId: string, budgetLineItemId: string) {
     where: { id: budgetLineItemId, budget: { syndicateId } },
     select: { id: true, accountId: true }
   });
-  if (!line) throw new NotFoundError('Ligne budgetaire introuvable pour cette copropriete');
+  if (!line) throw new NotFoundError('Ligne budgétaire introuvable pour cette copropriété');
   return line;
 }
 
@@ -125,7 +125,7 @@ async function resolveExpenseAccountId(
       where: { id: explicitId, tenantId, syndicateId, scope: 'SYNDICATE', accountType: 'EXPENSE', isActive: true },
       select: { id: true }
     });
-    if (!account) throw new NotFoundError('Compte de charge introuvable pour cette copropriete');
+    if (!account) throw new NotFoundError('Compte de charge introuvable pour cette copropriété');
     return account.id;
   }
   if (budgetLineAccountId) {
@@ -158,10 +158,10 @@ export function computeInvoiceTotals(input: { amountHT: number; vatAmount?: numb
   const expected = roundMoney(amountHT + vatAmount);
   // Un montant saisi positif peut s'arrondir a zero (0,004) : refuse aussi.
   if (amountHT <= 0 || expected <= 0) {
-    throw unprocessableEntity('Le montant doit etre superieur a zero');
+    throw unprocessableEntity('Le montant doit être supérieur à zéro');
   }
   if (input.amountTTC !== undefined && roundMoney(input.amountTTC) !== expected) {
-    throw unprocessableEntity('Le montant TTC doit etre egal au montant HT augmente de la TVA');
+    throw unprocessableEntity('Le montant TTC doit être égal au montant HT augmenté de la TVA');
   }
   return { amountHT, vatAmount, amountTTC: expected };
 }
@@ -169,7 +169,7 @@ export function computeInvoiceTotals(input: { amountHT: number; vatAmount?: numb
 /** La devise d'un fonds doit etre celle de la facture qu'il regle. */
 function assertSameCurrency(fundCurrency: string, invoiceCurrency: string) {
   if (fundCurrency !== invoiceCurrency) {
-    throw unprocessableEntity('La devise du fonds ne correspond pas a celle de la facture');
+    throw unprocessableEntity('La devise du fonds ne correspond pas à celle de la facture');
   }
 }
 
@@ -446,7 +446,7 @@ export async function createProviderInvoice(
       where: { id: input.contractId, syndicateId },
       select: { id: true, providerId: true }
     });
-    if (!contract) throw new NotFoundError('Contrat introuvable pour cette copropriete');
+    if (!contract) throw new NotFoundError('Contrat introuvable pour cette copropriété');
     if (contract.providerId !== input.providerId) {
       throw unprocessableEntity("Le contrat choisi n'est pas celui de ce prestataire");
     }
@@ -487,7 +487,7 @@ export async function createProviderInvoice(
     select: { id: true }
   });
   if (duplicate) {
-    throw new ConflictError('Une facture de ce prestataire porte deja ce numero pour cette copropriete');
+    throw new ConflictError('Une facture de ce prestataire porte déjà ce numéro pour cette copropriété');
   }
 
   const totals = computeInvoiceTotals(input);
@@ -635,11 +635,11 @@ export async function updateProviderInvoice(
     });
     if (!invoice) throw new NotFoundError(NOT_FOUND_INVOICE);
     if (invoice.status !== 'RECORDED') {
-      throw new ConflictError('Seule une facture enregistree et non payee peut etre modifiee');
+      throw new ConflictError('Seule une facture enregistrée et non payée peut être modifiée');
     }
     if (fund) assertSameCurrency(fund.currency, invoice.currency);
     if (input.dueDate && input.dueDate < invoice.invoiceDate) {
-      throw unprocessableEntity("L'echeance ne peut pas preceder la date de facture");
+      throw unprocessableEntity("L'échéance ne peut pas précéder la date de facture");
     }
     if (input.number && input.number !== invoice.number) {
       const duplicate = await tx.syndicProviderInvoice.findFirst({
@@ -654,7 +654,7 @@ export async function updateProviderInvoice(
         select: { id: true }
       });
       if (duplicate) {
-        throw new ConflictError('Une facture de ce prestataire porte deja ce numero pour cette copropriete');
+        throw new ConflictError('Une facture de ce prestataire porte déjà ce numéro pour cette copropriété');
       }
     }
 
@@ -693,7 +693,7 @@ export async function cancelProviderInvoice(
       select: { id: true, status: true, number: true, amountTTC: true, budgetLineItemId: true, journalEntryId: true }
     });
     if (!invoice) throw new NotFoundError(NOT_FOUND_INVOICE);
-    if (invoice.status === 'CANCELLED') throw new ConflictError('Cette facture est deja annulee');
+    if (invoice.status === 'CANCELLED') throw new ConflictError('Cette facture est déjà annulée');
     await assertFiscalYearOpenTx(tx, syndicateId, now);
 
     const activePayments = await tx.syndicProviderPayment.count({
@@ -753,10 +753,10 @@ export async function payProviderInvoice(
   await assertSyndicate(tenantId, syndicateId);
   const found = await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
   const fundId = input.fundId ?? found.fundId;
-  if (!fundId) throw unprocessableEntity('Choisissez le fonds a debiter pour ce paiement');
+  if (!fundId) throw unprocessableEntity('Choisissez le fonds à débiter pour ce paiement');
   await assertFund(syndicateId, fundId);
   const amount = roundMoney(input.amount);
-  if (amount <= 0) throw unprocessableEntity('Le montant doit etre superieur a zero');
+  if (amount <= 0) throw unprocessableEntity('Le montant doit être supérieur à zéro');
 
   const result = await prisma.$transaction(async tx => {
     await lockInvoiceTx(tx, tenantId, invoiceId);
@@ -775,21 +775,21 @@ export async function payProviderInvoice(
       }
     });
     if (!invoice) throw new NotFoundError(NOT_FOUND_INVOICE);
-    if (invoice.status === 'CANCELLED') throw new ConflictError('Une facture annulee ne peut pas etre payee');
+    if (invoice.status === 'CANCELLED') throw new ConflictError('Une facture annulée ne peut pas être payée');
     if (input.paidAt < invoice.invoiceDate) {
-      throw unprocessableEntity('Le paiement ne peut pas preceder la date de la facture');
+      throw unprocessableEntity('Le paiement ne peut pas précéder la date de la facture');
     }
     const lockedFund = await tx.syndicateFund.findFirst({
       where: { id: fundId, syndicateId },
       select: { currency: true }
     });
-    if (!lockedFund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriete');
+    if (!lockedFund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriété');
     assertSameCurrency(lockedFund.currency, invoice.currency);
     await assertFiscalYearOpenTx(tx, syndicateId, input.paidAt);
 
     const due = roundMoney(Number(invoice.amountTTC) - Number(invoice.amountPaid));
     if (amount > due) {
-      throw unprocessableEntity('Le montant du paiement depasse le reste du de la facture');
+      throw unprocessableEntity('Le montant du paiement dépasse le reste dû de la facture');
     }
 
     const payment = await tx.syndicProviderPayment.create({
@@ -900,7 +900,7 @@ export async function cancelProviderPayment(
       select: { id: true, amount: true, fundId: true, cancelledAt: true, journalEntryId: true }
     });
     if (!payment) throw new NotFoundError('Paiement introuvable.');
-    if (payment.cancelledAt) throw new ConflictError('Ce paiement est deja annule');
+    if (payment.cancelledAt) throw new ConflictError('Ce paiement est déjà annulé');
     await assertFiscalYearOpenTx(tx, syndicateId, now);
 
     const invoice = await tx.syndicProviderInvoice.findFirst({
@@ -1067,7 +1067,7 @@ export async function listFundMovements(
     where: { id: fundId, syndicateId },
     select: { id: true, name: true, balance: true, currency: true }
   });
-  if (!fund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriete');
+  if (!fund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriété');
 
   const where = { tenantId, fundId };
   const [rows, total] = await Promise.all([
@@ -1192,9 +1192,9 @@ export async function removeProviderInvoiceAttachment(
       select: { filePath: true, status: true }
     });
     if (!current) throw new NotFoundError(NOT_FOUND_INVOICE);
-    if (!current.filePath) throw new NotFoundError('Piece jointe introuvable.');
+    if (!current.filePath) throw new NotFoundError('Pièce jointe introuvable.');
     if (current.status === 'PAID' || current.status === 'PARTIALLY_PAID') {
-      throw new ConflictError("La piece d'une facture reglee ne peut pas etre supprimee");
+      throw new ConflictError("La pièce d'une facture réglée ne peut pas être supprimée");
     }
     await tx.syndicProviderInvoice.update({
       where: { id: invoiceId, tenantId },
@@ -1212,11 +1212,11 @@ export async function getProviderInvoiceFile(tenantId: string, syndicateId: stri
   // Toute situation (copropriete ou facture d'une autre agence, facture sans
   // piece, fichier absent) repond la meme 404.
   const syndicate = await prisma.syndicate.findFirst({ where: { id: syndicateId, tenantId }, select: { id: true } });
-  if (!syndicate) throw new NotFoundError('Piece jointe introuvable.');
+  if (!syndicate) throw new NotFoundError('Pièce jointe introuvable.');
   const invoice = await prisma.syndicProviderInvoice.findFirst({
     where: { id: invoiceId, tenantId, syndicateId },
     select: { syndicateId: true, filePath: true, fileName: true, number: true }
   });
-  if (!invoice) throw new NotFoundError('Piece jointe introuvable.');
+  if (!invoice) throw new NotFoundError('Pièce jointe introuvable.');
   return readProviderInvoiceFile(invoice);
 }
