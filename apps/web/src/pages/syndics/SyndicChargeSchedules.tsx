@@ -402,7 +402,7 @@ export const SyndicChargeSchedules: React.FC = () => {
             message.success(
               run.notificationsSkipped > 0
                 ? t(
-                    'Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (propriétaire à vérifier).',
+                    "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (détail dans l'historique).",
                     counts
                   )
                 : t(

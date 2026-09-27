@@ -59,7 +59,11 @@ export interface RunOutcome {
   callsCreated: number;
   callsCovered: number;
   notificationsSent: number;
-  /** Avis non envoyés : propriétaire du lot qui n'est plus copropriétaire actuel. */
+  /**
+   * Avis non envoyés : propriétaire qui n'est plus copropriétaire actuel,
+   * lot sans copropriétaire, aucun canal d'envoi disponible, ou échec
+   * d'envoi (exception). Détail par raison dans `notes`.
+   */
   notificationsSkipped: number;
   error: string | null;
 }
@@ -273,10 +277,38 @@ interface NotificationSummary {
   notes: string | null;
 }
 
+/** Raison pour laquelle un appel non couvert n'a reçu aucun avis. */
+type SkipReason = 'OWNER_NOT_CURRENT' | 'NO_OWNER' | 'NO_CHANNEL' | 'SEND_FAILED';
+
+const SKIP_REASON_LABELS: Record<SkipReason, string> = {
+  OWNER_NOT_CURRENT: 'propriétaire du lot différent du copropriétaire actuel',
+  NO_OWNER: 'lot sans copropriétaire',
+  NO_CHANNEL: "aucun canal d'envoi : pas d'e-mail utilisable ou notification désactivée, et pas de WhatsApp",
+  SEND_FAILED: "échec de l'envoi"
+};
+
+/** Classe le résultat d'un `notifyChargeCall` réussi : `null` si un avis est bien parti. */
+function classifySkip(result: { emailSent: boolean; whatsappSent: boolean; skipped?: string }): SkipReason | null {
+  if (result.emailSent || result.whatsappSent) return null;
+  if (result.skipped === 'OWNER_NOT_CURRENT') return 'OWNER_NOT_CURRENT';
+  if (result.skipped === 'NO_OWNER_CONTACT') return 'NO_OWNER';
+  return 'NO_CHANNEL';
+}
+
+/** Une ligne par raison groupant les lots concernés, dans le style de la note historique. */
+function buildSkipNotes(byReason: Record<SkipReason, string[]>): string | null {
+  const lines = (Object.keys(byReason) as SkipReason[])
+    .filter(reason => byReason[reason].length > 0)
+    .map(reason => `Avis non envoyé (${SKIP_REASON_LABELS[reason]}) : ${byReason[reason].join(', ')}`);
+  return lines.length ? lines.join('\n') : null;
+}
+
 /**
  * Notifie les appels non couverts, avis d'appel joint. L'identité (logos,
  * signature, cachet) et les moyens de paiement sont lus UNE fois par
- * exécution, pas une fois par appel.
+ * exécution, pas une fois par appel. Tout appel non notifié (canal
+ * indisponible, propriétaire changé, ou exception) compte en `skipped` :
+ * `sent + skipped === calls.length`.
  */
 async function notifyUncoveredCalls(
   schedule: SyndicChargeSchedule,
@@ -285,7 +317,12 @@ async function notifyUncoveredCalls(
   if (calls.length === 0) return { sent: 0, skipped: 0, notes: null };
   const context = await loadNoticeRenderContext(schedule.tenantId, schedule.syndicateId);
   let sent = 0;
-  const skippedLots: string[] = [];
+  const byReason: Record<SkipReason, string[]> = {
+    OWNER_NOT_CURRENT: [],
+    NO_OWNER: [],
+    NO_CHANNEL: [],
+    SEND_FAILED: []
+  };
   for (const call of calls) {
     try {
       const result = await notifyChargeCall(call.id, {
@@ -293,19 +330,18 @@ async function notifyUncoveredCalls(
           await buildChargeCallNoticeAttachment(schedule.tenantId, schedule.syndicateId, call.id, context)
         ]
       });
-      if (result.emailSent || result.whatsappSent) sent += 1;
-      if ('skipped' in result && result.skipped === 'OWNER_NOT_CURRENT') skippedLots.push(call.lotNumber);
+      const reason = classifySkip(result);
+      if (reason) byReason[reason].push(call.lotNumber);
+      else sent += 1;
     } catch (error) {
       logger.warn('Scheduled charge call notification failed', {
         chargeCallId: call.id,
         error: error instanceof Error ? error.message : String(error)
       });
+      byReason.SEND_FAILED.push(call.lotNumber);
     }
   }
-  const notes = skippedLots.length
-    ? `Avis non envoyé (propriétaire du lot différent du copropriétaire actuel) : ${skippedLots.join(', ')}`
-    : null;
-  return { sent, skipped: skippedLots.length, notes };
+  return { sent, skipped: calls.length - sent, notes: buildSkipNotes(byReason) };
 }
 
 interface CreatedRun {

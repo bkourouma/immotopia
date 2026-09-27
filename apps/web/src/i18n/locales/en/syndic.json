@@ -395,7 +395,7 @@
   "Exécuter maintenant": "Execute now",
   "Exécution en échec — {{period}} : {{error}}": "Execution failed — {{period}}: {{error}}",
   "Exécution impossible": "Execution failed",
-  "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (propriétaire à vérifier).": "Run succeeded — {{period}}: {{created}} call(s) created, {{covered}} covered by an advance, {{notified}} notification(s) sent, {{skipped}} notice(s) not sent (owner to check).",
+  "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (détail dans l'historique).": "Run succeeded — {{period}}: {{created}} call(s) created, {{covered}} covered by an advance, {{notified}} notification(s) sent, {{skipped}} notice(s) not sent (see history for details).",
   "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s).": "Execution succeeded — {{period}}: {{created}} call(s) created, {{covered}} covered by an advance, {{notified}} notification(s) sent.",
   "Exercice": "Financial year",
   "Exercice obligatoire": "Financial year required",

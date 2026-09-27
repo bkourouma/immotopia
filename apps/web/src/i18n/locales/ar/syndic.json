@@ -395,7 +395,7 @@
   "Exécuter maintenant": "تنفيذ الآن",
   "Exécution en échec — {{period}} : {{error}}": "فشل التنفيذ — {{period}}: {{error}}",
   "Exécution impossible": "تعذّر التنفيذ",
-  "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (propriétaire à vérifier).": "تم التنفيذ بنجاح — {{period}}: {{created}} نداء/نداءات تم إنشاؤها، {{covered}} مغطاة بدفعة مسبقة، {{notified}} إشعار/إشعارات تم إرسالها، {{skipped}} إشعار/إشعارات لم تُرسل (يجب التحقق من المالك).",
+  "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (détail dans l'historique).": "تم التنفيذ بنجاح — {{period}}: {{created}} نداء/نداءات تم إنشاؤها، {{covered}} مغطاة بدفعة مسبقة، {{notified}} إشعار/إشعارات تم إرسالها، {{skipped}} إشعار/إشعارات لم تُرسل (التفاصيل في السجل).",
   "Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s).": "نجح التنفيذ — {{period}}: تم إنشاء {{created}} مطالبة، وتغطية {{covered}} منها بسلفة، وإرسال {{notified}} إشعار.",
   "Exercice": "السنة المالية",
   "Exercice obligatoire": "السنة المالية مطلوبة",

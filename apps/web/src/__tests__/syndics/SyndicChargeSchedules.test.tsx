@@ -291,7 +291,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Exécuter' }, { timeout: 15000 }));
 
     expect(
-      await screen.findByText(/2 avis non envoyé\(s\) \(propriétaire à vérifier\)/, {}, { timeout: 15000 })
+      await screen.findByText(/2 avis non envoyé\(s\) \(détail dans l'historique\)/, {}, { timeout: 15000 })
     ).toBeInTheDocument();
   });
 
