@@ -10,13 +10,17 @@
  *   ts-jest refuserait la suite a la premiere rencontree. Elles sont donc
  *   compilees sans verification de types (`isolatedModules`) : ce qu'elles
  *   testent, c'est le comportement, et `npm run typecheck` surveille les types.
+ *   S'y ajoutent les suites qui montent les routeurs des portails locataire
+ *   et propriétaire : leurs contrôleurs et services portent aussi de ces
+ *   erreurs anciennes.
  */
 
 const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/unit/routes-inventory.test.ts',
   '<rootDir>/__tests__/unit/route-features.test.ts',
   '<rootDir>/__tests__/unit/no-secret-in-responses.test.ts',
-  '<rootDir>/__tests__/integration/isolation.test.ts'
+  '<rootDir>/__tests__/integration/isolation.test.ts',
+  '<rootDir>/__tests__/api/maintenance.attachment-files.test.ts'
 ];
 
 const base = {

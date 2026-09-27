@@ -3,7 +3,6 @@ import { logger } from '../utils/logger';
 import { validateFileUpload, sanitizeFilename } from '../utils/maintenance-validators';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { createReadStream } from 'fs';
 
 /**
  * Upload attachment for a maintenance ticket
@@ -109,86 +108,11 @@ export async function uploadAttachment(
   return attachment;
 }
 
-/**
- * Get attachment by ID with access validation
- * @param tenantId - Tenant ID
- * @param attachmentId - Attachment ID
- * @param tenantContactId - Tenant contact ID (for access validation, optional)
- * @returns Attachment metadata
+/*
+ * Lecture d'une pièce jointe : lib/maintenance/attachment-files.ts, par les
+ * seules routes qui vérifient le droit de l'appelant sur le ticket. Le fichier
+ * n'est jamais servi en statique.
  */
-export async function getAttachmentById(tenantId: string, attachmentId: string, tenantContactId?: string) {
-  const attachment = await prisma.maintenanceTicketAttachment.findFirst({
-    where: {
-      id: attachmentId,
-      tenant_id: tenantId
-    },
-    include: {
-      ticket: {
-        select: {
-          id: true,
-          tenant_contact_id: true,
-          status: true
-        }
-      }
-    }
-  });
-
-  if (!attachment) {
-    throw new Error('Pièce jointe introuvable');
-  }
-
-  // If tenantContactId provided, verify access (tenant can only access their own ticket attachments)
-  if (tenantContactId && attachment.ticket.tenant_contact_id !== tenantContactId) {
-    throw new Error('Accès non autorisé à cette pièce jointe');
-  }
-
-  return attachment;
-}
-
-/**
- * Download attachment file
- * @param tenantId - Tenant ID
- * @param attachmentId - Attachment ID
- * @param tenantContactId - Tenant contact ID (for access validation, optional)
- * @returns File stream and metadata
- */
-export async function downloadAttachment(tenantId: string, attachmentId: string, tenantContactId?: string) {
-  const attachment = await getAttachmentById(tenantId, attachmentId, tenantContactId);
-
-  // Determine project root
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
-
-  // Construct full file path
-  const filePath = path.join(projectRoot, attachment.file_url);
-
-  // Verify file exists
-  try {
-    await fs.access(filePath);
-  } catch (error) {
-    logger.error('Attachment file not found', {
-      attachmentId,
-      filePath,
-      fileUrl: attachment.file_url
-    });
-    throw new Error('Fichier introuvable sur le serveur');
-  }
-
-  // Return file stream and metadata
-  const fileStream = createReadStream(filePath);
-
-  return {
-    stream: fileStream,
-    metadata: {
-      fileName: attachment.file_name,
-      mimeType: attachment.mime_type,
-      fileSize: attachment.file_size
-    }
-  };
-}
 
 /**
  * Cleanup orphaned attachment files
