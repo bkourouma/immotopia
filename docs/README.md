@@ -1,5 +1,18 @@
 # Documentation ImmoTopia
 
+## Agents IA et gouvernance
+
+- [AGENTS.md](../AGENTS.md) — constitution du projet pour tous les agents ;
+  [CLAUDE.md](../CLAUDE.md) l'importe pour Claude Code
+- [Passation de session](workflows/HANDOFF.md) — état du travail en cours, lu
+  en début de session et tenu à jour par les agents
+- [Runbook](workflows/RUNBOOK.md) — installation, ports, base, dépannage
+- [Architecture du système](architecture/SYSTEM_DESIGN.md) et
+  [modèle de données](architecture/DATA_MODELS.md)
+- [Décisions d'architecture (ADR)](architecture/adr/ADR-000-template.md)
+- [Standards de code](governance/CODING_STANDARDS.md) et
+  [sécurité — modèle de menace](governance/SECURITY.md)
+
 ## Démarrer
 
 - [Installation et premier lancement](setup/getting-started.md)

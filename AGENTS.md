@@ -4,6 +4,24 @@ Contexte à charger avant de modifier ce dépôt. Pour les conventions humaines,
 voir [CONTRIBUTING.md](CONTRIBUTING.md) ; pour l'état du code et la dette
 identifiée, voir [AUDIT_CODE.md](AUDIT_CODE.md).
 
+Ce fichier est la source unique de vérité pour tous les agents (Claude Code,
+Codex, Cursor…). En cas de désaccord avec un autre document, il prime ; le
+détail vit ailleurs et se charge à la demande :
+
+| Sujet                                | Document                    |
+| ------------------------------------ | --------------------------- |
+| Reprise du travail en cours          | `docs/workflows/HANDOFF.md` |
+| Installation, ports, dépannage       | `docs/workflows/RUNBOOK.md` |
+| Architecture, modèle de données, ADR | `docs/architecture/`        |
+| Conventions et modèle de menace      | `docs/governance/`          |
+| Règles ciblées par chemin            | `.claude/rules/`            |
+
+## Passation de session
+
+Avant de conclure un tour en plusieurs étapes, l'agent met à jour
+`docs/workflows/HANDOFF.md` sans l'annoncer : fait, reste à faire, pièges,
+branche et dernier commit. Une session commence par lire ce fichier.
+
 ## Structure réelle
 
 ```text
