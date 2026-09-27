@@ -66,6 +66,80 @@ const emptyToNull = (value: string | null | undefined): string | null => {
   return trimmed ? trimmed : null;
 };
 
+/** Champs d'un mandant lus pour son identité (partagés avec les reçus du lot S3). */
+export const MANDANT_IDENTITY_SELECT = {
+  name: true,
+  legalName: true,
+  address: true,
+  phone: true,
+  email: true,
+  rccm: true,
+  taxId: true
+} as const;
+
+/** Champs de l'agence lus pour son identité (partagés avec les reçus du lot S3). */
+export const TENANT_IDENTITY_SELECT = {
+  name: true,
+  legalName: true,
+  address: true,
+  city: true,
+  country: true,
+  contactPhone: true,
+  contactEmail: true,
+  financeSettings: { select: { taxpayerNumber: true } }
+} as const;
+
+type NullableText = string | null | undefined;
+
+/** Identité textuelle d'un mandant. */
+export function issuerFromMandant(mandant: {
+  name: string;
+  legalName: NullableText;
+  address: NullableText;
+  phone: NullableText;
+  email: NullableText;
+  rccm: NullableText;
+  taxId: NullableText;
+}): DocumentIssuer {
+  return {
+    kind: 'MANDANT',
+    name: mandant.name,
+    legalName: emptyToNull(mandant.legalName),
+    address: emptyToNull(mandant.address),
+    phone: emptyToNull(mandant.phone),
+    email: emptyToNull(mandant.email),
+    rccm: emptyToNull(mandant.rccm),
+    taxId: emptyToNull(mandant.taxId)
+  };
+}
+
+/** Identité textuelle de l'agence (le tenant). */
+export function issuerFromTenant(
+  tenant: {
+    name: string;
+    legalName: NullableText;
+    address: NullableText;
+    city: NullableText;
+    country: NullableText;
+    contactPhone: NullableText;
+    contactEmail: NullableText;
+    financeSettings?: { taxpayerNumber: NullableText } | null;
+  } | null
+): DocumentIssuer {
+  const address = [tenant?.address, tenant?.city, tenant?.country].map(emptyToNull).filter(Boolean).join(', ');
+  return {
+    kind: 'AGENCY',
+    name: tenant?.name ?? '',
+    legalName: emptyToNull(tenant?.legalName),
+    address: address || null,
+    phone: emptyToNull(tenant?.contactPhone),
+    email: emptyToNull(tenant?.contactEmail),
+    // L'agence n'a pas encore de champ RCCM (hors périmètre S1).
+    rccm: null,
+    taxId: emptyToNull(tenant?.financeSettings?.taxpayerNumber)
+  };
+}
+
 /**
  * Identité à apposer sur un document de l'agence `tenantId`, pour la
  * copropriété `syndicateId` (ou aucune). Une copropriété d'une autre agence
@@ -117,16 +191,7 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
       readBrandingImage(tenantId, mandant.stampPath)
     ]);
     return {
-      issuer: {
-        kind: 'MANDANT',
-        name: mandant.name,
-        legalName: emptyToNull(mandant.legalName),
-        address: emptyToNull(mandant.address),
-        phone: emptyToNull(mandant.phone),
-        email: emptyToNull(mandant.email),
-        rccm: emptyToNull(mandant.rccm),
-        taxId: emptyToNull(mandant.taxId)
-      },
+      issuer: issuerFromMandant(mandant),
       issuerLogo,
       signature,
       stamp,
@@ -151,7 +216,6 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
     }
   });
 
-  const address = [tenant?.address, tenant?.city, tenant?.country].map(emptyToNull).filter(Boolean).join(', ');
   const [issuerLogo, signature, stamp] = await Promise.all([
     readTenantLogo(tenantId, tenant?.logoUrl ?? null),
     readBrandingImage(tenantId, tenant?.documentSignaturePath),
@@ -159,17 +223,7 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
   ]);
 
   return {
-    issuer: {
-      kind: 'AGENCY',
-      name: tenant?.name ?? '',
-      legalName: emptyToNull(tenant?.legalName),
-      address: address || null,
-      phone: emptyToNull(tenant?.contactPhone),
-      email: emptyToNull(tenant?.contactEmail),
-      // L'agence n'a pas encore de champ RCCM (hors périmètre S1).
-      rccm: null,
-      taxId: emptyToNull(tenant?.financeSettings?.taxpayerNumber)
-    },
+    issuer: issuerFromTenant(tenant),
     issuerLogo,
     signature,
     stamp,
@@ -181,7 +235,7 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
 
 const fontCache = new WeakMap<PDFDocument, Promise<{ regular: PDFFont; bold: PDFFont }>>();
 
-function fontsOf(pdfDoc: PDFDocument) {
+export function fontsOf(pdfDoc: PDFDocument) {
   let fonts = fontCache.get(pdfDoc);
   if (!fonts) {
     fonts = Promise.all([
@@ -194,7 +248,7 @@ function fontsOf(pdfDoc: PDFDocument) {
 }
 
 /** Intègre une image ; une image corrompue (octets magiques corrects, reste illisible) est ignorée. */
-async function embedImage(pdfDoc: PDFDocument, image: DocumentImage | null): Promise<PDFImage | null> {
+export async function embedImage(pdfDoc: PDFDocument, image: DocumentImage | null): Promise<PDFImage | null> {
   if (!image) return null;
   try {
     return image.format === 'png' ? await pdfDoc.embedPng(image.bytes) : await pdfDoc.embedJpg(image.bytes);

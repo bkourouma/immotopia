@@ -1,12 +1,7 @@
 import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
-import {
-  computeOutstanding,
-  deriveChargeCallStatus,
-  isJournalEntryBalanced,
-  roundMoney
-} from './finance-utils';
+import { computeOutstanding, deriveChargeCallStatus, isJournalEntryBalanced, roundMoney } from './finance-utils';
 import {
   computeMeetingAttendance,
   computeResolutionTally,
@@ -37,6 +32,14 @@ import {
   withAllocationPayments
 } from './charge-allocation';
 import { toCents, fromCents } from './charge-allocation-plan';
+// Lot S3 : recus et quittances emis dans la transaction, livres apres le commit.
+import {
+  issueQuittancesAfterAdvanceTx,
+  issueReceiptsForPaymentTx,
+  toDocumentRefs,
+  type IssuedChargeDocument
+} from './charge-receipts';
+import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
 import { QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
@@ -1108,6 +1111,10 @@ export async function getChargeCallByTenant(tenantId: string, syndicateId: strin
  * Le verrou du lot est pris avant le debit : meme ordre (lot, puis compte)
  * que `recordLotPaymentTx`, donc pas d'interblocage avec un paiement
  * concurrent sur le meme lot.
+ *
+ * Lot S3 : chaque appel que l'avance vient de solder recoit sa quittance,
+ * dans la meme transaction ; les documents emis sont ajoutes a `issued`,
+ * que l'appelant livre (PDF, e-mail) apres le commit.
  */
 async function createLotChargeCallTx(
   tx: PrismaTransactionClient,
@@ -1121,7 +1128,8 @@ async function createLotChargeCallTx(
     amount: number;
     currency: string;
     dueDate: Date;
-  }
+  },
+  issued: IssuedChargeDocument[] = []
 ) {
   await lockLotTx(tx, data.lotId);
   const chargeCall = await tx.chargeCall.create({
@@ -1151,6 +1159,14 @@ async function createLotChargeCallTx(
   }
 
   const application = await applyLotAdvanceTx(tx, data.lotId);
+  issued.push(
+    ...(await issueQuittancesAfterAdvanceTx(tx, {
+      tenantId,
+      syndicateId: data.syndicateId,
+      lotId: data.lotId,
+      imputedCallIds: application.imputations.map(imputation => imputation.chargeCallId)
+    }))
+  );
   if (application.imputations.some(imputation => imputation.chargeCallId === chargeCall.id)) {
     return (await tx.chargeCall.findUnique({ where: { id: chargeCall.id } })) ?? chargeCall;
   }
@@ -1199,17 +1215,25 @@ export async function createChargeCallAndUpdateStatus(
       throw notFound('Lot introuvable ou inaccessible pour cette copropriete');
     }
 
-    return prisma.$transaction(tx =>
-      createLotChargeCallTx(tx, tenantId, {
-        syndicateId: data.syndicateId,
-        lotId: data.lotId!,
-        period: data.period,
-        bounds: baseBounds,
-        amount: data.amount,
-        currency: data.currency,
-        dueDate: data.dueDate
-      })
+    const issued: IssuedChargeDocument[] = [];
+    const chargeCall = await prisma.$transaction(tx =>
+      createLotChargeCallTx(
+        tx,
+        tenantId,
+        {
+          syndicateId: data.syndicateId,
+          lotId: data.lotId!,
+          period: data.period,
+          bounds: baseBounds,
+          amount: data.amount,
+          currency: data.currency,
+          dueDate: data.dueDate
+        },
+        issued
+      )
     );
+    scheduleChargeDocumentDelivery(tenantId, issued);
+    return chargeCall;
   }
 
   await assertSyndicateTenantOwnership(tenantId, data.syndicateId);
@@ -1286,20 +1310,27 @@ export async function createChargeCallAndUpdateStatus(
     const period = resolvePeriodLabel(occurrenceIndex);
     const bounds = resolveBounds(occurrenceIndex);
 
+    const issued: IssuedChargeDocument[] = [];
     await prisma.$transaction(async tx => {
       for (const lotId of lotIdsInLockOrder) {
-        const chargeCall = await createLotChargeCallTx(tx, tenantId, {
-          syndicateId: data.syndicateId,
-          lotId,
-          period,
-          bounds,
-          amount: data.amount,
-          currency: data.currency,
-          dueDate
-        });
+        const chargeCall = await createLotChargeCallTx(
+          tx,
+          tenantId,
+          {
+            syndicateId: data.syndicateId,
+            lotId,
+            period,
+            bounds,
+            amount: data.amount,
+            currency: data.currency,
+            dueDate
+          },
+          issued
+        );
         createdChargeCalls.push(chargeCall);
       }
     });
+    scheduleChargeDocumentDelivery(tenantId, issued);
   }
 
   return {
@@ -1331,7 +1362,7 @@ export async function recordChargePaymentWithStatusUpdate(
     actorUserId?: string | null;
   }
 ) {
-  return prisma.$transaction(async tx => {
+  const { response, documents } = await prisma.$transaction(async tx => {
     const call = await tx.chargeCall.findFirst({
       where: {
         id: data.chargeCallId,
@@ -1359,13 +1390,29 @@ export async function recordChargePaymentWithStatusUpdate(
       actorUserId: data.actorUserId ?? null
     });
 
+    // Lot S3 : recu et quittances de ce paiement, dans la meme transaction.
+    const issued = await issueReceiptsForPaymentTx(tx, {
+      tenantId,
+      syndicateId: call.syndicateId,
+      lotId: call.lotId,
+      paymentId: record.id,
+      result,
+      actorUserId: data.actorUserId ?? null
+    });
+
     return {
-      ...record,
-      allocations: result.allocations,
-      advance: result.advance,
-      lotAdvanceBalance: result.lotAdvanceBalance
+      documents: issued,
+      response: {
+        ...record,
+        allocations: result.allocations,
+        advance: result.advance,
+        lotAdvanceBalance: result.lotAdvanceBalance,
+        documents: toDocumentRefs(issued)
+      }
     };
   });
+  scheduleChargeDocumentDelivery(tenantId, documents);
+  return response;
 }
 
 export async function listMeetingsBySyndicate(
@@ -2414,7 +2461,9 @@ export async function getFinanceSummaryBySyndicate(tenantId: string, syndicateId
   const totalCalled = roundMoney(charges.reduce((sum: number, charge) => sum + Number(charge.amount), 0));
   // Lot S2 : le regle d'un appel se lit dans ses affectations ; l'avance
   // (paiements non encore affectes) est rapportee a part.
-  const totalPaid = roundMoney(charges.reduce((sum: number, charge) => sum + paidFromAllocations(charge.allocations), 0));
+  const totalPaid = roundMoney(
+    charges.reduce((sum: number, charge) => sum + paidFromAllocations(charge.allocations), 0)
+  );
   const totalAdvance = fromCents(advances.reduce((sum, payment) => sum + toCents(payment.unallocatedAmount), 0));
 
   return {
@@ -3982,7 +4031,8 @@ export async function generateChargeCallsFromBudget(
   }
 
   const bounds = resolvePeriodBounds(data);
-  return prisma.$transaction(async tx => {
+  const issued: IssuedChargeDocument[] = [];
+  const generated = await prisma.$transaction(async tx => {
     const batch = await tx.chargeCallBatch.create({
       data: {
         syndicateId,
@@ -4012,16 +4062,21 @@ export async function generateChargeCallsFromBudget(
     // Verrous par lot dans l'ordre des identifiants (voir sortLotIdsForLocking).
     const allocationsInLockOrder = [...allocations].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
     for (const allocation of allocationsInLockOrder) {
-      await createLotChargeCallTx(tx, tenantId, {
-        syndicateId,
-        lotId: allocation.lotId,
-        batchId: batch.id,
-        period: data.period,
-        bounds,
-        amount: roundMoney(Number(allocation.totalAllocated)),
-        currency,
-        dueDate: data.dueDate
-      });
+      await createLotChargeCallTx(
+        tx,
+        tenantId,
+        {
+          syndicateId,
+          lotId: allocation.lotId,
+          batchId: batch.id,
+          period: data.period,
+          bounds,
+          amount: roundMoney(Number(allocation.totalAllocated)),
+          currency,
+          dueDate: data.dueDate
+        },
+        issued
+      );
     }
 
     logger.info('Audit: charge calls batch generated from budget', {
@@ -4040,6 +4095,8 @@ export async function generateChargeCallsFromBudget(
       }
     });
   });
+  scheduleChargeDocumentDelivery(tenantId, issued);
+  return generated;
 }
 
 async function assertLotOwnershipForSyndicate(tenantId: string, syndicateId: string, lotId: string) {

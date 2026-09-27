@@ -246,6 +246,21 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0;">Rappel pour l appel de charges de la période <strong>{{period}}</strong> concernant votre lot {{lotLabel}}.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.</p>`
   },
+  CHARGE_PAYMENT_RECEIPT: {
+    subject: 'Reçu de paiement {{number}} - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Reçu de paiement</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Nous avons bien reçu votre paiement de <strong>{{amount}}</strong> du {{paidAt}} pour le lot {{lotLabel}} de la copropriété <strong>{{syndicateName}}</strong>.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Reste dû sur les appels réglés : {{outstanding}}. Avance conservée : {{advance}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Vous trouverez en pièce jointe le reçu n° {{number}}.</p>`
+  },
+  CHARGE_CALL_SETTLED: {
+    subject: 'Quittance de charges {{number}} - {{period}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Quittance de charges</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">L'appel de charges de la période <strong>{{period}}</strong> pour le lot {{lotLabel}} de la copropriété <strong>{{syndicateName}}</strong> est entièrement réglé ({{amount}}).</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Vous trouverez en pièce jointe la quittance n° {{number}}.</p>`
+  },
   GENERAL_MEETING_CONVOCATION: {
     subject: 'Convocation a l assemblee generale du {{meetingDate}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Convocation Assemblee Generale</h1>
