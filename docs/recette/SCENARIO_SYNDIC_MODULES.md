@@ -66,27 +66,32 @@ répartitions calculables à la main.
 
 ### Données neuves de ce scénario (suffixe « Recette 3 »)
 
-| Objet                                      | Valeur                                                                                                                |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Copropriété jetable (créée puis supprimée) | `Copropriété Cycle de Vie (Recette 3)`                                                                                |
-| Lots des Acacias                           | `ACA-A1` (100 tantièmes), `ACA-A2` (200), `ACA-A3` (300), `ACA-A4` (400)                                              |
-| Contact gestionnaire                       | `Mamadou Gestionnaire (Recette 3)` — `gestionnaire.recette3@exemple.test`                                             |
-| Contacts copropriétaires                   | `Copro Un (Recette 3)` … `Copro Quatre (Recette 3)` — `copro1.recette3@exemple.test` … `copro4.recette3@exemple.test` |
-| Budget prévisionnel                        | `Budget prévisionnel 2026 (Recette 3)` — 1 000 000 FCFA                                                               |
-| Assemblée générale                         | AG ordinaire du [date future], `Salle communale (Recette 3)`                                                          |
+| Objet                                      | Valeur                                                                                                                                  |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Copropriété jetable (créée puis supprimée) | `Copropriété Cycle de Vie (Recette 3)`                                                                                                  |
+| Lots des Acacias                           | `ACA-A1` (100 tantièmes), `ACA-A2` (200), `ACA-A3` (300), `ACA-A4` (400)                                                                |
+| Contact gestionnaire                       | `Mamadou Gestionnaire (Recette 3)` — `gestionnaire.recette3@exemple.test`                                                               |
+| Contacts copropriétaires                   | `Copro Un (Recette 3)` … `Copro Quatre (Recette 3)` — `copro1.recette3@exemple.test` … `copro4.recette3@exemple.test`                   |
+| Budget prévisionnel                        | `Budget prévisionnel 2026 (Recette 3)` — 1 000 000 FCFA                                                                                 |
+| Assemblée générale                         | AG ordinaire du [date future], `Salle communale (Recette 3)`, et une seconde AG jetable `AG test annulation (Recette 3)` (partie 11.10) |
+| Prestataires                               | `Espaces Verts Pro (Recette 3)`, `Ascenseurs Fiables (Recette 3)` (créé à la volée, partie 9.4)                                         |
+| Fonds financier                            | `Fonds travaux et gros entretien (Recette 3)` — 150 000 FCFA après ajustement (partie 7.5)                                              |
 
 ---
 
 ## Modules couverts et modules absents (résumé)
 
-Voir l'annexe « Écarts spec ↔ code » en fin de document pour le détail. En
-bref, la spec [013-syndic-module](../../specs/013-syndic-module/spec.md)
-prévoit plusieurs choses qui n'existent tout simplement pas dans
-`packages/api/src/lib/syndics/` ni dans `apps/web/src/pages/syndics/` :
-aucune création de prestataire, aucun enregistrement de paiement de charges
-depuis l'écran, aucun mandat/pouvoir d'AG, aucun fonds financier créable, et
-aucun portail copropriétaire accessible. Ce scénario les traverse quand même
-pour **constater** ces trous avec précision plutôt que de les deviner.
+Voir l'annexe « Écarts spec ↔ code » en fin de document pour le détail. La
+spec [013-syndic-module](../../specs/013-syndic-module/spec.md) décrivait
+plusieurs manques dans `packages/api/src/lib/syndics/` et
+`apps/web/src/pages/syndics/` : ils ont été comblés par les lots
+`feat/syndic-ag`, `feat/syndic-prestataires` et `feat/syndic-finances` de
+cette branche — création de prestataires, enregistrement de paiement de
+charges depuis l'écran, pouvoirs d'AG, fonds financiers créables, statut
+d'AG (ouvrir/clôturer/annuler), majorité calculée en tantièmes et
+suppression d'une copropriété réservée aux copropriétés vides. Il ne reste
+qu'un seul module réellement absent : le **portail copropriétaire** (partie
+13), qui n'existe encore dans aucune route ni page.
 
 ---
 
@@ -129,8 +134,14 @@ pour **constater** ces trous avec précision plutôt que de les deviner.
 
 ### 1.3 Supprimer — cas explicitement prévu pour être supprimé
 
-1. Retour à `BASE/syndics`, sur la carte de cette copropriété jetable cliquer
-   **« Supprimer »**.
+Depuis le correctif de l'écart recette #8 (`deleteEmptySyndicateByTenant`,
+commit `409c3fb`), la suppression n'est plus une formulation prudente sans
+effet réel : elle est **réservée aux copropriétés vides** (aucun lot, appel de
+charges, assemblée, document, contrat ou incident lié). C'est pourquoi cette
+étape ne joue le cas que sur la copropriété jetable, créée sans aucun enfant.
+
+1. Retour à `BASE/syndics`, sur la carte de cette copropriété jetable, le
+   bouton **« Supprimer »** est actif (elle est vide). Cliquer dessus.
 2. Confirmer dans la boîte de dialogue (titre `Supprimer cette copropriété ?`,
    texte `Cette action supprime définitivement la copropriété et ses données
 liées.`, bouton **« Supprimer »**).
@@ -138,13 +149,27 @@ liées.`, bouton **« Supprimer »**).
 #### Résultat attendu
 
 - [ ] Message `Copropriété supprimée`, la carte disparaît de la liste.
-- [ ] **Point d'attention réel, à consigner tel quel** : malgré la formulation
-      prudente du code (`archiveSyndicateByTenant`), il s'agit d'une
-      **suppression définitive en base** (`prisma.syndicate.delete`, cascade
-      sur les lots), pas d'un archivage réversible — il n'existe aucun statut
-      intermédiaire ni bouton « Réactiver » pour une copropriété. C'est
-      pourquoi ce scénario ne supprime **que** cette copropriété jetable, sans
-      aucun lot ni enfant créé dessus.
+- [ ] Il s'agit toujours d'une **suppression définitive en base**
+      (`prisma.syndicate.delete`), pas d'un archivage réversible — aucun
+      statut intermédiaire ni bouton « Réactiver » n'existe pour une
+      copropriété.
+
+#### Constat complémentaire — tenter de supprimer une copropriété non vide
+
+1. Ouvrir `BASE/syndics`, repérer une copropriété qui a déjà des lots (ex.
+   **Les Manguiers (Recette 2)** ou, plus tard dans ce scénario, **Les
+   Acacias**).
+
+#### Résultat attendu
+
+- [ ] Le bouton **« Supprimer »** de sa carte est **désactivé** (grisé), avec
+      une infobulle `Cette copropriété a des lots ou d'autres données liées :
+    elle ne peut pas être supprimée.` — aucun clic possible pour vérifier le
+      409 par ce chemin ; c'est le comportement voulu (`isSyndicateEmpty`,
+      `SyndicateCard.tsx`). Si jamais une copropriété affichée sans compteurs
+      encore chargés laissait le bouton actif, un clic dessus renverrait un
+      409 du serveur avec le même message — mais ce cas ne doit pas se
+      produire dans l'écran normal.
 
 ### 1.4 Modifier la fiche des Acacias (copropriété du fil financier)
 
@@ -155,6 +180,10 @@ liées.`, bouton **« Supprimer »**).
    - N° d'immatriculation : `RC-ACACIAS-RECETTE3`
    - Référence cadastrale : `CAD-ACACIAS-R3`
    - Exercice : `1`
+   - Statut : laisser sur `Active` (le champ « Statut » liste `Active`,
+     `En liquidation`, `En litige` — un simple constat de sa présence dans le
+     formulaire suffit ici, ne pas changer de statut sur les Acacias puisque
+     ce scénario continue à y créer des lots et des données jusqu'à la fin).
    - Gestionnaire : laisser vide pour l'instant (le contact
      `Mamadou Gestionnaire (Recette 3)` n'existe pas encore dans le CRM — on y
      revient à l'étape 1.5).
@@ -275,8 +304,17 @@ introuvable ou lot sans proprietaire`, ce qui n'aurait pas été une anomalie).
 #### Résultat attendu
 
 - [ ] Message `Ajustement enregistré`.
-- [ ] **Solde courant = 20 000 FCFA**, **Transactions = 1**.
-- [ ] Ligne du tableau : Type `Ajustement`, Crédit `20 000`, Solde `20 000`.
+- [ ] **Solde courant = 20 000 FCFA**, avec le libellé **« Créditeur »** en
+      dessous (et l'indication « Le copropriétaire a une avance ») —
+      **Transactions = 1**. Depuis le correctif « solde lisible » (commit
+      `a427757`), le montant affiché est toujours **positif** avec un tag
+      Débiteur/Créditeur/Soldé selon le signe réel du solde en base ; un crédit
+      rend le solde stocké négatif (`balanceAfter = solde + débit - crédit`),
+      d'où le tag « Créditeur » ici — ce n'est pas une anomalie si le montant
+      affiché ne porte jamais de signe négatif.
+- [ ] Ligne du tableau des transactions : Type `Ajustement`, Crédit `20 000`,
+      colonne Solde = `20 000` avec le même tag **« Créditeur »** à côté du
+      montant.
 
 ### 3.5 Relevé PDF
 
@@ -458,20 +496,17 @@ différence de comportement entre les deux écrans, pas une anomalie.
 
 ---
 
-## 7. Encaissements manuels — module non atteignable depuis l'interface
+## 7. Encaissements manuels — enregistrer un paiement contre un appel de charges
 
-**Constat attendu, pas un objectif à atteindre par contournement.** Il
-n'existe **aucun bouton, dans aucun écran du module Syndic, qui enregistre un
-paiement (`ChargePayment`) contre un appel de charges.** La route API existe
-bien (`POST .../syndics/:syndicId/charges/:chargeId/pay`,
-`recordChargePaymentWithStatusUpdate`) et le service web la déclare
-(`recordChargePayment` dans `services/syndic-service.ts`), mais **aucune page
-ni composant ne l'appelle** (vérifié : ni `SyndicCharges`, ni
-`SyndicFinances`, ni `ChargeCallTable`, ni `SyndicOwnerAccount` — ce dernier
-ne fait que des ajustements manuels de compte, sans toucher au statut de
-l'appel de charges).
+Ecart recette #1 (FR-005) comblé par les commits `cd141c8` (API) et `3375f21`
+(web) : la route `POST .../syndics/:syndicId/charges/:chargeId/pay`
+(`recordChargePaymentWithStatusUpdate`) est désormais **appelée depuis
+l'écran**, via le bouton **« Enregistrer un paiement »** de
+`ChargeCallTable.tsx`, affiché sur `BASE/syndics/<id-acacias>/charges` (pas
+sur la page Finances, qui reste un tableau de lecture seule). Le bouton est
+désactivé quand l'appel est déjà `Payé`.
 
-### 7.1 Page : `BASE/syndics/<id-acacias>/finances`
+### 7.1 Page : `BASE/syndics/<id-acacias>/finances` — avant paiement
 
 #### Ce qu'on doit faire
 
@@ -482,13 +517,113 @@ l'appel de charges).
 - [ ] **« Total appelé »** reflète la somme de tous les appels créés en
       parties 4 et 5 : 1 000 000 (budget) + 5 000 (5.1) + 5 000×3 (5.2) =
       **1 020 000 FCFA**.
-- [ ] **« Total payé » = 0 FCFA**, et **« Reste à payer » = 1 020 000 FCFA**,
-      quel que soit le temps passé sur ce scénario : rien dans l'interface ne
-      permet de le faire bouger. **Ce n'est pas une anomalie du scénario : le
-      module lui-même ne l'implémente pas.** Le consigner comme tel dans le
-      journal, sans chercher de bouton caché.
+- [ ] **« Total payé » = 0 FCFA**, **« Reste à payer » = 1 020 000 FCFA**.
 - [ ] Tous les appels de la partie 4 et 5 restent au statut **En attente**
       dans le tableau « Détail des appels de fonds ».
+
+### 7.2 Paiement partiel puis solde, sur l'appel individuel de 5.1 (`ACA-A1`, 5 000 FCFA)
+
+1. Aller sur `BASE/syndics/<id-acacias>/charges`, repérer la ligne de l'appel
+   du lot `ACA-A1` créé en 5.1 (montant 5 000, statut `En attente`).
+2. Bouton **« Enregistrer un paiement »**. Montant : `3000`. Date de
+   paiement : aujourd'hui. Mode de paiement : `Virement`. Référence :
+   `VIR-R3-001`. **« Enregistrer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Paiement enregistré`. La ligne passe au statut **`Partiel`**,
+      colonne « Payé » = `3 000`, colonne « Reste » = `2 000`.
+
+3. Rouvrir **« Enregistrer un paiement »** sur la même ligne. Le champ
+   Montant est plafonné au reste à payer (`max = 2000` dans le formulaire).
+   Montant : `2000`. **« Enregistrer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Paiement enregistré`. La ligne passe au statut **`Payé`**
+      (tag vert), colonne « Payé » = `5 000`, colonne « Reste » = `0`. Le
+      bouton « Enregistrer un paiement » de cette ligne devient **désactivé**.
+- [ ] Sur `BASE/syndics/<id-acacias>/lots/<lotId-ACA-A1>/compte` (compte du
+      lot `ACA-A1`, partie 3.3) : une transaction supplémentaire de type
+      `Paiement`, Crédit `5 000` au total (deux mouvements de 3 000 puis
+      2 000), le compte prend chacun en compte au moment de l'enregistrement
+      du paiement.
+
+### 7.3 Trop-perçu refusé, sur l'appel de 5.2 (`ACA-A2`, 5 000 FCFA)
+
+1. Sur la même page des charges, ligne de l'appel du lot `ACA-A2` créé en
+   5.2 (montant 5 000, encore `En attente`).
+2. **« Enregistrer un paiement »**. Tenter un montant de `6000` (au-delà du
+   reste dû). Le champ Montant refuse déjà toute saisie supérieure à `5000`
+   côté formulaire (`max` = reste à payer) : constater cette limite plutôt que
+   de forcer une valeur invalide. Saisir `5000` puis, avant de valider,
+   **noter que si l'API était appelée directement avec 6000 elle répondrait
+   422** avec un message du type
+   `Le paiement (6000 XOF) depasse le reste a payer de cet appel de charges
+(5000 XOF)` — ce scénario reste dans l'interface, donc ce constat se limite à
+   observer le plafond du champ, sans appel direct à l'API (règle absolue n°5).
+3. Annuler la modale sans valider (pour garder cet appel `En attente` et
+   servir de matière au recouvrement, partie 8).
+
+#### Résultat attendu
+
+- [ ] Le champ Montant ne peut pas dépasser `5 000`. Aucun paiement enregistré
+      sur cet appel à ce stade.
+
+### 7.4 Page : `BASE/syndics/<id-acacias>/finances` — après paiement
+
+#### Résultat attendu
+
+- [ ] **« Total appelé »** reste **1 020 000 FCFA**, inchangé.
+- [ ] **« Total payé » = 5 000 FCFA** (le paiement complet de 7.2).
+- [ ] **« Reste à payer » = 1 015 000 FCFA** (1 020 000 − 5 000).
+- [ ] Dans le tableau « Détail des appels de fonds » : la ligne `ACA-A1`
+      (5.1) est `Payé`, les autres restent `En attente`.
+
+### 7.5 Fonds financiers — création, renommage, ajustement
+
+Écart recette #4 (FR-013) comblé par les commits `cd141c8` (API) et `3375f21`
+(web) : le modèle `SyndicateFund` existait déjà mais aucune route ni écran ne
+permettait de créer, alimenter ou modifier un fonds. La carte « Total fonds »
+de cette page reste toutefois cadrée sur cette seule copropriété (voir
+partie 14).
+
+1. Sur `BASE/syndics/<id-acacias>/finances`, bouton **« Nouveau fonds »**.
+   Nom du fonds : `Fonds travaux (Recette 3)`. Solde initial : `100000`.
+   Devise : `XOF`. **« Créer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Fonds créé`. Le tableau « Fonds » affiche une ligne
+      `Fonds travaux (Recette 3)`, Solde `100 000 FCFA`. La carte « Total
+      fonds » de la page passe à `100 000 FCFA`.
+
+2. Sur cette ligne, bouton **« Renommer »**. Nouveau nom :
+   `Fonds travaux et gros entretien (Recette 3)`. **« Enregistrer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Fonds renommé`. La ligne affiche le nouveau nom, le solde ne
+      change pas.
+
+3. Bouton **« Ajuster le solde »**. Direction : **Crédit (augmenter le
+   solde)**. Montant : `50000`. Motif : `Cotisation exceptionnelle travaux
+(Recette 3)`. **« Appliquer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Solde du fonds ajusté`. Solde du fonds = `150 000 FCFA`
+      (100 000 + 50 000). La carte « Total fonds » de la page reflète ce
+      nouveau total.
+
+4. Rouvrir **« Ajuster le solde »** sans remplir le champ **Motif** et tenter
+   **« Appliquer »**.
+
+#### Résultat attendu
+
+- [ ] Le formulaire refuse de valider : message `Le motif est obligatoire`
+      sous le champ, aucun appel réseau déclenché. Fermer la modale sans
+      ajustement supplémentaire.
 
 ---
 
@@ -527,7 +662,9 @@ type="date">` sans restriction, contrairement au formulaire de la partie 5).
 
 - [ ] Cartes : **« Lots en retard » = 4**, **« Montant restant dû »** =
       100 000 + 200 000 + 300 000 + 400 000 = **1 000 000 FCFA** (les 4 appels
-      de 8.1, aucun paiement possible pour les faire baisser — voir partie 7).
+      de 8.1 — aucun paiement n'a été enregistré dessus dans ce scénario ; le
+      paiement est possible depuis la partie 7, mais seuls les appels de 5.1
+      et 5.2 y ont été exercés).
 - [ ] Tableau des retards : 4 lignes, colonne **« Jours retard » = 10** pour
       chacune (à ± 1 jour près selon l'heure du test).
 
@@ -591,39 +728,92 @@ type="date">` sans restriction, contrairement au formulaire de la partie 5).
 
 ## 9. Prestataires
 
-### 9.1 Page : `BASE/syndics/<id-acacias>/prestataires`
+Écart recette #2 (FR-010) comblé par les commits `409c3fb` (API) et
+`cf426df` (web) : `SyndicProviders.tsx` (`BASE/syndics/<id>/prestataires`)
+permet désormais de **créer, modifier et supprimer** un prestataire
+(`ServiceProvider`), en plus de créer un contrat. Le catalogue de
+prestataires reste partagé entre toutes les copropriétés d'une même agence
+(`ServiceProvider.tenantId`) : un prestataire créé ici est réutilisable
+depuis n'importe quelle autre copropriété du tenant.
 
-**Constat à faire avant toute action** : il n'existe **aucun bouton ni
-formulaire, nulle part dans le code, pour créer un `ServiceProvider`** — ni
-sur cette page, ni ailleurs dans le module. Le formulaire « Nouveau contrat »
-exige de choisir un prestataire dans une liste déroulante alimentée
-uniquement par les prestataires déjà en base pour le tenant (le catalogue de
-prestataires est partagé entre toutes les copropriétés d'une même agence,
-`ServiceProvider.tenantId`).
+### 9.1 Page : `BASE/syndics/<id-acacias>/prestataires` — créer un prestataire
 
 #### Ce qu'on doit faire
 
 1. Ouvrir la page, observer la carte **« Prestataires (N) »**.
-2. **Si N > 0** (prestataires déjà présents, hérités d'une autre
-   copropriété de l'agence) : continuer avec « Nouveau contrat » en
-   choisissant l'un d'eux.
-3. **Si N = 0** : consigner qu'aucun contrat ne peut être créé pour cette
-   partie faute de prestataire disponible, et **ne pas chercher de bouton de
-   création de prestataire — il n'existe pas**. Passer directement au constat
-   ci-dessous sans forcer d'action.
+2. Bouton **« Nouveau prestataire »**. Nom : `Espaces Verts Pro (Recette 3)`.
+   Spécialité : `Entretien espaces verts`. Email :
+   `contact.espacesverts.recette3@exemple.test`. Téléphone : laisser vide.
+3. **« Créer »**.
 
-#### Si un prestataire est disponible — créer un contrat
+#### Résultat attendu
 
-1. **« Nouveau contrat »**. Prestataire : le premier de la liste. Nature :
-   `Entretien espaces verts (Recette 3)`. Date de début : aujourd'hui. Date de
-   fin : dans 1 an. Montant annuel : `600000`. Devise `XOF`. Alerte
-   renouvellement : `30` jours.
+- [ ] Message `Prestataire créé`. La carte passe à **« Prestataires (N+1) »**
+      et le tableau affiche une ligne `Espaces Verts Pro (Recette 3)`,
+      Spécialité `Entretien espaces verts`, avec les actions **« Modifier »**
+      et **« Supprimer »**.
+
+### 9.2 Modifier le prestataire
+
+1. Sur cette ligne, bouton **« Modifier »**. Changer la Spécialité en
+   `Entretien espaces verts et taille (Recette 3)`. **« Enregistrer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Prestataire mis à jour`. La colonne Spécialité reflète la
+      nouvelle valeur.
+
+### 9.3 Créer un contrat en réutilisant ce prestataire
+
+1. **« Nouveau contrat »**. Prestataire : `Espaces Verts Pro (Recette 3)`.
+   Nature : `Entretien espaces verts (Recette 3)`. Date de début :
+   aujourd'hui. Date de fin : dans 1 an. Montant annuel : `600000`. Devise
+   `XOF`. Alerte renouvellement : `30` jours.
 2. **« Créer »**.
 
 #### Résultat attendu
 
 - [ ] Message `Contrat créé avec succès`. Carte « Contrats de maintenance » :
       une ligne avec ce prestataire, nature, montant `600 000`, statut actif.
+
+### 9.4 Créer un prestataire à la volée depuis un nouveau contrat
+
+1. **« Nouveau contrat »**. Sous le champ Prestataire, lien **« Pas de
+   prestataire ? Créer un prestataire »** : cliquer dessus.
+2. Dans la modale « Nouveau prestataire » qui s'ouvre par-dessus : Nom :
+   `Ascenseurs Fiables (Recette 3)`. Spécialité : `Ascenseur`. **« Créer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Prestataire créé`. La modale de prestataire se ferme et la
+      modale « Nouveau contrat » réapparaît avec le champ Prestataire
+      **déjà pré-rempli** sur `Ascenseurs Fiables (Recette 3)` — pas besoin de
+      le resélectionner.
+
+3. Compléter le reste du formulaire (Nature `Maintenance ascenseur (Recette
+3)`, dates identiques à 9.3, montant `400000`) et **« Créer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Contrat créé avec succès`. Un deuxième contrat apparaît dans
+      la carte « Contrats de maintenance ».
+
+### 9.5 Suppression refusée — un prestataire avec des contrats
+
+1. Sur la ligne `Espaces Verts Pro (Recette 3)` (a un contrat depuis 9.3),
+   bouton **« Supprimer »**, confirmer.
+
+#### Résultat attendu
+
+- [ ] Message d'erreur `Ce prestataire a des contrats ou des incidents liés :
+    il ne peut pas être supprimé.` (409, `deleteServiceProviderByTenant`).
+      La ligne reste dans le tableau.
+
+### 9.6 Assigner un prestataire à un incident
+
+Cette action se joue depuis l'écran de la partie 10 (elle a besoin d'un
+incident déjà créé) : voir **partie 10.3 « Assigner un prestataire à
+l'incident »**, qui réutilise `Ascenseurs Fiables (Recette 3)` créé en 9.4.
 
 ---
 
@@ -690,9 +880,35 @@ de la partie 3. Les deux coexistent sans se synchroniser.
       désormais `Imputations = 1` (tag bleu). En dépliant la ligne : Type
       `Budget syndic`, Montant `15 000`, Lot `ACA-A1`.
 
+### 10.3 Assigner un prestataire à l'incident (écart recette #2, suite)
+
+`SyndicProfilesIncidents.tsx` charge désormais aussi le catalogue de
+prestataires et expose une colonne **« Prestataire »** (sélecteur) par ligne
+d'incident, branchée sur `updateSyndicIncident` — cette route existait déjà
+côté service sans jamais être appelée depuis un écran.
+
+1. Sur la ligne de l'incident `Fuite sous évier commun (Recette 3)` créé en
+   10.2, colonne **« Prestataire »** : ouvrir le sélecteur et choisir
+   `Ascenseurs Fiables (Recette 3)` (créé en 9.4 — le prestataire n'a pas
+   besoin d'avoir de rapport avec la nature de l'incident pour ce constat,
+   seul le branchement du champ est testé ici).
+
+#### Résultat attendu
+
+- [ ] Message `Prestataire assigné à l'incident`. Le sélecteur affiche
+      désormais `Ascenseurs Fiables (Recette 3)` pour cette ligne, y compris
+      après un rechargement de la page.
+
 ---
 
-## 11. Assemblées générales — convocation, ordre du jour, résolutions, votes, majorité, procès-verbal
+## 11. Assemblées générales — statut, pouvoirs, majorité en tantièmes, procès-verbal
+
+Écarts recette #3, #5 et #6 comblés par les commits `9b210be` (API) et
+`1e39806` (web) : l'AG a désormais un **statut piloté depuis l'écran**
+(planifiée → en cours → clôturée, ou planifiée → annulée), des **pouvoirs**
+(mandat d'un copropriétaire à un mandataire), et un **résultat calculé en
+tantièmes** selon la règle de majorité choisie — plus la seule comparaison du
+nombre de lots Pour/Contre de l'ancien code.
 
 ### 11.1 Page : `BASE/syndics/<id-acacias>/assemblees`
 
@@ -715,7 +931,9 @@ de la partie 3. Les deux coexistent sans se synchroniser.
       c'est le message générique `Assemblée créée` qui couvre les deux. Ne pas
       chercher à consulter la boîte mail (hors périmètre de ce scénario), et
       ne pas considérer l'absence de confirmation visible comme une anomalie.
-- [ ] La ligne apparaît dans la liste avec Statut `Planifiée`.
+- [ ] La ligne apparaît dans la liste avec Statut **`Planifiée`**, et la fiche
+      (**« Voir détails »**) affiche les boutons **« Ouvrir la séance »** et
+      **« Annuler l'assemblée »** (`MeetingStatusActions`).
 
 ### 11.2 Ordre du jour
 
@@ -731,12 +949,50 @@ de la partie 3. Les deux coexistent sans se synchroniser.
       carte « Ordre du jour », titré `1. Approbation du budget prévisionnel
 2026 (Recette 3)`.
 
-### 11.3 Résolution et votes — la règle de majorité réelle du code
+### 11.3 Pouvoir (mandat) — carte « Pouvoirs »
+
+Un pouvoir peut être créé tant que l'AG n'est pas clôturée ni annulée ; ce
+scénario le crée avant l'ouverture de la séance. Le mandant est choisi parmi
+les copropriétaires des lots de la copropriété, le mandataire parmi tout
+contact de l'agence autre que le mandant.
+
+1. Sur la fiche de l'AG, carte **« Pouvoirs »**, bouton **« Ajouter un
+   pouvoir »**.
+2. Mandant : `Copro Un (Recette 3) (ACA-A1 · Appartement · 100 tantièmes)`
+   (le libellé du lot dans cette liste suit désormais `formatLotLabel`,
+   partagé avec le reste du module syndic — voir en tête de ce document).
+   Mandataire : `Mamadou Gestionnaire (Recette 3)`. **« Enregistrer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Pouvoir enregistré`. Le tableau des pouvoirs affiche une ligne
+      Mandant `Copro Un (Recette 3)`, Lots
+      `ACA-A1 · Appartement · 100 tantièmes`, Mandataire
+      `Mamadou Gestionnaire (Recette 3)`, avec un bouton **« Retirer »**.
+- [ ] Dans la carte de saisie des votes (visible dès qu'une résolution
+      existe), le sélecteur de lot signale `ACA-A1 · Appartement · 100
+tantièmes · représenté par Mamadou Gestionnaire (Recette 3)`, et un tag
+      violet `Pouvoir : représenté par Mamadou Gestionnaire (Recette 3)`
+      apparaît quand ce lot est sélectionné.
+
+### 11.4 Ouvrir la séance
+
+1. Bouton **« Ouvrir la séance »**, sans confirmation demandée.
+
+#### Résultat attendu
+
+- [ ] Message `Séance ouverte`. Le statut passe à **`En cours`** (tag orange).
+      Le bouton **« Annuler l'assemblée »** disparaît, remplacé par
+      **« Clôturer la séance »** seule (une AG en cours ne peut plus être
+      annulée, seulement clôturée).
+
+### 11.5 Résolution 1 — Article 24, majorité simple des tantièmes exprimés
 
 1. **« Ajouter une résolution »** : Titre
    `Approbation du budget prévisionnel 2026 (Recette 3)`. Description :
-   `Vote sur le budget des parties communes`. Règle de majorité :
-   `Article 24` (texte libre).
+   `Vote sur le budget des parties communes`. Règle de majorité : sélectionner
+   **`Article 24 — majorité simple`** dans la liste déroulante (valeur par
+   défaut ; la liste propose aussi Article 25, Article 26 et Unanimité).
 2. Valider (`Ajouter`).
 
 #### Résultat attendu
@@ -745,51 +1001,127 @@ de la partie 3. Les deux coexistent sans se synchroniser.
       jour et votes », statut `En attente`.
 
 3. Dans le tableau de vote, saisir pour cette résolution :
-   - `ACA-A1` (100 tantièmes) → **Pour**
-   - `ACA-A2` (200 tantièmes) → **Pour**
-   - `ACA-A3` (300 tantièmes) → **Contre**
-   - `ACA-A4` (400 tantièmes) → **Abstention**
+   - `ACA-A1` (représenté par Mamadou Gestionnaire) → **Pour**
+   - `ACA-A2` → **Pour**
+   - `ACA-A3` → **Contre**
+   - `ACA-A4` → **Abstention**
 
 #### Résultat attendu — à vérifier précisément
 
 - [ ] Chaque vote déclenche `Vote enregistré` et recalcule immédiatement le
-      quorum et le résultat.
-- [ ] **Quorum = 100 %** : les 4 lots ont voté, donc les 1000 tantièmes de la
-      copropriété sont représentés sur les 1000 existants
-      (`representedShares / totalShares × 100`).
-- [ ] **Résultat de la résolution : Approuvée.** C'est la règle réelle et
-      **importante à consigner** : le code compare **le nombre de lots ayant
-      voté Pour contre le nombre de lots ayant voté Contre**
-      (`votesFor > votesAgainst`), **pas** les tantièmes représentés. Ici
-      2 lots Pour contre 1 lot Contre → Approuvée, **alors que les 200
-      tantièmes du lot Contre (ACA-A3, 300 tantièmes) pèsent plus lourd que
-      les 300 tantièmes cumulés des deux lots Pour (100+200)**. Le champ
-      « Règle de majorité » saisi (`Article 24`) et le total `sharesFor`
-      calculé (300) sont **purement informatifs** : ils n'influencent jamais
-      le résultat. **Ce n'est pas une anomalie du scénario ni un bogue à
-      signaler comme bloquant** — c'est le comportement exact du code
-      (`castVoteAndRecomputeResolutionCounters`) ; le consigner tel quel dans
-      le journal, avec le calcul ci-dessus à l'appui.
-- [ ] Carte « Résultats des résolutions » (haut de la page détail) : Pour `2`,
-      Contre `1`, Abstention `1`, Résultat `Approuvée`.
+      quorum et le résultat. Le vote de `ACA-A1` apparaît dans la liste des
+      votes avec la mention `(représenté)`.
+- [ ] Carte quorum (haut de la page détail) : **`100 %`**, avec le texte
+      **`1000 / 1000 tantièmes représentés`** en dessous — les 4 lots ont
+      voté, donc les 1000 tantièmes de la copropriété sont représentés sur les
+      1000 existants (`representedShares / totalShares`).
+- [ ] Carte « Résultats des résolutions » : Règle `Article 24 — majorité
+    simple`, Pour `2 lot(s) · 300 tantièmes`, Contre `1 lot(s) · 300
+    tantièmes`, Abstention `1 lot(s) · 400 tantièmes`, Total de référence
+      `600 tantièmes`.
+- [ ] **Résultat de la résolution : `Rejetée`.** C'est la règle réelle du code
+      corrigé (`computeResolutionTally`, `meeting-majority.ts`) et
+      **importante à consigner** : l'article 24 compare désormais **les
+      tantièmes des lots Pour contre les tantièmes des lots Contre**
+      (`sharesFor > sharesAgainst`), plus le seul nombre de lots. Ici
+      `ACA-A1` (100) + `ACA-A2` (200) = **300 tantièmes Pour**, contre
+      `ACA-A3` (300) = **300 tantièmes Contre** : égalité, donc **Rejetée**
+      (`sharesFor > sharesAgainst` est faux à 300 contre 300), alors que
+      2 lots ont voté Pour contre 1 seul Contre. Avant ce correctif, cette
+      même saisie donnait `Approuvée` (comparaison par nombre de lots
+      seulement) — le consigner comme le comportement corrigé, pas une
+      anomalie.
 
-### 11.4 Procès-verbal
+### 11.6 Résolution 2 — Article 25, majorité absolue des tantièmes de tous les lots
 
-1. Bouton **« Générer compte rendu Word »**.
+1. **« Ajouter une résolution »** : Titre `Ravalement de façade (Recette 3)`.
+   Description : `Vote sur le ravalement des façades communes`. Règle de
+   majorité : **`Article 25 — majorité absolue`**.
+2. Valider.
+3. Votes : `ACA-A1` → **Pour**, `ACA-A2` → **Pour**, `ACA-A4` → **Pour**.
+   Ne pas faire voter `ACA-A3` sur cette résolution (il a déjà voté sur la
+   résolution 1 : il reste comptabilisé dans le quorum global de l'AG).
+
+#### Résultat attendu
+
+- [ ] Carte « Résultats des résolutions », ligne de cette résolution : Règle
+      `Article 25 — majorité absolue`, Pour `3 lot(s) · 700 tantièmes`, Total
+      de référence `1000 tantièmes` (tous les lots de la copropriété, votants
+      ou non — pas seulement les 700 exprimés).
+- [ ] **Résultat : `Approuvée`.** Règle réelle : Pour > 50 % des tantièmes de
+      **tous** les lots de la copropriété (`sharesFor × 2 > totalShares`) —
+      ici 700 × 2 = 1400 > 1000. `ACA-A3` n'a pas voté sur cette résolution et
+      ne compte donc ni pour ni contre, mais pèse dans le total de référence.
+
+### 11.7 Résolution 3 — Article 26, double majorité (copropriétaires et tantièmes)
+
+1. **« Ajouter une résolution »** : Titre
+   `Travaux de mise aux normes de l'ascenseur (Recette 3)`. Description :
+   `Vote sur les travaux de mise aux normes`. Règle de majorité :
+   **`Article 26 — double majorité`**.
+2. Valider.
+3. Votes : `ACA-A1` → **Contre**, `ACA-A2` → **Pour**, `ACA-A3` → **Pour**,
+   `ACA-A4` → **Pour**.
+
+#### Résultat attendu
+
+- [ ] Carte « Résultats des résolutions », ligne de cette résolution : Règle
+      `Article 26 — double majorité`, Pour `3 lot(s) · 900 tantièmes`, Contre
+      `1 lot(s) · 100 tantièmes`, Total de référence `1000 tantièmes`.
+- [ ] **Résultat : `Approuvée`.** Règle réelle : plus de la moitié des
+      copropriétaires de la copropriété (en nombre, tous lots confondus) ET au
+      moins 2/3 des tantièmes totaux votent Pour. Ici 3 copropriétaires sur 4
+      ont voté Pour (`ownersFor × 2 > totalOwners` : 6 > 4) et 900 tantièmes
+      sur 1000 représentent bien plus des deux tiers (`sharesFor × 3 ≥
+    totalShares × 2` : 2700 ≥ 2000).
+
+### 11.8 Procès-verbal
+
+1. Bouton **« Générer compte rendu Word »** (disponible tant que l'AG n'est
+   pas clôturée ni annulée).
 
 #### Résultat attendu
 
 - [ ] Message `Compte rendu généré`. Un fichier
       `compte-rendu-<meetingId>.docx` est téléchargé.
 
-### 11.5 Ce qui n'est pas une anomalie
+### 11.9 Clôturer la séance — l'AG se fige
 
-- Le statut de l'assemblée reste **« Planifiée »** même après l'ajout de
-  résolutions, la saisie de tous les votes et la génération du procès-verbal
-  : il n'existe aucun bouton ni action pour faire transiter le statut vers
-  « En cours », « Clôturée » ou « Annulée » (le formulaire de modification de
-  l'AG ne porte que sur l'heure de début/fin et le lieu). Le consigner sans le
-  traiter comme un blocage.
+1. Bouton **« Clôturer la séance »**, confirmer (`Oui`).
+
+#### Résultat attendu
+
+- [ ] Message `Séance clôturée : les votes sont figés`. Le statut passe à
+      **`Clôturée`** (tag vert).
+- [ ] La page affiche désormais le texte `Séance clôturée : les votes sont
+    figés.` à la place du formulaire de vote. Plus aucun bouton
+      **« Pour »/« Contre »/« Abstention »**, plus de bouton **« Ajouter une
+      résolution »**, plus de bouton **« Clôturer la séance »**, plus de
+      bouton **« Ajouter un pouvoir »** ni **« Retirer »** sur la carte
+      Pouvoirs : l'AG entière est figée (`isMeetingFrozen`).
+- [ ] Les résultats déjà calculés en 11.5 à 11.7 restent affichés à l'identique
+      dans la carte « Résultats des résolutions ».
+
+### 11.10 Annuler une assemblée — sur une AG séparée
+
+L'annulation n'est possible qu'au statut `Planifiée` (le bouton disparaît dès
+`En cours`) : elle se joue donc sur une **deuxième AG**, jetable, créée pour
+ce seul constat — l'AG principale ci-dessus est déjà `Clôturée`.
+
+1. Retour à `BASE/syndics/<id-acacias>/assemblees`, **« Nouvelle assemblée »**
+   : Type **Ordinaire**, date dans 21 jours, 18h00, Lieu
+   `AG test annulation (Recette 3)`.
+2. Sur cette nouvelle ligne (statut `Planifiée`), ouvrir la fiche, bouton
+   **« Annuler l'assemblée »**, confirmer (`Oui`).
+
+#### Résultat attendu
+
+- [ ] Message `Assemblée annulée`. Statut **`Annulée`** (tag rouge). La page
+      affiche `Assemblée annulée : aucun vote possible.` ; plus aucun bouton
+      de vote, de résolution ni de pouvoir n'apparaît (même figement que pour
+      une AG clôturée, `isMeetingFrozen` couvre les deux statuts).
+- [ ] Cette AG jetable reste en base au statut `Annulée` (règle n°4 : rien
+      n'est supprimé hors du cas prévu en partie 1.3).
 
 ---
 
@@ -860,20 +1192,22 @@ sur les pages précédentes :
 
 Les deux **seules** fonctions d'export réelles de tout le module sont celles
 déjà exercées plus haut : le relevé PDF d'un compte lot (partie 3.5) et le
-procès-verbal Word d'une AG (partie 11.4). **Il n'y a aucun export CSV/Excel,
+procès-verbal Word d'une AG (partie 11.8). **Il n'y a aucun export CSV/Excel,
 ni aucun tableau de bord consolidé multi-copropriétés** (chaque écran est
 toujours cadré sur une seule copropriété à la fois — il n'existe pas de vue
-globale de l'agence pour le Syndic, contrairement à ce que suggère la carte
-« Total fonds » de la partie 6/7 : elle ne montre que les fonds de la
-copropriété ouverte, et de toute façon **aucun `SyndicateFund` n'est jamais
-créé** dans ce scénario ni ailleurs dans le code — voir l'annexe).
+globale de l'agence pour le Syndic : la carte « Total fonds » ne montre que
+les fonds de la copropriété ouverte, `Fonds travaux et gros entretien
+(Recette 3)` créé en partie 7.5 compris — un fonds créé sur une autre
+copropriété de l'agence n'y apparaîtrait pas).
 
 #### Ce qu'on doit faire
 
 1. Revisiter rapidement les 5 pages ci-dessus pour confirmer les montants déjà
    consignés dans les parties précédentes restent cohérents entre eux (ex. le
    « Total appelé » de Finances doit correspondre à la somme des appels créés
-   en parties 4, 5 et 8.1).
+   en parties 4, 5 et 8.1 ; le « Total fonds » doit valoir `150 000 FCFA`,
+   solde du fonds créé et ajusté en partie 7.5 ; le « Total payé » doit valoir
+   `5 000 FCFA`, réglé en partie 7.2).
 
 #### Résultat attendu
 
@@ -950,13 +1284,13 @@ périmètre plus large que ce que `packages/api/src/lib/syndics/` et
 lecture directe du code (recherches `grep` documentées ci-dessous), pas par
 déduction :
 
-| #   | Exigence de la spec                                                                            | État réel du code                                                                                                                                                                                                                                                                                                                             | Preuve                                                                                                                                                                                                                                                      |
-| --- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | FR-005 : « Le système MUST permettre d'enregistrer des paiements d'appels de charges »         | La route API existe (`POST .../charges/:chargeId/pay`) et le service web la déclare (`recordChargePayment`), mais **aucun écran ne l'appelle**. Impossible à exercer par clic.                                                                                                                                                                | `grep -rn "recordChargePayment" apps/web/src/` → seule occurrence : la déclaration dans `services/syndic-service.ts`, aucun appel dans `pages/syndics/*.tsx` ni `components/syndics/*.tsx`.                                                                 |
-| 2   | FR-010 : « Le système MUST permettre d'enregistrer des prestataires de services »              | Seule la **lecture** (`listServiceProvidersBySyndicate`) existe. Aucune fonction `createServiceProvider`, aucune route POST, aucun formulaire « Nouveau prestataire ». Seuls les **contrats** liés à un prestataire déjà existant peuvent être créés.                                                                                         | `grep -n "serviceProvider" packages/api/src/lib/syndics/queries.ts` → seulement `findMany`/`findFirst`, aucun `.create`.                                                                                                                                    |
-| 3   | FR-008 : « y compris les cas de représentation via mandat (proxies) »                          | Le modèle `GMProxy` existe dans `schema.prisma` et est inclus dans les requêtes de lecture d'une AG, mais **aucune route** (`create`, `list`) ni **aucun écran** ne permet de créer ou consulter un pouvoir.                                                                                                                                  | `syndic-routes.ts` ne contient aucune route `/pouvoirs` ou `/proxies` ; `grep -rn "GMProxy\|Proxy\b\|Pouvoir\|Mandat" apps/web/src/pages/syndics apps/web/src/components/syndics` → aucun résultat.                                                         |
-| 4   | FR-013 : « Le système MUST gérer des fonds financiers par copropriété... avec un solde »       | Le modèle `SyndicateFund` existe et apparaît (toujours vide) dans le résumé financier, mais **aucune route ni écran** ne permet de créer, alimenter ou modifier un fonds.                                                                                                                                                                     | Aucune route `/fonds` dans `syndic-routes.ts` ; aucune fonction de création dans `queries.ts`.                                                                                                                                                              |
-| 5   | FR-007/US3 : parcours d'AG complet avec changement de statut (planifiée → en cours → clôturée) | Le statut de l'AG ne peut être modifié par aucun formulaire (`updateMeetingSchema` n'accepte que `startTime`, `endTime`, `location`). Le statut reste `PLANNED` indéfiniment.                                                                                                                                                                 | `packages/api/src/lib/syndics/schemas.ts` (bloc `updateMeetingSchema`).                                                                                                                                                                                     |
-| 6   | FR-009 : « déterminer... selon la règle de majorité applicable »                               | Le champ texte libre `majorityRule` n'est jamais lu par le calcul de résultat : la décision se fait uniquement par comparaison du **nombre de lots** votant Pour contre Contre, indépendamment des tantièmes représentés.                                                                                                                     | `castVoteAndRecomputeResolutionCounters` dans `queries.ts` : `const result = votesFor > votesAgainst ? 'APPROVED' : 'REJECTED'` — `votesFor`/`votesAgainst` sont des compteurs de lots, pas de tantièmes ; `majorityRule` n'apparaît dans aucune condition. |
-| 7   | Portail copropriétaire implicite (checkbox « Activer accès portail » sur `LotOwnerProfile`)    | Champ purement décoratif : le jeton `portalAccessToken` est généré mais n'est consommé par aucune route ni page. Le « Portail Propriétaire » réellement présent dans l'app (`apps/web/src/pages/OwnerPortal/*`) sert la gestion locative, sans lien avec les copropriétés.                                                                    | `grep` de `portalAccessToken`/`LotOwnerProfile` dans les fichiers du portail propriétaire (services, middleware, validators) → aucun résultat.                                                                                                              |
-| 8   | Aucune exigence explicite, mais libellé UI trompeur                                            | Le bouton « Supprimer » d'une copropriété (`SyndicsList`) déclenche une **suppression définitive en base** (`prisma.syndicate.delete`, cascade), bien que la fonction s'appelle `archiveSyndicateByTenant` et que le message de succès soit `Copropriete supprimee` — il n'y a ni statut d'archivage, ni corbeille, ni réactivation possible. | `packages/api/src/lib/syndics/queries.ts`, fonction `archiveSyndicateByTenant` (ligne ~458).                                                                                                                                                                |
+| #   | Exigence de la spec                                                                            | État réel du code                                                                                                                                                                                                                                                                                                                                                         | Preuve                                                                                                                                                                                              |
+| --- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | FR-005 : « Le système MUST permettre d'enregistrer des paiements d'appels de charges »         | **Résolu (commits `cd141c8` API, `3375f21` web).** Le bouton « Enregistrer un paiement » (`ChargeCallTable.tsx`, page Charges) appelle désormais `recordChargePayment` ; un paiement au-delà du reste dû est refusé (422) au lieu d'être accepté en trop-perçu. Voir partie 7.                                                                                            | `grep -rn "onRecordPayment" apps/web/src/pages/syndics/SyndicCharges.tsx apps/web/src/components/syndics/ChargeCallTable.tsx` → bouton branché sur `handleOpenPayment`/`recordChargePayment`.       |
+| 2   | FR-010 : « Le système MUST permettre d'enregistrer des prestataires de services »              | **Résolu (commits `409c3fb` API, `cf426df` web).** `createServiceProvider`/`updateServiceProviderByTenant`/`deleteServiceProviderByTenant` et les routes POST/PATCH/DELETE `.../prestataires[/:providerId]` existent ; `SyndicProviders.tsx` propose « Nouveau prestataire », modification, suppression protégée et création à la volée depuis un contrat. Voir partie 9. | `grep -n "createServiceProvider\|updateServiceProviderByTenant\|deleteServiceProviderByTenant" packages/api/src/lib/syndics/queries.ts`.                                                            |
+| 3   | FR-008 : « y compris les cas de représentation via mandat (proxies) »                          | **Résolu (commits `9b210be` API, `1e39806` web).** Routes GET/POST/DELETE `.../assemblees/:meetingId/pouvoirs` ; carte « Pouvoirs » sur la fiche d'AG (création, liste, retrait) et signalement du lot représenté dans la saisie des votes. Voir partie 11.3.                                                                                                             | `grep -n "pouvoirs" packages/api/src/routes/syndic-routes.ts` → routes GET/POST/DELETE présentes.                                                                                                   |
+| 4   | FR-013 : « Le système MUST gérer des fonds financiers par copropriété... avec un solde »       | **Résolu (commits `cd141c8` API, `3375f21` web).** Routes GET/POST `.../fonds`, PATCH `.../fonds/:fundId` et POST `.../fonds/:fundId/ajustement` (motif obligatoire) ; écran des fonds dans Finances copropriété (création, renommage, ajustement crédit/débit). Voir partie 7.5.                                                                                         | `grep -n "/fonds" packages/api/src/routes/syndic-routes.ts`.                                                                                                                                        |
+| 5   | FR-007/US3 : parcours d'AG complet avec changement de statut (planifiée → en cours → clôturée) | **Résolu (commits `9b210be` API, `1e39806` web).** `PATCH .../assemblees/:id` accepte `status` ; transitions planifiée → en cours → clôturée et planifiée → annulée, toute autre transition répond 409. Boutons « Ouvrir la séance », « Clôturer la séance », « Annuler l'assemblée ». Voir parties 11.4, 11.9 et 11.10.                                                  | `packages/api/src/lib/syndics/schemas.ts` (`updateMeetingSchema` accepte désormais `status`) ; `components/syndics/MeetingStatusActions.tsx`.                                                       |
+| 6   | FR-009 : « déterminer... selon la règle de majorité applicable »                               | **Résolu (commit `9b210be`, `lib/syndics/meeting-majority.ts`).** Le résultat se calcule désormais en tantièmes selon la règle choisie (article 24 : tantièmes exprimés ; 25 : majorité absolue de tous les lots ; 26 : double majorité copropriétaires/tantièmes ; unanimité). Voir parties 11.5 à 11.7.                                                                 | `computeResolutionTally` dans `meeting-majority.ts` : `sharesFor > sharesAgainst` (art. 24), `sharesFor * 2 > totalShares` (art. 25), etc. — `majorityRule` conditionne désormais bien le résultat. |
+| 7   | Portail copropriétaire implicite (checkbox « Activer accès portail » sur `LotOwnerProfile`)    | **Ouvert — en cours de réalisation.** Champ toujours décoratif : le jeton `portalAccessToken` est généré mais n'est consommé par aucune route ni page à ce jour. Le « Portail Propriétaire » réellement présent dans l'app (`apps/web/src/pages/OwnerPortal/*`) sert la gestion locative, sans lien avec les copropriétés.                                                | `grep` de `portalAccessToken`/`LotOwnerProfile` dans les fichiers du portail propriétaire (services, middleware, validators) → aucun résultat à ce jour.                                            |
+| 8   | Aucune exigence explicite, mais libellé UI trompeur                                            | **Résolu (commit `409c3fb`).** La fonction est renommée `deleteEmptySyndicateByTenant` et refuse désormais (409) la suppression d'une copropriété qui a le moindre lot, appel de charges, AG, document, contrat ou incident lié ; le bouton « Supprimer » de la carte est désactivé (avec infobulle) dès que ces compteurs sont connus. Voir partie 1.3.                  | `packages/api/src/lib/syndics/queries.ts`, fonction `deleteEmptySyndicateByTenant` ; `apps/web/src/components/syndics/SyndicateCard.tsx` (`isSyndicateEmpty`, `deleteDisabled`).                    |
