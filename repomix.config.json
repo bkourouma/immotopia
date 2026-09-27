@@ -1,0 +1,29 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "input": {
+    "maxFileSize": 5000000
+  },
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "compress": true,
+    "headerText": "Generated local code context. Review for sensitive or tenant data before sharing.",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true
+  },
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "repomix-output*.xml",
+      ".claude/worktrees/**",
+      "**/.env",
+      "**/.env.local",
+      "**/.env.*.local"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  }
+}
