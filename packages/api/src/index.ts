@@ -8,6 +8,7 @@ import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
 import { startSubscriptionUsageJob } from './jobs/subscription-usage-job';
+import { recoverTenantDataExports } from './services/tenant-data-export/export-service';
 import { logger } from './utils/logger';
 
 /**
@@ -51,5 +52,10 @@ app.listen(PORT, () => {
     // Abonnements par packs : echeances (PAST_DUE, retraits programmes),
     // releves de consommation, alertes de seuil, rappels de fin d essai.
     startSubscriptionUsageJob();
+    // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
+    // FAILED), demandes en attente relancees, archives echues supprimees.
+    recoverTenantDataExports().catch(error =>
+      logger.error('Export agence : reprise au demarrage impossible', { message: (error as Error).message })
+    );
   }
 });
