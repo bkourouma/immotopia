@@ -20,7 +20,8 @@ const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/unit/route-features.test.ts',
   '<rootDir>/__tests__/unit/no-secret-in-responses.test.ts',
   '<rootDir>/__tests__/integration/isolation.test.ts',
-  '<rootDir>/__tests__/api/maintenance.attachment-files.test.ts'
+  '<rootDir>/__tests__/api/maintenance.attachment-files.test.ts',
+  '<rootDir>/__tests__/api/maintenance.tenant-portal-visibility.test.ts'
 ];
 
 const base = {

@@ -104,9 +104,9 @@ export const downloadTenantPortalAttachmentHandler = asyncHandler(async (req: Re
   if (!req.tenantPortal) {
     throw new ForbiddenError('Accès portail locataire refusé.');
   }
-  const { tenantId, tenantClientId } = req.tenantPortal;
+  const { tenantId, tenantClientId, leaseId } = req.tenantPortal;
   const file = await getMaintenanceAttachmentFileForTenantPortal(
-    { tenantId, tenantClientId },
+    { tenantId, tenantClientId, leaseId },
     req.params.id,
     req.params.attachmentId
   );

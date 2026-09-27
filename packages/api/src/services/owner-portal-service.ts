@@ -69,7 +69,7 @@ import {
   exportData as exportDataFunction
 } from '../utils/report-generator';
 import { getDocumentFile } from './document-generation-service';
-import { ownerPortalTicketWhere } from '../lib/maintenance/attachment-files';
+import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
 
 /**
  * Statuts qui sortent un bien du portefeuille locatif : ni loue, ni a louer.
@@ -2089,7 +2089,7 @@ export class OwnerPortalService {
     try {
       // Get ticket with all relations
       // Même règle que les pièces jointes du portail
-      // (lib/maintenance/attachment-files.ts) : une seule source.
+      // (lib/maintenance/portal-visibility.ts) : une seule source.
       const ticket = await prisma.maintenanceTicket.findFirst({
         where: {
           ...ownerPortalTicketWhere({ tenantId, propertyIds }),

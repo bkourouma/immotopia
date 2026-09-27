@@ -223,7 +223,9 @@ export const FAKE_MODEL_NAMES = [
   'rentalPenalty',
   'rentalLease',
   'maintenanceTicket',
-  'maintenanceTicketAttachment'
+  'maintenanceTicketAttachment',
+  'maintenanceTicketStatusHistory',
+  'maintenanceTicketComment'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

@@ -23,10 +23,10 @@
  *              maintenance).
  *   Agence B — bien PB, ticket T_B (1 pièce) ; gestionnaire Fanta.
  *
- * `tenant_contact_id` des tickets porte l'identifiant du `TenantClient` :
- * c'est la règle de visibilité du portail locataire telle qu'elle est écrite
- * (`getTicketById(tenantId, ticketId, tenantClientId)`), reprise à
- * l'identique par la route des pièces jointes.
+ * Côté portail locataire, un ticket est visible par le bail actif ou la fiche
+ * CRM du locataire (lib/maintenance/portal-visibility.ts, testée en détail
+ * par maintenance.tenant-portal-visibility.test.ts) : ici, chaque ticket porte
+ * sur le bail de son locataire.
  */
 
 import * as os from 'os';
