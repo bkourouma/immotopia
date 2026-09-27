@@ -37,7 +37,7 @@ const { Paragraph, Title } = Typography;
 const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Paye') },
+  PAID: { color: 'green', label: t('Payé') },
   OVERDUE: { color: 'red', label: t('En retard') }
 };
 
@@ -549,7 +549,29 @@ export const SyndicFinances: React.FC = () => {
             rowKey={row => row.id}
             aria-label={t('Détail des fonds')}
             renderCard={row => (
-              <DataCard title={row.name} aria-label={row.name} highlight={<MoneyValue value={row.balance} />} />
+              <DataCard
+                title={row.name}
+                aria-label={row.name}
+                highlight={<MoneyValue value={row.balance} />}
+                primaryAction={{
+                  label: t('Ajuster le solde'),
+                  onClick: () => {
+                    setAdjustTarget(row);
+                    adjustForm.resetFields();
+                    adjustForm.setFieldsValue({ direction: 'CREDIT' });
+                  }
+                }}
+                secondaryActions={[
+                  {
+                    key: 'renommer',
+                    label: t('Renommer'),
+                    onClick: () => {
+                      setRenameTarget(row);
+                      renameForm.setFieldsValue({ name: row.name });
+                    }
+                  }
+                ]}
+              />
             )}
           />
         </Card>
