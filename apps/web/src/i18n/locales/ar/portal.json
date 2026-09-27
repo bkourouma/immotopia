@@ -797,5 +797,7 @@
   "Ma copropriété": "ملكيتي المشتركة",
   "Appels": "المطالبات",
   "Assemblées": "الجمعيات",
-  "Espace copropriétaire": "مساحة المالك المشترك"
+  "Espace copropriétaire": "مساحة المالك المشترك",
+  "Introuvable dans votre espace": "غير موجود في مساحتك",
+  "Cet élément est introuvable dans votre espace copropriétaire.": "هذا العنصر غير موجود في مساحتك كمالك مشترك."
 }

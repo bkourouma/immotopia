@@ -18,7 +18,12 @@ export function portalErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/** Vrai si l'erreur est un 404 : l'objet n'existe pas, ou n'est pas à ce copropriétaire. */
+/**
+ * Vrai si l'identifiant demandé n'a rien donné : 404 (l'objet n'existe pas, ou
+ * n'est pas à ce copropriétaire — le serveur ne distingue pas) ou 400
+ * (identifiant mal formé, par exemple modifié à la main dans l'adresse).
+ */
 export function isNotFound(error: unknown): boolean {
-  return (error as { response?: { status?: number } } | null)?.response?.status === 404;
+  const status = (error as { response?: { status?: number } } | null)?.response?.status;
+  return status === 404 || status === 400;
 }

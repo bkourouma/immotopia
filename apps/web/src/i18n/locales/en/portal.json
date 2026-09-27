@@ -797,5 +797,7 @@
   "Ma copropriété": "My co-ownership",
   "Appels": "Calls",
   "Assemblées": "Meetings",
-  "Espace copropriétaire": "Co-owner area"
+  "Espace copropriétaire": "Co-owner area",
+  "Introuvable dans votre espace": "Not found in your area",
+  "Cet élément est introuvable dans votre espace copropriétaire.": "This item cannot be found in your co-owner area."
 }
