@@ -40,7 +40,11 @@ export interface RouteFeatureRule {
 export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   // ------------------------------------------------------------ exceptions
   { prefix: '/entitlements', feature: 'EXEMPT', note: 'Le menu web lit les droits : toujours lisible.' },
-  { prefix: '/subscription', feature: 'EXEMPT', note: "L'agence consulte et regle son abonnement meme en lecture seule." },
+  {
+    prefix: '/subscription',
+    feature: 'EXEMPT',
+    note: "L'agence consulte et regle son abonnement meme en lecture seule."
+  },
   {
     prefix: '/subscription/invoices',
     feature: 'EXEMPT',
@@ -48,7 +52,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   },
   { prefix: '/register', feature: 'EXEMPT', note: "Auto-inscription d'un client, pas une action de l'agence." },
   { prefix: '/unregister', feature: 'EXEMPT', note: "Desinscription d'un client." },
-  { prefix: '/client-details', feature: 'EXEMPT', note: "Un client met a jour sa propre fiche." },
+  { prefix: '/client-details', feature: 'EXEMPT', note: 'Un client met a jour sa propre fiche.' },
   {
     prefix: '/maintenance/tenant',
     feature: 'EXEMPT',
@@ -58,6 +62,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   // ------------------------------------------------------------ socle (CORE)
   { prefix: '/', exact: true, feature: 'CORE', note: "Fiche et parametres de l'agence." },
   { prefix: '/logo', feature: 'CORE' },
+  {
+    prefix: '/document-identity',
+    feature: 'CORE',
+    note: "Signature et cachet de l'agence sur ses documents (lot S1)."
+  },
   { prefix: '/clients', feature: 'CORE' },
   { prefix: '/invitations', feature: 'CORE' },
   { prefix: '/users', feature: 'CORE' },
@@ -80,10 +89,18 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/finance/accounts', feature: 'CORE' },
   { prefix: '/finance/clients', feature: 'CORE', note: 'Balances clients.' },
   { prefix: '/finance/billing-runs', feature: 'CORE', note: 'Facturation.' },
-  { prefix: '/finance/suppliers', feature: 'CORE', note: 'Fournisseurs communs ; le rattachement a un chantier est facultatif.' },
+  {
+    prefix: '/finance/suppliers',
+    feature: 'CORE',
+    note: 'Fournisseurs communs ; le rattachement a un chantier est facultatif.'
+  },
   { prefix: '/finance/supplier-invoices', feature: 'CORE' },
   { prefix: '/finance/supplier-payments', feature: 'CORE' },
-  { prefix: '/finance/cost-categories', feature: 'CORE', note: 'Postes de depense, aussi utilises par les factures fournisseurs.' },
+  {
+    prefix: '/finance/cost-categories',
+    feature: 'CORE',
+    note: 'Postes de depense, aussi utilises par les factures fournisseurs.'
+  },
   { prefix: '/finance/validation-queue', feature: 'CORE', note: 'File mixte (factures, pieces, bons).' },
 
   // ------------------------------------------------------------ CRM
@@ -114,11 +131,20 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
 
   // ------------------------------------------------------------ syndic
   { prefix: '/syndics', feature: 'SYNDIC' },
+  { prefix: '/syndic-mandating-agencies', feature: 'SYNDIC', note: 'Agences mandantes du cabinet de syndic (lot S1).' },
 
   // ------------------------------------------------------------ construction
-  { prefix: '/finance/sites', feature: 'CONSTRUCTION', note: 'Chantiers, avancement, budgets, lots, cloture, stock de chantier.' },
+  {
+    prefix: '/finance/sites',
+    feature: 'CONSTRUCTION',
+    note: 'Chantiers, avancement, budgets, lots, cloture, stock de chantier.'
+  },
   { prefix: '/finance/stock', feature: 'CONSTRUCTION' },
-  { prefix: '/finance/cash-vouchers', feature: 'CONSTRUCTION', note: 'Pieces de caisse de chantier (siteId obligatoire).' },
+  {
+    prefix: '/finance/cash-vouchers',
+    feature: 'CONSTRUCTION',
+    note: 'Pieces de caisse de chantier (siteId obligatoire).'
+  },
   { prefix: '/finance/budget-alerts', feature: 'CONSTRUCTION' },
   { prefix: '/finance/site-budgets', feature: 'CONSTRUCTION' },
   { prefix: '/finance/budget-amendments', feature: 'CONSTRUCTION' },

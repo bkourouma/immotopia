@@ -82,6 +82,8 @@ vi.mock('antd', async () => {
   SkeletonComp.Input = passthrough('span');
   SkeletonComp.Button = passthrough('span');
   const Table = ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>;
+  const UploadComp: any = ({ children }: any) => <div>{children}</div>;
+  UploadComp.LIST_IGNORE = 'ignore';
 
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
@@ -123,6 +125,7 @@ vi.mock('antd', async () => {
     Table,
     Tag: passthrough('span'),
     Typography,
+    Upload: UploadComp,
     message: {
       success: mockMessageSuccess,
       error: mockMessageError
@@ -251,6 +254,9 @@ function mockGetHandlers() {
         }
       });
     }
+    if (url === '/tenants/tenant-1/syndic-mandating-agencies') {
+      return Promise.resolve({ data: { success: true, data: [] } });
+    }
     return Promise.reject(new Error(`Unhandled GET ${url}`));
   });
 }
@@ -309,7 +315,8 @@ describe('SyndicDetail — modification de la copropriété', () => {
         registrationNo: 'RC-2024-002',
         cadastralReference: null,
         fiscalYear: 4,
-        syndicManagerId: 'contact-1'
+        syndicManagerId: 'contact-1',
+        mandatingAgencyId: null
       });
     });
     expect(mockMessageSuccess).toHaveBeenCalled();

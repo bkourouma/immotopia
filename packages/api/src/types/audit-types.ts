@@ -89,7 +89,11 @@ export enum AuditActionKey {
 
   // Syndic - portail coproprietaire (invitation et revocation d'acces)
   SYNDIC_COOWNER_PORTAL_INVITED = 'SYNDIC_COOWNER_PORTAL_INVITED',
-  SYNDIC_COOWNER_PORTAL_REVOKED = 'SYNDIC_COOWNER_PORTAL_REVOKED'
+  SYNDIC_COOWNER_PORTAL_REVOKED = 'SYNDIC_COOWNER_PORTAL_REVOKED',
+
+  // Identite des documents (lot S1) : signature et cachet d'un mandant ou de l'agence
+  DOCUMENT_SIGNATURE_UPLOADED = 'DOCUMENT_SIGNATURE_UPLOADED',
+  DOCUMENT_SIGNATURE_REMOVED = 'DOCUMENT_SIGNATURE_REMOVED'
 }
 
 // Audit log entry

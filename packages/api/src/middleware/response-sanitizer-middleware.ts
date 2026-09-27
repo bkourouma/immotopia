@@ -12,7 +12,20 @@ import { Request, Response, NextFunction } from 'express';
  */
 
 /** Keys that must never appear in an API response. */
-export const SECRET_RESPONSE_KEYS = new Set(['passwordHash', 'password_hash', 'tokenHash', 'token_hash']);
+export const SECRET_RESPONSE_KEYS = new Set([
+  'passwordHash',
+  'password_hash',
+  'tokenHash',
+  'token_hash',
+  // Lot S1 : cles de stockage PRIVEES des images d'identite des documents.
+  // Les reponses exposent `hasLogo`/`hasSignature`/`hasStamp` ; ces cles ne
+  // doivent jamais sortir, y compris via un `include: { syndicate: true }`.
+  'logoPath',
+  'signaturePath',
+  'stampPath',
+  'documentSignaturePath',
+  'documentStampPath'
+]);
 
 const MAX_DEPTH = 20;
 

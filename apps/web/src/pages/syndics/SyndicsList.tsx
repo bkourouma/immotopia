@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { App, Alert, Button, Col, Empty, Form, Input, Modal, Row, Space, Spin, Typography } from 'antd';
+import { App, Alert, Button, Col, Empty, Form, Input, Modal, Row, Select, Space, Spin, Typography } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
+import { listMandatingAgencies, MandatingAgency } from '../../services/document-branding-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
 import { useConfirmAction } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -28,6 +29,7 @@ export const SyndicsList: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingSyndicId, setDeletingSyndicId] = useState<string | null>(null);
+  const [mandatingAgencies, setMandatingAgencies] = useState<MandatingAgency[]>([]);
   const [form] = Form.useForm<CreateSyndicateRequest>();
 
   useEffect(() => {
@@ -37,6 +39,11 @@ export const SyndicsList: React.FC = () => {
       return;
     }
     void loadSyndicates();
+    // Un échec ici n'empêche pas la liste des copropriétés de s'afficher :
+    // le champ mandant sera simplement vide dans le formulaire de création.
+    listMandatingAgencies(effectiveTenantId)
+      .then(setMandatingAgencies)
+      .catch(() => setMandatingAgencies([]));
   }, [effectiveTenantId]);
 
   useEffect(() => {
@@ -221,6 +228,21 @@ export const SyndicsList: React.FC = () => {
           </Form.Item>
           <Form.Item label={t("N° d'immatriculation")} name="registrationNo">
             <Input />
+          </Form.Item>
+          <Form.Item
+            label={t('Agence mandante')}
+            name="mandatingAgencyId"
+            extra={t(
+              'Les documents de cette copropriété porteront le logo, la signature et le cachet du mandant choisi.'
+            )}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Aucune (identité de l’agence)')}
+              options={mandatingAgencies.map(agency => ({ value: agency.id, label: agency.name }))}
+            />
           </Form.Item>
         </Form>
       </Modal>
