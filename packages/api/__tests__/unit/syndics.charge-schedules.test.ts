@@ -67,6 +67,7 @@ import {
 import type { CreateChargeScheduleInput } from '../../src/lib/syndics/charge-schedule-schemas';
 import type { CoOwnerPortalScope } from '../../src/lib/syndics/coowner-portal';
 import { runSyndicChargeCallScheduler } from '../../src/jobs/syndic-charge-call-scheduler.job';
+import { logger } from '../../src/utils/logger';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const TENANT_A = 'tenant-a';
@@ -828,6 +829,94 @@ describe('destinataire de l avis', () => {
     const mail = mockSendEmail.mock.calls.find(([params]) => params.to === 'awa@example.test')![0];
     expect(mail.html).not.toContain('<img src=x');
     expect(mail.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+});
+
+describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, avec sa raison', () => {
+  // BUG-2026-09-27-009 : avant correctif, seul OWNER_NOT_CURRENT etait compte ;
+  // NO_OWNER_CONTACT, aucun canal, et une exception ne comptaient nulle part
+  // (0 envoyee, 0 ignoree, aucune note). Invariant verifie ici pour chaque
+  // raison : notificationsSent + notificationsSkipped === callsCreated.
+
+  it('lot sans copropriétaire (NO_OWNER_CONTACT) -> ignore, note dediee', async () => {
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L2)!;
+    lot.owner = null;
+    lot.ownerContactId = null;
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({
+      status: 'SUCCESS',
+      callsCreated: 2,
+      notificationsSent: 1,
+      notificationsSkipped: 1
+    });
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toBe('Avis non envoyé (lot sans copropriétaire) : A-02');
+  });
+
+  it('aucun canal d envoi (pas d e-mail utilisable, pas de WhatsApp) -> ignore, note dediee', async () => {
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L1)!;
+    lot.owner = { ...lot.owner, email: null };
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({
+      status: 'SUCCESS',
+      callsCreated: 2,
+      notificationsSent: 1,
+      notificationsSkipped: 1
+    });
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toContain("Avis non envoyé (aucun canal d'envoi : pas d'e-mail utilisable");
+    expect(history.notes).toContain('A-01');
+  });
+
+  it('exception de notifyChargeCall (e-mail en echec) -> ignore, note dediee, warn journalise', async () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+    mockSendEmail.mockImplementationOnce(async () => {
+      throw new Error('SMTP indisponible');
+    });
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({
+      status: 'SUCCESS',
+      callsCreated: 2,
+      notificationsSent: 1,
+      notificationsSkipped: 1
+    });
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toBe("Avis non envoyé (échec de l'envoi) : A-01");
+    expect(warn).toHaveBeenCalledWith(
+      'Scheduled charge call notification failed',
+      expect.objectContaining({ error: 'SMTP indisponible' })
+    );
+    warn.mockRestore();
+  });
+
+  it('deux raisons dans la meme execution -> une ligne par raison dans notes, invariant respecte', async () => {
+    mockPrisma.lotOwnerProfile.rows.push({
+      id: id(43),
+      lotId: L1,
+      contactId: BAKARY,
+      isActive: true,
+      ownedUntil: null
+    });
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L2)!;
+    lot.owner = null;
+    lot.ownerContactId = null;
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({
+      status: 'SUCCESS',
+      callsCreated: 2,
+      notificationsSent: 0,
+      notificationsSkipped: 2
+    });
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes?.split('\n')).toEqual([
+      'Avis non envoyé (propriétaire du lot différent du copropriétaire actuel) : A-01',
+      'Avis non envoyé (lot sans copropriétaire) : A-02'
+    ]);
   });
 });
 
