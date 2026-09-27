@@ -245,3 +245,11 @@ describe('justificatifs de pénalité', () => {
   });
 });
 
+describe('accès direct à /uploads', () => {
+  it('les trois dossiers répondent 404, fichier présent sur le disque', async () => {
+    for (const fileUrl of Object.values(url)) {
+      const res = await request(app).get(fileUrl).set('Cookie', `accessToken=${USER_MARIAM}`);
+      expect(`${fileUrl} : ${res.status}`).toBe(`${fileUrl} : 404`);
+    }
+  });
+});
