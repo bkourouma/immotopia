@@ -794,5 +794,6 @@
   "L'agence {{agency}} vous ouvre un accès en lecture à votre espace copropriétaire : vos lots, le compte de chaque lot, vos appels de charges, les documents et les assemblées générales de votre copropriété.": "تمنحك الوكالة {{agency}} وصولًا للاطلاع على مساحتك كمالك مشترك: وحداتك، وحساب كل وحدة، ومطالبات الرسوم، ومستندات الملكية المشتركة وجمعياتها العامة.",
   "Pièce jointe introuvable.": "المرفق غير موجود.",
   "Accès portail locataire refusé.": "تم رفض الوصول إلى بوابة المستأجر.",
-  "Accès portail propriétaire requis.": "يلزم الوصول إلى بوابة المالك."
+  "Accès portail propriétaire requis.": "يلزم الوصول إلى بوابة المالك.",
+  "Preuve de paiement introuvable.": "إثبات الدفع غير موجود."
 }
