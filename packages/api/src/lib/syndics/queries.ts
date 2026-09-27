@@ -46,7 +46,9 @@ import {
 } from './charge-receipts';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
-import { QuotaExceededError } from '../../middleware/error-middleware';
+// Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
+import { annualShareForPeriod } from './charge-schedule-periods';
+import { ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -4002,6 +4004,101 @@ export async function createChargeCallBatchBySyndicate(
   });
 }
 
+/** Lot S4 : montant a appeler pour un lot dans un lot d'appels. */
+export interface LotCallAmount {
+  lotId: string;
+  amount: number;
+}
+
+/**
+ * Lot S4 (audit) : un seul lot d'appels ORDINAIRE par copropriete et par
+ * periode (memes bornes), qu'il vienne d'une programmation ou de la
+ * generation manuelle depuis le budget. Un appel exceptionnel reste possible,
+ * et une periode sans bornes n'est pas controlee. 409 sinon.
+ */
+export async function assertNoRegularBatchForPeriodTx(
+  tx: PrismaTransactionClient,
+  syndicateId: string,
+  bounds: PeriodBounds | null
+): Promise<void> {
+  if (!bounds) return;
+  const duplicate = await tx.chargeCallBatch.findFirst({
+    where: { syndicateId, batchType: 'REGULAR', periodStart: bounds.start, periodEnd: bounds.end },
+    select: { id: true }
+  });
+  if (duplicate) {
+    throw new ConflictError(
+      "Un lot d'appels ordinaire existe déjà pour cette copropriété sur cette période : aucun appel émis."
+    );
+  }
+}
+
+/**
+ * Lot S4 : cree un lot d'appels (`ChargeCallBatch`) et un appel par lot, dans
+ * la transaction de l'appelant, par le chemin commun `createLotChargeCallTx`
+ * (debit du compte du lot, imputation de l'avance, quittances S3 ajoutees a
+ * `issued`). Verrous des lots pris dans l'ordre global des identifiants.
+ * Partage par la generation depuis le budget et par la programmation
+ * automatique (`charge-schedules.ts`).
+ */
+export async function createChargeCallBatchWithCallsTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  data: {
+    syndicateId: string;
+    label: string;
+    period: string;
+    bounds: PeriodBounds | null;
+    dueDate: Date;
+    batchType: 'REGULAR' | 'EXCEPTIONAL';
+    budgetId?: string | null;
+    totalAmount: number;
+    currency: string;
+    lots: LotCallAmount[];
+  },
+  issued: IssuedChargeDocument[] = []
+) {
+  if (data.batchType === 'REGULAR') await assertNoRegularBatchForPeriodTx(tx, data.syndicateId, data.bounds);
+  const batch = await tx.chargeCallBatch.create({
+    data: {
+      syndicateId: data.syndicateId,
+      label: data.label,
+      period: data.period,
+      periodStart: data.bounds?.start ?? null,
+      periodEnd: data.bounds?.end ?? null,
+      dueDate: data.dueDate,
+      batchType: data.batchType,
+      ...(data.budgetId ? { budgetId: data.budgetId } : {}),
+      totalAmount: roundMoney(data.totalAmount),
+      currency: data.currency,
+      status: 'SENT'
+    }
+  });
+
+  const lotsInLockOrder = [...data.lots].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
+  const chargeCalls: Array<Awaited<ReturnType<typeof createLotChargeCallTx>>> = [];
+  for (const lot of lotsInLockOrder) {
+    chargeCalls.push(
+      await createLotChargeCallTx(
+        tx,
+        tenantId,
+        {
+          syndicateId: data.syndicateId,
+          lotId: lot.lotId,
+          batchId: batch.id,
+          period: data.period,
+          bounds: data.bounds,
+          amount: roundMoney(lot.amount),
+          currency: data.currency,
+          dueDate: data.dueDate
+        },
+        issued
+      )
+    );
+  }
+  return { batch, chargeCalls };
+}
+
 export async function generateChargeCallsFromBudget(
   tenantId: string,
   syndicateId: string,
@@ -4014,6 +4111,16 @@ export async function generateChargeCallsFromBudget(
     dueDate: Date;
     batchType: 'REGULAR' | 'EXCEPTIONAL';
     currency?: string;
+    /**
+     * Lot S4 : nombre de periodes par an (1, 2, 4 ou 12). Chaque appel porte
+     * la quote-part annuelle du lot divisee par ce nombre ; la derniere
+     * periode de l'annee (`periodIndex` = `periodsPerYear`) absorbe
+     * l'arrondi. Defaut 1 : la quote-part annuelle entiere (comportement
+     * historique de la route manuelle).
+     */
+    periodsPerYear?: number;
+    /** Rang de la periode dans l'annee (1 a `periodsPerYear`), defaut 1. */
+    periodIndex?: number;
   }
 ) {
   logger.info('Audit: generate charge calls from budget requested', {
@@ -4052,53 +4159,44 @@ export async function generateChargeCallsFromBudget(
   }
 
   const bounds = resolvePeriodBounds(data);
+  const periodsPerYear = data.periodsPerYear ?? 1;
+  const periodIndex = data.periodIndex ?? 1;
+  const lots = allocations.map(allocation => ({
+    lotId: allocation.lotId,
+    amount:
+      periodsPerYear === 1
+        ? roundMoney(Number(allocation.totalAllocated))
+        : annualShareForPeriod(Number(allocation.totalAllocated), periodsPerYear, periodIndex)
+  }));
+  // Annee entiere : total du budget, comme avant le lot S4 ; sinon la somme des parts de la periode.
+  const totalAmount =
+    periodsPerYear === 1
+      ? Number(budget.totalAmount)
+      : fromCents(lots.reduce((sum, lot) => sum + toCents(lot.amount), 0));
   const issued: IssuedChargeDocument[] = [];
   const generated = await prisma.$transaction(async tx => {
-    const batch = await tx.chargeCallBatch.create({
-      data: {
+    // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
+    // le nombre de lignes inserees, jamais leurs identifiants — impossible
+    // d'y accrocher une ecriture de grand livre. Chaque appel est donc cree
+    // un par un (createChargeCallBatchWithCallsTx -> createLotChargeCallTx),
+    // qui debite le compte du lot et impute aussitot son avance (lot S2).
+    const { batch } = await createChargeCallBatchWithCallsTx(
+      tx,
+      tenantId,
+      {
         syndicateId,
         label: data.label,
         period: data.period,
-        periodStart: bounds?.start ?? null,
-        periodEnd: bounds?.end ?? null,
+        bounds,
         dueDate: data.dueDate,
-        batchType: data.batchType as any,
+        batchType: data.batchType,
         budgetId,
-        totalAmount: roundMoney(Number(budget.totalAmount)),
+        totalAmount,
         currency: data.currency || budget.currency || 'XOF',
-        status: 'SENT'
-      }
-    });
-
-    // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
-    // le nombre de lignes inserees, jamais leurs identifiants — impossible
-    // d'y accrocher une ecriture de grand livre. Un appel cree ainsi ne
-    // debitait donc jamais le compte du lot concerne, contrairement a un
-    // appel direct (createChargeCallAndUpdateStatus, plus haut) qui cree
-    // chaque ChargeCall un par un pour la meme raison. On boucle ici de la
-    // meme facon : le nombre de lots d'une copropriete reste modeste, et
-    // c'est deja le choix fait pour la creation directe multi-lots.
-    // Lot S2 : chaque appel impute aussitot l'avance du lot (createLotChargeCallTx).
-    const currency = data.currency || budget.currency || 'XOF';
-    // Verrous par lot dans l'ordre des identifiants (voir sortLotIdsForLocking).
-    const allocationsInLockOrder = [...allocations].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
-    for (const allocation of allocationsInLockOrder) {
-      await createLotChargeCallTx(
-        tx,
-        tenantId,
-        {
-          syndicateId,
-          lotId: allocation.lotId,
-          batchId: batch.id,
-          period: data.period,
-          bounds,
-          amount: roundMoney(Number(allocation.totalAllocated)),
-          currency,
-          dueDate: data.dueDate
-        },
-        issued
-      );
-    }
+        lots
+      },
+      issued
+    );
 
     logger.info('Audit: charge calls batch generated from budget', {
       tenantId,

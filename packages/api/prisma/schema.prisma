@@ -662,6 +662,8 @@ model Tenant {
   syndicMandatingAgencies  SyndicMandatingAgency[]
   syndicChargeReceipts     SyndicChargeReceipt[]
   syndicReceiptSequences   SyndicReceiptSequence[]
+  syndicChargeSchedules    SyndicChargeSchedule[]
+  syndicChargeScheduleRuns SyndicChargeScheduleRun[]
   serviceProviders         ServiceProvider[]
   assetValuations          AssetValuation[]
   propertyLoans            PropertyLoan[]
@@ -3542,6 +3544,8 @@ model Syndicate {
   maintenanceLinks   SyndicateMaintenanceLink[]
   contractLinks      SyndicateContractLink[]
   chargeReceipts     SyndicChargeReceipt[]
+  /// Lot S4 : programmations d'appels de charges automatiques.
+  chargeSchedules    SyndicChargeSchedule[]
   providerInvoices   SyndicProviderInvoice[]
 
   @@index([tenantId])
@@ -4113,14 +4117,117 @@ model ChargeCallBatch {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  syndicate   Syndicate        @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  budget      SyndicateBudget? @relation(fields: [budgetId], references: [id], onDelete: SetNull)
-  chargeCalls ChargeCall[]
+  syndicate    Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  budget       SyndicateBudget?          @relation(fields: [budgetId], references: [id], onDelete: SetNull)
+  chargeCalls  ChargeCall[]
+  /// Lot S4 : execution de programmation qui a cree ce lot d'appels.
+  scheduleRuns SyndicChargeScheduleRun[]
 
   @@index([syndicateId])
   @@index([budgetId])
   @@index([status])
   @@map("charge_call_batches")
+}
+
+/// Lot S4 : frequence d'une programmation d'appels de charges. Les periodes
+/// suivent le calendrier civil (mois, trimestre, semestre, annee).
+enum SyndicChargeFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+/// Lot S4 : origine du montant appele a chaque periode.
+enum SyndicChargeAmountSource {
+  /// Quote-part annuelle du budget vote, divisee par le nombre de periodes.
+  BUDGET
+  /// Montant fixe par periode, reparti par tantiemes entre les lots principaux.
+  FIXED
+}
+
+/// Lot S4 : issue d'une execution de programmation pour une periode.
+enum SyndicChargeScheduleRunStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+/// Lot S4 (besoin 6) : programmation des appels de charges d'une copropriete,
+/// emis ET envoyes automatiquement a chaque periode par la tache quotidienne
+/// `jobs/syndic-charge-call-scheduler.job.ts`. `nextRunAt` est la date
+/// d'emission (minuit UTC) de la prochaine periode a traiter, nulle quand la
+/// programmation a depasse sa date de fin.
+model SyndicChargeSchedule {
+  id            String                   @id @default(uuid()) @db.Uuid
+  tenantId      String                   @map("tenant_id")
+  syndicateId   String                   @map("syndicate_id") @db.Uuid
+  label         String
+  frequency     SyndicChargeFrequency
+  /// Jour d'emission (1 a 28) dans le premier mois de chaque periode.
+  issueDay      Int                      @map("issue_day")
+  /// Echeance = date d'emission + ce nombre de jours.
+  dueOffsetDays Int                      @map("due_offset_days")
+  amountSource  SyndicChargeAmountSource @map("amount_source")
+  /// Budget a utiliser ; nul avec BUDGET = budget approuve de l'exercice de la periode.
+  budgetId      String?                  @map("budget_id") @db.Uuid
+  /// Montant total appele par periode (source FIXED).
+  fixedAmount   Decimal?                 @map("fixed_amount") @db.Decimal(14, 2)
+  currency      String                   @default("XOF")
+  startDate     DateTime                 @map("start_date") @db.Date
+  endDate       DateTime?                @map("end_date") @db.Date
+  active        Boolean                  @default(true)
+  nextRunAt     DateTime?                @map("next_run_at")
+  lastRunAt     DateTime?                @map("last_run_at")
+  createdById   String?                  @map("created_by_id")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicate Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  budget    SyndicateBudget?          @relation(fields: [budgetId], references: [id], onDelete: SetNull)
+  runs      SyndicChargeScheduleRun[]
+
+  @@index([tenantId, syndicateId])
+  @@index([active, nextRunAt])
+  @@index([budgetId])
+  @@map("syndic_charge_schedules")
+}
+
+/// Lot S4 : journal des executions d'une programmation, une ligne par
+/// periode. L'unicite (scheduleId, periodStart) est la garantie
+/// d'idempotence : une periode deja traitee n'est jamais reemise.
+model SyndicChargeScheduleRun {
+  id                   String                        @id @default(uuid()) @db.Uuid
+  tenantId             String                        @map("tenant_id")
+  scheduleId           String                        @map("schedule_id") @db.Uuid
+  periodStart          DateTime                      @map("period_start") @db.Date
+  periodEnd            DateTime                      @map("period_end") @db.Date
+  periodLabel          String                        @map("period_label")
+  status               SyndicChargeScheduleRunStatus
+  /// CRON (tache quotidienne) ou MANUAL (bouton « Executer »).
+  trigger              String                        @default("CRON")
+  batchId              String?                       @map("batch_id") @db.Uuid
+  callsCreated         Int                           @default(0) @map("calls_created")
+  /// Appels entierement couverts par l'avance du lot (quittance, pas d'avis).
+  callsCovered         Int                           @default(0) @map("calls_covered")
+  notificationsSent    Int                           @default(0) @map("notifications_sent")
+  /// Avis non envoyes volontairement (proprietaire du lot qui n'est plus un coproprietaire actuel).
+  notificationsSkipped Int                           @default(0) @map("notifications_skipped")
+  /// Remarques non sensibles de l'execution (lots dont l'avis n'est pas parti, etc.).
+  notes                String?
+  error                String?
+  createdAt            DateTime                      @default(now()) @map("created_at")
+  finishedAt           DateTime?                     @map("finished_at")
+
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schedule SyndicChargeSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  batch    ChargeCallBatch?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@unique([scheduleId, periodStart])
+  @@index([tenantId])
+  @@index([batchId])
+  @@map("syndic_charge_schedule_runs")
 }
 
 model SyndicPaymentMethod {
@@ -4256,11 +4363,12 @@ model SyndicateBudget {
   createdAt              DateTime     @default(now()) @map("created_at")
   updatedAt              DateTime     @updatedAt @map("updated_at")
 
-  syndicate            Syndicate          @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  approvedByResolution GMResolution?      @relation(fields: [approvedByResolutionId], references: [id], onDelete: SetNull)
+  syndicate            Syndicate              @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  approvedByResolution GMResolution?          @relation(fields: [approvedByResolutionId], references: [id], onDelete: SetNull)
   lines                BudgetLineItem[]
   allocations          BudgetAllocation[]
   chargeCallBatches    ChargeCallBatch[]
+  chargeSchedules      SyndicChargeSchedule[]
 
   @@index([syndicateId])
   @@index([approvedByResolutionId])

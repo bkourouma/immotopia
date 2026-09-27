@@ -2,11 +2,13 @@ jest.mock('@prisma/client', () => {
   const tx = {
     budgetAllocation: {
       deleteMany: jest.fn(),
-      createMany: jest.fn(),
+      createMany: jest.fn()
     },
     chargeCallBatch: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      // Lot S4 : garde anti-doublon de période (aucun lot existant par défaut).
+      findFirst: jest.fn()
     },
     chargeCall: {
       createMany: jest.fn(),
@@ -17,59 +19,59 @@ jest.mock('@prisma/client', () => {
       // scenario). Ce mock ne definit pas `tx.ownerAccount` : le debit du
       // grand livre se no-op donc silencieusement (supportsOwnerAccount),
       // seul `create` importe pour ce test.
-      create: jest.fn(),
+      create: jest.fn()
     },
     // Lot S2 : chaque appel cree impute l'avance du lot (applyLotAdvanceTx),
     // sous un verrou consultatif. Aucune avance ici : lecture vide, verrou no-op.
     chargePayment: {
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue([])
     },
-    $executeRaw: jest.fn(),
+    $executeRaw: jest.fn()
   };
 
   const prisma = {
     syndicate: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     chartOfAccount: {
-      count: jest.fn(),
+      count: jest.fn()
     },
     syndicateBudget: {
       findMany: jest.fn(),
       create: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
-      findUnique: jest.fn(),
+      findUnique: jest.fn()
     },
     syndicateLot: {
-      findMany: jest.fn(),
+      findMany: jest.fn()
     },
     budgetAllocation: {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn()
     },
     chargeCallBatch: {
       findMany: jest.fn(),
-      create: jest.fn(),
+      create: jest.fn()
     },
     chargeCall: {
-      createMany: jest.fn(),
+      createMany: jest.fn()
     },
-    $transaction: jest.fn(async (callback: any) => callback(tx)),
+    $transaction: jest.fn(async (callback: any) => callback(tx))
   };
 
   return {
     PrismaClient: jest.fn(() => prisma),
     __mockPrisma: prisma,
-    __mockTx: tx,
+    __mockTx: tx
   };
 });
 
 import {
   createChargeCallBatchBySyndicate,
   generateChargeCallsFromBudget,
-  recomputeBudgetAllocationsByBudget,
+  recomputeBudgetAllocationsByBudget
 } from '../../src/lib/syndics/queries';
 
 const { __mockPrisma: mockPrisma, __mockTx: mockTx } = jest.requireMock('@prisma/client') as {
@@ -86,17 +88,15 @@ describe('Syndics budget queries - US4', () => {
   it('recomputes budget allocations by lots', async () => {
     mockPrisma.syndicateBudget.findFirst.mockResolvedValue({
       id: 'budget-1',
-      lines: [
-        { id: 'line-1', category: 'Maintenance', amountForecast: 100000, distributionKey: 'GENERAL_SHARES' },
-      ],
+      lines: [{ id: 'line-1', category: 'Maintenance', amountForecast: 100000, distributionKey: 'GENERAL_SHARES' }]
     });
     mockPrisma.syndicateLot.findMany.mockResolvedValue([
       { id: 'lot-1', lotNumber: 'A-01', generalShares: 100, specialShares: 0 },
-      { id: 'lot-2', lotNumber: 'A-02', generalShares: 300, specialShares: 0 },
+      { id: 'lot-2', lotNumber: 'A-02', generalShares: 300, specialShares: 0 }
     ]);
     mockPrisma.budgetAllocation.findMany.mockResolvedValue([
       { id: 'alloc-1', lotId: 'lot-1', totalAllocated: 25000, lot: { lotNumber: 'A-01' } },
-      { id: 'alloc-2', lotId: 'lot-2', totalAllocated: 75000, lot: { lotNumber: 'A-02' } },
+      { id: 'alloc-2', lotId: 'lot-2', totalAllocated: 75000, lot: { lotNumber: 'A-02' } }
     ]);
 
     const allocations = await recomputeBudgetAllocationsByBudget('tenant-1', 'syndic-1', 'budget-1');
@@ -111,7 +111,7 @@ describe('Syndics budget queries - US4', () => {
       period: '2026-03',
       dueDate: new Date('2026-03-31T00:00:00.000Z'),
       batchType: 'REGULAR',
-      totalAmount: 500000,
+      totalAmount: 500000
     });
     expect(batch.id).toBe('batch-1');
   });
@@ -124,8 +124,8 @@ describe('Syndics budget queries - US4', () => {
       currency: 'XOF',
       allocations: [
         { lotId: 'lot-1', totalAllocated: 40000 },
-        { lotId: 'lot-2', totalAllocated: 60000 },
-      ],
+        { lotId: 'lot-2', totalAllocated: 60000 }
+      ]
     });
     mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
     mockTx.chargeCallBatch.findUnique.mockResolvedValue({ id: 'batch-1', chargeCalls: [{ id: 'c1' }, { id: 'c2' }] });
@@ -137,7 +137,7 @@ describe('Syndics budget queries - US4', () => {
       label: 'Appels Q2',
       period: '2026-Q2',
       dueDate: new Date('2026-04-30T00:00:00.000Z'),
-      batchType: 'REGULAR',
+      batchType: 'REGULAR'
     });
 
     // Un ChargeCall par lot, cree individuellement (pas de createMany) pour
@@ -168,8 +168,8 @@ describe('Syndics budget queries - US4', () => {
       currency: 'XOF',
       allocations: [
         { lotId: 'lot-b', totalAllocated: 60000 },
-        { lotId: 'lot-a', totalAllocated: 40000 },
-      ],
+        { lotId: 'lot-a', totalAllocated: 40000 }
+      ]
     });
     mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
     mockTx.chargeCallBatch.findUnique.mockResolvedValue({ id: 'batch-1', chargeCalls: [] });
@@ -180,7 +180,7 @@ describe('Syndics budget queries - US4', () => {
       label: 'Appels Q2',
       period: '2026-Q2',
       dueDate: new Date('2026-04-30T00:00:00.000Z'),
-      batchType: 'REGULAR',
+      batchType: 'REGULAR'
     });
 
     const lockedLots = mockTx.$executeRaw.mock.calls
@@ -191,4 +191,3 @@ describe('Syndics budget queries - US4', () => {
     expect(lockedLots).toEqual(['lot-a', 'lot-b']);
   });
 });
-

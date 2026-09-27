@@ -264,9 +264,10 @@ describe('Suivi mensuel', () => {
     mount('/copropriete/suivi-mensuel', <CoOwnerMonthlyTracking />);
 
     expect(await screen.findByText('Suivi mensuel', {}, WAIT)).toBeInTheDocument();
-    await waitFor(() => expect(getCoOwnerLotMonthlyTracking).toHaveBeenCalledWith('lot-1', 2026));
-    expect(screen.getAllByText('Réglé').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('En retard').length).toBeGreaterThan(0);
+    // La page ouvre l'exercice en cours ; attendre le rendu des données, pas seulement l'appel.
+    await waitFor(() => expect(getCoOwnerLotMonthlyTracking).toHaveBeenCalledWith('lot-1', new Date().getFullYear()));
+    expect((await screen.findAllByText('Réglé', {}, WAIT)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('En retard', {}, WAIT)).length).toBeGreaterThan(0);
   });
 
   it("grise les mois avant l'acquisition et n'y montre pas le statut du serveur", async () => {

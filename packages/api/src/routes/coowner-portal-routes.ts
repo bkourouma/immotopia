@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireCoOwnerPortalAccess } from '../middleware/coowner-portal-access';
-import { coOwnerPortalPdfRateLimiter } from '../middleware/rate-limit-middleware';
+import { coOwnerChargeNoticeRateLimiter, coOwnerPortalPdfRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   downloadCoOwnerDocumentHandler,
   getCoOwnerLotAccountHandler,
@@ -20,6 +20,7 @@ import {
   readCoOwnerIssuerLogoHandler,
   readCoOwnerSyndicateLogoHandler
 } from '../controllers/coowner-portal-finance-controller';
+import { downloadCoOwnerChargeCallNoticeHandler } from '../controllers/coowner-charge-notice-controller';
 
 /**
  * Portail copropriétaire, monté sur `/api/portal/copropriete` (app.ts).
@@ -34,6 +35,8 @@ router.use(requireCoOwnerPortalAccess);
 router.get('/lots', listCoOwnerLotsHandler);
 router.get('/lots/:lotId/compte', getCoOwnerLotAccountHandler);
 router.get('/appels', listCoOwnerChargeCallsHandler);
+// Lot S4 : avis d'appel de charges PDF d'un appel du perimetre.
+router.get('/appels/:chargeId/avis', coOwnerChargeNoticeRateLimiter, downloadCoOwnerChargeCallNoticeHandler);
 router.get('/documents', listCoOwnerDocumentsHandler);
 router.get('/documents/:documentId/fichier', downloadCoOwnerDocumentHandler);
 router.get('/assemblees', listCoOwnerMeetingsHandler);
