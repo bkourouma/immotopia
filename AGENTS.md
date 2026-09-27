@@ -64,7 +64,11 @@ rejoue les scénarios jusqu'à réussite ou blocage documenté. Un **Pilote**
 processus l'un après l'autre ou en boucle, ou déléguer directement à des
 agents de réalisation pour une tâche bornée, et livrer seul jusqu'à la pull
 request ; la fusion de cette PR reste à l'utilisateur. Choisir les modèles
-et les outils disponibles dans l'environnement courant. Ne pas demander de
+et les outils disponibles dans l'environnement courant. Pour les sous-agents,
+préférer le modèle rapide de l'environnement dès que la tâche le permet
+(réalisation bornée, tests, relecture, recette), et réserver le modèle le plus
+puissant au travail transverse difficile ; sous Claude Code, voir la règle
+précise dans `CLAUDE.md`. Ne pas demander de
 validation humaine pour les actions réversibles déjà autorisées ; respecter les
 permissions et confirmations imposées par la plateforme.
 
