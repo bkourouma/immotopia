@@ -511,6 +511,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
           // réutilisent les anciennes pour garder les réglages de menu des rôles.
           { key: 'syndics-list', label: t('Copropriétés'), href: '/tenant/:tenantId/syndics' },
           {
+            key: 'syndics-mandating-agencies',
+            label: t('Agences mandantes'),
+            href: '/tenant/:tenantId/syndics/mandants'
+          },
+          {
             key: 'syndics-detail',
             label: t('Copropriété'),
             href: '/tenant/:tenantId/syndics/:syndicId',

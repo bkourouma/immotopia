@@ -330,6 +330,11 @@ const SyndicProfilesIncidents = lazy(() =>
     default: m.SyndicProfilesIncidents
   }))
 );
+const SyndicMandatingAgencies = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMandatingAgencies').then(m => ({
+    default: m.SyndicMandatingAgencies
+  }))
+);
 // Layout d'onglets commun aux trois familles d'écrans Syndic (Copropriété,
 // Finances, Assemblées et documents) — même découpe de chunk que les écrans
 // qu'il encadre : il ne sert jamais seul.
@@ -833,6 +838,13 @@ function App() {
                             element={<OwnerStatementDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
+                          {/* Route statique avant le layout de fiche : elle doit être déclarée
+                          avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne
+                          soit jamais lu comme un identifiant de copropriété. */}
+                          <Route
+                            path="/tenant/:tenantId/syndics/mandants"
+                            element={<SyndicMandatingAgencies />}
+                          />
                           {/* Famille « Copropriété » — fiche, lots (et le compte d'un lot,
                         rattaché à l'onglet Lots), prestataires, profils et incidents.
                         Même route de layout que les deux familles suivantes : elle ne
