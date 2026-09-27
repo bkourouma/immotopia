@@ -89,6 +89,7 @@ describe('SyndicWorkspaceLayout — après la mise en commun du rendu', () => {
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
       'Budgets',
       'Appels de charges',
+      'Suivi mensuel',
       'Recouvrement',
       'Trésorerie',
       'Comptabilité'

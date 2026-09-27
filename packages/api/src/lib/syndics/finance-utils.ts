@@ -9,16 +9,6 @@ export function clampNonNegative(value: number): number {
   return value < 0 ? 0 : value;
 }
 
-export function computeChargeCallStatus(totalPaid: number, chargeAmount: number): 'PENDING' | 'PARTIAL' | 'PAID' {
-  if (totalPaid <= 0) {
-    return 'PENDING';
-  }
-  if (totalPaid < chargeAmount) {
-    return 'PARTIAL';
-  }
-  return 'PAID';
-}
-
 export function computeOutstanding(chargeAmount: number, totalPaid: number): number {
   return roundMoney(clampNonNegative(chargeAmount - totalPaid));
 }

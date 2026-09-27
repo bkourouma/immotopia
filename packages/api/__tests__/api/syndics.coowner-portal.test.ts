@@ -379,8 +379,13 @@ function seed() {
     }
   );
   mockPrisma.chargePayment.rows.push(
-    { id: 'pay-1', chargeCallId: CALL_L1, amount: 30000 },
-    { id: 'pay-2', chargeCallId: CALL_L2, amount: 1000 }
+    { id: 'pay-1', lotId: L1, chargeCallId: CALL_L1, amount: 30000, unallocatedAmount: 0 },
+    { id: 'pay-2', lotId: L2, chargeCallId: CALL_L2, amount: 1000, unallocatedAmount: 0 }
+  );
+  // Lot S2 : le regle d'un appel se lit dans ses affectations.
+  mockPrisma.chargePaymentAllocation.rows.push(
+    { id: 'pay-1', paymentId: 'pay-1', chargeCallId: CALL_L1, amount: 30000, source: 'PAYMENT' },
+    { id: 'pay-2', paymentId: 'pay-2', chargeCallId: CALL_L2, amount: 1000, source: 'PAYMENT' }
   );
 
   mockPrisma.syndicateDocument.rows.push(

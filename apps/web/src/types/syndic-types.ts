@@ -91,15 +91,25 @@ export interface Syndicate {
   _count?: SyndicateCount;
 }
 
+/** Lot S2 : source d'une affectation — le paiement lui-même ou une avance imputée. */
+export type ChargePaymentAllocationSource = 'PAYMENT' | 'ADVANCE';
+
+/**
+ * Une ligne `payments[]` d'un appel de charges (lot S2) : une affectation, pas
+ * un paiement — plusieurs lignes peuvent partager le même `paymentId` quand un
+ * même paiement a été réparti sur plusieurs appels. `id` reste unique (celui
+ * de l'affectation), `amount` est la part affectée à CET appel.
+ */
 export interface ChargePayment {
   id: string;
+  paymentId: string;
   chargeCallId: string;
   amount: number | string;
+  source: ChargePaymentAllocationSource;
   paidAt: string;
   method?: string | null;
   reference?: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface ChargeCall {
@@ -107,6 +117,9 @@ export interface ChargeCall {
   syndicateId: string;
   lotId: string;
   period: string;
+  /** Lot S2 : bornes facultatives de la période, `null` si non renseignées. */
+  periodStart?: string | null;
+  periodEnd?: string | null;
   amount: number | string;
   currency: string;
   dueDate: string;
@@ -118,6 +131,9 @@ export interface ChargeCall {
   updatedAt: string;
   lot?: SyndicateLot;
   payments?: ChargePayment[];
+  /** Lot S2 : calculés côté API à partir des affectations — préférés à `payments` pour le total. */
+  paidAmount?: number | string;
+  outstandingAmount?: number | string;
 }
 
 export interface CreateSyndicateRequest {
@@ -194,6 +210,9 @@ export interface CreateChargeCallRequest {
   lotIds?: string[];
   applyToAllLots?: boolean;
   period: string;
+  /** Lot S2 : facultatives, mais vont ensemble (les deux ou aucune). */
+  periodStart?: string | null;
+  periodEnd?: string | null;
   amount: number;
   currency?: string;
   dueDate: string;
@@ -455,6 +474,8 @@ export interface FinanceSummary {
     totalOutstanding: number;
     overdueCount: number;
     overdueAmount: number;
+    /** Lot S2 : somme des avances de tous les lots de la copropriété. */
+    totalAdvance: number;
   };
 }
 
@@ -865,6 +886,8 @@ export interface UpdateBudgetRequest {
 export interface GenerateBudgetChargeCallsRequest {
   label: string;
   period: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   dueDate: string;
   batchType: BatchType;
   currency?: string;
@@ -873,6 +896,8 @@ export interface GenerateBudgetChargeCallsRequest {
 export interface CreateChargeCallBatchRequest {
   label: string;
   period: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   dueDate: string;
   batchType: BatchType;
   budgetId?: string;
@@ -1054,6 +1079,94 @@ export interface AdjustSyndicateFundBalanceRequest {
   direction: 'CREDIT' | 'DEBIT';
   amount: number;
   reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Lot S2 (besoins 4 et 5) : paiement par lot, avance, suivi mensuel.
+// ---------------------------------------------------------------------------
+
+/** Un appel non soldé du lot (`GET .../lots/:lotId/appels-ouverts`), pour la sélection des mois couverts. */
+export interface LotOpenChargeCall {
+  id: string;
+  period: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  dueDate: string;
+  amount: number;
+  paid: number;
+  outstanding: number;
+  currency: string;
+  status: ChargeCallStatus;
+}
+
+/** Avance du lot (`GET .../lots/:lotId/avance`). */
+export interface LotAdvance {
+  advance: number;
+  currency: string;
+}
+
+export interface RecordLotPaymentRequest {
+  amount: number;
+  paidAt: string;
+  method: string;
+  reference?: string | null;
+  /** Appels cochés par le gestionnaire ; absent ou vide = automatique (plus anciens d'abord). */
+  chargeCallIds?: string[];
+}
+
+/** Une ligne d'affectation, telle que rendue par l'enregistrement ou l'aperçu d'un paiement de lot. */
+export interface LotPaymentAllocationView {
+  /** `null` sur un aperçu. */
+  paymentId: string | null;
+  chargeCallId: string;
+  period: string;
+  amount: number;
+  source: ChargePaymentAllocationSource;
+  callStatusAfter: ChargeCallStatus;
+}
+
+/** Réponse de `POST .../lots/:lotId/paiements` et de son aperçu (`.../paiements/apercu`). */
+export interface LotPaymentResult {
+  payment: {
+    /** `null` sur un aperçu : rien n'a été écrit. */
+    id: string | null;
+    lotId: string;
+    chargeCallId: string | null;
+    amount: number;
+    unallocatedAmount: number;
+    paidAt: string;
+    method: string | null;
+    reference: string | null;
+  };
+  allocations: LotPaymentAllocationView[];
+  advance: number;
+  lotAdvanceBalance: number;
+  currency: string;
+}
+
+export type MonthlyTrackingStatus = 'NONE' | 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
+
+export interface MonthlyTrackingCell {
+  month: number;
+  due: number;
+  paid: number;
+  status: MonthlyTrackingStatus;
+}
+
+export interface MonthlyTrackingLotRow {
+  lotId: string;
+  lotNumber: string;
+  ownerName: string | null;
+  advance: number;
+  months: MonthlyTrackingCell[];
+}
+
+/** Réponse de `GET .../suivi-mensuel?year=` : grille lot × mois de la copropriété. */
+export interface MonthlyTracking {
+  year: number;
+  currency: string;
+  months: number[];
+  lots: MonthlyTrackingLotRow[];
 }
 
 // ---------------------------------------------------------------------------

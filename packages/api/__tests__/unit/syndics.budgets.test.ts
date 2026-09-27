@@ -19,6 +19,12 @@ jest.mock('@prisma/client', () => {
       // seul `create` importe pour ce test.
       create: jest.fn(),
     },
+    // Lot S2 : chaque appel cree impute l'avance du lot (applyLotAdvanceTx),
+    // sous un verrou consultatif. Aucune avance ici : lecture vide, verrou no-op.
+    chargePayment: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    $executeRaw: jest.fn(),
   };
 
   const prisma = {
@@ -138,6 +144,51 @@ describe('Syndics budget queries - US4', () => {
     // recuperer son identifiant et debiter le compte du lot correspondant.
     expect(mockTx.chargeCall.create).toHaveBeenCalledTimes(2);
     expect(result?.id).toBe('batch-1');
+
+    // Lot S2 : bornes deduites du libelle « 2026-Q2 » (trimestre), sur le lot
+    // d'appels comme sur chaque appel.
+    const bounds = {
+      periodStart: new Date('2026-04-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-06-30T00:00:00.000Z')
+    };
+    expect(mockTx.chargeCallBatch.create).toHaveBeenCalledWith({ data: expect.objectContaining(bounds) });
+    expect(mockTx.chargeCall.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ ...bounds, batchId: 'batch-1', lotId: 'lot-1', amount: 40000 })
+    });
+    // Verrou du lot pris pour chaque appel, par identifiant de lot croissant
+    // (ordre global : pas d'interblocage entre deux generations concurrentes).
+    expect(mockTx.$executeRaw).toHaveBeenCalled();
+  });
+
+  it('prend les verrous de lot par identifiant croissant, quel que soit l ordre des allocations', async () => {
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({
+      id: 'budget-1',
+      status: 'APPROVED',
+      totalAmount: 100000,
+      currency: 'XOF',
+      allocations: [
+        { lotId: 'lot-b', totalAllocated: 60000 },
+        { lotId: 'lot-a', totalAllocated: 40000 },
+      ],
+    });
+    mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
+    mockTx.chargeCallBatch.findUnique.mockResolvedValue({ id: 'batch-1', chargeCalls: [] });
+    mockTx.chargeCall.create.mockImplementation(async ({ data }: any) => ({ id: `call-${data.lotId}`, ...data }));
+    mockTx.$executeRaw.mockClear();
+
+    await generateChargeCallsFromBudget('tenant-1', 'syndic-1', 'budget-1', {
+      label: 'Appels Q2',
+      period: '2026-Q2',
+      dueDate: new Date('2026-04-30T00:00:00.000Z'),
+      batchType: 'REGULAR',
+    });
+
+    const lockedLots = mockTx.$executeRaw.mock.calls
+      .map((call: any[]) => String(call[1]))
+      .filter((key: string) => key.startsWith('syndic-lot-allocation:'))
+      .map((key: string) => key.slice('syndic-lot-allocation:'.length))
+      .filter((lotId: string, index: number, all: string[]) => index === 0 || all[index - 1] !== lotId);
+    expect(lockedLots).toEqual(['lot-a', 'lot-b']);
   });
 });
 

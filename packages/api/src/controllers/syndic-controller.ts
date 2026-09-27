@@ -451,7 +451,13 @@ export const payChargeCallHandler = asyncHandler(async (req: Request, res: Respo
     chargeCallId
   });
 
-  const payment = await recordChargePaymentWithStatusUpdate(tenantId, parsed);
+  // Lot S2 : l'appel doit aussi appartenir a la copropriete du chemin ; le
+  // trop-percu devient une avance du lot (voir recordChargePaymentWithStatusUpdate).
+  const payment = await recordChargePaymentWithStatusUpdate(tenantId, {
+    ...parsed,
+    syndicateId: req.params.syndicId,
+    actorUserId: req.user?.userId ?? null
+  });
 
   res.status(201).json({
     success: true,

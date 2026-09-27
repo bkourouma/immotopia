@@ -170,8 +170,13 @@ function buildFundRows(summary: FinanceSummary | null): FundRow[] {
 function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
   return charges.map(charge => {
     const lot = charge.lot as LotWithOwner | undefined;
-    const paid = (charge.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
+    // Lot S2 : `paidAmount`/`outstandingAmount` sont calculés côté API à
+    // partir des affectations ; repli sur `payments[]` si absents.
     const amount = Number(charge.amount);
+    const paid =
+      charge.paidAmount !== undefined
+        ? Number(charge.paidAmount)
+        : (charge.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
     return {
       id: charge.id,
       reference: shortReference(charge.id),
@@ -180,7 +185,8 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
       ownerLabel: ownerLabel(lot?.owner),
       amount,
       paid,
-      outstanding: Math.max(0, amount - paid),
+      outstanding:
+        charge.outstandingAmount !== undefined ? Number(charge.outstandingAmount) : Math.max(0, amount - paid),
       dueDate: charge.dueDate,
       status: charge.status
     };
@@ -518,6 +524,9 @@ export const SyndicFinances: React.FC = () => {
               value={<MoneyValue value={summary?.totals.totalOutstanding} />}
               onClick={() => scrollToSection('finances-appels')}
             />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard label={t('Total des avances')} value={<MoneyValue value={summary?.totals.totalAdvance} />} />
           </Col>
           <Col xs={24} md={8}>
             <StatCard

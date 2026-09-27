@@ -179,6 +179,10 @@ describe('Syndics owner account page', () => {
       if (url.endsWith('/compte/releve')) {
         return Promise.resolve({ data: new Blob(['pdf'], { type: 'application/pdf' }) });
       }
+      // Lot S2 : avance du lot, chargée en même temps que les transactions.
+      if (url.endsWith('/avance')) {
+        return Promise.resolve({ data: { success: true, data: { advance: 0, currency: 'XOF' } } });
+      }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
   });
@@ -220,6 +224,9 @@ describe('Syndics owner account page', () => {
       if (url.endsWith('/compte/transactions')) {
         return Promise.resolve({ data: { success: true, data: [] } });
       }
+      if (url.endsWith('/avance')) {
+        return Promise.resolve({ data: { success: true, data: { advance: 0, currency: 'XOF' } } });
+      }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
 
@@ -244,6 +251,9 @@ describe('Syndics owner account page', () => {
       }
       if (url.endsWith('/compte/transactions')) {
         return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      if (url.endsWith('/avance')) {
+        return Promise.resolve({ data: { success: true, data: { advance: 0, currency: 'XOF' } } });
       }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });

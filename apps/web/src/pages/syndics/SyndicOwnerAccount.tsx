@@ -27,6 +27,7 @@ import {
   getLotOwnerAccount,
   listLotOwnerAccountTransactions
 } from '../../services/syndic-service';
+import { getLotAdvance } from '../../services/syndic-lot-payment-service';
 import { OwnerAccount, OwnerAccountTransaction } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
@@ -98,6 +99,8 @@ export const SyndicOwnerAccount: React.FC = () => {
   const navigate = useNavigate();
   const [account, setAccount] = useState<OwnerAccount | null>(null);
   const [transactions, setTransactions] = useState<OwnerAccountTransaction[]>([]);
+  // Lot S2 : avance du lot, imputée automatiquement sur ses prochains appels.
+  const [advance, setAdvance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,11 +131,12 @@ export const SyndicOwnerAccount: React.FC = () => {
       // cette course côté web, en plus du correctif d'idempotence côté API.
       const accountData = await getLotOwnerAccount(effectiveTenantId, syndicId, lotId);
       setAccount(accountData);
-      const txData = await listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, {
-        page: 1,
-        limit: 100
-      });
+      const [txData, advanceData] = await Promise.all([
+        listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, { page: 1, limit: 100 }),
+        getLotAdvance(effectiveTenantId, syndicId, lotId)
+      ]);
       setTransactions(txData);
+      setAdvance(advanceData.advance);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger le compte lot'));
     } finally {
@@ -238,6 +242,14 @@ export const SyndicOwnerAccount: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <StatCard label={t('Propriétaire')} value={ownerName} />
+              </Col>
+              <Col xs={24} md={8}>
+                <StatCard
+                  label={t('Avance disponible')}
+                  value={<MoneyValue value={advance ?? 0} />}
+                  hint={t('Imputée automatiquement sur les prochains appels de charges')}
+                  tone={advance && advance > 0 ? 'positive' : 'neutral'}
+                />
               </Col>
             </Row>
 

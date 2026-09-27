@@ -56,6 +56,15 @@ jest.mock('../../src/services/lot-registry-service', () => ({
   ACTIVE_SYNDICATE_STATUSES: ['ACTIVE', 'IN_DISPUTE'],
   LOT_QUOTA_REACHED_REASON: 'Quota de lots atteint'
 }));
+
+// Suite de l'audit S1 : le logo prive de la copropriete supprimee est aussi
+// supprime, mais jamais via un vrai acces disque dans ce test unitaire.
+jest.mock('../../src/lib/documents/branding-storage', () => ({
+  deleteBrandingImage: jest.fn(async () => undefined)
+}));
+const mockBrandingStorage = jest.requireMock('../../src/lib/documents/branding-storage') as {
+  deleteBrandingImage: jest.Mock;
+};
 const mockLotRegistry = jest.requireMock('../../src/services/lot-registry-service') as {
   syncLotActivationsTx: jest.Mock;
   assertCapacityTx: jest.Mock;
@@ -390,6 +399,24 @@ describe('Suppression d une copropriete vide uniquement (ecart recette #8)', () 
       { reason: 'SYNDICATE_DELETED' }
     );
     expect(result.id).toBe('syn-1');
+    // Pas de logo pour cette copropriete : rien a supprimer sur le disque.
+    expect(mockBrandingStorage.deleteBrandingImage).toHaveBeenCalledWith('tenant-a', undefined);
+  });
+
+  it('supprime aussi le logo prive de la copropriete apres sa suppression en base', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({
+      id: 'syn-1',
+      logoPath: 'branding/tenant-a/syndicates/syn-1/logo-abc.png'
+    });
+    mockPrisma.syndicate.delete.mockResolvedValueOnce({ id: 'syn-1' });
+
+    await deleteEmptySyndicateByTenant('tenant-a', 'syn-1');
+
+    expect(mockPrisma.syndicate.delete).toHaveBeenCalledWith({ where: { id: 'syn-1', tenantId: 'tenant-a' } });
+    expect(mockBrandingStorage.deleteBrandingImage).toHaveBeenCalledWith(
+      'tenant-a',
+      'branding/tenant-a/syndicates/syn-1/logo-abc.png'
+    );
   });
 });
 

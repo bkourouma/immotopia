@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
 import { httpUrl } from '../safe-url';
 
 const uuidSchema = z.string().uuid();
@@ -19,12 +20,19 @@ export const dateRangeQuerySchema = z
 
 export const createSyndicateSchema = z.object({
   propertyId: z.string().uuid().optional(),
-  name: z.string().min(1, 'Le nom de la copropriete est obligatoire'),
-  address: z.string().min(1, "L'adresse de la copropriete est obligatoire").optional(),
-  registrationNo: z.string().optional(),
+  name: z
+    .string()
+    .min(1, 'Le nom de la copropriete est obligatoire')
+    .max(200, 'Le nom de la copropriete ne doit pas depasser 200 caracteres'),
+  address: z
+    .string()
+    .min(1, "L'adresse de la copropriete est obligatoire")
+    .max(500, "L'adresse de la copropriete ne doit pas depasser 500 caracteres")
+    .optional(),
+  registrationNo: z.string().max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres").optional(),
   fiscalYear: z.number().int().min(1).max(12).optional().default(1),
   syndicManagerId: z.string().uuid().optional(),
-  cadastralReference: z.string().optional(),
+  cadastralReference: z.string().max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres').optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
@@ -34,12 +42,28 @@ export const createSyndicateSchema = z.object({
 export const updateSyndicateSchema = z
   .object({
     propertyId: z.string().uuid().optional(),
-    name: z.string().min(1, 'Le nom de la copropriete est obligatoire').optional(),
-    address: z.string().min(1, "L'adresse de la copropriete est obligatoire").optional(),
-    registrationNo: z.string().nullable().optional(),
+    name: z
+      .string()
+      .min(1, 'Le nom de la copropriete est obligatoire')
+      .max(200, 'Le nom de la copropriete ne doit pas depasser 200 caracteres')
+      .optional(),
+    address: z
+      .string()
+      .min(1, "L'adresse de la copropriete est obligatoire")
+      .max(500, "L'adresse de la copropriete ne doit pas depasser 500 caracteres")
+      .optional(),
+    registrationNo: z
+      .string()
+      .max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres")
+      .nullable()
+      .optional(),
     fiscalYear: z.number().int().min(1).max(12).optional(),
     syndicManagerId: z.string().uuid().nullable().optional(),
-    cadastralReference: z.string().nullable().optional(),
+    cadastralReference: z
+      .string()
+      .max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres')
+      .nullable()
+      .optional(),
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
@@ -95,6 +119,8 @@ export const createChargeCallSchema = z
     lotIds: z.array(z.string().uuid()).optional(),
     applyToAllLots: z.boolean().optional().default(false),
     period: z.string().min(1, 'La periode est obligatoire'),
+    // Lot S2 : bornes facultatives ; deduites du libelle quand elles manquent.
+    ...periodBoundsFields,
     amount: z.number().positive(),
     currency: z.string().default('XOF'),
     dueDate: z.coerce.date(),
@@ -103,6 +129,7 @@ export const createChargeCallSchema = z
     recurrenceCount: z.number().int().min(1).max(24).optional()
   })
   .superRefine((value, ctx) => {
+    checkPeriodBounds(value, ctx);
     if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -262,16 +289,19 @@ export const updateContractSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du contrat'
   });
 
-export const createChargeCallBatchSchema = z.object({
-  syndicateId: uuidSchema,
-  label: z.string().min(1, 'Le libelle du batch est obligatoire'),
-  period: z.string().min(1, 'La periode est obligatoire'),
-  dueDate: z.coerce.date(),
-  batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-  budgetId: uuidSchema.optional(),
-  totalAmount: z.number().positive(),
-  currency: z.string().default('XOF')
-});
+export const createChargeCallBatchSchema = z
+  .object({
+    syndicateId: uuidSchema,
+    label: z.string().min(1, 'Le libelle du batch est obligatoire'),
+    period: z.string().min(1, 'La periode est obligatoire'),
+    ...periodBoundsFields,
+    dueDate: z.coerce.date(),
+    batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
+    budgetId: uuidSchema.optional(),
+    totalAmount: z.number().positive(),
+    currency: z.string().default('XOF')
+  })
+  .superRefine(checkPeriodBounds);
 
 export const createReminderSchema = z.object({
   chargeCallId: uuidSchema,
@@ -339,13 +369,16 @@ export const updateBudgetSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du budget'
   });
 
-export const generateBudgetChargeCallsSchema = z.object({
-  label: z.string().min(1, 'Le libelle du batch est obligatoire'),
-  period: z.string().min(1, 'La periode est obligatoire'),
-  dueDate: z.coerce.date(),
-  batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-  currency: z.string().default('XOF')
-});
+export const generateBudgetChargeCallsSchema = z
+  .object({
+    label: z.string().min(1, 'Le libelle du batch est obligatoire'),
+    period: z.string().min(1, 'La periode est obligatoire'),
+    ...periodBoundsFields,
+    dueDate: z.coerce.date(),
+    batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
+    currency: z.string().default('XOF')
+  })
+  .superRefine(checkPeriodBounds);
 
 export const budgetListQuerySchema = z.object({
   fiscalYear: z.coerce.number().int().min(2000).optional(),
