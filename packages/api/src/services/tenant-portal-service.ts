@@ -33,6 +33,11 @@ import {
   tenantPortalTicketFilter
 } from '../lib/maintenance/portal-visibility';
 import { NotFoundError } from '../middleware/error-middleware';
+import {
+  PORTAL_RENTAL_DOCUMENT_SELECT,
+  toPortalAttachment,
+  toPortalRentalDocument
+} from '../lib/files/portal-files';
 
 export class TenantPortalService {
   /**
@@ -375,19 +380,23 @@ export class TenantPortalService {
 
       const coRenters = coRentersRecords.map(cr => cr.renterClient);
 
-      // Get associated documents (T038) - grouped by type
-      const documents = await prisma.rentalDocument.findMany({
-        where: {
-          lease_id: leaseId,
-          tenant_id: tenantId,
-          status: {
-            not: 'VOID'
+      // Get associated documents (T038) - grouped by type. Sans chemin disque
+      // ni URL de stockage : `downloadPath` (lib/files/portal-files.ts).
+      const documents = (
+        await prisma.rentalDocument.findMany({
+          where: {
+            lease_id: leaseId,
+            tenant_id: tenantId,
+            status: {
+              not: 'VOID'
+            }
+          },
+          select: PORTAL_RENTAL_DOCUMENT_SELECT,
+          orderBy: {
+            issued_at: 'desc'
           }
-        },
-        orderBy: {
-          issued_at: 'desc'
-        }
-      });
+        })
+      ).map(document => toPortalRentalDocument(document, 'tenant'));
 
       // Group documents by type
       const groupedByType: Record<string, any[]> = {};
@@ -1159,7 +1168,10 @@ export class TenantPortalService {
         });
       }
 
-      return paymentDeclaration;
+      // La preuve reste privée : ni son chemin de stockage, ni son URL
+      // `/uploads/portal/payments/...` ne reviennent au portail.
+      const { proof_file_url: proofFileUrlStored, ...declaration } = paymentDeclaration;
+      return { ...declaration, hasProof: Boolean(proofFileUrlStored) };
     } catch (error) {
       logger.error('Error declaring payment', {
         error,
@@ -1672,7 +1684,14 @@ export class TenantPortalService {
       if (!visible) {
         throw new NotFoundError('Ticket introuvable');
       }
-      const ticket = await getTicketById(tenantId, visible.id);
+      const { attachments, ...details } = await getTicketById(tenantId, visible.id);
+      // Pièces jointes sans leur `file_url` de stockage : `toPortalAttachment`
+      // ne recopie que l'identifiant, le nom, le type, la taille, la date, et
+      // ajoute `downloadPath`.
+      const ticket = {
+        ...details,
+        attachments: (attachments ?? []).map(attachment => toPortalAttachment(attachment, visible.id, 'tenant'))
+      };
 
       logger.info('Maintenance ticket details retrieved', {
         tenantClientId,
@@ -1780,12 +1799,15 @@ export class TenantPortalService {
         where.type = filters.type;
       }
 
-      const documents = await prisma.rentalDocument.findMany({
-        where,
-        orderBy: {
-          issued_at: 'desc'
-        }
-      });
+      const documents = (
+        await prisma.rentalDocument.findMany({
+          where,
+          select: PORTAL_RENTAL_DOCUMENT_SELECT,
+          orderBy: {
+            issued_at: 'desc'
+          }
+        })
+      ).map(document => toPortalRentalDocument(document, 'tenant'));
 
       // Group documents by type (T104)
       const groupedByType: Record<string, any[]> = {};

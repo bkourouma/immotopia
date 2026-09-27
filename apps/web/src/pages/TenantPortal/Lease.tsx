@@ -86,8 +86,7 @@ interface LeaseDetailsData {
     id: string;
     type: string;
     document_number: string | null;
-    file_url: string | null;
-    file_path: string | null;
+    downloadPath: string | null;
     issued_at: string | null;
     title: string | null;
   }>;
@@ -97,8 +96,7 @@ interface LeaseDetailsData {
       id: string;
       type: string;
       document_number: string | null;
-      file_url: string | null;
-      file_path: string | null;
+      downloadPath: string | null;
       issued_at: string | null;
       title: string | null;
     }>
@@ -426,7 +424,7 @@ export default function TenantLease() {
                           type="link"
                           icon={<DownloadOutlined />}
                           onClick={() => handleDownloadDocument(doc.id)}
-                          disabled={!doc.file_url && !doc.file_path}
+                          disabled={!doc.downloadPath}
                         >
                           {t('Télécharger')}
                         </Button>

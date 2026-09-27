@@ -14,9 +14,13 @@
  *   - opérations : `findMany`, `findFirst`, `findUnique`, `count`, `create`,
  *     `update`, `updateMany`, et `$transaction(fn)`.
  *
- * `select` et `include` sont ignorés : la ligne complète est rendue. Les
- * relations dont un appelant a besoin (ex. `userRole.role.permissions`) sont
- * donc stockées directement dans la ligne par le test.
+ * Les relations dont un appelant a besoin (ex. `userRole.role.permissions`)
+ * sont stockées directement dans la ligne par le test. `select` est appliqué
+ * — seuls les champs demandés sortent, relations comprises (`select`
+ * imbriqué) — : une réponse qui laisserait fuir un champ non sélectionné s'y
+ * verrait comme sur Postgres. `include` rend la ligne entière, en appliquant
+ * le `select` d'une relation incluse. `aggregate` (`_sum`, `_count`) et
+ * `groupBy` (`by`, `_count`) couvrent les tableaux de bord des portails.
  */
 
 import { randomUUID } from 'crypto';
@@ -153,12 +157,36 @@ function copy<T>(row: T): T {
   return row && typeof row === 'object' ? { ...(row as any) } : row;
 }
 
+/** Applique `select` / `include` (voir l'en-tête). */
+function project(row: any, args: any): any {
+  if (row === null || row === undefined || typeof row !== 'object') return row;
+  if (Array.isArray(row)) return row.map(item => project(item, args));
+  if (args?.select) {
+    const out: Row = {};
+    for (const [key, wanted] of Object.entries(args.select)) {
+      if (!wanted) continue;
+      out[key] = wanted === true ? row[key] : project(row[key], wanted);
+    }
+    return out;
+  }
+  if (args?.include) {
+    const out: Row = { ...row };
+    for (const [key, wanted] of Object.entries(args.include)) {
+      if (wanted && typeof wanted === 'object') out[key] = project(row[key], wanted);
+    }
+    return out;
+  }
+  return copy(row);
+}
+
 export interface FakeModel {
   rows: Row[];
   findMany: jest.Mock;
   findFirst: jest.Mock;
   findUnique: jest.Mock;
   count: jest.Mock;
+  aggregate: jest.Mock;
+  groupBy: jest.Mock;
   create: jest.Mock;
   update: jest.Mock;
   updateMany: jest.Mock;
@@ -174,15 +202,39 @@ function createModel(name: string): FakeModel {
   model.findMany = jest.fn(async (args: any = {}) => {
     const rows = find(args);
     const sliced = args.take !== undefined ? rows.slice(args.skip ?? 0, (args.skip ?? 0) + args.take) : rows;
-    return sliced.map(copy);
+    return sliced.map((row: Row) => project(row, args));
   });
-  model.findFirst = jest.fn(async (args: any = {}) => copy(find(args)[0] ?? null));
-  model.findUnique = jest.fn(async (args: any = {}) => copy(find(args)[0] ?? null));
+  model.findFirst = jest.fn(async (args: any = {}) => project(find(args)[0] ?? null, args));
+  model.findUnique = jest.fn(async (args: any = {}) => project(find(args)[0] ?? null, args));
   model.count = jest.fn(async (args: any = {}) => find(args).length);
+  model.aggregate = jest.fn(async (args: any = {}) => {
+    const rows = find(args);
+    const result: Row = {};
+    if (args._sum) {
+      result._sum = {};
+      for (const field of Object.keys(args._sum)) {
+        const values = rows.map((row: Row) => row[field]).filter((value: any) => value !== null && value !== undefined);
+        result._sum[field] = values.length ? values.reduce((sum: number, value: any) => sum + Number(value), 0) : null;
+      }
+    }
+    if (args._count) result._count = rows.length;
+    return result;
+  });
+  model.groupBy = jest.fn(async (args: any = {}) => {
+    const groups = new Map<string, Row[]>();
+    for (const row of find(args)) {
+      const key = JSON.stringify(args.by.map((field: string) => row[field]));
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    return Array.from(groups.values()).map(rows => ({
+      ...Object.fromEntries(args.by.map((field: string) => [field, rows[0][field]])),
+      _count: rows.length
+    }));
+  });
   model.create = jest.fn(async (args: any) => {
     const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...args.data };
     model.rows.push(row);
-    return copy(row);
+    return project(row, args);
   });
   model.update = jest.fn(async (args: any) => {
     const row = model.rows.find((candidate: Row) => matchesWhere(candidate, args.where));
@@ -227,7 +279,12 @@ export const FAKE_MODEL_NAMES = [
   'maintenanceTicketStatusHistory',
   'maintenanceTicketComment',
   'propertyDocument',
-  'rentalPaymentDeclaration'
+  'rentalPaymentDeclaration',
+  'propertyMedia',
+  'rentalDocument',
+  'rentalLeaseCoRenter',
+  'rentalPayment',
+  'rentalPaymentAllocation'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {
