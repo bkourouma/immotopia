@@ -8,6 +8,11 @@ import { LOT_NOT_FOUND, lotInScope } from './coowner-portal-finance';
 import type { CoOwnerStatementQuery } from './coowner-portal-schemas';
 import { roundMoney } from './finance-utils';
 import { buildOwnerAccountStatementPdf } from './owner-account-statement';
+import {
+  applyChronologicalBalances,
+  chronologicalBalanceStrictlyBefore,
+  type RunningBalanceMovement
+} from './owner-account-running-balance';
 
 /**
  * Relevé de compte d'un lot en PDF, côté portail copropriétaire (lot S5).
@@ -26,6 +31,11 @@ import { buildOwnerAccountStatementPdf } from './owner-account-statement';
  *     d'ouverture celui qui précède la première ligne imprimée ;
  *   - document informatif : ni signature ni cachet de l'émetteur (images
  *     extractibles d'un PDF), seuls les logos sont conservés (audit S5).
+ *
+ * Les soldes imprimés sont ceux de l'écran du compte de lot
+ * (`getCoOwnerLotAccount`) : solde cumulé chronologique recalculé sur TOUT le
+ * compte (`applyChronologicalBalances`, BUG-2026-09-27-006), jamais le
+ * `balanceAfter` figé dans l'ordre de saisie.
  */
 
 /** Lignes imprimées par le générateur de relevé (une page). */
@@ -42,7 +52,8 @@ export function statementDateWhere(from?: Date, to?: Date): Prisma.DateTimeFilte
   };
 }
 
-type StatementRow = {
+export type StatementRow = {
+  id: string;
   transactionDate: Date;
   type: string;
   label: string;
@@ -51,19 +62,33 @@ type StatementRow = {
   balanceAfter: Prisma.Decimal | number | string;
 };
 
-/** Solde d'ouverture : avant le premier mouvement de la période, sinon le dernier solde antérieur. */
-async function openingBalance(accountId: string, rows: StatementRow[], from?: Date): Promise<number> {
-  if (rows.length > 0) {
-    const first = rows[0];
-    return roundMoney(Number(first.balanceAfter) - Number(first.debit ?? 0) + Number(first.credit ?? 0));
-  }
-  if (!from) return 0;
-  const previous = await prisma.ownerAccountTransaction.findFirst({
-    where: { accountId, transactionDate: { lt: from } },
-    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
-    select: { balanceAfter: true }
+/** Tous les mouvements du compte : base du solde cumulé chronologique. */
+async function loadAllMovements(accountId: string): Promise<RunningBalanceMovement[]> {
+  return prisma.ownerAccountTransaction.findMany({
+    where: { accountId },
+    select: { id: true, transactionDate: true, createdAt: true, debit: true, credit: true, balanceAfter: true }
   });
-  return previous ? roundMoney(Number(previous.balanceAfter)) : 0;
+}
+
+/**
+ * Soldes du relevé, recalculés dans l'ordre chronologique comme à l'écran.
+ * Ouverture : solde avant la première ligne imprimée ; sans ligne, solde
+ * atteint juste avant le début de la période.
+ */
+export function statementBalances(
+  rows: StatementRow[],
+  allMovements: RunningBalanceMovement[],
+  from: Date
+): { rows: StatementRow[]; opening: number; closing: number } {
+  const balanced = applyChronologicalBalances(rows, allMovements);
+  if (balanced.length === 0) {
+    const opening = chronologicalBalanceStrictlyBefore(allMovements, from);
+    return { rows: balanced, opening, closing: opening };
+  }
+  const first = balanced[0];
+  const opening = roundMoney(Number(first.balanceAfter) - Number(first.debit ?? 0) + Number(first.credit ?? 0));
+  const closing = roundMoney(Number(balanced[balanced.length - 1].balanceAfter));
+  return { rows: balanced, opening, closing };
 }
 
 /** Les lignes les plus récentes de la période, remises dans l'ordre chronologique. */
@@ -71,9 +96,10 @@ async function loadStatementRows(accountId: string, from: Date, to?: Date): Prom
   const dates = statementDateWhere(from, to);
   const latest = await prisma.ownerAccountTransaction.findMany({
     where: { accountId, ...(dates ? { transactionDate: dates } : {}) },
-    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+    // Même ordre total que l'écran et que `compareChronologically`.
+    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     take: STATEMENT_MAX_ROWS,
-    select: { transactionDate: true, type: true, label: true, debit: true, credit: true, balanceAfter: true }
+    select: { id: true, transactionDate: true, type: true, label: true, debit: true, credit: true, balanceAfter: true }
   });
   return latest.reverse();
 }
@@ -113,9 +139,9 @@ export async function buildCoOwnerLotStatement(scope: CoOwnerPortalScope, lotId:
     select: { id: true, currency: true }
   });
   const from = statementStart(query.from, lotScope.ownedSince);
-  const rows = account ? await loadStatementRows(account.id, from, query.to) : [];
-  const opening = account ? await openingBalance(account.id, rows, from) : 0;
-  const closing = rows.length > 0 ? roundMoney(Number(rows[rows.length - 1].balanceAfter)) : opening;
+  const { rows, opening, closing } = account
+    ? statementBalances(await loadStatementRows(account.id, from, query.to), await loadAllMovements(account.id), from)
+    : { rows: [] as StatementRow[], opening: 0, closing: 0 };
 
   const branding = informativeBranding(await resolveDocumentBranding(scope.tenantId, syndicate.id));
   const buffer = await buildOwnerAccountStatementPdf(

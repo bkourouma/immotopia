@@ -29,7 +29,8 @@ import { lastDayOfMonth, utcDay } from './period';
  *
  * Reçus et quittances : un document porte le NOM du copropriétaire à qui il
  * a été émis. Le portail ne rend donc que les documents des lots du
- * copropriétaire émis à l'une de SES fiches (ou sans destinataire) : les
+ * copropriétaire émis à l'une de SES fiches, ou sans destinataire mais
+ * postérieurs à l'acquisition du lot (`visibleReceiptsWhere`) : les
  * quittances de l'ancien propriétaire d'un lot restent réservées à la
  * gestion.
  */
@@ -51,13 +52,36 @@ export function lotInScope(scope: CoOwnerPortalScope, lotId: string): CoOwnerLot
   return lot;
 }
 
-/** Documents visibles : lots du périmètre, émis à l'une des fiches du copropriétaire ou sans destinataire. */
-function visibleReceiptsWhere(scope: CoOwnerPortalScope, lotIds: string[]): Prisma.SyndicChargeReceiptWhereInput {
+/**
+ * Documents visibles des lots `lotIds` du périmètre :
+ *   - émis à l'une des fiches du copropriétaire : toujours ;
+ *   - sans destinataire (`contactId` nul) : seulement s'ils sont postérieurs
+ *     à l'acquisition du lot, c'est-à-dire émis à partir de `ownedSince` ET,
+ *     s'ils portent une période, dont la période commence à partir de
+ *     `ownedSince`. Les deux bornes à la fois : même critère que les appels
+ *     (`ownedChargeCallsWhere`, début de période) et que les mouvements du
+ *     compte de lot (date >= `ownedSince`). Un document sans destinataire
+ *     antérieur porte sur les paiements de l'ancien propriétaire (audit S5).
+ * Hors de ces cas, un document répond le même 404 qu'un document inexistant.
+ */
+export function visibleReceiptsWhere(
+  scope: CoOwnerPortalScope,
+  lotIds: string[]
+): Prisma.SyndicChargeReceiptWhereInput {
+  const owned = scope.lots.filter(lot => lotIds.includes(lot.lotId));
   return {
     tenantId: scope.tenantId,
     syndicateId: { in: scope.syndicateIds },
     lotId: { in: lotIds },
-    OR: [{ contactId: { in: scope.contactIds } }, { contactId: null }]
+    OR: [
+      { contactId: { in: scope.contactIds } },
+      ...owned.map(lot => ({
+        contactId: null,
+        lotId: lot.lotId,
+        issuedAt: { gte: lot.ownedSince },
+        OR: [{ periodStart: null }, { periodStart: { gte: lot.ownedSince } }]
+      }))
+    ]
   };
 }
 

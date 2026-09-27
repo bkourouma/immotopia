@@ -1042,6 +1042,180 @@ describe('Historique de l’ancien propriétaire du lot', () => {
     expect(payload.closingBalance).toBe(50000);
     expect(payload.ownerName).toBe('Awa Test');
   });
+
+  it('/quittances : un document sans destinataire antérieur à l’acquisition est invisible, son fichier 404', async () => {
+    acquiredOn('2026-01-10');
+    const R_NULL_BEFORE = id(506);
+    const R_NULL_AFTER = id(507);
+    const R_NULL_OLD_PERIOD = id(508);
+    const orphan = (receiptId: string, number: string, extra: any) => ({
+      id: receiptId,
+      tenantId: TENANT_A,
+      syndicateId: S1,
+      lotId: L1,
+      contactId: null,
+      kind: 'RECEIPT',
+      number,
+      issuerKey: MANDANT,
+      chargePaymentId: null,
+      chargeCallId: null,
+      periodStart: null,
+      periodEnd: null,
+      periodLabel: null,
+      amount: 7000,
+      currency: 'XOF',
+      snapshot: snapshot('RECEIPT', number, 'Sans destinataire'),
+      // Pas de fichier : le 404 ne peut venir que du périmètre.
+      filePath: null,
+      issuedAt: new Date('2026-02-01'),
+      emailedAt: null,
+      createdById: 'user-mariam',
+      ...extra
+    });
+    mockPrisma.syndicChargeReceipt.rows.push(
+      // Émis avant l'acquisition : paiement de l'ancien propriétaire.
+      orphan(R_NULL_BEFORE, 'R-2026-000090', { issuedAt: new Date('2026-01-05') }),
+      // Émis après l'acquisition, sans période : le sien.
+      orphan(R_NULL_AFTER, 'R-2026-000091', {}),
+      // Émis après, mais sur une période commencée avant l'acquisition.
+      orphan(R_NULL_OLD_PERIOD, 'Q-2026-000092', {
+        kind: 'QUITTANCE',
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-01-31'),
+        periodLabel: '2026-01'
+      })
+    );
+
+    const list = await request(app).get(`${BASE}/quittances?lotId=${L1}`).set(as(USER_AWA));
+    expect(list.status).toBe(200);
+    const ids = list.body.data.items.map((item: any) => item.id);
+    expect(ids).toContain(R_NULL_AFTER);
+    expect(ids).not.toContain(R_NULL_BEFORE);
+    expect(ids).not.toContain(R_NULL_OLD_PERIOD);
+    // Les documents émis à SA fiche restent visibles, même sur une période antérieure.
+    expect(ids).toContain(R_L1_QUITTANCE);
+
+    const missing = await request(app)
+      .get(`${BASE}/quittances/${id(999)}/fichier`)
+      .set(as(USER_AWA));
+    for (const receiptId of [R_NULL_BEFORE, R_NULL_OLD_PERIOD]) {
+      const res = await request(app).get(`${BASE}/quittances/${receiptId}/fichier`).set(as(USER_AWA));
+      expect(res.status).toBe(404);
+      expect(res.body.message).toBe(missing.body.message);
+    }
+    const after = await request(app)
+      .get(`${BASE}/quittances/${R_NULL_AFTER}/fichier`)
+      .set(as(USER_AWA))
+      .buffer(true)
+      .parse(binary);
+    expect(after.status).toBe(200);
+    expect(after.body.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('/paiements : un reçu sans destinataire antérieur à l’acquisition n’est pas rattaché au paiement', async () => {
+    acquiredOn('2026-01-10');
+    mockPrisma.syndicChargeReceipt.rows.push({
+      id: id(509),
+      tenantId: TENANT_A,
+      syndicateId: S1,
+      lotId: L1,
+      contactId: null,
+      kind: 'RECEIPT',
+      number: 'R-2026-000093',
+      issuerKey: MANDANT,
+      chargePaymentId: PAY_L1,
+      chargeCallId: null,
+      periodStart: null,
+      periodEnd: null,
+      periodLabel: null,
+      amount: 50000,
+      currency: 'XOF',
+      snapshot: snapshot('RECEIPT', 'R-2026-000093', 'Sans destinataire'),
+      filePath: null,
+      issuedAt: new Date('2026-01-09'),
+      emailedAt: null,
+      createdById: 'user-mariam'
+    });
+
+    const res = await request(app).get(`${BASE}/paiements?lotId=${L1}`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.items[0].documents.map((doc: any) => doc.id)).toEqual([R_L1_RECEIPT]);
+  });
+});
+
+describe('Relevé du portail : mêmes soldes que l’écran du compte', () => {
+  beforeEach(() => statementMock.mockClear());
+
+  it('deux mouvements saisis dans le désordre : soldes du relevé identiques à ceux de l’écran', async () => {
+    // Saisi en premier mais daté après l'autre : le solde stocké suit la saisie.
+    mockPrisma.ownerAccountTransaction.rows.push(
+      {
+        id: 'tx-late',
+        accountId: ACCOUNT_L1,
+        transactionDate: new Date('2026-02-28'),
+        createdAt: new Date('2026-02-10'),
+        type: 'CHARGE_CALL',
+        label: 'Appel T2',
+        debit: 30000,
+        credit: null,
+        balanceAfter: 80000
+      },
+      {
+        id: 'tx-early',
+        accountId: ACCOUNT_L1,
+        transactionDate: new Date('2026-02-05'),
+        createdAt: new Date('2026-02-20'),
+        type: 'PAYMENT',
+        label: 'Versement tardif',
+        debit: null,
+        credit: 20000,
+        balanceAfter: 60000
+      }
+    );
+
+    const screen = await request(app).get(`${BASE}/lots/${L1}/compte`).set(as(USER_AWA));
+    expect(screen.status).toBe(200);
+    const screenBalances = new Map<string, number>(
+      screen.body.data.transactions.map((tx: any) => [tx.label, tx.balanceAfter])
+    );
+
+    const res = await request(app).get(`${BASE}/lots/${L1}/releve`).set(as(USER_AWA)).buffer(true).parse(binary);
+    expect(res.status).toBe(200);
+    const [payload] = statementMock.mock.calls[0];
+    expect(payload.transactions.map(tx => tx.label)).toEqual(['Appel T1', 'Paiement', 'Versement tardif', 'Appel T2']);
+    for (const tx of payload.transactions) {
+      expect(tx.balanceAfter).toBe(screenBalances.get(tx.label));
+    }
+    expect(payload.transactions.map(tx => tx.balanceAfter)).toEqual([90000, 50000, 30000, 60000]);
+    expect(payload.openingBalance).toBe(0);
+    expect(payload.closingBalance).toBe(60000);
+  });
+
+  it('période sans mouvement : ouverture et clôture au solde chronologique d’avant la période', async () => {
+    mockPrisma.ownerAccountTransaction.rows.push({
+      id: 'tx-late',
+      accountId: ACCOUNT_L1,
+      transactionDate: new Date('2026-02-28'),
+      createdAt: new Date('2026-01-10'),
+      type: 'CHARGE_CALL',
+      label: 'Appel T2',
+      debit: 30000,
+      credit: null,
+      // Saisi entre tx-1 et tx-2 : solde stocké 120 000, chronologiquement 80 000.
+      balanceAfter: 120000
+    });
+
+    await request(app)
+      .get(`${BASE}/lots/${L1}/releve?from=2026-06-01&to=2026-06-30`)
+      .set(as(USER_AWA))
+      .buffer(true)
+      .parse(binary);
+
+    const [payload] = statementMock.mock.calls[0];
+    expect(payload.transactions).toEqual([]);
+    expect(payload.openingBalance).toBe(80000);
+    expect(payload.closingBalance).toBe(80000);
+  });
 });
 
 describe('Relevé du portail : informatif et récent', () => {
