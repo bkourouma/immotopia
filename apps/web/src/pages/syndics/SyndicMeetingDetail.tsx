@@ -1,6 +1,21 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { App, Alert, Button, Card, Form, Input, Modal, Select, Space, Spin, Tag, TimePicker, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  TimePicker,
+  Tooltip,
+  Typography
+} from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
@@ -13,6 +28,7 @@ import {
   isMeetingFrozen,
   majorityRuleHint,
   majorityRuleOptions,
+  meetingFrozenReason,
   meetingStatusColors
 } from '../../components/syndics/meeting-governance';
 import {
@@ -309,20 +325,26 @@ export const SyndicMeetingDetail: React.FC = () => {
               Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
               {meetingTypeLabels[meeting.type]}
             </Paragraph>
-            <Form form={meetingMetaForm} layout="inline">
+            <Form form={meetingMetaForm} layout="inline" disabled={frozen}>
               <Form.Item label={t('Heure début')} name="startTime">
-                <TimePicker format="HH:mm" minuteStep={5} allowClear />
+                <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
               </Form.Item>
               <Form.Item label={t('Heure fin')} name="endTime">
-                <TimePicker format="HH:mm" minuteStep={5} allowClear />
+                <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
               </Form.Item>
               <Form.Item label={t('Lieu')} name="location">
-                <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} />
+                <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} disabled={frozen} />
               </Form.Item>
               <Form.Item>
-                <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
-                  {t('Enregistrer')}
-                </Button>
+                {frozen ? (
+                  <Tooltip title={meetingFrozenReason(meeting.status)}>
+                    <Button disabled>{t('Enregistrer')}</Button>
+                  </Tooltip>
+                ) : (
+                  <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
+                    {t('Enregistrer')}
+                  </Button>
+                )}
               </Form.Item>
             </Form>
           </Space>
@@ -362,9 +384,17 @@ export const SyndicMeetingDetail: React.FC = () => {
         <Card
           title={t('Ordre du jour')}
           extra={
-            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateAgendaModal}>
-              {t('Ajouter un point')}
-            </Button>
+            frozen ? (
+              <Tooltip title={meetingFrozenReason(meeting.status)}>
+                <Button size="small" type="primary" icon={<PlusOutlined />} disabled>
+                  {t('Ajouter un point')}
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateAgendaModal}>
+                {t('Ajouter un point')}
+              </Button>
+            )
           }
         >
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -381,18 +411,34 @@ export const SyndicMeetingDetail: React.FC = () => {
                     title={`${item.orderIndex}. ${item.title}`}
                     extra={
                       <Space>
-                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditAgendaModal(item)}>
-                          {t('Modifier')}
-                        </Button>
-                        <Button
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          loading={deletingAgendaId === item.id}
-                          onClick={() => void handleDeleteAgenda(item.id)}
-                        >
-                          {t('Supprimer')}
-                        </Button>
+                        {frozen ? (
+                          <Tooltip title={meetingFrozenReason(meeting.status)}>
+                            <Button size="small" icon={<EditOutlined />} disabled>
+                              {t('Modifier')}
+                            </Button>
+                          </Tooltip>
+                        ) : (
+                          <Button size="small" icon={<EditOutlined />} onClick={() => openEditAgendaModal(item)}>
+                            {t('Modifier')}
+                          </Button>
+                        )}
+                        {frozen ? (
+                          <Tooltip title={meetingFrozenReason(meeting.status)}>
+                            <Button size="small" danger icon={<DeleteOutlined />} disabled>
+                              {t('Supprimer')}
+                            </Button>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            loading={deletingAgendaId === item.id}
+                            onClick={() => void handleDeleteAgenda(item.id)}
+                          >
+                            {t('Supprimer')}
+                          </Button>
+                        )}
                       </Space>
                     }
                   >
