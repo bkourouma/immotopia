@@ -10,6 +10,14 @@ jest.mock('@prisma/client', () => {
     },
     chargeCall: {
       createMany: jest.fn(),
+      // `generateChargeCallsFromBudget` cree desormais chaque ChargeCall un
+      // par un (au lieu d'un `createMany` groupe) pour recuperer son
+      // identifiant et l'accrocher a une ecriture de compte de lot — voir
+      // le commentaire dans queries.ts (constat de recette, module 7 du
+      // scenario). Ce mock ne definit pas `tx.ownerAccount` : le debit du
+      // grand livre se no-op donc silencieusement (supportsOwnerAccount),
+      // seul `create` importe pour ce test.
+      create: jest.fn(),
     },
   };
 
@@ -115,6 +123,9 @@ describe('Syndics budget queries - US4', () => {
     });
     mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
     mockTx.chargeCallBatch.findUnique.mockResolvedValue({ id: 'batch-1', chargeCalls: [{ id: 'c1' }, { id: 'c2' }] });
+    mockTx.chargeCall.create
+      .mockResolvedValueOnce({ id: 'c1', lotId: 'lot-1' })
+      .mockResolvedValueOnce({ id: 'c2', lotId: 'lot-2' });
 
     const result = await generateChargeCallsFromBudget('tenant-1', 'syndic-1', 'budget-1', {
       label: 'Appels Q2',
@@ -123,7 +134,9 @@ describe('Syndics budget queries - US4', () => {
       batchType: 'REGULAR',
     });
 
-    expect(mockTx.chargeCall.createMany).toHaveBeenCalled();
+    // Un ChargeCall par lot, cree individuellement (pas de createMany) pour
+    // recuperer son identifiant et debiter le compte du lot correspondant.
+    expect(mockTx.chargeCall.create).toHaveBeenCalledTimes(2);
     expect(result?.id).toBe('batch-1');
   });
 });
