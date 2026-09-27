@@ -36,7 +36,7 @@ const OUTSIDE_SUBSCRIPTION: Array<{ prefix: string; exact?: boolean; reason: str
   { prefix: '/api/auth', reason: 'Authentification.' },
   { prefix: '/api/admin', reason: 'Super-admin (permissions PLATFORM_*).' },
   { prefix: '/api/roles', reason: 'Catalogue des roles, commun a la plateforme.' },
-  { prefix: '/api/portal', reason: 'Portails locataire et proprietaire : jamais bloques (D8).' },
+  { prefix: '/api/portal', reason: 'Portails locataire, proprietaire et coproprietaire : jamais bloques (D8).' },
   { prefix: '/api/payment-gateway', reason: 'IPN et simulateur PaySecureHub : jamais bloques.' },
   { prefix: '/api/whatsapp', reason: 'Webhook WhatsApp.' },
   { prefix: '/api/geographic', reason: 'Referentiel public.' },

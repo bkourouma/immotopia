@@ -5,6 +5,10 @@ import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-m
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import { uploadDocument } from '../middleware/upload-middleware';
 import {
+  inviteCoOwnerToPortalHandler,
+  revokeCoOwnerPortalAccessHandler
+} from '../controllers/syndic-coowner-portal-controller';
+import {
   listSyndicsHandler,
   createSyndicHandler,
   getSyndicHandler,
@@ -277,6 +281,18 @@ router.patch(
   '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires/:ownerProfileId',
   requirePropertyPermission('PROPERTIES_EDIT'),
   updateLotOwnerProfileHandler
+);
+// Portail coproprietaire : ouvrir (invitation, lien affiche) ou fermer l'acces
+// du contact de ce profil. Voir services/syndic-coowner-portal-service.ts.
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires/:ownerProfileId/invitation-portail',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  inviteCoOwnerToPortalHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires/:ownerProfileId/invitation-portail',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  revokeCoOwnerPortalAccessHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/profils/locataires',
