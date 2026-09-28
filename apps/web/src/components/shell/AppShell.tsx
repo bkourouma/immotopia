@@ -6,7 +6,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useDisabledMenuKeys, useFeatureAccess, useFilteredNavigation } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 import { withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
@@ -116,7 +116,7 @@ export const AppShell: React.FC = () => {
    */
   const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
 
-  const personaNav = persona && persona !== 'non-rattache' ? NAVIGATION[persona] : null;
+  const personaNav = persona && persona !== 'non-rattache' ? getNavigation()[persona] : null;
 
   /**
    * Menus coupes pour ce compte (Admin > Roles et permissions > Menus).

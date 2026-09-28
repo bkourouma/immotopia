@@ -1,9 +1,17 @@
 import React, { createContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { login as loginApi, logout as logoutApi, getMe } from '../services/auth-service';
-import { User, LoginCredentials, AuthContextType, TenantMembership, TenantClient, AvailableTenant } from '../types/auth-types';
+import {
+  User,
+  LoginCredentials,
+  AuthContextType,
+  TenantMembership,
+  TenantClient,
+  AvailableTenant
+} from '../types/auth-types';
 import apiClient, { refreshSession } from '../utils/api-client';
 import { getStoredActiveTenantId, setStoredActiveTenantId } from '../utils/active-tenant';
 import { t } from '../i18n/t';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/config';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -298,6 +306,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(null);
       setIsAuthenticated(false);
       setIsLoading(false);
+      // Un choix de langue explicite mémorisé localement (`LanguageProvider`,
+      // `persist: true`) doit rester au compte qui l'a fait, pas traîner sur
+      // un poste partagé : sans ce nettoyage, `LanguagePreferenceSync`
+      // prenait ce reliquat pour un choix du COMPTE SUIVANT à se connecter
+      // sur ce navigateur et le lui remontait, même sans préférence
+      // enregistrée. Sans risque de perte : si ce choix venait d'être fait
+      // en session, il est déjà sur le compte qui se déconnecte.
+      try {
+        window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+      } catch {
+        // Stockage refusé : rien à nettoyer.
+      }
       window.location.href = '/login';
     }
   };

@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { NAVIGATION, SECTION_LABELS } from '../../navigation/model';
+import { getNavigation, getSectionLabels } from '../../navigation/model';
 import type { PersonaId } from '../../navigation/model';
 import {
   catalogForPersona,
@@ -12,7 +12,7 @@ import {
   resolveMenuMap,
   PORTAL_OWNER_ROLE_KEY,
   PORTAL_RENTER_ROLE_KEY,
-  PORTAL_PSEUDO_ROLES
+  getPortalPseudoRoles
 } from '../../navigation/menu-catalog';
 import { useFilteredNavigation } from '../../hooks/useMenuAccess';
 
@@ -21,7 +21,16 @@ import { useFilteredNavigation } from '../../hooks/useMenuAccess';
  * régler, et ce que la coquille élague. Les deux doivent parler de la même
  * chose : un catalogue qui dériverait du modèle de navigation laisserait
  * l'administrateur régler des entrées qui n'existent plus, ou en oublier.
+ *
+ * `NAVIGATION`, `SECTION_LABELS` et `PORTAL_PSEUDO_ROLES` sont désormais des
+ * fonctions (`getNavigation`, `getSectionLabels`, `getPortalPseudoRoles`) :
+ * elles lisent `t()` à l'appel plutôt qu'une fois pour toutes à l'import,
+ * pour suivre un changement de langue en cours de session. La suite tourne en
+ * français (`setupTests.ts`) ; ces alias évitent de réécrire chaque appel.
  */
+const NAVIGATION = getNavigation();
+const SECTION_LABELS = getSectionLabels();
+const PORTAL_PSEUDO_ROLES = getPortalPseudoRoles();
 
 const PERSONAS: PersonaId[] = ['super-admin', 'collaborateur', 'proprietaire', 'locataire'];
 

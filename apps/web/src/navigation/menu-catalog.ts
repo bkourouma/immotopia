@@ -1,5 +1,5 @@
 import type React from 'react';
-import { NAVIGATION, SECTION_LABELS } from './model';
+import { getNavigation, getSectionLabels } from './model';
 import type { NavFeature, NavGroup, PersonaId, SectionId } from './model';
 import { t } from '../i18n/t';
 
@@ -36,24 +36,31 @@ export interface PortalPseudoRole {
   persona: PersonaId;
 }
 
-export const PORTAL_PSEUDO_ROLES: PortalPseudoRole[] = [
-  {
-    key: PORTAL_OWNER_ROLE_KEY,
-    name: 'Propriétaire (portail)',
-    description: t(
-      "Bailleur rattaché à l'agence. Accède au portail propriétaire : ses biens, ses revenus, les incidents de ses immeubles."
-    ),
-    persona: 'proprietaire'
-  },
-  {
-    key: PORTAL_RENTER_ROLE_KEY,
-    name: 'Locataire (portail)',
-    description: t(
-      'Occupant rattaché à un bail. Accède au portail locataire : son bail, ses paiements, ses incidents.'
-    ),
-    persona: 'locataire'
-  }
-];
+/**
+ * Fonction et non constante de module : la description passe par `t()`, qui
+ * doit lire la langue active à l'appel — voir `getNavigation` dans
+ * `model.tsx` pour la raison complète.
+ */
+export function getPortalPseudoRoles(): PortalPseudoRole[] {
+  return [
+    {
+      key: PORTAL_OWNER_ROLE_KEY,
+      name: 'Propriétaire (portail)',
+      description: t(
+        "Bailleur rattaché à l'agence. Accède au portail propriétaire : ses biens, ses revenus, les incidents de ses immeubles."
+      ),
+      persona: 'proprietaire'
+    },
+    {
+      key: PORTAL_RENTER_ROLE_KEY,
+      name: 'Locataire (portail)',
+      description: t(
+        'Occupant rattaché à un bail. Accède au portail locataire : son bail, ses paiements, ses incidents.'
+      ),
+      persona: 'locataire'
+    }
+  ];
+}
 
 /**
  * Persona de navigation associé à une clé de rôle.
@@ -237,7 +244,9 @@ const LEGACY_FINANCE_LEAVES: Record<string, string[]> = {
 function buildLegacyMenuKeys(): Record<string, string[]> {
   const persona: PersonaId = 'collaborateur';
   const legacy: Record<string, string[]> = {};
-  for (const group of NAVIGATION[persona].tree) {
+  // Seules les `key` (jamais les libellés) sont lues ici : elles ne dépendent
+  // pas de la langue, donc un seul appel au chargement du module suffit.
+  for (const group of getNavigation()[persona].tree) {
     if (group.section !== 'finance') continue;
     legacy[menuKeyFor(persona, group.key)] = [menuKeyFor(persona, LEGACY_FINANCE_GROUP)];
     for (const leaf of group.children ?? []) {
@@ -268,9 +277,6 @@ export function isMenuKeyDisabled(menuKey: string, disabled: Set<string>): boole
   return legacy.length > 0 && legacy.every(key => disabled.has(key));
 }
 
-/** Intitulé des entrées sans domaine : un menu sans catégorie reste un menu. */
-const GENERAL_SECTION_LABEL = t('Général');
-
 function toEntry(persona: PersonaId, group: NavGroup): MenuCatalogEntry {
   return {
     menuKey: menuKeyFor(persona, group.key),
@@ -300,14 +306,18 @@ function toEntry(persona: PersonaId, group: NavGroup): MenuCatalogEntry {
 export function catalogForPersona(persona: PersonaId): MenuCatalogSection[] {
   const sections: MenuCatalogSection[] = [];
   const bySection = new Map<string, MenuCatalogSection>();
+  const sectionLabels = getSectionLabels();
 
-  for (const group of NAVIGATION[persona].tree) {
+  for (const group of getNavigation()[persona].tree) {
     const id: SectionId | 'general' = group.section ?? 'general';
     let section = bySection.get(id);
     if (!section) {
+      // Intitulé des entrées sans domaine : un menu sans catégorie reste un
+      // menu. Calculé à chaque appel, comme le reste du catalogue, pour
+      // suivre la langue active.
       section = {
         id,
-        label: id === 'general' ? GENERAL_SECTION_LABEL : SECTION_LABELS[id as SectionId],
+        label: id === 'general' ? t('Général') : sectionLabels[id as SectionId],
         entries: []
       };
       bySection.set(id, section);
