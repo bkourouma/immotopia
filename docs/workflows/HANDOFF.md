@@ -38,6 +38,92 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/patrimoine-p3-exports` — 2026-09-28
+
+**État :** prêt à relire — PR #45 vers `main`
+(https://github.com/bkourouma/immotopia/pull/45), CI lancée, pas encore
+fusionnée
+**Dernier commit :** `6f073ae` fix(patrimoine): corrige la resolution du
+proprietaire de bail et l'anti-doublon des alertes
+
+Fait (lot P3 Patrimoine : exports, alertes, ACD) :
+
+- **Exports PDF/Excel** (`lib/patrimoine/export/{data,pdf,workbook,labels}.ts`,
+  `controllers/patrimoine-export-controller.ts`, routes
+  `GET /tenants/:tenantId/patrimoine/export` et
+  `GET /tenants/:tenantId/properties/:propertyId/patrimoine/export`,
+  `PROPERTIES_VIEW`, isolation tenant, fichier en mémoire jamais servi en
+  statique, borné à 500 biens — `MAX_EXPORT_PROPERTIES`) : déjà en place au
+  début de cette reprise (travail non commité d'une session précédente),
+  commité tel quel (`5f70ff69`) après vérification — tests déjà verts,
+  aucune correction nécessaire.
+- **ACD** (`PropertyDocumentType.LAND_CONCESSION`) : déjà livré avant cette
+  session (schéma, libellés, i18n fr/en/ar API+web) — vérifié, rien à faire.
+- **Alertes d'échéance étendues** (`lib/patrimoine/notifications.ts`,
+  `jobs/document-expiry-alert-job.ts`, `types/audit-types.ts`) : ajoutées
+  par cette session, en extension du job de PR #40 (fusionnée entre-temps
+  dans `main`, rebasée dessus via `git merge origin/main`) — jamais dupliqué :
+  - `alertExpiringLeases` : baux actifs, propriétaire résolu via
+    `Property.ownerUserId`/indivision **et** `RentalLease.owner_client_id`
+    (bug trouvé en relecture croisée : sans ce second chemin, un bail créé
+    normalement n'a jamais de destinataire) ;
+  - `alertLoanMaturity`/`alertUpcomingWorks` : emprunts actifs / travaux
+    planifiés, alertent l'agence (`TENANT_ADMIN` actifs, repli
+    `Tenant.contactEmail`) via un petit helper local
+    `resolveAgencyAdminRecipients` (dupliqué volontairement, pas importé, de
+    `jobs/subscription-usage-job.ts` — évite d'entraîner tout son graphe
+    d'imports dans les tests de notifications) ;
+  - anti-doublon via `AuditLog` (clé composée `id::échéance`, pas une simple
+    marque par id — survit à un renouvellement/restructuration/report), au
+    lieu d'une colonne `warningSentAt` dédiée : impossible d'ajouter une
+    migration Prisma dans ce worktree (jonction `node_modules/.prisma`
+    partagée avec le checkout principal, `prisma generate` interdit hors
+    d'un worktree qui a son propre `node_modules`) ; flush immédiat après
+    chaque envoi réussi (pas en fin de boucle) pour borner la fenêtre de
+    doublon en cas de crash.
+- Wiki : 5 lignes ajoutées (section « Parc immobilier ») — 2 exports, 3
+  alertes étendues ; miroir régénéré (`npm run wiki:export`), `wiki:check`
+  vert.
+- Relecture croisée (`security-auditor` + revue générale, sous-agents
+  `model: sonnet`) : GO sécurité (1 point mineur, corrigé — flush par
+  entité) ; 2 points bloquants de correction fonctionnelle trouvés et
+  corrigés (voir ci-dessus, résolution du propriétaire de bail et
+  permanence de la marque anti-doublon).
+- Vérifications : `typecheck` (0 nouvelle erreur, 73 préexistantes
+  inchangées), `jest` ciblé (34 tests alertes/exports + suite large
+  `patrimoine`/`routes-inventory`/`schema-tenant-coverage`, 2818/2818 hors 1
+  échec préexistant sans rapport — `tenant-data-export.archive.test.ts`,
+  typage du module `archiver`), `vitest` (`patrimoine`, 2 timeouts sous
+  charge confirmés non reproductibles en isolation), `check:architecture`
+  (0 violation), `wiki:check` (vert).
+
+Reste à faire :
+
+- Suivre la CI de la PR #45 jusqu'au vert (lancée, résultat pas encore
+  connu au moment d'écrire cette section) et corriger si besoin.
+- Fusion par l'utilisateur (pas faite par cette session).
+
+Pièges et décisions :
+
+- La branche n'avait aucun commit propre au départ de cette reprise (tout le
+  travail d'export était en modifications non commitées) et était en retard
+  de 2 commits sur `origin/main` (PR #40 fusionnée entre-temps) : commit de
+  l'existant d'abord, puis `git merge origin/main --no-edit` — conflit
+  uniquement sur le classeur xlsx et son miroir (fichiers binaires/générés),
+  résolu en prenant la version `origin/main` puis en réappliquant les lignes
+  du lot par-dessus (`docs/fonctionnalites/README.md`, section « Piège de
+  fusion »).
+- `resolveDocumentOwnerRecipients` (dans `notifications.ts`) a gagné un
+  paramètre optionnel `extraTenantClientIds` pour couvrir
+  `RentalLease.owner_client_id` sans dupliquer toute la logique
+  indivision/CRM déjà éprouvée pour `alertExpiringDocuments`.
+- Ne pas réintroduire une colonne `warningSentAt` sur `RentalLease`/
+  `PropertyLoan`/`WorkProgram` sans avoir d'abord donné à ce worktree (ou à
+  un nouveau worktree dédié) son propre `node_modules` (`--install`, voir
+  RUNBOOK) : la jonction partagée interdit `prisma generate` ici.
+
+---
+
 ## Branche `fix/patrimoine-suite-p0` — 2026-09-28
 
 **État :** prêt à relire — PR #40 vers `main`
