@@ -13,6 +13,7 @@ import {
   resendReceiptEmail
 } from '../../services/syndic-receipt-service';
 import { ReceiptKind, ReceiptView, SyndicateLot } from '../../types/syndic-types';
+import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
@@ -143,8 +144,8 @@ export const SyndicReceipts: React.FC = () => {
       const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
       const { blob, filename } = await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
-    } catch {
-      message.error(t('Téléchargement impossible.'));
+    } catch (err) {
+      message.error(await describeDownloadError(err));
     } finally {
       setDownloadingId(null);
     }

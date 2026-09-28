@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AxiosAdapter, AxiosRequestConfig } from 'axios';
-import apiClient from '../../utils/api-client';
+import apiClient, { DEFAULT_REQUEST_TIMEOUT_MS, FILE_DOWNLOAD_TIMEOUT_MS } from '../../utils/api-client';
 
 /**
  * `apiClient` — délai et nouvelles tentatives (REFONTE_UI_UX.md §8.4).
@@ -32,6 +32,19 @@ function networkError(config: AxiosRequestConfig) {
   };
   error.isAxiosError = true;
   error.code = 'ECONNABORTED';
+  error.config = config;
+  return error;
+}
+
+/** Coupure réseau franche (pas de réponse), distincte d'un délai dépassé : pas de code `ECONNABORTED`. */
+function connectionDroppedError(config: AxiosRequestConfig) {
+  const error = new Error('Network Error') as Error & {
+    isAxiosError: boolean;
+    code: string;
+    config: AxiosRequestConfig;
+  };
+  error.isAxiosError = true;
+  error.code = 'ERR_NETWORK';
   error.config = config;
   return error;
 }
@@ -78,10 +91,88 @@ afterEach(() => {
 });
 
 describe('apiClient — délai maximal', () => {
-  it('pose un timeout, au lieu d’attendre indéfiniment', () => {
+  it('pose un délai de 20 s sur une requête JSON', async () => {
     // Sans cela, une requête perdue laisse l'écran sur son squelette, sans
     // erreur ni sortie possible.
-    expect(apiClient.defaults.timeout).toBe(20_000);
+    apiClient.defaults.adapter = (async (config: AxiosRequestConfig) => {
+      attempts.push(config);
+      return { data: { ok: true }, status: 200, statusText: 'OK', headers: {}, config };
+    }) as unknown as AxiosAdapter;
+
+    await apiClient.get('/properties');
+    expect(attempts[0].timeout).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it("pose un délai de 120 s sur un téléchargement de fichier (`responseType: 'blob'`)", async () => {
+    // Une quittance avec des images de marque en pleine résolution peut
+    // prendre plusieurs secondes à générer : 20 s (délai JSON) coupait la
+    // requête avant le premier octet de réponse.
+    apiClient.defaults.adapter = (async (config: AxiosRequestConfig) => {
+      attempts.push(config);
+      return { data: new Blob(), status: 200, statusText: 'OK', headers: {}, config };
+    }) as unknown as AxiosAdapter;
+
+    await apiClient.get('/tenants/t1/syndics/s1/quittances/r1/fichier', { responseType: 'blob' });
+    expect(attempts[0].timeout).toBe(FILE_DOWNLOAD_TIMEOUT_MS);
+    expect(FILE_DOWNLOAD_TIMEOUT_MS).toBe(120_000);
+  });
+
+  it('respecte un timeout explicite posé par l’appelant, même pour un téléchargement', async () => {
+    apiClient.defaults.adapter = (async (config: AxiosRequestConfig) => {
+      attempts.push(config);
+      return { data: new Blob(), status: 200, statusText: 'OK', headers: {}, config };
+    }) as unknown as AxiosAdapter;
+
+    await apiClient.get('/tenants/t1/syndics/s1/quittances/r1/fichier', { responseType: 'blob', timeout: 5_000 });
+    expect(attempts[0].timeout).toBe(5_000);
+  });
+});
+
+describe("apiClient — téléchargements de fichiers (`responseType: 'blob'`)", () => {
+  it('ne rejoue JAMAIS un téléchargement qui a expiré (ECONNABORTED)', async () => {
+    // Rejouer retélécharge le même gros fichier et ne fait que repousser
+    // l'échec de 120 s de plus : l'utilisateur doit voir l'erreur et décider.
+    apiClient.defaults.adapter = adapterFailing(1, networkError);
+
+    const promise = apiClient.get('/tenants/t1/syndics/s1/quittances/r1/fichier', { responseType: 'blob' });
+    const assertion = expect(promise).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await assertion;
+
+    expect(attempts).toHaveLength(1);
+  });
+
+  it('rejoue UNE fois un téléchargement sur coupure réseau franche (pas une expiration)', async () => {
+    apiClient.defaults.adapter = adapterFailing(1, connectionDroppedError);
+
+    const promise = apiClient.get('/tenants/t1/syndics/s1/quittances/r1/fichier', { responseType: 'blob' });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await promise;
+
+    expect(attempts).toHaveLength(2);
+  });
+
+  it('abandonne un téléchargement après une seule tentative de rejeu (pas deux)', async () => {
+    apiClient.defaults.adapter = adapterFailing(99, connectionDroppedError);
+
+    const promise = apiClient.get('/tenants/t1/syndics/s1/quittances/r1/fichier', { responseType: 'blob' });
+    const assertion = expect(promise).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await assertion;
+
+    expect(attempts).toHaveLength(2);
+  });
+
+  it('ne change rien au comportement d’une requête JSON équivalente (2 rejeux, y compris sur expiration)', async () => {
+    apiClient.defaults.adapter = adapterFailing(2, networkError);
+
+    const promise = apiClient.get('/properties');
+    await vi.advanceTimersByTimeAsync(5_000);
+    const response = await promise;
+
+    expect(response.data).toEqual({ ok: true });
+    expect(attempts).toHaveLength(3);
   });
 });
 

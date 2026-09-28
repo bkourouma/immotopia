@@ -6,14 +6,36 @@ import { getStoredActiveTenantId } from './active-tenant';
 import { TENANT_SUSPENDED_EVENT } from './tenant-events';
 
 /**
- * Délai maximal d'une requête (REFONTE_UI_UX.md §8.4).
+ * Délai maximal d'une requête JSON (REFONTE_UI_UX.md §8.4).
  *
  * Sans `timeout`, axios attend indéfiniment. Sur un réseau mobile dégradé — le
  * cas normal pour un collaborateur en tournée — une requête perdue laissait
  * l'écran sur son squelette, sans erreur ni sortie possible. 20 s est large
  * pour une réponse lente et assez court pour qu'un échec soit dit.
+ *
+ * EXPORTÉE pour les tests ; ne pas la lire ailleurs comme « le » délai de
+ * l'application, `FILE_DOWNLOAD_TIMEOUT_MS` s'applique aux téléchargements.
  */
-const REQUEST_TIMEOUT_MS = 20_000;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * Délai maximal d'un téléchargement de fichier (`responseType: 'blob'`).
+ *
+ * Une quittance PDF avec des images de marque en pleine résolution (jusqu'à
+ * 3000 x 3000 px chacune) peut prendre plusieurs secondes à générer côté
+ * serveur avant le premier octet de réponse, et le transfert lui-même est
+ * plus lourd qu'une réponse JSON. Sur le réseau dégradé d'un collaborateur ou
+ * d'un copropriétaire en tournée, 20 s (le délai des requêtes JSON) coupait la
+ * requête avant que le PDF n'ait fini d'être produit — l'anomalie « Téléchargement
+ * impossible » sans erreur exploitable. 120 s laisse le temps à une génération
+ * lente d'aboutir, sans attendre indéfiniment pour autant.
+ */
+export const FILE_DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/** Un téléchargement de fichier privé (quittance, reçu, relevé...), jamais rejoué à l'identique sur simple expiration. */
+function isFileDownload(config: { responseType?: string } | undefined): boolean {
+  return config?.responseType === 'blob';
+}
 
 /**
  * Nouvelles tentatives : 2, avec attente croissante.
@@ -27,7 +49,9 @@ const RETRY_DELAYS_MS = [1_000, 3_000];
 // Create Axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
-  timeout: REQUEST_TIMEOUT_MS,
+  // Pas de délai fixe ici : posé ci-dessous selon le type de requête (voir
+  // `DEFAULT_REQUEST_TIMEOUT_MS` / `FILE_DOWNLOAD_TIMEOUT_MS`), pour qu'un
+  // téléchargement de fichier ait plus de temps qu'une requête JSON.
   withCredentials: true, // Important: Send cookies with requests
   headers: {
     'Content-Type': 'application/json'
@@ -37,6 +61,14 @@ const apiClient: AxiosInstance = axios.create({
 // Request interceptor: Add auth token if available (for future use)
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // Délai selon le type de requête, sauf si l'appelant en a explicitement
+    // posé un (ex. un sondage court avec son propre `timeout`). Un
+    // téléchargement de fichier (`responseType: 'blob'`) reçoit le délai
+    // large : voir `FILE_DOWNLOAD_TIMEOUT_MS`.
+    if (!config.timeout) {
+      config.timeout = isFileDownload(config) ? FILE_DOWNLOAD_TIMEOUT_MS : DEFAULT_REQUEST_TIMEOUT_MS;
+    }
+
     // Cookies are automatically sent with withCredentials: true
     // No need to manually add tokens here
 
@@ -204,6 +236,11 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
   _retryCount?: number;
 }
 
+/** Délai dépassé : `ECONNABORTED` (axios), parfois `ETIMEDOUT` selon l'adaptateur. */
+function isTimeoutError(error: AxiosError): boolean {
+  return error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+}
+
 function isRetriable(error: AxiosError): boolean {
   const method = error.config?.method?.toLowerCase();
   if (method !== 'get') return false;
@@ -212,10 +249,30 @@ function isRetriable(error: AxiosError): boolean {
   // c'est une décision. La rejouer irait contre l'intention.
   if (axios.isCancel(error) || error.code === 'ERR_CANCELED') return false;
 
-  // Pas de réponse : réseau coupé ou délai dépassé.
+  // Téléchargement de fichier qui a expiré : le rejouer retélécharge le même
+  // gros fichier et ne fait que repousser l'échec de 120 s de plus — jusqu'à
+  // trois fois avec les tentatives normales. Un délai dépassé sur un
+  // téléchargement n'est donc JAMAIS rejoué automatiquement ; l'appelant
+  // affiche l'erreur (voir `download-error.ts`) et laisse la main à
+  // l'utilisateur pour réessayer.
+  if (isFileDownload(error.config) && isTimeoutError(error)) return false;
+
+  // Pas de réponse : réseau coupé ou délai dépassé (hors téléchargement, cas
+  // écarté ci-dessus).
   if (!error.response) return true;
 
   return error.response.status >= 500;
+}
+
+/**
+ * Nombre de rejeux autorisés pour cette requête : 2 pour une requête JSON, 1
+ * seul pour un téléchargement de fichier. Un fichier déjà volumineux
+ * (quittance avec images de marque) coûte cher à retélécharger ; une coupure
+ * réseau franche (pas une expiration, écartée par `isRetriable`) mérite un
+ * second essai, pas deux.
+ */
+function maxRetries(config: RetriableConfig): number {
+  return isFileDownload(config) ? 1 : RETRY_DELAYS_MS.length;
 }
 
 apiClient.interceptors.response.use(
@@ -228,7 +285,7 @@ apiClient.interceptors.response.use(
     }
 
     const attempt = config._retryCount ?? 0;
-    if (attempt >= RETRY_DELAYS_MS.length) {
+    if (attempt >= maxRetries(config)) {
       return Promise.reject(error);
     }
 

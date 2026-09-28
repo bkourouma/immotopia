@@ -150,6 +150,16 @@ async function readStoredFile(receipt: StoredReceipt): Promise<Buffer | null> {
 }
 
 /**
+ * Au-delà, la génération est journalisée (`logger.warn`) : un logo, une
+ * signature ou un cachet proche de la taille maximale (3000 x 3000 px)
+ * rendent le décodage/réencodage de l'image par pdf-lib coûteux (mesuré à
+ * plusieurs secondes en pur JS, voir le rapport du lot « anomalies-recette »).
+ * Sert à repérer une agence dont l'identité mérite une image plus légère,
+ * sans attendre une plainte du copropriétaire sur un téléchargement lent.
+ */
+const SLOW_RENDER_THRESHOLD_MS = 3_000;
+
+/**
  * Le PDF d'un document : le fichier stocké s'il existe, sinon reconstruit
  * depuis le snapshot, écrit et rattaché (`filePath`). Ne régénère jamais un
  * original avec un autre contenu : seules les données figées sont dessinées.
@@ -160,7 +170,12 @@ export async function ensureReceiptPdf(receipt: StoredReceipt, context?: Syndica
 
   const renderContext = context ?? (await loadSyndicateRenderContext(receipt.tenantId, receipt.syndicateId));
   const snapshot = snapshotOf(receipt);
+  const renderStartedAt = Date.now();
   const buffer = await renderChargeReceiptPdf({ snapshot, branding: brandingForSnapshot(renderContext, snapshot) });
+  const renderDurationMs = Date.now() - renderStartedAt;
+  if (renderDurationMs > SLOW_RENDER_THRESHOLD_MS) {
+    logger.warn('Charge receipt PDF generation was slow', { receiptId: receipt.id, renderDurationMs });
+  }
   try {
     const fileUrl = await writeReceiptFile(receipt, buffer);
     if (receipt.filePath !== fileUrl) {

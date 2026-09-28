@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, DatePicker, InputNumber, Modal, Radio, Select, Space, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { printReceipts } from '../../services/syndic-receipt-service';
+import { describeDownloadError, logDownloadError, readDownloadErrorBody } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { ReceiptKind, SyndicateLot } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
@@ -117,22 +118,32 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
    * Message clair par site d'erreur : limites de débit (429), impression déjà
    * en cours (429), trop de pages (422, champ `pages`), en plus des 422
    * « aucun document » / « 500 documents au plus » déjà couverts par le
-   * message générique de l'API.
+   * message générique de l'API — puis, faute de réponse exploitable (délai
+   * dépassé, réseau coupé...), le classement générique de
+   * `describeDownloadError`.
+   *
+   * `err.response.data` arrive en `Blob` (la requête demande
+   * `responseType: 'blob'`), jamais en JSON déjà parsé : lire directement
+   * `err.response.data.code` ne trouvait donc jamais rien.
    */
-  const messageForError = (err: any, fallback: string): string => {
-    const status = err.response?.status;
-    const code = err.response?.data?.code;
-    if (status === 429 && code === 'RATE_LIMITED') {
+  const messageForError = async (err: unknown, fallback: string): Promise<string> => {
+    logDownloadError(err);
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    const body = await readDownloadErrorBody(err);
+    if (status === 429 && body?.code === 'RATE_LIMITED') {
       return t("Trop d'impressions, réessayez dans une minute.");
     }
-    if (status === 429 && code === 'PRINT_IN_PROGRESS') {
+    if (status === 429 && body?.code === 'PRINT_IN_PROGRESS') {
       return t('Une impression est déjà en cours.');
     }
-    const errors = err.response?.data?.errors as Array<{ field?: string }> | undefined;
-    if (status === 422 && errors?.some(item => item.field === 'pages')) {
+    if (status === 422 && body?.errors?.some(item => item.field === 'pages')) {
       return t('Trop de pages : réduisez la période ou augmentez le nombre de quittances par feuille.');
     }
-    return err.response?.data?.message || err.response?.data?.error || fallback;
+    if (body?.message || body?.error) return (body.message || body.error) as string;
+    // Une réponse est arrivée (422 générique...) mais sans message exploitable.
+    if (status) return fallback;
+    // Aucune réponse : délai dépassé, réseau coupé — message générique, déjà journalisé ci-dessus.
+    return describeDownloadError(err);
   };
 
   const handlePreview = async () => {
@@ -144,8 +155,8 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
     try {
       const { blob } = await printReceipts(tenantId, syndicId, query);
       setPreviewUrl(URL.createObjectURL(blob));
-    } catch (err: any) {
-      setError(messageForError(err, t('Aucun document ne correspond à cette période et à ces filtres.')));
+    } catch (err) {
+      setError(await messageForError(err, t('Aucun document ne correspond à cette période et à ces filtres.')));
     } finally {
       setBusy(null);
     }
@@ -159,8 +170,8 @@ export const PrintReceiptsModal: React.FC<PrintReceiptsModalProps> = ({ open, te
     try {
       const { blob, filename } = await printReceipts(tenantId, syndicId, query);
       saveBlob(blob, filename);
-    } catch (err: any) {
-      setError(messageForError(err, t("Le téléchargement de l'impression groupée a échoué.")));
+    } catch (err) {
+      setError(await messageForError(err, t("Le téléchargement de l'impression groupée a échoué.")));
     } finally {
       setBusy(null);
     }
