@@ -38,6 +38,66 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/patrimoine-p5-portail` — 2026-09-28
+
+**État :** prêt à relire — PR vers `main` ouverte par ce tour (voir `gh pr list --head feat/patrimoine-p5-portail`), CI à suivre, à fusionner par l'utilisateur
+**Dernier commit :** voir `git log -1` sur la branche (feat(patrimoine): vue patrimoine dans le portail propriétaire)
+
+Reprise : le tour précédent avait tout implémenté mais s'est arrêté avant de
+committer (limite d'API) — la branche était encore au niveau de PR #38, 7
+commits derrière `main` (PR #39 provisionnement, #40 patrimoine-suite-p0).
+Ce tour a relu (`security-auditor` + relecture générale, aucun bloquant, un
+point mineur documenté ci-dessous), vérifié (`typecheck`, 7 suites Jest
+ciblées = 114 tests, 5 fichiers Vitest = 57 tests, `check:architecture`,
+`wiki:check`, tous verts), committé, fusionné `origin/main` (sans conflit sur
+le code — seuls `HANDOFF.md`, `sous-fonctionnalites.md` et le classeur wiki se
+recoupaient, résolus en conservant les deux apports), puis ouvert la PR.
+
+Fait :
+
+- Vue patrimoine du portail propriétaire (lot P5) : `GET /api/portal/owner/patrimoine`
+  (+ `/settings`, `/properties/:propertyId`, `/properties/:propertyId/documents/:documentId/file`),
+  lecture seule, biens = `req.ownerPortal.propertyIds` dans l'agence du portail,
+  même 404 pour bien d'autrui / d'une autre agence / inexistant. Calculs par
+  `buildPropertyYieldInput` + `lib/patrimoine/yield.ts` (aucun second moteur).
+  Agrégats de la liste pondérés par la quote-part d'indivision ; détail non pondéré.
+- Masquage par l'agence : modèle `OwnerPortalSettings` (migration
+  `20261003150500_owner_portal_settings`, table dédiée, tout ouvert par défaut
+  sans écrire), `GET|PUT /api/tenants/:tenantId/settings/owner-portal`
+  (`TENANT_SETTINGS_VIEW/EDIT`), carte « Portail propriétaire » dans Paramètres
+  de l'agence. Vue masquée → 404 et entrée de menu retirée ; rubrique masquée →
+  clé absente ; `netNetYield` absent si les emprunts sont masqués.
+- Front : `pages/OwnerPortal/Patrimoine.tsx`, `PatrimoinePropertyDetails.tsx`
+  (React.lazy), menu « Mon patrimoine », traductions en/ar.
+- Correctifs du portail propriétaire : bug `date-fns` (variable `format` du corps
+  qui masquait la fonction → 500 sur les trois rapports) ; IDOR préexistant de
+  `POST /reports/export` (`report-generator.ts` : `propertyId` du corps écrasait
+  le périmètre) ; validation de `entityType`/`format`.
+- Tests : `owner-portal-patrimoine` (24), `owner-portal-reports-filename` (5),
+  `owner-portal-export-scope` (18), Vitest portail/menu/réglage. Wiki mis à jour
+  (4 lignes ajoutées, 3 rapports repassés « Disponible », note date-fns retirée).
+- Relectures (ce tour) : `security-auditor` — 0 bloquant, 1 mineur (cas
+  `PropertyDocument.tenantId: null` non documenté, corrigé par une note dans
+  `docs/governance/SECURITY.md` §5) ; relecture générale — 0 bloquant, 2
+  remarques cosmétiques sans suite.
+
+Reste à faire :
+
+- Recette navigateur du portail propriétaire sur une base migrée (non faite
+  — CI et revue humaine seules avant fusion).
+- Suivre la CI de la PR jusqu'au vert.
+- Décision éventuelle : un bien dont la table d'indivision ne cite pas le
+  propriétaire compte pour 0 % dans ses totaux (même règle que le relevé de
+  gérance, `ownerSharesByProperty`).
+
+Pièges et décisions :
+
+- Table dédiée plutôt que colonnes sur `AgencyFinanceSettings` : réglage de
+  portail, pas comptable, et P4 touche aux réglages fiscaux en parallèle.
+- Les tests qui montent `owner-portal-routes` vont dans `APP_LEVEL_TESTS`
+  (`jest.config.js`) : erreurs TS anciennes de `document-context-builder.ts`.
+- Worktree avec son propre `npm ci` (schéma modifié), pas de jonction.
+
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
 **État :** prêt à relire ; 5 PR ouvertes, CI verte (#26/#27 relancées après le dernier correctif)

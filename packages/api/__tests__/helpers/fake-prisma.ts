@@ -341,7 +341,14 @@ export const FAKE_MODEL_NAMES = [
   // Fonds de copropriete credites par les paiements (fund-credits.ts).
   'syndicateFund',
   'syndicateFundMovement',
-  'budgetLineItem'
+  'budgetLineItem',
+  // Lot P5 : vue patrimoine du portail proprietaire.
+  'assetValuation',
+  'propertyLoan',
+  'workProgram',
+  'propertyExpense',
+  'propertyOwnershipShare',
+  'ownerPortalSettings'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

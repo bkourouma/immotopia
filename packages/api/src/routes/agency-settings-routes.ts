@@ -11,6 +11,10 @@ import {
   updatePaymentGatewaySettingsHandler,
   testPaymentGatewayConnectionHandler
 } from '../controllers/payment-gateway-settings-controller';
+import {
+  getOwnerPortalSettingsHandler,
+  updateOwnerPortalSettingsHandler
+} from '../controllers/owner-portal-settings-controller';
 
 /**
  * Paramètres de l'agence qui ne relèvent pas de son identité (`PATCH
@@ -64,6 +68,25 @@ router.post(
   requireTenantAccess,
   requirePermission('TENANT_SETTINGS_EDIT'),
   testPaymentGatewayConnectionHandler
+);
+
+// Lot P5 : masquage de la vue patrimoine du portail propriétaire. Mêmes
+// permissions que les autres paramètres agence.
+const OWNER_PORTAL_SETTINGS_PATH = '/tenants/:tenantId/settings/owner-portal';
+
+router.get(
+  OWNER_PORTAL_SETTINGS_PATH,
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  getOwnerPortalSettingsHandler
+);
+router.put(
+  OWNER_PORTAL_SETTINGS_PATH,
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  updateOwnerPortalSettingsHandler
 );
 
 export default router;

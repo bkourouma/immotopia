@@ -434,10 +434,16 @@ export async function exportData(
   format: 'csv' | 'excel'
 ): Promise<Buffer> {
   try {
+    // Le périmètre est restreint AVANT de descendre dans les fonctions
+    // internes : si `filters.propertyId` est fourni, il doit appartenir au
+    // périmètre du propriétaire (`propertyIds`), sinon le résultat est vide
+    // — jamais les données d'un autre propriétaire de la même agence.
+    const scopedPropertyIds = filters.propertyId ? propertyIds.filter(id => id === filters.propertyId) : propertyIds;
+
     if (format === 'csv') {
-      return await exportDataCSV(entityType, propertyIds, tenantId, filters);
+      return await exportDataCSV(entityType, scopedPropertyIds, tenantId, filters);
     } else {
-      return await exportDataExcel(entityType, propertyIds, tenantId, filters);
+      return await exportDataExcel(entityType, scopedPropertyIds, tenantId, filters);
     }
   } catch (error) {
     logger.error('Error exporting data:', error);
@@ -460,8 +466,7 @@ async function exportDataCSV(
         tenant_id: tenantId,
         status: RentalPaymentStatus.SUCCESS,
         lease: {
-          property_id: { in: propertyIds },
-          ...(filters.propertyId && { property_id: filters.propertyId })
+          property_id: { in: propertyIds }
         },
         ...(filters.startDate &&
           filters.endDate && {
@@ -502,8 +507,7 @@ async function exportDataCSV(
       where: {
         tenant_id: tenantId,
         lease: {
-          property_id: { in: propertyIds },
-          ...(filters.propertyId && { property_id: filters.propertyId })
+          property_id: { in: propertyIds }
         },
         ...(filters.startDate &&
           filters.endDate && {
@@ -549,8 +553,7 @@ async function exportDataCSV(
     const leases = await prisma.rentalLease.findMany({
       where: {
         tenant_id: tenantId,
-        property_id: { in: propertyIds },
-        ...(filters.propertyId && { property_id: filters.propertyId })
+        property_id: { in: propertyIds }
       },
       include: {
         property: true,
@@ -604,8 +607,7 @@ async function exportDataExcel(
         tenant_id: tenantId,
         status: RentalPaymentStatus.SUCCESS,
         lease: {
-          property_id: { in: propertyIds },
-          ...(filters.propertyId && { property_id: filters.propertyId })
+          property_id: { in: propertyIds }
         },
         ...(filters.startDate &&
           filters.endDate && {
@@ -656,8 +658,7 @@ async function exportDataExcel(
       where: {
         tenant_id: tenantId,
         lease: {
-          property_id: { in: propertyIds },
-          ...(filters.propertyId && { property_id: filters.propertyId })
+          property_id: { in: propertyIds }
         },
         ...(filters.startDate &&
           filters.endDate && {
@@ -712,8 +713,7 @@ async function exportDataExcel(
     const leases = await prisma.rentalLease.findMany({
       where: {
         tenant_id: tenantId,
-        property_id: { in: propertyIds },
-        ...(filters.propertyId && { property_id: filters.propertyId })
+        property_id: { in: propertyIds }
       },
       include: {
         property: true,
