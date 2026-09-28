@@ -176,3 +176,8 @@ describe('run — routage et codes de sortie', () => {
     expect(code).toBe(0);
   });
 });
+
+// Module, pas script : sans cela ses declarations (`type Row`) entrent en
+// collision avec celles de subscription-provisioning-service.test.ts sous
+// ts-jest (CI, 28/09 — cf. "Duplicate identifier 'Row'").
+export {};
