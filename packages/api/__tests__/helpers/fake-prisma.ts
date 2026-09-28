@@ -367,6 +367,13 @@ export const FAKE_MODEL_NAMES = [
   'syndicateFund',
   'syndicateFundMovement',
   'budgetLineItem',
+  // Lot P5 : vue patrimoine du portail proprietaire.
+  'assetValuation',
+  'propertyLoan',
+  'workProgram',
+  'propertyExpense',
+  'propertyOwnershipShare',
+  'ownerPortalSettings',
   // Correctif securite invitations (IDOR resend/revoke, prise de compte).
   'invitation',
   'role',

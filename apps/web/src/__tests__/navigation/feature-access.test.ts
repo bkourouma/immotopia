@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { NAVIGATION } from '../../navigation/model';
-import { applyFeatureAccess, featureAccessFromModules } from '../../navigation/feature-access';
+import { getNavigation } from '../../navigation/model';
+import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../../navigation/feature-access';
 import { catalogForPersona } from '../../navigation/menu-catalog';
 import { useFilteredNavigation } from '../../hooks/useMenuAccess';
 
 /** Menu et abonnement (vague 2, lot A). */
-const nav = NAVIGATION.collaborateur;
+const nav = getNavigation().collaborateur;
 const keys = (tree: { key: string }[]) => tree.map(g => g.key);
 
 describe('featureAccessFromModules', () => {
@@ -33,7 +33,14 @@ describe('navigation filtrée par l’abonnement', () => {
     const tree = result.current!.tree;
     expect(keys(tree)).toContain('syndic');
     expect(keys(tree)).toContain('biens');
-    for (const gone of ['baux', 'encaisser', 'finance-chantiers-stock', 'finance-main-oeuvre', 'ventes', 'patrimoine']) {
+    for (const gone of [
+      'baux',
+      'encaisser',
+      'finance-chantiers-stock',
+      'finance-main-oeuvre',
+      'ventes',
+      'patrimoine'
+    ]) {
       expect(keys(tree)).not.toContain(gone);
     }
     // Le groupe CRM garde les contacts (socle) et pointe vers eux.
@@ -46,7 +53,10 @@ describe('navigation filtrée par l’abonnement', () => {
 
   it('module retiré : entrée conservée, marquée lecture seule', () => {
     const access = featureAccessFromModules({ MODULE_AGENCY: 'FULL', MODULE_SYNDIC: 'READ_ONLY' });
-    const syndic = applyFeatureAccess(nav.tree.find(g => g.key === 'syndic')!, access)!;
+    const syndic = applyFeatureAccess(
+      nav.tree.find(g => g.key === 'syndic')!,
+      access
+    )!;
     expect(syndic.readOnly).toBe(true);
     expect(syndic.children!.every(c => c.readOnly)).toBe(true);
   });
@@ -54,6 +64,31 @@ describe('navigation filtrée par l’abonnement', () => {
   it('sans droits connus (null) : navigation inchangée', () => {
     const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), null));
     expect(result.current).toBe(nav);
+  });
+
+  it('barrière « détenu en propre » (pack Patrimoine seul) : retire mandat/relevés/comptes propriétaires', () => {
+    const access = featureAccessFromModules({ MODULE_PATRIMOINE: 'FULL' });
+    const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), access, true));
+    const tree = result.current!.tree;
+    const patrimoine = tree.find(g => g.key === 'patrimoine')!;
+    expect(patrimoine.children!.map(c => c.key)).not.toContain('patrimoine-statements');
+    const finance = tree.find(g => g.key === 'finance-clients-proprietaires')!;
+    expect(finance.children!.map(c => c.key)).not.toContain('finance-owner-accounts');
+  });
+
+  it('sans barrière « détenu en propre » : relevés et comptes propriétaires restent visibles', () => {
+    const access = featureAccessFromModules({ MODULE_AGENCY: 'FULL' });
+    const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), access, false));
+    const tree = result.current!.tree;
+    expect(tree.find(g => g.key === 'patrimoine')!.children!.map(c => c.key)).toContain('patrimoine-statements');
+    expect(tree.find(g => g.key === 'finance-clients-proprietaires')!.children!.map(c => c.key)).toContain(
+      'finance-owner-accounts'
+    );
+  });
+
+  it('applyOwnAssetsOnly : un groupe sans entrée réservée à un tiers est renvoyé tel quel', () => {
+    const syndic = nav.tree.find(g => g.key === 'syndic')!;
+    expect(applyOwnAssetsOnly(syndic, true)).toBe(syndic);
   });
 
   it('le catalogue des menus expose la fonctionnalité de chaque entrée', () => {

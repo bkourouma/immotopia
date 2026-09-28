@@ -67,10 +67,7 @@ const titleSchema = z
   .trim()
   .min(1, 'Le titre du bien est requis.');
 
-const addressSchema = z
-  .string({ invalid_type_error: "L'adresse du bien doit être un texte." })
-  .nullable()
-  .optional();
+const addressSchema = z.string({ invalid_type_error: "L'adresse du bien doit être un texte." }).nullable().optional();
 
 const descriptionSchema = z
   .string({ invalid_type_error: 'La description du bien doit être un texte.' })
@@ -115,6 +112,10 @@ export const createPropertySchema = z.object({
 
 export const updatePropertySchema = z.object({
   title: titleSchema.optional(),
+  // Barriere « detenu en propre » (pack Patrimoine) : un changement de type
+  // de detention peut rattacher un proprietaire tiers, voir
+  // services/own-assets-barrier-service.ts.
+  ownershipType: ownershipTypeSchema.optional(),
   ...writablePropertyFields
 });
 

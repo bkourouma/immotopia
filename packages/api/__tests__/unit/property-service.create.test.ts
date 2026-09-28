@@ -32,7 +32,11 @@ const transactionMock = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
-    $transaction: (...args: any[]) => transactionMock(...args)
+    $transaction: (...args: any[]) => transactionMock(...args),
+    // Barriere « detenu en propre » : lu seulement si `ownerUserId` differe
+    // de l'acteur — aucun cas de ce fichier ne l'atteint, mais un membre
+    // absent garde le comportement sur (pas de proprietaire tiers accepte a tort).
+    membership: { findFirst: jest.fn().mockResolvedValue(null) }
   }
 }));
 
@@ -66,6 +70,14 @@ jest.mock('../../src/services/property-quality-service', () => ({
 const syncLotActivationsTx = jest.fn();
 jest.mock('../../src/services/lot-registry-service', () => ({
   syncLotActivationsTx: (...args: any[]) => syncLotActivationsTx(...args)
+}));
+
+// Barriere « detenu en propre » (pack Patrimoine, lot P1) : hors sujet ici
+// (couverte par own-assets-barrier.test.ts) — no-op pour ne pas lire les
+// droits d'abonnement (getEntitlements) via le vrai Prisma simule au-dessus.
+jest.mock('../../src/services/own-assets-barrier-service', () => ({
+  assertThirdPartyAllowedForTenant: jest.fn(),
+  isThirdPartyOwnershipInput: jest.fn().mockReturnValue(false)
 }));
 
 import { createProperty } from '../../src/services/property-service';
@@ -235,12 +247,7 @@ describe('POST /api/tenants/:tenantId/properties — corps invalide : 400 VALIDA
       'transactionModes.0',
       'Les modes de transaction du bien sont invalides.'
     ],
-    [
-      'adresse non textuelle',
-      { ...corpsTerminer, address: 12 },
-      'address',
-      "L'adresse du bien doit être un texte."
-    ],
+    ['adresse non textuelle', { ...corpsTerminer, address: 12 }, 'address', "L'adresse du bien doit être un texte."],
     [
       'prix mal type (chaine non numerique)',
       { ...corpsTerminer, price: 'abc' },

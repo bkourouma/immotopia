@@ -63,7 +63,8 @@ const LIVE_STATUSES: SubscriptionStatus[] = [
 const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
   LOTS: 'lots',
   COPROPRIETES: 'copropriétés',
-  CHANTIERS: 'chantiers'
+  CHANTIERS: 'chantiers',
+  BIENS_DETENUS: 'biens détenus'
 };
 
 type SubscriptionRow = Prisma.SubscriptionGetPayload<object>;
@@ -85,7 +86,9 @@ function metadataOf(sub: { metadata: Prisma.JsonValue | null }): Record<string, 
  * facture chaque mois), si bien que les alertes se rearment chaque mois.
  */
 export function alertPeriodStart(sub: Pick<SubscriptionRow, 'billingCycle' | 'currentPeriodStart'>, now: Date): Date {
-  return sub.billingCycle === 'ANNUAL' ? monthlyOverageWindow(sub.currentPeriodStart, now).start : sub.currentPeriodStart;
+  return sub.billingCycle === 'ANNUAL'
+    ? monthlyOverageWindow(sub.currentPeriodStart, now).start
+    : sub.currentPeriodStart;
 }
 
 // ------------------------------------------------------------------ destinataires
@@ -109,7 +112,10 @@ export async function agencyAdminRecipients(tenantId: string): Promise<Recipient
       if (users.length > 0) return users;
     }
   }
-  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { contactEmail: true, name: true } });
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { contactEmail: true, name: true }
+  });
   return tenant?.contactEmail ? [{ email: tenant.contactEmail, fullName: tenant.name }] : [];
 }
 
@@ -140,7 +146,10 @@ async function sendMail(to: Recipient[], subject: string, text: string, tenantId
 }
 
 /** Previent l'agence (in-app : la ligne deja ecrite ; e-mail aux administrateurs) et le super-admin. */
-async function notify(tenantId: string, notice: { subject: string; text: string; adminSubject: string; adminText: string }) {
+async function notify(
+  tenantId: string,
+  notice: { subject: string; text: string; adminSubject: string; adminText: string }
+) {
   const agencySent = await runWithTenantContext({ tenantId }, async () =>
     sendMail(await agencyAdminRecipients(tenantId), notice.subject, notice.text, tenantId)
   );
@@ -181,7 +190,7 @@ export async function processBillingBoundary(subscriptionId: string, now: Date =
     if (sub.status === SubscriptionStatus.PAST_DUE) return { sub, outcome, wasTrial };
 
     const boundary =
-      sub.status === SubscriptionStatus.TRIALING ? sub.trialEndsAt ?? sub.currentPeriodEnd : sub.currentPeriodEnd;
+      sub.status === SubscriptionStatus.TRIALING ? (sub.trialEndsAt ?? sub.currentPeriodEnd) : sub.currentPeriodEnd;
     if (boundary.getTime() > now.getTime()) return { sub, outcome, wasTrial };
 
     // Changement de periode : les transitions ci-dessus (a `now`, donc apres
@@ -237,7 +246,7 @@ export async function processBillingBoundary(subscriptionId: string, now: Date =
   if (outcome.action === 'PAST_DUE') {
     const name = await tenantName(sub.tenantId);
     await notify(sub.tenantId, {
-      subject: wasTrial ? t("Votre essai ImmoTopia est terminé") : t('Votre abonnement ImmoTopia est impayé'),
+      subject: wasTrial ? t('Votre essai ImmoTopia est terminé') : t('Votre abonnement ImmoTopia est impayé'),
       text: t(
         "Votre abonnement n'est pas réglé. Vous disposez de {{days}} jours de grâce avant le passage en lecture seule. Réglez votre facture depuis {{url}}.",
         { days: sub.graceDays, url: subscriptionUrl(sub.tenantId) }
@@ -410,13 +419,17 @@ export async function sendTrialReminders(tenantId: string, now: Date = new Date(
   if ((sent[key] ?? []).includes(reminder)) return null;
   await prisma.subscription.update({
     where: { id: sub.id },
-    data: { metadata: { ...metadata, trialReminders: { [key]: [...(sent[key] ?? []), reminder] } } as Prisma.InputJsonValue }
+    data: {
+      metadata: { ...metadata, trialReminders: { [key]: [...(sent[key] ?? []), reminder] } } as Prisma.InputJsonValue
+    }
   });
 
   const name = await tenantName(tenantId);
   await notify(tenantId, {
     subject:
-      reminder === 1 ? t('Votre essai ImmoTopia se termine demain') : t('Votre essai ImmoTopia se termine dans 7 jours'),
+      reminder === 1
+        ? t('Votre essai ImmoTopia se termine demain')
+        : t('Votre essai ImmoTopia se termine dans 7 jours'),
     text: t(
       "Votre période d'essai se termine le {{date}}. Pour continuer sans interruption, choisissez vos packs et réglez votre abonnement depuis {{url}}.",
       { date: trialEndsAt.toISOString().slice(0, 10), url: subscriptionUrl(tenantId) }
@@ -512,7 +525,9 @@ async function runLogged(alertsOnly: boolean) {
     logger.info('Subscription usage job completed', { alertsOnly, ...report, errors: report.errors.length });
     for (const e of report.errors) logger.error('Subscription usage job: tenant failed', e);
   } catch (error) {
-    logger.error('Error in subscription usage job', { error: error instanceof Error ? error.message : 'Unknown error' });
+    logger.error('Error in subscription usage job', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 }
 

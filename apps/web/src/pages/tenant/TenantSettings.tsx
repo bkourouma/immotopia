@@ -10,11 +10,7 @@ import {
   DeleteOutlined
 } from '@ant-design/icons';
 import { getTenant, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
-import {
-  updateTenantBrandingSelf,
-  uploadTenantLogo,
-  TenantWithBranding
-} from '../../services/tenant-branding-service';
+import { updateTenantBrandingSelf, uploadTenantLogo, TenantWithBranding } from '../../services/tenant-branding-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import {
@@ -24,6 +20,7 @@ import {
   removeAgencyImage,
   uploadAgencyImage
 } from '../../services/document-branding-service';
+import { OwnerPortalSettingsCard } from '../../components/settings/OwnerPortalSettingsCard';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -250,6 +247,9 @@ export const TenantSettings: React.FC = () => {
           </Space>
         </Card>
 
+        {/* Portail propriétaire (lot P5) : masquage de la vue patrimoine. */}
+        {tenantId && <OwnerPortalSettingsCard tenantId={tenantId} />}
+
         {/* Success Message */}
         {success && (
           <Alert
@@ -331,7 +331,11 @@ export const TenantSettings: React.FC = () => {
                       </div>
                     )}
                     <Space direction="vertical">
-                      <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} beforeUpload={handleLogoSelect}>
+                      <Upload
+                        accept="image/png,image/jpeg,image/webp"
+                        showUploadList={false}
+                        beforeUpload={handleLogoSelect}
+                      >
                         <Button icon={<UploadOutlined />} loading={uploadingLogo}>
                           {t('Téléverser un logo')}
                         </Button>

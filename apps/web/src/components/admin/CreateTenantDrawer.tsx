@@ -1,5 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Checkbox, Collapse, ColorPicker, Divider, Drawer, Form, Input, InputNumber, Radio, Space, Switch, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Collapse,
+  ColorPicker,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Radio,
+  Space,
+  Switch,
+  Typography
+} from 'antd';
 import { CheckCircleFilled } from '@ant-design/icons';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { feedback } from '../../lib/feedback';
@@ -12,7 +28,12 @@ import {
   type ProvisionTenantResult,
   type TenantBillingCycle
 } from '../../services/tenant-service';
-import { listCatalog, quoteCatalog, type CatalogEntry, type CatalogQuote } from '../../services/subscription-v2-service';
+import {
+  listCatalog,
+  quoteCatalog,
+  type CatalogEntry,
+  type CatalogQuote
+} from '../../services/subscription-v2-service';
 import { MoneyValue } from '../primitives';
 import { TenantCreatedResult } from './TenantCreatedResult';
 
@@ -82,6 +103,8 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
   const [lotsBlocks, setLotsBlocks] = useState(0);
   const [extraCopros, setExtraCopros] = useState(0);
   const [extraChantiers, setExtraChantiers] = useState(0);
+  /** Blocs de `EXT_BIENS_10` (« Bloc de 10 biens détenus », packs Patrimoine, lot P1). */
+  const [biensBlocks, setBiensBlocks] = useState(0);
   const [trialEnabled] = useState(true); // Essai de 30 jours : toujours accordé par l'API à la création (D8).
   const [setupIncluded, setSetupIncluded] = useState(false);
   const [cycle, setCycle] = useState<TenantBillingCycle>('MONTHLY');
@@ -104,6 +127,7 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
     setLotsBlocks(0);
     setExtraCopros(0);
     setExtraChantiers(0);
+    setBiensBlocks(0);
     setSetupIncluded(false);
     setCycle('MONTHLY');
     setQuote(null);
@@ -117,15 +141,18 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
     setCatalogError(null);
     listCatalog()
       .then(setCatalog)
-      .catch((err: any) => setCatalogError(err.response?.data?.message || t("Erreur lors du chargement du catalogue")))
+      .catch((err: any) => setCatalogError(err.response?.data?.message || t('Erreur lors du chargement du catalogue')))
       .finally(() => setCatalogLoading(false));
   }, [open, catalog.length, catalogLoading]);
 
-  const packs = useMemo(() => catalog.filter(c => c.kind === 'PACK').sort((a, b) => a.sortOrder - b.sortOrder), [catalog]);
+  const packs = useMemo(
+    () => catalog.filter(c => c.kind === 'PACK').sort((a, b) => a.sortOrder - b.sortOrder),
+    [catalog]
+  );
   const integre = useMemo(() => packs.find(p => p.code === 'INTEGRE'), [packs]);
   const setupItems = useMemo(() => catalog.filter(c => c.kind === 'SETUP'), [catalog]);
 
-  const includedCapacity = (key: 'LOTS' | 'COPROPRIETES' | 'CHANTIERS') =>
+  const includedCapacity = (key: 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS') =>
     packs.filter(p => selectedPacks.includes(p.code)).reduce((sum, p) => sum + (p.capacities[key] ?? 0), 0);
 
   const extensionAllowed = (code: string) => {
@@ -137,6 +164,7 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
   const targetLots = includedCapacity('LOTS') + lotsBlocks * LOTS_BLOCK_SIZE;
   const targetCopros = includedCapacity('COPROPRIETES') + extraCopros;
   const targetChantiers = includedCapacity('CHANTIERS') + extraChantiers;
+  const targetBiens = includedCapacity('BIENS_DETENUS') + biensBlocks * LOTS_BLOCK_SIZE;
 
   // ---------------------------------------------------------------- aperçu chiffré en direct
   useEffect(() => {
@@ -148,15 +176,25 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
     const requestId = ++quoteRequestId.current;
     const timer = window.setTimeout(() => {
       setQuoting(true);
-      const current = quoteCatalog({ packs: selectedPacks, lots: targetLots, copros: targetCopros, chantiers: targetChantiers });
+      const current = quoteCatalog({
+        packs: selectedPacks,
+        lots: targetLots,
+        copros: targetCopros,
+        chantiers: targetChantiers,
+        biens: targetBiens
+      });
       // Suggestion de l'Intégré (D6) : même volume, un seul pack — comparé
       // seulement quand l'agence n'a pas déjà choisi l'Intégré seul.
       const suggestion =
         selectedPacks.length === 1 && selectedPacks[0] === 'INTEGRE'
           ? Promise.resolve(null)
-          : quoteCatalog({ packs: ['INTEGRE'], lots: targetLots, copros: targetCopros, chantiers: targetChantiers }).catch(
-              () => null
-            );
+          : quoteCatalog({
+              packs: ['INTEGRE'],
+              lots: targetLots,
+              copros: targetCopros,
+              chantiers: targetChantiers,
+              biens: targetBiens
+            }).catch(() => null);
       Promise.all([current, suggestion])
         .then(([currentQuote, integreResult]) => {
           if (requestId !== quoteRequestId.current) return;
@@ -174,7 +212,7 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
     }, 300);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectedPacks, targetLots, targetCopros, targetChantiers]);
+  }, [open, selectedPacks, targetLots, targetCopros, targetChantiers, targetBiens]);
 
   const togglePack = (code: string) => {
     setSelectedPacks(current => {
@@ -182,7 +220,15 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
         return current.includes('INTEGRE') ? [] : ['INTEGRE'];
       }
       const withoutIntegre = current.filter(c => c !== 'INTEGRE');
-      return withoutIntegre.includes(code) ? withoutIntegre.filter(c => c !== code) : [...withoutIntegre, code];
+      if (withoutIntegre.includes(code)) return withoutIntegre.filter(c => c !== code);
+      // Palier d'une gamme (Patrimoine Essentiel / Pro, lot P1) : les deux ne
+      // se cumulent pas (`rules.tierGroup`, catalog.ts) — sélectionner l'un
+      // désélectionne l'autre, comme l'Intégré le fait pour tous les packs.
+      const tierGroup = catalog.find(c => c.code === code)?.rules?.tierGroup;
+      const withoutSameTier = tierGroup
+        ? withoutIntegre.filter(c => catalog.find(item => item.code === c)?.rules?.tierGroup !== tierGroup)
+        : withoutIntegre;
+      return [...withoutSameTier, code];
     });
   };
 
@@ -282,6 +328,7 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
     setLotsBlocks(0);
     setExtraCopros(0);
     setExtraChantiers(0);
+    setBiensBlocks(0);
     setSetupIncluded(false);
     setCycle('MONTHLY');
     setQuote(null);
@@ -290,7 +337,13 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
   };
 
   return (
-    <Drawer title={result ? t('Agence créée') : t('Nouvelle agence')} placement="right" width={560} open={open} onClose={onClose}>
+    <Drawer
+      title={result ? t('Agence créée') : t('Nouvelle agence')}
+      placement="right"
+      width={560}
+      open={open}
+      onClose={onClose}
+    >
       {result ? (
         <TenantCreatedResult
           result={result}
@@ -352,17 +405,23 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
             {t('Packs')}
           </Title>
 
-          {catalogError && <Alert type="warning" showIcon message={catalogError} style={{ marginBottom: 'var(--space-3)' }} />}
+          {catalogError && (
+            <Alert type="warning" showIcon message={catalogError} style={{ marginBottom: 'var(--space-3)' }} />
+          )}
 
           <div
             role="group"
             aria-label={t('Packs')}
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 'var(--space-2)',
+              marginBottom: 'var(--space-4)'
+            }}
           >
             {packs.map(pack => {
               const checked = selectedPacks.includes(pack.code);
-              const disabled =
-                catalogLoading || (pack.code !== 'INTEGRE' && selectedPacks.includes('INTEGRE'));
+              const disabled = catalogLoading || (pack.code !== 'INTEGRE' && selectedPacks.includes('INTEGRE'));
               return (
                 <Card
                   key={pack.code}
@@ -421,7 +480,9 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
                       addonAfter={t('bloc(s) de 10 lots')}
                     />
                     <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-                      {t('Réserve totale visée : {{value}} lots (inclus dans les packs compris).', { value: targetLots })}
+                      {t('Réserve totale visée : {{value}} lots (inclus dans les packs compris).', {
+                        value: targetLots
+                      })}
                     </Text>
                   </Form.Item>
                 )}
@@ -447,13 +508,35 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
                     />
                   </Form.Item>
                 )}
+                {extensionAllowed('EXT_BIENS_10') && (
+                  <Form.Item label={t('Biens détenus supplémentaires (blocs de 10)')} style={{ marginBottom: 0 }}>
+                    <InputNumber
+                      min={0}
+                      max={100}
+                      value={biensBlocks}
+                      onChange={value => setBiensBlocks(Math.max(0, Math.round(Number(value) || 0)))}
+                      style={{ width: '100%' }}
+                      addonAfter={t('bloc(s) de 10 biens')}
+                    />
+                    <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+                      {t('Réserve totale visée : {{value}} biens détenus (inclus dans les packs compris).', {
+                        value: targetBiens
+                      })}
+                    </Text>
+                  </Form.Item>
+                )}
               </Space>
             </>
           )}
 
           <Space direction="vertical" size="middle" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
             <Form.Item label={t('Cycle de facturation')} style={{ marginBottom: 0 }}>
-              <Radio.Group optionType="button" buttonStyle="solid" value={cycle} onChange={e => setCycle(e.target.value)}>
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                value={cycle}
+                onChange={e => setCycle(e.target.value)}
+              >
                 <Radio.Button value="MONTHLY">{t('Mensuel')}</Radio.Button>
                 <Radio.Button value="ANNUAL">{t('Annuel (11 mois facturés)')}</Radio.Button>
               </Radio.Group>
@@ -482,7 +565,10 @@ export const CreateTenantDrawer: React.FC<CreateTenantDrawerProps> = ({ open, on
             ) : quote ? (
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 {quote.lines.map((line, index) => (
-                  <div key={`${line.code ?? line.kind}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+                  <div
+                    key={`${line.code ?? line.kind}-${index}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}
+                  >
                     <Text style={{ flex: 1 }}>
                       {line.label}
                       {line.quantity > 1 ? ` × ${line.quantity}` : ''}

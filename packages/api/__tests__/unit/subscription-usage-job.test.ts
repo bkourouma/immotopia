@@ -20,11 +20,14 @@ const mockState: {
 
 const mockFake: Row = {
   subscription: {
-    findUnique: jest.fn(async ({ where }: Row) =>
-      mockState.subscriptions.find(s => (where.id ? s.id === where.id : s.tenantId === where.tenantId)) ?? null
+    findUnique: jest.fn(
+      async ({ where }: Row) =>
+        mockState.subscriptions.find(s => (where.id ? s.id === where.id : s.tenantId === where.tenantId)) ?? null
     ),
     findMany: jest.fn(async ({ where }: Row) =>
-      mockState.subscriptions.filter(s => where.status.in.includes(s.status) && (!where.tenantId || s.tenantId === where.tenantId))
+      mockState.subscriptions.filter(
+        s => where.status.in.includes(s.status) && (!where.tenantId || s.tenantId === where.tenantId)
+      )
     ),
     update: jest.fn(async ({ where, data }: Row) => {
       const row = mockState.subscriptions.find(s => s.id === where.id)!;
@@ -33,14 +36,15 @@ const mockFake: Row = {
     })
   },
   invoice: {
-    findFirst: jest.fn(async ({ where }: Row) =>
-      mockState.invoices.find(
-        i =>
-          i.subscriptionId === where.subscriptionId &&
-          i.status === where.status &&
-          i.periodStart.getTime() >= where.periodStart.gte.getTime() &&
-          i.periodStart.getTime() < where.periodStart.lt.getTime()
-      ) ?? null
+    findFirst: jest.fn(
+      async ({ where }: Row) =>
+        mockState.invoices.find(
+          i =>
+            i.subscriptionId === where.subscriptionId &&
+            i.status === where.status &&
+            i.periodStart.getTime() >= where.periodStart.gte.getTime() &&
+            i.periodStart.getTime() < where.periodStart.lt.getTime()
+        ) ?? null
     )
   },
   usageSnapshot: {
@@ -48,14 +52,20 @@ const mockFake: Row = {
       const k = where.tenantId_capacityKey_snapshotDate;
       return (
         mockState.snapshots.find(
-          s => s.tenantId === k.tenantId && s.capacityKey === k.capacityKey && s.snapshotDate.getTime() === k.snapshotDate.getTime()
+          s =>
+            s.tenantId === k.tenantId &&
+            s.capacityKey === k.capacityKey &&
+            s.snapshotDate.getTime() === k.snapshotDate.getTime()
         ) ?? null
       );
     }),
     upsert: jest.fn(async ({ where, create, update }: Row) => {
       const k = where.tenantId_capacityKey_snapshotDate;
       const row = mockState.snapshots.find(
-        s => s.tenantId === k.tenantId && s.capacityKey === k.capacityKey && s.snapshotDate.getTime() === k.snapshotDate.getTime()
+        s =>
+          s.tenantId === k.tenantId &&
+          s.capacityKey === k.capacityKey &&
+          s.snapshotDate.getTime() === k.snapshotDate.getTime()
       );
       if (row) return Object.assign(row, update);
       mockState.snapshots.push({ ...create });
@@ -81,7 +91,12 @@ const mockFake: Row = {
       mockState.alerts.push(row);
       return row;
     }),
-    update: jest.fn(async ({ where, data }: Row) => Object.assign(mockState.alerts.find(a => a.id === where.id)!, data)),
+    update: jest.fn(async ({ where, data }: Row) =>
+      Object.assign(
+        mockState.alerts.find(a => a.id === where.id)!,
+        data
+      )
+    ),
     findMany: jest.fn(async () => mockState.alerts)
   },
   tenant: { findUnique: jest.fn(async () => ({ name: 'Ivoire Résidences', contactEmail: 'contact@ivoire.test' })) },
@@ -131,7 +146,9 @@ import {
   sendTrialReminders
 } from '../../src/jobs/subscription-usage-job';
 
-const { emailService } = jest.requireMock('../../src/services/email-service') as { emailService: { sendEmail: jest.Mock } };
+const { emailService } = jest.requireMock('../../src/services/email-service') as {
+  emailService: { sendEmail: jest.Mock };
+};
 const subscriptionService = jest.requireMock('../../src/services/subscription-v2-service') as {
   applyDueItemTransitionsTx: jest.Mock;
 };
@@ -140,8 +157,20 @@ const T = 'tenant-ivoire';
 const DAY = 24 * 60 * 60 * 1000;
 
 function capacities(lots: { used: number; limit: number }, copro = { used: 0, limit: 0 }) {
-  const cap = (c: { used: number; limit: number }) => ({ included: c.limit, extensions: 0, overrides: 0, ...c, remaining: 0, overBy: 0 });
-  return { LOTS: cap(lots), COPROPRIETES: cap(copro), CHANTIERS: cap({ used: 0, limit: 0 }) };
+  const cap = (c: { used: number; limit: number }) => ({
+    included: c.limit,
+    extensions: 0,
+    overrides: 0,
+    ...c,
+    remaining: 0,
+    overBy: 0
+  });
+  return {
+    LOTS: cap(lots),
+    COPROPRIETES: cap(copro),
+    CHANTIERS: cap({ used: 0, limit: 0 }),
+    BIENS_DETENUS: cap({ used: 0, limit: 0 })
+  };
 }
 
 function seedSubscription(sub: Row) {
@@ -234,7 +263,7 @@ describe('releve quotidien', () => {
     const lots = mockState.snapshots.filter(s => s.capacityKey === 'LOTS');
     expect(lots).toHaveLength(1);
     expect(lots[0]).toMatchObject({ used: 120, limit: 100, overage: 20 });
-    expect(mockState.snapshots).toHaveLength(3);
+    expect(mockState.snapshots).toHaveLength(4);
   });
 });
 
@@ -253,8 +282,13 @@ describe('rappels de fin d’essai', () => {
     expect(await sendTrialReminders(T, new Date(END.getTime() - 5 * DAY))).toBeNull();
     expect(await sendTrialReminders(T, new Date(END.getTime() - 20 * 60 * 60 * 1000))).toBe(1);
     expect(await sendTrialReminders(T, new Date(END.getTime() - 60 * 60 * 1000))).toBeNull();
-    const subjects = emailService.sendEmail.mock.calls.filter(c => c[0].to === 'admin@ivoire.test').map(c => c[0].subject);
-    expect(subjects).toEqual(['Votre essai ImmoTopia se termine dans 7 jours', 'Votre essai ImmoTopia se termine demain']);
+    const subjects = emailService.sendEmail.mock.calls
+      .filter(c => c[0].to === 'admin@ivoire.test')
+      .map(c => c[0].subject);
+    expect(subjects).toEqual([
+      'Votre essai ImmoTopia se termine dans 7 jours',
+      'Votre essai ImmoTopia se termine demain'
+    ]);
   });
 
   it('un essai prolonge relance les rappels', async () => {
@@ -321,7 +355,7 @@ describe('passage complet', () => {
     seedSubscription({});
     mockState.entitlements.capacities = capacities({ used: 100, limit: 100 });
     const report = await runSubscriptionUsageCycle({ now: new Date(END.getTime() + DAY) });
-    expect(report).toMatchObject({ tenants: 1, pastDue: 1, renewed: 0, snapshots: 3, alerts: 2, errors: [] });
+    expect(report).toMatchObject({ tenants: 1, pastDue: 1, renewed: 0, snapshots: 4, alerts: 2, errors: [] });
   });
 
   it("facture (vague 3) AVANT l'echeance ; un echec de facturation n'arrete pas le passage", async () => {
@@ -344,7 +378,7 @@ describe('passage complet', () => {
     });
     const failed = await runSubscriptionUsageCycle({ now });
     expect(failed.errors).toEqual([{ tenantId: T, error: 'billing: panne' }]);
-    expect(failed.snapshots).toBe(3);
+    expect(failed.snapshots).toBe(4);
   });
 
   it('alertes seules (passage horaire) : ni echeance ni releve', async () => {

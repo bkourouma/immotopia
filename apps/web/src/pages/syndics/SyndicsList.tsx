@@ -1,6 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { App, Alert, Button, Col, Empty, Form, Input, Modal, Row, Select, Space, Spin, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Col,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Pagination,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Typography
+} from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
@@ -26,6 +41,7 @@ export const SyndicsList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingSyndicId, setDeletingSyndicId] = useState<string | null>(null);
@@ -102,6 +118,17 @@ export const SyndicsList: React.FC = () => {
       [item.name, item.address, item.cadastralReference || ''].some(value => value.toLowerCase().includes(query))
     );
   }, [items, search]);
+
+  // Remise à la première page quand la recherche change la liste filtrée.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  const pageSize = 12;
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, currentPage]);
 
   const handleCreate = async () => {
     if (!effectiveTenantId) {
@@ -185,18 +212,31 @@ export const SyndicsList: React.FC = () => {
         ) : filteredItems.length === 0 ? (
           <Empty description={t('Aucune copropriété trouvée')} />
         ) : (
-          <Row gutter={[16, 16]}>
-            {filteredItems.map(item => (
-              <Col key={item.id} xs={24} md={12} xl={8}>
-                <SyndicateCard
-                  syndicate={item}
-                  tenantId={effectiveTenantId || ''}
-                  onDelete={handleDelete}
-                  deleting={deletingSyndicId === item.id}
+          <>
+            <Row gutter={[16, 16]}>
+              {pagedItems.map(item => (
+                <Col key={item.id} xs={24} md={12} xl={8}>
+                  <SyndicateCard
+                    syndicate={item}
+                    tenantId={effectiveTenantId || ''}
+                    onDelete={handleDelete}
+                    deleting={deletingSyndicId === item.id}
+                  />
+                </Col>
+              ))}
+            </Row>
+            {filteredItems.length > pageSize ? (
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <Pagination
+                  current={currentPage}
+                  pageSize={pageSize}
+                  total={filteredItems.length}
+                  onChange={setCurrentPage}
+                  showSizeChanger={false}
                 />
-              </Col>
-            ))}
-          </Row>
+              </div>
+            ) : null}
+          </>
         )}
       </Space>
 

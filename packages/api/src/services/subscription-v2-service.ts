@@ -35,6 +35,7 @@ import {
   EXTENSION,
   InvoiceTotals,
   MODULE_KEYS,
+  PATRIMOINE_PACKS,
   PLATFORM_INVOICE_ISSUER,
   PLATFORM_TAX_RATE_PERCENT,
   PricingCatalogItem,
@@ -59,7 +60,14 @@ import {
   scaleLinesForCycle,
   validateExclusivity
 } from '../lib/subscription';
-import { countActiveCopros, countActiveLots, countActiveSites } from './lot-registry-service';
+import {
+  countActiveCopros,
+  countActiveLots,
+  countActiveSites,
+  countHeldProperties,
+  reconcileLotActivationsTx,
+  tenantCountsHeldProperties
+} from './lot-registry-service';
 
 type Db = PrismaTransactionClient | typeof prisma;
 
@@ -105,7 +113,10 @@ export function toCatalogEntry(row: CatalogRow): CatalogEntry {
 }
 
 /** Catalogue, trie pour l'affichage. */
-export async function listCatalog(options: { includeUnsellable?: boolean } = {}, db: Db = prisma): Promise<CatalogEntry[]> {
+export async function listCatalog(
+  options: { includeUnsellable?: boolean } = {},
+  db: Db = prisma
+): Promise<CatalogEntry[]> {
   const rows = await db.catalogItem.findMany({
     where: options.includeUnsellable ? {} : { isSellable: true },
     include: catalogInclude,
@@ -151,7 +162,11 @@ export interface CatalogItemPatch {
  * Modifie une offre du catalogue (super-admin, D12). N'affecte AUCUN
  * abonnement en cours : leurs prix sont figes dans SubscriptionItem.
  */
-export async function updateCatalogItem(code: string, patch: CatalogItemPatch, actorUserId: string): Promise<CatalogEntry> {
+export async function updateCatalogItem(
+  code: string,
+  patch: CatalogItemPatch,
+  actorUserId: string
+): Promise<CatalogEntry> {
   const existing = await prisma.catalogItem.findUnique({ where: { code }, include: catalogInclude });
   if (!existing) throw new NotFoundError('Offre introuvable dans le catalogue.');
   const updated = await prisma.catalogItem.update({
@@ -175,7 +190,10 @@ export async function updateCatalogItem(code: string, patch: CatalogItemPatch, a
     actionKey: AuditActionKey.CATALOG_ITEM_UPDATED,
     entityType: 'CatalogItem',
     entityId: updated.id,
-    payload: { code, before: toCatalogEntry(existing), after: toCatalogEntry(updated) } as unknown as Record<string, unknown>
+    payload: { code, before: toCatalogEntry(existing), after: toCatalogEntry(updated) } as unknown as Record<
+      string,
+      unknown
+    >
   });
   return toCatalogEntry(updated);
 }
@@ -193,7 +211,8 @@ export type UsageProvider = (db: Db, tenantId: string) => Promise<number>;
 const usageProviders: Record<CapacityKeyCode, UsageProvider> = {
   LOTS: countActiveLots,
   COPROPRIETES: countActiveCopros,
-  CHANTIERS: countActiveSites
+  CHANTIERS: countActiveSites,
+  BIENS_DETENUS: countHeldProperties
 };
 
 export function registerUsageProvider(capacityKey: CapacityKeyCode, provider: UsageProvider): void {
@@ -226,6 +245,7 @@ function toEntitlementItem(row: ItemRow): EntitlementItem & { id: string; catalo
     endsAt: row.endsAt,
     modules: catalog.modules,
     exclusiveGroup: catalog.exclusiveGroup,
+    tierGroup: catalog.rules?.tierGroup ?? null,
     capacities: catalog.capacities,
     catalog,
     row
@@ -363,7 +383,14 @@ export async function syncTenantModulesTx(
       if (want) {
         // eslint-disable-next-line no-await-in-loop -- trois modules au plus.
         await tx.tenantModule.create({
-          data: { tenantId, moduleKey, enabled: true, enabledAt: now, enabledBy: options.actorUserId ?? null, source: 'PACK' }
+          data: {
+            tenantId,
+            moduleKey,
+            enabled: true,
+            enabledAt: now,
+            enabledBy: options.actorUserId ?? null,
+            source: 'PACK'
+          }
         });
         enabled.push(moduleKey);
       }
@@ -411,7 +438,9 @@ export async function linkExtensionsToPacksTx(tx: Db, tenantId: string): Promise
     include: itemInclude,
     orderBy: { createdAt: 'asc' }
   });
-  const packs = rows.filter(r => r.catalogItem.kind === CatalogItemKind.PACK).map(r => ({ id: r.id, code: r.catalogItem.code }));
+  const packs = rows
+    .filter(r => r.catalogItem.kind === CatalogItemKind.PACK)
+    .map(r => ({ id: r.id, code: r.catalogItem.code }));
   let linked = 0;
   for (const row of rows) {
     if (row.catalogItem.kind !== CatalogItemKind.EXTENSION || row.parentItemId) continue;
@@ -434,6 +463,7 @@ export async function applyDueItemTransitionsTx(
   tenantId: string,
   now: Date = new Date()
 ): Promise<{ ended: number; started: number }> {
+  const countedBefore = await tenantCountsHeldProperties(tx, tenantId, now);
   // Filet : une extension dont le pack est termine s'arrete avec lui, meme
   // si son echeance n'avait pas ete posee (retrait anterieur a la vague 2).
   await tx.subscriptionItem.updateMany({
@@ -455,6 +485,8 @@ export async function applyDueItemTransitionsTx(
   });
   if (ended.count > 0 || started.count > 0) {
     await syncTenantModulesTx(tx, tenantId, { now });
+    // Echeance (retrait ou pack programme qui demarre) : reclasse si le droit Patrimoine a change (lot P1).
+    await reconcileHeldPropertiesIfChangedTx(tx, tenantId, countedBefore, now);
     invalidateEntitlements(tenantId);
   }
   return { ended: ended.count, started: started.count };
@@ -467,7 +499,10 @@ function isTrial(subscription: { status: SubscriptionStatus }): boolean {
 }
 
 /** Elements en vigueur maintenant et pas deja programmes pour finir. */
-function standingItems<T extends Pick<EntitlementItem, 'status' | 'startsAt' | 'endsAt'>>(items: readonly T[], now: Date): T[] {
+function standingItems<T extends Pick<EntitlementItem, 'status' | 'startsAt' | 'endsAt'>>(
+  items: readonly T[],
+  now: Date
+): T[] {
   return effectiveItems(items, now).filter(i => !i.endsAt);
 }
 
@@ -517,6 +552,26 @@ function monthlyComboDiscount(items: ChargeableItem[], percent: number): number 
   return computeRecurringLines(items, { comboDiscountPercent: percent }).comboDiscount;
 }
 
+/**
+ * Reclasse le registre des lots (RENTAL_UNIT <-> HELD_PROPERTY) quand un pack
+ * Patrimoine entre ou sort du droit de l'agence, DANS la meme transaction
+ * qu'un ajout, un retrait immediat ou un changement de pack (lot P1) :
+ * `countedBefore` doit etre capture AVANT l'ecriture qui peut changer ce
+ * droit. Sans effet si rien n'a change (aucune agence hors Patrimoine n'est
+ * concernee).
+ */
+async function reconcileHeldPropertiesIfChangedTx(
+  tx: Db,
+  tenantId: string,
+  countedBefore: boolean,
+  now: Date,
+  actorUserId?: string | null
+): Promise<void> {
+  const countedAfter = await tenantCountsHeldProperties(tx, tenantId, now);
+  if (countedAfter === countedBefore) return;
+  await reconcileLotActivationsTx(tx, tenantId, { actorUserId: actorUserId ?? null });
+}
+
 export interface AddItemInput {
   code: string;
   quantity?: number;
@@ -535,22 +590,32 @@ export interface AddItemInput {
  */
 export async function addSubscriptionItem(tenantId: string, input: AddItemInput, actorUserId: string) {
   const quantity = input.quantity ?? 1;
-  if (!Number.isInteger(quantity) || quantity < 1) throw new BadRequestError('La quantité doit être un entier positif.');
+  if (!Number.isInteger(quantity) || quantity < 1)
+    throw new BadRequestError('La quantité doit être un entier positif.');
 
   const outcome = await prisma.$transaction(async tx => {
     const now = new Date();
     const subscription = await requireSubscription(tx, tenantId);
     const catalog = await loadCatalogItem(tx, input.code);
     if (!catalog.isSellable) throw new BadRequestError("Cette offre n'est plus commercialisée.");
+    const countedBefore = await tenantCountsHeldProperties(tx, tenantId, now);
 
     const state = await loadState(tx, tenantId);
     const standing = standingItems(state.items, now);
     const held = heldPackCodes(standing);
 
     if (catalog.kind === CatalogItemKind.PACK) {
-      if (quantity !== 1) throw new BadRequestError("Un pack se souscrit une seule fois.");
+      if (quantity !== 1) throw new BadRequestError('Un pack se souscrit une seule fois.');
       if (held.includes(catalog.code)) throw new ConflictError('Ce pack est déjà souscrit.');
-      const check = validateExclusivity([...standing, { code: catalog.code, kind: 'PACK', exclusiveGroup: catalog.exclusiveGroup }]);
+      const check = validateExclusivity([
+        ...standing,
+        {
+          code: catalog.code,
+          kind: 'PACK',
+          exclusiveGroup: catalog.exclusiveGroup,
+          tierGroup: catalog.rules?.tierGroup ?? null
+        }
+      ]);
       if (!check.ok) {
         throw new BadRequestError(
           `Pack incompatible avec l'abonnement actuel (${check.conflicts.map(c => c.join(' / ')).join(', ')}) : utilisez le changement de pack.`
@@ -647,7 +712,11 @@ export async function addSubscriptionItem(tenantId: string, input: AddItemInput,
       }
     }
     const pendingLines = await createPendingLinesTx(tx, tenantId, pending);
-    const modules = catalog.kind === CatalogItemKind.PACK ? await syncTenantModulesTx(tx, tenantId, { now, actorUserId }) : null;
+    const modules =
+      catalog.kind === CatalogItemKind.PACK ? await syncTenantModulesTx(tx, tenantId, { now, actorUserId }) : null;
+    if (catalog.kind === CatalogItemKind.PACK) {
+      await reconcileHeldPropertiesIfChangedTx(tx, tenantId, countedBefore, now, actorUserId);
+    }
     return { created, pendingLines, modules, catalog };
   });
 
@@ -688,7 +757,12 @@ export interface RemoveItemInput {
  * une raison, ou pendant l'essai. Un retrait partiel cree un element du reste
  * au meme prix fige.
  */
-export async function removeSubscriptionItem(tenantId: string, itemId: string, input: RemoveItemInput, actorUserId: string) {
+export async function removeSubscriptionItem(
+  tenantId: string,
+  itemId: string,
+  input: RemoveItemInput,
+  actorUserId: string
+) {
   if (input.immediate && !input.reason?.trim()) {
     throw new BadRequestError('Un retrait immédiat exige une raison.');
   }
@@ -699,6 +773,7 @@ export async function removeSubscriptionItem(tenantId: string, itemId: string, i
     const row = await tx.subscriptionItem.findFirst({ where: { id: itemId, tenantId }, include: itemInclude });
     if (!row) throw new NotFoundError('Élément d’abonnement introuvable.');
     if (row.status === SubscriptionItemStatus.ENDED) throw new ConflictError('Cet élément est déjà terminé.');
+    const countedBefore = await tenantCountsHeldProperties(tx, tenantId, now);
 
     const removeQty = input.quantity ?? row.quantity;
     if (!Number.isInteger(removeQty) || removeQty < 1 || removeQty > row.quantity) {
@@ -770,6 +845,8 @@ export async function removeSubscriptionItem(tenantId: string, itemId: string, i
       immediate && row.catalogItem.kind === CatalogItemKind.PACK
         ? await syncTenantModulesTx(tx, tenantId, { now, actorUserId })
         : null;
+    // Retrait immediat d'un pack Patrimoine : reclasse aussitot (lot P1).
+    await reconcileHeldPropertiesIfChangedTx(tx, tenantId, countedBefore, now, actorUserId);
     return { ended, remainder, immediate, removeQty, modules, extensionsEnded };
   });
 
@@ -820,6 +897,7 @@ export async function changePack(
     const target = await loadCatalogItem(tx, input.toCode);
     if (target.kind !== CatalogItemKind.PACK) throw new BadRequestError("L'offre cible n'est pas un pack.");
     if (!target.isSellable) throw new BadRequestError("Cette offre n'est plus commercialisée.");
+    const countedBefore = await tenantCountsHeldProperties(tx, tenantId, now);
 
     const state = await loadState(tx, tenantId);
     const standing = standingItems(state.items, now);
@@ -829,9 +907,19 @@ export async function changePack(
     if (heldPackCodes(standing).includes(target.code)) throw new ConflictError('Ce pack est déjà souscrit.');
 
     const remaining = standing.filter(i => !fromItems.includes(i));
-    const check = validateExclusivity([...remaining, { code: target.code, kind: 'PACK', exclusiveGroup: target.exclusiveGroup }]);
+    const check = validateExclusivity([
+      ...remaining,
+      {
+        code: target.code,
+        kind: 'PACK',
+        exclusiveGroup: target.exclusiveGroup,
+        tierGroup: target.rules?.tierGroup ?? null
+      }
+    ]);
     if (!check.ok) {
-      throw new BadRequestError(`Combinaison de packs impossible : ${check.conflicts.map(c => c.join(' / ')).join(', ')}.`);
+      throw new BadRequestError(
+        `Combinaison de packs impossible : ${check.conflicts.map(c => c.join(' / ')).join(', ')}.`
+      );
     }
 
     const fromMonthly = fromItems.reduce((s, i) => s + toNumber(i.row.unitMonthlyPrice), 0);
@@ -868,12 +956,26 @@ export async function changePack(
     });
 
     // Extensions des packs remplaces : suivent le nouveau pack (ou un pack
-    // restant) qui les autorise, sinon partent a la date du changement.
+    // restant) qui les autorise, sinon partent a la date du changement — avec
+    // un avoir au prorata comme leur pack si le changement est immediat (D7,
+    // lot P1 : ex. EXT_BIENS_10 au passage Essentiel -> Pro).
     const remainingPacks = remaining.filter(i => i.kind === 'PACK').map(i => ({ id: i.id, code: i.code }));
     const linkedExtensions = await tx.subscriptionItem.findMany({
-      where: { tenantId, parentItemId: { in: fromItems.map(i => i.id) }, status: { not: SubscriptionItemStatus.ENDED } },
+      where: {
+        tenantId,
+        parentItemId: { in: fromItems.map(i => i.id) },
+        status: { not: SubscriptionItemStatus.ENDED }
+      },
       include: itemInclude
     });
+    const endedExtensions: Array<{
+      id: string;
+      catalogId: string;
+      name: string;
+      quantity: number;
+      unitMonthlyPrice: unknown;
+      discountPercent: unknown;
+    }> = [];
     for (const ext of linkedExtensions) {
       const entry = toCatalogEntry(ext.catalogItem);
       const newParent = choosePackForExtension(entry, [{ id: created.id, code: target.code }, ...remainingPacks]);
@@ -889,6 +991,16 @@ export async function changePack(
               ...(immediate ? { status: SubscriptionItemStatus.ENDED } : {})
             }
       });
+      if (!newParent) {
+        endedExtensions.push({
+          id: ext.id,
+          catalogId: entry.id,
+          name: entry.name,
+          quantity: ext.quantity,
+          unitMonthlyPrice: ext.unitMonthlyPrice,
+          discountPercent: ext.discountPercent
+        });
+      }
     }
 
     const pending: PendingLineInput[] = [];
@@ -903,6 +1015,21 @@ export async function changePack(
           label: `Avoir ${item.catalog.name} — montée de gamme du ${now.toISOString().slice(0, 10)}`,
           catalogItemId: item.catalog.id,
           subscriptionItemId: item.id,
+          quantity: 1,
+          unitPrice: -credit,
+          amount: -credit,
+          periodStart: now,
+          periodEnd: period.end
+        });
+      }
+      for (const ext of endedExtensions) {
+        const monthly = toNumber(ext.unitMonthlyPrice) * ext.quantity * (1 - toNumber(ext.discountPercent) / 100);
+        const credit = prorateAmount(monthly * factor, period.start, period.end, now);
+        pending.push({
+          kind: InvoiceLineKind.CREDIT,
+          label: `Avoir ${ext.name} — montée de gamme du ${now.toISOString().slice(0, 10)}`,
+          catalogItemId: ext.catalogId,
+          subscriptionItemId: ext.id,
           quantity: 1,
           unitPrice: -credit,
           amount: -credit,
@@ -939,6 +1066,8 @@ export async function changePack(
     }
     const pendingLines = await createPendingLinesTx(tx, tenantId, pending);
     const modules = immediate ? await syncTenantModulesTx(tx, tenantId, { now, actorUserId }) : null;
+    // Changement immediat (montee) : reclasse aussitot si le droit Patrimoine a change (lot P1).
+    if (immediate) await reconcileHeldPropertiesIfChangedTx(tx, tenantId, countedBefore, now, actorUserId);
     return { created, pendingLines, modules, upgrade, immediate, switchAt };
   });
 
@@ -978,8 +1107,14 @@ export interface GrantOverrideInput {
 }
 
 /** Accorde une derogation de capacite (ex. « Reprise », D13). */
-export async function grantCapacityOverride(tenantId: string, input: GrantOverrideInput, actorUserId: string | null, db: Db = prisma) {
-  if (!Number.isInteger(input.delta) || input.delta === 0) throw new BadRequestError('La dérogation doit être un entier non nul.');
+export async function grantCapacityOverride(
+  tenantId: string,
+  input: GrantOverrideInput,
+  actorUserId: string | null,
+  db: Db = prisma
+) {
+  if (!Number.isInteger(input.delta) || input.delta === 0)
+    throw new BadRequestError('La dérogation doit être un entier non nul.');
   if (!input.reason?.trim()) throw new BadRequestError('Une dérogation exige une raison.');
   if (input.expiresAt && input.expiresAt.getTime() <= (input.startsAt ?? new Date()).getTime()) {
     throw new BadRequestError("La date d'expiration doit suivre la date de début.");
@@ -1049,12 +1184,22 @@ export interface SubscriptionSettingsInput {
   trialEndsAt?: Date;
 }
 
-export async function updateSubscriptionSettings(tenantId: string, input: SubscriptionSettingsInput, actorUserId: string) {
+export async function updateSubscriptionSettings(
+  tenantId: string,
+  input: SubscriptionSettingsInput,
+  actorUserId: string
+) {
   const subscription = await requireSubscription(prisma, tenantId);
-  if (input.graceDays !== undefined && (!Number.isInteger(input.graceDays) || input.graceDays < 0 || input.graceDays > 90)) {
+  if (
+    input.graceDays !== undefined &&
+    (!Number.isInteger(input.graceDays) || input.graceDays < 0 || input.graceDays > 90)
+  ) {
     throw new BadRequestError('Les jours de grâce doivent être compris entre 0 et 90.');
   }
-  if (input.comboDiscountPercent !== undefined && (input.comboDiscountPercent < 0 || input.comboDiscountPercent > 100)) {
+  if (
+    input.comboDiscountPercent !== undefined &&
+    (input.comboDiscountPercent < 0 || input.comboDiscountPercent > 100)
+  ) {
     throw new BadRequestError('La remise de combinaison doit être comprise entre 0 et 100 %.');
   }
   const trialing = subscription.status === SubscriptionStatus.TRIALING;
@@ -1282,7 +1427,8 @@ async function computeOverageForUsage(
   const extensionCodes: Record<CapacityKeyCode, string> = {
     LOTS: EXTENSION.LOTS_10,
     COPROPRIETES: EXTENSION.COPRO,
-    CHANTIERS: EXTENSION.CHANTIER
+    CHANTIERS: EXTENSION.CHANTIER,
+    BIENS_DETENUS: EXTENSION.BIENS_10
   };
   const extensions = await loadCatalogByCodes(prisma, Object.values(extensionCodes));
   const lines: ChargeLine[] = [];
@@ -1323,7 +1469,7 @@ export async function previewNextInvoice(tenantId: string, options: { now?: Date
 
   const periodStart =
     subscription.status === SubscriptionStatus.TRIALING
-      ? subscription.trialEndsAt ?? subscription.currentPeriodEnd
+      ? (subscription.trialEndsAt ?? subscription.currentPeriodEnd)
       : subscription.currentPeriodEnd;
   const periodEnd = addBillingPeriod(periodStart, subscription.billingCycle);
 
@@ -1438,7 +1584,10 @@ export interface PlannedItem {
  * exclusivite de l'Integre, extensions autorisees par les packs. Les blocs de
  * lots sont prices selon leur rang (un element par palier). Aucune ecriture.
  */
-export function planInitialItems(requested: readonly RequestedItem[], catalog: Map<string, CatalogEntry>): PlannedItem[] {
+export function planInitialItems(
+  requested: readonly RequestedItem[],
+  catalog: Map<string, CatalogEntry>
+): PlannedItem[] {
   const merged = new Map<string, number>();
   for (const item of requested) {
     const quantity = item.quantity ?? 1;
@@ -1459,8 +1608,21 @@ export function planInitialItems(requested: readonly RequestedItem[], catalog: M
   if (packs.length === 0) throw new BadRequestError('Choisissez au moins un pack.');
   const multiple = packs.find(p => p.quantity !== 1);
   if (multiple) throw new BadRequestError(`Un pack se souscrit une seule fois : ${multiple.entry.code}.`);
-  const check = validateExclusivity(packs.map(p => ({ code: p.entry.code, kind: 'PACK' as const, exclusiveGroup: p.entry.exclusiveGroup })));
+  const check = validateExclusivity(
+    packs.map(p => ({
+      code: p.entry.code,
+      kind: 'PACK' as const,
+      exclusiveGroup: p.entry.exclusiveGroup,
+      tierGroup: p.entry.rules?.tierGroup ?? null
+    }))
+  );
   if (!check.ok) {
+    const tierClash = check.conflicts.find(([a, b]) => PATRIMOINE_PACKS.includes(a) && PATRIMOINE_PACKS.includes(b));
+    if (tierClash) {
+      throw new BadRequestError(
+        'Patrimoine Essentiel et Patrimoine Pro ne se cumulent pas : choisissez l’un des deux.'
+      );
+    }
     throw new BadRequestError(
       `Combinaison de packs impossible : ${check.conflicts.map(c => c.join(' / ')).join(', ')}. L'Intégré comprend déjà les trois modules.`
     );
@@ -1486,7 +1648,12 @@ export function planInitialItems(requested: readonly RequestedItem[], catalog: M
     const capacityKey = (Object.keys(entry.capacities)[0] ?? 'LOTS') as CapacityKeyCode;
     const before = planned.reduce((s, p) => s + (p.catalog.capacities[capacityKey] ?? 0) * p.quantity, 0);
     for (const segment of planExtensionUnits(entry, held, quantity, before)) {
-      planned.push({ catalog: entry, quantity: segment.quantity, unitMonthlyPrice: segment.unitMonthlyPrice, unitSetupPrice: 0 });
+      planned.push({
+        catalog: entry,
+        quantity: segment.quantity,
+        unitMonthlyPrice: segment.unitMonthlyPrice,
+        unitSetupPrice: 0
+      });
     }
   }
   return planned;

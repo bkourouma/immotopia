@@ -12,6 +12,7 @@ import {
   DEFAULT_CATALOG,
   EXTENSION,
   PACK,
+  PATRIMOINE_PACKS,
   PricingCatalogItem,
   annualPrice,
   computeComboDiscount,
@@ -80,14 +81,45 @@ describe('Catalogue par defaut = grille du site', () => {
     expect(byCode('SETUP_INTEGRE').setupPrice).toBe(650_000);
   });
 
-  it("la migration SQL amorce exactement le meme catalogue (codes et prix)", () => {
+  it('la migration SQL amorce exactement le meme catalogue (codes et prix)', () => {
     const sql = fs.readFileSync(
       path.join(__dirname, '../../prisma/migrations/20260928090000_abonnements_packs/migration.sql'),
       'utf8'
     );
+    // Les offres Patrimoine (lot P1) ne viennent pas de cette migration-ci
+    // mais de 20261001101600_patrimoine_pack_catalogue (verifie ci-dessous).
     for (const item of DEFAULT_CATALOG) {
+      if (
+        PATRIMOINE_PACKS.includes(item.code) ||
+        item.code === EXTENSION.BIENS_10 ||
+        item.code.startsWith('SETUP_PATRIMOINE_')
+      ) {
+        continue;
+      }
       expect(sql).toContain(`'${item.code}', '${item.kind}'`);
-      expect(sql).toMatch(new RegExp(`'${item.code}', '${item.kind}', '[^']*', [^\\n]*, ${item.monthlyPrice}, ${item.setupPrice},`));
+      expect(sql).toMatch(
+        new RegExp(`'${item.code}', '${item.kind}', '[^']*', [^\\n]*, ${item.monthlyPrice}, ${item.setupPrice},`)
+      );
+    }
+  });
+
+  it('la migration Patrimoine amorce exactement les offres Patrimoine du catalogue', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../prisma/migrations/20261001101600_patrimoine_pack_catalogue/migration.sql'),
+      'utf8'
+    );
+    const patrimoineCodes = [
+      ...PATRIMOINE_PACKS,
+      EXTENSION.BIENS_10,
+      'SETUP_PATRIMOINE_ESSENTIEL',
+      'SETUP_PATRIMOINE_PRO'
+    ];
+    for (const item of DEFAULT_CATALOG) {
+      if (!patrimoineCodes.includes(item.code)) continue;
+      expect(sql).toContain(`'${item.code}', '${item.kind}'`);
+      expect(sql).toMatch(
+        new RegExp(`'${item.code}', '${item.kind}', '[^']*', [^\\n]*, ${item.monthlyPrice}, ${item.setupPrice},`)
+      );
     }
   });
 
@@ -147,13 +179,17 @@ describe('Prix du lot supplementaire (D5)', () => {
   it('150 FCFA/lot (bloc 1 500) avec Agence ou Syndic', () => {
     expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.AGENCE], firstLotRank: 101 })).toBe(1_500);
     expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.SYNDIC], firstLotRank: 401 })).toBe(1_500);
-    expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.AGENCE, PACK.SYNDIC], firstLotRank: 301 })).toBe(1_500);
+    expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.AGENCE, PACK.SYNDIC], firstLotRank: 301 })).toBe(
+      1_500
+    );
   });
 
   it('100 FCFA/lot des que l’agence detient Promoteur ou Integre', () => {
     expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.PROMOTEUR], firstLotRank: 151 })).toBe(1_000);
     expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.INTEGRE], firstLotRank: 301 })).toBe(1_000);
-    expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.AGENCE, PACK.PROMOTEUR], firstLotRank: 401 })).toBe(1_000);
+    expect(resolveUnitMonthlyPrice(lotsBlock, { heldPacks: [PACK.AGENCE, PACK.PROMOTEUR], firstLotRank: 401 })).toBe(
+      1_000
+    );
   });
 
   it('75 FCFA/lot pour l’Agence seule au-dela du 300e lot', () => {
@@ -169,7 +205,9 @@ describe('Prix du lot supplementaire (D5)', () => {
 
   it('Promoteur et Integre : identiques au site (multiples de 10)', () => {
     for (let lots = 100; lots <= 500; lots += 50) {
-      expect(estimateMonthly({ packs: [PACK.PROMOTEUR], chantiers: 4, lots }, catalog).subtotal).toBe(site.promoteur(4, lots));
+      expect(estimateMonthly({ packs: [PACK.PROMOTEUR], chantiers: 4, lots }, catalog).subtotal).toBe(
+        site.promoteur(4, lots)
+      );
       expect(estimateMonthly({ packs: [PACK.INTEGRE], chantiers: 5, copros: 4, lots }, catalog).subtotal).toBe(
         site.integre(5, 4, lots)
       );
@@ -223,8 +261,22 @@ describe('Remise de combinaison (D6)', () => {
 
   it('la remise commerciale d’un element s’applique a sa ligne ; les SETUP sont hors recurrent', () => {
     const items = [
-      { code: PACK.AGENCE, kind: 'PACK' as const, name: 'Agence', quantity: 1, unitMonthlyPrice: 29_900, discountPercent: 50 },
-      { code: 'SETUP_AGENCE', kind: 'SETUP' as const, name: 'Mise en route', quantity: 1, unitMonthlyPrice: 0, unitSetupPrice: 100_000 }
+      {
+        code: PACK.AGENCE,
+        kind: 'PACK' as const,
+        name: 'Agence',
+        quantity: 1,
+        unitMonthlyPrice: 29_900,
+        discountPercent: 50
+      },
+      {
+        code: 'SETUP_AGENCE',
+        kind: 'SETUP' as const,
+        name: 'Mise en route',
+        quantity: 1,
+        unitMonthlyPrice: 0,
+        unitSetupPrice: 100_000
+      }
     ];
     expect(computeRecurringLines(items, { comboDiscountPercent: 10 }).subtotal).toBe(14_950);
     expect(computeSetupLines(items)).toEqual([
@@ -235,13 +287,25 @@ describe('Remise de combinaison (D6)', () => {
 
 describe('Depassement facture (D4, BILL_OVERAGE)', () => {
   it('Agence seule, 320 lots pour une reserve de 300 : 20 lots a 75 FCFA', () => {
-    const lines = computeOverageLines({ capacityKey: 'LOTS', limit: 300, used: 320, heldPacks: [PACK.AGENCE], extension: lotsBlock });
+    const lines = computeOverageLines({
+      capacityKey: 'LOTS',
+      limit: 300,
+      used: 320,
+      heldPacks: [PACK.AGENCE],
+      extension: lotsBlock
+    });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ quantity: 20, unitPrice: 75, amount: 1_500 });
   });
 
   it('Agence seule, reserve 100, 310 lots : 200 a 150 puis 10 a 75', () => {
-    const lines = computeOverageLines({ capacityKey: 'LOTS', limit: 100, used: 310, heldPacks: [PACK.AGENCE], extension: lotsBlock });
+    const lines = computeOverageLines({
+      capacityKey: 'LOTS',
+      limit: 100,
+      used: 310,
+      heldPacks: [PACK.AGENCE],
+      extension: lotsBlock
+    });
     expect(lines.map(l => [l.quantity, l.unitPrice])).toEqual([
       [200, 150],
       [10, 75]
@@ -251,15 +315,115 @@ describe('Depassement facture (D4, BILL_OVERAGE)', () => {
 
   it('coproprietes et chantiers au prix de l’extension', () => {
     expect(
-      computeOverageLines({ capacityKey: 'COPROPRIETES', limit: 2, used: 4, heldPacks: [PACK.SYNDIC], extension: copro })[0]
+      computeOverageLines({
+        capacityKey: 'COPROPRIETES',
+        limit: 2,
+        used: 4,
+        heldPacks: [PACK.SYNDIC],
+        extension: copro
+      })[0]
     ).toMatchObject({ quantity: 2, unitPrice: 10_000, amount: 20_000 });
     expect(
-      computeOverageLines({ capacityKey: 'CHANTIERS', limit: 3, used: 4, heldPacks: [PACK.INTEGRE], extension: chantier })[0]
+      computeOverageLines({
+        capacityKey: 'CHANTIERS',
+        limit: 3,
+        used: 4,
+        heldPacks: [PACK.INTEGRE],
+        extension: chantier
+      })[0]
     ).toMatchObject({ quantity: 1, amount: 35_000 });
   });
 
   it('rien dans le plafond', () => {
-    expect(computeOverageLines({ capacityKey: 'LOTS', limit: 100, used: 100, heldPacks: [PACK.AGENCE], extension: lotsBlock })).toEqual([]);
+    expect(
+      computeOverageLines({
+        capacityKey: 'LOTS',
+        limit: 100,
+        used: 100,
+        heldPacks: [PACK.AGENCE],
+        extension: lotsBlock
+      })
+    ).toEqual([]);
+  });
+});
+
+describe('Pack Patrimoine (biens detenus, lot P1)', () => {
+  const essentiel = byCode(PACK.PATRIMOINE_ESSENTIEL);
+  const pro = byCode(PACK.PATRIMOINE_PRO);
+  const biensBlock = byCode(EXTENSION.BIENS_10);
+
+  it('Essentiel, 25 biens -> 9 900 + 2 blocs (19 800)', () => {
+    const r = estimateMonthly({ packs: [PACK.PATRIMOINE_ESSENTIEL], biens: 25 }, catalog);
+    expect(r.extensions[EXTENSION.BIENS_10]).toBe(2);
+    expect(r.subtotal).toBe(9_900 + 2 * 9_900);
+  });
+
+  it('Pro, 150 biens -> 29 900 + 50 x 299 (depassement facture, pas de bloc vendu)', () => {
+    const r = estimateMonthly({ packs: [PACK.PATRIMOINE_PRO], biens: 150 }, catalog);
+    expect(r.extensions[EXTENSION.BIENS_10]).toBeUndefined();
+    expect(r.subtotal).toBe(29_900 + 50 * 299);
+  });
+
+  it('Agence + Patrimoine Essentiel -> remise de combinaison de 990 (10 % du moins cher)', () => {
+    const r = estimateMonthly({ packs: [PACK.AGENCE, PACK.PATRIMOINE_ESSENTIEL] }, catalog);
+    expect(r.comboDiscount).toBe(990);
+    expect(r.subtotal).toBe(29_900 + 9_900 - 990);
+  });
+
+  it('Promoteur + Patrimoine Essentiel -> remise de combinaison de 990 (10 % du moins cher)', () => {
+    const r = estimateMonthly({ packs: [PACK.PROMOTEUR, PACK.PATRIMOINE_ESSENTIEL] }, catalog);
+    expect(r.comboDiscount).toBe(990);
+    expect(r.subtotal).toBe(149_900 + 9_900 - 990);
+  });
+
+  it('bloc de biens : 990 FCFA/bien avec l’Essentiel, 299 FCFA le bien en depassement du Pro', () => {
+    expect(resolveUnitMonthlyPrice(biensBlock, { heldPacks: [PACK.PATRIMOINE_ESSENTIEL] })).toBe(9_900);
+    expect(resolveUnitMonthlyPrice(biensBlock, { heldPacks: [PACK.PATRIMOINE_PRO] })).toBe(2_990);
+    expect(isExtensionAllowed(biensBlock, [PACK.PATRIMOINE_ESSENTIEL])).toBe(true);
+    expect(isExtensionAllowed(biensBlock, [PACK.PATRIMOINE_PRO])).toBe(false);
+  });
+
+  it('depassement BIENS_DETENUS : libelle et prix unitaire selon le pack detenu', () => {
+    const essentielOverage = computeOverageLines({
+      capacityKey: 'BIENS_DETENUS',
+      limit: 10,
+      used: 13,
+      heldPacks: [PACK.PATRIMOINE_ESSENTIEL],
+      extension: biensBlock
+    });
+    expect(essentielOverage).toEqual([
+      {
+        kind: 'OVERAGE',
+        label: "Dépassement : 3 bien(s) détenu(s) au-delà de l'abonnement",
+        capacityKey: 'BIENS_DETENUS',
+        quantity: 3,
+        unitPrice: 990,
+        amount: 2_970
+      }
+    ]);
+
+    const proOverage = computeOverageLines({
+      capacityKey: 'BIENS_DETENUS',
+      limit: 100,
+      used: 150,
+      heldPacks: [PACK.PATRIMOINE_PRO],
+      extension: biensBlock
+    });
+    expect(proOverage).toEqual([
+      {
+        kind: 'OVERAGE',
+        label: "Dépassement : 50 bien(s) détenu(s) au-delà de l'abonnement",
+        capacityKey: 'BIENS_DETENUS',
+        quantity: 50,
+        unitPrice: 299,
+        amount: 14_950
+      }
+    ]);
+  });
+
+  it('Essentiel et Pro : capacites BIENS_DETENUS de la grille', () => {
+    expect(essentiel).toMatchObject({ monthlyPrice: 9_900, setupPrice: 30_000, capacities: { BIENS_DETENUS: 10 } });
+    expect(pro).toMatchObject({ monthlyPrice: 29_900, setupPrice: 90_000, capacities: { BIENS_DETENUS: 100 } });
   });
 });
 
@@ -288,7 +452,9 @@ describe('TVA (D9) et periodes', () => {
   });
 
   it('fin de periode : +1 mois ou +12 mois', () => {
-    expect(addBillingPeriod(new Date('2026-09-25T00:00:00Z'), 'MONTHLY').toISOString()).toBe('2026-10-25T00:00:00.000Z');
+    expect(addBillingPeriod(new Date('2026-09-25T00:00:00Z'), 'MONTHLY').toISOString()).toBe(
+      '2026-10-25T00:00:00.000Z'
+    );
     expect(addBillingPeriod(new Date('2026-09-25T00:00:00Z'), 'ANNUAL').toISOString()).toBe('2027-09-25T00:00:00.000Z');
   });
 });

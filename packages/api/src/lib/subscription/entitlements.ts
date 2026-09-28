@@ -30,6 +30,8 @@ export interface EntitlementItem {
   endsAt: Date | null;
   modules: readonly string[];
   exclusiveGroup: string | null;
+  /** Palier de gamme (`rules.tierGroup`) : deux packs du meme palier ne se cumulent pas. */
+  tierGroup?: string | null;
   /** Capacite d'UNE unite. */
   capacities: Partial<Record<CapacityKeyCode, number>>;
 }
@@ -72,7 +74,10 @@ export function isItemEffective(item: Pick<EntitlementItem, 'status' | 'startsAt
   return !item.endsAt || item.endsAt.getTime() > now.getTime();
 }
 
-export function effectiveItems<T extends Pick<EntitlementItem, 'status' | 'startsAt' | 'endsAt'>>(items: readonly T[], now: Date): T[] {
+export function effectiveItems<T extends Pick<EntitlementItem, 'status' | 'startsAt' | 'endsAt'>>(
+  items: readonly T[],
+  now: Date
+): T[] {
   return items.filter(item => isItemEffective(item, now));
 }
 
@@ -95,7 +100,10 @@ export function packModules(items: readonly Pick<EntitlementItem, 'kind' | 'modu
 
 export interface ExclusivityResult {
   ok: boolean;
-  /** Paires de packs incompatibles, ex. [['INTEGRE', 'AGENCE']]. */
+  /**
+   * Paires de packs incompatibles, ex. [['INTEGRE', 'AGENCE']] (exclusivite)
+   * ou [['PATRIMOINE_ESSENTIEL', 'PATRIMOINE_PRO']] (meme palier).
+   */
   conflicts: Array<[string, string]>;
   /** Pack present deux fois (un pack ne se souscrit qu'une fois). */
   duplicates: string[];
@@ -103,10 +111,11 @@ export interface ExclusivityResult {
 
 /**
  * Un pack portant un `exclusiveGroup` exclut tout autre PACK hors de ce
- * groupe. Les extensions et mises en route ne sont jamais concernees.
+ * groupe ; deux packs portant le meme `tierGroup` (Patrimoine Essentiel et
+ * Pro) s'excluent. Les extensions et mises en route ne sont jamais concernees.
  */
 export function validateExclusivity(
-  items: readonly Pick<EntitlementItem, 'code' | 'kind' | 'exclusiveGroup'>[]
+  items: readonly Pick<EntitlementItem, 'code' | 'kind' | 'exclusiveGroup' | 'tierGroup'>[]
 ): ExclusivityResult {
   const packs = items.filter(i => i.kind === 'PACK');
   const seen = new Set<string>();
@@ -125,7 +134,9 @@ export function validateExclusivity(
       const clash =
         (a.exclusiveGroup !== null && a.exclusiveGroup !== b.exclusiveGroup) ||
         (b.exclusiveGroup !== null && b.exclusiveGroup !== a.exclusiveGroup);
+      const sameTier = Boolean(a.tierGroup) && a.tierGroup === b.tierGroup;
       if (clash) conflicts.push(a.exclusiveGroup ? [a.code, b.code] : [b.code, a.code]);
+      else if (sameTier) conflicts.push([a.code, b.code]);
     }
   }
   return { ok: conflicts.length === 0 && duplicates.size === 0, conflicts, duplicates: [...duplicates] };
@@ -224,13 +235,7 @@ export function resolveModuleAccess(
 export type SubscriptionPhase = 'NONE' | 'TRIAL' | 'ACTIVE' | 'GRACE' | 'READ_ONLY';
 
 export type ReadOnlyReason =
-  | 'NO_SUBSCRIPTION'
-  | 'TRIAL_EXPIRED'
-  | 'PAST_DUE'
-  | 'PERIOD_EXPIRED'
-  | 'CANCELED'
-  | 'SUSPENDED'
-  | 'MANUAL';
+  'NO_SUBSCRIPTION' | 'TRIAL_EXPIRED' | 'PAST_DUE' | 'PERIOD_EXPIRED' | 'CANCELED' | 'SUSPENDED' | 'MANUAL';
 
 export interface PhaseInput {
   status: SubscriptionStatusCode;
@@ -289,14 +294,32 @@ export function resolveSubscriptionPhase(sub: PhaseInput | null, now: Date): Pha
 
   switch (sub.status) {
     case 'SUSPENDED':
-      return { phase: 'READ_ONLY', readOnly: true, reason: 'SUSPENDED', trialEndsAt: sub.trialEndsAt, graceEndsAt: null };
+      return {
+        phase: 'READ_ONLY',
+        readOnly: true,
+        reason: 'SUSPENDED',
+        trialEndsAt: sub.trialEndsAt,
+        graceEndsAt: null
+      };
 
     case 'CANCELED': {
       const end = sub.cancelAt ?? sub.canceledAt ?? sub.currentPeriodEnd;
       if (t < end.getTime()) {
-        return { phase: 'ACTIVE', readOnly: false, reason: 'CANCELED', trialEndsAt: sub.trialEndsAt, graceEndsAt: null };
+        return {
+          phase: 'ACTIVE',
+          readOnly: false,
+          reason: 'CANCELED',
+          trialEndsAt: sub.trialEndsAt,
+          graceEndsAt: null
+        };
       }
-      return { phase: 'READ_ONLY', readOnly: true, reason: 'CANCELED', trialEndsAt: sub.trialEndsAt, graceEndsAt: null };
+      return {
+        phase: 'READ_ONLY',
+        readOnly: true,
+        reason: 'CANCELED',
+        trialEndsAt: sub.trialEndsAt,
+        graceEndsAt: null
+      };
     }
 
     case 'TRIALING': {
@@ -399,6 +422,13 @@ export interface TenantEntitlements {
   moduleAccess: Record<ModuleKeyCode, ModuleAccess>;
   /** Fonctionnalites des modules ouverts (lib/subscription/features.ts). */
   features: string[];
+  /**
+   * Barriere « detenu en propre » (pack Patrimoine, 28/09) : vrai quand le
+   * SEUL module pleinement ouvert est MODULE_PATRIMOINE. L'agence gere alors
+   * ses propres biens : ni mandat, ni proprietaire tiers
+   * (`assertThirdPartyManagementAllowed`, guards.ts).
+   */
+  ownAssetsOnly: boolean;
   capacities: Record<CapacityKeyCode, CapacityState>;
   quotaPolicy: QuotaPolicyCode;
   enforcement: SubscriptionEnforcement;
@@ -424,6 +454,11 @@ export interface BuildEntitlementsInput {
   /** Fonctionnalites d'une liste de modules (injectee pour garder ce fichier sans dependance). */
   featuresFor: (modules: readonly string[]) => string[];
   now: Date;
+}
+
+/** Vrai quand MODULE_PATRIMOINE est le seul module pleinement ouvert (barriere « detenu en propre »). */
+export function isOwnAssetsOnly(fullModules: readonly string[]): boolean {
+  return fullModules.length > 0 && fullModules.every(m => m === 'MODULE_PATRIMOINE');
 }
 
 /** Assemble les droits a partir des donnees brutes. Pur : le service ne fait que charger. */
@@ -454,7 +489,7 @@ export function buildEntitlements(input: BuildEntitlementsInput): TenantEntitlem
     readOnly: phase.readOnly,
     readOnlyReason: phase.reason,
     manualReadOnlyAt: sub?.manualReadOnlyAt ?? null,
-    manualReadOnlyReason: phase.reason === 'MANUAL' ? sub?.manualReadOnlyReason ?? null : null,
+    manualReadOnlyReason: phase.reason === 'MANUAL' ? (sub?.manualReadOnlyReason ?? null) : null,
     trialEndsAt: phase.trialEndsAt,
     graceEndsAt: phase.graceEndsAt,
     billingCycle: sub?.billingCycle ?? null,
@@ -464,6 +499,7 @@ export function buildEntitlements(input: BuildEntitlementsInput): TenantEntitlem
     modules,
     moduleAccess: access,
     features: input.featuresFor(modules),
+    ownAssetsOnly: isOwnAssetsOnly(modules),
     capacities,
     quotaPolicy: sub?.quotaPolicy ?? 'BILL_OVERAGE',
     enforcement: input.enforcement,
