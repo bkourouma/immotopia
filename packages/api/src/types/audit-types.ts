@@ -106,7 +106,14 @@ export enum AuditActionKey {
   DOCUMENT_SIGNATURE_REMOVED = 'DOCUMENT_SIGNATURE_REMOVED',
 
   // Syndic - recus et quittances de charges (lot S3) : renvoi manuel par e-mail
-  SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT = 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT'
+  SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT = 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT',
+
+  // Patrimoine (lot P3) : alertes d'echeance envoyees (fin de bail, fin
+  // d'emprunt, travaux a venir) -- utilisees comme marque anti-doublon via
+  // `entityType`/`entityId`, voir `lib/patrimoine/notifications.ts`.
+  PATRIMOINE_LEASE_END_ALERT_SENT = 'PATRIMOINE_LEASE_END_ALERT_SENT',
+  PATRIMOINE_LOAN_MATURITY_ALERT_SENT = 'PATRIMOINE_LOAN_MATURITY_ALERT_SENT',
+  PATRIMOINE_WORK_UPCOMING_ALERT_SENT = 'PATRIMOINE_WORK_UPCOMING_ALERT_SENT'
 }
 
 // Audit log entry

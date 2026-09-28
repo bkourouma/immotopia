@@ -6,9 +6,13 @@
  * pour un test de service) : `lib/patrimoine/notifications.ts` tourne pour de
  * vrai par-dessus, comme en production, plutôt que d'être mocké -- le point à
  * vérifier ici est que `runWithTenantContext` pose le bon tenant avant chaque
- * requête, et que le traitement reste séquentiel, agence par agence ; le
- * détail de l'algorithme d'alerte est couvert par
- * `patrimoine.document-expiry-alert.test.ts`.
+ * requête, et que le traitement reste séquentiel, agence par agence, pour les
+ * quatre alertes désormais enchaînées (documents, baux, emprunts, travaux) ;
+ * le détail de chaque algorithme d'alerte est couvert par son propre test
+ * dédié (`patrimoine.document-expiry-alert.test.ts`,
+ * `patrimoine.deadline-alerts.test.ts`). Les trois alertes étendues ne
+ * trouvent ici aucune ligne (mocks vides) : seule celle des documents est
+ * exercée, comme avant l'extension du lot P3.
  */
 
 const tenantFindMany = jest.fn();
@@ -17,11 +21,20 @@ const propertyDocumentUpdateMany = jest.fn();
 const propertyOwnershipShareFindMany = jest.fn();
 const tenantClientFindMany = jest.fn();
 const crmContactFindMany = jest.fn();
+const rentalLeaseFindMany = jest.fn();
+const propertyLoanFindMany = jest.fn();
+const workProgramFindMany = jest.fn();
+const auditLogFindMany = jest.fn();
+const tenantFindUnique = jest.fn();
+const roleFindUnique = jest.fn();
+const userRoleFindMany = jest.fn();
+const userFindMany = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     tenant: {
-      findMany: (...a: any[]) => tenantFindMany(...a)
+      findMany: (...a: any[]) => tenantFindMany(...a),
+      findUnique: (...a: any[]) => tenantFindUnique(...a)
     },
     propertyDocument: {
       findMany: (...a: any[]) => propertyDocumentFindMany(...a),
@@ -36,6 +49,27 @@ jest.mock('../../src/utils/database', () => ({
     },
     crmContact: {
       findMany: (...a: any[]) => crmContactFindMany(...a)
+    },
+    rentalLease: {
+      findMany: (...a: any[]) => rentalLeaseFindMany(...a)
+    },
+    propertyLoan: {
+      findMany: (...a: any[]) => propertyLoanFindMany(...a)
+    },
+    workProgram: {
+      findMany: (...a: any[]) => workProgramFindMany(...a)
+    },
+    auditLog: {
+      findMany: (...a: any[]) => auditLogFindMany(...a)
+    },
+    role: {
+      findUnique: (...a: any[]) => roleFindUnique(...a)
+    },
+    userRole: {
+      findMany: (...a: any[]) => userRoleFindMany(...a)
+    },
+    user: {
+      findMany: (...a: any[]) => userFindMany(...a)
     }
   }
 }));
@@ -52,6 +86,13 @@ jest.mock('../../src/services/email-service', () => ({
 
 jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
   sendWhatsappNotification: jest.fn()
+}));
+
+const logAuditEvent = jest.fn();
+const flushAuditEvents = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (...a: any[]) => logAuditEvent(...a),
+  flushAuditEvents: (...a: any[]) => flushAuditEvents(...a)
 }));
 
 import { getCurrentTenantId } from '../../src/utils/tenant-context';
@@ -80,6 +121,18 @@ beforeEach(() => {
   crmContactFindMany.mockResolvedValue([
     { id: 'contact-1', email: 'owner@example.com', firstName: 'Awa', lastName: 'Koné', consentEmail: true }
   ]);
+  // Les trois alertes étendues (lot P3) ne trouvent rien à alerter ici :
+  // seul le comportement des documents (déjà couvert avant l'extension) est
+  // exercé par ce fichier.
+  rentalLeaseFindMany.mockResolvedValue([]);
+  propertyLoanFindMany.mockResolvedValue([]);
+  workProgramFindMany.mockResolvedValue([]);
+  auditLogFindMany.mockResolvedValue([]);
+  tenantFindUnique.mockResolvedValue({ name: 'Agence', contactEmail: null });
+  roleFindUnique.mockResolvedValue(null);
+  userRoleFindMany.mockResolvedValue([]);
+  userFindMany.mockResolvedValue([]);
+  flushAuditEvents.mockResolvedValue(0);
 });
 
 describe('runDocumentExpiryAlerts — isolation multi-agence', () => {

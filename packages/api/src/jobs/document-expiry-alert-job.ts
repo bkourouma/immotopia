@@ -3,22 +3,41 @@ import * as cron from 'node-cron';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { runWithTenantContext } from '../utils/tenant-context';
-import { alertExpiringDocuments } from '../lib/patrimoine/notifications';
+import {
+  alertExpiringDocuments,
+  alertExpiringLeases,
+  alertLoanMaturity,
+  alertUpcomingWorks
+} from '../lib/patrimoine/notifications';
 
 /**
- * Alerte quotidienne d'expiration des documents patrimoine (`PropertyDocument`).
+ * Alertes quotidiennes d'echeance patrimoine (lot P0, etendu lot P3).
  *
  * Chaque jour a 7 h UTC, chaque agence active est traitee tour a tour, dans
- * son propre contexte tenant (`runWithTenantContext`) : `alertExpiringDocuments`
- * alerte par e-mail les proprietaires (indivision comprise) des biens dont un
- * document expire dans les 30 prochains jours, en filtrant sur leur
- * consentement e-mail (`CrmContact.consentEmail === true`) -- jamais de
- * destinataire suppose.
+ * son propre contexte tenant (`runWithTenantContext`), par quatre alertes
+ * independantes (une agence dont l'une echoue continue avec les autres, voir
+ * plus bas) :
  *
- * Anti-doublon : `PropertyDocument.warningSentAt` marque un document deja
- * alerte, reserve de facon atomique avant l'envoi ; un document sans
- * destinataire eligible n'est pas marque et sera retente les jours suivants.
- * Aucune migration nouvelle : la colonne existe deja en base.
+ * - `alertExpiringDocuments` : documents patrimoine (`PropertyDocument`)
+ *   expirant sous 30 jours, tous types confondus -- assurance comprise, sans
+ *   filtre sur `documentType`. Alerte les proprietaires (indivision
+ *   comprise), en filtrant sur leur consentement e-mail
+ *   (`CrmContact.consentEmail === true`).
+ * - `alertExpiringLeases` : baux actifs dont `end_date` approche. Meme
+ *   destinataires (proprietaires) et meme regle de consentement.
+ * - `alertLoanMaturity` : emprunts actifs dont `endDate` approche. Alerte
+ *   l'agence (administrateurs actifs), pas le proprietaire -- alerte
+ *   operationnelle interne, aucun consentement CRM a verifier.
+ * - `alertUpcomingWorks` : programmes de travaux planifies dont
+ *   `plannedDate` approche. Memes destinataires internes que
+ *   `alertLoanMaturity`.
+ *
+ * Anti-doublon : `PropertyDocument.warningSentAt` (colonne existante,
+ * reservee de facon atomique) pour les documents ; les trois autres
+ * s'appuient sur `AuditLog` en l'absence de colonne dediee -- voir le
+ * commentaire de tete de `lib/patrimoine/notifications.ts` pour le detail et
+ * la limite assumee (pas d'atomicite entre lecture et ecriture, acceptable
+ * ici car sequentiel, une agence a la fois).
  *
  * Isolation : la liste des agences est lue hors contexte tenant (lecture
  * transverse volontaire, comme `newsletter-campaign-scheduler.job.ts`), puis
@@ -40,6 +59,18 @@ export interface DocumentExpiryAlertReport {
   failedTenants: number;
 }
 
+/** Cumule le resultat d'une des quatre alertes dans le rapport agrege. */
+function accumulate(
+  report: DocumentExpiryAlertReport,
+  result: { sent: number; matched: number; skippedNoRecipient: number; skippedAlreadySent: number; failed: number }
+): void {
+  report.sent += result.sent;
+  report.matched += result.matched;
+  report.skippedNoRecipient += result.skippedNoRecipient;
+  report.skippedAlreadySent += result.skippedAlreadySent;
+  report.failed += result.failed;
+}
+
 export async function runDocumentExpiryAlerts(now: Date = new Date()): Promise<DocumentExpiryAlertReport> {
   const tenants = await prisma.tenant.findMany({
     where: { status: 'ACTIVE', isActive: true },
@@ -58,14 +89,15 @@ export async function runDocumentExpiryAlerts(now: Date = new Date()): Promise<D
 
   for (const tenant of tenants) {
     try {
-      const result = await runWithTenantContext({ tenantId: tenant.id }, () =>
-        alertExpiringDocuments(tenant.id, { now })
-      );
-      report.sent += result.sent;
-      report.matched += result.matched;
-      report.skippedNoRecipient += result.skippedNoRecipient;
-      report.skippedAlreadySent += result.skippedAlreadySent;
-      report.failed += result.failed;
+      // Sequentiel a l'interieur d'une meme agence aussi : chaque alerte
+      // envoie ses propres e-mails et pose sa propre marque anti-doublon,
+      // pas besoin de les paralleliser pour une seule agence a la fois.
+      await runWithTenantContext({ tenantId: tenant.id }, async () => {
+        accumulate(report, await alertExpiringDocuments(tenant.id, { now }));
+        accumulate(report, await alertExpiringLeases(tenant.id, { now }));
+        accumulate(report, await alertLoanMaturity(tenant.id, { now }));
+        accumulate(report, await alertUpcomingWorks(tenant.id, { now }));
+      });
     } catch (error) {
       report.failedTenants += 1;
       logger.error('Document expiry alert failed for tenant', {
