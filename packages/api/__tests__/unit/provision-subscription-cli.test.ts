@@ -5,9 +5,9 @@
  * routage de `run()` avec le service simule.
  */
 
-type Row = Record<string, any>;
+type CliRow = Record<string, any>;
 
-const FAKE_ENTITLEMENTS_NOW: Row = {
+const FAKE_ENTITLEMENTS_NOW: CliRow = {
   status: 'NONE',
   phase: 'NONE',
   modules: [],
@@ -129,7 +129,7 @@ describe('run — routage et codes de sortie', () => {
       reconciliationPreview: null,
       after: null,
       warnings: []
-    } as Row);
+    } as CliRow);
     const okCode = await run(['provision', '--tenant', 't1', '--items', 'AGENCE', '--dry-run']);
     expect(okCode).toBe(0);
 
@@ -153,7 +153,7 @@ describe('run — routage et codes de sortie', () => {
       reconciliationPreview: null,
       after: null,
       warnings: []
-    } as Row);
+    } as CliRow);
     const refusedCode = await run(['provision', '--tenant', 't2', '--items', 'AGENCE', '--dry-run']);
     expect(refusedCode).toBe(2);
   });
@@ -165,7 +165,7 @@ describe('run — routage et codes de sortie', () => {
       before: { status: 'ACTIVE', isActive: true, activeMemberCount: 0, subscriptionStatus: null },
       wouldDo: 'suspend',
       warnings: []
-    } as Row);
+    } as CliRow);
     const code = await run(['suspend', '--tenant', 't1', '--dry-run']);
     expect(code).toBe(0);
   });
