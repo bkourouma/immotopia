@@ -40,8 +40,8 @@ Pièges et décisions :
 
 ## Branche `feat/patrimoine-p5-portail` — 2026-09-28
 
-**État :** prêt à relire — PR vers `main` ouverte par ce tour (voir `gh pr list --head feat/patrimoine-p5-portail`), CI à suivre, à fusionner par l'utilisateur
-**Dernier commit :** voir `git log -1` sur la branche (feat(patrimoine): vue patrimoine dans le portail propriétaire)
+**État :** prêt à fusionner — PR #42 vers `main`, 6/6 checks CI au vert (`gh pr view 42` : `mergeable: MERGEABLE`), fusion laissée à l'utilisateur
+**Dernier commit :** `0728d7a` fix(tests): lever la collision de type entre deux suites d'abonnements
 
 Reprise : le tour précédent avait tout implémenté mais s'est arrêté avant de
 committer (limite d'API) — la branche était encore au niveau de PR #38, 7
@@ -81,11 +81,29 @@ Fait :
   `docs/governance/SECURITY.md` §5) ; relecture générale — 0 bloquant, 2
   remarques cosmétiques sans suite.
 
+- Correctif hors P5 après la fusion de `origin/main` : `npm test -w @immotopia/api`
+  échouait en CI (TS2300 « Duplicate identifier 'Row' » entre
+  `provision-subscription-cli.test.ts` et
+  `subscription-provisioning-service.test.ts`, aucun des deux n'a
+  d'import/export donc TypeScript les traite en scripts globaux). Défaut
+  préexistant des PR #39/#40 déjà fusionnées — vérifié avec
+  `gh run list --branch main` : la CI de `main` elle-même est rouge sur ce
+  point depuis la fusion de la #40, indépendamment de P5. Corrigé en
+  renommant l'alias en `CliRow` dans le seul fichier CLI (`0728d7a`) ; les
+  deux suites (46 tests) repassent au vert.
+
 Reste à faire :
 
+- Fusion de la PR #42 : décision de l'utilisateur.
 - Recette navigateur du portail propriétaire sur une base migrée (non faite
-  — CI et revue humaine seules avant fusion).
-- Suivre la CI de la PR jusqu'au vert.
+  dans ce tour — CI verte et deux relectures automatisées seules avant
+  fusion).
+- Signalé à part (hors P5, tâche déléguée via `spawn_task` — `task_42d38dec`) :
+  `main` a une CI rouge sur ce même défaut depuis la fusion de la #40 —
+  `subscription-provisioning-service.test.ts` garde encore le nom `Row` non
+  renommé ici (volontairement, pour ne toucher qu'un fichier dans cette PR) ;
+  un futur commit sur `main` doit soit renommer aussi ce second alias, soit
+  ajouter un `export {}` aux deux fichiers.
 - Décision éventuelle : un bien dont la table d'indivision ne cite pas le
   propriétaire compte pour 0 % dans ses totaux (même règle que le relevé de
   gérance, `ownerSharesByProperty`).
