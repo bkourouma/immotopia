@@ -12,14 +12,13 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tabs,
   Typography
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { ContractList } from '../../components/syndics/ContractList';
 import { ProviderInvoicesTab } from '../../components/syndics/ProviderInvoicesTab';
+import { ProviderList, ProviderWithContracts } from '../../components/syndics/ProviderList';
 import { useConfirmAction } from '../../components/primitives';
 import {
   createContract,
@@ -196,37 +195,21 @@ export const SyndicProviders: React.FC = () => {
     }
   };
 
-  const providerColumns: ColumnsType<ServiceProvider> = [
-    { title: t('Nom'), dataIndex: 'name', key: 'name' },
-    {
-      title: t('Spécialité'),
-      dataIndex: 'specialty',
-      key: 'specialty',
-      render: (value?: string | null) => value || t('Non renseignée')
-    },
-    { title: t('Email'), dataIndex: 'email', key: 'email', render: (value?: string | null) => value || '—' },
-    { title: t('Téléphone'), dataIndex: 'phone', key: 'phone', render: (value?: string | null) => value || '—' },
-    {
-      title: t('Actions'),
-      key: 'actions',
-      align: 'end',
-      render: (_: unknown, provider) => (
-        <Space>
-          <Button size="small" onClick={() => openEditProviderModal(provider)}>
-            {t('Modifier')}
-          </Button>
-          <Button
-            size="small"
-            danger
-            loading={deletingProviderId === provider.id}
-            onClick={() => handleDeleteProvider(provider)}
-          >
-            {t('Supprimer')}
-          </Button>
-        </Space>
-      )
-    }
-  ];
+  const renderProviderActions = (provider: ProviderWithContracts) => (
+    <Space>
+      <Button size="small" onClick={() => openEditProviderModal(provider)}>
+        {t('Modifier')}
+      </Button>
+      <Button
+        size="small"
+        danger
+        loading={deletingProviderId === provider.id}
+        onClick={() => handleDeleteProvider(provider)}
+      >
+        {t('Supprimer')}
+      </Button>
+    </Space>
+  );
 
   const providersPanel = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -258,12 +241,9 @@ export const SyndicProviders: React.FC = () => {
       ) : (
         <>
           <Card title={t('Prestataires ({{length}})', { length: payload.providers.length })}>
-            <Table
-              rowKey="id"
-              dataSource={payload.providers}
-              columns={providerColumns}
-              pagination={{ pageSize: 8, hideOnSinglePage: true }}
-              locale={{ emptyText: t('Aucun prestataire') }}
+            <ProviderList
+              providers={payload.providers as ProviderWithContracts[]}
+              renderActions={renderProviderActions}
             />
           </Card>
           <Card title={t('Contrats de maintenance')}>
