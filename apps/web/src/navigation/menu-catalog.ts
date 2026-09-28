@@ -107,6 +107,12 @@ export interface MenuCatalogSection {
   entries: MenuCatalogEntry[];
 }
 
+const FINANCE_ACCOUNTS_OR_REPORTS = ['FINANCE_ACCOUNTS_READ', 'FINANCE_REPORTS_READ'];
+// Caisse et trésorerie : lecture des comptes, ou création d'une pièce de caisse.
+const FINANCE_TREASURY = ['FINANCE_ACCOUNTS_READ', 'FINANCE_DOCUMENTS_CREATE'];
+// File de validation (VALIDATE) et importation (création de pièces).
+const FINANCE_VALIDATION = ['FINANCE_DOCUMENTS_VALIDATE', 'FINANCE_DOCUMENTS_CREATE'];
+
 /**
  * Permissions ouvrant chaque entrée **par défaut**.
  *
@@ -139,14 +145,29 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'rental-installments': ['RENTAL_INSTALLMENTS_VIEW'],
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
 
-  // Finance. Une entrée à onglets ouvre plusieurs écrans : elle n'exige une
-  // permission que si CHACUN de ses écrans en exigeait une, sinon un rôle
-  // perdrait par défaut un écran qu'il voyait. D'où l'absence volontaire de
-  // `finance-tresorerie` (Caisse exigeait FINANCE_DOCUMENTS_CREATE, Trésorerie
-  // rien) et de `finance-owner-accounts` (Comptes propriétaires exigeait
-  // FINANCE_ACCOUNTS_READ, Associations rien). Les cinq groupes, comme
-  // l'ancien groupe « Finance », ne sont conditionnés par rien.
+  // Finance. Permissions reprises des routes API de chaque écran (voir
+  // `finance-rbac-middleware.ts`) : les listes exigent FINANCE_ACCOUNTS_READ,
+  // les balances et rapports FINANCE_REPORTS_READ, la file de validation
+  // FINANCE_DOCUMENTS_VALIDATE, les créations FINANCE_DOCUMENTS_CREATE. Une
+  // entrée à onglets regroupe plusieurs écrans : elle s'ouvre dès qu'UNE de
+  // ces permissions est détenue, l'écran refusé restant protégé par l'API.
+  // Un groupe exige l'union des permissions de ses feuilles.
+  'finance-caisse-compta': [...FINANCE_TREASURY, ...FINANCE_VALIDATION, 'FINANCE_REPORTS_READ'],
+  'finance-tresorerie': FINANCE_TREASURY,
+  'finance-validation': FINANCE_VALIDATION,
   'finance-comptabilite': ['FINANCE_REPORTS_READ'],
+  'finance-clients-proprietaires': [...FINANCE_ACCOUNTS_OR_REPORTS, 'FINANCE_DOCUMENTS_CREATE'],
+  'finance-clients': [...FINANCE_ACCOUNTS_OR_REPORTS, 'FINANCE_DOCUMENTS_CREATE'],
+  'finance-owner-accounts': ['FINANCE_ACCOUNTS_READ'],
+  'finance-achats': FINANCE_ACCOUNTS_OR_REPORTS,
+  'finance-fournisseurs': FINANCE_ACCOUNTS_OR_REPORTS,
+  'finance-retenues': ['FINANCE_ACCOUNTS_READ'],
+  'finance-chantiers-stock': FINANCE_ACCOUNTS_OR_REPORTS,
+  'finance-chantiers': FINANCE_ACCOUNTS_OR_REPORTS,
+  'finance-stock': ['FINANCE_ACCOUNTS_READ'],
+  'finance-main-oeuvre': ['FINANCE_ACCOUNTS_READ'],
+  'finance-salaires': ['FINANCE_ACCOUNTS_READ'],
+  'finance-tacherons': ['FINANCE_ACCOUNTS_READ'],
 
   // Patrimoine et entretien.
   patrimoine: ['PROPERTIES_VIEW'],
@@ -190,7 +211,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'agence-finance-settings': ['TENANT_SETTINGS_VIEW']
 };
 
-function requirementsFor(navKey: string): string[] {
+/** Permissions ouvrant une entrée de navigation (`[]` : ouverte à tous). */
+export function requirementsFor(navKey: string): string[] {
   return MENU_REQUIREMENTS[navKey] ?? [];
 }
 

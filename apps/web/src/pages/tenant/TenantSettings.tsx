@@ -10,11 +10,7 @@ import {
   DeleteOutlined
 } from '@ant-design/icons';
 import { getTenant, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
-import {
-  updateTenantBrandingSelf,
-  uploadTenantLogo,
-  TenantWithBranding
-} from '../../services/tenant-branding-service';
+import { updateTenantBrandingSelf, uploadTenantLogo, TenantWithBranding } from '../../services/tenant-branding-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import {
@@ -25,6 +21,7 @@ import {
   uploadAgencyImage
 } from '../../services/document-branding-service';
 import { t } from '../../i18n/t';
+import { writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
 
@@ -148,8 +145,13 @@ export const TenantSettings: React.FC = () => {
         setError(t('Erreur lors de la sauvegarde'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors de la sauvegarde'));
-      message.error(t('Erreur lors de la sauvegarde'));
+      const text = writeErrorMessage(
+        err,
+        t('Erreur lors de la sauvegarde'),
+        t("Vous n'avez pas les droits nécessaires pour modifier les paramètres de l'agence.")
+      );
+      setError(text);
+      message.error(text);
     } finally {
       setSaving(false);
     }
@@ -331,7 +333,11 @@ export const TenantSettings: React.FC = () => {
                       </div>
                     )}
                     <Space direction="vertical">
-                      <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} beforeUpload={handleLogoSelect}>
+                      <Upload
+                        accept="image/png,image/jpeg,image/webp"
+                        showUploadList={false}
+                        beforeUpload={handleLogoSelect}
+                      >
                         <Button icon={<UploadOutlined />} loading={uploadingLogo}>
                           {t('Téléverser un logo')}
                         </Button>

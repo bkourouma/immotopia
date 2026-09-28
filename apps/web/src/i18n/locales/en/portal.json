@@ -783,6 +783,8 @@
   "Votre demande": "Your request",
   "Votre profil n'est pas encore relié à un compte locataire.": "Your profile is not linked to a tenant account yet.",
   "Vous devez à l'agence": "You owe the agency",
+  "Vous n'avez pas les droits nécessaires pour inviter un collaborateur.": "You do not have the necessary permissions to invite a collaborator.",
+  "Vous n'avez pas les droits nécessaires pour modifier les paramètres de l'agence.": "You do not have the necessary permissions to change the agency settings.",
   "Vous ne pouvez télécharger que des images ou des PDF!": "You can only upload images or PDFs.",
   "Vous ne pouvez télécharger que des images!": "You can only upload images.",
   "Vous ne recevrez plus les newsletters.": "You will no longer receive the newsletters.",

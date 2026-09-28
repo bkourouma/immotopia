@@ -77,3 +77,26 @@ export function extractFieldErrors(error: unknown): Record<string, string> {
   }
   return {};
 }
+
+/**
+ * Vrai quand l'API refuse l'action faute de droits (403 RBAC). Les refus
+ * d'abonnement (403 avec un `code`) ont leur propre message
+ * (`subscription-denial-notice.ts`) et ne sont pas des manques de droits.
+ */
+export function isPermissionDenied(error: unknown): boolean {
+  if (!(error instanceof AxiosError)) {
+    const response = (error as { response?: { status?: number; data?: { code?: unknown } } } | null)?.response;
+    return response?.status === 403 && !response.data?.code;
+  }
+  return error.response?.status === 403 && !error.response.data?.code;
+}
+
+/**
+ * Message d'une erreur d'écriture : le texte clair `forbidden` quand la
+ * personne n'a pas les droits, sinon le message du serveur, sinon `fallback`.
+ */
+export function writeErrorMessage(error: unknown, fallback: string, forbidden: string): string {
+  if (isPermissionDenied(error)) return forbidden;
+  const message = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+  return typeof message === 'string' && message.length > 0 ? message : fallback;
+}

@@ -200,15 +200,20 @@ describe('finance réorganisée — reprise des réglages enregistrés sur les a
     expect(map[caisseTresorerie]).toBe(false);
   });
 
-  it('n’enlève par défaut aucun écran qu’un rôle voyait', () => {
-    // Sans FINANCE_ACCOUNTS_READ, « Associations » restait visible : l'entrée
-    // qui l'ouvre désormais doit l'être aussi. Idem pour « Trésorerie » sans
-    // FINANCE_DOCUMENTS_CREATE (exigé par la seule Caisse).
-    const map = defaultMenuMap(persona, new Set(['RENTAL_LEASES_VIEW']));
-    expect(map[reversements]).toBe(true);
-    expect(map[caisseTresorerie]).toBe(true);
+  it('ouvre par défaut chaque écran que les permissions du rôle permettent', () => {
+    // Trésorerie et Associations n'exigent que FINANCE_ACCOUNTS_READ côté API
+    // (`treasury-routes.ts`, `finance-partnerships-routes.ts`) : un rôle qui la
+    // détient les voit, un rôle sans droit financier (Agent) ne les voit plus,
+    // ce qui évite un menu qui répond 403 (BUG-2026-09-28-006).
+    const lecture = defaultMenuMap(persona, new Set(['FINANCE_ACCOUNTS_READ']));
+    expect(lecture[reversements]).toBe(true);
+    expect(lecture[caisseTresorerie]).toBe(true);
     // Comptabilité, seule dans son entrée, garde son exigence.
-    expect(map[menuKeyFor(persona, groupKey('Caisse et comptabilité'), 'finance-comptabilite')]).toBe(false);
+    expect(lecture[menuKeyFor(persona, groupKey('Caisse et comptabilité'), 'finance-comptabilite')]).toBe(false);
+
+    const sansDroit = defaultMenuMap(persona, new Set(['RENTAL_LEASES_VIEW']));
+    expect(sansDroit[reversements]).toBe(false);
+    expect(sansDroit[caisseTresorerie]).toBe(false);
   });
 
   it('masque dans la coquille ce que les anciennes clés coupaient', () => {

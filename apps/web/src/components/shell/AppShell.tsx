@@ -3,7 +3,7 @@ import { App as AntApp, Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useDisabledMenuKeys, useFeatureAccess, useFilteredNavigation } from '../../hooks/useMenuAccess';
+import { useFeatureAccess, useFilteredNavigation, useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
@@ -122,10 +122,10 @@ export const AppShell: React.FC = () => {
    * decide de montrer a ce role. Sans ce filtrage, l'ecran d'administration ne
    * serait qu'une declaration d'intention.
    */
-  const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
+  const { disabled: disabledMenuKeys, permissions } = useMyMenuAccess(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
   const featureAccess = useFeatureAccess(navContext.tenantId, persona === 'collaborateur');
-  const nav = useFilteredNavigation(personaNav, disabledMenuKeys, featureAccess);
+  const nav = useFilteredNavigation(personaNav, disabledMenuKeys, featureAccess, permissions);
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
   // SUBSCRIPTION_READ_ONLY, 409 QUOTA_EXCEEDED) traduits en message clair, sur

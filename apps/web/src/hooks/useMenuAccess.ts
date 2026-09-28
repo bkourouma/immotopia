@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MORE_TAB_HREF } from '../navigation/model';
 import type { NavGroup, PersonaNav } from '../navigation/model';
-import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
+import { defaultMenuEnabled, isMenuKeyDisabled, menuKeyFor, requirementsFor } from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
-import { getMyDisabledMenus } from '../services/role-menu-service';
+import { getMyMenuAccess } from '../services/role-menu-service';
 import { getMenuEntitlements } from '../services/entitlements-service';
 import { applyFeatureAccess, featureAccessFromModules } from '../navigation/feature-access';
 import type { FeatureAccessMap } from '../navigation/feature-access';
@@ -15,6 +15,10 @@ import type { FeatureAccessMap } from '../navigation/feature-access';
  * la coquille n'en tenait pas compte. Ce hook fait le lien : il demande au
  * serveur les clés de menu coupées, puis élague l'arbre du persona.
  *
+ * En plus des clés coupées, le serveur renvoie les permissions de la personne :
+ * une entrée dont le catalogue exige une permission qu'elle n'a pas est masquée
+ * (l'API lui répondrait 403). Les administrateurs d'agence ne sont pas filtrés.
+ *
  * Deux garde-fous :
  *
  *   - **Tant que la réponse n'est pas arrivée, rien n'est coupé.** Masquer par
@@ -24,18 +28,34 @@ import type { FeatureAccessMap } from '../navigation/feature-access';
  *     traduire par une application qui perd la moitié de sa navigation ; c'est
  *     le contraire d'un mode dégradé utilisable.
  */
-export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
-  const [disabled, setDisabled] = useState<Set<string>>(() => new Set());
+export interface MyMenuAccessState {
+  /** Clés de menu coupées par un administrateur pour ce compte. */
+  disabled: Set<string>;
+  /**
+   * Permissions détenues dans l'agence, ou `null` : pas de filtrage par
+   * permission (administrateur d'agence, super-admin, chargement, échec réseau).
+   */
+  permissions: Set<string> | null;
+}
+
+const NO_RESTRICTION: MyMenuAccessState = { disabled: new Set(), permissions: null };
+
+export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
+  const [state, setState] = useState<MyMenuAccessState>(NO_RESTRICTION);
 
   useEffect(() => {
     let cancelled = false;
 
-    getMyDisabledMenus(tenantId)
-      .then(keys => {
-        if (!cancelled) setDisabled(new Set(keys));
+    getMyMenuAccess(tenantId)
+      .then(access => {
+        if (cancelled) return;
+        setState({
+          disabled: new Set(access.disabledMenuKeys),
+          permissions: access.permissionKeys ? new Set(access.permissionKeys) : null
+        });
       })
       .catch(() => {
-        if (!cancelled) setDisabled(new Set());
+        if (!cancelled) setState(NO_RESTRICTION);
       });
 
     return () => {
@@ -43,7 +63,7 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
     };
   }, [tenantId]);
 
-  return disabled;
+  return state;
 }
 
 /**
@@ -94,19 +114,30 @@ export function useFeatureAccess(tenantId: string | null | undefined, enabled: b
  * accordéon vide est pire qu'une entrée absente : il promet un contenu qui
  * n'existe plus.
  */
-function pruneGroup(persona: PersonaId, group: NavGroup, disabled: Set<string>): NavGroup | null {
+function pruneGroup(
+  persona: PersonaId,
+  group: NavGroup,
+  disabled: Set<string>,
+  permissions: Set<string> | null
+): NavGroup | null {
   // `isMenuKeyDisabled` et non `disabled.has` : une entrée issue d'une
   // réorganisation du menu hérite des coupures posées sur ses anciennes clés.
   if (isMenuKeyDisabled(menuKeyFor(persona, group.key), disabled)) return null;
+  if (permissions && !defaultMenuEnabled(requirementsFor(group.key), permissions)) return null;
 
   if (!group.children || group.children.length === 0) return group;
 
   const children = group.children.filter(
-    leaf => !isMenuKeyDisabled(menuKeyFor(persona, group.key, leaf.key), disabled)
+    leaf =>
+      !isMenuKeyDisabled(menuKeyFor(persona, group.key, leaf.key), disabled) &&
+      (!permissions || defaultMenuEnabled(requirementsFor(leaf.key), permissions))
   );
   if (children.length === 0) return null;
+  if (children.length === group.children.length) return group;
 
-  return { ...group, children };
+  // La destination du groupe ne doit pas être une feuille masquée.
+  const href = group.href && !children.some(c => c.href === group.href) ? children[0].href : group.href;
+  return { ...group, href, children };
 }
 
 /**
@@ -120,18 +151,22 @@ function pruneGroup(persona: PersonaId, group: NavGroup, disabled: Set<string>):
 export function useFilteredNavigation(
   nav: PersonaNav | null,
   disabled: Set<string>,
-  featureAccess: FeatureAccessMap | null = null
+  featureAccess: FeatureAccessMap | null = null,
+  permissions: Set<string> | null = null
 ): PersonaNav | null {
   return useMemo(() => {
     if (!nav) return null;
-    if (disabled.size === 0 && !featureAccess) return nav;
+    // Le filtrage par permission ne vaut que pour le collaborateur : les portails
+    // et le super-admin n'ont pas de permissions d'agence.
+    const perms = nav.id === 'collaborateur' ? permissions : null;
+    if (disabled.size === 0 && !featureAccess && !perms) return nav;
 
     // Abonnement puis rôle : une entrée non comprise disparaît, une entrée
     // d'un module retiré est marquée « Lecture seule » (voir feature-access).
     const tree = nav.tree
       .map(group => (featureAccess ? applyFeatureAccess(group, featureAccess) : group))
       .filter((group): group is NavGroup => group !== null)
-      .map(group => pruneGroup(nav.id, group, disabled))
+      .map(group => pruneGroup(nav.id, group, disabled, perms))
       .filter((group): group is NavGroup => group !== null);
 
     const remainingHrefs = new Set<string>();
@@ -143,5 +178,5 @@ export function useFilteredNavigation(
     const tabs = nav.tabs.filter(tab => tab.href === MORE_TAB_HREF || remainingHrefs.has(tab.href));
 
     return { ...nav, tree, tabs };
-  }, [nav, disabled, featureAccess]);
+  }, [nav, disabled, featureAccess, permissions]);
 }

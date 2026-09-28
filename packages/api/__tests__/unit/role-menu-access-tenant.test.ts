@@ -10,13 +10,15 @@
 
 const userHasTenantAccess = jest.fn();
 const getDisabledMenusForUser = jest.fn();
+const getMenuPermissionKeysForUser = jest.fn().mockResolvedValue(null);
 
 jest.mock('../../src/utils/tenant-access', () => ({
   userHasTenantAccess: (...a: any[]) => userHasTenantAccess(...a)
 }));
 
 jest.mock('../../src/services/role-menu-service', () => ({
-  getDisabledMenusForUser: (...a: any[]) => getDisabledMenusForUser(...a)
+  getDisabledMenusForUser: (...a: any[]) => getDisabledMenusForUser(...a),
+  getMenuPermissionKeysForUser: (...a: any[]) => getMenuPermissionKeysForUser(...a)
 }));
 
 jest.mock('../../src/utils/database', () => ({
@@ -32,9 +34,12 @@ function mockRes() {
   return res;
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  getMenuPermissionKeysForUser.mockResolvedValue(null);
+});
 
-describe("getMyMenuAccessHandler — tenantId de query verifie", () => {
+describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
   it("403 quand l'utilisateur n'appartient pas a l'agence demandee en query", async () => {
     userHasTenantAccess.mockResolvedValue(false);
 
@@ -84,5 +89,23 @@ describe("getMyMenuAccessHandler — tenantId de query verifie", () => {
     expect(userHasTenantAccess).not.toHaveBeenCalled();
     expect(getDisabledMenusForUser).toHaveBeenCalledWith('user-1', undefined);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('getMyMenuAccessHandler — permissions pour le filtrage du menu', () => {
+  it("renvoie les permissions calculees pour l'agence demandee", async () => {
+    userHasTenantAccess.mockResolvedValue(true);
+    getDisabledMenusForUser.mockResolvedValue([]);
+    getMenuPermissionKeysForUser.mockResolvedValue(['PROPERTIES_VIEW']);
+
+    const req: any = { user: { userId: 'u1', globalRole: 'USER' }, query: { tenantId: 'tenant-A' } };
+    const res = mockRes();
+    await getMyMenuAccessHandler(req, res);
+
+    expect(getMenuPermissionKeysForUser).toHaveBeenCalledWith('u1', 'tenant-A', 'USER');
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { disabledMenuKeys: [], permissionKeys: ['PROPERTIES_VIEW'] }
+    });
   });
 });
