@@ -13,8 +13,27 @@ import { getLatestQualityScore, calculateQualityScore } from '../services/proper
 import { getTemplateByType, getAllTemplates } from '../services/property-template-service';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import { CreatePropertyRequest, UpdatePropertyRequest } from '../types/property-types';
-import { PropertyType } from '@prisma/client';
+import { PropertyOwnershipType, PropertyType } from '@prisma/client';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
+
+/**
+ * Propriétaire par défaut d'un bien créé sans propriétaire désigné.
+ *
+ * Un bien de l'agence (`TENANT`) n'a pas de propriétaire privé : y écrire le
+ * créateur faisait afficher « Propriété de <créateur> » et remplissait le champ
+ * Propriétaire du formulaire d'un identifiant que la liste ne propose pas
+ * (BUG-2026-09-28-008). Pour un bien privé (`PUBLIC`), le créateur reste le
+ * propriétaire. Un e-mail de propriétaire prime : le service crée ce compte.
+ */
+export function defaultOwnerUserId(
+  ownershipType: PropertyOwnershipType | string | undefined,
+  ownerEmail: string | undefined,
+  creatorUserId: string | undefined
+): string | undefined {
+  if (ownerEmail) return undefined;
+  if (ownershipType === PropertyOwnershipType.TENANT) return undefined;
+  return creatorUserId;
+}
 
 /**
  * Create property handler
@@ -27,7 +46,7 @@ export const createPropertyHandler = asyncHandler(async (req: Request, res: Resp
   const data: CreatePropertyRequest = {
     propertyType: req.body.propertyType,
     ownershipType: req.body.ownershipType,
-    ownerUserId: req.body.ownerUserId ?? (req.body.ownerEmail ? undefined : userId),
+    ownerUserId: req.body.ownerUserId ?? defaultOwnerUserId(req.body.ownershipType, req.body.ownerEmail, userId),
     ownerEmail: req.body.ownerEmail,
     title: req.body.title,
     description: req.body.description,
@@ -54,7 +73,7 @@ export const createPropertyHandler = asyncHandler(async (req: Request, res: Resp
 
   const property = await createProperty(
     tenantId,
-    data.ownerUserId ?? (data.ownerEmail ? null : (userId ?? null)),
+    data.ownerUserId ?? defaultOwnerUserId(data.ownershipType, data.ownerEmail, userId) ?? null,
     data,
     actorUserId
   );
@@ -344,7 +363,10 @@ export const createSubPropertyHandler = asyncHandler(async (req: Request, res: R
   const data: CreatePropertyRequest = {
     propertyType: req.body.propertyType || PropertyType.APPARTEMENT,
     ownershipType: req.body.ownershipType || parent.ownershipType,
-    ownerUserId: req.body.ownerUserId || parent.ownerUserId || userId,
+    ownerUserId:
+      req.body.ownerUserId ||
+      parent.ownerUserId ||
+      defaultOwnerUserId(req.body.ownershipType || parent.ownershipType, req.body.ownerEmail, userId),
     ownerEmail: req.body.ownerEmail,
     containerParentId: parentPropertyId, // Link to parent
     title: req.body.title,
@@ -369,7 +391,7 @@ export const createSubPropertyHandler = asyncHandler(async (req: Request, res: R
     typeSpecificData: Object.keys(mergedTypeSpecificData).length > 0 ? mergedTypeSpecificData : undefined
   };
 
-  const property = await createProperty(tenantId, data.ownerUserId || userId || null, data, actorUserId);
+  const property = await createProperty(tenantId, data.ownerUserId || null, data, actorUserId);
 
   res.status(201).json({
     success: true,

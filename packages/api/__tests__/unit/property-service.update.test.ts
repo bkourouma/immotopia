@@ -102,9 +102,7 @@ describe('PUT /api/tenants/:tenantId/properties/:id — corps invalide : 400 VAL
     ['devise mal typee (nombre au lieu de texte)', { currency: 123 }, 'currency'],
     ['titre vide', { title: '   ' }, 'title']
   ])('%s -> 400 VALIDATION_ERROR', async (_cas, corps, field) => {
-    const res = await request(appMiseAJour())
-      .put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`)
-      .send(corps);
+    const res = await request(appMiseAJour()).put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`).send(corps);
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');
@@ -121,5 +119,55 @@ describe('PUT /api/tenants/:tenantId/properties/:id — corps legitime', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ title: 'Bel appartement renove', price: 125000 });
+  });
+});
+
+describe('PUT /api/tenants/:tenantId/properties/:id — meuble non renseigne (BUG-2026-09-28-013)', () => {
+  // Un sous-bien cree par l'onglet Lots sans « Meuble » est stocke avec
+  // `furnishingStatus: null` (colonne facultative) ; le formulaire renvoie cette
+  // valeur telle quelle a l'enregistrement suivant.
+  it('accepte furnishingStatus null (bien cree sans meuble) et l’ecrit en base', async () => {
+    const res = await request(appMiseAJour())
+      .put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`)
+      .send({ description: 'Nouvelle description', furnishingStatus: null });
+
+    expect(res.status).toBe(200);
+    expect(propertyUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ description: 'Nouvelle description', furnishingStatus: null })
+      })
+    );
+  });
+
+  it('refuse toujours une valeur de meuble inconnue, en 400 avec le champ', async () => {
+    const res = await request(appMiseAJour())
+      .put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`)
+      .send({ furnishingStatus: 'BOF' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'furnishingStatus' })]));
+  });
+});
+
+describe('PUT /api/tenants/:tenantId/properties/:id — retrait du proprietaire (BUG-2026-09-28-008)', () => {
+  it('un bien de l agence peut perdre son proprietaire (ownerUserId null)', async () => {
+    const res = await request(appMiseAJour())
+      .put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`)
+      .send({ ownerUserId: null });
+
+    expect(res.status).toBe(200);
+    expect(propertyUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ ownerUserId: null }) })
+    );
+  });
+
+  it('un bien sous mandat ne peut pas perdre son proprietaire (400)', async () => {
+    findUniqueMock.mockResolvedValue({ ...proprieteExistante(), ownershipType: 'CLIENT', ownerUserId: 'client-9' });
+    const res = await request(appMiseAJour())
+      .put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`)
+      .send({ ownerUserId: null });
+
+    expect(res.status).toBe(400);
+    expect(transactionMock).not.toHaveBeenCalled();
   });
 });

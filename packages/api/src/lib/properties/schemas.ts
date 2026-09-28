@@ -67,10 +67,7 @@ const titleSchema = z
   .trim()
   .min(1, 'Le titre du bien est requis.');
 
-const addressSchema = z
-  .string({ invalid_type_error: "L'adresse du bien doit être un texte." })
-  .nullable()
-  .optional();
+const addressSchema = z.string({ invalid_type_error: "L'adresse du bien doit être un texte." }).nullable().optional();
 
 const descriptionSchema = z
   .string({ invalid_type_error: 'La description du bien doit être un texte.' })
@@ -82,7 +79,8 @@ const numberOptional = z.number().nullable().optional();
 
 /** Champs communs a la creation et a la mise a jour (tous facultatifs). */
 const writablePropertyFields = {
-  ownerUserId: uuidOptional,
+  // `null` : retirer le proprietaire d'un bien de l'agence (edition).
+  ownerUserId: uuidOptional.nullable(),
   ownerEmail: z.string().email().optional(),
   description: descriptionSchema,
   address: addressSchema,
@@ -99,7 +97,9 @@ const writablePropertyFields = {
   rooms: numberOptional,
   bedrooms: numberOptional,
   bathrooms: numberOptional,
-  furnishingStatus: z.nativeEnum(PropertyFurnishingStatus).optional(),
+  // Colonne facultative : un bien cree sans « Meuble » est stocke a null et le
+  // formulaire renvoie cette valeur telle quelle a la mise a jour.
+  furnishingStatus: z.nativeEnum(PropertyFurnishingStatus).nullable().optional(),
   availability: z.nativeEnum(PropertyAvailability).optional(),
   status: z.nativeEnum(PropertyStatus).optional(),
   typeSpecificData: z.record(z.any()).nullable().optional()

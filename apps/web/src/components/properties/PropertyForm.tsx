@@ -40,6 +40,7 @@ import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
 import { getTenantClients, TenantClient } from '../../services/tenant-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { apiErrorText, apiFieldErrors, fieldLabel } from './property-api-errors';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -219,7 +220,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
       const submitData: CreatePropertyRequest | UpdatePropertyRequest = {
         ...(property ? {} : { propertyType: selectedType!, ownershipType: values.ownershipType }),
-        ownerUserId: values.ownerUserId || undefined,
+        // Édition : un propriétaire vidé s'envoie `null` (sinon le serveur ne voit
+        // aucun changement). Création : absent, le serveur décide.
+        ownerUserId: values.ownerUserId || (property ? null : undefined),
         title: values.title.trim(),
         description: values.description.trim(),
         address: values.address?.trim() || undefined,
@@ -236,7 +239,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         rooms: values.rooms ? parseInt(String(values.rooms), 10) : undefined,
         bedrooms: values.bedrooms ? parseInt(String(values.bedrooms), 10) : undefined,
         bathrooms: values.bathrooms ? parseInt(String(values.bathrooms), 10) : undefined,
-        furnishingStatus: values.furnishingStatus,
+        furnishingStatus: values.furnishingStatus ?? undefined,
         availability: values.availability,
         status: values.status,
         typeSpecificData: {
@@ -262,7 +265,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
       await onSubmit(submitData);
     } catch (error: any) {
-      setSubmitError(error.response?.data?.error || t("Une erreur est survenue lors de l'enregistrement"));
+      // Le refus de l'API désigne ses champs : on les marque sur le formulaire
+      // et on les nomme dans le bandeau (le message seul ne dit rien).
+      const fieldErrors = apiFieldErrors(error).filter(entry => fieldLabel(entry.field) !== entry.field);
+      if (fieldErrors.length > 0) {
+        form.setFields(fieldErrors.map(entry => ({ name: entry.field, errors: [entry.message] })));
+        form.scrollToField(fieldErrors[0].field, { behavior: 'smooth', block: 'center' });
+      }
+      setSubmitError(apiErrorText(error, t("Une erreur est survenue lors de l'enregistrement")));
       message.error(t("Erreur lors de l'enregistrement"));
     } finally {
       setIsSubmitting(false);
@@ -391,7 +401,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         {submitError && (
           <Alert
             message={t('Erreur')}
-            description={submitError}
+            description={<span style={{ whiteSpace: 'pre-line' }}>{submitError}</span>}
             type="error"
             showIcon
             closable
@@ -472,6 +482,16 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                         {owner.user.fullName || owner.user.email}
                       </Select.Option>
                     ))}
+                    {/* Propriétaire enregistré mais absent de la liste des clients (bien
+                        créé avant que l'agence n'ait plus de propriétaire par défaut) :
+                        on montre son nom, jamais son identifiant brut. */}
+                    {property?.ownerUserId &&
+                      property.owner &&
+                      !owners.some(owner => owner.userId === property.ownerUserId) && (
+                        <Select.Option key={property.ownerUserId} value={property.ownerUserId}>
+                          {property.owner.fullName || property.owner.email}
+                        </Select.Option>
+                      )}
                   </Select>
                 </Form.Item>
               );

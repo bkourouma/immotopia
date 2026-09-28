@@ -339,7 +339,7 @@ export interface CreatePropertyRequest {
 }
 
 export interface UpdatePropertyRequest {
-  ownerUserId?: string;
+  ownerUserId?: string | null;
   title?: string;
   description?: string;
   address?: string;
@@ -356,7 +356,7 @@ export interface UpdatePropertyRequest {
   rooms?: number;
   bedrooms?: number;
   bathrooms?: number;
-  furnishingStatus?: PropertyFurnishingStatus;
+  furnishingStatus?: PropertyFurnishingStatus | null;
   availability?: PropertyAvailability;
   status?: PropertyStatus;
   typeSpecificData?: Record<string, any>;
