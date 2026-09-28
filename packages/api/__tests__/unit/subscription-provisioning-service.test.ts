@@ -83,6 +83,11 @@ jest.mock('../../src/services/lot-registry-service', () => ({
         .length
   ),
   countActiveSites: jest.fn(async () => 0),
+  // Pack Patrimoine (lot P1) : capacite BIENS_DETENUS, absente avant ce lot.
+  // Sans cette entree, usageProviders.BIENS_DETENUS (subscription-v2-service.ts)
+  // reste undefined sous ce mock complet du module et getUsage() leve
+  // « usageProviders[key] is not a function » des le premier appel.
+  countHeldProperties: jest.fn(async () => 0),
   reconcileLotActivations: jest.fn(async (tenantId: string, options: Row) => {
     reconcileCalls.push({ tenantId, ...options });
     return {
@@ -90,7 +95,8 @@ jest.mock('../../src/services/lot-registry-service', () => ({
       qualifying: 0,
       added: [],
       removed: [],
-      byKind: { RENTAL_UNIT: 0, COPRO_LOT: 0, PROGRAM_LOT: 0 }
+      reclassified: 0,
+      byKind: { RENTAL_UNIT: 0, COPRO_LOT: 0, PROGRAM_LOT: 0, HELD_PROPERTY: 0 }
     };
   })
 }));
