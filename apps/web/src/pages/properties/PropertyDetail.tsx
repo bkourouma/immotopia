@@ -40,6 +40,7 @@ import { PropertyMaintenanceTab } from '../../components/properties/PropertyMain
 import { PropertyApartments } from '../../components/properties/PropertyApartments';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
+import { PropertyHoldingTaxSection } from '../../components/patrimoine/entities/PropertyHoldingTaxSection';
 import { PropertyOwnershipCard } from '../../components/properties/PropertyOwnershipCard';
 import { PropertySaleCard } from '../../components/properties/PropertySaleCard';
 import { API_URL } from '../../config/api';
@@ -550,7 +551,12 @@ export const PropertyDetail: React.FC = () => {
           {t('Patrimoine')}
         </Space>
       ),
-      children: <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
+      children: (
+        <>
+          <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
+          <PropertyHoldingTaxSection tenantId={effectiveTenantId} propertyId={id!} />
+        </>
+      )
     },
     {
       key: 'visites',
