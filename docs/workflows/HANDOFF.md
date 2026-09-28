@@ -38,6 +38,36 @@ Pièges et décisions :
 
 ---
 
+## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
+
+**État :** prêt à relire (documentation seule)
+**Dernier commit :** voir `git log` de la branche (worktree `.claude/worktrees/scenario-syndic`)
+
+Fait :
+
+- `docs/recette/SCENARIO_SYNDIC_ESSAI_EXERCICE_COMPLET.md` : scénario chiffré
+  de bout en bout — agence `Horizon Syndic Gestion` en pack Syndic d'essai,
+  configuration complète, exercice 2026 de la `Résidence Les Flamboyants`
+  (8 lots, 1 000 tantièmes, 17 000 000 appelés, 16 700 000 encaissés),
+  AGE, travaux, 22 factures prestataires, recouvrement, appels automatiques,
+  portail, arrêté des comptes, AGO 2027 et ouverture 2027. Libellés et
+  règles vérifiés dans le code de `main` `b474b89`.
+
+Reste à faire :
+
+- Jouer le scénario sur l'instance de démo (`npm run demo:sync`) par
+  `ui-tester` ; les points marqués « consigner » sont des comportements non
+  certains (carte « Lots en retard », pénalité sur le compte du lot,
+  ajustement devenu avance ou non, statut de l'échéancier).
+
+Pièges et décisions :
+
+- La clôture d'exercice n'existe pas dans le code : le scénario la fait à la
+  main (écritures OD, verrouillage, AGO) et liste les manques en N.8.
+- Ordre des parties imposé par les fonds : dépenses (partie I) après le T3,
+  factures du T4 (L.5) après les encaissements du T4, sinon le Fonds de
+  roulement passe en négatif.
+
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
 **État :** prêt à relire ; 5 PR ouvertes, CI verte (#26/#27 relancées après le dernier correctif)
