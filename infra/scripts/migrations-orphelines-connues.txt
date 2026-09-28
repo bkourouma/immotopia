@@ -1,0 +1,6 @@
+# Migrations que `prisma migrate status` signale comme appliquees en base de
+# production mais absentes du depot (dossier non commite). Un nom par ligne,
+# commentaires avec #. Voir ADR-003 pour le contexte de chaque exception.
+#
+# docs/architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md
+20260927080000_mouvements_fonds_copropriete
