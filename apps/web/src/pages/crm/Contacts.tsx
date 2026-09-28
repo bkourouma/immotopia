@@ -59,6 +59,7 @@ import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../c
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import type { ColumnsType } from 'antd/es/table';
 import { t as translate } from '../../i18n/t';
+import { getDealStageLabel, getDealTypeLabel } from '../../utils/crm-utils';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -236,7 +237,7 @@ export const Contacts: React.FC = () => {
         ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
         : '',
       'Affaire en cours': contact.activeDeal
-        ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
+        ? `${getDealTypeLabel(contact.activeDeal.type)} - ${getDealStageLabel(contact.activeDeal.stage)}`
         : '',
       'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
     }));
@@ -260,7 +261,7 @@ export const Contacts: React.FC = () => {
         ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
         : '',
       'Affaire en cours': contact.activeDeal
-        ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
+        ? `${getDealTypeLabel(contact.activeDeal.type)} - ${getDealStageLabel(contact.activeDeal.stage)}`
         : '',
       'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
     }));
@@ -310,18 +311,12 @@ export const Contacts: React.FC = () => {
       key: 'activeDeal',
       render: (_, record) => {
         if (!record.activeDeal) return <Text type="secondary">-</Text>;
-        const dealType = record.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location';
-        const stageMap: Record<string, string> = {
-          NEW: 'Nouveau',
-          QUALIFIED: translate('Qualifié'),
-          VISIT: 'Visite',
-          NEGOTIATION: translate('Négociation')
-        };
+        const dealType = getDealTypeLabel(record.activeDeal.type);
         return (
           <Space direction="vertical" size={0}>
             <Text>{dealType}</Text>
             <Text type="secondary" style={{ fontSize: '12px' }}>
-              {stageMap[record.activeDeal.stage] || record.activeDeal.stage}
+              {getDealStageLabel(record.activeDeal.stage)}
             </Text>
           </Space>
         );

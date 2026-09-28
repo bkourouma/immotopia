@@ -24,7 +24,8 @@ const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/api/maintenance.tenant-portal-visibility.test.ts',
   '<rootDir>/__tests__/api/private-files.test.ts',
   '<rootDir>/__tests__/api/portal-no-disk-paths.test.ts',
-  '<rootDir>/__tests__/api/property-documents-no-disk-paths.test.ts'
+  '<rootDir>/__tests__/api/property-documents-no-disk-paths.test.ts',
+  '<rootDir>/__tests__/unit/property-visit-notes.test.ts'
 ];
 
 const base = {

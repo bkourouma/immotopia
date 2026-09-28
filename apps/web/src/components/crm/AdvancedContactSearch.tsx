@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Input, Button, Tag, Modal } from 'antd';
+import { listTags } from '../../services/crm-service';
+import { listMembers } from '../../services/membership-service';
+import { getAllCommunes } from '../../services/geographic-service';
 import { SearchOutlined, FilterOutlined, SaveOutlined, FolderOpenOutlined, DownloadOutlined } from '@ant-design/icons';
 import contactSearchService, {
   type ContactSearchFilters,
@@ -9,7 +12,9 @@ import contactSearchService, {
 import { ContactSearchResults } from './ContactSearchResults';
 import { FilterBuilder } from './FilterBuilder';
 import { SavedSearchesList } from './SavedSearchesList';
+import { describeFilter, type FilterReferences } from './contact-search-filter-labels';
 import { t } from '../../i18n/t';
+import { writeErrorMessage } from '../../utils/error-handler';
 
 interface AdvancedContactSearchProps {
   onSelectContacts?: (contacts: ContactSearchResultItem[]) => void;
@@ -43,6 +48,10 @@ export function AdvancedContactSearch({
   const [selectedContacts, setSelectedContacts] = useState<ContactSearchResultItem[]>([]);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [savedModalOpen, setSavedModalOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [references, setReferences] = useState<FilterReferences>({ communes: [], tags: [], users: [] });
 
   const activeCount = countActiveFilters(filters);
 
@@ -53,12 +62,40 @@ export function AdvancedContactSearch({
     }
   }, [tenantId]);
 
-  const runSearch = async (page = 1, limit = 50) => {
+  // Communes, tags et collaborateurs : chargés une fois, pour le formulaire de filtres
+  // et pour nommer les puces de filtres actifs (jamais d'identifiant brut).
+  useEffect(() => {
+    if (!tenantId) return;
+    listTags(tenantId)
+      .then(r => setReferences(prev => ({ ...prev, tags: r.data || [] })))
+      .catch(() => {});
+    listMembers(tenantId)
+      .then(r =>
+        setReferences(prev => ({
+          ...prev,
+          users: (r.data?.members || []).map(m => ({
+            id: m.userId,
+            fullName: m.user?.fullName ?? m.user?.email ?? null
+          }))
+        }))
+      )
+      .catch(() => {});
+    getAllCommunes()
+      .then(list =>
+        setReferences(prev => ({
+          ...prev,
+          communes: list.map(c => ({ id: c.communeId, name: c.displayName || c.commune }))
+        }))
+      )
+      .catch(() => {});
+  }, [tenantId]);
+
+  const runSearch = async (page = 1, limit = 50, searchFilters: Partial<ContactSearchFilters> = filters) => {
     if (!tenantId) return;
     setLoading(true);
     try {
       const data = await contactSearchService.search(tenantId, {
-        ...filters,
+        ...searchFilters,
         page,
         limit
       });
@@ -77,7 +114,8 @@ export function AdvancedContactSearch({
   const handleApplyFilters = (newFilters: ContactSearchFilters) => {
     setFilters(newFilters);
     setFilterModalOpen(false);
-    runSearch(1, results?.pagination.limit ?? 50);
+    // Les nouveaux filtres sont passés tels quels : `filters` n'est pas encore à jour.
+    runSearch(1, results?.pagination.limit ?? 50, newFilters);
   };
 
   const handleUseSavedSearch = async (searchId: string) => {
@@ -97,19 +135,32 @@ export function AdvancedContactSearch({
     }
   };
 
+  const openSaveModal = () => {
+    setSaveName('');
+    setSaveModalOpen(true);
+  };
+
   const handleSaveSearch = async () => {
-    if (!tenantId) return;
-    const name = window.prompt(t('Nom de la recherche :'));
-    if (!name?.trim()) return;
+    if (!tenantId || !saveName.trim()) return;
+    setSaving(true);
     try {
       await contactSearchService.saveSearch(tenantId, {
-        name: name.trim(),
+        name: saveName.trim(),
         filters: filters as ContactSearchFilters,
         scope: 'PERSONAL'
       });
       message.success(t('Recherche sauvegardée'));
-    } catch {
-      message.error(t('Sauvegarde impossible'));
+      setSaveModalOpen(false);
+    } catch (err) {
+      message.error(
+        writeErrorMessage(
+          err,
+          t('Sauvegarde impossible'),
+          t("Vous n'avez pas les droits nécessaires pour sauvegarder une recherche.")
+        )
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -170,13 +221,13 @@ export function AdvancedContactSearch({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {Object.entries(filters).map(([key, value]) => {
             if (value === undefined || value === null || (Array.isArray(value) && value.length === 0)) return null;
-            const display = Array.isArray(value)
-              ? value.join(', ')
-              : typeof value === 'object'
-                ? JSON.stringify(value)
-                : String(value);
-            const short = display.length > 35 ? display.slice(0, 35) + '…' : display;
-            return <Tag key={key} closable onClose={() => removeFilter(key)}>{`${key}: ${short}`}</Tag>;
+            const text = describeFilter(key, value, references);
+            if (!text) return null;
+            return (
+              <Tag key={key} closable onClose={() => removeFilter(key)}>
+                {text}
+              </Tag>
+            );
           })}
           <Button type="link" size="small" onClick={() => setFilters({})}>
             {t('Tout effacer')}
@@ -197,7 +248,7 @@ export function AdvancedContactSearch({
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               {activeCount > 0 && (
-                <Button size="small" icon={<SaveOutlined />} onClick={handleSaveSearch}>
+                <Button size="small" icon={<SaveOutlined />} onClick={openSaveModal}>
                   {t('Sauvegarder')}
                 </Button>
               )}
@@ -264,6 +315,27 @@ export function AdvancedContactSearch({
           initialFilters={filters}
           onApply={handleApplyFilters}
           onCancel={() => setFilterModalOpen(false)}
+          references={references}
+        />
+      </Modal>
+
+      <Modal
+        title={t('Sauvegarder la recherche')}
+        open={saveModalOpen}
+        onCancel={() => setSaveModalOpen(false)}
+        onOk={handleSaveSearch}
+        okText={t('Sauvegarder')}
+        cancelText={t('Annuler')}
+        okButtonProps={{ disabled: !saveName.trim(), loading: saving }}
+        destroyOnClose
+      >
+        <Input
+          autoFocus
+          placeholder={t('Nom de la recherche')}
+          value={saveName}
+          maxLength={100}
+          onChange={e => setSaveName(e.target.value)}
+          onPressEnter={handleSaveSearch}
         />
       </Modal>
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Tag, Space, Typography, Empty, Spin, Divider } from 'antd';
+import { Card, Tag, Space, Typography, Empty, Spin, Divider, Select } from 'antd';
 import {
   CalendarOutlined,
   ClockCircleOutlined,
   UserOutlined,
+  TeamOutlined,
   ProjectOutlined,
   EnvironmentOutlined,
   CheckCircleOutlined,
@@ -12,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { PropertyVisit } from '../../types/property-types';
 import { getCalendarVisits } from '../../services/property-service';
+import { listMembers, Member } from '../../services/membership-service';
 import { Link } from 'react-router-dom';
 import { getDealTypeLabel } from '../../utils/crm-utils';
 import { t } from '../../i18n/t';
@@ -26,7 +28,7 @@ interface PropertyVisitCalendarProps {
   assignedToUserId?: string;
 }
 
-export const PropertyVisitCalendar: React.FC<PropertyVisitCalendarProps> = ({
+const PropertyVisitCalendarView: React.FC<PropertyVisitCalendarProps> = ({
   tenantId,
   startDate,
   endDate,
@@ -200,6 +202,14 @@ export const PropertyVisitCalendar: React.FC<PropertyVisitCalendarProps> = ({
 
                     {/* Contact and Deal */}
                     <Space direction="vertical" size="small" style={{ fontSize: 12 }}>
+                      {(visit.assignedTo?.fullName || visit.assignedTo?.email) && (
+                        <Space size="small">
+                          <TeamOutlined style={{ color: '#8c8c8c' }} />
+                          <Text type="secondary">
+                            {t('Assigné à')} {visit.assignedTo.fullName || visit.assignedTo.email}
+                          </Text>
+                        </Space>
+                      )}
                       {visit.contact && (
                         <Space size="small">
                           <UserOutlined style={{ color: '#8c8c8c' }} />
@@ -232,6 +242,50 @@ export const PropertyVisitCalendar: React.FC<PropertyVisitCalendarProps> = ({
           </Space>
         </Card>
       ))}
+    </Space>
+  );
+};
+
+/**
+ * Calendrier des visites avec un filtre par collaborateur assigné : l'API
+ * accepte `assignedToUserId`, la liste des collaborateurs vient des membres actifs.
+ */
+export const PropertyVisitCalendar: React.FC<PropertyVisitCalendarProps> = props => {
+  const { tenantId, assignedToUserId } = props;
+  const [members, setMembers] = useState<Member[]>([]);
+  const [assignedFilter, setAssignedFilter] = useState<string | undefined>(assignedToUserId);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMembers(tenantId, { page: 1, limit: 500, status: 'ACTIVE' })
+      .then(response => {
+        if (!cancelled && response.success) setMembers(response.data.members || []);
+      })
+      .catch(() => {
+        // Sans la liste, le filtre reste vide : le calendrier s'affiche quand même.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Select
+        allowClear
+        showSearch
+        style={{ minWidth: 260, maxWidth: '100%' }}
+        placeholder={t('Filtrer par collaborateur')}
+        aria-label={t('Filtrer par collaborateur')}
+        value={assignedFilter}
+        onChange={value => setAssignedFilter(value || undefined)}
+        optionFilterProp="label"
+        options={members.map(member => ({
+          value: member.user.id,
+          label: member.user.fullName || member.user.email
+        }))}
+      />
+      <PropertyVisitCalendarView {...props} assignedToUserId={assignedFilter} />
     </Space>
   );
 };

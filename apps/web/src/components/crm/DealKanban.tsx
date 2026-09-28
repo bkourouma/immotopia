@@ -3,6 +3,7 @@ import { CrmDeal, CrmDealDetail, CrmDealStage } from '../../types/crm-types';
 import { Button } from '../ui/button';
 import { Plus } from 'lucide-react';
 import { t } from '../../i18n/t';
+import { formatFcfa, getDealStageLabel, getDealTypeLabel } from '../../utils/crm-utils';
 
 import { activeLocale } from '../../i18n/format';
 interface DealKanbanProps {
@@ -16,15 +17,6 @@ interface DealKanbanProps {
 // Pipeline stages - excluding WON and LOST from main pipeline
 const pipelineStages: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION'];
 
-const stageLabels: Record<CrmDealStage, string> = {
-  NEW: 'Nouveau',
-  QUALIFIED: t('Qualifié'),
-  VISIT: 'Visite',
-  NEGOTIATION: t('Négociation'),
-  WON: t('Gagné'),
-  LOST: 'Perdu'
-};
-
 // Get contact initials for avatar
 const getInitials = (firstName?: string, lastName?: string): string => {
   const first = firstName?.charAt(0)?.toUpperCase() || '';
@@ -37,7 +29,8 @@ const formatDate = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   const now = new Date();
   const diffTime = now.getTime() - d.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  // Jamais négatif : l'horloge du navigateur peut avancer sur celle du serveur.
+  const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 
   if (diffDays === 0) {
     return d.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' });
@@ -146,7 +139,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
             >
               {/* Stage Header */}
               <div className="p-2 border-b border-gray-200 bg-white rounded-t">
-                <h3 className="font-semibold text-gray-900 text-sm">{stageLabels[stage]}</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">{getDealStageLabel(stage)}</h3>
                 {onAddDeal && (
                   <Button
                     variant="ghost"
@@ -204,15 +197,13 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                               deal.type === 'ACHAT' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
                             }`}
                           >
-                            {deal.type}
+                            {getDealTypeLabel(deal.type)}
                           </span>
                         </div>
 
                         {/* Budget */}
                         {deal.budgetMax && (
-                          <div className="text-xs font-semibold text-gray-900 mb-1">
-                            {deal.budgetMax.toLocaleString(activeLocale())} FCFA
-                          </div>
+                          <div className="text-xs font-semibold text-gray-900 mb-1">{formatFcfa(deal.budgetMax)}</div>
                         )}
 
                         {/* Location */}

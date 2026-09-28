@@ -2,6 +2,7 @@ import React from 'react';
 import { Table, Tag, Typography } from 'antd';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t as translate } from '../../i18n/t';
+import { getContactStatusLabel, getMaturityLabel } from '../../utils/crm-utils';
 
 interface ContactSearchResultsProps {
   contacts: ContactSearchResultItem[];
@@ -65,13 +66,13 @@ export function ContactSearchResults({
       title: translate('Statut'),
       dataIndex: 'status',
       key: 'status',
-      render: (s: string) => <Tag>{s}</Tag>
+      render: (s: string) => <Tag>{getContactStatusLabel(s)}</Tag>
     },
     {
       title: translate('Maturité'),
       dataIndex: 'maturityLevel',
       key: 'maturityLevel',
-      render: (v: string) => (v ? <Tag color="blue">{v}</Tag> : '—')
+      render: (v: string) => (v ? <Tag color="blue">{getMaturityLabel(v)}</Tag> : '—')
     },
     {
       title: translate('Commune'),

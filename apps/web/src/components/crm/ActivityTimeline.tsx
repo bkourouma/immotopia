@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { CrmActivity } from '../../types/crm-types';
 import { t } from '../../i18n/t';
+import { describeDeal, getActivityDirectionLabel } from '../../utils/crm-utils';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Paragraph } = Typography;
@@ -119,7 +120,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
               <Tag color={getTypeColor(activity.activityType)} icon={getTypeIcon(activity.activityType)}>
                 {getTypeLabel(activity.activityType)}
               </Tag>
-              {activity.direction ? <Tag>({activity.direction})</Tag> : null}
+              {activity.direction ? <Tag>({getActivityDirectionLabel(activity.direction)})</Tag> : null}
               {activity.correctionOfId ? <Tag color="gold">{t('Correction')}</Tag> : null}
               <Text type="secondary">
                 <CalendarOutlined /> {new Date(activity.occurredAt).toLocaleString(activeLocale())}
@@ -166,13 +167,13 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                   }}
                   style={{ padding: 0 }}
                 >
-                  Affaire: {activity.deal.type} - {activity.deal.stage}
+                  {t('Affaire')} : {describeDeal(activity.deal)}
                 </Button>
               ) : null}
 
               {activity.createdBy ? (
                 <Text type="secondary">
-                  <UserOutlined /> Par: {activity.createdBy.fullName || activity.createdBy.email}
+                  <UserOutlined /> {t('Par')} : {activity.createdBy.fullName || activity.createdBy.email}
                 </Text>
               ) : null}
             </Space>

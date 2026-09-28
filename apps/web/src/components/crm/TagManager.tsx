@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Input, Tag, Button, Space, Typography, Spin, Empty } from 'antd';
+import { Modal, Input, Tag, Button, Space, Typography, Spin, Empty, ColorPicker } from 'antd';
 import { PlusOutlined, TagOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
-import { listTags, assignTag, removeTag, getContactTags, CrmTag } from '../../services/crm-service';
+import { listTags, assignTag, removeTag, getContactTags, createTag, CrmTag } from '../../services/crm-service';
+import { writeErrorMessage } from '../../utils/error-handler';
 import { t } from '../../i18n/t';
 
 const { Search } = Input;
@@ -30,6 +31,9 @@ export const TagManager: React.FC<TagManagerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [processing, setProcessing] = useState<string | null>(null);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#1890ff');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -97,6 +101,36 @@ export const TagManager: React.FC<TagManagerProps> = ({
     }
   };
 
+  const handleCreateTag = async () => {
+    const name = newTagName.trim();
+    if (!name) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const response = await createTag(tenantId, name, newTagColor);
+      if (response.success) {
+        setNewTagName('');
+        setAllTags(prev => [...prev, response.data]);
+        // Le nouveau tag est assigné au contact tout de suite.
+        await handleAssignTag(response.data.id);
+      }
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
+        setError(t('Un tag portant ce nom existe déjà.'));
+      } else {
+        setError(
+          writeErrorMessage(
+            err,
+            t('Erreur lors de la création du tag'),
+            t("Vous n'avez pas les droits nécessaires pour créer un tag.")
+          )
+        );
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const isTagAssigned = (tagId: string) => {
     return contactTags.some(tag => tag.id === tagId);
   };
@@ -136,7 +170,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
           <div style={{ textAlign: 'center', padding: '40px 0' }}>
             <Spin size="large" />
             <div style={{ marginTop: 16 }}>
-              <Text type="secondary">Chargement...</Text>
+              <Text type="secondary">{t('Chargement...')}</Text>
             </div>
           </div>
         ) : (
@@ -149,6 +183,31 @@ export const TagManager: React.FC<TagManagerProps> = ({
               prefix={<SearchOutlined />}
               allowClear
             />
+
+            {/* Création d'un tag */}
+            <Space.Compact style={{ width: '100%' }}>
+              <ColorPicker
+                value={newTagColor}
+                onChange={color => setNewTagColor(color.toHexString())}
+                aria-label={t('Couleur du tag')}
+              />
+              <Input
+                placeholder={t('Nom du nouveau tag')}
+                value={newTagName}
+                maxLength={50}
+                onChange={e => setNewTagName(e.target.value)}
+                onPressEnter={handleCreateTag}
+              />
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                loading={creating}
+                disabled={!newTagName.trim()}
+                onClick={handleCreateTag}
+              >
+                {t('Créer le tag')}
+              </Button>
+            </Space.Compact>
 
             {/* Assigned Tags */}
             <div>

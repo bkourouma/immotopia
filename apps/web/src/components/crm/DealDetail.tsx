@@ -34,6 +34,7 @@ import { getDeal, updateDeal, CrmDealDetail, UpdateCrmDealRequest } from '../../
 import { ActivityTimeline } from './ActivityTimeline';
 import { PropertyMatching } from '../properties/PropertyMatching';
 import { t } from '../../i18n/t';
+import { getDealStageLabel, getDealTypeLabel } from '../../utils/crm-utils';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -43,14 +44,12 @@ interface DealDetailProps {
   dealId: string;
 }
 
-const STAGE_OPTIONS: Array<{ value: CrmDealStage; label: string }> = [
-  { value: 'NEW', label: t('Nouveau') },
-  { value: 'QUALIFIED', label: t('Qualifie') },
-  { value: 'VISIT', label: t('Visite') },
-  { value: 'NEGOTIATION', label: t('Negociation') },
-  { value: 'WON', label: t('Gagne') },
-  { value: 'LOST', label: t('Perdu') }
-];
+const STAGES: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'];
+
+// Fonction : les libellés suivent la langue active.
+function stageOptions(): Array<{ value: CrmDealStage; label: string }> {
+  return STAGES.map(value => ({ value, label: getDealStageLabel(value) }));
+}
 
 const FURNISHING_LABELS: Record<string, string> = {
   MEUBLE: 'Meuble',
@@ -59,7 +58,7 @@ const FURNISHING_LABELS: Record<string, string> = {
 };
 
 function getStageLabel(stage: string): string {
-  return STAGE_OPTIONS.find(s => s.value === stage)?.label || stage;
+  return getDealStageLabel(stage);
 }
 
 function getStageColor(stage: string): string {
@@ -72,17 +71,6 @@ function getStageColor(stage: string): string {
     LOST: 'red'
   };
   return map[stage] || 'default';
-}
-
-function getDealTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    ACHAT: 'Achat',
-    LOCATION: 'Location',
-    VENTE: 'Vente',
-    GESTION: 'Gestion',
-    MANDAT: 'Mandat'
-  };
-  return labels[type] || type;
 }
 
 function getPropertyTypeLabel(type: string): string {
@@ -150,11 +138,23 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
       };
       const response = await updateDeal(tenantId, dealId, updateData);
       if (response.success) {
-        setDeal(response.data as CrmDealDetail);
-        message.success(t('Stade de l affaire mis a jour'));
+        // La réponse du PATCH est allégée (ni téléphone du contact, ni activités) :
+        // on la fusionne avec le détail déjà chargé au lieu de le remplacer.
+        const updated = response.data as CrmDealDetail;
+        setDeal(previous =>
+          previous
+            ? {
+                ...previous,
+                ...updated,
+                contact: { ...previous.contact, ...updated.contact } as CrmDealDetail['contact'],
+                activities: updated.activities ?? previous.activities
+              }
+            : updated
+        );
+        message.success(t("Stade de l'affaire mis à jour"));
       }
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t("Erreur lors de la mise a jour du stade de l'affaire"));
+      message.error(err?.response?.data?.message || t("Erreur lors de la mise à jour du stade de l'affaire"));
     } finally {
       setUpdatingStage(false);
     }
@@ -200,7 +200,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
       <div style={{ textAlign: 'center', padding: '48px 0' }}>
         <Spin size="large" />
         <div style={{ marginTop: 12 }}>
-          <Text type="secondary">{t('Chargement de l affaire...')}</Text>
+          <Text type="secondary">{t("Chargement de l'affaire...")}</Text>
         </div>
       </div>
     );
@@ -211,7 +211,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
   }
 
   if (!deal) {
-    return <Empty description={t('Affaire non trouvee')} />;
+    return <Empty description={t('Affaire non trouvée')} />;
   }
 
   return (
@@ -262,7 +262,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                         label: (
                           <Space>
                             <PhoneOutlined />
-                            {t('Telephone')}
+                            {t('Téléphone')}
                           </Space>
                         ),
                         children: deal.contact?.phonePrimary || deal.contact?.phone
@@ -293,8 +293,8 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                           deal.budgetMin && deal.budgetMax
                             ? `${formatNumber(deal.budgetMin)} - ${formatNumber(deal.budgetMax)} FCFA`
                             : deal.budgetMax
-                              ? t('Jusqu a {{value}} FCFA', { value: formatNumber(deal.budgetMax) })
-                              : t('A partir de {{value}} FCFA', { value: formatNumber(deal.budgetMin) })
+                              ? t("Jusqu'à {{value}} FCFA", { value: formatNumber(deal.budgetMax) })
+                              : t('À partir de {{value}} FCFA', { value: formatNumber(deal.budgetMin) })
                       }
                     : null,
                   {
@@ -302,14 +302,14 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                     label: (
                       <Space>
                         <CalendarOutlined />
-                        {t('Cree le')}
+                        {t('Créé le')}
                       </Space>
                     ),
                     children: new Date(deal.createdAt).toLocaleDateString(activeLocale())
                   },
                   {
                     key: 'updatedAt',
-                    label: t('Modifie le'),
+                    label: t('Modifié le'),
                     children: new Date(deal.updatedAt).toLocaleDateString(activeLocale())
                   }
                 ].filter(Boolean) as any
@@ -326,7 +326,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                 showSearch
                 optionFilterProp="label"
                 value={deal.stage}
-                options={STAGE_OPTIONS}
+                options={stageOptions()}
                 onChange={handleStageChange}
                 loading={updatingStage}
               />
@@ -350,14 +350,14 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           title={
             <Space>
               <HomeOutlined />
-              {t('Type de bien et criteres')}
+              {t('Type de bien et critères')}
             </Space>
           }
         >
           <Row gutter={[16, 16]}>
             {hasValue(criteria.propertyType) ? (
               <Col xs={24} md={12}>
-                <Text type="secondary">{t('Type de bien recherche')}</Text>
+                <Text type="secondary">{t('Type de bien recherché')}</Text>
                 <div>
                   <Text strong>{getPropertyTypeLabel(String(criteria.propertyType))}</Text>
                 </div>
@@ -366,7 +366,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
 
             {hasValue(deal.expectedValue) ? (
               <Col xs={24} md={12}>
-                <Text type="secondary">{t('Valeur estimee de la transaction')}</Text>
+                <Text type="secondary">{t('Valeur estimée de la transaction')}</Text>
                 <div>
                   <Text strong>{formatNumber(deal.expectedValue)} FCFA</Text>
                 </div>
@@ -393,7 +393,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
 
           {equipmentTags.length > 0 ? (
             <div style={{ marginTop: 12 }}>
-              <Text type="secondary">{t('Equipements')}</Text>
+              <Text type="secondary">{t('Équipements')}</Text>
               <div style={{ marginTop: 8 }}>
                 <Space wrap>
                   {equipmentTags.map(item => (
@@ -411,7 +411,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           title={
             <Space>
               <FileTextOutlined />
-              {t('Description / Besoins specifiques')}
+              {t('Description / Besoins spécifiques')}
             </Space>
           }
         >
@@ -423,18 +423,18 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
         title={
           <Space>
             <ThunderboltOutlined />
-            {t('Chronologie des activites')} {deal.activities ? `(${deal.activities.length})` : ''}
+            {t('Chronologie des activités')} {deal.activities ? `(${deal.activities.length})` : ''}
           </Space>
         }
       >
         {deal.activities && deal.activities.length > 0 ? (
           <ActivityTimeline activities={deal.activities} tenantId={tenantId} />
         ) : (
-          <Empty description={t('Aucune activite')} />
+          <Empty description={t('Aucune activité')} />
         )}
       </Card>
 
-      <Card title={t('Correspondance de proprietes')}>
+      <Card title={t('Correspondance de propriétés')}>
         <PropertyMatching tenantId={tenantId} dealId={dealId} />
       </Card>
     </Space>

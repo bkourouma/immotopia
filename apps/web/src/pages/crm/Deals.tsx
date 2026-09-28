@@ -35,8 +35,9 @@ import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../c
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
+import { formatFcfa, getDealStageLabel, getDealTypeLabel } from '../../utils/crm-utils';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatNumber } from '../../i18n/format';
 export const Deals: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -179,18 +180,8 @@ export const Deals: React.FC = () => {
     }
   };
 
-  const getStageLabel = (stage: string): string => {
-    const labels: Record<string, string> = {
-      NEW: 'Nouveau',
-      QUALIFIED: t('Qualifié'),
-      APPOINTMENT: 'Rendez-vous',
-      VISIT: 'Visite',
-      NEGOTIATION: t('Négociation'),
-      WON: t('Gagné'),
-      LOST: 'Perdu'
-    };
-    return labels[stage] || stage;
-  };
+  const getStageLabel = (stage: string): string =>
+    stage === 'APPOINTMENT' ? t('Rendez-vous') : getDealStageLabel(stage);
 
   const getStageBadge = (stage: string) => {
     // Echelle CATEGORIELLE (voir PropertySearchResults) : palette brute
@@ -234,7 +225,7 @@ export const Deals: React.FC = () => {
                   const dealDetail = deal as CrmDealDetail;
                   const contact = dealDetail.contact;
                   return {
-                    Type: deal.type,
+                    Type: getDealTypeLabel(deal.type),
                     Contact: contact
                       ? `${contact.firstName} ${contact.lastName}`
                       : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
@@ -262,7 +253,7 @@ export const Deals: React.FC = () => {
                   const dealDetail = deal as CrmDealDetail;
                   const contact = dealDetail.contact;
                   return {
-                    Type: deal.type,
+                    Type: getDealTypeLabel(deal.type),
                     Contact: contact
                       ? `${contact.firstName} ${contact.lastName}`
                       : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
@@ -509,31 +500,19 @@ export const Deals: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Type')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Contact')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Stade')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Budget')}
-                  </th>
-                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Localisation')}
-                  </th>
-                  <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('Actions')}
-                  </th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Type')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Contact')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Stade')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Budget')}</th>
+                  <th className="px-6 py-3 text-start text-xs font-medium text-gray-500">{t('Localisation')}</th>
+                  <th className="px-6 py-3 text-end text-xs font-medium text-gray-500">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredDeals.map(deal => (
                   <tr key={deal.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{deal.type}</div>
+                      <div className="text-sm font-medium text-gray-900">{getDealTypeLabel(deal.type)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
@@ -549,12 +528,12 @@ export const Deals: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
                         {deal.budgetMin && deal.budgetMax
-                          ? t('{{value}} - {{value2}} FCFA', {
-                              value: deal.budgetMin.toLocaleString(),
-                              value2: deal.budgetMax.toLocaleString()
+                          ? t('{{value}} - {{value2}}', {
+                              value: formatNumber(deal.budgetMin),
+                              value2: formatFcfa(deal.budgetMax)
                             })
                           : deal.budgetMax
-                            ? t("Jusqu'à {{value}} FCFA", { value: deal.budgetMax.toLocaleString() })
+                            ? t("Jusqu'à {{value}}", { value: formatFcfa(deal.budgetMax) })
                             : '-'}
                       </div>
                     </td>

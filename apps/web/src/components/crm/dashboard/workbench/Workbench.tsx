@@ -116,7 +116,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({ data, onItemClick, onCompl
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('Workbench')}</CardTitle>
+        <CardTitle>{t('Plan de travail')}</CardTitle>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>

@@ -9,6 +9,18 @@ interface FunnelChartProps {
   onStepClick?: (step: string) => void;
 }
 
+/** Étapes renvoyées par l'API (clés techniques en anglais) : libellé affiché. */
+function funnelStepLabel(step: string): string {
+  const labels: Record<string, string> = {
+    Leads: t('Prospects'),
+    Qualified: t('Qualifié'),
+    Visit: t('Visite'),
+    Negotiation: t('Négociation'),
+    Won: t('Gagné')
+  };
+  return labels[step] || step;
+}
+
 const STEP_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#64748b'];
 
 export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) => {
@@ -18,6 +30,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) =
     .sort((a, b) => b.percentage - a.percentage)
     .map((step, index) => ({
       ...step,
+      label: funnelStepLabel(step.step),
       fill: STEP_COLORS[index % STEP_COLORS.length]
     }));
 
@@ -26,12 +39,16 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) =
       const data: FunnelStep = payload[0].payload;
       return (
         <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
-          <p className="font-semibold">{data.step}</p>
-          <p className="text-sm text-slate-600">Nombre: {data.count}</p>
-          <p className="text-sm text-slate-600">Taux: {data.percentage.toFixed(1)}%</p>
+          <p className="font-semibold">{funnelStepLabel(data.step)}</p>
+          <p className="text-sm text-slate-600">
+            {t('Nombre')} : {data.count}
+          </p>
+          <p className="text-sm text-slate-600">
+            {t('Taux')} : {data.percentage.toFixed(1)}%
+          </p>
           {data.dropOff !== undefined && (
             <p className={`text-sm ${data.dropOff > 0 ? 'text-red-600' : 'text-green-600'}`}>
-              Perte: {data.dropOff > 0 ? '+' : ''}
+              {t('Perte')} : {data.dropOff > 0 ? '+' : ''}
               {data.dropOff.toFixed(1)}%
             </p>
           )}
@@ -46,11 +63,11 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) =
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={chartData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 20 }}>
           <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} />
-          <YAxis dataKey="step" type="category" width={80} tick={{ fontSize: 12 }} />
+          <YAxis dataKey="label" type="category" width={80} tick={{ fontSize: 12 }} />
           <Tooltip content={<CustomTooltip />} />
           <Bar
             dataKey="percentage"
-            name="Pourcentage"
+            name={t('Pourcentage')}
             radius={[0, 8, 8, 0]}
             cursor={onStepClick ? 'pointer' : 'default'}
             onClick={(data: any, index: number, e: any) => {

@@ -8,6 +8,7 @@ import {
   PropertySearchRequest,
   PropertySearchResponse,
   PropertyVisit,
+  PropertyVisitStatus,
   PropertyDocument
 } from '../types/property-types';
 
@@ -504,7 +505,26 @@ export async function completePropertyVisit(
 ): Promise<PropertyVisit> {
   const response = await apiClient.post<{ success: boolean; data: PropertyVisit }>(
     `/tenants/${tenantId}/properties/${propertyId}/visits/${visitId}/complete`,
-    { notes: notes || null }
+    // Sans compte-rendu, aucune clé `notes` : l'API conserve la note existante.
+    notes ? { notes } : {}
+  );
+  return response.data.data;
+}
+
+/**
+ * Change le statut d'une visite (Confirmée, Absent, Annulée…). Sans `notes`,
+ * la note existante est conservée.
+ */
+export async function updateVisitStatus(
+  tenantId: string,
+  propertyId: string,
+  visitId: string,
+  status: PropertyVisitStatus,
+  notes?: string
+): Promise<PropertyVisit> {
+  const response = await apiClient.patch<{ success: boolean; data: PropertyVisit }>(
+    `/tenants/${tenantId}/properties/${propertyId}/visits/${visitId}/status`,
+    notes ? { status, notes } : { status }
   );
   return response.data.data;
 }

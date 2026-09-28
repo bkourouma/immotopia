@@ -4,8 +4,8 @@ import dayjs from 'dayjs';
 import { CreateCrmActivityRequest, CrmActivityType, CrmActivityDirection } from '../../types/crm-types';
 import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
 import { t } from '../../i18n/t';
+import { describeDeal } from '../../utils/crm-utils';
 
-import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 
 interface ActivityFormProps {
@@ -261,7 +261,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               help={errors.contactId}
             >
               {loadingContacts ? (
-                <Input placeholder="Chargement..." disabled />
+                <Input placeholder={t('Chargement...')} disabled />
               ) : (
                 <Select
                   value={formData.contactId}
@@ -325,26 +325,11 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
                       {t('Aucune affaire pour ce contact')}
                     </Select.Option>
                   ) : (
-                    deals.map(deal => {
-                      const typeLabel = deal.type === 'ACHAT' ? t('Achat') : t('Location');
-                      const stageLabels: Record<string, string> = {
-                        NEW: t('Nouveau'),
-                        QUALIFIED: t('Qualifié'),
-                        VISIT: t('Visite'),
-                        NEGOTIATION: t('Négociation'),
-                        WON: t('Gagné'),
-                        LOST: t('Perdu')
-                      };
-                      const budget = deal.budgetMax
-                        ? ` - ${new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(deal.budgetMax)}`
-                        : '';
-                      return (
-                        <Select.Option key={deal.id} value={deal.id}>
-                          {typeLabel} - {stageLabels[deal.stage] || deal.stage}
-                          {budget}
-                        </Select.Option>
-                      );
-                    })
+                    deals.map(deal => (
+                      <Select.Option key={deal.id} value={deal.id}>
+                        {describeDeal(deal)}
+                      </Select.Option>
+                    ))
                   )}
                 </Select>
               )}
@@ -353,28 +338,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         ) : (
           <Col xs={24} md={12}>
             <Form.Item label={t('Affaire')}>
-              <Input
-                value={
-                  selectedDeal
-                    ? `${selectedDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${(() => {
-                        const stageLabels: Record<string, string> = {
-                          NEW: 'Nouveau',
-                          QUALIFIED: t('Qualifié'),
-                          VISIT: 'Visite',
-                          NEGOTIATION: t('Négociation'),
-                          WON: t('Gagné'),
-                          LOST: 'Perdu'
-                        };
-                        return stageLabels[selectedDeal.stage] || selectedDeal.stage;
-                      })()}${
-                        selectedDeal.budgetMax
-                          ? ` - ${new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(selectedDeal.budgetMax)}`
-                          : ''
-                      }`
-                    : 'Chargement...'
-                }
-                disabled
-              />
+              <Input value={selectedDeal ? describeDeal(selectedDeal) : t('Chargement...')} disabled />
             </Form.Item>
           </Col>
         )}
