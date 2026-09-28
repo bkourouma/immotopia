@@ -12,6 +12,7 @@ jest.mock('@prisma/client', () => {
     },
     syndicate: {
       findMany: jest.fn(),
+      count: jest.fn(async () => 0),
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -98,6 +99,7 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
     };
     syndicate: {
       findMany: jest.Mock;
+      count: jest.Mock;
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
@@ -157,8 +159,9 @@ describe('Syndics queries - US1', () => {
     expect(result.id).toBe('syndic-1');
   });
 
-  it('lists syndicates with tenant isolation in query filter', async () => {
+  it('lists syndicates with tenant isolation in query filter, on findMany AND count', async () => {
     (mockPrisma.syndicate.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.syndicate.count as jest.Mock).mockResolvedValue(0);
 
     await listSyndicatesByTenant('tenant-a');
 
@@ -171,6 +174,40 @@ describe('Syndics queries - US1', () => {
         where: expect.objectContaining({ tenantId: 'tenant-a' })
       })
     );
+    // Ecart recette (lot syndic-ecarts, T1) : le compte total suit le meme
+    // filtre tenant que la page, sinon `total` mentirait sur ce que voit une
+    // autre agence.
+    expect(mockPrisma.syndicate.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 'tenant-a' })
+      })
+    );
+  });
+
+  it('applies the requested page/limit to skip/take and returns the pagination envelope', async () => {
+    (mockPrisma.syndicate.findMany as jest.Mock).mockResolvedValue([{ id: 'syn-1' }, { id: 'syn-2' }]);
+    (mockPrisma.syndicate.count as jest.Mock).mockResolvedValue(12);
+
+    const result = await listSyndicatesByTenant('tenant-a', { page: 2, limit: 5 });
+
+    expect(mockPrisma.syndicate.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 5, take: 5 }));
+    expect(result).toEqual({
+      items: [{ id: 'syn-1' }, { id: 'syn-2' }],
+      total: 12,
+      page: 2,
+      limit: 5,
+      totalPages: 3
+    });
+  });
+
+  it('defaults to page 1 / limit 20 when no pagination is given', async () => {
+    (mockPrisma.syndicate.findMany as jest.Mock).mockResolvedValue([]);
+    (mockPrisma.syndicate.count as jest.Mock).mockResolvedValue(0);
+
+    const result = await listSyndicatesByTenant('tenant-a');
+
+    expect(mockPrisma.syndicate.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 20 }));
+    expect(result).toMatchObject({ page: 1, limit: 20 });
   });
 
   it('creates a lot only if the syndicate belongs to the tenant', async () => {
@@ -443,9 +480,9 @@ describe('Prestataires rattaches a l agence (ecart recette #2, FR-010)', () => {
   it('refuse (404) la mise a jour d un prestataire d une autre agence', async () => {
     mockPrisma.serviceProvider.findFirst.mockResolvedValueOnce(null);
 
-    await expect(updateServiceProviderByTenant('tenant-a', 'prov-autre-agence', { name: 'Vole' })).rejects.toMatchObject(
-      { status: 404 }
-    );
+    await expect(
+      updateServiceProviderByTenant('tenant-a', 'prov-autre-agence', { name: 'Vole' })
+    ).rejects.toMatchObject({ status: 404 });
     expect(mockPrisma.serviceProvider.update).not.toHaveBeenCalled();
   });
 
