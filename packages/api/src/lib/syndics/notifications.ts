@@ -8,9 +8,28 @@ import { emailService } from '../../services/email-service';
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
 import { paidFromAllocations } from './charge-allocation';
 import { computeOutstanding } from './finance-utils';
+// Même substitution que les reçus S3 : les valeurs injectées dans le HTML
+// (noms, libellés saisis librement) y sont échappées.
+import { applyReceiptTemplate } from './charge-receipt-delivery';
 
-function applyTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
+/** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
+function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
+  return applyReceiptTemplate(template, vars, html);
+}
+
+/**
+ * Lot S4 : le propriétaire lié au lot (`lot.owner`) est-il toujours un
+ * copropriétaire actuel ? Quand le lot a des fiches de copropriétaire
+ * actives et non closes, il doit en faire partie ; un lot sans aucune fiche
+ * (données anciennes) garde le comportement historique.
+ */
+async function isCurrentLotOwner(lotId: string, ownerId: string, now: Date = new Date()): Promise<boolean> {
+  const profiles = await prisma.lotOwnerProfile.findMany({
+    where: { lotId, isActive: true },
+    select: { contactId: true, ownedUntil: true }
+  });
+  const current = profiles.filter(profile => !profile.ownedUntil || profile.ownedUntil.getTime() >= now.getTime());
+  return current.length === 0 || current.some(profile => profile.contactId === ownerId);
 }
 
 function getOwnerWhatsappTarget(owner: {
@@ -38,7 +57,33 @@ function getLotDisplayLabel(
   return propertyTitle || propertyReference || propertyAddress || lot.lotNumber || '';
 }
 
-export async function notifyChargeCall(chargeCallId: string) {
+/** Pièce jointe d'un e-mail de notification. */
+export interface NotificationAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
+export interface NotifyChargeCallOptions {
+  /**
+   * Lot S4 : pièces jointes de l'e-mail (avis d'appel PDF), construites
+   * seulement quand un e-mail part vraiment. Une erreur de construction
+   * n'empêche pas l'envoi : l'e-mail part sans pièce jointe.
+   */
+  buildAttachments?: () => Promise<NotificationAttachment[]>;
+}
+
+async function resolveAttachments(chargeCallId: string, options: NotifyChargeCallOptions) {
+  if (!options.buildAttachments) return [];
+  try {
+    return await options.buildAttachments();
+  } catch (error) {
+    logger.warn('notifyChargeCall: attachment could not be built', { chargeCallId, error: String(error) });
+    return [];
+  }
+}
+
+export async function notifyChargeCall(chargeCallId: string, options: NotifyChargeCallOptions = {}) {
   const eventKeyEmail: EmailNotificationKey = 'CHARGE_CALL_ISSUED';
   const eventKeyWhatsApp: WhatsappNotificationKey = 'CHARGE_CALL_ISSUED';
 
@@ -85,6 +130,14 @@ export async function notifyChargeCall(chargeCallId: string) {
     return { emailSent: false, whatsappSent: false, skipped: 'NO_OWNER_CONTACT' as const };
   }
 
+  if (!(await isCurrentLotOwner(chargeCall.lotId, owner.id))) {
+    logger.warn('notifyChargeCall: lot owner is not a current co-owner, skipping notifications', {
+      chargeCallId,
+      lotId: chargeCall.lotId
+    });
+    return { emailSent: false, whatsappSent: false, skipped: 'OWNER_NOT_CURRENT' as const };
+  }
+
   const dueDate = new Date(chargeCall.dueDate).toLocaleDateString('fr-FR');
   const amount = Number(chargeCall.amount).toLocaleString('fr-FR');
   const ownerName =
@@ -111,10 +164,12 @@ export async function notifyChargeCall(chargeCallId: string) {
       const subjectTpl = emailConfig.subjectOverride || defaults.subject;
       const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
 
+      const attachments = await resolveAttachments(chargeCallId, options);
       await emailService.sendEmail({
         to: owner.email,
         subject: applyTemplate(subjectTpl, templateVars),
-        html: applyTemplate(bodyTpl, templateVars)
+        html: applyTemplate(bodyTpl, templateVars, true),
+        ...(attachments.length > 0 ? { attachments } : {})
       });
       emailSent = true;
     }
@@ -206,7 +261,7 @@ export async function notifyMeetingConvocation(meetingId: string) {
       await emailService.sendEmail({
         to: owner.email,
         subject: applyTemplate(emailConfig.subjectOverride || defaults.subject, templateVars),
-        html: applyTemplate(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars)
+        html: applyTemplate(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, true)
       });
       emailSent += 1;
     }
@@ -323,7 +378,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
       await emailService.sendEmail({
         to: owner.email,
         subject: applyTemplate(subjectTpl, templateVars),
-        html: applyTemplate(bodyTpl, templateVars)
+        html: applyTemplate(bodyTpl, templateVars, true)
       });
       emailSent = true;
     }

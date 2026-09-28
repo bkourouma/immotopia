@@ -1,5 +1,6 @@
 ﻿import React from 'react';
-import { Button, Table, Tag, Typography } from 'antd';
+import { Button, Space, Table, Tag, Typography } from 'antd';
+import { FilePdfOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
@@ -9,7 +10,8 @@ import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
-const statusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
+/** Libellé et couleur d'un statut d'appel de charges, partagés avec la modale de paiement par lot. */
+export const chargeCallStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
   PAID: { color: 'green', label: t('Payé') },
@@ -53,12 +55,19 @@ interface ChargeCallTableProps {
    * ce composant reste utilisable en lecture seule ailleurs.
    */
   onRecordPayment?: (charge: ChargeCall) => void;
+  /** Callback pour l'action « Avis d'appel (PDF) » (lot S4). Optionnel, même règle que ci-dessus. */
+  onDownloadNotice?: (charge: ChargeCall) => void;
 }
 
-export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading = false, onRecordPayment }) => {
+export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
+  items,
+  loading = false,
+  onRecordPayment,
+  onDownloadNotice
+}) => {
   const columns: ColumnsType<ChargeCall> = [
     {
-      title: t('Periode'),
+      title: t('Période'),
       dataIndex: 'period',
       key: 'period',
       render: (value: string) => <Text strong>{value}</Text>
@@ -76,7 +85,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={item.amount} />
     },
     {
-      title: t('Echeance'),
+      title: t('Échéance'),
       dataIndex: 'dueDate',
       key: 'dueDate',
       render: (value: string, item: ChargeCall) => {
@@ -106,19 +115,28 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
       dataIndex: 'status',
       key: 'status',
       render: (value: ChargeCallStatus) => {
-        const config = statusConfig[value];
+        const config = chargeCallStatusConfig[value];
         return <Tag color={config.color}>{config.label}</Tag>;
       }
     },
-    ...(onRecordPayment
+    ...(onRecordPayment || onDownloadNotice
       ? [
           {
             title: t('Actions'),
             key: 'actions',
             render: (_: unknown, item: ChargeCall) => (
-              <Button size="small" disabled={item.status === 'PAID'} onClick={() => onRecordPayment(item)}>
-                {t('Enregistrer un paiement')}
-              </Button>
+              <Space size={8} wrap>
+                {onRecordPayment ? (
+                  <Button size="small" disabled={item.status === 'PAID'} onClick={() => onRecordPayment(item)}>
+                    {t('Enregistrer un paiement')}
+                  </Button>
+                ) : null}
+                {onDownloadNotice ? (
+                  <Button size="small" icon={<FilePdfOutlined />} onClick={() => onDownloadNotice(item)}>
+                    {t("Avis d'appel (PDF)")}
+                  </Button>
+                ) : null}
+              </Space>
             )
           }
         ]

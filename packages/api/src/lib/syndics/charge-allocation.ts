@@ -26,6 +26,8 @@ import { appendOwnerAccountTransactionTx } from '../finance/ledger';
 import { deriveChargeCallStatus, type ChargeCallStatusValue } from './finance-utils';
 import { ensureOwnerAccountForLotTx } from './owner-account-tx';
 import { formatIsoDay } from './period';
+import { issueReceiptsForPaymentTx, toDocumentRefs, type IssuedChargeDocument } from './charge-receipts';
+import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import {
   fromCents,
   planAdvanceImputation,
@@ -529,10 +531,29 @@ export async function assertLotOfSyndicate(client: Client, tenantId: string, syn
   }
 }
 
-export async function recordLotPayment(input: LotPaymentInput): Promise<LotPaymentResult> {
+/** Reponse d'un paiement enregistre : le resultat S2, plus les documents emis (lot S3). */
+export type RecordedLotPayment = LotPaymentResult & {
+  documents: Array<Pick<IssuedChargeDocument, 'id' | 'kind' | 'number'>>;
+};
+
+export async function recordLotPayment(input: LotPaymentInput): Promise<RecordedLotPayment> {
   await assertLotOfSyndicate(prisma, input.tenantId, input.syndicateId, input.lotId);
-  const { result } = await prisma.$transaction(tx => recordLotPaymentTx(tx, input));
-  return result;
+  const { result, documents } = await prisma.$transaction(async tx => {
+    const recorded = await recordLotPaymentTx(tx, input);
+    // Lot S3 : recu et quittances, numerotes dans la transaction du paiement.
+    const issued = await issueReceiptsForPaymentTx(tx, {
+      tenantId: input.tenantId,
+      syndicateId: input.syndicateId,
+      lotId: input.lotId,
+      paymentId: recorded.record.id,
+      result: recorded.result,
+      actorUserId: input.actorUserId ?? null
+    });
+    return { result: recorded.result, documents: issued };
+  });
+  // PDF et e-mail apres le commit : leur echec n'annule jamais le paiement.
+  scheduleChargeDocumentDelivery(input.tenantId, documents);
+  return { ...result, documents: toDocumentRefs(documents) };
 }
 
 export async function previewLotPaymentForTenant(input: LotPaymentInput): Promise<LotPaymentResult> {

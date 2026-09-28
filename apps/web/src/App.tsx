@@ -317,6 +317,11 @@ const SyndicMonthlyTracking = lazy(() =>
     default: m.SyndicMonthlyTracking
   }))
 );
+const SyndicReceipts = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicReceipts').then(m => ({
+    default: m.SyndicReceipts
+  }))
+);
 const SyndicOwnerAccount = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOwnerAccount').then(m => ({
     default: m.SyndicOwnerAccount
@@ -329,6 +334,11 @@ const SyndicAccounting = lazy(() =>
 );
 const SyndicBudgets = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicBudgets').then(m => ({ default: m.SyndicBudgets }))
+);
+const SyndicChargeSchedules = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicChargeSchedules').then(m => ({
+    default: m.SyndicChargeSchedules
+  }))
 );
 const SyndicProfilesIncidents = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicProfilesIncidents').then(m => ({
@@ -622,6 +632,15 @@ const CoOwnerChargeCalls = lazy(
 );
 const CoOwnerDocuments = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Documents'));
 const CoOwnerMeetings = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Meetings'));
+// Lot S5 (besoin 2) : paiements, quittances, suivi mensuel, fiche de la copropriété.
+const CoOwnerPayments = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Payments'));
+const CoOwnerReceipts = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Receipts'));
+const CoOwnerMonthlyTracking = lazy(
+  () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/MonthlyTracking')
+);
+const CoOwnerSyndicateSheet = lazy(
+  () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Syndicate')
+);
 const CoOwnerPortalNotFound = lazy(
   () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/PortalNotFound')
 );
@@ -846,10 +865,7 @@ function App() {
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne
                           soit jamais lu comme un identifiant de copropriété. */}
-                          <Route
-                            path="/tenant/:tenantId/syndics/mandants"
-                            element={<SyndicMandatingAgencies />}
-                          />
+                          <Route path="/tenant/:tenantId/syndics/mandants" element={<SyndicMandatingAgencies />} />
                           {/* Famille « Copropriété » — fiche, lots (et le compte d'un lot,
                         rattaché à l'onglet Lots), prestataires, profils et incidents.
                         Même route de layout que les deux familles suivantes : elle ne
@@ -877,9 +893,14 @@ function App() {
                             <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
                             <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/programmation"
+                              element={<SyndicChargeSchedules />}
+                            />
+                            <Route
                               path="/tenant/:tenantId/syndics/:syndicId/suivi-mensuel"
                               element={<SyndicMonthlyTracking />}
                             />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/quittances" element={<SyndicReceipts />} />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
                               element={<SyndicRecovery />}
@@ -906,7 +927,10 @@ function App() {
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
                           <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
-                          <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
+                          <Route
+                            path="/tenant/:tenantId/settings/abonnement"
+                            element={<TenantSubscriptionSettings />}
+                          />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
@@ -1208,6 +1232,11 @@ function App() {
                           <Route path="appels" element={<CoOwnerChargeCalls />} />
                           <Route path="documents" element={<CoOwnerDocuments />} />
                           <Route path="assemblees" element={<CoOwnerMeetings />} />
+                          {/* Lot S5 (besoin 2) */}
+                          <Route path="paiements" element={<CoOwnerPayments />} />
+                          <Route path="quittances" element={<CoOwnerReceipts />} />
+                          <Route path="suivi-mensuel" element={<CoOwnerMonthlyTracking />} />
+                          <Route path="ma-copropriete" element={<CoOwnerSyndicateSheet />} />
                           {/* Pas de page de détail d'AG ni de document : toute autre
                         adresse du portail le dit, dans la coquille du portail. */}
                           <Route path="*" element={<CoOwnerPortalNotFound />} />

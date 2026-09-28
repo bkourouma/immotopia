@@ -10,6 +10,7 @@ import {
 } from '../../navigation/resolve';
 import { buildCrumbs } from '../../components/shell/Breadcrumbs';
 import { ROUTE_LABELS, isIdSegment, labelForSegment } from '../../navigation/route-labels';
+import i18next from '../../i18n/index';
 
 /**
  * Le modèle de navigation pilote les 100 écrans : sidebar, barre d'onglets et
@@ -39,16 +40,24 @@ describe('modèle de navigation — intégrité', () => {
     expect(NAVIGATION.collaborateur.tabs).toHaveLength(5);
     expect(NAVIGATION.proprietaire.tabs).toHaveLength(5);
     expect(NAVIGATION.locataire.tabs).toHaveLength(4);
-    expect(NAVIGATION.coproprietaire.tabs).toHaveLength(4);
+    expect(NAVIGATION.coproprietaire.tabs).toHaveLength(5);
   });
 
-  it('donne au copropriétaire ses quatre destinations en lecture seule, et au bailleur un accès à sa copropriété', () => {
-    expect(NAVIGATION.coproprietaire.tree.map(g => g.href)).toEqual([
+  it('donne au copropriétaire ses quatre destinations directes, et le lot S5 derrière « Plus »', () => {
+    expect(NAVIGATION.coproprietaire.tree.filter(g => g.zone === 'primary').map(g => g.href)).toEqual([
       '/copropriete',
       '/copropriete/appels',
       '/copropriete/assemblees',
       '/copropriete/documents'
     ]);
+    const coproprietairePlus = NAVIGATION.coproprietaire.tree.find(g => g.key === 'plus');
+    expect(coproprietairePlus?.children?.map(c => c.href)).toEqual([
+      '/copropriete/paiements',
+      '/copropriete/quittances',
+      '/copropriete/suivi-mensuel',
+      '/copropriete/ma-copropriete'
+    ]);
+
     const plus = NAVIGATION.proprietaire.tree.find(g => g.key === 'plus');
     expect(plus?.children?.map(c => c.href)).toContain('/copropriete');
   });
@@ -113,6 +122,8 @@ describe('modèle de navigation — intégrité', () => {
       'profils-incidents',
       'budgets',
       'charges',
+      'suivi-mensuel',
+      'quittances',
       'recouvrement',
       'finances',
       'comptabilite',
@@ -412,6 +423,28 @@ describe('table de libellés', () => {
   it('rend visible un segment inconnu au lieu de le masquer', () => {
     expect(labelForSegment('segment-inedit')).toBe('Segment inedit');
     expect(ROUTE_LABELS.leases).toBe('Baux');
+  });
+
+  // BUG-2026-09-27-004 : pages syndic des lots S1 à S3 absentes de la table.
+  it('nomme les pages syndic des lots S1 à S3 dans le fil d’Ariane', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/syndics/mandants`).map(c => c.label)).toEqual([
+      'Copropriétés',
+      'Agences mandantes'
+    ]);
+    expect(labelForSegment('suivi-mensuel')).toBe('Suivi mensuel');
+    expect(labelForSegment('quittances')).toBe('Quittances');
+  });
+
+  it('traduit les libellés dans la langue active, même chargée après le module', async () => {
+    const previous = i18next.language;
+    i18next.addResourceBundle('ar', 'app', { 'Suivi mensuel': 'المتابعة الشهرية' }, true, true);
+    try {
+      await i18next.changeLanguage('ar');
+      expect(labelForSegment('suivi-mensuel')).toBe('المتابعة الشهرية');
+    } finally {
+      await i18next.changeLanguage(previous);
+    }
+    expect(labelForSegment('suivi-mensuel')).toBe('Suivi mensuel');
   });
 });
 

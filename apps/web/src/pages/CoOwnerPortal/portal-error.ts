@@ -27,3 +27,34 @@ export function isNotFound(error: unknown): boolean {
   const status = (error as { response?: { status?: number } } | null)?.response?.status;
   return status === 404 || status === 400;
 }
+
+/** Vrai pour un 429 (quota de téléchargement de PDF du portail dépassé). */
+export function isTooManyRequests(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status;
+  return status === 429;
+}
+
+/**
+ * Message d'un refus (403/429) sur une route téléchargée en blob.
+ *
+ * `apiClient` demande `responseType: 'blob'` : le corps d'erreur JSON du
+ * serveur (`{ success:false, message }`, posé par `rate-limit-middleware.ts`
+ * et par les gardes de portail) arrive alors comme un `Blob`, pas comme un
+ * objet déjà analysé — `error.response.data?.message` serait toujours
+ * `undefined`. On relit ce blob comme du texte, puis on le décode en JSON.
+ */
+export async function blobErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const response = (error as { response?: { data?: unknown } } | null)?.response;
+  const data = response?.data;
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text();
+      const parsed = JSON.parse(text) as { message?: string };
+      if (parsed.message) return parsed.message;
+    } catch {
+      // Corps non JSON (page d'erreur générique, par exemple) : on retombe sur `fallback`.
+    }
+  }
+  const message = (data as { message?: string } | undefined)?.message;
+  return message || fallback;
+}

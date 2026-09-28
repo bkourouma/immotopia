@@ -12,7 +12,8 @@
  *     `equals`, `AND` / `OR` / `NOT`, filtre JSON `path` + `array_contains`,
  *     et clés uniques composées (`userId_tenantId: { ... }`) ;
  *   - opérations : `findMany`, `findFirst`, `findUnique`, `count`, `create`,
- *     `update`, `updateMany`, `upsert`, et `$transaction(fn)`.
+ *     `update`, `updateMany`, `upsert`, `delete`, `deleteMany`, et
+ *     `$transaction(fn)` (sans retour arrière sur erreur).
  *
  * Les relations dont un appelant a besoin (ex. `userRole.role.permissions`)
  * sont stockées directement dans la ligne par le test. `select` est appliqué
@@ -191,6 +192,8 @@ export interface FakeModel {
   update: jest.Mock;
   updateMany: jest.Mock;
   upsert: jest.Mock;
+  delete: jest.Mock;
+  deleteMany: jest.Mock;
 }
 
 function createModel(name: string): FakeModel {
@@ -258,6 +261,17 @@ function createModel(name: string): FakeModel {
     rows.forEach((row: Row) => Object.assign(row, args.data));
     return { count: rows.length };
   });
+  model.delete = jest.fn(async (args: any) => {
+    const index = model.rows.findIndex((candidate: Row) => matchesWhere(candidate, args.where));
+    if (index < 0) throw Object.assign(new Error(`${name}.delete : aucune ligne`), { code: 'P2025' });
+    const [row] = model.rows.splice(index, 1);
+    return project(row, args);
+  });
+  model.deleteMany = jest.fn(async (args: any = {}) => {
+    const before = model.rows.length;
+    model.rows = model.rows.filter((candidate: Row) => !matchesWhere(candidate, args.where));
+    return { count: before - model.rows.length };
+  });
   return model as FakeModel;
 }
 
@@ -297,12 +311,29 @@ export const FAKE_MODEL_NAMES = [
   'rentalDocument',
   'rentalLeaseCoRenter',
   'rentalPayment',
-  'rentalPaymentAllocation'
+  'rentalPaymentAllocation',
+  // Lot S3 : recus et quittances de charges.
+  'syndicChargeReceipt',
+  'syndicMandatingAgency',
+  // Lot S4 : programmations d'appels automatiques.
+  'chargeCallBatch',
+  'syndicateBudget',
+  'budgetAllocation',
+  'syndicPaymentMethod',
+  'syndicChargeSchedule',
+  'syndicChargeScheduleRun'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {
   $transaction: jest.Mock;
   $executeRaw: jest.Mock;
+  /**
+   * Seule requete brute simulee : le compteur des numeros de recus et
+   * quittances (lot S3, `nextChargeReceiptNumberTx`), cle (agence, emetteur,
+   * type, annee) — les valeurs interpolees du gabarit, dans cet ordre.
+   */
+  $queryRaw: jest.Mock;
+  receiptSequences: Map<string, number>;
   reset: () => void;
 };
 
@@ -311,10 +342,18 @@ export function createFakePrisma(): FakePrisma {
   for (const name of FAKE_MODEL_NAMES) fake[name] = createModel(name);
   fake.$transaction = jest.fn(async (arg: any) => (typeof arg === 'function' ? arg(fake) : Promise.all(arg)));
   fake.$executeRaw = jest.fn(async () => 0);
+  fake.receiptSequences = new Map<string, number>();
+  fake.$queryRaw = jest.fn(async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+    const key = values.slice(0, 4).join('|');
+    const next = (fake.receiptSequences.get(key) ?? 0) + 1;
+    fake.receiptSequences.set(key, next);
+    return [{ last_value: next }];
+  });
   fake.reset = () => {
     for (const name of FAKE_MODEL_NAMES) {
       fake[name].rows = [];
     }
+    fake.receiptSequences.clear();
   };
   return fake as FakePrisma;
 }

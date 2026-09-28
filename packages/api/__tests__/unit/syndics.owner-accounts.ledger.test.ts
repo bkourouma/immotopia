@@ -492,6 +492,49 @@ describe('Caracterisation - grand livre du compte de lot', () => {
     });
   });
 
+  // BUG-2026-09-27-006 : un appel de charges est daté à son échéance, donc
+  // parfois APRÈS des paiements créés plus tard. Le solde cumulé suit l'ordre
+  // chronologique affiché (date, puis création), pas l'ordre d'écriture.
+  describe('Solde cumulé chronologique (BUG-006)', () => {
+    async function scenarioAppelEchuApresPaiements() {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 60000, 'Appel 2026-T4', new Date('2026-10-15T00:00:00.000Z'));
+      await ajuster('CREDIT', 20000, 'Paiement 1', new Date('2026-09-27T00:00:00.000Z'));
+      await ajuster('CREDIT', 55000, 'Paiement 2', new Date('2026-09-27T00:00:00.000Z'));
+    }
+
+    it("affiche le plus récent d'abord, la ligne du haut portant le solde courant", async () => {
+      await scenarioAppelEchuApresPaiements();
+
+      const rows = await listOwnerAccountTransactionsByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(rows.map((r: any) => [r.label, Number(r.balanceAfter)])).toEqual([
+        ['Appel 2026-T4', -15000],
+        ['Paiement 2', -75000],
+        ['Paiement 1', -20000]
+      ]);
+      expect(Number(rows[0].balanceAfter)).toBe(Number(store.accounts[0].balance));
+    });
+
+    it('garde le même cumul sur une page et dans le relevé chronologique', async () => {
+      await scenarioAppelEchuApresPaiements();
+
+      const page2 = await listOwnerAccountTransactionsByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        pagination: { page: 2, limit: 1 }
+      });
+      expect(page2.map((r: any) => [r.label, Number(r.balanceAfter)])).toEqual([['Paiement 2', -75000]]);
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        from: new Date('2026-10-01T00:00:00.000Z')
+      });
+      expect(statement.transactions.map((t: any) => [t.label, Number(t.balanceAfter)])).toEqual([
+        ['Appel 2026-T4', -15000]
+      ]);
+      expect(statement.summary.openingBalance).toBe(-75000);
+      expect(statement.summary.closingBalance).toBe(-15000);
+    });
+  });
+
   describe('Releve de compte', () => {
     it('ordonne le releve chronologiquement et calcule ouverture et cloture', async () => {
       seedOwnerAccount(10000);

@@ -71,6 +71,10 @@ services:
     # par le nginx du conteneur web.
     volumes:
       - uploads-data:/data/uploads
+      # Journaux winston (logs/combined.log, logs/error.log ; rotation 5 x 5 Mo) :
+      # sur un volume, ils survivent a une reconstruction ou une recreation du
+      # conteneur, contrairement a `docker logs`.
+      - api-logs:/app/logs
     networks:
       default:
         aliases:
@@ -137,3 +141,5 @@ volumes:
     name: immotopia-saas-postgres-data
   uploads-data:
     name: immotopia-saas-uploads-data
+  api-logs:
+    name: immotopia-saas-api-logs

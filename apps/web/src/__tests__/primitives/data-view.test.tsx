@@ -183,6 +183,13 @@ describe('DataView — pagination serveur', () => {
     expect(screen.getByText(/sur 57/)).toBeInTheDocument();
   });
 
+  it('passe le compteur par t() — un texte français en dur y réapparaîtrait tel quel en anglais et en arabe', () => {
+    // Régression : « sur » était concaténé dans un template littéral au lieu de
+    // passer par `t()`, donc figé en français quelle que soit la langue affichée.
+    view({ total: 3 });
+    expect(screen.getByText('1–3 sur 3')).toBeInTheDocument();
+  });
+
   it('affiche le compteur même quand tout tient sur une page', () => {
     // La barre ne sert pas qu'à tourner les pages : elle porte le compteur et
     // le choix du nombre par page. La masquer sur une liste courte privait de

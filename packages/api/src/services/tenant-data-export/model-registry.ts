@@ -78,6 +78,10 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   CatalogItem: "Catalogue des offres d'abonnement, commun a toutes les agences.",
   CatalogCapacity: "Capacites du catalogue d'offres, communes a toutes les agences.",
   PlatformInvoiceSequence: 'Compteur de la serie de factures de la plateforme, commun a toutes les agences.',
+  // Compteur technique sans identifiant simple (cle composee) : les numeros
+  // attribues figurent deja dans l'export des recus et quittances.
+  SyndicReceiptSequence:
+    'Compteur technique de numerotation des recus et quittances ; les numeros sont exportes avec chaque document.',
   // Journaux et meta-donnees de la plateforme.
   AuditLog:
     'Journal de securite de la plateforme : actions du super-admin, adresses IP et charges techniques ; ' +

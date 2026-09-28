@@ -5,12 +5,12 @@ info:
     API d'authentification pour la plateforme ImmoTopia.
     Cette API permet aux utilisateurs de s'inscrire, de se connecter, de vérifier leur email,
     de réinitialiser leur mot de passe, et de gérer leurs tokens JWT.
-    
+
     Tous les messages d'erreur et de succès sont en français.
   version: 1.0.0
   contact:
     name: ImmoTopia Platform Team
-    email: support@immotopia.com
+    email: support@immotopia.cloud
 
 servers:
   - url: http://localhost:3000/api
@@ -40,7 +40,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RegisterRequest'
+              $ref: "#/components/schemas/RegisterRequest"
             examples:
               student:
                 value:
@@ -57,12 +57,12 @@ paths:
                   fullName: Jean Dupont
                   role: INSTRUCTOR
       responses:
-        '201':
+        "201":
           description: Inscription réussie. Un email de vérification a été envoyé.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegisterResponse'
+                $ref: "#/components/schemas/RegisterResponse"
               example:
                 success: true
                 message: Inscription réussie ! Veuillez vérifier votre email.
@@ -72,12 +72,12 @@ paths:
                   fullName: Marie Martin
                   role: STUDENT
                   emailVerified: false
-        '400':
+        "400":
           description: Erreur de validation (email invalide, mot de passe non conforme, etc.)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Les données fournies sont invalides.
@@ -86,12 +86,12 @@ paths:
                     message: Cette adresse email est déjà utilisée.
                   - field: password
                     message: Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.
-        '429':
+        "429":
           description: Trop de tentatives. Rate limit dépassé.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Trop de tentatives. Veuillez réessayer dans quelques instants.
@@ -112,13 +112,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoginRequest'
+              $ref: "#/components/schemas/LoginRequest"
             example:
               email: etudiant@example.com
               password: Student@123456
               rememberMe: true
       responses:
-        '200':
+        "200":
           description: Connexion réussie. Les tokens sont retournés dans des cookies HTTP-only.
           headers:
             Set-Cookie:
@@ -129,7 +129,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
+                $ref: "#/components/schemas/LoginResponse"
               example:
                 success: true
                 message: Connexion réussie.
@@ -138,30 +138,30 @@ paths:
                   email: etudiant@example.com
                   fullName: Marie Martin
                   role: STUDENT
-        '400':
+        "400":
           description: Erreur de validation (email ou mot de passe invalide)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Email ou mot de passe incorrect.
-        '403':
+        "403":
           description: Compte non vérifié. Un nouvel email de vérification a été envoyé.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.
-        '429':
+        "429":
           description: Trop de tentatives. Compte temporairement bloqué.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Trop de tentatives de connexion. Votre compte est temporairement bloqué.
@@ -178,21 +178,21 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: Déconnexion réussie.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: "#/components/schemas/SuccessResponse"
               example:
                 success: true
                 message: Déconnexion réussie.
-        '401':
+        "401":
           description: Non authentifié. Token invalide ou expiré.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Non authentifié.
@@ -208,7 +208,7 @@ paths:
         Génère un nouveau access token si le refresh token est valide.
       operationId: refreshToken
       responses:
-        '200':
+        "200":
           description: Token rafraîchi avec succès.
           headers:
             Set-Cookie:
@@ -219,16 +219,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: "#/components/schemas/SuccessResponse"
               example:
                 success: true
                 message: Token rafraîchi avec succès.
-        '401':
+        "401":
           description: Refresh token invalide ou expiré.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Votre session a expiré. Veuillez vous reconnecter.
@@ -253,21 +253,21 @@ paths:
             format: uuid
             example: 123e4567-e89b-12d3-a456-426614174000
       responses:
-        '200':
+        "200":
           description: Email vérifié avec succès.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: "#/components/schemas/SuccessResponse"
               example:
                 success: true
                 message: Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.
-        '400':
+        "400":
           description: Token invalide ou expiré.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Le lien de vérification est invalide ou a expiré.
@@ -287,25 +287,25 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ResendVerificationRequest'
+              $ref: "#/components/schemas/ResendVerificationRequest"
             example:
               email: etudiant@example.com
       responses:
-        '200':
+        "200":
           description: Email de vérification envoyé avec succès.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: "#/components/schemas/SuccessResponse"
               example:
                 success: true
                 message: Un nouvel email de vérification a été envoyé.
-        '400':
+        "400":
           description: Erreur de validation (email invalide ou compte déjà vérifié)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Cette adresse email n'existe pas ou est déjà vérifiée.
@@ -326,25 +326,25 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ForgotPasswordRequest'
+              $ref: "#/components/schemas/ForgotPasswordRequest"
             example:
               email: etudiant@example.com
       responses:
-        '200':
+        "200":
           description: Email de réinitialisation envoyé (si l'email existe).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: "#/components/schemas/SuccessResponse"
               example:
                 success: true
                 message: Si cette adresse email existe, un lien de réinitialisation a été envoyé.
-        '429':
+        "429":
           description: Trop de tentatives. Rate limit dépassé.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Trop de tentatives. Veuillez réessayer dans quelques instants.
@@ -364,27 +364,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ResetPasswordRequest'
+              $ref: "#/components/schemas/ResetPasswordRequest"
             example:
               token: 123e4567-e89b-12d3-a456-426614174000
               password: NewPassword@123456
               confirmPassword: NewPassword@123456
       responses:
-        '200':
+        "200":
           description: Mot de passe réinitialisé avec succès.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: "#/components/schemas/SuccessResponse"
               example:
                 success: true
                 message: Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.
-        '400':
+        "400":
           description: Erreur de validation (token invalide, mot de passe non conforme, etc.)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Le lien de réinitialisation est invalide ou a expiré.
@@ -404,12 +404,12 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: Informations de l'utilisateur connecté.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
+                $ref: "#/components/schemas/UserResponse"
               example:
                 success: true
                 user:
@@ -418,13 +418,13 @@ paths:
                   fullName: Marie Martin
                   role: STUDENT
                   emailVerified: true
-                  createdAt: '2025-11-12T10:00:00Z'
-        '401':
+                  createdAt: "2025-11-12T10:00:00Z"
+        "401":
           description: Non authentifié. Token invalide ou expiré.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
               example:
                 success: false
                 message: Non authentifié.
@@ -557,7 +557,7 @@ components:
           type: string
           example: Inscription réussie ! Veuillez vérifier votre email.
         user:
-          $ref: '#/components/schemas/User'
+          $ref: "#/components/schemas/User"
 
     LoginResponse:
       type: object
@@ -569,7 +569,7 @@ components:
           type: string
           example: Connexion réussie.
         user:
-          $ref: '#/components/schemas/User'
+          $ref: "#/components/schemas/User"
 
     UserResponse:
       type: object
@@ -578,7 +578,7 @@ components:
           type: boolean
           example: true
         user:
-          $ref: '#/components/schemas/User'
+          $ref: "#/components/schemas/User"
 
     User:
       type: object
@@ -610,7 +610,7 @@ components:
           type: string
           format: date-time
           description: Date de création du compte
-          example: '2025-11-12T10:00:00Z'
+          example: "2025-11-12T10:00:00Z"
 
     SuccessResponse:
       type: object
@@ -646,4 +646,3 @@ components:
                 type: string
                 description: Message d'erreur pour ce champ
                 example: Cette adresse email est déjà utilisée.
-

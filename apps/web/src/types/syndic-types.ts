@@ -891,6 +891,10 @@ export interface GenerateBudgetChargeCallsRequest {
   dueDate: string;
   batchType: BatchType;
   currency?: string;
+  /** Nombre de périodes sur lesquelles répartir le budget annuel (1, 2, 4 ou 12) ; défaut 1. */
+  periodsPerYear?: 1 | 2 | 4 | 12;
+  /** Période à générer (1 à `periodsPerYear`) ; défaut 1. */
+  periodIndex?: number;
 }
 
 export interface CreateChargeCallBatchRequest {
@@ -1142,6 +1146,12 @@ export interface LotPaymentResult {
   advance: number;
   lotAdvanceBalance: number;
   currency: string;
+  /**
+   * Reçus et quittances émis par ce paiement (lot S3). Présent seulement sur
+   * l'enregistrement réel (`POST .../paiements`) — absent de l'aperçu
+   * (`.../paiements/apercu`), qui n'écrit rien.
+   */
+  documents?: IssuedReceiptRef[];
 }
 
 export type MonthlyTrackingStatus = 'NONE' | 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
@@ -1167,6 +1177,161 @@ export interface MonthlyTracking {
   currency: string;
   months: number[];
   lots: MonthlyTrackingLotRow[];
+}
+
+// -------------------------------------------------------------------------
+// Lot S4 — programmation des appels de charges automatiques (besoin 6).
+// Contrat : `packages/api/src/lib/syndics/charge-schedules.ts` et
+// `charge-schedule-schemas.ts`.
+// -------------------------------------------------------------------------
+
+export type ChargeScheduleFrequency = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'ANNUAL';
+export type ChargeScheduleAmountSource = 'BUDGET' | 'FIXED';
+export type ChargeScheduleRunStatus = 'SUCCESS' | 'FAILED' | 'SKIPPED';
+export type ChargeScheduleRunTrigger = 'CRON' | 'MANUAL';
+
+export interface ChargeSchedulePeriodDates {
+  label: string;
+  periodStart: string;
+  periodEnd: string;
+  issueDate: string;
+  dueDate: string;
+}
+
+export interface ChargeScheduleRun {
+  id: string;
+  scheduleId: string;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
+  status: ChargeScheduleRunStatus;
+  trigger: ChargeScheduleRunTrigger;
+  batchId: string | null;
+  callsCreated: number;
+  callsCovered: number;
+  notificationsSent: number;
+  /** Avis non envoyés volontairement (propriétaire du lot qui n'est plus copropriétaire actuel). */
+  notificationsSkipped: number;
+  /** Remarque non sensible sur l'exécution (ex. lots dont l'avis n'est pas parti), ou `null`. */
+  notes: string | null;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+export interface ChargeScheduleBudgetRef {
+  id: string;
+  label: string;
+  fiscalYear: number;
+  status: BudgetStatus;
+}
+
+export interface ChargeSchedule {
+  id: string;
+  syndicateId: string;
+  label: string;
+  frequency: ChargeScheduleFrequency;
+  issueDay: number;
+  dueOffsetDays: number;
+  amountSource: ChargeScheduleAmountSource;
+  budgetId: string | null;
+  budget: ChargeScheduleBudgetRef | null;
+  fixedAmount: number | null;
+  currency: string;
+  startDate: string;
+  endDate: string | null;
+  active: boolean;
+  nextRunAt: string | null;
+  nextPeriod: ChargeSchedulePeriodDates | null;
+  lastRunAt: string | null;
+  lastRun: ChargeScheduleRun | null;
+  hasIssuedPeriods: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --------------------------------------------------------------------------
+// Lot S3 — reçus et quittances (besoin 1)
+// --------------------------------------------------------------------------
+
+export type ReceiptKind = 'RECEIPT' | 'QUITTANCE';
+
+/** Un reçu de paiement ou une quittance de charges, tels que rendus par la liste. */
+export interface ReceiptView {
+  id: string;
+  kind: ReceiptKind;
+  number: string;
+  lotId: string;
+  lotNumber: string | null;
+  contactId: string | null;
+  coownerName: string | null;
+  chargeCallId: string | null;
+  chargePaymentId: string | null;
+  periodLabel: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  amount: number;
+  currency: string;
+  issuedAt: string;
+  emailedAt: string | null;
+  /** Message générique stocké côté API (français) — préférer `emailErrorCode` pour un libellé traduit. */
+  emailError: string | null;
+  emailErrorCode: 'SMTP_REJECTED' | 'TIMEOUT' | 'ERROR' | null;
+  /** Quittance produite par « Générer les quittances manquantes », sans appel réel derrière. */
+  backfilled: boolean;
+}
+
+/** Filtres communs à `GET .../quittances` et `GET .../lots/:lotId/quittances`. */
+export interface ReceiptListQuery {
+  lotId?: string;
+  contactId?: string;
+  kind?: ReceiptKind;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ReceiptListResult {
+  items: ReceiptView[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+/** Paramètres de `GET .../quittances/impression` : période obligatoire, grille A4 1×1 à 3×4. */
+export interface ReceiptPrintQuery {
+  from: string;
+  to: string;
+  kind?: 'QUITTANCE' | 'RECEIPT' | 'ALL';
+  lotId?: string;
+  contactId?: string;
+  cols?: number;
+  rows?: number;
+}
+
+/** Réponse de `POST .../quittances/:receiptId/envoi`. */
+export interface ResendReceiptResult {
+  id: string;
+  number: string;
+  sent: boolean;
+  emailedAt: string;
+}
+
+/**
+ * Réponse de `POST .../quittances/generer-manquantes`. Plafonnée par requête
+ * côté API (500 appels au plus) : `remaining > 0` signifie qu'un nouveau
+ * passage traitera la suite.
+ */
+export interface BackfillReceiptsResult {
+  created: number;
+  skipped: number;
+  remaining: number;
+}
+
+/** Référence minimale d'un document émis, portée par un résultat de paiement (lot S3). */
+export interface IssuedReceiptRef {
+  id: string;
+  kind: ReceiptKind;
+  number: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1227,6 +1392,69 @@ export interface ProviderInvoice {
   createdById: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateChargeScheduleRequest {
+  label: string;
+  frequency: ChargeScheduleFrequency;
+  /** 1 à 28 : jour d'émission, valable tous les mois. */
+  issueDay: number;
+  dueOffsetDays: number;
+  amountSource: ChargeScheduleAmountSource;
+  budgetId?: string | null;
+  fixedAmount?: number | null;
+  currency?: string;
+  /** `AAAA-MM-JJ`. */
+  startDate: string;
+  endDate?: string | null;
+  active?: boolean;
+}
+
+export type UpdateChargeScheduleRequest = Partial<CreateChargeScheduleRequest>;
+
+export interface ChargeScheduleRunResult {
+  status: ChargeScheduleRunStatus;
+  alreadyProcessed: boolean;
+  runId: string;
+  periodStart: string;
+  periodLabel: string;
+  batchId: string | null;
+  callsCreated: number;
+  callsCovered: number;
+  notificationsSent: number;
+  notificationsSkipped: number;
+  error: string | null;
+}
+
+export interface ExecuteChargeScheduleResult {
+  run: ChargeScheduleRunResult;
+  schedule: ChargeSchedule;
+}
+
+export interface DeleteChargeScheduleResult {
+  deleted: boolean;
+  deactivated: boolean;
+  schedule: ChargeSchedule | null;
+}
+
+export interface ChargeSchedulePreviewLot {
+  lotId: string;
+  lotNumber: string;
+  amount: number;
+}
+
+export interface ChargeSchedulePreviewPeriod extends ChargeSchedulePeriodDates {
+  totalAmount: number | null;
+  currency: string;
+  budgetId: string | null;
+  lots: ChargeSchedulePreviewLot[];
+  error: string | null;
+}
+
+export interface ChargeSchedulePreview {
+  scheduleId: string;
+  active: boolean;
+  periods: ChargeSchedulePreviewPeriod[];
 }
 
 export interface ProviderInvoiceDetail extends ProviderInvoice {
