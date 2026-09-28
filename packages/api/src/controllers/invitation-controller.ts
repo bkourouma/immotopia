@@ -6,6 +6,7 @@ import {
   revokeInvitation,
   listInvitations
 } from '../services/invitation-service';
+import { asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 import { z } from 'zod';
 
 // Validation schemas
@@ -16,7 +17,11 @@ const inviteCollaboratorSchema = z.object({
 
 const acceptInvitationSchema = z.object({
   token: z.string().uuid(),
-  password: z.string().min(8),
+  // Requis uniquement pour un NOUVEAU compte ; un compte existant n'en a pas
+  // besoin (voir acceptInvitation, qui n'accepte jamais de reecrire un mot
+  // de passe existant). La validation de sa presence/force reste faite par
+  // le service, qui connait le contexte (nouveau vs existant).
+  password: z.string().min(8).optional(),
   fullName: z.string().optional()
 });
 
@@ -24,157 +29,119 @@ const acceptInvitationSchema = z.object({
  * Invite a collaborator to a tenant
  * POST /api/tenants/:tenantId/users/invite
  */
-export async function inviteCollaboratorHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId } = req.params;
-
-    // Validate request body
-    const validationResult = inviteCollaboratorSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: validationResult.error.errors
-      });
-      return;
-    }
-
-    const data = validationResult.data;
-    const result = await inviteCollaborator({
-      email: data.email,
-      tenantId,
-      roleIds: data.roleIds,
-      invitedByUserId: req.user.userId
-    });
-
-    // Le token n'est jamais renvoye par l'API : seul son hash est stocke en base et
-    // seul le destinataire de l'email doit le connaitre.
-    res.status(201).json({
-      success: true,
-      message: 'Invitation envoyée avec succès.',
-      data: result.invitation
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const inviteCollaboratorHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId } = req.params;
+
+  const data = inviteCollaboratorSchema.parse(req.body);
+  const result = await inviteCollaborator({
+    email: data.email,
+    tenantId,
+    roleIds: data.roleIds,
+    invitedByUserId: req.user.userId
+  });
+
+  // Le token n'est jamais renvoye par l'API : seul son hash est stocke en base et
+  // seul le destinataire de l'email doit le connaitre.
+  res.status(201).json({
+    success: true,
+    message: 'Invitation envoyée avec succès.',
+    data: result.invitation
+  });
+});
 
 /**
  * Accept an invitation
  * POST /api/auth/invitations/accept
+ *
+ * Route publique montee avec `optionalAuthenticate` (auth-routes.ts) : un
+ * nouveau compte n'a pas de session, un compte EXISTANT doit en avoir une —
+ * la sienne — pour que le service accepte de rattacher l'agence sans
+ * toucher au mot de passe.
  */
-export async function acceptInvitationHandler(req: Request, res: Response): Promise<void> {
-  try {
-    // Validate request body
-    const validationResult = acceptInvitationSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: validationResult.error.errors
-      });
-      return;
+export const acceptInvitationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = acceptInvitationSchema.parse(req.body);
+  const result = await acceptInvitation({
+    ...data,
+    requestingUserId: req.user?.userId
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Invitation acceptée avec succès.',
+    data: {
+      membership: result.membership,
+      user: result.user
     }
-
-    const data = validationResult.data;
-    const result = await acceptInvitation(data);
-
-    res.status(200).json({
-      success: true,
-      message: 'Invitation acceptée avec succès.',
-      data: {
-        membership: result.membership,
-        user: result.user
-      }
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
-  }
-}
+  });
+});
 
 /**
  * Resend invitation email
  * POST /api/tenants/:tenantId/users/invitations/:invitationId/resend
  */
-export async function resendInvitationHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { invitationId } = req.params;
-    const result = await resendInvitation(invitationId, req.user.userId);
-
-    // Comme a l'invitation, le nouveau token n'est jamais renvoye par l'API :
-    // acceptUrl porte deja le jeton en clair dans le lien, ce qui reste
-    // necessaire pour que le super-admin puisse le copier/coller (F2).
-    res.status(200).json({
-      success: true,
-      message: 'Invitation renvoyée avec succès.',
-      data: {
-        expiresAt: result.expiresAt,
-        acceptUrl: result.acceptUrl,
-        emailSent: result.emailSent
-      }
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const resendInvitationHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  // `tenantId` vient de l'URL, deja verifiee par `requireTenantAccess` (le
+  // routeur) : c'est elle, jamais un id fourni par le corps de la requete,
+  // qui borne la recherche cote service (IDOR entre agences sinon).
+  const { tenantId, invitationId } = req.params;
+  const result = await resendInvitation(invitationId, tenantId, req.user.userId);
+
+  // acceptUrl porte le jeton en clair : reserve au super-admin plateforme
+  // (copier/coller du lien, F2). Un administrateur d'agence ne le voit
+  // jamais — l'email/WhatsApp reste l'unique canal de remise du jeton.
+  const isSuperAdmin = req.user.globalRole === 'SUPER_ADMIN';
+
+  res.status(200).json({
+    success: true,
+    message: 'Invitation renvoyée avec succès.',
+    data: {
+      expiresAt: result.expiresAt,
+      emailSent: result.emailSent,
+      ...(isSuperAdmin ? { acceptUrl: result.acceptUrl } : {})
+    }
+  });
+});
 
 /**
  * Revoke an invitation
  * DELETE /api/tenants/:tenantId/users/invitations/:invitationId
  */
-export async function revokeInvitationHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { invitationId } = req.params;
-    await revokeInvitation(invitationId, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Invitation révoquée avec succès.'
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const revokeInvitationHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, invitationId } = req.params;
+  await revokeInvitation(invitationId, tenantId, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Invitation révoquée avec succès.'
+  });
+});
 
 /**
  * List invitations for a tenant
  * GET /api/tenants/:tenantId/invitations
  */
-export async function listInvitationsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId } = req.params;
-    const invitations = await listInvitations(tenantId);
-
-    res.status(200).json({
-      success: true,
-      data: invitations
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const listInvitationsHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId } = req.params;
+  const invitations = await listInvitations(tenantId);
+
+  res.status(200).json({
+    success: true,
+    data: invitations
+  });
+});

@@ -204,6 +204,7 @@ export interface FakeModel {
   aggregate: jest.Mock;
   groupBy: jest.Mock;
   create: jest.Mock;
+  createMany: jest.Mock;
   update: jest.Mock;
   updateMany: jest.Mock;
   upsert: jest.Mock;
@@ -254,6 +255,22 @@ function createModel(name: string): FakeModel {
     const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...args.data };
     model.rows.push(row);
     return project(row, args);
+  });
+  model.createMany = jest.fn(async (args: any) => {
+    const data: Row[] = Array.isArray(args.data) ? args.data : [args.data];
+    const skipDuplicates = Boolean(args.skipDuplicates);
+    let created = 0;
+    for (const entry of data) {
+      if (
+        skipDuplicates &&
+        model.rows.some((row: Row) => Object.keys(entry).every(key => same(row[key], entry[key])))
+      ) {
+        continue;
+      }
+      model.rows.push({ id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...entry });
+      created++;
+    }
+    return { count: created };
   });
   model.update = jest.fn(async (args: any) => {
     const row = model.rows.find((candidate: Row) => matchesWhere(candidate, args.where));
@@ -341,7 +358,11 @@ export const FAKE_MODEL_NAMES = [
   // Fonds de copropriete credites par les paiements (fund-credits.ts).
   'syndicateFund',
   'syndicateFundMovement',
-  'budgetLineItem'
+  'budgetLineItem',
+  // Correctif securite invitations (IDOR resend/revoke, prise de compte).
+  'invitation',
+  'role',
+  'auditLog'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

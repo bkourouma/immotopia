@@ -4,6 +4,12 @@ import { InvitationStatus, MembershipStatus } from '@prisma/client';
 import { emailService } from './email-service';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
 import { logAuditEvent, AuditActionKey } from './audit-service';
+import {
+  BadRequestError,
+  ConflictError,
+  InvitationRequiresLoginError,
+  NotFoundError
+} from '../middleware/error-middleware';
 import crypto from 'crypto';
 
 export function getFrontendBaseUrl(): string {
@@ -35,10 +41,10 @@ async function assertTenantRoles(roleIds: string[]): Promise<void> {
     select: { id: true, scope: true }
   });
   if (roles.length !== roleIds.length) {
-    throw new Error('Un ou plusieurs roles sont introuvables.');
+    throw new BadRequestError('Un ou plusieurs roles sont introuvables.');
   }
   if (roles.some(role => role.scope !== 'TENANT')) {
-    throw new Error("Seuls les roles d'agence peuvent etre attribues par invitation.");
+    throw new BadRequestError("Seuls les roles d'agence peuvent etre attribues par invitation.");
   }
 }
 
@@ -116,8 +122,16 @@ export interface InviteCollaboratorRequest {
  */
 export interface AcceptInvitationRequest {
   token: string;
-  password: string;
+  /** Requis uniquement pour la creation d'un NOUVEAU compte (voir acceptInvitation). */
+  password?: string;
   fullName?: string;
+  /**
+   * userId de la session en cours, si l'appelant est deja authentifie
+   * (`optionalAuthenticate` sur la route). Sert a verifier qu'un compte
+   * EXISTANT n'accepte l'invitation que depuis sa propre session — jamais
+   * a partir du seul jeton d'invitation, qui ne prouve pas l'identite.
+   */
+  requestingUserId?: string;
 }
 
 /**
@@ -185,11 +199,11 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   });
 
   if (!tenant) {
-    throw new Error('Tenant introuvable.');
+    throw new NotFoundError('Tenant introuvable.');
   }
 
   if (tenant.status !== 'ACTIVE') {
-    throw new Error("Ce tenant n'est plus actif.");
+    throw new BadRequestError("Ce tenant n'est plus actif.");
   }
 
   // Check for existing pending invitation
@@ -203,13 +217,23 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   });
 
   if (existingInvitation) {
-    throw new Error('Une invitation en attente existe déjà pour cet email.');
+    throw new ConflictError('Une invitation en attente existe déjà pour cet email.');
   }
 
-  // Check if user already has membership
+  // Check if user already has membership. `select` explicite : jamais
+  // `passwordHash`, et globalRole sert au garde-fou super-admin ci-dessous.
   const existingUser = await prisma.user.findUnique({
-    where: { email: data.email }
+    where: { email: data.email },
+    select: { id: true, globalRole: true }
   });
+
+  // Un administrateur d'agence ne peut jamais inviter un compte super-admin
+  // de la plateforme (prise de compte possible sinon : invite -> resend ->
+  // jeton -> acceptation qui reecrivait le mot de passe). Message neutre :
+  // ne confirme pas que l'adresse appartient a un super-admin.
+  if (existingUser?.globalRole === 'SUPER_ADMIN') {
+    throw new BadRequestError("Cette adresse e-mail ne peut pas recevoir d'invitation.");
+  }
 
   if (existingUser) {
     const existingMembership = await prisma.membership.findUnique({
@@ -222,7 +246,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     });
 
     if (existingMembership && existingMembership.status === MembershipStatus.ACTIVE) {
-      throw new Error('Cet utilisateur est déjà membre de ce tenant.');
+      throw new ConflictError('Cet utilisateur est déjà membre de ce tenant.');
     }
   }
 
@@ -311,19 +335,19 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
   });
 
   if (!invitation) {
-    throw new Error('Invitation invalide.');
+    throw new NotFoundError('Invitation invalide.');
   }
 
   // Check status
   if (invitation.status !== InvitationStatus.PENDING) {
     if (invitation.status === InvitationStatus.ACCEPTED) {
-      throw new Error('Cette invitation a déjà été acceptée.');
+      throw new ConflictError('Cette invitation a déjà été acceptée.');
     }
     if (invitation.status === InvitationStatus.REVOKED) {
-      throw new Error('Cette invitation a été révoquée.');
+      throw new ConflictError('Cette invitation a été révoquée.');
     }
     if (invitation.status === InvitationStatus.EXPIRED) {
-      throw new Error('Cette invitation a expiré.');
+      throw new ConflictError('Cette invitation a expiré.');
     }
   }
 
@@ -334,25 +358,29 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
       where: { id: invitation.id },
       data: { status: InvitationStatus.EXPIRED }
     });
-    throw new Error('Cette invitation a expiré.');
+    throw new ConflictError('Cette invitation a expiré.');
   }
 
-  // Validate password
-  const passwordValidation = validatePasswordStrength(data.password);
-  if (!passwordValidation.isValid) {
-    throw new Error(passwordValidation.error);
-  }
-
-  const passwordHash = await hashPassword(data.password);
-
-  // Check if user already exists
+  // Check if an account already exists for this email. `select` explicite :
+  // jamais `passwordHash`.
   let user = await prisma.user.findUnique({
-    where: { email: invitation.email }
+    where: { email: invitation.email },
+    select: { id: true, email: true, fullName: true }
   });
 
   const isNewUser = !user;
 
   if (user) {
+    // Compte EXISTANT : l'acceptation ne fixe/reecrit JAMAIS son mot de
+    // passe. Seule la session de CE compte (jeton + `optionalAuthenticate`
+    // sur la route) peut le rattacher a l'agence — le seul jeton
+    // d'invitation en clair ne prouve pas l'identite de son porteur, et
+    // permettait auparavant une prise de compte (invite d'un email
+    // existant -> resend -> jeton -> reecriture du mot de passe).
+    if (!data.requestingUserId || data.requestingUserId !== user.id) {
+      throw new InvitationRequiresLoginError();
+    }
+
     // User exists - check if already has membership
     const existingMembership = await prisma.membership.findUnique({
       where: {
@@ -374,23 +402,25 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
             acceptedAt: new Date()
           }
         });
-        throw new Error('Vous êtes déjà membre de ce tenant.');
+        throw new ConflictError('Vous êtes déjà membre de ce tenant.');
       }
     }
-
-    // Existing user: refresh password from invitation flow so login works
-    // with the password entered during invite acceptance.
-    user = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        ...(data.fullName ? { fullName: data.fullName } : {}),
-        emailVerified: true,
-        isActive: true
-      }
-    });
+    // Rien d'autre a ecrire sur le compte : ni mot de passe, ni nom, ni
+    // statut — la session prouve deja que le compte est actif et verifie.
   } else {
-    // Create new user
+    // Nouveau compte : c'est le SEUL cas ou l'acceptation fixe un mot de
+    // passe.
+    if (!data.password) {
+      throw new BadRequestError('Le mot de passe est requis pour créer votre compte.');
+    }
+
+    const passwordValidation = validatePasswordStrength(data.password);
+    if (!passwordValidation.isValid) {
+      throw new BadRequestError(passwordValidation.error);
+    }
+
+    const passwordHash = await hashPassword(data.password);
+
     user = await prisma.user.create({
       data: {
         email: invitation.email,
@@ -398,7 +428,8 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
         fullName: data.fullName,
         emailVerified: true, // Trust invitation email
         isActive: true
-      }
+      },
+      select: { id: true, email: true, fullName: true }
     });
   }
 
@@ -493,25 +524,31 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
 /**
  * Resend invitation email
  * @param invitationId - Invitation ID
+ * @param tenantId - Agence de l'appelant (posee par `requireTenantAccess`), jamais un
+ * simple champ du body : sans elle, un administrateur d'une agence A pouvait renvoyer
+ * l'invitation d'une agence B (IDOR) et en recuperer le jeton via `acceptUrl`.
  * @param actorUserId - User resending (for audit)
  * @returns La nouvelle date d'expiration (le token reste interne au serveur)
  */
-export async function resendInvitation(invitationId: string, actorUserId: string) {
-  const invitation = await prisma.invitation.findUnique({
-    where: { id: invitationId },
+export async function resendInvitation(invitationId: string, tenantId: string, actorUserId: string) {
+  // `findFirst` sur (id, tenantId) plutot que `findUnique(id)` : une
+  // invitation d'une autre agence doit ressortir NotFoundError, exactement
+  // comme si elle n'existait pas.
+  const invitation = await prisma.invitation.findFirst({
+    where: { id: invitationId, tenantId },
     include: { tenant: true }
   });
 
   if (!invitation) {
-    throw new Error('Invitation introuvable.');
+    throw new NotFoundError('Invitation introuvable.');
   }
 
   if (invitation.status !== InvitationStatus.PENDING) {
-    throw new Error('Seules les invitations en attente peuvent être renvoyées.');
+    throw new ConflictError('Seules les invitations en attente peuvent être renvoyées.');
   }
 
   if (new Date() > invitation.expiresAt) {
-    throw new Error('Cette invitation a expiré.');
+    throw new ConflictError('Cette invitation a expiré.');
   }
 
   // Generate new token (invalidate old one)
@@ -550,7 +587,7 @@ export async function resendInvitation(invitationId: string, actorUserId: string
       error,
       actorUserId
     });
-    throw new Error("Échec de l'envoi de l'email. L'invitation a été mise à jour.");
+    throw new BadRequestError("Échec de l'envoi de l'email. L'invitation a été mise à jour.");
   }
 
   await sendInvitationWhatsapp({
@@ -571,19 +608,21 @@ export async function resendInvitation(invitationId: string, actorUserId: string
 /**
  * Revoke an invitation
  * @param invitationId - Invitation ID
+ * @param tenantId - Agence de l'appelant (posee par `requireTenantAccess`) : meme
+ * garde-fou IDOR que `resendInvitation`.
  * @param actorUserId - User revoking (for audit)
  */
-export async function revokeInvitation(invitationId: string, actorUserId: string) {
-  const invitation = await prisma.invitation.findUnique({
-    where: { id: invitationId }
+export async function revokeInvitation(invitationId: string, tenantId: string, actorUserId: string) {
+  const invitation = await prisma.invitation.findFirst({
+    where: { id: invitationId, tenantId }
   });
 
   if (!invitation) {
-    throw new Error('Invitation introuvable.');
+    throw new NotFoundError('Invitation introuvable.');
   }
 
   if (invitation.status !== InvitationStatus.PENDING) {
-    throw new Error('Seules les invitations en attente peuvent être révoquées.');
+    throw new ConflictError('Seules les invitations en attente peuvent être révoquées.');
   }
 
   await prisma.invitation.update({
