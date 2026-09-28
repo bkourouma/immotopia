@@ -38,6 +38,43 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/provision-abonnements` — 2026-09-28
+
+**État :** prêt à relire (PR ouverte vers `main`)
+**Dernier commit :** voir `git log` de la branche (outil d'exploitation des abonnements)
+
+Fait :
+
+- Outil en ligne de commande `packages/api/src/scripts/provision-subscription.ts`
+  (logique : `services/subscription-provisioning-service.ts`) : `list`,
+  `provision` (essai TRIALING + éléments en une transaction, `setupWaived`,
+  puis réconciliation du registre des lots), `suspend` (`suspendTenant`),
+  `--dry-run` sans écriture, idempotent, fenêtre hh:10–hh:20 UTC refusée,
+  acteur d'audit `system:provision-subscription`. `audit-service` exporte
+  `flushAuditEvents`. Section RUNBOOK « Outil d'exploitation des abonnements ».
+- Essai de bout en bout sur une base jetable (PostgreSQL local, migrations +
+  catalogue) avec le JavaScript compilé comme dans l'image : dry-run sans
+  écriture, création Ivoire (AGENCE + SYNDIC + 2 × EXT_COPRO, 100 lots
+  copro réconciliés), relance idempotente, refus non conforme, suspension
+  et révocation des jetons, première facture simulée après l'essai sans
+  frais de mise en route (96 810 HT / 114 236 TTC).
+
+Reste à faire :
+
+- En production (hors de cette branche, après fusion et déploiement) : dry-run
+  puis réel pour Ivoire Résidences, Agence Immobilière du Mali, Bamako
+  Immobilier (commandes dans la PR). Les slugs réels sont à lire avec `list`.
+
+Pièges et décisions :
+
+- Ivoire aura 4 copropriétés pour 4 incluses : la tâche horaire enverra les
+  alertes de seuil 80 % et 100 % (une fois par période). Voulu par la
+  composition décidée ; le dry-run l'annonce.
+- Un abonnement existant non conforme est refusé, jamais corrigé : si la
+  production en a déjà un pour Ivoire, décider à la main.
+- Le gestionnaire SIGTERM/SIGINT d'`audit-service` sort en code 0 même si la
+  file d'audit n'a pas pu être vidée (hérité, hors périmètre).
+
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
 **État :** prêt à relire ; 5 PR ouvertes, CI verte (#26/#27 relancées après le dernier correctif)
