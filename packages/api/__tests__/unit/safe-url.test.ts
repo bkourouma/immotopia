@@ -4,7 +4,14 @@
  */
 
 import { httpUrl, isHttpUrl } from '../../src/lib/safe-url';
-import { updateDocumentSchema as patrimoineDocumentUpdate } from '../../src/lib/patrimoine/schemas';
+// Lot P0 (Patrimoine) : les documents d'un bien detenu passent desormais par
+// la mecanique `PropertyDocument` (fichier prive, jamais une URL saisie) ;
+// `createDocumentSchema`/`updateDocumentSchema` ont disparu de
+// `lib/patrimoine/schemas.ts` avec les routes qu'elles validaient (routes
+// dupliquees avec `property-routes.ts`, jamais atteintes). `receiptUrl`
+// d'une depense patrimoniale reste, lui, une URL saisie (justificatif) et
+// porte toujours le meme `httpUrl()` durci.
+import { createExpenseSchema } from '../../src/lib/patrimoine/schemas';
 import { createContactSchema } from '../../src/types/crm-types';
 
 describe('httpUrl', () => {
@@ -36,6 +43,7 @@ describe('httpUrl', () => {
   it('s’applique aux schemas durcis (CRM, patrimoine)', () => {
     expect(createContactSchema.shape.profilePhotoUrl.safeParse('javascript:alert(1)').success).toBe(false);
     expect(createContactSchema.shape.profilePhotoUrl.safeParse('https://exemple.ci/p.jpg').success).toBe(true);
-    expect(patrimoineDocumentUpdate.safeParse({ fileUrl: 'file:///etc/passwd' }).success).toBe(false);
+    expect(createExpenseSchema.shape.receiptUrl.safeParse('file:///etc/passwd').success).toBe(false);
+    expect(createExpenseSchema.shape.receiptUrl.safeParse('https://exemple.ci/justificatif.pdf').success).toBe(true);
   });
 });

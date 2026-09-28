@@ -3,6 +3,8 @@ import { httpUrl } from '../safe-url';
 
 const uuidSchema = z.string().uuid();
 
+const WORK_PROGRAM_STATUSES = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
+
 export const createValuationSchema = z.object({
   valuatedAt: z.coerce.date(),
   estimatedValue: z.number().positive(),
@@ -21,7 +23,8 @@ export const createLoanSchema = z.object({
   lender: z.string().min(2),
   capitalAmount: z.number().positive(),
   remainingCapital: z.number().positive(),
-  interestRate: z.number().positive(),
+  // Un pret a taux zero (pret familial, pret employeur) est un cas reel.
+  interestRate: z.number().nonnegative(),
   monthlyPayment: z.number().positive(),
   currency: z.string().default('XOF'),
   startDate: z.coerce.date(),
@@ -87,7 +90,7 @@ export const updateWorkProgramSchema = createWorkProgramSchema
   .extend({
     actualCost: z.number().nonnegative().optional(),
     completedDate: z.coerce.date().optional(),
-    status: z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional()
+    status: z.enum(WORK_PROGRAM_STATUSES).optional()
   })
   .partial()
   .refine(value => Object.keys(value).length > 0, {
@@ -97,27 +100,6 @@ export const updateWorkProgramSchema = createWorkProgramSchema
 /** Voir US12 / FR-024 : pose ou retire le lien vers un chantier financier. */
 export const linkWorkProgramConstructionSiteSchema = z.object({
   constructionSiteId: uuidSchema.nullable()
-});
-
-export const createDocumentSchema = z.object({
-  title: z.string().min(2),
-  type: z.enum([
-    'TITLE_DEED',
-    'NOTARIAL_DEED',
-    'TAX_DOCUMENT',
-    'INSURANCE',
-    'TECHNICAL_DIAGNOSIS',
-    'FLOOR_PLAN',
-    'BUILDING_PERMIT',
-    'OTHER'
-  ]),
-  fileUrl: httpUrl(),
-  expiresAt: z.coerce.date().optional(),
-  ownerContactId: uuidSchema.optional()
-});
-
-export const updateDocumentSchema = createDocumentSchema.partial().refine(value => Object.keys(value).length > 0, {
-  message: 'Au moins un champ est requis pour la mise a jour du document'
 });
 
 export const generateStatementSchema = z.object({
@@ -135,10 +117,28 @@ export const updateStatementSchema = z
     message: 'Au moins un champ est requis pour la mise a jour du releve'
   });
 
+// Taux de croissance negatifs admis jusqu'a -50 % : un marche qui baisse ou
+// un loyer renegocie a la baisse sont des hypotheses legitimes.
 export const projectionQuerySchema = z.object({
   years: z.coerce.number().int().min(1).max(30).default(10),
-  valueGrowthRate: z.coerce.number().min(0).max(1).default(0.03),
-  rentGrowthRate: z.coerce.number().min(0).max(1).default(0.02),
-  expenseGrowthRate: z.coerce.number().min(0).max(1).default(0.025),
+  valueGrowthRate: z.coerce.number().min(-0.5).max(1).default(0.03),
+  rentGrowthRate: z.coerce.number().min(-0.5).max(1).default(0.02),
+  expenseGrowthRate: z.coerce.number().min(-0.5).max(1).default(0.025),
   vacancyRate: z.coerce.number().min(0).max(1).default(0.05)
+});
+
+/**
+ * `GET /tenants/:tenantId/work-programs`. `upcoming=true` ne garde que les
+ * programmes planifies ou en cours, par date prevue croissante.
+ */
+export const listTenantWorkProgramsQuerySchema = z.object({
+  status: z
+    .enum(WORK_PROGRAM_STATUSES, { errorMap: () => ({ message: 'Statut de programme de travaux inconnu' }) })
+    .optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).optional(),
+  upcoming: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform(value => value === 'true')
 });

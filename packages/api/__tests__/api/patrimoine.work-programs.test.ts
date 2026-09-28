@@ -109,11 +109,17 @@ jest.mock('../../src/utils/database', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const patrimoineRoutes = require('../../src/routes/patrimoine-routes').default;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { errorHandler } = require('../../src/middleware/error-middleware');
 
 function buildApp() {
   const app = express();
   app.use(express.json());
   app.use('/api', patrimoineRoutes);
+  // Le controleur leve des erreurs typees (asyncHandler) au lieu de repondre
+  // lui-meme : sans ce middleware, une requete invalide finirait sur le 500
+  // par defaut d'Express plutot que le 400 attendu.
+  app.use(errorHandler);
   return app;
 }
 

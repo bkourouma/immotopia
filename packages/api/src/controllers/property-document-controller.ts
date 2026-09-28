@@ -15,6 +15,34 @@ function requireTenantId(req: Request): string {
   return tenantId;
 }
 
+const DOCUMENT_TYPES = new Set<string>(Object.values(PropertyDocumentType));
+
+/**
+ * Le type arrive d'un formulaire multipart : une chaine libre. Il est
+ * verifie contre l'enum Prisma ici, avant toute ecriture de fichier, pour
+ * qu'une valeur inconnue reponde 400 et non 500.
+ */
+function parseDocumentType(raw: unknown): PropertyDocumentType {
+  if (raw === undefined || raw === null || raw === '') return PropertyDocumentType.OTHER;
+  if (typeof raw !== 'string' || !DOCUMENT_TYPES.has(raw)) {
+    throw new BadRequestError('Type de document inconnu.', [
+      { field: 'documentType', message: 'Type de document inconnu.' }
+    ]);
+  }
+  return raw as PropertyDocumentType;
+}
+
+function parseExpirationDate(raw: unknown): Date | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const date = typeof raw === 'string' || typeof raw === 'number' ? new Date(raw) : new Date(NaN);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestError("Date d'expiration invalide.", [
+      { field: 'expirationDate', message: "Date d'expiration invalide." }
+    ]);
+  }
+  return date;
+}
+
 /**
  * Upload document handler
  */
@@ -27,8 +55,8 @@ export const uploadDocumentHandler = asyncHandler(async (req: Request, res: Resp
     throw new BadRequestError('Un fichier est requis.');
   }
 
-  const documentType = (req.body.documentType || PropertyDocumentType.OTHER) as PropertyDocumentType;
-  const expirationDate = req.body.expirationDate ? new Date(req.body.expirationDate) : undefined;
+  const documentType = parseDocumentType(req.body?.documentType);
+  const expirationDate = parseExpirationDate(req.body?.expirationDate);
   const isRequired = req.body.isRequired === 'true' || req.body.isRequired === true;
 
   const document = await uploadDocument(
