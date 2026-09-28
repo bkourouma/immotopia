@@ -25,6 +25,7 @@ vi.mock('../../services/patrimoine-service', () => ({
   deleteLoan: vi.fn(),
   deleteValuation: vi.fn(),
   deleteWorkProgram: vi.fn(),
+  downloadPatrimoineExport: vi.fn(),
   getPropertyYield: vi.fn(),
   listExpenses: vi.fn(),
   listLoans: vi.fn(),

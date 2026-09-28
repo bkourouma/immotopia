@@ -51,6 +51,7 @@ import type {
 } from '../../types/patrimoine-types';
 import type { PropertyDocument } from '../../types/property-types';
 import { DocumentVault } from './DocumentVault';
+import { PatrimoineExportButton } from './PatrimoineExportButton';
 import { ExpenseTracker } from './ExpenseTracker';
 import { LoanWidget } from './LoanWidget';
 import { ValuationHistory } from './ValuationHistory';
@@ -588,6 +589,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <div style={{ textAlign: 'end' }}>
+        <PatrimoineExportButton tenantId={tenantId} propertyId={propertyId} />
+      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
           {sectionErrors.valuations ? (

@@ -133,6 +133,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/properties/:propertyId/loans', feature: 'PATRIMOINE' },
   { prefix: '/properties/:propertyId/work-programs', feature: 'PATRIMOINE' },
   { prefix: '/properties/:propertyId/yield', feature: 'PATRIMOINE' },
+  {
+    prefix: '/properties/:propertyId/patrimoine',
+    feature: 'PATRIMOINE',
+    note: "Export du patrimoine d'un seul bien (lot P3) ; l'export d'agence est deja couvert par /patrimoine."
+  },
 
   // ------------------------------------------------------------ syndic
   { prefix: '/syndics', feature: 'SYNDIC' },
