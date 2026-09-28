@@ -123,6 +123,62 @@ echo
 [[ "$state" == "healthy" ]] || fail "Postgres n'est pas healthy apres 120 s (etat : ${state:-inconnu})."
 ok "immotopia-saas-postgres healthy"
 
+# --- 3.5. Controle des migrations inconnues du depot ------------------------
+#
+# La table _prisma_migrations peut contenir une ligne appliquee en base sans
+# dossier correspondant dans le depot (reprise manuelle, hotfix non commite -
+# voir ADR-003). `prisma migrate status` la signale par "not found locally in
+# prisma/migrations" et sort en erreur, y compris quand des migrations du
+# depot sont simplement en attente (cas normal juste avant `migrate deploy`).
+# On distingue les deux : une migration orpheline non documentee bloque le
+# deploiement, une migration orpheline listee dans
+# infra/scripts/migrations-orphelines-connues.txt ne le bloque pas.
+
+step "Controle des migrations inconnues du depot"
+
+ORPHANS_FILE="infra/scripts/migrations-orphelines-connues.txt"
+[[ -f "$ORPHANS_FILE" ]] || fail "$ORPHANS_FILE introuvable."
+
+# `migrate status` sort en code non nul des qu'une migration est en attente
+# (normal ici, la prochaine etape va les appliquer) ou en cas de divergence
+# d'historique : on capture la sortie sans laisser `set -e` arreter le script.
+set +e
+STATUS_OUTPUT="$(compose --profile tools run --rm --entrypoint npx migrate \
+  prisma migrate status --schema packages/api/prisma/schema.prisma 2>&1)"
+STATUS_EXIT=$?
+set -e
+
+FOUND_ORPHANS_FILE="$(mktemp)"
+awk '
+  /not found locally in prisma\/migrations:/ { found=1; next }
+  found && NF { print }
+  found && !NF { exit }
+' <<<"$STATUS_OUTPUT" > "$FOUND_ORPHANS_FILE"
+
+if [[ -s "$FOUND_ORPHANS_FILE" ]]; then
+  KNOWN_ORPHANS_FILE="$(mktemp)"
+  sed -e 's/#.*$//' -e 's/[[:space:]]*$//' -e '/^$/d' "$ORPHANS_FILE" > "$KNOWN_ORPHANS_FILE"
+
+  UNKNOWN_ORPHANS="$(comm -23 <(sort -u "$FOUND_ORPHANS_FILE") <(sort -u "$KNOWN_ORPHANS_FILE"))"
+
+  if [[ -n "$UNKNOWN_ORPHANS" ]]; then
+    rm -f "$FOUND_ORPHANS_FILE" "$KNOWN_ORPHANS_FILE"
+    fail "migration(s) appliquee(s) en base mais absente(s) du depot, non documentee(s) dans $ORPHANS_FILE :
+$UNKNOWN_ORPHANS
+       Ajouter le nom dans ce fichier seulement apres avoir documente la cause (voir ADR-003), sinon corriger le depot."
+  fi
+
+  ok "migration(s) orpheline(s) connue(s) et documentee(s) ($ORPHANS_FILE) : $(tr '\n' ' ' < "$FOUND_ORPHANS_FILE")"
+  rm -f "$FOUND_ORPHANS_FILE" "$KNOWN_ORPHANS_FILE"
+elif (( STATUS_EXIT != 0 )) && ! grep -q 'have not yet been applied' <<<"$STATUS_OUTPUT"; then
+  rm -f "$FOUND_ORPHANS_FILE"
+  echo "$STATUS_OUTPUT" >&2
+  fail "'prisma migrate status' a echoue sans signaler de migration orpheline connue (voir la sortie ci-dessus)."
+else
+  rm -f "$FOUND_ORPHANS_FILE"
+  ok "aucune migration inconnue du depot"
+fi
+
 # --- 4. Migrations Prisma ---------------------------------------------------
 #
 # `migrate deploy` applique les migrations en attente et rien d'autre : il ne

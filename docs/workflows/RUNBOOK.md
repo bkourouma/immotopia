@@ -328,21 +328,26 @@ dépôt : `20260927080000_mouvements_fonds_copropriete`, appliquée hors dépôt
 le 25/09/2026. Décision, SQL d'origine et nettoyage facultatif :
 [ADR-003](../architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md).
 
-`deploy.sh` ne fait pas ce contrôle lui-même : il lance `migrate status`
-**après** `migrate deploy`. Étape manuelle, **avant** de lancer `deploy.sh` :
+Ce contrôle est **automatique** : l'étape « Contrôle des migrations
+inconnues du dépôt » de `deploy.sh` lance `prisma migrate status` (même
+commande que l'étape « Etat des migrations », image `migrate` de la révision
+à déployer) **avant** `migrate deploy`, et distingue elle-même les deux
+lectures possibles d'un code de sortie non nul :
 
-1. Lancer `prisma migrate status` sur la production avec les migrations de
-   la révision à déployer (même commande que l'étape « Etat des migrations »
-   de `deploy.sh`, image `migrate` de cette révision).
-2. Tant que la ligne orpheline existe et qu'une migration est en attente, la
-   réponse est « Your local migration history and the migrations table from
-   your database are different », code 1. C'est attendu **si et seulement
-   si** la liste « not found locally » contient exactement
-   `20260927080000_mouvements_fonds_copropriete` et rien d'autre ;
-   `migrate deploy` passe alors quand même.
-3. Toute autre migration dans cette liste, ou une liste vide avec un autre
-   message d'erreur, est une vraie anomalie : **arrêter**, c'est-à-dire ne
-   pas lancer `deploy.sh`, et prévenir le responsable de la production.
+- des migrations du dépôt simplement en attente (cas normal juste avant
+  `migrate deploy`) — le déploiement continue ;
+- une migration signalée « not found locally in prisma/migrations » — le nom
+  est comparé à la liste versionnée
+  [`infra/scripts/migrations-orphelines-connues.txt`](../../infra/scripts/migrations-orphelines-connues.txt)
+  (un nom par ligne, commentaires `#`, actuellement
+  `20260927080000_mouvements_fonds_copropriete` avec un renvoi vers ADR-003).
+  Un nom qui y figure ne bloque pas le déploiement ; un nom absent de cette
+  liste, ou toute autre anomalie (migration en échec, base non gérée par
+  Prisma Migrate…), fait échouer `deploy.sh` avant toute migration.
+
+Documenter une nouvelle exception avant de l'ajouter au fichier : y ajouter
+une ligne sans avoir écrit d'ADR (ou complété ADR-003) revient à désactiver
+le contrôle en silence.
 
 ### CI — étapes bloquantes (`.github/workflows/ci.yml`)
 
