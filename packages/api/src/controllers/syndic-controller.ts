@@ -385,7 +385,7 @@ export const createChargeCallHandler = asyncHandler(async (req: Request, res: Re
     syndicateId
   });
 
-  const result = await createChargeCallAndUpdateStatus(tenantId, parsed);
+  const result = await createChargeCallAndUpdateStatus(tenantId, { ...parsed, actorUserId: req.user?.userId ?? null });
 
   if (result && typeof result === 'object' && 'id' in result) {
     try {
@@ -609,7 +609,10 @@ export const generateBudgetChargeCallsHandler = asyncHandler(async (req: Request
   }
 
   const parsed = generateBudgetChargeCallsSchema.parse(req.body ?? {});
-  const batch = await generateChargeCallsFromBudget(tenantId, syndicateId, budgetId, parsed);
+  const batch = await generateChargeCallsFromBudget(tenantId, syndicateId, budgetId, {
+    ...parsed,
+    actorUserId: req.user?.userId ?? null
+  });
 
   const generatedChargeCalls = Array.isArray((batch as any)?.chargeCalls) ? (batch as any).chargeCalls : [];
   if (generatedChargeCalls.length > 0) {

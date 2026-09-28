@@ -71,7 +71,8 @@ import {
   SyndicateFund,
   CreateSyndicateFundRequest,
   RenameSyndicateFundRequest,
-  AdjustSyndicateFundBalanceRequest
+  AdjustSyndicateFundBalanceRequest,
+  AssignFundRequest
 } from '../types/syndic-types';
 
 export async function listSyndicates(tenantId: string): Promise<Syndicate[]> {
@@ -953,7 +954,10 @@ export async function downloadSyndicDocument(
     `/tenants/${tenantId}/syndics/${syndicId}/documents/${encodeURIComponent(documentId)}/fichier`,
     { responseType: 'blob' }
   );
-  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }
 
 export async function listLotTenantProfiles(
@@ -1081,9 +1085,38 @@ export async function adjustSyndicateFundBalance(
   syndicId: string,
   fundId: string,
   data: AdjustSyndicateFundBalanceRequest
-): Promise<SyndicateFund> {
-  const response = await apiClient.post<{ success: boolean; data: SyndicateFund }>(
+): Promise<SyndicateFund & { negativeBalance?: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: SyndicateFund & { negativeBalance?: boolean } }>(
     `/tenants/${tenantId}/syndics/${syndicId}/fonds/${fundId}/ajustement`,
+    data
+  );
+  return response.data.data;
+}
+
+/** Affecte un appel de charges à un fonds : ce qui sera payé ensuite sur l'appel le crédite en entier. */
+export async function assignChargeCallFund(
+  tenantId: string,
+  syndicId: string,
+  chargeId: string,
+  data: AssignFundRequest
+): Promise<{ id: string; fundId: string | null }> {
+  const response = await apiClient.patch<{ success: boolean; data: { id: string; fundId: string | null } }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/fonds`,
+    data
+  );
+  return response.data.data;
+}
+
+/** Affecte un poste de budget à un fonds : le fonds reçoit la part du poste dans chaque paiement. */
+export async function assignBudgetLineFund(
+  tenantId: string,
+  syndicId: string,
+  budgetId: string,
+  lineId: string,
+  data: AssignFundRequest
+): Promise<{ id: string; fundId: string | null }> {
+  const response = await apiClient.patch<{ success: boolean; data: { id: string; fundId: string | null } }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/budgets/${budgetId}/lignes/${lineId}/fonds`,
     data
   );
   return response.data.data;

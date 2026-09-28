@@ -141,6 +141,29 @@ describe('SyndicFinances — actions du fonds en vue carte (< 992 px)', () => {
     expect(await screen.findByText('Ajuster le solde du fonds')).toBeInTheDocument();
   });
 
+  it('signale un solde devenu négatif après un débit (permis, mais visible)', async () => {
+    const user = userEvent.setup({ delay: null });
+    adjustSyndicateFundBalance.mockResolvedValue({
+      id: 'fund-1',
+      name: 'Fonds de travaux',
+      balance: -5_000,
+      negativeBalance: true
+    });
+
+    mount();
+
+    const carte = await screen.findByRole('article', { name: 'Fonds de travaux' }, { timeout: 8000 });
+    await user.click(within(carte).getByRole('button', { name: 'Ajuster le solde' }));
+    await user.type(await screen.findByLabelText('Montant'), '10000');
+    await user.type(screen.getByLabelText('Motif'), 'Avance de trésorerie');
+    await user.click(screen.getByRole('button', { name: 'Appliquer' }));
+
+    await waitFor(() => expect(adjustSyndicateFundBalance).toHaveBeenCalled());
+    expect(
+      await screen.findByText('Attention : le solde du fonds est désormais négatif.', undefined, { timeout: 8000 })
+    ).toBeInTheDocument();
+  });
+
   it('permet de renommer le fonds depuis la carte (action secondaire, derriere « Autres actions »)', async () => {
     const user = userEvent.setup({ delay: null });
     renameSyndicateFund.mockResolvedValue({ id: 'fund-1', name: 'Fonds travaux renomme' });

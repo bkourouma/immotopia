@@ -47,3 +47,25 @@ describe('<ChargeCallTable> — bouton avis d’appel (lot S4)', () => {
     expect(screen.getByRole('button', { name: /Avis d'appel \(PDF\)/ })).toBeInTheDocument();
   });
 });
+
+describe('<ChargeCallTable> — fonds de copropriété', () => {
+  const FUNDS = [{ id: 'fund-1', name: 'Fonds de travaux' }];
+
+  it("affiche le fonds de l'appel et propose de le changer", () => {
+    const onAssignFund = vi.fn();
+    const affecte = { ...CHARGE, id: 'charge-2', period: '2026-11', fundId: 'fund-1' } as ChargeCall;
+    render(<ChargeCallTable items={[CHARGE, affecte]} funds={FUNDS} onAssignFund={onAssignFund} />);
+
+    expect(screen.getByText('Fonds de travaux')).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button', { name: 'Affecter à un fonds' });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]);
+    expect(onAssignFund).toHaveBeenCalledWith(affecte);
+  });
+
+  it('masque la colonne Fonds quand la liste des fonds n est pas fournie', () => {
+    render(<ChargeCallTable items={[{ ...CHARGE, fundId: 'fund-1' } as ChargeCall]} />);
+    expect(screen.queryByText('Fonds de travaux')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Affecter à un fonds' })).not.toBeInTheDocument();
+  });
+});

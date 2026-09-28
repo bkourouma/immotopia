@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { roundMoney } from './finance-utils';
+import { lockFundsTx, recordFundMovementTx } from './fund-credits';
 import {
   assertFiscalYearOpenTx,
   ensureSyndicJournalTx,
@@ -342,49 +343,14 @@ async function lockInvoiceTx(tx: Tx, tenantId: string, invoiceId: string) {
   await tx.$queryRaw`SELECT id FROM syndic_provider_invoices WHERE id = ${invoiceId}::uuid AND tenant_id = ${tenantId} FOR UPDATE`;
 }
 
-async function lockFundTx(tx: Tx, fundId: string) {
-  await tx.$queryRaw`SELECT id FROM syndicate_funds WHERE id = ${fundId}::uuid FOR UPDATE`;
-}
-
 /**
- * Applique un mouvement au fonds (verrouille par l'appelant) et le trace.
- * Un solde negatif est accepte (avance de tresorerie, decouvert) : c'est a
- * l'appelant de le signaler.
+ * Vue du fonds renvoyee par les paiements (solde apres mouvement). Le
+ * mouvement lui-meme passe par `recordFundMovementTx` (fund-credits.ts), sous
+ * le verrou `lockFundsTx` pris par l'appelant. Un solde negatif est accepte
+ * (avance de tresorerie, decouvert) : l'appelant le signale.
  */
-async function applyFundMovementTx(
-  tx: Tx,
-  params: {
-    tenantId: string;
-    fundId: string;
-    direction: 'CREDIT' | 'DEBIT';
-    amount: number;
-    label: string;
-    sourceType: 'PROVIDER_PAYMENT' | 'PROVIDER_PAYMENT_REVERSAL';
-    sourceId: string;
-    actorUserId?: string | null;
-  }
-) {
-  const amount = roundMoney(params.amount);
-  const updated = await tx.syndicateFund.update({
-    where: { id: params.fundId },
-    data: { balance: params.direction === 'CREDIT' ? { increment: amount } : { decrement: amount } },
-    select: { id: true, name: true, balance: true, currency: true }
-  });
-  const balanceAfter = roundMoney(Number(updated.balance));
-  await tx.syndicateFundMovement.create({
-    data: {
-      tenantId: params.tenantId,
-      fundId: params.fundId,
-      direction: params.direction,
-      amount,
-      balanceAfter,
-      label: params.label,
-      sourceType: params.sourceType,
-      sourceId: params.sourceId,
-      createdById: params.actorUserId ?? null
-    }
-  });
-  return { id: updated.id, name: updated.name, balance: balanceAfter, currency: updated.currency };
+function fundView(fund: { id: string; name: string; balance: unknown; currency: string }) {
+  return { id: fund.id, name: fund.name, balance: roundMoney(Number(fund.balance)), currency: fund.currency };
 }
 
 // ---------------------------------------------------------------------------
@@ -760,7 +726,7 @@ export async function payProviderInvoice(
 
   const result = await prisma.$transaction(async tx => {
     await lockInvoiceTx(tx, tenantId, invoiceId);
-    await lockFundTx(tx, fundId);
+    await lockFundsTx(tx, [fundId]);
 
     const invoice = await tx.syndicProviderInvoice.findFirst({
       where: { id: invoiceId, tenantId },
@@ -807,16 +773,20 @@ export async function payProviderInvoice(
     });
 
     const label = `Paiement facture ${invoice.number}`;
-    const fund = await applyFundMovementTx(tx, {
-      tenantId,
-      fundId,
-      direction: 'DEBIT',
-      amount,
-      label,
-      sourceType: 'PROVIDER_PAYMENT',
-      sourceId: payment.id,
-      actorUserId
-    });
+    const fund = fundView(
+      (
+        await recordFundMovementTx(tx, {
+          tenantId,
+          fundId,
+          direction: 'DEBIT',
+          amount,
+          label,
+          sourceType: 'PROVIDER_PAYMENT',
+          sourceId: payment.id,
+          actorUserId
+        })
+      ).fund
+    );
 
     const accounts = await ensureSyndicProviderAccountsTx(tx, tenantId, syndicateId);
     const journalId = await ensureSyndicJournalTx(tx, tenantId, syndicateId, 'BANK', input.paidAt);
@@ -893,7 +863,7 @@ export async function cancelProviderPayment(
 
   const result = await prisma.$transaction(async tx => {
     await lockInvoiceTx(tx, tenantId, invoiceId);
-    if (existing.fundId) await lockFundTx(tx, existing.fundId);
+    if (existing.fundId) await lockFundsTx(tx, [existing.fundId]);
 
     const payment = await tx.syndicProviderPayment.findFirst({
       where: { id: paymentId, tenantId, invoiceId },
@@ -914,16 +884,20 @@ export async function cancelProviderPayment(
     // Un fonds supprime depuis (fundId remis a NULL) ne peut plus etre
     // recredite : le paiement s'annule quand meme, comptablement.
     const fund = payment.fundId
-      ? await applyFundMovementTx(tx, {
-          tenantId,
-          fundId: payment.fundId,
-          direction: 'CREDIT',
-          amount,
-          label,
-          sourceType: 'PROVIDER_PAYMENT_REVERSAL',
-          sourceId: payment.id,
-          actorUserId
-        })
+      ? fundView(
+          (
+            await recordFundMovementTx(tx, {
+              tenantId,
+              fundId: payment.fundId,
+              direction: 'CREDIT',
+              amount,
+              label,
+              sourceType: 'PROVIDER_PAYMENT_REVERSAL',
+              sourceId: payment.id,
+              actorUserId
+            })
+          ).fund
+        )
       : null;
 
     const cancelEntryId = payment.journalEntryId

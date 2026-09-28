@@ -125,6 +125,49 @@ describe('FundMovementsDrawer', () => {
     });
   });
 
+  it("nomme l'origine des mouvements d'ouverture, de paiement de charges et de dépense", async () => {
+    const movement = (id: string, sourceType: string, label: string) => ({
+      id,
+      direction: sourceType === 'MANUAL_EXPENSE' ? 'DEBIT' : 'CREDIT',
+      amount: 1000,
+      balanceAfter: 1000,
+      label,
+      sourceType,
+      sourceId: null,
+      createdById: null,
+      createdAt: '2026-01-10T00:00:00.000Z'
+    });
+    mockApiClient.get.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          fund: { id: 'fund-1', name: 'Fonds de travaux', balance: 1000, currency: 'XOF' },
+          items: [
+            movement('mv-1', 'OPENING', 'Solde repris'),
+            movement('mv-2', 'CHARGE_PAYMENT', 'Part du paiement — appel 2026-T1 — lot A-01'),
+            movement('mv-3', 'MANUAL_EXPENSE', 'Toiture')
+          ],
+          total: 3,
+          page: 1,
+          limit: 20
+        }
+      }
+    });
+
+    render(
+      <FundMovementsDrawer
+        tenantId="tenant-1"
+        syndicId="syndic-1"
+        fund={{ id: 'fund-1', name: 'Fonds de travaux' }}
+        onClose={() => {}}
+      />
+    );
+
+    expect(await screen.findByText("Solde d'ouverture")).toBeTruthy();
+    expect(screen.getByText('Paiement de charges')).toBeTruthy();
+    expect(screen.getByText('Dépense')).toBeTruthy();
+  });
+
   it('ne charge rien quand aucun fonds n’est sélectionné', () => {
     render(<FundMovementsDrawer tenantId="tenant-1" syndicId="syndic-1" fund={null} onClose={() => {}} />);
     expect(mockApiClient.get).not.toHaveBeenCalled();

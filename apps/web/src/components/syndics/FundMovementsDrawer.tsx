@@ -13,7 +13,10 @@ const { Text } = Typography;
 const SOURCE_LABELS: Record<FundMovement['sourceType'], string> = {
   MANUAL_ADJUSTMENT: t('Ajustement manuel'),
   PROVIDER_PAYMENT: t('Paiement prestataire'),
-  PROVIDER_PAYMENT_REVERSAL: t('Annulation de paiement prestataire')
+  PROVIDER_PAYMENT_REVERSAL: t('Annulation de paiement prestataire'),
+  OPENING: t("Solde d'ouverture"),
+  CHARGE_PAYMENT: t('Paiement de charges'),
+  MANUAL_EXPENSE: t('Dépense')
 };
 
 interface FundMovementsDrawerProps {
@@ -25,8 +28,9 @@ interface FundMovementsDrawerProps {
 
 /**
  * Historique des mouvements d'un fonds (lot S6, `SyndicateFundMovement`) :
- * ajustements manuels et débits/crédits générés par les paiements
- * prestataires, avec le solde après chaque mouvement.
+ * solde d'ouverture, parts des paiements de charges, dépenses et ajustements
+ * saisis à la main, débits/crédits générés par les paiements prestataires,
+ * avec le solde après chaque mouvement.
  */
 export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenantId, syndicId, fund, onClose }) => {
   const [items, setItems] = useState<FundMovement[]>([]);
