@@ -73,9 +73,15 @@ export function isRtl(language: Language): boolean {
 
 /**
  * Langue à afficher au premier rendu, avant même que `<AuthProvider>` ait
- * répondu : choix explicite mémorisé, puis préférence du navigateur, puis
- * français. La préférence stockée en base, elle, s'applique à la connexion
- * (`LanguageProvider`), et seulement si l'utilisateur n'a rien choisi ici.
+ * répondu : langue déjà mémorisée dans `localStorage` (choix explicite, ou
+ * préférence du compte reprise à une connexion précédente), puis préférence
+ * du navigateur, puis français. Ce dernier repli n'est PAS mémorisé par
+ * l'appelant (`LanguageProvider`, `persist: false`) : deviner depuis
+ * `navigator.languages` n'est pas un choix de la personne, et l'écrire dans
+ * `localStorage` le ferait passer pour tel aux yeux de
+ * `LanguagePreferenceSync`, qui l'enverrait alors au compte connecté. La
+ * préférence stockée en base s'applique à la connexion (`LanguagePreferenceSync`,
+ * une fois par compte), et prime sur tout ce que cette fonction a retourné.
  */
 export function detectInitialLanguage(): Language {
   if (typeof window === 'undefined') return DEFAULT_LANGUAGE;

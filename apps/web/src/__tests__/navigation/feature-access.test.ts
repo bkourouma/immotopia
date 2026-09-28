@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 import { applyFeatureAccess, featureAccessFromModules } from '../../navigation/feature-access';
 import { catalogForPersona } from '../../navigation/menu-catalog';
 import { useFilteredNavigation } from '../../hooks/useMenuAccess';
 
 /** Menu et abonnement (vague 2, lot A). */
-const nav = NAVIGATION.collaborateur;
+const nav = getNavigation().collaborateur;
 const keys = (tree: { key: string }[]) => tree.map(g => g.key);
 
 describe('featureAccessFromModules', () => {
@@ -33,7 +33,14 @@ describe('navigation filtrée par l’abonnement', () => {
     const tree = result.current!.tree;
     expect(keys(tree)).toContain('syndic');
     expect(keys(tree)).toContain('biens');
-    for (const gone of ['baux', 'encaisser', 'finance-chantiers-stock', 'finance-main-oeuvre', 'ventes', 'patrimoine']) {
+    for (const gone of [
+      'baux',
+      'encaisser',
+      'finance-chantiers-stock',
+      'finance-main-oeuvre',
+      'ventes',
+      'patrimoine'
+    ]) {
       expect(keys(tree)).not.toContain(gone);
     }
     // Le groupe CRM garde les contacts (socle) et pointe vers eux.
@@ -46,7 +53,10 @@ describe('navigation filtrée par l’abonnement', () => {
 
   it('module retiré : entrée conservée, marquée lecture seule', () => {
     const access = featureAccessFromModules({ MODULE_AGENCY: 'FULL', MODULE_SYNDIC: 'READ_ONLY' });
-    const syndic = applyFeatureAccess(nav.tree.find(g => g.key === 'syndic')!, access)!;
+    const syndic = applyFeatureAccess(
+      nav.tree.find(g => g.key === 'syndic')!,
+      access
+    )!;
     expect(syndic.readOnly).toBe(true);
     expect(syndic.children!.every(c => c.readOnly)).toBe(true);
   });
