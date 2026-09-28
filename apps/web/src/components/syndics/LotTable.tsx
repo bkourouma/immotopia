@@ -15,10 +15,9 @@ const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
   OTHER: 'Autre'
 };
 
-function buildPropertyNomenclatureLabel(property: NonNullable<SyndicateLot['property']>): string {
-  const ownerLabel = property.owner?.fullName?.trim() || '';
-  const title = property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
-  return ownerLabel ? `${ownerLabel} - ${title}` : title;
+// Le bien seul : la colonne « Propriétaire » affiche déjà son propriétaire.
+function buildPropertyLabel(property: NonNullable<SyndicateLot['property']>): string {
+  return property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
 }
 
 interface LotTableProps {
@@ -153,7 +152,7 @@ export const LotTable: React.FC<LotTableProps> = ({
         }
 
         if (lot.property) {
-          return buildPropertyNomenclatureLabel(lot.property);
+          return buildPropertyLabel(lot.property);
         }
 
         return lot.propertyId;

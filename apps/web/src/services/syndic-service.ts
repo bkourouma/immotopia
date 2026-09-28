@@ -75,9 +75,41 @@ import {
   AssignFundRequest
 } from '../types/syndic-types';
 
+/**
+ * Toutes les copropriétés de l'agence, toutes pages confondues.
+ *
+ * `GET .../syndics` pagine par défaut (20 par page) : une agence avec plus de
+ * 20 copropriétés ne voyait que les premières dans la liste et le sélecteur
+ * « Changer de copropriété ». Cette fonction tourne les pages (100 par appel,
+ * le maximum accepté par l'API) jusqu'à épuisement.
+ *
+ * Garde-fous : arrêt au-delà de 50 pages (5000 copropriétés couvrent tout
+ * usage réel), si une page revient vide, ou si `pagination` est absente de la
+ * réponse — compat avec une API plus ancienne qui ne renvoyait que `data`
+ * sans pagination, auquel cas ce premier lot est déjà la liste complète.
+ */
 export async function listSyndicates(tenantId: string): Promise<Syndicate[]> {
-  const response = await apiClient.get<{ success: boolean; data: Syndicate[] }>(`/tenants/${tenantId}/syndics`);
-  return response.data.data;
+  const limit = 100;
+  let page = 1;
+  let all: Syndicate[] = [];
+
+  for (let i = 0; i < 50; i += 1) {
+    const response = await apiClient.get<{
+      success: boolean;
+      data: Syndicate[];
+      pagination?: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/tenants/${tenantId}/syndics`, { params: { page, limit } });
+
+    const batch = response.data.data;
+    if (batch.length === 0) break;
+    all = all.concat(batch);
+
+    const pagination = response.data.pagination;
+    if (!pagination || page >= pagination.totalPages) break;
+    page += 1;
+  }
+
+  return all;
 }
 
 export async function getSyndicate(tenantId: string, syndicId: string): Promise<Syndicate> {

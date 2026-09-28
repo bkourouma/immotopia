@@ -24,6 +24,16 @@ vi.mock('@ant-design/icons', async () => {
   return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
+// Exposé hors de la factory (hoisted) pour que les tests puissent vérifier
+// les appels `setFieldsValue` du pré-remplissage de la modale d'imputation.
+const { formInstance } = vi.hoisted(() => ({
+  formInstance: {
+    validateFields: vi.fn(),
+    resetFields: vi.fn(),
+    setFieldsValue: vi.fn()
+  }
+}));
+
 vi.mock('antd', async () => {
   // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
@@ -33,11 +43,6 @@ vi.mock('antd', async () => {
     ({ children, ...props }: any) =>
       React.createElement(Tag, props, children);
 
-  const formInstance = {
-    validateFields: vi.fn(),
-    resetFields: vi.fn(),
-    setFieldsValue: vi.fn()
-  };
   const FormComponent: any = passthrough('form');
   FormComponent.useForm = () => [formInstance];
   FormComponent.Item = passthrough();
@@ -210,6 +215,7 @@ describe('Syndics profiles/incidents page', () => {
             data: [
               {
                 id: 'i-1',
+                lotId: 'lot-1',
                 incidentType: 'LEAK',
                 urgency: 'HIGH',
                 description: 'Fuite',
@@ -356,5 +362,19 @@ describe('Syndics profiles/incidents page', () => {
         status: 'IN_PROGRESS'
       })
     );
+  });
+
+  it('affiche la colonne Lot du tableau des incidents et pré-remplit le lot dans la modale d’imputation', async () => {
+    renderWithRoute();
+
+    // Colonne « Lot » : le numéro du lot de l'incident (formatLotLabel n'est
+    // pas utilisé ici, donc ce numéro seul n'apparaît que dans cette colonne).
+    expect(await screen.findByText('A-01')).toBeTruthy();
+
+    fireEvent.click(await screen.findByText('Ajouter imputation'));
+
+    // Le lot reste modifiable (pas de `disabled`) : seule la valeur initiale
+    // du formulaire est celle de l'incident.
+    expect(formInstance.setFieldsValue).toHaveBeenCalledWith({ lotId: 'lot-1' });
   });
 });

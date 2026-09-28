@@ -6,12 +6,24 @@ import {
   majorityRuleHint,
   majorityRuleLabel,
   normalizeMajorityRule,
-  proxyForLot
+  proxyForLot,
+  voterNames
 } from './meeting-governance';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
+
+/**
+ * Libellé canonique du lot (`formatLotLabel`) complété par le nom du ou des
+ * votants à la date de l'AG — le votant est le propriétaire à cette date,
+ * pas forcément l'actuel (`voterNames`). Utilisé par le sélecteur « Lot
+ * votant » et par les étiquettes des votes enregistrés, pour que le nom
+ * visible corresponde toujours à qui votait réellement.
+ */
+function lotLabelWithVoters(lot: MeetingLot | undefined, fallbackReference?: string | null): string {
+  return `${formatLotLabel(lot, fallbackReference)} — ${voterNames(lot)}`;
+}
 
 interface MeetingAgendaProps {
   resolutions: MeetingResolution[];
@@ -47,7 +59,7 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
     () =>
       lots.map(lot => {
         const proxy = proxyForLot(lot, proxies);
-        const base = formatLotLabel(lot);
+        const base = lotLabelWithVoters(lot);
         return {
           value: lot.id,
           label: proxy ? `${base} · ${t('représenté par {{name}}', { name: contactName(proxy.representative) })}` : base
@@ -136,7 +148,7 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
                     const proxy = proxyForLot(lot, proxies);
                     return (
                       <Tag key={vote.id}>
-                        {formatLotLabel(lot, vote.lotId)} : {voteLabels[vote.vote]}
+                        {lotLabelWithVoters(lot, vote.lotId)} : {voteLabels[vote.vote]}
                         {proxy ? ` (${t('représenté')})` : ''}
                       </Tag>
                     );
@@ -150,6 +162,7 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
                   <Select
                     size="small"
                     style={{ minWidth: 220 }}
+                    aria-label={t('Lot votant :')}
                     value={getSelectedLotId(resolution.id)}
                     showSearch
                     optionFilterProp="label"

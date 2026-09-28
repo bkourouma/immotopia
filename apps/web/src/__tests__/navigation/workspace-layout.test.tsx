@@ -1,9 +1,11 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { FinanceWorkspaceLayout } from '../../components/navigation/FinanceWorkspaceLayout';
-import { SyndicWorkspaceLayout } from '../../components/navigation/SyndicWorkspaceLayout';
+import { SyndicWorkspaceLayout, syndicSwitchPath } from '../../components/navigation/SyndicWorkspaceLayout';
 import type { FinanceWorkspaceFamily } from '../../navigation/finance-workspaces';
+import { listSyndicates } from '../../services/syndic-service';
 
 /**
  * Les routes de layout à onglets : un en-tête qui situe, une barre d'onglets
@@ -14,8 +16,11 @@ import type { FinanceWorkspaceFamily } from '../../navigation/finance-workspaces
  */
 
 vi.mock('../../services/syndic-service', () => ({
-  getSyndicate: vi.fn().mockResolvedValue({ name: 'Résidence Les Palmiers' })
+  getSyndicate: vi.fn().mockResolvedValue({ name: 'Résidence Les Palmiers' }),
+  listSyndicates: vi.fn().mockResolvedValue([{ id: 's1', name: 'Résidence Les Palmiers' }])
 }));
+
+const mockListSyndicates = listSyndicates as unknown as ReturnType<typeof vi.fn>;
 
 const TENANT = 't1';
 
@@ -98,5 +103,89 @@ describe('SyndicWorkspaceLayout — après la mise en commun du rendu', () => {
     ]);
     expect(screen.getByRole('tab', { name: 'Appels de charges' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('Écran rendu')).toBeInTheDocument();
+  });
+
+  afterEach(() => {
+    mockListSyndicates.mockClear();
+    mockListSyndicates.mockResolvedValue([{ id: 's1', name: 'Résidence Les Palmiers' }]);
+  });
+
+  it('n’affiche aucun sélecteur quand l’agence n’a qu’une seule copropriété', async () => {
+    mockListSyndicates.mockResolvedValueOnce([{ id: 's1', name: 'Résidence Les Palmiers' }]);
+
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/syndics/s1/lots']}>
+        <Routes>
+          <Route element={<SyndicWorkspaceLayout family="copropriete" />}>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/*" element={<p>Écran rendu</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByRole('heading', { name: 'Résidence Les Palmiers' });
+    expect(screen.queryByRole('combobox', { name: 'Changer de copropriété' })).not.toBeInTheDocument();
+  });
+
+  it('affiche un sélecteur dès deux copropriétés et navigue au choix, en gardant l’onglet courant', async () => {
+    mockListSyndicates.mockResolvedValueOnce([
+      { id: 's1', name: 'Résidence Les Palmiers' },
+      { id: 's2', name: 'Résidence Les Rôniers' }
+    ]);
+    const user = userEvent.setup();
+
+    function CurrentScreen() {
+      const { syndicId } = useParams<{ syndicId: string }>();
+      const { pathname } = useLocation();
+      return (
+        <p>
+          Écran rendu pour {syndicId} ({pathname})
+        </p>
+      );
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/syndics/s1/lots']}>
+        <Routes>
+          <Route element={<SyndicWorkspaceLayout family="copropriete" />}>
+            <Route path="/tenant/:tenantId/syndics/:syndicId/*" element={<CurrentScreen />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText(/Écran rendu pour s1/);
+
+    const select = await screen.findByRole('combobox', { name: 'Changer de copropriété' });
+    await user.click(select);
+    const option = await screen.findByText('Résidence Les Rôniers');
+    await user.click(option);
+
+    expect(await screen.findByText('Écran rendu pour s2 (/tenant/t1/syndics/s2/lots)')).toBeInTheDocument();
+  });
+});
+
+describe('syndicSwitchPath', () => {
+  const TENANT_ID = 't1';
+
+  it('garde la fiche (aucun segment après l’identifiant)', () => {
+    expect(syndicSwitchPath('/tenant/t1/syndics/s1', TENANT_ID, 's1', 's2')).toBe('/tenant/t1/syndics/s2');
+  });
+
+  it('garde le même onglet', () => {
+    expect(syndicSwitchPath('/tenant/t1/syndics/s1/lots', TENANT_ID, 's1', 's2')).toBe('/tenant/t1/syndics/s2/lots');
+  });
+
+  it('abandonne une sous-fiche qui n’existe pas dans l’autre copropriété', () => {
+    expect(syndicSwitchPath('/tenant/t1/syndics/s1/lots/lot-42/compte', TENANT_ID, 's1', 's2')).toBe(
+      '/tenant/t1/syndics/s2/lots'
+    );
+    expect(syndicSwitchPath('/tenant/t1/syndics/s1/assemblees/ag-1', TENANT_ID, 's1', 's2')).toBe(
+      '/tenant/t1/syndics/s2/assemblees'
+    );
+  });
+
+  it('retombe sur la fiche pour un chemin inattendu', () => {
+    expect(syndicSwitchPath('/autre-chose', TENANT_ID, 's1', 's2')).toBe('/tenant/t1/syndics/s2');
   });
 });

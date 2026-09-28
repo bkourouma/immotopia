@@ -496,7 +496,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                 pagination={{ pageSize: 8 }}
                 columns={[
                   {
-                    title: 'Lot',
+                    title: t('Lot'),
                     render: (_, row) => {
                       const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
                       const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
@@ -507,7 +507,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     }
                   },
                   {
-                    title: 'Contact',
+                    title: t('Contact'),
                     render: (_, row) => {
                       const contact = row.contact;
                       if (!contact) return row.contactId;
@@ -517,13 +517,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   },
                   { title: t('Part (%)'), dataIndex: 'ownershipPercentage' },
                   {
-                    title: 'Depuis',
+                    title: t('Depuis'),
                     dataIndex: 'ownedSince',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   {
-                    title: 'Portail',
-                    render: (_, row) => (row.portalAccessEnabled ? <Tag color="green">ACTIVE</Tag> : <Tag>INACTIF</Tag>)
+                    title: t('Portail'),
+                    render: (_, row) =>
+                      row.portalAccessEnabled ? <Tag color="green">{t('Actif')}</Tag> : <Tag>{t('Inactif')}</Tag>
                   },
                   {
                     title: t('Accès portail'),
@@ -563,7 +564,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                 pagination={{ pageSize: 8 }}
                 columns={[
                   {
-                    title: 'Lot',
+                    title: t('Lot'),
                     render: (_, row) => {
                       const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
                       const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
@@ -574,7 +575,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     }
                   },
                   {
-                    title: 'Contact',
+                    title: t('Contact'),
                     render: (_, row) => {
                       const contact = row.contact;
                       if (!contact) return row.contactId;
@@ -583,18 +584,21 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     }
                   },
                   {
-                    title: 'Depuis',
+                    title: t('Depuis'),
                     dataIndex: 'tenantSince',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
-                  { title: t('Facture au locataire'), render: (_, row) => (row.chargesBilledToTenant ? 'Oui' : 'Non') }
+                  {
+                    title: t('Facture au locataire'),
+                    render: (_, row) => (row.chargesBilledToTenant ? t('Oui') : t('Non'))
+                  }
                 ]}
               />
             </Card>
 
             <Card title={t('Incidents et imputations')}>
               <Table
-                scroll={{ x: 1080 }}
+                scroll={{ x: 1000 }}
                 rowKey="id"
                 dataSource={incidents}
                 pagination={{ pageSize: 8 }}
@@ -607,21 +611,21 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         dataSource={incident.imputations || []}
                         pagination={false}
                         size="small"
-                        locale={{ emptyText: 'Aucune imputation pour cet incident.' }}
+                        locale={{ emptyText: t('Aucune imputation pour cet incident.') }}
                         columns={[
                           {
-                            title: 'Type',
+                            title: t('Type'),
                             dataIndex: 'imputationType',
                             render: (value: string) => incidentImputationTypeLabels[value] || value
                           },
                           {
-                            title: 'Montant',
+                            title: t('Montant'),
                             dataIndex: 'amount',
                             align: 'end',
                             render: (value: number | string) => <MoneyValue value={value} />
                           },
                           {
-                            title: 'Lot',
+                            title: t('Lot'),
                             render: (_, row) => {
                               const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
                               const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
@@ -632,7 +636,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                             }
                           },
                           {
-                            title: 'Notes',
+                            title: t('Notes'),
                             dataIndex: 'notes',
                             render: (value: string | undefined | null) => value || '-'
                           },
@@ -659,30 +663,37 @@ export const SyndicProfilesIncidents: React.FC = () => {
                 }}
                 columns={[
                   {
-                    title: 'Type',
+                    title: t('Lot'),
+                    key: 'lot',
+                    render: (_: unknown, incident: SyndicateIncident) =>
+                      (incident.lotId ? lotsById[incident.lotId]?.lotNumber : undefined) || '-'
+                  },
+                  {
+                    title: t('Type'),
                     dataIndex: 'incidentType',
                     width: 100,
                     render: (value: string) => incidentTypeLabels[value] || value
                   },
                   {
-                    title: 'Urgence',
+                    title: t('Urgence'),
                     dataIndex: 'urgency',
                     width: 90,
                     render: (value: string) => incidentUrgencyLabels[value] || value
                   },
                   {
-                    title: 'Description',
+                    title: t('Description'),
                     dataIndex: 'description',
-                    width: 200,
-                    ellipsis: { showTitle: false },
+                    // Texte complet, retourné à la ligne : sans largeur fixe, le
+                    // tableau l'étalerait sur une seule ligne. 240 px laissent
+                    // Statut, Prestataire et Actions visibles sans défilement
+                    // horizontal sur un écran de portable.
+                    width: 240,
                     render: (value: string) => (
-                      <Typography.Text ellipsis={{ tooltip: value }} style={{ maxWidth: 200 }}>
-                        {value}
-                      </Typography.Text>
+                      <div style={{ width: 240, maxWidth: '100%', whiteSpace: 'normal' }}>{value}</div>
                     )
                   },
                   {
-                    title: 'Statut',
+                    title: t('Statut'),
                     dataIndex: 'status',
                     width: 110,
                     render: (value: string) => (
@@ -690,7 +701,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     )
                   },
                   {
-                    title: 'Imputations',
+                    title: t('Imputations'),
                     width: 100,
                     render: (_, row) => (
                       <Tag color={(row.imputations?.length || 0) > 0 ? 'blue' : 'default'}>
@@ -718,7 +729,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     )
                   },
                   {
-                    title: 'Actions',
+                    title: t('Actions'),
                     key: 'actions',
                     fixed: 'right',
                     width: 220,
@@ -731,6 +742,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
                           size="small"
                           onClick={() => {
                             setSelectedIncidentId(row.id);
+                            // Le lot de l'incident est pré-rempli, mais reste modifiable :
+                            // main permet d'imputer un incident des parties communes à un
+                            // lot précis.
+                            imputationForm.resetFields();
+                            imputationForm.setFieldsValue({ lotId: row.lotId || undefined });
                             setOpenImputation(true);
                           }}
                         >
@@ -807,8 +823,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { value: true, label: 'Oui' },
-                { value: false, label: 'Non' }
+                { value: true, label: t('Oui') },
+                { value: false, label: t('Non') }
               ]}
             />
           </Form.Item>
@@ -856,8 +872,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { value: true, label: 'Oui' },
-                { value: false, label: 'Non' }
+                { value: true, label: t('Oui') },
+                { value: false, label: t('Non') }
               ]}
             />
           </Form.Item>
