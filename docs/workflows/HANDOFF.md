@@ -40,7 +40,7 @@ Pièges et décisions :
 
 ## Branche `fix/syndic-anomalies-recette` — 2026-09-28
 
-**État :** prêt à relire — PR #47 vers `main`, recette navigateur non faite
+**État :** prêt à relire — PR #47 vers `main`, recette navigateur faite (5/5)
 **Dernier commit :** voir `git log -1` sur la branche (worktree `.claude/worktrees/anomalies-recette`)
 
 Fait (5 anomalies du testeur, recette Syndic du 2026-09-28) :
@@ -59,9 +59,11 @@ Fait (5 anomalies du testeur, recette Syndic du 2026-09-28) :
 
 Reste à faire :
 
-- Recette navigateur : `packages/api/.env.demo` absent sur le poste
-  (`demo:sync` refuse). Accord utilisateur requis pour créer la base de démo
-  dédiée ou pour migrer la base de développement.
+- Recette faite le 2026-09-28 sur la démo (base `immotopia_demo`, créée depuis
+  `.env` avec envois neutralisés ; `.env.demo` ignoré par git). Non vu : une
+  exécution neuve avec raisons par lot, compte copropriétaire, import réel
+  d'image de marque. BUG-011 (jeton expiré → 403) corrigé en 401 (63a68506) ;
+  BUG-012 (calendrier 25 px sous la fenêtre à 1280x700) accepté.
 - Cause réelle des avis non envoyés en production : non vérifiée (pas de
   lecture de la base prod) ; le nouvel écran donne la raison.
 - Déploiement : `migrate deploy` (migration additive).
