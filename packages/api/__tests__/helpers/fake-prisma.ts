@@ -154,6 +154,21 @@ function sortRows(rows: Row[], orderBy: any): Row[] {
   });
 }
 
+/**
+ * Ecrit `data` dans la ligne, en appliquant les operations atomiques de
+ * Prisma (`{ increment }`, `{ decrement }`) sur les champs numeriques.
+ */
+function applyData(row: Row, data: Row) {
+  for (const [key, value] of Object.entries(data ?? {})) {
+    if (isPlainObject(value) && ('increment' in value || 'decrement' in value)) {
+      const delta = 'increment' in value ? Number(value.increment) : -Number(value.decrement);
+      row[key] = Math.round((Number(row[key] ?? 0) + delta) * 100) / 100;
+      continue;
+    }
+    row[key] = value;
+  }
+}
+
 function copy<T>(row: T): T {
   return row && typeof row === 'object' ? { ...(row as any) } : row;
 }
@@ -243,7 +258,8 @@ function createModel(name: string): FakeModel {
   model.update = jest.fn(async (args: any) => {
     const row = model.rows.find((candidate: Row) => matchesWhere(candidate, args.where));
     if (!row) throw Object.assign(new Error(`${name}.update : aucune ligne`), { code: 'P2025' });
-    Object.assign(row, args.data, { updatedAt: new Date() });
+    applyData(row, args.data);
+    row.updatedAt = new Date();
     return copy(row);
   });
   model.upsert = jest.fn(async (args: any) => {
@@ -258,7 +274,7 @@ function createModel(name: string): FakeModel {
   });
   model.updateMany = jest.fn(async (args: any) => {
     const rows = model.rows.filter((candidate: Row) => matchesWhere(candidate, args.where));
-    rows.forEach((row: Row) => Object.assign(row, args.data));
+    rows.forEach((row: Row) => applyData(row, args.data));
     return { count: rows.length };
   });
   model.delete = jest.fn(async (args: any) => {
@@ -321,7 +337,11 @@ export const FAKE_MODEL_NAMES = [
   'budgetAllocation',
   'syndicPaymentMethod',
   'syndicChargeSchedule',
-  'syndicChargeScheduleRun'
+  'syndicChargeScheduleRun',
+  // Fonds de copropriete credites par les paiements (fund-credits.ts).
+  'syndicateFund',
+  'syndicateFundMovement',
+  'budgetLineItem'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

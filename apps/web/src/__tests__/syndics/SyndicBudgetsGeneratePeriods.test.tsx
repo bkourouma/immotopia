@@ -33,7 +33,10 @@ vi.mock('../../services/syndic-service', () => ({
   updateBudget: (...args: unknown[]) => updateBudget(...args),
   recomputeBudgetAllocations: (...args: unknown[]) => recomputeBudgetAllocations(...args),
   generateBudgetChargeCalls: (...args: unknown[]) => generateBudgetChargeCalls(...args),
-  createChargeCallBatch: (...args: unknown[]) => createChargeCallBatch(...args)
+  createChargeCallBatch: (...args: unknown[]) => createChargeCallBatch(...args),
+  // Fonds de la copropriete : aucun ici, l'affectation des postes reste masquee.
+  listSyndicateFunds: vi.fn(async () => []),
+  assignBudgetLineFund: vi.fn()
 }));
 
 const authValue: AuthContextType = {

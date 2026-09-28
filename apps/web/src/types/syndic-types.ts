@@ -127,6 +127,8 @@ export interface ChargeCall {
   isRecurring?: boolean;
   recurrenceFrequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
   recurrenceCount?: number;
+  /** Fonds qui reçoit en entier ce qui est payé sur l'appel ; `null` : selon les postes du budget. */
+  fundId?: string | null;
   createdAt: string;
   updatedAt: string;
   lot?: SyndicateLot;
@@ -216,6 +218,8 @@ export interface CreateChargeCallRequest {
   amount: number;
   currency?: string;
   dueDate: string;
+  /** Appel versé en entier à ce fonds (appel de fonds travaux). */
+  fundId?: string | null;
   isRecurring?: boolean;
   recurrenceFrequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
   recurrenceCount?: number;
@@ -810,6 +814,8 @@ export interface BudgetLineItem {
   amountActual: number | string;
   distributionKey: DistributionKey;
   accountId?: string | null;
+  /** Fonds alimenté par ce poste, au prorata de chaque paiement de charges. */
+  fundId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -873,6 +879,7 @@ export interface CreateBudgetRequest {
     amountForecast: number;
     distributionKey: DistributionKey;
     accountId?: string;
+    fundId?: string | null;
   }>;
 }
 
@@ -1083,6 +1090,13 @@ export interface AdjustSyndicateFundBalanceRequest {
   direction: 'CREDIT' | 'DEBIT';
   amount: number;
   reason: string;
+  /** EXPENSE : dépense payée par le fonds (toujours un débit). Défaut : ajustement. */
+  kind?: 'ADJUSTMENT' | 'EXPENSE';
+}
+
+/** Affectation d'un appel ou d'un poste de budget à un fonds ; `null` la retire. */
+export interface AssignFundRequest {
+  fundId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1554,7 +1568,13 @@ export interface ProviderBalance {
 }
 
 export type FundMovementDirection = 'CREDIT' | 'DEBIT';
-export type FundMovementSourceType = 'MANUAL_ADJUSTMENT' | 'PROVIDER_PAYMENT' | 'PROVIDER_PAYMENT_REVERSAL';
+export type FundMovementSourceType =
+  | 'MANUAL_ADJUSTMENT'
+  | 'PROVIDER_PAYMENT'
+  | 'PROVIDER_PAYMENT_REVERSAL'
+  | 'OPENING'
+  | 'CHARGE_PAYMENT'
+  | 'MANUAL_EXPENSE';
 
 export interface FundMovement {
   id: string;

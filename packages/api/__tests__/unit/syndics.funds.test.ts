@@ -12,7 +12,9 @@ jest.mock('@prisma/client', () => {
     syndicateFundMovement: {
       create: jest.fn()
     },
-    $transaction: jest.fn()
+    $transaction: jest.fn(),
+    // Verrou de ligne sur le fonds (`lockFundsTx`).
+    $queryRaw: jest.fn(async () => [])
   };
   prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
 
@@ -44,6 +46,7 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
     };
     syndicateFundMovement: { create: jest.Mock };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
   };
 };
 
@@ -166,5 +169,93 @@ describe('Syndicate funds queries - FR-013', () => {
       data: expect.objectContaining({ direction: 'DEBIT', amount: 15000, balanceAfter: -5000 })
     });
     expect(updated.balance).toBe(-5000);
+    // Permis, mais signale : l'ecran affiche un avertissement.
+    expect(updated.negativeBalance).toBe(true);
+  });
+
+  it("records the initial balance as the fund's OPENING movement (balance = sum of the journal)", async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValue({ id: 'syndic-1' });
+    mockPrisma.syndicateFund.create.mockResolvedValue({
+      id: 'fund-1',
+      syndicateId: 'syndic-1',
+      name: 'Fonds travaux',
+      balance: 0,
+      currency: 'XOF'
+    });
+    mockPrisma.syndicateFund.update.mockResolvedValue({ id: 'fund-1', balance: 250000, currency: 'XOF' });
+
+    const fund = await createSyndicateFundBySyndicate(
+      'tenant-a',
+      'syndic-1',
+      { name: 'Fonds travaux', initialBalance: 250000 },
+      'user-1'
+    );
+
+    expect(mockPrisma.syndicateFund.create).toHaveBeenCalledWith({
+      data: { syndicateId: 'syndic-1', name: 'Fonds travaux', balance: 0, currency: 'XOF' }
+    });
+    expect(mockPrisma.syndicateFund.update).toHaveBeenCalledWith({
+      where: { id: 'fund-1' },
+      data: { balance: { increment: 250000 } }
+    });
+    expect(mockPrisma.syndicateFundMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'tenant-a',
+        fundId: 'fund-1',
+        direction: 'CREDIT',
+        amount: 250000,
+        balanceAfter: 250000,
+        sourceType: 'OPENING'
+      })
+    });
+    expect(fund.balance).toBe(250000);
+  });
+
+  it('records an expense paid by the fund as a MANUAL_EXPENSE debit', async () => {
+    mockPrisma.syndicateFund.findFirst.mockResolvedValue({
+      id: 'fund-1',
+      syndicateId: 'syndic-1',
+      name: 'Fonds travaux',
+      balance: 100000,
+      currency: 'XOF'
+    });
+    mockPrisma.syndicateFund.update.mockResolvedValue({ id: 'fund-1', balance: 60000 });
+
+    await adjustSyndicateFundBalanceByTenant('tenant-a', 'syndic-1', 'fund-1', {
+      direction: 'DEBIT',
+      amount: 40000,
+      reason: 'Réfection de la toiture',
+      kind: 'EXPENSE'
+    });
+
+    expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+    expect(mockPrisma.syndicateFundMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        direction: 'DEBIT',
+        amount: 40000,
+        balanceAfter: 60000,
+        sourceType: 'MANUAL_EXPENSE'
+      })
+    });
+  });
+
+  it('refuses an expense that would credit the fund', async () => {
+    mockPrisma.syndicateFund.findFirst.mockResolvedValue({
+      id: 'fund-1',
+      syndicateId: 'syndic-1',
+      name: 'Fonds travaux',
+      balance: 100000,
+      currency: 'XOF'
+    });
+
+    await expect(
+      adjustSyndicateFundBalanceByTenant('tenant-a', 'syndic-1', 'fund-1', {
+        direction: 'CREDIT',
+        amount: 40000,
+        reason: 'Erreur',
+        kind: 'EXPENSE'
+      })
+    ).rejects.toMatchObject({ status: 422 });
+    expect(mockPrisma.syndicateFund.update).not.toHaveBeenCalled();
   });
 });

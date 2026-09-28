@@ -124,6 +124,8 @@ export const createChargeCallSchema = z
     amount: z.number().positive(),
     currency: z.string().default('XOF'),
     dueDate: z.coerce.date(),
+    // Appel verse en entier a ce fonds (appel de fonds travaux).
+    fundId: z.string().uuid().nullable().optional(),
     isRecurring: z.boolean().optional().default(false),
     recurrenceFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']).optional(),
     recurrenceCount: z.number().int().min(1).max(24).optional()
@@ -352,7 +354,9 @@ export const createBudgetSchema = z.object({
         description: z.string().min(1),
         amountForecast: z.number().positive(),
         distributionKey: z.enum(['GENERAL_SHARES', 'SPECIAL_SHARES', 'EQUAL', 'MANUAL']),
-        accountId: uuidSchema.optional()
+        accountId: uuidSchema.optional(),
+        // Fonds alimente par ce poste, au prorata de chaque paiement.
+        fundId: uuidSchema.nullable().optional()
       })
     )
     .min(1, 'Au moins une ligne budgetaire est requise')
@@ -376,7 +380,8 @@ export const generateBudgetChargeCallsSchema = z
     ...periodBoundsFields,
     dueDate: z.coerce.date(),
     batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-    currency: z.string().default('XOF'),
+    // Absente : devise du budget. Fournie : doit etre celle du budget.
+    currency: z.string().optional(),
     // Lot S4 : quote-part annuelle divisee par le nombre de periodes (defaut 1 = annee entiere).
     periodsPerYear: z
       .number()
@@ -616,8 +621,17 @@ export const renameSyndicateFundSchema = z.object({
 export const adjustSyndicateFundBalanceSchema = z.object({
   direction: z.enum(['CREDIT', 'DEBIT']),
   amount: z.number().positive(),
-  reason: z.string().min(1, 'Le motif de l ajustement est obligatoire')
+  reason: z.string().min(1, 'Le motif de l ajustement est obligatoire'),
+  // EXPENSE : depense payee par le fonds (toujours un debit).
+  kind: z.enum(['ADJUSTMENT', 'EXPENSE']).optional().default('ADJUSTMENT')
 });
+
+// Affectation d'un appel ou d'un poste de budget a un fonds ; null la retire.
+export const assignFundSchema = z
+  .object({
+    fundId: uuidSchema.nullable()
+  })
+  .strict();
 
 export type CreateSyndicateInput = z.infer<typeof createSyndicateSchema>;
 export type UpdateSyndicateInput = z.infer<typeof updateSyndicateSchema>;
