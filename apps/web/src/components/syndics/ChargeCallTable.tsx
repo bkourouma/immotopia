@@ -57,14 +57,24 @@ interface ChargeCallTableProps {
   onRecordPayment?: (charge: ChargeCall) => void;
   /** Callback pour l'action « Avis d'appel (PDF) » (lot S4). Optionnel, même règle que ci-dessus. */
   onDownloadNotice?: (charge: ChargeCall) => void;
+  /**
+   * Fonds de la copropriété : quand la liste est fournie, une colonne « Fonds »
+   * affiche le fonds qui reçoit en entier ce qui est payé sur l'appel.
+   */
+  funds?: Array<{ id: string; name: string }>;
+  /** Callback pour l'action « Affecter à un fonds ». Optionnel, même règle que les autres actions. */
+  onAssignFund?: (charge: ChargeCall) => void;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   items,
   loading = false,
   onRecordPayment,
-  onDownloadNotice
+  onDownloadNotice,
+  funds,
+  onAssignFund
 }) => {
+  const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
     {
       title: t('Période'),
@@ -119,7 +129,17 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
         return <Tag color={config.color}>{config.label}</Tag>;
       }
     },
-    ...(onRecordPayment || onDownloadNotice
+    ...(funds
+      ? [
+          {
+            title: t('Fonds'),
+            key: 'fund',
+            render: (_: unknown, item: ChargeCall) =>
+              item.fundId ? (fundNames.get(item.fundId) ?? t('Fonds')) : <Text type="secondary">—</Text>
+          }
+        ]
+      : []),
+    ...(onRecordPayment || onDownloadNotice || onAssignFund
       ? [
           {
             title: t('Actions'),
@@ -134,6 +154,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                 {onDownloadNotice ? (
                   <Button size="small" icon={<FilePdfOutlined />} onClick={() => onDownloadNotice(item)}>
                     {t("Avis d'appel (PDF)")}
+                  </Button>
+                ) : null}
+                {onAssignFund ? (
+                  <Button size="small" onClick={() => onAssignFund(item)}>
+                    {t('Affecter à un fonds')}
                   </Button>
                 ) : null}
               </Space>

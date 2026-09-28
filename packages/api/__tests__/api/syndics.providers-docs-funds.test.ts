@@ -140,10 +140,30 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
   notifyMeetingConvocation: jest.fn()
 }));
 
+jest.mock('../../src/lib/syndics/fund-assignments', () => ({
+  setChargeCallFundByTenant: jest.fn(
+    async (_tenantId: string, _syndicId: string, chargeId: string, fundId: string | null) => ({
+      id: chargeId,
+      fundId
+    })
+  ),
+  setBudgetLineFundByTenant: jest.fn(
+    async (_tenantId: string, _syndicId: string, _budgetId: string, lineId: string, fundId: string | null) => ({
+      id: lineId,
+      fundId
+    })
+  )
+}));
+
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
 import { conflict } from '../../src/lib/errors';
 const mockQueries = jest.requireMock('../../src/lib/syndics/queries') as Record<string, jest.Mock>;
+const mockAssignments = jest.requireMock('../../src/lib/syndics/fund-assignments') as Record<string, jest.Mock>;
+const CHARGE_ID = '33333333-3333-4333-8333-333333333333';
+const BUDGET_ID = '44444444-4444-4444-8444-444444444444';
+const LINE_ID = '55555555-5555-4555-8555-555555555555';
+const FUND_ID = '66666666-6666-4666-8666-666666666666';
 
 describe('Syndics providers/documents/funds routes', () => {
   const app = express();
@@ -179,13 +199,11 @@ describe('Syndics providers/documents/funds routes', () => {
       nature: 'Sécurité incendie',
       status: 'ACTIVE'
     });
-    const createResponse = await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/contrats`)
-      .send({
-        providerId: '22222222-2222-4222-8222-222222222222',
-        nature: 'Sécurité incendie',
-        startDate: '2026-03-01T00:00:00.000Z'
-      });
+    const createResponse = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/contrats`).send({
+      providerId: '22222222-2222-4222-8222-222222222222',
+      nature: 'Sécurité incendie',
+      startDate: '2026-03-01T00:00:00.000Z'
+    });
     expect(createResponse.status).toBe(201);
     expect(createResponse.body.success).toBe(true);
     expect(createResponse.body.data.id).toBe('contract-new');
@@ -412,9 +430,85 @@ describe('Syndics providers/documents/funds routes', () => {
       TENANT_ID,
       SYNDIC_ID,
       'fund-1',
-      { direction: 'CREDIT', amount: 50000, reason: 'Appel de fonds travaux vote en AG' },
+      { direction: 'CREDIT', amount: 50000, reason: 'Appel de fonds travaux vote en AG', kind: 'ADJUSTMENT' },
       'user-1'
     );
+  });
+
+  it('records an expense paid by a fund through the adjustment route', async () => {
+    mockQueries.adjustSyndicateFundBalanceByTenant.mockResolvedValueOnce({ id: 'fund-1', balance: 950000 });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1/ajustement`)
+      .send({ direction: 'DEBIT', amount: 50000, reason: 'Toiture', kind: 'EXPENSE' });
+
+    expect(response.status).toBe(200);
+    expect(mockQueries.adjustSyndicateFundBalanceByTenant).toHaveBeenLastCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      'fund-1',
+      { direction: 'DEBIT', amount: 50000, reason: 'Toiture', kind: 'EXPENSE' },
+      'user-1'
+    );
+  });
+
+  it('assigns a charge call to a fund, or clears the assignment', async () => {
+    const response = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${CHARGE_ID}/fonds`)
+      .send({ fundId: FUND_ID });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({ id: CHARGE_ID, fundId: FUND_ID });
+    expect(mockAssignments.setChargeCallFundByTenant).toHaveBeenLastCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      CHARGE_ID,
+      FUND_ID,
+      'user-1'
+    );
+
+    const cleared = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${CHARGE_ID}/fonds`)
+      .send({ fundId: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.fundId).toBeNull();
+  });
+
+  it('assigns a budget line to a fund', async () => {
+    const response = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/budgets/${BUDGET_ID}/lignes/${LINE_ID}/fonds`)
+      .send({ fundId: FUND_ID });
+
+    expect(response.status).toBe(200);
+    expect(mockAssignments.setBudgetLineFundByTenant).toHaveBeenLastCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      BUDGET_ID,
+      LINE_ID,
+      FUND_ID,
+      'user-1'
+    );
+  });
+
+  it('rejects a fund assignment with an invalid body or a non-UUID identifier', async () => {
+    mockAssignments.setChargeCallFundByTenant.mockClear();
+
+    const noField = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${CHARGE_ID}/fonds`)
+      .send({});
+    expect(noField.status).toBe(400);
+
+    const extraField = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${CHARGE_ID}/fonds`)
+      .send({ fundId: FUND_ID, balance: 1 });
+    expect(extraField.status).toBe(400);
+
+    const badId = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/not-a-uuid/fonds`)
+      .send({ fundId: FUND_ID });
+    expect(badId.status).toBe(404);
+
+    expect(mockAssignments.setChargeCallFundByTenant).not.toHaveBeenCalled();
   });
 
   it('rejects a fund balance adjustment without a reason', async () => {

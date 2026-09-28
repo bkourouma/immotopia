@@ -11,6 +11,9 @@
  *   mouvement d'argent : aucune ecriture de grand livre ;
  * - apres chaque paiement et chaque creation d'appel, un lot n'a jamais a la
  *   fois une avance et un appel ouvert (`applyLotAdvanceTx`) ;
+ * - toute somme affectee a un appel (paiement ou avance imputee) credite, dans
+ *   la meme transaction, les fonds de copropriete de cet appel
+ *   (`fund-credits.ts`) ; l'avance non affectee ne credite aucun fonds ;
  * - toute ecriture sur l'affectation d'un lot se fait sous un verrou
  *   consultatif Postgres scope a ce lot (`lockLotTx`) : deux paiements ou une
  *   creation d'appel concurrente ne consomment jamais deux fois la meme avance.
@@ -28,6 +31,7 @@ import { ensureOwnerAccountForLotTx } from './owner-account-tx';
 import { formatIsoDay } from './period';
 import { issueReceiptsForPaymentTx, toDocumentRefs, type IssuedChargeDocument } from './charge-receipts';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
+import { creditFundsForAllocationsTx } from './fund-credits';
 import {
   fromCents,
   planAdvanceImputation,
@@ -299,6 +303,10 @@ export async function applyLotAdvanceTx(tx: PrismaTransactionClient, lotId: stri
   }
 
   await writeCallStatusesTx(tx, calls, touched);
+  await creditFundsForAllocationsTx(tx, {
+    lotId,
+    items: imputations.map(item => ({ ...item, source: 'ADVANCE' as const }))
+  });
   return { imputations, calls };
 }
 
@@ -382,6 +390,16 @@ export async function recordLotPaymentTx(tx: PrismaTransactionClient, input: Lot
   }
   await writeCallStatusesTx(tx, calls, touched);
   await creditLedgerTx(tx, input, payment.id, amountCents);
+  await creditFundsForAllocationsTx(tx, {
+    lotId: input.lotId,
+    actorUserId: input.actorUserId ?? null,
+    items: plan.allocations.map(item => ({
+      paymentId: payment.id,
+      chargeCallId: item.chargeCallId,
+      amountCents: item.amountCents,
+      source: 'PAYMENT' as const
+    }))
+  });
 
   const application = await applyLotAdvanceTx(tx, input.lotId);
   const finalCalls = application.calls.length > 0 ? application.calls : calls;

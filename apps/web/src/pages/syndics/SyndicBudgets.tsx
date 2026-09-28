@@ -19,16 +19,25 @@ import { CheckOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { formatMoney, MoneyValue } from '../../components/primitives';
 import {
+  assignBudgetLineFund,
   createBudget,
   createChargeCallBatch,
   generateBudgetChargeCalls,
   listBudgets,
   listChargeCallBatches,
+  listSyndicateFunds,
   listSyndicateLots,
   recomputeBudgetAllocations,
   updateBudget
 } from '../../services/syndic-service';
-import { BudgetAllocation, ChargeCallBatch, SyndicateBudget, SyndicateLot } from '../../types/syndic-types';
+import {
+  BudgetAllocation,
+  BudgetLineItem,
+  ChargeCallBatch,
+  SyndicateBudget,
+  SyndicateFund,
+  SyndicateLot
+} from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
@@ -70,6 +79,12 @@ export const SyndicBudgets: React.FC = () => {
   const [openGenerateModal, setOpenGenerateModal] = useState(false);
   const [openBatchModal, setOpenBatchModal] = useState(false);
 
+  // Fonds de la copropriété : un poste qui en alimente un lui verse sa part de
+  // chaque paiement de charges. Leur chargement ne bloque jamais la page.
+  const [funds, setFunds] = useState<SyndicateFund[]>([]);
+  const [linesBudget, setLinesBudget] = useState<SyndicateBudget | null>(null);
+  const [savingLineId, setSavingLineId] = useState<string | null>(null);
+
   const [budgetForm] = Form.useForm();
   const [generateForm] = Form.useForm();
   const [batchForm] = Form.useForm();
@@ -105,10 +120,38 @@ export const SyndicBudgets: React.FC = () => {
       setBudgets(budgetsData);
       setBatches(batchesData);
       setLots(lotsData);
+      setLinesBudget(current => (current ? (budgetsData.find(item => item.id === current.id) ?? null) : null));
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger les budgets'));
     } finally {
       setLoading(false);
+    }
+    await loadFunds();
+  };
+
+  const loadFunds = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const data = await listSyndicateFunds(effectiveTenantId, syndicId);
+      setFunds(Array.isArray(data) ? data : []);
+    } catch {
+      setFunds([]);
+    }
+  };
+
+  const fundSelectOptions = useMemo(() => funds.map(fund => ({ value: fund.id, label: fund.name })), [funds]);
+
+  const handleAssignLineFund = async (line: BudgetLineItem, fundId: string | undefined) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setSavingLineId(line.id);
+    try {
+      await assignBudgetLineFund(effectiveTenantId, syndicId, line.budgetId, line.id, { fundId: fundId ?? null });
+      message.success(t('Affectation au fonds enregistrée'));
+      await loadData();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Affectation au fonds impossible'));
+    } finally {
+      setSavingLineId(null);
     }
   };
 
@@ -133,7 +176,8 @@ export const SyndicBudgets: React.FC = () => {
             category: values.category,
             description: values.description,
             amountForecast: values.totalAmount,
-            distributionKey: values.distributionKey
+            distributionKey: values.distributionKey,
+            fundId: values.fundId || undefined
           }
         ]
       });
@@ -310,6 +354,9 @@ export const SyndicBudgets: React.FC = () => {
                         <Button size="small" onClick={() => void handleRecompute(budget.id)}>
                           {t('Répartir')}
                         </Button>
+                        <Button size="small" onClick={() => setLinesBudget(budget)}>
+                          {t('Postes et fonds')}
+                        </Button>
                         <Button
                           size="small"
                           disabled={!budget.allocations || budget.allocations.length === 0}
@@ -476,7 +523,69 @@ export const SyndicBudgets: React.FC = () => {
           <Form.Item label={t('Devise')} name="currency">
             <Input />
           </Form.Item>
+          {funds.length > 0 ? (
+            <Form.Item
+              label={t('Fonds alimenté par ce poste (optionnel)')}
+              name="fundId"
+              extra={t('Le fonds recevra la part de ce poste dans chaque paiement de charges.')}
+            >
+              <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+            </Form.Item>
+          ) : null}
         </Form>
+      </Modal>
+
+      <Modal
+        title={
+          linesBudget
+            ? t('Postes et fonds — {{label}}', { label: `${linesBudget.label} (${linesBudget.fiscalYear})` })
+            : t('Postes et fonds')
+        }
+        open={Boolean(linesBudget)}
+        onCancel={() => setLinesBudget(null)}
+        footer={null}
+        width={720}
+      >
+        <Paragraph type="secondary">
+          {t(
+            'Un poste affecté à un fonds lui verse sa part de chaque paiement de charges enregistré ensuite, au prorata de la répartition du lot.'
+          )}
+        </Paragraph>
+        {funds.length === 0 ? (
+          <Alert type="info" showIcon message={t("Créez d'abord un fonds dans la trésorerie de la copropriété.")} />
+        ) : null}
+        <Table
+          scroll={{ x: 'max-content' }}
+          rowKey="id"
+          dataSource={linesBudget?.lines || []}
+          pagination={false}
+          columns={[
+            { title: t('Catégorie'), dataIndex: 'category' },
+            { title: t('Description'), dataIndex: 'description' },
+            {
+              title: t('Prévu'),
+              dataIndex: 'amountForecast',
+              align: 'end',
+              render: (value: number | string) => <MoneyValue value={value} />
+            },
+            {
+              title: t('Fonds alimenté'),
+              render: (_, line: BudgetLineItem) => (
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ minWidth: 200 }}
+                  placeholder={t('Aucun fonds')}
+                  disabled={funds.length === 0 || savingLineId === line.id}
+                  value={line.fundId ?? undefined}
+                  onChange={value => void handleAssignLineFund(line, value)}
+                  options={fundSelectOptions}
+                />
+              )
+            }
+          ]}
+        />
       </Modal>
 
       <Modal

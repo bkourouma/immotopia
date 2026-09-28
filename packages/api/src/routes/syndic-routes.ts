@@ -5,6 +5,10 @@ import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-m
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import { uploadDocument } from '../middleware/upload-middleware';
 import {
+  assignBudgetLineFundHandler,
+  assignChargeCallFundHandler
+} from '../controllers/syndic-fund-assignment-controller';
+import {
   inviteCoOwnerToPortalHandler,
   revokeCoOwnerPortalAccessHandler
 } from '../controllers/syndic-coowner-portal-controller';
@@ -541,6 +545,18 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/fonds/:fundId/ajustement',
   requirePropertyPermission('PROPERTIES_EDIT'),
   adjustFundBalanceHandler
+);
+// Affectation a un fonds : les sommes affectees ensuite a l'appel creditent
+// ce fonds (en entier pour un appel, au prorata pour un poste de budget).
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/fonds',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  assignChargeCallFundHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/budgets/:budgetId/lignes/:lineId/fonds',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  assignBudgetLineFundHandler
 );
 
 export default router;

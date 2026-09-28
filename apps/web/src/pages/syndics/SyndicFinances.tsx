@@ -328,10 +328,13 @@ export const SyndicFinances: React.FC = () => {
     const values = await adjustForm.validateFields();
     setAdjustSubmitting(true);
     try {
+      const isExpense = values.kind === 'EXPENSE';
       await adjustSyndicateFundBalance(effectiveTenantId, syndicId, adjustTarget.id, {
-        direction: values.direction,
+        // Une dépense payée par le fonds le diminue toujours.
+        direction: isExpense ? 'DEBIT' : values.direction,
         amount: values.amount,
-        reason: values.reason
+        reason: values.reason,
+        kind: isExpense ? 'EXPENSE' : 'ADJUSTMENT'
       });
       message.success(t('Solde du fonds ajusté'));
       setAdjustTarget(null);
@@ -382,7 +385,7 @@ export const SyndicFinances: React.FC = () => {
             onClick={() => {
               setAdjustTarget(row);
               adjustForm.resetFields();
-              adjustForm.setFieldsValue({ direction: 'CREDIT' });
+              adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
             }}
           >
             {t('Ajuster le solde')}
@@ -573,7 +576,7 @@ export const SyndicFinances: React.FC = () => {
                     onClick: () => {
                       setAdjustTarget(row);
                       adjustForm.resetFields();
-                      adjustForm.setFieldsValue({ direction: 'CREDIT' });
+                      adjustForm.setFieldsValue({ kind: 'ADJUSTMENT', direction: 'CREDIT' });
                     }
                   }}
                   secondaryActions={[
@@ -769,16 +772,32 @@ export const SyndicFinances: React.FC = () => {
             {t('Solde actuel')} : <MoneyValue value={adjustTarget.balance} />
           </Paragraph>
         ) : null}
-        <Form form={adjustForm} layout="vertical" initialValues={{ direction: 'CREDIT' }}>
-          <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
+        <Form form={adjustForm} layout="vertical" initialValues={{ kind: 'ADJUSTMENT', direction: 'CREDIT' }}>
+          <Form.Item label={t('Nature du mouvement')} name="kind" rules={[{ required: true }]}>
             <Select
-              showSearch
-              optionFilterProp="label"
               options={[
-                { label: t('Crédit (augmenter le solde)'), value: 'CREDIT' },
-                { label: t('Débit (diminuer le solde)'), value: 'DEBIT' }
+                { label: t('Ajustement'), value: 'ADJUSTMENT' },
+                { label: t('Dépense payée par le fonds'), value: 'EXPENSE' }
               ]}
+              onChange={value => {
+                if (value === 'EXPENSE') adjustForm.setFieldsValue({ direction: 'DEBIT' });
+              }}
             />
+          </Form.Item>
+          <Form.Item noStyle dependencies={['kind']}>
+            {({ getFieldValue }) => (
+              <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  disabled={getFieldValue('kind') === 'EXPENSE'}
+                  options={[
+                    { label: t('Crédit (augmenter le solde)'), value: 'CREDIT' },
+                    { label: t('Débit (diminuer le solde)'), value: 'DEBIT' }
+                  ]}
+                />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item
             label={t('Montant')}

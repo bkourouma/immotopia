@@ -22,7 +22,10 @@ vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
   listChargeCalls: (...args: unknown[]) => listChargeCalls(...args),
-  createChargeCall: (...args: unknown[]) => createChargeCall(...args)
+  createChargeCall: (...args: unknown[]) => createChargeCall(...args),
+  // Fonds de la copropriete : aucun ici, le champ « Fonds alimente » reste masque.
+  listSyndicateFunds: vi.fn(async () => []),
+  assignChargeCallFund: vi.fn()
 }));
 
 vi.mock('../../services/syndic-lot-payment-service', () => ({

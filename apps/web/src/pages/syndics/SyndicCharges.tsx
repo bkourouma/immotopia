@@ -21,7 +21,14 @@ import dayjs, { Dayjs } from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
-import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
+import {
+  assignChargeCallFund,
+  createChargeCall,
+  getSyndicate,
+  listChargeCalls,
+  listSyndicateFunds,
+  listSyndicateLots
+} from '../../services/syndic-service';
 import { downloadChargeCallNotice } from '../../services/syndic-charge-schedule-service';
 import {
   ChargeCall,
@@ -29,6 +36,7 @@ import {
   CreateChargeCallRequest,
   LotPaymentResult,
   Syndicate,
+  SyndicateFund,
   SyndicateLot
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
@@ -85,6 +93,13 @@ export const SyndicCharges: React.FC = () => {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentContext, setPaymentContext] = useState<{ lotId?: string; chargeCallId?: string }>({});
 
+  // Fonds de la copropriété : un appel qui leur est affecté les crédite en
+  // entier à chaque paiement. Leur chargement ne bloque jamais la page.
+  const [funds, setFunds] = useState<SyndicateFund[]>([]);
+  const [fundTarget, setFundTarget] = useState<ChargeCall | null>(null);
+  const [fundChoice, setFundChoice] = useState<string | undefined>(undefined);
+  const [fundSaving, setFundSaving] = useState(false);
+
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
@@ -119,6 +134,39 @@ export const SyndicCharges: React.FC = () => {
       setError(err.response?.data?.error || t('Impossible de charger la page charges'));
     } finally {
       setLoading(false);
+    }
+    await loadFunds();
+  };
+
+  const loadFunds = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      const data = await listSyndicateFunds(effectiveTenantId, syndicId);
+      setFunds(Array.isArray(data) ? data : []);
+    } catch {
+      setFunds([]);
+    }
+  };
+
+  const fundSelectOptions = useMemo(() => funds.map(fund => ({ value: fund.id, label: fund.name })), [funds]);
+
+  const handleOpenAssignFund = (charge: ChargeCall) => {
+    setFundTarget(charge);
+    setFundChoice(charge.fundId ?? undefined);
+  };
+
+  const handleAssignFund = async () => {
+    if (!effectiveTenantId || !syndicId || !fundTarget) return;
+    setFundSaving(true);
+    try {
+      await assignChargeCallFund(effectiveTenantId, syndicId, fundTarget.id, { fundId: fundChoice ?? null });
+      message.success(t('Affectation au fonds enregistrée'));
+      setFundTarget(null);
+      await loadCharges();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Affectation au fonds impossible'));
+    } finally {
+      setFundSaving(false);
     }
   };
 
@@ -187,6 +235,7 @@ export const SyndicCharges: React.FC = () => {
       amount: values.amount,
       currency: values.currency || 'XOF',
       dueDate: values.dueDate.toISOString(),
+      fundId: values.fundId || undefined,
       isRecurring: Boolean(values.isRecurring),
       recurrenceFrequency: values.isRecurring ? values.recurrenceFrequency : undefined,
       recurrenceCount: values.isRecurring ? values.recurrenceCount : undefined
@@ -320,6 +369,8 @@ export const SyndicCharges: React.FC = () => {
                 items={charges}
                 onRecordPayment={handleOpenPaymentForCharge}
                 onDownloadNotice={charge => void handleDownloadNotice(charge)}
+                funds={funds}
+                onAssignFund={funds.length > 0 ? handleOpenAssignFund : undefined}
               />
             </Card>
           </>
@@ -472,6 +523,16 @@ export const SyndicCharges: React.FC = () => {
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
 
+          {funds.length > 0 ? (
+            <Form.Item
+              label={t('Fonds alimenté (optionnel)')}
+              name="fundId"
+              extra={t('Tout ce qui sera payé sur cet appel sera versé à ce fonds.')}
+            >
+              <Select allowClear showSearch optionFilterProp="label" options={fundSelectOptions} />
+            </Form.Item>
+          ) : null}
+
           <Form.Item label={t('Charge récurrente')} name="isRecurring">
             <Select
               showSearch
@@ -510,6 +571,32 @@ export const SyndicCharges: React.FC = () => {
             }
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={t('Affecter à un fonds')}
+        open={Boolean(fundTarget)}
+        onCancel={() => setFundTarget(null)}
+        onOk={() => void handleAssignFund()}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
+        confirmLoading={fundSaving}
+      >
+        <Paragraph type="secondary">
+          {t(
+            'Les paiements enregistrés ensuite sur cet appel créditeront ce fonds en entier. Les paiements déjà reçus ne sont pas repris.'
+          )}
+        </Paragraph>
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          style={{ width: '100%' }}
+          placeholder={t('Aucun fonds (selon les postes du budget)')}
+          value={fundChoice}
+          onChange={value => setFundChoice(value)}
+          options={fundSelectOptions}
+        />
       </Modal>
 
       {effectiveTenantId && syndicId ? (

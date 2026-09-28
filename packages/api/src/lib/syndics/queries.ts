@@ -45,6 +45,13 @@ import {
   type IssuedChargeDocument
 } from './charge-receipts';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
+import {
+  assertFundCurrency,
+  assertFundOfSyndicate,
+  assertFundsOfSyndicate,
+  lockFundsTx,
+  recordFundMovementTx
+} from './fund-credits';
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
 // Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
 import { annualShareForPeriod } from './charge-schedule-periods';
@@ -1135,6 +1142,8 @@ async function createLotChargeCallTx(
     amount: number;
     currency: string;
     dueDate: Date;
+    /** Fonds qui recoit en entier ce qui est paye sur l'appel (verifie par l'appelant). */
+    fundId?: string | null;
   },
   issued: IssuedChargeDocument[] = []
 ) {
@@ -1144,6 +1153,7 @@ async function createLotChargeCallTx(
       syndicateId: data.syndicateId,
       lotId: data.lotId,
       ...(data.batchId ? { batchId: data.batchId } : {}),
+      ...(data.fundId ? { fundId: data.fundId } : {}),
       period: data.period,
       periodStart: data.bounds?.start ?? null,
       periodEnd: data.bounds?.end ?? null,
@@ -1193,11 +1203,17 @@ export async function createChargeCallAndUpdateStatus(
     amount: number;
     currency: string;
     dueDate: Date;
+    /** Appel verse en entier a ce fonds (appel de fonds travaux). */
+    fundId?: string | null;
     isRecurring?: boolean;
     recurrenceFrequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
     recurrenceCount?: number;
   }
 ): Promise<any> {
+  if (data.fundId) {
+    const fund = await assertFundOfSyndicate(prisma, tenantId, data.syndicateId, data.fundId);
+    assertFundCurrency(fund, data.currency);
+  }
   const isSimpleSingleCall =
     !data.applyToAllLots &&
     (!data.lotIds || data.lotIds.length === 0) &&
@@ -1234,7 +1250,8 @@ export async function createChargeCallAndUpdateStatus(
           bounds: baseBounds,
           amount: data.amount,
           currency: data.currency,
-          dueDate: data.dueDate
+          dueDate: data.dueDate,
+          fundId: data.fundId ?? null
         },
         issued
       )
@@ -1330,7 +1347,8 @@ export async function createChargeCallAndUpdateStatus(
             bounds,
             amount: data.amount,
             currency: data.currency,
-            dueDate
+            dueDate,
+            fundId: data.fundId ?? null
           },
           issued
         );
@@ -3738,10 +3756,19 @@ export async function createBudgetBySyndicate(
       amountForecast: number;
       distributionKey: 'GENERAL_SHARES' | 'SPECIAL_SHARES' | 'EQUAL' | 'MANUAL';
       accountId?: string;
+      /** Fonds alimente par ce poste (part du poste dans chaque paiement). */
+      fundId?: string | null;
     }>;
   }
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  const lineFunds = await assertFundsOfSyndicate(
+    prisma,
+    tenantId,
+    syndicateId,
+    data.lines.map(line => line.fundId)
+  );
+  lineFunds.forEach(fund => assertFundCurrency(fund, data.currency || 'XOF'));
 
   if (data.lines.some(line => line.accountId)) {
     const accountIds = Array.from(new Set(data.lines.map(line => line.accountId).filter(Boolean) as string[]));
@@ -3769,7 +3796,8 @@ export async function createBudgetBySyndicate(
           description: line.description,
           amountForecast: roundMoney(line.amountForecast),
           distributionKey: line.distributionKey as any,
-          accountId: line.accountId ?? undefined
+          accountId: line.accountId ?? undefined,
+          fundId: line.fundId ?? undefined
         }))
       }
     }
@@ -4669,13 +4697,24 @@ export async function createSyndicateFundBySyndicate(
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
-  const fund = await prisma.syndicateFund.create({
-    data: {
-      syndicateId,
-      name: data.name,
-      balance: roundMoney(data.initialBalance ?? 0),
-      currency: data.currency || 'XOF'
-    }
+  // Le solde d'un fonds est la somme de son journal : le solde initial est
+  // son mouvement d'ouverture, ecrit dans la meme transaction.
+  const initialBalance = roundMoney(data.initialBalance ?? 0);
+  const fund = await prisma.$transaction(async tx => {
+    const created = await tx.syndicateFund.create({
+      data: { syndicateId, name: data.name, balance: 0, currency: data.currency || 'XOF' }
+    });
+    if (initialBalance <= 0) return created;
+    const { fund: opened } = await recordFundMovementTx(tx, {
+      tenantId,
+      fundId: created.id,
+      direction: 'CREDIT',
+      amount: initialBalance,
+      label: "Solde d'ouverture",
+      sourceType: 'OPENING',
+      actorUserId: actorUserId ?? null
+    });
+    return opened;
   });
 
   if (actorUserId) {
@@ -4724,10 +4763,16 @@ export async function adjustSyndicateFundBalanceByTenant(
   tenantId: string,
   syndicateId: string,
   fundId: string,
-  data: { direction: 'CREDIT' | 'DEBIT'; amount: number; reason: string },
+  data: { direction: 'CREDIT' | 'DEBIT'; amount: number; reason: string; kind?: 'ADJUSTMENT' | 'EXPENSE' },
   actorUserId?: string | null
 ) {
   const fund = await findSyndicateFundOrThrow(tenantId, syndicateId, fundId);
+  // Une depense payee par le fonds le diminue toujours ; un ajustement va
+  // dans un sens comme dans l'autre.
+  const isExpense = data.kind === 'EXPENSE';
+  if (isExpense && data.direction !== 'DEBIT') {
+    throw unprocessableEntity('Une dépense diminue le fonds : choisissez un débit');
+  }
 
   const amount = roundMoney(data.amount);
 
@@ -4741,21 +4786,15 @@ export async function adjustSyndicateFundBalanceByTenant(
   // paiements de prestataires) puis trace dans `SyndicateFundMovement`, avec
   // le solde apres mouvement.
   const updated = await prisma.$transaction(async tx => {
-    const row = await tx.syndicateFund.update({
-      where: { id: fund.id },
-      data: { balance: data.direction === 'CREDIT' ? { increment: amount } : { decrement: amount } }
-    });
-    await tx.syndicateFundMovement.create({
-      data: {
-        tenantId,
-        fundId: fund.id,
-        direction: data.direction,
-        amount,
-        balanceAfter: roundMoney(Number(row.balance)),
-        label: data.reason,
-        sourceType: 'MANUAL_ADJUSTMENT',
-        createdById: actorUserId ?? null
-      }
+    await lockFundsTx(tx, [fund.id]);
+    const { fund: row } = await recordFundMovementTx(tx, {
+      tenantId,
+      fundId: fund.id,
+      direction: data.direction,
+      amount,
+      label: data.reason,
+      sourceType: isExpense ? 'MANUAL_EXPENSE' : 'MANUAL_ADJUSTMENT',
+      actorUserId: actorUserId ?? null
     });
     return row;
   });
@@ -4772,6 +4811,7 @@ export async function adjustSyndicateFundBalanceByTenant(
       entityId: fund.id,
       payload: {
         syndicateId,
+        kind: isExpense ? 'EXPENSE' : 'ADJUSTMENT',
         direction: data.direction,
         amount,
         reason: data.reason,
