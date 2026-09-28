@@ -1,7 +1,8 @@
 /**
  * Registre des lots comptes dans la reserve de l'abonnement (LotActivation).
  *
- * Definitions (docs/architecture/PLAN-ABONNEMENTS.md, D1, D2, D14) :
+ * Definitions (docs/architecture/PLAN-ABONNEMENTS.md, D1, D2, D14 ; pack
+ * Patrimoine, lot P1, 28/09) :
  * - LOGEMENT (RENTAL_UNIT) : un bien de l'agence — y compris un bien CLIENT
  *   (tenantId nul) rattache par un mandat actif ou un bail — qui est sorti du
  *   brouillon ET propose a la location (RENTAL, SHORT_TERM), ou qui porte un
@@ -12,19 +13,39 @@
  * - LOT DE PROGRAMME (PROGRAM_LOT) : SiteLot d'un chantier PLANNED,
  *   IN_PROGRESS ou SUSPENDED. A la bascule au patrimoine il devient un bien :
  *   `transferProgramLotTx` ferme PL:<id> et ouvre P:<propertyId> (solde nul).
+ * - BIEN DETENU (HELD_PROPERTY) : bien `tenantId = <agence>`,
+ *   `ownershipType = 'TENANT'`, statut ni SOLD ni ARCHIVED (un brouillon
+ *   compte : un proprietaire ne publie jamais), sans `containerChildren`
+ *   (immeuble decoupe : ses unites comptent) et sans `ownershipShares` (une
+ *   indivision est geree pour des proprietaires tiers, pas detenue). Ne
+ *   qualifie en HELD_PROPERTY que si l'agence detient un pack en vigueur qui
+ *   apporte la capacite BIENS_DETENUS (`tenantCountsHeldProperties`) — sinon
+ *   ce bien reste hors reserve comme avant le pack Patrimoine. Compte dans
+ *   BIENS_DETENUS, jamais dans LOTS : un bien n'est jamais compte deux fois.
  *
  * Une unite physique compte UNE fois par agence : sa cle est P:<propertyId>
- * des qu'un bien existe, sinon SL:<syndicateLotId> ou PL:<siteLotId>.
+ * des qu'un bien existe, sinon SL:<syndicateLotId> ou PL:<siteLotId>. Quand
+ * une meme unite qualifie a plusieurs titres, la priorite est logement >
+ * copropriete > programme > bien detenu (`KIND_PRIORITY`) : un bien CLIENT
+ * (tenantId nul) qui entre sous mandat ou bail reste/devient RENTAL_UNIT ; un
+ * bien detenu en propre (tenantId = agence) ne devient JAMAIS RENTAL_UNIT,
+ * loue ou non — un lot de programme ouvert ou de copropriete l'emporte
+ * toujours sur le bien detenu, mais jamais un bail.
  *
  * Vague 1 : ce registre est rempli par la reprise et `reconcileLotActivations`.
  * Vague 2 : les services metier appellent `activateLotTx` / `deactivateLotTx`
  * / `transferProgramLotTx` au fil de l'eau (dans leur propre transaction).
+ * Lot P1 : une activation ouverte dont la nature ne correspond plus a la
+ * nature voulue (ex. reclassement RENTAL_UNIT -> HELD_PROPERTY quand le pack
+ * Patrimoine est ajoute) est fermee (raison RECLASSIFIED) puis rouverte avec
+ * la bonne nature, dans la meme transaction, fermeture avant ouverture
+ * (index unique partiel sur l'activation OUVERTE).
  */
 
-import { LotKind, Prisma, PropertyStatus } from '@prisma/client';
+import { CapacityKey, LotKind, Prisma, PropertyStatus } from '@prisma/client';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { BadRequestError } from '../middleware/error-middleware';
-import { checkQuota, QuotaEvaluation } from '../lib/subscription';
+import { CapacityKeyCode, checkQuota, QuotaEvaluation } from '../lib/subscription';
 
 type Db = PrismaTransactionClient | typeof prisma;
 
@@ -44,30 +65,68 @@ export const ACTIVE_SITE_STATUSES = ['PLANNED', 'IN_PROGRESS', 'SUSPENDED'] as c
 export const MAIN_COPRO_LOT_TYPES = ['APARTMENT', 'OFFICE', 'COMMERCIAL'] as const;
 /** Statuts d'un bien qui ne comptent jamais sans bail actif. */
 const NON_COUNTING_PROPERTY_STATUSES: PropertyStatus[] = ['DRAFT', 'SOLD', 'ARCHIVED'];
+/** Statuts d'un bien detenu qui ne comptent jamais (un brouillon compte, D1 Patrimoine). */
+const NON_COUNTING_HELD_STATUSES: PropertyStatus[] = ['SOLD', 'ARCHIVED'];
 const RENTAL_MODES = ['RENTAL', 'SHORT_TERM'] as const;
 
+/**
+ * Vrai si l'agence detient un pack en vigueur qui apporte la capacite
+ * BIENS_DETENUS (Patrimoine Essentiel ou Pro). Lit directement les
+ * SubscriptionItem (pas `getEntitlements`) pour eviter tout aller-retour
+ * avec subscription-v2-service, qui importe deja ce module.
+ */
+export async function tenantCountsHeldProperties(db: Db, tenantId: string, now: Date = new Date()): Promise<boolean> {
+  const items = await db.subscriptionItem.findMany({
+    where: {
+      tenantId,
+      status: { not: 'ENDED' },
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      catalogItem: { kind: 'PACK' }
+    },
+    select: {
+      catalogItem: {
+        select: { capacities: { where: { capacityKey: CapacityKey.BIENS_DETENUS }, select: { amount: true } } }
+      }
+    }
+  });
+  return items.some(i => i.catalogItem.capacities.some(c => c.amount > 0));
+}
+
 /** Cle d'unite : P:<propertyId> des qu'un bien existe, sinon SL:/PL:. */
-export function unitKeyFor(ref: { propertyId?: string | null; syndicateLotId?: string | null; siteLotId?: string | null }): string {
+export function unitKeyFor(ref: {
+  propertyId?: string | null;
+  syndicateLotId?: string | null;
+  siteLotId?: string | null;
+}): string {
   if (ref.propertyId) return `P:${ref.propertyId}`;
   if (ref.syndicateLotId) return `SL:${ref.syndicateLotId}`;
   if (ref.siteLotId) return `PL:${ref.siteLotId}`;
   throw new BadRequestError("Lot sans identifiant : impossible d'en déduire la clé d'unité.");
 }
 
-/** Priorite quand une meme unite qualifie a plusieurs titres : logement, puis copropriete, puis programme. */
-const KIND_PRIORITY: Record<LotKind, number> = { RENTAL_UNIT: 0, COPRO_LOT: 1, PROGRAM_LOT: 2 };
+/** Priorite quand une meme unite qualifie a plusieurs titres : logement, puis copropriete, puis programme, puis bien detenu. */
+const KIND_PRIORITY: Record<LotKind, number> = { RENTAL_UNIT: 0, COPRO_LOT: 1, PROGRAM_LOT: 2, HELD_PROPERTY: 3 };
 
 /**
  * Unites qui DEVRAIENT compter aujourd'hui pour l'agence, calculees depuis les
  * tables metier (D1, D2, D14), dedoublonnees par cle d'unite.
  */
-export async function computeQualifyingUnits(db: Db, tenantId: string, scope?: ResolvedLotScope): Promise<LotUnitRef[]> {
+export async function computeQualifyingUnits(
+  db: Db,
+  tenantId: string,
+  scope?: ResolvedLotScope
+): Promise<LotUnitRef[]> {
   // Perimetre (appel au fil de l'eau) : seulement les unites touchees, mais
   // TOUS les titres de chacune (un bien peut etre logement ET lot de copropriete).
   const propertyScope = scope ? { id: { in: scope.propertyIds } } : {};
-  const coproScope = scope ? { OR: [{ id: { in: scope.syndicateLotIds } }, { propertyId: { in: scope.propertyIds } }] } : {};
-  const programScope = scope ? { OR: [{ id: { in: scope.siteLotIds } }, { propertyId: { in: scope.propertyIds } }] } : {};
-  const [properties, coproLots, programLots] = await Promise.all([
+  const coproScope = scope
+    ? { OR: [{ id: { in: scope.syndicateLotIds } }, { propertyId: { in: scope.propertyIds } }] }
+    : {};
+  const programScope = scope
+    ? { OR: [{ id: { in: scope.siteLotIds } }, { propertyId: { in: scope.propertyIds } }] }
+    : {};
+  const [properties, coproLots, programLots, countsHeld] = await Promise.all([
     db.property.findMany({
       where: {
         ...propertyScope,
@@ -80,9 +139,11 @@ export async function computeQualifyingUnits(db: Db, tenantId: string, scope?: R
       },
       select: {
         id: true,
+        tenantId: true,
         status: true,
         transactionModes: true,
-        _count: { select: { containerChildren: true } },
+        ownershipType: true,
+        _count: { select: { containerChildren: true, ownershipShares: true } },
         rentalLeases: { where: { tenant_id: tenantId, status: 'ACTIVE' }, select: { id: true }, take: 1 },
         siteLot: { select: { id: true, site: { select: { status: true, tenantId: true } } } }
       }
@@ -98,7 +159,8 @@ export async function computeQualifyingUnits(db: Db, tenantId: string, scope?: R
     db.siteLot.findMany({
       where: { ...programScope, tenantId, site: { tenantId, status: { in: [...ACTIVE_SITE_STATUSES] } } },
       select: { id: true, propertyId: true }
-    })
+    }),
+    tenantCountsHeldProperties(db, tenantId)
   ]);
 
   const units = new Map<string, LotUnitRef>();
@@ -129,10 +191,24 @@ export async function computeQualifyingUnits(db: Db, tenantId: string, scope?: R
       !!p.siteLot &&
       p.siteLot.site.tenantId === tenantId &&
       (ACTIVE_SITE_STATUSES as readonly string[]).includes(p.siteLot.site.status);
-    if (hasActiveLease || offeredForRent) {
+    // Bien detenu en propre (pack Patrimoine) : jamais RENTAL_UNIT, loue ou
+    // non (seul un bien CLIENT sous mandat/bail est un logement) ; un lot de
+    // programme ouvert ou de copropriete garde priorite sur le bien detenu
+    // (KIND_PRIORITY).
+    const isOwnHeld =
+      countsHeld &&
+      p.tenantId === tenantId &&
+      p.ownershipType === 'TENANT' &&
+      p._count.ownershipShares === 0 &&
+      !NON_COUNTING_HELD_STATUSES.includes(p.status);
+    if ((hasActiveLease || offeredForRent) && !isOwnHeld) {
       offer({ kind: 'RENTAL_UNIT', unitKey: `P:${p.id}`, propertyId: p.id, siteLotId: p.siteLot?.id ?? null });
-    } else if (fromOpenSite && p.siteLot) {
+    }
+    if (fromOpenSite && p.siteLot) {
       offer({ kind: 'PROGRAM_LOT', unitKey: `P:${p.id}`, propertyId: p.id, siteLotId: p.siteLot.id });
+    }
+    if (isOwnHeld) {
+      offer({ kind: 'HELD_PROPERTY', unitKey: `P:${p.id}`, propertyId: p.id, siteLotId: p.siteLot?.id ?? null });
     }
   }
   for (const lot of coproLots) {
@@ -157,9 +233,14 @@ export async function computeQualifyingUnits(db: Db, tenantId: string, scope?: R
 
 // ------------------------------------------------------------------ compteurs
 
-/** Lots actuellement comptes (activations ouvertes). */
+/** Lots actuellement comptes (activations ouvertes), hors biens detenus (capacite BIENS_DETENUS a part). */
 export async function countActiveLots(db: Db, tenantId: string): Promise<number> {
-  return db.lotActivation.count({ where: { tenantId, deactivatedAt: null } });
+  return db.lotActivation.count({ where: { tenantId, deactivatedAt: null, kind: { not: 'HELD_PROPERTY' } } });
+}
+
+/** Biens detenus en propre actuellement comptes (activations ouvertes, capacite BIENS_DETENUS). */
+export async function countHeldProperties(db: Db, tenantId: string): Promise<number> {
+  return db.lotActivation.count({ where: { tenantId, deactivatedAt: null, kind: 'HELD_PROPERTY' } });
 }
 
 /** Coproprietes actives (D14). */
@@ -214,7 +295,10 @@ export async function activateLotTx(
     // (Dans une transaction interactive Postgres, l'echec annule la
     // transaction : l'appelant doit alors rejouer, comme pour tout P2002.)
     if (isUniqueViolation(error)) {
-      const again = await tx.lotActivation.findFirst({ where: { tenantId, unitKey, deactivatedAt: null }, select: { id: true } });
+      const again = await tx.lotActivation.findFirst({
+        where: { tenantId, unitKey, deactivatedAt: null },
+        select: { id: true }
+      });
       if (again) return { activationId: again.id, created: false };
     }
     throw error;
@@ -263,12 +347,70 @@ export interface ReconcileResult {
   qualifying: number;
   added: LotUnitRef[];
   removed: Array<{ unitKey: string; kind: LotKind }>;
+  /** Activations ouvertes dont la nature a change (ex. RENTAL_UNIT -> HELD_PROPERTY), fermees puis rouvertes. */
+  reclassified: number;
   byKind: Record<LotKind, number>;
 }
 
 /**
+ * Aligne le registre sur les tables metier, DANS la transaction `tx` :
+ * ouvre les unites qui qualifient et n'y sont pas, ferme (raison RECONCILE)
+ * celles qui ne qualifient plus, et reclasse (ferme puis rouvre, raison
+ * RECLASSIFIED) celles dont la nature a change — ex. un bien detenu compte
+ * en RENTAL_UNIT avant le pack Patrimoine, en HELD_PROPERTY apres.
+ * `dryRun` calcule sans ecrire.
+ */
+export async function reconcileLotActivationsTx(
+  tx: Db,
+  tenantId: string,
+  options: { dryRun?: boolean; actorUserId?: string | null } = {}
+): Promise<ReconcileResult> {
+  const qualifying = await computeQualifyingUnits(tx, tenantId);
+  const open = await tx.lotActivation.findMany({
+    where: { tenantId, deactivatedAt: null },
+    select: { unitKey: true, kind: true }
+  });
+  const openByKey = new Map(open.map(a => [a.unitKey, a.kind]));
+  const qualifyingByKey = new Map(qualifying.map(u => [u.unitKey, u]));
+
+  const added = qualifying.filter(u => !openByKey.has(u.unitKey));
+  const removed = open.filter(a => !qualifyingByKey.has(a.unitKey));
+  const reclassified = qualifying.filter(u => {
+    const currentKind = openByKey.get(u.unitKey);
+    return currentKind !== undefined && currentKind !== u.kind;
+  });
+
+  if (!options.dryRun && (added.length > 0 || removed.length > 0 || reclassified.length > 0)) {
+    // Fermer AVANT d'ouvrir (index unique partiel sur l'activation ouverte) :
+    // retraits, puis fermeture des reclassements, puis leur reouverture, puis les ajouts.
+    for (const activation of removed) {
+      // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+      await deactivateLotTx(tx, tenantId, activation.unitKey, 'RECONCILE');
+    }
+    for (const unit of reclassified) {
+      // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+      await deactivateLotTx(tx, tenantId, unit.unitKey, 'RECLASSIFIED');
+    }
+    for (const unit of reclassified) {
+      // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+      await activateLotTx(tx, tenantId, unit, options.actorUserId ?? null);
+    }
+    for (const unit of added) {
+      // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+      await activateLotTx(tx, tenantId, unit, options.actorUserId ?? null);
+    }
+  }
+
+  const byKind: Record<LotKind, number> = { RENTAL_UNIT: 0, COPRO_LOT: 0, PROGRAM_LOT: 0, HELD_PROPERTY: 0 };
+  for (const unit of qualifying) byKind[unit.kind] += 1;
+
+  return { tenantId, qualifying: qualifying.length, added, removed, reclassified: reclassified.length, byKind };
+}
+
+/**
  * Aligne le registre sur les tables metier : ouvre les unites qui qualifient
- * et n'y sont pas, ferme (raison RECONCILE) celles qui ne qualifient plus.
+ * et n'y sont pas, ferme (raison RECONCILE) celles qui ne qualifient plus,
+ * reclasse celles dont la nature a change (voir `reconcileLotActivationsTx`).
  * `dryRun` calcule sans ecrire. Utilise par la reprise ; utilisable par une
  * tache de controle (vague 2).
  */
@@ -276,34 +418,8 @@ export async function reconcileLotActivations(
   tenantId: string,
   options: { dryRun?: boolean; actorUserId?: string | null } = {}
 ): Promise<ReconcileResult> {
-  const qualifying = await computeQualifyingUnits(prisma, tenantId);
-  const open = await prisma.lotActivation.findMany({
-    where: { tenantId, deactivatedAt: null },
-    select: { unitKey: true, kind: true }
-  });
-  const openKeys = new Set(open.map(a => a.unitKey));
-  const qualifyingKeys = new Set(qualifying.map(u => u.unitKey));
-
-  const added = qualifying.filter(u => !openKeys.has(u.unitKey));
-  const removed = open.filter(a => !qualifyingKeys.has(a.unitKey));
-
-  if (!options.dryRun && (added.length > 0 || removed.length > 0)) {
-    await prisma.$transaction(async tx => {
-      for (const unit of added) {
-        // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
-        await activateLotTx(tx, tenantId, unit, options.actorUserId ?? null);
-      }
-      for (const activation of removed) {
-        // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
-        await deactivateLotTx(tx, tenantId, activation.unitKey, 'RECONCILE');
-      }
-    }, { timeout: 60_000 });
-  }
-
-  const byKind: Record<LotKind, number> = { RENTAL_UNIT: 0, COPRO_LOT: 0, PROGRAM_LOT: 0 };
-  for (const unit of qualifying) byKind[unit.kind] += 1;
-
-  return { tenantId, qualifying: qualifying.length, added, removed, byKind };
+  if (options.dryRun) return reconcileLotActivationsTx(prisma, tenantId, options);
+  return prisma.$transaction(tx => reconcileLotActivationsTx(tx, tenantId, options), { timeout: 60_000 });
 }
 
 // ------------------------------------------------------------------ au fil de l'eau (vague 2)
@@ -326,8 +442,9 @@ export interface ResolvedLotScope {
   siteLotIds: string[];
 }
 
-const compact = (values: Array<string | null | undefined> | undefined): string[] =>
-  [...new Set((values ?? []).filter((v): v is string => typeof v === 'string' && v.length > 0))];
+const compact = (values: Array<string | null | undefined> | undefined): string[] => [
+  ...new Set((values ?? []).filter((v): v is string => typeof v === 'string' && v.length > 0))
+];
 
 /**
  * Deplie un perimetre : lots des coproprietes et chantiers cites, biens de
@@ -405,15 +522,26 @@ export interface LotSyncOptions {
 export interface LotSyncResult {
   activated: string[];
   deactivated: string[];
-  /** Evaluation du quota LOTS (null quand rien n'est ajoute). */
-  quota: QuotaEvaluation | null;
+  /** Unites fermees puis rouvertes sous une autre nature (ex. RENTAL_UNIT -> HELD_PROPERTY). */
+  reclassified: string[];
+  /**
+   * Evaluation de quota par capacite touchee (LOTS et/ou BIENS_DETENUS),
+   * seulement pour celles dont l'ajout net est positif. Vide quand rien
+   * n'est ajoute net (une bascule PL: -> P: ou un reclassement pur ne
+   * consomme aucune des deux reserves).
+   */
+  quotas: Partial<Record<CapacityKeyCode, QuotaEvaluation>>;
 }
 
 /**
  * Aligne le registre sur les tables metier pour les unites d'un perimetre,
  * DANS la transaction de l'operation. Ordre : verrou d'agence, calcul,
- * controle de quota sur l'ajout NET (une bascule PL: -> P: ne consomme rien),
- * fermetures puis ouvertures.
+ * controle de quota par capacite sur l'ajout NET (LOTS = natures hors
+ * HELD_PROPERTY ajoutees moins retirees ; BIENS_DETENUS = HELD_PROPERTY
+ * ajoutees moins retirees — une bascule PL: -> P: ou un reclassement pur ne
+ * consomme rien), fermetures (retraits puis reclassements) puis ouvertures
+ * (reclassements puis ajouts) : toute fermeture d'une cle precede sa
+ * reouverture (index unique partiel sur l'activation ouverte).
  *
  * Le registre est TOUJOURS tenu, quel que soit SUBSCRIPTION_ENFORCEMENT ;
  * seul le refus en depend (`checkQuota`) : en `enforce` avec la politique
@@ -430,7 +558,7 @@ export async function syncLotActivationsTx(
   if (!options.alreadyLocked) await lockTenantLotsTx(tx, tenantId);
   const resolved = await resolveLotScope(tx, tenantId, scope);
   if (resolved.propertyIds.length + resolved.syndicateLotIds.length + resolved.siteLotIds.length === 0) {
-    return { activated: [], deactivated: [], quota: null };
+    return { activated: [], deactivated: [], reclassified: [], quotas: {} };
   }
 
   const desired = await computeQualifyingUnits(tx, tenantId, resolved);
@@ -450,18 +578,35 @@ export async function syncLotActivationsTx(
         { siteLotId: { in: resolved.siteLotIds } }
       ]
     },
-    select: { unitKey: true }
+    select: { unitKey: true, kind: true }
   });
-  const openKeys = new Set(open.map(a => a.unitKey));
-  const desiredKeys = new Set(desired.map(u => u.unitKey));
-  const toAdd = desired.filter(u => !openKeys.has(u.unitKey));
-  const toRemove = [...openKeys].filter(key => !desiredKeys.has(key));
+  const openByKey = new Map(open.map(a => [a.unitKey, a.kind]));
+  const desiredByKey = new Map(desired.map(u => [u.unitKey, u]));
 
-  let quota: QuotaEvaluation | null = null;
-  if (toAdd.length > 0) {
+  const toAdd = desired.filter(u => !openByKey.has(u.unitKey));
+  const toReclassify = desired.filter(u => {
+    const currentKind = openByKey.get(u.unitKey);
+    return currentKind !== undefined && currentKind !== u.kind;
+  });
+  const toRemove = [...openByKey.keys()].filter(key => !desiredByKey.has(key));
+
+  const isHeld = (kind: LotKind) => kind === 'HELD_PROPERTY';
+  const closingKinds = [
+    ...toRemove.map(key => openByKey.get(key)!),
+    ...toReclassify.map(u => openByKey.get(u.unitKey)!)
+  ];
+  const openingKinds = [...toAdd.map(u => u.kind), ...toReclassify.map(u => u.kind)];
+  const netFor = (predicate: (kind: LotKind) => boolean) =>
+    openingKinds.filter(predicate).length - closingKinds.filter(predicate).length;
+  const netLots = netFor(kind => !isHeld(kind));
+  const netHeld = netFor(isHeld);
+
+  const quotas: Partial<Record<CapacityKeyCode, QuotaEvaluation>> = {};
+  if (netLots > 0 || netHeld > 0) {
     const { getEntitlements } = await import('./subscription-v2-service');
     const entitlements = await getEntitlements(tenantId, { db: tx });
-    quota = checkQuota(entitlements, 'LOTS', toAdd.length - toRemove.length);
+    if (netLots > 0) quotas.LOTS = checkQuota(entitlements, 'LOTS', netLots);
+    if (netHeld > 0) quotas.BIENS_DETENUS = checkQuota(entitlements, 'BIENS_DETENUS', netHeld);
   }
 
   const at = new Date();
@@ -469,15 +614,28 @@ export async function syncLotActivationsTx(
     // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
     await deactivateLotTx(tx, tenantId, unitKey, options.reason ?? 'NO_LONGER_QUALIFIES', at);
   }
+  for (const unit of toReclassify) {
+    // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+    await deactivateLotTx(tx, tenantId, unit.unitKey, 'RECLASSIFIED', at);
+  }
+  for (const unit of toReclassify) {
+    // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+    await activateLotTx(tx, tenantId, unit, options.actorUserId ?? null);
+  }
   for (const unit of toAdd) {
     // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
     await activateLotTx(tx, tenantId, unit, options.actorUserId ?? null);
   }
-  if (toAdd.length > 0 || toRemove.length > 0) {
+  if (toAdd.length > 0 || toRemove.length > 0 || toReclassify.length > 0) {
     const { invalidateEntitlements } = await import('./subscription-v2-service');
     invalidateEntitlements(tenantId);
   }
-  return { activated: toAdd.map(u => u.unitKey), deactivated: toRemove, quota };
+  return {
+    activated: toAdd.map(u => u.unitKey),
+    deactivated: toRemove,
+    reclassified: toReclassify.map(u => u.unitKey),
+    quotas
+  };
 }
 
 /**

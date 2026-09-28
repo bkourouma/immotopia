@@ -35,7 +35,8 @@ function withCatalog(row: Row) {
 
 function matchIn(value: unknown, filter: unknown) {
   if (filter === undefined) return true;
-  if (filter && typeof filter === 'object' && Array.isArray((filter as Row).in)) return (filter as Row).in.includes(value);
+  if (filter && typeof filter === 'object' && Array.isArray((filter as Row).in))
+    return (filter as Row).in.includes(value);
   return value === filter;
 }
 
@@ -59,6 +60,13 @@ function matchDate(value: Date | null, where: Row, key: string) {
   return true;
 }
 
+/** `where: { catalogItem: { kind: 'PACK' } }` (tenantCountsHeldProperties). */
+function matchCatalogWhere(row: Row, filter?: Row) {
+  if (!filter) return true;
+  const catalog = catalogById(row.catalogItemId);
+  return !filter.kind || catalog.kind === filter.kind;
+}
+
 function matchStatus(row: Row, where: Row) {
   if (where.status === undefined) return true;
   if (typeof where.status === 'string') return row.status === where.status;
@@ -79,13 +87,36 @@ const fake: Row = {
     findMany: jest.fn(async ({ where }: Row) => CATALOG.filter(c => where.code.in.includes(c.code)))
   },
   subscriptionItem: {
-    findMany: jest.fn(async ({ where }: Row) => db.items.filter(i => matchItem(i, where)).map(withCatalog)),
+    findMany: jest.fn(async ({ where, select }: Row) => {
+      const rows = db.items.filter(i => matchItem(i, where) && matchCatalogWhere(i, where.catalogItem));
+      // tenantCountsHeldProperties : select.catalogItem.select.capacities.where.capacityKey (Prisma filtre la relation).
+      const capacityKey = select?.catalogItem?.select?.capacities?.where?.capacityKey;
+      if (capacityKey) {
+        return rows.map(r => ({
+          catalogItem: {
+            capacities: catalogById(r.catalogItemId).capacities.filter((c: Row) => c.capacityKey === capacityKey)
+          }
+        }));
+      }
+      return rows.map(withCatalog);
+    }),
     findFirst: jest.fn(async ({ where }: Row) => {
       const row = db.items.find(i => i.id === where.id && i.tenantId === where.tenantId);
       return row ? withCatalog(row) : null;
     }),
     create: jest.fn(async ({ data }: Row) => {
-      const row = { id: id('item'), createdAt: new Date(), discountPercent: 0, unitSetupPrice: 0, endsAt: null, billedThrough: null, replacesItemId: null, parentItemId: null, endReason: null, ...data };
+      const row = {
+        id: id('item'),
+        createdAt: new Date(),
+        discountPercent: 0,
+        unitSetupPrice: 0,
+        endsAt: null,
+        billedThrough: null,
+        replacesItemId: null,
+        parentItemId: null,
+        endReason: null,
+        ...data
+      };
       db.items.push(row);
       return withCatalog(row);
     }),
@@ -123,11 +154,20 @@ const fake: Row = {
       db.lines.push(row);
       return row;
     }),
-    findMany: jest.fn(async ({ where }: Row) => db.lines.filter(l => l.tenantId === where.tenantId && l.invoiceId === null))
+    findMany: jest.fn(async ({ where }: Row) =>
+      db.lines.filter(l => l.tenantId === where.tenantId && l.invoiceId === null)
+    )
   },
   usageSnapshot: {
     groupBy: jest.fn(async () => db.peaks ?? [])
   },
+  // Registre des lots : aucun bien dans ce faux client, seulement le pack Patrimoine
+  // et le reclassement declenche (reconcileHeldPropertiesIfChangedTx). Les listes vides
+  // suffisent : computeQualifyingUnits() rend [] et reconcileLotActivationsTx n'ecrit rien.
+  property: { findMany: jest.fn(async () => []) },
+  syndicateLot: { findMany: jest.fn(async () => []) },
+  siteLot: { findMany: jest.fn(async () => []) },
+  lotActivation: { findMany: jest.fn(async () => []) },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
 
@@ -194,7 +234,15 @@ function seed(status: 'ACTIVE' | 'TRIALING', packs: string[]) {
     });
     for (const m of c.modules) {
       if (!db.modules.some(r => r.moduleKey === m)) {
-        db.modules.push({ id: id('tm'), tenantId: T, moduleKey: m, enabled: true, source: 'PACK', expiresAt: null, disabledAt: null });
+        db.modules.push({
+          id: id('tm'),
+          tenantId: T,
+          moduleKey: m,
+          enabled: true,
+          source: 'PACK',
+          expiresAt: null,
+          disabledAt: null
+        });
       }
     }
   }
@@ -213,7 +261,9 @@ describe('addSubscriptionItem (D7 : ajout immediat, prorata)', () => {
   it('+3 blocs de lots le 16 d’un mois de 30 jours -> ligne PRORATA de 2 250 en attente', async () => {
     seed('ACTIVE', ['AGENCE']);
     const result = await addSubscriptionItem(T, { code: 'EXT_LOTS_10', quantity: 3 }, 'admin-1');
-    expect(result.items).toEqual([expect.objectContaining({ code: 'EXT_LOTS_10', quantity: 3, unitMonthlyPrice: 1_500 })]);
+    expect(result.items).toEqual([
+      expect.objectContaining({ code: 'EXT_LOTS_10', quantity: 3, unitMonthlyPrice: 1_500 })
+    ]);
     expect(result.pendingLines).toEqual([expect.objectContaining({ kind: 'PRORATA', amount: 2_250 })]);
     expect(db.lines[0]).toMatchObject({ invoiceId: null, tenantId: T });
     expect(auditEvents.map(e => e.actionKey)).toEqual(['SUBSCRIPTION_ITEM_ADDED']);
@@ -236,7 +286,7 @@ describe('addSubscriptionItem (D7 : ajout immediat, prorata)', () => {
     expect(result.pendingLines).toEqual([]);
   });
 
-  it("Integre + Agence refuse (400) ; pack deja souscrit (409) ; extension sans son pack (400)", async () => {
+  it('Integre + Agence refuse (400) ; pack deja souscrit (409) ; extension sans son pack (400)', async () => {
     seed('ACTIVE', ['INTEGRE']);
     await expect(addSubscriptionItem(T, { code: 'AGENCE' }, 'admin-1')).rejects.toMatchObject({ statusCode: 400 });
     await expect(addSubscriptionItem(T, { code: 'INTEGRE' }, 'admin-1')).rejects.toMatchObject({ statusCode: 409 });
@@ -265,11 +315,21 @@ describe('removeSubscriptionItem (D7 : a l’echeance, sans remboursement)', () 
   it('immediat : exige une raison, puis termine l’element et retire le module (lecture seule)', async () => {
     seed('ACTIVE', ['AGENCE', 'SYNDIC']);
     const syndic = db.items[1];
-    await expect(removeSubscriptionItem(T, syndic.id, { immediate: true }, 'admin-1')).rejects.toMatchObject({ statusCode: 400 });
-    const result = await removeSubscriptionItem(T, syndic.id, { immediate: true, reason: 'Résiliation amiable' }, 'admin-1');
+    await expect(removeSubscriptionItem(T, syndic.id, { immediate: true }, 'admin-1')).rejects.toMatchObject({
+      statusCode: 400
+    });
+    const result = await removeSubscriptionItem(
+      T,
+      syndic.id,
+      { immediate: true, reason: 'Résiliation amiable' },
+      'admin-1'
+    );
     expect(result.immediate).toBe(true);
     expect(syndic.status).toBe('ENDED');
-    expect(db.modules.find(m => m.moduleKey === 'MODULE_SYNDIC')).toMatchObject({ enabled: false, disabledAt: ON_16TH });
+    expect(db.modules.find(m => m.moduleKey === 'MODULE_SYNDIC')).toMatchObject({
+      enabled: false,
+      disabledAt: ON_16TH
+    });
   });
 
   it('retrait partiel d’extension : le reste repart au meme prix a l’echeance', async () => {
@@ -277,13 +337,20 @@ describe('removeSubscriptionItem (D7 : a l’echeance, sans remboursement)', () 
     await addSubscriptionItem(T, { code: 'EXT_LOTS_10', quantity: 5 }, 'admin-1');
     const ext = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_LOTS_10')!;
     const result = await removeSubscriptionItem(T, ext.id, { quantity: 2 }, 'admin-1');
-    expect(result.remainder).toMatchObject({ quantity: 3, unitMonthlyPrice: 1_500, status: 'SCHEDULED', startsAt: PERIOD_END });
+    expect(result.remainder).toMatchObject({
+      quantity: 3,
+      unitMonthlyPrice: 1_500,
+      status: 'SCHEDULED',
+      startsAt: PERIOD_END
+    });
     expect(ext.endsAt).toEqual(PERIOD_END);
   });
 
   it('element d’une autre agence : 404', async () => {
     seed('ACTIVE', ['AGENCE']);
-    await expect(removeSubscriptionItem('autre-agence', db.items[0].id, {}, 'admin-1')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(removeSubscriptionItem('autre-agence', db.items[0].id, {}, 'admin-1')).rejects.toMatchObject({
+      statusCode: 404
+    });
   });
 });
 
@@ -299,11 +366,12 @@ describe('changePack (D7 : montee immediate avec avoir, descente a l’echeance)
       ['DISCOUNT', 1_495] // la remise de combinaison disparait pour la fin de periode
     ]);
     expect(db.items.filter(i => i.status === 'ENDED').length).toBe(2);
-    expect(db.modules.filter(m => m.enabled).map(m => m.moduleKey).sort()).toEqual([
-      'MODULE_AGENCY',
-      'MODULE_PROMOTER',
-      'MODULE_SYNDIC'
-    ]);
+    expect(
+      db.modules
+        .filter(m => m.enabled)
+        .map(m => m.moduleKey)
+        .sort()
+    ).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER', 'MODULE_SYNDIC']);
   });
 
   it('Integre -> Agence : programme a l’echeance, rien a facturer maintenant', async () => {
@@ -320,8 +388,24 @@ describe('syncTenantModulesTx', () => {
   it('ne touche pas une derogation OVERRIDE en vigueur ; en reprend une expiree', async () => {
     seed('ACTIVE', ['AGENCE']);
     db.modules.push(
-      { id: 'o1', tenantId: T, moduleKey: 'MODULE_PROMOTER', enabled: true, source: 'OVERRIDE', expiresAt: new Date('2026-12-01'), disabledAt: null },
-      { id: 'o2', tenantId: T, moduleKey: 'MODULE_SYNDIC', enabled: true, source: 'OVERRIDE', expiresAt: new Date('2026-09-01'), disabledAt: null }
+      {
+        id: 'o1',
+        tenantId: T,
+        moduleKey: 'MODULE_PROMOTER',
+        enabled: true,
+        source: 'OVERRIDE',
+        expiresAt: new Date('2026-12-01'),
+        disabledAt: null
+      },
+      {
+        id: 'o2',
+        tenantId: T,
+        moduleKey: 'MODULE_SYNDIC',
+        enabled: true,
+        source: 'OVERRIDE',
+        expiresAt: new Date('2026-09-01'),
+        disabledAt: null
+      }
     );
     const result = await syncTenantModulesTx(fake as any, T);
     expect(result).toEqual({ enabled: [], disabled: ['MODULE_SYNDIC'] });
@@ -394,6 +478,58 @@ describe('extensions liees a leur pack (decision de Baba du 25/09)', () => {
   });
 });
 
+describe('Pack Patrimoine (lot P1) : reclassement et avoirs sur les changements de droit', () => {
+  it('ajout du pack : reconcileHeldPropertiesIfChangedTx recalcule le registre (registre interroge, meme sans bien)', async () => {
+    seed('ACTIVE', ['AGENCE']);
+    (fake.lotActivation.findMany as jest.Mock).mockClear();
+    await addSubscriptionItem(T, { code: 'PATRIMOINE_ESSENTIEL' }, 'admin-1');
+    // Le droit Patrimoine vient d'apparaitre (countedBefore=false -> countedAfter=true) :
+    // le registre est recalcule dans la meme transaction.
+    expect(fake.lotActivation.findMany).toHaveBeenCalled();
+  });
+
+  it('Essentiel + bloc de biens -> Pro : avoir Essentiel, avoir du bloc EXT_BIENS_10, prorata Pro', async () => {
+    seed('ACTIVE', ['PATRIMOINE_ESSENTIEL']);
+    await addSubscriptionItem(T, { code: 'EXT_BIENS_10', quantity: 2 }, 'admin-1');
+    const essentiel = db.items.find(i => catalogById(i.catalogItemId).code === 'PATRIMOINE_ESSENTIEL')!;
+    const bloc = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_BIENS_10')!;
+    expect(bloc.parentItemId).toBe(essentiel.id);
+
+    const result = await changePack(T, { fromCodes: ['PATRIMOINE_ESSENTIEL'], toCode: 'PATRIMOINE_PRO' }, 'admin-1');
+
+    expect(result).toMatchObject({ upgrade: true, immediate: true });
+    // Avoir Essentiel (9 900 x 15/30), avoir du bloc de biens (2 x 9 900 x 15/30), prorata Pro (29 900 x 15/30).
+    expect(result.pendingLines.map(l => [l.kind, l.amount])).toEqual([
+      ['CREDIT', -4_950],
+      ['CREDIT', -9_900],
+      ['PRORATA', 14_950]
+    ]);
+    // EXT_BIENS_10 n'est vendu qu'avec l'Essentiel (requiresAnyOf) : il part avec lui, pas de parent Pro.
+    expect(bloc).toMatchObject({ status: 'ENDED', endReason: 'PACK_REMOVED' });
+    expect(essentiel.status).toBe('ENDED');
+  });
+
+  it('retrait immediat du pack Patrimoine : le droit disparait, le registre est recalcule', async () => {
+    seed('ACTIVE', ['PATRIMOINE_ESSENTIEL']);
+    const essentiel = db.items[0];
+    (fake.lotActivation.findMany as jest.Mock).mockClear();
+    await removeSubscriptionItem(T, essentiel.id, { immediate: true, reason: 'Résiliation' }, 'admin-1');
+    // countedBefore=true (Patrimoine detenu) -> countedAfter=false : reclassement (lot P1).
+    expect(fake.lotActivation.findMany).toHaveBeenCalled();
+  });
+
+  it('Essentiel + Pro (meme tierGroup) refuse ; extension EXT_BIENS_10 sans Patrimoine refusee', async () => {
+    seed('ACTIVE', ['PATRIMOINE_ESSENTIEL']);
+    await expect(addSubscriptionItem(T, { code: 'PATRIMOINE_PRO' }, 'admin-1')).rejects.toMatchObject({
+      statusCode: 400
+    });
+    seed('ACTIVE', ['AGENCE']);
+    await expect(addSubscriptionItem(T, { code: 'EXT_BIENS_10' }, 'admin-1')).rejects.toMatchObject({
+      statusCode: 400
+    });
+  });
+});
+
 describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', () => {
   const ANNUAL_START = new Date('2026-01-15T00:00:00Z');
   const ANNUAL_END = new Date('2027-01-15T00:00:00Z');
@@ -409,6 +545,7 @@ describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', ()
     registerUsageProvider('LOTS', async () => lotsUsed);
     registerUsageProvider('COPROPRIETES', async () => 0);
     registerUsageProvider('CHANTIERS', async () => 0);
+    registerUsageProvider('BIENS_DETENUS', async () => 0);
   }
 
   it('fenetre mensuelle ancree sur le debut de la periode annuelle', () => {
@@ -445,7 +582,11 @@ describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', ()
 
   it('en MENSUEL, le depassement reste dans la facture de la periode', async () => {
     seedAnnual(112);
-    Object.assign(db.subscriptions[0], { billingCycle: 'MONTHLY', currentPeriodStart: PERIOD_START, currentPeriodEnd: PERIOD_END });
+    Object.assign(db.subscriptions[0], {
+      billingCycle: 'MONTHLY',
+      currentPeriodStart: PERIOD_START,
+      currentPeriodEnd: PERIOD_END
+    });
     const preview = await previewNextInvoice(T, { now: ON_16TH });
     expect(preview.overageBilling).toBe('IN_PERIOD_INVOICE');
     expect(preview.overageInvoice).toBeNull();

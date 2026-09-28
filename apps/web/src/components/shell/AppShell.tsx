@@ -3,7 +3,12 @@ import { App as AntApp, Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useDisabledMenuKeys, useFeatureAccess, useFilteredNavigation } from '../../hooks/useMenuAccess';
+import {
+  useDisabledMenuKeys,
+  useFeatureAccess,
+  useFilteredNavigation,
+  useOwnAssetsOnly
+} from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { getNavigation } from '../../navigation/model';
@@ -127,6 +132,9 @@ export const AppShell: React.FC = () => {
   const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
   const featureAccess = useFeatureAccess(navContext.tenantId, persona === 'collaborateur');
+  // Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : masque les
+  // entrées de gestion pour un tiers (mandat, relevés et comptes propriétaires).
+  const ownAssetsOnly = useOwnAssetsOnly(navContext.tenantId, persona === 'collaborateur');
 
   /**
    * « Mon patrimoine » (portail propriétaire, lot P5) : masqué par un réglage
@@ -160,7 +168,7 @@ export const AppShell: React.FC = () => {
     [disabledMenuKeys, ownerPatrimoineEnabled]
   );
 
-  const nav = useFilteredNavigation(personaNav, effectiveDisabledMenuKeys, featureAccess);
+  const nav = useFilteredNavigation(personaNav, effectiveDisabledMenuKeys, featureAccess, ownAssetsOnly);
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
   // SUBSCRIPTION_READ_ONLY, 409 QUOTA_EXCEEDED) traduits en message clair, sur

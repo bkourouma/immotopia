@@ -5,7 +5,7 @@ import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
 import { getMyDisabledMenus } from '../services/role-menu-service';
 import { getMenuEntitlements } from '../services/entitlements-service';
-import { applyFeatureAccess, featureAccessFromModules } from '../navigation/feature-access';
+import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../navigation/feature-access';
 import type { FeatureAccessMap } from '../navigation/feature-access';
 
 /**
@@ -87,6 +87,38 @@ export function useFeatureAccess(tenantId: string | null | undefined, enabled: b
 }
 
 /**
+ * Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : `true` quand
+ * le serveur l'applique (`enforcement === 'enforce'`) et que le seul module
+ * pleinement ouvert est MODULE_PATRIMOINE. Mêmes garde-fous que
+ * `useFeatureAccess` : rien n'est masqué avant la réponse, un échec réseau ne
+ * restreint pas, et `enabled` à faux évite tout appel.
+ */
+export function useOwnAssetsOnly(tenantId: string | null | undefined, enabled: boolean): boolean {
+  const [ownAssetsOnly, setOwnAssetsOnly] = useState(false);
+
+  useEffect(() => {
+    setOwnAssetsOnly(false);
+    if (!enabled || !tenantId) return;
+    let cancelled = false;
+
+    getMenuEntitlements(tenantId)
+      .then(entitlements => {
+        if (!cancelled)
+          setOwnAssetsOnly(entitlements?.enforcement === 'enforce' && Boolean(entitlements.ownAssetsOnly));
+      })
+      .catch(() => {
+        if (!cancelled) setOwnAssetsOnly(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, enabled]);
+
+  return ownAssetsOnly;
+}
+
+/**
  * Élague un groupe de navigation.
  *
  * Renvoie `null` quand le groupe entier disparaît — soit qu'il ait été coupé
@@ -120,16 +152,21 @@ function pruneGroup(persona: PersonaId, group: NavGroup, disabled: Set<string>):
 export function useFilteredNavigation(
   nav: PersonaNav | null,
   disabled: Set<string>,
-  featureAccess: FeatureAccessMap | null = null
+  featureAccess: FeatureAccessMap | null = null,
+  ownAssetsOnly = false
 ): PersonaNav | null {
   return useMemo(() => {
     if (!nav) return null;
-    if (disabled.size === 0 && !featureAccess) return nav;
+    if (disabled.size === 0 && !featureAccess && !ownAssetsOnly) return nav;
 
-    // Abonnement puis rôle : une entrée non comprise disparaît, une entrée
-    // d'un module retiré est marquée « Lecture seule » (voir feature-access).
+    // Abonnement, puis barrière « détenu en propre », puis rôle : une entrée
+    // non comprise disparaît, une entrée réservée à la gestion pour un tiers
+    // disparaît pour un compte Patrimoine seul, une entrée d'un module retiré
+    // est marquée « Lecture seule » (voir feature-access).
     const tree = nav.tree
       .map(group => (featureAccess ? applyFeatureAccess(group, featureAccess) : group))
+      .filter((group): group is NavGroup => group !== null)
+      .map(group => applyOwnAssetsOnly(group, ownAssetsOnly))
       .filter((group): group is NavGroup => group !== null)
       .map(group => pruneGroup(nav.id, group, disabled))
       .filter((group): group is NavGroup => group !== null);
@@ -143,5 +180,5 @@ export function useFilteredNavigation(
     const tabs = nav.tabs.filter(tab => tab.href === MORE_TAB_HREF || remainingHrefs.has(tab.href));
 
     return { ...nav, tree, tabs };
-  }, [nav, disabled, featureAccess]);
+  }, [nav, disabled, featureAccess, ownAssetsOnly]);
 }

@@ -458,6 +458,8 @@
   "Le mandant doit etre coproprietaire d'au moins un lot de la copropriete": "The grantor must own at least one unit in the co-ownership",
   "Le mandataire ne peut pas etre le mandant": "The proxy holder cannot be the grantor",
   "Le mode simulateur n'est pas disponible sur ce serveur.": "Simulator mode is not available on this server.",
+  "Le pack Patrimoine couvre les biens détenus en propre : la création d’un mandat exige le pack Agence.": "The Patrimoine pack covers wholly-owned properties: creating a mandate requires the Agence pack.",
+  "Le pack Patrimoine couvre les biens détenus en propre : rattacher un propriétaire tiers exige le pack Agence.": "The Patrimoine pack covers wholly-owned properties: linking a third-party owner requires the Agence pack.",
   "Le mois d’effet précède le début du bail.": "The effective month is before the start of the lease.",
   "Le mois de période doit être compris entre 1 et 12": "The period month must be between 1 and 12",
   "Le montant annuel du bail doit être strictement positif": "The lease's annual amount must be greater than zero",

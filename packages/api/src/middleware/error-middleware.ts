@@ -56,6 +56,7 @@ export const ErrorCode = {
   MODULE_READ_ONLY: 'MODULE_READ_ONLY',
   SUBSCRIPTION_READ_ONLY: 'SUBSCRIPTION_READ_ONLY',
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  OWN_ASSETS_ONLY: 'OWN_ASSETS_ONLY',
   // Invitations (correctif securite) : un compte existe deja pour l'email
   // invite, l'acceptation exige une session de CE compte.
   INVITATION_REQUIRES_LOGIN: 'INVITATION_REQUIRES_LOGIN'
@@ -168,6 +169,26 @@ export class SubscriptionReadOnlyError extends AppError {
     message = "L'abonnement de votre agence est en lecture seule : régularisez-le pour enregistrer des modifications."
   ) {
     super(message, 403, ErrorCode.SUBSCRIPTION_READ_ONLY, undefined, { reason });
+  }
+}
+
+/** Operation de gestion pour un tiers refusee par la barriere « detenu en propre » (pack Patrimoine seul). */
+export type ThirdPartyAction = 'MANDATE' | 'THIRD_PARTY_OWNER';
+
+const OWN_ASSETS_ONLY_MESSAGES: Record<ThirdPartyAction, string> = {
+  MANDATE: 'Le pack Patrimoine couvre les biens détenus en propre : la création d’un mandat exige le pack Agence.',
+  THIRD_PARTY_OWNER:
+    'Le pack Patrimoine couvre les biens détenus en propre : rattacher un propriétaire tiers exige le pack Agence.'
+};
+
+/**
+ * Barriere « detenu en propre » (pack Patrimoine, 28/09, 403) : une agence
+ * dont le seul module est MODULE_PATRIMOINE ne cree pas de mandat et ne
+ * rattache pas de proprietaire tiers a un bien, a un bail ou a une indivision.
+ */
+export class OwnAssetsOnlyError extends AppError {
+  constructor(action: ThirdPartyAction, message = OWN_ASSETS_ONLY_MESSAGES[action]) {
+    super(message, 403, ErrorCode.OWN_ASSETS_ONLY, undefined, { action });
   }
 }
 

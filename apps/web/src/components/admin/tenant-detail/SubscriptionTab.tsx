@@ -21,6 +21,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   addSubscriptionItem,
+  changeSubscriptionPack,
   clearSubscriptionManualReadOnly,
   getSubscriptionOverview,
   grantCapacityOverride,
@@ -72,7 +73,21 @@ const REQUEST_STATUS_LABEL: Record<
 const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
-  CHANTIERS: t('Chantiers')
+  CHANTIERS: t('Chantiers'),
+  BIENS_DETENUS: t('Biens détenus')
+};
+
+/**
+ * Pack Patrimoine, lot P1 : Essentiel et Pro ne se cumulent pas
+ * (`rules.tierGroup`, catalog.ts) — passer de l'un à l'autre est un
+ * changement de pack (`changeSubscriptionPack`), pas un ajout/retrait.
+ */
+const PATRIMOINE_TIER_TARGET: Record<
+  'PATRIMOINE_ESSENTIEL' | 'PATRIMOINE_PRO',
+  'PATRIMOINE_ESSENTIEL' | 'PATRIMOINE_PRO'
+> = {
+  PATRIMOINE_ESSENTIEL: 'PATRIMOINE_PRO',
+  PATRIMOINE_PRO: 'PATRIMOINE_ESSENTIEL'
 };
 
 const PHASE_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
@@ -108,7 +123,8 @@ const ENFORCEMENT_NOTICE: Partial<Record<'off' | 'warn', string>> = {
 const MODULE_LABEL: Record<string, string> = {
   MODULE_AGENCY: t('Agence'),
   MODULE_SYNDIC: t('Syndic'),
-  MODULE_PROMOTER: t('Promoteur')
+  MODULE_PROMOTER: t('Promoteur'),
+  MODULE_PATRIMOINE: t('Patrimoine')
 };
 
 const MODULE_ACCESS_LABEL: Record<ModuleAccess, { label: string; tone: 'neutral' | 'success' | 'warning' }> = {
@@ -158,13 +174,21 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ open, onClose, catalog, hel
   const [form] = Form.useForm<{ code: string; quantity: number; discountPercent?: number }>();
   const [saving, setSaving] = useState(false);
 
+  // Packs Patrimoine (lot P1) : Essentiel et Pro partagent un `tierGroup`
+  // (catalog.ts) et ne se cumulent pas — le passage de l'un à l'autre est un
+  // changement de pack (bouton dédié dans le tableau), pas un ajout.
+  const heldTierGroups = useMemo(
+    () => new Set(catalog.filter(c => heldPacks.includes(c.code) && c.rules?.tierGroup).map(c => c.rules!.tierGroup!)),
+    [catalog, heldPacks]
+  );
   const options = useMemo(
     () =>
       catalog
         .filter(c => c.isSellable)
         .filter(c => (c.kind === 'PACK' ? !heldPacks.includes(c.code) : true))
+        .filter(c => !(c.kind === 'PACK' && c.rules?.tierGroup && heldTierGroups.has(c.rules.tierGroup)))
         .map(c => ({ value: c.code, label: `${c.name} (${ITEM_KIND_LABEL[c.kind] ?? c.kind})` })),
-    [catalog, heldPacks]
+    [catalog, heldPacks, heldTierGroups]
   );
 
   const handleOk = async () => {
@@ -254,7 +278,8 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }
             options={[
               { value: 'LOTS', label: t('Lots') },
               { value: 'COPROPRIETES', label: t('Copropriétés') },
-              { value: 'CHANTIERS', label: t('Chantiers') }
+              { value: 'CHANTIERS', label: t('Chantiers') },
+              { value: 'BIENS_DETENUS', label: t('Biens détenus') }
             ]}
           />
         </Form.Item>
@@ -298,6 +323,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     unitMonthlyPrice: 0
   });
   const [discountSaving, setDiscountSaving] = useState(false);
+  const [tierChangeSaving, setTierChangeSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -400,6 +426,33 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     } finally {
       setDiscountSaving(false);
     }
+  };
+
+  /**
+   * Changement de palier Patrimoine (Essentiel ↔ Pro, lot P1) : les deux
+   * packs partagent un `tierGroup` (catalog.ts) et ne se cumulent pas — c'est
+   * un `changeSubscriptionPack`, pas un ajout puis un retrait séparés.
+   */
+  const handleChangeTier = (item: SubscriptionItemDTO) => {
+    const target = PATRIMOINE_TIER_TARGET[item.code as 'PATRIMOINE_ESSENTIEL' | 'PATRIMOINE_PRO'];
+    const targetName = catalog.find(c => c.code === target)?.name ?? target;
+    confirmAction({
+      title: t('Passer de « {{from}} » à « {{to}} » ?', { from: item.name, to: targetName }),
+      description: t('Prend effet immédiatement, au prorata de la période en cours.'),
+      okText: t('Changer de pack'),
+      onConfirm: async () => {
+        setTierChangeSaving(true);
+        try {
+          await changeSubscriptionPack(tenantId, { fromCodes: [item.code], toCode: target });
+          message.success(t('Pack changé'));
+          await load();
+        } catch (err: any) {
+          message.error(err.response?.data?.message || t('Erreur lors du changement de pack'));
+        } finally {
+          setTierChangeSaving(false);
+        }
+      }
+    });
   };
 
   const handleCloseRequest = async (request: ExtensionRequest, status: 'HANDLED' | 'DECLINED') => {
@@ -621,6 +674,11 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
             <Button size="small" onClick={() => handleEditDiscount(item)}>
               {t('Modifier')}
             </Button>
+            {(item.code === 'PATRIMOINE_ESSENTIEL' || item.code === 'PATRIMOINE_PRO') && (
+              <Button size="small" loading={tierChangeSaving} onClick={() => handleChangeTier(item)}>
+                {item.code === 'PATRIMOINE_ESSENTIEL' ? t('Passer au Pro') : t("Passer à l'Essentiel")}
+              </Button>
+            )}
             {!item.endsAt && (
               <Button size="small" onClick={() => handleRemoveAtEnd(item)}>
                 {t('Retirer à l’échéance')}

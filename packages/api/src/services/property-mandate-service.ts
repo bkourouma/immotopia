@@ -5,6 +5,7 @@ import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { CreateMandateRequest } from '../types/property-types';
 import { PropertyOwnershipType } from '@prisma/client';
+import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
 
 /**
  * Create a management mandate for a property
@@ -45,6 +46,9 @@ export async function createMandate(tenantId: string, data: CreateMandateRequest
   if (property.tenantId && property.tenantId !== tenantId) {
     throw new Error('Tenant does not have access to create mandates for this property');
   }
+
+  // Barriere « detenu en propre » (pack Patrimoine) : avant toute ecriture.
+  await assertThirdPartyAllowedForTenant(tenantId, 'MANDATE');
 
   // Create mandate
   const mandate = await prisma.propertyMandate.create({

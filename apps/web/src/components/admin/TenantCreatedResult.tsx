@@ -20,6 +20,8 @@ function moduleLabel(key: string): string {
       return t('Syndic');
     case 'MODULE_PROMOTER':
       return t('Promoteur');
+    case 'MODULE_PATRIMOINE':
+      return t('Patrimoine');
     default:
       return key;
   }

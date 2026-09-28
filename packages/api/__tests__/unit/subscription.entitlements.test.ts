@@ -13,6 +13,7 @@ import {
   TenantEntitlements,
   assertModuleAccess,
   assertSubscriptionWritable,
+  assertThirdPartyManagementAllowed,
   buildEntitlements,
   checkQuota,
   computeCapacityLimits,
@@ -20,6 +21,7 @@ import {
   evaluateQuota,
   featuresForModules,
   isItemEffective,
+  isOwnAssetsOnly,
   modulesForFeature,
   packModules,
   packsForModules,
@@ -43,25 +45,38 @@ function item(code: string, overrides: Partial<EntitlementItem> = {}): Entitleme
     endsAt: null,
     modules: def.modules,
     exclusiveGroup: def.exclusiveGroup,
+    tierGroup: def.rules?.tierGroup ?? null,
     capacities: def.capacities,
     ...overrides
   };
 }
 
-function override(o: Partial<EntitlementOverride> & Pick<EntitlementOverride, 'capacityKey' | 'delta'>): EntitlementOverride {
+function override(
+  o: Partial<EntitlementOverride> & Pick<EntitlementOverride, 'capacityKey' | 'delta'>
+): EntitlementOverride {
   return { startsAt: days(-1), expiresAt: null, revokedAt: null, ...o };
 }
 
 describe('Fonctionnalites par module', () => {
-  it('table de verite : CORE pour tous ; CRM/SALES Agence+Promoteur ; RENTAL Agence ; PATRIMOINE Agence+Promoteur ; SYNDIC ; CONSTRUCTION', () => {
-    expect(modulesForFeature('CORE').sort()).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER', 'MODULE_SYNDIC']);
+  it('table de verite : CORE pour tous ; CRM/SALES Agence+Promoteur ; RENTAL Agence+Patrimoine ; PATRIMOINE Agence+Promoteur+Patrimoine ; SYNDIC ; CONSTRUCTION', () => {
+    expect(modulesForFeature('CORE').sort()).toEqual([
+      'MODULE_AGENCY',
+      'MODULE_PATRIMOINE',
+      'MODULE_PROMOTER',
+      'MODULE_SYNDIC'
+    ]);
     expect(modulesForFeature('CRM').sort()).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER']);
     expect(modulesForFeature('SALES').sort()).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER']);
-    expect(modulesForFeature('RENTAL')).toEqual(['MODULE_AGENCY']);
-    expect(modulesForFeature('PATRIMOINE').sort()).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER']);
+    expect(modulesForFeature('RENTAL').sort()).toEqual(['MODULE_AGENCY', 'MODULE_PATRIMOINE']);
+    expect(modulesForFeature('PATRIMOINE').sort()).toEqual(['MODULE_AGENCY', 'MODULE_PATRIMOINE', 'MODULE_PROMOTER']);
     expect(modulesForFeature('SYNDIC')).toEqual(['MODULE_SYNDIC']);
     expect(modulesForFeature('CONSTRUCTION')).toEqual(['MODULE_PROMOTER']);
-    expect(Object.keys(MODULE_FEATURES).sort()).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER', 'MODULE_SYNDIC']);
+    expect(Object.keys(MODULE_FEATURES).sort()).toEqual([
+      'MODULE_AGENCY',
+      'MODULE_PATRIMOINE',
+      'MODULE_PROMOTER',
+      'MODULE_SYNDIC'
+    ]);
   });
 
   it('union des fonctionnalites, sans doublon', () => {
@@ -94,7 +109,10 @@ describe('Reprise : packs deduits des modules', () => {
 
 describe('Modules et exclusivite', () => {
   it('modules = union des packs en vigueur', () => {
-    expect(packModules([item(PACK.AGENCE), item(PACK.SYNDIC), item('EXT_LOTS_10')])).toEqual(['MODULE_AGENCY', 'MODULE_SYNDIC']);
+    expect(packModules([item(PACK.AGENCE), item(PACK.SYNDIC), item('EXT_LOTS_10')])).toEqual([
+      'MODULE_AGENCY',
+      'MODULE_SYNDIC'
+    ]);
     expect(packModules([item(PACK.INTEGRE)])).toEqual(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER']);
   });
 
@@ -111,6 +129,15 @@ describe('Modules et exclusivite', () => {
     const r = validateExclusivity([item(PACK.AGENCE), item(PACK.AGENCE)]);
     expect(r.ok).toBe(false);
     expect(r.duplicates).toEqual(['AGENCE']);
+  });
+
+  it('Patrimoine Essentiel et Pro (meme tierGroup) ne se cumulent pas ; se combinent librement avec Agence et Promoteur', () => {
+    const clash = validateExclusivity([item(PACK.PATRIMOINE_ESSENTIEL), item(PACK.PATRIMOINE_PRO)]);
+    expect(clash.ok).toBe(false);
+    expect(clash.conflicts).toEqual([[PACK.PATRIMOINE_ESSENTIEL, PACK.PATRIMOINE_PRO]]);
+    expect(validateExclusivity([item(PACK.AGENCE), item(PACK.PATRIMOINE_ESSENTIEL)]).ok).toBe(true);
+    expect(validateExclusivity([item(PACK.PROMOTEUR), item(PACK.PATRIMOINE_ESSENTIEL)]).ok).toBe(true);
+    expect(validateExclusivity([item(PACK.PROMOTEUR), item(PACK.PATRIMOINE_PRO)]).ok).toBe(true);
   });
 
   it('elements en vigueur : SCHEDULED a partir de startsAt, fin a endsAt, ENDED jamais', () => {
@@ -165,8 +192,17 @@ describe('Acces par module (D11)', () => {
   });
 
   it('pack -> FULL ; retire (disabledAt) -> READ_ONLY ; jamais detenu -> NONE', () => {
-    const r = resolveModuleAccess(['MODULE_AGENCY'], [row('MODULE_SYNDIC', { enabled: false, disabledAt: days(-3) })], NOW);
-    expect(r.access).toEqual({ MODULE_AGENCY: 'FULL', MODULE_SYNDIC: 'READ_ONLY', MODULE_PROMOTER: 'NONE' });
+    const r = resolveModuleAccess(
+      ['MODULE_AGENCY'],
+      [row('MODULE_SYNDIC', { enabled: false, disabledAt: days(-3) })],
+      NOW
+    );
+    expect(r.access).toEqual({
+      MODULE_AGENCY: 'FULL',
+      MODULE_SYNDIC: 'READ_ONLY',
+      MODULE_PROMOTER: 'NONE',
+      MODULE_PATRIMOINE: 'NONE'
+    });
     expect(r.modules).toEqual(['MODULE_AGENCY']);
   });
 
@@ -180,7 +216,12 @@ describe('Acces par module (D11)', () => {
       ],
       NOW
     );
-    expect(r.access).toEqual({ MODULE_AGENCY: 'READ_ONLY', MODULE_SYNDIC: 'NONE', MODULE_PROMOTER: 'FULL' });
+    expect(r.access).toEqual({
+      MODULE_AGENCY: 'READ_ONLY',
+      MODULE_SYNDIC: 'NONE',
+      MODULE_PROMOTER: 'FULL',
+      MODULE_PATRIMOINE: 'NONE'
+    });
   });
 });
 
@@ -197,7 +238,11 @@ describe('Phase de l’abonnement (D8)', () => {
   };
 
   it('sans abonnement : lecture seule', () => {
-    expect(resolveSubscriptionPhase(null, NOW)).toMatchObject({ phase: 'NONE', readOnly: true, reason: 'NO_SUBSCRIPTION' });
+    expect(resolveSubscriptionPhase(null, NOW)).toMatchObject({
+      phase: 'NONE',
+      readOnly: true,
+      reason: 'NO_SUBSCRIPTION'
+    });
   });
 
   it('essai en cours, puis 7 jours de grace, puis lecture seule', () => {
@@ -225,7 +270,9 @@ describe('Phase de l’abonnement (D8)', () => {
       readOnly: true,
       reason: 'PAST_DUE'
     });
-    expect(resolveSubscriptionPhase({ ...base, status: 'PAST_DUE', pastDueAt: days(-10), graceDays: 14 }, NOW).readOnly).toBe(false);
+    expect(
+      resolveSubscriptionPhase({ ...base, status: 'PAST_DUE', pastDueAt: days(-10), graceDays: 14 }, NOW).readOnly
+    ).toBe(false);
   });
 
   it('ACTIVE : periode echue non renouvelee -> grace puis lecture seule', () => {
@@ -240,7 +287,10 @@ describe('Phase de l’abonnement (D8)', () => {
   it('CANCELED : actif jusqu’a la date de resiliation ; SUSPENDED : lecture seule', () => {
     expect(resolveSubscriptionPhase({ ...base, status: 'CANCELED', cancelAt: days(3) }, NOW).readOnly).toBe(false);
     expect(resolveSubscriptionPhase({ ...base, status: 'CANCELED', cancelAt: days(-1) }, NOW).readOnly).toBe(true);
-    expect(resolveSubscriptionPhase({ ...base, status: 'SUSPENDED' }, NOW)).toMatchObject({ readOnly: true, reason: 'SUSPENDED' });
+    expect(resolveSubscriptionPhase({ ...base, status: 'SUSPENDED' }, NOW)).toMatchObject({
+      readOnly: true,
+      reason: 'SUSPENDED'
+    });
   });
 
   it('lecture seule manuelle : prend le pas sur un abonnement ACTIVE ou en essai, jamais de grace', () => {
@@ -251,7 +301,11 @@ describe('Phase de l’abonnement (D8)', () => {
       graceEndsAt: null
     });
     const trial = { ...base, status: 'TRIALING' as const, trialEndsAt: days(5), manualReadOnlyAt: days(-1) };
-    expect(resolveSubscriptionPhase(trial, NOW)).toMatchObject({ phase: 'READ_ONLY', readOnly: true, reason: 'MANUAL' });
+    expect(resolveSubscriptionPhase(trial, NOW)).toMatchObject({
+      phase: 'READ_ONLY',
+      readOnly: true,
+      reason: 'MANUAL'
+    });
   });
 
   it('lecture seule manuelle future (pas encore effective) : ignoree', () => {
@@ -271,7 +325,11 @@ describe('Quota (D4)', () => {
     expect(evaluateQuota(cap, 1, 'BLOCK', 'off').decision).toBe('ALLOW');
     expect(evaluateQuota(cap, 1, 'BLOCK', 'warn').decision).toBe('WARN');
     expect(evaluateQuota(cap, 1, 'BLOCK', 'enforce').decision).toBe('BLOCK');
-    expect(evaluateQuota(cap, 1, 'BILL_OVERAGE', 'enforce')).toMatchObject({ decision: 'BILL', overBy: 1, usedAfter: 101 });
+    expect(evaluateQuota(cap, 1, 'BILL_OVERAGE', 'enforce')).toMatchObject({
+      decision: 'BILL',
+      overBy: 1,
+      usedAfter: 101
+    });
     expect(evaluateQuota(cap, 3, 'WARN_ONLY', 'enforce')).toMatchObject({ decision: 'WARN', overBy: 3 });
   });
 });
@@ -317,7 +375,15 @@ describe('Synthese des droits', () => {
     expect(e).toMatchObject({ status: 'ACTIVE', phase: 'ACTIVE', readOnly: false, packs: ['AGENCE', 'SYNDIC'] });
     expect(e.modules).toEqual(['MODULE_AGENCY', 'MODULE_SYNDIC']);
     expect(e.features).toEqual(['CORE', 'CRM', 'SALES', 'RENTAL', 'PATRIMOINE', 'SYNDIC']);
-    expect(e.capacities.LOTS).toEqual({ included: 200, extensions: 20, overrides: 30, limit: 250, used: 260, remaining: 0, overBy: 10 });
+    expect(e.capacities.LOTS).toEqual({
+      included: 200,
+      extensions: 20,
+      overrides: 30,
+      limit: 250,
+      used: 260,
+      remaining: 0,
+      overBy: 10
+    });
     expect(e.capacities.COPROPRIETES).toMatchObject({ limit: 2, used: 1, remaining: 1, overBy: 0 });
     expect(e.capacities.CHANTIERS).toMatchObject({ limit: 0, used: 0 });
   });
@@ -334,7 +400,9 @@ describe('Synthese des droits', () => {
 
   it('gardes : module retire -> lecture permise, ecriture MODULE_READ_ONLY', () => {
     const e = build({
-      moduleRows: [{ moduleKey: 'MODULE_PROMOTER', enabled: false, source: 'PACK', expiresAt: null, disabledAt: days(-5) }]
+      moduleRows: [
+        { moduleKey: 'MODULE_PROMOTER', enabled: false, source: 'PACK', expiresAt: null, disabledAt: days(-5) }
+      ]
     });
     expect(e.moduleAccess.MODULE_PROMOTER).toBe('READ_ONLY');
     expect(() => assertModuleAccess(e, 'MODULE_PROMOTER', { write: false })).not.toThrow();
@@ -361,9 +429,56 @@ describe('Synthese des droits', () => {
 
   it('effectiveItems ecarte ENDED et SCHEDULED futurs', () => {
     expect(
-      effectiveItems([item(PACK.AGENCE), item(PACK.INTEGRE, { status: 'ENDED' }), item(PACK.SYNDIC, { status: 'SCHEDULED', startsAt: days(1) })], NOW).map(
-        i => i.code
-      )
+      effectiveItems(
+        [
+          item(PACK.AGENCE),
+          item(PACK.INTEGRE, { status: 'ENDED' }),
+          item(PACK.SYNDIC, { status: 'SCHEDULED', startsAt: days(1) })
+        ],
+        NOW
+      ).map(i => i.code)
     ).toEqual(['AGENCE']);
+  });
+
+  it('ownAssetsOnly (barriere « detenu en propre ») : vrai pour Patrimoine seul, faux avec Agence, faux sans module', () => {
+    expect(isOwnAssetsOnly(['MODULE_PATRIMOINE'])).toBe(true);
+    expect(isOwnAssetsOnly(['MODULE_AGENCY', 'MODULE_PATRIMOINE'])).toBe(false);
+    expect(isOwnAssetsOnly([])).toBe(false);
+
+    const patrimoineOnly = build({ items: [item(PACK.PATRIMOINE_ESSENTIEL)] });
+    expect(patrimoineOnly.ownAssetsOnly).toBe(true);
+    const patrimoineAndAgence = build({ items: [item(PACK.AGENCE), item(PACK.PATRIMOINE_ESSENTIEL)] });
+    expect(patrimoineAndAgence.ownAssetsOnly).toBe(false);
+    expect(build().ownAssetsOnly).toBe(false);
+  });
+
+  it('gardes : assertThirdPartyManagementAllowed refuse mandat/tiers en enforce, off/warn laissent passer', () => {
+    const patrimoineOnly = build({ items: [item(PACK.PATRIMOINE_ESSENTIEL)] });
+    expect(patrimoineOnly.ownAssetsOnly).toBe(true);
+    expect(() => assertThirdPartyManagementAllowed(patrimoineOnly, 'MANDATE')).toThrow(
+      expect.objectContaining({ code: 'OWN_ASSETS_ONLY', statusCode: 403, data: { action: 'MANDATE' } })
+    );
+    expect(() => assertThirdPartyManagementAllowed(patrimoineOnly, 'THIRD_PARTY_OWNER')).toThrow(
+      expect.objectContaining({ code: 'OWN_ASSETS_ONLY', statusCode: 403, data: { action: 'THIRD_PARTY_OWNER' } })
+    );
+    expect(() =>
+      assertThirdPartyManagementAllowed({ ...patrimoineOnly, enforcement: 'warn' }, 'MANDATE')
+    ).not.toThrow();
+    expect(() => assertThirdPartyManagementAllowed({ ...patrimoineOnly, enforcement: 'off' }, 'MANDATE')).not.toThrow();
+
+    const patrimoineAndAgence = build({ items: [item(PACK.AGENCE), item(PACK.PATRIMOINE_ESSENTIEL)] });
+    expect(() => assertThirdPartyManagementAllowed(patrimoineAndAgence, 'MANDATE')).not.toThrow();
+    expect(() => assertThirdPartyManagementAllowed(build(), 'THIRD_PARTY_OWNER')).not.toThrow();
+  });
+
+  it('Promoteur + Patrimoine Essentiel : modules, fonctionnalites et capacites des deux packs se cumulent (BIENS_DETENUS ajoutee, non ecrasee par Promoteur)', () => {
+    const e = build({ items: [item(PACK.PROMOTEUR), item(PACK.PATRIMOINE_ESSENTIEL)], overrides: [] });
+    expect(e.packs).toEqual(['PROMOTEUR', 'PATRIMOINE_ESSENTIEL']);
+    expect(e.modules).toEqual(['MODULE_PROMOTER', 'MODULE_PATRIMOINE']);
+    expect(e.features).toEqual(['CORE', 'CRM', 'SALES', 'RENTAL', 'PATRIMOINE', 'CONSTRUCTION']);
+    expect(e.capacities.CHANTIERS).toMatchObject({ included: 2, limit: 2 });
+    expect(e.capacities.LOTS).toMatchObject({ included: 150, limit: 150 });
+    expect(e.capacities.BIENS_DETENUS).toMatchObject({ included: 10, limit: 10 });
+    expect(e.ownAssetsOnly).toBe(false);
   });
 });

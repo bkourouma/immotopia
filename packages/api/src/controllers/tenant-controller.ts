@@ -190,7 +190,7 @@ const provisionTenantSchema = z.object({
   billingCycle: z.enum(['MONTHLY', 'ANNUAL']).optional(),
   type: z.nativeEnum(TenantType).optional(),
   modules: z
-    .array(z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER']))
+    .array(z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER', 'MODULE_PATRIMOINE']))
     .min(1)
     .optional(),
   legalName: z.string().trim().max(160).optional(),
@@ -493,7 +493,7 @@ const updateTenantModulesSchema = z.object({
   modules: z
     .array(
       z.object({
-        moduleKey: z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER']),
+        moduleKey: z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER', 'MODULE_PATRIMOINE']),
         enabled: z.boolean()
       })
     )
