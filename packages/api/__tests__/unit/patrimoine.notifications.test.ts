@@ -15,9 +15,6 @@ jest.mock('../../src/utils/database', () => ({
     ownerStatement: {
       findFirst: (...a: any[]) => ownerStatementFindFirst(...a),
       update: (...a: any[]) => ownerStatementUpdate(...a)
-    },
-    patrimonyDocument: {
-      findMany: jest.fn()
     }
   }
 }));

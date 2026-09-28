@@ -38,6 +38,42 @@ Pièges et décisions :
 
 ---
 
+## Branche `fix/patrimoine-suite-p0` — 2026-09-28
+
+**État :** prêt à relire — PR vers `main` (voir `gh pr list --head fix/patrimoine-suite-p0`)
+**Dernier commit :** voir `git log -1` sur la branche (commit unique du lot)
+
+Fait :
+
+- `alertExpiringDocuments` (`lib/patrimoine/notifications.ts`) porte désormais
+  sur `PropertyDocument` (et non plus `PatrimonyDocument`, inutilisé depuis P0) :
+  fenêtre [maintenant, +30 j], destinataires = propriétaires du bien
+  (`PropertyOwnershipShare` + `ownerUserId` → `TenantClient` →
+  `details.crmContactId` → `CrmContact.consentEmail === true`), anti-doublon
+  par `warningSentAt` réservé atomiquement (`updateMany … warningSentAt: null`),
+  remis à null si aucun envoi n'aboutit ; HTML échappé.
+- Job `jobs/document-expiry-alert-job.ts`, chaque jour 7 h UTC, agences
+  ACTIVE une par une dans `runWithTenantContext`, démarré dans `src/index.ts`
+  (deux lignes, conflit trivial possible avec `feat/provision-abonnements`).
+- `owner-statements-controller.ts` en `asyncHandler` + erreurs typées ;
+  tests 400/404/409 (supertest + `errorHandler` réel).
+- Wiki : ligne « Alerter les propriétaires d'un document qui arrive à échéance ».
+
+Reste à faire :
+
+- Fusion par l'utilisateur. Le modèle `PatrimonyDocument` reste au schéma
+  (retrait = migration, hors lot).
+
+Pièges et décisions :
+
+- Pas de consentement supposé depuis le seul `User` : un propriétaire sans
+  contact CRM lié ne reçoit rien ; le document n'est pas marqué et est
+  retenté chaque jour.
+- Limites assumées (commentées) : échec partiel en indivision non relancé ;
+  arrêt du processus entre réservation et envoi laisse la marque posée.
+- Une erreur sans statut dans create/update du relevé donne 500 (et non
+  plus 400 par défaut) ; les erreurs métier portent toutes un statut.
+
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
 **État :** prêt à relire ; 5 PR ouvertes, CI verte (#26/#27 relancées après le dernier correctif)
