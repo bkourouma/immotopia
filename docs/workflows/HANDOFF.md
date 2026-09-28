@@ -38,6 +38,48 @@ Pièges et décisions :
 
 ---
 
+## Branche `fix/syndic-anomalies-recette` — 2026-09-28
+
+**État :** prêt à relire — PR #47 vers `main`, recette navigateur non faite
+**Dernier commit :** voir `git log -1` sur la branche (worktree `.claude/worktrees/anomalies-recette`)
+
+Fait (5 anomalies du testeur, recette Syndic du 2026-09-28) :
+
+- AG : date seule + heure de début obligatoire (plus de panneau date+heure
+  débordant) ; `needConfirm={false}` sur les autres DatePicker showTime.
+- Incidents : bouton « Modifier l'incident » (PATCH existant), statut Assigné.
+- Avis d'appel : destinataire `ownerContactId ?? coownerId`, raisons
+  distinctes affichées en clair, `charge_calls.notice_sent_at` (migration
+  `20260928120000_charge_call_notice_sent_at`), route
+  `…/executions/:runId/renvoyer-avis` avec réservation atomique.
+- Budgets : transitions contrôlées, Réviser / Clôturer, réalisé et écart.
+- Téléchargements : délai 120 s pour les blobs sans rejeu sur expiration,
+  `download-error.ts`, images de marque réduites à 800 px avant l'envoi.
+- Wiki mis à jour, i18n extrait et traduit (en/ar).
+
+Reste à faire :
+
+- Recette navigateur : `packages/api/.env.demo` absent sur le poste
+  (`demo:sync` refuse). Accord utilisateur requis pour créer la base de démo
+  dédiée ou pour migrer la base de développement.
+- Cause réelle des avis non envoyés en production : non vérifiée (pas de
+  lecture de la base prod) ; le nouvel écran donne la raison.
+- Déploiement : `migrate deploy` (migration additive).
+- Hors lot : clôture complète d'exercice (report à nouveau, ouverture N+1).
+
+Pièges et décisions :
+
+- `feat/syndic-reprise-ecarts` (worktree syndic-ecarts, non commité) refactore
+  `SyndicChargeSchedules.tsx` et touche `SyndicProfilesIncidents.tsx` :
+  conflits probables à la fusion. La nouvelle UI des avis est isolée dans
+  `components/syndics/ChargeScheduleRunNotices.tsx`.
+- Le client Prisma partagé par jonction a été régénéré avec `noticeSentAt`
+  (additif).
+- Échec connu hors sujet : `tenant-data-export.archive.test.ts` (types
+  `archiver` absents), aussi sur `main`.
+- Les images de marque déjà en 3000 px restent lentes à incruster : il faut
+  les réimporter.
+
 ## Branche `fix/patrimoine-suite-p0` — 2026-09-28
 
 **État :** prêt à relire — PR #40 vers `main`
