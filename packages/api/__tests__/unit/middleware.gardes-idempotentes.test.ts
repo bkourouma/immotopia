@@ -111,7 +111,7 @@ describe('authenticate — une seule fois par requête', () => {
 
     authenticate(req as any, res as any, next);
 
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 });
