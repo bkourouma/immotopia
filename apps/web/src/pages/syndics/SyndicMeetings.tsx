@@ -93,21 +93,30 @@ export const SyndicMeetings: React.FC = () => {
   const handleCreate = async () => {
     if (!effectiveTenantId || !syndicId) return;
     const values = await form.validateFields();
+    // `showTime` sur un seul DatePicker ouvrait un panneau (calendrier +
+    // colonnes heures/minutes) qui débordait de la fenêtre sur mobile, avec le
+    // bouton OK masqué : impossible de valider. La date et l'heure de début
+    // sont désormais deux champs distincts, recombinés ici.
+    const startAt = values.date
+      .hour(values.startTime.hour())
+      .minute(values.startTime.minute())
+      .second(0)
+      .millisecond(0);
+    if (values.endTime) {
+      const endAt = values.date.hour(values.endTime.hour()).minute(values.endTime.minute()).second(0).millisecond(0);
+      if (!endAt.isAfter(startAt)) {
+        message.error(t("L'heure de fin doit suivre l'heure de début"));
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       await createMeeting(effectiveTenantId, syndicId, {
         type: values.type,
-        scheduledAt: values.scheduledAt.toISOString(),
-        startTime: values.startTime
-          ? values.scheduledAt
-              .hour(values.startTime.hour())
-              .minute(values.startTime.minute())
-              .second(0)
-              .millisecond(0)
-              .toISOString()
-          : undefined,
+        scheduledAt: startAt.toISOString(),
+        startTime: startAt.toISOString(),
         endTime: values.endTime
-          ? values.scheduledAt
+          ? values.date
               .hour(values.endTime.hour())
               .minute(values.endTime.minute())
               .second(0)
@@ -202,7 +211,9 @@ export const SyndicMeetings: React.FC = () => {
                     <Space wrap>
                       <Button
                         size="small"
-                        onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
+                        onClick={() =>
+                          navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)
+                        }
                       >
                         {t('Voir détails')}
                       </Button>
@@ -234,18 +245,18 @@ export const SyndicMeetings: React.FC = () => {
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select showSearch optionFilterProp="label" options={meetingTypeOptions} />
           </Form.Item>
-          <Form.Item
-            label={t('Date et heure')}
-            name="scheduledAt"
-            rules={[{ required: true, message: t('La date est obligatoire') }]}
-          >
-            <DatePicker showTime style={{ width: '100%' }} format="DD/MM/YYYY HH:mm" />
+          <Form.Item label={t('Date')} name="date" rules={[{ required: true, message: t('La date est obligatoire') }]}>
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
-          <Form.Item label={t('Heure de début')} name="startTime">
-            <TimePicker style={{ width: '100%' }} format="HH:mm" />
+          <Form.Item
+            label={t('Heure de début')}
+            name="startTime"
+            rules={[{ required: true, message: t("L'heure de début est obligatoire") }]}
+          >
+            <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={5} needConfirm={false} />
           </Form.Item>
           <Form.Item label={t('Heure de fin')} name="endTime">
-            <TimePicker style={{ width: '100%' }} format="HH:mm" />
+            <TimePicker style={{ width: '100%' }} format="HH:mm" minuteStep={5} needConfirm={false} />
           </Form.Item>
           <Form.Item label={t('Lieu')} name="location">
             <Input />

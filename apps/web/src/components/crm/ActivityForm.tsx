@@ -442,6 +442,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           <Form.Item label={t("Date d'occurrence")}>
             <DatePicker
               showTime
+              needConfirm={false}
               value={formData.occurredAt ? dayjs(formData.occurredAt) : null}
               onChange={date => handleChange('occurredAt', date ? date.format('YYYY-MM-DDTHH:mm') : '')}
               style={{ width: '100%' }}
@@ -454,6 +455,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           <Form.Item label={t('Prochaine action')}>
             <DatePicker
               showTime
+              needConfirm={false}
               value={formData.nextActionAt ? dayjs(formData.nextActionAt) : null}
               onChange={date => handleChange('nextActionAt', date ? date.format('YYYY-MM-DDTHH:mm') : '')}
               style={{ width: '100%' }}

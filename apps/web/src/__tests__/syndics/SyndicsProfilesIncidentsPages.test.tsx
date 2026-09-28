@@ -35,7 +35,8 @@ vi.mock('antd', async () => {
 
   const formInstance = {
     validateFields: vi.fn(),
-    resetFields: vi.fn()
+    resetFields: vi.fn(),
+    setFieldsValue: vi.fn()
   };
   const FormComponent: any = passthrough('form');
   FormComponent.useForm = () => [formInstance];
@@ -59,10 +60,19 @@ vi.mock('antd', async () => {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
+    DatePicker: passthrough('input'),
     Form: FormComponent,
     Input: Object.assign(passthrough('input'), { TextArea: passthrough('textarea') }),
     InputNumber: passthrough('input'),
-    Modal: passthrough(),
+    // Un passthrough n'aurait rendu aucun bouton OK : la validation de la
+    // modale « Modifier l'incident » se teste en cliquant dessus.
+    Modal: ({ children, onOk, onCancel, okText, cancelText }: any) => (
+      <div>
+        {children}
+        <button onClick={onOk}>{okText || 'OK'}</button>
+        <button onClick={onCancel}>{cancelText || 'Annuler'}</button>
+      </div>
+    ),
     Select: passthrough('select'),
     // `Space.Compact` : le résultat d'invitation au portail y pose le lien et « Copier ».
     Space: Object.assign(passthrough(), { Compact: passthrough() }),
@@ -77,7 +87,8 @@ vi.mock('antd', async () => {
     message: {
       success: vi.fn(),
       error: vi.fn()
-    }
+    },
+    __mocks: { formInstance }
   };
   const appApi = {
     message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
@@ -99,6 +110,11 @@ vi.mock('antd', async () => {
     Grid: { useBreakpoint: () => ({}) }
   };
 });
+
+// Vitest has no `requireMock`; importing the module inside a mocked test file
+// already yields the mock, so a plain dynamic import is the equivalent.
+const antdModule = (await import('antd')) as unknown as { __mocks: { formInstance: { validateFields: any } } };
+const formValidateFields = antdModule.__mocks.formInstance.validateFields;
 
 const mockApiClient = apiClient as any;
 
@@ -261,7 +277,9 @@ describe('Syndics profiles/incidents page', () => {
         '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires/op-1/invitation-portail'
       )
     );
-    const link = (await screen.findByDisplayValue('http://localhost:3000/reset-password?token=abc')) as HTMLInputElement;
+    const link = (await screen.findByDisplayValue(
+      'http://localhost:3000/reset-password?token=abc'
+    )) as HTMLInputElement;
     expect(link.readOnly).toBe(true);
     // E-mail non parti : l'avertissement remplace la confirmation d'envoi (le
     // mock d'AntD ne rend pas la prop `message` d'<Alert>, d'où ce contrôle).
@@ -313,5 +331,30 @@ describe('Syndics profiles/incidents page', () => {
     const button = await screen.findByText('Ajouter imputation');
     fireEvent.click(button);
     expect(button).toBeTruthy();
+  });
+
+  // Écart recette #2 : la colonne Statut était un Tag en lecture seule, sans
+  // aucun moyen de faire avancer l'incident (En cours → Résolu → Clôturé).
+  it("« Modifier l'incident » choisit En cours et appelle la mise à jour", async () => {
+    mockApiClient.patch.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'i-1', status: 'IN_PROGRESS' } }
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText("Modifier l'incident"));
+
+    formValidateFields.mockResolvedValueOnce({
+      status: 'IN_PROGRESS',
+      providerId: undefined,
+      description: 'Fuite',
+      resolvedAt: undefined
+    });
+    fireEvent.click(screen.getByText('Enregistrer'));
+
+    await waitFor(() =>
+      expect(mockApiClient.patch).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/incidents/i-1', {
+        status: 'IN_PROGRESS'
+      })
+    );
   });
 });
