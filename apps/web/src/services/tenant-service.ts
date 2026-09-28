@@ -41,7 +41,7 @@ export interface TenantStats {
 /** Offre d'abonnement proposée à la création d'une agence. */
 export type TenantPlanKey = 'BASIC' | 'PRO' | 'ELITE';
 export type TenantBillingCycle = 'MONTHLY' | 'ANNUAL';
-export type TenantModuleKey = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER';
+export type TenantModuleKey = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
 
 /**
  * Élément souscrit à la création (abonnements par packs, vague 2) : code du
@@ -207,19 +207,13 @@ export async function provisionTenant(
 }
 
 /** Renvoie l'invitation de l'administrateur d'une agence tout juste créée. */
-export async function resendInvitation(
-  tenantId: string,
-  invitationId: string
-): Promise<ResendInvitationResponse> {
+export async function resendInvitation(tenantId: string, invitationId: string): Promise<ResendInvitationResponse> {
   const response = await apiClient.post(`/tenants/${tenantId}/users/invitations/${invitationId}/resend`);
   return response.data;
 }
 
 // Update tenant (admin only)
-export async function updateTenant(
-  tenantId: string,
-  data: UpdateTenantRequest
-): Promise<TenantResponse> {
+export async function updateTenant(tenantId: string, data: UpdateTenantRequest): Promise<TenantResponse> {
   const response = await apiClient.patch(`/admin/tenants/${tenantId}`, data);
   return response.data;
 }
@@ -278,7 +272,3 @@ export async function getTenantClients(tenantId: string): Promise<TenantClientsR
   const response = await apiClient.get(`/tenants/${tenantId}/clients`);
   return response.data;
 }
-
-
-
-

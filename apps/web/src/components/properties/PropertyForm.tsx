@@ -40,6 +40,7 @@ import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
 import { getTenantClients, TenantClient } from '../../services/tenant-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -65,6 +66,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
   const [form] = Form.useForm();
   const { tenantMembership } = useAuth();
+  // Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : ni mandat,
+  // ni propriétaire tiers — seule la détention agence reste proposée.
+  const ownAssetsOnly = useOwnAssetsOnly(tenantId, !property);
   const [selectedType, setSelectedType] = useState<PropertyType | undefined>(property?.propertyType);
   const [template, setTemplate] = useState<PropertyTypeTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
@@ -422,8 +426,12 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               >
                 <Select>
                   <Select.Option value={PropertyOwnershipType.TENANT}>{t("Propriété de l'agence")}</Select.Option>
-                  <Select.Option value={PropertyOwnershipType.PUBLIC}>{t('Propriété privée')}</Select.Option>
-                  <Select.Option value={PropertyOwnershipType.CLIENT}>{t('Mandat de gestion')}</Select.Option>
+                  {!ownAssetsOnly && (
+                    <Select.Option value={PropertyOwnershipType.PUBLIC}>{t('Propriété privée')}</Select.Option>
+                  )}
+                  {!ownAssetsOnly && (
+                    <Select.Option value={PropertyOwnershipType.CLIENT}>{t('Mandat de gestion')}</Select.Option>
+                  )}
                 </Select>
               </Form.Item>
             </>

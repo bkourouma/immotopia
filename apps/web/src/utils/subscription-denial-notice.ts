@@ -59,7 +59,8 @@ export function isQuotaExceededResponse(error: unknown): boolean {
 const CAPACITY_LABELS: Record<string, string> = {
   LOTS: 'lots',
   COPROPRIETES: 'copropriétés',
-  CHANTIERS: 'chantiers'
+  CHANTIERS: 'chantiers',
+  BIENS_DETENUS: 'biens détenus'
 };
 
 function capacityLabel(capacityKey: string): string {
@@ -114,6 +115,39 @@ export function quotaExceededDenialText(
   };
 }
 
+/**
+ * Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : 403
+ * `OWN_ASSETS_ONLY`, avec `data: { action: 'MANDATE' | 'THIRD_PARTY_OWNER' }`.
+ * Un seul message, quelle que soit l'action refusée — les deux disent la même
+ * chose : l'abonnement Patrimoine ne couvre que les biens détenus en propre.
+ */
+export type OwnAssetsOnlyAction = 'MANDATE' | 'THIRD_PARTY_OWNER';
+
+export interface OwnAssetsOnlyDetail {
+  action: OwnAssetsOnlyAction;
+}
+
+export function isOwnAssetsOnlyDetail(data: unknown): data is OwnAssetsOnlyDetail {
+  if (!data || typeof data !== 'object') return false;
+  const action = (data as Record<string, unknown>).action;
+  return action === 'MANDATE' || action === 'THIRD_PARTY_OWNER';
+}
+
+/** Titre et explication du refus « détenu en propre », traduits. */
+export function ownAssetsOnlyDenialText(): { title: string; description: string } {
+  return {
+    title: t('Réservé aux biens détenus en propre'),
+    description: t(
+      'Votre abonnement Patrimoine couvre les biens que vous détenez en propre, gestion locative comprise. La création de mandats et le rattachement de propriétaires tiers relèvent du pack Agence.'
+    )
+  };
+}
+
+export function showOwnAssetsOnlyDenial(notifier: DenialNotifier): void {
+  const { title, description } = ownAssetsOnlyDenialText();
+  notifier.warning({ key: 'subscription-denial:OWN_ASSETS_ONLY', title, description, duration: 8 });
+}
+
 /** Extrait le tenantId d'une URL de requête (`/tenants/:tenantId/...`). */
 function tenantIdFromUrl(url: string | undefined): string | null {
   const match = url?.match(/\/tenants\/([^/]+)/);
@@ -160,6 +194,8 @@ export function installSubscriptionDenialInterceptor(client: AxiosInstance, noti
       const status = error.response?.status;
       if (status === 403 && isSubscriptionDenialCode(code)) {
         showSubscriptionDenial(notifier, code);
+      } else if (status === 403 && code === 'OWN_ASSETS_ONLY' && isOwnAssetsOnlyDetail(body?.data)) {
+        showOwnAssetsOnlyDenial(notifier);
       } else if (status === 409 && code === 'QUOTA_EXCEEDED' && isQuotaExceededDetail(body?.data)) {
         showQuotaExceededDenial(notifier, body.data, tenantIdFromUrl(error.config?.url));
       }

@@ -10,6 +10,7 @@ import { CreatePropertyRequest, UpdatePropertyRequest, PropertyDetail } from '..
 import { createPropertySchema, updatePropertySchema } from '../lib/properties/schemas';
 import { BadRequestError, NotFoundError, ConflictError } from '../middleware/error-middleware';
 import { PROPERTY_DOCUMENT_SELECT } from './property-document-service';
+import { assertThirdPartyAllowedForTenant, isThirdPartyOwnershipInput } from './own-assets-barrier-service';
 import {
   PropertyType,
   PropertyOwnershipType,
@@ -17,8 +18,29 @@ import {
   PropertyTransactionMode,
   PropertyMediaType,
   RentalLeaseStatus,
+  MembershipStatus,
   GlobalRole
 } from '@prisma/client';
+
+/**
+ * Barriere « detenu en propre » (pack Patrimoine) : vrai quand `ownerUserId`
+ * designe quelqu'un d'autre que l'acteur ET que cette personne n'est pas
+ * membre ACTIF de l'agence — un simple collaborateur designe responsable
+ * d'un bien TENANT n'est jamais un proprietaire tiers. Lecture seule, avant
+ * toute ecriture.
+ */
+async function isThirdPartyOwnerUserId(
+  tenantId: string,
+  ownerUserId: string | null | undefined,
+  actorUserId: string | null | undefined
+): Promise<boolean> {
+  if (!ownerUserId || ownerUserId === actorUserId) return false;
+  const activeMember = await prisma.membership.findFirst({
+    where: { tenantId, userId: ownerUserId, status: MembershipStatus.ACTIVE },
+    select: { id: true }
+  });
+  return !activeMember;
+}
 
 /**
  * Create a tenant-owned property
@@ -76,6 +98,14 @@ export async function createProperty(
     throw new BadRequestError('Tenant ID is required for tenant-owned properties');
   }
 
+  // Barriere « detenu en propre » (pack Patrimoine) : AVANT toute ecriture,
+  // y compris la creation d'un User depuis `ownerEmail` juste en dessous.
+  // Seule une agence (tenantId) est concernee (creation directe pour un
+  // proprietaire prive, sans agence, n'est jamais soumise au pack Patrimoine).
+  if (tenantId && isThirdPartyOwnershipInput({ ownershipType: data.ownershipType, ownerEmail: data.ownerEmail })) {
+    await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
+  }
+
   // If ownerEmail is provided, find or create the User
   // Priority: data.ownerUserId > data.ownerEmail > ownerUserId parameter
   let finalOwnerUserId = data.ownerUserId || ownerUserId;
@@ -102,6 +132,13 @@ export async function createProperty(
 
   if (data.ownershipType === PropertyOwnershipType.PUBLIC && !finalOwnerUserId) {
     throw new BadRequestError('Owner user ID or email is required for public properties');
+  }
+
+  // Barriere « detenu en propre » (suite) : `ownerUserId` fourni, different
+  // de l'acteur, et pas membre ACTIF de l'agence -> proprietaire tiers.
+  // Toujours avant l'ecriture du bien.
+  if (tenantId && (await isThirdPartyOwnerUserId(tenantId, finalOwnerUserId, actorUserId))) {
+    await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
   }
 
   // Validate against template
@@ -426,9 +463,23 @@ export async function updateProperty(
     }
   }
 
+  // Barriere « detenu en propre » (pack Patrimoine) : AVANT toute ecriture.
+  // Seule une agence (tenantId, l'acteur courant) est concernee — une
+  // modification hors contexte d'agence (portail proprietaire...) n'y est
+  // jamais soumise.
+  if (tenantId) {
+    const thirdPartyByOwnershipType = isThirdPartyOwnershipInput({ ownershipType: data.ownershipType });
+    const thirdPartyByOwnerUserId =
+      data.ownerUserId !== undefined && (await isThirdPartyOwnerUserId(tenantId, data.ownerUserId, actorUserId));
+    if (thirdPartyByOwnershipType || thirdPartyByOwnerUserId) {
+      await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
+    }
+  }
+
   // Build update data object, only including fields that are provided
   const updateData: any = {};
 
+  if (data.ownershipType !== undefined) updateData.ownershipType = data.ownershipType;
   if (data.ownerUserId !== undefined) {
     updateData.ownerUserId = data.ownerUserId || null;
   }
@@ -510,7 +561,10 @@ export async function updateProperty(
         }
       }
     });
-    if (lotTenantId && (data.status !== undefined || data.transactionModes !== undefined)) {
+    if (
+      lotTenantId &&
+      (data.status !== undefined || data.transactionModes !== undefined || data.ownershipType !== undefined)
+    ) {
       await syncLotActivationsTx(
         tx,
         lotTenantId,

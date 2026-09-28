@@ -53,7 +53,9 @@ const isoDate = z
 
 const rulesSchema = z
   .object({
-    byHeldPacks: z.array(z.object({ anyOf: z.array(z.string()).min(1), monthlyPrice: z.number().nonnegative() })).optional(),
+    byHeldPacks: z
+      .array(z.object({ anyOf: z.array(z.string()).min(1), monthlyPrice: z.number().nonnegative() }))
+      .optional(),
     lotTiers: z
       .array(
         z.object({
@@ -98,7 +100,8 @@ const quoteSchema = z.object({
   packs: z.array(z.string().trim().min(1)).min(1).max(4),
   lots: z.number().int().min(0).optional(),
   copros: z.number().int().min(0).optional(),
-  chantiers: z.number().int().min(0).optional()
+  chantiers: z.number().int().min(0).optional(),
+  biens: z.number().int().min(0).optional()
 });
 
 /** POST /api/admin/catalog/quote — estimation mensuelle et annuelle d'une composition (catalogue en base). */
@@ -111,7 +114,10 @@ export const quoteHandler = asyncHandler(async (req: Request, res: Response) => 
   } catch (error) {
     throw new NotFoundError((error as Error).message);
   }
-  res.json({ success: true, data: { ...estimate, monthly: estimate.subtotal, annual: annualPrice(estimate.subtotal) } });
+  res.json({
+    success: true,
+    data: { ...estimate, monthly: estimate.subtotal, annual: annualPrice(estimate.subtotal) }
+  });
 });
 
 // ------------------------------------------------------------------ abonnement d'une agence

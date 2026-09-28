@@ -15,6 +15,7 @@ import { getEmailNotificationConfig } from './email-notification-config-service'
 import { updatePropertyStatus } from './property-status-service';
 import { syncLotActivationsTx } from './lot-registry-service';
 import { getTenantById } from './tenant-service';
+import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
 
 /**
  * Generate a unique lease number in format BAIL-YYYY-XXXX
@@ -195,6 +196,13 @@ export async function createLease(
     if (!deal) {
       throw new BadRequestError('CRM deal not found or does not belong to this tenant');
     }
+  }
+
+  // Barriere « detenu en propre » (pack Patrimoine) : un bailleur tiers sur
+  // ce bail. AVANT toute ecriture, y compris la creation d'un TenantClient
+  // depuis `ownerContactId` juste en dessous.
+  if (data.ownerClientId || data.ownerContactId) {
+    await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
   }
 
   // Get or create owner client (if provided)

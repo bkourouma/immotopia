@@ -4,6 +4,7 @@ import { prisma } from '../../utils/database';
 import { badRequest, notFound } from '../errors';
 import { roundMoney } from '../finance/money';
 import { listAgencyOwners } from '../owner-account/sync';
+import { assertThirdPartyAllowedForTenant } from '../../services/own-assets-barrier-service';
 
 /**
  * Indivision d'un bien — lot 4 : les quotes-parts de ses propriétaires.
@@ -89,6 +90,11 @@ export async function setPropertyOwnership(tenantId: string, propertyId: string,
     }
     const known = await prisma.tenantClient.count({ where: { tenantId, id: { in: ids } } });
     if (known !== ids.length) throw badRequest('Un propriétaire choisi n’appartient pas à cette agence');
+
+    // Barriere « detenu en propre » (pack Patrimoine) : remplacer par une
+    // liste NON vide rattache un (ou plusieurs) proprietaire(s) tiers. Vider
+    // l'indivision (shares.length === 0) reste toujours permis.
+    await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
   }
 
   await prisma.$transaction(async tx => {

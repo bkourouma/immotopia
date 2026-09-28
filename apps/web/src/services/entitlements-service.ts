@@ -16,6 +16,13 @@ export interface MenuEntitlements {
   readOnly: boolean;
   phase: string;
   enforcement: 'off' | 'warn' | 'enforce';
+  /**
+   * Barrière « détenu en propre » (pack Patrimoine, lot P1) : vrai quand le
+   * seul module pleinement ouvert est MODULE_PATRIMOINE. Sert à masquer les
+   * entrées de menu qui ne concernent que la gestion pour un tiers
+   * (`useOwnAssetsOnly`, hooks/useMenuAccess.ts).
+   */
+  ownAssetsOnly?: boolean;
 }
 
 export async function getMenuEntitlements(tenantId: string): Promise<MenuEntitlements> {

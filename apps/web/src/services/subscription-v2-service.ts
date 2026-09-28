@@ -13,29 +13,23 @@ import apiClient from '../utils/api-client';
  * - docs/architecture/PLAN-ABONNEMENTS.md
  */
 
-export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS';
+export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS';
 export type CatalogItemKindCode = 'PACK' | 'EXTENSION' | 'SETUP';
-export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER';
+export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
 export type SubscriptionItemStatus = 'SCHEDULED' | 'ACTIVE' | 'ENDED';
 export type SubscriptionStatusCode = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'SUSPENDED';
 export type QuotaPolicyCode = 'BLOCK' | 'BILL_OVERAGE' | 'WARN_ONLY';
 export type SubscriptionPhase = 'NONE' | 'TRIAL' | 'ACTIVE' | 'GRACE' | 'READ_ONLY';
 export type ModuleAccess = 'FULL' | 'READ_ONLY' | 'NONE';
 export type InvoiceLineKindCode =
-  | 'PACK'
-  | 'EXTENSION'
-  | 'PRORATA'
-  | 'DISCOUNT'
-  | 'SETUP'
-  | 'OVERAGE'
-  | 'CREDIT'
-  | 'USAGE'
-  | 'TAX';
+  'PACK' | 'EXTENSION' | 'PRORATA' | 'DISCOUNT' | 'SETUP' | 'OVERAGE' | 'CREDIT' | 'USAGE' | 'TAX';
 
 export interface CatalogRules {
   byHeldPacks?: Array<{ anyOf: string[]; monthlyPrice: number }>;
   lotTiers?: Array<{ onlyPacks: string[]; fromLot: number; monthlyPrice: number }>;
   requiresAnyOf?: string[];
+  /** Palier d'une gamme (packs Patrimoine, lot P1) : deux packs du même `tierGroup` ne se cumulent pas. */
+  tierGroup?: string;
 }
 
 /** `CatalogEntry` (subscription-v2-service.ts, `toCatalogEntry`). */
@@ -83,6 +77,8 @@ export interface CatalogQuoteRequest {
   lots?: number;
   copros?: number;
   chantiers?: number;
+  /** Biens détenus visés (packs Patrimoine, lot P1). */
+  biens?: number;
 }
 
 /** `serializeItem` (subscription-v2-service.ts). */
@@ -163,6 +159,12 @@ export interface TenantEntitlements {
   modules: ModuleKeyCode[];
   moduleAccess: Record<ModuleKeyCode, ModuleAccess>;
   features: string[];
+  /**
+   * Barrière « détenu en propre » (pack Patrimoine, lot P1) : vrai quand le
+   * seul module pleinement ouvert est MODULE_PATRIMOINE. Ni mandat, ni
+   * propriétaire tiers (403 `OWN_ASSETS_ONLY`, utils/subscription-denial-notice.ts).
+   */
+  ownAssetsOnly: boolean;
   capacities: Record<CapacityKeyCode, CapacityState>;
   quotaPolicy: QuotaPolicyCode;
   enforcement: 'off' | 'warn' | 'enforce';
@@ -252,7 +254,9 @@ export async function getOwnEntitlements(tenantId: string): Promise<TenantEntitl
 }
 
 export async function getSubscriptionOverview(tenantId: string): Promise<SubscriptionOverview> {
-  const response = await apiClient.get<Envelope<SubscriptionOverview>>(`/admin/tenants/${tenantId}/subscription/overview`);
+  const response = await apiClient.get<Envelope<SubscriptionOverview>>(
+    `/admin/tenants/${tenantId}/subscription/overview`
+  );
   return response.data.data;
 }
 
@@ -270,7 +274,10 @@ export interface AddItemResult {
 }
 
 export async function addSubscriptionItem(tenantId: string, input: AddItemInput): Promise<AddItemResult> {
-  const response = await apiClient.post<Envelope<AddItemResult>>(`/admin/tenants/${tenantId}/subscription/items`, input);
+  const response = await apiClient.post<Envelope<AddItemResult>>(
+    `/admin/tenants/${tenantId}/subscription/items`,
+    input
+  );
   return response.data.data;
 }
 
@@ -330,8 +337,14 @@ export interface UpdateSettingsInput {
   trialEndsAt?: string;
 }
 
-export async function updateSubscriptionSettings(tenantId: string, input: UpdateSettingsInput): Promise<SubscriptionRow> {
-  const response = await apiClient.patch<Envelope<SubscriptionRow>>(`/admin/tenants/${tenantId}/subscription/settings`, input);
+export async function updateSubscriptionSettings(
+  tenantId: string,
+  input: UpdateSettingsInput
+): Promise<SubscriptionRow> {
+  const response = await apiClient.patch<Envelope<SubscriptionRow>>(
+    `/admin/tenants/${tenantId}/subscription/settings`,
+    input
+  );
   return response.data.data;
 }
 
@@ -343,21 +356,28 @@ export async function updateSubscriptionSettings(tenantId: string, input: Update
  * paiement ni par la tâche planifiée — seulement par cette action.
  */
 export async function setSubscriptionManualReadOnly(tenantId: string, reason: string): Promise<SubscriptionRow> {
-  const response = await apiClient.post<Envelope<SubscriptionRow>>(`/admin/tenants/${tenantId}/subscription/manual-read-only`, {
-    reason
-  });
+  const response = await apiClient.post<Envelope<SubscriptionRow>>(
+    `/admin/tenants/${tenantId}/subscription/manual-read-only`,
+    {
+      reason
+    }
+  );
   return response.data.data;
 }
 
 export async function clearSubscriptionManualReadOnly(tenantId: string): Promise<SubscriptionRow> {
-  const response = await apiClient.delete<Envelope<SubscriptionRow>>(`/admin/tenants/${tenantId}/subscription/manual-read-only`);
+  const response = await apiClient.delete<Envelope<SubscriptionRow>>(
+    `/admin/tenants/${tenantId}/subscription/manual-read-only`
+  );
   return response.data.data;
 }
 
 // ------------------------------------------------------------------ dérogations
 
 export async function listCapacityOverrides(tenantId: string): Promise<CapacityOverrideDTO[]> {
-  const response = await apiClient.get<Envelope<CapacityOverrideDTO[]>>(`/admin/tenants/${tenantId}/subscription/overrides`);
+  const response = await apiClient.get<Envelope<CapacityOverrideDTO[]>>(
+    `/admin/tenants/${tenantId}/subscription/overrides`
+  );
   return response.data.data;
 }
 
@@ -387,11 +407,15 @@ export async function revokeCapacityOverride(tenantId: string, overrideId: strin
 // ------------------------------------------------------------------ facture et modules
 
 export async function previewNextInvoice(tenantId: string): Promise<InvoicePreview> {
-  const response = await apiClient.get<Envelope<InvoicePreview>>(`/admin/tenants/${tenantId}/subscription/invoice-preview`);
+  const response = await apiClient.get<Envelope<InvoicePreview>>(
+    `/admin/tenants/${tenantId}/subscription/invoice-preview`
+  );
   return response.data.data;
 }
 
 export async function clearModuleOverride(tenantId: string, moduleKey: ModuleKeyCode): Promise<unknown> {
-  const response = await apiClient.delete<Envelope<unknown>>(`/admin/tenants/${tenantId}/modules/${moduleKey}/override`);
+  const response = await apiClient.delete<Envelope<unknown>>(
+    `/admin/tenants/${tenantId}/modules/${moduleKey}/override`
+  );
   return response.data.data;
 }

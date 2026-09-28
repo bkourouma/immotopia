@@ -3,6 +3,7 @@ import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
 import { getPropertyForTenant } from '../../utils/property-tenant-guard';
+import { assertThirdPartyAllowedForTenant } from '../../services/own-assets-barrier-service';
 import { propertyLabels, tenantClientNames, userNames } from './names';
 import { mandateNumber, nextSequenceTx } from './numbering';
 import { createMandateSchema, revokeMandateSchema, updateMandateSchema } from './schemas';
@@ -162,6 +163,9 @@ export async function createMandate(
     select: { id: true }
   });
   if (already) throw conflict('Ce bien porte déjà un mandat de vente actif.');
+
+  // Barriere « detenu en propre » (pack Patrimoine) : avant toute ecriture.
+  await assertThirdPartyAllowedForTenant(tenantId, 'MANDATE');
 
   const created = await prisma.$transaction(async tx => {
     const year = input.startDate.getUTCFullYear();
