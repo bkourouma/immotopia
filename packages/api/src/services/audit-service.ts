@@ -92,6 +92,17 @@ async function flushAuditQueue(): Promise<void> {
 }
 
 /**
+ * Vide la file en memoire (reutilise `flushAuditQueue`) et renvoie le nombre
+ * d'entrees restees en file (0 = tout ecrit). A appeler avant qu'un script
+ * court (CLI, tache) ne quitte le process : sans cela, les evenements posés
+ * juste avant la fin ne partiraient jamais (le flush periodique est a 5 s).
+ */
+export async function flushAuditEvents(): Promise<number> {
+  await flushAuditQueue();
+  return auditQueue.length;
+}
+
+/**
  * Get audit logs with filtering
  * @param filters - Filter criteria
  * @returns Audit logs and pagination info
