@@ -15,7 +15,7 @@
 jest.mock('@prisma/client', () => {
   const tx = {
     journalEntry: { create: jest.fn(), findUnique: jest.fn() },
-    journalEntryLine: { createMany: jest.fn() },
+    journalEntryLine: { createMany: jest.fn() }
   };
 
   const prisma = {
@@ -27,13 +27,13 @@ jest.mock('@prisma/client', () => {
     journalEntryLine: { createMany: jest.fn() },
     syndicateBudget: { findFirst: jest.fn(), update: jest.fn() },
     gMResolution: { findFirst: jest.fn() },
-    $transaction: jest.fn(async (callback: any) => callback(tx)),
+    $transaction: jest.fn(async (callback: any) => callback(tx))
   };
 
   return {
     PrismaClient: jest.fn(() => prisma),
     __mockPrisma: prisma,
-    __mockTx: tx,
+    __mockTx: tx
   };
 });
 
@@ -62,7 +62,7 @@ describe('createJournalEntryBySyndicate — lotId de chaque ligne verifie', () =
         reference: 'JE-003',
         description: 'Ecriture avec lot etranger',
         sourceType: 'MANUAL',
-        lines: [{ accountId: 'acc-1', lotId: 'lot-autre-copropriete', debit: 10000, credit: 10000, label: 'X' }],
+        lines: [{ accountId: 'acc-1', lotId: 'lot-autre-copropriete', debit: 10000, credit: 10000, label: 'X' }]
       })
     ).rejects.toThrow();
     expect(mockTx.journalEntry.create).not.toHaveBeenCalled();
@@ -79,7 +79,7 @@ describe('createJournalEntryBySyndicate — lotId de chaque ligne verifie', () =
       reference: 'JE-004',
       description: 'Ecriture avec lot valide',
       sourceType: 'MANUAL',
-      lines: [{ accountId: 'acc-1', lotId: 'lot-1', debit: 10000, credit: 10000, label: 'X' }],
+      lines: [{ accountId: 'acc-1', lotId: 'lot-1', debit: 10000, credit: 10000, label: 'X' }]
     });
 
     expect(result?.id).toBe('entry-1');
@@ -90,7 +90,7 @@ describe('updateBudgetBySyndicate — approvedByResolutionId verifie', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrisma.syndicate.findFirst.mockResolvedValue({ id: 'syndic-1' });
-    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({ id: 'budget-1' });
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({ id: 'budget-1', status: 'DRAFT' });
   });
 
   it("refuse une resolution d'une autre copropriete", async () => {
@@ -99,7 +99,7 @@ describe('updateBudgetBySyndicate — approvedByResolutionId verifie', () => {
     await expect(
       updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-1', {
         approvedByResolutionId: 'resolution-autre-copropriete',
-        status: 'APPROVED',
+        status: 'APPROVED'
       })
     ).rejects.toThrow();
     expect(mockPrisma.syndicateBudget.update).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe('updateBudgetBySyndicate — approvedByResolutionId verifie', () => {
 
     const result = await updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-1', {
       approvedByResolutionId: 'resolution-1',
-      status: 'APPROVED',
+      status: 'APPROVED'
     });
 
     expect(result.status).toBe('APPROVED');

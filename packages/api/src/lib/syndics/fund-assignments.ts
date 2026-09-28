@@ -1,5 +1,5 @@
 import { prisma } from '../../utils/database';
-import { NotFoundError } from '../../middleware/error-middleware';
+import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { assertFundCurrency, assertFundOfSyndicate } from './fund-credits';
@@ -61,9 +61,12 @@ export async function setBudgetLineFundByTenant(
 ) {
   const line = await prisma.budgetLineItem.findFirst({
     where: { id: lineId, budgetId, budget: { syndicateId, syndicate: { tenantId } } },
-    select: { id: true, fundId: true, budget: { select: { currency: true } } }
+    select: { id: true, fundId: true, budget: { select: { currency: true, status: true } } }
   });
   if (!line) throw new NotFoundError('Ligne budgétaire introuvable pour cette copropriété');
+  if (line.budget.status === 'CLOSED') {
+    throw new ConflictError('Budget clôturé : il ne peut plus être modifié.');
+  }
   if (fundId) {
     const fund = await assertFundOfSyndicate(prisma, tenantId, syndicateId, fundId);
     assertFundCurrency(fund, line.budget.currency);

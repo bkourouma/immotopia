@@ -375,4 +375,18 @@ describe('affectation a un fonds — isolation', () => {
     await setBudgetLineFundByTenant(TENANT_A, S1, BUDGET, LINE_ENTRETIEN, null);
     expect(mockPrisma.budgetLineItem.rows[0].fundId).toBeNull();
   });
+
+  it("refuse de changer le fonds d'un poste d'un budget clôturé", async () => {
+    mockPrisma.budgetLineItem.rows.push({
+      id: LINE_ENTRETIEN,
+      budgetId: BUDGET,
+      fundId: null,
+      budget: { syndicateId: S1, currency: 'XOF', status: 'CLOSED', syndicate: { tenantId: TENANT_A } }
+    });
+
+    await expect(setBudgetLineFundByTenant(TENANT_A, S1, BUDGET, LINE_ENTRETIEN, COURANT)).rejects.toMatchObject({
+      statusCode: 409
+    });
+    expect(mockPrisma.budgetLineItem.rows[0].fundId).toBeNull();
+  });
 });

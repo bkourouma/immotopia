@@ -5,6 +5,7 @@ import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicBudgets } from '../../pages/syndics/SyndicBudgets';
 import apiClient from '../../utils/api-client';
+import { Modal } from 'antd';
 
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
@@ -57,6 +58,11 @@ vi.mock('antd', async () => {
     </div>
   );
 
+  const ModalComponent: any = passthrough();
+  // Modal.confirm est un appel statique (pas un rendu React) : le mock capture
+  // le dernier appel pour que les tests declenchent onOk/onCancel eux-memes.
+  ModalComponent.confirm = vi.fn();
+
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
@@ -64,7 +70,7 @@ vi.mock('antd', async () => {
     Form: FormComponent,
     Input: passthrough('input'),
     InputNumber: passthrough('input'),
-    Modal: passthrough(),
+    Modal: ModalComponent,
     Select: passthrough('select'),
     Space: passthrough(),
     Spin: passthrough(),
@@ -214,5 +220,126 @@ describe('Syndics budgets page', () => {
         status: 'APPROVED'
       });
     });
+  });
+
+  it('affiche le statut traduit (Brouillon)', async () => {
+    renderWithRoute();
+    expect(await screen.findByText('Brouillon')).toBeTruthy();
+  });
+});
+
+describe('Syndics budgets page — clôture (anomalie N.8-2)', () => {
+  const budgetApproved = {
+    id: 'budget-1',
+    fiscalYear: 2026,
+    label: 'Budget 2026',
+    totalAmount: 1000000,
+    status: 'APPROVED',
+    currency: 'XOF',
+    allocations: [],
+    lines: [
+      {
+        id: 'line-1',
+        budgetId: 'budget-1',
+        category: 'Maintenance',
+        description: 'Maintenance courante',
+        amountForecast: 700000,
+        amountActual: 900000,
+        distributionKey: 'GENERAL_SHARES'
+      }
+    ]
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (Modal.confirm as any).mockClear?.();
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/budgets')) {
+        return Promise.resolve({ data: { success: true, data: [budgetApproved] } });
+      }
+      if (url.endsWith('/charges/batch')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      if (url.endsWith('/lots')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+  });
+
+  it('affiche le statut Approuvé et propose Réviser et Clôturer', async () => {
+    renderWithRoute();
+    expect(await screen.findByText('Approuvé')).toBeTruthy();
+    expect(await screen.findByText('Réviser')).toBeTruthy();
+    expect(await screen.findByText('Clôturer')).toBeTruthy();
+  });
+
+  it('ouvre une confirmation avec le total budgété/réalisé/écart avant de clôturer', async () => {
+    mockApiClient.patch.mockResolvedValue({ data: { success: true, data: { ...budgetApproved, status: 'CLOSED' } } });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Clôturer'));
+
+    expect(Modal.confirm).toHaveBeenCalledTimes(1);
+    const config = (Modal.confirm as any).mock.calls[0][0];
+    expect(config.okText).toBe('Clôturer');
+
+    // Simule la confirmation de l'utilisateur dans la boîte de dialogue.
+    await config.onOk();
+
+    await waitFor(() => {
+      expect(mockApiClient.patch).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/budgets/budget-1', {
+        status: 'CLOSED'
+      });
+    });
+  });
+
+  it('affiche les colonnes Budgété, Réalisé et Écart des postes', async () => {
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Postes et fonds'));
+
+    expect(await screen.findByText('Maintenance')).toBeTruthy();
+  });
+});
+
+describe('Syndics budgets page — budget clôturé (lecture seule)', () => {
+  const budgetClosed = {
+    id: 'budget-1',
+    fiscalYear: 2026,
+    label: 'Budget 2026',
+    totalAmount: 1000000,
+    status: 'CLOSED',
+    currency: 'XOF',
+    allocations: [],
+    lines: []
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/budgets')) {
+        return Promise.resolve({ data: { success: true, data: [budgetClosed] } });
+      }
+      if (url.endsWith('/charges/batch')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      if (url.endsWith('/lots')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+  });
+
+  it('n affiche ni Approuver, ni Réviser, ni Clôturer, et désactive Répartir/Générer appels', async () => {
+    renderWithRoute();
+    expect(await screen.findByText('Clôturé')).toBeTruthy();
+    expect(screen.queryByText('Approuver')).toBeNull();
+    expect(screen.queryByText('Réviser')).toBeNull();
+    expect(screen.queryByText('Clôturer')).toBeNull();
+
+    const repartirButton = (await screen.findByText('Répartir')) as HTMLButtonElement;
+    expect(repartirButton.disabled).toBe(true);
+    const genererButton = (await screen.findByText('Générer appels')) as HTMLButtonElement;
+    expect(genererButton.disabled).toBe(true);
   });
 });
