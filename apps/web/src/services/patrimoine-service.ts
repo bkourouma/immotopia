@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 import {
   AssetValuation,
   OwnerStatement,
@@ -263,4 +264,27 @@ export async function sendOwnerStatement(tenantId: string, statementId: string) 
     `/tenants/${tenantId}/owner-statements/${statementId}/send`
   );
   return response.data.data;
+}
+
+export type PatrimoineExportFormat = 'pdf' | 'xlsx';
+
+/**
+ * Export du patrimoine (P3) — synthèse de toute l'agence, ou d'un seul bien
+ * quand `propertyId` est fourni. Fichier binaire, jamais servi en statique :
+ * la route vérifie l'agence, le bien le cas échéant, et la permission
+ * `PROPERTIES_VIEW`.
+ */
+export async function downloadPatrimoineExport(
+  tenantId: string,
+  format: PatrimoineExportFormat,
+  propertyId?: string
+): Promise<{ blob: Blob; filename: string }> {
+  const path = propertyId
+    ? `/tenants/${tenantId}/properties/${encodeURIComponent(propertyId)}/patrimoine/export`
+    : `/tenants/${tenantId}/patrimoine/export`;
+  const response = await apiClient.get<Blob>(`${path}?format=${format}`, { responseType: 'blob' });
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], `patrimoine.${format}`)
+  };
 }

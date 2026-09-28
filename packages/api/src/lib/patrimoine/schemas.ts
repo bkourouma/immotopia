@@ -127,6 +127,11 @@ export const projectionQuerySchema = z.object({
   vacancyRate: z.coerce.number().min(0).max(1).default(0.05)
 });
 
+/** `GET .../patrimoine/export` (agence ou bien) : format obligatoire, PDF ou Excel. */
+export const exportQuerySchema = z.object({
+  format: z.enum(['pdf', 'xlsx'], { errorMap: () => ({ message: "Format attendu : 'pdf' ou 'xlsx'" }) })
+});
+
 /**
  * `GET /tenants/:tenantId/work-programs`. `upcoming=true` ne garde que les
  * programmes planifies ou en cours, par date prevue croissante.

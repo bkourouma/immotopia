@@ -3,6 +3,7 @@ import apiClient from '../../utils/api-client';
 import {
   deleteExpense,
   deleteLoan,
+  downloadPatrimoineExport,
   getPatrimoinePerformance,
   getPropertyYield,
   updateValuation,
@@ -66,10 +67,9 @@ describe('patrimoine-service', () => {
   it('calls patch valuation endpoint', async () => {
     mockApiClient.patch.mockResolvedValueOnce({ data: { success: true, data: {} } } as never);
     await updateValuation('tenant-2', 'property-3', 'valuation-4', { notes: 'updated' });
-    expect(mockApiClient.patch).toHaveBeenCalledWith(
-      '/tenants/tenant-2/properties/property-3/valuations/valuation-4',
-      { notes: 'updated' }
-    );
+    expect(mockApiClient.patch).toHaveBeenCalledWith('/tenants/tenant-2/properties/property-3/valuations/valuation-4', {
+      notes: 'updated'
+    });
   });
 
   it('calls patch work-program endpoint', async () => {
@@ -92,5 +92,32 @@ describe('patrimoine-service', () => {
     await deleteLoan('tenant-2', 'property-3', 'loan-9');
     expect(mockApiClient.delete).toHaveBeenCalledWith('/tenants/tenant-2/properties/property-3/loans/loan-9');
   });
-});
 
+  it('downloads the agency-wide patrimoine export as a blob', async () => {
+    const blob = new Blob(['pdf'], { type: 'application/pdf' });
+    mockApiClient.get.mockResolvedValueOnce({
+      data: blob,
+      headers: { 'content-disposition': "attachment; filename*=UTF-8''Patrimoine.pdf" }
+    } as never);
+
+    const result = await downloadPatrimoineExport('tenant-1', 'pdf');
+
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/patrimoine/export?format=pdf', {
+      responseType: 'blob'
+    });
+    expect(result).toEqual({ blob, filename: 'Patrimoine.pdf' });
+  });
+
+  it('downloads a single property patrimoine export, propertyId encoded, with a fallback filename', async () => {
+    const blob = new Blob(['xlsx']);
+    mockApiClient.get.mockResolvedValueOnce({ data: blob, headers: {} } as never);
+
+    const result = await downloadPatrimoineExport('tenant-1', 'xlsx', 'bien/7');
+
+    expect(mockApiClient.get).toHaveBeenCalledWith(
+      '/tenants/tenant-1/properties/bien%2F7/patrimoine/export?format=xlsx',
+      { responseType: 'blob' }
+    );
+    expect(result).toEqual({ blob, filename: 'patrimoine.xlsx' });
+  });
+});
