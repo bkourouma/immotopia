@@ -9,8 +9,6 @@
  * `audit-service` sont simules : ils ont leurs propres tests.
  */
 
-export {};
-
 type Row = Record<string, any>;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -876,3 +874,8 @@ describe('suspendTenantAction', () => {
     expect(suspendCalls).toHaveLength(0);
   });
 });
+
+// Module, pas script : sans cela ses declarations (`type Row`) entrent en
+// collision avec celles de provision-subscription-cli.test.ts sous ts-jest
+// (CI, 28/09 — cf. "Duplicate identifier 'Row'").
+export {};

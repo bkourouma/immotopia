@@ -102,6 +102,91 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/patrimoine-p5-portail` — 2026-09-28
+
+**État :** prêt à fusionner — PR #42 vers `main`, 6/6 checks CI au vert (`gh pr view 42` : `mergeable: MERGEABLE`), fusion laissée à l'utilisateur
+**Dernier commit :** `0728d7a` fix(tests): lever la collision de type entre deux suites d'abonnements
+
+Reprise : le tour précédent avait tout implémenté mais s'est arrêté avant de
+committer (limite d'API) — la branche était encore au niveau de PR #38, 7
+commits derrière `main` (PR #39 provisionnement, #40 patrimoine-suite-p0).
+Ce tour a relu (`security-auditor` + relecture générale, aucun bloquant, un
+point mineur documenté ci-dessous), vérifié (`typecheck`, 7 suites Jest
+ciblées = 114 tests, 5 fichiers Vitest = 57 tests, `check:architecture`,
+`wiki:check`, tous verts), committé, fusionné `origin/main` (sans conflit sur
+le code — seuls `HANDOFF.md`, `sous-fonctionnalites.md` et le classeur wiki se
+recoupaient, résolus en conservant les deux apports), puis ouvert la PR.
+
+Fait :
+
+- Vue patrimoine du portail propriétaire (lot P5) : `GET /api/portal/owner/patrimoine`
+  (+ `/settings`, `/properties/:propertyId`, `/properties/:propertyId/documents/:documentId/file`),
+  lecture seule, biens = `req.ownerPortal.propertyIds` dans l'agence du portail,
+  même 404 pour bien d'autrui / d'une autre agence / inexistant. Calculs par
+  `buildPropertyYieldInput` + `lib/patrimoine/yield.ts` (aucun second moteur).
+  Agrégats de la liste pondérés par la quote-part d'indivision ; détail non pondéré.
+- Masquage par l'agence : modèle `OwnerPortalSettings` (migration
+  `20261003150500_owner_portal_settings`, table dédiée, tout ouvert par défaut
+  sans écrire), `GET|PUT /api/tenants/:tenantId/settings/owner-portal`
+  (`TENANT_SETTINGS_VIEW/EDIT`), carte « Portail propriétaire » dans Paramètres
+  de l'agence. Vue masquée → 404 et entrée de menu retirée ; rubrique masquée →
+  clé absente ; `netNetYield` absent si les emprunts sont masqués.
+- Front : `pages/OwnerPortal/Patrimoine.tsx`, `PatrimoinePropertyDetails.tsx`
+  (React.lazy), menu « Mon patrimoine », traductions en/ar.
+- Correctifs du portail propriétaire : bug `date-fns` (variable `format` du corps
+  qui masquait la fonction → 500 sur les trois rapports) ; IDOR préexistant de
+  `POST /reports/export` (`report-generator.ts` : `propertyId` du corps écrasait
+  le périmètre) ; validation de `entityType`/`format`.
+- Tests : `owner-portal-patrimoine` (24), `owner-portal-reports-filename` (5),
+  `owner-portal-export-scope` (18), Vitest portail/menu/réglage. Wiki mis à jour
+  (4 lignes ajoutées, 3 rapports repassés « Disponible », note date-fns retirée).
+- Relectures (ce tour) : `security-auditor` — 0 bloquant, 1 mineur (cas
+  `PropertyDocument.tenantId: null` non documenté, corrigé par une note dans
+  `docs/governance/SECURITY.md` §5) ; relecture générale — 0 bloquant, 2
+  remarques cosmétiques sans suite.
+
+- Correctif hors P5 après la fusion de `origin/main` : `npm test -w @immotopia/api`
+  échouait en CI (TS2300 « Duplicate identifier 'Row' » entre
+  `provision-subscription-cli.test.ts` et
+  `subscription-provisioning-service.test.ts`, aucun des deux n'a
+  d'import/export donc TypeScript les traite en scripts globaux). Défaut
+  préexistant des PR #39/#40 déjà fusionnées — vérifié avec
+  `gh run list --branch main` : la CI de `main` elle-même est rouge sur ce
+  point depuis la fusion de la #40, indépendamment de P5. Corrigé en
+  renommant l'alias en `CliRow` dans le seul fichier CLI (`0728d7a`) ; les
+  deux suites (46 tests) repassent au vert.
+
+Reste à faire :
+
+- Fusion de la PR #42 : décision de l'utilisateur.
+- Recette navigateur du portail propriétaire sur une base migrée (non faite
+  dans ce tour — CI verte et deux relectures automatisées seules avant
+  fusion).
+- Signalé à part (hors P5, tâche déléguée via `spawn_task` — `task_42d38dec`) :
+  `main` a une CI rouge sur ce même défaut depuis la fusion de la #40 —
+  `subscription-provisioning-service.test.ts` garde encore le nom `Row` non
+  renommé ici (volontairement, pour ne toucher qu'un fichier dans cette PR) ;
+  un futur commit sur `main` doit soit renommer aussi ce second alias, soit
+  ajouter un `export {}` aux deux fichiers.
+- Décision éventuelle : un bien dont la table d'indivision ne cite pas le
+  propriétaire compte pour 0 % dans ses totaux (même règle que le relevé de
+  gérance, `ownerSharesByProperty`).
+
+Pièges et décisions :
+
+- Table dédiée plutôt que colonnes sur `AgencyFinanceSettings` : réglage de
+  portail, pas comptable, et P4 touche aux réglages fiscaux en parallèle.
+- Les tests qui montent `owner-portal-routes` vont dans `APP_LEVEL_TESTS`
+  (`jest.config.js`) : erreurs TS anciennes de `document-context-builder.ts`.
+- Worktree avec son propre `npm ci` (schéma modifié), pas de jonction.
+- Fusion de `origin/main` dans ce tour : les sections `fix/patrimoine-suite-p0`
+  (#40) et `feat/provision-abonnements` (#39) qui vivaient ici ont été
+  retirées — les deux branches sont déjà fusionnées dans `main` (règle du
+  fichier : une section disparaît une fois fusionnée, l'historique reste dans
+  `git log`).
+
+---
+
 ## Branche `fix/patrimoine-suite-p0` — 2026-09-28
 
 **État :** prêt à relire — PR #40 vers `main`

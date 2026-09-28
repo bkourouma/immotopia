@@ -15,8 +15,11 @@ import { privateUploadPath, readPrivateUpload, type PrivateFile } from '../files
  * appartient à l'agence et que le document appartient au bien. Toute autre
  * situation répond le même 404.
  *
- * Aucun portail n'affiche ces documents : le portail propriétaire les reçoit
- * dans le détail d'un bien, mais son écran ne les montre pas.
+ * Le portail propriétaire les sert désormais aussi (lot P5), par
+ * `GET /api/portal/owner/patrimoine/properties/:propertyId/documents/:documentId/file`,
+ * après contrôle du périmètre du propriétaire et du réglage de l'agence
+ * (`lib/patrimoine/owner-portal-view.ts`,
+ * `assertOwnerPortalDocumentAccessible`).
  */
 
 const NOT_FOUND = 'Document introuvable.';
