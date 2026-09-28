@@ -230,7 +230,7 @@ export const AuditLogs: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>
-            {t('Audit Logs')}
+            {t("Journaux d'audit")}
           </Title>
           <Text type="secondary">{t('Historique des actions administratives')}</Text>
         </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { App, Card, List, Row, Col, Spin, Typography } from 'antd';
 import { getTenantActivity, TenantActivity } from '../../../services/admin-subscription-service';
 import { StatCard, StatusTag } from '../../primitives';
+import { getModuleKeyLabelFr } from '../../../constants/module-labels';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
@@ -84,8 +85,13 @@ export const ActivityTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       {activity.subscription && (
         <Card title={t('Abonnement')}>
           <p>
-            {t('Offre {{value}}', { value: activity.subscription.plan })} —{' '}
-            <StatusTag status={activity.subscription.status} />
+            {/* `plan` est `null` pour une agence créée avec des packs (planKey
+                déprécié, BUG-2026-09-28-002) : pas de nom d'offre à afficher
+                dans ce cas, seulement le statut. */}
+            {activity.subscription.plan
+              ? t('Offre {{value}}', { value: activity.subscription.plan })
+              : t('Abonnement par packs')}{' '}
+            — <StatusTag status={activity.subscription.status} />
           </p>
           <p>
             {t('Fin de la période en cours : {{value}}', {
@@ -102,7 +108,7 @@ export const ActivityTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           locale={{ emptyText: t('Aucun module activé') }}
           renderItem={item => (
             <List.Item>
-              <Text>{item.key}</Text>
+              <Text>{getModuleKeyLabelFr(item.key)}</Text>
               <Text type="secondary">{formatDateTime(item.enabledAt)}</Text>
             </List.Item>
           )}

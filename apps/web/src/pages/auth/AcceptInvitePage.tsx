@@ -84,7 +84,7 @@ export const AcceptInvitePage: React.FC = () => {
         setGeneralError(response.message || t("Erreur lors de l'acceptation de l'invitation."));
       }
     } catch (err: any) {
-      setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez reessayer.'));
+      setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez réessayer.'));
       console.error('Accept invite error:', err);
     } finally {
       setIsSubmitting(false);
@@ -107,11 +107,11 @@ export const AcceptInvitePage: React.FC = () => {
           <Result
             status="success"
             icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-            title={t('Invitation acceptee')}
-            subTitle={t('Votre compte est pret. Redirection vers la connexion...')}
+            title={t('Invitation acceptée')}
+            subTitle={t('Votre compte est prêt. Redirection vers la connexion...')}
             extra={
               <Button type="primary" onClick={() => navigate('/login?invite=accepted')}>
-                {t('Aller a la connexion')}
+                {t('Aller à la connexion')}
               </Button>
             }
           />
@@ -141,7 +141,7 @@ export const AcceptInvitePage: React.FC = () => {
         }
       >
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          {t('Creez votre mot de passe pour rejoindre votre equipe.')}
+          {t('Créez votre mot de passe pour rejoindre votre équipe.')}
         </Text>
 
         <Form<AcceptInviteFormValues>
@@ -175,13 +175,13 @@ export const AcceptInvitePage: React.FC = () => {
             label={t('Mot de passe')}
             rules={[
               { required: true, message: t('Le mot de passe est requis.') },
-              { min: 8, message: t('Minimum 8 caracteres.') },
+              { min: 8, message: t('Minimum 8 caractères.') },
               { pattern: /[A-Z]/, message: t('Ajoutez au moins une majuscule.') },
               { pattern: /[a-z]/, message: t('Ajoutez au moins une minuscule.') },
               { pattern: /[0-9]/, message: t('Ajoutez au moins un chiffre.') },
               {
                 pattern: /[^A-Za-z0-9]/,
-                message: t('Ajoutez au moins un caractere special.')
+                message: t('Ajoutez au moins un caractère spécial.')
               }
             ]}
           >
@@ -231,7 +231,7 @@ export const AcceptInvitePage: React.FC = () => {
 
           <div style={{ textAlign: 'center' }}>
             <Link to="/login">
-              <ArrowLeftOutlined /> {t('Retour a la connexion')}
+              <ArrowLeftOutlined /> {t('Retour à la connexion')}
             </Link>
           </div>
         </Form>

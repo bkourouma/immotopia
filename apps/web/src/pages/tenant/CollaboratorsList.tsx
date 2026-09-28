@@ -25,6 +25,7 @@ import {
   CheckCircleOutlined
 } from '@ant-design/icons';
 import { listMembers, Member, MembershipFilters, disableMember, enableMember } from '../../services/membership-service';
+import { getRoleLabelFr } from '../../constants/permissions-labels';
 import type { ColumnsType } from 'antd/es/table';
 import { t } from '../../i18n/t';
 
@@ -145,7 +146,7 @@ export const CollaboratorsList: React.FC = () => {
         <Space size="small" wrap>
           {record.roles.map(role => (
             <Tag key={role.id} color="blue">
-              {role.name}
+              {getRoleLabelFr(role.key, role.name).name}
             </Tag>
           ))}
         </Space>

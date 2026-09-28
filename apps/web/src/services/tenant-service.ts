@@ -30,12 +30,26 @@ export interface TenantFilters {
   limit?: number;
 }
 
+/**
+ * Contrat exact de `GET /api/admin/tenants/:id/stats`
+ * (packages/api/src/services/tenant-service.ts, `getTenantStats`) : cette
+ * interface décrivait un contrat imaginé (totalProperties/totalClients/…) qui
+ * ne correspondait à aucun champ réellement renvoyé — l'onglet Statistiques
+ * de la fiche agence affichait quatre valeurs vides (BUG-2026-09-28-001).
+ */
 export interface TenantStats {
-  totalProperties: number;
-  totalClients: number;
-  totalCollaborators: number;
-  activeModules: number;
-  lastActivity: string;
+  collaboratorCount: number;
+  activeCollaborators: number;
+  disabledCollaborators: number;
+  /** Codes bruts (`MODULE_AGENCY`, …) : passer par un libellé métier à l'affichage. */
+  enabledModules: TenantModuleKey[];
+  subscription: {
+    /** `null` pour une agence créée avec des packs (planKey déprécié). */
+    plan: TenantPlanKey | null;
+    status: string;
+    billingCycle: TenantBillingCycle;
+  } | null;
+  lastLoginAt: string | null;
 }
 
 /** Offre d'abonnement proposée à la création d'une agence. */
@@ -207,19 +221,13 @@ export async function provisionTenant(
 }
 
 /** Renvoie l'invitation de l'administrateur d'une agence tout juste créée. */
-export async function resendInvitation(
-  tenantId: string,
-  invitationId: string
-): Promise<ResendInvitationResponse> {
+export async function resendInvitation(tenantId: string, invitationId: string): Promise<ResendInvitationResponse> {
   const response = await apiClient.post(`/tenants/${tenantId}/users/invitations/${invitationId}/resend`);
   return response.data;
 }
 
 // Update tenant (admin only)
-export async function updateTenant(
-  tenantId: string,
-  data: UpdateTenantRequest
-): Promise<TenantResponse> {
+export async function updateTenant(tenantId: string, data: UpdateTenantRequest): Promise<TenantResponse> {
   const response = await apiClient.patch(`/admin/tenants/${tenantId}`, data);
   return response.data;
 }
@@ -278,7 +286,3 @@ export async function getTenantClients(tenantId: string): Promise<TenantClientsR
   const response = await apiClient.get(`/tenants/${tenantId}/clients`);
   return response.data;
 }
-
-
-
-

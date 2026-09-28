@@ -263,6 +263,37 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
   COMMUNICATION_VIEW: {
     label: t('Accès au module Communication'),
     description: t('Voir et gérer la communication : modèles, règles, historique, préférences, analytiques.')
+  },
+
+  // --- Finance (module financier opérationnel, lots 2 à 4) ---
+  //
+  // Descriptions reprises du seed (packages/api/prisma/seeds/finance-permissions-seed.ts),
+  // sans accents côté API — hors territoire de cet agent, non modifié. Les
+  // entrées ci-dessous priment sur la description API dans getPermissionLabelFr
+  // et corrigent l'affichage (BUG-2026-09-28-003) sans toucher au seed.
+  FINANCE_ACCOUNTS_READ: {
+    label: t('Voir les comptes de tiers'),
+    description: t('Lire les comptes de tiers et leurs relevés.')
+  },
+  FINANCE_REPORTS_READ: {
+    label: t('Voir les rapports financiers'),
+    description: t('Lire les balances et les comptes rendus de campagne.')
+  },
+  FINANCE_DOCUMENTS_CREATE: {
+    label: t('Créer des pièces financières'),
+    description: t('Créer une pièce financière (campagne de facturation).')
+  },
+  FINANCE_DOCUMENTS_VALIDATE: {
+    label: t('Valider des pièces financières'),
+    description: t('Valider une pièce financière.')
+  },
+  FINANCE_SITES_MANAGE: {
+    label: t('Gérer les chantiers'),
+    description: t('Gérer les chantiers (module financier).')
+  },
+  FINANCE_SETTINGS_MANAGE: {
+    label: t('Paramétrer le module financier'),
+    description: t('Paramétrer le module financier : plan de comptes, postes de dépense.')
   }
 };
 
@@ -276,7 +307,8 @@ export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = {
   PROPERTIES: t('Biens immobiliers'),
   RENTAL: t('Location (baux, loyers, documents)'),
   MAINTENANCE: 'Maintenance',
-  COMMUNICATION: 'Communication'
+  COMMUNICATION: 'Communication',
+  FINANCE: t('Finance')
 };
 
 /** Noms et descriptions en français des rôles (clé technique → libellé) */

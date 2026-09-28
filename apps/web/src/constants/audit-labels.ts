@@ -5,15 +5,33 @@ import { t } from '../i18n/t';
 
 /** Libellé français détaillé pour chaque clé d'action d'audit (description explicite de l'action) */
 export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
+  // Authentification (BUG-2026-09-28-003 : AUTH_LOGIN_SUCCEEDED s'affichait en code brut)
+  AUTH_LOGIN_SUCCEEDED: t("Connexion réussie de l'utilisateur"),
+  AUTH_LOGIN_FAILED: t('Tentative de connexion échouée'),
+  AUTH_LOGOUT: t("Déconnexion de l'utilisateur"),
+  AUTH_GOOGLE_LOGIN: t('Connexion via Google'),
+  AUTH_TOKEN_REFRESHED: t('Renouvellement du jeton de session'),
+  AUTH_TOKEN_REUSE_DETECTED: t("Réutilisation détectée d'un jeton de rafraîchissement révoqué"),
+  AUTH_PASSWORD_RESET_REQUESTED: t('Demande de réinitialisation du mot de passe'),
+  AUTH_PASSWORD_RESET_COMPLETED: t('Réinitialisation du mot de passe effectuée'),
+  AUTH_EMAIL_VERIFIED: t('Vérification de l’adresse e-mail'),
+
   // Tenant
+  // Création en un clic (lot F) : clé distincte de TENANT_CREATED, pas encore
+  // dans l'enum AuditActionKey (packages/api/src/types/audit-types.ts).
+  TENANT_PROVISIONED: t("Provisionnement d'une agence en un clic (packs et administrateur créés)"),
   TENANT_CREATED: t("Création d'un nouveau tenant (agence ou opérateur) sur la plateforme"),
   TENANT_UPDATED: t('Modification des paramètres ou informations du tenant'),
   TENANT_SUSPENDED: t('Suspension du tenant (accès désactivé temporairement)'),
   TENANT_ACTIVATED: t('Réactivation du tenant (accès rétabli)'),
+  TENANT_DATA_EXPORT_REQUESTED: t("Demande d'export complet des données de l'agence"),
+  TENANT_DATA_EXPORT_DOWNLOADED: t("Téléchargement de l'export des données de l'agence"),
+  TENANT_DATA_EXPORT_DELETED: t("Suppression de l'export des données de l'agence"),
 
   // Modules
   MODULE_ENABLED: t("Activation d'un module fonctionnel pour le tenant"),
   MODULE_DISABLED: t("Désactivation d'un module fonctionnel pour le tenant"),
+  MODULE_OVERRIDE_CLEARED: t("Suppression d'une dérogation manuelle de module"),
 
   // Utilisateurs / collaborateurs
   USER_INVITED: t("Envoi d'une invitation à un nouveau collaborateur par e-mail"),
@@ -30,11 +48,28 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   SUBSCRIPTION_CREATED: t("Création d'un abonnement pour le tenant"),
   SUBSCRIPTION_UPDATED: t("Modification du plan ou des options d'abonnement"),
   SUBSCRIPTION_CANCELED: t("Annulation de l'abonnement du tenant"),
+  // Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md)
+  SUBSCRIPTION_ITEM_ADDED: t("Ajout d'un pack ou d'une extension à l'abonnement"),
+  SUBSCRIPTION_ITEM_REMOVED: t("Retrait d'un pack ou d'une extension de l'abonnement"),
+  SUBSCRIPTION_ITEM_UPDATED: t("Modification d'un élément de l'abonnement (remise, prix figé)"),
+  SUBSCRIPTION_PACK_CHANGED: t("Changement de pack de l'abonnement"),
+  SUBSCRIPTION_SETTINGS_UPDATED: t("Modification des paramètres de l'abonnement (politique de dépassement, essai)"),
+  SUBSCRIPTION_MIGRATED_TO_PACKS: t('Migration de l’abonnement vers le modèle par packs'),
+  SUBSCRIPTION_EXTENSION_REQUESTED: t("Demande d'extension de capacité par l'agence"),
+  SUBSCRIPTION_EXTENSION_REQUEST_HANDLED: t("Traitement d'une demande d'extension de capacité"),
+  SUBSCRIPTION_MANUAL_READ_ONLY_SET: t('Passage manuel de l’agence en lecture seule'),
+  SUBSCRIPTION_MANUAL_READ_ONLY_CLEARED: t('Levée de la lecture seule manuelle de l’agence'),
+  CAPACITY_OVERRIDE_GRANTED: t('Octroi d’une dérogation de capacité'),
+  CAPACITY_OVERRIDE_REVOKED: t('Révocation d’une dérogation de capacité'),
+  CATALOG_ITEM_UPDATED: t('Modification d’un élément du catalogue d’offres'),
+  PLATFORM_PAYMENT_STARTED: t("Démarrage d'un paiement en ligne d'abonnement"),
 
   // Factures
   INVOICE_CREATED: t("Émission d'une nouvelle facture"),
   INVOICE_MARKED_PAID: t("Marquage d'une facture comme payée"),
   INVOICE_CANCELED: t("Annulation d'une facture"),
+  INVOICE_ISSUED: t('Émission d’une facture plateforme'),
+  INVOICE_CREDIT_NOTE_ISSUED: t('Émission d’un avoir sur facture plateforme'),
 
   // CRM – Contacts
   CRM_CONTACT_CREATED: t("Création d'un nouveau contact (prospect ou client) dans le CRM"),
@@ -104,7 +139,29 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
 
   // Génération de documents
   DOCUMENT_GENERATED: t("Génération d'un document à partir d'un modèle"),
-  DOCUMENT_REGENERATED: t('Régénération du document avec les données à jour')
+  DOCUMENT_REGENERATED: t('Régénération du document avec les données à jour'),
+
+  // Identité des documents (signature et cachet)
+  DOCUMENT_SIGNATURE_UPLOADED: t("Ajout d'une signature ou d'un cachet"),
+  DOCUMENT_SIGNATURE_REMOVED: t("Suppression d'une signature ou d'un cachet"),
+
+  // Syndic — fonds financiers de copropriété
+  SYNDICATE_FUND_CREATED: t("Création d'un fonds de copropriété"),
+  SYNDICATE_FUND_RENAMED: t('Renommage du fonds de copropriété'),
+  SYNDICATE_FUND_BALANCE_ADJUSTED: t('Ajustement du solde du fonds de copropriété'),
+  SYNDICATE_FUND_ASSIGNMENT_CHANGED: t("Changement d'affectation d'un appel ou poste de budget à un fonds"),
+
+  // Syndic — factures de prestataires
+  SYNDIC_PROVIDER_INVOICE_FILE_ATTACHED: t("Ajout d'une pièce jointe à une facture de prestataire"),
+  SYNDIC_PROVIDER_INVOICE_FILE_REPLACED: t('Remplacement de la pièce jointe de la facture de prestataire'),
+  SYNDIC_PROVIDER_INVOICE_FILE_REMOVED: t('Suppression de la pièce jointe de la facture de prestataire'),
+
+  // Syndic — portail copropriétaire
+  SYNDIC_COOWNER_PORTAL_INVITED: t("Invitation d'un copropriétaire à son portail"),
+  SYNDIC_COOWNER_PORTAL_REVOKED: t("Révocation de l'accès portail d'un copropriétaire"),
+
+  // Syndic — reçus et quittances de charges
+  SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT: t("Renvoi par e-mail d'une quittance de charges")
 };
 
 /** Libellé français pour chaque type d'entité (ressource) */
