@@ -38,78 +38,71 @@ Pièges et décisions :
 
 ---
 
-## Branche `fix/patrimoine-suite-p0` — 2026-09-28
+## Branche `feat/patrimoine-p4-entites-fiscalite` — 2026-09-28
 
-**État :** prêt à relire — PR #40 vers `main`
-**Dernier commit :** voir `git log -1` sur la branche (commit unique du lot)
-
-Fait :
-
-- `alertExpiringDocuments` (`lib/patrimoine/notifications.ts`) porte désormais
-  sur `PropertyDocument` (et non plus `PatrimonyDocument`, inutilisé depuis P0) :
-  fenêtre [maintenant, +30 j], destinataires = propriétaires du bien
-  (`PropertyOwnershipShare` + `ownerUserId` → `TenantClient` →
-  `details.crmContactId` → `CrmContact.consentEmail === true`), anti-doublon
-  par `warningSentAt` réservé atomiquement (`updateMany … warningSentAt: null`),
-  remis à null si aucun envoi n'aboutit ; HTML échappé.
-- Job `jobs/document-expiry-alert-job.ts`, chaque jour 7 h UTC, agences
-  ACTIVE une par une dans `runWithTenantContext`, démarré dans `src/index.ts`
-  (deux lignes, conflit trivial possible avec `feat/provision-abonnements`).
-- `owner-statements-controller.ts` en `asyncHandler` + erreurs typées ;
-  tests 400/404/409 (supertest + `errorHandler` réel).
-- Wiki : ligne « Alerter les propriétaires d'un document qui arrive à échéance ».
-
-Reste à faire :
-
-- Fusion par l'utilisateur. Le modèle `PatrimonyDocument` reste au schéma
-  (retrait = migration, hors lot).
-
-Pièges et décisions :
-
-- Pas de consentement supposé depuis le seul `User` : un propriétaire sans
-  contact CRM lié ne reçoit rien ; le document n'est pas marqué et est
-  retenté chaque jour.
-- Limites assumées (commentées) : échec partiel en indivision non relancé ;
-  arrêt du processus entre réservation et envoi laisse la marque posée.
-- Une erreur sans statut dans create/update du relevé donne 500 (et non
-  plus 400 par défaut) ; les erreurs métier portent toutes un statut.
-
-## Branche `feat/provision-abonnements` — 2026-09-28
-
-**État :** prêt à relire (PR ouverte vers `main`)
-**Dernier commit :** voir `git log` de la branche (outil d'exploitation des abonnements)
+**État :** prêt à relire — PR #44 vers `main`, CI verte (6/6 jobs)
+**Dernier commit :** `61fba4e2` (fusion de `origin/main`, PR #40 incluse) sur `c50a14ee`
+(commit unique du lot)
 
 Fait :
 
-- Outil en ligne de commande `packages/api/src/scripts/provision-subscription.ts`
-  (logique : `services/subscription-provisioning-service.ts`) : `list`,
-  `provision` (essai TRIALING + éléments en une transaction, `setupWaived`,
-  puis réconciliation du registre des lots), `suspend` (`suspendTenant`),
-  `--dry-run` sans écriture, idempotent, fenêtre hh:10–hh:20 UTC refusée,
-  acteur d'audit `system:provision-subscription`. `audit-service` exporte
-  `flushAuditEvents`. Section RUNBOOK « Outil d'exploitation des abonnements ».
-- Essai de bout en bout sur une base jetable (PostgreSQL local, migrations +
-  catalogue) avec le JavaScript compilé comme dans l'image : dry-run sans
-  écriture, création Ivoire (AGENCE + SYNDIC + 2 × EXT_COPRO, 100 lots
-  copro réconciliés), relance idempotente, refus non conforme, suspension
-  et révocation des jetons, première facture simulée après l'essai sans
-  frais de mise en route (96 810 HT / 114 236 TTC).
+- Lot P4 complet (reprise après une coupure d'API du coordinateur précédent au
+  moment de lancer les agents de réalisation — le plan détaillé
+  (`p4-contrat.md`) et l'implémentation des trois territoires étaient déjà sur
+  disque, non commités, à la reprise) : entités détentrices (SCI/holding/
+  société/personne physique) avec organigramme, rattachement à un bien par
+  quote-part, consolidation patrimoniale par entité ; moteur fiscal pur
+  (impôt foncier + impôt sur les revenus fonciers, CI et ML) ; référentiel
+  `TaxParameter` (34 paramètres 2026, tous `A_VALIDER`, sourcés CGI/DGI/loi de
+  finances) ; 16 routes API ; 3 écrans + section fiscale dans la fiche bien
+  avec l'avertissement « estimation indicative, à valider par un conseil
+  fiscal » ; wiki (16 sous-fonctionnalités) ; i18n fr/en/ar.
+- Relectures `security-auditor` et générale (lecture seule, sonnet) : 0
+  bloquant. 1 correction appliquée par `dev-simple` avant le commit : les
+  colonnes Bien/Occupation/Propriétaire du référentiel des paramètres
+  fiscaux affichaient les codes bruts du moteur au lieu de libellés
+  traduits par `t()` (`tax-labels.ts` : `propertyKindSelectorLabel` /
+  `occupancySelectorLabel` / `ownerKindSelectorLabel`, gérant le sélecteur
+  `ANY` → « Tous »).
+- Vérifié avant et après fusion de `origin/main` (PR #40) : typecheck (0
+  nouvelle erreur, base 72 préexistantes ailleurs, 0 côté web), 98 tests Jest
+  unitaires du module, 8 tests API mockés, suite `isolation.test.ts` complète
+  (28 tests dont 5 nouveaux sur `HoldingEntity`), tests Vitest frontend (11
+  fichiers, isolés du reste de la suite pour éviter les faux-négatifs par
+  contention), `prisma migrate diff --exit-code` sans écart sur une base
+  PostgreSQL jetable, `wiki:check` et `check:architecture` verts. Suite
+  backend complète post-fusion : 176/182 vertes (5 ignorées, 1 échec
+  pré-existant hors périmètre, voir Pièges).
 
 Reste à faire :
 
-- En production (hors de cette branche, après fusion et déploiement) : dry-run
-  puis réel pour Ivoire Résidences, Agence Immobilière du Mali, Bamako
-  Immobilier (commandes dans la PR). Les slugs réels sont à lire avec `list`.
+- Fusion par l'utilisateur.
 
 Pièges et décisions :
 
-- Ivoire aura 4 copropriétés pour 4 incluses : la tâche horaire enverra les
-  alertes de seuil 80 % et 100 % (une fois par période). Voulu par la
-  composition décidée ; le dry-run l'annonce.
-- Un abonnement existant non conforme est refusé, jamais corrigé : si la
-  production en a déjà un pour Ivoire, décider à la main.
-- Le gestionnaire SIGTERM/SIGINT d'`audit-service` sort en code 0 même si la
-  file d'audit n'a pas pu être vidée (hérité, hors périmètre).
+- Fusion de `origin/main` (PR #40 `fix/patrimoine-suite-p0`) : conflit
+  uniquement sur le classeur `.xlsx` et son miroir (binaire, un seul agent à
+  la fois) — résolu en reprenant la version de `origin/main` (662 lignes,
+  dont la nouvelle ligne « Alerter les propriétaires d'un document qui arrive
+  à échéance ») puis en réappliquant les 16 lignes P4 par-dessus et en
+  relançant `wiki:export`. Aucun autre conflit ; `lib/patrimoine/notifications.ts`
+  (hors territoire P4) fusionné automatiquement par git, non retouché.
+  Piège d'édition xlsx : `openpyxl` avec `sort_keys=True`/un tri Python
+  générique reformate tout le fichier (diff énorme, ordre différent du tri
+  français de l'outil `i18n:extract`) — ne jamais retrier les catalogues
+  i18n JSON à la main, seulement modifier une valeur en place ou relancer
+  `npm run i18n:extract` (idempotent, régénère l'ordre canonique).
+- Deux fichiers untracked pré-existants dans ce worktree, **non liés à P4 et
+  non commités par ce lot** : `packages/api/src/i18n/locales/{ar,en}.orphans.json`
+  (clé orpheline « Document patrimoine introuvable », plus aucune occurrence
+  dans le code source actuel). Ils font échouer localement
+  `i18n-catalogs-completeness.test.ts` (CI verte car ces fichiers ne sont pas
+  commités) — tâche de fond proposée séparément (`task_de0abfd6`) pour
+  retrouver la nouvelle clé et reporter la traduction à la main.
+- Ce poste est lent pour les tests : un test Vitest isolé peut approcher les
+  40 s (timeout par défaut) sans qu'il y ait de bug — toujours relancer seul
+  avant de conclure à une régression (confirmé une fois de plus sur
+  `property-holding-tax-section.test.tsx` et `patrimoine.entities.routes.test.ts`).
 
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
