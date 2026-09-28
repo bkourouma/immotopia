@@ -20,15 +20,30 @@ export type ExpenseCategory =
   | 'UTILITIES'
   | 'OTHER';
 
-export type PatrimonyDocType =
-  | 'TITLE_DEED'
-  | 'NOTARIAL_DEED'
-  | 'TAX_DOCUMENT'
-  | 'INSURANCE'
-  | 'TECHNICAL_DIAGNOSIS'
-  | 'FLOOR_PLAN'
-  | 'BUILDING_PERMIT'
-  | 'OTHER';
+/**
+ * Types d'un document patrimonial. Les documents du patrimoine SONT les
+ * documents du bien (`PropertyDocument`, routes `.../properties/:id/documents`) :
+ * mêmes codes que `documentType` côté API, y compris ceux ajoutés pour le
+ * patrimoine (acte notarié, assurance, diagnostic, permis, ACD).
+ */
+export const PATRIMONY_DOC_TYPES = [
+  'TITLE_DEED',
+  'LAND_CONCESSION',
+  'NOTARIAL_DEED',
+  'BUILDING_PERMIT',
+  'PLAN',
+  'TECHNICAL_DIAGNOSIS',
+  'INSURANCE',
+  'TAX_DOCUMENT',
+  'MANDATE',
+  'SYNDICATE_PV',
+  'SYNDICATE_BUDGET',
+  'SYNDICATE_CONTRAT',
+  'SYNDICATE_REGL_COPRO',
+  'OTHER'
+] as const;
+
+export type PatrimonyDocType = (typeof PATRIMONY_DOC_TYPES)[number];
 
 export interface PatrimoineOverviewData {
   totalProperties: number;
@@ -48,17 +63,22 @@ export interface YieldProjectionPoint {
   netResult: number;
 }
 
+/**
+ * `netNetYield` et `latentCapitalGain` valent `null` quand le prix
+ * d'acquisition du bien est inconnu : ils se calculent sur lui, et un zéro
+ * aurait affiché un rendement ou une plus-value inventés.
+ */
 export interface PropertyYieldData {
   grossYield: number;
   netYield: number;
-  netNetYield: number;
-  latentCapitalGain: number;
+  netNetYield: number | null;
+  latentCapitalGain: number | null;
   projectedAtHorizon?: {
     year: number;
     grossYield: number;
     netYield: number;
-    netNetYield: number;
-    latentCapitalGain: number;
+    netNetYield: number | null;
+    latentCapitalGain: number | null;
   };
   projection: YieldProjectionPoint[];
 }
@@ -126,16 +146,12 @@ export interface WorkProgram {
   completedDate?: string | null;
   status: WorkProgramStatus;
   isCapitalized: boolean;
-}
-
-export interface PatrimonyDocument {
-  id: string;
-  propertyId?: string | null;
-  ownerContactId?: string | null;
-  title: string;
-  type: PatrimonyDocType;
-  fileUrl: string;
-  expiresAt?: string | null;
+  /**
+   * Chantier auquel le programme est rattaché. Son coût réel est alors
+   * alimenté par le chantier : il ne se saisit pas et ne s'envoie pas.
+   */
+  constructionSiteId?: string | null;
+  constructionSite?: { id: string; name: string } | null;
 }
 
 export interface OwnerStatementItem {

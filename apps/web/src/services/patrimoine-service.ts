@@ -3,7 +3,6 @@ import {
   AssetValuation,
   OwnerStatement,
   PatrimoineOverviewData,
-  PatrimonyDocument,
   PropertyExpense,
   PropertyLoan,
   PropertyYieldData,
@@ -18,18 +17,6 @@ type YieldAssumptions = {
   expenseGrowthRate?: number;
   vacancyRate?: number;
 };
-
-function normalizePatrimonyDocument(raw: any): PatrimonyDocument {
-  return {
-    id: raw.id,
-    propertyId: raw.propertyId ?? raw.property_id ?? null,
-    ownerContactId: raw.ownerContactId ?? null,
-    title: raw.title ?? raw.fileName ?? 'Document',
-    type: raw.type ?? raw.documentType ?? 'OTHER',
-    fileUrl: raw.fileUrl,
-    expiresAt: raw.expiresAt ?? raw.expirationDate ?? null
-  };
-}
 
 function buildYieldQuery(assumptions?: YieldAssumptions): string {
   if (!assumptions) return '';
@@ -202,11 +189,12 @@ export interface TenantWorkProgramsResponse {
  * pagination se font côté serveur ; `property` est joint, ce qui évite un
  * second appel pour afficher le nom du bien.
  *
- * Endpoint livré au commit `75f910b`.
+ * Endpoint livré au commit `75f910b`. `upcoming` ne garde que les programmes
+ * planifiés ou en cours, triés par date de début prévue croissante.
  */
 export async function listTenantWorkPrograms(
   tenantId: string,
-  filtres?: { status?: string; page?: number; limit?: number }
+  filtres?: { status?: string; upcoming?: boolean; page?: number; limit?: number }
 ): Promise<TenantWorkProgramsResponse> {
   const params = new URLSearchParams();
   for (const [cle, valeur] of Object.entries(filtres ?? {})) {
@@ -243,25 +231,6 @@ export async function updateWorkProgram(
 
 export async function deleteWorkProgram(tenantId: string, propertyId: string, programId: string): Promise<void> {
   await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/work-programs/${programId}`);
-}
-
-export async function listDocuments(tenantId: string, propertyId: string): Promise<PatrimonyDocument[]> {
-  const response = await apiClient.get<ApiResponse<PatrimonyDocument[]>>(
-    `/tenants/${tenantId}/properties/${propertyId}/documents`
-  );
-  return (response.data.data as any[]).map(normalizePatrimonyDocument);
-}
-
-export async function createDocument(tenantId: string, propertyId: string, payload: Record<string, unknown>) {
-  const response = await apiClient.post<ApiResponse<PatrimonyDocument>>(
-    `/tenants/${tenantId}/properties/${propertyId}/documents`,
-    payload
-  );
-  return normalizePatrimonyDocument(response.data.data as any);
-}
-
-export async function deleteDocument(tenantId: string, propertyId: string, documentId: string): Promise<void> {
-  await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/documents/${documentId}`);
 }
 
 export async function listOwnerStatements(tenantId: string): Promise<OwnerStatement[]> {

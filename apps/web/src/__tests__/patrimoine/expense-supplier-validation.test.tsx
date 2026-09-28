@@ -18,12 +18,10 @@ import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatri
 const createExpense = vi.fn();
 
 vi.mock('../../services/patrimoine-service', () => ({
-  createDocument: vi.fn(),
   createExpense: (...a: unknown[]) => createExpense(...a),
   createLoan: vi.fn(),
   createValuation: vi.fn(),
   createWorkProgram: vi.fn(),
-  deleteDocument: vi.fn(),
   deleteExpense: vi.fn(),
   deleteLoan: vi.fn(),
   deleteValuation: vi.fn(),
@@ -35,7 +33,6 @@ vi.mock('../../services/patrimoine-service', () => ({
     latentCapitalGain: 0,
     projection: []
   })),
-  listDocuments: vi.fn(async () => []),
   listExpenses: vi.fn(async () => []),
   listLoans: vi.fn(async () => []),
   listWorkPrograms: vi.fn(async () => []),
@@ -46,12 +43,11 @@ vi.mock('../../services/patrimoine-service', () => ({
   updateWorkProgram: vi.fn()
 }));
 
-vi.mock('../../services/crm-service', () => ({
-  listContacts: vi.fn(async () => ({ contacts: [], pagination: { total: 0 } }))
-}));
-
 vi.mock('../../services/property-service', () => ({
-  uploadDocument: vi.fn()
+  uploadDocument: vi.fn(),
+  listPropertyDocuments: vi.fn(async () => []),
+  deletePropertyDocument: vi.fn(),
+  downloadPropertyDocumentFile: vi.fn()
 }));
 
 vi.mock('../../services/treasury-service', () => ({

@@ -56,11 +56,27 @@ export enum PropertyMediaType {
   TOUR_360 = 'TOUR_360'
 }
 
+/**
+ * Types de document d'un bien — même liste que `documentType` côté API
+ * (`packages/api/src/routes/property-routes.ts`). Les documents du
+ * patrimoine SONT des documents de bien : les types propres au patrimoine
+ * (acte notarié, assurance, diagnostic, permis, ACD, syndicat…) sont ici,
+ * pas dans une liste séparée.
+ */
 export enum PropertyDocumentType {
   TITLE_DEED = 'TITLE_DEED',
+  LAND_CONCESSION = 'LAND_CONCESSION',
+  NOTARIAL_DEED = 'NOTARIAL_DEED',
   MANDATE = 'MANDATE',
   PLAN = 'PLAN',
+  BUILDING_PERMIT = 'BUILDING_PERMIT',
+  TECHNICAL_DIAGNOSIS = 'TECHNICAL_DIAGNOSIS',
+  INSURANCE = 'INSURANCE',
   TAX_DOCUMENT = 'TAX_DOCUMENT',
+  SYNDICATE_PV = 'SYNDICATE_PV',
+  SYNDICATE_BUDGET = 'SYNDICATE_BUDGET',
+  SYNDICATE_CONTRAT = 'SYNDICATE_CONTRAT',
+  SYNDICATE_REGL_COPRO = 'SYNDICATE_REGL_COPRO',
   OTHER = 'OTHER'
 }
 

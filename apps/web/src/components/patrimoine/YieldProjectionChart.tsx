@@ -55,16 +55,28 @@ export const YieldProjectionChart: React.FC<Props> = ({ data }) => {
             <YAxis width={yAxisWidth} tickMargin={8} tickFormatter={formatNumber} />
             <Tooltip formatter={formatNumber} />
             <Legend />
-            <Line type="monotone" dataKey="estimatedValue" name="Valeur estimée" stroke="#1677ff" strokeWidth={2} />
-            <Line type="monotone" dataKey="cumulativeRent" name="Loyers cumulés" stroke="#52c41a" strokeWidth={2} />
+            <Line
+              type="monotone"
+              dataKey="estimatedValue"
+              name={t('Valeur estimée')}
+              stroke="#1677ff"
+              strokeWidth={2}
+            />
+            <Line
+              type="monotone"
+              dataKey="cumulativeRent"
+              name={t('Loyers cumulés')}
+              stroke="#52c41a"
+              strokeWidth={2}
+            />
             <Line
               type="monotone"
               dataKey="cumulativeExpenses"
-              name="Charges cumulées"
+              name={t('Charges cumulées')}
               stroke="#fa8c16"
               strokeWidth={2}
             />
-            <Line type="monotone" dataKey="netResult" name="Résultat net" stroke="#722ed1" strokeWidth={2} />
+            <Line type="monotone" dataKey="netResult" name={t('Résultat net')} stroke="#722ed1" strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </div>
