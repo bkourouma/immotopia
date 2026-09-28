@@ -469,6 +469,8 @@
   "Le mandant doit etre coproprietaire d'au moins un lot de la copropriete": "يجب أن يكون المُوكِّل مالكاً لوحدة واحدة على الأقل في الملكية المشتركة",
   "Le mandataire ne peut pas etre le mandant": "لا يمكن أن يكون الوكيل هو المُوكِّل نفسه",
   "Le mode simulateur n'est pas disponible sur ce serveur.": "وضع المحاكاة غير متاح على هذا الخادم.",
+  "Le pack Patrimoine couvre les biens détenus en propre : la création d’un mandat exige le pack Agence.": "باقة Patrimoine تخص العقارات المملوكة ملكية كاملة: إنشاء وكالة يتطلب باقة Agence.",
+  "Le pack Patrimoine couvre les biens détenus en propre : rattacher un propriétaire tiers exige le pack Agence.": "باقة Patrimoine تخص العقارات المملوكة ملكية كاملة: ربط مالك خارجي يتطلب باقة Agence.",
   "Le mois d’effet précède le début du bail.": "شهر السريان يسبق بداية العقد.",
   "Le mois de période doit être compris entre 1 et 12": "يجب أن يكون شهر الفترة بين 1 و12",
   "Le montant annuel du bail doit être strictement positif": "يجب أن يكون المبلغ السنوي للعقد أكبر من الصفر",

@@ -7,8 +7,11 @@
  *                 tableaux de bord, maintenance, finance operationnelle,
  *                 communication) ;
  * - CRM, SALES  : Agence, Promoteur ;
- * - RENTAL      : Agence (baux, echeances, paiements, portails) ;
- * - PATRIMOINE  : Agence, Promoteur ;
+ * - RENTAL      : Agence (baux, echeances, paiements, portails), Patrimoine
+ *                 (gestion locative DIRECTE des biens detenus en propre : la
+ *                 barriere « detenu en propre » de guards.ts refuse mandat et
+ *                 proprietaire tiers a un compte qui n'a que ce module) ;
+ * - PATRIMOINE  : Agence, Promoteur, Patrimoine ;
  * - SYNDIC      : Syndic ;
  * - CONSTRUCTION: Promoteur (chantiers, BTP, stock).
  */
@@ -22,7 +25,8 @@ export const FEATURES: readonly Feature[] = ['CORE', 'CRM', 'SALES', 'RENTAL', '
 export const MODULE_FEATURES: Readonly<Record<ModuleKeyCode, readonly Feature[]>> = {
   MODULE_AGENCY: ['CORE', 'CRM', 'SALES', 'RENTAL', 'PATRIMOINE'],
   MODULE_SYNDIC: ['CORE', 'SYNDIC'],
-  MODULE_PROMOTER: ['CORE', 'CRM', 'SALES', 'PATRIMOINE', 'CONSTRUCTION']
+  MODULE_PROMOTER: ['CORE', 'CRM', 'SALES', 'PATRIMOINE', 'CONSTRUCTION'],
+  MODULE_PATRIMOINE: ['CORE', 'RENTAL', 'PATRIMOINE']
 };
 
 /** Modules qui ouvrent une fonctionnalite (inverse de MODULE_FEATURES). */

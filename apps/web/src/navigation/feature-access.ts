@@ -12,7 +12,7 @@ import type { NavFeature, NavGroup, NavLeaf } from './model';
  */
 
 export type ModuleAccessLevel = 'FULL' | 'READ_ONLY' | 'NONE';
-export type ModuleKey = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER';
+export type ModuleKey = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
 export type FeatureAccessMap = Record<NavFeature, ModuleAccessLevel>;
 
 const FEATURES: readonly NavFeature[] = ['CORE', 'CRM', 'SALES', 'RENTAL', 'PATRIMOINE', 'SYNDIC', 'CONSTRUCTION'];
@@ -20,7 +20,15 @@ const FEATURES: readonly NavFeature[] = ['CORE', 'CRM', 'SALES', 'RENTAL', 'PATR
 export const MODULE_FEATURES: Readonly<Record<ModuleKey, readonly NavFeature[]>> = {
   MODULE_AGENCY: ['CORE', 'CRM', 'SALES', 'RENTAL', 'PATRIMOINE'],
   MODULE_SYNDIC: ['CORE', 'SYNDIC'],
-  MODULE_PROMOTER: ['CORE', 'CRM', 'SALES', 'PATRIMOINE', 'CONSTRUCTION']
+  MODULE_PROMOTER: ['CORE', 'CRM', 'SALES', 'PATRIMOINE', 'CONSTRUCTION'],
+  /**
+   * Pack Patrimoine (lot P1, 28/09) : biens détenus en propre, gestion
+   * locative DIRECTE comprise (RENTAL). La barrière « détenu en propre »
+   * (`OWN_ASSETS_ONLY_LEAF_KEYS` ci-dessous) retire les entrées qui ne
+   * concernent que la gestion pour un tiers quand ce module est le seul
+   * ouvert — le calcul serveur reste juge (`ownAssetsOnly`, entitlements.ts).
+   */
+  MODULE_PATRIMOINE: ['CORE', 'RENTAL', 'PATRIMOINE']
 };
 
 /** Niveau d'accès de chaque fonctionnalité, depuis `entitlements.moduleAccess`. */
@@ -69,4 +77,34 @@ export function applyFeatureAccess(group: NavGroup, access: FeatureAccessMap): N
     children,
     readOnly: groupLevel === 'READ_ONLY' || children.every(c => c.readOnly) ? true : undefined
   };
+}
+
+/**
+ * Entrées de menu qui ne concernent QUE la gestion pour un tiers (mandat,
+ * relevés et comptes des propriétaires mandants) — retirées pour un compte
+ * `ownAssetsOnly` (pack Patrimoine seul, lot P1) : la barrière côté serveur
+ * (403 `OWN_ASSETS_ONLY`, guards.ts) refuserait de toute façon la création
+ * d'un mandat ou le rattachement d'un propriétaire tiers.
+ *
+ * Liste volontairement courte : seules les entrées sans usage possible pour
+ * un bien détenu en propre sont retirées. « Honoraires de gestion »
+ * (paramètres financiers de l'agence) reste affiché — c'est un réglage
+ * global, pas une liste par mandant, et une agence Patrimoine peut fixer un
+ * taux pour sa propre gestion locative directe.
+ */
+const OWN_ASSETS_ONLY_LEAF_KEYS: readonly string[] = ['patrimoine-statements', 'finance-owner-accounts'];
+
+/**
+ * Élague, en plus de `applyFeatureAccess`, les entrées réservées à la
+ * gestion pour un tiers quand `ownAssetsOnly` est vrai. `null` si le groupe
+ * n'a plus d'enfant après retrait (aucun cas actuel, mais un groupe futur
+ * pourrait ne contenir que ce type d'entrées).
+ */
+export function applyOwnAssetsOnly(group: NavGroup, ownAssetsOnly: boolean): NavGroup | null {
+  if (!ownAssetsOnly || !group.children || group.children.length === 0) return group;
+  const children = group.children.filter(leaf => !OWN_ASSETS_ONLY_LEAF_KEYS.includes(leaf.key));
+  if (children.length === group.children.length) return group;
+  if (children.length === 0) return null;
+  const href = group.href && !children.some(c => c.href === group.href) ? children[0].href : group.href;
+  return { ...group, href, children };
 }

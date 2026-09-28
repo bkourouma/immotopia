@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { getNavigation } from '../../navigation/model';
-import { applyFeatureAccess, featureAccessFromModules } from '../../navigation/feature-access';
+import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../../navigation/feature-access';
 import { catalogForPersona } from '../../navigation/menu-catalog';
 import { useFilteredNavigation } from '../../hooks/useMenuAccess';
 
@@ -64,6 +64,31 @@ describe('navigation filtrée par l’abonnement', () => {
   it('sans droits connus (null) : navigation inchangée', () => {
     const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), null));
     expect(result.current).toBe(nav);
+  });
+
+  it('barrière « détenu en propre » (pack Patrimoine seul) : retire mandat/relevés/comptes propriétaires', () => {
+    const access = featureAccessFromModules({ MODULE_PATRIMOINE: 'FULL' });
+    const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), access, true));
+    const tree = result.current!.tree;
+    const patrimoine = tree.find(g => g.key === 'patrimoine')!;
+    expect(patrimoine.children!.map(c => c.key)).not.toContain('patrimoine-statements');
+    const finance = tree.find(g => g.key === 'finance-clients-proprietaires')!;
+    expect(finance.children!.map(c => c.key)).not.toContain('finance-owner-accounts');
+  });
+
+  it('sans barrière « détenu en propre » : relevés et comptes propriétaires restent visibles', () => {
+    const access = featureAccessFromModules({ MODULE_AGENCY: 'FULL' });
+    const { result } = renderHook(() => useFilteredNavigation(nav, new Set(), access, false));
+    const tree = result.current!.tree;
+    expect(tree.find(g => g.key === 'patrimoine')!.children!.map(c => c.key)).toContain('patrimoine-statements');
+    expect(tree.find(g => g.key === 'finance-clients-proprietaires')!.children!.map(c => c.key)).toContain(
+      'finance-owner-accounts'
+    );
+  });
+
+  it('applyOwnAssetsOnly : un groupe sans entrée réservée à un tiers est renvoyé tel quel', () => {
+    const syndic = nav.tree.find(g => g.key === 'syndic')!;
+    expect(applyOwnAssetsOnly(syndic, true)).toBe(syndic);
   });
 
   it('le catalogue des menus expose la fonctionnalité de chaque entrée', () => {

@@ -116,6 +116,10 @@ export interface CreatePropertyRequest {
 
 // Property update request
 export interface UpdatePropertyRequest {
+  // Barriere « detenu en propre » (pack Patrimoine) : un changement de type
+  // de detention peut rattacher un proprietaire tiers, voir
+  // services/own-assets-barrier-service.ts.
+  ownershipType?: PropertyOwnershipType;
   ownerUserId?: string;
   title?: string;
   description?: string;

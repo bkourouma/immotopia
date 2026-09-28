@@ -65,7 +65,13 @@ const mockPrisma: Row = {
       return rows[0] ?? null;
     }),
     create: jest.fn(async ({ data }: Row) => {
-      const created = { id: nextId('mandate'), status: 'ACTIVE', createdAt: new Date(), updatedAt: new Date(), ...data };
+      const created = {
+        id: nextId('mandate'),
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...data
+      };
       store.mandates.push(created);
       return created;
     }),
@@ -107,6 +113,13 @@ jest.mock('../../src/services/property-status-service', () => ({
   updatePropertyStatus: jest.fn(async () => undefined)
 }));
 
+// Barriere « detenu en propre » (pack Patrimoine, lot P1) : hors sujet ici
+// (couverte par own-assets-barrier.test.ts) — no-op pour ne pas lire les
+// droits d'abonnement via le magasin en memoire ci-dessus.
+jest.mock('../../src/services/own-assets-barrier-service', () => ({
+  assertThirdPartyAllowedForTenant: jest.fn()
+}));
+
 import { createMandate, updateMandate } from '../../src/lib/sales/mandates';
 
 function seedProperty(overrides: Partial<Row> = {}): Row {
@@ -123,13 +136,24 @@ function seedProperty(overrides: Partial<Row> = {}): Row {
 }
 
 function seedSeller(overrides: Partial<Row> = {}): Row {
-  const seller = { id: nextId('client'), tenantId: TENANT_A, user: { fullName: 'Awa Diallo', email: 'awa@x.com' }, ...overrides };
+  const seller = {
+    id: nextId('client'),
+    tenantId: TENANT_A,
+    user: { fullName: 'Awa Diallo', email: 'awa@x.com' },
+    ...overrides
+  };
   store.tenantClients.push(seller);
   return seller;
 }
 
 function seedMembership(overrides: Partial<Row> = {}): Row {
-  const membership = { id: nextId('membership'), tenantId: TENANT_A, userId: 'agent-1', status: 'ACTIVE', ...overrides };
+  const membership = {
+    id: nextId('membership'),
+    tenantId: TENANT_A,
+    userId: 'agent-1',
+    status: 'ACTIVE',
+    ...overrides
+  };
   store.memberships.push(membership);
   return membership;
 }
@@ -191,7 +215,7 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-describe("lib/sales/mandates — createMandate : agentUserId doit être membre ACTIF de cette agence", () => {
+describe('lib/sales/mandates — createMandate : agentUserId doit être membre ACTIF de cette agence', () => {
   it("refuse un agentUserId qui n'est membre que d'une AUTRE agence", async () => {
     const property = seedProperty();
     const seller = seedSeller();

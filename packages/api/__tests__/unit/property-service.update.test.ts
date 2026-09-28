@@ -20,7 +20,10 @@ const findUniqueMock = jest.fn();
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     property: { findUnique: (...args: any[]) => findUniqueMock(...args) },
-    $transaction: (...args: any[]) => transactionMock(...args)
+    $transaction: (...args: any[]) => transactionMock(...args),
+    // Barriere « detenu en propre » : lu seulement si `ownerUserId` differe
+    // de l'acteur — aucun cas de ce fichier ne l'atteint.
+    membership: { findFirst: jest.fn().mockResolvedValue(null) }
   }
 }));
 
@@ -47,6 +50,13 @@ jest.mock('../../src/services/property-quality-service', () => ({
 const syncLotActivationsTx = jest.fn();
 jest.mock('../../src/services/lot-registry-service', () => ({
   syncLotActivationsTx: (...args: any[]) => syncLotActivationsTx(...args)
+}));
+
+// Barriere « detenu en propre » (pack Patrimoine, lot P1) : hors sujet ici
+// (couverte par own-assets-barrier.test.ts).
+jest.mock('../../src/services/own-assets-barrier-service', () => ({
+  assertThirdPartyAllowedForTenant: jest.fn(),
+  isThirdPartyOwnershipInput: jest.fn().mockReturnValue(false)
 }));
 
 import { updatePropertyHandler } from '../../src/controllers/property-controller';
@@ -102,9 +112,7 @@ describe('PUT /api/tenants/:tenantId/properties/:id — corps invalide : 400 VAL
     ['devise mal typee (nombre au lieu de texte)', { currency: 123 }, 'currency'],
     ['titre vide', { title: '   ' }, 'title']
   ])('%s -> 400 VALIDATION_ERROR', async (_cas, corps, field) => {
-    const res = await request(appMiseAJour())
-      .put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`)
-      .send(corps);
+    const res = await request(appMiseAJour()).put(`/api/tenants/${TENANT_ID}/properties/${PROPERTY_ID}`).send(corps);
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_ERROR');

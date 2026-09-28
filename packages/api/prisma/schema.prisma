@@ -38,6 +38,7 @@ enum ModuleKey {
   MODULE_AGENCY
   MODULE_SYNDIC
   MODULE_PROMOTER
+  MODULE_PATRIMOINE // Pack Patrimoine : biens detenus en propre, gestion locative directe, sans mandat
 }
 
 enum MembershipStatus {
@@ -102,6 +103,7 @@ enum CapacityKey {
   LOTS // Reserve UNIQUE de lots : logements, lots de copropriete, lots de programme
   COPROPRIETES // Coproprietes actives (ACTIVE, IN_DISPUTE)
   CHANTIERS // Chantiers actifs (PLANNED, IN_PROGRESS, SUSPENDED)
+  BIENS_DETENUS // Biens detenus en propre (pack Patrimoine), loues ou non
 }
 
 enum SubscriptionItemStatus {
@@ -122,6 +124,7 @@ enum LotKind {
   RENTAL_UNIT
   COPRO_LOT
   PROGRAM_LOT
+  HELD_PROPERTY // Bien detenu en propre, compte dans BIENS_DETENUS (pack Patrimoine) et non dans LOTS
 }
 
 enum InvoiceLineKind {
