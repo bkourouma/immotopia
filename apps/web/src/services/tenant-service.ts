@@ -286,3 +286,29 @@ export async function getTenantClients(tenantId: string): Promise<TenantClientsR
   const response = await apiClient.get(`/tenants/${tenantId}/clients`);
   return response.data;
 }
+
+/**
+ * Rattrape les propriétaires : crée le client Propriétaire de chaque contact
+ * CRM au rôle Propriétaire qui n'en a pas encore (idempotent). Écriture, donc
+ * POST explicite — jamais dans la lecture de la liste.
+ */
+export async function syncOwnerClients(tenantId: string): Promise<{ examined: number; created: number }> {
+  const response = await apiClient.post(`/tenants/${tenantId}/clients/sync-owners`);
+  return response.data.data;
+}
+
+/**
+ * Propriétaires de l'agence (clients de type OWNER), rattrapage compris : une
+ * seule source pour le vendeur d'un mandat, le propriétaire d'un bien (création
+ * et modification) et l'indivision. Un échec du rattrapage ne masque pas la
+ * liste : on lit alors ce qui existe.
+ */
+export async function getOwnerClients(tenantId: string): Promise<TenantClient[]> {
+  try {
+    await syncOwnerClients(tenantId);
+  } catch (error) {
+    console.error('Owner clients sync failed:', error);
+  }
+  const response = await getTenantClients(tenantId);
+  return (response.data ?? []).filter(client => client.clientType === 'OWNER');
+}

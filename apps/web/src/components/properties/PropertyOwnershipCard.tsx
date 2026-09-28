@@ -19,6 +19,8 @@ import {
   updatePropertyOwnership,
   type PropertyOwnership
 } from '../../services/property-ownership-service';
+import { syncOwnerClients } from '../../services/tenant-service';
+import { PropertyMandateCard } from './PropertyMandateCard';
 import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 
@@ -91,13 +93,26 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
    * les quotes-parts déjà posées si elles existent, sinon le propriétaire des
    * baux à 100 % si l'indivision est vide et qu'il existe, sinon rien.
    */
-  const ouvrirModale = () => {
+  const ouvrirModale = async () => {
     setErreurEnvoi(null);
     if (!donnees) return;
-    if (donnees.shares.length > 0) {
-      setLignes(donnees.shares.map(part => ({ ownerClientId: part.ownerClientId, sharePercent: part.sharePercent })));
-    } else if (donnees.leaseOwner) {
-      setLignes([{ ownerClientId: donnees.leaseOwner.ownerClientId, sharePercent: 100 }]);
+    let courant = donnees;
+    // Rattrape les contacts convertis au rôle Propriétaire sans client (POST
+    // explicite, jamais dans la lecture) ; la liste des propriétaires est
+    // relue seulement si quelque chose a été créé. BUG-2026-09-28-019.
+    try {
+      const { created } = await syncOwnerClients(tenantId);
+      if (created > 0) {
+        courant = await getPropertyOwnership(tenantId, propertyId);
+        setDonnees(courant);
+      }
+    } catch {
+      // Le rattrapage est un plus : la modale s'ouvre avec la liste connue.
+    }
+    if (courant.shares.length > 0) {
+      setLignes(courant.shares.map(part => ({ ownerClientId: part.ownerClientId, sharePercent: part.sharePercent })));
+    } else if (courant.leaseOwner) {
+      setLignes([{ ownerClientId: courant.leaseOwner.ownerClientId, sharePercent: 100 }]);
     } else {
       setLignes([]);
     }
@@ -192,144 +207,148 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
   };
 
   return (
-    <Card title={t('Indivision')}>
-      {chargement ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-4) 0' }}>
-          <Spin />
-        </div>
-      ) : erreurChargement ? (
-        <Alert type="error" message={erreurChargement} showIcon />
-      ) : donnees ? (
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          {donnees.shares.length === 0 ? (
-            <Text>
-              {donnees.leaseOwner
-                ? t("Pas d'indivision : le bien appartient à {{nom}}", { nom: donnees.leaseOwner.ownerName })
-                : t("Pas d'indivision : le bien appartient au propriétaire désigné sur les baux")}
-            </Text>
-          ) : (
-            <Space direction="vertical" style={{ width: '100%' }} size="small">
-              {donnees.shares.map(part => (
-                <div key={part.ownerClientId}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text>{part.ownerName}</Text>
-                    <Text strong>{`${pourcentage(part.sharePercent)} %`}</Text>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <Card title={t('Indivision')}>
+        {chargement ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-4) 0' }}>
+            <Spin />
+          </div>
+        ) : erreurChargement ? (
+          <Alert type="error" message={erreurChargement} showIcon />
+        ) : donnees ? (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            {donnees.shares.length === 0 ? (
+              <Text>
+                {donnees.leaseOwner
+                  ? t("Pas d'indivision : le bien appartient à {{nom}}", { nom: donnees.leaseOwner.ownerName })
+                  : t("Pas d'indivision : le bien appartient au propriétaire désigné sur les baux")}
+              </Text>
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                {donnees.shares.map(part => (
+                  <div key={part.ownerClientId}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text>{part.ownerName}</Text>
+                      <Text strong>{`${pourcentage(part.sharePercent)} %`}</Text>
+                    </div>
+                    <Progress percent={part.sharePercent} showInfo={false} />
                   </div>
-                  <Progress percent={part.sharePercent} showInfo={false} />
-                </div>
+                ))}
+              </Space>
+            )}
+
+            <Space wrap>
+              <Button onClick={ouvrirModale}>
+                {donnees.shares.length === 0 ? t("Définir l'indivision") : t('Modifier')}
+              </Button>
+              {donnees.shares.length > 0 && (
+                <Popconfirm
+                  title={t("Supprimer l'indivision ?")}
+                  description={t('Le bien reviendra en entier au propriétaire désigné sur les baux.')}
+                  okText={t('Supprimer')}
+                  cancelText={t('Annuler')}
+                  okButtonProps={{ danger: true }}
+                  onConfirm={supprimerIndivision}
+                >
+                  <Button danger loading={suppression}>
+                    {t("Supprimer l'indivision")}
+                  </Button>
+                </Popconfirm>
+              )}
+            </Space>
+          </Space>
+        ) : null}
+
+        <Modal
+          title={donnees && donnees.shares.length > 0 ? t("Modifier l'indivision") : t("Définir l'indivision")}
+          open={modaleOuverte}
+          onCancel={() => setModaleOuverte(false)}
+          footer={null}
+          width={640}
+          destroyOnHidden
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Text type="secondary">
+              {t(
+                'Les loyers, honoraires et dépenses du bien seront répartis selon ces parts dans le compte et le relevé de chaque propriétaire. Les reversements déjà faits ne changent pas.'
+              )}
+            </Text>
+
+            {erreurEnvoi && <Alert type="error" message={erreurEnvoi} showIcon />}
+
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              {lignes.map((ligne, index) => (
+                // eslint-disable-next-line react/no-array-index-key -- l'index EST l'identité de la ligne, tant qu'elle est vide.
+                <Space key={index} align="start" style={{ width: '100%' }}>
+                  <Select
+                    showSearch
+                    virtual={false}
+                    placeholder={t('Choisir un propriétaire')}
+                    style={{ width: 280 }}
+                    value={ligne.ownerClientId || undefined}
+                    optionFilterProp="children"
+                    onChange={valeur => modifierProprietaire(index, valeur)}
+                  >
+                    {(donnees?.owners || []).map(proprietaire => (
+                      <Select.Option key={proprietaire.ownerClientId} value={proprietaire.ownerClientId}>
+                        {proprietaire.ownerName}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                  <InputNumber
+                    min={0}
+                    max={100}
+                    // Pas de `precision` : elle afficherait « 100.0000 ». La part
+                    // est arrondie à 4 décimales à la saisie, et la virgule suit
+                    // la langue de l'interface.
+                    decimalSeparator={activeLocale().startsWith('fr') ? ',' : '.'}
+                    addonAfter="%"
+                    value={ligne.sharePercent ?? undefined}
+                    onChange={valeur =>
+                      modifierPart(index, typeof valeur === 'number' ? Math.round(valeur * 10000) / 10000 : null)
+                    }
+                    aria-label={t('Part en % (ligne {{n}})', { n: index + 1 })}
+                  />
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label={t('Supprimer cette ligne')}
+                    onClick={() => supprimerLigne(index)}
+                  />
+                </Space>
               ))}
             </Space>
-          )}
 
-          <Space wrap>
-            <Button onClick={ouvrirModale}>
-              {donnees.shares.length === 0 ? t("Définir l'indivision") : t('Modifier')}
-            </Button>
-            {donnees.shares.length > 0 && (
-              <Popconfirm
-                title={t("Supprimer l'indivision ?")}
-                description={t('Le bien reviendra en entier au propriétaire désigné sur les baux.')}
-                okText={t('Supprimer')}
-                cancelText={t('Annuler')}
-                okButtonProps={{ danger: true }}
-                onConfirm={supprimerIndivision}
-              >
-                <Button danger loading={suppression}>
-                  {t("Supprimer l'indivision")}
-                </Button>
-              </Popconfirm>
-            )}
+            <Space wrap>
+              <Button type="dashed" icon={<PlusOutlined />} onClick={ajouterLigne}>
+                {t('Ajouter un propriétaire')}
+              </Button>
+              <Button onClick={repartirEgalement} disabled={lignes.length === 0}>
+                {t('Répartir à parts égales')}
+              </Button>
+            </Space>
+
+            <div>
+              {t('Total')}
+              {' : '}
+              <Text type={totalOk ? 'success' : 'danger'} strong>
+                {`${pourcentage(totalArrondi)} %`}
+              </Text>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+              <Button onClick={() => setModaleOuverte(false)}>{t('Annuler')}</Button>
+              <Button type="primary" loading={enregistrement} disabled={!peutEnregistrer} onClick={enregistrer}>
+                {t('Enregistrer')}
+              </Button>
+            </div>
           </Space>
-        </Space>
-      ) : null}
-
-      <Modal
-        title={donnees && donnees.shares.length > 0 ? t("Modifier l'indivision") : t("Définir l'indivision")}
-        open={modaleOuverte}
-        onCancel={() => setModaleOuverte(false)}
-        footer={null}
-        width={640}
-        destroyOnHidden
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Text type="secondary">
-            {t(
-              'Les loyers, honoraires et dépenses du bien seront répartis selon ces parts dans le compte et le relevé de chaque propriétaire. Les reversements déjà faits ne changent pas.'
-            )}
-          </Text>
-
-          {erreurEnvoi && <Alert type="error" message={erreurEnvoi} showIcon />}
-
-          <Space direction="vertical" style={{ width: '100%' }} size="small">
-            {lignes.map((ligne, index) => (
-              // eslint-disable-next-line react/no-array-index-key -- l'index EST l'identité de la ligne, tant qu'elle est vide.
-              <Space key={index} align="start" style={{ width: '100%' }}>
-                <Select
-                  showSearch
-                  virtual={false}
-                  placeholder={t('Choisir un propriétaire')}
-                  style={{ width: 280 }}
-                  value={ligne.ownerClientId || undefined}
-                  optionFilterProp="children"
-                  onChange={valeur => modifierProprietaire(index, valeur)}
-                >
-                  {(donnees?.owners || []).map(proprietaire => (
-                    <Select.Option key={proprietaire.ownerClientId} value={proprietaire.ownerClientId}>
-                      {proprietaire.ownerName}
-                    </Select.Option>
-                  ))}
-                </Select>
-                <InputNumber
-                  min={0}
-                  max={100}
-                  // Pas de `precision` : elle afficherait « 100.0000 ». La part
-                  // est arrondie à 4 décimales à la saisie, et la virgule suit
-                  // la langue de l'interface.
-                  decimalSeparator={activeLocale().startsWith('fr') ? ',' : '.'}
-                  addonAfter="%"
-                  value={ligne.sharePercent ?? undefined}
-                  onChange={valeur =>
-                    modifierPart(index, typeof valeur === 'number' ? Math.round(valeur * 10000) / 10000 : null)
-                  }
-                  aria-label={t('Part en % (ligne {{n}})', { n: index + 1 })}
-                />
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  aria-label={t('Supprimer cette ligne')}
-                  onClick={() => supprimerLigne(index)}
-                />
-              </Space>
-            ))}
-          </Space>
-
-          <Space wrap>
-            <Button type="dashed" icon={<PlusOutlined />} onClick={ajouterLigne}>
-              {t('Ajouter un propriétaire')}
-            </Button>
-            <Button onClick={repartirEgalement} disabled={lignes.length === 0}>
-              {t('Répartir à parts égales')}
-            </Button>
-          </Space>
-
-          <div>
-            {t('Total')}
-            {' : '}
-            <Text type={totalOk ? 'success' : 'danger'} strong>
-              {`${pourcentage(totalArrondi)} %`}
-            </Text>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-            <Button onClick={() => setModaleOuverte(false)}>{t('Annuler')}</Button>
-            <Button type="primary" loading={enregistrement} disabled={!peutEnregistrer} onClick={enregistrer}>
-              {t('Enregistrer')}
-            </Button>
-          </div>
-        </Space>
-      </Modal>
-    </Card>
+        </Modal>
+      </Card>
+      {/* Mandat de gestion : carte visible pour un bien d'un propriétaire client seulement. */}
+      <PropertyMandateCard tenantId={tenantId} propertyId={propertyId} />
+    </div>
   );
 };
 

@@ -4,7 +4,8 @@ import { logAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { CreateMandateRequest } from '../types/property-types';
-import { PropertyOwnershipType } from '@prisma/client';
+import { Prisma, PropertyOwnershipType } from '@prisma/client';
+import { ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Create a management mandate for a property
@@ -27,7 +28,7 @@ export async function createMandate(tenantId: string, data: CreateMandateRequest
   });
 
   if (!property) {
-    throw new Error('Property not found');
+    throw new NotFoundError('Bien introuvable.');
   }
 
   if (property.ownershipType !== PropertyOwnershipType.CLIENT) {
@@ -38,12 +39,24 @@ export async function createMandate(tenantId: string, data: CreateMandateRequest
   const existingMandate = property.mandates.find(mandate => mandate.tenantId === tenantId && mandate.isActive);
 
   if (existingMandate) {
-    throw new Error('An active mandate already exists for this tenant and property');
+    throw new ConflictError('An active mandate already exists for this tenant and property');
   }
 
   // Verify tenant has access to create mandates
+  // Bien d'une autre agence : même erreur qu'un bien inexistant.
   if (property.tenantId && property.tenantId !== tenantId) {
-    throw new Error('Tenant does not have access to create mandates for this property');
+    throw new NotFoundError('Bien introuvable.');
+  }
+
+  // Le propriétaire du mandat est un client de CETTE agence.
+  const ownerClient = property.ownerUserId
+    ? await prisma.tenantClient.findUnique({
+        where: { userId_tenantId: { userId: property.ownerUserId, tenantId } },
+        select: { id: true }
+      })
+    : null;
+  if (!ownerClient) {
+    throw new NotFoundError('Propriétaire introuvable.');
   }
 
   // Create mandate
@@ -54,7 +67,7 @@ export async function createMandate(tenantId: string, data: CreateMandateRequest
       ownerUserId: property.ownerUserId!,
       startDate: data.startDate,
       endDate: data.endDate || null,
-      scope: data.scope || null,
+      scope: (data.scope ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       notes: data.notes || null,
       isActive: true
     },

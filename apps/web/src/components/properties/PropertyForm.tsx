@@ -38,7 +38,7 @@ import {
 } from '../../types/property-types';
 import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
-import { getTenantClients, TenantClient } from '../../services/tenant-service';
+import { getOwnerClients, TenantClient } from '../../services/tenant-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { apiErrorText, apiFieldErrors, fieldLabel } from './property-api-errors';
 import { t } from '../../i18n/t';
@@ -165,10 +165,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
   const loadOwners = async () => {
     setLoadingOwners(true);
     try {
-      const response = await getTenantClients(tenantId);
-      if (response.success) {
-        setOwners(response.data);
-      }
+      // Mêmes propriétaires que l'assistant de création : clients OWNER, rattrapage compris.
+      setOwners(await getOwnerClients(tenantId));
     } catch (error) {
       console.error('Error loading owners:', error);
     } finally {

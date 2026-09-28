@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listProperties } from '../../services/property-service';
 import { listContacts } from '../../services/crm-service';
 import { listDeals } from '../../services/crm-service';
-import { getTenantClients } from '../../services/tenant-service';
+import { getOwnerClients } from '../../services/tenant-service';
 import { listMembers } from '../../services/membership-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { contactLabel, propertyLabel } from './helpers';
@@ -75,7 +75,11 @@ export const PropertySelect: React.FC<BaseSelectProps> = ({
   );
 };
 
-/** Vendeur — un `TenantClient` de type `OWNER` (décision P1 du lot 9). */
+/**
+ * Vendeur — un `TenantClient` de type `OWNER` (décision P1 du lot 9). La liste
+ * passe par `getOwnerClients` : elle rattrape les contacts convertis au rôle
+ * Propriétaire avant que la conversion ne crée leur client (BUG-019).
+ */
 export const SellerClientSelect: React.FC<BaseSelectProps> = ({
   tenantId,
   value,
@@ -88,14 +92,15 @@ export const SellerClientSelect: React.FC<BaseSelectProps> = ({
 }) => {
   const { data, isPending } = useQuery({
     queryKey: queryKey('tenant-clients-owners', tenantId),
-    queryFn: () => getTenantClients(tenantId),
+    queryFn: () => getOwnerClients(tenantId),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.reference
   });
 
-  const options = (data?.data ?? [])
-    .filter(client => client.clientType === 'OWNER')
-    .map(client => ({ value: client.id, label: `${client.user.fullName} (${client.user.email})` }));
+  const options = (data ?? []).map(client => ({
+    value: client.id,
+    label: `${client.user.fullName} (${client.user.email})`
+  }));
 
   return (
     <Select

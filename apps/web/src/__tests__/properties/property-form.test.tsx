@@ -20,7 +20,7 @@ import { FeedbackBridge } from '../../lib/feedback';
  */
 
 const getTemplate = vi.fn();
-const getTenantClients = vi.fn();
+const getOwnerClients = vi.fn();
 
 vi.mock('../../services/property-service', () => ({
   __esModule: true,
@@ -30,7 +30,7 @@ vi.mock('../../services/property-service', () => ({
 
 vi.mock('../../services/tenant-service', () => ({
   __esModule: true,
-  getTenantClients: (...a: unknown[]) => getTenantClients(...a)
+  getOwnerClients: (...a: unknown[]) => getOwnerClients(...a)
 }));
 
 vi.mock('../../services/geographic-service', () => ({
@@ -87,9 +87,9 @@ function monter(property: Property) {
 
 beforeEach(() => {
   getTemplate.mockReset();
-  getTenantClients.mockReset();
+  getOwnerClients.mockReset();
   getTemplate.mockResolvedValue({ sections: [], fieldDefinitions: [] });
-  getTenantClients.mockResolvedValue({ success: true, data: PROPRIETAIRES });
+  getOwnerClients.mockResolvedValue(PROPRIETAIRES);
 });
 
 describe('Fiche d’un bien — le sélecteur « Propriétaire » se filtre à la saisie', () => {
@@ -97,7 +97,7 @@ describe('Fiche d’un bien — le sélecteur « Propriétaire » se filtre à l
     const user = userEvent.setup();
     monter(BIEN_PRIVE);
 
-    await waitFor(() => expect(getTenantClients).toHaveBeenCalled());
+    await waitFor(() => expect(getOwnerClients).toHaveBeenCalled());
 
     const optionsVisibles = () =>
       Array.from(document.querySelectorAll('.ant-select-item-option-content')).map(el => el.textContent);
@@ -122,7 +122,7 @@ describe('Fiche d’un bien — un échec de validation se voit', () => {
     const user = userEvent.setup();
     monter(BIEN_PRIVE);
 
-    await waitFor(() => expect(getTenantClients).toHaveBeenCalled());
+    await waitFor(() => expect(getOwnerClients).toHaveBeenCalled());
 
     // Le titre est obligatoire : on le vide avant de soumettre.
     const titre = await screen.findByLabelText('Titre du bien');
@@ -143,7 +143,7 @@ describe('Fiche d’un bien — un échec de validation se voit', () => {
 describe('Fiche d’un bien — le propriétaire n’est requis que hors « propriété de l’agence »', () => {
   it('reste obligatoire pour une propriété privée', async () => {
     monter(BIEN_PRIVE);
-    await waitFor(() => expect(getTenantClients).toHaveBeenCalled());
+    await waitFor(() => expect(getOwnerClients).toHaveBeenCalled());
 
     // Avant toute soumission, ni erreur ni mention d'aide « agence » : ce
     // bien est privé, le propriétaire lui reste simplement requis.
@@ -154,7 +154,7 @@ describe('Fiche d’un bien — le propriétaire n’est requis que hors « prop
   it('n’est plus exigé pour un bien propriété de l’agence, et l’explique', async () => {
     const bienAgence: Property = { ...BIEN_PRIVE, ownershipType: PropertyOwnershipType.TENANT, ownerUserId: undefined };
     monter(bienAgence);
-    await waitFor(() => expect(getTenantClients).toHaveBeenCalled());
+    await waitFor(() => expect(getOwnerClients).toHaveBeenCalled());
 
     expect(
       await screen.findByText("Ce bien appartient à l'agence : il n'a pas de propriétaire distinct.")

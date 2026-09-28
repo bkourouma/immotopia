@@ -79,6 +79,30 @@ export async function createProperty(
   // If ownerEmail is provided, find or create the User
   // Priority: data.ownerUserId > data.ownerEmail > ownerUserId parameter
   let finalOwnerUserId = data.ownerUserId || ownerUserId;
+  const isManagedForClient = data.ownershipType === PropertyOwnershipType.CLIENT;
+
+  if (isManagedForClient) {
+    // Mandat de gestion : le propriétaire est un client de CETTE agence
+    // (TenantClient). Un compte d'une autre agence, ou inconnu, lève la même
+    // NotFoundError — jamais de compte créé à la volée pour un mandat.
+    if (!tenantId) {
+      throw new BadRequestError('Une agence est requise pour un bien en mandat de gestion.');
+    }
+    if (!finalOwnerUserId && data.ownerEmail) {
+      const byEmail = await prisma.user.findUnique({ where: { email: data.ownerEmail }, select: { id: true } });
+      finalOwnerUserId = byEmail?.id ?? null;
+    }
+    const ownerClient = finalOwnerUserId
+      ? await prisma.tenantClient.findUnique({
+          where: { userId_tenantId: { userId: finalOwnerUserId, tenantId } },
+          select: { id: true }
+        })
+      : null;
+    if (!ownerClient) {
+      throw new NotFoundError('Propriétaire introuvable.');
+    }
+  }
+
   if (data.ownerEmail && !finalOwnerUserId) {
     let user = await prisma.user.findUnique({
       where: { email: data.ownerEmail }
@@ -135,7 +159,10 @@ export async function createProperty(
             internalReference,
             propertyType: data.propertyType,
             ownershipType: data.ownershipType,
-            tenantId: data.ownershipType === PropertyOwnershipType.TENANT ? tenantId : null,
+            // Un bien en mandat de gestion porte aussi l'agence gérante : les
+            // gardes des enfants (médias, documents) et `canAccessProperty`
+            // la lisent ; le mandat ci-dessous reste la source de l'accès.
+            tenantId: data.ownershipType === PropertyOwnershipType.TENANT || isManagedForClient ? tenantId : null,
             ownerUserId: finalOwnerUserId, // Can be set even for TENANT type if owner is selected in form
             containerParentId: data.containerParentId || null, // For sub-properties (apartments in buildings)
             title: data.title,
@@ -181,6 +208,17 @@ export async function createProperty(
             }
           }
         });
+        if (isManagedForClient && tenantId && finalOwnerUserId) {
+          await tx.propertyMandate.create({
+            data: {
+              propertyId: created.id,
+              tenantId,
+              ownerUserId: finalOwnerUserId,
+              startDate: new Date(),
+              isActive: true
+            }
+          });
+        }
         if (tenantId) {
           await syncLotActivationsTx(
             tx,

@@ -22,6 +22,11 @@ import type { PropertyOwnership } from '../../services/property-ownership-servic
  * celle du panneau qui vient de s'ouvrir.
  */
 
+vi.mock('../../components/properties/PropertyMandateCard', () => ({ PropertyMandateCard: () => null }));
+vi.mock('../../services/tenant-service', () => ({
+  syncOwnerClients: vi.fn(async () => ({ examined: 0, created: 0 }))
+}));
+
 const getPropertyOwnership = vi.fn();
 const updatePropertyOwnership = vi.fn();
 
