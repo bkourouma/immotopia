@@ -34,6 +34,8 @@ function buildRouteLabels(): Record<string, string> {
     performance: t('Performance'),
     'work-programs': t('Programmes de travaux'),
     statements: t('Relevés'),
+    entities: t('Entités détentrices'),
+    'tax-parameters': t('Paramètres fiscaux'),
 
     // Gestion locative
     rental: t('Gestion locative'),

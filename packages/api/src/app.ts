@@ -52,6 +52,7 @@ import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
 import coOwnerPortalRoutes from './routes/coowner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
+import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
@@ -262,6 +263,7 @@ app.use('/api', syndicReceiptsRoutes); // Recus de paiement et quittances de cha
 app.use('/api', syndicChargeSchedulesRoutes); // Programmations d'appels automatiques et avis d'appel PDF (lot S4)
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
 app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
+app.use('/api', patrimoineEntitiesRoutes); // Patrimoine — entités détentrices et fiscalité (lot P4, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions

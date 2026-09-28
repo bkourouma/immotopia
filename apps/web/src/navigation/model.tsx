@@ -401,6 +401,16 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             href: '/tenant/:tenantId/patrimoine/statements',
             // Relevés de gérance des mandants : gestion locative.
             feature: 'RENTAL'
+          },
+          {
+            key: 'patrimoine-entities',
+            label: t('Entités détentrices'),
+            href: '/tenant/:tenantId/patrimoine/entities'
+          },
+          {
+            key: 'patrimoine-tax-parameters',
+            label: t('Paramètres fiscaux'),
+            href: '/tenant/:tenantId/patrimoine/tax-parameters'
           }
         ]
       },

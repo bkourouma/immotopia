@@ -154,6 +154,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'patrimoine-performance': ['PROPERTIES_VIEW'],
   'patrimoine-work-programs': ['PROPERTIES_VIEW'],
   'patrimoine-statements': ['PROPERTIES_VIEW'],
+  'patrimoine-entities': ['PROPERTIES_VIEW'],
+  'patrimoine-tax-parameters': ['PROPERTIES_VIEW'],
   maintenance: ['MAINTENANCE_ADMIN', 'MAINTENANCE_TENANT'],
   'maintenance-agence-tickets': ['MAINTENANCE_ADMIN'],
   'maintenance-mes-demandes': ['MAINTENANCE_TENANT', 'MAINTENANCE_ADMIN'],

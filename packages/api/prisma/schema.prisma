@@ -719,6 +719,10 @@ model Tenant {
   leaseInspections         LeaseInspection[]
   leaseInspectionPhotos    LeaseInspectionPhoto[]
   propertyOwnershipShares  PropertyOwnershipShare[]
+  // PATRIMOINE — Lot P4
+  holdingEntities          HoldingEntity[]
+  propertyHoldings         PropertyHolding[]
+  propertyTaxProfiles      PropertyTaxProfile[]
   cashSessions             CashSession[]
   treasuryAccounts         TreasuryAccount[]
   treasuryTransfers        TreasuryTransfer[]
@@ -1487,6 +1491,8 @@ model CrmContact {
   reportedSyndicateIncidents SyndicateIncident[]
   ownerStatements            OwnerStatement[]
   patrimonyDocuments         PatrimonyDocument[]   @relation("PatrimonyDocumentOwner")
+  // PATRIMOINE — Lot P4
+  holdingEntities            HoldingEntity[]
   saleOffersAsBuyer          SaleOffer[]
 
   syndicChargeReceipts SyndicChargeReceipt[]
@@ -1808,6 +1814,9 @@ model Property {
   patrimonyDocuments  PatrimonyDocument[]
   ownerStatementItems OwnerStatementItem[]
   ownershipShares     PropertyOwnershipShare[]
+  // PATRIMOINE — Lot P4
+  holdings            PropertyHolding[]
+  taxProfile          PropertyTaxProfile?
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
@@ -8072,4 +8081,169 @@ model TenantDataExport {
   @@index([tenantId, createdAt])
   @@index([status])
   @@map("tenant_data_exports")
+}
+
+// =============================================================================
+// PATRIMOINE — Lot P4 : entités détentrices et fiscalité Côte d'Ivoire / Mali
+// =============================================================================
+
+enum HoldingEntityForm {
+  SCI
+  HOLDING
+  COMPANY
+  INDIVIDUAL
+  OTHER
+}
+
+/// Pays gérés par le moteur fiscal (ISO 3166-1 alpha-2). Un nouveau pays = une migration.
+enum FiscalCountry {
+  CI
+  ML
+}
+
+enum TaxKind {
+  PROPERTY_TAX
+  RENTAL_INCOME_TAX
+}
+
+/// Sélecteurs de paramètres. ANY = toutes valeurs ; refusé par zod dans les saisies.
+enum TaxPropertyKind {
+  ANY
+  BUILT
+  UNBUILT
+}
+
+enum TaxOccupancy {
+  ANY
+  MAIN_RESIDENCE
+  OWNER_OCCUPIED
+  RENTED
+  VACANT
+}
+
+enum TaxOwnerKind {
+  ANY
+  INDIVIDUAL
+  COMPANY
+}
+
+enum TaxParameterUnit {
+  PERCENT
+  AMOUNT
+  YEARS
+  BOOLEAN
+  CODE
+}
+
+enum TaxParameterStatus {
+  A_VALIDER
+  VALIDE
+}
+
+model HoldingEntity {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id")
+  name            String
+  legalForm       HoldingEntityForm @map("legal_form")
+  country         FiscalCountry
+  rccm            String?
+  /// NCC (Côte d'Ivoire) ou NIF (Mali).
+  taxId           String?           @map("tax_id")
+  contactId       String?           @map("contact_id")
+  /// Organigramme seulement : aucune consolidation transitive en P4.
+  parentEntityId  String?           @map("parent_entity_id") @db.Uuid
+  /// Surcharge du statut fiscal (SCI de copropriété => INDIVIDUAL, etc.). Null = déduit de legalForm.
+  fiscalOwnerKind TaxOwnerKind?     @map("fiscal_owner_kind")
+  notes           String?           @db.Text
+  isActive        Boolean           @default(true) @map("is_active")
+  createdByUserId String?           @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact      CrmContact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  parentEntity HoldingEntity?    @relation("HoldingEntityParent", fields: [parentEntityId], references: [id], onDelete: SetNull)
+  children     HoldingEntity[]   @relation("HoldingEntityParent")
+  holdings     PropertyHolding[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@index([parentEntityId])
+  @@index([contactId])
+  @@map("holding_entities")
+}
+
+model PropertyHolding {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id")
+  propertyId      String    @map("property_id")
+  entityId        String    @map("entity_id") @db.Uuid
+  /// En pourcentage : 50 pour 50 %. Quatre décimales.
+  sharePercent    Decimal   @map("share_percent") @db.Decimal(7, 4)
+  effectiveFrom   DateTime? @map("effective_from") @db.Date
+  notes           String?
+  updatedByUserId String?   @map("updated_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  entity   HoldingEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, entityId])
+  @@index([tenantId])
+  @@index([entityId])
+  @@map("property_holdings")
+}
+
+model PropertyTaxProfile {
+  id                  String           @id @default(uuid()) @db.Uuid
+  tenantId            String           @map("tenant_id")
+  propertyId          String           @unique @map("property_id")
+  country             FiscalCountry?
+  builtStatus         TaxPropertyKind? @map("built_status")
+  occupancy           TaxOccupancy?
+  declaredRentalValue Decimal?         @map("declared_rental_value") @db.Decimal(14, 2)
+  exemptUntilYear     Int?             @map("exempt_until_year")
+  exemptionReason     String?          @map("exemption_reason")
+  notes               String?
+  updatedByUserId     String?          @map("updated_by_user_id")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("property_tax_profiles")
+}
+
+/// GLOBAL (plateforme, sans agence) : référentiel fiscal versionné par pays et par année,
+/// alimenté par migration. Chaque ligne porte sa source et son statut de validation.
+model TaxParameter {
+  id           String             @id @default(uuid()) @db.Uuid
+  country      FiscalCountry
+  year         Int
+  taxKind      TaxKind            @map("tax_kind")
+  key          String             @map("param_key")
+  propertyKind TaxPropertyKind    @default(ANY) @map("property_kind")
+  occupancy    TaxOccupancy       @default(ANY)
+  ownerKind    TaxOwnerKind       @default(ANY) @map("owner_kind")
+  bracketIndex Int                @default(0) @map("bracket_index")
+  lowerBound   Decimal?           @map("lower_bound") @db.Decimal(16, 2)
+  upperBound   Decimal?           @map("upper_bound") @db.Decimal(16, 2)
+  value        Decimal?           @db.Decimal(16, 6)
+  valueText    String?            @map("value_text")
+  unit         TaxParameterUnit
+  label        String
+  source       String
+  sourceUrl    String?            @map("source_url")
+  status       TaxParameterStatus @default(A_VALIDER)
+  notes        String?            @db.Text
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@unique([country, year, taxKind, key, propertyKind, occupancy, ownerKind, bracketIndex], map: "tax_parameters_selector_key")
+  @@index([country, year])
+  @@map("tax_parameters")
 }
