@@ -38,6 +38,78 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/patrimoine-p1-pack` — 2026-09-28
+
+**État :** prêt à relire — PR #46 vers `main`, CI verte (6/6 checks)
+**Dernier commit :** `8e883bdc` fix(patrimoine): mock du registre des lots dans les tests de provisionnement + wiki du pack Patrimoine
+
+Fait :
+
+- Lot P1 repris intact depuis le disque (le coordinateur précédent avait
+  tout implémenté mais jamais committé) : deux packs Patrimoine
+  (Essentiel 9 900 FCFA/10 biens, Pro 29 900 FCFA/100 biens), capacité
+  `BIENS_DETENUS`/`LotKind.HELD_PROPERTY`, barrière « détenu en propre »
+  (`own-assets-barrier-service.ts`), tarification/facturation,
+  écrans super-admin, traductions fr/en/ar, migrations
+  `20261001101500`/`20261001101600`, tests (833 lignes environ). Détail
+  complet dans la description de la PR #46.
+- `origin/main` (PR #39, outil de provisionnement) fusionné dans la
+  branche sans conflit. Le mock de `lot-registry-service` dans
+  `subscription-provisioning-service.test.ts` (apporté par la #39) ne
+  couvrait pas `countHeldProperties` : 23/32 tests en échec après
+  fusion, corrigé (32/32 après).
+- Outil de provisionnement vérifié en conditions réelles sur une base
+  jetable (migrations + catalogue amorcé) : `provision --items
+PATRIMOINE_ESSENTIEL:1,EXT_BIENS_10:1 --dry-run` reconnaît les
+  nouveaux codes, calcule `BIENS_DETENUS 0/20` et la tarification
+  attendue — l'outil lit le catalogue en base, aucune adaptation de
+  code n'était nécessaire.
+- Relectures `security-auditor` et générale (toutes deux lecture seule,
+  `model: sonnet`) : 0 bloquant. Corrigés : 2 clés i18n API manquantes
+  (`en.json`/`ar.json`, messages `OWN_ASSETS_ONLY`), wiki des
+  fonctionnalités non mis à jour (fait : 2 packs + extension dans la
+  feuille Légende, Pack(s) Patrimoine Essentiel/Pro ajouté aux 84
+  sous-fonctionnalités RENTAL/PATRIMOINE, réserve « bloqué » sur les 2
+  sous-fonctionnalités purement tiers, note dédiée), test de cumul
+  Promoteur+Patrimoine absent (ajouté, `subscription.entitlements.test.ts`
+  et `subscription.pricing.test.ts`).
+- Vérifications : `npm run typecheck` 72 erreurs (73 sur `main`, aucune
+  nouvelle) ; Jest ciblé 19 suites/335 tests verts ; `check:architecture`
+  et `wiki:check` verts ; `migrate diff --exit-code` sans différence sur
+  base jetable (`pg-fonds`, 55432, base `immotopia_p1_<horodatage>`,
+  supprimée après usage) ; CI GitHub verte (API + 4 lots web + build).
+
+Reste à faire :
+
+- Fusion de la PR #46 : à la charge de l'utilisateur.
+- Plan de test manuel listé dans la description de la PR (création
+  agence Patrimoine Essentiel, passage au Pro, barrière en `enforce`,
+  cumul Agence/Promoteur + Patrimoine) — pas encore rejoué en interface.
+
+Pièges et décisions :
+
+- Un test `CreateTenantDrawer` (palier Patrimoine) échoue par timeout
+  (5 s) quand tout le fichier tourne sous charge partagée (plusieurs
+  Jest/Vitest en parallèle sur ce poste), mais passe (26 à 35 s) relancé
+  seul ou avec tout le fichier sans contention (7/7) — même effet déjà
+  documenté dans ce fichier pour le test « exclusivité de l'Intégré »
+  voisin. Pas une régression P1 ; revérifier isolément avant de
+  conclure à un échec sur ce fichier.
+- `ws.insert_rows()` d'openpyxl ne déplace pas les plages fusionnées :
+  après insertion de lignes dans la feuille « Legende Packs-Modules »,
+  la fusion `A11:G11` (titre du second tableau) est restée à son ancien
+  numéro de ligne au lieu de suivre son contenu déplacé — corrigé à la
+  main (`unmerge_cells`/`merge_cells`) après coup. À vérifier
+  systématiquement après tout `insert_rows` sur ce classeur.
+- Barrière « détenu en propre » : ne bloque que mandat de gestion et
+  rattachement de propriétaire tiers (indivision, bien, bail) pour un
+  compte dont le SEUL module est `MODULE_PATRIMOINE`. Le mandat de
+  VENTE est protégé par le même code mais n'est de toute façon pas
+  atteignable par ce pack seul (fonctionnalité SALES non ouverte par
+  `MODULE_PATRIMOINE`).
+
+---
+
 ## Branche `fix/patrimoine-suite-p0` — 2026-09-28
 
 **État :** prêt à relire — PR #40 vers `main`
