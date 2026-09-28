@@ -321,6 +321,29 @@ voir le commentaire du job `web-tests` dans `.github/workflows/ci.yml` pour
 la mesure ayant motivé ce découpage (23 min et une vingtaine de timeouts sur
 un seul runner à 4 vCPU).
 
+### `migrate status` en production : migration « not found locally »
+
+La production porte une ligne `_prisma_migrations` sans dossier dans le
+dépôt : `20260927080000_mouvements_fonds_copropriete`, appliquée hors dépôt
+le 25/09/2026. Décision, SQL d'origine et nettoyage facultatif :
+[ADR-003](../architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md).
+
+`deploy.sh` ne fait pas ce contrôle lui-même : il lance `migrate status`
+**après** `migrate deploy`. Étape manuelle, **avant** de lancer `deploy.sh` :
+
+1. Lancer `prisma migrate status` sur la production avec les migrations de
+   la révision à déployer (même commande que l'étape « Etat des migrations »
+   de `deploy.sh`, image `migrate` de cette révision).
+2. Tant que la ligne orpheline existe et qu'une migration est en attente, la
+   réponse est « Your local migration history and the migrations table from
+   your database are different », code 1. C'est attendu **si et seulement
+   si** la liste « not found locally » contient exactement
+   `20260927080000_mouvements_fonds_copropriete` et rien d'autre ;
+   `migrate deploy` passe alors quand même.
+3. Toute autre migration dans cette liste, ou une liste vide avec un autre
+   message d'erreur, est une vraie anomalie : **arrêter**, c'est-à-dire ne
+   pas lancer `deploy.sh`, et prévenir le responsable de la production.
+
 ### CI — étapes bloquantes (`.github/workflows/ci.yml`)
 
 | Job         | Étape                                                              | Bloquant |
