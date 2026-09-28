@@ -41,10 +41,11 @@ Pièges et décisions :
 ## Branche `feat/patrimoine-p3-exports` — 2026-09-28
 
 **État :** prêt à relire — PR #45 vers `main`
-(https://github.com/bkourouma/immotopia/pull/45), CI lancée, pas encore
-fusionnée
-**Dernier commit :** `6f073ae` fix(patrimoine): corrige la resolution du
-proprietaire de bail et l'anti-doublon des alertes
+(https://github.com/bkourouma/immotopia/pull/45), CI relancée après un
+second `git merge origin/main`, résultat pas encore connu à l'écriture de
+cette section
+**Dernier commit :** `9f55032` chore: retire mon export{} redondant apres
+fusion du correctif equivalent de main
 
 Fait (lot P3 Patrimoine : exports, alertes, ACD) :
 
@@ -99,11 +100,32 @@ Fait (lot P3 Patrimoine : exports, alertes, ACD) :
 
 Reste à faire :
 
-- Suivre la CI de la PR #45 jusqu'au vert (lancée, résultat pas encore
-  connu au moment d'écrire cette section) et corriger si besoin.
+- Suivre la CI de la PR #45 jusqu'au vert (relancée après le second merge,
+  résultat pas encore connu au moment d'écrire cette section) et corriger
+  si besoin.
 - Fusion par l'utilisateur (pas faite par cette session).
 
 Pièges et décisions :
+
+- **CI rouge sans rapport avec ce lot** : le premier passage de la PR #45 a
+  échoué sur `API — typecheck, lint, test` (bloquant) avec
+  `TS2300: Duplicate identifier 'Row'` entre
+  `packages/api/__tests__/unit/provision-subscription-cli.test.ts` et
+  `subscription-provisioning-service.test.ts` (lot abonnements, PR #39) :
+  aucun des deux fichiers n'a d'`import`/`export` au sommet, donc TypeScript
+  les traite comme des scripts globaux dont les `type Row` locaux entrent en
+  collision dès que les deux sont compilés dans le même run ts-jest — jamais
+  reproduit dans mon run local (qui ne ciblait que `patrimoine`/
+  `routes-inventory`/`schema-tenant-coverage`, sans ces deux fichiers).
+  Corrigé (`export {}`), **puis découvert qu'une autre session avait
+  indépendamment trouvé et corrigé le même bug** en suivant la CI de la PR #41
+  (`fix/securite-invitations`, commit `3770efb7`, fusionné dans `main` entre
+  mes deux pushs) : après `git merge origin/main`, les deux fichiers portaient
+  chacun deux `export {}` — retiré le mien, gardé celui de `main` (motif déjà
+  établi ailleurs : `cash-sessions.test.ts`, `treasury*.test.ts`, `export {}`
+  en fin de fichier). À surveiller : si une session future retombe sur ce
+  même `TS2300`, c'est que le correctif a été perdu quelque part — ne pas le
+  re-corriger sans vérifier `git log` sur ces deux fichiers d'abord.
 
 - La branche n'avait aucun commit propre au départ de cette reprise (tout le
   travail d'export était en modifications non commitées) et était en retard
