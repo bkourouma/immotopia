@@ -257,6 +257,59 @@ modifie `schema.prisma` : le client Prisma généré vit dans
 divergent entre le worktree et le checkout principal désynchronise le
 client généré pour les deux tant que `prisma generate` n'a pas été relancé.
 
+## Outil d'exploitation des abonnements (production)
+
+`packages/api/src/scripts/provision-subscription.ts`, compilé dans l'image
+(`dist/scripts/provision-subscription.js`), crée l'abonnement d'essai d'une
+agence ou la suspend, depuis le conteneur de l'API et sans écran. Il réutilise
+les services du produit (catalogue, droits, registre des lots,
+`suspendTenant`) : aucun SQL à la main.
+
+Règles :
+
+- **Dry-run d'abord, puis réel.** `--dry-run` n'écrit rien et affiche l'état
+  avant, ce qui serait fait et l'état attendu après (éléments et prix,
+  estimation mensuelle HT/TVA/TTC, mise en route, droits, capacités
+  utilisées/plafond, alertes de seuil 80/100 % que la tâche horaire
+  enverra). Relire, puis relancer sans `--dry-run`.
+- **Fenêtre interdite hh:10–hh:20 UTC**, bornes incluses : la tâche
+  `subscription-usage-job` passe à hh:15. Toute écriture y est refusée ; le
+  dry-run et `list` restent possibles, avec un avertissement.
+- **Idempotent.** Relancé avec la même demande, `provision` répond « déjà
+  provisionné » sans rien écrire (il termine seulement une réconciliation du
+  registre des lots interrompue) ; `suspend` répond « rien à faire ». Un
+  abonnement existant différent de la demande (éléments en vigueur, cycle,
+  politique de quota, mise en route levée, fin d'essai si elle est donnée) ou
+  portant un changement programmé est refusé, avec les écarts listés.
+- `provision` crée, en une transaction : abonnement `TRIALING` (30 jours par
+  défaut, `--trial-ends-at AAAA-MM-JJ` sinon), éléments au prix du
+  catalogue, rattachement des extensions à leur pack, modules ; puis
+  réconcilie le registre des lots. Aucune facture pendant l'essai.
+  `--setup-waived` pose `metadata.setupWaived` : la première facture ne
+  portera pas les frais `SETUP_<pack>`.
+- `suspend` appelle `suspendTenant` : statut `SUSPENDED` et révocation des
+  sessions des membres actifs.
+- Audit : acteur système `system:provision-subscription`
+  (`SUBSCRIPTION_PROVISIONED`, `LOT_REGISTRY_RECONCILED`,
+  `TENANT_SUSPENDED`). Aucun secret ni e-mail n'est affiché.
+- Codes de sortie : `0` succès ou rien à faire, `2` refus, `1` erreur
+  inattendue (dont un audit resté non écrit).
+
+```bash
+C=immotopia-saas-api; T=dist/scripts/provision-subscription.js
+docker exec $C node $T list --search <texte>            # trouver le slug
+docker exec $C node $T provision --tenant <slug>   --items AGENCE,SYNDIC,EXT_COPRO:2 --setup-waived --dry-run
+docker exec $C node $T provision --tenant <slug>   --items AGENCE,SYNDIC,EXT_COPRO:2 --setup-waived
+docker exec $C node $T suspend --tenant <slug> --dry-run
+docker exec $C node $T suspend --tenant <slug>
+```
+
+Options de `provision` : `--items CODE[:QTE],…` (codes du catalogue),
+`--trial-ends-at`, `--setup-waived`, `--quota-policy`
+(`BILL_OVERAGE` par défaut, `BLOCK`, `WARN_ONLY`), `--billing-cycle`
+(`MONTHLY` par défaut, `ANNUAL`). En local, depuis la racine du dépôt :
+`npm run ops:provision-subscription -w @immotopia/api -- <action> …`.
+
 ## Dépannage
 
 ### CORS / mauvais port
