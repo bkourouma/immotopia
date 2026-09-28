@@ -195,6 +195,18 @@ router.get(
         }
       });
 
+      // Meilleur effort : un echec d'ecriture de lastLoginAt ne doit pas
+      // faire echouer une connexion Google par ailleurs valide
+      // (BUG-2026-09-28-005).
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() }
+        });
+      } catch (error) {
+        logger.warn('Failed to update lastLoginAt on Google login', { userId: user.id, error });
+      }
+
       setAuthCookies(res, accessToken, refreshToken);
 
       res.redirect(`${frontendUrl}/auth/callback?success=true`);

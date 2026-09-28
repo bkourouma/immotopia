@@ -246,20 +246,27 @@ export async function loginUser(data: LoginRequest) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
-  // Create refresh token and update user in transaction
-  await prisma.$transaction(async tx => {
-    // Create refresh token
-    await tx.refreshToken.create({
-      data: {
-        token: refreshTokenHash,
-        userId: user.id,
-        expiresAt: expiresAt,
-        deviceInfo: 'Web Browser' // Could be enhanced with user-agent
-      }
-    });
-
-    // We can update last login here if we add that field back or keep track elsewhere
+  // Create refresh token
+  await prisma.refreshToken.create({
+    data: {
+      token: refreshTokenHash,
+      userId: user.id,
+      expiresAt: expiresAt,
+      deviceInfo: 'Web Browser' // Could be enhanced with user-agent
+    }
   });
+
+  // Meilleur effort, hors transaction : un echec d'ecriture de lastLoginAt ne
+  // doit jamais faire echouer une connexion par ailleurs valide
+  // (BUG-2026-09-28-005).
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() }
+    });
+  } catch (error) {
+    logger.warn('Failed to update lastLoginAt on login', { userId: user.id, error });
+  }
 
   // Generate access token
   const accessToken = generateAccessToken({

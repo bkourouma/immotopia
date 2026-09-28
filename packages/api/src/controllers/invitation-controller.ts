@@ -53,10 +53,15 @@ export async function inviteCollaboratorHandler(req: Request, res: Response): Pr
     });
 
     // Le token n'est jamais renvoye par l'API : seul son hash est stocke en base et
-    // seul le destinataire de l'email doit le connaitre.
+    // seul le destinataire de l'email doit le connaitre. Le message reflete
+    // l'echec d'envoi eventuel au lieu d'annoncer un succes qui n'a pas eu lieu
+    // (BUG-2026-09-28-004) : l'invitation existe toujours, "Renvoyer" permet
+    // de reessayer.
     res.status(201).json({
       success: true,
-      message: 'Invitation envoyée avec succès.',
+      message: result.emailSent
+        ? 'Invitation envoyée avec succès.'
+        : "Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer.",
       data: result.invitation
     });
   } catch (error) {
