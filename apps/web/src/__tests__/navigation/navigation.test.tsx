@@ -270,8 +270,17 @@ describe('modèle de navigation — intégrité', () => {
 
   it('coiffe le portail propriétaire de ses deux domaines', () => {
     const domaines = NAVIGATION.proprietaire.tree.map(g => g.section);
-    // Biens, Revenus et Mon compte (lot 3) sous « portefeuille » ; Incidents sous « bâtiments ».
-    expect(domaines).toEqual([undefined, 'portefeuille', 'portefeuille', 'portefeuille', 'batiments', undefined]);
+    // Biens, Revenus, Mon compte (lot 3) et Mon patrimoine (lot P5) sous
+    // « portefeuille » ; Incidents sous « bâtiments ».
+    expect(domaines).toEqual([
+      undefined,
+      'portefeuille',
+      'portefeuille',
+      'portefeuille',
+      'portefeuille',
+      'batiments',
+      undefined
+    ]);
     // « Plus » reste sans intertitre : un titre au-dessus d'un groupe qui porte
     // deja ce nom nommerait deux fois la meme chose.
     expect(NAVIGATION.proprietaire.tree.filter(g => !g.section).map(g => g.label)).toEqual(['Tableau de bord', 'Plus']);

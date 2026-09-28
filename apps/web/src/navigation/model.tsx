@@ -666,6 +666,17 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           href: '/owner/account'
         },
         {
+          // Lot P5 : valorisation, rendements, emprunts, travaux — masquable
+          // par l'agence (`OwnerPortalSettings.patrimonyEnabled`), voir
+          // `navigation/owner-patrimoine-menu.ts` fusionné dans la coquille.
+          key: 'mon-patrimoine',
+          label: t('Mon patrimoine'),
+          icon: <GoldOutlined />,
+          zone: 'primary',
+          section: 'portefeuille',
+          href: '/owner/patrimoine'
+        },
+        {
           key: 'incidents',
           label: t('Incidents'),
           icon: <ToolOutlined />,

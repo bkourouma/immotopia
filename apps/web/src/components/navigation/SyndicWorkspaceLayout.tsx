@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Select } from 'antd';
 import {
   AccountBookOutlined,
   AlertOutlined,
@@ -16,7 +17,8 @@ import {
 } from '@ant-design/icons';
 import { WorkspaceLayout } from './WorkspaceLayout';
 import type { WorkspaceTabItem } from './WorkspaceTabs';
-import { getSyndicate } from '../../services/syndic-service';
+import { getSyndicate, listSyndicates } from '../../services/syndic-service';
+import type { Syndicate } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
 /**
@@ -104,14 +106,48 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
   }
 }
 
+/**
+ * Adresse du même onglet dans une autre copropriété. On ne garde que le
+ * premier segment après l'identifiant (`/lots`, `/assemblees`,
+ * `/programmation`…) : une fiche de détail (`/assemblees/:meetingId`,
+ * `/lots/:lotId/compte`) appartient à la copropriété quittée et n'existe pas
+ * dans la suivante.
+ */
+export function syndicSwitchPath(pathname: string, tenantId: string, fromId: string, toId: string): string {
+  const base = `/tenant/${tenantId}/syndics/${fromId}`;
+  const rest = pathname.startsWith(base) ? pathname.slice(base.length) : '';
+  const section = rest.split('/').filter(Boolean)[0];
+  return `/tenant/${tenantId}/syndics/${toId}${section ? `/${section}` : ''}`;
+}
+
 export interface SyndicWorkspaceLayoutProps {
   family: SyndicWorkspaceFamily;
 }
 
 export const SyndicWorkspaceLayout: React.FC<SyndicWorkspaceLayoutProps> = ({ family }) => {
   const { tenantId, syndicId } = useParams<{ tenantId: string; syndicId: string }>();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [name, setName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syndicates, setSyndicates] = useState<Syndicate[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!tenantId) return;
+    // Lecture seule, échec silencieux : sans la liste, le bandeau garde
+    // simplement le nom seul et pas de sélecteur.
+    listSyndicates(tenantId)
+      .then(items => {
+        if (!cancelled) setSyndicates(items);
+      })
+      .catch(() => {
+        if (!cancelled) setSyndicates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +176,20 @@ export const SyndicWorkspaceLayout: React.FC<SyndicWorkspaceLayoutProps> = ({ fa
 
   const tabs = tenantId && syndicId ? buildTabs(family, tenantId, syndicId) : [];
 
+  // Le sélecteur n'a de sens qu'à partir de deux copropriétés.
+  const switcher =
+    tenantId && syndicId && syndicates.length > 1 ? (
+      <Select
+        aria-label={t('Changer de copropriété')}
+        value={syndicId}
+        onChange={nextId => navigate(syndicSwitchPath(pathname, tenantId, syndicId, nextId))}
+        options={syndicates.map(item => ({ value: item.id, label: item.name }))}
+        showSearch
+        optionFilterProp="label"
+        style={{ minWidth: 240, maxWidth: '100%' }}
+      />
+    ) : null;
+
   return (
     <WorkspaceLayout
       eyebrow={FAMILY_LABELS[family]}
@@ -147,6 +197,7 @@ export const SyndicWorkspaceLayout: React.FC<SyndicWorkspaceLayoutProps> = ({ fa
       titleLoading={loading}
       tabs={tabs}
       tabsLabel={t('Sections de la copropriété')}
+      titleAside={switcher}
     />
   );
 };

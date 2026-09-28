@@ -9,7 +9,9 @@
  *      AG annuelles et une AGE de travaux (étanchéité + ravalement financés par
  *      deux appels exceptionnels et le fonds de travaux), appels trimestriels,
  *      paiements (ponctuels, retardataires, impayés chroniques), relances,
- *      pénalités, échéanciers, comptabilité complète, contrats, incidents.
+ *      pénalités, échéanciers, comptabilité complète, contrats, incidents,
+ *      historique du fonds de travaux (`SyndicateFundMovement` : solde repris,
+ *      part de chaque paiement versée au fonds, prélèvements votés).
  *   2. « Résidence Les Jardins d'Angré » (Cocody Angré 8e Tranche) — 50 lots,
  *      reprise de gestion au 01/01/2026 : arriérés repris de l'ancien syndic,
  *      budget 2026 voté à la première AG, appels T1 → T3 2026, etc.
@@ -52,6 +54,7 @@ import * as dotenv from 'dotenv';
 import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { parsePeriodBounds } from '../../src/lib/syndics/period';
+import { buildSyndicFundMovements, type FundPaymentInput } from './syndic-demo-fund-movements';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
@@ -3659,7 +3662,18 @@ function defJardins(): CoproDef {
     ],
     incidents,
     specialInvoices: [],
-    fundTransfers: [],
+    // Résidence Les Jardins d'Angré n'a pas encore de travaux votés (l'AGE du
+    // 24/10/2026 sur l'étanchéité du bâtiment C est encore PLANNED à la date de
+    // référence) : seule dépense déjà réalisée sur le fonds de travaux, le
+    // remplacement des câbles d'éclairage extérieur après le vol de mai 2026
+    // (voir l'actif « Éclairage extérieur », `last: d(2026, 5, 15)`).
+    fundTransfers: [
+      {
+        date: d(2026, 5, 15, 15),
+        amount: 380000,
+        label: "Prélèvement sur le fonds de travaux — remplacement des câbles d'éclairage extérieur après vol"
+      }
+    ],
     schedules: [
       {
         lot: 'C02',
@@ -4348,6 +4362,11 @@ async function seedCopro(
   const lineItemId = new Map<string, string>(); // "<année>:<code>"
   const lotAnnual = new Map<string, Map<string, number>>(); // année → lot → total
   const fundAnnual = new Map<number, number>();
+  // Part annuelle de chaque lot au poste « Fonds de travaux » : c'est elle qui
+  // fixe la fraction de ses paiements versée au fonds (année → lot → montant).
+  const fundLotAnnual = new Map<number, Map<string, number>>();
+  const fundRoulementId = randomUUID();
+  const fundTravauxId = randomUUID();
   const budgetTotals = new Map<number, number>();
   for (const b of def.budgets) {
     const id = randomUUID();
@@ -4387,10 +4406,19 @@ async function seedCopro(
         amountActual: 0,
         distributionKey: line.key,
         accountId: accountId.get(line.account) ?? null,
+        // Le poste « fonds de travaux » alimente le fonds de travaux : les
+        // paiements affectés à ce poste (via `BudgetAllocation.breakdown`)
+        // le créditent au prorata, comme `fund-credits.ts` (`budgetSharesTx`).
+        fundId: line.code === 'FTRAV' ? fundTravauxId : null,
         createdAt: addDays(b.approvedAt, -40)
       });
       for (const [lotId, v] of distribute(amount, line.key)) {
         perLot.set(lotId, (perLot.get(lotId) ?? 0) + v);
+        if (line.code === 'FTRAV') {
+          const byLot = fundLotAnnual.get(b.year) ?? new Map<string, number>();
+          byLot.set(lotId, (byLot.get(lotId) ?? 0) + v);
+          fundLotAnnual.set(b.year, byLot);
+        }
         const arr = breakdown.get(lotId) ?? [];
         arr.push({ lineId: lid, category: line.category, distributionKey: line.key, allocated: v });
         breakdown.set(lotId, arr);
@@ -4738,7 +4766,13 @@ async function seedCopro(
         reference: ref,
         createdAt: p.date
       });
-      paymentAllocationRows.push({ id: pid, paymentId: pid, chargeCallId: call.id, amount: p.amount, source: 'PAYMENT' });
+      paymentAllocationRows.push({
+        id: pid,
+        paymentId: pid,
+        chargeCallId: call.id,
+        amount: p.amount,
+        source: 'PAYMENT'
+      });
       pushEvent(lot.id, {
         date: p.date,
         type: 'PAYMENT',
@@ -5404,9 +5438,18 @@ async function seedCopro(
   const totalDebit = sum(entryLines.map(x => Number(x.debit ?? 0)));
   const totalCredit = sum(entryLines.map(x => Number(x.credit ?? 0)));
   assert(totalDebit === totalCredit, 'balance générale déséquilibrée');
+  // Solde comptable (provisions) des fonds, compte 103/105 : sert au texte des
+  // AG (`fundAt`, marqueur {{fonds:...}}), qui reflète les cotisations APPELÉES
+  // (constatées à l'émission de l'appel), pas l'argent réellement encaissé.
+  // Distinct du solde de TRÉSORERIE du fonds (`fundCashRoulement`/`fundCashTravaux`
+  // plus bas), qui est celui affiché à l'écran (`SyndicateFund.balance`) et qui
+  // ne bouge qu'à l'encaissement d'un paiement — comme le fait l'application
+  // (`lib/syndics/fund-credits.ts`, crédit au paiement, pas à l'appel). Les deux
+  // soldes divergent normalement (un appel émis n'est pas forcément payé) ; ce
+  // n'est pas une incohérence à corriger.
   const fundRoulement = -(accBalance.get('103') ?? 0);
   const fundTravaux = -(accBalance.get('105') ?? 0);
-  assert(fundTravaux >= 0 && fundRoulement >= 0, 'fonds négatifs');
+  assert(fundTravaux >= 0 && fundRoulement >= 0, 'fonds négatifs (comptabilité)');
   for (const acc of ['512', '531', '5171']) {
     assert((accBalance.get(acc) ?? 0) >= 0, `trésorerie ${acc} négative`);
   }
@@ -5456,19 +5499,71 @@ async function seedCopro(
     pdfJobs.push({ file: path.join(docDir, file), title: doc.title, body });
   }
 
+  // ─────────────────────────────── historique des fonds (journal de trésorerie)
+  // Solde repris + part « fonds de travaux » de chaque paiement encaissé sur un
+  // appel régulier + dépenses votées (`def.fundTransfers`) — même journal que
+  // l'application (`lib/syndics/fund-credits.ts`, `recordFundMovementTx`),
+  // ici calculé par la fonction pure testée dans
+  // `__tests__/unit/syndics.demo-seed-funds.test.ts`.
+  const callById = new Map(calls.map(c => [c.id, c]));
+  const fundPayments: FundPaymentInput[] = paymentRows.flatMap(p => {
+    const call = callById.get(p.chargeCallId as string);
+    if (!call) return [];
+    return [
+      {
+        paymentId: p.id as string,
+        chargeCallId: call.id,
+        amount: Number(p.amount),
+        paidAt: p.paidAt as Date,
+        lotId: call.lot.id,
+        lotNum: call.lot.num,
+        period: call.period,
+        year: call.year,
+        kind: call.kind
+      }
+    ];
+  });
+  const { movements: fundMovementRows, balances: fundCashBalances } = buildSyndicFundMovements({
+    tenantId: TENANT_ID,
+    travauxFundId: fundTravauxId,
+    openings: [
+      { fundId: fundRoulementId, amount: def.opening.roulement, date: def.opening.date, label: def.opening.label },
+      { fundId: fundTravauxId, amount: def.opening.travaux, date: def.opening.date, label: def.opening.label }
+    ],
+    payments: fundPayments,
+    lotAnnualByYear: lotAnnual,
+    fundLotAnnualByYear: fundLotAnnual,
+    expenses: def.fundTransfers.map(t => ({ fundId: fundTravauxId, amount: t.amount, date: t.date, label: t.label }))
+  });
+  const fundCashRoulement = fundCashBalances.get(fundRoulementId) ?? 0;
+  const fundCashTravaux = fundCashBalances.get(fundTravauxId) ?? 0;
+  assert(fundCashRoulement >= 0 && fundCashTravaux >= 0, 'fonds négatifs (trésorerie)');
+  const fundMovementSum = (fundId: string) =>
+    sum(fundMovementRows.filter(m => m.fundId === fundId).map(m => (m.direction === 'CREDIT' ? m.amount : -m.amount)));
+  assert(
+    Math.round(fundMovementSum(fundRoulementId) * 100) === Math.round(fundCashRoulement * 100),
+    'fonds de roulement : solde ≠ somme du journal'
+  );
+  assert(
+    Math.round(fundMovementSum(fundTravauxId) * 100) === Math.round(fundCashTravaux * 100),
+    'fonds de travaux : solde ≠ somme du journal'
+  );
+
   // ─────────────────────────────── écriture en base (une transaction par copropriété)
   const fundRows: Prisma.SyndicateFundCreateManyInput[] = [
     {
+      id: fundRoulementId,
       syndicateId: def.id,
       name: 'Fonds de roulement',
-      balance: fundRoulement,
+      balance: fundCashRoulement,
       currency: 'XOF',
       createdAt: def.managementStart
     },
     {
+      id: fundTravauxId,
       syndicateId: def.id,
       name: 'Fonds de travaux',
-      balance: fundTravaux,
+      balance: fundCashTravaux,
       currency: 'XOF',
       createdAt: def.managementStart
     }
@@ -5597,6 +5692,9 @@ async function seedCopro(
       await insert('votes', voteRows, data => tx.gMVote.createMany({ data }));
       if (proxyRows.length) await tx.gMProxy.createMany({ data: proxyRows });
       await tx.syndicateBudget.createMany({ data: budgetRows });
+      // Les fonds sont créés ici (avant les postes de budget) : un poste FTRAV
+      // porte `fundId` (contrainte FK) dès sa création, comme le ferait l'app.
+      await tx.syndicateFund.createMany({ data: fundRows });
       await tx.budgetLineItem.createMany({ data: budgetLineRows });
       await insert('allocations', allocationRows, data => tx.budgetAllocation.createMany({ data }));
       await tx.chargeCallBatch.createMany({ data: batchRows });
@@ -5626,7 +5724,7 @@ async function seedCopro(
       }
       await tx.syndicateIncident.createMany({ data: incidentRows });
       if (imputationRows.length) await tx.incidentCostImputation.createMany({ data: imputationRows });
-      await tx.syndicateFund.createMany({ data: fundRows });
+      await insert('fundMovements', fundMovementRows, data => tx.syndicateFundMovement.createMany({ data }));
       await tx.syndicateDocument.createMany({ data: docRows });
     },
     { timeout: 600000, maxWait: 60000 }
@@ -5701,9 +5799,10 @@ async function seedCopro(
       maintenance_tickets: ticketRows.length,
       syndicate_maintenance_links: maintenanceLinkRows.length,
       syndicate_funds: fundRows.length,
+      syndicate_fund_movements: fundMovementRows.length,
       syndicate_documents: docRows.length
     },
-    funds: { roulement: fundRoulement, travaux: fundTravaux },
+    funds: { roulement: fundCashRoulement, travaux: fundCashTravaux },
     bank: accBalance.get('512') ?? 0
   };
 }
