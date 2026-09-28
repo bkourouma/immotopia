@@ -137,12 +137,19 @@ ok "immotopia-saas-postgres healthy"
 # compris celui-la, retombe en silence sur « Database schema is up to date! »
 # et sort en code 0 - l'orpheline ne serait alors jamais signalee. On compare
 # donc directement le contenu de _prisma_migrations au dossier du depot.
+#
+# La table peut ne pas encore exister (tout premier deploiement sur une base
+# neuve, avant le premier `migrate deploy`) : on le verifie avec to_regclass,
+# un booleen SQL ('t'/'f'), plutot que de deviner la cause d'un echec de
+# lecture a partir du texte de l'erreur psql - fragile, une image postgres
+# future pourrait le traduire ou le reformuler sans bruit.
 
 step "Controle des migrations inconnues du depot"
 
 ORPHANS_FILE="infra/scripts/migrations-orphelines-connues.txt"
 [[ -f "$ORPHANS_FILE" ]] || fail "$ORPHANS_FILE introuvable."
 
+EXISTS_ERR_FILE="$(mktemp)"
 APPLIED_FILE="$(mktemp)"
 APPLIED_ERR_FILE="$(mktemp)"
 LOCAL_DIRS_FILE="$(mktemp)"
@@ -151,27 +158,44 @@ UNKNOWN_ORPHANS_FILE="$(mktemp)"
 KNOWN_ORPHANS_FILE=""
 
 migration_check_cleanup() {
-  rm -f "$APPLIED_FILE" "$APPLIED_ERR_FILE" "$LOCAL_DIRS_FILE" \
+  rm -f "$EXISTS_ERR_FILE" "$APPLIED_FILE" "$APPLIED_ERR_FILE" "$LOCAL_DIRS_FILE" \
         "$FOUND_ORPHANS_FILE" "$UNKNOWN_ORPHANS_FILE" $KNOWN_ORPHANS_FILE 2>/dev/null || true
 }
 trap migration_check_cleanup EXIT
 
-# Migrations terminees et non annulees en base, lues par le socket local du
-# conteneur postgres : $POSTGRES_USER/$POSTGRES_DB viennent de l'environnement
-# deja pose sur ce conteneur par $ENV_FILE, jamais de la ligne de commande -
-# aucun secret n'est affiche ni journalise par cette etape.
-if ! compose exec -T postgres sh -c \
-     'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name;"' \
-     > "$APPLIED_FILE" 2>"$APPLIED_ERR_FILE"; then
-  if grep -qi '_prisma_migrations" does not exist' "$APPLIED_ERR_FILE"; then
+# $POSTGRES_USER/$POSTGRES_DB viennent de l'environnement deja pose sur le
+# conteneur postgres par $ENV_FILE, jamais de la ligne de commande - aucun
+# secret n'est affiche ni journalise par cette etape. La chaine passee a
+# `sh -c` est entre apostrophes ANSI-C ($'...') pour que $POSTGRES_USER et
+# $POSTGRES_DB restent litteraux ici et ne soient developpes que par le sh
+# interne, tout en permettant l'apostrophe litterale (\') qu'exige le
+# litteral SQL de to_regclass.
+if ! TABLE_EXISTS="$(compose exec -T postgres sh -c \
+       $'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT to_regclass(\'_prisma_migrations\') IS NOT NULL;"' \
+       2>"$EXISTS_ERR_FILE")"; then
+  cat "$EXISTS_ERR_FILE" >&2
+  fail "impossible de verifier l'existence de _prisma_migrations sur postgres (voir la sortie ci-dessus)."
+fi
+
+case "$TABLE_EXISTS" in
+  t)
+    # Migrations terminees et non annulees en base.
+    if ! compose exec -T postgres sh -c \
+         'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name;"' \
+         > "$APPLIED_FILE" 2>"$APPLIED_ERR_FILE"; then
+      cat "$APPLIED_ERR_FILE" >&2
+      fail "lecture de _prisma_migrations impossible sur postgres (voir la sortie ci-dessus)."
+    fi
+    ;;
+  f)
     # Tout premier deploiement sur une base neuve : rien n'est encore
     # applique, donc rien ne peut etre orphelin.
     : > "$APPLIED_FILE"
-  else
-    cat "$APPLIED_ERR_FILE" >&2
-    fail "lecture de _prisma_migrations impossible sur postgres (voir la sortie ci-dessus)."
-  fi
-fi
+    ;;
+  *)
+    fail "reponse inattendue de to_regclass('_prisma_migrations') sur postgres : '$TABLE_EXISTS' (attendu t ou f)."
+    ;;
+esac
 
 find packages/api/prisma/migrations -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
   | sort -u > "$LOCAL_DIRS_FILE"
