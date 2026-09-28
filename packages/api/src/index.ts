@@ -11,6 +11,7 @@ import { startSubscriptionUsageJob } from './jobs/subscription-usage-job';
 import { startSyndicChargeCallSchedulerJob } from './jobs/syndic-charge-call-scheduler.job';
 import { recoverTenantDataExports } from './services/tenant-data-export/export-service';
 import { startTenantDataExportExpiryJob } from './jobs/tenant-data-export-expiry-job';
+import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
 import { logger } from './utils/logger';
 
 /**
@@ -59,6 +60,8 @@ app.listen(PORT, () => {
     startSyndicChargeCallSchedulerJob();
     // Lot S7 : archives d'export echues supprimees toutes les heures.
     startTenantDataExportExpiryJob();
+    // Lot Patrimoine : alerte quotidienne d'expiration des documents (7 h UTC).
+    startDocumentExpiryAlertJob();
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.
     recoverTenantDataExports().catch(error =>

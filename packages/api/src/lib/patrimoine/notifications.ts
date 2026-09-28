@@ -1,3 +1,4 @@
+import { PropertyDocumentType } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { ConflictError } from '../../middleware/error-middleware';
@@ -35,43 +36,123 @@ function normalizeOwnerStatementTemplateText(template: string): string {
     .replace(/PropriÃ©taire/g, 'Propriétaire');
 }
 
-export async function alertExpiringDocuments(tenantId: string, daysAhead = 30) {
-  const now = new Date();
-  const maxDate = new Date(now);
-  maxDate.setDate(maxDate.getDate() + daysAhead);
+/** Libelle francais lisible de chaque type de document patrimoine, pour le corps de l'alerte. */
+const PROPERTY_DOCUMENT_TYPE_LABELS: Record<PropertyDocumentType, string> = {
+  TITLE_DEED: 'Titre de propriété',
+  MANDATE: 'Mandat',
+  PLAN: 'Plan',
+  TAX_DOCUMENT: 'Document fiscal',
+  SYNDICATE_PV: 'Procès-verbal de copropriété',
+  SYNDICATE_BUDGET: 'Budget de copropriété',
+  SYNDICATE_CONTRAT: 'Contrat de copropriété',
+  SYNDICATE_REGL_COPRO: 'Règlement de copropriété',
+  NOTARIAL_DEED: 'Acte notarié',
+  INSURANCE: 'Assurance',
+  TECHNICAL_DIAGNOSIS: 'Diagnostic technique',
+  BUILDING_PERMIT: 'Permis de construire',
+  LAND_CONCESSION: 'Arrêté de concession définitive (ACD)',
+  OTHER: 'Autre document'
+};
 
-  const docs = await prisma.patrimonyDocument.findMany({
-    where: {
-      tenantId,
-      expiresAt: {
-        gte: now,
-        lte: maxDate
-      }
-    },
-    include: {
-      owner: true,
-      property: true
-    }
+interface ExpiringDocumentRecipient {
+  contactId: string;
+  email: string;
+  name: string;
+}
+
+/**
+ * Destinataires eligibles pour l'alerte d'expiration d'un document : les
+ * proprietaires du bien (indivision comprise via `PropertyOwnershipShare`,
+ * plus `Property.ownerUserId` s'il est renseigne), relies a leur contact CRM
+ * par `TenantClient.details.crmContactId` (meme convention que
+ * `lib/patrimoine/queries.ts` et `services/document-context-builder.ts`), avec
+ * une adresse e-mail non vide et un consentement explicite
+ * (`CrmContact.consentEmail === true`). Un proprietaire sans lien CRM, sans
+ * e-mail ou sans consentement est silencieusement exclu de l'envoi -- jamais
+ * de consentement suppose a partir du seul `User`.
+ */
+async function resolveDocumentOwnerRecipients(
+  tenantId: string,
+  property: { id: string; ownerUserId: string | null }
+): Promise<ExpiringDocumentRecipient[]> {
+  const [shares, directClient] = await Promise.all([
+    prisma.propertyOwnershipShare.findMany({
+      where: { tenantId, propertyId: property.id },
+      select: { ownerClientId: true }
+    }),
+    property.ownerUserId
+      ? prisma.tenantClient.findFirst({
+          where: { tenantId, userId: property.ownerUserId },
+          select: { id: true }
+        })
+      : Promise.resolve(null)
+  ]);
+
+  const clientIds = Array.from(
+    new Set([...shares.map(share => share.ownerClientId), ...(directClient ? [directClient.id] : [])])
+  );
+  if (clientIds.length === 0) return [];
+
+  const clients = await prisma.tenantClient.findMany({
+    where: { tenantId, id: { in: clientIds } },
+    select: { id: true, details: true }
   });
 
-  let sentCount = 0;
-  for (const doc of docs) {
-    if (!doc.owner?.email || doc.owner.consentEmail !== true) {
-      continue;
-    }
+  const crmContactIds = Array.from(
+    new Set(
+      clients
+        .map(client => (client.details as { crmContactId?: string } | null)?.crmContactId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  if (crmContactIds.length === 0) return [];
 
-    const eventKey = 'DOCUMENT_EXPIRY_ALERT' as const;
-    const config = await getEmailNotificationConfig(tenantId, eventKey);
-    if (!config.enabled) continue;
+  const contacts = await prisma.crmContact.findMany({
+    where: { tenantId, id: { in: crmContactIds } },
+    select: { id: true, email: true, firstName: true, lastName: true, consentEmail: true }
+  });
 
-    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
-    const ownerName = [doc.owner.firstName, doc.owner.lastName].filter(Boolean).join(' ') || 'Propriétaire';
+  const seenEmails = new Set<string>();
+  const recipients: ExpiringDocumentRecipient[] = [];
+  for (const contact of contacts) {
+    if (!contact.email || !contact.email.trim() || contact.consentEmail !== true) continue;
+    const normalizedEmail = contact.email.trim().toLowerCase();
+    if (seenEmails.has(normalizedEmail)) continue;
+    seenEmails.add(normalizedEmail);
+    recipients.push({
+      contactId: contact.id,
+      email: contact.email.trim(),
+      name: [contact.firstName, contact.lastName].filter(Boolean).join(' ') || 'Propriétaire'
+    });
+  }
+  return recipients;
+}
+
+/**
+ * Envoie l'alerte d'expiration d'un document a chacun de ses destinataires et
+ * renvoie le nombre d'envois reussis. Un echec individuel (ex : fournisseur
+ * e-mail indisponible pour un destinataire) est journalise avec le
+ * `contactId` concerne et n'interrompt pas les envois suivants.
+ */
+async function sendExpiryAlertToRecipients(params: {
+  recipients: ExpiringDocumentRecipient[];
+  documentId: string;
+  documentFileName: string;
+  documentTypeLabel: string;
+  propertyReference: string;
+  expiresAtLabel: string;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  tenantId: string;
+}): Promise<number> {
+  let deliveredCount = 0;
+  for (const recipient of params.recipients) {
     const subjectVariables = {
-      ownerName,
-      documentTitle: doc.title,
-      documentType: doc.type,
-      propertyReference: doc.property?.internalReference || '',
-      expiresAt: doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString('fr-FR') : ''
+      ownerName: recipient.name,
+      documentTitle: params.documentFileName,
+      documentType: params.documentTypeLabel,
+      propertyReference: params.propertyReference,
+      expiresAt: params.expiresAtLabel
     };
     // Le sujet part en texte brut (pas de HTML a echapper) ; le corps HTML
     // reprend les memes valeurs, echappees.
@@ -79,16 +160,156 @@ export async function alertExpiringDocuments(tenantId: string, daysAhead = 30) {
       Object.entries(subjectVariables).map(([key, value]) => [key, escapeHtml(value)])
     );
 
-    await emailService.sendEmail({
-      to: doc.owner.email,
-      subject: applyTemplate(config.subjectOverride || defaults.subject, subjectVariables),
-      html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables)
-    });
-    sentCount += 1;
+    try {
+      await emailService.sendEmail({
+        to: recipient.email,
+        subject: applyTemplate(params.subjectTemplate, subjectVariables),
+        html: applyTemplate(params.bodyTemplate, bodyVariables),
+        tenantId: params.tenantId
+      });
+      deliveredCount += 1;
+    } catch (error) {
+      logger.warn('alertExpiringDocuments: envoi echoue pour un destinataire', {
+        documentId: params.documentId,
+        contactId: recipient.contactId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  return deliveredCount;
+}
+
+/**
+ * Alerte les proprietaires d'un document `PropertyDocument` dont l'echeance
+ * (`expirationDate`) approche, une fois par document (`warningSentAt` sert de
+ * marque anti-doublon, jamais reinitialise ailleurs qu'ici).
+ *
+ * Un document sans destinataire eligible (pas de consentement) n'est pas
+ * marque : il sera retente au prochain passage, un consentement pouvant
+ * arriver entretemps. La reservation (`updateMany` avec `warningSentAt: null`
+ * en cible) est atomique : si un autre passage a deja pris le document, ce
+ * passage-ci l'ignore plutot que d'envoyer un doublon. Si aucun envoi ne
+ * reussit pour un document reserve, la marque est retiree pour un nouvel
+ * essai le lendemain.
+ *
+ * Limite assumee (echec partiel en indivision) : des qu'au moins un
+ * proprietaire a recu l'alerte, le document reste marque -- un
+ * co-proprietaire dont l'envoi a echoue n'est pas relance individuellement
+ * (l'echec est journalise avec son `contactId`). Seul l'echec total de tous
+ * les destinataires retire la marque.
+ *
+ * Limite connue (arret en cours de traitement) : un arret du processus entre
+ * la reservation (`warningSentAt` pose) et la fin des envois laisse le
+ * document marque sans qu'aucun e-mail ne soit parti ; la marque n'est pas
+ * retentee automatiquement dans ce cas.
+ */
+export async function alertExpiringDocuments(tenantId: string, options?: { daysAhead?: number; now?: Date }) {
+  const daysAhead = options?.daysAhead ?? 30;
+  const now = options?.now ?? new Date();
+  const maxDate = new Date(now);
+  maxDate.setDate(maxDate.getDate() + daysAhead);
+
+  const eventKey = 'DOCUMENT_EXPIRY_ALERT' as const;
+  const config = await getEmailNotificationConfig(tenantId, eventKey);
+  if (!config.enabled) {
+    return { matched: 0, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 };
   }
 
-  logger.info('alertExpiringDocuments completed', { tenantId, daysAhead, matched: docs.length, sentCount });
-  return { matched: docs.length, sentCount };
+  const docs = await prisma.propertyDocument.findMany({
+    where: {
+      tenantId,
+      expirationDate: { gte: now, lte: maxDate },
+      warningSentAt: null
+    },
+    select: {
+      id: true,
+      propertyId: true,
+      documentType: true,
+      fileName: true,
+      expirationDate: true,
+      property: {
+        select: { internalReference: true, title: true, ownerUserId: true }
+      }
+    }
+  });
+
+  const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
+  let sent = 0;
+  let skippedNoRecipient = 0;
+  let skippedAlreadySent = 0;
+  let failed = 0;
+
+  // Les documents d'un meme bien partagent leurs destinataires : evite de
+  // relire les parts d'indivision et les contacts CRM a chaque document.
+  const recipientsByProperty = new Map<string, ExpiringDocumentRecipient[]>();
+
+  for (const doc of docs) {
+    let recipients = recipientsByProperty.get(doc.propertyId);
+    if (!recipients) {
+      recipients = await resolveDocumentOwnerRecipients(tenantId, {
+        id: doc.propertyId,
+        ownerUserId: doc.property?.ownerUserId ?? null
+      });
+      recipientsByProperty.set(doc.propertyId, recipients);
+    }
+
+    if (recipients.length === 0) {
+      skippedNoRecipient += 1;
+      continue;
+    }
+
+    // Reservation atomique : si un autre passage a deja pris ce document
+    // (count === 0), ne pas envoyer une seconde fois.
+    const reserved = await prisma.propertyDocument.updateMany({
+      where: { id: doc.id, tenantId, warningSentAt: null },
+      data: { warningSentAt: now }
+    });
+    if (reserved.count === 0) {
+      skippedAlreadySent += 1;
+      continue;
+    }
+
+    const documentTypeLabel = PROPERTY_DOCUMENT_TYPE_LABELS[doc.documentType];
+    const propertyReference = doc.property?.internalReference || '';
+    const expiresAtLabel = doc.expirationDate
+      ? new Date(doc.expirationDate).toLocaleDateString('fr-FR', { timeZone: 'UTC' })
+      : '';
+
+    const deliveredCount = await sendExpiryAlertToRecipients({
+      recipients,
+      documentId: doc.id,
+      documentFileName: doc.fileName,
+      documentTypeLabel,
+      propertyReference,
+      expiresAtLabel,
+      subjectTemplate: config.subjectOverride || defaults.subject,
+      bodyTemplate: config.bodyHtmlOverride || defaults.bodyHtml,
+      tenantId
+    });
+
+    if (deliveredCount > 0) {
+      sent += 1;
+    } else {
+      failed += 1;
+      // Aucun envoi n'a abouti : retirer la marque pour retenter demain.
+      await prisma.propertyDocument.updateMany({
+        where: { id: doc.id, tenantId },
+        data: { warningSentAt: null }
+      });
+    }
+  }
+
+  logger.info('alertExpiringDocuments completed', {
+    tenantId,
+    daysAhead,
+    matched: docs.length,
+    sent,
+    skippedNoRecipient,
+    skippedAlreadySent,
+    failed
+  });
+
+  return { matched: docs.length, sent, skippedNoRecipient, skippedAlreadySent, failed };
 }
 
 export async function sendOwnerStatement(statementId: string, tenantId: string) {

@@ -97,6 +97,11 @@ Pièges et décisions :
 - Les tests qui montent `owner-portal-routes` vont dans `APP_LEVEL_TESTS`
   (`jest.config.js`) : erreurs TS anciennes de `document-context-builder.ts`.
 - Worktree avec son propre `npm ci` (schéma modifié), pas de jonction.
+- Fusion de `origin/main` dans ce tour : les sections `fix/patrimoine-suite-p0`
+  (#40) et `feat/provision-abonnements` (#39) qui vivaient ici ont été
+  retirées — les deux branches sont déjà fusionnées dans `main` (règle du
+  fichier : une section disparaît une fois fusionnée, l'historique reste dans
+  `git log`).
 
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
