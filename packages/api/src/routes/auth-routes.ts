@@ -31,7 +31,7 @@ import {
   resetPasswordRateLimiter,
   invitationAcceptRateLimiter
 } from '../middleware/rate-limit-middleware';
-import { authenticate } from '../middleware/auth-middleware';
+import { authenticate, optionalAuthenticate } from '../middleware/auth-middleware';
 import { asyncHandler } from '../middleware/error-middleware';
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { prisma } from '../utils/database';
@@ -63,8 +63,9 @@ router.post('/logout', logout);
 router.post('/forgot-password', forgotPasswordRateLimiter, validate(forgotPasswordSchema), forgotPasswordHandler);
 router.post('/reset-password', resetPasswordRateLimiter, validate(resetPasswordSchema), resetPasswordHandler);
 
-// Invitation Acceptance (public route)
-router.post('/invitations/accept', invitationAcceptRateLimiter, acceptInvitationHandler);
+// Invitation Acceptance (public route, session optionnelle : un compte
+// EXISTANT doit etre accepte depuis SA propre session — voir invitation-service.ts).
+router.post('/invitations/accept', invitationAcceptRateLimiter, optionalAuthenticate, acceptInvitationHandler);
 
 // User Info
 router.get('/me', authenticate, getMe);

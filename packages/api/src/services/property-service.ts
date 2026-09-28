@@ -597,11 +597,23 @@ export async function listProperties(
   const where: any = {};
 
   // Tenant isolation for tenant-owned properties
+  //
+  // Chaque branche du OR doit nommer explicitement `tenantId`, sinon
+  // l'extension Prisma (`utils/prisma-tenant-guard-extension.ts`) journalise
+  // un faux positif : elle ne peut pas voir que la branche est bien bornee a
+  // l'agence via une relation imbriquee (`mandates`). PUBLIC est toujours
+  // `tenantId: null` (bien independant, jamais rattache a une agence).
+  // CLIENT peut porter `tenantId` (mandat) ou `null` (proprietaire seul) :
+  // le mandat actif de CETTE agence reste la condition qui filtre reellement.
   if (tenantId) {
     where.OR = [
       { ownershipType: PropertyOwnershipType.TENANT, tenantId },
-      { ownershipType: PropertyOwnershipType.PUBLIC, isPublished: true },
-      { ownershipType: PropertyOwnershipType.CLIENT, mandates: { some: { tenantId, isActive: true } } }
+      { ownershipType: PropertyOwnershipType.PUBLIC, isPublished: true, tenantId: null },
+      {
+        ownershipType: PropertyOwnershipType.CLIENT,
+        OR: [{ tenantId }, { tenantId: null }],
+        mandates: { some: { tenantId, isActive: true } }
+      }
     ];
   } else if (userId) {
     // Public properties owned by user or published

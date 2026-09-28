@@ -124,6 +124,17 @@ correctif récent (commit `fix(portails): aucune réponse de portail ne
 porte de chemin disque`), après qu'un `select` implicite avait exposé le
 chemin absolu de plusieurs types de documents.
 
+`PropertyDocument.tenantId` peut être `null` sur d'anciennes lignes
+(héritage) ; certaines requêtes appliquent donc le motif
+`OR: [{ tenantId }, { tenantId: null }]` pour continuer à trouver ces
+documents historiques. Ce motif n'est sûr que si `propertyId` a déjà été
+vérifié comme appartenant au tenant courant avant la requête (par exemple
+via une lecture de `Property` scopée par `tenantId`) : une ligne
+`tenantId: null` n'est alors accessible que si elle est rattachée à un bien
+déjà confirmé dans l'agence. Sans cette vérification préalable, ce serait
+une fuite inter-agence. Suivent ce motif `lib/properties/document-files.ts`
+et `lib/patrimoine/owner-portal-view.ts`.
+
 ## 6. Webhooks de paiement
 
 Les notifications IPN de PaySecureHub

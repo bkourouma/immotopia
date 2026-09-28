@@ -3,6 +3,12 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireOwnerPortalAccess } from '../middleware/owner-portal-access';
 import { OwnerPortalController } from '../controllers/owner-portal-controller';
 import { downloadOwnerPortalAttachmentHandler } from '../controllers/maintenance-attachment-controller';
+import {
+  getOwnerPortalPatrimoineSettingsHandler,
+  getOwnerPortalPatrimoineHandler,
+  getOwnerPortalPatrimoinePropertyHandler,
+  downloadOwnerPortalPatrimoineDocumentHandler
+} from '../controllers/owner-portal-patrimoine-controller';
 
 const router = Router();
 const controller = new OwnerPortalController();
@@ -65,6 +71,15 @@ router.post('/reports/revenue', (req, res) => controller.generateRevenueReport(r
 router.post('/reports/occupancy', (req, res) => controller.generateOccupancyReport(req, res));
 
 router.post('/reports/export', (req, res) => controller.exportData(req, res));
+
+// Patrimoine (lot P5) — vue patrimoine, en lecture seule.
+router.get('/patrimoine/settings', getOwnerPortalPatrimoineSettingsHandler);
+router.get('/patrimoine', getOwnerPortalPatrimoineHandler);
+router.get('/patrimoine/properties/:propertyId', getOwnerPortalPatrimoinePropertyHandler);
+router.get(
+  '/patrimoine/properties/:propertyId/documents/:documentId/file',
+  downloadOwnerPortalPatrimoineDocumentHandler
+);
 
 // Preferences (newsletter consent)
 router.get('/preferences', (req, res) => controller.getPreferences(req, res));
