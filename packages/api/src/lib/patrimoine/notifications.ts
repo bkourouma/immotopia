@@ -72,10 +72,19 @@ interface ExpiringDocumentRecipient {
  * (`CrmContact.consentEmail === true`). Un proprietaire sans lien CRM, sans
  * e-mail ou sans consentement est silencieusement exclu de l'envoi -- jamais
  * de consentement suppose a partir du seul `User`.
+ *
+ * `extraTenantClientIds` ajoute des `TenantClient` supplementaires a
+ * resoudre en plus de l'indivision/`ownerUserId` du bien -- utilise par
+ * `alertExpiringLeases` pour inclure `RentalLease.owner_client_id`, qui est
+ * la facon la plus courante d'assigner un proprietaire a un bail (pose a la
+ * creation via `ownerClientId`/`ownerContactId`,
+ * `services/rental-lease-service.ts`), independamment de toute indivision
+ * declaree sur le bien.
  */
 async function resolveDocumentOwnerRecipients(
   tenantId: string,
-  property: { id: string; ownerUserId: string | null }
+  property: { id: string; ownerUserId: string | null },
+  extraTenantClientIds: string[] = []
 ): Promise<ExpiringDocumentRecipient[]> {
   const [shares, directClient] = await Promise.all([
     prisma.propertyOwnershipShare.findMany({
@@ -91,7 +100,11 @@ async function resolveDocumentOwnerRecipients(
   ]);
 
   const clientIds = Array.from(
-    new Set([...shares.map(share => share.ownerClientId), ...(directClient ? [directClient.id] : [])])
+    new Set([
+      ...shares.map(share => share.ownerClientId),
+      ...(directClient ? [directClient.id] : []),
+      ...extraTenantClientIds
+    ])
   );
   if (clientIds.length === 0) return [];
 
@@ -362,12 +375,26 @@ async function resolveAgencyAdminRecipients(tenantId: string): Promise<AgencyAdm
  * desynchroniserait le client genere des deux tant qu'il n'est pas relance
  * partout. On reutilise donc `AuditLog` (deja indexe sur
  * `entityType, entityId`) comme marque de reservation : une entree y est
- * ecrite apres l'envoi, et le prochain passage l'exclut. Limite assumee :
- * contrairement a la reservation atomique `updateMany` de
+ * ecrite apres l'envoi (flush immediat, `await flushAuditEvents()` juste
+ * apres chaque `logAuditEvent` reussi -- pas en fin de boucle complete, pour
+ * borner la fenetre de perte en cas de crash a une seule entite plutot qu'a
+ * tout le lot du jour pour l'agence), et le prochain passage l'exclut.
+ * Limite assumee : contrairement a la reservation atomique `updateMany` de
  * `alertExpiringDocuments`, cette lecture-puis-ecriture n'est pas atomique --
  * accepte car ce job tourne une fois par jour, sequentiellement, une agence a
  * la fois (jamais deux passages en parallele sur la meme agence).
  */
+/**
+ * Marque composee id+echeance plutot que le seul id de l'entite : un bail
+ * renouvele, un emprunt restructure ou un programme de travaux replanifie
+ * (meme ligne, `end_date`/`endDate`/`plannedDate` deplacee dans le futur)
+ * doit pouvoir redeclencher une alerte pour sa nouvelle echeance plutot que
+ * rester silencieusement exclu a vie par l'alerte du cycle precedent.
+ */
+function dateAlertKey(entityId: string, date: Date): string {
+  return `${entityId}::${date.toISOString().slice(0, 10)}`;
+}
+
 async function alreadyAlertedEntityIds(
   tenantId: string,
   actionKey: AuditActionKey,
@@ -383,9 +410,14 @@ async function alreadyAlertedEntityIds(
 }
 
 /**
- * Alerte les proprietaires (meme resolution que `alertExpiringDocuments` :
- * indivision + `ownerUserId`, contact CRM consentant) des baux actifs dont
- * `end_date` approche.
+ * Alerte les proprietaires des baux actifs dont `end_date` approche : meme
+ * resolution que `alertExpiringDocuments` (indivision + `ownerUserId`,
+ * contact CRM consentant), etendue avec `RentalLease.owner_client_id` --
+ * facon la plus courante d'assigner un proprietaire a un bail (pose a la
+ * creation, `services/rental-lease-service.ts`), independamment de toute
+ * indivision declaree sur le bien. Sans cette extension, un bail cree
+ * normalement (proprietaire assigne au bail, pas au bien) n'aurait jamais de
+ * destinataire eligible.
  */
 export async function alertExpiringLeases(tenantId: string, options?: { daysAhead?: number; now?: Date }) {
   const daysAhead = options?.daysAhead ?? 30;
@@ -406,6 +438,7 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
       lease_number: true,
       end_date: true,
       property_id: true,
+      owner_client_id: true,
       property: { select: { internalReference: true, ownerUserId: true } }
     }
   });
@@ -414,7 +447,7 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
     tenantId,
     AuditActionKey.PATRIMOINE_LEASE_END_ALERT_SENT,
     'RentalLease',
-    leases.map(lease => lease.id)
+    leases.filter(lease => lease.end_date).map(lease => dateAlertKey(lease.id, lease.end_date as Date))
   );
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
@@ -426,16 +459,32 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
   let skippedAlreadySent = 0;
   let failed = 0;
 
+  // Les baux d'un meme bien avec le meme proprietaire de bail partagent leurs
+  // destinataires : evite de relire les parts d'indivision et les contacts
+  // CRM a chaque bail.
+  const recipientsByPropertyAndOwner = new Map<string, ExpiringDocumentRecipient[]>();
+
   for (const lease of leases) {
-    if (alreadySent.has(lease.id) || !lease.end_date) {
+    if (!lease.end_date) {
+      skippedAlreadySent += 1;
+      continue;
+    }
+    const alertKey = dateAlertKey(lease.id, lease.end_date);
+    if (alreadySent.has(alertKey)) {
       skippedAlreadySent += 1;
       continue;
     }
 
-    const recipients = await resolveDocumentOwnerRecipients(tenantId, {
-      id: lease.property_id,
-      ownerUserId: lease.property?.ownerUserId ?? null
-    });
+    const cacheKey = `${lease.property_id}::${lease.owner_client_id ?? ''}`;
+    let recipients = recipientsByPropertyAndOwner.get(cacheKey);
+    if (!recipients) {
+      recipients = await resolveDocumentOwnerRecipients(
+        tenantId,
+        { id: lease.property_id, ownerUserId: lease.property?.ownerUserId ?? null },
+        lease.owner_client_id ? [lease.owner_client_id] : []
+      );
+      recipientsByPropertyAndOwner.set(cacheKey, recipients);
+    }
     if (recipients.length === 0) {
       skippedNoRecipient += 1;
       continue;
@@ -473,9 +522,15 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
         tenantId,
         actionKey: AuditActionKey.PATRIMOINE_LEASE_END_ALERT_SENT,
         entityType: 'RentalLease',
-        entityId: lease.id,
-        payload: { endDate: lease.end_date.toISOString() }
+        entityId: alertKey,
+        payload: { leaseId: lease.id, endDate: lease.end_date.toISOString() }
       });
+      // Flush immediat plutot qu'en fin de boucle : reduit la fenetre d'un
+      // crash entre l'envoi et l'ecriture de la marque anti-doublon a une
+      // seule entite plutot qu'a tout le lot du jour pour cette agence (la
+      // reservation n'est de toute facon pas atomique avec l'envoi, voir la
+      // doc de `alreadyAlertedEntityIds` ci-dessus).
+      await flushAuditEvents();
     } else {
       failed += 1;
     }
@@ -521,7 +576,7 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
     tenantId,
     AuditActionKey.PATRIMOINE_LOAN_MATURITY_ALERT_SENT,
     'PropertyLoan',
-    loans.map(loan => loan.id)
+    loans.map(loan => dateAlertKey(loan.id, loan.endDate))
   );
   const recipients = await resolveAgencyAdminRecipients(tenantId);
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
@@ -532,7 +587,8 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
   let failed = 0;
 
   for (const loan of loans) {
-    if (alreadySent.has(loan.id)) {
+    const alertKey = dateAlertKey(loan.id, loan.endDate);
+    if (alreadySent.has(alertKey)) {
       skippedAlreadySent += 1;
       continue;
     }
@@ -571,9 +627,11 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
         tenantId,
         actionKey: AuditActionKey.PATRIMOINE_LOAN_MATURITY_ALERT_SENT,
         entityType: 'PropertyLoan',
-        entityId: loan.id,
-        payload: { endDate: loan.endDate.toISOString() }
+        entityId: alertKey,
+        payload: { loanId: loan.id, endDate: loan.endDate.toISOString() }
       });
+      // Flush immediat : voir le commentaire equivalent dans `alertExpiringLeases`.
+      await flushAuditEvents();
     } else {
       failed += 1;
     }
@@ -617,7 +675,7 @@ export async function alertUpcomingWorks(tenantId: string, options?: { daysAhead
     tenantId,
     AuditActionKey.PATRIMOINE_WORK_UPCOMING_ALERT_SENT,
     'WorkProgram',
-    works.map(work => work.id)
+    works.map(work => dateAlertKey(work.id, work.plannedDate))
   );
   const recipients = await resolveAgencyAdminRecipients(tenantId);
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
@@ -628,7 +686,8 @@ export async function alertUpcomingWorks(tenantId: string, options?: { daysAhead
   let failed = 0;
 
   for (const work of works) {
-    if (alreadySent.has(work.id)) {
+    const alertKey = dateAlertKey(work.id, work.plannedDate);
+    if (alreadySent.has(alertKey)) {
       skippedAlreadySent += 1;
       continue;
     }
@@ -667,9 +726,11 @@ export async function alertUpcomingWorks(tenantId: string, options?: { daysAhead
         tenantId,
         actionKey: AuditActionKey.PATRIMOINE_WORK_UPCOMING_ALERT_SENT,
         entityType: 'WorkProgram',
-        entityId: work.id,
-        payload: { plannedDate: work.plannedDate.toISOString() }
+        entityId: alertKey,
+        payload: { workProgramId: work.id, plannedDate: work.plannedDate.toISOString() }
       });
+      // Flush immediat : voir le commentaire equivalent dans `alertExpiringLeases`.
+      await flushAuditEvents();
     } else {
       failed += 1;
     }
