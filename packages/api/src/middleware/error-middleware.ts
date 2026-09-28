@@ -56,7 +56,10 @@ export const ErrorCode = {
   MODULE_READ_ONLY: 'MODULE_READ_ONLY',
   SUBSCRIPTION_READ_ONLY: 'SUBSCRIPTION_READ_ONLY',
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
-  OWN_ASSETS_ONLY: 'OWN_ASSETS_ONLY'
+  OWN_ASSETS_ONLY: 'OWN_ASSETS_ONLY',
+  // Invitations (correctif securite) : un compte existe deja pour l'email
+  // invite, l'acceptation exige une session de CE compte.
+  INVITATION_REQUIRES_LOGIN: 'INVITATION_REQUIRES_LOGIN'
 } as const;
 
 /**
@@ -122,6 +125,20 @@ export class ConflictError extends AppError {
 export class ValidationError extends AppError {
   constructor(message = 'Les données fournies sont invalides.', errors?: Array<{ field: string; message: string }>) {
     super(message, 422, ErrorCode.VALIDATION_ERROR, errors);
+  }
+}
+
+/**
+ * Un compte existe deja pour l'e-mail invite : l'acceptation exige une
+ * session authentifiee de CE compte, jamais le seul jeton d'invitation
+ * (403). Le front distingue ce cas via `code` pour proposer un lien de
+ * connexion plutot qu'un simple message d'erreur.
+ */
+export class InvitationRequiresLoginError extends AppError {
+  constructor(
+    message = 'Un compte existe déjà avec cette adresse e-mail. Connectez-vous avec ce compte pour accepter cette invitation.'
+  ) {
+    super(message, 403, ErrorCode.INVITATION_REQUIRES_LOGIN);
   }
 }
 
