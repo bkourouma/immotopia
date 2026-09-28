@@ -19,9 +19,12 @@ jest.mock('../../src/middleware/tenant-isolation-middleware', () => ({
   enforcePropertyTenantIsolation: (_req: any, _res: any, next: any) => next()
 }));
 
+// En-tete `x-deny` : refuse la permission nommee, pour verifier quelle garde
+// une route exige (sinon tout passe).
 jest.mock('../../src/middleware/property-rbac-middleware', () => ({
   requireAnyPropertyPermission: () => (_req: any, _res: any, next: any) => next(),
-  requirePropertyPermission: () => (_req: any, _res: any, next: any) => next()
+  requirePropertyPermission: (key: string) => (req: any, res: any, next: any) =>
+    req.headers['x-deny'] === key ? res.status(403).json({ success: false }) : next()
 }));
 
 const TENANT_ID = 'tenant-1';
@@ -450,6 +453,23 @@ describe('Syndics providers/documents/funds routes', () => {
       { direction: 'DEBIT', amount: 50000, reason: 'Toiture', kind: 'EXPENSE' },
       'user-1'
     );
+  });
+
+  it('requires PROPERTIES_EDIT to create a charge call assigned to a fund, not without a fund', async () => {
+    mockQueries.createChargeCallAndUpdateStatus.mockResolvedValue({ chargeCalls: [], totalCreated: 0 });
+    const body = { lotId: CHARGE_ID, period: '2026-10', amount: 1000, dueDate: '2026-10-15' };
+
+    const withFund = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`)
+      .set('x-deny', 'PROPERTIES_EDIT')
+      .send({ ...body, fundId: FUND_ID });
+    expect(withFund.status).toBe(403);
+
+    const withoutFund = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`)
+      .set('x-deny', 'PROPERTIES_EDIT')
+      .send(body);
+    expect(withoutFund.status).toBe(201);
   });
 
   it('assigns a charge call to a fund, or clears the assignment', async () => {

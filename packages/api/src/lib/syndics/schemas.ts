@@ -380,7 +380,8 @@ export const generateBudgetChargeCallsSchema = z
     ...periodBoundsFields,
     dueDate: z.coerce.date(),
     batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-    currency: z.string().default('XOF'),
+    // Absente : devise du budget. Fournie : doit etre celle du budget.
+    currency: z.string().optional(),
     // Lot S4 : quote-part annuelle divisee par le nombre de periodes (defaut 1 = annee entiere).
     periodsPerYear: z
       .number()

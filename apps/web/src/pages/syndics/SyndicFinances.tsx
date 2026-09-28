@@ -329,7 +329,7 @@ export const SyndicFinances: React.FC = () => {
     setAdjustSubmitting(true);
     try {
       const isExpense = values.kind === 'EXPENSE';
-      await adjustSyndicateFundBalance(effectiveTenantId, syndicId, adjustTarget.id, {
+      const adjusted = await adjustSyndicateFundBalance(effectiveTenantId, syndicId, adjustTarget.id, {
         // Une dépense payée par le fonds le diminue toujours.
         direction: isExpense ? 'DEBIT' : values.direction,
         amount: values.amount,
@@ -337,6 +337,10 @@ export const SyndicFinances: React.FC = () => {
         kind: isExpense ? 'EXPENSE' : 'ADJUSTMENT'
       });
       message.success(t('Solde du fonds ajusté'));
+      // Permis (avance de trésorerie), mais le gestionnaire doit le voir.
+      if (adjusted?.negativeBalance) {
+        message.warning(t('Attention : le solde du fonds est désormais négatif.'));
+      }
       setAdjustTarget(null);
       await loadAll();
     } catch (err: any) {

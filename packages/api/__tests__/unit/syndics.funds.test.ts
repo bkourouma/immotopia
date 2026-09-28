@@ -169,6 +169,8 @@ describe('Syndicate funds queries - FR-013', () => {
       data: expect.objectContaining({ direction: 'DEBIT', amount: 15000, balanceAfter: -5000 })
     });
     expect(updated.balance).toBe(-5000);
+    // Permis, mais signale : l'ecran affiche un avertissement.
+    expect(updated.negativeBalance).toBe(true);
   });
 
   it("records the initial balance as the fund's OPENING movement (balance = sum of the journal)", async () => {

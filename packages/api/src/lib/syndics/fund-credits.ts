@@ -4,6 +4,7 @@ import { NotFoundError } from '../../middleware/error-middleware';
 import { unprocessableEntity } from '../errors';
 import { roundMoney } from './finance-utils';
 import { fromCents } from './charge-allocation-plan';
+import { logger } from '../../utils/logger';
 
 /**
  * Fonds de copropriete alimentes par les paiements de charges.
@@ -25,9 +26,19 @@ import { fromCents } from './charge-allocation-plan';
  * Changer l'affectation d'un appel ou d'un poste ne vaut que pour les
  * affectations suivantes : les credits deja passes ne sont pas recalcules.
  *
- * Verrous : le lot (verrou consultatif, pose par l'appelant) puis les fonds,
- * par identifiant croissant. Aucun autre chemin ne prend un lot apres un
- * fonds, donc pas d'interblocage avec les paiements de prestataires.
+ * Verrous : TOUS les lots d'abord (verrous consultatifs, poses par
+ * l'appelant), puis les fonds, par identifiant croissant, en une seule vague.
+ * `creditFundsForAllocationsTx` s'appelle donc UNE fois par transaction,
+ * apres le dernier verrou de lot : `applyLotAdvanceTx` ne credite rien
+ * lui-meme, il renvoie ses parts (`fundCredits`), que l'appelant cumule —
+ * paiement (`recordLotPaymentTx`), creation d'appels sur plusieurs lots
+ * (`createChargeCallAndUpdateStatus`, `createChargeCallBatchWithCallsTx`).
+ * Prendre un fonds puis un autre lot ouvrirait un interblocage avec une
+ * transaction concurrente qui tient ce lot et attend ce fonds.
+ *
+ * Garde-fou : une part n'est versee qu'a un fonds de la copropriete de
+ * l'appel et dans la devise de l'appel. Une affectation incoherente (ecrite
+ * par l'ancien code, hors de ces gardes) est ecartee et journalisee.
  */
 
 type Tx = PrismaTransactionClient;
@@ -59,6 +70,8 @@ interface CallForShares {
   id: string;
   lotId: string;
   period: string;
+  syndicateId: string;
+  currency: string;
   fundId: string | null;
   lot: { lotNumber: string } | null;
   batch: { budgetId: string | null } | null;
@@ -221,6 +234,57 @@ function creditLabel(call: CallForShares, source: FundCreditItem['source']) {
   return `${prefix} — appel ${call.period}${lot}`;
 }
 
+/**
+ * Repartit `amountCents` entre les parts, au plus fort reste : chaque part
+ * recoit la partie entiere de son du, puis les centimes restants vont aux
+ * plus grands restes. Le total vaut l'arrondi de `amountCents x somme des
+ * parts`, jamais plus que `amountCents`.
+ */
+export function splitCents(amountCents: number, shares: FundShare[]): number[] {
+  if (amountCents <= 0 || shares.length === 0) return shares.map(() => 0);
+  const exact = shares.map(share => amountCents * Math.max(0, share.ratio));
+  const floors = exact.map(value => Math.floor(value + 1e-9));
+  const totalRatio = Math.min(
+    1,
+    shares.reduce((sum, share) => sum + Math.max(0, share.ratio), 0)
+  );
+  const target = Math.min(amountCents, Math.round(amountCents * totalRatio));
+  let remaining = target - floors.reduce((sum, value) => sum + value, 0);
+  const order = exact
+    .map((value, index) => ({ index, rest: value - floors[index] }))
+    .sort((a, b) => b.rest - a.rest || a.index - b.index);
+  for (const { index } of order) {
+    if (remaining <= 0) break;
+    floors[index] += 1;
+    remaining -= 1;
+  }
+  return floors;
+}
+
+/** Parts versables : fonds de la copropriete de l'appel, dans sa devise. */
+async function validSharesTx(tx: Tx, call: CallForShares): Promise<FundShare[]> {
+  const shares = await fundSharesForCallTx(tx, call);
+  if (shares.length === 0) return [];
+  const funds = await tx.syndicateFund.findMany({
+    where: { id: { in: shares.map(share => share.fundId) } },
+    select: { id: true, syndicateId: true, currency: true }
+  });
+  const byId = new Map(funds.map(fund => [fund.id, fund]));
+  return shares.filter(share => {
+    const fund = byId.get(share.fundId);
+    if (fund && fund.syndicateId === call.syndicateId && fund.currency === call.currency) return true;
+    logger.warn('Syndic fund credit skipped: fund outside the call syndicate or currency', {
+      chargeCallId: call.id,
+      syndicateId: call.syndicateId,
+      fundId: share.fundId,
+      fundSyndicateId: fund?.syndicateId ?? null,
+      fundCurrency: fund?.currency ?? null,
+      callCurrency: call.currency
+    });
+    return false;
+  });
+}
+
 /** Montants a verser, par (fonds, appel, paiement), avant toute ecriture. */
 async function planFundCreditsTx(tx: Tx, items: FundCreditItem[], calls: Map<string, CallForShares>) {
   const shareCache = new Map<string, FundShare[]>();
@@ -228,40 +292,47 @@ async function planFundCreditsTx(tx: Tx, items: FundCreditItem[], calls: Map<str
   for (const item of items) {
     const call = calls.get(item.chargeCallId);
     if (!call || item.amountCents <= 0) continue;
-    if (!shareCache.has(call.id)) shareCache.set(call.id, await fundSharesForCallTx(tx, call));
-    for (const share of shareCache.get(call.id) ?? []) {
-      const cents = Math.round(item.amountCents * share.ratio);
-      if (cents <= 0) continue;
+    if (!shareCache.has(call.id)) shareCache.set(call.id, await validSharesTx(tx, call));
+    const shares = shareCache.get(call.id) ?? [];
+    const cents = splitCents(item.amountCents, shares);
+    shares.forEach((share, index) => {
+      if (cents[index] <= 0) return;
       planned.push({
         fundId: share.fundId,
         chargeCallId: call.id,
         paymentId: item.paymentId,
-        amount: fromCents(cents),
+        amount: fromCents(cents[index]),
         tenantId: call.syndicate.tenantId,
         label: creditLabel(call, item.source)
       });
-    }
+    });
   }
   return planned;
 }
 
 /**
  * Verse a chaque fonds concerne sa part des sommes qui viennent d'etre
- * affectees aux appels du lot, dans la transaction de l'affectation. A
- * appeler sous le verrou du lot, apres l'ecriture des `ChargePaymentAllocation`.
+ * affectees a des appels (paiements et avances imputees), dans la
+ * transaction de l'affectation.
+ *
+ * A appeler UNE SEULE FOIS par transaction, APRES tous les verrous de lot et
+ * l'ecriture de toutes les `ChargePaymentAllocation` : les fonds sont
+ * verrouilles ici, en une vague, par identifiant croissant (voir l'en-tete).
  */
 export async function creditFundsForAllocationsTx(
   tx: Tx,
-  input: { lotId: string; items: FundCreditItem[]; actorUserId?: string | null }
+  input: { items: FundCreditItem[]; actorUserId?: string | null }
 ): Promise<FundCredit[]> {
   const items = input.items.filter(item => item.amountCents > 0);
   if (items.length === 0) return [];
 
   const rows = await tx.chargeCall.findMany({
-    where: { id: { in: Array.from(new Set(items.map(item => item.chargeCallId))) }, lotId: input.lotId },
+    where: { id: { in: Array.from(new Set(items.map(item => item.chargeCallId))) } },
     select: {
       id: true,
       lotId: true,
+      syndicateId: true,
+      currency: true,
       period: true,
       fundId: true,
       lot: { select: { lotNumber: true } },

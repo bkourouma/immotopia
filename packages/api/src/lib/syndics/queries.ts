@@ -49,8 +49,10 @@ import {
   assertFundCurrency,
   assertFundOfSyndicate,
   assertFundsOfSyndicate,
+  creditFundsForAllocationsTx,
   lockFundsTx,
-  recordFundMovementTx
+  recordFundMovementTx,
+  type FundCreditItem
 } from './fund-credits';
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
 // Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
@@ -1129,6 +1131,10 @@ export async function getChargeCallByTenant(tenantId: string, syndicateId: strin
  * Lot S3 : chaque appel que l'avance vient de solder recoit sa quittance,
  * dans la meme transaction ; les documents emis sont ajoutes a `issued`,
  * que l'appelant livre (PDF, e-mail) apres le commit.
+ *
+ * Fonds : les parts de l'avance imputee sont AJOUTEES a `fundCredits`, sans
+ * crediter ; l'appelant appelle `creditFundsForAllocationsTx` une seule fois,
+ * apres le dernier verrou de lot de sa transaction (voir `fund-credits.ts`).
  */
 async function createLotChargeCallTx(
   tx: PrismaTransactionClient,
@@ -1145,7 +1151,8 @@ async function createLotChargeCallTx(
     /** Fonds qui recoit en entier ce qui est paye sur l'appel (verifie par l'appelant). */
     fundId?: string | null;
   },
-  issued: IssuedChargeDocument[] = []
+  issued: IssuedChargeDocument[],
+  fundCredits: FundCreditItem[]
 ) {
   await lockLotTx(tx, data.lotId);
   const chargeCall = await tx.chargeCall.create({
@@ -1176,6 +1183,7 @@ async function createLotChargeCallTx(
   }
 
   const application = await applyLotAdvanceTx(tx, data.lotId);
+  fundCredits.push(...application.fundCredits);
   issued.push(
     ...(await issueQuittancesAfterAdvanceTx(tx, {
       tenantId,
@@ -1205,6 +1213,8 @@ export async function createChargeCallAndUpdateStatus(
     dueDate: Date;
     /** Appel verse en entier a ce fonds (appel de fonds travaux). */
     fundId?: string | null;
+    /** Auteur des credits de fonds nes de l'imputation d'avance. */
+    actorUserId?: string | null;
     isRecurring?: boolean;
     recurrenceFrequency?: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
     recurrenceCount?: number;
@@ -1239,8 +1249,9 @@ export async function createChargeCallAndUpdateStatus(
     }
 
     const issued: IssuedChargeDocument[] = [];
-    const chargeCall = await prisma.$transaction(tx =>
-      createLotChargeCallTx(
+    const chargeCall = await prisma.$transaction(async tx => {
+      const fundCredits: FundCreditItem[] = [];
+      const created = await createLotChargeCallTx(
         tx,
         tenantId,
         {
@@ -1253,9 +1264,12 @@ export async function createChargeCallAndUpdateStatus(
           dueDate: data.dueDate,
           fundId: data.fundId ?? null
         },
-        issued
-      )
-    );
+        issued,
+        fundCredits
+      );
+      await creditFundsForAllocationsTx(tx, { items: fundCredits, actorUserId: data.actorUserId ?? null });
+      return created;
+    });
     scheduleChargeDocumentDelivery(tenantId, issued);
     return chargeCall;
   }
@@ -1336,6 +1350,7 @@ export async function createChargeCallAndUpdateStatus(
 
     const issued: IssuedChargeDocument[] = [];
     await prisma.$transaction(async tx => {
+      const fundCredits: FundCreditItem[] = [];
       for (const lotId of lotIdsInLockOrder) {
         const chargeCall = await createLotChargeCallTx(
           tx,
@@ -1350,10 +1365,13 @@ export async function createChargeCallAndUpdateStatus(
             dueDate,
             fundId: data.fundId ?? null
           },
-          issued
+          issued,
+          fundCredits
         );
         createdChargeCalls.push(chargeCall);
       }
+      // Tous les lots sont verrouilles : les fonds se prennent maintenant, en une vague.
+      await creditFundsForAllocationsTx(tx, { items: fundCredits, actorUserId: data.actorUserId ?? null });
     });
     scheduleChargeDocumentDelivery(tenantId, issued);
   }
@@ -4068,6 +4086,11 @@ export async function assertNoRegularBatchForPeriodTx(
  * `issued`). Verrous des lots pris dans l'ordre global des identifiants.
  * Partage par la generation depuis le budget et par la programmation
  * automatique (`charge-schedules.ts`).
+ *
+ * Fonds : credites en UNE fois, apres la boucle (tous les lots verrouilles).
+ * L'appelant ne doit plus verrouiller de lot ensuite dans la meme
+ * transaction (c'est le cas des deux appelants : une transaction par lot
+ * d'appels).
  */
 export async function createChargeCallBatchWithCallsTx(
   tx: PrismaTransactionClient,
@@ -4083,6 +4106,8 @@ export async function createChargeCallBatchWithCallsTx(
     totalAmount: number;
     currency: string;
     lots: LotCallAmount[];
+    /** Auteur des credits de fonds nes de l'imputation d'avance (null : automatique). */
+    actorUserId?: string | null;
   },
   issued: IssuedChargeDocument[] = []
 ) {
@@ -4105,6 +4130,7 @@ export async function createChargeCallBatchWithCallsTx(
 
   const lotsInLockOrder = [...data.lots].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
   const chargeCalls: Array<Awaited<ReturnType<typeof createLotChargeCallTx>>> = [];
+  const fundCredits: FundCreditItem[] = [];
   for (const lot of lotsInLockOrder) {
     chargeCalls.push(
       await createLotChargeCallTx(
@@ -4120,10 +4146,12 @@ export async function createChargeCallBatchWithCallsTx(
           currency: data.currency,
           dueDate: data.dueDate
         },
-        issued
+        issued,
+        fundCredits
       )
     );
   }
+  await creditFundsForAllocationsTx(tx, { items: fundCredits, actorUserId: data.actorUserId ?? null });
   return { batch, chargeCalls };
 }
 
@@ -4149,6 +4177,8 @@ export async function generateChargeCallsFromBudget(
     periodsPerYear?: number;
     /** Rang de la periode dans l'annee (1 a `periodsPerYear`), defaut 1. */
     periodIndex?: number;
+    /** Auteur des credits de fonds nes de l'imputation d'avance. */
+    actorUserId?: string | null;
   }
 ) {
   logger.info('Audit: generate charge calls from budget requested', {
@@ -4176,6 +4206,11 @@ export async function generateChargeCallsFromBudget(
 
   if (budget.status !== 'APPROVED') {
     throw unprocessableEntity('Le budget doit etre approuve avant generation des appels');
+  }
+
+  // Les appels (et les fonds alimentes par les postes) sont dans la devise du budget.
+  if (data.currency && data.currency !== budget.currency) {
+    throw unprocessableEntity('La devise des appels doit être celle du budget');
   }
 
   const allocations = budget.allocations.length
@@ -4220,8 +4255,9 @@ export async function generateChargeCallsFromBudget(
         batchType: data.batchType,
         budgetId,
         totalAmount,
-        currency: data.currency || budget.currency || 'XOF',
-        lots
+        currency: budget.currency,
+        lots,
+        actorUserId: data.actorUserId ?? null
       },
       issued
     );
@@ -4821,5 +4857,6 @@ export async function adjustSyndicateFundBalanceByTenant(
     });
   }
 
-  return updated;
+  // Permis (avance de tresorerie), mais signale a l'ecran.
+  return { ...updated, negativeBalance: nextBalance < 0 };
 }

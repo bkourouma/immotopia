@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
@@ -103,6 +103,14 @@ import {
 
 const router = Router();
 
+/**
+ * Affecter un appel a un fonds engage l'argent de ce fonds : meme droit que
+ * `PATCH .../charges/:chargeId/fonds` (PROPERTIES_EDIT), exige seulement
+ * quand la creation d'un appel porte un `fundId`.
+ */
+const requireEditWhenFundAssigned = (req: Request, res: Response, next: NextFunction) =>
+  req.body?.fundId ? requirePropertyPermission('PROPERTIES_EDIT')(req, res, next) : next();
+
 router.use(authenticate);
 router.use(requireTenantAccess);
 router.use(enforcePropertyTenantIsolation);
@@ -160,6 +168,7 @@ router.get(
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/charges',
   requireAnyPropertyPermission(['PROPERTIES_CREATE']),
+  requireEditWhenFundAssigned,
   createChargeCallHandler
 );
 router.get(

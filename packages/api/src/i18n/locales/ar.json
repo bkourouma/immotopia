@@ -401,6 +401,7 @@
   "La date du reversement ne peut pas être dans le futur": "لا يمكن أن يكون تاريخ التحويل في المستقبل",
   "La dérogation doit être un entier non nul.": "يجب أن يكون الاستثناء عددًا صحيحًا غير صفري.",
   "La description de la situation est obligatoire": "وصف المستخلص مطلوب",
+  "La devise des appels doit être celle du budget": "يجب أن تكون عملة الطلبات هي عملة الميزانية",
   "La devise du fonds ne correspond pas à celle de la facture": "عملة الصندوق لا تطابق عملة الفاتورة",
   "La devise du fonds ne correspond pas à celle des charges": "عملة الصندوق لا تطابق عملة الأعباء",
   "La facture et le bon de commande ne portent pas le même chantier": "الفاتورة وأمر الشراء لا يحملان المشروع نفسه",

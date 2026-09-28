@@ -401,6 +401,7 @@
   "La date du reversement ne peut pas être dans le futur": "The payout date cannot be in the future",
   "La dérogation doit être un entier non nul.": "The override must be a non-zero whole number.",
   "La description de la situation est obligatoire": "The progress claim description is required",
+  "La devise des appels doit être celle du budget": "The currency of the calls must be that of the budget",
   "La devise du fonds ne correspond pas à celle de la facture": "The fund currency does not match the invoice currency",
   "La devise du fonds ne correspond pas à celle des charges": "The fund currency does not match the currency of the charges",
   "La facture et le bon de commande ne portent pas le même chantier": "The invoice and the purchase order do not carry the same site",

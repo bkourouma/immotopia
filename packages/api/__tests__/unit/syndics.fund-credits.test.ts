@@ -28,6 +28,7 @@ jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(),
 import { recordLotPayment, type LotPaymentInput } from '../../src/lib/syndics/charge-allocation';
 import { adjustSyndicateFundBalanceByTenant, createChargeCallAndUpdateStatus } from '../../src/lib/syndics/queries';
 import { setBudgetLineFundByTenant, setChargeCallFundByTenant } from '../../src/lib/syndics/fund-assignments';
+import { splitCents } from '../../src/lib/syndics/fund-credits';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const TENANT_A = 'tenant-a';
@@ -35,6 +36,7 @@ const TENANT_B = 'tenant-b';
 const S1 = id(1);
 const SB = id(2);
 const L1 = id(11);
+const L2 = id(12);
 const TRAVAUX = id(21);
 const COURANT = id(22);
 const FUND_B = id(23);
@@ -65,16 +67,21 @@ function seed() {
     mockPrisma.syndicate.rows.push({ id: syndicId, tenantId: info.tenantId, name: info.name, status: 'ACTIVE' });
   }
   const awa = { id: 'contact-awa', firstName: 'Awa', lastName: 'Kone', legalName: null, email: 'awa@example.test' };
-  mockPrisma.syndicateLot.rows.push({
-    id: L1,
-    syndicateId: S1,
-    lotNumber: 'A-01',
-    ownerContactId: awa.id,
-    coownerId: awa.id,
-    owner: awa,
-    coowner: awa,
-    syndicate: { tenantId: TENANT_A }
-  });
+  for (const [lotId, lotNumber] of [
+    [L1, 'A-01'],
+    [L2, 'A-02']
+  ]) {
+    mockPrisma.syndicateLot.rows.push({
+      id: lotId,
+      syndicateId: S1,
+      lotNumber,
+      ownerContactId: awa.id,
+      coownerId: awa.id,
+      owner: awa,
+      coowner: awa,
+      syndicate: { tenantId: TENANT_A }
+    });
+  }
   mockPrisma.syndicateFund.rows.push(
     fundRow(TRAVAUX, S1, 'Fonds de travaux'),
     fundRow(COURANT, S1, 'Compte courant'),
@@ -233,6 +240,96 @@ describe('credit des fonds au paiement des charges', () => {
       'MANUAL_EXPENSE'
     ]);
     expect(movementsOf(TRAVAUX).map(row => Number(row.balanceAfter))).toEqual([50000, 80000, 60000]);
+  });
+});
+
+describe('repartition, garde-fous et verrous', () => {
+  it('repartit au plus fort reste sans jamais depasser le montant affecte', () => {
+    expect(
+      splitCents(100001, [
+        { fundId: 'a', ratio: 0.5 },
+        { fundId: 'b', ratio: 0.5 }
+      ])
+    ).toEqual([50001, 50000]);
+    expect(
+      splitCents(
+        100,
+        [1, 2, 3].map(n => ({ fundId: String(n), ratio: 1 / 3 }))
+      )
+    ).toEqual([34, 33, 33]);
+    const partial = splitCents(99, [
+      { fundId: 'a', ratio: 0.1 },
+      { fundId: 'b', ratio: 0.2 }
+    ]);
+    expect(partial.reduce((sum, value) => sum + value, 0)).toBe(30);
+    expect(splitCents(7, [{ fundId: 'a', ratio: 1 }])).toEqual([7]);
+  });
+
+  it('deux fonds couvrant 100 % de l appel recoivent exactement un montant impair', async () => {
+    mockPrisma.budgetLineItem.rows.push(
+      { id: LINE_ENTRETIEN, budgetId: BUDGET, fundId: COURANT },
+      { id: LINE_TRAVAUX, budgetId: BUDGET, fundId: TRAVAUX }
+    );
+    mockPrisma.budgetAllocation.rows.push({
+      id: id(52),
+      budgetId: BUDGET,
+      lotId: L1,
+      totalAllocated: 250000,
+      breakdown: [
+        { lineId: LINE_ENTRETIEN, allocated: 125000 },
+        { lineId: LINE_TRAVAUX, allocated: 125000 }
+      ]
+    });
+    const call = await createCall('2026-T1', 250000, '2026-03-05');
+    (mockPrisma.chargeCall.rows.find(row => row.id === call.id) as any).batch = { budgetId: BUDGET };
+
+    await recordLotPayment(pay(1000.01, '2026-03-10'));
+
+    const total = balanceOf(COURANT) + balanceOf(TRAVAUX);
+    expect(Math.round(total * 100)).toBe(100001);
+    expect([balanceOf(COURANT), balanceOf(TRAVAUX)].sort()).toEqual([500, 500.01]);
+  });
+
+  it("ecarte le fonds d'une autre copropriete ecrit par l'ancien code", async () => {
+    const call = await createCall('2026-03', 50000, '2026-03-05');
+    (mockPrisma.chargeCall.rows.find(row => row.id === call.id) as any).fundId = FUND_B;
+
+    await recordLotPayment(pay(50000, '2026-03-10'));
+
+    expect(mockPrisma.syndicateFundMovement.rows).toHaveLength(0);
+    expect(balanceOf(FUND_B)).toBe(0);
+  });
+
+  it('prend tous les verrous de lot avant le moindre verrou de fonds (creation sur plusieurs lots)', async () => {
+    await recordLotPayment(pay(40000, '2026-02-01'));
+    await recordLotPayment(pay(40000, '2026-02-01', { lotId: L2 }));
+    mockPrisma.$executeRaw.mockClear();
+    mockPrisma.$queryRaw.mockClear();
+
+    await createChargeCallAndUpdateStatus(TENANT_A, {
+      syndicateId: S1,
+      lotIds: [L1, L2],
+      period: 'Travaux T1',
+      amount: 30000,
+      currency: 'XOF',
+      dueDate: d('2026-03-05'),
+      fundId: TRAVAUX,
+      actorUserId: 'user-9'
+    });
+
+    const lotLocks = mockPrisma.$executeRaw.mock.invocationCallOrder;
+    const fundLocks = mockPrisma.$queryRaw.mock.calls
+      .map((args, index) => ({
+        sql: (args[0] as TemplateStringsArray).join('?'),
+        order: mockPrisma.$queryRaw.mock.invocationCallOrder[index]
+      }))
+      .filter(call => call.sql.includes('syndicate_funds'))
+      .map(call => call.order);
+    expect(lotLocks.length).toBeGreaterThan(1);
+    expect(fundLocks).toHaveLength(1);
+    expect(Math.max(...lotLocks)).toBeLessThan(fundLocks[0]);
+    expect(balanceOf(TRAVAUX)).toBe(60000);
+    expect(movementsOf(TRAVAUX).every(row => row.createdById === 'user-9')).toBe(true);
   });
 });
 

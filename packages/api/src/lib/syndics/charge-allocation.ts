@@ -13,7 +13,9 @@
  *   fois une avance et un appel ouvert (`applyLotAdvanceTx`) ;
  * - toute somme affectee a un appel (paiement ou avance imputee) credite, dans
  *   la meme transaction, les fonds de copropriete de cet appel
- *   (`fund-credits.ts`) ; l'avance non affectee ne credite aucun fonds ;
+ *   (`fund-credits.ts`) ; l'avance non affectee ne credite aucun fonds. Le
+ *   credit se fait en UNE fois, apres tous les verrous de lot :
+ *   `applyLotAdvanceTx` renvoie ses parts (`fundCredits`) sans crediter ;
  * - toute ecriture sur l'affectation d'un lot se fait sous un verrou
  *   consultatif Postgres scope a ce lot (`lockLotTx`) : deux paiements ou une
  *   creation d'appel concurrente ne consomment jamais deux fois la meme avance.
@@ -31,7 +33,7 @@ import { ensureOwnerAccountForLotTx } from './owner-account-tx';
 import { formatIsoDay } from './period';
 import { issueReceiptsForPaymentTx, toDocumentRefs, type IssuedChargeDocument } from './charge-receipts';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
-import { creditFundsForAllocationsTx } from './fund-credits';
+import { creditFundsForAllocationsTx, type FundCreditItem } from './fund-credits';
 import {
   fromCents,
   planAdvanceImputation,
@@ -260,6 +262,12 @@ async function writeImputationTx(tx: PrismaTransactionClient, imputation: Planne
 export interface AdvanceApplication {
   imputations: PlannedImputation[];
   calls: CallBalance[];
+  /**
+   * Sommes imputees, a verser aux fonds par l'appelant : UN seul
+   * `creditFundsForAllocationsTx` par transaction, apres le dernier verrou
+   * de lot (voir `fund-credits.ts`).
+   */
+  fundCredits: FundCreditItem[];
 }
 
 /**
@@ -268,19 +276,21 @@ export interface AdvanceApplication {
  * livre : l'argent a deja ete credite a l'arrivee du paiement.
  *
  * A appeler apres toute creation d'appel(s) pour le lot, AVANT de notifier
- * ces appels (un appel entierement couvert n'est pas notifie).
+ * ces appels (un appel entierement couvert n'est pas notifie). Ne credite
+ * aucun fonds : l'appelant verse `fundCredits` une fois tous ses lots
+ * verrouilles.
  */
 export async function applyLotAdvanceTx(tx: PrismaTransactionClient, lotId: string): Promise<AdvanceApplication> {
   await lockLotTx(tx, lotId);
   const advances = await loadAdvances(tx, lotId);
   if (advances.length === 0) {
-    return { imputations: [], calls: [] };
+    return { imputations: [], calls: [], fundCredits: [] };
   }
 
   const calls = await loadCallBalances(tx, lotId);
   const imputations = planAdvanceImputation(advances, calls);
   if (imputations.length === 0) {
-    return { imputations, calls };
+    return { imputations, calls, fundCredits: [] };
   }
 
   const usedByPayment = new Map<string, number>();
@@ -303,11 +313,16 @@ export async function applyLotAdvanceTx(tx: PrismaTransactionClient, lotId: stri
   }
 
   await writeCallStatusesTx(tx, calls, touched);
-  await creditFundsForAllocationsTx(tx, {
-    lotId,
-    items: imputations.map(item => ({ ...item, source: 'ADVANCE' as const }))
-  });
-  return { imputations, calls };
+  return {
+    imputations,
+    calls,
+    fundCredits: imputations.map(item => ({
+      paymentId: item.paymentId,
+      chargeCallId: item.chargeCallId,
+      amountCents: item.amountCents,
+      source: 'ADVANCE' as const
+    }))
+  };
 }
 
 function assertPositiveAmount(amountCents: number) {
@@ -390,18 +405,22 @@ export async function recordLotPaymentTx(tx: PrismaTransactionClient, input: Lot
   }
   await writeCallStatusesTx(tx, calls, touched);
   await creditLedgerTx(tx, input, payment.id, amountCents);
-  await creditFundsForAllocationsTx(tx, {
-    lotId: input.lotId,
-    actorUserId: input.actorUserId ?? null,
-    items: plan.allocations.map(item => ({
-      paymentId: payment.id,
-      chargeCallId: item.chargeCallId,
-      amountCents: item.amountCents,
-      source: 'PAYMENT' as const
-    }))
-  });
 
   const application = await applyLotAdvanceTx(tx, input.lotId);
+  // Fonds : une seule vague de verrous, apres le verrou du lot, pour le
+  // paiement ET l'avance imputee (auteur : celui qui enregistre le paiement).
+  await creditFundsForAllocationsTx(tx, {
+    actorUserId: input.actorUserId ?? null,
+    items: [
+      ...plan.allocations.map(item => ({
+        paymentId: payment.id,
+        chargeCallId: item.chargeCallId,
+        amountCents: item.amountCents,
+        source: 'PAYMENT' as const
+      })),
+      ...application.fundCredits
+    ]
+  });
   const finalCalls = application.calls.length > 0 ? application.calls : calls;
   const unallocatedCents = remainingAdvanceOf(payment.id, plan.advanceCents, application.imputations);
 

@@ -1085,8 +1085,8 @@ export async function adjustSyndicateFundBalance(
   syndicId: string,
   fundId: string,
   data: AdjustSyndicateFundBalanceRequest
-): Promise<SyndicateFund> {
-  const response = await apiClient.post<{ success: boolean; data: SyndicateFund }>(
+): Promise<SyndicateFund & { negativeBalance?: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: SyndicateFund & { negativeBalance?: boolean } }>(
     `/tenants/${tenantId}/syndics/${syndicId}/fonds/${fundId}/ajustement`,
     data
   );
