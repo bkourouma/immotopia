@@ -38,10 +38,12 @@ export const PatrimoineOverview: React.FC<Props> = ({ data }) => {
     {
       label: t('Biens au portefeuille'),
       value: String(data.totalProperties),
-      hint: t('dont {{occupiedProperties}} occupé{{value}}', {
-        occupiedProperties: data.occupiedProperties,
-        value: data.occupiedProperties > 1 ? 's' : ''
-      })
+      // Deux phrases complètes plutôt qu'un « s » collé au mot : l'accord
+      // n'est pas le même dans toutes les langues, et `t()` n'a pas de pluriel.
+      hint:
+        data.occupiedProperties > 1
+          ? t('dont {{occupiedProperties}} occupés', { occupiedProperties: data.occupiedProperties })
+          : t('dont {{occupiedProperties}} occupé', { occupiedProperties: data.occupiedProperties })
     },
     {
       label: t("Taux d'occupation"),

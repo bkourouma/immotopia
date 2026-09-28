@@ -409,6 +409,13 @@ enum PropertyDocumentType {
   SYNDICATE_BUDGET
   SYNDICATE_CONTRAT
   SYNDICATE_REGL_COPRO
+  // Patrimoine (lot P0) : pieces du dossier d'un bien detenu.
+  NOTARIAL_DEED
+  INSURANCE
+  TECHNICAL_DIAGNOSIS
+  BUILDING_PERMIT
+  /// Arrete de concession definitive (ACD).
+  LAND_CONCESSION
   OTHER
 }
 

@@ -26,12 +26,21 @@ import { activeLocale } from '../../../i18n/format';
 type Filtres = { status: string };
 const FILTER_KEYS = ['status'] as const;
 
-const STATUTS = [
-  { value: 'PLANNED', label: t('Planifié') },
-  { value: 'IN_PROGRESS', label: t('En cours') },
-  { value: 'COMPLETED', label: t('Terminé') },
-  { value: 'CANCELLED', label: t('Annulé') }
-];
+// Une fonction, et non une constante de module : `t()` doit se lire au rendu,
+// dans la langue affichée, et non une fois pour toutes au chargement du module.
+function statuts(): Array<{ value: string; label: string }> {
+  return [
+    { value: 'PLANNED', label: t('Planifié') },
+    { value: 'IN_PROGRESS', label: t('En cours') },
+    { value: 'COMPLETED', label: t('Terminé') },
+    { value: 'CANCELLED', label: t('Annulé') }
+  ];
+}
+
+function sousTitre(total: number): string {
+  if (total <= 0) return t('Planification et suivi des travaux');
+  return total > 1 ? t('{{total}} programmes', { total }) : t('{{total}} programme', { total });
+}
 
 function dateCourte(iso?: string | null): string {
   if (!iso) return '—';
@@ -97,10 +106,7 @@ export const WorkProgramsPage: React.FC = () => {
 
   return (
     <>
-      <PageHeader
-        title={t('Programmes de travaux')}
-        subtitle={total > 0 ? `${total} programme${total > 1 ? 's' : ''}` : t('Planification et suivi des travaux')}
-      />
+      <PageHeader title={t('Programmes de travaux')} subtitle={sousTitre(total)} />
 
       <FilterSheet
         activeCount={list.filters.status ? 1 : 0}
@@ -118,7 +124,7 @@ export const WorkProgramsPage: React.FC = () => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUTS}
+            options={statuts()}
           />
         </div>
       </FilterSheet>
@@ -142,7 +148,7 @@ export const WorkProgramsPage: React.FC = () => {
         renderCard={programme => (
           <DataCard
             title={programme.title}
-            aria-label={`${programme.title}, ${programme.property?.title ?? 'bien inconnu'}`}
+            aria-label={`${programme.title}, ${programme.property?.title ?? t('Bien inconnu')}`}
             subtitle={programme.property?.title || t('Bien inconnu')}
             status={<StatusTag status={programme.status} />}
             fields={[

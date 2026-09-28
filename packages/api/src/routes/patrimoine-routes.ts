@@ -5,17 +5,14 @@ import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-m
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import { requireSitesManage } from '../middleware/finance-rbac-middleware';
 import {
-  deletePropertyDocumentHandler,
   deletePropertyExpenseHandler,
   deletePropertyLoanHandler,
   deletePropertyValuationHandler,
   deletePropertyWorkProgramHandler,
-  createPropertyDocumentHandler,
   createPropertyExpenseHandler,
   createPropertyLoanHandler,
   createPropertyValuationHandler,
   createPropertyWorkProgramHandler,
-  getPropertyDocumentHandler,
   getPropertyExpenseHandler,
   getPropertyLoanHandler,
   getPropertyValuationHandler,
@@ -24,7 +21,6 @@ import {
   getPatrimoinePerformanceHandler,
   getPropertyYieldHandler,
   linkWorkProgramConstructionSiteHandler,
-  listPropertyDocumentsHandler,
   listPropertyExpensesHandler,
   listPropertyLoansHandler,
   listPropertyValuationsHandler,
@@ -178,26 +174,14 @@ router.patch(
   linkWorkProgramConstructionSiteHandler
 );
 
-router.get(
-  '/tenants/:tenantId/properties/:propertyId/documents',
-  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
-  listPropertyDocumentsHandler
-);
-router.post(
-  '/tenants/:tenantId/properties/:propertyId/documents',
-  requirePropertyPermission('PROPERTIES_EDIT'),
-  createPropertyDocumentHandler
-);
-router.get(
-  '/tenants/:tenantId/properties/:propertyId/documents/:documentId',
-  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
-  getPropertyDocumentHandler
-);
-router.delete(
-  '/tenants/:tenantId/properties/:propertyId/documents/:documentId',
-  requirePropertyPermission('PROPERTIES_EDIT'),
-  deletePropertyDocumentHandler
-);
+// Les documents d'un bien detenu passent par la mecanique `PropertyDocument`
+// (`property-routes.ts`, fichier prive, telechargement authentifie) : ces
+// routes-ci, montees APRES `property-routes.ts` (app.ts), ne repondaient
+// jamais -- Express sert la premiere route qui matche un chemin, et
+// `property-routes.ts` declare les memes chemins
+// `/tenants/:tenantId/properties/:id/documents` en premier. Voir
+// `PropertyDocumentType` (schema.prisma), enrichi des pieces du dossier
+// patrimonial (lot P0).
 
 router.get(
   '/tenants/:tenantId/properties/:propertyId/yield',

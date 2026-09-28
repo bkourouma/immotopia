@@ -1,14 +1,54 @@
+import { Prisma, PropertyDocumentType } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
-import { PropertyDocumentType } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { getProjectRoot } from '../utils/project-root';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+
+/**
+ * `filePath` (chemin disque absolu) n'est jamais renvoyé au client : select
+ * explicite partout où un document part en JSON (AGENTS.md, sécurité
+ * fichiers). Un appelant qui a réellement besoin du chemin (suppression du
+ * fichier) refait sa propre requête plutôt que de lire ce champ ici.
+ */
+export const PROPERTY_DOCUMENT_SELECT = {
+  id: true,
+  propertyId: true,
+  documentType: true,
+  fileName: true,
+  fileSize: true,
+  mimeType: true,
+  expirationDate: true,
+  isRequired: true,
+  isValid: true,
+  createdAt: true,
+  updatedAt: true
+} satisfies Prisma.PropertyDocumentSelect;
+
+/**
+ * Extension du fichier stocké sur disque : dérivée du type MIME déjà validé
+ * contre `getAllowedFileTypes`, jamais de `file.originalname` (nom fourni par
+ * le client, non fiable pour construire un chemin disque).
+ */
+const MIME_TYPE_EXTENSIONS: Record<string, string> = {
+  'application/pdf': '.pdf',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/tiff': '.tiff',
+  'application/dwg': '.dwg'
+};
+
+function extensionForMimeType(mimeType: string): string {
+  return MIME_TYPE_EXTENSIONS[mimeType] || '';
+}
 
 /**
  * Validate document type
@@ -25,18 +65,23 @@ export function validateDocumentType(documentType: string): boolean {
  * @returns Array of allowed MIME types
  */
 export function getAllowedFileTypes(documentType: PropertyDocumentType): string[] {
-  // All documents accept PDF and common document formats
+  // All documents accept PDF, common document formats and TIFF (scans) —
+  // aligné sur le filtre multer (`middleware/upload-middleware.ts`
+  // `documentFileFilter`), qui accepte déjà le TIFF pour tout type de
+  // document : un mime accepté à l'upload mais refusé ici donnait un 500
+  // (Error non typée) au lieu d'un 400.
   const commonTypes = [
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'image/jpeg',
-    'image/png'
+    'image/png',
+    'image/tiff'
   ];
 
   // Some document types may have specific requirements
   if (documentType === PropertyDocumentType.PLAN) {
-    return [...commonTypes, 'image/tiff', 'application/dwg'];
+    return [...commonTypes, 'application/dwg'];
   }
 
   return commonTypes;
@@ -67,13 +112,13 @@ export async function uploadDocument(
 
   // Validate document type
   if (!validateDocumentType(documentType)) {
-    throw new Error(`Invalid document type: ${documentType}`);
+    throw new BadRequestError(`Type de document invalide : ${documentType}`);
   }
 
   // Validate file type
   const allowedTypes = getAllowedFileTypes(documentType);
   if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
-    throw new Error(`Invalid file type for ${documentType}. Allowed: ${allowedTypes.join(', ')}`);
+    throw new BadRequestError(`Type de fichier invalide pour ${documentType}. Autorisés : ${allowedTypes.join(', ')}`);
   }
 
   // Generate file path
@@ -81,8 +126,10 @@ export async function uploadDocument(
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId, 'documents');
   await fs.mkdir(uploadDir, { recursive: true });
 
-  // CSPRNG name: property documents must not be guessable from a timestamp.
-  const fileExtension = path.extname(file.originalname).toLowerCase();
+  // CSPRNG name: property documents must not be guessable from a timestamp,
+  // and its extension vient du mime type déjà validé, jamais de
+  // `file.originalname` (nom fourni par le client).
+  const fileExtension = extensionForMimeType(file.mimetype);
   const fileName = `${documentType}-${randomUUID()}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
 
@@ -107,7 +154,8 @@ export async function uploadDocument(
       expirationDate: expirationDate || null,
       isRequired: isRequired || false,
       isValid
-    }
+    },
+    select: PROPERTY_DOCUMENT_SELECT
   });
 
   logger.info('Property document uploaded', {
@@ -156,7 +204,8 @@ export async function getDocuments(propertyId: string, tenantId: string, include
 
   const documents = await prisma.propertyDocument.findMany({
     where,
-    orderBy: [{ isRequired: 'desc' }, { createdAt: 'desc' }]
+    orderBy: [{ isRequired: 'desc' }, { createdAt: 'desc' }],
+    select: PROPERTY_DOCUMENT_SELECT
   });
 
   return documents;
@@ -186,7 +235,7 @@ export async function deleteDocument(propertyId: string, tenantId: string, docum
   });
 
   if (!document) {
-    throw new Error('Document not found or does not belong to property');
+    throw new NotFoundError('Document introuvable.');
   }
 
   // Delete file from filesystem

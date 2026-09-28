@@ -5,6 +5,7 @@ import { PropertyDocumentType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
+import { documentTypeLabel } from '../patrimoine/patrimoine-labels';
 
 interface PropertyDocumentUploadProps {
   propertyId: string;
@@ -79,13 +80,12 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
     }
   };
 
-  const documentTypeLabels: Record<PropertyDocumentType, string> = {
-    [PropertyDocumentType.TITLE_DEED]: t('Titre de propriété'),
-    [PropertyDocumentType.MANDATE]: 'Mandat',
-    [PropertyDocumentType.PLAN]: 'Plan',
-    [PropertyDocumentType.TAX_DOCUMENT]: t('Document fiscal'),
-    [PropertyDocumentType.OTHER]: 'Autre'
-  };
+  // Libellés partagés avec le module Patrimoine (`patrimoine-labels.ts`) :
+  // les documents du patrimoine SONT des documents de bien, mêmes types.
+  const documentTypeOptions = Object.values(PropertyDocumentType).map(value => ({
+    value,
+    label: documentTypeLabel(value)
+  }));
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -147,7 +147,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
             className="w-full rounded-md border border-gray-300 px-3 py-2"
             required
           >
-            {Object.entries(documentTypeLabels).map(([value, label]) => (
+            {documentTypeOptions.map(({ value, label }) => (
               <option key={value} value={value}>
                 {label}
               </option>

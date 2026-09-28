@@ -23,18 +23,15 @@ import {
 import type { RcFile } from 'antd/es/upload';
 import { UploadOutlined } from '@ant-design/icons';
 import {
-  createDocument,
   createExpense,
   createLoan,
   createValuation,
   createWorkProgram,
-  deleteDocument,
   deleteExpense,
   deleteLoan,
   deleteValuation,
   deleteWorkProgram,
   getPropertyYield,
-  listDocuments,
   listExpenses,
   listLoans,
   listWorkPrograms,
@@ -46,13 +43,13 @@ import {
 } from '../../services/patrimoine-service';
 import type {
   AssetValuation,
-  PatrimonyDocument,
   PaymentMethod,
   PropertyExpense,
   PropertyLoan,
   PropertyYieldData,
   WorkProgram
 } from '../../types/patrimoine-types';
+import type { PropertyDocument } from '../../types/property-types';
 import { DocumentVault } from './DocumentVault';
 import { ExpenseTracker } from './ExpenseTracker';
 import { LoanWidget } from './LoanWidget';
@@ -60,10 +57,22 @@ import { ValuationHistory } from './ValuationHistory';
 import { YieldCalculator, type YieldAssumptionsInput } from './YieldCalculator';
 import { YieldProjectionChart } from './YieldProjectionChart';
 import { WorkProgramTimeline } from './WorkProgramTimeline';
-import { uploadDocument as uploadPropertyDocument } from '../../services/property-service';
-import { listContacts } from '../../services/crm-service';
+import {
+  listPropertyDocuments,
+  uploadDocument as uploadPropertyDocument,
+  deletePropertyDocument
+} from '../../services/property-service';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
+import { MoneyValue, formatMoney } from '../primitives';
+import {
+  DEVISE_PATRIMOINE,
+  apiErrorMessage,
+  documentTypeOptions,
+  expenseCategoryLabel,
+  loanStatusLabel,
+  valuationMethodLabel
+} from './patrimoine-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
@@ -94,32 +103,6 @@ function workProgramStatusLabel(status: WorkProgram['status']): string {
   return status;
 }
 
-function loanStatusLabel(status: PropertyLoan['status']): string {
-  if (status === 'ACTIVE') return 'Actif';
-  if (status === 'CLOSED') return t('Clôturé');
-  if (status === 'DEFAULTED') return t('Défaillant');
-  return status;
-}
-
-function valuationMethodLabel(method: AssetValuation['method']): string {
-  if (method === 'MANUAL') return 'Manuelle';
-  if (method === 'MARKET_ESTIMATE') return t('Estimation de marché');
-  if (method === 'EXPERT_APPRAISAL') return 'Expertise';
-  return method;
-}
-
-function expenseCategoryLabel(category: PropertyExpense['category']): string {
-  if (category === 'PROPERTY_TAX') return t('Taxe foncière');
-  if (category === 'CONDO_FEES') return t('Charges de copropriété');
-  if (category === 'INSURANCE') return 'Assurance';
-  if (category === 'ROUTINE_MAINTENANCE') return t('Entretien courant');
-  if (category === 'RENOVATION') return t('Rénovation');
-  if (category === 'MANAGEMENT_FEES') return t('Honoraires de gestion');
-  if (category === 'UTILITIES') return t('Charges communes');
-  if (category === 'OTHER') return 'Autre';
-  return category;
-}
-
 function paymentMethodLabel(method: PaymentMethod): string {
   if (method === 'CASH') return t('Espèces');
   if (method === 'BANK_TRANSFER') return t('Virement bancaire');
@@ -148,37 +131,30 @@ const ExpenseTreasuryAccountField: React.FC<{
   />
 );
 
-function documentTypeLabel(type: PatrimonyDocument['type']): string {
-  if (type === 'TITLE_DEED') return t('Titre de propriété');
-  if (type === 'NOTARIAL_DEED') return t('Acte notarié');
-  if (type === 'TAX_DOCUMENT') return t('Document fiscal');
-  if (type === 'INSURANCE') return 'Assurance';
-  if (type === 'TECHNICAL_DIAGNOSIS') return t('Diagnostic technique');
-  if (type === 'FLOOR_PLAN') return 'Plan';
-  if (type === 'BUILDING_PERMIT') return t('Permis de construire');
-  if (type === 'OTHER') return 'Autre';
-  return type;
-}
-
-function mapPatrimonyDocTypeToPropertyDocType(
-  type: PatrimonyDocument['type']
-): 'TITLE_DEED' | 'MANDATE' | 'PLAN' | 'TAX_DOCUMENT' | 'OTHER' {
-  if (type === 'TITLE_DEED') return 'TITLE_DEED';
-  if (type === 'TAX_DOCUMENT') return 'TAX_DOCUMENT';
-  if (type === 'FLOOR_PLAN') return 'PLAN';
-  return 'OTHER';
-}
-
 interface Props {
   tenantId: string;
   propertyId: string;
+}
+
+/**
+ * Un chargement en échec par section, jamais un seul « tout ou rien » : un
+ * bien avec des documents mais un rendement en échec (prix d'acquisition
+ * absent, service indisponible…) doit quand même montrer ses documents.
+ */
+interface SectionErrors {
+  valuations?: string;
+  expenses?: string;
+  loans?: string;
+  workPrograms?: string;
+  documents?: string;
+  yieldData?: string;
 }
 
 export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId }) => {
   const { message } = App.useApp();
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<SectionErrors>({});
   const [yieldLoading, setYieldLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
@@ -188,8 +164,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const [expenses, setExpenses] = useState<PropertyExpense[]>([]);
   const [loans, setLoans] = useState<PropertyLoan[]>([]);
   const [workPrograms, setWorkPrograms] = useState<WorkProgram[]>([]);
-  const [documents, setDocuments] = useState<PatrimonyDocument[]>([]);
-  const [ownerOptions, setOwnerOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [documents, setDocuments] = useState<PropertyDocument[]>([]);
   const [yieldData, setYieldData] = useState<PropertyYieldData | null>(null);
 
   const [valuationModalOpen, setValuationModalOpen] = useState(false);
@@ -202,7 +177,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const [editingValuationId, setEditingValuationId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
-  const [editingWorkId, setEditingWorkId] = useState<string | null>(null);
+  const [editingWorkProgram, setEditingWorkProgram] = useState<WorkProgram | null>(null);
 
   const [valuationForm] = Form.useForm();
   const [expenseForm] = Form.useForm();
@@ -217,38 +192,37 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes, contactsRes] =
-        await Promise.all([
-          listValuations(tenantId, propertyId),
-          listExpenses(tenantId, propertyId),
-          listLoans(tenantId, propertyId),
-          listWorkPrograms(tenantId, propertyId),
-          listDocuments(tenantId, propertyId),
-          getPropertyYield(tenantId, propertyId),
-          listContacts(tenantId, { page: 1, limit: 500 })
-        ]);
-      setValuations(valuationsRes);
-      setExpenses(expensesRes);
-      setLoans(loansRes);
-      setWorkPrograms(workProgramsRes);
-      setDocuments(documentsRes);
-      setYieldData(yieldRes);
-      const owners = contactsRes.contacts.filter(contact =>
-        (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
-      );
-      setOwnerOptions(
-        owners.map(owner => ({
-          value: owner.id,
-          label: `${owner.firstName} ${owner.lastName}`.trim() || owner.email || owner.id
-        }))
-      );
-    } catch (e: any) {
-      setError(e?.response?.data?.error || t('Erreur chargement patrimoine'));
-    } finally {
-      setLoading(false);
-    }
+    const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes] = await Promise.allSettled([
+      listValuations(tenantId, propertyId),
+      listExpenses(tenantId, propertyId),
+      listLoans(tenantId, propertyId),
+      listWorkPrograms(tenantId, propertyId),
+      listPropertyDocuments(tenantId, propertyId),
+      getPropertyYield(tenantId, propertyId)
+    ]);
+
+    const erreurs: SectionErrors = {};
+
+    if (valuationsRes.status === 'fulfilled') setValuations(valuationsRes.value);
+    else erreurs.valuations = apiErrorMessage(valuationsRes.reason, t('Erreur de chargement des valorisations'));
+
+    if (expensesRes.status === 'fulfilled') setExpenses(expensesRes.value);
+    else erreurs.expenses = apiErrorMessage(expensesRes.reason, t('Erreur de chargement des dépenses'));
+
+    if (loansRes.status === 'fulfilled') setLoans(loansRes.value);
+    else erreurs.loans = apiErrorMessage(loansRes.reason, t('Erreur de chargement des crédits'));
+
+    if (workProgramsRes.status === 'fulfilled') setWorkPrograms(workProgramsRes.value);
+    else erreurs.workPrograms = apiErrorMessage(workProgramsRes.reason, t('Erreur de chargement des travaux'));
+
+    if (documentsRes.status === 'fulfilled') setDocuments(documentsRes.value);
+    else erreurs.documents = apiErrorMessage(documentsRes.reason, t('Erreur de chargement des documents'));
+
+    if (yieldRes.status === 'fulfilled') setYieldData(yieldRes.value);
+    else erreurs.yieldData = apiErrorMessage(yieldRes.reason, t('Erreur de chargement du rendement'));
+
+    setSectionErrors(erreurs);
+    setLoading(false);
   }, [propertyId, tenantId]);
 
   useEffect(() => {
@@ -268,8 +242,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       const data = await getPropertyYield(tenantId, propertyId, assumptions);
       setYieldData(data);
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Échec du recalcul du rendement'));
+      setSectionErrors(prev => ({ ...prev, yieldData: undefined }));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t('Échec du recalcul du rendement')));
     } finally {
       setYieldLoading(false);
     }
@@ -311,16 +286,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       setSubmitting(true);
       if (editingValuationId) {
         await updateValuation(tenantId, propertyId, editingValuationId, payload);
-        message.success(t('Valorisation mise a jour'));
+        message.success(t('Valorisation mise à jour'));
       } else {
         await createValuation(tenantId, propertyId, payload);
-        message.success(t('Valorisation ajoutee'));
+        message.success(t('Valorisation ajoutée'));
       }
       setValuationModalOpen(false);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || t('Erreur sauvegarde valorisation'));
+      message.error(apiErrorMessage(e, t('Erreur de sauvegarde de la valorisation')));
     } finally {
       setSubmitting(false);
     }
@@ -330,10 +305,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setBusyActionId(`valuation-${valuationId}`);
     try {
       await deleteValuation(tenantId, propertyId, valuationId);
-      message.success(t('Valorisation supprimee'));
+      message.success(t('Valorisation supprimée'));
       await loadAll();
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Erreur suppression valorisation'));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t('Erreur de suppression de la valorisation')));
     } finally {
       setBusyActionId(null);
     }
@@ -394,7 +369,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || t('Erreur de sauvegarde de la dépense'));
+      message.error(apiErrorMessage(e, t('Erreur de sauvegarde de la dépense')));
     } finally {
       setSubmitting(false);
     }
@@ -406,8 +381,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       await deleteExpense(tenantId, propertyId, expenseId);
       message.success(t('Dépense supprimée'));
       await loadAll();
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Erreur de suppression de la dépense'));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t('Erreur de suppression de la dépense')));
     } finally {
       setBusyActionId(null);
     }
@@ -462,7 +437,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || t('Erreur de sauvegarde du crédit'));
+      message.error(apiErrorMessage(e, t('Erreur de sauvegarde du crédit')));
     } finally {
       setSubmitting(false);
     }
@@ -474,22 +449,22 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       await deleteLoan(tenantId, propertyId, loanId);
       message.success(t('Crédit supprimé'));
       await loadAll();
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Erreur de suppression du crédit'));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t('Erreur de suppression du crédit')));
     } finally {
       setBusyActionId(null);
     }
   };
 
   const openCreateWorkProgram = () => {
-    setEditingWorkId(null);
+    setEditingWorkProgram(null);
     workForm.resetFields();
     workForm.setFieldsValue({ currency: 'XOF', status: 'PLANNED', isCapitalized: false });
     setWorkModalOpen(true);
   };
 
   const openEditWorkProgram = (item: WorkProgram) => {
-    setEditingWorkId(item.id);
+    setEditingWorkProgram(item);
     workForm.setFieldsValue({
       title: item.title,
       description: item.description || undefined,
@@ -504,33 +479,40 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setWorkModalOpen(true);
   };
 
+  // Un programme rattaché à un chantier a son coût réel alimenté par le
+  // chantier (contrat API `work-programs`) : le champ se lit, ne se saisit
+  // pas, et ne part jamais dans le payload.
+  const editingWorkIsSiteLinked = Boolean(editingWorkProgram?.constructionSiteId);
+
   const submitWorkProgram = async () => {
     try {
       const values = await workForm.validateFields();
-      const payload = {
+      const payload: Record<string, unknown> = {
         title: values.title,
         description: values.description,
         estimatedCost: values.estimatedCost,
-        actualCost: values.actualCost,
         currency: values.currency,
         plannedDate: toIso(values.plannedDate),
         completedDate: toIso(values.completedDate),
         status: values.status,
         isCapitalized: values.isCapitalized
       };
+      if (!editingWorkIsSiteLinked) {
+        payload.actualCost = values.actualCost;
+      }
       setSubmitting(true);
-      if (editingWorkId) {
-        await updateWorkProgram(tenantId, propertyId, editingWorkId, payload);
-        message.success(t('Programme travaux mis a jour'));
+      if (editingWorkProgram) {
+        await updateWorkProgram(tenantId, propertyId, editingWorkProgram.id, payload);
+        message.success(t('Programme de travaux mis à jour'));
       } else {
         await createWorkProgram(tenantId, propertyId, payload);
-        message.success(t('Programme travaux ajoute'));
+        message.success(t('Programme de travaux ajouté'));
       }
       setWorkModalOpen(false);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || t('Erreur sauvegarde travaux'));
+      message.error(apiErrorMessage(e, t('Erreur de sauvegarde des travaux')));
     } finally {
       setSubmitting(false);
     }
@@ -540,10 +522,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setBusyActionId(`work-${programId}`);
     try {
       await deleteWorkProgram(tenantId, propertyId, programId);
-      message.success(t('Programme travaux supprime'));
+      message.success(t('Programme de travaux supprimé'));
       await loadAll();
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Erreur suppression travaux'));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t('Erreur de suppression des travaux')));
     } finally {
       setBusyActionId(null);
     }
@@ -551,7 +533,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
 
   const openCreateDocument = () => {
     documentForm.resetFields();
-    documentForm.setFieldsValue({ type: 'OTHER' });
+    documentForm.setFieldsValue({ documentType: 'OTHER' });
     setDocumentFile(null);
     setDocumentModalOpen(true);
   };
@@ -564,34 +546,20 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         return;
       }
       setSubmitting(true);
-
-      const uploaded = await uploadPropertyDocument(
+      await uploadPropertyDocument(
         tenantId,
         propertyId,
         documentFile,
-        mapPatrimonyDocTypeToPropertyDocType(values.type),
-        toIso(values.expiresAt)
+        values.documentType,
+        toIso(values.expirationDate)
       );
-
-      try {
-        await createDocument(tenantId, propertyId, {
-          title: values.title,
-          type: values.type,
-          fileUrl: uploaded?.fileUrl || '',
-          expiresAt: toIso(values.expiresAt),
-          ownerContactId: values.ownerContactId
-        });
-      } catch {
-        // Fallback: if dedicated patrimoine endpoint is not available, keep uploaded document only.
-      }
-
       message.success(t('Document ajouté'));
       setDocumentModalOpen(false);
       setDocumentFile(null);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || t('Erreur de création du document'));
+      message.error(apiErrorMessage(e, t("Erreur lors de l'ajout du document")));
     } finally {
       setSubmitting(false);
     }
@@ -600,11 +568,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const handleDeleteDocument = async (documentId: string) => {
     setDeletingDocumentId(documentId);
     try {
-      await deleteDocument(tenantId, propertyId, documentId);
+      await deletePropertyDocument(tenantId, propertyId, documentId);
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      message.success(t('Document supprime'));
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || t('Échec de la suppression du document'));
+      message.success(t('Document supprimé'));
+    } catch (e) {
+      message.error(apiErrorMessage(e, t('Échec de la suppression du document')));
     } finally {
       setDeletingDocumentId(null);
     }
@@ -620,20 +588,31 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {error ? <Alert type="error" showIcon message={error} /> : null}
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <ValuationHistory valuations={valuations} />
+          {sectionErrors.valuations ? (
+            <Alert type="error" showIcon message={sectionErrors.valuations} />
+          ) : (
+            <ValuationHistory valuations={valuations} />
+          )}
         </Col>
       </Row>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <LoanWidget loans={loans} />
+          {sectionErrors.loans ? (
+            <Alert type="error" showIcon message={sectionErrors.loans} />
+          ) : (
+            <LoanWidget loans={loans} />
+          )}
         </Col>
       </Row>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <ExpenseTracker expenses={expenses} />
+          {sectionErrors.expenses ? (
+            <Alert type="error" showIcon message={sectionErrors.expenses} />
+          ) : (
+            <ExpenseTracker expenses={expenses} />
+          )}
         </Col>
       </Row>
       <Card
@@ -651,15 +630,14 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           pagination={{ pageSize: 5 }}
           columns={[
             {
-              title: 'Date',
+              title: t('Date'),
               dataIndex: 'valuatedAt',
               render: (value: string) => new Date(value).toLocaleString(activeLocale())
             },
             {
-              title: 'Valeur',
+              title: t('Valeur'),
               dataIndex: 'estimatedValue',
-              render: (value: number, record: AssetValuation) =>
-                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
+              render: (value: number, record: AssetValuation) => <MoneyValue value={value} currency={record.currency} />
             },
             {
               title: t('Méthode'),
@@ -667,7 +645,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (value: AssetValuation['method']) => <Tag>{valuationMethodLabel(value)}</Tag>
             },
             {
-              title: 'Actions',
+              title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: AssetValuation) => (
                 <Space>
@@ -700,7 +678,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           pagination={{ pageSize: 5 }}
           columns={[
             {
-              title: 'Date',
+              title: t('Date'),
               dataIndex: 'paidAt',
               render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
             },
@@ -711,13 +689,14 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
             },
             {
-              title: 'Montant',
+              title: t('Montant'),
               dataIndex: 'amount',
-              render: (value: number, record: PropertyExpense) =>
-                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
+              render: (value: number, record: PropertyExpense) => (
+                <MoneyValue value={value} currency={record.currency} />
+              )
             },
             {
-              title: 'Actions',
+              title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: PropertyExpense) => (
                 <Space>
@@ -753,16 +732,15 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             {
               title: t('Capital restant'),
               dataIndex: 'remainingCapital',
-              render: (value: number, record: PropertyLoan) =>
-                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
+              render: (value: number, record: PropertyLoan) => <MoneyValue value={value} currency={record.currency} />
             },
             {
-              title: 'Statut',
+              title: t('Statut'),
               dataIndex: 'status',
               render: (value: PropertyLoan['status']) => <Tag>{loanStatusLabel(value)}</Tag>
             },
             {
-              title: 'Actions',
+              title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: PropertyLoan) => (
                 <Space>
@@ -788,83 +766,102 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Button>
         }
       >
-        <Table
-          scroll={{ x: 'max-content' }}
-          rowKey="id"
-          dataSource={workPrograms}
-          pagination={{ pageSize: 5 }}
-          columns={[
-            { title: 'Titre', dataIndex: 'title' },
-            {
-              title: t('Date prévue'),
-              dataIndex: 'plannedDate',
-              render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
-            },
-            {
-              title: t('Coût estimé'),
-              dataIndex: 'estimatedCost',
-              render: (value: number, record: WorkProgram) =>
-                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
-            },
-            {
-              title: 'Statut',
-              dataIndex: 'status',
-              render: (value: WorkProgram['status']) => <Tag>{workProgramStatusLabel(value)}</Tag>
-            },
-            {
-              title: 'Actions',
-              key: 'actions',
-              render: (_: unknown, record: WorkProgram) => (
-                <Space>
-                  <Button size="small" onClick={() => openEditWorkProgram(record)}>
-                    {t('Modifier')}
-                  </Button>
-                  <Popconfirm title={t('Supprimer ce programme ?')} onConfirm={() => removeWorkProgram(record.id)}>
-                    <Button size="small" danger loading={busyActionId === `work-${record.id}`}>
-                      {t('Supprimer')}
+        {sectionErrors.workPrograms ? (
+          <Alert type="error" showIcon message={sectionErrors.workPrograms} />
+        ) : (
+          <Table
+            scroll={{ x: 'max-content' }}
+            rowKey="id"
+            dataSource={workPrograms}
+            pagination={{ pageSize: 5 }}
+            columns={[
+              { title: t('Titre'), dataIndex: 'title' },
+              {
+                title: t('Chantier'),
+                dataIndex: 'constructionSite',
+                render: (_: unknown, record: WorkProgram) =>
+                  record.constructionSite ? <Tag color="blue">{record.constructionSite.name}</Tag> : '—'
+              },
+              {
+                title: t('Date prévue'),
+                dataIndex: 'plannedDate',
+                render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
+              },
+              {
+                title: t('Coût estimé'),
+                dataIndex: 'estimatedCost',
+                render: (value: number, record: WorkProgram) => <MoneyValue value={value} currency={record.currency} />
+              },
+              {
+                title: t('Coût réel'),
+                dataIndex: 'actualCost',
+                render: (value: number | null | undefined, record: WorkProgram) => (
+                  <MoneyValue value={value ?? null} currency={record.currency} />
+                )
+              },
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                render: (value: WorkProgram['status']) => <Tag>{workProgramStatusLabel(value)}</Tag>
+              },
+              {
+                title: t('Actions'),
+                key: 'actions',
+                render: (_: unknown, record: WorkProgram) => (
+                  <Space>
+                    <Button size="small" onClick={() => openEditWorkProgram(record)}>
+                      {t('Modifier')}
                     </Button>
-                  </Popconfirm>
-                </Space>
-              )
-            }
-          ]}
-        />
+                    <Popconfirm title={t('Supprimer ce programme ?')} onConfirm={() => removeWorkProgram(record.id)}>
+                      <Button size="small" danger loading={busyActionId === `work-${record.id}`}>
+                        {t('Supprimer')}
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                )
+              }
+            ]}
+          />
+        )}
       </Card>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <YieldCalculator data={yieldData} loading={yieldLoading} onRecalculate={handleRecalculateYield} />
+          {sectionErrors.yieldData ? (
+            <Alert type="error" showIcon message={sectionErrors.yieldData} />
+          ) : (
+            <YieldCalculator data={yieldData} loading={yieldLoading} onRecalculate={handleRecalculateYield} />
+          )}
         </Col>
         <Col xs={24}>
           <YieldProjectionChart data={yieldData?.projection ?? []} />
         </Col>
       </Row>
       <WorkProgramTimeline items={workPrograms} />
-      <Card
-        title={t('Ajouter un document')}
-        extra={
-          <Button type="primary" onClick={openCreateDocument}>
-            {t('Ajouter')}
-          </Button>
-        }
-      >
-        <Text type="secondary">{t('Les documents existants sont consultables dans le coffre-fort ci-dessous.')}</Text>
-      </Card>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <DocumentVault
-            documents={documents}
-            tenantId={tenantId}
-            propertyId={propertyId}
-            onDelete={handleDeleteDocument}
-            deletingId={deletingDocumentId}
-          />
+          {sectionErrors.documents ? (
+            <Alert type="error" showIcon message={sectionErrors.documents} />
+          ) : (
+            <DocumentVault
+              documents={documents}
+              tenantId={tenantId}
+              propertyId={propertyId}
+              onDelete={handleDeleteDocument}
+              deletingId={deletingDocumentId}
+              extra={
+                <Button type="primary" onClick={openCreateDocument}>
+                  {t('Ajouter')}
+                </Button>
+              }
+            />
+          )}
         </Col>
       </Row>
       <Alert
         type="info"
         showIcon
-        message={t("Total des charges de l'année en cours : {{value}} XOF", {
-          value: annualExpenses.toLocaleString(activeLocale())
+        message={t("Total des charges de l'année en cours : {{value}}", {
+          value: formatMoney(annualExpenses, { currency: DEVISE_PATRIMOINE })
         })}
       />
 
@@ -1036,7 +1033,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       </Modal>
 
       <Modal
-        title={editingWorkId ? t('Modifier programme travaux') : t('Ajouter programme travaux')}
+        title={editingWorkProgram ? t('Modifier programme travaux') : t('Ajouter programme travaux')}
         open={workModalOpen}
         onCancel={() => setWorkModalOpen(false)}
         onOk={submitWorkProgram}
@@ -1053,9 +1050,20 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <Form.Item name="estimatedCost" label={t('Coût estimé')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="actualCost" label={t('Coût réel')}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
+          {editingWorkIsSiteLinked ? (
+            <Form.Item label={t('Coût réel')}>
+              <InputNumber disabled value={workForm.getFieldValue('actualCost')} style={{ width: '100%' }} />
+              <Text type="secondary">
+                {t('Coût réel alimenté par le chantier {{chantier}}', {
+                  chantier: editingWorkProgram?.constructionSite?.name ?? ''
+                })}
+              </Text>
+            </Form.Item>
+          ) : (
+            <Form.Item name="actualCost" label={t('Coût réel')}>
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
           <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -1095,25 +1103,6 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         destroyOnClose
       >
         <Form layout="vertical" form={documentForm}>
-          <Form.Item name="title" label={t('Titre')} rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="type" label={t('Type')} rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={[
-                { value: 'TITLE_DEED', label: documentTypeLabel('TITLE_DEED') },
-                { value: 'NOTARIAL_DEED', label: documentTypeLabel('NOTARIAL_DEED') },
-                { value: 'TAX_DOCUMENT', label: documentTypeLabel('TAX_DOCUMENT') },
-                { value: 'INSURANCE', label: documentTypeLabel('INSURANCE') },
-                { value: 'TECHNICAL_DIAGNOSIS', label: documentTypeLabel('TECHNICAL_DIAGNOSIS') },
-                { value: 'FLOOR_PLAN', label: documentTypeLabel('FLOOR_PLAN') },
-                { value: 'BUILDING_PERMIT', label: documentTypeLabel('BUILDING_PERMIT') },
-                { value: 'OTHER', label: documentTypeLabel('OTHER') }
-              ]}
-            />
-          </Form.Item>
           <Form.Item label={t('Fichier')} required>
             <Upload
               beforeUpload={file => {
@@ -1129,17 +1118,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               <Button icon={<UploadOutlined />}>{t('Sélectionner un fichier')}</Button>
             </Upload>
           </Form.Item>
-          <Form.Item name="expiresAt" label={t('Date expiration')}>
-            <Input type="datetime-local" />
+          <Form.Item name="documentType" label={t('Type')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={documentTypeOptions()} />
           </Form.Item>
-          <Form.Item name="ownerContactId" label={t('Propriétaire (optionnel)')}>
-            <Select
-              showSearch
-              allowClear
-              optionFilterProp="label"
-              options={ownerOptions}
-              placeholder={t('Sélectionnez un propriétaire')}
-            />
+          <Form.Item name="expirationDate" label={t('Date expiration (optionnelle)')}>
+            <Input type="datetime-local" />
           </Form.Item>
         </Form>
       </Modal>

@@ -42,6 +42,26 @@ function parseStoredAssumptions(raw: string | null): YieldAssumptionsInput | nul
   }
 }
 
+/**
+ * `localStorage` peut lever (navigation privée, stockage plein ou bloqué) :
+ * les hypothèses mémorisées sont un confort, jamais une raison de casser la page.
+ */
+function readStoredAssumptions(key: string): YieldAssumptionsInput | null {
+  try {
+    return parseStoredAssumptions(window.localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+function storeAssumptions(key: string, assumptions: YieldAssumptionsInput): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(assumptions));
+  } catch {
+    // Stockage indisponible : les hypothèses ne survivront pas au rechargement.
+  }
+}
+
 export const PatrimoinePerformancePage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { tenantMembership } = useAuth();
@@ -73,14 +93,14 @@ export const PatrimoinePerformancePage: React.FC = () => {
       return;
     }
     const key = assumptionsStorageKey(effectiveTenantId, propertyId);
-    const stored = parseStoredAssumptions(window.localStorage.getItem(key));
+    const stored = readStoredAssumptions(key);
     setAssumptions(stored || DEFAULT_ASSUMPTIONS);
   }, [effectiveTenantId, propertyId]);
 
   useEffect(() => {
     if (!effectiveTenantId || !propertyId) return;
     const key = assumptionsStorageKey(effectiveTenantId, propertyId);
-    window.localStorage.setItem(key, JSON.stringify(assumptions));
+    storeAssumptions(key, assumptions);
   }, [assumptions, effectiveTenantId, propertyId]);
 
   useEffect(() => {

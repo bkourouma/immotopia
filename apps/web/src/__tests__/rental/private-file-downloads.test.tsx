@@ -44,14 +44,37 @@ function liens(container: HTMLElement): string[] {
 }
 
 describe('DocumentVault (patrimoine) — documents de bien', () => {
+  /**
+   * Lot P0 : les documents patrimoniaux (`PatrimonyDocument`, `fileUrl` libre
+   * — pouvait pointer vers un fichier interne ou un lien externe quelconque)
+   * sont remplacés par les pièces du bien (`PropertyDocument`) : toujours un
+   * fichier réellement déposé, jamais d'URL externe, toujours téléchargé par
+   * la route authentifiée (`services/property-document-service.ts`
+   * `PROPERTY_DOCUMENT_SELECT` ne renvoie ni `filePath` ni `fileUrl`). Le
+   * scénario « lien externe » ne s'applique donc plus à ce composant — voir
+   * le rapport de ce lot pour le signalement à l'équipe produit.
+   */
   const documents = [
-    { id: 'doc-1', propertyId: 'bien-1', title: 'Titre foncier', type: 'TITLE_DEED', fileUrl: '/uploads/properties/bien-1/documents/t.pdf' },
-    { id: 'doc-2', propertyId: 'bien-1', title: 'Plan', type: 'FLOOR_PLAN', fileUrl: 'https://exemple.ci/plan.pdf' }
+    {
+      id: 'doc-1',
+      propertyId: 'bien-1',
+      documentType: 'TITLE_DEED',
+      fileName: 'Titre foncier.pdf',
+      fileSize: 2048,
+      mimeType: 'application/pdf',
+      isRequired: true,
+      isValid: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z'
+    }
   ] as never[];
 
-  it('télécharge un fichier déposé par la route du document ; un lien externe reste un lien', async () => {
+  it('télécharge un fichier déposé par la route du document, en blob', async () => {
     const blob = new Blob(['pdf'], { type: 'application/pdf' });
-    get.mockResolvedValue({ data: blob, headers: { 'content-disposition': "attachment; filename*=UTF-8''Titre%20foncier.pdf" } });
+    get.mockResolvedValue({
+      data: blob,
+      headers: { 'content-disposition': "attachment; filename*=UTF-8''Titre%20foncier.pdf" }
+    });
 
     const { container } = render(
       <AntApp>
@@ -59,10 +82,11 @@ describe('DocumentVault (patrimoine) — documents de bien', () => {
       </AntApp>
     );
 
+    // Ni chemin disque ni URL de stockage : la ligne ne porte que le nom du
+    // fichier, jamais un lien direct vers `/uploads`.
     expect(liens(container).some(lien => lien.includes('/uploads'))).toBe(false);
-    expect(liens(container)).toContain('https://exemple.ci/plan.pdf');
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Ouvrir' })[0]);
+    await userEvent.click(screen.getAllByRole('button', { name: 'Télécharger' })[0]);
     await waitFor(() =>
       expect(get).toHaveBeenCalledWith(
         '/tenants/agence-1/properties/bien-1/documents/doc-1/file',

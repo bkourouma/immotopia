@@ -1,7 +1,9 @@
 ﻿import React from 'react';
-import { Button, Card, Col, Form, InputNumber, Row, Space, Statistic } from 'antd';
+import { Button, Card, Col, Form, InputNumber, Row, Space, Statistic, Typography } from 'antd';
 import type { PropertyYieldData } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
+import { formatMoney } from '../primitives';
+import { DEVISE_PATRIMOINE } from './patrimoine-labels';
 
 export interface YieldAssumptionsInput {
   years: number;
@@ -26,12 +28,51 @@ const defaultAssumptions: YieldAssumptionsInput = {
   vacancyRate: 0.05
 };
 
+/**
+ * Indicateur qui dépend du prix d'acquisition (net-net, plus-value latente).
+ *
+ * `null` veut dire « prix d'acquisition inconnu » : afficher 0 aurait inventé
+ * un rendement nul. On écrit « — » et on dit quoi renseigner.
+ */
+const IndicateurAcquisition: React.FC<{
+  title: string;
+  value: number | null | undefined;
+  kind: 'percent' | 'money';
+  hasData: boolean;
+  loading?: boolean;
+}> = ({ title, value, kind, hasData, loading }) => {
+  if (value === null || value === undefined) {
+    return (
+      <>
+        <Statistic title={title} value="—" loading={loading} />
+        {hasData && value === null && !loading ? (
+          <Typography.Text type="secondary">
+            {t("Renseignez le prix d'acquisition dans une valorisation")}
+          </Typography.Text>
+        ) : null}
+      </>
+    );
+  }
+  if (kind === 'money') {
+    return <Statistic title={title} value={formatMoney(value, { currency: DEVISE_PATRIMOINE })} loading={loading} />;
+  }
+  return <Statistic title={title} value={value} precision={2} suffix="%" loading={loading} />;
+};
+
 export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, onRecalculate }) => {
   const [form] = Form.useForm<YieldAssumptionsInput>();
 
   React.useEffect(() => {
     form.setFieldsValue(assumptions || defaultAssumptions);
   }, [assumptions, form]);
+
+  // Valeur à l'horizon, sinon valeur actuelle. `null` (prix d'acquisition
+  // inconnu) se propage tel quel : ce n'est pas une absence de projection.
+  const projected = (key: 'netNetYield' | 'latentCapitalGain'): number | null | undefined => {
+    const horizon = data?.projectedAtHorizon;
+    if (horizon && horizon[key] !== undefined) return horizon[key];
+    return data?.[key];
+  };
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -44,14 +85,20 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
             <Statistic title={t('Net')} value={data?.netYield ?? 0} precision={2} suffix="%" loading={loading} />
           </Col>
           <Col xs={24} md={6}>
-            <Statistic title={t('Net-Net')} value={data?.netNetYield ?? 0} precision={2} suffix="%" loading={loading} />
+            <IndicateurAcquisition
+              title={t('Net-Net')}
+              value={data ? data.netNetYield : undefined}
+              kind="percent"
+              hasData={Boolean(data)}
+              loading={loading}
+            />
           </Col>
           <Col xs={24} md={6}>
-            <Statistic
+            <IndicateurAcquisition
               title={t('Plus-value latente')}
-              value={data?.latentCapitalGain ?? 0}
-              precision={0}
-              suffix="XOF"
+              value={data ? data.latentCapitalGain : undefined}
+              kind="money"
+              hasData={Boolean(data)}
               loading={loading}
             />
           </Col>
@@ -83,20 +130,20 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
             />
           </Col>
           <Col xs={24} md={6}>
-            <Statistic
+            <IndicateurAcquisition
               title={t('Net-Net projeté')}
-              value={data?.projectedAtHorizon?.netNetYield ?? data?.netNetYield ?? 0}
-              precision={2}
-              suffix="%"
+              value={data ? projected('netNetYield') : undefined}
+              kind="percent"
+              hasData={Boolean(data)}
               loading={loading}
             />
           </Col>
           <Col xs={24} md={6}>
-            <Statistic
+            <IndicateurAcquisition
               title={t('Plus-value latente projetée')}
-              value={data?.projectedAtHorizon?.latentCapitalGain ?? data?.latentCapitalGain ?? 0}
-              precision={0}
-              suffix="XOF"
+              value={data ? projected('latentCapitalGain') : undefined}
+              kind="money"
+              hasData={Boolean(data)}
               loading={loading}
             />
           </Col>

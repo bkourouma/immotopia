@@ -1,9 +1,21 @@
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
+import { ConflictError } from '../../middleware/error-middleware';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
+
+/**
+ * Meme utilitaire que `services/email-service.ts` (non exporte de la, donc
+ * duplique ici plutot qu'importe) : les valeurs injectees dans un template
+ * HTML d'e-mail (nom du proprietaire, intitule d'une depense, reference d'un
+ * bien...) viennent de saisies utilisateur et doivent etre echappees avant
+ * d'atterrir dans le corps HTML -- jamais dans le sujet, texte brut.
+ */
+function escapeHtml(value: string): string {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function applyTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
@@ -53,18 +65,24 @@ export async function alertExpiringDocuments(tenantId: string, daysAhead = 30) {
     if (!config.enabled) continue;
 
     const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
-    const variables = {
-      ownerName: [doc.owner.firstName, doc.owner.lastName].filter(Boolean).join(' ') || 'Propriétaire',
+    const ownerName = [doc.owner.firstName, doc.owner.lastName].filter(Boolean).join(' ') || 'Propriétaire';
+    const subjectVariables = {
+      ownerName,
       documentTitle: doc.title,
       documentType: doc.type,
       propertyReference: doc.property?.internalReference || '',
       expiresAt: doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString('fr-FR') : ''
     };
+    // Le sujet part en texte brut (pas de HTML a echapper) ; le corps HTML
+    // reprend les memes valeurs, echappees.
+    const bodyVariables = Object.fromEntries(
+      Object.entries(subjectVariables).map(([key, value]) => [key, escapeHtml(value)])
+    );
 
     await emailService.sendEmail({
       to: doc.owner.email,
-      subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
-      html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, variables)
+      subject: applyTemplate(config.subjectOverride || defaults.subject, subjectVariables),
+      html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables)
     });
     sentCount += 1;
   }
@@ -73,9 +91,9 @@ export async function alertExpiringDocuments(tenantId: string, daysAhead = 30) {
   return { matched: docs.length, sentCount };
 }
 
-export async function sendOwnerStatement(statementId: string) {
-  const statement = await prisma.ownerStatement.findUnique({
-    where: { id: statementId },
+export async function sendOwnerStatement(statementId: string, tenantId: string) {
+  const statement = await prisma.ownerStatement.findFirst({
+    where: { id: statementId, tenantId },
     include: {
       owner: true,
       items: {
@@ -96,6 +114,18 @@ export async function sendOwnerStatement(statementId: string) {
     return { sent: false, reason: 'NO_EMAIL' as const };
   }
 
+  // Le proprietaire peut avoir une adresse renseignee sans avoir consenti a
+  // recevoir des communications par e-mail (`CrmContact.consentEmail`,
+  // meme garde que `alertExpiringDocuments` ci-dessus) : envoyer quand meme
+  // serait une violation du consentement, pas un simple e-mail manquant --
+  // une erreur typee explicite plutot qu'un `{ sent: false }` silencieux que
+  // l'appelant pourrait confondre avec NO_EMAIL.
+  if (owner.consentEmail !== true) {
+    throw new ConflictError(
+      "Le propriétaire n'a pas consenti à recevoir des communications par e-mail : le relevé ne peut pas lui être envoyé."
+    );
+  }
+
   const eventKey = 'OWNER_STATEMENT_SENT' as const;
   const config = await getEmailNotificationConfig(statement.tenantId, eventKey);
   if (!config.enabled) {
@@ -104,14 +134,22 @@ export async function sendOwnerStatement(statementId: string) {
 
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
   const ownerName = [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Propriétaire';
-  const statementLineItems = statement.items.map(
+  // `label` (saisi en depense/loyer) et `internalReference` (saisie du bien)
+  // sont du texte utilisateur : echappes avant de rejoindre le corps HTML,
+  // jamais dans les variantes texte brut (WhatsApp, sujet de l'e-mail).
+  const statementLineItemsHtml = statement.items.map(
+    item =>
+      `- ${escapeHtml(item.label)} (${escapeHtml(item.property.internalReference)}): ${Number(item.amount).toLocaleString('fr-FR')} ${escapeHtml(statement.currency)}`
+  );
+  const statementLineItemsText = statement.items.map(
     item =>
       `- ${item.label} (${item.property.internalReference}): ${Number(item.amount).toLocaleString('fr-FR')} ${statement.currency}`
   );
-  const linesHtml = statementLineItems.join('<br/>');
-  const linesText = statementLineItems.join(' | ');
+  const linesHtml = statementLineItemsHtml.join('<br/>');
+  const linesText = statementLineItemsText.join(' | ');
 
-  const variables = {
+  // Variables texte brut : sujet de l'e-mail et WhatsApp -- jamais echappees.
+  const plainVariables = {
     ownerName,
     period: statement.period,
     totalRentDue: Number(statement.totalRentDue).toLocaleString('fr-FR'),
@@ -121,7 +159,12 @@ export async function sendOwnerStatement(statementId: string) {
     managementFeesVat: Number(statement.totalManagementFeesVat).toLocaleString('fr-FR'),
     totalExpenses: Number(statement.totalExpenses).toLocaleString('fr-FR'),
     netAmount: Number(statement.netAmount).toLocaleString('fr-FR'),
-    currency: statement.currency,
+    currency: statement.currency
+  };
+  // Variables du corps HTML : les memes, echappees, plus les lignes deja
+  // construites en HTML.
+  const htmlVariables = {
+    ...Object.fromEntries(Object.entries(plainVariables).map(([key, value]) => [key, escapeHtml(value)])),
     statementLines: linesHtml
   };
 
@@ -130,8 +173,8 @@ export async function sendOwnerStatement(statementId: string) {
 
   await emailService.sendEmail({
     to: owner.email,
-    subject: applyTemplate(subjectTemplate, variables),
-    html: applyTemplate(bodyTemplate, variables)
+    subject: applyTemplate(subjectTemplate, plainVariables),
+    html: applyTemplate(bodyTemplate, htmlVariables)
   });
 
   const whatsappSent = await sendWhatsappNotification({
@@ -139,13 +182,13 @@ export async function sendOwnerStatement(statementId: string) {
     notificationKey: 'OWNER_STATEMENT_SENT',
     to: owner.whatsappNumber || owner.phonePrimary || undefined,
     variables: {
-      ...variables,
+      ...plainVariables,
       statementLines: linesText
     }
   });
 
   await prisma.ownerStatement.update({
-    where: { id: statement.id },
+    where: { id: statement.id, tenantId },
     data: {
       status: 'SENT',
       sentAt: new Date()

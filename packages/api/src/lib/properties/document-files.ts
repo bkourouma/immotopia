@@ -35,7 +35,7 @@ export async function getPropertyDocumentFileForTenant(
   if (!property) throw new NotFoundError(NOT_FOUND);
 
   const document = await prisma.propertyDocument.findFirst({
-    where: { id: documentId, propertyId: property.id },
+    where: { id: documentId, propertyId: property.id, OR: [{ tenantId }, { tenantId: null }] },
     select: { propertyId: true, fileUrl: true, fileName: true }
   });
   if (!document) throw new NotFoundError(NOT_FOUND);

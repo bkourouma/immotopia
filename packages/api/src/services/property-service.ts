@@ -9,6 +9,7 @@ import { validatePropertyData } from './property-template-service';
 import { CreatePropertyRequest, UpdatePropertyRequest, PropertyDetail } from '../types/property-types';
 import { createPropertySchema, updatePropertySchema } from '../lib/properties/schemas';
 import { BadRequestError, NotFoundError, ConflictError } from '../middleware/error-middleware';
+import { PROPERTY_DOCUMENT_SELECT } from './property-document-service';
 import {
   PropertyType,
   PropertyOwnershipType,
@@ -330,7 +331,9 @@ export async function getPropertyById(
           displayOrder: 'asc'
         }
       },
-      documents: true,
+      // Jamais `filePath` (chemin disque) dans le detail du bien : select
+      // explicite, meme ensemble que `property-document-service.ts`.
+      documents: { select: PROPERTY_DOCUMENT_SELECT },
       statusHistory: {
         orderBy: {
           createdAt: 'desc'

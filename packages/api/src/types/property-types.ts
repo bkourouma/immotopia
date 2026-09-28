@@ -43,6 +43,26 @@ export type {
   PropertyVisitGoal
 };
 
+/**
+ * Vue d'un document de bien renvoyée au client : sans `filePath` (chemin
+ * disque) ni `tenantId`/`fileUrl` — même ensemble de champs que
+ * `PROPERTY_DOCUMENT_SELECT` (`services/property-document-service.ts`), avec
+ * lequel elle doit rester alignée.
+ */
+export interface PropertyDocumentSummary {
+  id: string;
+  propertyId: string;
+  documentType: PropertyDocumentType;
+  fileName: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  expirationDate: Date | null;
+  isRequired: boolean;
+  isValid: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Extended Property with relationships
 export interface PropertyDetail extends Property {
   media?: PropertyMedia[];
@@ -52,7 +72,7 @@ export interface PropertyDetail extends Property {
    * `null` quand le bien n a aucune photo.
    */
   thumbnailUrl?: string | null;
-  documents?: PropertyDocument[];
+  documents?: PropertyDocumentSummary[];
   statusHistory?: PropertyStatusHistory[];
   visits?: PropertyVisit[];
   mandates?: PropertyMandate[];

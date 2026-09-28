@@ -40,10 +40,11 @@ export const PatrimoineOverviewPage: React.FC = () => {
 
   const travaux = useQuery({
     // La page est explicite : cet écran montre les travaux à venir, pas
-    // l'historique complet. Les charger tous ne servirait qu'à allonger la
-    // frise.
-    queryKey: queryKey('work-programs', agence, { limit: 20 }),
-    queryFn: () => listTenantWorkPrograms(agence as string, { limit: 20 }),
+    // l'historique complet. `upcoming` ne garde que les programmes planifiés
+    // ou en cours, triés par date de début prévue : sans lui, la frise
+    // montrait les 20 premiers programmes venus, terminés compris.
+    queryKey: queryKey('work-programs', agence, { upcoming: true, limit: 20 }),
+    queryFn: () => listTenantWorkPrograms(agence as string, { upcoming: true, limit: 20 }),
     enabled: Boolean(agence),
     staleTime: STALE_TIME.list
   });

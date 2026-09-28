@@ -7,7 +7,8 @@ import {
   UpdatePropertyRequest,
   PropertySearchRequest,
   PropertySearchResponse,
-  PropertyVisit
+  PropertyVisit,
+  PropertyDocument
 } from '../types/property-types';
 
 // Re-export types for convenience
@@ -302,6 +303,21 @@ export async function uploadDocument(
 }
 
 /**
+ * Documents d'un bien (titre, ACD, plans, diagnostics…) — c'est aussi le
+ * coffre-fort documentaire du patrimoine.
+ */
+export async function listPropertyDocuments(tenantId: string, propertyId: string): Promise<PropertyDocument[]> {
+  const response = await apiClient.get<{ success: boolean; data: PropertyDocument[] }>(
+    `/tenants/${tenantId}/properties/${propertyId}/documents`
+  );
+  return response.data.data;
+}
+
+export async function deletePropertyDocument(tenantId: string, propertyId: string, documentId: string): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/documents/${encodeURIComponent(documentId)}`);
+}
+
+/**
  * Update property status
  */
 export async function updateStatus(
@@ -508,5 +524,8 @@ export async function downloadPropertyDocumentFile(
     `/tenants/${tenantId}/properties/${encodeURIComponent(propertyId)}/documents/${encodeURIComponent(documentId)}/file`,
     { responseType: 'blob' }
   );
-  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }

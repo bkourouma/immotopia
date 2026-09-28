@@ -2,17 +2,11 @@ import React from 'react';
 import { Card, Progress, Table, Tag } from 'antd';
 import type { PropertyLoan } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
+import { loanStatusLabel } from './patrimoine-labels';
 
 import { activeLocale } from '../../i18n/format';
 interface Props {
   loans: PropertyLoan[];
-}
-
-function loanStatusLabel(status: PropertyLoan['status']): string {
-  if (status === 'ACTIVE') return 'Actif';
-  if (status === 'CLOSED') return t('Clôturé');
-  if (status === 'DEFAULTED') return t('Défaillant');
-  return status;
 }
 
 export const LoanWidget: React.FC<Props> = ({ loans }) => {
@@ -47,8 +41,8 @@ export const LoanWidget: React.FC<Props> = ({ loans }) => {
         const total = Number(loan.capitalAmount) || 1;
         const paidPercent = ((total - Number(loan.remainingCapital)) / total) * 100;
         return (
-          <div key={loan.id} style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 8 }}>{loan.lender}</div>
+          <div key={loan.id} style={{ marginBlockEnd: 16 }}>
+            <div style={{ marginBlockEnd: 8 }}>{loan.lender}</div>
             <Progress percent={Math.max(0, Math.min(100, paidPercent))} />
           </div>
         );

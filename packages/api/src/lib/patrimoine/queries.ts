@@ -1,7 +1,7 @@
-import { Prisma, StatementStatus, WorkProgramStatus } from '@prisma/client';
+import { Prisma, PropertyStatus, StatementStatus, WorkProgramStatus } from '@prisma/client';
 import { badRequest, conflict, notFound } from '../errors';
 import { prisma } from '../../utils/database';
-import type { YieldInput } from './yield';
+import { annualizeRent, remainingLoanMonths, type LoanSchedule, type YieldInput } from './yield';
 import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
 import { materializeManagementFees } from '../rental-fees/materialize';
@@ -33,6 +33,19 @@ const WORK_PROGRAM_SITE_INCLUDE = {
   site: { select: { id: true, name: true, status: true } }
 } as const;
 
+/**
+ * Le contrat JSON (front `apps/web/src/types/patrimoine-types.ts`) nomme la
+ * relation `constructionSite`, jamais `site` -- le nom Prisma de la relation
+ * -- pour rester lisible independamment du modele physique. `constructionSiteId`
+ * est deja un champ scalaire du `WorkProgram`, toujours present tel quel.
+ */
+function toWorkProgramContract<T extends { site?: { id: string; name: string } | null }>(
+  program: T
+): Omit<T, 'site'> & { constructionSite: { id: string; name: string } | null } {
+  const { site, ...rest } = program;
+  return { ...rest, constructionSite: site ? { id: site.id, name: site.name } : null };
+}
+
 export async function ensureTenantProperty(tenantId: string, propertyId: string) {
   const property = await prisma.property.findFirst({
     where: { id: propertyId, tenantId }
@@ -43,21 +56,6 @@ export async function ensureTenantProperty(tenantId: string, propertyId: string)
   }
 
   return property;
-}
-
-/**
- * `PatrimonyDocument.ownerContactId` pointe vers un `CrmContact` optionnel,
- * saisi depuis le corps de la requete : sans ce controle, un contact d'une
- * autre agence pouvait y etre attache (IDOR).
- */
-async function ensureContactBelongsToTenant(tenantId: string, contactId: string) {
-  const contact = await prisma.crmContact.findFirst({
-    where: { id: contactId, tenantId },
-    select: { id: true }
-  });
-  if (!contact) {
-    throw notFound('Contact introuvable ou inaccessible');
-  }
 }
 
 function toDecimal(value: number | undefined): Prisma.Decimal | undefined {
@@ -426,11 +424,12 @@ export async function deletePropertyLoan(tenantId: string, propertyId: string, l
 
 export async function listPropertyWorkPrograms(tenantId: string, propertyId: string) {
   await ensureTenantProperty(tenantId, propertyId);
-  return prisma.workProgram.findMany({
+  const items = await prisma.workProgram.findMany({
     where: { tenantId, propertyId },
-    include: { property: true },
+    include: { property: true, site: { select: { id: true, name: true } } },
     orderBy: { plannedDate: 'asc' }
   });
+  return items.map(toWorkProgramContract);
 }
 
 /**
@@ -447,18 +446,48 @@ export async function listPropertyWorkPrograms(tenantId: string, propertyId: str
  */
 export async function listTenantWorkPrograms(
   tenantId: string,
-  options: { status?: WorkProgramStatus; page?: number; limit?: number } = {}
+  options: { status?: WorkProgramStatus; page?: number; limit?: number; upcoming?: boolean } = {}
 ) {
   const page = Math.max(1, options.page ?? 1);
   // Plafond a 100 : une page plus large signale un appelant qui veut tout
   // charger, precisement ce que cet endpoint remplace.
   const limit = Math.min(100, Math.max(1, options.limit ?? 25));
+
+  // `upcoming=true` (ecran d'accueil du Patrimoine) : seuls les programmes
+  // pas encore termines/annules, tries par date prevue croissante, sans
+  // pagination -- l'appelant veut la liste complete "a venir", pas une page.
+  if (options.upcoming) {
+    const where: Prisma.WorkProgramWhereInput = {
+      tenantId,
+      status: { in: [WorkProgramStatus.PLANNED, WorkProgramStatus.IN_PROGRESS] }
+    };
+    const items = await prisma.workProgram.findMany({
+      where,
+      include: {
+        property: { select: { id: true, title: true, internalReference: true } },
+        site: { select: { id: true, name: true } }
+      },
+      // `plannedDate` n'est pas nullable dans le schema actuel (aucun
+      // programme ne peut donc apparaitre sans date prevue) ; le tri simple
+      // ascendant place deja les echeances les plus proches en tete.
+      orderBy: [{ plannedDate: 'asc' }],
+      // Plafond de securite : "a venir" n'est pas pagine, mais ne doit pas
+      // pouvoir ramener un tenant avec des milliers de programmes en une fois.
+      take: 200
+    });
+    const mapped = items.map(toWorkProgramContract);
+    return { items: mapped, total: mapped.length, page: 1, limit: mapped.length || 1, totalPages: 1 };
+  }
+
   const where = { tenantId, ...(options.status ? { status: options.status } : {}) };
 
   const [items, total] = await Promise.all([
     prisma.workProgram.findMany({
       where,
-      include: { property: { select: { id: true, title: true, internalReference: true } } },
+      include: {
+        property: { select: { id: true, title: true, internalReference: true } },
+        site: { select: { id: true, name: true } }
+      },
       orderBy: { plannedDate: 'asc' },
       skip: (page - 1) * limit,
       take: limit
@@ -466,7 +495,13 @@ export async function listTenantWorkPrograms(
     prisma.workProgram.count({ where })
   ]);
 
-  return { items, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
+  return {
+    items: items.map(toWorkProgramContract),
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit))
+  };
 }
 
 export async function createPropertyWorkProgram(
@@ -482,7 +517,7 @@ export async function createPropertyWorkProgram(
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
-  return prisma.workProgram.create({
+  const created = await prisma.workProgram.create({
     data: {
       tenantId,
       propertyId,
@@ -495,6 +530,9 @@ export async function createPropertyWorkProgram(
     },
     include: { property: true }
   });
+  // Un programme vient de naitre : il ne peut pas encore etre rattache a un
+  // chantier (`constructionSiteId` n'est pas saisissable a la creation).
+  return { ...created, constructionSite: null as { id: string; name: string } | null };
 }
 
 export async function getPropertyWorkProgramById(tenantId: string, propertyId: string, programId: string) {
@@ -504,7 +542,7 @@ export async function getPropertyWorkProgramById(tenantId: string, propertyId: s
     include: WORK_PROGRAM_SITE_INCLUDE
   });
   if (!program) throw notFound('Programme de travaux introuvable');
-  return program;
+  return toWorkProgramContract(program);
 }
 
 export async function updatePropertyWorkProgram(
@@ -538,13 +576,17 @@ export async function updatePropertyWorkProgram(
   // C'est un conflit d'etat (409), pas une entree malformee (400) : la
   // requete est syntaxiquement valide, seul l'etat du programme vise
   // l'interdit.
-  if (typeof data.actualCost === 'number' && existing.constructionSiteId) {
+  // Le conflit ne vise que l'ECART : renvoyer la meme valeur deja en base
+  // (l'ecran peut la reafficher telle quelle dans son formulaire) n'est pas
+  // une tentative de l'ecraser et doit rester silencieux.
+  const existingActualCost = existing.actualCost !== null ? Number(existing.actualCost) : null;
+  if (typeof data.actualCost === 'number' && existing.constructionSiteId && data.actualCost !== existingActualCost) {
     throw conflict(
       'Le cout reel de ce programme est derive du chantier rattache ; il ne peut plus etre saisi manuellement.'
     );
   }
 
-  return prisma.workProgram.update({
+  const updated = await prisma.workProgram.update({
     where: { id: programId, tenantId },
     data: {
       title: data.title,
@@ -559,6 +601,7 @@ export async function updatePropertyWorkProgram(
     },
     include: WORK_PROGRAM_SITE_INCLUDE
   });
+  return toWorkProgramContract(updated);
 }
 
 /**
@@ -636,7 +679,7 @@ export async function linkWorkProgramConstructionSite(
     });
   }
 
-  return result.updated;
+  return toWorkProgramContract(result.updated);
 }
 
 export async function deletePropertyWorkProgram(tenantId: string, propertyId: string, programId: string) {
@@ -648,77 +691,40 @@ export async function deletePropertyWorkProgram(tenantId: string, propertyId: st
   await prisma.workProgram.delete({ where: { id: programId, tenantId } });
 }
 
-export async function listPropertyDocuments(tenantId: string, propertyId: string) {
-  await ensureTenantProperty(tenantId, propertyId);
-  return prisma.patrimonyDocument.findMany({
-    where: { tenantId, propertyId },
-    include: { property: true, owner: true },
-    orderBy: { createdAt: 'desc' }
-  });
-}
+/**
+ * Statuts d'un bien qui compte pour le taux d'occupation de l'apercu : un
+ * bien encore en brouillon n'est pas encore un actif gere, un bien vendu ou
+ * archive ne l'est plus. Nom reel de l'enum `PropertyStatus` (voir
+ * schema.prisma) -- l'audit avait signale un ensemble incoherent entre
+ * `totalProperties` (TOUS les biens) et `occupiedProperties` (biens loues).
+ */
+const OCCUPANCY_EXCLUDED_STATUSES: PropertyStatus[] = [
+  PropertyStatus.DRAFT,
+  PropertyStatus.SOLD,
+  PropertyStatus.ARCHIVED
+];
 
-export async function createPropertyDocument(
-  tenantId: string,
-  propertyId: string,
-  data: {
-    title: string;
-    type:
-      | 'TITLE_DEED'
-      | 'NOTARIAL_DEED'
-      | 'TAX_DOCUMENT'
-      | 'INSURANCE'
-      | 'TECHNICAL_DIAGNOSIS'
-      | 'FLOOR_PLAN'
-      | 'BUILDING_PERMIT'
-      | 'OTHER';
-    fileUrl: string;
-    expiresAt?: Date;
-    ownerContactId?: string;
-  }
-) {
-  await ensureTenantProperty(tenantId, propertyId);
-  if (data.ownerContactId) {
-    await ensureContactBelongsToTenant(tenantId, data.ownerContactId);
-  }
-  return prisma.patrimonyDocument.create({
-    data: {
-      tenantId,
-      propertyId,
-      ownerContactId: data.ownerContactId,
-      title: data.title,
-      type: data.type,
-      fileUrl: data.fileUrl,
-      expiresAt: data.expiresAt
-    },
-    include: { property: true, owner: true }
-  });
-}
-
-export async function getPropertyDocumentById(tenantId: string, propertyId: string, documentId: string) {
-  await ensureTenantProperty(tenantId, propertyId);
-  const document = await prisma.patrimonyDocument.findFirst({
-    where: { id: documentId, tenantId, propertyId },
-    include: { property: true, owner: true }
-  });
-  if (!document) throw notFound('Document patrimoine introuvable');
-  return document;
-}
-
-export async function deletePropertyDocument(tenantId: string, propertyId: string, documentId: string) {
-  await ensureTenantProperty(tenantId, propertyId);
-  const existing = await prisma.patrimonyDocument.findFirst({
-    where: { id: documentId, tenantId, propertyId }
-  });
-  if (!existing) throw notFound('Document patrimoine introuvable');
-  await prisma.patrimonyDocument.delete({ where: { id: documentId, tenantId } });
-}
-
+/**
+ * Apercu portefeuille de l'agence (US Patrimoine).
+ *
+ * `totalProperties`/`occupiedProperties`/`occupancyRate` partagent UN SEUL
+ * ensemble -- les biens de l'agence hors brouillon, vendu, archive -- pour
+ * que le taux reste borne a 100 % : l'ancien calcul comptait tous les biens
+ * au denominateur (brouillons et archives compris) mais un bien loue dans un
+ * numerateur different, produisant un taux qui pouvait exceder 100 % avec un
+ * denominateur trop restreint, ou etre artificiellement bas avec un
+ * denominateur trop large.
+ */
 export async function getPatrimoineOverview(tenantId: string) {
   const now = new Date();
-  const year = now.getFullYear();
+  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const yearEnd = new Date(Date.UTC(now.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
 
-  const [properties, valuations, activeLoans, expensesThisYear, activeLeases] = await Promise.all([
-    prisma.property.findMany({ where: { tenantId }, select: { id: true } }),
+  const [occupancyProperties, valuations, activeLoans, expensesThisYear, activeLeases] = await Promise.all([
+    prisma.property.findMany({
+      where: { tenantId, status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
+      select: { id: true }
+    }),
     prisma.assetValuation.findMany({
       where: { tenantId },
       orderBy: [{ propertyId: 'asc' }, { valuatedAt: 'desc' }]
@@ -727,15 +733,12 @@ export async function getPatrimoineOverview(tenantId: string) {
     prisma.propertyExpense.findMany({
       where: {
         tenantId,
-        paidAt: {
-          gte: new Date(year, 0, 1),
-          lte: new Date(year, 11, 31, 23, 59, 59, 999)
-        }
+        paidAt: { gte: yearStart, lte: yearEnd }
       }
     }),
     prisma.rentalLease.findMany({
       where: { tenant_id: tenantId, status: 'ACTIVE' },
-      select: { property_id: true, rent_amount: true }
+      select: { property_id: true, rent_amount: true, billing_frequency: true }
     })
   ]);
 
@@ -746,25 +749,59 @@ export async function getPatrimoineOverview(tenantId: string) {
     }
   }
 
-  const occupiedPropertyCount = new Set(activeLeases.map(lease => lease.property_id)).size;
+  const occupancyPropertyIds = new Set(occupancyProperties.map(property => property.id));
+  const occupiedPropertyIds = new Set(
+    activeLeases.map(lease => lease.property_id).filter(propertyId => occupancyPropertyIds.has(propertyId))
+  );
+
+  const totalProperties = occupancyProperties.length;
+  const occupiedProperties = occupiedPropertyIds.size;
 
   return {
-    totalProperties: properties.length,
-    occupiedProperties: occupiedPropertyCount,
-    occupancyRate: properties.length > 0 ? occupiedPropertyCount / properties.length : 0,
+    totalProperties,
+    occupiedProperties,
+    occupancyRate: totalProperties > 0 ? occupiedProperties / totalProperties : 0,
     totalEstimatedValue: [...latestByProperty.values()].reduce((sum, value) => sum + value, 0),
     totalLoanBalance: activeLoans.reduce((sum, loan) => sum + Number(loan.remainingCapital), 0),
     totalExpensesThisYear: expensesThisYear.reduce((sum, expense) => sum + Number(expense.amount), 0),
-    totalAnnualRent: activeLeases.reduce((sum, lease) => sum + Number(lease.rent_amount) * 12, 0)
+    totalAnnualRent: activeLeases.reduce(
+      (sum, lease) => sum + annualizeRent(Number(lease.rent_amount), lease.billing_frequency),
+      0
+    )
   };
+}
+
+/**
+ * Cout d'acquisition retenu pour le rendement d'un bien : la valorisation la
+ * PLUS RECENTE dont `acquisitionCost` n'est pas nul -- pas simplement la
+ * derniere valorisation, qui peut etre une reevaluation de marche sans
+ * cout d'acquisition renseigne (l'ancien calcul perdait alors le cout connu
+ * d'une valorisation anterieure).
+ */
+function latestAcquisitionCost(valuations: Array<{ valuatedAt: Date; acquisitionCost: Prisma.Decimal | null }>) {
+  const withCost = valuations
+    .filter(v => v.acquisitionCost !== null)
+    .sort((a, b) => b.valuatedAt.getTime() - a.valuatedAt.getTime());
+  return withCost.length > 0 ? Number(withCost[0].acquisitionCost) : 0;
 }
 
 export async function buildPropertyYieldInput(tenantId: string, propertyId: string): Promise<YieldInput> {
   await ensureTenantProperty(tenantId, propertyId);
-  const [lease, latestValuation, expenses, loans] = await Promise.all([
-    prisma.rentalLease.findFirst({
+
+  const now = new Date();
+  const twelveMonthsAgo = new Date(now);
+  twelveMonthsAgo.setUTCMonth(twelveMonthsAgo.getUTCMonth() - 12);
+
+  const [activeLeases, valuations, latestValuation, allExpenses, activeLoans] = await Promise.all([
+    // Tous les baux ACTIVE du bien, pas seulement le premier trouve : un bien
+    // peut porter plusieurs baux actifs (colocation, lots distincts).
+    prisma.rentalLease.findMany({
       where: { tenant_id: tenantId, property_id: propertyId, status: 'ACTIVE' },
-      orderBy: { created_at: 'desc' }
+      select: { rent_amount: true, billing_frequency: true }
+    }),
+    prisma.assetValuation.findMany({
+      where: { tenantId, propertyId },
+      select: { valuatedAt: true, acquisitionCost: true }
     }),
     prisma.assetValuation.findFirst({
       where: { tenantId, propertyId },
@@ -774,18 +811,56 @@ export async function buildPropertyYieldInput(tenantId: string, propertyId: stri
     prisma.propertyLoan.findMany({ where: { tenantId, propertyId, status: 'ACTIVE' } })
   ]);
 
-  const annualRent = lease ? Number(lease.rent_amount) * 12 : 0;
+  const annualRent = activeLeases.reduce(
+    (sum, lease) => sum + annualizeRent(Number(lease.rent_amount), lease.billing_frequency),
+    0
+  );
   const currentValue = latestValuation ? Number(latestValuation.estimatedValue) : 0;
-  const acquisitionCost = latestValuation?.acquisitionCost ? Number(latestValuation.acquisitionCost) : 0;
-  const annualExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
-  const annualLoanPayments = loans.reduce((sum, loan) => sum + Number(loan.monthlyPayment) * 12, 0);
+  const acquisitionCost = latestAcquisitionCost(valuations);
+
+  // Charges annuelles du rendement : depenses NON capitalisees payees dans
+  // les 12 derniers mois glissants -- une charge capitalisee (renovation
+  // lourde) appartient au cout de revient, pas aux charges courantes,
+  // et une depense d'il y a trois ans ne doit pas peser sur le rendement
+  // courant.
+  const annualExpenses = allExpenses
+    .filter(expense => !expense.isCapitalized && expense.paidAt >= twelveMonthsAgo && expense.paidAt <= now)
+    .reduce((sum, expense) => sum + Number(expense.amount), 0);
+
+  // Cout de revient : cout d'acquisition + TOUTES les depenses capitalisees,
+  // sans limite de date -- une renovation capitalisee il y a cinq ans fait
+  // toujours partie du cout de revient du bien aujourd'hui.
+  const capitalizedExpenses = allExpenses
+    .filter(expense => expense.isCapitalized)
+    .reduce((sum, expense) => sum + Number(expense.amount), 0);
+  const costBasis = acquisitionCost + capitalizedExpenses;
+
+  // Echeanciers des prets actifs : un pret dont la derniere mensualite tombe
+  // avant l'horizon de projection cesse d'y peser (`loanPaymentsForYear`,
+  // lib/patrimoine/yield.ts).
+  const loans: LoanSchedule[] = activeLoans.map(loan => ({
+    monthlyPayment: Number(loan.monthlyPayment),
+    remainingMonths: remainingLoanMonths(
+      {
+        endDate: loan.endDate,
+        remainingCapital: Number(loan.remainingCapital),
+        monthlyPayment: Number(loan.monthlyPayment)
+      },
+      now
+    )
+  }));
+  const annualLoanPayments = loans.reduce(
+    (sum, loan) => sum + loan.monthlyPayment * Math.min(12, loan.remainingMonths),
+    0
+  );
 
   return {
     annualRent,
     currentValue,
-    acquisitionCost,
+    costBasis,
     annualExpenses,
-    annualLoanPayments
+    annualLoanPayments,
+    loans
   };
 }
 
