@@ -7,7 +7,13 @@
  * syncTenantModulesTx, getEntitlements) tourne REELLEMENT contre ce faux
  * Prisma. `lot-registry-service`, `tenant-service` (suspendTenant) et
  * `audit-service` sont simules : ils ont leurs propres tests.
+ *
+ * `export {}` : sans import/export au sommet, TypeScript traite ce fichier
+ * comme un script global plutot qu'un module -- son `type Row` local
+ * entrerait alors en collision avec celui, identique mais distinct, de
+ * `provision-subscription-cli.test.ts` (meme probleme, meme correctif).
  */
+export {};
 
 type Row = Record<string, any>;
 

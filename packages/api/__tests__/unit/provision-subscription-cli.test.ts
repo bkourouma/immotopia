@@ -3,7 +3,13 @@
  * Le service metier a ses propres tests (subscription-provisioning-service.test.ts) :
  * ici on teste l'analyse de la ligne de commande (aucun acces base), et le
  * routage de `run()` avec le service simule.
+ *
+ * `export {}` : sans import/export au sommet, TypeScript traite ce fichier
+ * comme un script global plutot qu'un module -- son `type Row` local
+ * entrerait alors en collision avec celui, identique mais distinct, de
+ * `subscription-provisioning-service.test.ts` (meme probleme, meme correctif).
  */
+export {};
 
 type Row = Record<string, any>;
 
