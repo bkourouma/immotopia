@@ -4,7 +4,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 
 | Domaine | Sous-fonctionnalités |
 | --- | --- |
-| Parc immobilier | 69 |
+| Parc immobilier | 71 |
 | Gestion locative | 57 |
 | Finance | 147 |
 | CRM et Ventes | 60 |
@@ -13,7 +13,7 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Syndic copropriete | 129 |
 | Administration plateforme | 101 |
 | Portails externes | 38 |
-| **Total** | **660** |
+| **Total** | **662** |
 
 ## Sous-fonctionnalités
 
@@ -90,6 +90,8 @@ Fichier généré par `npm run wiki:export` depuis `ImmoTopia_Wiki_Fonctionnalit
 | Agence, Promoteur, Opérateur intégré | PATRIMOINE | Documents patrimoniaux | Consulter les documents patrimoniaux | Lister les documents d'un bien depuis l'onglet Patrimoine (titre de propriété, acte notarié, document fiscal, assurance, diagnostic technique, plan, permis de construire, ACD, mandat, autre) — même mécanisme `PropertyDocument` que l'onglet Documents (`property-routes.ts`) | Param `id`, query `includeExpired` optionnel | Liste de documents | Le bien doit appartenir au tenant | Collaborateur agence — PROPERTIES_VIEW | Agence (collaborateur) | GET /tenants/:tenantId/properties/:id/documents | PROPERTIES_VIEW | Disponible | Biens > fiche bien > onglet Patrimoine |
 | Agence, Promoteur, Opérateur intégré | PATRIMOINE | Documents patrimoniaux | Ajouter un document patrimonial | Enregistrer un document patrimonial (acte notarié, assurance, diagnostic technique, permis de construire, ACD, titre de propriété, mandat, plan, document fiscal…) via l'upload générique de documents de bien | Fichier (`multipart/form-data`, champ `file`), `documentType` (valeur de `PropertyDocumentType`), `expirationDate` optionnelle, `isRequired` optionnel — formats acceptés : PDF, DOC, DOCX, JPEG, PNG, TIFF (10 Mo max) | Document créé (`isValid` calculé selon expiration) | Le bien doit appartenir au tenant ; type de document inconnu ou date d'expiration invalide → 400 | Collaborateur agence — PROPERTIES_EDIT | Agence (collaborateur) | POST /tenants/:tenantId/properties/:id/documents | PROPERTIES_EDIT | Disponible | Biens > fiche bien > onglet Patrimoine |
 | Agence, Promoteur, Opérateur intégré | PATRIMOINE | Documents patrimoniaux | Supprimer un document patrimonial | Retirer un document patrimonial (fichier + enregistrement) | Params `id`, `documentId` | Confirmation de succès | Le document doit appartenir au bien/tenant | Collaborateur agence — PROPERTIES_EDIT | Agence (collaborateur) | DELETE /tenants/:tenantId/properties/:id/documents/:documentId | PROPERTIES_EDIT | Disponible | Biens > fiche bien > onglet Patrimoine |
+| Agence, Promoteur, Opérateur intégré | PATRIMOINE | Exports du patrimoine | Exporter le patrimoine de l'agence (PDF ou Excel) | Télécharger une synthèse PDF (vue consolidée, performance par bien : rendements brut/net/net-net, plus-value latente, puis une section par bien) ou un classeur Excel (synthèse, biens, valorisations, emprunts, dépenses, travaux, documents avec échéances) pour tous les biens de l'agence hors brouillon, vendu et archivé | Query `format` = `pdf` ou `xlsx` (obligatoire) | Fichier en pièce jointe (`Content-Disposition: attachment`, `Cache-Control: no-store`), généré en mémoire, jamais servi en statique ; PDF en français si l'interface est en arabe (police sans glyphes arabes), Excel dans la langue de l'interface ; au-delà de 500 biens → 400 | Consulter la vue consolidée | Collaborateur agence — PROPERTIES_VIEW | Agence (collaborateur) | GET /tenants/:tenantId/patrimoine/export | PROPERTIES_VIEW (`requireAnyPropertyPermission`) | Disponible | Patrimoine > Vue consolidée > bouton Exporter |
+| Agence, Promoteur, Opérateur intégré | PATRIMOINE | Exports du patrimoine | Exporter le patrimoine d'un bien (PDF ou Excel) | Télécharger la synthèse PDF ou le classeur Excel du patrimoine d'un seul bien (mêmes contenus que l'export d'agence, limités au bien) | Param `propertyId`, query `format` = `pdf` ou `xlsx` (obligatoire) | Fichier en pièce jointe `patrimoine-<référence du bien>-<date>.pdf\|xlsx`, généré en mémoire, jamais servi en statique | Le bien doit appartenir au tenant (sinon 404, comme un bien inexistant) | Collaborateur agence — PROPERTIES_VIEW | Agence (collaborateur) | GET /tenants/:tenantId/properties/:propertyId/patrimoine/export | PROPERTIES_VIEW (`requireAnyPropertyPermission`) | Disponible | Biens > fiche bien > onglet Patrimoine > bouton Exporter |
 
 ### Gestion locative
 

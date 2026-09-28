@@ -698,7 +698,7 @@ export async function deletePropertyWorkProgram(tenantId: string, propertyId: st
  * schema.prisma) -- l'audit avait signale un ensemble incoherent entre
  * `totalProperties` (TOUS les biens) et `occupiedProperties` (biens loues).
  */
-const OCCUPANCY_EXCLUDED_STATUSES: PropertyStatus[] = [
+export const OCCUPANCY_EXCLUDED_STATUSES: PropertyStatus[] = [
   PropertyStatus.DRAFT,
   PropertyStatus.SOLD,
   PropertyStatus.ARCHIVED
