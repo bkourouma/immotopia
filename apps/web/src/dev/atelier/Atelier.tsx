@@ -33,7 +33,7 @@ import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import AuthContext from '../../context/AuthContext';
 import { AppNavigation } from '../../components/shell/AppNavigation';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 import type { PersonaId } from '../../navigation/model';
 import type { AuthContextType } from '../../types/auth-types';
 import {
@@ -739,7 +739,7 @@ function SceneSidebar() {
   return (
     <div style={{ position: 'relative', minHeight: 640 }}>
       <div style={{ width: largeur, position: 'relative', background: 'var(--surface-nav)', minHeight: 640 }}>
-        <AppNavigation persona={NAVIGATION[persona]} context={{ tenantId: AGENCE }} variant={variant} />
+        <AppNavigation persona={getNavigation()[persona]} context={{ tenantId: AGENCE }} variant={variant} />
       </div>
     </div>
   );

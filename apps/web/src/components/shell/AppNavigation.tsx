@@ -4,7 +4,7 @@ import type { MenuProps } from 'antd';
 import { HomeOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { NavGroup, PersonaNav, SectionId } from '../../navigation/model';
-import { SECTION_LABELS } from '../../navigation/model';
+import { getSectionLabels } from '../../navigation/model';
 import { resolveHref } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import logoImmoTopia from '../../assets/logo-immotopia-inverse.png';
@@ -155,7 +155,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
         out.push({
           key: `section:${entry.section}`,
           type: 'group',
-          label: SECTION_LABELS[entry.section],
+          label: getSectionLabels()[entry.section],
           children: []
         });
       }

@@ -713,6 +713,7 @@ model Tenant {
   siteLots                 SiteLot[]
   stockSettings            StockSettings?
   financeSettings          AgencyFinanceSettings?
+  ownerPortalSettings      OwnerPortalSettings?
   ownerManagementTerms     OwnerManagementTerms[]
   leaseManagementTerms     LeaseManagementTerms[]
   agentCommissionRates     AgentCommissionRate[]
@@ -5154,6 +5155,28 @@ model AgencyFinanceSettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("agency_finance_settings")
+}
+
+/// Reglage du portail proprietaire (lot P5) : masquage de la vue patrimoine
+/// et de ses rubriques. Tant que l'agence n'a rien enregistre, la lecture
+/// renvoie les valeurs par defaut (tout actif) SANS ecrire -- meme patron
+/// que `AgencyFinanceSettings` (`lib/settings/finance-settings.ts`).
+model OwnerPortalSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @unique @map("tenant_id")
+  patrimonyEnabled      Boolean  @default(true) @map("patrimony_enabled")
+  patrimonyShowValuation Boolean @default(true) @map("patrimony_show_valuation")
+  patrimonyShowYield    Boolean  @default(true) @map("patrimony_show_yield")
+  patrimonyShowLoans    Boolean  @default(true) @map("patrimony_show_loans")
+  patrimonyShowWorks    Boolean  @default(true) @map("patrimony_show_works")
+  patrimonyShowDocuments Boolean @default(true) @map("patrimony_show_documents")
+  updatedByUserId       String?  @map("updated_by_user_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("owner_portal_settings")
 }
 
 /// Releve de gerance d'un proprietaire pour un mois.

@@ -1,4 +1,4 @@
-import { NAVIGATION, MORE_TAB_HREF, SECTION_LABELS } from '../../navigation/model';
+import { getNavigation, MORE_TAB_HREF, getSectionLabels } from '../../navigation/model';
 import {
   contextFromPath,
   isCoOwnerPortalPath,
@@ -17,7 +17,15 @@ import i18next from '../../i18n/index';
  * fil d'Ariane en dérivent tous les trois. Une omission ici se paie partout,
  * d'où des tests d'intégrité sur le modèle lui-même et pas seulement sur les
  * fonctions qui le lisent.
+ *
+ * `NAVIGATION` et `SECTION_LABELS` sont désormais des fonctions
+ * (`getNavigation`, `getSectionLabels`) : elles lisent `t()` à l'appel plutôt
+ * qu'une fois pour toutes à l'import, pour suivre un changement de langue en
+ * cours de session. La suite tourne en français (`setupTests.ts`) ; ces
+ * alias évitent de réécrire chaque appel.
  */
+const NAVIGATION = getNavigation();
+const SECTION_LABELS = getSectionLabels();
 
 const TENANT = '8cab62a9-bddc-41d5-be02-712d345df2df';
 const SYNDIC = '11111111-2222-3333-4444-555555555555';
@@ -262,8 +270,17 @@ describe('modèle de navigation — intégrité', () => {
 
   it('coiffe le portail propriétaire de ses deux domaines', () => {
     const domaines = NAVIGATION.proprietaire.tree.map(g => g.section);
-    // Biens, Revenus et Mon compte (lot 3) sous « portefeuille » ; Incidents sous « bâtiments ».
-    expect(domaines).toEqual([undefined, 'portefeuille', 'portefeuille', 'portefeuille', 'batiments', undefined]);
+    // Biens, Revenus, Mon compte (lot 3) et Mon patrimoine (lot P5) sous
+    // « portefeuille » ; Incidents sous « bâtiments ».
+    expect(domaines).toEqual([
+      undefined,
+      'portefeuille',
+      'portefeuille',
+      'portefeuille',
+      'portefeuille',
+      'batiments',
+      undefined
+    ]);
     // « Plus » reste sans intertitre : un titre au-dessus d'un groupe qui porte
     // deja ce nom nommerait deux fois la meme chose.
     expect(NAVIGATION.proprietaire.tree.filter(g => !g.section).map(g => g.label)).toEqual(['Tableau de bord', 'Plus']);
@@ -445,6 +462,40 @@ describe('table de libellés', () => {
       await i18next.changeLanguage(previous);
     }
     expect(labelForSegment('suivi-mensuel')).toBe('Suivi mensuel');
+  });
+});
+
+describe('menu et intertitres — suivent la langue active sans remonter le module', () => {
+  // Régression : `NAVIGATION` et `SECTION_LABELS` étaient des constantes de
+  // module, construites une seule fois avec les `t()` évalués à l'import.
+  // `<LocalizedScreens key={language}>` remonte les COMPOSANTS à chaque
+  // changement de langue, mais jamais le module lui-même — ces libellés
+  // restaient donc figés dans la langue de l'import (le français) tant que la
+  // page n'était pas rechargée. Ce test échouait avec l'ancien code : la
+  // deuxième assertion aurait encore lu « Biens ».
+  afterEach(async () => {
+    await i18next.changeLanguage('fr');
+  });
+
+  it('retraduit le menu du collaborateur en anglais puis en arabe, sans `vi.resetModules`', async () => {
+    expect(getNavigation().collaborateur.tree.find(g => g.key === 'biens')?.label).toBe('Biens');
+    expect(getSectionLabels().locatif).toBe('Gestion locative');
+
+    i18next.addResourceBundle(
+      'en',
+      'app',
+      { Biens: 'Properties', 'Gestion locative': 'Rental management' },
+      true,
+      true
+    );
+    await i18next.changeLanguage('en');
+    expect(getNavigation().collaborateur.tree.find(g => g.key === 'biens')?.label).toBe('Properties');
+    expect(getSectionLabels().locatif).toBe('Rental management');
+
+    i18next.addResourceBundle('ar', 'app', { Biens: 'العقارات', 'Gestion locative': 'الإدارة الإيجارية' }, true, true);
+    await i18next.changeLanguage('ar');
+    expect(getNavigation().collaborateur.tree.find(g => g.key === 'biens')?.label).toBe('العقارات');
+    expect(getSectionLabels().locatif).toBe('الإدارة الإيجارية');
   });
 });
 

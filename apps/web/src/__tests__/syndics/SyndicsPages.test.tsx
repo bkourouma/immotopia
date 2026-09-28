@@ -209,7 +209,9 @@ describe('Syndics pages', () => {
 
     expect(await screen.findByText('Copropriétés')).toBeTruthy();
     expect(await screen.findByText('Résidence Les Palmiers')).toBeTruthy();
-    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics');
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics', {
+      params: { page: 1, limit: 100 }
+    });
   });
 
   it('désactive « Supprimer » quand la liste sait déjà que la copropriété n’est pas vide (écart recette #8)', async () => {

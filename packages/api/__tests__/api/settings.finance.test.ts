@@ -91,12 +91,15 @@ describe('Paramètres financiers de l’agence', () => {
   it('protège la lecture et l’écriture par les permissions des paramètres de l’agence', () => {
     // Les deux premières gardent `…/settings/finance` ; les trois suivantes les
     // paramètres « Paiement en ligne » du lot 7, montés sur le même routeur
-    // (lecture, écriture, test de connexion) avec les mêmes permissions.
+    // (lecture, écriture, test de connexion) avec les mêmes permissions ; les
+    // deux dernières, le réglage du portail propriétaire (lot P5).
     expect(mockPermissionsAsked).toEqual([
       'TENANT_SETTINGS_VIEW',
       'TENANT_SETTINGS_EDIT',
       'TENANT_SETTINGS_VIEW',
       'TENANT_SETTINGS_EDIT',
+      'TENANT_SETTINGS_EDIT',
+      'TENANT_SETTINGS_VIEW',
       'TENANT_SETTINGS_EDIT'
     ]);
   });

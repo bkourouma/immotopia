@@ -1,9 +1,9 @@
-import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import dayjs from 'dayjs';
 import type { Locale as AntdLocale } from 'antd/es/locale';
 import frFR from 'antd/locale/fr_FR';
-import { changeLanguage as applyLanguage } from './index';
+import { i18next, loadLanguage } from './index';
 import {
   DEFAULT_LANGUAGE,
   detectInitialLanguage,
@@ -23,10 +23,25 @@ export interface LanguageContextValue {
   rtl: boolean;
   /** Locale BCP-47 pour `Intl.NumberFormat` et consorts. */
   locale: string;
-  /** Change la langue, la mémorise, et la remonte au profil si connecté. */
-  setLanguage: (language: Language) => Promise<void>;
+  /**
+   * Change la langue affichée. Mémorisée dans `localStorage` par défaut
+   * (`persist: false` réservé à la détection du navigateur au montage, qui ne
+   * doit pas être prise pour un choix — voir `LanguagePreferenceSync`, qui
+   * remonte un changement explicite au profil quand la personne est connectée).
+   */
+  setLanguage: (language: Language, options?: { persist?: boolean }) => Promise<void>;
   /** Vrai pendant le chargement d'un catalogue. */
   isSwitching: boolean;
+  /**
+   * Vrai une fois que la détection initiale (langue mémorisée, sinon repli
+   * navigateur) a fini de s'appliquer. `LanguagePreferenceSync` s'en sert
+   * pour ne lire `language` qu'une fois stable — voir son commentaire pour
+   * la course que ce drapeau referme : `isSwitching` ne suffit pas, car les
+   * effets d'un composant ENFANT (ici `LanguagePreferenceSync`) se
+   * déclenchent avant ceux de ce PROVIDER au montage, donc avant même que
+   * `isSwitching` ne passe à `true` pour la détection initiale.
+   */
+  initialLanguageResolved: boolean;
 }
 
 export const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
@@ -97,39 +112,99 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
   const [antdLocale, setAntdLocale] = useState<AntdLocale>(frFR);
   const [isSwitching, setIsSwitching] = useState(false);
+  // Volontairement un état distinct d'`isSwitching` — voir le commentaire de
+  // `initialLanguageResolved` sur `LanguageContextValue`.
+  const [initialLanguageResolved, setInitialLanguageResolved] = useState(false);
 
-  const setLanguage = useCallback(async (next: Language) => {
+  /**
+   * Identifiant du dernier `setLanguage` appelé, incrémenté de façon
+   * synchrone à chaque appel (avant tout `await`). Deux bascules peuvent se
+   * chevaucher — détection du navigateur au montage vs préférence du compte
+   * reprise par `LanguagePreferenceSync` juste après — et le réseau ne
+   * garantit pas que la première appelée soit la première résolue : sans
+   * cette garde, un appel plus ancien qui finit après un plus récent
+   * écraserait son résultat (texte anglais affiché malgré une bascule vers
+   * l'arabe déjà terminée). Seul l'appel dont l'identifiant est toujours le
+   * plus récent après ses `await` a le droit d'écrire l'état, `i18next`
+   * compris — d'où l'appel à `i18next.changeLanguage` déplacé après la
+   * garde plutôt que dans `Promise.all`.
+   */
+  const languageRequestId = useRef(0);
+
+  const setLanguage = useCallback(async (next: Language, options?: { persist?: boolean }) => {
+    const persist = options?.persist ?? true;
+    const requestId = ++languageRequestId.current;
     setIsSwitching(true);
     try {
       // Catalogue, locale AntD et locale dayjs sont chargés ensemble : basculer
       // l'un sans les autres affichait des mois français sous des libellés
-      // arabes le temps d'un aller-retour réseau.
+      // arabes le temps d'un aller-retour réseau. Charger le catalogue ne
+      // bascule pas encore `i18next` : `loadLanguage` est idempotent et sans
+      // effet de bord partagé, contrairement à `i18next.changeLanguage`.
       const [, antd] = await Promise.all([
-        applyLanguage(next),
+        loadLanguage(next),
         antdLocaleLoaders[next]().then(module => module.default),
         dayjsLocaleLoaders[next]()
       ]);
+
+      if (languageRequestId.current !== requestId) {
+        // Un appel plus récent a démarré entre-temps : celui-ci a perdu la
+        // course, il n'écrit plus rien (ni `i18next`, ni le document, ni
+        // l'état React, ni `localStorage`).
+        return;
+      }
+
+      await i18next.changeLanguage(next);
+
+      if (languageRequestId.current !== requestId) {
+        // Un appel plus récent a démarré pendant `changeLanguage` lui-même.
+        return;
+      }
 
       dayjs.locale(LANGUAGES[next].dayjs);
       applyDocumentLanguage(next);
       setAntdLocale(antd);
       setLanguageState(next);
-      persistLanguage(next);
+      // `persist: false` est réservé à la détection du navigateur au montage
+      // (voir plus bas) : une langue devinée depuis `navigator.languages`
+      // n'est pas un choix de la personne, et l'écrire dans `localStorage`
+      // la ferait passer pour tel — `LanguagePreferenceSync` l'enverrait
+      // alors au compte comme si elle l'avait sélectionnée elle-même.
+      if (persist) persistLanguage(next);
     } finally {
-      setIsSwitching(false);
+      // Seul le dernier appel en date fait retomber `isSwitching` : un appel
+      // périmé qui se termine (ou abandonne à la garde ci-dessus) ne doit pas
+      // marquer la fin d'une bascule encore en cours côté appel plus récent.
+      if (languageRequestId.current === requestId) {
+        setIsSwitching(false);
+      }
     }
   }, []);
 
-  // Au montage, on applique la langue réellement voulue : celle mémorisée, ou
-  // celle du navigateur. `setLanguage` attend le catalogue avant de basculer,
-  // si bien que texte, sens d'écriture et locale de dates changent ensemble.
+  // Au montage, on affiche la langue réellement voulue : celle mémorisée, ou
+  // à défaut celle du navigateur. `setLanguage` attend le catalogue avant de
+  // basculer, si bien que texte, sens d'écriture et locale de dates changent
+  // ensemble. Seule une langue déjà mémorisée (donc déjà un choix, explicite
+  // ou repris du compte à une connexion précédente) est réécrite dans
+  // `localStorage` ; une langue simplement devinée depuis le navigateur ne
+  // l'est pas — voir `persist` ci-dessus et `detectInitialLanguage` dans
+  // `config.ts`.
   useEffect(() => {
     const detected = detectInitialLanguage();
     if (detected === DEFAULT_LANGUAGE) {
       applyDocumentLanguage(DEFAULT_LANGUAGE);
+      setInitialLanguageResolved(true);
       return;
     }
-    void setLanguage(detected);
+    let alreadyStored = false;
+    try {
+      alreadyStored = isLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+    } catch {
+      // Navigation privée ou stockage refusé : rien à distinguer.
+    }
+    void setLanguage(detected, { persist: alreadyStored }).finally(() => {
+      setInitialLanguageResolved(true);
+    });
     // Volontairement au montage seulement : les changements ultérieurs passent
     // par `setLanguage`, qui fait déjà tout ce travail.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -156,9 +231,10 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
       locale: LANGUAGES[language].locale,
       setLanguage,
       isSwitching,
+      initialLanguageResolved,
       antdLocale
     }),
-    [language, setLanguage, isSwitching, antdLocale]
+    [language, setLanguage, isSwitching, initialLanguageResolved, antdLocale]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

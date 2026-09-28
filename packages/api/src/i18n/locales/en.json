@@ -874,5 +874,6 @@
   "Vous avez déjà une caisse ouverte.": "You already have an open cash session.",
   "Vous avez demandé à réinitialiser votre mot de passe. Cliquez sur le lien ci-dessous pour créer un nouveau mot de passe :": "You asked to reset your password. Click the link below to create a new one:",
   "Vous n'avez pas accès à cette ressource.": "You do not have access to this resource.",
-  "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}."
+  "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}.",
+  "Vue patrimoine indisponible.": "Portfolio view unavailable."
 }

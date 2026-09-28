@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../../navigation/feature-access';
 import { catalogForPersona } from '../../navigation/menu-catalog';
 import { useFilteredNavigation } from '../../hooks/useMenuAccess';
 
 /** Menu et abonnement (vague 2, lot A). */
-const nav = NAVIGATION.collaborateur;
+const nav = getNavigation().collaborateur;
 const keys = (tree: { key: string }[]) => tree.map(g => g.key);
 
 describe('featureAccessFromModules', () => {
