@@ -9,6 +9,8 @@
  * `audit-service` sont simules : ils ont leurs propres tests.
  */
 
+export {};
+
 type Row = Record<string, any>;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

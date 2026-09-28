@@ -5,6 +5,8 @@
  * routage de `run()` avec le service simule.
  */
 
+export {};
+
 type Row = Record<string, any>;
 
 const FAKE_ENTITLEMENTS_NOW: Row = {
