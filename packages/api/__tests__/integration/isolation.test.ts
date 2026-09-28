@@ -180,6 +180,26 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(row).not.toBeNull();
         expect(row!.title).toBe('BienB');
       }
+    },
+    {
+      // Lot P4 (Patrimoine — entités détentrices et fiscalité).
+      name: 'Entité détentrice (patrimoine)',
+      createDirect: tenantId =>
+        prisma.holdingEntity
+          .create({
+            data: { tenantId, name: `EntiteB-${Date.now()}-${Math.random()}`, legalForm: 'SCI', country: 'CI' }
+          })
+          .then(entity => entity.id),
+      itemPath: (tenantId, id) => `/api/tenants/${tenantId}/patrimoine/entities/${id}`,
+      listPath: tenantId => `/api/tenants/${tenantId}/patrimoine/entities`,
+      updateMethod: 'patch',
+      updateBody: { notes: 'Modifie par A — ne doit jamais arriver' },
+      listItems: body => body.data ?? [],
+      assertIntact: async id => {
+        const row = await prisma.holdingEntity.findUnique({ where: { id } });
+        expect(row).not.toBeNull();
+        expect(row!.notes).toBeNull();
+      }
     }
   ];
 

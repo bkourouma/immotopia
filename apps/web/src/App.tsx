@@ -93,6 +93,22 @@ const OwnerStatementDetailPage = lazy(() =>
     default: m.OwnerStatementDetailPage
   }))
 );
+// Lot P4 — entités détentrices (SCI/holding) et fiscalité CI/ML.
+const HoldingEntitiesPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/entities/HoldingEntitiesPage').then(m => ({
+    default: m.HoldingEntitiesPage
+  }))
+);
+const HoldingEntityDetailPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/entities/HoldingEntityDetailPage').then(m => ({
+    default: m.HoldingEntityDetailPage
+  }))
+);
+const TaxParametersPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/tax/TaxParametersPage').then(m => ({
+    default: m.TaxParametersPage
+  }))
+);
 // Module financier — regroupe dans un seul morceau : les quatre ecrans se
 // consultent a la suite (une balance, puis le releve qu'elle ouvre), et les
 // separer ferait payer un aller-retour reseau a chaque clic.
@@ -866,6 +882,12 @@ function App() {
                             path="/tenant/:tenantId/patrimoine/statements/:id"
                             element={<OwnerStatementDetailPage />}
                           />
+                          <Route path="/tenant/:tenantId/patrimoine/entities" element={<HoldingEntitiesPage />} />
+                          <Route
+                            path="/tenant/:tenantId/patrimoine/entities/:entityId"
+                            element={<HoldingEntityDetailPage />}
+                          />
+                          <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne

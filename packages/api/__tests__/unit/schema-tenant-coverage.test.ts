@@ -80,7 +80,11 @@ const GLOBAL_MODELS = new Set([
   // Vague 3, lot A : compteur de la serie continue IMT-AAAA-NNNNN des factures
   // PLATFORM. Une seule serie pour l'emetteur (Alliance Consultants), commune
   // a toutes les agences ; ne porte aucune donnee d'agence (annee, dernier numero).
-  'PlatformInvoiceSequence'
+  'PlatformInvoiceSequence',
+  // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
+  // fiscal versionné par pays et par année, alimenté par migration, commun à
+  // toutes les agences. Aucune écriture applicative (lecture seule).
+  'TaxParameter'
 ]);
 
 /**
@@ -198,7 +202,7 @@ describe('Schema — couverture multi-tenant de chaque modele (lot E, E3)', () =
       // eslint-disable-next-line no-console
       console.error(
         `Modele(s) non classe(s) dans __tests__/unit/schema-tenant-coverage.test.ts : ${unclassified.join(', ')}.\n` +
-          "Pour chacun : ajoutez un champ tenantId/tenant_id (cloisonne), OU une ligne dans CHILD_MODELS avec le " +
+          'Pour chacun : ajoutez un champ tenantId/tenant_id (cloisonne), OU une ligne dans CHILD_MODELS avec le ' +
           'chemin de relation obligatoire vers un parent cloisonne, OU une ligne commentee dans GLOBAL_MODELS ' +
           "si le modele est reellement plateforme (sans notion d'agence)."
       );
