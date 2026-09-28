@@ -89,6 +89,7 @@ import {
   adjustSyndicateFundBalanceByTenant
 } from '../lib/syndics/queries';
 import {
+  paginationQuerySchema,
   createSyndicateSchema,
   createLotSchema,
   importLotsFromPropertiesSchema,
@@ -160,11 +161,16 @@ export const listSyndicsHandler = asyncHandler(async (req: Request, res: Respons
     throw badRequest('TenantId manquant pour la liste des coproprietes');
   }
 
-  const syndics = await listSyndicatesByTenant(tenantId);
+  // Ecart recette (lot syndic-ecarts, T1) : `page`/`limit` valides ici (400
+  // sur une valeur non entiere, < 1 ou un `limit` > 100) plutot que
+  // coerces en silence vers la valeur par defaut.
+  const { page, limit } = paginationQuerySchema.parse(req.query);
+  const { items, total, totalPages } = await listSyndicatesByTenant(tenantId, { page, limit });
 
   res.json({
     success: true,
-    data: syndics.map(toSyndicateResponse)
+    data: items.map(toSyndicateResponse),
+    pagination: { page, limit, total, totalPages }
   });
 });
 

@@ -95,6 +95,36 @@ const CATALOG = [
     capacities: { CHANTIERS: 3, COPROPRIETES: 3, LOTS: 300 }
   },
   {
+    id: 'cat-patrimoine-essentiel',
+    code: 'PATRIMOINE_ESSENTIEL',
+    kind: 'PACK',
+    name: 'Patrimoine Essentiel',
+    description: 'Biens détenus en propre — 10 biens',
+    monthlyPrice: 9_900,
+    setupPrice: 30_000,
+    modules: ['MODULE_PATRIMOINE'],
+    exclusiveGroup: null,
+    rules: { tierGroup: 'PATRIMOINE' },
+    isSellable: true,
+    sortOrder: 50,
+    capacities: { BIENS_DETENUS: 10 }
+  },
+  {
+    id: 'cat-patrimoine-pro',
+    code: 'PATRIMOINE_PRO',
+    kind: 'PACK',
+    name: 'Patrimoine Pro',
+    description: 'Biens détenus en propre — 100 biens',
+    monthlyPrice: 29_900,
+    setupPrice: 90_000,
+    modules: ['MODULE_PATRIMOINE'],
+    exclusiveGroup: null,
+    rules: { tierGroup: 'PATRIMOINE' },
+    isSellable: true,
+    sortOrder: 60,
+    capacities: { BIENS_DETENUS: 100 }
+  },
+  {
     id: 'cat-ext-lots',
     code: 'EXT_LOTS_10',
     kind: 'EXTENSION',
@@ -153,7 +183,11 @@ const RESULT: ProvisionTenantResult = {
     items: [{ code: 'AGENCE', quantity: 1 }]
   },
   admin: { userId: 'user-1', email: 'admin@test.ci', fullName: 'Awa Koné', existingUser: false },
-  invitation: { id: 'invit-1', expiresAt: '2026-10-01T00:00:00.000Z', acceptUrl: 'https://immotopia.test/accept/invit-1' },
+  invitation: {
+    id: 'invit-1',
+    expiresAt: '2026-10-01T00:00:00.000Z',
+    acceptUrl: 'https://immotopia.test/accept/invit-1'
+  },
   emailSent: true
 };
 
@@ -181,7 +215,9 @@ beforeEach(() => {
   post.mockImplementation((url: string, body: any) => {
     if (url === '/admin/catalog/quote') {
       const packs: string[] = body.packs ?? [];
-      const monthly = packs.includes('INTEGRE') ? 249_900 : packs.reduce((sum, code) => sum + (CATALOG.find(c => c.code === code)?.monthlyPrice ?? 0), 0);
+      const monthly = packs.includes('INTEGRE')
+        ? 249_900
+        : packs.reduce((sum, code) => sum + (CATALOG.find(c => c.code === code)?.monthlyPrice ?? 0), 0);
       return Promise.resolve({
         data: {
           success: true,
@@ -241,57 +277,93 @@ describe('<CreateTenantDrawer> — exclusivité de l’Intégré', () => {
   // pas un bug de l'exclusivité (vérifiée pas à pas ci-dessous) : c'est cette
   // suite qui a besoin de plus de marge, comme `installments.test.tsx` le
   // documente pour les écrans qui montent une coquille lourde.
-  it(
-    "désélectionne les autres packs quand l'Intégré est choisi, et inversement",
-    async () => {
-      const user = userEvent.setup();
-      renderDrawer();
+  it("désélectionne les autres packs quand l'Intégré est choisi, et inversement", async () => {
+    const user = userEvent.setup();
+    renderDrawer();
 
-      // Clic par rôle, pas par texte : une fois un pack choisi, le récapitulatif
-      // chiffré affiche une ligne portant le MÊME libellé que la carte (« Agence »,
-      // « Opérateur intégré »…), ce qui rendrait `getByText` ambigu.
-      await screen.findByText('Agence');
-      // Le clic déclenche l'appel au devis (`/admin/catalog/quote`) qui peut
-      // légèrement retarder le rendu sous charge : le délai par défaut de
-      // `waitFor` (1 s) est parfois trop court dans cet environnement partagé.
-      await user.click(screen.getByRole('checkbox', { name: /^Agence/ }));
-      await waitFor(() => expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'true'), {
+    // Clic par rôle, pas par texte : une fois un pack choisi, le récapitulatif
+    // chiffré affiche une ligne portant le MÊME libellé que la carte (« Agence »,
+    // « Opérateur intégré »…), ce qui rendrait `getByText` ambigu.
+    await screen.findByText('Agence');
+    // Le clic déclenche l'appel au devis (`/admin/catalog/quote`) qui peut
+    // légèrement retarder le rendu sous charge : le délai par défaut de
+    // `waitFor` (1 s) est parfois trop court dans cet environnement partagé.
+    await user.click(screen.getByRole('checkbox', { name: /^Agence/ }));
+    await waitFor(
+      () => expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'true'),
+      {
         timeout: 5000
-      });
+      }
+    );
 
-      await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
-      await waitFor(
-        () => {
-          expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'true');
-          expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'false');
-        },
-        { timeout: 5000 }
-      );
+    await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'false');
+      },
+      { timeout: 5000 }
+    );
 
-      // Les trois autres packs sont désactivés tant que l'Intégré est choisi.
-      expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-disabled', 'true');
-      expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-disabled', 'true');
-      expect(screen.getByRole('checkbox', { name: /Promoteur/ })).toHaveAttribute('aria-disabled', 'true');
+    // Les trois autres packs sont désactivés tant que l'Intégré est choisi.
+    expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('checkbox', { name: /Promoteur/ })).toHaveAttribute('aria-disabled', 'true');
 
-      // Les cartes des trois autres packs sont désactivées tant que l'Intégré
-      // reste choisi (exclusivité stricte) : il faut d'abord le décocher lui-même.
-      await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
-      await waitFor(
-        () => expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false'),
-        { timeout: 5000 }
-      );
+    // Les cartes des trois autres packs sont désactivées tant que l'Intégré
+    // reste choisi (exclusivité stricte) : il faut d'abord le décocher lui-même.
+    await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
+    await waitFor(
+      () =>
+        expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false'),
+      { timeout: 5000 }
+    );
 
-      await user.click(screen.getByRole('checkbox', { name: /Syndic/ }));
-      await waitFor(
-        () => {
-          expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false');
-          expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-checked', 'true');
-        },
-        { timeout: 5000 }
-      );
-    },
-    90000
-  );
+    await user.click(screen.getByRole('checkbox', { name: /Syndic/ }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false');
+        expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-checked', 'true');
+      },
+      { timeout: 5000 }
+    );
+  }, 90000);
+});
+
+describe('<CreateTenantDrawer> — palier Patrimoine (Essentiel / Pro, lot P1)', () => {
+  it('Essentiel et Pro ne se cumulent pas : choisir l’un désélectionne l’autre', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+
+    await screen.findByText('Patrimoine Essentiel');
+    await user.click(screen.getByRole('checkbox', { name: /Patrimoine Essentiel/ }));
+    await waitFor(
+      () =>
+        expect(screen.getByRole('checkbox', { name: /Patrimoine Essentiel/ })).toHaveAttribute('aria-checked', 'true'),
+      { timeout: 5000 }
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /Patrimoine Pro/ }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole('checkbox', { name: /Patrimoine Pro/ })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('checkbox', { name: /Patrimoine Essentiel/ })).toHaveAttribute('aria-checked', 'false');
+      },
+      { timeout: 5000 }
+    );
+
+    // Les deux paliers restent cumulables avec un pack d'une autre gamme
+    // (Agence) : ni l'un ni l'autre n'est désactivé.
+    await user.click(screen.getByRole('checkbox', { name: /^Agence/ }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('checkbox', { name: /Patrimoine Pro/ })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('checkbox', { name: /Patrimoine Pro/ })).toHaveAttribute('aria-disabled', 'false');
+      },
+      { timeout: 5000 }
+    );
+  }, 90000);
 });
 
 describe('<CreateTenantDrawer> — récapitulatif chiffré en direct', () => {
@@ -302,9 +374,12 @@ describe('<CreateTenantDrawer> — récapitulatif chiffré en direct', () => {
     await screen.findByText('Agence');
     await user.click(screen.getByText('Agence'));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/catalog/quote', expect.objectContaining({ packs: ['AGENCE'] })), {
-      timeout: 2000
-    });
+    await waitFor(
+      () => expect(post).toHaveBeenCalledWith('/admin/catalog/quote', expect.objectContaining({ packs: ['AGENCE'] })),
+      {
+        timeout: 2000
+      }
+    );
 
     const totalLabel = await screen.findByText('Total HT mensuel');
     // La ligne « Agence » ET le total affichent le même montant (un seul
@@ -327,7 +402,9 @@ describe('<CreateTenantDrawer> — création', () => {
     await remplirChampsObligatoires(user);
     await screen.findByText('Agence');
     await user.click(screen.getByText('Agence'));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/catalog/quote', expect.anything()), { timeout: 2000 });
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/catalog/quote', expect.anything()), {
+      timeout: 2000
+    });
 
     await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
 
@@ -351,9 +428,15 @@ describe('<CreateTenantDrawer> — création', () => {
   it('affiche le message du serveur en cas de refus', async () => {
     post.mockImplementation((url: string) => {
       if (url === '/admin/catalog/quote') {
-        return Promise.resolve({ data: { success: true, data: { lines: [], subtotal: 0, comboDiscount: 0, extensions: {}, monthly: 29_900, annual: 328_900 } } });
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: { lines: [], subtotal: 0, comboDiscount: 0, extensions: {}, monthly: 29_900, annual: 328_900 }
+          }
+        });
       }
-      if (url === '/admin/tenants') return Promise.reject({ response: { data: { message: 'Cette agence existe déjà.' } } });
+      if (url === '/admin/tenants')
+        return Promise.reject({ response: { data: { message: 'Cette agence existe déjà.' } } });
       return Promise.reject(new Error(`POST non simulé : ${url}`));
     });
 

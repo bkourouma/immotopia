@@ -43,6 +43,18 @@ vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ tenantMembership: { tenantId: 'agence-1' }, user: { email: 'a@b.c' } })
 }));
 
+/**
+ * Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : lue via
+ * `getMenuEntitlements` (hooks/useMenuAccess.ts, `useOwnAssetsOnly`), donc
+ * mockée à ce niveau plutôt qu'à `api-client` — même frontière que les autres
+ * services mockés dans ce fichier.
+ */
+const getMenuEntitlements = vi.fn();
+vi.mock('../../services/entitlements-service', () => ({
+  __esModule: true,
+  getMenuEntitlements: (...a: unknown[]) => getMenuEntitlements(...a)
+}));
+
 // Composants lourds, hors sujet des deux défauts testés ici.
 vi.mock('../../components/ui/location-selector', () => ({
   LocationSelector: () => <div data-testid="selecteur-localisation" />
@@ -76,7 +88,7 @@ const BIEN_PRIVE: Property = {
   availability: 'AVAILABLE'
 } as unknown as Property;
 
-function monter(property: Property) {
+function monter(property?: Property) {
   return render(
     <AntApp>
       <FeedbackBridge />
@@ -88,8 +100,10 @@ function monter(property: Property) {
 beforeEach(() => {
   getTemplate.mockReset();
   getTenantClients.mockReset();
+  getMenuEntitlements.mockReset();
   getTemplate.mockResolvedValue({ sections: [], fieldDefinitions: [] });
   getTenantClients.mockResolvedValue({ success: true, data: PROPRIETAIRES });
+  getMenuEntitlements.mockResolvedValue({ moduleAccess: {}, readOnly: false, phase: 'ACTIVE', enforcement: 'off' });
 });
 
 describe('Fiche d’un bien — le sélecteur « Propriétaire » se filtre à la saisie', () => {
@@ -159,5 +173,42 @@ describe('Fiche d’un bien — le propriétaire n’est requis que hors « prop
     expect(
       await screen.findByText("Ce bien appartient à l'agence : il n'a pas de propriétaire distinct.")
     ).toBeInTheDocument();
+  });
+});
+
+describe('Fiche d’un bien — barrière « détenu en propre » (pack Patrimoine seul, lot P1)', () => {
+  it('ne propose que « Propriété de l’agence » à la création, quand ownAssetsOnly est vrai', async () => {
+    const user = userEvent.setup();
+    getMenuEntitlements.mockResolvedValue({
+      moduleAccess: { MODULE_PATRIMOINE: 'FULL' },
+      readOnly: false,
+      phase: 'ACTIVE',
+      enforcement: 'enforce',
+      ownAssetsOnly: true
+    });
+    monter();
+
+    await waitFor(() => expect(getMenuEntitlements).toHaveBeenCalledWith('agence-1'));
+
+    const champ = await screen.findByLabelText('Type de propriété');
+    await user.click(champ);
+
+    const optionsVisibles = () =>
+      Array.from(document.querySelectorAll('.ant-select-item-option-content')).map(el => el.textContent);
+    await waitFor(() => expect(optionsVisibles()).toEqual(["Propriété de l'agence"]));
+  });
+
+  it('propose les trois types quand ownAssetsOnly est faux', async () => {
+    const user = userEvent.setup();
+    monter();
+
+    const champ = await screen.findByLabelText('Type de propriété');
+    await user.click(champ);
+
+    const optionsVisibles = () =>
+      Array.from(document.querySelectorAll('.ant-select-item-option-content')).map(el => el.textContent);
+    await waitFor(() =>
+      expect(optionsVisibles()).toEqual(["Propriété de l'agence", 'Propriété privée', 'Mandat de gestion'])
+    );
   });
 });

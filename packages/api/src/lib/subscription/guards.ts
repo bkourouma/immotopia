@@ -12,14 +12,20 @@
 import {
   ModuleNotIncludedError,
   ModuleReadOnlyError,
+  OwnAssetsOnlyError,
   QuotaExceededError,
-  SubscriptionReadOnlyError
+  SubscriptionReadOnlyError,
+  ThirdPartyAction
 } from '../../middleware/error-middleware';
 import { logger } from '../../utils/logger';
 import type { CapacityKeyCode, ModuleKeyCode } from './catalog';
 import { evaluateQuota, QuotaEvaluation, TenantEntitlements } from './entitlements';
 
-function refuse(entitlements: TenantEntitlements, error: Error, context: Record<string, unknown>): void {
+function refuse(
+  entitlements: Pick<TenantEntitlements, 'tenantId' | 'enforcement'>,
+  error: Error,
+  context: Record<string, unknown>
+): void {
   if (entitlements.enforcement === 'off') return;
   if (entitlements.enforcement === 'warn') {
     logger.warn('Subscription guard (warn): would have refused', {
@@ -56,6 +62,22 @@ export function assertSubscriptionWritable(entitlements: TenantEntitlements): vo
   refuse(entitlements, new SubscriptionReadOnlyError(entitlements.readOnlyReason), {
     reason: entitlements.readOnlyReason
   });
+}
+
+/**
+ * Barriere « detenu en propre » (pack Patrimoine, 28/09) : une agence dont
+ * le seul module pleinement ouvert est MODULE_PATRIMOINE (`ownAssetsOnly`)
+ * ne cree pas de mandat et ne rattache pas de proprietaire tiers. `off` :
+ * rien ; `warn` : journalise et laisse passer ; `enforce` : 403
+ * OWN_ASSETS_ONLY. Les agences qui detiennent un autre module (Agence,
+ * Syndic, Promoteur) ne sont jamais concernees.
+ */
+export function assertThirdPartyManagementAllowed(
+  entitlements: Pick<TenantEntitlements, 'tenantId' | 'enforcement' | 'ownAssetsOnly'>,
+  action: ThirdPartyAction
+): void {
+  if (!entitlements.ownAssetsOnly) return;
+  refuse(entitlements, new OwnAssetsOnlyError(action), { action });
 }
 
 /**

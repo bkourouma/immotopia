@@ -32,7 +32,9 @@ import { ACTIVE_SITE_STATUSES, ACTIVE_SYNDICATE_STATUSES } from './lot-registry-
 
 const toNumber = (value: unknown): number => (value === null || value === undefined ? 0 : Number(String(value)));
 
-const itemInclude = { catalogItem: { include: { capacities: { select: { capacityKey: true, amount: true } } } } } as const;
+const itemInclude = {
+  catalogItem: { include: { capacities: { select: { capacityKey: true, amount: true } } } }
+} as const;
 type ItemRow = Prisma.SubscriptionItemGetPayload<{ include: typeof itemInclude }>;
 
 /** Meme forme que `serializeItem` (subscription-v2-service.ts). */
@@ -72,14 +74,22 @@ export interface UpdateItemInput {
  * termine. Prend effet sur la prochaine facture (aucun prorata retroactif) ;
  * les lignes deja facturees ou en attente ne changent pas.
  */
-export async function updateSubscriptionItem(tenantId: string, itemId: string, input: UpdateItemInput, actorUserId: string) {
+export async function updateSubscriptionItem(
+  tenantId: string,
+  itemId: string,
+  input: UpdateItemInput,
+  actorUserId: string
+) {
   if (input.discountPercent === undefined && input.unitMonthlyPrice === undefined && input.note === undefined) {
     throw new BadRequestError('Aucune modification demandée.');
   }
   if (input.discountPercent !== undefined && (input.discountPercent < 0 || input.discountPercent > 100)) {
     throw new BadRequestError('La remise doit être comprise entre 0 et 100 %.');
   }
-  if (input.unitMonthlyPrice !== undefined && (!Number.isFinite(input.unitMonthlyPrice) || input.unitMonthlyPrice < 0)) {
+  if (
+    input.unitMonthlyPrice !== undefined &&
+    (!Number.isFinite(input.unitMonthlyPrice) || input.unitMonthlyPrice < 0)
+  ) {
     throw new BadRequestError('Le prix mensuel doit être positif ou nul.');
   }
 
@@ -109,8 +119,16 @@ export async function updateSubscriptionItem(tenantId: string, itemId: string, i
     payload: {
       code: before.catalogItem.code,
       reason: input.reason ?? null,
-      before: { discountPercent: toNumber(before.discountPercent), unitMonthlyPrice: toNumber(before.unitMonthlyPrice), note: before.note },
-      after: { discountPercent: toNumber(updated.discountPercent), unitMonthlyPrice: toNumber(updated.unitMonthlyPrice), note: updated.note }
+      before: {
+        discountPercent: toNumber(before.discountPercent),
+        unitMonthlyPrice: toNumber(before.unitMonthlyPrice),
+        note: before.note
+      },
+      after: {
+        discountPercent: toNumber(updated.discountPercent),
+        unitMonthlyPrice: toNumber(updated.unitMonthlyPrice),
+        note: updated.note
+      }
     }
   });
   return serializeItem(updated);
@@ -146,8 +164,12 @@ async function toRequestDtos(rows: RequestRow[]): Promise<ExtensionRequestDto[]>
   const userIds = [...new Set(rows.map(r => r.requestedByUserId).filter((v): v is string => Boolean(v)))];
   const codes = [...new Set(rows.map(r => r.catalogCode).filter((v): v is string => Boolean(v)))];
   const [users, catalog] = await Promise.all([
-    userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } }) : [],
-    codes.length ? prisma.catalogItem.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } }) : []
+    userIds.length
+      ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
+      : [],
+    codes.length
+      ? prisma.catalogItem.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })
+      : []
   ]);
   const userName = new Map(users.map(u => [u.id, u.fullName]));
   const catalogName = new Map(catalog.map(c => [c.code, c.name]));
@@ -155,9 +177,9 @@ async function toRequestDtos(rows: RequestRow[]): Promise<ExtensionRequestDto[]>
     id: row.id,
     tenantId: row.tenantId,
     requestedByUserId: row.requestedByUserId,
-    requestedByName: row.requestedByUserId ? userName.get(row.requestedByUserId) ?? null : null,
+    requestedByName: row.requestedByUserId ? (userName.get(row.requestedByUserId) ?? null) : null,
     catalogCode: row.catalogCode,
-    catalogName: row.catalogCode ? catalogName.get(row.catalogCode) ?? null : null,
+    catalogName: row.catalogCode ? (catalogName.get(row.catalogCode) ?? null) : null,
     quantity: row.quantity,
     message: row.message,
     status: row.status,
@@ -201,7 +223,10 @@ export async function createExtensionRequest(
   if (message.length < 3) throw new BadRequestError('Décrivez votre demande.');
   let catalogName: string | null = null;
   if (input.catalogCode) {
-    const item = await prisma.catalogItem.findUnique({ where: { code: input.catalogCode }, select: { name: true, isSellable: true } });
+    const item = await prisma.catalogItem.findUnique({
+      where: { code: input.catalogCode },
+      select: { name: true, isSellable: true }
+    });
     if (!item || !item.isSellable) throw new NotFoundError('Offre introuvable dans le catalogue.');
     catalogName = item.name;
   }
@@ -233,7 +258,9 @@ export async function createExtensionRequest(
   const subject = t("[ImmoTopia] Demande d'extension — {{agency}}", { agency });
   const text = [
     t("L'agence {{agency}} demande une extension de son abonnement.", { agency }),
-    catalogName ? t('Offre : {{offer}} (quantité : {{quantity}})', { offer: catalogName, quantity: row.quantity ?? 1 }) : '',
+    catalogName
+      ? t('Offre : {{offer}} (quantité : {{quantity}})', { offer: catalogName, quantity: row.quantity ?? 1 })
+      : '',
     t('Demandeur : {{name}} ({{email}})', { name: user?.fullName ?? '—', email: user?.email ?? '—' }),
     '',
     message,
@@ -277,7 +304,12 @@ export async function handleExtensionRequest(
   if (existing.status !== 'OPEN') throw new BadRequestError('Cette demande est déjà close.');
   const row = await prisma.subscriptionExtensionRequest.update({
     where: { id: requestId, tenantId },
-    data: { status: input.status, handledAt: new Date(), handledByUserId: actorUserId, handledNote: input.note?.trim() || null }
+    data: {
+      status: input.status,
+      handledAt: new Date(),
+      handledByUserId: actorUserId,
+      handledNote: input.note?.trim() || null
+    }
   });
   logAuditEvent({
     actorUserId,
@@ -320,38 +352,56 @@ function countMap(rows: Array<{ tenantId: string; _count: { _all: number } }>): 
  * Resume de l'abonnement de plusieurs agences en une dizaine de requetes
  * groupees, quelle que soit la taille de la page (supprime le N+1 de la liste
  * des agences). Consommation : comptages par defaut du registre (LOTS =
- * activations ouvertes, D14 pour coproprietes et chantiers).
+ * activations ouvertes hors biens detenus, BIENS_DETENUS = activations
+ * ouvertes de nature HELD_PROPERTY, D14 pour coproprietes et chantiers).
  */
-export async function listSubscriptionSummaries(tenantIds: readonly string[]): Promise<Record<string, SubscriptionSummary>> {
+export async function listSubscriptionSummaries(
+  tenantIds: readonly string[]
+): Promise<Record<string, SubscriptionSummary>> {
   const ids = [...new Set(tenantIds)].slice(0, MAX_SUMMARY_TENANTS);
   if (ids.length === 0) return {};
   const where = { tenantId: { in: ids } };
-  const [subscriptions, items, overrides, moduleRows, lots, copros, sites, requests] = await Promise.all([
-    prisma.subscription.findMany({ where }),
-    prisma.subscriptionItem.findMany({
-      where: { ...where, status: { not: SubscriptionItemStatus.ENDED } },
-      include: itemInclude
-    }),
-    prisma.capacityOverride.findMany({ where: { ...where, revokedAt: null } }),
-    prisma.tenantModule.findMany({ where }),
-    prisma.lotActivation.groupBy({ by: ['tenantId'], where: { ...where, deactivatedAt: null }, _count: { _all: true } }),
-    prisma.syndicate.groupBy({
-      by: ['tenantId'],
-      where: { ...where, status: { in: [...ACTIVE_SYNDICATE_STATUSES] } },
-      _count: { _all: true }
-    }),
-    prisma.constructionSite.groupBy({
-      by: ['tenantId'],
-      where: { ...where, status: { in: [...ACTIVE_SITE_STATUSES] } },
-      _count: { _all: true }
-    }),
-    prisma.subscriptionExtensionRequest.groupBy({ by: ['tenantId'], where: { ...where, status: 'OPEN' }, _count: { _all: true } })
-  ]);
+  const [subscriptions, items, overrides, moduleRows, lots, copros, sites, requests, heldProperties] =
+    await Promise.all([
+      prisma.subscription.findMany({ where }),
+      prisma.subscriptionItem.findMany({
+        where: { ...where, status: { not: SubscriptionItemStatus.ENDED } },
+        include: itemInclude
+      }),
+      prisma.capacityOverride.findMany({ where: { ...where, revokedAt: null } }),
+      prisma.tenantModule.findMany({ where }),
+      prisma.lotActivation.groupBy({
+        by: ['tenantId'],
+        where: { ...where, deactivatedAt: null, kind: { not: 'HELD_PROPERTY' } },
+        _count: { _all: true }
+      }),
+      prisma.syndicate.groupBy({
+        by: ['tenantId'],
+        where: { ...where, status: { in: [...ACTIVE_SYNDICATE_STATUSES] } },
+        _count: { _all: true }
+      }),
+      prisma.constructionSite.groupBy({
+        by: ['tenantId'],
+        where: { ...where, status: { in: [...ACTIVE_SITE_STATUSES] } },
+        _count: { _all: true }
+      }),
+      prisma.subscriptionExtensionRequest.groupBy({
+        by: ['tenantId'],
+        where: { ...where, status: 'OPEN' },
+        _count: { _all: true }
+      }),
+      prisma.lotActivation.groupBy({
+        by: ['tenantId'],
+        where: { ...where, deactivatedAt: null, kind: 'HELD_PROPERTY' },
+        _count: { _all: true }
+      })
+    ]);
 
   const lotCounts = countMap(lots as Array<{ tenantId: string; _count: { _all: number } }>);
   const coproCounts = countMap(copros as Array<{ tenantId: string; _count: { _all: number } }>);
   const siteCounts = countMap(sites as Array<{ tenantId: string; _count: { _all: number } }>);
   const requestCounts = countMap(requests as Array<{ tenantId: string; _count: { _all: number } }>);
+  const heldCounts = countMap(heldProperties as Array<{ tenantId: string; _count: { _all: number } }>);
   const now = new Date();
   const enforcement = getSubscriptionEnforcement();
   const result: Record<string, SubscriptionSummary> = {};
@@ -398,7 +448,8 @@ export async function listSubscriptionSummaries(tenantIds: readonly string[]): P
       usage: {
         LOTS: lotCounts.get(tenantId) ?? 0,
         COPROPRIETES: coproCounts.get(tenantId) ?? 0,
-        CHANTIERS: siteCounts.get(tenantId) ?? 0
+        CHANTIERS: siteCounts.get(tenantId) ?? 0,
+        BIENS_DETENUS: heldCounts.get(tenantId) ?? 0
       },
       enforcement,
       featuresFor: featuresForModules,
@@ -413,7 +464,9 @@ export async function listSubscriptionSummaries(tenantIds: readonly string[]): P
     const lotsUsagePercent =
       lotsCap.limit > 0 ? Math.round((lotsCap.used / lotsCap.limit) * 100) : lotsCap.used > 0 ? 100 : null;
     const nextDue =
-      entitlements.phase === 'TRIAL' ? entitlements.trialEndsAt ?? entitlements.currentPeriodEnd : entitlements.currentPeriodEnd;
+      entitlements.phase === 'TRIAL'
+        ? (entitlements.trialEndsAt ?? entitlements.currentPeriodEnd)
+        : entitlements.currentPeriodEnd;
 
     result[tenantId] = {
       tenantId,
@@ -423,7 +476,9 @@ export async function listSubscriptionSummaries(tenantIds: readonly string[]): P
       packs: entitlements.packs,
       capacities,
       lotsUsagePercent,
-      nearLimit: CAPACITY_KEYS.some(key => capacities[key].limit > 0 && capacities[key].used / capacities[key].limit >= NEAR_LIMIT),
+      nearLimit: CAPACITY_KEYS.some(
+        key => capacities[key].limit > 0 && capacities[key].used / capacities[key].limit >= NEAR_LIMIT
+      ),
       nextDueAt: nextDue ? nextDue.toISOString() : null,
       openExtensionRequests: requestCounts.get(tenantId) ?? 0
     };

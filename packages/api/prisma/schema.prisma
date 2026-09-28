@@ -38,6 +38,7 @@ enum ModuleKey {
   MODULE_AGENCY
   MODULE_SYNDIC
   MODULE_PROMOTER
+  MODULE_PATRIMOINE // Pack Patrimoine : biens detenus en propre, gestion locative directe, sans mandat
 }
 
 enum MembershipStatus {
@@ -102,6 +103,7 @@ enum CapacityKey {
   LOTS // Reserve UNIQUE de lots : logements, lots de copropriete, lots de programme
   COPROPRIETES // Coproprietes actives (ACTIVE, IN_DISPUTE)
   CHANTIERS // Chantiers actifs (PLANNED, IN_PROGRESS, SUSPENDED)
+  BIENS_DETENUS // Biens detenus en propre (pack Patrimoine), loues ou non
 }
 
 enum SubscriptionItemStatus {
@@ -122,6 +124,7 @@ enum LotKind {
   RENTAL_UNIT
   COPRO_LOT
   PROGRAM_LOT
+  HELD_PROPERTY // Bien detenu en propre, compte dans BIENS_DETENUS (pack Patrimoine) et non dans LOTS
 }
 
 enum InvoiceLineKind {
@@ -710,6 +713,7 @@ model Tenant {
   siteLots                 SiteLot[]
   stockSettings            StockSettings?
   financeSettings          AgencyFinanceSettings?
+  ownerPortalSettings      OwnerPortalSettings?
   ownerManagementTerms     OwnerManagementTerms[]
   leaseManagementTerms     LeaseManagementTerms[]
   agentCommissionRates     AgentCommissionRate[]
@@ -5160,6 +5164,28 @@ model AgencyFinanceSettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("agency_finance_settings")
+}
+
+/// Reglage du portail proprietaire (lot P5) : masquage de la vue patrimoine
+/// et de ses rubriques. Tant que l'agence n'a rien enregistre, la lecture
+/// renvoie les valeurs par defaut (tout actif) SANS ecrire -- meme patron
+/// que `AgencyFinanceSettings` (`lib/settings/finance-settings.ts`).
+model OwnerPortalSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @unique @map("tenant_id")
+  patrimonyEnabled      Boolean  @default(true) @map("patrimony_enabled")
+  patrimonyShowValuation Boolean @default(true) @map("patrimony_show_valuation")
+  patrimonyShowYield    Boolean  @default(true) @map("patrimony_show_yield")
+  patrimonyShowLoans    Boolean  @default(true) @map("patrimony_show_loans")
+  patrimonyShowWorks    Boolean  @default(true) @map("patrimony_show_works")
+  patrimonyShowDocuments Boolean @default(true) @map("patrimony_show_documents")
+  updatedByUserId       String?  @map("updated_by_user_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("owner_portal_settings")
 }
 
 /// Releve de gerance d'un proprietaire pour un mois.

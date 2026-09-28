@@ -95,12 +95,18 @@ type PropertyLabelSource = {
   containerParent?: { title?: string | null } | null;
 };
 
-function buildPropertyNomenclatureLabel(property: PropertyLabelSource): string {
-  const ownerLabel = property.owner?.fullName?.trim() || '';
+/** Le bien seul : le propriétaire a son propre champ et sa propre colonne. */
+function buildPropertyLabel(property: PropertyLabelSource): string {
   const title = property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
   const buildingPart = property.containerParent?.title ? ` ( ${property.containerParent.title} )` : '';
-  const titleWithBuilding = title + buildingPart;
-  return ownerLabel ? `${ownerLabel} - ${titleWithBuilding}` : titleWithBuilding;
+  return title + buildingPart;
+}
+
+/** Le bien précédé de son propriétaire, pour l'import où rien d'autre ne le montre. */
+function buildPropertyNomenclatureLabel(property: PropertyLabelSource): string {
+  const ownerLabel = property.owner?.fullName?.trim() || '';
+  const propertyLabel = buildPropertyLabel(property);
+  return ownerLabel ? `${ownerLabel} - ${propertyLabel}` : propertyLabel;
 }
 
 function inferLotTypeFromProperty(property: Property): LotType {
@@ -196,7 +202,7 @@ export const SyndicLots: React.FC = () => {
         return;
       }
 
-      labelById[property.id] = buildPropertyNomenclatureLabel(property);
+      labelById[property.id] = buildPropertyLabel(property);
     });
 
     return labelById;
@@ -274,7 +280,7 @@ export const SyndicLots: React.FC = () => {
       const properties = propertiesResult.value.properties.filter(property => property.ownershipType !== 'PUBLIC');
       const selectableProperties = properties.map(property => ({
         value: property.id,
-        label: buildPropertyNomenclatureLabel(property),
+        label: buildPropertyLabel(property),
         inferredLotType: inferLotTypeFromProperty(property),
         inferredLotNumber: inferLotNumberFromProperty(property),
         ownerEmail: property.owner?.email || undefined
@@ -289,7 +295,7 @@ export const SyndicLots: React.FC = () => {
           .filter(property => !property.containerParent && property.propertyType !== 'IMMEUBLE')
           .map(property => ({
             value: property.id,
-            label: buildPropertyNomenclatureLabel(property),
+            label: buildPropertyLabel(property),
             inferredLotType: inferLotTypeFromProperty(property),
             inferredLotNumber: inferLotNumberFromProperty(property),
             ownerEmail: property.owner?.email || undefined
@@ -608,6 +614,28 @@ export const SyndicLots: React.FC = () => {
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical" initialValues={{ lotType: 'APARTMENT' }}>
+          {/* Le bien d'abord : il remplit le type et le numéro, et propose le
+              propriétaire. Saisi après, il écraserait ces champs. */}
+          <Form.Item label={t('Bien lié')} name="propertyId">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Sélectionner un bien existant')}
+              options={lotPropertyOptions}
+              onChange={handlePropertyChange}
+            />
+          </Form.Item>
+          <Form.Item label={t('Propriétaire CRM')} name="ownerContactId">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Sélection automatique si disponible')}
+              options={ownerOptions}
+            />
+          </Form.Item>
+
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
@@ -646,25 +674,6 @@ export const SyndicLots: React.FC = () => {
             </Col>
           </Row>
 
-          <Form.Item label={t('Bien lié')} name="propertyId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Sélectionner un bien existant')}
-              options={lotPropertyOptions}
-              onChange={handlePropertyChange}
-            />
-          </Form.Item>
-          <Form.Item label={t('Propriétaire CRM')} name="ownerContactId">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('Sélection automatique si disponible')}
-              options={ownerOptions}
-            />
-          </Form.Item>
           <Form.Item label={t('Propriétaire depuis le')} name="ownerSince">
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>

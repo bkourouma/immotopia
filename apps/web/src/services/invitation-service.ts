@@ -19,7 +19,10 @@ export interface InviteCollaboratorRequest {
 
 export interface AcceptInvitationRequest {
   token: string;
-  password: string;
+  // Requis uniquement pour un NOUVEAU compte : un compte deja existant
+  // accepte depuis sa propre session, sans mot de passe (voir
+  // AcceptInvitePage.tsx et invitation-service.ts cote API).
+  password?: string;
   fullName?: string;
 }
 
@@ -60,13 +63,8 @@ export async function acceptInvitation(
 }
 
 // Resend invitation
-export async function resendInvitation(
-  tenantId: string,
-  invitationId: string
-): Promise<InvitationResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/users/invitations/${invitationId}/resend`
-  );
+export async function resendInvitation(tenantId: string, invitationId: string): Promise<InvitationResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/users/invitations/${invitationId}/resend`);
   return response.data;
 }
 
@@ -75,13 +73,6 @@ export async function revokeInvitation(
   tenantId: string,
   invitationId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/users/invitations/${invitationId}`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/users/invitations/${invitationId}`);
   return response.data;
 }
-
-
-
-
-

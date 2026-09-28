@@ -95,6 +95,7 @@ export const updatePropertyHandler = asyncHandler(async (req: Request, res: Resp
   const actorUserId = userId;
 
   const data: UpdatePropertyRequest = {
+    ownershipType: req.body.ownershipType,
     ownerUserId: req.body.ownerUserId,
     title: req.body.title,
     description: req.body.description,

@@ -9,6 +9,7 @@ import {
   installSubscriptionDenialInterceptor,
   isSubscriptionDenialCode,
   isQuotaExceededResponse,
+  ownAssetsOnlyDenialText,
   subscriptionDenialText,
   quotaExceededDenialText
 } from '../../utils/subscription-denial-notice';
@@ -66,6 +67,32 @@ describe('apiClient — refus d’abonnement', () => {
     expect(isSubscriptionDenialCode('MODULE_READ_ONLY')).toBe(true);
     expect(isSubscriptionDenialCode('TENANT_SUSPENDED')).toBe(false);
     expect(subscriptionDenialText('SUBSCRIPTION_READ_ONLY').title).toBe('Abonnement en lecture seule');
+  });
+});
+
+/**
+ * Barrière « détenu en propre » (pack Patrimoine, lot P1) : 403
+ * `OWN_ASSETS_ONLY` avec `data: { action }`. Même dédoublonnage que les
+ * trois codes ci-dessus (une clé par code, pas par action).
+ */
+describe('apiClient — barrière « détenu en propre » (OWN_ASSETS_ONLY)', () => {
+  it.each(['MANDATE', 'THIRD_PARTY_OWNER'] as const)(
+    'traduit un 403 OWN_ASSETS_ONLY (action %s) en une notification claire',
+    async action => {
+      apiClient.defaults.adapter = rejectingWith(403, { success: false, code: 'OWN_ASSETS_ONLY', data: { action } });
+      await expect(apiClient.post('/tenants/a/properties', {})).rejects.toThrow();
+      expect(warning).toHaveBeenCalledTimes(1);
+      expect(warning.mock.calls[0][0]).toMatchObject({
+        key: 'subscription-denial:OWN_ASSETS_ONLY',
+        title: ownAssetsOnlyDenialText().title
+      });
+    }
+  );
+
+  it('ignore un 403 OWN_ASSETS_ONLY sans action exploitable', async () => {
+    apiClient.defaults.adapter = rejectingWith(403, { success: false, code: 'OWN_ASSETS_ONLY' });
+    await expect(apiClient.post('/tenants/a/properties', {})).rejects.toThrow();
+    expect(warning).not.toHaveBeenCalled();
   });
 });
 

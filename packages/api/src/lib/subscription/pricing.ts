@@ -24,15 +24,7 @@ import {
 } from './catalog';
 
 export type InvoiceLineKindCode =
-  | 'PACK'
-  | 'EXTENSION'
-  | 'PRORATA'
-  | 'DISCOUNT'
-  | 'SETUP'
-  | 'OVERAGE'
-  | 'CREDIT'
-  | 'USAGE'
-  | 'TAX';
+  'PACK' | 'EXTENSION' | 'PRORATA' | 'DISCOUNT' | 'SETUP' | 'OVERAGE' | 'CREDIT' | 'USAGE' | 'TAX';
 
 export type BillingCycleCode = 'MONTHLY' | 'ANNUAL';
 
@@ -252,7 +244,11 @@ function utcDay(date: Date): number {
  * Jours restants de [periodStart, periodEnd[ a partir de `from`, jour de
  * `from` COMPRIS. Un ajout le 16 d'un mois de 30 jours laisse 15 jours.
  */
-export function prorataDays(periodStart: Date, periodEnd: Date, from: Date): { remainingDays: number; totalDays: number } {
+export function prorataDays(
+  periodStart: Date,
+  periodEnd: Date,
+  from: Date
+): { remainingDays: number; totalDays: number } {
   const totalDays = Math.max(0, Math.round((utcDay(periodEnd) - utcDay(periodStart)) / DAY_MS));
   const raw = Math.round((utcDay(periodEnd) - utcDay(from)) / DAY_MS);
   return { remainingDays: Math.min(totalDays, Math.max(0, raw)), totalDays };
@@ -284,6 +280,20 @@ export function computeOverageLines(input: {
   const over = input.used - input.limit;
   if (over <= 0) return [];
   const unitSize = input.extension.capacities[input.capacityKey] ?? 1;
+
+  if (input.capacityKey === 'BIENS_DETENUS') {
+    const unit = roundFcfa(resolveUnitMonthlyPrice(input.extension, { heldPacks: input.heldPacks }) / unitSize);
+    return [
+      {
+        kind: 'OVERAGE',
+        label: `Dépassement : ${over} bien(s) détenu(s) au-delà de l'abonnement`,
+        capacityKey: input.capacityKey,
+        quantity: over,
+        unitPrice: unit,
+        amount: over * unit
+      }
+    ];
+  }
 
   if (input.capacityKey !== 'LOTS') {
     const unit = roundFcfa(resolveUnitMonthlyPrice(input.extension, { heldPacks: input.heldPacks }) / unitSize);
@@ -355,7 +365,15 @@ export function finalizeInvoice(lines: readonly ChargeLine[], taxRate = PLATFORM
  * grille ; la facturation reelle part des SubscriptionItem.
  */
 export function estimateMonthly(
-  input: { packs: readonly string[]; lots?: number; copros?: number; chantiers?: number; comboDiscountPercent?: number },
+  input: {
+    packs: readonly string[];
+    lots?: number;
+    copros?: number;
+    chantiers?: number;
+    /** Biens detenus en propre (pack Patrimoine). */
+    biens?: number;
+    comboDiscountPercent?: number;
+  },
   catalog: readonly PricingCatalogItem[]
 ): RecurringCharges & { extensions: Record<string, number> } {
   const byCode = new Map(catalog.map(c => [c.code, c]));
@@ -374,10 +392,26 @@ export function estimateMonthly(
     unitMonthlyPrice: p.monthlyPrice
   }));
   const extensions: Record<string, number> = {};
+  const overageLines: ChargeLine[] = [];
 
   const addExtension = (code: string, key: CapacityKeyCode, needed: number) => {
     const ext = byCode.get(code);
     if (!ext || needed <= 0) return;
+    if (!isExtensionAllowed(ext, input.packs)) {
+      // L'extension ne se vend pas avec ces packs (ex. le bloc de biens
+      // n'est vendu qu'avec Patrimoine Essentiel) : le depassement est
+      // chiffre directement, au prix `byHeldPacks` de l'extension.
+      overageLines.push(
+        ...computeOverageLines({
+          capacityKey: key,
+          limit: capacity(key),
+          used: capacity(key) + needed,
+          heldPacks: input.packs,
+          extension: ext
+        })
+      );
+      return;
+    }
     const size = ext.capacities[key] ?? 1;
     const units = Math.ceil(needed / size);
     extensions[code] = units;
@@ -395,7 +429,9 @@ export function estimateMonthly(
   addExtension(EXTENSION.LOTS_10, 'LOTS', (input.lots ?? 0) - capacity('LOTS'));
   addExtension(EXTENSION.COPRO, 'COPROPRIETES', (input.copros ?? 0) - capacity('COPROPRIETES'));
   addExtension(EXTENSION.CHANTIER, 'CHANTIERS', (input.chantiers ?? 0) - capacity('CHANTIERS'));
+  addExtension(EXTENSION.BIENS_10, 'BIENS_DETENUS', (input.biens ?? 0) - capacity('BIENS_DETENUS'));
 
   const result = computeRecurringLines(chargeable, { comboDiscountPercent: input.comboDiscountPercent ?? 10 });
-  return { ...result, extensions };
+  const lines = [...result.lines, ...overageLines];
+  return { lines, subtotal: lines.reduce((s, l) => s + l.amount, 0), comboDiscount: result.comboDiscount, extensions };
 }

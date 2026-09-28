@@ -1,8 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Progress, Select, Space, Spin, Table, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Descriptions,
+  Form,
+  Input,
+  InputNumber,
+  Progress,
+  Select,
+  Space,
+  Spin,
+  Table,
+  Typography
+} from 'antd';
 import { SendOutlined } from '@ant-design/icons';
-import { getOwnEntitlements, type CapacityKeyCode, type TenantEntitlements } from '../../services/subscription-v2-service';
+import {
+  getOwnEntitlements,
+  type CapacityKeyCode,
+  type TenantEntitlements
+} from '../../services/subscription-v2-service';
 import {
   createExtensionRequest,
   listOwnExtensionRequests,
@@ -18,7 +37,8 @@ const { Title, Text, Paragraph } = Typography;
 const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
-  CHANTIERS: t('Chantiers')
+  CHANTIERS: t('Chantiers'),
+  BIENS_DETENUS: t('Biens détenus')
 };
 
 const PHASE_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
@@ -32,7 +52,8 @@ const PHASE_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 's
 const MODULE_LABEL: Record<string, string> = {
   MODULE_AGENCY: t('Agence'),
   MODULE_SYNDIC: t('Syndic'),
-  MODULE_PROMOTER: t('Promoteur')
+  MODULE_PROMOTER: t('Promoteur'),
+  MODULE_PATRIMOINE: t('Patrimoine')
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -50,10 +71,14 @@ function daysRemaining(value: string | null | undefined): number | null {
 const EXTENSION_OPTIONS = [
   { value: 'EXT_LOTS_10', label: t('Bloc de 10 lots') },
   { value: 'EXT_COPRO', label: t('Copropriété supplémentaire') },
-  { value: 'EXT_CHANTIER', label: t('Chantier supplémentaire') }
+  { value: 'EXT_CHANTIER', label: t('Chantier supplémentaire') },
+  { value: 'EXT_BIENS_10', label: t('Bloc de 10 biens détenus') }
 ];
 
-const REQUEST_STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+const REQUEST_STATUS_LABEL: Record<
+  string,
+  { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
+> = {
   OPEN: { label: t('En attente'), tone: 'warning' },
   HANDLED: { label: t('Traitée'), tone: 'success' },
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
@@ -100,7 +125,10 @@ export const TenantSubscriptionSettings: React.FC = () => {
 
   useEffect(() => {
     loadEntitlements();
-    if (tenantId) listOwnExtensionRequests(tenantId).then(setRequests).catch(() => setRequests([]));
+    if (tenantId)
+      listOwnExtensionRequests(tenantId)
+        .then(setRequests)
+        .catch(() => setRequests([]));
   }, [tenantId, loadEntitlements]);
 
   const handleRequestExtension = async (values: RequestValues) => {
@@ -109,7 +137,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
     try {
       const created = await createExtensionRequest(tenantId, {
         catalogCode: values.catalogCode ?? null,
-        quantity: values.catalogCode ? values.quantity ?? 1 : null,
+        quantity: values.catalogCode ? (values.quantity ?? 1) : null,
         message: values.message
       });
       setRequests(previous => [created, ...previous]);
@@ -202,14 +230,24 @@ export const TenantSubscriptionSettings: React.FC = () => {
           {(Object.keys(entitlements.capacities) as CapacityKeyCode[]).map(key => {
             const capacity = entitlements.capacities[key];
             const percent =
-              capacity.limit > 0 ? Math.min(100, Math.round((capacity.used / capacity.limit) * 100)) : capacity.used > 0 ? 100 : 0;
+              capacity.limit > 0
+                ? Math.min(100, Math.round((capacity.used / capacity.limit) * 100))
+                : capacity.used > 0
+                  ? 100
+                  : 0;
             return (
               <div key={key} style={{ width: 220 }}>
                 <Text strong>{CAPACITY_LABEL[key]}</Text>
                 <Progress
                   percent={percent}
                   status={percent >= 100 ? 'exception' : 'normal'}
-                  strokeColor={percent >= 100 ? 'var(--color-error-text)' : percent >= 80 ? 'var(--color-warning-text)' : 'var(--color-success-text)'}
+                  strokeColor={
+                    percent >= 100
+                      ? 'var(--color-error-text)'
+                      : percent >= 80
+                        ? 'var(--color-warning-text)'
+                        : 'var(--color-success-text)'
+                  }
                   format={() => `${capacity.used} / ${capacity.limit}`}
                 />
               </div>

@@ -638,6 +638,11 @@ const OwnerMaintenance = lazy(() => import(/* webpackChunkName: "owner-portal" *
 const OwnerDocuments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Documents'));
 const OwnerReports = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Reports'));
 const OwnerPreferences = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Preferences'));
+// Lot P5 : vue patrimoine du portail propriétaire.
+const OwnerPatrimoine = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Patrimoine'));
+const OwnerPatrimoinePropertyDetails = lazy(
+  () => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/PatrimoinePropertyDetails')
+);
 // Portail copropriétaire (lecture seule)
 const CoOwnerLots = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Lots'));
 const CoOwnerLotAccount = lazy(
@@ -1234,6 +1239,8 @@ function App() {
                           <Route path="documents" element={<OwnerDocuments />} />
                           <Route path="reports" element={<OwnerReports />} />
                           <Route path="preferences" element={<OwnerPreferences />} />
+                          <Route path="patrimoine" element={<OwnerPatrimoine />} />
+                          <Route path="patrimoine/:propertyId" element={<OwnerPatrimoinePropertyDetails />} />
                         </Route>
                         {/* Portail copropriétaire — même coquille, lecture seule.
                       Ouvert par l'invitation « Inviter au portail » de la fiche
