@@ -321,29 +321,35 @@ voir le commentaire du job `web-tests` dans `.github/workflows/ci.yml` pour
 la mesure ayant motivé ce découpage (23 min et une vingtaine de timeouts sur
 un seul runner à 4 vCPU).
 
-### `migrate status` en production : migration « not found locally »
+### Migration orpheline en production : comparaison base/dépôt, pas `migrate status`
 
 La production porte une ligne `_prisma_migrations` sans dossier dans le
 dépôt : `20260927080000_mouvements_fonds_copropriete`, appliquée hors dépôt
 le 25/09/2026. Décision, SQL d'origine et nettoyage facultatif :
 [ADR-003](../architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md).
 
-Ce contrôle est **automatique** : l'étape « Contrôle des migrations
-inconnues du dépôt » de `deploy.sh` lance `prisma migrate status` (même
-commande que l'étape « Etat des migrations », image `migrate` de la révision
-à déployer) **avant** `migrate deploy`, et distingue elle-même les deux
-lectures possibles d'un code de sortie non nul :
+Ce contrôle est **automatique**, dans l'étape « Contrôle des migrations
+inconnues du dépôt » de `deploy.sh`, **avant** `migrate deploy`. Il ne lit
+pas le texte de `prisma migrate status` : mesuré sur Prisma 5.22.0, une ligne
+orpheline isolée (aucune migration du dépôt par ailleurs en attente) produit
+le diagnostic interne `migrationsDirectoryIsBehind`, que le CLI ne reconnaît
+pas (seuls `databaseIsBehind` et `historiesDiverge` le sont) — il retombe en
+silence sur « Database schema is up to date! », code 0, sans jamais signaler
+l'orpheline. L'étape compare donc directement, par le socket local du
+conteneur `postgres` (aucun secret sur la ligne de commande) :
 
-- des migrations du dépôt simplement en attente (cas normal juste avant
-  `migrate deploy`) — le déploiement continue ;
-- une migration signalée « not found locally in prisma/migrations » — le nom
-  est comparé à la liste versionnée
-  [`infra/scripts/migrations-orphelines-connues.txt`](../../infra/scripts/migrations-orphelines-connues.txt)
-  (un nom par ligne, commentaires `#`, actuellement
-  `20260927080000_mouvements_fonds_copropriete` avec un renvoi vers ADR-003).
-  Un nom qui y figure ne bloque pas le déploiement ; un nom absent de cette
-  liste, ou toute autre anomalie (migration en échec, base non gérée par
-  Prisma Migrate…), fait échouer `deploy.sh` avant toute migration.
+- les migrations `_prisma_migrations` terminées et non annulées ;
+- les dossiers de `packages/api/prisma/migrations`.
+
+Une migration appliquée en base sans dossier local est une orpheline. Son
+nom est comparé à la liste versionnée
+[`infra/scripts/migrations-orphelines-connues.txt`](../../infra/scripts/migrations-orphelines-connues.txt)
+(un nom par ligne, commentaires `#`, actuellement
+`20260927080000_mouvements_fonds_copropriete` avec un renvoi vers ADR-003).
+Un nom qui y figure ne bloque pas le déploiement ; un nom absent de cette
+liste fait échouer `deploy.sh` avant toute migration, tout comme une lecture
+de `_prisma_migrations` impossible (postgres injoignable, table absente pour
+une autre raison qu'un tout premier déploiement).
 
 Documenter une nouvelle exception avant de l'ajouter au fichier : y ajouter
 une ligne sans avoir écrit d'ADR (ou complété ADR-003) revient à désactiver

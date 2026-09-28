@@ -127,57 +127,78 @@ ok "immotopia-saas-postgres healthy"
 #
 # La table _prisma_migrations peut contenir une ligne appliquee en base sans
 # dossier correspondant dans le depot (reprise manuelle, hotfix non commite -
-# voir ADR-003). `prisma migrate status` la signale par "not found locally in
-# prisma/migrations" et sort en erreur, y compris quand des migrations du
-# depot sont simplement en attente (cas normal juste avant `migrate deploy`).
-# On distingue les deux : une migration orpheline non documentee bloque le
-# deploiement, une migration orpheline listee dans
-# infra/scripts/migrations-orphelines-connues.txt ne le bloque pas.
+# voir ADR-003).
+#
+# On ne detecte PAS cela via le texte de `prisma migrate status` : mesure sur
+# Prisma 5.22.0, quand le depot n'a par ailleurs aucune migration en attente,
+# une ligne orpheline isolee produit le diagnostic interne
+# `migrationsDirectoryIsBehind`. Le CLI ne reconnait explicitement que deux
+# diagnostics (`databaseIsBehind`, `historiesDiverge`) ; tout autre cas, y
+# compris celui-la, retombe en silence sur « Database schema is up to date! »
+# et sort en code 0 - l'orpheline ne serait alors jamais signalee. On compare
+# donc directement le contenu de _prisma_migrations au dossier du depot.
 
 step "Controle des migrations inconnues du depot"
 
 ORPHANS_FILE="infra/scripts/migrations-orphelines-connues.txt"
 [[ -f "$ORPHANS_FILE" ]] || fail "$ORPHANS_FILE introuvable."
 
-# `migrate status` sort en code non nul des qu'une migration est en attente
-# (normal ici, la prochaine etape va les appliquer) ou en cas de divergence
-# d'historique : on capture la sortie sans laisser `set -e` arreter le script.
-set +e
-STATUS_OUTPUT="$(compose --profile tools run --rm --entrypoint npx migrate \
-  prisma migrate status --schema packages/api/prisma/schema.prisma 2>&1)"
-STATUS_EXIT=$?
-set -e
-
+APPLIED_FILE="$(mktemp)"
+APPLIED_ERR_FILE="$(mktemp)"
+LOCAL_DIRS_FILE="$(mktemp)"
 FOUND_ORPHANS_FILE="$(mktemp)"
-awk '
-  /not found locally in prisma\/migrations:/ { found=1; next }
-  found && NF { print }
-  found && !NF { exit }
-' <<<"$STATUS_OUTPUT" > "$FOUND_ORPHANS_FILE"
+UNKNOWN_ORPHANS_FILE="$(mktemp)"
+KNOWN_ORPHANS_FILE=""
+
+migration_check_cleanup() {
+  rm -f "$APPLIED_FILE" "$APPLIED_ERR_FILE" "$LOCAL_DIRS_FILE" \
+        "$FOUND_ORPHANS_FILE" "$UNKNOWN_ORPHANS_FILE" $KNOWN_ORPHANS_FILE 2>/dev/null || true
+}
+trap migration_check_cleanup EXIT
+
+# Migrations terminees et non annulees en base, lues par le socket local du
+# conteneur postgres : $POSTGRES_USER/$POSTGRES_DB viennent de l'environnement
+# deja pose sur ce conteneur par $ENV_FILE, jamais de la ligne de commande -
+# aucun secret n'est affiche ni journalise par cette etape.
+if ! compose exec -T postgres sh -c \
+     'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name;"' \
+     > "$APPLIED_FILE" 2>"$APPLIED_ERR_FILE"; then
+  if grep -qi '_prisma_migrations" does not exist' "$APPLIED_ERR_FILE"; then
+    # Tout premier deploiement sur une base neuve : rien n'est encore
+    # applique, donc rien ne peut etre orphelin.
+    : > "$APPLIED_FILE"
+  else
+    cat "$APPLIED_ERR_FILE" >&2
+    fail "lecture de _prisma_migrations impossible sur postgres (voir la sortie ci-dessus)."
+  fi
+fi
+
+find packages/api/prisma/migrations -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+  | sort -u > "$LOCAL_DIRS_FILE"
+
+# Appliquees en base sans dossier local correspondant.
+comm -23 <(sort -u "$APPLIED_FILE") "$LOCAL_DIRS_FILE" > "$FOUND_ORPHANS_FILE"
 
 if [[ -s "$FOUND_ORPHANS_FILE" ]]; then
   KNOWN_ORPHANS_FILE="$(mktemp)"
-  sed -e 's/#.*$//' -e 's/[[:space:]]*$//' -e '/^$/d' "$ORPHANS_FILE" > "$KNOWN_ORPHANS_FILE"
+  sed -e 's/\r$//' -e 's/#.*$//' -e 's/[[:space:]]*$//' -e '/^$/d' "$ORPHANS_FILE" \
+    | sort -u > "$KNOWN_ORPHANS_FILE"
 
-  UNKNOWN_ORPHANS="$(comm -23 <(sort -u "$FOUND_ORPHANS_FILE") <(sort -u "$KNOWN_ORPHANS_FILE"))"
+  comm -23 "$FOUND_ORPHANS_FILE" "$KNOWN_ORPHANS_FILE" > "$UNKNOWN_ORPHANS_FILE"
 
-  if [[ -n "$UNKNOWN_ORPHANS" ]]; then
-    rm -f "$FOUND_ORPHANS_FILE" "$KNOWN_ORPHANS_FILE"
+  if [[ -s "$UNKNOWN_ORPHANS_FILE" ]]; then
     fail "migration(s) appliquee(s) en base mais absente(s) du depot, non documentee(s) dans $ORPHANS_FILE :
-$UNKNOWN_ORPHANS
+$(cat "$UNKNOWN_ORPHANS_FILE")
        Ajouter le nom dans ce fichier seulement apres avoir documente la cause (voir ADR-003), sinon corriger le depot."
   fi
 
   ok "migration(s) orpheline(s) connue(s) et documentee(s) ($ORPHANS_FILE) : $(tr '\n' ' ' < "$FOUND_ORPHANS_FILE")"
-  rm -f "$FOUND_ORPHANS_FILE" "$KNOWN_ORPHANS_FILE"
-elif (( STATUS_EXIT != 0 )) && ! grep -q 'have not yet been applied' <<<"$STATUS_OUTPUT"; then
-  rm -f "$FOUND_ORPHANS_FILE"
-  echo "$STATUS_OUTPUT" >&2
-  fail "'prisma migrate status' a echoue sans signaler de migration orpheline connue (voir la sortie ci-dessus)."
 else
-  rm -f "$FOUND_ORPHANS_FILE"
   ok "aucune migration inconnue du depot"
 fi
+
+trap - EXIT
+migration_check_cleanup
 
 # --- 4. Migrations Prisma ---------------------------------------------------
 #
