@@ -38,6 +38,70 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/syndic-reprise-ecarts` — 2026-09-28
+
+**État :** prêt à relire — PR #43 vers `main`, CI verte (6/6)
+**Dernier commit :** `ffd2bdff` fix(api): lever la collision de type entre deux fichiers de test sans import
+
+Fait (reprise d'une session coupée par une limite d'API — le travail était déjà
+sur disque dans le worktree, non commité ; repris sans rien refaire) :
+
+- Les 7 écarts du lot, chacun dans son propre commit : pagination des
+  copropriétés (`queries.ts`, `syndic-controller.ts`, `syndic-service.ts`,
+  `SyndicsList.tsx`), votants d'AG à la date (nouveau
+  `packages/api/src/lib/syndics/meeting-voters.ts`, consommé côté frontend
+  sans dupliquer `meeting-governance.ts`), sélecteur « Changer de
+  copropriété » dans `SyndicWorkspaceLayout`, prestataires sous contrat en
+  premier (nouveau `ProviderList.tsx`), seed de démo avec historique des
+  fonds cohérent (nouveau `syndic-demo-fund-movements.ts`), découpage de
+  `SyndicChargeSchedules.tsx` (828 → 146 lignes) en
+  `components/syndics/charge-schedules/`, retouches d'affichage
+  lots/incidents. Catalogues i18n et classeur wiki en commits séparés.
+- Vérifications : typecheck api+web propre sur les fichiers touchés (aucune
+  nouvelle erreur dans la base préexistante) ; Jest ciblé
+  (`syndics.*`, `routes-inventory`, `route-features`,
+  `schema-tenant-coverage`) tout vert ; Vitest syndics+navigation vert, sauf
+  des délais isolés déjà connus sur ce poste (confirmés indépendants du diff
+  en relançant les fichiers seuls) ; `check:architecture` et `wiki:check`
+  propres (662 sous-fonctionnalités).
+- Relecture `security-auditor` (pagination + votants d'AG, identifiants
+  reçus dans les routes) : 0 constat. Relecture générale indépendante des 7
+  items : **prêt** sur les 7.
+- Fusion de `main` (en retard de plusieurs commits, dont PR #37 à #40 —
+  migrations, abonnements, patrimoine) : seul le classeur wiki
+  (`ImmoTopia_Wiki_Fonctionnalites.xlsx`) entrait en conflit binaire.
+  Résolu en repartant du classeur de `main` et en y réappliquant les mêmes
+  modifications de cellules que sur cette branche (1 ligne ajoutée, 5
+  retouchées), puis en régénérant le miroir. Le mirroir doit refléter
+  `endRow − startRow` lignes de données (table Excel `SousFonctionnalites`,
+  `ref` **et** `autoFilter.ref` à mettre à jour tous les deux après un
+  `insert_rows` openpyxl, sinon `wiki:check` sous-compte silencieusement).
+- CI : un premier run a échoué sur `provision-subscription-cli.test.ts` /
+  `subscription-provisioning-service.test.ts` (fusionnés depuis `main`,
+  PR #39) — aucun des deux n'a d'`import`/`export` top-level, TypeScript les
+  traite comme deux scripts globaux et leur `type Row` commun entre en
+  collision (TS2300) dès qu'ils tournent dans le même run `jest`. Corrigé
+  par un `export {}` dans chacun (commit dédié, hors périmètre du lot mais
+  nécessaire pour la CI verte).
+
+Reste à faire :
+
+- Fusion de la PR #43 : à l'utilisateur.
+
+Pièges et décisions :
+
+- Un fichier de test Jest sans `import`/`export` est un script global en
+  TypeScript : deux fichiers de ce type déclarant le même identifiant de
+  niveau supérieur (ex. `type Row = …`, motif très répandu dans
+  `packages/api/__tests__`) entrent en collision TS2300 s'ils sont compilés
+  ensemble — invisible tant qu'un seul des deux tourne isolément.
+- Résolution d'un conflit Git sur le classeur xlsx : ne pas prendre un
+  camp entier, reconstruire par clé stable (Module, Fonctionnalité,
+  Sous-fonctionnalité) — script dans le scratchpad de session
+  `6d754bbb-846c-4481-9333-070145f6e577` (non conservé).
+
+---
+
 ## Branche `fix/patrimoine-suite-p0` — 2026-09-28
 
 **État :** prêt à relire — PR #40 vers `main`
