@@ -681,9 +681,9 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const { startDate, endDate, propertyId, format } = req.body;
+      const { startDate, endDate, propertyId, format: outputFormat } = req.body;
 
-      if (!startDate || !endDate || !format) {
+      if (!startDate || !endDate || !outputFormat) {
         res.status(400).json({
           success: false,
           message: 'startDate, endDate et format sont requis.'
@@ -695,19 +695,19 @@ export class OwnerPortalController {
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         propertyId,
-        format
+        format: outputFormat
       });
 
       // Set appropriate content type
       const contentType =
-        format === 'pdf'
+        outputFormat === 'pdf'
           ? 'application/pdf'
-          : format === 'csv'
+          : outputFormat === 'csv'
             ? 'text/csv'
             : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-      const extension = format === 'pdf' ? 'pdf' : format === 'csv' ? 'csv' : 'xlsx';
-      const filename = `revenue-report-${format(new Date(), 'yyyy-MM-dd')}.${extension}`;
+      const extension = outputFormat === 'pdf' ? 'pdf' : outputFormat === 'csv' ? 'csv' : 'xlsx';
+      const filename = `revenue-report-${new Date().toISOString().slice(0, 10)}.${extension}`;
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -733,9 +733,9 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const { asOfDate, format } = req.body;
+      const { asOfDate, format: outputFormat } = req.body;
 
-      if (!asOfDate || !format) {
+      if (!asOfDate || !outputFormat) {
         res.status(400).json({
           success: false,
           message: 'asOfDate et format sont requis.'
@@ -745,19 +745,19 @@ export class OwnerPortalController {
 
       const buffer = await this.service.generateOccupancyReport(propertyIds, tenantId, {
         asOfDate: new Date(asOfDate),
-        format
+        format: outputFormat
       });
 
       // Set appropriate content type
       const contentType =
-        format === 'pdf'
+        outputFormat === 'pdf'
           ? 'application/pdf'
-          : format === 'csv'
+          : outputFormat === 'csv'
             ? 'text/csv'
             : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-      const extension = format === 'pdf' ? 'pdf' : format === 'csv' ? 'csv' : 'xlsx';
-      const filename = `occupancy-report-${format(new Date(), 'yyyy-MM-dd')}.${extension}`;
+      const extension = outputFormat === 'pdf' ? 'pdf' : outputFormat === 'csv' ? 'csv' : 'xlsx';
+      const filename = `occupancy-report-${new Date().toISOString().slice(0, 10)}.${extension}`;
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -783,12 +783,31 @@ export class OwnerPortalController {
 
       const { propertyIds, tenantId } = req.ownerPortal;
 
-      const { entityType, startDate, endDate, propertyId, format } = req.body;
+      const { entityType, startDate, endDate, propertyId, format: outputFormat } = req.body;
 
-      if (!entityType || !format) {
+      if (!entityType || !outputFormat) {
         res.status(400).json({
           success: false,
           message: 'entityType et format sont requis.'
+        });
+        return;
+      }
+
+      const VALID_ENTITY_TYPES = ['payments', 'installments', 'leases'];
+      const VALID_FORMATS = ['csv', 'excel'];
+
+      if (!VALID_ENTITY_TYPES.includes(entityType)) {
+        res.status(400).json({
+          success: false,
+          message: 'entityType invalide.'
+        });
+        return;
+      }
+
+      if (!VALID_FORMATS.includes(outputFormat)) {
+        res.status(400).json({
+          success: false,
+          message: 'format invalide.'
         });
         return;
       }
@@ -798,15 +817,15 @@ export class OwnerPortalController {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
         propertyId,
-        format
+        format: outputFormat
       });
 
       // Set appropriate content type
       const contentType =
-        format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        outputFormat === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-      const extension = format === 'csv' ? 'csv' : 'xlsx';
-      const filename = `${entityType}-export-${format(new Date(), 'yyyy-MM-dd')}.${extension}`;
+      const extension = outputFormat === 'csv' ? 'csv' : 'xlsx';
+      const filename = `${entityType}-export-${new Date().toISOString().slice(0, 10)}.${extension}`;
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
