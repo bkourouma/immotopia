@@ -874,3 +874,8 @@ describe('suspendTenantAction', () => {
     expect(suspendCalls).toHaveLength(0);
   });
 });
+
+// Module, pas script : sans cela ses declarations (`type Row`) entrent en
+// collision avec celles de provision-subscription-cli.test.ts sous ts-jest
+// (CI, 28/09 — cf. "Duplicate identifier 'Row'").
+export {};
