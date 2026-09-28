@@ -15,7 +15,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Tooltip,
   Typography
 } from 'antd';
 import {
@@ -29,6 +28,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { ConfirmAction, MoneyValue, useConfirmAction } from '../../components/primitives';
+import { ChargeScheduleRunNotices } from '../../components/syndics/ChargeScheduleRunNotices';
 import { listBudgets } from '../../services/syndic-service';
 import {
   createChargeSchedule,
@@ -107,21 +107,6 @@ function describeScheduleError(error: string | null | undefined): string | null 
 function formatDay(value: string | null | undefined): string {
   if (!value) return '—';
   return dayjs(value).format(dateFormat('short'));
-}
-
-/** « N avis non envoyé(s) », avec la remarque de l'exécution en infobulle quand il y en a une. */
-function NotificationsSkipped({ count, notes }: { count: number; notes: string | null }) {
-  if (!count) return <>—</>;
-  const label = t('{{count}} avis non envoyé(s)', { count });
-  return notes ? (
-    <Tooltip title={notes}>
-      <Text type="warning" style={{ textDecoration: 'underline dotted', cursor: 'help' }}>
-        {label}
-      </Text>
-    </Tooltip>
-  ) : (
-    <Text type="warning">{label}</Text>
-  );
 }
 
 interface ScheduleFormValues {
@@ -490,8 +475,17 @@ export const SyndicChargeSchedules: React.FC = () => {
                 {describeScheduleError(schedule.lastRun.error)}
               </Text>
             ) : null}
-            {schedule.lastRun.notificationsSkipped > 0 ? (
-              <NotificationsSkipped count={schedule.lastRun.notificationsSkipped} notes={schedule.lastRun.notes} />
+            {schedule.lastRun.status === 'SUCCESS' ? (
+              <ChargeScheduleRunNotices
+                run={schedule.lastRun}
+                tenantId={effectiveTenantId}
+                syndicId={syndicId}
+                scheduleId={schedule.id}
+                onResent={() => {
+                  void loadData();
+                  if (editing?.id === schedule.id) void loadRuns(schedule.id);
+                }}
+              />
             ) : null}
           </Space>
         ) : (
@@ -762,7 +756,19 @@ export const SyndicChargeSchedules: React.FC = () => {
                 </span>
               ),
               disabled: !editing,
-              children: <ScheduleRunsPanel runs={runs} loading={runsLoading} />
+              children: editing ? (
+                <ScheduleRunsPanel
+                  runs={runs}
+                  loading={runsLoading}
+                  tenantId={effectiveTenantId}
+                  syndicId={syndicId}
+                  scheduleId={editing.id}
+                  onResent={() => {
+                    void loadData();
+                    void loadRuns(editing.id);
+                  }}
+                />
+              ) : null
             }
           ]}
         />
@@ -826,7 +832,14 @@ const SchedulePreviewPanel: React.FC<{
   );
 };
 
-const ScheduleRunsPanel: React.FC<{ runs: ChargeScheduleRun[]; loading: boolean }> = ({ runs, loading }) => (
+const ScheduleRunsPanel: React.FC<{
+  runs: ChargeScheduleRun[];
+  loading: boolean;
+  tenantId: string | null | undefined;
+  syndicId: string | null | undefined;
+  scheduleId: string;
+  onResent: () => void;
+}> = ({ runs, loading, tenantId, syndicId, scheduleId, onResent }) => (
   <Table
     rowKey="id"
     loading={loading}
@@ -849,12 +862,21 @@ const ScheduleRunsPanel: React.FC<{ runs: ChargeScheduleRun[]; loading: boolean 
       },
       { title: t('Appels créés'), dataIndex: 'callsCreated', align: 'end' },
       { title: t('Couverts'), dataIndex: 'callsCovered', align: 'end' },
-      { title: t('Notifications'), dataIndex: 'notificationsSent', align: 'end' },
       {
-        title: t('Avis non envoyés'),
-        key: 'notificationsSkipped',
-        align: 'end',
-        render: (_, run) => <NotificationsSkipped count={run.notificationsSkipped} notes={run.notes} />
+        title: t('Avis'),
+        key: 'notices',
+        render: (_, run) =>
+          run.status === 'SUCCESS' ? (
+            <ChargeScheduleRunNotices
+              run={run}
+              tenantId={tenantId}
+              syndicId={syndicId}
+              scheduleId={scheduleId}
+              onResent={onResent}
+            />
+          ) : (
+            '—'
+          )
       },
       {
         title: t('Date'),

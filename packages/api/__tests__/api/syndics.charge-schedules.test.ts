@@ -49,7 +49,8 @@ const mockService = {
   resumeChargeSchedule: jest.fn(),
   executeChargeScheduleNow: jest.fn(),
   listChargeScheduleRuns: jest.fn(),
-  previewChargeSchedule: jest.fn()
+  previewChargeSchedule: jest.fn(),
+  resendChargeScheduleRunNotices: jest.fn()
 };
 jest.mock('../../src/lib/syndics/charge-schedules', () => ({
   listChargeSchedules: (...args: any[]) => mockService.listChargeSchedules(...args),
@@ -61,7 +62,8 @@ jest.mock('../../src/lib/syndics/charge-schedules', () => ({
   resumeChargeSchedule: (...args: any[]) => mockService.resumeChargeSchedule(...args),
   executeChargeScheduleNow: (...args: any[]) => mockService.executeChargeScheduleNow(...args),
   listChargeScheduleRuns: (...args: any[]) => mockService.listChargeScheduleRuns(...args),
-  previewChargeSchedule: (...args: any[]) => mockService.previewChargeSchedule(...args)
+  previewChargeSchedule: (...args: any[]) => mockService.previewChargeSchedule(...args),
+  resendChargeScheduleRunNotices: (...args: any[]) => mockService.resendChargeScheduleRunNotices(...args)
 }));
 const mockNoticeForTenant = jest.fn();
 const mockNoticeForCoOwner = jest.fn();
@@ -72,7 +74,7 @@ jest.mock('../../src/lib/syndics/charge-call-notice', () => ({
 
 import schedulesRoutes from '../../src/routes/syndic-charge-schedules-routes';
 import coOwnerPortalRoutes from '../../src/routes/coowner-portal-routes';
-import { errorHandler, NotFoundError } from '../../src/middleware/error-middleware';
+import { ConflictError, errorHandler, NotFoundError } from '../../src/middleware/error-middleware';
 
 const app = express();
 app.use(express.json());
@@ -218,6 +220,40 @@ describe('programmations', () => {
     mockService.getChargeSchedule.mockRejectedValue(new NotFoundError('Programmation introuvable.'));
     const response = await request(app).get(`${BASE}/${SCHEDULE}`);
     expect(response.status).toBe(404);
+  });
+});
+
+describe('renvoi des avis non envoyes (item 4, anomalie recette)', () => {
+  const RUN = '55555555-5555-4555-8555-555555555555';
+
+  it('succes : renvoie et transmet le resultat', async () => {
+    const result = {
+      resent: 2,
+      stillSkipped: 0,
+      run: { id: RUN, scheduleId: SCHEDULE, status: 'SUCCESS', notificationsSent: 5, notificationsSkipped: 0 }
+    };
+    mockService.resendChargeScheduleRunNotices.mockResolvedValue(result);
+    const response = await request(app).post(`${BASE}/${SCHEDULE}/executions/${RUN}/renvoyer-avis`);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data: result });
+    expect(mockService.resendChargeScheduleRunNotices).toHaveBeenCalledWith(TENANT, SYNDIC, SCHEDULE, RUN);
+  });
+
+  it('rien a renvoyer : 409 transmis tel quel', async () => {
+    mockService.resendChargeScheduleRunNotices.mockRejectedValue(
+      new ConflictError('Tous les avis dus de cette exécution ont déjà été envoyés : rien à renvoyer.')
+    );
+    const response = await request(app).post(`${BASE}/${SCHEDULE}/executions/${RUN}/renvoyer-avis`);
+    expect(response.status).toBe(409);
+  });
+
+  it("run d'une autre agence, ou identifiant malforme : 404 / 400", async () => {
+    mockService.resendChargeScheduleRunNotices.mockRejectedValue(new NotFoundError('Exécution introuvable.'));
+    const response = await request(app).post(`${BASE}/${SCHEDULE}/executions/${RUN}/renvoyer-avis`);
+    expect(response.status).toBe(404);
+
+    expect((await request(app).post(`${BASE}/${SCHEDULE}/executions/pas-un-uuid/renvoyer-avis`)).status).toBe(404);
+    expect(mockService.resendChargeScheduleRunNotices).toHaveBeenCalledTimes(1);
   });
 });
 
