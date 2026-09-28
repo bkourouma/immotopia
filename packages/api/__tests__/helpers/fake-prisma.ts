@@ -84,7 +84,15 @@ function matchValue(actual: any, condition: any): boolean {
         if (isPlainObject(expected) ? matchValue(actual, expected) : same(actual, expected)) return false;
         break;
       case 'equals':
-        if (!same(actual, expected)) return false;
+        // `mode: 'insensitive'` (Postgres via Prisma) : comparaison de
+        // chaines insensible a la casse — necessaire pour les tests du
+        // correctif securite invitations (recherche d'un compte existant
+        // sans tenir compte de la casse de l'e-mail).
+        if (condition.mode === 'insensitive' && typeof actual === 'string' && typeof expected === 'string') {
+          if (actual.toLowerCase() !== expected.toLowerCase()) return false;
+        } else if (!same(actual, expected)) {
+          return false;
+        }
         break;
       case 'gt':
         if (actual == null || compare(actual, expected) <= 0) return false;

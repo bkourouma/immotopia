@@ -11,7 +11,11 @@ import { z } from 'zod';
 
 // Validation schemas
 const inviteCollaboratorSchema = z.object({
-  email: z.string().email(),
+  // Normalise comme `registerSchema` (validation-middleware.ts) : sans ca, le
+  // garde anti-super-admin (inviteCollaborator) se contournait par variation
+  // de casse (`SuperAdmin@…` invite alors que le compte est `superadmin@…`),
+  // et `Invitation.email` finissait a casse variable au fil du temps.
+  email: z.string().email().toLowerCase().trim(),
   roleIds: z.array(z.string().uuid()).min(1)
 });
 

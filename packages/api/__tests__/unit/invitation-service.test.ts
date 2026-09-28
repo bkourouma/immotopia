@@ -285,3 +285,92 @@ describe('acceptInvitation — jamais de reecriture de mot de passe sur un compt
     await expect(acceptInvitation({ token: 'peu-importe' })).rejects.toMatchObject({ statusCode: 400 });
   });
 });
+
+describe('Casse des e-mails — le garde anti-super-admin et la recherche de compte ne se contournent pas par variation de casse', () => {
+  it('inviteCollaborator : refuse un super-admin invite avec une casse differente', async () => {
+    mockPrisma.user.rows.push({
+      id: 'super-1',
+      email: 'superadmin@example.com',
+      globalRole: 'SUPER_ADMIN',
+      passwordHash: 'hash',
+      isActive: true
+    });
+
+    await expect(
+      inviteCollaborator({
+        // Casse volontairement differente de celle stockee.
+        email: 'SuperAdmin@Example.com',
+        tenantId: TENANT_A,
+        roleIds: [],
+        invitedByUserId: 'admin-1'
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(mockPrisma.invitation.rows).toHaveLength(0);
+  });
+
+  it('acceptInvitation : une invitation sous une casse differente de celle du compte exige la session de CE compte, et ne cree pas de doublon', async () => {
+    const originalHash = await hashPassword('MotDePasseInitial#1');
+    mockPrisma.user.rows.push({
+      id: 'existing-casse',
+      email: 'jean.dupont@example.com',
+      passwordHash: originalHash,
+      fullName: 'Jean Dupont',
+      isActive: true,
+      emailVerified: true
+    });
+    // L'invitation porte une casse differente (ex. saisie a la main avant
+    // normalisation, ou copiee depuis un e-mail).
+    const invitation = seedInvitation({ email: 'Jean.Dupont@EXAMPLE.com', tenantId: TENANT_A });
+
+    // Sans session du bon compte : refuse, ne cree pas de second compte.
+    await expect(acceptInvitation({ token: 'peu-importe', password: 'AutreMotDePasse#2' })).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'INVITATION_REQUIRES_LOGIN'
+    });
+    expect(mockPrisma.user.rows).toHaveLength(1);
+
+    // Avec la session du bon compte : rattache l'agence, sans toucher au
+    // mot de passe ni dupliquer le compte.
+    const result = await acceptInvitation({
+      token: 'peu-importe',
+      requestingUserId: 'existing-casse'
+    });
+
+    expect(result.user.id).toBe('existing-casse');
+    expect(mockPrisma.user.rows).toHaveLength(1);
+    const storedUser = mockPrisma.user.rows.find((row: any) => row.id === 'existing-casse')!;
+    expect(storedUser.passwordHash).toBe(originalHash);
+    const membership = mockPrisma.membership.rows.find(
+      (row: any) => row.userId === 'existing-casse' && row.tenantId === TENANT_A
+    );
+    expect(membership?.status).toBe(MembershipStatus.ACTIVE);
+    const storedInvitation = mockPrisma.invitation.rows.find((row: any) => row.id === invitation.id)!;
+    expect(storedInvitation.status).toBe(InvitationStatus.ACCEPTED);
+  });
+
+  it('acceptInvitation : une ancienne invitation a casse mixte est acceptee correctement (compte deja connecte)', async () => {
+    const originalHash = await hashPassword('MotDePasseInitial#1');
+    // Compte lui-meme enregistre avec une casse mixte (donnee ancienne,
+    // anterieure a la normalisation de inviteCollaboratorSchema).
+    mockPrisma.user.rows.push({
+      id: 'existing-mixte',
+      email: 'Marie.Curie@Example.COM',
+      passwordHash: originalHash,
+      fullName: 'Marie Curie',
+      isActive: true,
+      emailVerified: true
+    });
+    const invitation = seedInvitation({ email: 'marie.curie@example.com', tenantId: TENANT_A });
+
+    const result = await acceptInvitation({
+      token: 'peu-importe',
+      requestingUserId: 'existing-mixte'
+    });
+
+    expect(result.user.id).toBe('existing-mixte');
+    expect(mockPrisma.user.rows).toHaveLength(1);
+    const storedInvitation = mockPrisma.invitation.rows.find((row: any) => row.id === invitation.id)!;
+    expect(storedInvitation.status).toBe(InvitationStatus.ACCEPTED);
+  });
+});

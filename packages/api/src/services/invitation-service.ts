@@ -10,6 +10,7 @@ import {
   InvitationRequiresLoginError,
   NotFoundError
 } from '../middleware/error-middleware';
+import { assertBelongsToTenant } from '../utils/tenant-ownership';
 import crypto from 'crypto';
 
 export function getFrontendBaseUrl(): string {
@@ -193,6 +194,14 @@ export async function createInvitationRecordTx(
  * @returns L'invitation creee (sans le token, qui reste interne au serveur)
  */
 export async function inviteCollaborator(data: InviteCollaboratorRequest) {
+  // Normalise en defense en profondeur : `inviteCollaboratorSchema`
+  // (invitation-controller.ts) normalise deja la requete HTTP, mais cette
+  // fonction reste appelable directement (tests, futurs appelants) — sans
+  // ceci, le garde anti-super-admin juste en dessous se contournait par
+  // variation de casse (`SuperAdmin@…` invite alors que le compte existant
+  // est `superadmin@…`), et `Invitation.email` finissait a casse variable.
+  const email = data.email.trim().toLowerCase();
+
   // Verify tenant exists and is active
   const tenant = await prisma.tenant.findUnique({
     where: { id: data.tenantId }
@@ -206,11 +215,13 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     throw new BadRequestError("Ce tenant n'est plus actif.");
   }
 
-  // Check for existing pending invitation
+  // Check for existing pending invitation. Insensible a la casse : une
+  // invitation posee avant la normalisation peut encore porter une casse
+  // mixte.
   const existingInvitation = await prisma.invitation.findFirst({
     where: {
       tenantId: data.tenantId,
-      email: data.email,
+      email: { equals: email, mode: 'insensitive' },
       status: InvitationStatus.PENDING,
       expiresAt: { gt: new Date() }
     }
@@ -222,8 +233,10 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
 
   // Check if user already has membership. `select` explicite : jamais
   // `passwordHash`, et globalRole sert au garde-fou super-admin ci-dessous.
-  const existingUser = await prisma.user.findUnique({
-    where: { email: data.email },
+  // `findFirst` + `mode: 'insensitive'` (pas `findUnique`) : un compte
+  // existant peut porter une casse differente de celle saisie ici.
+  const existingUser = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
     select: { id: true, globalRole: true }
   });
 
@@ -256,7 +269,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   const { invitation, token } = await prisma.$transaction(tx =>
     createInvitationRecordTx(tx, {
       tenantId: data.tenantId,
-      email: data.email,
+      email,
       roleIds: data.roleIds,
       invitedByUserId: data.invitedByUserId
     })
@@ -266,7 +279,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   const roleLabels = await resolveRoleLabels(data.roleIds);
   try {
     await emailService.sendInviteEmail(
-      data.email,
+      email,
       token, // Send plain token, not hash
       tenant.name,
       roleLabels,
@@ -275,13 +288,13 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     );
     logger.info('Invitation email sent', {
       invitationId: invitation.id,
-      email: data.email,
+      email,
       tenantId: data.tenantId
     });
   } catch (error) {
     logger.error('Failed to send invitation email', {
       invitationId: invitation.id,
-      email: data.email,
+      email,
       error
     });
     // Don't throw - invitation is created, can be resent later
@@ -289,7 +302,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
 
   await sendInvitationWhatsapp({
     tenantId: data.tenantId,
-    email: data.email,
+    email,
     tenantName: tenant.name,
     token
   });
@@ -302,7 +315,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     entityType: 'Invitation',
     entityId: invitation.id,
     payload: {
-      email: data.email,
+      email,
       roleIds: data.roleIds
     }
   });
@@ -362,9 +375,13 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
   }
 
   // Check if an account already exists for this email. `select` explicite :
-  // jamais `passwordHash`.
-  let user = await prisma.user.findUnique({
-    where: { email: invitation.email },
+  // jamais `passwordHash`. `findFirst` + `mode: 'insensitive'` (pas
+  // `findUnique`) : une invitation posee avant la normalisation de
+  // `inviteCollaboratorSchema` peut porter une casse differente de celle du
+  // compte, sans quoi la recherche exacte ratait le compte existant et
+  // acceptInvitation en recreait un second, doublon, sous la casse du jeton.
+  let user = await prisma.user.findFirst({
+    where: { email: { equals: invitation.email, mode: 'insensitive' } },
     select: { id: true, email: true, fullName: true }
   });
 
@@ -531,11 +548,16 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
  * @returns La nouvelle date d'expiration (le token reste interne au serveur)
  */
 export async function resendInvitation(invitationId: string, tenantId: string, actorUserId: string) {
-  // `findFirst` sur (id, tenantId) plutot que `findUnique(id)` : une
-  // invitation d'une autre agence doit ressortir NotFoundError, exactement
-  // comme si elle n'existait pas.
-  const invitation = await prisma.invitation.findFirst({
-    where: { id: invitationId, tenantId },
+  // Garde-fou generique (utils/tenant-ownership.ts) plutot qu'un
+  // `findFirst({ id, tenantId })` recopie a la main : une invitation d'une
+  // autre agence leve la meme NotFoundError, exactement comme si elle
+  // n'existait pas.
+  await assertBelongsToTenant(prisma, 'invitation', invitationId, tenantId, {
+    message: 'Invitation introuvable.'
+  });
+
+  const invitation = await prisma.invitation.findUnique({
+    where: { id: invitationId },
     include: { tenant: true }
   });
 
@@ -613,8 +635,12 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
  * @param actorUserId - User revoking (for audit)
  */
 export async function revokeInvitation(invitationId: string, tenantId: string, actorUserId: string) {
-  const invitation = await prisma.invitation.findFirst({
-    where: { id: invitationId, tenantId }
+  await assertBelongsToTenant(prisma, 'invitation', invitationId, tenantId, {
+    message: 'Invitation introuvable.'
+  });
+
+  const invitation = await prisma.invitation.findUnique({
+    where: { id: invitationId }
   });
 
   if (!invitation) {
