@@ -470,7 +470,10 @@ export async function listTenantWorkPrograms(
       // `plannedDate` n'est pas nullable dans le schema actuel (aucun
       // programme ne peut donc apparaitre sans date prevue) ; le tri simple
       // ascendant place deja les echeances les plus proches en tete.
-      orderBy: [{ plannedDate: 'asc' }]
+      orderBy: [{ plannedDate: 'asc' }],
+      // Plafond de securite : "a venir" n'est pas pagine, mais ne doit pas
+      // pouvoir ramener un tenant avec des milliers de programmes en une fois.
+      take: 200
     });
     const mapped = items.map(toWorkProgramContract);
     return { items: mapped, total: mapped.length, page: 1, limit: mapped.length || 1, totalPages: 1 };

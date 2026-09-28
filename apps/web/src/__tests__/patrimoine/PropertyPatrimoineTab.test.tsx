@@ -153,7 +153,6 @@ const baseDocument = {
   id: 'doc-1',
   propertyId: 'property-1',
   documentType: 'OTHER',
-  filePath: '/uploads/properties/property-1/documents/doc-1.pdf',
   fileName: 'doc.pdf',
   fileSize: 1024,
   mimeType: 'application/pdf',

@@ -87,7 +87,7 @@ export async function sendOwnerStatementHandler(req: Request, res: Response): Pr
     if (statement.computationVersion < OWNER_STATEMENT_COMPUTATION_VERSION) {
       throw conflict("Ce releve a ete calcule selon l'ancienne methode : recalculez-le avant de l'envoyer.");
     }
-    const result = await sendOwnerStatement(statement.id);
+    const result = await sendOwnerStatement(statement.id, tenantId);
     res.status(result.sent ? 202 : 200).json({ success: true, data: result });
   } catch (error: unknown) {
     logger.error('Error sending owner statement', { error });

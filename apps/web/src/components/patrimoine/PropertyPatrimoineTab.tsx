@@ -49,7 +49,6 @@ import type {
   PropertyYieldData,
   WorkProgram
 } from '../../types/patrimoine-types';
-import { PATRIMONY_DOC_TYPES } from '../../types/patrimoine-types';
 import type { PropertyDocument } from '../../types/property-types';
 import { DocumentVault } from './DocumentVault';
 import { ExpenseTracker } from './ExpenseTracker';
@@ -69,7 +68,7 @@ import { MoneyValue, formatMoney } from '../primitives';
 import {
   DEVISE_PATRIMOINE,
   apiErrorMessage,
-  documentTypeLabel,
+  documentTypeOptions,
   expenseCategoryLabel,
   loanStatusLabel,
   valuationMethodLabel
@@ -1120,11 +1119,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             </Upload>
           </Form.Item>
           <Form.Item name="documentType" label={t('Type')} rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={PATRIMONY_DOC_TYPES.map(type => ({ value: type, label: documentTypeLabel(type) }))}
-            />
+            <Select showSearch optionFilterProp="label" options={documentTypeOptions()} />
           </Form.Item>
           <Form.Item name="expirationDate" label={t('Date expiration (optionnelle)')}>
             <Input type="datetime-local" />

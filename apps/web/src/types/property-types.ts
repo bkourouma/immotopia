@@ -181,8 +181,6 @@ export interface PropertyDocument {
   id: string;
   propertyId: string;
   documentType: PropertyDocumentType;
-  filePath: string;
-  fileUrl?: string;
   fileName: string;
   fileSize?: number;
   mimeType?: string;

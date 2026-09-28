@@ -1,6 +1,6 @@
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
-import { conflict } from '../errors';
+import { ConflictError } from '../../middleware/error-middleware';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
@@ -91,9 +91,9 @@ export async function alertExpiringDocuments(tenantId: string, daysAhead = 30) {
   return { matched: docs.length, sentCount };
 }
 
-export async function sendOwnerStatement(statementId: string) {
-  const statement = await prisma.ownerStatement.findUnique({
-    where: { id: statementId },
+export async function sendOwnerStatement(statementId: string, tenantId: string) {
+  const statement = await prisma.ownerStatement.findFirst({
+    where: { id: statementId, tenantId },
     include: {
       owner: true,
       items: {
@@ -121,7 +121,7 @@ export async function sendOwnerStatement(statementId: string) {
   // une erreur typee explicite plutot qu'un `{ sent: false }` silencieux que
   // l'appelant pourrait confondre avec NO_EMAIL.
   if (owner.consentEmail !== true) {
-    throw conflict(
+    throw new ConflictError(
       "Le propriétaire n'a pas consenti à recevoir des communications par e-mail : le relevé ne peut pas lui être envoyé."
     );
   }
@@ -188,7 +188,7 @@ export async function sendOwnerStatement(statementId: string) {
   });
 
   await prisma.ownerStatement.update({
-    where: { id: statement.id },
+    where: { id: statement.id, tenantId },
     data: {
       status: 'SENT',
       sentAt: new Date()
