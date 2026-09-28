@@ -40,8 +40,8 @@ Pièges et décisions :
 
 ## Branche `feat/patrimoine-p1-pack` — 2026-09-28
 
-**État :** prêt à relire — PR #46 vers `main`, CI verte (6/6 checks)
-**Dernier commit :** `8e883bdc` fix(patrimoine): mock du registre des lots dans les tests de provisionnement + wiki du pack Patrimoine
+**État :** prêt à relire — PR #46 vers `main`, CI verte (6/6 checks sur `da6ca863`)
+**Dernier commit :** `da6ca863` Merge branch 'main' into feat/patrimoine-p1-pack
 
 Fait :
 
@@ -78,6 +78,13 @@ PATRIMOINE_ESSENTIEL:1,EXT_BIENS_10:1 --dry-run` reconnaît les
   et `wiki:check` verts ; `migrate diff --exit-code` sans différence sur
   base jetable (`pg-fonds`, 55432, base `immotopia_p1_<horodatage>`,
   supprimée après usage) ; CI GitHub verte (API + 4 lots web + build).
+- `origin/main` a de nouveau avancé pendant la revue (PR #41, sécurité
+  des invitations) : re-fusionnée (`da6ca863`), un conflit trivial dans
+  `error-middleware.ts` (les deux branches ajoutaient un code d'erreur
+  en fin d'objet `ErrorCode`), résolu en gardant les deux. Revérifié
+  après cette seconde fusion : 22 suites/359 tests Jest verts,
+  `typecheck` stable (72), `check:architecture` et `wiki:check` verts,
+  CI GitHub relancée et verte sur `da6ca863` (6/6 checks).
 
 Reste à faire :
 
