@@ -153,8 +153,27 @@ vi.mock('antd', async () => {
     );
   };
 
+  // `<ProviderList>` (SyndicProviders, depuis l'intégration du filtre « Sous
+  // contrat/Tous ») utilise `<Avatar>` et `<Segmented>`, absents du mock
+  // minimal précédent — un import non déclaré ici casserait le montage.
+  const Avatar: any = passthrough('span');
+  const Segmented: any = ({ options, value, onChange }: any) => (
+    <div>
+      {(options || []).map((option: any) => (
+        <button
+          key={String(option.value)}
+          aria-pressed={option.value === value}
+          onClick={() => onChange?.(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
+    Avatar,
     Button: ({ children, onClick, disabled, loading, icon }: any) => (
       <button onClick={onClick} disabled={disabled || loading}>
         {icon}
@@ -163,6 +182,7 @@ vi.mock('antd', async () => {
     ),
     Card: passthrough(),
     Col: passthrough(),
+    Segmented,
     Row: passthrough(),
     DatePicker: passthrough('input'),
     Form,

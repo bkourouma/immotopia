@@ -38,6 +38,70 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/syndic-reprise-ecarts` — 2026-09-28
+
+**État :** prêt à relire — PR #43 vers `main`, CI verte (6/6)
+**Dernier commit :** `ffd2bdff` fix(api): lever la collision de type entre deux fichiers de test sans import
+
+Fait (reprise d'une session coupée par une limite d'API — le travail était déjà
+sur disque dans le worktree, non commité ; repris sans rien refaire) :
+
+- Les 7 écarts du lot, chacun dans son propre commit : pagination des
+  copropriétés (`queries.ts`, `syndic-controller.ts`, `syndic-service.ts`,
+  `SyndicsList.tsx`), votants d'AG à la date (nouveau
+  `packages/api/src/lib/syndics/meeting-voters.ts`, consommé côté frontend
+  sans dupliquer `meeting-governance.ts`), sélecteur « Changer de
+  copropriété » dans `SyndicWorkspaceLayout`, prestataires sous contrat en
+  premier (nouveau `ProviderList.tsx`), seed de démo avec historique des
+  fonds cohérent (nouveau `syndic-demo-fund-movements.ts`), découpage de
+  `SyndicChargeSchedules.tsx` (828 → 146 lignes) en
+  `components/syndics/charge-schedules/`, retouches d'affichage
+  lots/incidents. Catalogues i18n et classeur wiki en commits séparés.
+- Vérifications : typecheck api+web propre sur les fichiers touchés (aucune
+  nouvelle erreur dans la base préexistante) ; Jest ciblé
+  (`syndics.*`, `routes-inventory`, `route-features`,
+  `schema-tenant-coverage`) tout vert ; Vitest syndics+navigation vert, sauf
+  des délais isolés déjà connus sur ce poste (confirmés indépendants du diff
+  en relançant les fichiers seuls) ; `check:architecture` et `wiki:check`
+  propres (662 sous-fonctionnalités).
+- Relecture `security-auditor` (pagination + votants d'AG, identifiants
+  reçus dans les routes) : 0 constat. Relecture générale indépendante des 7
+  items : **prêt** sur les 7.
+- Fusion de `main` (en retard de plusieurs commits, dont PR #37 à #40 —
+  migrations, abonnements, patrimoine) : seul le classeur wiki
+  (`ImmoTopia_Wiki_Fonctionnalites.xlsx`) entrait en conflit binaire.
+  Résolu en repartant du classeur de `main` et en y réappliquant les mêmes
+  modifications de cellules que sur cette branche (1 ligne ajoutée, 5
+  retouchées), puis en régénérant le miroir. Le mirroir doit refléter
+  `endRow − startRow` lignes de données (table Excel `SousFonctionnalites`,
+  `ref` **et** `autoFilter.ref` à mettre à jour tous les deux après un
+  `insert_rows` openpyxl, sinon `wiki:check` sous-compte silencieusement).
+- CI : un premier run a échoué sur `provision-subscription-cli.test.ts` /
+  `subscription-provisioning-service.test.ts` (fusionnés depuis `main`,
+  PR #39) — aucun des deux n'a d'`import`/`export` top-level, TypeScript les
+  traite comme deux scripts globaux et leur `type Row` commun entre en
+  collision (TS2300) dès qu'ils tournent dans le même run `jest`. Corrigé
+  par un `export {}` dans chacun (commit dédié, hors périmètre du lot mais
+  nécessaire pour la CI verte).
+
+Reste à faire :
+
+- Fusion de la PR #43 : à l'utilisateur.
+
+Pièges et décisions :
+
+- Un fichier de test Jest sans `import`/`export` est un script global en
+  TypeScript : deux fichiers de ce type déclarant le même identifiant de
+  niveau supérieur (ex. `type Row = …`, motif très répandu dans
+  `packages/api/__tests__`) entrent en collision TS2300 s'ils sont compilés
+  ensemble — invisible tant qu'un seul des deux tourne isolément.
+- Résolution d'un conflit Git sur le classeur xlsx : ne pas prendre un
+  camp entier, reconstruire par clé stable (Module, Fonctionnalité,
+  Sous-fonctionnalité) — script dans le scratchpad de session
+  `6d754bbb-846c-4481-9333-070145f6e577` (non conservé).
+
+---
+
 ## Branche `feat/patrimoine-p5-portail` — 2026-09-28
 
 **État :** prêt à fusionner — PR #42 vers `main`, 6/6 checks CI au vert (`gh pr view 42` : `mergeable: MERGEABLE`), fusion laissée à l'utilisateur
@@ -120,6 +184,81 @@ Pièges et décisions :
   retirées — les deux branches sont déjà fusionnées dans `main` (règle du
   fichier : une section disparaît une fois fusionnée, l'historique reste dans
   `git log`).
+
+---
+
+## Branche `fix/patrimoine-suite-p0` — 2026-09-28
+
+**État :** prêt à relire — PR #40 vers `main`
+**Dernier commit :** voir `git log -1` sur la branche (commit unique du lot)
+
+Fait :
+
+- `alertExpiringDocuments` (`lib/patrimoine/notifications.ts`) porte désormais
+  sur `PropertyDocument` (et non plus `PatrimonyDocument`, inutilisé depuis P0) :
+  fenêtre [maintenant, +30 j], destinataires = propriétaires du bien
+  (`PropertyOwnershipShare` + `ownerUserId` → `TenantClient` →
+  `details.crmContactId` → `CrmContact.consentEmail === true`), anti-doublon
+  par `warningSentAt` réservé atomiquement (`updateMany … warningSentAt: null`),
+  remis à null si aucun envoi n'aboutit ; HTML échappé.
+- Job `jobs/document-expiry-alert-job.ts`, chaque jour 7 h UTC, agences
+  ACTIVE une par une dans `runWithTenantContext`, démarré dans `src/index.ts`
+  (deux lignes, conflit trivial possible avec `feat/provision-abonnements`).
+- `owner-statements-controller.ts` en `asyncHandler` + erreurs typées ;
+  tests 400/404/409 (supertest + `errorHandler` réel).
+- Wiki : ligne « Alerter les propriétaires d'un document qui arrive à échéance ».
+
+Reste à faire :
+
+- Fusion par l'utilisateur. Le modèle `PatrimonyDocument` reste au schéma
+  (retrait = migration, hors lot).
+
+Pièges et décisions :
+
+- Pas de consentement supposé depuis le seul `User` : un propriétaire sans
+  contact CRM lié ne reçoit rien ; le document n'est pas marqué et est
+  retenté chaque jour.
+- Limites assumées (commentées) : échec partiel en indivision non relancé ;
+  arrêt du processus entre réservation et envoi laisse la marque posée.
+- Une erreur sans statut dans create/update du relevé donne 500 (et non
+  plus 400 par défaut) ; les erreurs métier portent toutes un statut.
+
+## Branche `feat/provision-abonnements` — 2026-09-28
+
+**État :** prêt à relire (PR ouverte vers `main`)
+**Dernier commit :** voir `git log` de la branche (outil d'exploitation des abonnements)
+
+Fait :
+
+- Outil en ligne de commande `packages/api/src/scripts/provision-subscription.ts`
+  (logique : `services/subscription-provisioning-service.ts`) : `list`,
+  `provision` (essai TRIALING + éléments en une transaction, `setupWaived`,
+  puis réconciliation du registre des lots), `suspend` (`suspendTenant`),
+  `--dry-run` sans écriture, idempotent, fenêtre hh:10–hh:20 UTC refusée,
+  acteur d'audit `system:provision-subscription`. `audit-service` exporte
+  `flushAuditEvents`. Section RUNBOOK « Outil d'exploitation des abonnements ».
+- Essai de bout en bout sur une base jetable (PostgreSQL local, migrations +
+  catalogue) avec le JavaScript compilé comme dans l'image : dry-run sans
+  écriture, création Ivoire (AGENCE + SYNDIC + 2 × EXT_COPRO, 100 lots
+  copro réconciliés), relance idempotente, refus non conforme, suspension
+  et révocation des jetons, première facture simulée après l'essai sans
+  frais de mise en route (96 810 HT / 114 236 TTC).
+
+Reste à faire :
+
+- En production (hors de cette branche, après fusion et déploiement) : dry-run
+  puis réel pour Ivoire Résidences, Agence Immobilière du Mali, Bamako
+  Immobilier (commandes dans la PR). Les slugs réels sont à lire avec `list`.
+
+Pièges et décisions :
+
+- Ivoire aura 4 copropriétés pour 4 incluses : la tâche horaire enverra les
+  alertes de seuil 80 % et 100 % (une fois par période). Voulu par la
+  composition décidée ; le dry-run l'annonce.
+- Un abonnement existant non conforme est refusé, jamais corrigé : si la
+  production en a déjà un pour Ivoire, décider à la main.
+- Le gestionnaire SIGTERM/SIGINT d'`audit-service` sort en code 0 même si la
+  file d'audit n'a pas pu être vidée (hérité, hors périmètre).
 
 ## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 

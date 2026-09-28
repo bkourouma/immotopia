@@ -21,8 +21,7 @@ let mockWorld: {
 let mockSeq = 0;
 
 jest.mock('@prisma/client', () => {
-  const tenantOfSyndicate = (syndicateId: string) =>
-    mockWorld.syndicates.find(s => s.id === syndicateId)?.tenantId;
+  const tenantOfSyndicate = (syndicateId: string) => mockWorld.syndicates.find(s => s.id === syndicateId)?.tenantId;
 
   const meetingMatches = (m: Row, where: Row) =>
     (where.id === undefined || m.id === where.id) &&
@@ -34,7 +33,11 @@ jest.mock('@prisma/client', () => {
     return c ? { id: c.id, firstName: c.firstName, lastName: c.lastName, legalName: null, email: null } : null;
   };
 
-  const withProxyRelations = (p: Row) => ({ ...p, grantor: contact(p.grantorContactId), representative: contact(p.representativeContactId) });
+  const withProxyRelations = (p: Row) => ({
+    ...p,
+    grantor: contact(p.grantorContactId),
+    representative: contact(p.representativeContactId)
+  });
 
   const client: Row = {
     generalMeeting: {
@@ -44,7 +47,10 @@ jest.mock('@prisma/client', () => {
         if (!include) return { ...m };
         return {
           ...m,
-          syndicate: { ...mockWorld.syndicates.find(s => s.id === m.syndicateId), lots: mockWorld.lots.filter(l => l.syndicateId === m.syndicateId) },
+          syndicate: {
+            ...mockWorld.syndicates.find(s => s.id === m.syndicateId),
+            lots: mockWorld.lots.filter(l => l.syndicateId === m.syndicateId)
+          },
           agendaItems: [],
           resolutions: mockWorld.resolutions
             .filter(r => r.meetingId === m.id)
@@ -64,7 +70,7 @@ jest.mock('@prisma/client', () => {
         if (!r) return null;
         const m = mockWorld.meetings.find(item => item.id === r.meetingId)!;
         if (!meetingMatches(m, where.meeting)) return null;
-        return { ...r, meeting: { id: m.id, status: m.status } };
+        return { ...r, meeting: { id: m.id, status: m.status, scheduledAt: m.scheduledAt } };
       }),
       findMany: jest.fn(async ({ where }: Row) =>
         mockWorld.resolutions
@@ -72,7 +78,15 @@ jest.mock('@prisma/client', () => {
           .map(r => ({ ...r, votes: mockWorld.votes.filter(v => v.resolutionId === r.id) }))
       ),
       create: jest.fn(async ({ data }: Row) => {
-        const row = { id: `res-${++mockSeq}`, votesFor: 0, votesAgainst: 0, votesAbstain: 0, sharesFor: 0, result: null, ...data };
+        const row = {
+          id: `res-${++mockSeq}`,
+          votesFor: 0,
+          votesAgainst: 0,
+          votesAbstain: 0,
+          sharesFor: 0,
+          result: null,
+          ...data
+        };
         mockWorld.resolutions.push(row);
         return row;
       }),
@@ -98,7 +112,8 @@ jest.mock('@prisma/client', () => {
           l =>
             (where.id === undefined || l.id === where.id) &&
             l.syndicateId === where.syndicateId &&
-            (where.syndicate?.tenantId === undefined || tenantOfSyndicate(l.syndicateId) === where.syndicate.tenantId) &&
+            (where.syndicate?.tenantId === undefined ||
+              tenantOfSyndicate(l.syndicateId) === where.syndicate.tenantId) &&
             (!where.OR || where.OR.some((cond: Row) => Object.entries(cond).every(([k, v]) => l[k] === v)))
         );
         return lot ? { id: lot.id } : null;
@@ -181,7 +196,19 @@ function resetWorld(status = 'PLANNED') {
       { id: 'M1', syndicateId: S1, status, startTime: null, endTime: null, quorum: null },
       { id: 'M2', syndicateId: S2, status: 'PLANNED', startTime: null, endTime: null, quorum: null }
     ],
-    resolutions: [{ id: 'R1', meetingId: 'M1', title: 'Budget', majorityRule: 'ARTICLE_24', votesFor: 0, votesAgainst: 0, votesAbstain: 0, sharesFor: 0, result: null }],
+    resolutions: [
+      {
+        id: 'R1',
+        meetingId: 'M1',
+        title: 'Budget',
+        majorityRule: 'ARTICLE_24',
+        votesFor: 0,
+        votesAgainst: 0,
+        votesAbstain: 0,
+        sharesFor: 0,
+        result: null
+      }
+    ],
     votes: [],
     proxies: []
   };
@@ -238,7 +265,12 @@ describe('AG - transitions de statut', () => {
       { id: 'v2', resolutionId: 'R1', lotId: 'A4', vote: 'AGAINST' }
     );
     await updateMeetingByTenant(T1, S1, 'M1', { status: 'COMPLETED' });
-    expect(mockWorld.resolutions[0]).toMatchObject({ result: 'REJECTED', votesFor: 1, votesAgainst: 1, sharesFor: 100 });
+    expect(mockWorld.resolutions[0]).toMatchObject({
+      result: 'REJECTED',
+      votesFor: 1,
+      votesAgainst: 1,
+      sharesFor: 100
+    });
     expect(mockWorld.meetings[0].quorum).toBe(50);
   });
 
@@ -260,14 +292,80 @@ describe('AG - votes et resolutions', () => {
 
     meeting = await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A4', 'ABSTAIN');
     const resolution = meeting.resolutions[0];
-    expect(resolution).toMatchObject({ votesFor: 2, votesAgainst: 1, votesAbstain: 1, sharesFor: 300, result: 'REJECTED' });
-    expect(resolution.tally).toMatchObject({ rule: 'ARTICLE_24', sharesAgainst: 300, sharesAbstain: 400, referenceShares: 600 });
+    expect(resolution).toMatchObject({
+      votesFor: 2,
+      votesAgainst: 1,
+      votesAbstain: 1,
+      sharesFor: 300,
+      result: 'REJECTED'
+    });
+    expect(resolution.tally).toMatchObject({
+      rule: 'ARTICLE_24',
+      sharesAgainst: 300,
+      sharesAbstain: 400,
+      referenceShares: 600
+    });
     expect(meeting.attendance).toMatchObject({ representedShares: 1000, totalShares: 1000, quorumPercent: 100 });
     expect(mockWorld.meetings[0].quorum).toBe(100);
 
     // Le lot A3 change d'avis : 500 pour contre 0 -> approuvee.
     meeting = await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A3', 'FOR');
     expect(meeting.resolutions[0].result).toBe('APPROVED');
+  });
+
+  it('recalcul stocke (article 26) : un lot vendu apres l AG vote encore par son ancien proprietaire', async () => {
+    // Ecart recette (lot syndic-ecarts, T2) : le RESULTAT STOCKE par
+    // `recomputeMeetingResultsTx` doit suivre la regle « votant = proprietaire
+    // a la date de l'AG », comme la lecture (`getMeetingByTenant`). A1 (500)
+    // et A3 (300) votent pour ; A2 (100) et A4 (100) ne votent pas. A2 est
+    // revendu par c2 a c1 APRES l'AG : au moment du vote, c1 possede deja A1
+    // ET A2 dans la base, mais a la date de l'AG (`scheduledAt`), A2
+    // appartenait encore a c2.
+    const scheduledAt = new Date('2024-01-01T00:00:00Z');
+    const soldAfterMeeting = new Date('2024-06-01T00:00:00Z');
+    mockWorld.meetings[0].scheduledAt = scheduledAt;
+    mockWorld.resolutions[0].majorityRule = 'ARTICLE_26';
+
+    mockWorld.lots[0].generalShares = 500; // A1, c1
+    mockWorld.lots[2].generalShares = 300; // A3, c3
+    mockWorld.lots[3].generalShares = 100; // A4, c4, ne vote pas
+
+    // A2 : proprietaire actuel c1 (vente posterieure a l'AG), mais historique
+    // de propriete montrant c2 a la date de l'AG.
+    mockWorld.lots[1].generalShares = 100;
+    mockWorld.lots[1].coownerId = 'c1';
+    mockWorld.lots[1].ownerContactId = 'c1';
+    mockWorld.lots[1].ownerProfiles = [
+      {
+        contactId: 'c2',
+        ownershipPercentage: 100,
+        ownedSince: new Date('2010-01-01T00:00:00Z'),
+        ownedUntil: soldAfterMeeting,
+        contact: { id: 'c2', firstName: 'Bakary', lastName: 'Diallo', legalName: null, email: null }
+      },
+      {
+        contactId: 'c1',
+        ownershipPercentage: 100,
+        ownedSince: soldAfterMeeting,
+        ownedUntil: null,
+        contact: { id: 'c1', firstName: 'Awa', lastName: 'Kone', legalName: null, email: null }
+      }
+    ];
+
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A1', 'FOR');
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A3', 'FOR');
+
+    // A la date de l'AG, A1 (c1) et A2 (c2, ancien proprietaire) restent deux
+    // coproprietaires distincts parmi 4 (c1, c2, c3, c4) : le « pour » ne
+    // compte que c1 et c3 -> majorite en nombre non atteinte (2*2 = 4, pas
+    // > 4) -> REJETEE malgre des tantiemes largement suffisants (800/1000).
+    // Si le recalcul ignorait `scheduledAt` (repli sur la date du jour), A2
+    // fusionnerait avec c1 (proprietaire actuel), ramenant le total a 3
+    // coproprietaires : 2*2 = 4 > 3 aurait alors APPROUVE la resolution — ce
+    // test echouerait.
+    expect(mockWorld.resolutions[0].result).toBe('REJECTED');
+    expect(mockWorld.resolutions[0].votesFor).toBe(2);
+    expect(mockWorld.resolutions[0].sharesFor).toBe(800);
   });
 
   it('refuse tout vote une fois l AG cloturee, et ne modifie pas le vote existant (409)', async () => {
@@ -286,14 +384,22 @@ describe('AG - votes et resolutions', () => {
 
   it('refuse d ajouter une resolution a une AG cloturee (409)', async () => {
     mockWorld.meetings[0].status = 'COMPLETED';
-    await expectStatus(addResolutionToMeeting(T1, S1, { meetingId: 'M1', title: 'Travaux' }), 409, /ajouter une resolution/);
+    await expectStatus(
+      addResolutionToMeeting(T1, S1, { meetingId: 'M1', title: 'Travaux' }),
+      409,
+      /ajouter une resolution/
+    );
     expect(mockWorld.resolutions).toHaveLength(1);
   });
 
   it('attribue l article 24 par defaut et garde un texte libre tel quel', async () => {
     const byDefault = await addResolutionToMeeting(T1, S1, { meetingId: 'M1', title: 'Travaux' });
     expect(byDefault.majorityRule).toBe('ARTICLE_24');
-    const freeText = await addResolutionToMeeting(T1, S1, { meetingId: 'M1', title: 'Ravalement', majorityRule: 'Article 24' });
+    const freeText = await addResolutionToMeeting(T1, S1, {
+      meetingId: 'M1',
+      title: 'Ravalement',
+      majorityRule: 'Article 24'
+    });
     expect(freeText.majorityRule).toBe('Article 24');
     const art26 = await addResolutionToMeeting(T1, S1, { meetingId: 'M1', title: 'Vente', majorityRule: 'ARTICLE_26' });
     expect(art26.majorityRule).toBe('ARTICLE_26');
@@ -313,8 +419,13 @@ describe('AG - votes et resolutions', () => {
 describe('AG - pouvoirs', () => {
   beforeEach(() => resetWorld());
 
-  const create = (grantorContactId: string, representativeContactId: string, tenantId = T1, syndicateId = S1, meetingId = 'M1') =>
-    createMeetingProxyByTenant(tenantId, syndicateId, { meetingId, grantorContactId, representativeContactId });
+  const create = (
+    grantorContactId: string,
+    representativeContactId: string,
+    tenantId = T1,
+    syndicateId = S1,
+    meetingId = 'M1'
+  ) => createMeetingProxyByTenant(tenantId, syndicateId, { meetingId, grantorContactId, representativeContactId });
 
   it('cree, liste et retire un pouvoir', async () => {
     const proxy: any = await create('c1', 'c5');
