@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 import { useFilteredNavigation } from '../../hooks/useMenuAccess';
 import { OWNER_PATRIMOINE_MENU_KEY, withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
 
@@ -32,7 +32,7 @@ describe('menu « Mon patrimoine » — masqué par le réglage d’agence', () 
 
   it('fait disparaître l’entrée « Mon patrimoine » de la navigation filtrée quand la vue est masquée', () => {
     const disabled = withOwnerPatrimoineMenu(new Set(), false);
-    const nav = renderHook(() => useFilteredNavigation(NAVIGATION.proprietaire, disabled)).result.current;
+    const nav = renderHook(() => useFilteredNavigation(getNavigation().proprietaire, disabled)).result.current;
 
     expect(nav?.tree.some(group => group.key === 'mon-patrimoine')).toBe(false);
     // Le reste du portefeuille reste visible : seule cette entrée est coupée.
@@ -41,7 +41,7 @@ describe('menu « Mon patrimoine » — masqué par le réglage d’agence', () 
 
   it('laisse « Mon patrimoine » visible quand la vue est activée', () => {
     const disabled = withOwnerPatrimoineMenu(new Set(), true);
-    const nav = renderHook(() => useFilteredNavigation(NAVIGATION.proprietaire, disabled)).result.current;
+    const nav = renderHook(() => useFilteredNavigation(getNavigation().proprietaire, disabled)).result.current;
 
     expect(nav?.tree.some(group => group.key === 'mon-patrimoine')).toBe(true);
   });

@@ -38,6 +38,93 @@ Pièges et décisions :
 
 ---
 
+## Branche `fix/langue-menu-connexion` — 2026-09-28
+
+**État :** prêt à relire — PR à ouvrir vers `main`
+**Dernier commit :** voir `git log -1` sur la branche (commit unique du lot)
+
+Fait (repris d'une session précédente arrêtée par une limite d'API, puis
+terminé) :
+
+- Menu latéral, intertitres de domaine et actions d'écran (FAB) : les
+  constantes de module figées en français à l'import (`NAVIGATION`,
+  `SECTION_LABELS`, `PORTAL_PSEUDO_ROLES`, `SCREEN_ACTIONS`) sont devenues des
+  fonctions `getNavigation()`/`getSectionLabels()`/`getPortalPseudoRoles()`/
+  `getScreenActions()`, recalculées à chaque appel avec un cache par langue
+  pour les deux premières (même motif que `route-labels.ts:currentRouteLabels`,
+  préexistant et non touché — le fil d'Ariane et les titres suivaient déjà la
+  langue, seul le menu restait figé).
+- Connexion : `LanguagePreferenceSync.tsx` réécrit — la préférence du compte
+  prime une fois par `user.id` (pas à chaque nouvel objet `user`), et un choix
+  fait en session est remonté au compte une seule fois par bascule. Un repli
+  navigateur n'est jamais écrit sur le compte.
+- `LanguageProvider.tsx` : garde de course `languageRequestId` (deux
+  `setLanguage` qui se chevauchent, seul le dernier en date gagne) et nouveau
+  drapeau `initialLanguageResolved`, exposé par le contexte — nécessaire car
+  les effets d'un composant ENFANT (`LanguagePreferenceSync`) se déclenchent
+  avant ceux du PROVIDER au montage : `isSwitching` ne pouvait donc pas servir
+  à cette garde (racine du bug trouvé par la relecture, voir plus bas).
+- `AuthContext.tsx` : `logout()` vide `LANGUAGE_STORAGE_KEY` — sans ça, un
+  choix explicite de langue persisté localement par un compte fuitait vers le
+  compte suivant à se connecter sur le même poste (partagé/kiosque), même sans
+  préférence enregistrée pour ce second compte (trouvé par la relecture).
+- Clés mortes de `syndic.json` (en/ar) : vérifié avec
+  `node apps/web/scripts/i18n-migrate.mjs` (sans `--only`, sur tout le dépôt,
+  après fusion d'`origin/main`) — **aucun orphelin**, dans `syndic.json` ni
+  ailleurs. Confirmé indépendamment par la relecture (recherche littérale des
+  clés dans le code). Les ~30 fichiers de catalogues que ce script réécrit
+  quand même (mêmes clés, fin de ligne différente) ont été remis à l'identique
+  du `HEAD` (`git show HEAD:<f> > <f>`, vérifié octet à octet) plutôt que
+  commités sans effet.
+- Trois nouveaux fichiers de test (régression) :
+  `i18n/__tests__/language-provider-race.test.tsx`,
+  `i18n/__tests__/language-preference-sync.test.tsx` (7 cas, dont le (g) qui
+  couvre la course décrite plus haut), `__tests__/shell/localized-menu-integration.test.tsx`.
+  Les `waitFor` qui attendent une vraie bascule (catalogue + locales AntD/dayjs
+  réels, rien mocké) passent `{ timeout: 8000 }`, comme `__tests__/finance/*` —
+  sans ça, le délai par défaut de `waitFor` (1000 ms) est flaky sous charge.
+- Relecture par un agent `general-purpose` en lecture seule : 1 bloquant (la
+  course `isSwitching`, corrigée), 1 à corriger (fuite de langue entre
+  comptes, corrigée), suggestions mineures non retenues (commentaire
+  `menu-catalog.ts` toujours au nom de l'ancienne constante `NAVIGATION` ;
+  export `changeLanguage` de `i18n/index.ts` plus utilisé qu'en interne).
+- Vérifications : `typecheck -w @immotopia/web` (0 erreur), `check:architecture`
+  (0 violation), `wiki:check` (661 sous-fonctionnalités, à jour — pas de
+  fonctionnalité visible ajoutée/retirée par ce lot). Backend :
+  `typecheck -w @immotopia/api` a ses ~30 erreurs préexistantes habituelles,
+  aucune dans un fichier touché par ce lot (aucun fichier backend touché).
+- Suite web complète, 4 lots (`--shard=N/4 --maxWorkers=2 --minWorkers=1`) :
+  tous verts. Le lot 1/4 a d'abord affiché 11 échecs par timeout dans 4
+  fichiers sans rapport avec ce lot (`finance/cloture-chantier`,
+  `finance/tacherons`, `finance/stock-inventaire`,
+  `syndics/LotPaymentModal`) — relancés seuls, ces 4 fichiers passent
+  intégralement (75/75) : timeout sous charge parallèle, pas une régression
+  (piège documenté dans `.claude/rules/testing.md`).
+
+Reste à faire :
+
+- Ouvrir la PR (`gh pr create`, seul) et suivre la CI jusqu'au vert.
+
+Pièges et décisions :
+
+- `isSwitching` du `LanguageProvider` NE PEUT PAS servir de garde dans un
+  composant enfant pour détecter « la détection initiale est encore en cours »
+  au tout premier rendu : les effets des enfants se déclenchent avant celui du
+  parent au montage, donc avant que `isSwitching` ne passe à `true` pour cette
+  détection. D'où `initialLanguageResolved`, un état dédié qui part
+  correctement à `false` dès le premier rendu quel que soit l'ordre des
+  effets. Piège reproductible uniquement quand la session est DÉJÀ active au
+  tout premier rendu (rechargement de page, cookie valide) — invisible dans
+  un scénario de connexion classique où l'authentification résout après que
+  la détection initiale a eu largement le temps de se stabiliser.
+- Le hook `git status`/`git diff` de ce dépôt (`core.autocrlf=true`) marque
+  parfois un fichier `M` sans aucun changement réel de contenu (LF sur disque
+  vs CRLF attendu au checkout) : `git diff --numstat` (vide) et
+  `cmp`/`git hash-object` contre `git show HEAD:<f>` tranchent en cas de
+  doute, plutôt que de committer par précaution.
+
+---
+
 ## Branche `feat/syndic-reprise-ecarts` — 2026-09-28
 
 **État :** prêt à relire — PR #43 vers `main`, CI verte (6/6)
