@@ -31,6 +31,7 @@ import {
   LotPaymentResult,
   SyndicateLot
 } from '../../types/syndic-types';
+import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { chargeCallStatusConfig } from './ChargeCallTable';
@@ -282,8 +283,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       const fallback = `${doc.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${doc.number}.pdf`;
       const { blob, filename } = await downloadReceiptFile(tenantId, syndicId, doc.id, fallback);
       saveBlob(blob, filename);
-    } catch {
-      setSubmitError(t('Téléchargement impossible.'));
+    } catch (err) {
+      setSubmitError(await describeDownloadError(err));
     } finally {
       setDownloadingDocId(null);
     }

@@ -1464,6 +1464,16 @@ export interface ExecuteChargeScheduleResult {
   schedule: ChargeSchedule;
 }
 
+/** Renvoi des avis non envoyés d'une exécution (anomalie recette, correctif Syndic). */
+export interface ResendChargeScheduleRunNoticesResult {
+  /** Avis effectivement envoyés lors de CE renvoi (pas le total de l'exécution). */
+  resent: number;
+  /** Toujours non envoyés après ce renvoi. */
+  stillSkipped: number;
+  /** Exécution mise à jour (compteurs et notes recalculés sur l'ensemble des appels non couverts). */
+  run: ChargeScheduleRun;
+}
+
 export interface DeleteChargeScheduleResult {
   deleted: boolean;
   deactivated: boolean;

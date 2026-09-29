@@ -32,7 +32,7 @@ const store = {
   ownerProfiles: new Map<string, any>(),
   tenantProfiles: new Map<string, any>(),
   incidents: new Map<string, any>(),
-  imputations: new Map<string, any>(),
+  imputations: new Map<string, any>()
 };
 
 jest.mock('../../src/lib/syndics/queries', () => ({
@@ -100,22 +100,26 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     store.ownerProfiles.set(created.id, created);
     return created;
   }),
-  updateLotOwnerProfileBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, profileId: string, data: any) => {
-    const updated = { ...store.ownerProfiles.get(profileId), ...data };
-    store.ownerProfiles.set(profileId, updated);
-    return updated;
-  }),
+  updateLotOwnerProfileBySyndicate: jest.fn(
+    async (_tenantId: string, _syndicId: string, profileId: string, data: any) => {
+      const updated = { ...store.ownerProfiles.get(profileId), ...data };
+      store.ownerProfiles.set(profileId, updated);
+      return updated;
+    }
+  ),
   listLotTenantProfilesBySyndicate: jest.fn(async () => Array.from(store.tenantProfiles.values())),
   createLotTenantProfileBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: `tenant-${store.tenantProfiles.size + 1}`, ...data };
     store.tenantProfiles.set(created.id, created);
     return created;
   }),
-  updateLotTenantProfileBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, profileId: string, data: any) => {
-    const updated = { ...store.tenantProfiles.get(profileId), ...data };
-    store.tenantProfiles.set(profileId, updated);
-    return updated;
-  }),
+  updateLotTenantProfileBySyndicate: jest.fn(
+    async (_tenantId: string, _syndicId: string, profileId: string, data: any) => {
+      const updated = { ...store.tenantProfiles.get(profileId), ...data };
+      store.tenantProfiles.set(profileId, updated);
+      return updated;
+    }
+  ),
   listIncidentsBySyndicate: jest.fn(async () => Array.from(store.incidents.values())),
   createIncidentBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: INCIDENT_ID, status: 'REPORTED', ...data, imputations: [] };
@@ -127,17 +131,19 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     store.incidents.set(incidentId, updated);
     return updated;
   }),
-  addIncidentImputationBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, incidentId: string, data: any) => {
-    const created = { id: `imp-${store.imputations.size + 1}`, incidentId, ...data };
-    store.imputations.set(created.id, created);
-    return created;
-  }),
+  addIncidentImputationBySyndicate: jest.fn(
+    async (_tenantId: string, _syndicId: string, incidentId: string, data: any) => {
+      const created = { id: `imp-${store.imputations.size + 1}`, incidentId, ...data };
+      store.imputations.set(created.id, created);
+      return created;
+    }
+  )
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
   notifyChargeCall: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
   notifyMeetingConvocation: jest.fn().mockResolvedValue({ emailSent: 0, whatsappSent: 0 }),
-  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
+  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false })
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
@@ -162,12 +168,11 @@ describe('Syndics profiles/incidents routes', () => {
         lotId: '22222222-2222-4222-8222-222222222222',
         contactId: '33333333-3333-4333-8333-333333333333',
         ownershipPercentage: 100,
-        ownedSince: '2026-01-01T00:00:00.000Z',
+        ownedSince: '2026-01-01T00:00:00.000Z'
       });
 
     expect(createResponse.status).toBe(201);
-    const listResponse = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/profils/proprietaires`);
+    const listResponse = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/profils/proprietaires`);
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data).toHaveLength(1);
   });
@@ -180,7 +185,7 @@ describe('Syndics profiles/incidents routes', () => {
         lotId: '22222222-2222-4222-8222-222222222222',
         incidentType: 'LEAK',
         description: 'Fuite palier',
-        urgency: 'HIGH',
+        urgency: 'HIGH'
       });
     expect(incidentCreateResponse.status).toBe(201);
     const incidentId = incidentCreateResponse.body.data.id as string;
@@ -193,9 +198,32 @@ describe('Syndics profiles/incidents routes', () => {
       .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/incidents/${incidentId}/imputations`)
       .send({
         imputationType: 'SYNDICATE_BUDGET',
-        amount: 20000,
+        amount: 20000
       });
     expect(imputationResponse.status).toBe(201);
     expect(imputationResponse.body.data.amount).toBe(20000);
+  });
+
+  // Écart recette #2 : aucun écran ne pouvait faire avancer le statut d'un
+  // incident (En cours → Résolu → Clôturé) alors que la route l'acceptait déjà.
+  it('updates an incident status via PATCH', async () => {
+    const incidentCreateResponse = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/incidents`)
+      .send({
+        reportedByContactId: '33333333-3333-4333-8333-333333333333',
+        lotId: '22222222-2222-4222-8222-222222222222',
+        incidentType: 'BREAKDOWN',
+        description: 'Ascenseur en panne',
+        urgency: 'HIGH'
+      });
+    expect(incidentCreateResponse.status).toBe(201);
+    const incidentId = incidentCreateResponse.body.data.id as string;
+
+    const patchResponse = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/incidents/${incidentId}`)
+      .send({ status: 'IN_PROGRESS' });
+
+    expect(patchResponse.status).toBe(200);
+    expect(patchResponse.body.data.status).toBe('IN_PROGRESS');
   });
 });

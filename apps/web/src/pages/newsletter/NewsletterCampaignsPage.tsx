@@ -443,6 +443,7 @@ export function NewsletterCampaignsPage() {
         <p>{t("Sélectionnez la date et l'heure d'envoi :")}</p>
         <DatePicker
           showTime
+          needConfirm={false}
           format="DD/MM/YYYY HH:mm"
           value={scheduleDate}
           onChange={v => setScheduleDate(v)}

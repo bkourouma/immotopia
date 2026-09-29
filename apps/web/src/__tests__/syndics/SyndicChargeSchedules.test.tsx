@@ -24,6 +24,7 @@ const executeChargeScheduleNow = vi.fn();
 const listChargeScheduleRuns = vi.fn();
 const previewChargeSchedule = vi.fn();
 const downloadChargeCallNotice = vi.fn();
+const resendChargeScheduleRunNotices = vi.fn();
 
 vi.mock('../../services/syndic-charge-schedule-service', () => ({
   listChargeSchedules: (...args: unknown[]) => listChargeSchedules(...args),
@@ -36,7 +37,8 @@ vi.mock('../../services/syndic-charge-schedule-service', () => ({
   executeChargeScheduleNow: (...args: unknown[]) => executeChargeScheduleNow(...args),
   listChargeScheduleRuns: (...args: unknown[]) => listChargeScheduleRuns(...args),
   previewChargeSchedule: (...args: unknown[]) => previewChargeSchedule(...args),
-  downloadChargeCallNotice: (...args: unknown[]) => downloadChargeCallNotice(...args)
+  downloadChargeCallNotice: (...args: unknown[]) => downloadChargeCallNotice(...args),
+  resendChargeScheduleRunNotices: (...args: unknown[]) => resendChargeScheduleRunNotices(...args)
 }));
 
 const listBudgets = vi.fn();
@@ -309,7 +311,7 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     expect(screen.getByRole('button', { name: /Exécuter maintenant/ })).not.toBeDisabled();
   });
 
-  it("affiche l'historique des exécutions avec les avis non envoyés (infobulle) et un code d'erreur traduit", async () => {
+  it("affiche l'historique des exécutions avec les avis non envoyés en clair (sans survol) et un code d'erreur traduit", async () => {
     listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
     listChargeScheduleRuns.mockResolvedValue([
       {
@@ -355,9 +357,55 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     fireEvent.click(await screen.findByText('Historique'));
 
     await waitFor(() => expect(listChargeScheduleRuns).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'sched-1', 50));
-    expect(await screen.findByText('2 avis non envoyé(s)')).toBeInTheDocument();
+    // Compteurs ET raison visibles directement dans le tableau, sans survol.
+    expect(await screen.findByText(/3 avis envoyé\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/2 non envoyé\(s\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText('Avis non envoyé (propriétaire du lot différent du copropriétaire actuel) : A03, A07')
+    ).toBeInTheDocument();
     expect(await screen.findByText(/Abonnement sans module Syndic/)).toBeInTheDocument();
     expect(screen.queryByText('SUBSCRIPTION_DENIED')).not.toBeInTheDocument();
+  });
+
+  it("renvoie les avis non envoyés depuis l'historique et affiche le résultat", async () => {
+    listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
+    const run4 = {
+      id: 'run-4',
+      scheduleId: 'sched-1',
+      periodStart: '2026-08-01',
+      periodEnd: '2026-08-31',
+      periodLabel: 'Août 2026',
+      status: 'SUCCESS',
+      trigger: 'CRON',
+      batchId: 'batch-4',
+      callsCreated: 6,
+      callsCovered: 1,
+      notificationsSent: 3,
+      notificationsSkipped: 2,
+      notes: 'Avis non envoyé (copropriétaire sans e-mail ni WhatsApp exploitable) : A03, A07',
+      error: null,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      finishedAt: '2026-08-01T00:01:00.000Z'
+    };
+    listChargeScheduleRuns.mockResolvedValue([run4]);
+    resendChargeScheduleRunNotices.mockResolvedValue({
+      resent: 2,
+      stillSkipped: 0,
+      run: { ...run4, notificationsSent: 5, notificationsSkipped: 0, notes: null }
+    });
+    mount();
+
+    fireEvent.click(await screen.findByText('Ouvrir'));
+    fireEvent.click(await screen.findByText('Historique'));
+    await waitFor(() => expect(listChargeScheduleRuns).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByText('Renvoyer les avis non envoyés'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Renvoyer' }));
+
+    await waitFor(() =>
+      expect(resendChargeScheduleRunNotices).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'sched-1', 'run-4')
+    );
+    expect(await screen.findByText(/2 avis envoyé\(s\)\./)).toBeInTheDocument();
   });
 
   it('met en pause puis reprend une programmation', async () => {

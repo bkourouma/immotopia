@@ -30,6 +30,13 @@ export function useChargeSchedules(tenantId: string | undefined, syndicId: strin
     loadRuns: data.loadRuns
   });
 
+  // Après « Renvoyer les avis non envoyés » : recharge la liste et, si le tiroir
+  // est ouvert sur cette programmation, son historique.
+  const handleNoticesResent = (scheduleId: string) => {
+    void data.loadData();
+    if (drawer.editing?.id === scheduleId) void data.loadRuns(scheduleId);
+  };
+
   return {
     schedules: data.schedules,
     loading: data.loading,
@@ -57,6 +64,7 @@ export function useChargeSchedules(tenantId: string | undefined, syndicId: strin
     handlePause: actions.handlePause,
     handleResume: actions.handleResume,
     handleDelete: actions.handleDelete,
-    handleExecute: actions.handleExecute
+    handleExecute: actions.handleExecute,
+    handleNoticesResent
   };
 }

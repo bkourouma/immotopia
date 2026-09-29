@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { App, Button, Space, Spin, Typography, Upload } from 'antd';
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { validateBrandingImageFile } from '../../services/document-branding-service';
+import { downscaleImageFile } from '../../utils/downscale-image';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -75,14 +76,19 @@ export const BrandingImageField: React.FC<BrandingImageFieldProps> = ({
   }, [hasImage, imageVersion]);
 
   const handleSelect = async (file: File) => {
-    const validationError = validateBrandingImageFile(file);
+    // Réduit d'abord (sans effet si le fichier est déjà petit, dans un
+    // format non pris en charge, ou si le navigateur ne sait pas faire) afin
+    // que la limite de poids ci-dessous s'applique APRÈS réduction : une
+    // grande image, une fois ramenée à 800 px, redevient acceptable.
+    const candidate = await downscaleImageFile(file);
+    const validationError = validateBrandingImageFile(candidate);
     if (validationError) {
       message.error(validationError);
       return Upload.LIST_IGNORE;
     }
     setUploading(true);
     try {
-      await onUpload(file);
+      await onUpload(candidate);
       message.success(t('Image mise à jour'));
     } catch (err: any) {
       message.error(err.response?.data?.message || err.response?.data?.error || t('Erreur lors du téléversement'));
@@ -133,12 +139,7 @@ export const BrandingImageField: React.FC<BrandingImageFieldProps> = ({
       <Space direction="vertical">
         <Text strong>{label}</Text>
         <Space>
-          <Upload
-            accept="image/png,image/jpeg"
-            showUploadList={false}
-            disabled={disabled}
-            beforeUpload={handleSelect}
-          >
+          <Upload accept="image/png,image/jpeg" showUploadList={false} disabled={disabled} beforeUpload={handleSelect}>
             <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled} size="small">
               {hasImage ? t('Remplacer') : t('Téléverser')}
             </Button>
@@ -158,6 +159,9 @@ export const BrandingImageField: React.FC<BrandingImageFieldProps> = ({
         </Space>
         <Text type="secondary" style={{ fontSize: 'var(--font-size-caption, 12px)' }}>
           {t('PNG ou JPEG, 2 Mo maximum, 3000 × 3000 px maximum')}
+        </Text>
+        <Text type="secondary" style={{ fontSize: 'var(--font-size-caption, 12px)' }}>
+          {t('Les grandes images sont réduites automatiquement à 800 px.')}
         </Text>
       </Space>
     </Space>

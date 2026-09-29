@@ -30,6 +30,7 @@ import {
 import { getLotAdvance } from '../../services/syndic-lot-payment-service';
 import { downloadReceiptFile, listLotReceipts } from '../../services/syndic-receipt-service';
 import { OwnerAccount, OwnerAccountTransaction, ReceiptKind, ReceiptView } from '../../types/syndic-types';
+import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
@@ -209,8 +210,8 @@ export const SyndicOwnerAccount: React.FC = () => {
       const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
       const { blob, filename } = await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
       saveBlob(blob, filename);
-    } catch {
-      message.error(t('Téléchargement impossible.'));
+    } catch (err) {
+      message.error(await describeDownloadError(err));
     } finally {
       setDownloadingReceiptId(null);
     }
@@ -220,14 +221,12 @@ export const SyndicOwnerAccount: React.FC = () => {
     if (!effectiveTenantId || !syndicId || !lotId) return;
     try {
       const blob = await downloadLotOwnerAccountStatement(effectiveTenantId, syndicId, lotId);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `releve-compte-lot-${lotId}.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      message.error(err.response?.data?.error || t('Téléchargement du relevé impossible'));
+      saveBlob(blob, `releve-compte-lot-${lotId}.pdf`);
+    } catch (err) {
+      // `downloadLotOwnerAccountStatement` demande un `Blob` : le corps d'une
+      // erreur serveur y arrive donc aussi en `Blob`, jamais en JSON déjà
+      // parsé — `err.response?.data?.error` ne lisait rien.
+      message.error(await describeDownloadError(err));
     }
   };
 

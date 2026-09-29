@@ -9,6 +9,7 @@ import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { downloadCoOwnerDocument, listMyDocuments, type CoOwnerDocument } from '../../services/coowner-portal-service';
 import { documentTypeLabel } from './labels';
+import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { portalErrorMessage } from './portal-error';
 
@@ -37,8 +38,8 @@ export default function CoOwnerDocuments() {
     try {
       const { blob, filename } = await downloadCoOwnerDocument(document.id, document.title);
       saveBlob(blob, filename);
-    } catch {
-      feedback.error(t('Téléchargement impossible.'));
+    } catch (err) {
+      feedback.error(await describeDownloadError(err));
     } finally {
       setDownloadingId(null);
     }

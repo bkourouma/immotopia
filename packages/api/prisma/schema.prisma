@@ -3727,6 +3727,12 @@ model ChargeCall {
   /// fonds travaux). Nul : les fonds sont credites selon les postes du budget
   /// (`BudgetLineItem.fundId`), voir lib/syndics/fund-credits.ts.
   fundId      String?          @map("fund_id") @db.Uuid
+  /// Lot S4 (anomalie recette) : date du dernier avis (e-mail ou WhatsApp)
+  /// effectivement envoye pour cet appel. Nul tant qu'aucun avis n'est parti ;
+  /// pose par `notifyChargeCall` (lib/syndics/notifications.ts) et lu par le
+  /// renvoi des avis non envoyes (idempotence par appel, pas seulement par
+  /// periode).
+  noticeSentAt DateTime?       @map("notice_sent_at")
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 

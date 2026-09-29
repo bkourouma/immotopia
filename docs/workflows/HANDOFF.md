@@ -38,6 +38,53 @@ Pièges et décisions :
 
 ---
 
+## Branche `fix/syndic-anomalies-recette` — 2026-09-28
+
+**État :** prêt à relire — PR #47 vers `main`, recette navigateur faite (5/5)
+**Dernier commit :** voir `git log -1` sur la branche (worktree `.claude/worktrees/anomalies-recette`)
+
+Fait (5 anomalies du testeur, recette Syndic du 2026-09-28) :
+
+- AG : date seule + heure de début obligatoire (plus de panneau date+heure
+  débordant) ; `needConfirm={false}` sur les autres DatePicker showTime.
+- Incidents : bouton « Modifier l'incident » (PATCH existant), statut Assigné.
+- Avis d'appel : destinataire `ownerContactId ?? coownerId`, raisons
+  distinctes affichées en clair, `charge_calls.notice_sent_at` (migration
+  `20260928120000_charge_call_notice_sent_at`), route
+  `…/executions/:runId/renvoyer-avis` avec réservation atomique.
+- Budgets : transitions contrôlées, Réviser / Clôturer, réalisé et écart.
+- Téléchargements : délai 120 s pour les blobs sans rejeu sur expiration,
+  `download-error.ts`, images de marque réduites à 800 px avant l'envoi.
+- Wiki mis à jour, i18n extrait et traduit (en/ar).
+
+Reste à faire :
+
+- Recette faite le 2026-09-28 sur la démo (base `immotopia_demo`, créée depuis
+  `.env` avec envois neutralisés ; `.env.demo` ignoré par git). Non vu : une
+  exécution neuve avec raisons par lot, compte copropriétaire, import réel
+  d'image de marque. BUG-011 (jeton expiré → 403) corrigé en 401 (63a68506) ;
+  BUG-012 (calendrier 25 px sous la fenêtre à 1280x700) accepté.
+- Cause réelle des avis non envoyés en production : non vérifiée (pas de
+  lecture de la base prod) ; le nouvel écran donne la raison.
+- Déploiement : `migrate deploy` (migration additive).
+- Hors lot : clôture complète d'exercice (report à nouveau, ouverture N+1).
+
+Pièges et décisions :
+
+- Fusion de `main` (PR #43 `feat/syndic-reprise-ecarts` incluse) : l'écran
+  Programmation est désormais découpé en sous-composants
+  (`components/syndics/charge-schedules/`) ; les avis y passent par
+  `ChargeScheduleRunNotices` (ScheduleTable, ScheduleRunsPanel,
+  `handleNoticesResent` de `useChargeSchedules`). Tableau des incidents :
+  description de 240 px (retour à la ligne) pour que Statut, Prestataire et
+  Actions restent visibles.
+- Le client Prisma partagé par jonction a été régénéré avec `noticeSentAt`
+  (additif).
+- Échec connu hors sujet : `tenant-data-export.archive.test.ts` (types
+  `archiver` absents), aussi sur `main`.
+- Les images de marque déjà en 3000 px restent lentes à incruster : il faut
+  les réimporter.
+
 ## Branche `feat/patrimoine-p3-exports` — 2026-09-28
 
 **État :** prêt à relire — PR #45 vers `main`

@@ -1,7 +1,8 @@
 import type { SyndicChargeSchedule, SyndicChargeScheduleRun } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { ConflictError, NotFoundError, ValidationError } from '../../middleware/error-middleware';
-import { assertSyndicateOfTenant } from './charge-allocation';
+import { assertSyndicateOfTenant, paidFromAllocations } from './charge-allocation';
+import { computeOutstanding } from './finance-utils';
 import { formatIsoDay } from './period';
 import {
   firstPeriodIssuedOnOrAfter,
@@ -14,6 +15,7 @@ import {
   advanceSchedule,
   computePeriodPlan,
   executeSchedulePeriod,
+  notifyUncoveredCalls,
   publicErrorMessage,
   timingOf,
   type RunOutcome
@@ -423,6 +425,103 @@ export async function executeChargeScheduleNow(
   const isPlannedPeriod = schedule.nextRunAt?.getTime() === period.issueDate.getTime();
   if (result.status !== 'FAILED' && isPlannedPeriod) await advanceSchedule(schedule, period, now);
   return { run: runResultView(result), schedule: await viewOf(tenantId, scheduleId) };
+}
+
+// ---------------------------------------------------------------- renvoi des avis
+
+/**
+ * Garde anti-rafale simple, sans colonne supplémentaire : réutilise
+ * `finishedAt` du journal, déjà posé à la fin de l'émission ET mis à jour à
+ * chaque renvoi ci-dessous — un renvoi trop rapproché du précédent (émission
+ * ou renvoi) est refusé.
+ */
+const RESEND_COOLDOWN_MS = 60 * 1000;
+
+/**
+ * « Renvoyer les avis non envoyés » (item 4, anomalie recette) : ne retente
+ * que les appels du lot d'appels de cette exécution qui sont encore dus
+ * (reste à payer > 0) et sans avis déjà parti (`ChargeCall.noticeSentAt`
+ * nul) — un appel dont l'avis est déjà parti n'est jamais renvoyé deux fois
+ * par ce bouton. Les compteurs et la note de l'exécution sont recalculés sur
+ * l'ENSEMBLE des appels non couverts du lot, pour garder l'invariant
+ * `notificationsSent + notificationsSkipped === appels non couverts`.
+ */
+export async function resendChargeScheduleRunNotices(
+  tenantId: string,
+  syndicateId: string,
+  scheduleId: string,
+  runId: string,
+  now: Date = new Date()
+) {
+  const schedule = await loadOwnedSchedule(tenantId, syndicateId, scheduleId);
+  // `run → schedule → syndicat → tenant` doivent se tenir : un run d'une
+  // autre agence (ou d'une autre programmation) répond le même 404 qu'un run
+  // inexistant, jamais un 403 qui confirmerait son existence.
+  const run = await prisma.syndicChargeScheduleRun.findFirst({ where: { id: runId, tenantId, scheduleId } });
+  if (!run) throw new NotFoundError('Exécution introuvable.');
+  if (run.status !== 'SUCCESS' || !run.batchId) {
+    throw new ConflictError("Cette exécution n'a émis aucun appel de charges : rien à renvoyer.");
+  }
+  if (run.finishedAt && now.getTime() - run.finishedAt.getTime() < RESEND_COOLDOWN_MS) {
+    throw new ConflictError(
+      'Un renvoi a déjà eu lieu il y a moins d’une minute pour cette exécution : patientez avant de réessayer.'
+    );
+  }
+
+  const batchCalls = await prisma.chargeCall.findMany({
+    where: { batchId: run.batchId, syndicateId },
+    select: {
+      id: true,
+      amount: true,
+      noticeSentAt: true,
+      allocations: { select: { amount: true } },
+      lot: { select: { lotNumber: true } }
+    }
+  });
+  const uncovered = batchCalls.filter(
+    call => computeOutstanding(Number(call.amount), paidFromAllocations(call.allocations)) > 0
+  );
+  const stillUnsent = uncovered.filter(call => !call.noticeSentAt);
+  if (stillUnsent.length === 0) {
+    throw new ConflictError('Tous les avis dus de cette exécution ont déjà été envoyés : rien à renvoyer.');
+  }
+
+  // Réservation atomique du renvoi : seule la requête qui fait passer
+  // `finishedAt` de la valeur lue à `now` continue. Deux clics ou deux
+  // collaborateurs simultanés n'envoient donc jamais deux fois le même avis.
+  const claimed = await prisma.syndicChargeScheduleRun.updateMany({
+    where: { id: run.id, tenantId, finishedAt: run.finishedAt },
+    data: { finishedAt: now }
+  });
+  if (claimed.count !== 1) {
+    throw new ConflictError(
+      'Un renvoi a déjà eu lieu il y a moins d’une minute pour cette exécution : patientez avant de réessayer.'
+    );
+  }
+
+  const summary = await notifyUncoveredCalls(
+    schedule,
+    stillUnsent.map(call => ({ id: call.id, lotNumber: call.lot.lotNumber }))
+  );
+  const previouslySent = uncovered.length - stillUnsent.length;
+  const totalSent = previouslySent + summary.sent;
+  const totalSkipped = uncovered.length - totalSent;
+  await prisma.syndicChargeScheduleRun.updateMany({
+    where: { id: run.id, tenantId },
+    data: { notificationsSent: totalSent, notificationsSkipped: totalSkipped, notes: summary.notes, finishedAt: now }
+  });
+
+  return {
+    resent: summary.sent,
+    stillSkipped: summary.skipped,
+    run: toRunView({
+      ...run,
+      notificationsSent: totalSent,
+      notificationsSkipped: totalSkipped,
+      notes: summary.notes,
+      finishedAt: now
+    })
+  };
 }
 
 // ---------------------------------------------------------------- aperçu

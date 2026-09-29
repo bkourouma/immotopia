@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Card,
+  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -15,7 +16,7 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
@@ -69,10 +70,27 @@ const incidentUrgencyLabels: Record<string, string> = {
 
 const incidentStatusLabels: Record<string, string> = {
   REPORTED: t('Signalé'),
+  ASSIGNED: t('Assigné'),
   IN_PROGRESS: t('En cours'),
   RESOLVED: t('Résolu'),
   CLOSED: t('Clôturé')
 };
+
+const incidentStatusColors: Record<string, string> = {
+  REPORTED: 'default',
+  ASSIGNED: 'blue',
+  IN_PROGRESS: 'processing',
+  RESOLVED: 'green',
+  CLOSED: 'default'
+};
+
+const incidentStatusOptions: Array<{ value: string; label: string }> = [
+  { value: 'REPORTED', label: incidentStatusLabels.REPORTED },
+  { value: 'ASSIGNED', label: incidentStatusLabels.ASSIGNED },
+  { value: 'IN_PROGRESS', label: incidentStatusLabels.IN_PROGRESS },
+  { value: 'RESOLVED', label: incidentStatusLabels.RESOLVED },
+  { value: 'CLOSED', label: incidentStatusLabels.CLOSED }
+];
 
 const incidentImputationTypeLabels: Record<string, string> = {
   SYNDICATE_BUDGET: t('Budget syndic'),
@@ -152,12 +170,16 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [openTenant, setOpenTenant] = useState(false);
   const [openIncident, setOpenIncident] = useState(false);
   const [openImputation, setOpenImputation] = useState(false);
+  const [openEditIncident, setOpenEditIncident] = useState(false);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+  const [editingIncident, setEditingIncident] = useState<SyndicateIncident | null>(null);
+  const [editIncidentStatus, setEditIncidentStatus] = useState<string | undefined>(undefined);
 
   const [ownerForm] = Form.useForm();
   const [tenantForm] = Form.useForm();
   const [incidentForm] = Form.useForm();
   const [imputationForm] = Form.useForm();
+  const [editIncidentForm] = Form.useForm();
 
   const lotsById = useMemo(
     () =>
@@ -329,6 +351,59 @@ export const SyndicProfilesIncidents: React.FC = () => {
       message.error(err.response?.data?.error || t('Assignation du prestataire impossible'));
     } finally {
       setAssigningProviderIncidentId(null);
+    }
+  };
+
+  /**
+   * « Modifier l'incident » (écart recette #2, FR-010) : la colonne Statut
+   * était un simple Tag en lecture seule, sans aucun moyen de faire avancer
+   * l'incident (En cours → Résolu → Clôturé). La modale réutilise
+   * `updateSyndicIncident`, déjà appelé pour l'assignation de prestataire.
+   */
+  const openEditIncidentModal = (incident: SyndicateIncident) => {
+    setEditingIncident(incident);
+    setEditIncidentStatus(incident.status);
+    editIncidentForm.setFieldsValue({
+      status: incident.status,
+      providerId: incident.providerId || undefined,
+      description: incident.description,
+      resolvedAt: incident.resolvedAt ? dayjs(incident.resolvedAt) : undefined
+    });
+    setOpenEditIncident(true);
+  };
+
+  const handleUpdateIncident = async () => {
+    if (!effectiveTenantId || !syndicId || !editingIncident) return;
+    const values = await editIncidentForm.validateFields();
+    const becomesResolvedOrClosed = values.status === 'RESOLVED' || values.status === 'CLOSED';
+    const resolvedAt = values.resolvedAt
+      ? values.resolvedAt.toISOString()
+      : becomesResolvedOrClosed
+        ? new Date().toISOString()
+        : undefined;
+
+    const payload: Partial<SyndicateIncident> = {};
+    if (values.status !== editingIncident.status) payload.status = values.status;
+    if ((values.providerId || null) !== (editingIncident.providerId || null)) {
+      payload.providerId = values.providerId || null;
+    }
+    if (values.description !== editingIncident.description) payload.description = values.description;
+    if (becomesResolvedOrClosed && resolvedAt && resolvedAt !== editingIncident.resolvedAt) {
+      payload.resolvedAt = resolvedAt;
+    }
+
+    setSubmitting(true);
+    try {
+      await updateSyndicIncident(effectiveTenantId, syndicId, editingIncident.id, payload);
+      message.success(t('Incident mis à jour'));
+      setOpenEditIncident(false);
+      setEditingIncident(null);
+      editIncidentForm.resetFields();
+      await loadData();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t('Mise à jour de l’incident impossible')));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -523,7 +598,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
             <Card title={t('Incidents et imputations')}>
               <Table
-                scroll={{ x: 'max-content' }}
+                scroll={{ x: 1000 }}
                 rowKey="id"
                 dataSource={incidents}
                 pagination={{ pageSize: 8 }}
@@ -596,31 +671,38 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: t('Type'),
                     dataIndex: 'incidentType',
+                    width: 100,
                     render: (value: string) => incidentTypeLabels[value] || value
                   },
                   {
                     title: t('Urgence'),
                     dataIndex: 'urgency',
+                    width: 90,
                     render: (value: string) => incidentUrgencyLabels[value] || value
                   },
                   {
                     title: t('Description'),
                     dataIndex: 'description',
                     // Texte complet, retourné à la ligne : sans largeur fixe, le
-                    // tableau l'étalerait sur une seule ligne. 440 px font tenir
-                    // une description courante sur deux lignes.
-                    width: 440,
+                    // tableau l'étalerait sur une seule ligne. 240 px laissent
+                    // Statut, Prestataire et Actions visibles sans défilement
+                    // horizontal sur un écran de portable.
+                    width: 240,
                     render: (value: string) => (
-                      <div style={{ width: 440, maxWidth: '100%', whiteSpace: 'normal' }}>{value}</div>
+                      <div style={{ width: 240, maxWidth: '100%', whiteSpace: 'normal' }}>{value}</div>
                     )
                   },
                   {
                     title: t('Statut'),
                     dataIndex: 'status',
-                    render: (value: string) => <Tag>{incidentStatusLabels[value] || value}</Tag>
+                    width: 110,
+                    render: (value: string) => (
+                      <Tag color={incidentStatusColors[value] || 'default'}>{incidentStatusLabels[value] || value}</Tag>
+                    )
                   },
                   {
                     title: t('Imputations'),
+                    width: 100,
                     render: (_, row) => (
                       <Tag color={(row.imputations?.length || 0) > 0 ? 'blue' : 'default'}>
                         {row.imputations?.length || 0}
@@ -630,11 +712,12 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: t('Prestataire'),
                     key: 'providerId',
+                    width: 200,
                     render: (_, row) => (
                       <Select
                         allowClear
                         showSearch
-                        style={{ minWidth: 200 }}
+                        style={{ minWidth: 180 }}
                         placeholder={t('Aucun prestataire')}
                         optionFilterProp="label"
                         value={row.providerId || undefined}
@@ -646,22 +729,30 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     )
                   },
                   {
-                    title: t('Action'),
+                    title: t('Actions'),
+                    key: 'actions',
+                    fixed: 'right',
+                    width: 220,
                     render: (_, row) => (
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setSelectedIncidentId(row.id);
-                          // Le lot de l'incident est pré-rempli, mais reste modifiable :
-                          // main permet d'imputer un incident des parties communes à un
-                          // lot précis.
-                          imputationForm.resetFields();
-                          imputationForm.setFieldsValue({ lotId: row.lotId || undefined });
-                          setOpenImputation(true);
-                        }}
-                      >
-                        {t('Ajouter imputation')}
-                      </Button>
+                      <Space wrap>
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditIncidentModal(row)}>
+                          {t("Modifier l'incident")}
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            setSelectedIncidentId(row.id);
+                            // Le lot de l'incident est pré-rempli, mais reste modifiable :
+                            // main permet d'imputer un incident des parties communes à un
+                            // lot précis.
+                            imputationForm.resetFields();
+                            imputationForm.setFieldsValue({ lotId: row.lotId || undefined });
+                            setOpenImputation(true);
+                          }}
+                        >
+                          {t('Ajouter imputation')}
+                        </Button>
+                      </Space>
                     )
                   }
                 ]}
@@ -851,6 +942,52 @@ export const SyndicProfilesIncidents: React.FC = () => {
           <Form.Item label={t('Description')} name="description" rules={[{ required: true }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("Modifier l'incident")}
+        open={openEditIncident}
+        onCancel={() => {
+          setOpenEditIncident(false);
+          setEditingIncident(null);
+          editIncidentForm.resetFields();
+        }}
+        onOk={() => void handleUpdateIncident()}
+        okText={t('Enregistrer')}
+        confirmLoading={submitting}
+      >
+        <Form
+          form={editIncidentForm}
+          layout="vertical"
+          onValuesChange={changed => {
+            if (changed.status !== undefined) setEditIncidentStatus(changed.status);
+          }}
+        >
+          <Form.Item label={t('Statut')} name="status" rules={[{ required: true, message: t('Statut obligatoire') }]}>
+            <Select showSearch optionFilterProp="label" options={incidentStatusOptions} />
+          </Form.Item>
+          <Form.Item label={t('Prestataire')} name="providerId">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Aucun prestataire')}
+              options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('Description')}
+            name="description"
+            rules={[{ required: true, message: t('Description obligatoire') }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          {editIncidentStatus === 'RESOLVED' || editIncidentStatus === 'CLOSED' ? (
+            <Form.Item label={t('Date de résolution')} name="resolvedAt">
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          ) : null}
         </Form>
       </Modal>
 

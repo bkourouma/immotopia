@@ -3940,6 +3940,31 @@ export async function createBudgetBySyndicate(
   });
 }
 
+/**
+ * Anomalie de recette N.8-2 : la clôture d'un budget voté n'était pas
+ * atteignable (statuts REVISED/CLOSED presents en base mais aucun controle
+ * de transition ne les autorisait depuis l'API). Transitions autorisees :
+ * DRAFT -> APPROVED, APPROVED <-> REVISED, APPROVED|REVISED -> CLOSED.
+ * CLOSED est terminal (aucun retour arriere depuis cette route).
+ */
+const BUDGET_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['APPROVED'],
+  APPROVED: ['REVISED', 'CLOSED'],
+  REVISED: ['APPROVED', 'CLOSED'],
+  CLOSED: []
+};
+
+function startOfUtcDay(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+const BUDGET_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Brouillon',
+  APPROVED: 'Approuvé',
+  REVISED: 'Révisé',
+  CLOSED: 'Clôturé'
+};
+
 export async function updateBudgetBySyndicate(
   tenantId: string,
   syndicateId: string,
@@ -3955,11 +3980,45 @@ export async function updateBudgetBySyndicate(
 
   const budget = await prisma.syndicateBudget.findFirst({
     where: { id: budgetId, syndicateId },
-    select: { id: true }
+    select: { id: true, status: true }
   });
 
   if (!budget) {
     throw notFound('Budget introuvable pour cette copropriete');
+  }
+
+  if (budget.status === 'CLOSED') {
+    throw conflict('Budget clôturé : il ne peut plus être modifié.');
+  }
+
+  if (data.status && data.status !== budget.status) {
+    const allowedTargets = BUDGET_STATUS_TRANSITIONS[budget.status] || [];
+    if (!allowedTargets.includes(data.status)) {
+      throw conflict(
+        `Transition de statut interdite : de ${BUDGET_STATUS_LABELS[budget.status] || budget.status} vers ${
+          BUDGET_STATUS_LABELS[data.status] || data.status
+        }.`
+      );
+    }
+
+    if (data.status === 'CLOSED') {
+      const activeSchedule = await prisma.syndicChargeSchedule.findFirst({
+        // Une programmation arrivée à sa date de fin n'émet plus rien : elle
+        // ne bloque pas la clôture, même si personne ne l'a mise en pause.
+        where: {
+          tenantId,
+          budgetId,
+          active: true,
+          OR: [{ endDate: null }, { endDate: { gte: startOfUtcDay(new Date()) } }]
+        },
+        select: { id: true }
+      });
+      if (activeSchedule) {
+        throw conflict(
+          "Des programmations d'appels actives utilisent ce budget : mettez-les en pause ou terminez-les d'abord."
+        );
+      }
+    }
   }
 
   if (data.approvedByResolutionId) {
@@ -4013,6 +4072,10 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
 
   if (!budget) {
     throw notFound('Budget introuvable pour cette copropriete');
+  }
+
+  if (budget.status === 'CLOSED') {
+    throw conflict('Budget clôturé : il ne peut plus être modifié.');
   }
 
   const lots = await prisma.syndicateLot.findMany({

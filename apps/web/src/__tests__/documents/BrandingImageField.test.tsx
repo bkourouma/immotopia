@@ -4,6 +4,16 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
+import { downscaleImageFile } from '../../utils/downscale-image';
+
+// La réduction côté navigateur a sa propre suite
+// (`__tests__/lib/downscale-image.test.ts`, avec ses mocks de canvas). Ici,
+// un passe-plat par défaut (le fichier ressort inchangé) pour ne pas
+// dépendre d'un vrai décodage d'image dans jsdom ; un test dédié plus bas
+// vérifie que `onUpload` reçoit bien le fichier renvoyé par la réduction.
+vi.mock('../../utils/downscale-image', () => ({
+  downscaleImageFile: vi.fn(async (file: File) => file)
+}));
 
 /**
  * `<BrandingImageField>` — aperçu et envoi d'une image d'identité de document
@@ -155,6 +165,22 @@ describe('BrandingImageField', () => {
     await user.upload(input, validFile);
 
     await waitFor(() => expect(onUpload).toHaveBeenCalledWith(validFile));
+  });
+
+  it('envoie le fichier réduit par `downscaleImageFile`, pas le fichier d’origine', async () => {
+    const user = userEvent.setup();
+    const onUpload = vi.fn().mockResolvedValue(undefined);
+    const reducedFile = new File(['réduit'], 'logo.png', { type: 'image/png' });
+    vi.mocked(downscaleImageFile).mockResolvedValueOnce(reducedFile);
+    renderField({ hasImage: false, onUpload });
+
+    const originalFile = new File([new Uint8Array(3000)], 'logo.png', { type: 'image/png' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, originalFile);
+
+    await waitFor(() => expect(onUpload).toHaveBeenCalledWith(reducedFile));
+    expect(onUpload).not.toHaveBeenCalledWith(originalFile);
+    expect(downscaleImageFile).toHaveBeenCalledWith(originalFile);
   });
 
   it('affiche le message du serveur (403 ou 400) quand l’envoi échoue', async () => {

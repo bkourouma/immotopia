@@ -5,11 +5,18 @@ import { ChargeScheduleRun } from '../../../types/syndic-types';
 import { dateFormat } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { describeScheduleError, runStatusConfig, runTriggerLabels } from './chargeScheduleLabels';
-import { NotificationsSkipped } from './NotificationsSkipped';
+import { ChargeScheduleRunNotices } from '../ChargeScheduleRunNotices';
 
 const { Text } = Typography;
 
-export const ScheduleRunsPanel: React.FC<{ runs: ChargeScheduleRun[]; loading: boolean }> = ({ runs, loading }) => (
+export const ScheduleRunsPanel: React.FC<{
+  runs: ChargeScheduleRun[];
+  loading: boolean;
+  tenantId: string | null | undefined;
+  syndicId: string | null | undefined;
+  scheduleId: string;
+  onResent: () => void;
+}> = ({ runs, loading, tenantId, syndicId, scheduleId, onResent }) => (
   <Table
     rowKey="id"
     loading={loading}
@@ -32,12 +39,21 @@ export const ScheduleRunsPanel: React.FC<{ runs: ChargeScheduleRun[]; loading: b
       },
       { title: t('Appels créés'), dataIndex: 'callsCreated', align: 'end' },
       { title: t('Couverts'), dataIndex: 'callsCovered', align: 'end' },
-      { title: t('Notifications'), dataIndex: 'notificationsSent', align: 'end' },
       {
-        title: t('Avis non envoyés'),
-        key: 'notificationsSkipped',
-        align: 'end',
-        render: (_, run) => <NotificationsSkipped count={run.notificationsSkipped} notes={run.notes} />
+        title: t('Avis'),
+        key: 'notices',
+        render: (_, run) =>
+          run.status === 'SUCCESS' ? (
+            <ChargeScheduleRunNotices
+              run={run}
+              tenantId={tenantId}
+              syndicId={syndicId}
+              scheduleId={scheduleId}
+              onResent={onResent}
+            />
+          ) : (
+            '—'
+          )
       },
       {
         title: t('Date'),

@@ -15,7 +15,7 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { CheckOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, LockOutlined, PlusOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { formatMoney, MoneyValue } from '../../components/primitives';
 import {
@@ -54,6 +54,24 @@ const batchStatusLabels: Record<ChargeCallBatch['status'], string> = {
   SENT: t('Envoyé'),
   CLOSED: t('Clôturé')
 };
+
+const budgetStatusLabels: Record<SyndicateBudget['status'], string> = {
+  DRAFT: t('Brouillon'),
+  APPROVED: t('Approuvé'),
+  REVISED: t('Révisé'),
+  CLOSED: t('Clôturé')
+};
+
+const budgetStatusColors: Record<SyndicateBudget['status'], string> = {
+  DRAFT: 'default',
+  APPROVED: 'green',
+  REVISED: 'orange',
+  CLOSED: 'red'
+};
+
+function sumBudgetLines(budget: SyndicateBudget, field: 'amountForecast' | 'amountActual'): number {
+  return (budget.lines || []).reduce((acc, line) => acc + Number(line[field] || 0), 0);
+}
 
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
   const lot = allocation.lot || lotDirectoryEntry;
@@ -192,18 +210,62 @@ export const SyndicBudgets: React.FC = () => {
     }
   };
 
-  const handleApproveBudget = async (budgetId: string) => {
+  const handleChangeBudgetStatus = async (
+    budgetId: string,
+    status: SyndicateBudget['status'],
+    successMessage: string,
+    errorMessage: string
+  ) => {
     if (!effectiveTenantId || !syndicId) return;
     setSubmitting(true);
     try {
-      await updateBudget(effectiveTenantId, syndicId, budgetId, { status: 'APPROVED' });
-      message.success(t('Budget approuvé'));
+      await updateBudget(effectiveTenantId, syndicId, budgetId, { status });
+      message.success(successMessage);
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Approbation impossible'));
+      message.error(err.response?.data?.error || errorMessage);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleApproveBudget = (budgetId: string) =>
+    handleChangeBudgetStatus(budgetId, 'APPROVED', t('Budget approuvé'), t('Approbation impossible'));
+
+  const handleReviseBudget = (budgetId: string) =>
+    handleChangeBudgetStatus(budgetId, 'REVISED', t('Budget repassé en révision'), t('Révision impossible'));
+
+  const handleCloseBudget = (budget: SyndicateBudget) => {
+    const budgeted = Number(budget.totalAmount || 0);
+    const actual = sumBudgetLines(budget, 'amountActual');
+    const gap = budgeted - actual;
+    Modal.confirm({
+      title: t('Clôturer le budget {{label}} ?', { label: `${budget.label} (${budget.fiscalYear})` }),
+      content: (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <span>
+            {t('Total budgété')}: <MoneyValue value={budgeted} />
+          </span>
+          <span>
+            {t('Total réalisé')}: <MoneyValue value={actual} />
+          </span>
+          <span>
+            {t('Écart')}: <MoneyValue value={gap} />
+          </span>
+          <Alert
+            type="warning"
+            showIcon
+            message={t(
+              'La clôture est définitive : ce budget, ses postes et sa répartition ne pourront plus être modifiés.'
+            )}
+          />
+        </Space>
+      ),
+      okText: t('Clôturer'),
+      okButtonProps: { danger: true },
+      cancelText: t('Annuler'),
+      onOk: () => handleChangeBudgetStatus(budget.id, 'CLOSED', t('Budget clôturé'), t('Clôture impossible'))
+    });
   };
 
   const handleRecompute = async (budgetId: string) => {
@@ -337,56 +399,82 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (status: string) => <Tag>{status}</Tag>
+                    render: (status: SyndicateBudget['status']) => (
+                      <Tag color={budgetStatusColors[status]}>{budgetStatusLabels[status] || status}</Tag>
+                    )
                   },
                   {
                     title: 'Actions',
-                    render: (_, budget) => (
-                      <Space>
-                        <Button
-                          size="small"
-                          icon={<CheckOutlined />}
-                          onClick={() => void handleApproveBudget(budget.id)}
-                          disabled={budget.status === 'APPROVED'}
-                        >
-                          {t('Approuver')}
-                        </Button>
-                        <Button size="small" onClick={() => void handleRecompute(budget.id)}>
-                          {t('Répartir')}
-                        </Button>
-                        <Button size="small" onClick={() => setLinesBudget(budget)}>
-                          {t('Postes et fonds')}
-                        </Button>
-                        <Button
-                          size="small"
-                          disabled={!budget.allocations || budget.allocations.length === 0}
-                          onClick={() => {
-                            setAllocationRows(budget.allocations || []);
-                            setAllocationBudgetLabel(`${budget.label} (${budget.fiscalYear})`);
-                          }}
-                        >
-                          {t('Voir allocations')}
-                        </Button>
-                        <Button
-                          size="small"
-                          type="primary"
-                          onClick={() => {
-                            setSelectedBudget(budget);
-                            setOpenGenerateModal(true);
-                            generateForm.setFieldsValue({
-                              label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
-                              period: `${budget.fiscalYear}-01`,
-                              batchType: 'REGULAR',
-                              currency: budget.currency || 'XOF',
-                              periodsPerYear: 1,
-                              periodIndex: 1
-                            });
-                          }}
-                        >
-                          {t('Générer appels')}
-                        </Button>
-                      </Space>
-                    )
+                    render: (_, budget) => {
+                      const isClosed = budget.status === 'CLOSED';
+                      return (
+                        <Space wrap>
+                          {(budget.status === 'DRAFT' || budget.status === 'REVISED') && (
+                            <Button
+                              size="small"
+                              icon={<CheckOutlined />}
+                              onClick={() => void handleApproveBudget(budget.id)}
+                            >
+                              {t('Approuver')}
+                            </Button>
+                          )}
+                          {budget.status === 'APPROVED' && (
+                            <Button
+                              size="small"
+                              icon={<UndoOutlined />}
+                              onClick={() => void handleReviseBudget(budget.id)}
+                            >
+                              {t('Réviser')}
+                            </Button>
+                          )}
+                          {(budget.status === 'APPROVED' || budget.status === 'REVISED') && (
+                            <Button
+                              size="small"
+                              danger
+                              icon={<LockOutlined />}
+                              onClick={() => handleCloseBudget(budget)}
+                            >
+                              {t('Clôturer')}
+                            </Button>
+                          )}
+                          <Button size="small" disabled={isClosed} onClick={() => void handleRecompute(budget.id)}>
+                            {t('Répartir')}
+                          </Button>
+                          <Button size="small" onClick={() => setLinesBudget(budget)}>
+                            {t('Postes et fonds')}
+                          </Button>
+                          <Button
+                            size="small"
+                            disabled={!budget.allocations || budget.allocations.length === 0}
+                            onClick={() => {
+                              setAllocationRows(budget.allocations || []);
+                              setAllocationBudgetLabel(`${budget.label} (${budget.fiscalYear})`);
+                            }}
+                          >
+                            {t('Voir allocations')}
+                          </Button>
+                          <Button
+                            size="small"
+                            type="primary"
+                            disabled={isClosed}
+                            onClick={() => {
+                              setSelectedBudget(budget);
+                              setOpenGenerateModal(true);
+                              generateForm.setFieldsValue({
+                                label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
+                                period: `${budget.fiscalYear}-01`,
+                                batchType: 'REGULAR',
+                                currency: budget.currency || 'XOF',
+                                periodsPerYear: 1,
+                                periodIndex: 1
+                              });
+                            }}
+                          >
+                            {t('Générer appels')}
+                          </Button>
+                        </Space>
+                      );
+                    }
                   }
                 ]}
               />
@@ -554,19 +642,69 @@ export const SyndicBudgets: React.FC = () => {
         {funds.length === 0 ? (
           <Alert type="info" showIcon message={t("Créez d'abord un fonds dans la trésorerie de la copropriété.")} />
         ) : null}
+        {linesBudget?.status === 'CLOSED' ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={t('Budget clôturé : les postes et fonds ne sont plus modifiables, lecture seule.')}
+          />
+        ) : null}
         <Table
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={linesBudget?.lines || []}
           pagination={false}
+          summary={rows => {
+            const totalForecast = rows.reduce((acc, line: any) => acc + Number(line.amountForecast || 0), 0);
+            const totalActual = rows.reduce((acc, line: any) => acc + Number(line.amountActual || 0), 0);
+            const totalGap = totalForecast - totalActual;
+            return (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0} colSpan={2}>
+                  {t('Total')}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="end">
+                  <MoneyValue value={totalForecast} />
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} align="end">
+                  <MoneyValue value={totalActual} />
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3} align="end">
+                  <span style={{ color: totalGap < 0 ? 'var(--ant-color-error, #cf1322)' : undefined }}>
+                    <MoneyValue value={totalGap} />
+                  </span>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={4} />
+              </Table.Summary.Row>
+            );
+          }}
           columns={[
             { title: t('Catégorie'), dataIndex: 'category' },
             { title: t('Description'), dataIndex: 'description' },
             {
-              title: t('Prévu'),
+              title: t('Budgété'),
               dataIndex: 'amountForecast',
               align: 'end',
               render: (value: number | string) => <MoneyValue value={value} />
+            },
+            {
+              title: t('Réalisé'),
+              dataIndex: 'amountActual',
+              align: 'end',
+              render: (value: number | string) => <MoneyValue value={value} />
+            },
+            {
+              title: t('Écart'),
+              align: 'end',
+              render: (_, line: BudgetLineItem) => {
+                const gap = Number(line.amountForecast || 0) - Number(line.amountActual || 0);
+                return (
+                  <span style={{ color: gap < 0 ? 'var(--ant-color-error, #cf1322)' : undefined }}>
+                    <MoneyValue value={gap} />
+                  </span>
+                );
+              }
             },
             {
               title: t('Fonds alimenté'),
@@ -577,7 +715,7 @@ export const SyndicBudgets: React.FC = () => {
                   optionFilterProp="label"
                   style={{ minWidth: 200 }}
                   placeholder={t('Aucun fonds')}
-                  disabled={funds.length === 0 || savingLineId === line.id}
+                  disabled={funds.length === 0 || savingLineId === line.id || linesBudget?.status === 'CLOSED'}
                   value={line.fundId ?? undefined}
                   onChange={value => void handleAssignLineFund(line, value)}
                   options={fundSelectOptions}

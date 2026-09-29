@@ -12,11 +12,14 @@ import {
   frequencyLabels,
   runStatusConfig
 } from './chargeScheduleLabels';
-import { NotificationsSkipped } from './NotificationsSkipped';
+import { ChargeScheduleRunNotices } from '../ChargeScheduleRunNotices';
 
 const { Text } = Typography;
 
 export const ScheduleTable: React.FC<{
+  tenantId: string | null | undefined;
+  syndicId: string | null | undefined;
+  onNoticesResent: (scheduleId: string) => void;
   schedules: ChargeSchedule[];
   busyId: string | null;
   onOpen: (schedule: ChargeSchedule) => void;
@@ -24,7 +27,7 @@ export const ScheduleTable: React.FC<{
   onPause: (schedule: ChargeSchedule) => void;
   onResume: (schedule: ChargeSchedule) => void;
   onDelete: (schedule: ChargeSchedule) => void;
-}> = ({ schedules, busyId, onOpen, onExecute, onPause, onResume, onDelete }) => {
+}> = ({ tenantId, syndicId, onNoticesResent, schedules, busyId, onOpen, onExecute, onPause, onResume, onDelete }) => {
   const columns: ColumnsType<ChargeSchedule> = [
     {
       title: t('Libellé'),
@@ -93,8 +96,14 @@ export const ScheduleTable: React.FC<{
                 {describeScheduleError(schedule.lastRun.error)}
               </Text>
             ) : null}
-            {schedule.lastRun.notificationsSkipped > 0 ? (
-              <NotificationsSkipped count={schedule.lastRun.notificationsSkipped} notes={schedule.lastRun.notes} />
+            {schedule.lastRun.status === 'SUCCESS' ? (
+              <ChargeScheduleRunNotices
+                run={schedule.lastRun}
+                tenantId={tenantId}
+                syndicId={syndicId}
+                scheduleId={schedule.id}
+                onResent={() => onNoticesResent(schedule.id)}
+              />
             ) : null}
           </Space>
         ) : (

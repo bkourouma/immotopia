@@ -44,7 +44,8 @@ export const SyndicChargeSchedules: React.FC = () => {
     handlePause,
     handleResume,
     handleDelete,
-    handleExecute
+    handleExecute,
+    handleNoticesResent
   } = useChargeSchedules(effectiveTenantId, syndicId);
 
   return (
@@ -75,6 +76,9 @@ export const SyndicChargeSchedules: React.FC = () => {
         ) : (
           <Card>
             <ScheduleTable
+              tenantId={effectiveTenantId}
+              syndicId={syndicId}
+              onNoticesResent={handleNoticesResent}
               schedules={schedules}
               busyId={busyId}
               onOpen={openEditDrawer}
@@ -136,7 +140,16 @@ export const SyndicChargeSchedules: React.FC = () => {
                 </span>
               ),
               disabled: !editing,
-              children: <ScheduleRunsPanel runs={runs} loading={runsLoading} />
+              children: editing ? (
+                <ScheduleRunsPanel
+                  runs={runs}
+                  loading={runsLoading}
+                  tenantId={effectiveTenantId}
+                  syndicId={syndicId}
+                  scheduleId={editing.id}
+                  onResent={() => handleNoticesResent(editing.id)}
+                />
+              ) : null
             }
           ]}
         />

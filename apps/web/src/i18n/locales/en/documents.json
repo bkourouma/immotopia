@@ -31,6 +31,7 @@
   "Image retirée": "Image removed",
   "Impossible de charger les modèles de documents.": "Could not load the document templates.",
   "Le modèle ne sera plus proposé à la génération. Cette action est définitive.": "The template will no longer be offered when generating documents. This cannot be undone.",
+  "Les grandes images sont réduites automatiquement à 800 px.": "يتم تصغير الصور الكبيرة تلقائيًا إلى 800 بكسل.",
   "Modèle {{name}}": "Template {{name}}",
   "Modèles de documents": "Document templates",
   "Nom": "Name",

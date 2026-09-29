@@ -16,7 +16,8 @@ jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 const mockSendEmail = jest.fn(async (_params: any) => undefined);
 jest.mock('../../src/services/email-service', () => ({
-  emailService: { sendEmail: (params: any) => mockSendEmail(params) }
+  emailService: { sendEmail: (params: any) => mockSendEmail(params) },
+  isEmailDeliveryConfigured: () => true
 }));
 jest.mock('../../src/services/email-notification-config-service', () => ({
   getEmailNotificationConfig: jest.fn(async () => ({ enabled: true, subjectOverride: null, bodyHtmlOverride: null }))
@@ -290,7 +291,12 @@ describe('isolation', () => {
   it('la route historique refuse un appel d une autre copropriete (404)', async () => {
     const call = await createCall(L1, '2026-01', 10000, '2026-01-05');
     await expect(
-      recordChargePaymentWithStatusUpdate(TENANT_A, { chargeCallId: call.id, amount: 100, paidAt: d('2026-01-10'), syndicateId: SB })
+      recordChargePaymentWithStatusUpdate(TENANT_A, {
+        chargeCallId: call.id,
+        amount: 100,
+        paidAt: d('2026-01-10'),
+        syndicateId: SB
+      })
     ).rejects.toMatchObject({ status: 404 });
     await expect(
       recordChargePaymentWithStatusUpdate(TENANT_B, { chargeCallId: call.id, amount: 100, paidAt: d('2026-01-10') })
@@ -440,9 +446,17 @@ describe('route historique .../charges/:chargeId/pay', () => {
 
   it('PENDING -> PARTIAL -> PAID', async () => {
     const call = await createCall(L1, '2026-01', 100000, '2099-01-05');
-    await recordChargePaymentWithStatusUpdate(TENANT_A, { chargeCallId: call.id, amount: 30000, paidAt: d('2026-01-10') });
+    await recordChargePaymentWithStatusUpdate(TENANT_A, {
+      chargeCallId: call.id,
+      amount: 30000,
+      paidAt: d('2026-01-10')
+    });
     expect(callRow(call.id).status).toBe('PARTIAL');
-    await recordChargePaymentWithStatusUpdate(TENANT_A, { chargeCallId: call.id, amount: 70000, paidAt: d('2026-01-11') });
+    await recordChargePaymentWithStatusUpdate(TENANT_A, {
+      chargeCallId: call.id,
+      amount: 70000,
+      paidAt: d('2026-01-11')
+    });
     expect(callRow(call.id).status).toBe('PAID');
   });
 });
@@ -478,7 +492,12 @@ describe('un appel couvert n est ni notifie ni relance', () => {
     const call = await createCall(L1, '2026-01', 10000, '2026-01-05');
     await recordLotPayment(pay(L1, 10000, '2026-01-06'));
     attachCallRelations();
-    mockPrisma.paymentReminder.rows.push({ id: 'rem-1', chargeCallId: call.id, reminderLevel: 1, chargeCall: callRow(call.id) });
+    mockPrisma.paymentReminder.rows.push({
+      id: 'rem-1',
+      chargeCallId: call.id,
+      reminderLevel: 1,
+      chargeCall: callRow(call.id)
+    });
 
     expect(await notifyChargeCallReminder('rem-1')).toMatchObject({ skipped: 'ALREADY_PAID' });
     expect(mockSendEmail).not.toHaveBeenCalled();
@@ -560,7 +579,13 @@ describe('withAllocationPayments — forme historique des appels', () => {
     });
     expect(view).not.toHaveProperty('allocations');
     expect(view.payments).toEqual([
-      expect.objectContaining({ id: 'alloc-1', paymentId: 'pay-1', chargeCallId: 'call-1', amount: 2500, method: 'VIREMENT' }),
+      expect.objectContaining({
+        id: 'alloc-1',
+        paymentId: 'pay-1',
+        chargeCallId: 'call-1',
+        amount: 2500,
+        method: 'VIREMENT'
+      }),
       expect.objectContaining({ id: 'alloc-2', paymentId: 'pay-0', amount: 1000.1, source: 'ADVANCE' })
     ]);
     expect(view.paidAmount).toBe(3500.1);

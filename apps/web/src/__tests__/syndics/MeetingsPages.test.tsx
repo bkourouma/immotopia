@@ -1,6 +1,7 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import dayjs from 'dayjs';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicMeetings } from '../../pages/syndics/SyndicMeetings';
@@ -59,7 +60,14 @@ vi.mock('antd', async () => {
     TimePicker: passthrough('input'),
     Form: FormComp,
     Input: InputComp,
-    Modal: passthrough(),
+    // Un passthrough n'aurait rendu aucun bouton OK : la validation du
+    // formulaire « Créer une assemblée générale » se teste en cliquant dessus.
+    Modal: ({ children, onOk, okText }: any) => (
+      <div>
+        {children}
+        <button onClick={onOk}>{okText || 'OK'}</button>
+      </div>
+    ),
     // Les actions de statut et de pouvoir passent par une confirmation.
     Popconfirm: ({ children }: any) => <>{children}</>,
     Progress: passthrough(),
@@ -83,7 +91,8 @@ vi.mock('antd', async () => {
     message: {
       success: vi.fn(),
       error: vi.fn()
-    }
+    },
+    __mocks: { mockValidateFields }
   };
   const appApi = {
     message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
@@ -97,6 +106,12 @@ vi.mock('antd', async () => {
     Grid: { useBreakpoint: () => ({}) }
   };
 });
+
+// Vitest has no `requireMock`; importing the module inside a mocked test file
+// already yields the mock, so a plain dynamic import is the equivalent.
+const antdModule = (await import('antd')) as unknown as { __mocks: { mockValidateFields: any }; message: any };
+const mockValidateFields = antdModule.__mocks.mockValidateFields;
+const mockMessage = antdModule.message;
 
 const mockApiClient = apiClient as any;
 
@@ -222,5 +237,56 @@ describe('Meetings pages', () => {
     });
     const titles = await screen.findAllByText(/Validation budget/);
     expect(titles.length).toBeGreaterThan(0);
+  });
+
+  // Écart recette #1 : le DatePicker showTime unique dépassait de la fenêtre
+  // sur mobile, bouton OK masqué. La modale sépare désormais Date et Heure
+  // de début (obligatoire) — handleCreate les recombine en `scheduledAt`.
+  it('crée une assemblée en combinant la date et l’heure de début', async () => {
+    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } } as never);
+    mockApiClient.post.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'meeting-2' } }
+    } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+
+    mockValidateFields.mockResolvedValueOnce({
+      type: 'ORDINARY',
+      // Composants naïfs (heure locale, sans « Z ») : seuls .hour()/.minute()
+      // sont lus sur startTime/endTime, la date vient uniquement de `date`.
+      date: dayjs('2026-10-15'),
+      startTime: dayjs('2000-01-01 09:30'),
+      endTime: dayjs('2000-01-01 11:00'),
+      location: 'Salle commune'
+    });
+
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(mockApiClient.post).toHaveBeenCalled());
+    const [, payload] = mockApiClient.post.mock.calls[0];
+    expect(payload.scheduledAt).toBe(payload.startTime);
+    expect(dayjs(payload.scheduledAt).format('YYYY-MM-DD HH:mm')).toBe('2026-10-15 09:30');
+    expect(dayjs(payload.endTime).format('YYYY-MM-DD HH:mm')).toBe('2026-10-15 11:00');
+  });
+
+  it("refuse une heure de fin antérieure ou égale à l'heure de début", async () => {
+    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: [] } } as never);
+
+    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
+    fireEvent.click(await screen.findByText('Nouvelle assemblée'));
+
+    mockValidateFields.mockResolvedValueOnce({
+      type: 'ORDINARY',
+      date: dayjs('2026-10-15'),
+      startTime: dayjs('2000-01-01 11:00'),
+      endTime: dayjs('2000-01-01 09:30'),
+      location: 'Salle commune'
+    });
+
+    fireEvent.click(await screen.findByText('Créer'));
+
+    await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith("L'heure de fin doit suivre l'heure de début"));
+    expect(mockApiClient.post).not.toHaveBeenCalled();
   });
 });
