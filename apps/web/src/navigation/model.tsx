@@ -267,7 +267,8 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             { key: 'admin-tenants', label: t('Agences'), href: '/admin/tenants' },
             { key: 'admin-roles', label: t('Rôles et permissions'), href: '/admin/roles-permissions' },
             { key: 'admin-statistics', label: t('Statistiques'), href: '/admin/statistics' },
-            { key: 'admin-audit', label: t("Journaux d'audit"), href: '/admin/audit' }
+            { key: 'admin-audit', label: t("Journaux d'audit"), href: '/admin/audit' },
+            { key: 'admin-ai-settings', label: t('Assistant IA'), href: '/admin/ai-settings' }
           ]
         }
       ]
