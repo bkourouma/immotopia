@@ -1,6 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { logAuditEvent } from './audit-service';
 import { DocumentType, RentalDocumentStatus, RentalDocumentType } from '@prisma/client';
@@ -9,6 +9,25 @@ import { buildDocumentContext, validateContext } from './document-context-builde
 import { renderDocx, calculateHash, saveGeneratedDocument } from './docx-renderer';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+
+/** Violation de l'index unique (tenant_id, document_number) de `RentalDocument`. */
+function isUniqueViolation(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === 'P2002';
+}
+
+/**
+ * Le numéro d'un contrat de bail est le numéro du bail : un bail n'a donc qu'un
+ * contrat. Un second `generateDocument` sur le même bail buterait sur l'index
+ * unique (erreur brute) : on répond explicitement, avant d'écrire le fichier, et
+ * on renvoie vers « Régénérer », qui met à jour le contrat existant.
+ */
+function contractAlreadyExistsError(): ConflictError {
+  return new ConflictError(
+    t(
+      'Un contrat existe déjà pour ce bail. Utilisez « Régénérer » pour le mettre à jour à partir des données actuelles.'
+    )
+  );
+}
 
 /**
  * Generate document number based on type and period
@@ -214,6 +233,18 @@ export async function generateDocument(
 
       if (lease?.lease_number) {
         documentNumber = lease.lease_number;
+        const existingContract = await prisma.rentalDocument.findFirst({
+          where: { tenant_id: tenantId, document_number: documentNumber },
+          select: { id: true }
+        });
+        if (existingContract) {
+          logger.warn('generateDocument: a contract already exists for this lease', {
+            tenantId,
+            leaseId,
+            existingDocumentId: existingContract.id
+          });
+          throw contractAlreadyExistsError();
+        }
         logger.info('Using lease_number as document_number', {
           leaseId,
           leaseNumber: lease.lease_number,
@@ -263,61 +294,69 @@ export async function generateDocument(
   }
 
   // 10. Create document record
-  const document = await prisma.rentalDocument.create({
-    data: {
-      tenant_id: tenantId,
-      type: rentalDocType,
-      status: RentalDocumentStatus.FINAL,
-      lease_id: leaseId,
-      installment_id: installmentId,
-      payment_id: paymentId,
-      document_number: documentNumber,
-      file_path: filePath,
-      file_hash: fileHash,
-      template_id: template.id,
-      template_hash: templateHash,
-      revision: 1,
-      issued_at: new Date(),
-      created_by_user_id: actorUserId,
-      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    },
-    include: {
-      lease: {
-        select: {
-          id: true,
-          lease_number: true
-        }
+  const document = await prisma.rentalDocument
+    .create({
+      data: {
+        tenant_id: tenantId,
+        type: rentalDocType,
+        status: RentalDocumentStatus.FINAL,
+        lease_id: leaseId,
+        installment_id: installmentId,
+        payment_id: paymentId,
+        document_number: documentNumber,
+        file_path: filePath,
+        file_hash: fileHash,
+        template_id: template.id,
+        template_hash: templateHash,
+        revision: 1,
+        issued_at: new Date(),
+        created_by_user_id: actorUserId,
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       },
-      installment: {
-        select: {
-          id: true,
-          period_year: true,
-          period_month: true
-        }
-      },
-      payment: {
-        select: {
-          id: true,
-          amount: true,
-          method: true
-        }
-      },
-      template: {
-        select: {
-          id: true,
-          name: true,
-          doc_type: true
-        }
-      },
-      createdBy: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
+      include: {
+        lease: {
+          select: {
+            id: true,
+            lease_number: true
+          }
+        },
+        installment: {
+          select: {
+            id: true,
+            period_year: true,
+            period_month: true
+          }
+        },
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            method: true
+          }
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            doc_type: true
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
         }
       }
-    }
-  });
+    })
+    .catch((error: unknown) => {
+      // Course entre deux générations du même contrat : l'index unique a tranché.
+      if (rentalDocType === RentalDocumentType.LEASE_CONTRACT && isUniqueViolation(error)) {
+        throw contractAlreadyExistsError();
+      }
+      throw error;
+    });
 
   logger.info('Document generated', {
     documentId: document.id,

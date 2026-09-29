@@ -59,10 +59,10 @@ Reste à faire :
   RTL non vérifiés. Ne pas fusionner avant.
 - Session « Cloud - ImmoCopilot IA assistant » : bloquée sur une demande de permission
   (`send_later`) que seul l'utilisateur peut trancher.
-- Baux : un seul contrat par bail (numéro de document = numéro du bail, index unique
-  `(tenant_id, document_number)`, P2002) — correctif dans `document-generation-service.ts` ;
-  préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
-  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir.
+- Baux : préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
+  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir. (Un second
+  contrat sur le même bail répond maintenant 409 avec renvoi vers « Régénérer » : branche
+  `fix/contrat-unique-par-bail`.)
 - ImmoCopilot : limiteurs de débit en mémoire par instance ; `connection_limit` à
   dimensionner ; après un échec de section exclusive le jeton est consommé (fail-closed) ;
   saturation réelle du pool non testée.

@@ -981,6 +981,7 @@
   "Un compromis existe déjà pour cette offre.": "An agreement already exists for this offer.",
   "Un compte {{accountType}} a été créé pour vous sur la plateforme ImmoTopia par {{agency}}.": "A {{accountType}} account has been created for you on the ImmoTopia platform by {{agency}}.",
   "Un compte existe déjà avec cette adresse e-mail. Connectez-vous avec ce compte pour accepter cette invitation.": "An account already exists with this email address. Sign in with that account to accept this invitation.",
+  "Un contrat existe déjà pour ce bail. Utilisez « Régénérer » pour le mettre à jour à partir des données actuelles.": "A contract already exists for this lease. Use “Regenerate” to update it from the current data.",
   "Un élément terminé ne peut plus être modifié.": "An ended item can no longer be modified.",
   "Un export de cette agence est déjà en préparation.": "An export for this agency is already being prepared.",
   "Un fichier est requis.": "A file is required.",
