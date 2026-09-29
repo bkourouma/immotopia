@@ -179,4 +179,95 @@ describe('useCopilotChat', () => {
     expect(result.current.messages).toEqual([]);
     expect(result.current.status).toBe('idle');
   });
+
+  it("borne l'historique envoyé à 24 000 caractères en gardant le dernier message", async () => {
+    const chunk = 'a'.repeat(4000);
+    const { result } = renderHook(() => useCopilotChat('t1'));
+    for (let i = 0; i < 4; i++) {
+      script([
+        { type: 'text_delta', text: chunk },
+        { type: 'done', reason: 'end_turn' }
+      ]);
+      await act(async () => {
+        await result.current.send(`${i}${chunk.slice(1)}`, {});
+      });
+    }
+    script([{ type: 'done', reason: 'end_turn' }]);
+    await act(async () => {
+      await result.current.send('dernier', {});
+    });
+    const sent = streamChat.mock.calls[4][1].messages;
+    expect(sent.reduce((n, m) => n + m.content.length, 0)).toBeLessThanOrEqual(24000);
+    expect(sent[sent.length - 1]).toEqual({ role: 'user', content: 'dernier' });
+    expect(sent[0].role).toBe('user');
+    expect(sent.length).toBeLessThan(9);
+  });
+
+  it("un flux annulé par reset n'écrase pas le statut du nouveau flux", async () => {
+    let releaseFirst: () => void = () => undefined;
+    streamChat.mockImplementationOnce(
+      (_t, _r, opts) =>
+        new Promise<void>(resolve => {
+          releaseFirst = () => resolve();
+          opts.signal?.addEventListener('abort', () => resolve());
+        })
+    );
+    const { result } = renderHook(() => useCopilotChat('t1'));
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.send('un', {});
+    });
+    act(() => result.current.reset());
+
+    let releaseSecond: () => void = () => undefined;
+    streamChat.mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          releaseSecond = () => resolve();
+        })
+    );
+    let second: Promise<void> = Promise.resolve();
+    act(() => {
+      second = result.current.send('deux', {});
+    });
+    await act(async () => {
+      releaseFirst();
+      await first;
+    });
+    expect(result.current.status).toBe('streaming');
+    await act(async () => {
+      releaseSecond();
+      await second;
+    });
+  });
+
+  it("signale une erreur quand le flux s'arrête sans événement done", async () => {
+    script([{ type: 'text_delta', text: 'Bon' }]);
+    const { result } = renderHook(() => useCopilotChat('t1'));
+    await act(async () => {
+      await result.current.send('salut', {});
+    });
+    expect(result.current.status).toBe('error');
+    expect(result.current.error?.message).toBe('La réponse a été interrompue.');
+  });
+
+  it("n'y voit pas une erreur quand l'utilisateur arrête le flux", async () => {
+    streamChat.mockImplementation(
+      (_t, _r, opts) =>
+        new Promise<void>(resolve => {
+          opts.signal?.addEventListener('abort', () => resolve());
+        })
+    );
+    const { result } = renderHook(() => useCopilotChat('t1'));
+    let p: Promise<void> = Promise.resolve();
+    act(() => {
+      p = result.current.send('salut', {});
+    });
+    await act(async () => {
+      result.current.stop();
+      await p;
+    });
+    expect(result.current.status).toBe('idle');
+    expect(result.current.error).toBeUndefined();
+  });
 });

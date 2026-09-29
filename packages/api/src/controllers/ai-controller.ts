@@ -113,7 +113,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   }
   const pageContext = await resolvePageContext(body.context, tenantId, permissions);
 
-  const stream = openSseStream(req, res);
+  const stream = openSseStream(res);
   try {
     await runChat({
       provider,
@@ -123,6 +123,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       tools,
       messages: body.messages,
       pageContext,
+      // La valeur cliente n'est qu'un écho pour l'interface ; l'audit la préfixe par l'utilisateur.
       conversationId: body.conversationId ?? randomUUID(),
       requestId: randomUUID(),
       signal: stream.signal,

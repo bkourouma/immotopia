@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Tag, Typography } from 'antd';
 import { t } from '../../i18n/t';
+import { leaseStatusLabel } from './copilot-labels';
 import type { LeaseCardItem } from '../../types/copilot';
 
 export interface LeaseResultCardProps {
@@ -15,7 +16,7 @@ export function LeaseResultCard({ item, tenantId }: LeaseResultCardProps): React
       <Link to={`/tenant/${tenantId}/rental/leases/${item.id}`}>
         <Typography.Text strong>{t('Bail {{number}}', { number: item.leaseNumber })}</Typography.Text>
       </Link>{' '}
-      <Tag>{item.status}</Tag>
+      <Tag>{leaseStatusLabel(item.status)}</Tag>
       <div>
         <Typography.Text>{item.propertyLabel}</Typography.Text>
       </div>

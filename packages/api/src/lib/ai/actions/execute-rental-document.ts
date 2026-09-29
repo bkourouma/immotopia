@@ -23,7 +23,6 @@ export interface ExecuteRentalDocumentInput {
 }
 
 export interface ExecuteRentalDocumentResult {
-  status: 200 | 201;
   payload: ActionExecutedPayload;
 }
 
@@ -182,7 +181,6 @@ export async function executeRentalDocument(input: ExecuteRentalDocumentInput): 
       payload: { proposalId: claims.jti, docType: claims.args.docType, leaseId: claims.args.leaseId, alreadyExisted }
     });
     return {
-      status: alreadyExisted ? 200 : 201,
       payload: toPayload(claims.jti, input.tenantId, doc, alreadyExisted)
     };
   } catch (error) {

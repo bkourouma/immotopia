@@ -27,8 +27,6 @@ interface PropertyRow {
   title: string;
   propertyType: string;
   status: string;
-  ownershipType: string;
-  tenantId: string | null;
   locationZone: string | null;
   address: string;
   price: number | null;
@@ -73,15 +71,13 @@ export const searchPropertiesTool: CopilotToolDefinition<typeof inputSchema> = {
       minPrice: input.minPrice,
       maxPrice: input.maxPrice,
       minBedrooms: input.minBedrooms,
+      // Borné à l'agence dans la requête : total et pagination restent justes.
+      excludePublicListings: true,
       page: 1,
       limit
     });
 
-    // `listProperties` inclut aussi les biens PUBLIC publiés d'autres agences :
-    // l'assistant ne renvoie que les biens de l'agence (propres ou sous mandat).
-    const rows = (properties as unknown as PropertyRow[])
-      .filter(p => p.ownershipType !== 'PUBLIC' && (p.tenantId === null || p.tenantId === ctx.tenantId))
-      .slice(0, limit);
+    const rows = properties as unknown as PropertyRow[];
 
     const items: PropertyCardItem[] = rows.map(p => ({
       id: p.id,

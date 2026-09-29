@@ -241,20 +241,22 @@ describe('search_properties', () => {
     expect(JSON.stringify(result.modelResult)).not.toContain('thumbnailUrl');
   });
 
-  it('écarte les biens PUBLIC d’autres agences et plafonne à 10 éléments', async () => {
-    const rows = Array.from({ length: 25 }, (_, i) => property(i));
-    rows.splice(
-      2,
-      0,
-      property(99, { ownershipType: 'PUBLIC', tenantId: null }),
-      property(98, { tenantId: 'tenant-b' })
+  it('demande au service de borner la liste à l’agence (biens PUBLIC d’autres agences exclus)', async () => {
+    mockListProperties.mockResolvedValue({ properties: [property(1)], total: 1 });
+    await tool('search_properties').execute({ limit: 10 }, ctx());
+    expect(mockListProperties).toHaveBeenCalledWith(
+      TENANT,
+      USER,
+      expect.objectContaining({ excludePublicListings: true, page: 1, limit: 10 })
     );
+  });
+
+  it('renvoie le total du service, sans refiltrer ni tronquer la page en mémoire', async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => property(i));
     mockListProperties.mockResolvedValue({ properties: rows, total: 27 });
     const result = await tool('search_properties').execute({ limit: 10 }, ctx());
-    const items = result.modelResult.items as Array<{ id: string }>;
-    expect(items.length).toBeLessThanOrEqual(10);
-    expect(items.map(i => i.id)).not.toContain('p-99');
-    expect(items.map(i => i.id)).not.toContain('p-98');
+    expect(result.modelResult.total).toBe(27);
+    expect(result.modelResult.count).toBe(10);
   });
 
   it('garde le résultat sous 8 Ko même avec des titres énormes', async () => {

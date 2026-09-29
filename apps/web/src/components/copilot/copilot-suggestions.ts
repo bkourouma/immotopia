@@ -30,7 +30,7 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
     ];
   } else if (RENTAL_PATH.test(pathname)) {
     candidates = [
-      { id: 'rental-search', text: t('Trouve le bail du locataire…'), requires: 'search_leases' },
+      { id: 'rental-search', text: t('Montre-moi les baux en cours'), requires: 'search_leases' },
       { id: 'rental-receipt', text: t('Génère une quittance de loyer'), requires: 'propose_rental_document' }
     ];
   } else {

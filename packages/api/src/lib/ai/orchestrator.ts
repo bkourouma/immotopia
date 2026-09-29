@@ -210,7 +210,8 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     tenantId,
     actionKey: AuditActionKey.AI_CHAT_TURN,
     entityType: 'AI_CONVERSATION',
-    entityId: input.conversationId,
+    // Préfixé par l'utilisateur : l'identifiant vient du client, il ne sert jamais seul de clé d'audit.
+    entityId: `${userId}:${input.conversationId}`,
     payload: {
       requestId: input.requestId,
       provider: provider.id,

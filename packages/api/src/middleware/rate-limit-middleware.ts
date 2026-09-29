@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import rateLimit from 'express-rate-limit';
+import { t } from '../i18n';
 
 /**
  * Rate limiter for registration endpoint
@@ -266,10 +267,12 @@ export const aiChatRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
   keyGenerator: userTenantKey,
-  message: {
-    success: false,
-    code: 'RATE_LIMITED',
-    message: "Trop de messages envoyés à l'assistant. Réessayez dans une minute."
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t("Trop de messages envoyés à l'assistant. Réessayez dans une minute.")
+    });
   },
   standardHeaders: true,
   legacyHeaders: false
@@ -279,10 +282,12 @@ export const aiChatDailyLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   max: 300,
   keyGenerator: userTenantKey,
-  message: {
-    success: false,
-    code: 'RATE_LIMITED',
-    message: "Limite quotidienne de l'assistant atteinte. Réessayez demain."
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t("Limite quotidienne de l'assistant atteinte. Réessayez demain.")
+    });
   },
   standardHeaders: true,
   legacyHeaders: false
@@ -293,10 +298,12 @@ export const aiActionRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
   keyGenerator: userTenantKey,
-  message: {
-    success: false,
-    code: 'RATE_LIMITED',
-    message: 'Trop de confirmations en peu de temps. Réessayez dans une minute.'
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de confirmations en peu de temps. Réessayez dans une minute.')
+    });
   },
   standardHeaders: true,
   legacyHeaders: false

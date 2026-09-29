@@ -4,6 +4,7 @@ import copilotService from '../services/copilot-service';
 import {
   COPILOT_MAX_MESSAGES,
   COPILOT_MAX_MESSAGE_CHARS,
+  COPILOT_MAX_TOTAL_CHARS,
   type CopilotAttachment,
   type CopilotChatStatus,
   type CopilotPageContext,
@@ -48,6 +49,24 @@ function toChatError(err: unknown): ChatError {
 
 function isAbort(err: unknown, signal: AbortSignal): boolean {
   return signal.aborted || (err as { name?: string })?.name === 'AbortError';
+}
+
+type HistoryMessage = { role: 'user' | 'assistant'; content: string };
+
+/**
+ * Borne l'historique envoyé : retire les plus anciens messages tant que la somme
+ * des contenus dépasse la limite serveur (le dernier message est toujours gardé),
+ * puis fait commencer l'historique par un message utilisateur si possible.
+ */
+export function trimHistory(history: HistoryMessage[]): HistoryMessage[] {
+  const out = [...history];
+  let total = out.reduce((sum, m) => sum + m.content.length, 0);
+  while (out.length > 1 && total > COPILOT_MAX_TOTAL_CHARS) {
+    const removed = out.shift();
+    total -= removed ? removed.content.length : 0;
+  }
+  while (out.length > 1 && out[0].role !== 'user') out.shift();
+  return out;
 }
 
 let idCounter = 0;
@@ -127,10 +146,12 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
       const assistantId = nextId();
       const assistantMessage: CopilotUiMessage = { id: assistantId, role: 'assistant', text: '', attachments: [] };
 
-      const history = [...messagesRef.current, userMessage]
-        .filter(m => m.text.trim() !== '')
-        .slice(-COPILOT_MAX_MESSAGES)
-        .map(m => ({ role: m.role, content: m.text.slice(0, COPILOT_MAX_MESSAGE_CHARS) }));
+      const history = trimHistory(
+        [...messagesRef.current, userMessage]
+          .filter(m => m.text.trim() !== '')
+          .slice(-COPILOT_MAX_MESSAGES)
+          .map(m => ({ role: m.role, content: m.text.slice(0, COPILOT_MAX_MESSAGE_CHARS) }))
+      );
 
       streamingRef.current = true;
       const controller = new AbortController();
@@ -140,6 +161,7 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
       setError(undefined);
 
       let failed: ChatError | undefined;
+      let done = false;
       const addAttachment = (a: CopilotAttachment) =>
         updateMessage(assistantId, m => ({ ...m, attachments: [...m.attachments, a] }));
 
@@ -166,8 +188,11 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
           case 'error':
             failed = { code: e.code, message: e.message };
             break;
+          case 'done':
+            done = true;
+            break;
           default:
-            break; // tool_status, done : rien à conserver
+            break; // tool_status : rien à conserver
         }
       };
 
@@ -183,11 +208,16 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
         );
       } catch (err) {
         if (!isAbort(err, controller.signal)) failed = toChatError(err);
-      } finally {
-        if (abortRef.current === controller) abortRef.current = null;
-        streamingRef.current = false;
       }
 
+      // Un reset ou un changement d'agence a remplacé ce flux : ne pas toucher à l'état du nouveau.
+      if (abortRef.current !== controller) return;
+      abortRef.current = null;
+      streamingRef.current = false;
+
+      if (!failed && !done && !controller.signal.aborted) {
+        failed = { code: 'INTERNAL', message: t('La réponse a été interrompue.') };
+      }
       if (failed) {
         setError(failed);
         setStatus('error');

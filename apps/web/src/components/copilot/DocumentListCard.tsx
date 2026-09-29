@@ -21,14 +21,15 @@ export function DocumentListCard({ scope, items, tenantId, propertyId }: Documen
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {items.map(doc => {
-            const canDownload = doc.downloadable && (doc.kind === 'rental' || Boolean(propertyId));
+            const pid = doc.propertyId ?? propertyId;
+            const canDownload = doc.downloadable && (doc.kind === 'rental' || Boolean(pid));
             return canDownload ? (
               <DocumentDownloadCard
                 key={`${doc.kind}-${doc.id}`}
                 tenantId={tenantId}
                 kind={doc.kind}
                 documentId={doc.id}
-                propertyId={propertyId}
+                propertyId={pid}
                 filename={doc.label}
                 label={doc.label}
               />

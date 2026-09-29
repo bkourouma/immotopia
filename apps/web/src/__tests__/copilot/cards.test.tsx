@@ -20,6 +20,7 @@ import { PropertyResultCard } from '../../components/copilot/PropertyResultCard'
 import { LeaseResultCard } from '../../components/copilot/LeaseResultCard';
 import { ActionProposalCard } from '../../components/copilot/ActionProposalCard';
 import { DocumentDownloadCard } from '../../components/copilot/DocumentDownloadCard';
+import { DocumentListCard } from '../../components/copilot/DocumentListCard';
 import { CopilotMessageList } from '../../components/copilot/CopilotMessageList';
 import type { ActionProposal, PropertyCardItem, LeaseCardItem } from '../../types/copilot';
 
@@ -115,9 +116,7 @@ describe('ActionProposalCard', () => {
     expect(onCancel).toHaveBeenCalledWith('pr1');
   });
 
-  it('« Modifier » appelle onEdit quand il est fourni', async () => {
-    const onEdit = vi.fn();
-    const user = userEvent.setup();
+  it("n'offre pas de bouton « Modifier »", () => {
     wrap(
       <ActionProposalCard
         proposal={proposal(future())}
@@ -125,11 +124,10 @@ describe('ActionProposalCard', () => {
         tenantId="t1"
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
-        onEdit={onEdit}
       />
     );
-    await user.click(screen.getByRole('button', { name: /Modifier/ }));
-    expect(onEdit).toHaveBeenCalledWith('pr1');
+    expect(screen.queryByRole('button', { name: /Modifier/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Annuler/ })).toBeInTheDocument();
   });
 
   it('est désactivée quand la proposition a expiré', () => {
@@ -143,7 +141,7 @@ describe('ActionProposalCard', () => {
       />
     );
     expect(screen.getByRole('button', { name: /Confirmer et générer/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Modifier/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Annuler/ })).toBeDisabled();
     expect(screen.getByTestId('copilot-proposal-status')).toHaveAttribute('aria-live', 'polite');
     expect(screen.getByText(/a expiré/)).toBeInTheDocument();
   });
@@ -224,5 +222,74 @@ describe('CopilotMessageList', () => {
     expect(screen.getByText('Bonjour')).toBeInTheDocument();
     expect(screen.getByTestId('copilot-property-card')).toBeInTheDocument();
     expect(screen.getByTestId('copilot-lease-card')).toBeInTheDocument();
+  });
+});
+
+describe('cartes : libellés et documents', () => {
+  it('affiche les libellés de type, de statut et de bail plutôt que les valeurs brutes', () => {
+    wrap(
+      <>
+        <PropertyResultCard item={property} tenantId="t1" />
+        <LeaseResultCard item={lease} tenantId="t1" />
+      </>
+    );
+    expect(screen.getByText('Maison / Villa')).toBeInTheDocument();
+    expect(screen.getByText('Disponible')).toBeInTheDocument();
+    expect(screen.getByText('Actif')).toBeInTheDocument();
+    expect(screen.queryByText('MAISON_VILLA')).toBeNull();
+    expect(screen.queryByText('ACTIVE')).toBeNull();
+  });
+
+  it('garde la valeur brute pour une énumération inconnue', () => {
+    wrap(<PropertyResultCard item={{ ...property, propertyType: 'NOUVEAU_TYPE' }} tenantId="t1" />);
+    expect(screen.getByText('NOUVEAU_TYPE')).toBeInTheDocument();
+  });
+
+  it('télécharge une pièce du bien B listée sur la fiche du bien A avec le propertyId de la pièce', async () => {
+    const blob = new Blob(['x']);
+    downloadPropertyDocumentFile.mockResolvedValue({ blob, filename: 'titre.pdf' });
+    const user = userEvent.setup();
+    wrap(
+      <DocumentListCard
+        scope="property"
+        tenantId="t1"
+        propertyId="A"
+        items={[
+          {
+            id: 'd9',
+            kind: 'property',
+            label: 'titre.pdf',
+            type: 'TITLE_DEED',
+            status: null,
+            date: null,
+            downloadable: true,
+            propertyId: 'B'
+          }
+        ]}
+      />
+    );
+    await user.click(screen.getByRole('button'));
+    await waitFor(() => expect(downloadPropertyDocumentFile).toHaveBeenCalledWith('t1', 'B', 'd9', 'titre.pdf'));
+  });
+
+  it("n'offre pas de téléchargement d'une pièce de bien sans propertyId connu", () => {
+    wrap(
+      <DocumentListCard
+        scope="property"
+        tenantId="t1"
+        items={[
+          {
+            id: 'd9',
+            kind: 'property',
+            label: 'titre.pdf',
+            type: 'TITLE_DEED',
+            status: null,
+            date: null,
+            downloadable: true
+          }
+        ]}
+      />
+    );
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

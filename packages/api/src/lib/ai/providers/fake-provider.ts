@@ -1,4 +1,5 @@
 import { t } from '../../../i18n';
+import { createAbortError } from './anthropic-provider';
 import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, LlmTurnResult } from '../contracts';
 
 /**
@@ -12,9 +13,15 @@ import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, L
  * Sans script, des règles par mots-clés lisent le dernier message utilisateur :
  * - « quittance » (+ `L-\d+` ou le bail actif, + période `YYYY-MM` ou mois en
  *   lettres) : search_leases puis propose_rental_document ;
+ * - « relevé » (+ période : deux dates, un ou deux mois ; à défaut les 12
+ *   derniers mois) : search_leases puis propose_rental_document (RENT_RECEIPT
+ *   → RENT_STATEMENT) ;
  * - « documents » : search_leases puis list_lease_documents (bail cité) ou
  *   search_properties puis list_property_documents ;
+ * - « bail », « baux », « locataire » (+ nom) : search_leases ;
  * - « biens » (+ commune ou quartier) : search_properties.
+ * Le tour final d'une quittance ou d'un relevé lit le `status` renvoyé par
+ * propose_rental_document (PROPOSAL_READY, ALREADY_EXISTS, NOT_POSSIBLE).
  * Une fois les `tool_result` revenus, il répond en texte, découpé en morceaux
  * de 20 caractères via `onTextDelta`.
  */
@@ -29,12 +36,6 @@ export interface FakeStep {
 export const FAKE_CHUNK_SIZE = 20;
 
 type ToolResult = { name: string; data: unknown; isError: boolean };
-
-function abortError(): Error {
-  const error = new Error('Aborted');
-  error.name = 'AbortError';
-  return error;
-}
 
 /** Minuscules sans accents, pour comparer des mots-clés. */
 function normalize(text: string): string {
@@ -149,6 +150,75 @@ function extractPeriod(text: string, now: Date): { period: string; label: string
   return null;
 }
 
+const pad = (value: number): string => String(value).padStart(2, '0');
+const isoDay = (date: Date): string =>
+  `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+const lastDayOfMonth = (year: number, month: number): string => isoDay(new Date(Date.UTC(year, month, 0)));
+
+/**
+ * Période d'un relevé : deux dates AAAA-MM-JJ, deux mois AAAA-MM, un ou deux
+ * mois en lettres (année citée ou courante) ; à défaut, les 12 derniers mois.
+ */
+function extractStatementRange(text: string, now: Date): { startDate: string; endDate: string } {
+  const days = text.match(/\b20\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])\b/g);
+  if (days && days.length >= 2) return { startDate: days[0], endDate: days[1] };
+
+  const months: Array<{ year: number; month: number }> = [];
+  for (const match of text.matchAll(/\b(20\d{2})-(0[1-9]|1[0-2])\b(?!-)/g)) {
+    months.push({ year: Number(match[1]), month: Number(match[2]) });
+  }
+  if (months.length === 0) {
+    const normalized = normalize(text);
+    const year = Number(/\b(20\d{2})\b/.exec(normalized)?.[1] ?? now.getUTCFullYear());
+    const found: Array<{ index: number; month: number }> = [];
+    MONTHS.forEach((name, index) => {
+      const at = new RegExp(`\\b${name}\\b`).exec(normalized);
+      if (at) found.push({ index: at.index, month: index + 1 });
+    });
+    found.sort((a, b) => a.index - b.index).forEach(entry => months.push({ year, month: entry.month }));
+  }
+  if (months.length > 0) {
+    const first = months[0];
+    const last = months[months.length - 1];
+    return {
+      startDate: `${first.year}-${pad(first.month)}-01`,
+      endDate: lastDayOfMonth(last.year, last.month)
+    };
+  }
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
+  return { startDate: isoDay(start), endDate: isoDay(now) };
+}
+
+/** Nom du locataire cité après « locataire » (« le locataire Awa Koné »), avec capitale. */
+function extractRenterName(text: string): string | null {
+  const match =
+    /\blocataires?\s+(?:(?:M\.|Mme|Monsieur|Madame)\s+)?(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){0,2})/u.exec(text);
+  return match ? match[1].trim() : null;
+}
+
+/** Texte du tour final quand la proposition n'est pas prête ; `null` si elle l'est. */
+function proposalFailureText(data: unknown, periodLabel: string): string | null {
+  const record = (data && typeof data === 'object' ? data : {}) as { status?: unknown; reason?: unknown };
+  if (record.status === undefined || record.status === 'PROPOSAL_READY') return null;
+  if (record.status === 'ALREADY_EXISTS') {
+    return t('La quittance de {{period}} existe déjà : je vous la présente ci-dessous, rien de nouveau à générer.', {
+      period: periodLabel
+    });
+  }
+  const reasons: Record<string, string> = {
+    NO_PAYMENT: t('aucun paiement encaissé pour cette période'),
+    NO_INSTALLMENT: t("le bail n'a pas d'échéance pour cette période"),
+    NO_TEMPLATE: t("aucun modèle de document n'est disponible pour l'agence"),
+    PERIOD_TOO_LONG: t('un relevé couvre au plus 12 mois'),
+    INVALID_PERIOD: t('la période est invalide'),
+    MISSING_PERIOD: t('la période est manquante')
+  };
+  const reason = typeof record.reason === 'string' ? reasons[record.reason] : undefined;
+  return reason
+    ? t('Je ne peux pas proposer ce document : {{reason}}.', { reason })
+    : t('Je ne peux pas proposer ce document pour le moment.');
+}
+
 export class FakeProvider implements LlmProvider {
   readonly id = 'fake' as const;
 
@@ -162,7 +232,7 @@ export class FakeProvider implements LlmProvider {
     onTextDelta: (text: string) => void,
     signal: AbortSignal
   ): Promise<LlmTurnResult> {
-    if (signal.aborted) throw abortError();
+    if (signal.aborted) throw createAbortError();
 
     const { question, round, results } = this.analyse(req.messages);
     const step = this.script ? (this.script[round] ?? {}) : this.decide(question, round, results);
@@ -170,7 +240,7 @@ export class FakeProvider implements LlmProvider {
     const blocks: LlmBlock[] = [];
     if (step.text) {
       for (let offset = 0; offset < step.text.length; offset += FAKE_CHUNK_SIZE) {
-        if (signal.aborted) throw abortError();
+        if (signal.aborted) throw createAbortError();
         onTextDelta(step.text.slice(offset, offset + FAKE_CHUNK_SIZE));
       }
       blocks.push({ type: 'text', text: step.text });
@@ -229,7 +299,9 @@ export class FakeProvider implements LlmProvider {
     const normalized = normalize(question);
     const leaseNumber = /\bL-\d+\b/i.exec(question)?.[0].toUpperCase() ?? null;
     const call = (name: CopilotToolName, input: unknown): FakeStep => ({ toolCalls: [{ name, input }] });
-    const leaseSearch = (): FakeStep => call('search_leases', leaseNumber ? { leaseNumber } : { status: 'ACTIVE' });
+    const renterName = extractRenterName(question);
+    const leaseSearch = (): FakeStep =>
+      call('search_leases', leaseNumber ? { leaseNumber } : renterName ? { renterName } : { status: 'ACTIVE' });
 
     if (results.some(result => result.isError)) {
       return { text: t("Je n'ai pas pu terminer cette recherche : un outil a renvoyé une erreur.") };
@@ -246,10 +318,32 @@ export class FakeProvider implements LlmProvider {
         if (!leaseId) return { text: t("Je n'ai trouvé aucun bail correspondant.") };
         return call('propose_rental_document', { docType: 'RENT_RECEIPT', leaseId, period: period.period });
       }
+      const failure = proposalFailureText(results[1]?.data, period.label);
+      if (failure) return { text: failure };
       return {
         text: t(
           'Je vous propose la quittance de loyer de {{period}}. Elle ne sera générée qu’après votre confirmation.',
           { period: period.label }
+        )
+      };
+    }
+
+    // 1 bis. Relevé de compte
+    if (normalized.includes('releve')) {
+      const range = extractStatementRange(question, this.now());
+      const label = `${range.startDate} → ${range.endDate}`;
+      if (round === 0) return leaseSearch();
+      if (round === 1) {
+        const leaseId = idOf(firstItem(results[0]?.data));
+        if (!leaseId) return { text: t("Je n'ai trouvé aucun bail correspondant.") };
+        return call('propose_rental_document', { docType: 'RENT_STATEMENT', leaseId, ...range });
+      }
+      const failure = proposalFailureText(results[1]?.data, label);
+      if (failure) return { text: failure };
+      return {
+        text: t(
+          'Je vous propose le relevé de compte du {{start}} au {{end}}. Il ne sera généré qu’après votre confirmation.',
+          { start: range.startDate, end: range.endDate }
         )
       };
     }
@@ -277,7 +371,18 @@ export class FakeProvider implements LlmProvider {
       return { text: t('Voici les documents trouvés ({{count}}).', { count: countItems(results[1]?.data) }) };
     }
 
-    // 3. Biens
+    // 3. Baux (avant « biens » : « Quels baux concernent ce bien ? » cherche des baux)
+    if (/\b(bail|baux|locataire|locataires)\b/.test(normalized)) {
+      if (round === 0) return leaseSearch();
+      const count = (results[0]?.data as { count?: unknown } | null)?.count;
+      return {
+        text: t("J'ai trouvé {{count}} bail(s) correspondant à votre recherche.", {
+          count: typeof count === 'number' ? count : countItems(results[0]?.data)
+        })
+      };
+    }
+
+    // 4. Biens
     if (
       /\b(bien|biens|appartement|appartements|villa|villas|maison|maisons|studio|studios|terrain|terrains|local|locaux)\b/.test(
         normalized

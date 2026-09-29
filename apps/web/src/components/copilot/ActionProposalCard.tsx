@@ -12,8 +12,6 @@ export interface ActionProposalCardProps {
   tenantId: string;
   onConfirm(proposalId: string): void;
   onCancel(proposalId: string): void;
-  /** « Modifier » : par défaut, annule la proposition pour laisser reformuler. */
-  onEdit?(proposalId: string): void;
 }
 
 const DOCUMENT_LABEL: Record<ActionProposal['documentType'], string> = {
@@ -45,8 +43,7 @@ export function ActionProposalCard({
   error,
   tenantId,
   onConfirm,
-  onCancel,
-  onEdit
+  onCancel
 }: ActionProposalCardProps): React.ReactElement {
   const timeExpired = useExpired(proposal.expiresAt);
   const expired = state === 'expired' || (state === 'pending' && timeExpired);
@@ -107,10 +104,7 @@ export function ActionProposalCard({
           >
             {t('Confirmer et générer')}
           </Button>
-          <Button disabled={!actionable} onClick={() => (onEdit ?? onCancel)(proposal.proposalId)}>
-            {t('Modifier')}
-          </Button>
-          <Button type="text" disabled={!actionable} onClick={() => onCancel(proposal.proposalId)}>
+          <Button disabled={!actionable} onClick={() => onCancel(proposal.proposalId)}>
             {t('Annuler')}
           </Button>
         </Space>

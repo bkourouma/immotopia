@@ -145,4 +145,88 @@ describe('FakeProvider', () => {
     const typed: LlmTurnResult = result;
     expect(typed.stopReason).toBe('end_turn');
   });
+
+  describe('tour final d’une quittance selon le statut de la proposition', () => {
+    const lease = { search_leases: { items: [{ id: 'lease-uuid' }] } };
+    const ask = (proposal: unknown) =>
+      converse('quittance L-102 2026-03', { ...lease, propose_rental_document: proposal });
+
+    it('PROPOSAL_READY : annonce la proposition', async () => {
+      const { text } = await ask({ status: 'PROPOSAL_READY' });
+      expect(text).toContain('Je vous propose la quittance');
+    });
+
+    it('ALREADY_EXISTS : indique que la quittance existe déjà', async () => {
+      const { text } = await ask({ status: 'ALREADY_EXISTS' });
+      expect(text).toContain('existe déjà');
+      expect(text).not.toContain('Je vous propose');
+    });
+
+    it.each([
+      ['NO_PAYMENT', 'aucun paiement encaissé'],
+      ['NO_TEMPLATE', 'aucun modèle'],
+      ['NO_INSTALLMENT', "pas d'échéance"]
+    ])('NOT_POSSIBLE / %s : explique pourquoi sans rien proposer', async (reason, fragment) => {
+      const { text } = await ask({ status: 'NOT_POSSIBLE', reason });
+      expect(text).toContain('Je ne peux pas proposer');
+      expect(text).toContain(fragment);
+      expect(text).not.toContain('Je vous propose');
+    });
+  });
+
+  describe('relevé de compte', () => {
+    const lease = { search_leases: { items: [{ id: 'lease-uuid' }] } };
+
+    it('propose un RENT_STATEMENT sur deux dates citées', async () => {
+      const { calls, text } = await converse('Génère le relevé du bail L-5 du 2026-01-01 au 2026-06-30', {
+        ...lease,
+        propose_rental_document: { status: 'PROPOSAL_READY' }
+      });
+      expect(calls[1]).toEqual({
+        name: 'propose_rental_document',
+        input: { docType: 'RENT_STATEMENT', leaseId: 'lease-uuid', startDate: '2026-01-01', endDate: '2026-06-30' }
+      });
+      expect(text).toContain('relevé de compte');
+    });
+
+    it('lit deux mois en lettres', async () => {
+      const { calls } = await converse('Relevé de janvier à mars 2026', lease);
+      expect(calls[1].input).toMatchObject({ startDate: '2026-01-01', endDate: '2026-03-31' });
+    });
+
+    it('prend les 12 derniers mois sans période', async () => {
+      const { calls } = await converse('Je voudrais un relevé de compte', lease);
+      expect(calls[1].input).toMatchObject({ startDate: '2025-10-01', endDate: '2026-09-29' });
+    });
+
+    it('signale un modèle manquant', async () => {
+      const { text } = await converse('relevé 2026-01', {
+        ...lease,
+        propose_rental_document: { status: 'NOT_POSSIBLE', reason: 'NO_TEMPLATE' }
+      });
+      expect(text).toContain('aucun modèle');
+    });
+  });
+
+  describe('baux', () => {
+    it('« Quels baux concernent ce bien ? » appelle search_leases, pas search_properties', async () => {
+      const { calls, text } = await converse('Quels baux concernent ce bien ?', {
+        search_leases: { count: 2, items: [{ id: 'a' }, { id: 'b' }] }
+      });
+      expect(calls).toEqual([{ name: 'search_leases', input: { status: 'ACTIVE' } }]);
+      expect(text).toContain('2 bail(s)');
+    });
+
+    it('« Montre-moi les baux en cours » appelle search_leases avec status ACTIVE', async () => {
+      const { calls } = await converse('Montre-moi les baux en cours', {
+        search_leases: { count: 1, items: [{ id: 'a' }] }
+      });
+      expect(calls).toEqual([{ name: 'search_leases', input: { status: 'ACTIVE' } }]);
+    });
+
+    it('cherche par nom de locataire quand il est cité', async () => {
+      const { calls } = await converse('Trouve le bail du locataire Awa Koné', { search_leases: { items: [] } });
+      expect(calls).toEqual([{ name: 'search_leases', input: { renterName: 'Awa Koné' } }]);
+    });
+  });
 });

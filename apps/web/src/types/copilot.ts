@@ -5,6 +5,8 @@
 
 export const COPILOT_MAX_MESSAGES = 20;
 export const COPILOT_MAX_MESSAGE_CHARS = 4000;
+/** Somme maximale des contenus d'une requête (le serveur rejette au-delà en 400 VALIDATION). */
+export const COPILOT_MAX_TOTAL_CHARS = 24000;
 
 export type CopilotToolName =
   | 'search_properties'

@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import type { CopilotSseEvent } from './contracts';
 
 /**
@@ -37,7 +37,7 @@ type FlushableResponse = Response & { flush?: () => void };
  * appeler seulement une fois la requête validée : avant cet appel, une erreur
  * se répond en JSON typé ; après, en événement `error`.
  */
-export function openSseStream(_req: Request, res: Response, options: { pingIntervalMs?: number } = {}): SseStream {
+export function openSseStream(res: Response, options: { pingIntervalMs?: number } = {}): SseStream {
   const out = res as FlushableResponse;
   const controller = new AbortController();
   let closed = false;

@@ -506,8 +506,8 @@ describe('flux SSE (sse.ts)', () => {
   }
 
   it('envoie un commentaire `: ping` à intervalle régulier', async () => {
-    const { server, port } = await serve((req, res) => {
-      const stream = openSseStream(req, res, { pingIntervalMs: 15 });
+    const { server, port } = await serve((_req, res) => {
+      const stream = openSseStream(res, { pingIntervalMs: 15 });
       setTimeout(() => stream.end(), 80);
     });
     try {
@@ -530,8 +530,8 @@ describe('flux SSE (sse.ts)', () => {
   it('la fermeture de la connexion par le client déclenche l’abandon', async () => {
     let resolveAborted: (value: boolean) => void = () => undefined;
     const aborted = new Promise<boolean>(resolve => (resolveAborted = resolve));
-    const { server, port } = await serve((req, res) => {
-      const stream = openSseStream(req, res, { pingIntervalMs: 1000 });
+    const { server, port } = await serve((_req, res) => {
+      const stream = openSseStream(res, { pingIntervalMs: 1000 });
       stream.signal.addEventListener('abort', () => resolveAborted(true));
       stream.send({ type: 'meta', conversationId: 'c', requestId: 'r' });
     });

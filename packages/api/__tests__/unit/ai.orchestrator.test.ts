@@ -533,6 +533,17 @@ describe('orchestrateur — audit', () => {
   });
 });
 
+describe('orchestrateur — audit et conversationId client', () => {
+  it('ne prend jamais le conversationId du client comme clé d’audit brute', async () => {
+    const forged = '11111111-1111-4111-8111-111111111111';
+    const harness = start(scripted([{ text: 'ok' }]), { conversationId: forged });
+    await harness.result;
+    const turn = auditOf('AI_CHAT_TURN')[0];
+    expect(turn.entityId).not.toBe(forged);
+    expect(turn.entityId).toBe(`${USER}:${forged}`);
+  });
+});
+
 describe('orchestrateur — contexte d’écran', () => {
   it('ouvre le dernier message utilisateur par un bloc de données vérifié', async () => {
     const harness = start(scripted([{ text: 'ok' }]), {

@@ -132,7 +132,7 @@ describe('exécution d’une quittance confirmée', () => {
       { installmentId: INSTALLMENT_ID },
       USER
     );
-    expect(result.status).toBe(201);
+    expect(result.payload.alreadyExisted).toBe(false);
     expect(result.payload).toEqual({
       proposalId: claims.jti,
       alreadyExisted: false,
@@ -195,7 +195,6 @@ describe('exécution d’une quittance confirmée', () => {
         where: expect.objectContaining({ tenant_id: TENANT, status: 'FINAL', payment_id: PAYMENT_ID })
       })
     );
-    expect(result.status).toBe(200);
     expect(result.payload.alreadyExisted).toBe(true);
     expect(result.payload.document).toMatchObject({
       id: 'doc-old',
@@ -331,7 +330,7 @@ describe('relevé de compte', () => {
       { startDate: new Date('2026-01-01T00:00:00.000Z'), endDate: new Date('2026-06-30T23:59:59.999Z') },
       USER
     );
-    expect(result.status).toBe(201);
+    expect(result.payload.alreadyExisted).toBe(false);
     expect(result.payload.document.type).toBe('STATEMENT');
     expect(result.payload.document.filename).toBe('RLV-202609-0001.docx');
     expect(mockPrisma.rentalPayment.findFirst).not.toHaveBeenCalled();

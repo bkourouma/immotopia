@@ -54,3 +54,16 @@ describe('getCopilotSuggestions', () => {
     ]);
   });
 });
+
+describe('suggestions complètes', () => {
+  it("n'en propose aucune inachevée (points de suspension)", () => {
+    for (const path of [
+      '/tenant/t1/rental',
+      '/tenant/t1/dashboard',
+      '/tenant/t1/properties/p1',
+      '/tenant/t1/rental/leases/l1'
+    ]) {
+      for (const s of getCopilotSuggestions(path, ALL)) expect(s.text).not.toMatch(/…|\.\.\./);
+    }
+  });
+});
