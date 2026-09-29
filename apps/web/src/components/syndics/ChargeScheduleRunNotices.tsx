@@ -5,6 +5,7 @@ import { useConfirmAction } from '../primitives';
 import { resendChargeScheduleRunNotices } from '../../services/syndic-charge-schedule-service';
 import { ChargeScheduleRun } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
+import { stripRawMailDetail } from './charge-schedule-notes';
 
 const { Text } = Typography;
 
@@ -28,18 +29,9 @@ const NOTIFICATION_DISABLED_HINT = t(
   'La notification « Appel de charges émis » est désactivée pour cette agence : activez-la dans Communication > Notifications e-mail.'
 );
 
-/**
- * Les notes d'anciennes exécutions peuvent porter le motif brut du serveur mail
- * après le numéro de lot (« A-01 (554 EMESSAGE…) ») : on ne montre que le lot.
- */
-const RAW_MAIL_DETAIL = / \(\d{3}\b[^)]*\)/g;
-
 function parseReasonLines(notes: string | null): string[] {
   if (!notes) return [];
-  return notes
-    .split('\n')
-    .filter(Boolean)
-    .map(line => line.replace(RAW_MAIL_DETAIL, ''));
+  return notes.split('\n').filter(Boolean).map(stripRawMailDetail);
 }
 
 export interface ChargeScheduleRunNoticesProps {
