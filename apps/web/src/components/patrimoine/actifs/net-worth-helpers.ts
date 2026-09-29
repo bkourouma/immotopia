@@ -1,4 +1,4 @@
-import type { AssetClass, NetWorthResult } from '../../../services/patrimoine-assets-service';
+import type { AssetClass, NetWorthExclusionReason, NetWorthResult } from '../../../services/patrimoine-assets-service';
 
 export interface ClassBreakdownRow {
   assetClass: AssetClass;
@@ -24,6 +24,14 @@ export function computeClassBreakdown(result: Pick<NetWorthResult, 'byClass' | '
       share: total > 0 ? Math.max(0, row.value) / total : 0
     }))
     .sort((a, b) => b.value - a.value);
+}
+
+/** Raisons d'exclusion à signaler : un actif cédé ou archivé volontairement n'est pas une anomalie. */
+const ANOMALY_REASONS: ReadonlyArray<NetWorthExclusionReason> = ['NO_VALUATION', 'MISSING_EXCHANGE_RATE'];
+
+/** Actifs exclus du total par anomalie (sans valeur, taux de change manquant). */
+export function anomalousExclusions(result: Pick<NetWorthResult, 'excluded'>): NetWorthResult['excluded'] {
+  return result.excluded.filter(item => ANOMALY_REASONS.includes(item.reason));
 }
 
 /** Nouvel utilisateur : rien de compté et rien d'exclu, donc rien à afficher qu'un état vide. */

@@ -22,6 +22,7 @@ vi.mock('../../services/patrimoine-assets-service', () => ({
   getNetWorth: (...a: unknown[]) => getNetWorth(...a),
   getNetWorthHistory: (...a: unknown[]) => getNetWorthHistory(...a),
   listAssets: (...a: unknown[]) => listAssets(...a),
+  listLinkedPropertyIds: vi.fn().mockResolvedValue([]),
   listDebts: (...a: unknown[]) => listDebts(...a),
   createDebt: vi.fn(),
   updateDebt: vi.fn(),
@@ -114,6 +115,20 @@ describe('<NetWorthPage>', () => {
     expect(screen.getByText(/92,6/)).toBeInTheDocument();
     expect(await screen.findByText('Stock de riz')).toBeInTheDocument();
     expect(screen.getByText(/Sans valeur/)).toBeInTheDocument();
+  });
+
+  it('ne signale pas un actif archivé ou cédé volontairement', async () => {
+    getNetWorth.mockResolvedValue({
+      ...REMPLI,
+      excluded: [
+        { assetId: 'a7', reason: 'ARCHIVED' },
+        { assetId: 'a8', reason: 'DISPOSED' }
+      ]
+    });
+    monter();
+
+    expect(await screen.findByText('Total des actifs')).toBeInTheDocument();
+    expect(screen.queryByText('Certains éléments ne sont pas comptés dans ces totaux')).not.toBeInTheDocument();
   });
 
   it('propose de réessayer quand le chargement échoue', async () => {

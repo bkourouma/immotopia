@@ -14,6 +14,7 @@ const store = {
   propertyHoldings: [] as Row[],
   contacts: [] as Row[],
   properties: [] as Row[],
+  assets: [] as Row[],
   seq: 0
 };
 
@@ -207,11 +208,24 @@ const propertyDelegate = {
   findFirst: jest.fn(async ({ where }: Row) => store.properties.find(p => matchesWhere(p, where)) ?? null)
 };
 
+const assetDelegate = {
+  count: jest.fn(async ({ where }: Row) => store.assets.filter(a => matchesWhere(a, where)).length),
+  findUnique: jest.fn(async ({ where }: Row) => store.assets.find(a => a.propertyId === where.propertyId) ?? null),
+  upsert: jest.fn(async ({ where, create }: Row) => {
+    const found = store.assets.find(a => a.propertyId === where.propertyId);
+    if (found) return found;
+    const row = { id: nextId('asset'), ...create };
+    store.assets.push(row);
+    return row;
+  })
+};
+
 const mockPrisma: Row = {
   holdingEntity: holdingEntityDelegate,
   propertyHolding: propertyHoldingDelegate,
   crmContact: crmContactDelegate,
   property: propertyDelegate,
+  asset: assetDelegate,
   $transaction: jest.fn(async (callback: (tx: Row) => Promise<unknown>) => {
     const tx = {
       ...mockPrisma,
@@ -242,6 +256,7 @@ beforeEach(() => {
   store.propertyHoldings = [];
   store.contacts = [];
   store.properties = [];
+  store.assets = [];
   jest.clearAllMocks();
 });
 
@@ -373,6 +388,49 @@ describe('entities/service — isolation tenant', () => {
     await createEntityHolding(TENANT_A, entity.id, { propertyId: 'prop-1', sharePercent: 30 } as any);
 
     await expect(deleteHoldingEntity(TENANT_A, entity.id)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("refuse la suppression d'une entité qui porte encore un actif (SET NULL sinon silencieux)", async () => {
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E2', legalForm: 'SCI', country: 'CI' } as any);
+    store.assets.push({ id: 'asset-x', tenantId: TENANT_A, holdingEntityId: entity.id });
+
+    await expect(deleteHoldingEntity(TENANT_A, entity.id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining('biens ou actifs')
+    });
+    expect(holdingEntityDelegate.delete).not.toHaveBeenCalled();
+    expect(assetDelegate.count).toHaveBeenCalledWith({ where: { holdingEntityId: entity.id, tenantId: TENANT_A } });
+  });
+
+  it("supprime une entité sans part ni actif ; l'actif d'une autre agence ne bloque pas", async () => {
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E3', legalForm: 'SCI', country: 'CI' } as any);
+    store.assets.push({ id: 'asset-y', tenantId: TENANT_B, holdingEntityId: entity.id });
+
+    await expect(deleteHoldingEntity(TENANT_A, entity.id)).resolves.toBeUndefined();
+    expect(holdingEntityDelegate.delete).toHaveBeenCalled();
+  });
+});
+
+describe('entities/service — actif du bien créé à la volée (lot 1 multi-actifs)', () => {
+  it('createEntityHolding garantit un actif REAL_ESTATE pour le bien', async () => {
+    store.properties.push({ id: 'prop-1', tenantId: TENANT_A, title: 'Bien', internalReference: 'REF-1' });
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E1', legalForm: 'SCI', country: 'CI' } as any);
+    await createEntityHolding(TENANT_A, entity.id, { propertyId: 'prop-1', sharePercent: 30 } as any);
+
+    expect(store.assets).toHaveLength(1);
+    expect(store.assets[0]).toMatchObject({ propertyId: 'prop-1', assetClass: 'REAL_ESTATE', tenantId: TENANT_A });
+  });
+
+  it("setPropertyHoldings garantit l'actif, sans doublon au second appel", async () => {
+    store.properties.push({ id: 'prop-1', tenantId: TENANT_A, title: 'Bien', internalReference: 'REF-1' });
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E1', legalForm: 'SCI', country: 'CI' } as any);
+    const input = { holdings: [{ entityId: entity.id, sharePercent: 50 }] } as any;
+    // La relecture finale (`getPropertyHoldings`) n'est pas l'objet du test.
+    propertyHoldingDelegate.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await setPropertyHoldings(TENANT_A, 'prop-1', input);
+    await setPropertyHoldings(TENANT_A, 'prop-1', input);
+
+    expect(store.assets).toHaveLength(1);
   });
 });
 

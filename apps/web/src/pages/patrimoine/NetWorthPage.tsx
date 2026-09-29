@@ -13,12 +13,16 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, SkeletonStats, StatCard, StateBlock } from '../../components/primitives';
-import { AssetFormDrawer } from '../../components/patrimoine/actifs/AssetFormDrawer';
+import { AssetFormDrawer, useLinkedPropertyIds } from '../../components/patrimoine/actifs/AssetFormDrawer';
 import { ClassBreakdownCard, NetWorthHistoryCard } from '../../components/patrimoine/actifs/NetWorthCharts';
 import { DebtsPanel } from '../../components/patrimoine/actifs/DebtsPanel';
 import { exclusionReasonLabel } from '../../components/patrimoine/actifs/asset-classes';
 import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
-import { isNetWorthEmpty, monthsAgoIso } from '../../components/patrimoine/actifs/net-worth-helpers';
+import {
+  anomalousExclusions,
+  isNetWorthEmpty,
+  monthsAgoIso
+} from '../../components/patrimoine/actifs/net-worth-helpers';
 import { t } from '../../i18n/t';
 
 const HISTORY_MONTHS = 12;
@@ -29,7 +33,8 @@ const ExclusionBanner: React.FC<{ tenantId: string; result: NetWorthResult; asse
   result,
   assets
 }) => {
-  if (result.excluded.length === 0 && result.excludedLoans.length === 0) return null;
+  const excluded = anomalousExclusions(result);
+  if (excluded.length === 0 && result.excludedLoans.length === 0) return null;
   const nameOf = (id: string) => assets.find(asset => asset.id === id)?.name ?? t('Actif');
   return (
     <Alert
@@ -39,7 +44,7 @@ const ExclusionBanner: React.FC<{ tenantId: string; result: NetWorthResult; asse
       title={t('Certains éléments ne sont pas comptés dans ces totaux')}
       description={
         <ul style={{ margin: 0, paddingInlineStart: 20 }}>
-          {result.excluded.map(item => (
+          {excluded.map(item => (
             <li key={item.assetId}>
               <Link to={`/tenant/${tenantId}/patrimoine/actifs/${item.assetId}`}>{nameOf(item.assetId)}</Link>
               {' — '}
@@ -85,13 +90,15 @@ export const NetWorthPage: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  const hasExclusions = (netWorth.data?.excluded.length ?? 0) > 0;
+  const hasExclusions = netWorth.data ? anomalousExclusions(netWorth.data).length > 0 : false;
   const assetsQuery = useQuery({
     queryKey: queryKey('patrimoine-assets', agence, {}),
     queryFn: () => listAssets(agence as string),
     enabled: Boolean(agence) && hasExclusions,
     staleTime: STALE_TIME.list
   });
+
+  const linkedPropertyIds = useLinkedPropertyIds(agence, drawerOpen);
 
   if (!agence) {
     return (
@@ -180,6 +187,7 @@ export const NetWorthPage: React.FC = () => {
       <AssetFormDrawer
         open={drawerOpen}
         tenantId={agence}
+        linkedPropertyIds={linkedPropertyIds}
         onClose={() => setDrawerOpen(false)}
         onSaved={asset => {
           queryClient.invalidateQueries({ queryKey: ['patrimoine-net-worth'] });

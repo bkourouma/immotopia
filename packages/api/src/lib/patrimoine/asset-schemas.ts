@@ -18,24 +18,72 @@ const VALUATION_METHODS = ['MANUAL', 'MARKET_ESTIMATE', 'EXPERT_APPRAISAL'] as c
 const LOAN_STATUSES = ['ACTIVE', 'CLOSED', 'DEFAULTED'] as const;
 const ASSET_STATUSES = ['ACTIVE', 'DISPOSED', 'ARCHIVED'] as const;
 
-const optionalNullableText = z.string().trim().max(2000).nullable().optional();
-const optionalNullableDate = z.coerce.date().nullable().optional();
+/** Bornes de taille des textes : courts (noms, prêteur, source) et libres (notes). */
+export const SHORT_TEXT_MAX = 200;
+export const NOTES_MAX = 2000;
+
+/** Plafonds alignés sur les colonnes Prisma (`Decimal(14,2)`, `Decimal(6,4)`, `Decimal(18,6)`). */
+export const MAX_MONEY = 999_999_999_999.99;
+export const MAX_INTEREST_RATE = 99.9999;
+export const MIN_EXCHANGE_RATE = 0.000001;
+export const MAX_EXCHANGE_RATE = 1_000_000_000;
+
+const optionalNullableText = z.string().trim().max(NOTES_MAX).nullable().optional();
+const optionalNullableShortText = z.string().trim().max(SHORT_TEXT_MAX).nullable().optional();
+
+const positiveMoney = z.number().finite().positive().max(MAX_MONEY);
+const nonNegativeMoney = z.number().finite().nonnegative().max(MAX_MONEY);
+
+/** Fenêtre de dates acceptée : 1900-01-01 à 2100-12-31 inclus. */
+const DATE_MIN_MS = Date.UTC(1900, 0, 1);
+const DATE_MAX_MS = Date.UTC(2100, 11, 31, 23, 59, 59, 999);
+const DATE_ERROR = 'Date AAAA-MM-JJ (ou ISO 8601) valide entre 1900 et 2100 attendue';
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})?$/;
+
+/** Une chaîne `AAAA-MM-JJ` ou ISO 8601 réellement existante et dans la fenêtre ; `null` sinon. */
+export function parseStrictDate(value: string): Date | null {
+  const match = DATETIME_RE.exec(value) ?? DAY_RE.exec(value);
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return null;
+  // Une date-heure sans fuseau est lue en UTC, jamais dans le fuseau du serveur.
+  const hasZone = DAY_RE.test(value) || match[4] !== undefined;
+  const date = new Date(hasZone ? value : `${value}Z`);
+  const time = date.getTime();
+  return Number.isNaN(time) || time < DATE_MIN_MS || time > DATE_MAX_MS ? null : date;
+}
+
+/** Remplace `z.coerce.date()` : refuse `null`, nombres et booléens, n'accepte qu'une chaîne de date valide. */
+const strictDate = z
+  .string({ invalid_type_error: DATE_ERROR, required_error: 'Champ obligatoire' })
+  .transform((value, ctx) => {
+    const date = parseStrictDate(value);
+    if (!date) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: DATE_ERROR });
+      return z.NEVER;
+    }
+    return date;
+  });
+/** Date facultative : `null` reste permis pour effacer la valeur ; nombres et booléens sont refusés. */
+const optionalNullableDate = strictDate.nullable().optional();
 
 export const initialValuationSchema = z
   .object({
-    valuatedAt: z.coerce.date(),
-    estimatedValue: z.number().positive(),
+    valuatedAt: strictDate,
+    estimatedValue: positiveMoney,
     method: z.enum(VALUATION_METHODS).default('MANUAL'),
-    source: optionalNullableText,
+    source: optionalNullableShortText,
     notes: optionalNullableText
   })
   .strict();
 
 const assetFields = {
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().min(1).max(SHORT_TEXT_MAX),
   currency: CURRENCY.optional(),
-  exchangeRateToXof: z.number().positive().nullable().optional(),
-  acquisitionCost: z.number().nonnegative().nullable().optional(),
+  exchangeRateToXof: z.number().finite().min(MIN_EXCHANGE_RATE).max(MAX_EXCHANGE_RATE).nullable().optional(),
+  acquisitionCost: nonNegativeMoney.nullable().optional(),
   acquisitionDate: optionalNullableDate,
   holdingEntityId: z.string().uuid().nullable().optional(),
   details: z.record(z.unknown()).optional(),
@@ -57,7 +105,7 @@ export const updateAssetSchema = z
   .strict()
   .refine(value => Object.keys(value).length > 0, { message: "Au moins un champ est requis pour modifier l'actif" });
 
-export const disposeAssetSchema = z.object({ disposedAt: z.coerce.date() }).strict();
+export const disposeAssetSchema = z.object({ disposedAt: strictDate }).strict();
 
 export const listAssetsQuerySchema = z
   .object({
@@ -68,11 +116,11 @@ export const listAssetsQuerySchema = z
   .strict();
 
 const valuationFields = {
-  valuatedAt: z.coerce.date(),
-  estimatedValue: z.number().positive(),
+  valuatedAt: strictDate,
+  estimatedValue: positiveMoney,
   currency: CURRENCY.optional(),
   method: z.enum(VALUATION_METHODS).optional(),
-  source: optionalNullableText,
+  source: optionalNullableShortText,
   notes: optionalNullableText
 };
 
@@ -85,25 +133,29 @@ export const updateAssetValuationSchema = z
   .refine(value => Object.keys(value).length > 0, { message: 'Au moins un champ est requis' });
 
 const debtFields = {
-  lender: z.string().trim().min(2).max(200),
-  capitalAmount: z.number().positive(),
-  remainingCapital: z.number().nonnegative(),
+  lender: z.string().trim().min(2).max(SHORT_TEXT_MAX),
+  capitalAmount: positiveMoney,
+  remainingCapital: nonNegativeMoney,
   // Un prêt à taux zéro (familial, employeur) est un cas réel.
-  interestRate: z.number().nonnegative(),
-  monthlyPayment: z.number().nonnegative(),
+  interestRate: z.number().finite().nonnegative().max(MAX_INTEREST_RATE),
+  monthlyPayment: nonNegativeMoney,
   currency: CURRENCY.optional(),
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date(),
+  startDate: strictDate,
+  endDate: strictDate,
   status: z.enum(LOAN_STATUSES).optional()
 };
 
 export const createDebtSchema = z
   .object({ ...debtFields, assetId: z.string().uuid().nullable().optional() })
   .strict()
-  .refine(value => value.endDate.getTime() >= value.startDate.getTime(), {
-    message: 'La date de fin doit suivre la date de début',
-    path: ['endDate']
-  });
+  // Une date déjà invalide (z.NEVER) est signalée par son propre champ : pas de second message ici.
+  .refine(
+    value => !(value.endDate instanceof Date && value.startDate instanceof Date) || value.endDate >= value.startDate,
+    {
+      message: 'La date de fin doit suivre la date de début',
+      path: ['endDate']
+    }
+  );
 
 export const updateDebtSchema = z
   .object(debtFields)
@@ -121,7 +173,7 @@ export const listDebtsQuerySchema = z
 export const setAssetHoldingSchema = z
   .object({
     sharePercent: z.number().gt(0).max(100),
-    effectiveFrom: z.coerce.date().nullable().optional()
+    effectiveFrom: optionalNullableDate
   })
   .strict();
 
@@ -132,6 +184,9 @@ export const netWorthQuerySchema = z.object({ asOf: isoDay.optional() }).strict(
 export const netWorthHistoryQuerySchema = z
   .object({ from: isoDay.optional(), to: isoDay.optional(), step: z.literal('month').optional() })
   .strict();
+
+/** Taille sérialisée maximale des `details` d'un actif. */
+export const ASSET_DETAILS_MAX_BYTES = 8 * 1024;
 
 /** Retire les `null` d'un objet de détails : `parseAssetDetails` refuse `null` pour un champ facultatif. */
 export function stripNullDetails(details: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -144,6 +199,11 @@ export function stripNullDetails(details: Record<string, unknown> | undefined): 
  * `field = "details.<clé>"` pour un champ propre à la classe.
  */
 export function validateAssetDetails(assetClass: string, details: Record<string, unknown> | undefined): AssetDetails {
+  if (Buffer.byteLength(JSON.stringify(details ?? {}), 'utf8') > ASSET_DETAILS_MAX_BYTES) {
+    throw new ValidationError('Les détails de l’actif sont invalides.', [
+      { field: 'details', message: `Les détails dépassent ${ASSET_DETAILS_MAX_BYTES / 1024} Ko.` }
+    ]);
+  }
   const parsed = parseAssetDetails(assetClass, stripNullDetails(details));
   if (parsed.success) return parsed.data;
 

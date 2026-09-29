@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Drawer, Form, Input, InputNumber, Select, Space } from 'antd';
+import { useQuery } from '@tanstack/react-query';
 import type { FormInstance } from 'antd';
 import {
   createAsset,
+  listLinkedPropertyIds,
   updateAsset,
   type AssetClass,
   type AssetDto,
@@ -11,6 +13,7 @@ import {
   type UpdateAssetInput
 } from '../../../services/patrimoine-assets-service';
 import { listProperties } from '../../../services/property-service';
+import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { t } from '../../../i18n/t';
 import {
   assetClassFields,
@@ -24,6 +27,24 @@ import { apiErrorMessage, serverFieldErrors, todayIso } from './asset-format';
 import { valuationMethodLabel } from '../patrimoine-labels';
 
 const { TextArea } = Input;
+
+/**
+ * Biens déjà liés à un actif (archivés compris), partagés entre les écrans qui
+ * ouvrent le formulaire : même clé de cache, indépendants de leurs filtres.
+ */
+export function useLinkedPropertyIds(tenantId: string | undefined, enabled: boolean): string[] {
+  const query = useQuery({
+    queryKey: queryKey('patrimoine-linked-properties', tenantId),
+    queryFn: () => listLinkedPropertyIds(tenantId as string),
+    enabled: Boolean(tenantId) && enabled,
+    staleTime: STALE_TIME.list
+  });
+  return query.data ?? EMPTY_IDS;
+}
+
+const EMPTY_IDS: string[] = [];
+const PROPERTY_PAGE_SIZE = 100;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export interface AssetFormDrawerProps {
   open: boolean;
@@ -115,9 +136,18 @@ function ClassFields({ assetClass }: { assetClass: AssetClass }) {
 
 function RealEstatePicker({ tenantId, linkedPropertyIds }: { tenantId: string; linkedPropertyIds: string[] }) {
   const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [search, setSearch] = useState('');
+  // Recherche côté serveur (`q`) : au-delà de 100 biens, un bien absent de la
+  // première page reste trouvable en le tapant.
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   useEffect(() => {
     let cancelled = false;
-    listProperties(tenantId, { limit: 100 })
+    listProperties(tenantId, { limit: PROPERTY_PAGE_SIZE, q: debounced || undefined })
       .then(response => {
         if (cancelled) return;
         setOptions(
@@ -135,7 +165,7 @@ function RealEstatePicker({ tenantId, linkedPropertyIds }: { tenantId: string; l
     return () => {
       cancelled = true;
     };
-  }, [tenantId, linkedPropertyIds]);
+  }, [tenantId, linkedPropertyIds, debounced]);
 
   return (
     <Form.Item
@@ -149,22 +179,30 @@ function RealEstatePicker({ tenantId, linkedPropertyIds }: { tenantId: string; l
         </span>
       }
     >
-      <Select showSearch optionFilterProp="label" options={options} placeholder={t('Sélectionner un bien')} />
+      <Select
+        showSearch
+        filterOption={false}
+        onSearch={setSearch}
+        options={options}
+        placeholder={t('Sélectionner un bien')}
+      />
     </Form.Item>
   );
 }
 
-function CurrencyFields({ form }: { form: FormInstance<FormValues> }) {
+function CurrencyFields({ form, locked }: { form: FormInstance<FormValues>; locked: boolean }) {
   const currency = Form.useWatch('currency', form);
+  const lockedHint = locked ? t('La devise ne peut plus changer une fois des valeurs saisies.') : undefined;
   return (
     <>
-      <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
-        <Select options={CURRENCIES.map(value => ({ value, label: value }))} />
+      <Form.Item name="currency" label={t('Devise')} tooltip={lockedHint} rules={[{ required: true }]}>
+        <Select disabled={locked} options={CURRENCIES.map(value => ({ value, label: value }))} />
       </Form.Item>
       {currency && currency !== 'XOF' && (
         <Form.Item
           name="exchangeRateToXof"
           label={t('Taux de change vers XOF')}
+          tooltip={lockedHint}
           extra={t('Nombre de XOF pour une unité de cette devise.')}
           rules={[
             { required: true, message: t('Le taux de change est obligatoire hors XOF') },
@@ -176,7 +214,7 @@ function CurrencyFields({ form }: { form: FormInstance<FormValues> }) {
             }
           ]}
         >
-          <InputNumber style={{ width: '100%' }} />
+          <InputNumber style={{ width: '100%' }} disabled={locked} />
         </Form.Item>
       )}
     </>
@@ -287,6 +325,9 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const assetClass = Form.useWatch('assetClass', form) ?? asset?.assetClass ?? 'OTHER';
   const editing = Boolean(asset);
+  // Le serveur refuse (409) de changer la devise d'un actif qui a déjà des
+  // lignes dans une autre devise : valeur courante ou dettes adossées.
+  const currencyLocked = editing && (Boolean(asset?.currentValue) || (asset?.outstandingDebtXof ?? 0) > 0);
   const linked = useMemo(() => linkedPropertyIds ?? [], [linkedPropertyIds]);
 
   useEffect(() => {
@@ -373,7 +414,7 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
           <Input maxLength={160} />
         </Form.Item>
         <ClassFields assetClass={assetClass} />
-        <CurrencyFields form={form} />
+        <CurrencyFields form={form} locked={currencyLocked} />
         <Form.Item name="acquisitionCost" label={t("Coût d'acquisition")}>
           <InputNumber style={{ width: '100%' }} min={0} />
         </Form.Item>

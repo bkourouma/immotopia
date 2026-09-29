@@ -51,6 +51,44 @@ beforeEach(() => {
   });
 });
 
+describe('devise en modification', () => {
+  const actif = {
+    id: 'a1',
+    name: 'Compte',
+    assetClass: 'CASH',
+    currency: 'EUR',
+    exchangeRateToXof: 655,
+    details: {},
+    currentValue: { amount: 10, currency: 'EUR', valuatedAt: '2026-09-01T00:00:00.000Z', valueXof: 6550 },
+    outstandingDebtXof: 0
+  };
+
+  it('verrouille la devise et le taux quand une valeur existe', () => {
+    render(
+      <MemoryRouter>
+        <AssetFormDrawer open tenantId="agence-1" asset={actif as never} onClose={vi.fn()} onSaved={vi.fn()} />
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText('Devise')).toBeDisabled();
+    expect(screen.getByLabelText('Taux de change vers XOF')).toBeDisabled();
+  });
+
+  it('laisse la devise modifiable sans valeur ni dette', () => {
+    render(
+      <MemoryRouter>
+        <AssetFormDrawer
+          open
+          tenantId="agence-1"
+          asset={{ ...actif, currentValue: null } as never}
+          onClose={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText('Devise')).toBeEnabled();
+  });
+});
+
 describe('description des champs par classe', () => {
   it('garde les libellés français exacts', () => {
     expect(assetClassLabel('BUSINESS_EQUITY')).toBe('Entreprises et parts de sociétés');

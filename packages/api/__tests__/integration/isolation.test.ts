@@ -787,5 +787,74 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         .send({ name: 'Doublon', assetClass: 'REAL_ESTATE', propertyId: propertyOfA, details: {} });
       expect(twice.status).toBe(409);
     });
+
+    it('parts concurrentes sur un même actif : la somme ne dépasse jamais 100 % (verrou FOR UPDATE)', async () => {
+      const asset = await prisma.asset.create({
+        data: {
+          tenantId: tenantA.id,
+          name: 'SARL A',
+          assetClass: 'BUSINESS_EQUITY',
+          details: { companyName: 'SARL A', legalForm: 'SARL', country: 'CI', ownershipPercent: 50 }
+        }
+      });
+      const entities = await Promise.all(
+        [1, 2, 3, 4].map(n =>
+          prisma.holdingEntity.create({
+            data: { tenantId: tenantA.id, name: `EntiteA${n}-${randomUUID()}`, legalForm: 'SCI', country: 'CI' }
+          })
+        )
+      );
+      const results = await Promise.all(
+        entities.map(entity =>
+          request(app)
+            .put(`${P(tenantA.id)}/assets/${asset.id}/holdings/${entity.id}`)
+            .set(authed(adminA))
+            .send({ sharePercent: 40 })
+        )
+      );
+      expect(results.filter(r => r.status === 200)).toHaveLength(2);
+      expect(results.filter(r => r.status === 422)).toHaveLength(2);
+      const total = await prisma.propertyHolding.aggregate({
+        where: { tenantId: tenantA.id, assetId: asset.id },
+        _sum: { sharePercent: true }
+      });
+      expect(Number(total._sum.sharePercent)).toBeLessThanOrEqual(100);
+    });
+
+    it('actif archivé : valorisation, dette, part et PATCH refusés en 409', async () => {
+      const created = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({
+          name: 'A archiver',
+          assetClass: 'BUSINESS_EQUITY',
+          details: { companyName: 'C', legalForm: 'SARL', country: 'CI', ownershipPercent: 10 }
+        });
+      expect(created.status).toBe(201);
+      const id = created.body.data.id;
+      expect(
+        (
+          await request(app)
+            .post(`${P(tenantA.id)}/assets/${id}/archive`)
+            .set(authed(adminA))
+        ).status
+      ).toBe(200);
+      const base = `${P(tenantA.id)}/assets/${id}`;
+      const attempts = [
+        request(app).patch(base).set(authed(adminA)).send({ name: 'Renommé' }),
+        request(app)
+          .post(`${base}/valuations`)
+          .set(authed(adminA))
+          .send({ valuatedAt: '2026-02-01', estimatedValue: 5 }),
+        request(app)
+          .post(`${P(tenantA.id)}/debts`)
+          .set(authed(adminA))
+          .send(debtBody({ assetId: id })),
+        request(app).put(`${base}/holdings/${randomUUID()}`).set(authed(adminA)).send({ sharePercent: 10 })
+      ];
+      const statuses = (await Promise.all(attempts)).map(r => r.status);
+      expect(statuses).toEqual([409, 409, 409, 409]);
+      expect(await prisma.asset.count({ where: { id, name: 'A archiver' } })).toBe(1);
+    });
   });
 });

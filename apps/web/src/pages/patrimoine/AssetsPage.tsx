@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Input, Select, Space, Table, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -7,7 +7,7 @@ import { listAssets, type AssetClass, type AssetDto, type AssetStatus } from '..
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, SkeletonList, StateBlock } from '../../components/primitives';
-import { AssetFormDrawer } from '../../components/patrimoine/actifs/AssetFormDrawer';
+import { AssetFormDrawer, useLinkedPropertyIds } from '../../components/patrimoine/actifs/AssetFormDrawer';
 import {
   assetClassLabel,
   assetClassOptions,
@@ -42,10 +42,7 @@ export const AssetsPage: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  const linkedPropertyIds = useMemo(
-    () => (assetsQuery.data ?? []).flatMap(asset => (asset.propertyId ? [asset.propertyId] : [])),
-    [assetsQuery.data]
-  );
+  const linkedPropertyIds = useLinkedPropertyIds(agence, drawerOpen);
 
   if (!agence) {
     return (

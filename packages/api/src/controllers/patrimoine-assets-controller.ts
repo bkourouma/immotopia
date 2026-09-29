@@ -51,6 +51,11 @@ function requireTenantId(req: Request): string {
   return tenantId;
 }
 
+/** Auteur de l'action, pour le journal d'audit. */
+function actor(req: Request): string | undefined {
+  return req.user?.userId;
+}
+
 /** Un identifiant de chemin mal formé est une requête invalide, pas une erreur de base. */
 function idParam(req: Request, name: string): string {
   return uuid.parse(req.params[name]);
@@ -63,7 +68,7 @@ export const listAssetsHandler = asyncHandler(async (req: Request, res: Response
 
 export const createAssetHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = createAssetSchema.parse(req.body ?? {});
-  res.status(201).json({ data: await createAsset(requireTenantId(req), body, req.user?.userId) });
+  res.status(201).json({ data: await createAsset(requireTenantId(req), body, actor(req)) });
 });
 
 export const getAssetHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -72,16 +77,16 @@ export const getAssetHandler = asyncHandler(async (req: Request, res: Response) 
 
 export const updateAssetHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = updateAssetSchema.parse(req.body ?? {});
-  res.json({ data: await updateAsset(requireTenantId(req), idParam(req, 'assetId'), body) });
+  res.json({ data: await updateAsset(requireTenantId(req), idParam(req, 'assetId'), body, actor(req)) });
 });
 
 export const disposeAssetHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = disposeAssetSchema.parse(req.body ?? {});
-  res.json({ data: await disposeAsset(requireTenantId(req), idParam(req, 'assetId'), body.disposedAt) });
+  res.json({ data: await disposeAsset(requireTenantId(req), idParam(req, 'assetId'), body.disposedAt, actor(req)) });
 });
 
 export const archiveAssetHandler = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ data: await archiveAsset(requireTenantId(req), idParam(req, 'assetId')) });
+  res.json({ data: await archiveAsset(requireTenantId(req), idParam(req, 'assetId'), actor(req)) });
 });
 
 export const listAssetValuationsHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -90,7 +95,8 @@ export const listAssetValuationsHandler = asyncHandler(async (req: Request, res:
 
 export const createAssetValuationHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = createAssetValuationSchema.parse(req.body ?? {});
-  res.status(201).json({ data: await createAssetValuation(requireTenantId(req), idParam(req, 'assetId'), body) });
+  const data = await createAssetValuation(requireTenantId(req), idParam(req, 'assetId'), body, actor(req));
+  res.status(201).json({ data });
 });
 
 export const updateAssetValuationHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -99,13 +105,14 @@ export const updateAssetValuationHandler = asyncHandler(async (req: Request, res
     requireTenantId(req),
     idParam(req, 'assetId'),
     idParam(req, 'valuationId'),
-    body
+    body,
+    actor(req)
   );
   res.json({ data });
 });
 
 export const deleteAssetValuationHandler = asyncHandler(async (req: Request, res: Response) => {
-  await deleteAssetValuation(requireTenantId(req), idParam(req, 'assetId'), idParam(req, 'valuationId'));
+  await deleteAssetValuation(requireTenantId(req), idParam(req, 'assetId'), idParam(req, 'valuationId'), actor(req));
   res.status(204).send();
 });
 
@@ -116,16 +123,16 @@ export const listDebtsHandler = asyncHandler(async (req: Request, res: Response)
 
 export const createDebtHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = createDebtSchema.parse(req.body ?? {});
-  res.status(201).json({ data: await createDebt(requireTenantId(req), body) });
+  res.status(201).json({ data: await createDebt(requireTenantId(req), body, actor(req)) });
 });
 
 export const updateDebtHandler = asyncHandler(async (req: Request, res: Response) => {
   const body = updateDebtSchema.parse(req.body ?? {});
-  res.json({ data: await updateDebt(requireTenantId(req), idParam(req, 'debtId'), body) });
+  res.json({ data: await updateDebt(requireTenantId(req), idParam(req, 'debtId'), body, actor(req)) });
 });
 
 export const deleteDebtHandler = asyncHandler(async (req: Request, res: Response) => {
-  await deleteDebt(requireTenantId(req), idParam(req, 'debtId'));
+  await deleteDebt(requireTenantId(req), idParam(req, 'debtId'), actor(req));
   res.status(204).send();
 });
 
@@ -140,13 +147,13 @@ export const setAssetHoldingHandler = asyncHandler(async (req: Request, res: Res
     idParam(req, 'assetId'),
     idParam(req, 'entityId'),
     body,
-    req.user?.userId
+    actor(req)
   );
   res.json({ data });
 });
 
 export const deleteAssetHoldingHandler = asyncHandler(async (req: Request, res: Response) => {
-  await deleteAssetHolding(requireTenantId(req), idParam(req, 'assetId'), idParam(req, 'entityId'));
+  await deleteAssetHolding(requireTenantId(req), idParam(req, 'assetId'), idParam(req, 'entityId'), actor(req));
   res.status(204).send();
 });
 

@@ -8,6 +8,7 @@ import { materializeManagementFees } from '../rental-fees/materialize';
 import { ownerSharesByProperty } from '../ownership/service';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
+import { ensurePropertyAsset } from './property-asset';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -88,6 +89,7 @@ export async function createPropertyValuation(
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
+  await ensurePropertyAsset(prisma, tenantId, propertyId);
   return prisma.assetValuation.create({
     data: {
       tenantId,
@@ -342,6 +344,7 @@ export async function createPropertyLoan(
   if (data.endDate <= data.startDate) {
     throw badRequest('La date de fin du pret doit etre posterieure a la date de debut');
   }
+  await ensurePropertyAsset(prisma, tenantId, propertyId);
   return prisma.propertyLoan.create({
     data: {
       tenantId,

@@ -40,34 +40,54 @@ Pièges et décisions :
 
 ## Branche `claude/lucid-bell-0pzfvc` — 2026-09-29
 
-**État :** prêt à relire (documentation seule, aucun code)
+**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lot 1 livré, corrections de relecture en cours
 **Dernier commit :** voir `git log -1` de la branche
 
 Fait :
 
-- ADR-005 `patrimoine-multi-actifs` (statut Proposé) et spec
-  `specs/023-patrimoine-multi-actifs/` (`spec.md`, `data-model.md`, `plan.md`,
-  `tasks.md`) : `Asset` comme racine du patrimoine, 10 classes d'actifs, valeur
-  nette consolidée, marché UEMOA (XOF, OHADA). Le détail n'est écrit que pour le
-  lot 1 ; les lots 2 à 6 sont listés.
+- ADR-005 `patrimoine-multi-actifs` (Accepté) et specs `specs/023-patrimoine-multi-actifs/` (lot 1)
+  et `specs/024-patrimoine-valorisation-par-classe/` (lot 2, spec seulement). Marché UEMOA, XOF.
+- Lot 1 (socle) : `Asset` (10 classes), valorisations, dettes (adossées ou personnelles), parts
+  détenues, valeur nette et historique mensuel, écrans « Valeur nette » et « Mes actifs ».
+  Double clé : les lignes d'un actif immobilier restent sur `propertyId` (moteurs de rendement,
+  fiscalité, relevés, portail inchangés), celles des autres actifs sur `assetId` ; le choix passe
+  uniquement par `lib/patrimoine/asset-scope.ts`. Dépenses et travaux restent liés au bien.
+- Vérifié : jest patrimoine, portail, inventaires (569 tests), isolation entre agences sur vraie
+  base (45 tests), vitest patrimoine et navigation (192 tests), `tsc` API à 71 erreurs
+  préexistantes, `tsc` web à 0, `check:architecture`. Wiki des fonctionnalités à jour (716 lignes).
+- Décisions du 2026-09-29 : validation fiscale utilisateur personnelle (« indicatif, non vérifié
+  par ImmoTopia »), palier gratuit pour le particulier, mobile money possible via PaySecureHub.
 
 Reste à faire :
 
-- Faire relire l'ADR, puis implémenter le lot 1 par territoires A à F (voir
-  `plan.md`) ; chaque lot suivant a besoin de sa propre spec.
-- Trancher : tarification particulier (palier gratuit ?), portée des validations
-  fiscales d'un utilisateur (usage personnel, promotion globale par un admin
-  plateforme), paiement mobile money par PaySecureHub.
+- Corrections de relecture en cours (durcissement du service, cycle de vie du bien et de son
+  actif, écrans) ; voir la PR.
+- Lot 2 : implémenter la valorisation par classe et la fiabilité (`plan.md` du lot 2).
+- Lots 3 à 6 : projections et simulations, tenant particulier et inscription libre, exports,
+  collecte fiscale par IA (chacun demande sa spec avant implémentation).
+- Décisions métier ouvertes : seuil du palier gratuit ; liste des statuts juridiques fonciers à
+  faire valider par un juriste local ; responsabilité juridique d'un calcul fondé sur un
+  paramètre fiscal validé par l'utilisateur ; permission dédiée pour les données personnelles
+  du particulier (lot 4).
 
 Pièges et décisions :
 
-- Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le
-  résultat non validé (`tax/engine.ts`, `allValidated`) : la collecte par IA du
-  lot 6 s'appuie dessus, sans recherche web ni écriture existantes (ADR-004).
-- `TaxParameter` est global, sans `tenantId` : une validation utilisateur exige
-  une portée par tenant, à décider dans l'ADR du lot 6.
-- L'inventaire des fichiers touchés par le lot 1 est dans `plan.md` ; le
-  reconfirmer avec `grep` avant de modifier.
+- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 0 à 66 octets) :
+  chaque `React.lazy` ou fichier partagé entre chunks ajouté coûte des octets sur la carte des
+  dépendances du chunk d'entrée. Les écrans d'actifs sont montés sur la route
+  `/tenant/:tenantId/patrimoine/*` (`PatrimoineHome`), pas sur trois `React.lazy` dans `App.tsx`,
+  et la répartition par classe est une barre CSS, pas un graphique recharts. Toujours remesurer
+  avant de pousser un changement web.
+- Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le résultat non validé
+  (`tax/engine.ts`, `allValidated`) ; `TaxParameter` est global, sans `tenantId` : la validation
+  personnelle du lot 6 exige une portée par tenant.
+- Écrire un `.env` dans le dépôt est bloqué par une règle de refus : la base locale jetable se
+  configure par variables d'environnement (PostgreSQL 16, bases `immotopia` et
+  `immotopia_isolation_test`).
+- Jest : mettre le chemin du fichier de test AVANT `--selectProjects`, et `--forceExit` ;
+  `routes-inventory` et `route-features` sont dans le projet `api-app`.
+- `npm run i18n:extract` touche des fichiers hors périmètre (`CopilotRoot.tsx`, clé vide dans
+  `common.json`, ordre dans `portal.json`) : les remettre à l'identique.
 
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 

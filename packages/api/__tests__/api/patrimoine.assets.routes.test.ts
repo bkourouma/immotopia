@@ -174,7 +174,7 @@ describe('contrat des réponses', () => {
       .set('x-perms', WRITE)
       .send({ disposedAt: '2026-03-01' });
     expect(ok.status).toBe(200);
-    expect(mockService.disposeAsset).toHaveBeenCalledWith(TENANT, ASSET, new Date('2026-03-01'));
+    expect(mockService.disposeAsset).toHaveBeenCalledWith(TENANT, ASSET, new Date('2026-03-01'), 'user-1');
   });
 
   it('POST /debts : dette personnelle sans assetId, montants validés', async () => {
@@ -216,5 +216,26 @@ describe('contrat des réponses', () => {
       step: 'month'
     });
     expect((await request(app).get(`${BASE}/net-worth?asOf=hier`).set('x-perms', READ)).status).toBe(400);
+  });
+
+  it('dates, montants et tailles hors bornes : 400 avec la liste { field, message }, service jamais appelé', async () => {
+    const path = `${BASE}/assets/${ASSET}/valuations`;
+    const bad: Record<string, unknown>[] = [
+      { valuatedAt: null, estimatedValue: 1 },
+      { valuatedAt: 0, estimatedValue: 1 },
+      { valuatedAt: true, estimatedValue: 1 },
+      { valuatedAt: '2026-02-30', estimatedValue: 1 },
+      { valuatedAt: '1800-01-01', estimatedValue: 1 },
+      { valuatedAt: '2026-01-01', estimatedValue: 1e13 },
+      { valuatedAt: '2026-01-01', estimatedValue: 1, notes: 'n'.repeat(2001) }
+    ];
+    for (const body of bad) {
+      const res = await request(app).post(path).set('x-perms', WRITE).send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toEqual(
+        expect.arrayContaining([{ field: expect.any(String), message: expect.any(String) }])
+      );
+    }
+    expect(mockService.createAssetValuation).not.toHaveBeenCalled();
   });
 });

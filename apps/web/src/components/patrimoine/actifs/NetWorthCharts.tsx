@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Progress, Table } from 'antd';
+import { Card, Progress, Table, Typography } from 'antd';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { NetWorthHistoryPoint, NetWorthResult } from '../../../services/patrimoine-assets-service';
 import { t } from '../../../i18n/t';
@@ -94,7 +94,7 @@ export const ClassBreakdownCard: React.FC<{ result: NetWorthResult }> = ({ resul
 function monthLabel(date: string): string {
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return date;
-  return parsed.toLocaleDateString(activeLocale(), { month: 'short', year: '2-digit' });
+  return parsed.toLocaleDateString(activeLocale(), { month: 'short', year: '2-digit', timeZone: 'UTC' });
 }
 
 /** Courbe d'évolution de la valeur nette (12 derniers mois par défaut côté serveur). */
@@ -139,6 +139,12 @@ export const NetWorthHistoryCard: React.FC<{ points: NetWorthHistoryPoint[] }> =
           </LineChart>
         </ResponsiveContainer>
       </div>
+      <Typography.Text
+        type="secondary"
+        style={{ display: 'block', marginTop: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}
+      >
+        {t("Les dettes affichées sont celles d'aujourd'hui, à toutes les dates.")}
+      </Typography.Text>
     </Card>
   );
 };

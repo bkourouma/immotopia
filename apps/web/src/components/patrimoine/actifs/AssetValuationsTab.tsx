@@ -154,7 +154,7 @@ const ValuationCurve: React.FC<{ valuations: AssetValuationDto[] }> = ({ valuati
     [valuations]
   );
   if (points.length < 2) return null;
-  const day = (value: unknown) => new Date(String(value)).toLocaleDateString(activeLocale());
+  const day = (value: unknown) => new Date(String(value)).toLocaleDateString(activeLocale(), { timeZone: 'UTC' });
   return (
     <div style={{ width: '100%', height: 220, marginBottom: 'var(--space-4)' }} aria-hidden="true">
       <ResponsiveContainer width="100%" height="100%">

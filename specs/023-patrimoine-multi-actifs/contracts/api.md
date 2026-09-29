@@ -11,6 +11,62 @@ enveloppés dans `asyncHandler`. Une référence d'un autre tenant (`propertyId`
 `assetId`) lève la même `NotFoundError` qu'un objet inexistant. Montants : nombres en XOF ou
 dans la devise de la ligne ; `Decimal` en base, converti en `number` dans les DTO.
 
+## Forme des erreurs
+
+Toute erreur de validation répond `{ success: false, message, code: "VALIDATION_ERROR", errors: [{ field, message }] }`.
+`field` désigne le champ fautif ; pour un champ propre à la classe d'actif, `field = "details.<clé>"`
+(`"details"` seul pour l'objet entier, par exemple au-delà de 8 Ko).
+
+- **400** : corps ou requête hors schéma (`ZodError` : type, taille, borne, date invalide, champ inconnu,
+  identifiant de chemin mal formé).
+- **422** : règle métier (`ValidationError` : devise sans taux, `propertyId` sur une classe non
+  immobilière, `details` invalides, capital restant dû supérieur au capital, date de fin avant le début,
+  somme des parts au-dessus de 100 %).
+- **404** : objet inexistant ou d'une autre agence. **409** (`ConflictError`) : conflit d'état, voir
+  « Règles d'état » et « Plafonds ».
+
+## Bornes de validation
+
+- Textes courts (`name`, `lender`, `source`, textes des `details`) : au plus 200 caractères. Notes
+  et textes libres : au plus 2000.
+- `details` : au plus 8 Ko une fois sérialisés en JSON (422, `field = "details"`).
+- Montants (`estimatedValue`, `acquisitionCost`, `capitalAmount`, `remainingCapital`,
+  `monthlyPayment`) : nombres finis, au plus `999 999 999 999,99`. `interestRate` : de 0 à `99,9999`.
+  `exchangeRateToXof` : de `0,000001` à `1 000 000 000`.
+- Dates (`valuatedAt`, `startDate`, `endDate`, `disposedAt`, `acquisitionDate`, `effectiveFrom`) :
+  uniquement une chaîne `AAAA-MM-JJ` ou ISO 8601 réellement existante, entre `1900-01-01` et
+  `2100-12-31`. `null`, nombre et booléen sont refusés (`null` reste permis pour effacer une date
+  facultative : `acquisitionDate`, `effectiveFrom`).
+
+## Plafonds par agence (409)
+
+| Plafond                      | Valeur | Constante                                                                |
+| ---------------------------- | ------ | ------------------------------------------------------------------------ |
+| Actifs non archivés / agence | 500    | `MAX_ACTIVE_ASSETS_PER_TENANT`                                           |
+| Valorisations / actif        | 1 000  | `MAX_VALUATIONS_PER_ASSET`                                               |
+| Lignes de `GET /assets`      | 500    | `LIST_ASSETS_HARD_LIMIT` (sans pagination : la liste est tronquée à 500) |
+
+Dépasser l'un des deux premiers plafonds à la création répond `409` avec un message explicite.
+
+## Règles d'état
+
+- Un actif `ARCHIVED` est figé : création, modification et suppression de valorisation, de dette ou de
+  part, et `PATCH` de l'actif, répondent `409`.
+- Un actif `DISPOSED` reste modifiable pour corriger l'historique (actif, valorisations, dettes et parts
+  existantes) mais n'accepte pas de nouvelle dette (`409`).
+- Changer `currency` (ou `exchangeRateToXof`) d'un actif qui porte des valorisations ou dettes dans une
+  autre devise que la nouvelle (hors XOF) répond `409` : « Changez d'abord ou supprimez les valorisations
+  et dettes libellées dans l'ancienne devise. » Sans ligne concernée, le changement est permis.
+- `PATCH /debts/:debtId` contrôle, après fusion avec la ligne existante, `remainingCapital <= capitalAmount`
+  et `endDate >= startDate` (422 avec le champ), comme la création.
+
+## Audit
+
+Chaque création, modification, cession et archivage d'actif, et chaque création, modification et
+suppression de valorisation, de dette ou de part émet un événement d'audit (`PATRIMOINE_ASSET_*`,
+`PATRIMOINE_VALUATION_*`, `PATRIMOINE_DEBT_*`, `PATRIMOINE_HOLDING_*`). Le payload ne porte que des
+identifiants, la classe et les noms des champs modifiés : jamais un montant, un nom ou une note.
+
 ## Types
 
 ```ts
@@ -96,7 +152,9 @@ interface DebtDto {
 | POST    | `/patrimoine/assets/:assetId/archive` |                                                                                                                                                                                                                                     | `{ data: AssetDto }` (status ARCHIVED) |
 
 `details` est validé par le schéma de la classe (`parseAssetDetails`) ; une erreur renvoie
-`ValidationError` avec la liste `{ path, message }`. Créer un actif `REAL_ESTATE` exige un
+`ValidationError` (422) avec la liste `{ field: "details.<clé>", message }`. `GET /patrimoine/assets`
+exclut les actifs `ARCHIVED` sauf `?status=ARCHIVED`. `initialValuation` est libellée dans la devise de
+l'actif (elle n'a pas de champ `currency`). Créer un actif `REAL_ESTATE` exige un
 `propertyId` du tenant, non déjà lié à un actif ; une classe non immobilière avec `propertyId` est
 refusée.
 
@@ -145,4 +203,13 @@ actif immobilier, les parts restent gérées par les routes existantes des entit
 
 La valeur nette prend tous les actifs du tenant : les actifs non immobiliers avec leurs valorisations
 `assetId`, les actifs immobiliers avec les valorisations de leur bien ; les prêts adossés à un actif
-ou à son bien, plus les dettes personnelles.
+ou à son bien, plus les dettes personnelles. Les actifs `ARCHIVED` ne sont pas comptés mais restent
+signalés dans `excluded` (`reason: "ARCHIVED"`) : l'interface les filtre à l'affichage.
+
+`byClass[].share` est en points de pourcentage, de 0 à 100 (deux décimales), part de la valeur totale des
+actifs ; `0` si le total est nul.
+
+Historique : un point par mois, au même quantième que `to` (`to = 2026-06-30` donne les 30 de chaque mois),
+ramené au dernier jour du mois seulement quand le mois est plus court (31 mars -> 28 février) ; 60 points
+au plus. Les dettes de chaque point utilisent le capital restant dû d'aujourd'hui : aucun amortissement
+passé n'est reconstitué, la courbe passée sous-estime donc la dette de l'époque.

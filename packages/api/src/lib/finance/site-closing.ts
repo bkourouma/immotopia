@@ -73,6 +73,7 @@ import { roundMoneyXof, roundPercent } from './money';
 import type { FinanceReadClient } from './site-cost';
 import { sumSiteActualCost } from './site-cost';
 import { toAmount, toAmountOrZero } from './types';
+import { ensurePropertyAsset } from '../patrimoine/property-asset';
 import type {
   AssertSiteOpenTx,
   CapitalizeSiteLotTx,
@@ -802,10 +803,15 @@ export const closeSiteTx: CloseSiteTx = async (tx, tenantId, siteId, params) => 
     throw conflict("Ce chantier vient d'être clôturé par ailleurs");
   }
   // Chantier CLOSED : ses lots de programme sortent de la reserve (D14).
-  await syncLotActivationsTx(tx, tenantId, { siteIds: [siteId] }, {
-    actorUserId: params.closedByUserId,
-    reason: 'SITE_CLOSED'
-  });
+  await syncLotActivationsTx(
+    tx,
+    tenantId,
+    { siteIds: [siteId] },
+    {
+      actorUserId: params.closedByUserId,
+      reason: 'SITE_CLOSED'
+    }
+  );
 
   const closedBy = await tx.user.findFirst({
     where: { id: params.closedByUserId },
@@ -968,6 +974,7 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
   // `estimatedValue` est obligatoire en base et reçoit le même coût de
   // revient — au jour de la bascule, la valeur estimée du lot EST ce qu'il a
   // coûté ; toute autre valeur serait inventée.
+  await ensurePropertyAsset(tx, tenantId, property.id);
   await tx.assetValuation.create({
     data: {
       tenantId,
@@ -993,9 +1000,14 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
   }
   // Bascule = transfert : PL:<lot> ferme, P:<bien> ouvert s'il compte encore
   // (chantier ouvert, ou bien propose a la location), meme transaction.
-  await syncLotActivationsTx(tx, tenantId, { siteLotIds: [lotId], propertyIds: [property.id] }, {
-    reason: 'TRANSFERRED_TO_PROPERTY'
-  });
+  await syncLotActivationsTx(
+    tx,
+    tenantId,
+    { siteLotIds: [lotId], propertyIds: [property.id] },
+    {
+      reason: 'TRANSFERRED_TO_PROPERTY'
+    }
+  );
 
   const capitalized: CapitalizedLotRecord = {
     lotId: lot.id,

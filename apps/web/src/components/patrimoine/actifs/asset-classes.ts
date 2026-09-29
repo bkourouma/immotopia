@@ -4,7 +4,7 @@ import { t } from '../../../i18n/t';
 /**
  * Classes d'actifs côté web : libellés et description des champs propres à
  * chaque classe (`details`), d'après `data-model.md` et les schémas du serveur
- * (`packages/api/src/lib/patrimoine/actifs/asset-classes.ts`). Le formulaire
+ * (`packages/api/src/lib/patrimoine/assets/asset-classes.ts`). Le formulaire
  * d'actif se construit depuis cette description ; le serveur reste l'autorité
  * de validation. Des fonctions, et non des constantes : `t()` se lit au rendu.
  */

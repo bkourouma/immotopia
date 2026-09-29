@@ -4,6 +4,7 @@ import { assertBelongsToTenant } from '../../../utils/tenant-ownership';
 import { getPropertyForTenant } from '../../../utils/property-tenant-guard';
 import { BadRequestError, ConflictError, NotFoundError } from '../../../middleware/error-middleware';
 import { ownerKindOf } from '../tax/inputs';
+import { ensurePropertyAsset } from '../property-asset';
 import type {
   CreateEntityHoldingInput,
   CreateHoldingEntityInput,
@@ -313,9 +314,12 @@ export async function updateHoldingEntity(
 export async function deleteHoldingEntity(tenantId: string, entityId: string): Promise<void> {
   const entity = await findEntityOrThrow(tenantId, entityId);
   const holdingsCount = await prisma.propertyHolding.count({ where: { entityId: entity.id, tenantId } });
-  if (holdingsCount > 0) {
+  // `assets.holding_entity_id` est en SET NULL : sans ce contrôle, la
+  // suppression détacherait silencieusement les actifs de l'entité.
+  const assetsCount = await prisma.asset.count({ where: { holdingEntityId: entity.id, tenantId } });
+  if (holdingsCount > 0 || assetsCount > 0) {
     throw new ConflictError(
-      'Cette entité porte encore des rattachements à des biens : détachez-les avant de la supprimer.'
+      'Cette entité porte encore des rattachements à des biens ou actifs : détachez-les avant de la supprimer.'
     );
   }
   await prisma.holdingEntity.delete({ where: { id: entityId, tenantId } });
@@ -361,6 +365,7 @@ export async function createEntityHolding(
   const otherShares = await sumOtherShares(tenantId, data.propertyId);
   assertShareWithinLimit(otherShares, data.sharePercent);
 
+  await ensurePropertyAsset(prisma, tenantId, data.propertyId);
   const holding = await prisma.propertyHolding.create({
     data: {
       tenantId,
@@ -545,6 +550,7 @@ export async function setPropertyHoldings(
     await tx.propertyHolding.deleteMany({ where: { tenantId, propertyId } });
 
     if (input.holdings.length > 0) {
+      await ensurePropertyAsset(tx, tenantId, propertyId);
       await tx.propertyHolding.createMany({
         data: input.holdings.map(h => ({
           tenantId,

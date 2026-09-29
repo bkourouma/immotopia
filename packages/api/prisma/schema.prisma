@@ -5097,7 +5097,7 @@ model Asset {
 
   tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   holdingEntity HoldingEntity?      @relation(fields: [holdingEntityId], references: [id], onDelete: SetNull)
-  property      Property?           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  property      Property?           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   valuations    AssetValuation[]
   loans         PropertyLoan[]
   documents     PatrimonyDocument[]

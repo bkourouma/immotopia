@@ -15,6 +15,8 @@ import {
 import type { AssetClassKey, NetWorthAssetInput, NetWorthLoanInput, NetWorthResult } from '../lib/patrimoine/assets';
 import { assetScopeData, assetScopeWhere } from '../lib/patrimoine/asset-scope';
 import { validateAssetDetails } from '../lib/patrimoine/asset-schemas';
+import { assertAssetQuota, assertValuationQuota, LIST_ASSETS_HARD_LIMIT } from './patrimoine-assets/limits';
+import { auditPatrimoine, changedFields, PATRIMOINE_ASSET_AUDIT as AUDIT } from './patrimoine-assets/audit';
 import type {
   createAssetSchema,
   updateAssetSchema,
@@ -34,6 +36,12 @@ import type {
  * `lib/patrimoine/asset-scope.ts`.
  */
 
+export {
+  MAX_ACTIVE_ASSETS_PER_TENANT,
+  MAX_VALUATIONS_PER_ASSET,
+  LIST_ASSETS_HARD_LIMIT
+} from './patrimoine-assets/limits';
+
 export type CreateAssetInput = z.infer<typeof createAssetSchema>;
 export type UpdateAssetInput = z.infer<typeof updateAssetSchema>;
 export type CreateValuationInput = z.infer<typeof createAssetValuationSchema>;
@@ -44,11 +52,17 @@ export type SetHoldingInput = z.infer<typeof setAssetHoldingSchema>;
 export type ListAssetsQuery = z.infer<typeof listAssetsQuerySchema>;
 export type ListDebtsQuery = z.infer<typeof listDebtsQuerySchema>;
 
+/** Client de transaction de l'extension Prisma du dépôt (`utils/database`). */
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 const BASE_CURRENCY = 'XOF';
 const NOT_FOUND_ASSET = 'Actif introuvable.';
 const NOT_FOUND_VALUATION = 'Valorisation introuvable.';
 const NOT_FOUND_DEBT = 'Dette introuvable.';
 const NOT_FOUND_ENTITY = 'Entité introuvable.';
+const ARCHIVED_ASSET_MESSAGE = 'Cet actif est archivé : il ne peut plus être modifié.';
+const CURRENCY_CHANGE_MESSAGE =
+  'Changez d’abord ou supprimez les valorisations et dettes libellées dans l’ancienne devise.';
 
 const ASSET_INCLUDE = {
   property: { select: { id: true, internalReference: true, title: true } }
@@ -332,6 +346,11 @@ function resolveCurrency(
   return { currency: resolved, exchangeRateToXof: rate };
 }
 
+/** Un actif archivé est figé : aucune écriture (actif, valorisation, dette, part). */
+function assertNotArchived(asset: Pick<AssetRow, 'status'>): void {
+  if (asset.status === 'ARCHIVED') throw new ConflictError(ARCHIVED_ASSET_MESSAGE);
+}
+
 /** Une ligne d'un actif est en XOF ou dans la devise de l'actif (seule convertible avec le taux de l'actif). */
 function assertLineCurrency(asset: Pick<AssetRow, 'currency'>, currency: string, field = 'currency'): void {
   if (currency !== BASE_CURRENCY && currency !== asset.currency) {
@@ -361,6 +380,7 @@ export async function createAsset(tenantId: string, input: CreateAssetInput, act
   const money = resolveCurrency(input.currency, input.exchangeRateToXof);
   await assertNewAssetProperty(tenantId, input);
   await assertBelongsToTenant(prisma, 'holdingEntity', input.holdingEntityId, tenantId, { message: NOT_FOUND_ENTITY });
+  await assertAssetQuota(tenantId);
 
   const created = await prisma.$transaction(async tx => {
     const asset = await tx.asset.create({
@@ -396,6 +416,14 @@ export async function createAsset(tenantId: string, input: CreateAssetInput, act
     }
     return asset;
   });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.ASSET_CREATED,
+    entityType: 'Asset',
+    entityId: created.id,
+    payload: { assetClass: created.assetClass }
+  });
   return assetDtoById(tenantId, created.id);
 }
 
@@ -409,7 +437,8 @@ export async function listAssets(tenantId: string, query: ListAssetsQuery): Prom
       ...(query.search ? { name: { contains: query.search, mode: 'insensitive' as const } } : {})
     },
     include: ASSET_INCLUDE,
-    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+    take: LIST_ASSETS_HARD_LIMIT
   });
   return toAssetDtos(tenantId, rows);
 }
@@ -418,7 +447,10 @@ export async function getAsset(tenantId: string, assetId: string): Promise<Asset
   return assetDtoById(tenantId, assetId);
 }
 
-function moneyPatch(existing: AssetRow, input: UpdateAssetInput) {
+function moneyPatch(
+  existing: AssetRow,
+  input: UpdateAssetInput
+): { currency?: string; exchangeRateToXof?: number | null } {
   if (input.currency === undefined && input.exchangeRateToXof === undefined) return {};
   const rate =
     input.exchangeRateToXof !== undefined
@@ -429,9 +461,26 @@ function moneyPatch(existing: AssetRow, input: UpdateAssetInput) {
   return resolveCurrency(input.currency ?? existing.currency, rate);
 }
 
-export async function updateAsset(tenantId: string, assetId: string, input: UpdateAssetInput): Promise<AssetDto> {
+/** Refuse un changement de devise qui laisserait des lignes dans une devise que le taux de l'actif ne convertit plus. */
+async function assertNoStrandedCurrencyLines(tenantId: string, asset: AssetRow, newCurrency: string): Promise<void> {
+  const where = { tenantId, ...assetScopeWhere(asset), currency: { notIn: [newCurrency, BASE_CURRENCY] } };
+  const [valuations, loans] = await Promise.all([
+    prisma.assetValuation.count({ where }),
+    prisma.propertyLoan.count({ where })
+  ]);
+  if (valuations + loans > 0) throw new ConflictError(CURRENCY_CHANGE_MESSAGE);
+}
+
+export async function updateAsset(
+  tenantId: string,
+  assetId: string,
+  input: UpdateAssetInput,
+  actorUserId?: string
+): Promise<AssetDto> {
   const existing = await findAssetOrThrow(tenantId, assetId);
+  assertNotArchived(existing);
   const money = moneyPatch(existing, input);
+  if (money.currency !== undefined) await assertNoStrandedCurrencyLines(tenantId, existing, money.currency);
   const details = input.details === undefined ? undefined : validateAssetDetails(existing.assetClass, input.details);
   await assertBelongsToTenant(prisma, 'holdingEntity', input.holdingEntityId, tenantId, { message: NOT_FOUND_ENTITY });
 
@@ -449,10 +498,23 @@ export async function updateAsset(tenantId: string, assetId: string, input: Upda
       ...(input.notes !== undefined ? { notes: input.notes } : {})
     }
   });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.ASSET_UPDATED,
+    entityType: 'Asset',
+    entityId: assetId,
+    payload: { assetClass: existing.assetClass, changedFields: changedFields(input) }
+  });
   return assetDtoById(tenantId, assetId);
 }
 
-export async function disposeAsset(tenantId: string, assetId: string, disposedAt: Date): Promise<AssetDto> {
+export async function disposeAsset(
+  tenantId: string,
+  assetId: string,
+  disposedAt: Date,
+  actorUserId?: string
+): Promise<AssetDto> {
   const result = await prisma.asset.updateMany({
     where: { id: assetId, tenantId, status: 'ACTIVE' },
     data: { status: 'DISPOSED', disposedAt }
@@ -461,10 +523,11 @@ export async function disposeAsset(tenantId: string, assetId: string, disposedAt
     await findAssetOrThrow(tenantId, assetId);
     throw new ConflictError("Cet actif n'est plus actif : il ne peut pas être cédé.");
   }
+  auditPatrimoine({ tenantId, actorUserId, action: AUDIT.ASSET_DISPOSED, entityType: 'Asset', entityId: assetId });
   return assetDtoById(tenantId, assetId);
 }
 
-export async function archiveAsset(tenantId: string, assetId: string): Promise<AssetDto> {
+export async function archiveAsset(tenantId: string, assetId: string, actorUserId?: string): Promise<AssetDto> {
   const result = await prisma.asset.updateMany({
     where: { id: assetId, tenantId, status: { in: ['ACTIVE', 'DISPOSED'] } },
     data: { status: 'ARCHIVED' }
@@ -473,6 +536,7 @@ export async function archiveAsset(tenantId: string, assetId: string): Promise<A
     await findAssetOrThrow(tenantId, assetId);
     throw new ConflictError('Cet actif est déjà archivé.');
   }
+  auditPatrimoine({ tenantId, actorUserId, action: AUDIT.ASSET_ARCHIVED, entityType: 'Asset', entityId: assetId });
   return assetDtoById(tenantId, assetId);
 }
 
@@ -491,9 +555,12 @@ export async function listAssetValuations(tenantId: string, assetId: string): Pr
 export async function createAssetValuation(
   tenantId: string,
   assetId: string,
-  input: CreateValuationInput
+  input: CreateValuationInput,
+  actorUserId?: string
 ): Promise<AssetValuationDto> {
   const asset = await findAssetOrThrow(tenantId, assetId);
+  assertNotArchived(asset);
+  await assertValuationQuota(tenantId, asset);
   const currency = input.currency ?? asset.currency;
   assertLineCurrency(asset, currency);
   const row = await prisma.assetValuation.create({
@@ -508,6 +575,14 @@ export async function createAssetValuation(
       notes: input.notes ?? null
     },
     select: VALUATION_SELECT
+  });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.VALUATION_CREATED,
+    entityType: 'AssetValuation',
+    entityId: row.id,
+    payload: { assetId: asset.id }
   });
   return toValuationDto(row, asset.id);
 }
@@ -525,9 +600,11 @@ export async function updateAssetValuation(
   tenantId: string,
   assetId: string,
   valuationId: string,
-  input: UpdateValuationInput
+  input: UpdateValuationInput,
+  actorUserId?: string
 ): Promise<AssetValuationDto> {
   const asset = await findAssetOrThrow(tenantId, assetId);
+  assertNotArchived(asset);
   await findValuationOrThrow(tenantId, asset, valuationId);
   if (input.currency !== undefined) assertLineCurrency(asset, input.currency);
   const row = await prisma.assetValuation.update({
@@ -542,13 +619,35 @@ export async function updateAssetValuation(
     },
     select: VALUATION_SELECT
   });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.VALUATION_UPDATED,
+    entityType: 'AssetValuation',
+    entityId: valuationId,
+    payload: { assetId: asset.id, changedFields: changedFields(input) }
+  });
   return toValuationDto(row, asset.id);
 }
 
-export async function deleteAssetValuation(tenantId: string, assetId: string, valuationId: string): Promise<void> {
+export async function deleteAssetValuation(
+  tenantId: string,
+  assetId: string,
+  valuationId: string,
+  actorUserId?: string
+): Promise<void> {
   const asset = await findAssetOrThrow(tenantId, assetId);
+  assertNotArchived(asset);
   await findValuationOrThrow(tenantId, asset, valuationId);
   await prisma.assetValuation.delete({ where: { id: valuationId, tenantId } });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.VALUATION_DELETED,
+    entityType: 'AssetValuation',
+    entityId: valuationId,
+    payload: { assetId: asset.id }
+  });
 }
 
 // ---------------------------------------------------------------- Dettes
@@ -610,8 +709,30 @@ function assertDebtCurrency(asset: AssetRow | null, currency: string): void {
   }
 }
 
-export async function createDebt(tenantId: string, input: CreateDebtInput): Promise<DebtDto> {
+/** Cohérence d'une dette complète (création, ou ligne existante fusionnée avec un PATCH). */
+function assertDebtConsistency(debt: {
+  capitalAmount: number;
+  remainingCapital: number;
+  startDate: Date;
+  endDate: Date;
+}): void {
+  if (debt.remainingCapital > debt.capitalAmount) {
+    throw fieldError('remainingCapital', 'Le capital restant dû ne peut pas dépasser le capital emprunté.');
+  }
+  if (debt.endDate.getTime() < debt.startDate.getTime()) {
+    throw fieldError('endDate', 'La date de fin doit suivre la date de début.');
+  }
+}
+
+export async function createDebt(tenantId: string, input: CreateDebtInput, actorUserId?: string): Promise<DebtDto> {
   const asset = input.assetId ? await findAssetOrThrow(tenantId, input.assetId) : null;
+  if (asset) {
+    assertNotArchived(asset);
+    if (asset.status === 'DISPOSED') {
+      throw new ConflictError('Cet actif est cédé : une nouvelle dette ne peut pas lui être rattachée.');
+    }
+  }
+  assertDebtConsistency(input);
   const currency = input.currency ?? asset?.currency ?? BASE_CURRENCY;
   assertDebtCurrency(asset, currency);
   const row = await prisma.propertyLoan.create({
@@ -630,6 +751,14 @@ export async function createDebt(tenantId: string, input: CreateDebtInput): Prom
     },
     select: LOAN_SELECT
   });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.DEBT_CREATED,
+    entityType: 'PropertyLoan',
+    entityId: row.id,
+    payload: { assetId: asset?.id ?? null }
+  });
   return toDebtDto(row, asset?.id ?? null);
 }
 
@@ -639,10 +768,22 @@ async function findLoanOrThrow(tenantId: string, debtId: string): Promise<LoanRo
   return loan;
 }
 
-export async function updateDebt(tenantId: string, debtId: string, input: UpdateDebtInput): Promise<DebtDto> {
+export async function updateDebt(
+  tenantId: string,
+  debtId: string,
+  input: UpdateDebtInput,
+  actorUserId?: string
+): Promise<DebtDto> {
   const loan = await findLoanOrThrow(tenantId, debtId);
   const asset = await assetOfLoan(tenantId, loan);
+  if (asset) assertNotArchived(asset);
   if (input.currency !== undefined) assertDebtCurrency(asset, input.currency);
+  assertDebtConsistency({
+    capitalAmount: input.capitalAmount ?? num(loan.capitalAmount),
+    remainingCapital: input.remainingCapital ?? num(loan.remainingCapital),
+    startDate: input.startDate ?? loan.startDate,
+    endDate: input.endDate ?? loan.endDate
+  });
   const row = await prisma.propertyLoan.update({
     where: { id: debtId, tenantId },
     data: {
@@ -658,13 +799,30 @@ export async function updateDebt(tenantId: string, debtId: string, input: Update
     },
     select: LOAN_SELECT
   });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.DEBT_UPDATED,
+    entityType: 'PropertyLoan',
+    entityId: debtId,
+    payload: { assetId: asset?.id ?? null, changedFields: changedFields(input) }
+  });
   return toDebtDto(row, asset?.id ?? null);
 }
 
-export async function deleteDebt(tenantId: string, debtId: string): Promise<void> {
+export async function deleteDebt(tenantId: string, debtId: string, actorUserId?: string): Promise<void> {
   const loan = await findLoanOrThrow(tenantId, debtId);
-  await assetOfLoan(tenantId, loan);
+  const asset = await assetOfLoan(tenantId, loan);
+  if (asset) assertNotArchived(asset);
   await prisma.propertyLoan.delete({ where: { id: debtId, tenantId } });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.DEBT_DELETED,
+    entityType: 'PropertyLoan',
+    entityId: debtId,
+    payload: { assetId: asset?.id ?? null }
+  });
 }
 
 // ---------------------------------------------------------------- Parts détenues (actifs non immobiliers)
@@ -705,8 +863,8 @@ export async function listAssetHoldings(tenantId: string, assetId: string): Prom
   return rows.map(row => toHoldingDto(row, asset.id));
 }
 
-async function assertShareWithinLimit(tenantId: string, assetId: string, entityId: string, share: number) {
-  const others = await prisma.propertyHolding.aggregate({
+async function assertShareWithinLimit(tx: Tx, tenantId: string, assetId: string, entityId: string, share: number) {
+  const others = await tx.propertyHolding.aggregate({
     where: { tenantId, assetId, entityId: { not: entityId } },
     _sum: { sharePercent: true }
   });
@@ -719,6 +877,20 @@ async function assertShareWithinLimit(tenantId: string, assetId: string, entityI
   }
 }
 
+/**
+ * Verrou pessimiste sur la ligne de l'actif (`FOR UPDATE`, `$queryRaw` tagué),
+ * comme `setPropertyHoldings` : deux PUT concurrents se sérialisent, la somme
+ * des 100 % est relue puis écrite dans la même transaction. Le statut est relu
+ * sous verrou pour qu'un archivage concurrent ne laisse pas passer l'écriture.
+ */
+async function lockAssetTx(tx: Tx, tenantId: string, assetId: string): Promise<void> {
+  const locked = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+    SELECT id, status FROM assets WHERE id = ${assetId}::uuid AND tenant_id = ${tenantId} FOR UPDATE
+  `;
+  if (locked.length === 0) throw new NotFoundError(NOT_FOUND_ASSET);
+  assertNotArchived({ status: locked[0].status as AssetRow['status'] });
+}
+
 export async function setAssetHolding(
   tenantId: string,
   assetId: string,
@@ -727,39 +899,61 @@ export async function setAssetHolding(
   actorUserId?: string
 ): Promise<AssetHoldingDto> {
   const asset = await findNonRealEstateAsset(tenantId, assetId);
+  assertNotArchived(asset);
   await assertBelongsToTenant(prisma, 'holdingEntity', entityId, tenantId, { message: NOT_FOUND_ENTITY });
-  await assertShareWithinLimit(tenantId, asset.id, entityId, input.sharePercent);
 
   const values = {
     sharePercent: input.sharePercent,
     ...(input.effectiveFrom !== undefined ? { effectiveFrom: input.effectiveFrom } : {}),
     updatedByUserId: actorUserId ?? null
   };
-  const existing = await prisma.propertyHolding.findFirst({
-    where: { tenantId, assetId: asset.id, entityId },
-    select: { id: true }
+  const row = await prisma.$transaction(async tx => {
+    await lockAssetTx(tx, tenantId, asset.id);
+    await assertShareWithinLimit(tx, tenantId, asset.id, entityId, input.sharePercent);
+    const existing = await tx.propertyHolding.findFirst({
+      where: { tenantId, assetId: asset.id, entityId },
+      select: { id: true }
+    });
+    return existing
+      ? tx.propertyHolding.update({ where: { id: existing.id, tenantId }, data: values, include: HOLDING_INCLUDE })
+      : tx.propertyHolding.create({
+          data: { tenantId, assetId: asset.id, entityId, ...values },
+          include: HOLDING_INCLUDE
+        });
   });
-  const row = existing
-    ? await prisma.propertyHolding.update({
-        where: { id: existing.id, tenantId },
-        data: values,
-        include: HOLDING_INCLUDE
-      })
-    : await prisma.propertyHolding.create({
-        data: { tenantId, assetId: asset.id, entityId, ...values },
-        include: HOLDING_INCLUDE
-      });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.HOLDING_SET,
+    entityType: 'PropertyHolding',
+    entityId: row.id,
+    payload: { assetId: asset.id, entityId }
+  });
   return toHoldingDto(row, asset.id);
 }
 
-export async function deleteAssetHolding(tenantId: string, assetId: string, entityId: string): Promise<void> {
+export async function deleteAssetHolding(
+  tenantId: string,
+  assetId: string,
+  entityId: string,
+  actorUserId?: string
+): Promise<void> {
   const asset = await findNonRealEstateAsset(tenantId, assetId);
+  assertNotArchived(asset);
   const existing = await prisma.propertyHolding.findFirst({
     where: { tenantId, assetId: asset.id, entityId },
     select: { id: true }
   });
   if (!existing) throw new NotFoundError('Part détenue introuvable.');
   await prisma.propertyHolding.delete({ where: { id: existing.id, tenantId } });
+  auditPatrimoine({
+    tenantId,
+    actorUserId,
+    action: AUDIT.HOLDING_DELETED,
+    entityType: 'PropertyHolding',
+    entityId: existing.id,
+    payload: { assetId: asset.id, entityId }
+  });
 }
 
 // ---------------------------------------------------------------- Valeur nette
@@ -802,13 +996,51 @@ export function buildHistoryDates(from: Date | null, to: Date): Date[] {
   return dates.reverse();
 }
 
+/** Colonnes strictement nécessaires au calcul de valeur nette (pas de jointure, pas de `details`/`notes`). */
+const NET_WORTH_ASSET_SELECT = {
+  id: true,
+  name: true,
+  assetClass: true,
+  status: true,
+  currency: true,
+  exchangeRateToXof: true,
+  disposedAt: true,
+  propertyId: true
+} satisfies Prisma.AssetSelect;
+
+type NetWorthAssetRow = Prisma.AssetGetPayload<{ select: typeof NET_WORTH_ASSET_SELECT }>;
+
+/** Valorisations des actifs non archivés (un actif archivé est exclu du calcul), en une requête, triées. */
+async function loadNetWorthValuations(tenantId: string, assets: NetWorthAssetRow[]) {
+  const filters = scopeFilters(assets.filter(a => a.status !== 'ARCHIVED'));
+  if (filters.length === 0) return new Map<string, NetWorthValuationRow[]>();
+  const rows = await prisma.assetValuation.findMany({
+    where: { tenantId, OR: filters },
+    select: NET_WORTH_VALUATION_SELECT,
+    orderBy: [{ valuatedAt: 'asc' }, { createdAt: 'asc' }]
+  });
+  return groupByKey(rows);
+}
+
+const NET_WORTH_VALUATION_SELECT = {
+  assetId: true,
+  propertyId: true,
+  valuatedAt: true,
+  estimatedValue: true,
+  currency: true
+} satisfies Prisma.AssetValuationSelect;
+
+type NetWorthValuationRow = Prisma.AssetValuationGetPayload<{ select: typeof NET_WORTH_VALUATION_SELECT }>;
+
 interface NetWorthData {
   assets: NetWorthAssetInput[];
   loans: NetWorthLoanInput[];
 }
 
-async function loadNetWorthLoans(tenantId: string, assets: AssetRow[]): Promise<NetWorthLoanInput[]> {
-  const byProperty = new Map(assets.flatMap(a => (a.propertyId ? [[a.propertyId, a] as [string, AssetRow]] : [])));
+async function loadNetWorthLoans(tenantId: string, assets: NetWorthAssetRow[]): Promise<NetWorthLoanInput[]> {
+  const byProperty = new Map(
+    assets.flatMap(a => (a.propertyId ? [[a.propertyId, a] as [string, NetWorthAssetRow]] : []))
+  );
   const rows = await prisma.propertyLoan.findMany({
     where: { tenantId, status: 'ACTIVE' },
     select: LOAN_SELECT
@@ -832,9 +1064,9 @@ async function loadNetWorthLoans(tenantId: string, assets: AssetRow[]): Promise<
 }
 
 async function loadNetWorthData(tenantId: string): Promise<NetWorthData> {
-  const rows = await prisma.asset.findMany({ where: { tenantId }, include: ASSET_INCLUDE });
+  const rows = await prisma.asset.findMany({ where: { tenantId }, select: NET_WORTH_ASSET_SELECT });
   const [valuations, loans] = await Promise.all([
-    loadValuationsByKey(tenantId, rows),
+    loadNetWorthValuations(tenantId, rows),
     loadNetWorthLoans(tenantId, rows)
   ]);
   const assets: NetWorthAssetInput[] = rows.map(asset => ({

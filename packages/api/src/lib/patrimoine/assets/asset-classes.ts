@@ -57,13 +57,19 @@ const AGRICULTURE_KINDS = ['PLANTATION', 'LIVESTOCK', 'HARVEST'] as const;
 const MIN_VEHICLE_YEAR = 1950;
 const maxVehicleYear = () => new Date().getFullYear() + 1;
 
-const requiredText = z.string().trim().min(1);
-const optionalText = z.string().trim().min(1).optional();
-const percent = z.number().min(0).max(100);
+/** Bornes de taille : un détail n'est jamais un fourre-tout (déni de service, débordement d'affichage). */
+export const SHORT_TEXT_MAX = 200;
+const MAX_QUANTITY = 999_999_999_999.99;
+
+const requiredText = z.string().trim().min(1).max(SHORT_TEXT_MAX);
+const optionalText = z.string().trim().min(1).max(SHORT_TEXT_MAX).optional();
+const percent = z.number().finite().min(0).max(100);
+const nonNegativeAmount = z.number().finite().min(0).max(MAX_QUANTITY);
 
 /** Date ISO : `AAAA-MM-JJ` ou date-heure ISO 8601, et réellement existante. */
 const isoDate = z
   .string()
+  .max(40)
   .refine(value => /^\d{4}-\d{2}-\d{2}(T.+)?$/.test(value) && !Number.isNaN(Date.parse(value)), {
     message: 'Date ISO invalide (format AAAA-MM-JJ attendu)'
   });
@@ -83,9 +89,9 @@ export const businessEquityDetailsSchema = z
 export const inventoryDetailsSchema = z
   .object({
     designation: requiredText,
-    quantity: z.number().min(0),
+    quantity: nonNegativeAmount,
     unit: requiredText,
-    unitCost: z.number().min(0)
+    unitCost: nonNegativeAmount
   })
   .strict();
 
@@ -138,8 +144,8 @@ export const agricultureDetailsSchema = z
   .object({
     agricultureKind: z.enum(AGRICULTURE_KINDS),
     crop: optionalText,
-    areaHectares: z.number().min(0).optional(),
-    headcount: z.number().int().min(0).optional()
+    areaHectares: nonNegativeAmount.optional(),
+    headcount: z.number().int().min(0).max(1_000_000_000).optional()
   })
   .strict();
 
@@ -186,6 +192,7 @@ const frenchErrorMap: z.ZodErrorMap = (issue, ctx) => {
       if (issue.type === 'string') return { message: 'Le champ ne peut pas être vide' };
       return { message: `La valeur doit être supérieure ou égale à ${issue.minimum}` };
     case 'too_big':
+      if (issue.type === 'string') return { message: `Le texte ne peut pas dépasser ${issue.maximum} caractères` };
       return { message: `La valeur doit être inférieure ou égale à ${issue.maximum}` };
     case 'invalid_enum_value':
       return { message: `Valeur non autorisée (attendu : ${issue.options.join(', ')})` };

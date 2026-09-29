@@ -45,4 +45,7 @@ console.log('Application des migrations sur la base de test isolation...');
 execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
 
 console.log('Execution de la suite isolation (E1)...');
-execSync('npx jest __tests__/integration/isolation.test.ts', { stdio: 'inherit', env });
+execSync(
+  'npx jest __tests__/integration/isolation.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts',
+  { stdio: 'inherit', env }
+);

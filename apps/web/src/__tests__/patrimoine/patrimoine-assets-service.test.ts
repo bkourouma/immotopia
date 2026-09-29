@@ -10,6 +10,7 @@ import {
   getNetWorthHistory,
   listAssets,
   listDebts,
+  listLinkedPropertyIds,
   upsertAssetHolding
 } from '../../services/patrimoine-assets-service';
 
@@ -34,6 +35,14 @@ describe('patrimoine-assets-service — chemins du contrat', () => {
     expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=CASH&status=ACTIVE&search=wave`);
     await listAssets('t1');
     expect(api.get).toHaveBeenLastCalledWith(`${base}/assets`);
+  });
+
+  it('charge les biens déjà liés, archivés compris, sans autre filtre', async () => {
+    api.get.mockResolvedValueOnce({ data: { data: [{ propertyId: 'p1' }, { propertyId: null }] } });
+    api.get.mockResolvedValueOnce({ data: { data: [{ propertyId: 'p2' }, { propertyId: 'p1' }] } });
+    expect(await listLinkedPropertyIds('t1')).toEqual(['p1', 'p2']);
+    expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE`);
+    expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE&status=ARCHIVED`);
   });
 
   it('crée, cède et archive un actif', async () => {

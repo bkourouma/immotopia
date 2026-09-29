@@ -30,6 +30,7 @@ function matches(row: Row, where: Row): boolean {
       if ('not' in expected) {
         return expected.not === null ? actual !== null : Array.isArray(expected.not) ? true : actual !== expected.not;
       }
+      if ('notIn' in expected) return !expected.notIn.includes(actual);
       if ('contains' in expected) return String(actual).toLowerCase().includes(String(expected.contains).toLowerCase());
     }
     return actual === expected;
@@ -104,7 +105,14 @@ const prismaMock: Row = {
 };
 prismaMock.$transaction = jest.fn(async (fn: (tx: Row) => Promise<unknown>) => fn(prismaMock));
 
+// `$queryRaw` tagué : verrou `SELECT id, status FROM assets ... FOR UPDATE` (valeurs : id, tenantId).
+prismaMock.$queryRaw = jest.fn(async (_strings: TemplateStringsArray, ...values: unknown[]) =>
+  store.asset.filter(a => a.id === values[0] && a.tenantId === values[1]).map(a => ({ id: a.id, status: a.status }))
+);
+
 jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
+const mockAudit = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (entry: unknown) => mockAudit(entry) }));
 
 import * as service from '../../src/services/patrimoine-assets-service';
 
@@ -169,6 +177,7 @@ function seedLoan(row: Row) {
 }
 
 beforeEach(() => {
+  mockAudit.mockClear();
   Object.assign(store, {
     asset: [],
     assetValuation: [],
@@ -585,5 +594,338 @@ describe('valeur nette', () => {
   it('les dates mensuelles se ramènent à la fin du mois court', () => {
     const dates = service.buildHistoryDates(iso('2026-01-01'), iso('2026-03-31'));
     expect(dates.map(d => d.toISOString().slice(0, 10))).toEqual(['2026-01-31', '2026-02-28', '2026-03-31']);
+  });
+});
+
+const debtBase = {
+  lender: 'Banque',
+  capitalAmount: 100,
+  remainingCapital: 80,
+  interestRate: 5,
+  monthlyPayment: 2,
+  startDate: iso('2025-01-01'),
+  endDate: iso('2030-01-01')
+};
+
+describe('parts détenues : verrou et transaction', () => {
+  it("verrouille l'actif (FOR UPDATE) dans la transaction avant de relire la somme", async () => {
+    seedAsset({ id: 'a1', name: 'SARL', assetClass: 'BUSINESS_EQUITY' });
+    prismaMock.$transaction.mockClear();
+    prismaMock.$queryRaw.mockClear();
+    prismaMock.propertyHolding.aggregate.mockClear();
+    await service.setAssetHolding(TENANT_A, 'a1', ENTITY_A, { sharePercent: 40 });
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.$queryRaw.mock.calls[0][0].join('')).toMatch(/FROM assets .*FOR UPDATE/s);
+    expect(prismaMock.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prismaMock.propertyHolding.aggregate.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('un actif absent au moment du verrou : NotFoundError, aucune part écrite', async () => {
+    seedAsset({ id: 'a1', name: 'SARL', assetClass: 'BUSINESS_EQUITY' });
+    prismaMock.$queryRaw.mockResolvedValueOnce([]);
+    await expect(service.setAssetHolding(TENANT_A, 'a1', ENTITY_A, { sharePercent: 40 })).rejects.toMatchObject({
+      name: 'NotFoundError'
+    });
+    expect(store.propertyHolding).toHaveLength(0);
+  });
+
+  it('un archivage survenu avant le verrou est refusé sous verrou (409)', async () => {
+    seedAsset({ id: 'a1', name: 'SARL', assetClass: 'BUSINESS_EQUITY' });
+    prismaMock.$queryRaw.mockResolvedValueOnce([{ id: 'a1', status: 'ARCHIVED' }]);
+    await expect(service.setAssetHolding(TENANT_A, 'a1', ENTITY_A, { sharePercent: 40 })).rejects.toMatchObject({
+      name: 'ConflictError'
+    });
+    expect(store.propertyHolding).toHaveLength(0);
+  });
+});
+
+describe('plafonds par agence', () => {
+  it('refuse le 501e actif non archivé (409) mais compte hors archivés', async () => {
+    for (let i = 0; i < service.MAX_ACTIVE_ASSETS_PER_TENANT; i += 1) {
+      seedAsset({ id: `a-${i}`, name: `A${i}`, assetClass: 'OTHER', status: i === 0 ? 'ARCHIVED' : 'ACTIVE' });
+    }
+    const input = { name: 'Nouveau', assetClass: 'OTHER' as const, details: { label: 'x' } };
+    await expect(service.createAsset(TENANT_A, input)).resolves.toMatchObject({ name: 'Nouveau' });
+    await expect(service.createAsset(TENANT_A, input)).rejects.toMatchObject({
+      name: 'ConflictError',
+      statusCode: 409,
+      message: expect.stringContaining(String(service.MAX_ACTIVE_ASSETS_PER_TENANT))
+    });
+  });
+
+  it('refuse la 1001e valorisation d’un actif (409), pas celles d’un autre actif', async () => {
+    seedAsset({ id: 'a1', name: 'A', assetClass: 'CASH' });
+    seedAsset({ id: 'a2', name: 'B', assetClass: 'CASH' });
+    for (let i = 0; i < service.MAX_VALUATIONS_PER_ASSET; i += 1) {
+      seedValuation({ assetId: 'a1', estimatedValue: 1, valuatedAt: iso('2026-01-01') });
+    }
+    await expect(
+      service.createAssetValuation(TENANT_A, 'a1', { valuatedAt: iso('2026-02-01'), estimatedValue: 1 })
+    ).rejects.toMatchObject({ name: 'ConflictError', statusCode: 409 });
+    await expect(
+      service.createAssetValuation(TENANT_A, 'a2', { valuatedAt: iso('2026-02-01'), estimatedValue: 1 })
+    ).resolves.toMatchObject({ assetId: 'a2' });
+  });
+
+  it('listAssets applique un plafond dur de 500 lignes', async () => {
+    prismaMock.asset.findMany.mockClear();
+    await service.listAssets(TENANT_A, {});
+    expect(prismaMock.asset.findMany.mock.calls[0][0]).toMatchObject({ take: service.LIST_ASSETS_HARD_LIMIT });
+    expect(service.LIST_ASSETS_HARD_LIMIT).toBe(500);
+  });
+
+  it("valeur nette : n'interroge pas les valorisations d'un actif archivé et ne sélectionne que le nécessaire", async () => {
+    seedAsset({ id: 'a-arch', name: 'Vieux', assetClass: 'CASH', status: 'ARCHIVED' });
+    seedAsset({ id: 'a-ok', name: 'Cpt', assetClass: 'CASH' });
+    seedValuation({ assetId: 'a-arch', estimatedValue: 9, valuatedAt: iso('2026-01-01') });
+    seedValuation({ assetId: 'a-ok', estimatedValue: 5, valuatedAt: iso('2026-01-01') });
+    prismaMock.assetValuation.findMany.mockClear();
+    const result = await service.getNetWorth(TENANT_A, { asOf: '2026-06-01' });
+    expect(prismaMock.assetValuation.findMany).toHaveBeenCalledTimes(1);
+    const args = prismaMock.assetValuation.findMany.mock.calls[0][0];
+    expect(args.where.OR).toEqual([{ assetId: { in: ['a-ok'] } }]);
+    expect(args.select).not.toHaveProperty('notes');
+    expect(result.totalAssets).toBe(5);
+    expect(result.excluded).toEqual([{ assetId: 'a-arch', reason: 'ARCHIVED' }]);
+  });
+});
+
+describe('changement de devise', () => {
+  it('refuse (409) si des valorisations ou dettes sont dans l’ancienne devise', async () => {
+    seedAsset({ id: 'a1', name: 'Cpt', assetClass: 'CASH', currency: 'EUR', exchangeRateToXof: 655.957 });
+    seedValuation({ assetId: 'a1', estimatedValue: 10, currency: 'EUR', valuatedAt: iso('2026-01-01') });
+    await expect(
+      service.updateAsset(TENANT_A, 'a1', { currency: 'USD', exchangeRateToXof: 600 })
+    ).rejects.toMatchObject({
+      name: 'ConflictError',
+      statusCode: 409,
+      message: 'Changez d’abord ou supprimez les valorisations et dettes libellées dans l’ancienne devise.'
+    });
+    expect(store.asset[0].currency).toBe('EUR');
+  });
+
+  it('refuse aussi quand seule une dette est dans l’ancienne devise', async () => {
+    seedAsset({ id: 'a1', name: 'Cpt', assetClass: 'CASH', currency: 'EUR', exchangeRateToXof: 655.957 });
+    seedLoan({ assetId: 'a1', currency: 'EUR', remainingCapital: 1 });
+    await expect(service.updateAsset(TENANT_A, 'a1', { currency: 'XOF' })).rejects.toMatchObject({
+      name: 'ConflictError'
+    });
+  });
+
+  it('permet de changer de devise sans ligne, ou avec des lignes en XOF, ou de changer seulement le taux', async () => {
+    seedAsset({ id: 'a1', name: 'Cpt', assetClass: 'CASH', currency: 'EUR', exchangeRateToXof: 655.957 });
+    await expect(
+      service.updateAsset(TENANT_A, 'a1', { currency: 'USD', exchangeRateToXof: 600 })
+    ).resolves.toMatchObject({
+      currency: 'USD'
+    });
+    seedValuation({ assetId: 'a1', estimatedValue: 10, currency: 'XOF', valuatedAt: iso('2026-01-01') });
+    seedValuation({ assetId: 'a1', estimatedValue: 10, currency: 'USD', valuatedAt: iso('2026-02-01') });
+    await expect(service.updateAsset(TENANT_A, 'a1', { exchangeRateToXof: 610 })).resolves.toMatchObject({
+      exchangeRateToXof: 610
+    });
+  });
+});
+
+describe('updateDebt : cohérence après fusion', () => {
+  beforeEach(() => {
+    seedAsset({ id: 'a1', name: 'SARL', assetClass: 'BUSINESS_EQUITY' });
+    seedLoan({
+      id: 'l1',
+      assetId: 'a1',
+      capitalAmount: 100,
+      remainingCapital: 80,
+      startDate: iso('2025-01-01'),
+      endDate: iso('2030-01-01')
+    });
+  });
+
+  it('refuse un capital restant supérieur au capital, y compris via une baisse du seul capital (422)', async () => {
+    await expect(service.updateDebt(TENANT_A, 'l1', { remainingCapital: 150 })).rejects.toMatchObject({
+      name: 'ValidationError',
+      statusCode: 422,
+      errors: [{ field: 'remainingCapital', message: expect.any(String) }]
+    });
+    await expect(service.updateDebt(TENANT_A, 'l1', { capitalAmount: 50 })).rejects.toMatchObject({
+      name: 'ValidationError',
+      errors: [{ field: 'remainingCapital' }]
+    });
+    expect(store.propertyLoan[0].remainingCapital).toBe(80);
+  });
+
+  it('refuse une date de fin antérieure au début après fusion (422)', async () => {
+    await expect(service.updateDebt(TENANT_A, 'l1', { endDate: iso('2024-01-01') })).rejects.toMatchObject({
+      name: 'ValidationError',
+      errors: [{ field: 'endDate' }]
+    });
+    await expect(service.updateDebt(TENANT_A, 'l1', { startDate: iso('2031-01-01') })).rejects.toMatchObject({
+      name: 'ValidationError',
+      errors: [{ field: 'endDate' }]
+    });
+  });
+
+  it('accepte une modification cohérente ; la création applique les mêmes contrôles', async () => {
+    await expect(service.updateDebt(TENANT_A, 'l1', { remainingCapital: 60 })).resolves.toMatchObject({
+      remainingCapital: 60
+    });
+    await expect(service.createDebt(TENANT_A, { ...debtBase, remainingCapital: 101 })).rejects.toMatchObject({
+      name: 'ValidationError',
+      errors: [{ field: 'remainingCapital' }]
+    });
+  });
+});
+
+describe('actif archivé ou cédé : écritures', () => {
+  const conflict = { name: 'ConflictError', statusCode: 409 };
+
+  beforeEach(() => {
+    seedAsset({ id: 'arch', name: 'Archivé', assetClass: 'BUSINESS_EQUITY', status: 'ARCHIVED' });
+    seedValuation({ id: 'v-arch', assetId: 'arch', estimatedValue: 1, valuatedAt: iso('2026-01-01') });
+    seedLoan({ id: 'l-arch', assetId: 'arch', remainingCapital: 1, capitalAmount: 1 });
+    store.propertyHolding.push({
+      id: 'h-arch',
+      tenantId: TENANT_A,
+      assetId: 'arch',
+      entityId: ENTITY_A,
+      sharePercent: 10
+    });
+  });
+
+  it('refuse en 409 toute écriture sur un actif ARCHIVED', async () => {
+    await expect(service.updateAsset(TENANT_A, 'arch', { name: 'X' })).rejects.toMatchObject(conflict);
+    await expect(
+      service.createAssetValuation(TENANT_A, 'arch', { valuatedAt: iso('2026-02-01'), estimatedValue: 1 })
+    ).rejects.toMatchObject(conflict);
+    await expect(service.updateAssetValuation(TENANT_A, 'arch', 'v-arch', { estimatedValue: 2 })).rejects.toMatchObject(
+      conflict
+    );
+    await expect(service.deleteAssetValuation(TENANT_A, 'arch', 'v-arch')).rejects.toMatchObject(conflict);
+    await expect(service.createDebt(TENANT_A, { ...debtBase, assetId: 'arch' })).rejects.toMatchObject(conflict);
+    await expect(service.updateDebt(TENANT_A, 'l-arch', { lender: 'Autre' })).rejects.toMatchObject(conflict);
+    await expect(service.deleteDebt(TENANT_A, 'l-arch')).rejects.toMatchObject(conflict);
+    await expect(service.setAssetHolding(TENANT_A, 'arch', ENTITY_A, { sharePercent: 20 })).rejects.toMatchObject(
+      conflict
+    );
+    await expect(service.deleteAssetHolding(TENANT_A, 'arch', ENTITY_A)).rejects.toMatchObject(conflict);
+    expect(store.assetValuation).toHaveLength(1);
+    expect(store.propertyLoan).toHaveLength(1);
+    expect(store.propertyHolding).toHaveLength(1);
+    expect(store.asset[0].name).toBe('Archivé');
+  });
+
+  it('un actif DISPOSED reste corrigeable (actif, valorisation, dette existante) mais sans nouvelle dette', async () => {
+    seedAsset({ id: 'disp', name: 'Cédé', assetClass: 'BUSINESS_EQUITY', status: 'DISPOSED' });
+    seedValuation({ id: 'v-disp', assetId: 'disp', estimatedValue: 1, valuatedAt: iso('2026-01-01') });
+    seedLoan({ id: 'l-disp', assetId: 'disp', remainingCapital: 1, capitalAmount: 5 });
+    await expect(service.updateAsset(TENANT_A, 'disp', { notes: 'corrigé' })).resolves.toMatchObject({
+      notes: 'corrigé'
+    });
+    await expect(
+      service.updateAssetValuation(TENANT_A, 'disp', 'v-disp', { estimatedValue: 3 })
+    ).resolves.toMatchObject({ estimatedValue: 3 });
+    await expect(service.updateDebt(TENANT_A, 'l-disp', { lender: 'Autre banque' })).resolves.toMatchObject({
+      lender: 'Autre banque'
+    });
+    await expect(service.createDebt(TENANT_A, { ...debtBase, assetId: 'disp' })).rejects.toMatchObject(conflict);
+  });
+});
+
+describe('journal d’audit', () => {
+  const eventsOf = () => mockAudit.mock.calls.map(([entry]) => entry);
+
+  it('émet un événement par écriture, avec identifiant et type seulement, sans montant ni nom', async () => {
+    const ACTOR = 'user-1';
+    const asset = await service.createAsset(
+      TENANT_A,
+      {
+        name: 'Compte secret',
+        assetClass: 'CASH',
+        details: cashDetails,
+        notes: 'note privée',
+        acquisitionCost: 123456,
+        initialValuation: { valuatedAt: iso('2026-01-01'), estimatedValue: 987654, method: 'MANUAL' }
+      },
+      ACTOR
+    );
+    await service.updateAsset(TENANT_A, asset.id, { name: 'Autre nom', acquisitionCost: 555555 }, ACTOR);
+    const valuation = await service.createAssetValuation(
+      TENANT_A,
+      asset.id,
+      { valuatedAt: iso('2026-02-01'), estimatedValue: 777777 },
+      ACTOR
+    );
+    await service.updateAssetValuation(TENANT_A, asset.id, valuation.id, { estimatedValue: 888888 }, ACTOR);
+    await service.deleteAssetValuation(TENANT_A, asset.id, valuation.id, ACTOR);
+    const debt = await service.createDebt(
+      TENANT_A,
+      {
+        ...debtBase,
+        assetId: asset.id,
+        lender: 'Banque Confidentielle',
+        capitalAmount: 900000,
+        remainingCapital: 800000
+      },
+      ACTOR
+    );
+    await service.updateDebt(TENANT_A, debt.id, { remainingCapital: 66666 }, ACTOR);
+    await service.deleteDebt(TENANT_A, debt.id, ACTOR);
+    await service.disposeAsset(TENANT_A, asset.id, iso('2026-03-01'), ACTOR);
+    await service.archiveAsset(TENANT_A, asset.id, ACTOR);
+
+    const other = await service.createAsset(
+      TENANT_A,
+      {
+        name: 'SARL',
+        assetClass: 'BUSINESS_EQUITY',
+        details: { companyName: 'C', legalForm: 'SARL', country: 'CI', ownershipPercent: 10 }
+      },
+      ACTOR
+    );
+    await service.setAssetHolding(TENANT_A, other.id, ENTITY_A, { sharePercent: 33.3 }, ACTOR);
+    await service.deleteAssetHolding(TENANT_A, other.id, ENTITY_A, ACTOR);
+
+    const events = eventsOf();
+    expect(events.map(e => e.actionKey)).toEqual([
+      'PATRIMOINE_ASSET_CREATED',
+      'PATRIMOINE_ASSET_UPDATED',
+      'PATRIMOINE_VALUATION_CREATED',
+      'PATRIMOINE_VALUATION_UPDATED',
+      'PATRIMOINE_VALUATION_DELETED',
+      'PATRIMOINE_DEBT_CREATED',
+      'PATRIMOINE_DEBT_UPDATED',
+      'PATRIMOINE_DEBT_DELETED',
+      'PATRIMOINE_ASSET_DISPOSED',
+      'PATRIMOINE_ASSET_ARCHIVED',
+      'PATRIMOINE_ASSET_CREATED',
+      'PATRIMOINE_HOLDING_SET',
+      'PATRIMOINE_HOLDING_DELETED'
+    ]);
+    expect(events.every(e => e.tenantId === TENANT_A && e.actorUserId === ACTOR && e.entityId)).toBe(true);
+    expect(events[0]).toMatchObject({ entityType: 'Asset', entityId: asset.id, payload: { assetClass: 'CASH' } });
+    expect(events[1].payload).toEqual({ assetClass: 'CASH', changedFields: ['acquisitionCost', 'name'] });
+    const serialized = JSON.stringify(events);
+    for (const secret of [
+      '987654',
+      '123456',
+      '555555',
+      '777777',
+      '888888',
+      '900000',
+      '800000',
+      '66666',
+      'Compte secret',
+      'Autre nom',
+      'note privée',
+      'Banque Confidentielle',
+      '33.3'
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+  });
+
+  it("n'émet rien quand l'écriture est refusée", async () => {
+    await expect(service.disposeAsset(TENANT_A, 'inconnu', iso('2026-03-01'))).rejects.toBeDefined();
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });

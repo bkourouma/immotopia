@@ -18,12 +18,16 @@ export function formatAmount(value: number | null | undefined, currency = 'XOF')
   }
 }
 
-/** Date ISO affichée dans la langue courante ; `—` si absente ou illisible. */
+/**
+ * Date ISO affichée dans la langue courante ; `—` si absente ou illisible.
+ * L'API renvoie des dates à minuit UTC : on formate en UTC pour qu'un
+ * navigateur à l'ouest de Greenwich n'affiche pas la veille.
+ */
 export function formatDay(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString(activeLocale());
+  return date.toLocaleDateString(activeLocale(), { timeZone: 'UTC' });
 }
 
 export function formatShare(share: number): string {

@@ -6,7 +6,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AssetsPage } from '../../pages/patrimoine/AssetsPage';
-import { isValuationStale } from '../../components/patrimoine/actifs/asset-format';
+import { formatDay, isValuationStale } from '../../components/patrimoine/actifs/asset-format';
 
 /** `<AssetsPage>` — liste des actifs, filtre par classe, ancienneté de la valeur. */
 
@@ -14,6 +14,7 @@ const listAssets = vi.fn();
 
 vi.mock('../../services/patrimoine-assets-service', () => ({
   listAssets: (...a: unknown[]) => listAssets(...a),
+  listLinkedPropertyIds: vi.fn().mockResolvedValue([]),
   createAsset: vi.fn(),
   updateAsset: vi.fn()
 }));
@@ -117,5 +118,11 @@ describe('<AssetsPage>', () => {
     const now = new Date('2026-09-29T00:00:00Z');
     expect(isValuationStale('2025-08-01T00:00:00Z', now)).toBe(true);
     expect(isValuationStale('2026-03-01T00:00:00Z', now)).toBe(false);
+  });
+
+  it('affiche le jour UTC d’une date à minuit UTC, quel que soit le fuseau', () => {
+    const rendu = formatDay('2026-09-29T00:00:00.000Z');
+    expect(rendu).toContain('29');
+    expect(rendu).not.toContain('28');
   });
 });
