@@ -324,6 +324,20 @@ fi
 compose config -q || fail "docker-compose.prod.yml invalide."
 ok "fichier compose valide"
 
+# Empreinte des conteneurs qui ne sont PAS de cette pile : nom, identifiant complet
+# et date de demarrage. Un conteneur recree change d'identifiant, un conteneur
+# redemarre change de date ; la duree d'execution affichee par `docker ps`
+# (« Up 2 minutes ») ne convient pas : elle evolue toute seule, ce qui produisait
+# de faux positifs des qu'une pile voisine venait d'etre creee.
+neighbours_fingerprint() {
+  local ids
+  ids="$(docker ps -q)"
+  [[ -n "$ids" ]] || return 0
+  # shellcheck disable=SC2086  # liste d'identifiants : un argument par identifiant
+  docker inspect --format '{{.Name}} {{.Id}} {{.State.StartedAt}}' $ids \
+    | { grep -v "^/${STACK_NAME}-" || true; } | sort
+}
+
 # --- 1. Empreinte des voisins ----------------------------------------------
 #
 # Le serveur heberge une vingtaine d'autres applications, et l'AUTRE pile
@@ -332,7 +346,7 @@ ok "fichier compose valide"
 
 step "Empreinte des conteneurs voisins (avant)"
 NEIGHBOURS_BEFORE="$(mktemp)"
-docker ps --format '{{.Names}}\t{{.RunningFor}}' | { grep -v "^${STACK_NAME}-" || true; } | sort > "$NEIGHBOURS_BEFORE"
+neighbours_fingerprint > "$NEIGHBOURS_BEFORE"
 ok "$(wc -l < "$NEIGHBOURS_BEFORE") conteneurs voisins recenses"
 
 # --- 2. Construction des images --------------------------------------------
@@ -580,7 +594,7 @@ fi
 
 step "Empreinte des conteneurs voisins (apres)"
 NEIGHBOURS_AFTER="$(mktemp)"
-docker ps --format '{{.Names}}\t{{.RunningFor}}' | { grep -v "^${STACK_NAME}-" || true; } | sort > "$NEIGHBOURS_AFTER"
+neighbours_fingerprint > "$NEIGHBOURS_AFTER"
 
 if diff -u "$NEIGHBOURS_BEFORE" "$NEIGHBOURS_AFTER" > /dev/null; then
   ok "aucun conteneur voisin n'a bouge ($(wc -l < "$NEIGHBOURS_AFTER") verifies)"
