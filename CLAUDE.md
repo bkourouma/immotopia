@@ -13,6 +13,7 @@ Ne pas tout lire d'avance. Charger le document quand la tâche le demande :
 | ---------------------------------------- | ---------------------------------------------------------------------------- |
 | Reprendre un travail en cours            | [docs/workflows/HANDOFF.md](docs/workflows/HANDOFF.md) — toujours en premier |
 | Lancer, configurer, dépanner             | [docs/workflows/RUNBOOK.md](docs/workflows/RUNBOOK.md)                       |
+| Déployer (staging, prod), sauvegarder    | [docs/workflows/DEPLOIEMENT.md](docs/workflows/DEPLOIEMENT.md)               |
 | Comprendre l'architecture                | [docs/architecture/SYSTEM_DESIGN.md](docs/architecture/SYSTEM_DESIGN.md)     |
 | Toucher au schéma Prisma                 | [docs/architecture/DATA_MODELS.md](docs/architecture/DATA_MODELS.md)         |
 | Conventions détaillées                   | [docs/governance/CODING_STANDARDS.md](docs/governance/CODING_STANDARDS.md)   |

@@ -20,11 +20,15 @@
   agent coordonne les deux processus ou délègue directement, jusqu'à la PR ;
   [adaptateurs Codex, Claude et autres agents](workflows/AGENT_ADAPTERS.md)
 - [Runbook](workflows/RUNBOOK.md) — installation, ports, base, dépannage
+- [Déploiement](workflows/DEPLOIEMENT.md) — staging (`app`) et production
+  (`clients`), amorçage d'une base vierge, sauvegardes et restauration
 - [Architecture du système](architecture/SYSTEM_DESIGN.md) et
   [modèle de données](architecture/DATA_MODELS.md)
 - [Décisions d'architecture (ADR)](architecture/adr/ADR-000-template.md)
 - [ADR-001 — contrôle des frontières de paquets](architecture/adr/ADR-001-controle-frontieres-paquets.md)
 - [ADR-002 — Repomix et Lefthook](architecture/adr/ADR-002-repomix-lefthook.md)
+- [ADR-003 — migration des fonds de copropriété hors dépôt](architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md)
+- [ADR-005 — staging sur `app`, production sur `clients`](architecture/adr/ADR-005-environnements-staging-production.md)
 - [Standards de code](governance/CODING_STANDARDS.md) et
   [sécurité — modèle de menace](governance/SECURITY.md)
 - [Contexte IA avec Repomix](../repomix.config.json) — génération locale via `npm run repomix`

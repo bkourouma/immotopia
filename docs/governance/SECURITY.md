@@ -168,7 +168,19 @@ un tiers de provoquer des appels superflus vers l'agrégateur.
 - `middleware/validation-middleware.ts` sanitize en plus les chaînes du
   corps (`sanitizeString` : retire `<`, `>`, le protocole `javascript:`,
   les attributs `on*=`) pour les routes qui passent par `validate(schema)`
-  (`auth-routes.ts`, `crm-routes.ts`).
+  (`auth-routes.ts`, `crm-routes.ts`). **Conséquence pour la connexion** :
+  `validate(loginSchema)` nettoie aussi le champ `password` (et l'e-mail) avant
+  la comparaison. Un mot de passe contenant `<`, `>`, `javascript:` ou un motif
+  `onxxx=`, ou commençant ou finissant par une espace, ne se compare donc jamais
+  tel quel : haché tel que saisi puis comparé sous sa forme nettoyée, le compte
+  ne pourrait plus se connecter. Le seed du premier SUPER_ADMIN
+  (`prisma/seeds/create-platform-super-admin.ts`, validation dans
+  `utils/bootstrap-admin-input.ts`) refuse ces mots de passe, en plus de 12
+  caractères minimum, 72 octets au plus (limite de bcrypt) et des règles de
+  robustesse de la plateforme, et valide l'e-mail comme la connexion. Sa fonction
+  `sanitizeLikeLogin` **reproduit** `sanitizeString` : toute modification de
+  celle-ci doit être répercutée, et `__tests__/unit/bootstrap-admin-input.test.ts`
+  exécute le vrai middleware de connexion pour échouer si les deux divergent.
 - Aucune injection SQL : les rares `$queryRaw` du code sont en template
   tagué (paramétrage automatique par Prisma), jamais en concaténation de
   chaîne.
@@ -193,6 +205,61 @@ un agent ou un outil dans ce dépôt.
 est intégrée en clair dans le bundle JavaScript livré au navigateur
 (`apps/web/src/config/api.ts`). N'y placer aucun secret.
 
+**Un fichier de secrets par environnement.** Le staging
+(`app.immotopia.cloud`) et la production (`clients.immotopia.cloud`) tournent
+sur le même serveur, chacun dans sa pile, avec son fichier hors dépôt
+(`/home/deployer/immotopia-saas.env`, `/home/deployer/immotopia-prod.env`,
+mode 600) et ses propres `JWT_SECRET`, mot de passe Postgres et
+`PAYMENT_SECRETS_KEY` (la clé qui chiffre les clés de paiement des agences ; à
+sauvegarder hors serveur, sa perte les rend illisibles). `deploy.sh prod` refuse
+un `JWT_SECRET`, un mot de passe Postgres ou une `PAYMENT_SECRETS_KEY` identique
+à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
+déployer si le fichier du staging est illisible (l'unicité ne serait pas
+prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1`, **quelle que soit son
+écriture** (`export … = "1"` compris), un fichier où une clé critique est
+définie plusieurs fois (Compose applique la dernière occurrence : les contrôles
+lisent la même, et un doublon ajouté en fin de fichier ne les contourne pas), un
+mot de passe Postgres de moins de 24 caractères ou contenant `REMPLACER`, et un
+`JWT_SECRET` contenant `REMPLACER`. Les clés d'intégration (e-mail, SMTP, Twilio,
+WaSender, Google, Anthropic, OpenRouter, PaySecureHub) identiques à celles du
+staging donnent un avertissement, de même qu'une clé renseignée dans le fichier
+du staging : celui-ci ne porte aucun identifiant de la production (messagerie,
+SMS, WhatsApp, IA, compte de paiement), un essai n'y doit jamais joindre de
+vraies personnes. Les scripts purgent les variables héritées du shell
+(`STACK_NAME`, `WEB_PORT`, `POSTGRES_PASSWORD`…) : un réglage oublié dans une
+session ne peut pas viser la mauvaise pile ; `IMMOTOPIA_ALLOW_OVERRIDE=1`, réservé
+aux essais locaux, est refusé pour la production par `deploy.sh` et
+`bootstrap.sh`. Décision :
+[ADR-005](../architecture/adr/ADR-005-environnements-staging-production.md) ;
+procédure : [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
+
+**Déployer la production.** `deploy.sh prod` prouve l'état git au lieu de le
+supposer : git utilisable, version identifiable, arbre propre, `origin/main`
+présent et `HEAD` dedans, sinon échec ; `HEAD` et l'arbre sont revérifiés juste
+avant la construction des images et juste avant les migrations. Un verrou
+(`flock`, `/tmp/immotopia-deploy.lock`) n'autorise qu'un `deploy.sh` à la fois.
+Dès que la base est initialisée, un `db-*.sql.gz` de moins de 24 heures doit
+exister dans `BACKUP_DIR` avant toute migration (aucune exigence au tout premier
+déploiement) ; le contrôle ne porte que sur l'existence d'un fichier récent, pas
+sur sa validité (voir §13).
+
+**Premier compte SUPER_ADMIN.** `infra/scripts/bootstrap.sh` recueille toutes les
+saisies (e-mail deux fois, nom, confirmation, mot de passe deux fois sans écho)
+**avant** la première écriture : sans terminal ou en cas d'abandon, rien n'est
+écrit. Le mot de passe est transmis par un tube à l'entrée standard du seed, ni en
+argument, ni dans l'environnement, ni sur disque, ni affiché. Le seed ne fait que
+créer : un e-mail déjà présent est refusé, sans promotion ni changement de mot de
+passe (règles de validation : §7).
+
+**Seeds de développement.** L'image `migrate` embarque tout
+`packages/api/prisma/seeds/`. Six seeds à comptes ou mots de passe connus, ou à
+suppressions, refusent `NODE_ENV=production` (code de sortie 1) par la garde
+`prisma/seeds/assert-not-production.ts` : `create-super-admin.ts`,
+`seed-quick-login-users.ts`, `seed-comprehensive-data.ts`, `seed-crm-data.ts`,
+`seed-tenant-members.ts`, `seed-users.ts`. Les `seed-demo-*.ts` ne sont **pas**
+gardés (§13). Le bundle web de production est, lui, refusé au build s'il contient
+un identifiant de démonstration (`infra/compose/Dockerfile.web`).
+
 ## 9. Réseau
 
 CORS à origine unique : `middleware/cors-middleware.ts` n'autorise que
@@ -204,6 +271,37 @@ de passe oublié/réinitialisé, renvoi de vérification, acceptation
 d'invitation, rafraîchissement de session — `middleware/rate-limit-middleware.ts`)
 plus un plancher global (`globalApiRateLimiter`) et le limiteur webhook
 dédié (§6).
+
+Les deux environnements sont cloisonnés : chaque pile a sa base, ses volumes et
+son réseau Docker, ses ports ne sont publiés que sur `127.0.0.1` (le nginx de
+l'hôte est la seule porte d'entrée, un vhost et un certificat par
+sous-domaine), le service `api` ne publie aucun port (il n'est joignable que par
+le réseau interne de la pile, à travers le nginx de l'image web) —
+`infra/scripts/check-infra.sh` vérifie ces deux points sur le rendu Compose —, et
+les cookies d'authentification sont posés sans attribut `domain`
+(`utils/auth-cookies.ts`) : une session ouverte sur un sous-domaine n'existe pas
+sur l'autre. Le CORS n'autorise que le `FRONTEND_URL` de la pile.
+
+**En-têtes HTTP du nginx embarqué** (`infra/nginx/spa.conf`, les deux piles) :
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` et
+`Referrer-Policy: strict-origin-when-cross-origin`. Dans nginx, un `add_header`
+défini dans un `location` annule l'héritage de ceux du niveau supérieur : les
+trois lignes sont répétées dans chaque `location` qui en définit un, et tout
+nouveau `location` avec `add_header` doit faire de même. Pour `/api/`, `/uploads/`
+et `/health`, nginx masque (`proxy_hide_header`) ceux que Helmet pose déjà, pour
+n'émettre qu'un jeu. **Éprouvé en local** (image web réelle, faux upstream imitant
+Helmet, 2026-09-29) : `nginx -t` valide, trois en-têtes sur le SPA, les assets et
+les icônes, un seul jeu sur l'API. **À confirmer** derrière le nginx de l'hôte, en
+HTTPS : la commande de vérification est dans
+[DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
+
+Le conteneur jetable de `infra/scripts/restore-check.sh` contient une copie
+complète de la base et tourne en authentification `trust` : il est lancé sans
+aucun réseau (`--network none`, injoignable de l'hôte comme des autres
+conteneurs) et supprimé avec son volume anonyme (`docker rm -f -v`), suppression
+vérifiée avant d'être annoncée (avertissement avec la commande à lancer sinon).
+Éprouvé en local le 2026-09-29 (restauration réussie, conteneur et volume
+supprimés, nombre de volumes Docker inchangé) ; à refaire sur le serveur.
 
 ## 10. Protection des données personnelles
 
@@ -418,3 +516,42 @@ ailleurs dans le dépôt — à ne pas présenter comme résolu :
 - **Politique de conservation / suppression des données personnelles**
   (droit à l'oubli, durée de rétention des pièces jointes de portail) —
   aucun mécanisme dédié trouvé dans le code à la date de rédaction.
+- **Sauvegardes de la production** — les scripts existent
+  (`infra/scripts/backup.sh`, `restore-check.sh`) mais n'ont jamais tourné sur
+  le serveur : copie hors serveur, cron et restauration réelle restent à
+  éprouver avant toute donnée réelle. Les sauvegardes contiennent toutes les
+  données personnelles de la production : les chiffrer hors serveur (remote
+  rclone chiffré recommandé) et en restreindre l'accès. Aucune alerte n'avertit
+  d'un échec de sauvegarde ; `deploy.sh prod` refuse sans dump de moins de 24
+  heures, mais ne contrôle que l'existence d'un fichier récent, pas sa validité.
+  Les copies `rclone` ne connaissent ni rotation (la copie hors serveur n'est
+  jamais purgée) ni contrôle du type de remote (rien ne vérifie qu'il est de
+  type `crypt`). Voir [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md).
+- **Garde-fous du filet multi-tenant et des quotas en `warn`** —
+  `make-env.sh` livre `TENANT_GUARD_MODE=warn` et `SUBSCRIPTION_ENFORCEMENT=warn`
+  dans les deux environnements : tant qu'on ne passe pas à `enforce` (d'abord sur
+  le staging), l'extension Prisma d'isolation journalise sans bloquer, et les
+  quotas d'abonnement ne sont pas appliqués.
+- **Staging accessible publiquement** avec le panneau de comptes de démonstration
+  et le simulateur de paiement (`app.immotopia.cloud`). L'en-tête `X-Robots-Tag`
+  évite l'indexation, pas l'accès. À envisager : `auth_basic` ou une liste
+  d'adresses IP dans le vhost du staging.
+- **Secrets visibles de l'intérieur de l'hôte** — le fichier de secrets alimente
+  l'environnement des conteneurs : `docker inspect` et `docker exec` les affichent
+  à tout membre du groupe `docker` de l'hôte.
+- **Postgres de la production publié sur `127.0.0.1:5437` sans usage** : tous les
+  scripts passent par `docker exec`, aucun par ce port. Surface locale inutile, à
+  retirer par un override Compose propre à la production.
+- **Images de base flottantes** (`node:20-alpine`, `nginx:1.27-alpine`,
+  `postgres:16-alpine`, `alpine`) : référencées par étiquette, pas par digest ;
+  leur contenu peut changer à un `--pull` sans qu'un fichier du dépôt change.
+- **Seeds de démonstration non gardés** — `seed-demo-*.ts` (et, d'après une
+  recherche de `assertNotProduction`, `syndic-demo-seed.ts` et
+  `syndic-demo-fund-movements.ts`) ne refusent pas `NODE_ENV=production`, alors
+  qu'ils sont dans l'image `migrate` : la garde `assert-not-production.ts` ne
+  couvre que six seeds de développement (§8). Aucun script de déploiement ne les
+  lance ; défense en profondeur non résolue.
+- **Limiteurs de débit en mémoire, par instance**
+  (`middleware/rate-limit-middleware.ts`, aucun magasin partagé) : remis à zéro
+  à chaque redémarrage, multipliés par le nombre d'instances de l'API. Sans
+  conséquence tant qu'il n'y a qu'une instance par pile.
