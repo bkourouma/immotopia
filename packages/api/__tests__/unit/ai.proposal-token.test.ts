@@ -5,11 +5,20 @@
  */
 import { createHmac, hkdfSync } from 'node:crypto';
 
-const mockPrisma = {
+const callOrder: string[] = [];
+const mockPrisma: Record<string, unknown> & {
+  auditLog: { findFirst: jest.Mock; create: jest.Mock };
+} = {
   auditLog: {
     findFirst: jest.fn(),
     create: jest.fn()
-  }
+  },
+  // Transaction interactive : le client de transaction est le faux client lui-même.
+  $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(mockPrisma)),
+  $executeRaw: jest.fn(async (...args: unknown[]) => {
+    callOrder.push(`lock:${String(args[1])}`);
+    return 0;
+  })
 };
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
@@ -59,8 +68,17 @@ describe('proposal-token', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-29T10:00:00.000Z'));
     resetProposalUsageForTests();
-    mockPrisma.auditLog.findFirst.mockReset().mockResolvedValue(null);
-    mockPrisma.auditLog.create.mockReset().mockResolvedValue({ id: 'audit-1' });
+    callOrder.length = 0;
+    (mockPrisma.$transaction as jest.Mock).mockClear();
+    (mockPrisma.$executeRaw as jest.Mock).mockClear();
+    mockPrisma.auditLog.findFirst.mockReset().mockImplementation(async () => {
+      callOrder.push('find');
+      return null;
+    });
+    mockPrisma.auditLog.create.mockReset().mockImplementation(async () => {
+      callOrder.push('create');
+      return { id: 'audit-1' };
+    });
   });
 
   afterEach(() => {
@@ -313,6 +331,26 @@ describe('proposal-token', () => {
         statusCode: 409
       });
       expect(mockPrisma.auditLog.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('lit puis écrit la ligne AuditLog dans une transaction, sous un verrou consultatif propre au jeton', async () => {
+      const { claims } = signProposal({ userId: USER, tenantId: TENANT, args: ARGS });
+      await redeemProposal(claims);
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual([`lock:ai-proposal:${TENANT}:${claims.jti}`, 'find', 'create']);
+      const sql = String(((mockPrisma.$executeRaw as jest.Mock).mock.calls[0][0] as string[]).join('?'));
+      expect(sql).toContain('pg_advisory_xact_lock(hashtextextended(');
+    });
+
+    it('un jeton déjà réclamé en base ne réécrit rien (le verrou est pris avant la lecture)', async () => {
+      const { claims } = signProposal({ userId: USER, tenantId: TENANT, args: ARGS });
+      mockPrisma.auditLog.findFirst.mockImplementationOnce(async () => {
+        callOrder.push('find');
+        return { id: 'deja-la' };
+      });
+      await expect(redeemProposal(claims)).rejects.toMatchObject({ code: 'PROPOSAL_ALREADY_USED' });
+      expect(callOrder).toEqual([`lock:ai-proposal:${TENANT}:${claims.jti}`, 'find']);
     });
 
     it('un double clic simultané ne réclame le jeton qu’une fois', async () => {

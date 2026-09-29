@@ -5,6 +5,8 @@ import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { logger } from '../utils/logger';
 import { DocumentTemplate } from '@prisma/client';
+import { AppError, BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 
 /**
  * Sanitize context data: replace undefined, null, or empty values with the variable name
@@ -59,7 +61,7 @@ async function resolveTemplatePath(template: DocumentTemplate): Promise<string> 
       // File doesn't exist at stored path, try to reconstruct
       logger.warn('Template file not found at stored path, attempting to reconstruct', {
         templateId: template.id,
-        storedPath: template.storage_path,
+        hasStoredPath: true,
         storedFilename: template.stored_filename
       });
     }
@@ -81,14 +83,18 @@ async function resolveTemplatePath(template: DocumentTemplate): Promise<string> 
     await fs.access(templatePath);
     logger.info('Template file found at reconstructed path', {
       templateId: template.id,
-      reconstructedPath: templatePath
+      reconstructedFilename: path.basename(templatePath)
     });
     return templatePath;
   } catch {
-    throw new Error(
-      `Template file not found. Stored path: ${template.storage_path}, ` +
-        `Reconstructed path: ${templatePath}. Please re-upload the template.`
-    );
+    // Les chemins disque restent dans les journaux : jamais dans le message,
+    // qui peut atteindre une réponse HTTP.
+    logger.error('Template file not found', {
+      templateId: template.id,
+      storedPath: template.storage_path,
+      reconstructedPath: templatePath
+    });
+    throw new NotFoundError(t('Modèle de document introuvable : ré-importez le modèle.'));
   }
 }
 
@@ -147,7 +153,11 @@ export async function renderDocx(template: DocumentTemplate, context: Record<str
     return Buffer.from(buffer);
   } catch (error) {
     logger.error('Error rendering DOCX', { error, templateId: template.id });
-    throw new Error(`Failed to render document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Une erreur typée (modèle introuvable) garde son statut et son message ;
+    // toute autre (ENOENT, moteur de gabarit) peut citer un chemin : message
+    // générique, détail dans les journaux seulement.
+    if (error instanceof AppError) throw error;
+    throw new BadRequestError(t('Impossible de générer le document à partir de ce modèle.'));
   }
 }
 
@@ -196,7 +206,7 @@ export async function saveGeneratedDocument(
     tenantId,
     docType,
     documentNumber,
-    filePath
+    filename
   });
 
   return filePath;

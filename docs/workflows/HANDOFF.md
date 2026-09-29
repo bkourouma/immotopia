@@ -89,6 +89,53 @@ Pièges et décisions :
   proposée de nouveau (idempotence) : changer de période pour rejouer.
 - `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
 
+## Branche `fix/copilot-audit` — 2026-09-29
+
+**État :** prêt à relire
+**Dernier commit :** voir `git log -1` (changements non commités au moment de la rédaction)
+
+Fait :
+
+- Usage unique du jeton de proposition atomique : `findFirst` + `create` de la
+  ligne `AI_PROPOSAL_REDEEMED` sous `pg_advisory_xact_lock(hashtext(...))`
+  (`lib/ai/advisory-lock.ts`, `proposal-token.ts`), valable entre instances.
+- Idempotence des quittances sous verrou par paiement (`withExclusiveSection` :
+  file locale + transaction gardienne, délais 10 s / 120 s).
+- Plafond par agence sur `POST /ai/chat` : `AI_TENANT_MINUTE_LIMIT` (100) et
+  `AI_TENANT_DAILY_LIMIT` (3000), en plus des limites par utilisateur.
+- Audit `AI_CHAT_TURN` : entité = `requestId` généré côté serveur.
+- Garde « bail vu » dans `propose_rental_document` (`NOT_POSSIBLE` /
+  `lease_not_seen`).
+- `AI_PROVIDER=fake` refusé sauf `NODE_ENV` brut explicitement `development` ou
+  `test` ; avertissement au démarrage.
+- `propose_rental_document` et `POST /ai/actions/execute` exigent
+  `RENTAL_DOCUMENTS_GENERATE` ET `RENTAL_DOCUMENTS_VIEW`.
+- Logs de `generateDocument` et du contrôleur de génération : plus de
+  téléphones ni de `filePath` en clair (booléens `hasX`).
+- Docs et wiki à jour : SECURITY.md §12, RUNBOOK (variables, règle `fake`,
+  rejeu du test de concurrence), PLAN_IMMOCOPILOT, spec 022, ADR-004, classeur
+  des fonctionnalités (lignes assistant : chat, proposition, confirmation) et
+  miroir régénéré (`wiki:check` vert).
+
+Reste à faire :
+
+- Limiteurs de débit en mémoire, par instance : pas de plafond partagé entre
+  instances d'API.
+- Le test d'intégration des quittances remplace `generateDocument` par un
+  double : il prouve l'exclusion mutuelle, pas le rendu DOCX.
+- Conversations non persistées ; phase 2 (avis d'échéance, relances…).
+
+Pièges et décisions :
+
+- Le test de concurrence (`__tests__/integration/ai-concurrency.test.ts`) exige
+  `DATABASE_URL` = `DATABASE_URL_TEST` = `TEST_DATABASE_URL` (base dédiée,
+  `npx prisma migrate deploy` avant) ; sinon il est ignoré sans échec. Commande
+  dans le RUNBOOK, section « Assistant IA ».
+- `npm run i18n:extract -w @immotopia/api` déplace en `*.orphans.json` les deux
+  clés « Le pack Patrimoine… » d'`error-middleware` (passées par `t(variable)`) :
+  les restaurer à la main.
+- Aucun verrou de schéma : pas de migration, les verrous sont consultatifs.
+
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
 **État :** prêt à relire (documentation seule)

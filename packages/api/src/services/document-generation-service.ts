@@ -1,5 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { logAuditEvent } from './audit-service';
 import { DocumentType, RentalDocumentStatus, RentalDocumentType } from '@prisma/client';
 import { resolveTemplate } from './document-template-service';
@@ -142,19 +144,15 @@ export async function generateDocument(
   logger.info('generateDocument: Context built', {
     contextKeys: Object.keys(context),
     hasBAILLEUR_TELEPHONE: !!context.BAILLEUR_TELEPHONE,
-    BAILLEUR_TELEPHONE: context.BAILLEUR_TELEPHONE,
     hasLOCATAIRE_TELEPHONE: !!context.LOCATAIRE_TELEPHONE,
-    LOCATAIRE_TELEPHONE: context.LOCATAIRE_TELEPHONE,
     hasAGENCE_ADRESSE: !!context.AGENCE_ADRESSE,
-    AGENCE_ADRESSE: context.AGENCE_ADRESSE,
-    hasAGENCE_TELEPHONE: !!context.AGENCE_TELEPHONE,
-    AGENCE_TELEPHONE: context.AGENCE_TELEPHONE
+    hasAGENCE_TELEPHONE: !!context.AGENCE_TELEPHONE
   });
 
   // 3. Validate context against template placeholders
   const validation = validateContext(context, template.placeholders as string[]);
   if (validation.missing.length > 0) {
-    throw new Error(`Champs critiques manquants: ${validation.missing.join(', ')}`);
+    throw new BadRequestError(`Champs critiques manquants: ${validation.missing.join(', ')}`);
   }
 
   if (validation.warnings.length > 0) {
@@ -368,7 +366,7 @@ export async function regenerateDocument(
   });
 
   if (!existingDoc) {
-    throw new Error('Document not found');
+    throw new NotFoundError(t('Document introuvable.'));
   }
 
   // Determine source key and docType
@@ -387,7 +385,7 @@ export async function regenerateDocument(
   // Validate context
   const validation = validateContext(context, template.placeholders as string[]);
   if (validation.missing.length > 0) {
-    throw new Error(`Champs critiques manquants: ${validation.missing.join(', ')}`);
+    throw new BadRequestError(`Champs critiques manquants: ${validation.missing.join(', ')}`);
   }
 
   // Render DOCX
@@ -529,11 +527,11 @@ export async function getDocumentFile(tenantId: string, documentId: string): Pro
   });
 
   if (!document) {
-    throw new Error('Document not found');
+    throw new NotFoundError(t('Document introuvable.'));
   }
 
   if (!document.file_path) {
-    throw new Error('Document file not found');
+    throw new NotFoundError(t('Fichier du document introuvable.'));
   }
 
   // Verify path is within allowed directory (security)
@@ -548,7 +546,7 @@ export async function getDocumentFile(tenantId: string, documentId: string): Pro
   const resolvedBase = path.resolve(allowedBase);
 
   if (!resolvedPath.startsWith(resolvedBase)) {
-    throw new Error('Invalid file path');
+    throw new BadRequestError(t('Fichier du document invalide.'));
   }
 
   // Read file

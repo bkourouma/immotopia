@@ -248,8 +248,12 @@ Plan de réalisation : [PLAN_IMMOCOPILOT.md](../architecture/PLAN_IMMOCOPILOT.md
 **Désactivé par défaut.** `AI_PROVIDER=disabled` : `GET /ai/status` répond
 `enabled: false`, le bouton est masqué, `POST /ai/chat` et
 `POST /ai/actions/execute` répondent 503 `AI_DISABLED`. Le faux fournisseur
-(`fake`) est refusé en production (`config/env.ts`), `anthropic` exige
-`ANTHROPIC_API_KEY`, sans valeur par défaut.
+(`fake`) n'est accepté que si la variable **brute** `NODE_ENV` vaut
+explicitement `development` ou `test` (`config/env.ts`) : `NODE_ENV` absent,
+`production` ou `staging` le refuse au démarrage (un déploiement qui oublie
+`NODE_ENV` ne peut pas l'activer) ; quand il est actif, un avertissement est
+écrit au démarrage. `anthropic` exige `ANTHROPIC_API_KEY`, sans valeur par
+défaut.
 
 **Transfert de données personnelles : décision juridique.** Avec
 `AI_PROVIDER=anthropic`, le texte saisi et les résultats d'outils quittent
@@ -276,11 +280,19 @@ de poser la clé ; ce n'est pas un réglage technique.
 - Aucune conversation n'est persistée ni conservée dans le navigateur. Les
   journaux d'audit ne contiennent ni le texte des messages ni celui des
   réponses.
+- Les journaux de `generateDocument` et du contrôleur de génération n'écrivent
+  plus de numéro de téléphone ni de `filePath` en clair : des booléens
+  (`hasX`) disent seulement si la valeur existe.
 
 **Jamais d'écriture depuis le chat.** L'orchestrateur (`lib/ai/orchestrator.ts`)
 n'importe ni le générateur de documents ni l'exécuteur : les outils du registre
 sont en lecture, ou préparent une proposition qui n'écrit rien
-(`propose_rental_document`). Un outil demandé par le modèle hors du registre
+(`propose_rental_document`). Cet outil ne signe une proposition que pour un
+`leaseId` **vu** dans la même requête : identifiant renvoyé par un résultat
+d'outil (`search_leases`, `list_lease_documents`) ou issu du contexte d'écran
+vérifié. Sinon il répond `NOT_POSSIBLE` (raison `lease_not_seen`) : un contenu
+injecté ne peut pas faire proposer un document pour un bail que l'utilisateur
+n'a pas vu. Un outil demandé par le modèle hors du registre
 autorisé de l'utilisateur est refusé, non exécuté et audité (`AI_TOOL_DENIED`).
 Les résultats d'outils et le contexte d'écran sont déclarés **données, pas
 instructions** dans l'invite système, première ligne de défense contre
@@ -296,18 +308,31 @@ humaine, permission par outil) sont la vraie protection.
   résolus **par le serveur** (`leaseId`, `paymentId`, `installmentId`, ou
   bail et dates du relevé) : le client ne peut rien modifier.
 - Durée `AI_PROPOSAL_TTL_SECONDS` (300 s par défaut, 60 à 900).
-- **Usage unique** : table mémoire (double clic simultané) puis ligne `AuditLog`
-  `AI_PROPOSAL_REDEEMED` lue puis écrite de façon synchrone (survit à un
-  redémarrage). Un rejeu répond 409 `PROPOSAL_ALREADY_USED`.
+- **Usage unique, atomique** : table mémoire (double clic simultané dans le
+  processus, sans aller-retour base), puis ligne `AuditLog`
+  `AI_PROPOSAL_REDEEMED`. Son `findFirst` puis `create` s'exécutent dans une
+  transaction qui détient un verrou consultatif PostgreSQL propre au jeton
+  (`pg_advisory_xact_lock(hashtext('ai-proposal:<agence>:<jti>'))`,
+  `lib/ai/advisory-lock.ts`) : deux instances d'API, ou un redémarrage entre
+  deux requêtes, ne peuvent pas toutes deux voir « absent » puis écrire. Le
+  verrou est relâché au commit ou au rollback, jamais orphelin ; aucune
+  contrainte d'unicité ni migration. Un rejeu répond 409 `PROPOSAL_ALREADY_USED`.
 - Signature, utilisateur ou agence incorrects : le même code
   `PROPOSAL_INVALID` (400) côté client ; l'audit distingue le motif.
 
 **Confirmation** (`POST /ai/actions/execute`, `lib/ai/actions/execute-rental-document.ts`).
 Seule porte de génération de l'assistant. Ordre : signature, expiration,
-utilisateur et agence, `RENTAL_DOCUMENTS_GENERATE` (permission relue), usage
-unique, **revalidation de l'appartenance de chaque identifiant** (bail,
-paiement, échéance, cohérence `payment.lease_id`), idempotence (une quittance
-FINAL déjà émise est renvoyée), puis `generateDocument`. Toute erreur non typée
+utilisateur et agence, `RENTAL_DOCUMENTS_GENERATE` **et**
+`RENTAL_DOCUMENTS_VIEW` (permissions relues : la carte de résultat renvoie vers
+le téléchargement, qui exige VIEW), usage unique, **revalidation de
+l'appartenance de chaque identifiant** (bail, paiement, échéance, cohérence
+`payment.lease_id`), idempotence, puis `generateDocument`. L'idempotence des
+quittances est une section critique **par paiement** (`withExclusiveSection`,
+clé `ai-receipt:<agence>:<paiement>`) : file d'attente locale au processus,
+puis verrou consultatif PostgreSQL tenu par une transaction gardienne (attente
+de connexion 10 s, durée maximale 120 s). Deux jetons distincts pour le même
+paiement, même sur deux instances, se suivent : le second voit la quittance
+FINAL du premier et la renvoie (`alreadyExisted`). Toute erreur non typée
 devient « La génération du document a échoué. » (détail journalisé, jamais
 renvoyé).
 
@@ -317,31 +342,41 @@ refusés) puis `requireAiAssistantAccess` : **refus du super-admin** en MVP.
 `tenantId` et `userId` viennent de `req.tenantContext` et `req.user`, jamais du
 corps ni du modèle ; un schéma strict rejette une clé `tenantId` en entrée d'un
 outil. Chaque outil vérifie sa permission (`PROPERTIES_VIEW`,
-`RENTAL_LEASES_VIEW`, `RENTAL_DOCUMENTS_VIEW`, `RENTAL_DOCUMENTS_GENERATE`) ; en
+`RENTAL_LEASES_VIEW`, `RENTAL_DOCUMENTS_VIEW`, `RENTAL_DOCUMENTS_GENERATE`).
+`propose_rental_document` et `POST /ai/actions/execute` exigent
+`RENTAL_DOCUMENTS_GENERATE` **et** `RENTAL_DOCUMENTS_VIEW` ; en
 mode `enforce`, les modules de l'abonnement filtrent aussi les outils
 (`/ai` en CORE, `/ai/actions` en RENTAL). Le cache des permissions dure
 5 minutes : une révocation peut mettre ce temps à s'appliquer. Le correctif
 RBAC des routes de documents (`routes/document-routes.ts`) retire au rôle
 `TENANT_AGENT` la génération et le téléchargement, qui n'avaient aucune garde.
 
-**Limites de débit** (par utilisateur et par agence, en mémoire :
-`middleware/rate-limit-middleware.ts`).
+**Limites de débit** (en mémoire, par instance d'API :
+`middleware/rate-limit-middleware.ts`). Les limites par utilisateur et par
+agence sont complétées par un **plafond par agence**, tous collaborateurs
+confondus (sinon N collaborateurs consommeraient N fois le quota) ; il est posé
+après les limiteurs par utilisateur, pour qu'un utilisateur déjà bloqué ne
+consomme pas le budget commun.
 
-| Route                      | Limite        |
-| -------------------------- | ------------- |
-| `POST /ai/chat`            | 20 par minute |
-| `POST /ai/chat`            | 300 par jour  |
-| `POST /ai/actions/execute` | 10 par minute |
+| Route                      | Clé                   | Limite                                               |
+| -------------------------- | --------------------- | ---------------------------------------------------- |
+| `POST /ai/chat`            | utilisateur et agence | 20 par minute                                        |
+| `POST /ai/chat`            | utilisateur et agence | 300 par jour                                         |
+| `POST /ai/chat`            | agence seule          | `AI_TENANT_MINUTE_LIMIT` par minute (100 par défaut) |
+| `POST /ai/chat`            | agence seule          | `AI_TENANT_DAILY_LIMIT` par jour (3000 par défaut)   |
+| `POST /ai/actions/execute` | utilisateur et agence | 10 par minute                                        |
 
 Autres plafonds : 20 messages de 4 000 caractères et 24 000 au total par
 requête ; `AI_MAX_TOOL_ROUNDS` tours d'outils (4 par défaut) et 8 appels d'outils
 au plus ; `AI_REQUEST_TIMEOUT_MS` par appel au fournisseur.
 
 **Audit** (`AuditLog`, clés de `types/audit-types.ts`) : `AI_CHAT_TURN` (sans
-texte : fournisseur, issue, nombre de tours et d'outils), `AI_TOOL_CALLED`,
+texte : fournisseur, issue, nombre de tours et d'outils ; son `entityId` est le
+`requestId` **généré par le serveur** : le `conversationId` du client n'est
+qu'un écho pour l'interface, jamais une clé d'audit), `AI_TOOL_CALLED`,
 `AI_TOOL_DENIED`, `AI_PROPOSAL_ISSUED`, `AI_PROPOSAL_REDEEMED`,
 `AI_ACTION_EXECUTED`, `AI_ACTION_REJECTED`. Sauf la réclamation du jeton
-(synchrone), l'écriture passe par la file asynchrone `logAuditEvent`.
+(synchrone, sous verrou), l'écriture passe par la file asynchrone `logAuditEvent`.
 
 **Flux SSE.** En-têtes `Cache-Control: no-cache, no-transform` (le middleware
 de compression ne doit pas mettre le flux en tampon) et `X-Accel-Buffering: no` ;
@@ -349,10 +384,13 @@ la fermeture de la connexion annule l'appel au fournisseur. Côté web : rendu
 Markdown maison en éléments React, sans lien, image ni HTML, jamais
 `dangerouslySetInnerHTML`.
 
-**Limites connues.** La table d'usage unique et les limiteurs supposent une
-**seule instance d'API** (la ligne d'audit couvre un redémarrage, pas des
-instances parallèles). Le compteur de numérotation de `generateDocument`
-n'est pas transactionnel (défaut existant). Les refus du fournisseur sont
+**Limites connues.** L'usage unique des jetons et l'idempotence des quittances
+sont atomiques entre instances (verrous consultatifs PostgreSQL). Les
+**limiteurs de débit restent en mémoire, par instance** : avec N instances,
+les plafonds effectifs sont multipliés par N (pas de compteur partagé). Le
+compteur de numérotation de `generateDocument` n'est pas transactionnel
+(défaut existant ; les quittances de l'assistant sont sérialisées par paiement,
+pas les autres chemins de génération). Les refus du fournisseur sont
 traités (`PROVIDER_REFUSAL`) ; un repli serveur est actif par défaut
 (`AI_REFUSAL_FALLBACK=off` le coupe).
 

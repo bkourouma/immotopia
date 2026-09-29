@@ -2,8 +2,14 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { requireAiAssistantAccess, requireAiStatusAccess } from '../middleware/ai-access-middleware';
-import { requireDocumentsGenerate } from '../middleware/rental-rbac-middleware';
-import { aiActionRateLimiter, aiChatDailyLimiter, aiChatRateLimiter } from '../middleware/rate-limit-middleware';
+import { requireDocumentsGenerate, requireDocumentsView } from '../middleware/rental-rbac-middleware';
+import {
+  aiActionRateLimiter,
+  aiChatDailyLimiter,
+  aiChatRateLimiter,
+  aiTenantChatRateLimiter,
+  aiTenantDailyLimiter
+} from '../middleware/rate-limit-middleware';
 import { chatHandler, executeActionHandler, getStatusHandler } from '../controllers/ai-controller';
 
 /**
@@ -23,13 +29,23 @@ router.use(requireTenantCollaborator);
 router.get('/status', requireAiStatusAccess, getStatusHandler);
 
 // Conversation en flux SSE. Chaque outil vérifie sa propre permission ; aucune écriture possible ici.
-router.post('/chat', requireAiAssistantAccess, aiChatRateLimiter, aiChatDailyLimiter, chatHandler);
+router.post(
+  '/chat',
+  requireAiAssistantAccess,
+  aiChatRateLimiter,
+  aiChatDailyLimiter,
+  aiTenantChatRateLimiter,
+  aiTenantDailyLimiter,
+  chatHandler
+);
 
 // Confirmation humaine : seule porte de génération (permission + jeton de proposition signé).
+// GENERATE ET VIEW : la carte de résultat renvoie vers le téléchargement, qui exige VIEW.
 router.post(
   '/actions/execute',
   requireAiAssistantAccess,
   requireDocumentsGenerate,
+  requireDocumentsView,
   aiActionRateLimiter,
   executeActionHandler
 );

@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { generateDocument, regenerateDocument, getDocumentFile } from '../services/document-generation-service';
 import { DocumentType } from '@prisma/client';
+import { AppError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 
 const generateDocumentSchema = z.object({
   docType: z.enum(['LEASE_HABITATION', 'LEASE_COMMERCIAL', 'RENT_RECEIPT', 'RENT_STATEMENT']),
@@ -26,7 +28,7 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
     const tenantId = req.tenantContext?.tenantId;
     const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
+    if (!actorUserId || !tenantId) {
       res.status(401).json({
         success: false,
         message: 'Non authentifié'
@@ -71,7 +73,7 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
       return;
     }
 
-    if (error instanceof Error) {
+    if (error instanceof AppError) {
       // Provide helpful guidance for template-related errors
       if (error.message.includes('Aucun template disponible')) {
         res.status(400).json({
@@ -84,16 +86,17 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
         return;
       }
 
-      res.status(400).json({
+      res.status(error.statusCode).json({
         success: false,
         message: error.message
       });
       return;
     }
 
-    res.status(500).json({
+    // Erreur non typée : son message peut citer un chemin disque ou du SQL.
+    res.status(error instanceof Error ? 400 : 500).json({
       success: false,
-      message: 'Erreur lors de la génération du document'
+      message: t('Erreur lors de la génération du document')
     });
   }
 }
@@ -108,7 +111,7 @@ export async function regenerateDocumentHandler(req: Request, res: Response): Pr
     const { id } = req.params;
     const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
+    if (!actorUserId || !tenantId) {
       res.status(401).json({
         success: false,
         message: 'Non authentifié'
@@ -203,7 +206,6 @@ export async function downloadDocumentHandler(req: Request, res: Response): Prom
     logger.info('downloadDocumentHandler: Document found', {
       documentId: document.id,
       documentNumber: document.document_number,
-      filePath: document.file_path,
       hasFilePath: !!document.file_path
     });
 
@@ -222,8 +224,7 @@ export async function downloadDocumentHandler(req: Request, res: Response): Prom
     // Get file buffer
     logger.info('downloadDocumentHandler: Getting file buffer', {
       tenantId,
-      documentId: id,
-      filePath: document.file_path
+      documentId: id
     });
 
     const buffer = await getDocumentFile(tenantId, id);
@@ -262,17 +263,17 @@ export async function downloadDocumentHandler(req: Request, res: Response): Prom
       tenantId: req.tenantContext?.tenantId
     });
 
-    if (error instanceof Error) {
-      res.status(400).json({
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({
         success: false,
         message: error.message
       });
       return;
     }
 
-    res.status(500).json({
+    res.status(error instanceof Error ? 400 : 500).json({
       success: false,
-      message: 'Erreur lors du téléchargement du document'
+      message: t('Erreur lors du téléchargement du document')
     });
   }
 }

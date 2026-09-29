@@ -58,13 +58,14 @@ const INSTALLMENT_ID = '33333333-3333-4333-8333-333333333333';
 
 const ALL_PERMS = ['PROPERTIES_VIEW', 'RENTAL_LEASES_VIEW', 'RENTAL_DOCUMENTS_VIEW', 'RENTAL_DOCUMENTS_GENERATE'];
 
-const ctx = (perms: string[] = ALL_PERMS): CopilotToolContext => ({
+const ctx = (perms: string[] = ALL_PERMS, seen: string[] = [LEASE_ID]): CopilotToolContext => ({
   tenantId: TENANT,
   userId: USER,
   permissions: new Set(perms),
   requestId: 'req-1',
   conversationId: 'conv-1',
-  signal: new AbortController().signal
+  signal: new AbortController().signal,
+  seenLeaseIds: new Set(seen)
 });
 
 const tool = (name: string): CopilotToolDefinition => {
@@ -120,9 +121,20 @@ describe('registre', () => {
     ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE']
   ])('%s exige %s', (name, permission) => {
     expect(tool(name).requiredPermission).toBe(permission);
-    expect(toolsForUser(new Set([permission])).map(t => t.name)).toContain(name);
-    const others = ALL_PERMS.filter(p => p !== permission);
-    expect(toolsForUser(new Set(others)).map(t => t.name)).not.toContain(name);
+    const required = [permission, ...(tool(name).additionalPermissions ?? [])];
+    expect(toolsForUser(new Set(required)).map(t => t.name)).toContain(name);
+    // Retirer n'importe laquelle des permissions exigées retire l'outil.
+    for (const missing of required) {
+      const others = ALL_PERMS.filter(p => p !== missing);
+      expect(toolsForUser(new Set(others)).map(t => t.name)).not.toContain(name);
+    }
+  });
+
+  it('propose_rental_document exige AUSSI RENTAL_DOCUMENTS_VIEW (la carte mène au téléchargement)', () => {
+    expect(tool('propose_rental_document').additionalPermissions).toEqual(['RENTAL_DOCUMENTS_VIEW']);
+    expect(toolsForUser(new Set(['RENTAL_DOCUMENTS_GENERATE'])).map(t => t.name)).not.toContain(
+      'propose_rental_document'
+    );
   });
 
   it('filtre le registre selon les permissions', () => {
@@ -191,6 +203,16 @@ describe('permissions à l’exécution', () => {
     expect(mockListLeases).not.toHaveBeenCalled();
     expect(mockListDocuments).not.toHaveBeenCalled();
     expect(mockGetDocuments).not.toHaveBeenCalled();
+    expect(mockPrisma.rentalLease.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('propose_rental_document avec GENERATE sans VIEW lève ForbiddenError', async () => {
+    await expect(
+      tool('propose_rental_document').execute(
+        { docType: 'RENT_RECEIPT', leaseId: LEASE_ID, period: '2026-08' },
+        ctx(['RENTAL_DOCUMENTS_GENERATE'])
+      )
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(mockPrisma.rentalLease.findFirst).not.toHaveBeenCalled();
   });
 });
@@ -522,6 +544,50 @@ describe('propose_rental_document', () => {
   it('exige la période pour une quittance', async () => {
     const result = await tool('propose_rental_document').execute({ docType: 'RENT_RECEIPT', leaseId: LEASE_ID }, ctx());
     expect(result.modelResult).toMatchObject({ status: 'NOT_POSSIBLE', reason: 'MISSING_PERIOD' });
+  });
+
+  it('refuse un bail jamais vu dans la requête (injection de prompt) : NOT_POSSIBLE lease_not_seen, rien de signé', async () => {
+    const result = await tool('propose_rental_document').execute(receiptInput, ctx(ALL_PERMS, []));
+    expect(result.modelResult).toMatchObject({ status: 'NOT_POSSIBLE', reason: 'lease_not_seen' });
+    expect(result.uiEvent).toBeUndefined();
+    expect(mockLogAudit).not.toHaveBeenCalled();
+    expect(mockPrisma.rentalLease.findFirst).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('v1.');
+  });
+
+  it('refuse un AUTRE bail que celui vu (relevé comme quittance)', async () => {
+    const other = '99999999-9999-4999-8999-999999999999';
+    const receipt = await tool('propose_rental_document').execute({ ...receiptInput, leaseId: other }, ctx());
+    expect(receipt.modelResult).toMatchObject({ status: 'NOT_POSSIBLE', reason: 'lease_not_seen' });
+    const statement = await tool('propose_rental_document').execute(
+      { docType: 'RENT_STATEMENT', leaseId: other, startDate: '2026-01-01', endDate: '2026-06-30' },
+      ctx()
+    );
+    expect(statement.modelResult).toMatchObject({ status: 'NOT_POSSIBLE', reason: 'lease_not_seen' });
+  });
+
+  it('search_leases et list_lease_documents alimentent l’ensemble des baux vus', async () => {
+    mockListLeases.mockResolvedValue({
+      data: [
+        {
+          id: LEASE_ID,
+          lease_number: 'L-00012',
+          status: 'ACTIVE',
+          currency: 'FCFA',
+          rent_amount: 1,
+          start_date: '2026-01-01'
+        }
+      ],
+      pagination: { totalPages: 1 }
+    });
+    const searchCtx = ctx(ALL_PERMS, []);
+    await tool('search_leases').execute({}, searchCtx);
+    expect([...searchCtx.seenLeaseIds]).toEqual([LEASE_ID]);
+
+    mockListDocuments.mockResolvedValue({ data: [] });
+    const docsCtx = ctx(ALL_PERMS, []);
+    await tool('list_lease_documents').execute({ leaseId: LEASE_ID }, docsCtx);
+    expect([...docsCtx.seenLeaseIds]).toEqual([LEASE_ID]);
   });
 
   it('rejette le bail d’une autre agence : pas de proposition', async () => {

@@ -46,6 +46,7 @@ export const listLeaseDocumentsTool: CopilotToolDefinition<typeof inputSchema> =
   async execute(input, ctx) {
     assertToolPermission(ctx, PERMISSION);
     const lease = await loadLeaseSummary(ctx.tenantId, input.leaseId);
+    ctx.seenLeaseIds.add(lease.id);
     const { data } = await listDocuments(
       ctx.tenantId,
       { leaseId: lease.id, type: input.type },
