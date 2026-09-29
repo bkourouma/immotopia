@@ -55,7 +55,7 @@ import { assertSiteOpenTx } from './site-closing';
 import { appendThirdPartyMovementTx } from './ledger';
 import { roundMoneyXof } from './money';
 import { toAmountOrZero } from './types';
-import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
+import { resolveAndCheckOutflowTx } from '../treasury/outflow';
 import type {
   CreateEmployeeTx,
   CreateSalaryNoteTx,
@@ -84,8 +84,6 @@ interface OperationalAccounts {
   personnelExpenseAccountId: string;
   /** 422 — Personnel, rémunérations dues : la dette envers l'employé. */
   personnelPayableAccountId: string;
-  /** Caisse : la même trésorerie que partout ailleurs, résolue par `treasury/accounts.ts`. */
-  cashAccountId: string;
 }
 
 /**
@@ -98,10 +96,9 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes, cashTreasury] = await Promise.all([
+  const [journalId, comptes] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getUTCFullYear()),
-    ensureOperationalChartOfAccountsTx(tx, tenantId),
-    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH')
+    ensureOperationalChartOfAccountsTx(tx, tenantId)
   ]);
 
   const exiger = (numero: string): string => {
@@ -115,8 +112,7 @@ async function resolveOperationalAccounts(
   return {
     journalId,
     personnelExpenseAccountId: exiger('661'),
-    personnelPayableAccountId: exiger('422'),
-    cashAccountId: cashTreasury.chartOfAccountId
+    personnelPayableAccountId: exiger('422')
   };
 }
 
@@ -556,7 +552,8 @@ export const validateSalaryPaymentTx: ValidateSalaryPaymentTx = async (
   tx,
   tenantId,
   salaryPaymentId,
-  validatedByUserId
+  validatedByUserId,
+  payer
 ) => {
   const payment = await tx.salaryPayment.findFirst({ where: { id: salaryPaymentId, tenantId } });
   if (!payment) {
@@ -577,11 +574,22 @@ export const validateSalaryPaymentTx: ValidateSalaryPaymentTx = async (
   const amount = roundMoneyXof(toAmountOrZero(payment.amount));
   const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
-  // Journal : débit des rémunérations dues (422), crédit de la caisse (571) —
-  // la dette envers l'employé s'éteint, la trésorerie sort.
+  // D'où sort l'argent : le compte choisi à la validation, sinon la caisse. Pas
+  // de sortie à découvert (BUG-2026-09-29-032) : le contrôle prend un verrou
+  // sur le compte et lit son solde DANS cette transaction, juste avant d'écrire.
+  const treasury = await resolveAndCheckOutflowTx(tx, tenantId, payer, amount);
+  const journalId = await ensureOperationalJournalTx(
+    tx,
+    tenantId,
+    payment.paymentDate.getUTCFullYear(),
+    treasury.journal
+  );
+
+  // Journal : débit des rémunérations dues (422), crédit du compte de
+  // trésorerie payeur — la dette envers l'employé s'éteint, la trésorerie sort.
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
-    journalId: accounts.journalId,
+    journalId,
     entryDate: payment.paymentDate,
     reference: `SAL-REG-${payment.id}`,
     description: `Règlement de salaire — ${employee.fullName}`,
@@ -589,7 +597,7 @@ export const validateSalaryPaymentTx: ValidateSalaryPaymentTx = async (
     documentId: payment.id,
     lines: [
       { accountId: accounts.personnelPayableAccountId, debit: amount, label: `Règlement — ${employee.fullName}` },
-      { accountId: accounts.cashAccountId, credit: amount, label: `Règlement — ${employee.fullName}` }
+      { accountId: treasury.chartOfAccountId, credit: amount, label: `Règlement — ${employee.fullName}` }
     ]
   });
 

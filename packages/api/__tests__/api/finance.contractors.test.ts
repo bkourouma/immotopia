@@ -446,7 +446,7 @@ describe('POST /tenants/:tenantId/finance/contractor-payments/:paymentId/validat
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('VALIDATED');
-    expect(validateContractorPaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1');
+    expect(validateContractorPaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1', {});
   });
 
   it('relaie un 409 quand le règlement est déjà validé', async () => {

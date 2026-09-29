@@ -69,6 +69,7 @@
  */
 
 import type { PrismaTransactionClient } from '../../utils/database';
+import type { OutflowPayer } from '../treasury/outflow';
 import { NotImplementedYetError } from './types';
 
 // ---------------------------------------------------------------------------
@@ -228,7 +229,9 @@ export type ValidateLandLeasePaymentTx = (
   tx: PrismaTransactionClient,
   tenantId: string,
   paymentId: string,
-  validatedByUserId: string
+  validatedByUserId: string,
+  /** D'où sort l'argent (mode, compte). Défaut : espèces, caisse. BUG-2026-09-29-032. */
+  payer?: OutflowPayer | null
 ) => Promise<LandLeasePaymentRecord>;
 
 export type ListLandLeasePayments = (tenantId: string, landLeaseId: string) => Promise<LandLeasePaymentRecord[]>;

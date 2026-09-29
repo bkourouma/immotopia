@@ -32,6 +32,7 @@
  */
 
 import apiClient from '../utils/api-client';
+import type { OutflowPayerChoice } from '../types/finance-outflow-types';
 import type {
   Contractor,
   ContractorContract,
@@ -237,10 +238,14 @@ export async function createContractorPayment(
 }
 
 /** Route K. Valide un règlement : l'argent sort de la caisse. **Irréversible**, dit avant. */
-export async function validateContractorPayment(tenantId: string, paymentId: string): Promise<ContractorPayment> {
+export async function validateContractorPayment(
+  tenantId: string,
+  paymentId: string,
+  payer?: OutflowPayerChoice
+): Promise<ContractorPayment> {
   const response = await apiClient.post<ApiResponse<ContractorPayment>>(
     `${base(tenantId)}/contractor-payments/${paymentId}/validate`,
-    {}
+    payer ?? {}
   );
   return response.data.data;
 }

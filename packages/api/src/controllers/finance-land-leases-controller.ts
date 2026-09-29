@@ -19,6 +19,7 @@ import {
   recordLandLeaseAccrualSchema,
   uuidPathParamSchema
 } from '../lib/finance/schemas-land-leases';
+import { outflowPayerSchema } from '../lib/treasury/outflow';
 import { prisma } from '../utils/database';
 
 /**
@@ -179,7 +180,12 @@ export const validateLandLeasePaymentHandler = asyncHandler(async (req: Request,
   const paymentId = requireUuidParam(req, 'paymentId');
   const actorUserId = requireActorUserId(req);
 
-  const payment = await prisma.$transaction(tx => validateLandLeasePaymentTx(tx, tenantId, paymentId, actorUserId));
+  // Mode et compte payeur : facultatifs, défaut espèces/caisse (BUG-2026-09-29-032).
+  const payer = outflowPayerSchema.parse(req.body ?? {});
+
+  const payment = await prisma.$transaction(tx =>
+    validateLandLeasePaymentTx(tx, tenantId, paymentId, actorUserId, payer)
+  );
 
   res.status(200).json({ success: true, data: payment });
 });

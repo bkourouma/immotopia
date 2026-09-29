@@ -438,6 +438,32 @@ describe('POST /tenants/:tenantId/finance/employees/:employeeId/salary-payments'
 // ---------------------------------------------------------------------------
 
 describe('POST /tenants/:tenantId/finance/salary-payments/:salaryPaymentId/validate', () => {
+  it('transmet le mode et le compte payeur choisis (BUG-2026-09-29-032)', async () => {
+    validateSalaryPaymentTx.mockResolvedValue(
+      salaryPaymentRecord({ status: 'VALIDATED', validatedAt: new Date('2026-03-06') })
+    );
+    const compte = '3f0c1c1e-8a55-4d0a-9d0e-0a1b2c3d4e5f';
+
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/salary-payments/${PAYMENT_A}/validate`)
+      .send({ method: 'BANK_TRANSFER', treasuryAccountId: compte });
+
+    expect(res.status).toBe(200);
+    expect(validateSalaryPaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1', {
+      method: 'BANK_TRANSFER',
+      treasuryAccountId: compte
+    });
+  });
+
+  it('refuse (400) un mode de règlement inconnu, sans valider', async () => {
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/salary-payments/${PAYMENT_A}/validate`)
+      .send({ method: 'TROC' });
+
+    expect(res.status).toBe(400);
+    expect(validateSalaryPaymentTx).not.toHaveBeenCalled();
+  });
+
   it('valide le règlement, même supérieur au solde (avance sur salaire)', async () => {
     validateSalaryPaymentTx.mockResolvedValue(
       salaryPaymentRecord({ status: 'VALIDATED', validatedAt: new Date('2026-03-06'), amount: 900_000 })
@@ -447,7 +473,7 @@ describe('POST /tenants/:tenantId/finance/salary-payments/:salaryPaymentId/valid
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('VALIDATED');
-    expect(validateSalaryPaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1');
+    expect(validateSalaryPaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1', {});
   });
 
   it('relaie un 409 quand le règlement est déjà validé', async () => {

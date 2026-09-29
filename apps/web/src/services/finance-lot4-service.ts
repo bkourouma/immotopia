@@ -26,6 +26,7 @@
  */
 
 import apiClient from '../utils/api-client';
+import type { OutflowPayerChoice } from '../types/finance-outflow-types';
 import type {
   CreateLandLeaseInput,
   CreateLandLeasePaymentInput,
@@ -121,10 +122,14 @@ export async function createLandLeasePayment(
  * jouissance du terrain (§2 du modèle). L'écran doit le dire avant, dans une
  * confirmation, jamais après coup.
  */
-export async function validateLandLeasePayment(tenantId: string, paymentId: string): Promise<LandLeasePayment> {
+export async function validateLandLeasePayment(
+  tenantId: string,
+  paymentId: string,
+  payer?: OutflowPayerChoice
+): Promise<LandLeasePayment> {
   const response = await apiClient.post<ApiResponse<LandLeasePayment>>(
     `${base(tenantId)}/land-lease-payments/${paymentId}/validate`,
-    {}
+    payer ?? {}
   );
   return response.data.data;
 }

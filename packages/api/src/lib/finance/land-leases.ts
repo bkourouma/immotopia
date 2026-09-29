@@ -56,7 +56,7 @@ import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDoc
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { appendThirdPartyMovementTx } from './ledger';
 import { roundMoneyXof } from './money';
-import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
+import { resolveAndCheckOutflowTx } from '../treasury/outflow';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
 import { runWithTenantContext } from '../../utils/tenant-context';
@@ -141,8 +141,6 @@ interface OperationalAccounts {
   prepaidExpenseAccountId: string;
   /** 613 — Locations : la part du loyer consommée le mois constaté. */
   rentExpenseAccountId: string;
-  /** Caisse : la même trésorerie que partout ailleurs, résolue par `treasury/accounts.ts`. */
-  cashAccountId: string;
 }
 
 /**
@@ -171,10 +169,9 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes, cashTreasury, legacyPrepaidAccountId] = await Promise.all([
+  const [journalId, comptes, legacyPrepaidAccountId] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getUTCFullYear()),
     ensureOperationalChartOfAccountsTx(tx, tenantId),
-    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH'),
     legacyPrepaidAccountTx(tx, tenantId)
   ]);
 
@@ -189,8 +186,7 @@ async function resolveOperationalAccounts(
   return {
     journalId,
     prepaidExpenseAccountId: legacyPrepaidAccountId ?? exiger('476'),
-    rentExpenseAccountId: exiger('613'),
-    cashAccountId: cashTreasury.chartOfAccountId
+    rentExpenseAccountId: exiger('613')
   };
 }
 
@@ -515,7 +511,8 @@ export const validateLandLeasePaymentTx: ValidateLandLeasePaymentTx = async (
   tx,
   tenantId,
   paymentId,
-  validatedByUserId
+  validatedByUserId,
+  payer
 ) => {
   const payment = await tx.landLeasePayment.findFirst({ where: { id: paymentId, tenantId } });
   if (!payment) {
@@ -535,11 +532,23 @@ export const validateLandLeasePaymentTx: ValidateLandLeasePaymentTx = async (
   const amount = roundMoneyXof(toAmountOrZero(payment.amount));
   const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
+  // D'où sort l'argent : le compte choisi à la validation, sinon la caisse. Pas
+  // de sortie à découvert (BUG-2026-09-29-032) : le contrôle prend un verrou
+  // sur le compte et lit son solde DANS cette transaction, juste avant d'écrire.
+  const treasury = await resolveAndCheckOutflowTx(tx, tenantId, payer, amount);
+  const journalId = await ensureOperationalJournalTx(
+    tx,
+    tenantId,
+    payment.paymentDate.getUTCFullYear(),
+    treasury.journal
+  );
+
   // Journal : débit des charges constatées d'avance (476, ou 486 hérité),
-  // crédit de la caisse. C'est le paiement lui-même, pas encore sa consommation.
+  // crédit du compte de trésorerie payeur. C'est le paiement lui-même, pas
+  // encore sa consommation.
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
-    journalId: accounts.journalId,
+    journalId,
     entryDate: payment.paymentDate,
     reference: `BAIL-${lease.id}-${payment.paymentDate.getTime()}`,
     description: `Paiement annuel de bail — ${lease.landlordName} — ${lease.landLabel}`,
@@ -547,7 +556,7 @@ export const validateLandLeasePaymentTx: ValidateLandLeasePaymentTx = async (
     documentId: payment.id,
     lines: [
       { accountId: accounts.prepaidExpenseAccountId, debit: amount, label: `Loyer d'avance — ${lease.landlordName}` },
-      { accountId: accounts.cashAccountId, credit: amount, label: `Paiement de bail — ${lease.landlordName}` }
+      { accountId: treasury.chartOfAccountId, credit: amount, label: `Paiement de bail — ${lease.landlordName}` }
     ]
   });
 

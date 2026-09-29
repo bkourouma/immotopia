@@ -59,6 +59,19 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// Permissions de la personne connectée : `null` = aucun filtrage (administrateur).
+// BUG-2026-09-29-031 : sans FINANCE_DOCUMENTS_VALIDATE, « Valider » n'est pas proposé.
+let permissionsDetenues: Set<string> | null = null;
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues, ready: true })
+}));
+
+// La fenêtre de validation d'un règlement propose les comptes de trésorerie.
+const listTreasuryAccounts = vi.fn();
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: (...a: unknown[]) => listTreasuryAccounts(...a)
+}));
+
 import apiClient from '../../utils/api-client';
 
 const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
@@ -232,6 +245,8 @@ function configurerGet(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  permissionsDetenues = null;
+  listTreasuryAccounts.mockResolvedValue([]);
   configurerGet();
   post.mockResolvedValue({ data: { data: tacheron() } });
 });
@@ -534,6 +549,40 @@ describe('Les gestes de la fiche', () => {
         {}
       )
     );
+  }, 30000);
+
+  it('valide un règlement en disant d’où sort l’argent (BUG-2026-09-29-032)', async () => {
+    configurerGet({ reglements: [reglement({ id: 'reglement-brouillon', status: 'DRAFT', validatedAt: null })] });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligne = (await screen.findByText('10/05/2026', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
+    await user.click(within(ligne).getByRole('button', { name: 'Valider' }));
+
+    expect(await screen.findByText(/irréversible/i, {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Confirmer la validation' }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractor-payments/reglement-brouillon/validate`, {
+        method: 'CASH',
+        treasuryAccountId: null
+      })
+    );
+  }, 30000);
+
+  it('ne propose « Valider » ni sur une situation ni sur un règlement à qui n’a pas le droit de valider (BUG-2026-09-29-031)', async () => {
+    permissionsDetenues = new Set(['FINANCE_DOCUMENTS_CREATE']);
+    configurerGet({
+      situations: [situation({ id: 'situation-brouillon', status: 'DRAFT', validatedAt: null })],
+      reglements: [reglement({ id: 'reglement-brouillon', status: 'DRAFT', validatedAt: null })]
+    });
+    mountFiche();
+
+    await screen.findByText('Pose complète du réseau sanitaire', {}, { timeout: 8000 });
+    await screen.findByText('10/05/2026', {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument();
   }, 30000);
 
   it('enregistre un règlement supérieur à ce qu’on doit : averti, jamais bloqué', async () => {

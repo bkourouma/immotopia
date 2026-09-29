@@ -19,6 +19,7 @@ import {
   listSalaryNotesQuerySchema,
   uuidPathParamSchema
 } from '../lib/finance/schemas-salaries';
+import { outflowPayerSchema } from '../lib/treasury/outflow';
 import { prisma } from '../utils/database';
 
 /**
@@ -212,7 +213,12 @@ export const validateSalaryPaymentHandler = asyncHandler(async (req: Request, re
   const salaryPaymentId = requireUuidParam(req, 'salaryPaymentId');
   const actorUserId = requireActorUserId(req);
 
-  const payment = await prisma.$transaction(tx => validateSalaryPaymentTx(tx, tenantId, salaryPaymentId, actorUserId));
+  // Mode et compte payeur : facultatifs, défaut espèces/caisse (BUG-2026-09-29-032).
+  const payer = outflowPayerSchema.parse(req.body ?? {});
+
+  const payment = await prisma.$transaction(tx =>
+    validateSalaryPaymentTx(tx, tenantId, salaryPaymentId, actorUserId, payer)
+  );
 
   res.status(200).json({ success: true, data: payment });
 });

@@ -58,6 +58,12 @@ vi.mock('../../services/finance-lot2-service', () => ({
   listCostCategories: (...a: unknown[]) => listCostCategories(...a)
 }));
 
+// La fenêtre de validation d'un paiement propose les comptes de trésorerie.
+const listTreasuryAccounts = vi.fn();
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: (...a: unknown[]) => listTreasuryAccounts(...a)
+}));
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
@@ -180,6 +186,7 @@ function mountFiche(url = '/tenant/agence-1/finance/baux-terrain/bail-1') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listTreasuryAccounts.mockResolvedValue([]);
   getLandLease.mockResolvedValue(bail());
   listLandLeasePayments.mockResolvedValue([paiement()]);
   listLandLeaseAccruals.mockResolvedValue([
@@ -355,7 +362,12 @@ describe('Fiche du bail — paiements', () => {
 
     await user.click(screen.getByRole('button', { name: 'Confirmer la validation' }));
 
-    await waitFor(() => expect(validateLandLeasePayment).toHaveBeenCalledWith('agence-1', 'paiement-1'));
+    await waitFor(() =>
+      expect(validateLandLeasePayment).toHaveBeenCalledWith('agence-1', 'paiement-1', {
+        method: 'CASH',
+        treasuryAccountId: null
+      })
+    );
   });
 
   it('enregistre un nouveau paiement en brouillon avec les champs du contrat gelé', async () => {

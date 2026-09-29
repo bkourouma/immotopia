@@ -49,6 +49,7 @@
  */
 
 import type { PrismaTransactionClient } from '../../utils/database';
+import type { OutflowPayer } from '../treasury/outflow';
 import type { SupplierInvoiceStatus } from '@prisma/client';
 import { NotImplementedYetError } from './types';
 
@@ -229,7 +230,9 @@ export type ValidateContractorPaymentTx = (
   tx: PrismaTransactionClient,
   tenantId: string,
   paymentId: string,
-  validatedByUserId: string
+  validatedByUserId: string,
+  /** D'où sort l'argent (mode, compte). Défaut : espèces, caisse. BUG-2026-09-29-032. */
+  payer?: OutflowPayer | null
 ) => Promise<ContractorPaymentRecord>;
 
 export type ListContractorPayments = (tenantId: string, contractorId: string) => Promise<ContractorPaymentRecord[]>;

@@ -19,6 +19,10 @@ import { SALARY_STATUS_LABELS } from '../../types/finance-salaries-types';
 import type { SalaryDocumentStatus } from '../../types/finance-salaries-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { writeErrorMessage } from '../../utils/error-handler';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { ValidateOutflowModal } from '../../components/finance/ValidateOutflowModal';
+import type { OutflowPayerChoice } from '../../types/finance-outflow-types';
 import {
   PageHeader,
   StateBlock,
@@ -160,6 +164,15 @@ export const Salarie: React.FC = () => {
   const { tenantId, employeeId } = useParams<{ tenantId: string; employeeId: string }>();
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
+
+  // Valider une pièce exige le droit de validation : sans lui, l'action n'est
+  // pas proposée (BUG-2026-09-29-031). `null` : pas de filtrage par permission
+  // (administrateur d'agence, chargement, échec réseau).
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutValider = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
+
+  // Décaissement dont on choisit le compte payeur avant de le valider (BUG-2026-09-29-032).
+  const [reglementAValider, setReglementAValider] = useState<SalaryPayment | null>(null);
 
   const {
     data: salarie,
@@ -312,7 +325,13 @@ export const Salarie: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('employees', tenantId) });
       message.success(t('Note de {{value}} validée.', { value: libellePeriode(note.periodYear, note.periodMonth) }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation de la note a échoué.'));
+      message.error(
+        writeErrorMessage(
+          err,
+          t('La validation de la note a échoué.'),
+          t("Vous n'avez pas le droit de valider une note de salaire.")
+        )
+      );
     }
   };
 
@@ -356,15 +375,26 @@ export const Salarie: React.FC = () => {
     }
   };
 
-  const validerReglement = async (reglement: SalaryPayment) => {
-    if (!tenantId || !employeeId) return;
+  /** Rend `true` si le règlement est validé ; sur un refus (solde insuffisant…), la fenêtre reste ouverte. */
+  const validerReglement = async (reglement: SalaryPayment, payer: OutflowPayerChoice): Promise<boolean> => {
+    if (!tenantId || !employeeId) return false;
     try {
-      await validateSalaryPayment(tenantId, reglement.id);
+      await validateSalaryPayment(tenantId, reglement.id, payer);
       await queryClient.invalidateQueries({ queryKey: detailKey('salary-payments', tenantId, employeeId) });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('employees', tenantId) });
+      await queryClient.invalidateQueries({ queryKey: queryKey('treasury-accounts', tenantId) });
       message.success(t('Règlement validé.'));
+      setReglementAValider(null);
+      return true;
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation du règlement a échoué.'));
+      message.error(
+        writeErrorMessage(
+          err,
+          t('La validation du règlement a échoué.'),
+          t("Vous n'avez pas le droit de valider un règlement de salaire.")
+        )
+      );
+      return false;
     }
   };
 
@@ -433,7 +463,7 @@ export const Salarie: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, n) =>
-        n.status === 'DRAFT' ? (
+        n.status === 'DRAFT' && peutValider ? (
           <ConfirmAction
             title={t('Valider la note de {{value}} ?', { value: libellePeriode(n.periodYear, n.periodMonth) })}
             description={
@@ -471,17 +501,10 @@ export const Salarie: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, r) =>
-        r.status === 'DRAFT' ? (
-          <ConfirmAction
-            title={t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) })}
-            description={t(
-              "Cette opération est irréversible : le versement est constaté, et ce que nous devons à ce salarié diminue d'autant. Un montant supérieur à ce qui lui est dû est accepté — le reste devient une avance sur salaire."
-            )}
-            okText={t('Confirmer la validation')}
-            onConfirm={() => validerReglement(r)}
-          >
-            <Button type="link">{t('Valider')}</Button>
-          </ConfirmAction>
+        r.status === 'DRAFT' && peutValider ? (
+          <Button type="link" onClick={() => setReglementAValider(r)}>
+            {t('Valider')}
+          </Button>
         ) : null
     }
   ];
@@ -558,7 +581,7 @@ export const Salarie: React.FC = () => {
               { label: t('Saisi par'), value: n.createdByLabel }
             ]}
             secondaryActions={
-              n.status === 'DRAFT'
+              n.status === 'DRAFT' && peutValider
                 ? [
                     {
                       key: 'valider',
@@ -633,20 +656,12 @@ export const Salarie: React.FC = () => {
             highlight={<MoneyValue value={r.amount} />}
             fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
             secondaryActions={
-              r.status === 'DRAFT'
+              r.status === 'DRAFT' && peutValider
                 ? [
                     {
                       key: 'valider',
                       label: 'Valider',
-                      onClick: () =>
-                        confirmerAction({
-                          title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
-                          description: t(
-                            "Cette opération est irréversible : le versement est constaté, et ce que nous devons à ce salarié diminue d'autant. Un montant supérieur à ce qui lui est dû est accepté — le reste devient une avance sur salaire."
-                          ),
-                          okText: t('Confirmer la validation'),
-                          onConfirm: () => validerReglement(r)
-                        })
+                      onClick: () => setReglementAValider(r)
                     }
                   ]
                 : undefined
@@ -664,6 +679,19 @@ export const Salarie: React.FC = () => {
         peutEnregistrer={peutEnregistrerReglement}
         enCours={reglementEnCours}
         onEnregistrer={enregistrerReglement}
+      />
+
+      <ValidateOutflowModal
+        open={reglementAValider !== null}
+        tenantId={tenantId}
+        title={t('Valider le règlement du {{value}} ?', {
+          value: reglementAValider ? dateCourte(reglementAValider.paymentDate) : ''
+        })}
+        description={t(
+          "Cette opération est irréversible : le versement sort du compte de trésorerie choisi ci-dessous (la caisse par défaut), et ce que nous devons à ce salarié diminue d'autant. Un montant supérieur à ce qui lui est dû est accepté — le reste devient une avance sur salaire. Elle est refusée si le solde du compte ne suffit pas."
+        )}
+        onConfirm={payer => (reglementAValider ? validerReglement(reglementAValider, payer) : Promise.resolve(false))}
+        onCancel={() => setReglementAValider(null)}
       />
     </>
   );

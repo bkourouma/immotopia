@@ -44,6 +44,21 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// Permissions de la personne connectée : `null` = aucun filtrage (administrateur).
+// Un test qui veut un Comptable sans droit de validation pose un ensemble sans
+// `FINANCE_DOCUMENTS_VALIDATE` (BUG-2026-09-29-031).
+let permissionsDetenues: Set<string> | null = null;
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues, ready: true })
+}));
+
+// `TreasuryAccountSelector` (fenêtre de validation d'un règlement) appelle
+// `listTreasuryAccounts` : sans ce mock, une vraie requête partirait.
+const listTreasuryAccounts = vi.fn();
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: (...a: unknown[]) => listTreasuryAccounts(...a)
+}));
+
 import apiClient from '../../utils/api-client';
 import {
   createEmployee,
@@ -209,6 +224,8 @@ function configurerGet(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  permissionsDetenues = null;
+  listTreasuryAccounts.mockResolvedValue([]);
   configurerGet();
   post.mockResolvedValue({ data: { data: salarie() } });
 });
@@ -677,9 +694,80 @@ describe('Fiche du salarié — régler', () => {
 
     await user.click(screen.getByRole('button', { name: 'Confirmer la validation' }));
 
+    // Sans choix, le règlement sort des espèces, du compte par défaut : le
+    // serveur contrôle le solde de ce compte avant d'écrire (BUG-2026-09-29-032).
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/salary-payments/regl-1/validate`, {})
+      expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/salary-payments/regl-1/validate`, {
+        method: 'CASH',
+        treasuryAccountId: null
+      })
     );
+  }, 20000);
+
+  it('laisse choisir le mode et le compte payeur, et transmet ce choix à la validation', async () => {
+    listTreasuryAccounts.mockResolvedValue([
+      {
+        id: 'banque-1',
+        label: 'Banque principale',
+        accountNumber: '5211',
+        kind: 'BANK',
+        isActive: true,
+        mmOperator: null
+      },
+      {
+        id: 'caisse-1',
+        label: 'Caisse principale',
+        accountNumber: '5711',
+        kind: 'CASH',
+        isActive: true,
+        mmOperator: null
+      }
+    ]);
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligne = (await screen.findByText('03/09/2026', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
+    await user.click(within(ligne).getByRole('button', { name: 'Valider' }));
+
+    await user.click(await screen.findByRole('combobox', { name: 'Mode de règlement' }, { timeout: 8000 }));
+    await user.click(await screen.findByText('Virement bancaire', {}, { timeout: 8000 }));
+    await user.click(screen.getByLabelText('Compte de trésorerie payeur'));
+    // Seule la banque est proposée pour un virement : jamais la caisse.
+    expect(screen.queryByText(/Caisse principale/)).not.toBeInTheDocument();
+    await user.click(await screen.findByText(/Banque principale/));
+    await user.click(screen.getByRole('button', { name: 'Confirmer la validation' }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/salary-payments/regl-1/validate`, {
+        method: 'BANK_TRANSFER',
+        treasuryAccountId: 'banque-1'
+      })
+    );
+  }, 30000);
+
+  it('garde la fenêtre ouverte et affiche le refus quand le solde du compte est insuffisant', async () => {
+    post.mockRejectedValueOnce({
+      response: { status: 400, data: { message: 'Solde insuffisant sur « Caisse principale »' } }
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFiche();
+
+    const ligne = (await screen.findByText('03/09/2026', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
+    await user.click(within(ligne).getByRole('button', { name: 'Valider' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmer la validation' }, { timeout: 8000 }));
+
+    expect(await screen.findByText(/Solde insuffisant/, {}, { timeout: 8000 })).toBeInTheDocument();
+    // La fenêtre reste ouverte : on peut choisir un autre compte.
+    expect(screen.getByRole('button', { name: /Confirmer la validation/ })).toBeInTheDocument();
+  }, 30000);
+
+  it('ne propose pas « Valider » à qui n’a pas le droit de valider (BUG-2026-09-29-031)', async () => {
+    permissionsDetenues = new Set(['FINANCE_DOCUMENTS_CREATE', 'FINANCE_ACCOUNTS_READ']);
+    mountFiche();
+
+    await screen.findByText('Règlements', {}, { timeout: 8000 });
+    await screen.findByText('03/09/2026', {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument();
   }, 20000);
 });
 

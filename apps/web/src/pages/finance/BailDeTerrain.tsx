@@ -18,6 +18,10 @@ import { LAND_LEASE_STATUS_LABELS } from '../../types/finance-lot4-types';
 import type { LandLeaseAccrual, LandLeasePayment, LandLeaseSiteRef } from '../../types/finance-lot4-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { writeErrorMessage } from '../../utils/error-handler';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { ValidateOutflowModal } from '../../components/finance/ValidateOutflowModal';
+import type { OutflowPayerChoice } from '../../types/finance-outflow-types';
 import {
   PageHeader,
   StateBlock,
@@ -140,6 +144,15 @@ export const BailDeTerrain: React.FC = () => {
   const { tenantId, landLeaseId } = useParams<{ tenantId: string; landLeaseId: string }>();
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
+
+  // Valider une pièce exige le droit de validation : sans lui, l'action n'est
+  // pas proposée (BUG-2026-09-29-031). `null` : pas de filtrage par permission
+  // (administrateur d'agence, chargement, échec réseau).
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutValider = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
+
+  // Décaissement dont on choisit le compte payeur avant de le valider (BUG-2026-09-29-032).
+  const [paiementAValider, setPaiementAValider] = useState<LandLeasePayment | null>(null);
 
   const {
     data: bail,
@@ -279,17 +292,28 @@ export const BailDeTerrain: React.FC = () => {
     }
   };
 
-  const validerPaiement = async (paiement: LandLeasePayment) => {
-    if (!tenantId || !landLeaseId) return;
+  /** Rend `true` si le paiement est validé ; sur un refus (solde insuffisant…), la fenêtre reste ouverte. */
+  const validerPaiement = async (paiement: LandLeasePayment, payer: OutflowPayerChoice): Promise<boolean> => {
+    if (!tenantId || !landLeaseId) return false;
     try {
-      await validateLandLeasePayment(tenantId, paiement.id);
+      await validateLandLeasePayment(tenantId, paiement.id, payer);
       await queryClient.invalidateQueries({ queryKey: detailKey('land-lease-payments', tenantId, landLeaseId) });
       // La validation fait bouger le compte du bailleur (§2 du modèle) : le
       // bail lui-même, et sa ligne dans la liste, doivent se recharger.
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('land-leases', tenantId) });
+      await queryClient.invalidateQueries({ queryKey: queryKey('treasury-accounts', tenantId) });
       message.success(t('Paiement validé.'));
+      setPaiementAValider(null);
+      return true;
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation a échoué.'));
+      message.error(
+        writeErrorMessage(
+          err,
+          t('La validation a échoué.'),
+          t("Vous n'avez pas le droit de valider un paiement de bail.")
+        )
+      );
+      return false;
     }
   };
 
@@ -373,17 +397,10 @@ export const BailDeTerrain: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, p) =>
-        p.status === 'DRAFT' ? (
-          <ConfirmAction
-            title={t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) })}
-            description={t(
-              "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
-            )}
-            okText={t('Confirmer la validation')}
-            onConfirm={() => validerPaiement(p)}
-          >
-            <Button type="link">{t('Valider')}</Button>
-          </ConfirmAction>
+        p.status === 'DRAFT' && peutValider ? (
+          <Button type="link" onClick={() => setPaiementAValider(p)}>
+            {t('Valider')}
+          </Button>
         ) : null
     }
   ];
@@ -572,18 +589,10 @@ export const BailDeTerrain: React.FC = () => {
             highlight={<MoneyValue value={p.amount} />}
             fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
             primaryAction={
-              p.status === 'DRAFT'
+              p.status === 'DRAFT' && peutValider
                 ? {
                     label: 'Valider',
-                    onClick: () =>
-                      confirmerAction({
-                        title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
-                        description: t(
-                          "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
-                        ),
-                        okText: t('Confirmer la validation'),
-                        onConfirm: () => validerPaiement(p)
-                      })
+                    onClick: () => setPaiementAValider(p)
                   }
                 : undefined
             }
@@ -731,6 +740,19 @@ export const BailDeTerrain: React.FC = () => {
           </Button>
         </Space>
       </Card>
+
+      <ValidateOutflowModal
+        open={paiementAValider !== null}
+        tenantId={tenantId}
+        title={t('Valider le paiement du {{value}} ?', {
+          value: paiementAValider ? dateCourte(paiementAValider.paymentDate) : ''
+        })}
+        description={t(
+          "Cette opération est irréversible : la somme sort du compte de trésorerie choisi ci-dessous (la caisse par défaut). Une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois. Elle est refusée si le solde du compte ne suffit pas."
+        )}
+        onConfirm={payer => (paiementAValider ? validerPaiement(paiementAValider, payer) : Promise.resolve(false))}
+        onCancel={() => setPaiementAValider(null)}
+      />
     </>
   );
 };

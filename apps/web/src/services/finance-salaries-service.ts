@@ -32,6 +32,7 @@
  */
 
 import apiClient from '../utils/api-client';
+import type { OutflowPayerChoice } from '../types/finance-outflow-types';
 import type {
   CreateEmployeeInput,
   CreateSalaryNoteInput,
@@ -211,10 +212,14 @@ export async function createSalaryPayment(
  * devient alors débiteur d'une avance sur salaire, et c'est voulu. L'écran ne
  * pose aucun garde-fou que le serveur n'a pas.
  */
-export async function validateSalaryPayment(tenantId: string, salaryPaymentId: string): Promise<SalaryPayment> {
+export async function validateSalaryPayment(
+  tenantId: string,
+  salaryPaymentId: string,
+  payer?: OutflowPayerChoice
+): Promise<SalaryPayment> {
   const response = await apiClient.post<ApiResponse<SalaryPayment>>(
     `${base(tenantId)}/salary-payments/${salaryPaymentId}/validate`,
-    {}
+    payer ?? {}
   );
   return response.data.data;
 }

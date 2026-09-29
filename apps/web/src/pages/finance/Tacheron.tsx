@@ -17,6 +17,10 @@ import {
 } from '../../services/finance-contractors-service';
 import { listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { writeErrorMessage } from '../../utils/error-handler';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { ValidateOutflowModal } from '../../components/finance/ValidateOutflowModal';
+import type { OutflowPayerChoice } from '../../types/finance-outflow-types';
 import { CONTRACTOR_DOCUMENT_STATUS_LABELS } from '../../types/finance-contractors-types';
 import type {
   Contractor,
@@ -120,6 +124,15 @@ export const Tacheron: React.FC = () => {
   const { tenantId, contractorId } = useParams<{ tenantId: string; contractorId: string }>();
   const queryClient = useQueryClient();
   const confirmerAction = useConfirmAction();
+
+  // Valider une situation ou un règlement exige le droit de validation : sans
+  // lui, l'action n'est pas proposée (BUG-2026-09-29-031). `null` : pas de
+  // filtrage par permission (administrateur d'agence, chargement, échec réseau).
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutValider = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
+
+  // Règlement dont on choisit le compte payeur avant de le valider (BUG-2026-09-29-032).
+  const [reglementAValider, setReglementAValider] = useState<ContractorPayment | null>(null);
 
   // Le contrat n'expose aucune route de détail d'un tâcheron : la fiche le
   // retrouve dans la liste (voir `findContractor`, et la rubrique
@@ -328,7 +341,13 @@ export const Tacheron: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
       message.success(t('Situation validée.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation de la situation a échoué.'));
+      message.error(
+        writeErrorMessage(
+          err,
+          t('La validation de la situation a échoué.'),
+          t("Vous n'avez pas le droit de valider une situation de tâcheron.")
+        )
+      );
     }
   };
 
@@ -366,15 +385,26 @@ export const Tacheron: React.FC = () => {
     }
   };
 
-  const validerReglement = async (reglement: ContractorPayment) => {
-    if (!tenantId || !contractorId) return;
+  /** Rend `true` si le règlement est validé ; sur un refus (solde insuffisant…), la fenêtre reste ouverte. */
+  const validerReglement = async (reglement: ContractorPayment, payer: OutflowPayerChoice): Promise<boolean> => {
+    if (!tenantId || !contractorId) return false;
     try {
-      await validateContractorPayment(tenantId, reglement.id);
+      await validateContractorPayment(tenantId, reglement.id, payer);
       await queryClient.invalidateQueries({ queryKey: detailKey('contractor-payments', tenantId, contractorId) });
       await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
+      await queryClient.invalidateQueries({ queryKey: queryKey('treasury-accounts', tenantId) });
       message.success(t('Règlement validé.'));
+      setReglementAValider(null);
+      return true;
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation du règlement a échoué.'));
+      message.error(
+        writeErrorMessage(
+          err,
+          t('La validation du règlement a échoué.'),
+          t("Vous n'avez pas le droit de valider un règlement de tâcheron.")
+        )
+      );
+      return false;
     }
   };
 
@@ -484,7 +514,7 @@ export const Tacheron: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, s) =>
-        s.status === 'DRAFT' ? (
+        s.status === 'DRAFT' && peutValider ? (
           <ConfirmAction
             title={t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) })}
             description={t(
@@ -515,17 +545,10 @@ export const Tacheron: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, r) =>
-        r.status === 'DRAFT' ? (
-          <ConfirmAction
-            title={t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) })}
-            description={t(
-              "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
-            )}
-            okText={t('Confirmer la validation')}
-            onConfirm={() => validerReglement(r)}
-          >
-            <Button type="link">{t('Valider')}</Button>
-          </ConfirmAction>
+        r.status === 'DRAFT' && peutValider ? (
+          <Button type="link" onClick={() => setReglementAValider(r)}>
+            {t('Valider')}
+          </Button>
         ) : null
     }
   ];
@@ -759,7 +782,7 @@ export const Tacheron: React.FC = () => {
                   highlight={<MoneyValue value={s.amount} />}
                   fields={[{ label: t('Saisie par'), value: s.createdByLabel }]}
                   primaryAction={
-                    s.status === 'DRAFT'
+                    s.status === 'DRAFT' && peutValider
                       ? {
                           label: 'Valider',
                           onClick: () =>
@@ -896,18 +919,10 @@ export const Tacheron: React.FC = () => {
             highlight={<MoneyValue value={r.amount} />}
             fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
             primaryAction={
-              r.status === 'DRAFT'
+              r.status === 'DRAFT' && peutValider
                 ? {
                     label: 'Valider',
-                    onClick: () =>
-                      confirmerAction({
-                        title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
-                        description: t(
-                          "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
-                        ),
-                        okText: t('Confirmer la validation'),
-                        onConfirm: () => validerReglement(r)
-                      })
+                    onClick: () => setReglementAValider(r)
                   }
                 : undefined
             }
@@ -968,6 +983,19 @@ export const Tacheron: React.FC = () => {
           </div>
         )}
       </Card>
+
+      <ValidateOutflowModal
+        open={reglementAValider !== null}
+        tenantId={tenantId}
+        title={t('Valider le règlement du {{value}} ?', {
+          value: reglementAValider ? dateCourte(reglementAValider.paymentDate) : ''
+        })}
+        description={t(
+          "Cette opération est irréversible : la somme sort du compte de trésorerie choisi ci-dessous (la caisse par défaut) et vient en diminution de ce qu'on doit au tâcheron. Elle est refusée si le solde du compte ne suffit pas."
+        )}
+        onConfirm={payer => (reglementAValider ? validerReglement(reglementAValider, payer) : Promise.resolve(false))}
+        onCancel={() => setReglementAValider(null)}
+      />
     </>
   );
 };

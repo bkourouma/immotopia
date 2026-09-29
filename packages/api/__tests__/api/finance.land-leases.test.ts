@@ -354,7 +354,7 @@ describe('POST /tenants/:tenantId/finance/land-lease-payments/:paymentId/validat
 
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('VALIDATED');
-    expect(validateLandLeasePaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1');
+    expect(validateLandLeasePaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1', {});
   });
 
   it('relaie un 409 quand le paiement est déjà validé', async () => {

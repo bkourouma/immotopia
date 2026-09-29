@@ -92,7 +92,7 @@ import { assertSiteOpenTx } from './site-closing';
 import { appendThirdPartyMovementTx } from './ledger';
 import { roundMoneyXof } from './money';
 import { toAmountOrZero } from './types';
-import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
+import { resolveAndCheckOutflowTx } from '../treasury/outflow';
 import type {
   ContractorContractRecord,
   ContractorPaymentRecord,
@@ -124,8 +124,6 @@ interface OperationalAccounts {
   contractorsAccountId: string;
   /** 605 — Charges de chantier : repli quand le poste du marché n'a pas son propre compte. */
   siteExpenseAccountId: string;
-  /** Caisse : la même trésorerie que partout ailleurs, résolue par `treasury/accounts.ts`. */
-  cashAccountId: string;
 }
 
 /**
@@ -138,10 +136,9 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes, cashTreasury] = await Promise.all([
+  const [journalId, comptes] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getUTCFullYear()),
-    ensureOperationalChartOfAccountsTx(tx, tenantId),
-    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH')
+    ensureOperationalChartOfAccountsTx(tx, tenantId)
   ]);
 
   const exiger = (numero: string): string => {
@@ -155,8 +152,7 @@ async function resolveOperationalAccounts(
   return {
     journalId,
     contractorsAccountId: exiger('402'),
-    siteExpenseAccountId: exiger('605'),
-    cashAccountId: cashTreasury.chartOfAccountId
+    siteExpenseAccountId: exiger('605')
   };
 }
 
@@ -721,7 +717,8 @@ export const validateContractorPaymentTx: ValidateContractorPaymentTx = async (
   tx,
   tenantId,
   paymentId,
-  validatedByUserId
+  validatedByUserId,
+  payer
 ) => {
   const payment = await tx.contractorPayment.findFirst({ where: { id: paymentId, tenantId } });
   if (!payment) {
@@ -742,11 +739,23 @@ export const validateContractorPaymentTx: ValidateContractorPaymentTx = async (
   const amount = roundMoneyXof(toAmountOrZero(payment.amount));
   const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
-  // Journal : débit des tacherons (402), crédit de la caisse (571) — la dette
-  // envers le tâcheron s'éteint (ou se creuse en acompte), la trésorerie sort.
+  // D'où sort l'argent : le compte choisi à la validation, sinon la caisse. Pas
+  // de sortie à découvert (BUG-2026-09-29-032) : le contrôle prend un verrou
+  // sur le compte et lit son solde DANS cette transaction, juste avant d'écrire.
+  const treasury = await resolveAndCheckOutflowTx(tx, tenantId, payer, amount);
+  const journalId = await ensureOperationalJournalTx(
+    tx,
+    tenantId,
+    payment.paymentDate.getUTCFullYear(),
+    treasury.journal
+  );
+
+  // Journal : débit des tacherons (402), crédit du compte de trésorerie payeur
+  // — la dette envers le tâcheron s'éteint (ou se creuse en acompte), la
+  // trésorerie sort.
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
-    journalId: accounts.journalId,
+    journalId,
     entryDate: payment.paymentDate,
     reference: `TACH-REG-${payment.id}`,
     description: `Règlement tâcheron — ${contractor.fullName}`,
@@ -754,7 +763,7 @@ export const validateContractorPaymentTx: ValidateContractorPaymentTx = async (
     documentId: payment.id,
     lines: [
       { accountId: accounts.contractorsAccountId, debit: amount, label: `Règlement — ${contractor.fullName}` },
-      { accountId: accounts.cashAccountId, credit: amount, label: `Règlement — ${contractor.fullName}` }
+      { accountId: treasury.chartOfAccountId, credit: amount, label: `Règlement — ${contractor.fullName}` }
     ]
   });
 

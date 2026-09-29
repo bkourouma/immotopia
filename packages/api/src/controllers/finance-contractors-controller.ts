@@ -22,6 +22,7 @@ import {
   listContractorsQuerySchema,
   uuidPathParamSchema
 } from '../lib/finance/schemas-contractors';
+import { outflowPayerSchema } from '../lib/treasury/outflow';
 import { prisma } from '../utils/database';
 
 /**
@@ -250,7 +251,12 @@ export const validateContractorPaymentHandler = asyncHandler(async (req: Request
   const paymentId = requireUuidParam(req, 'paymentId');
   const actorUserId = requireActorUserId(req);
 
-  const payment = await prisma.$transaction(tx => validateContractorPaymentTx(tx, tenantId, paymentId, actorUserId));
+  // Mode et compte payeur : facultatifs, défaut espèces/caisse (BUG-2026-09-29-032).
+  const payer = outflowPayerSchema.parse(req.body ?? {});
+
+  const payment = await prisma.$transaction(tx =>
+    validateContractorPaymentTx(tx, tenantId, paymentId, actorUserId, payer)
+  );
 
   res.status(200).json({ success: true, data: payment });
 });

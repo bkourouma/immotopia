@@ -37,15 +37,38 @@ const COMPTES_OPERATIONNELS = new Map<string, string>([
 // Lot 10 : la caisse ne se lit plus dans `accounting.ts` mais se resout par
 // `treasury/accounts.ts`. On la mocke pour renvoyer le meme compte 571 qu'avant,
 // afin que ce fichier continue de verifier les memes ecritures.
+// BUG-2026-09-29-032 : le compte qui PAIE se resout par
+// `resolveOutflowTreasuryAccountTx` (caisse 571 par defaut, banque 521 pour un
+// virement ou quand le compte « tresorerie-banque » est choisi), et son solde
+// est controle par `assertTreasuryCanPayTx` (mocke : il a ses tests dans
+// `treasury.test.ts`, ici on verifie qu'il est appele pour le bon compte).
+const CAISSE_571 = {
+  treasuryAccountId: 'tresorerie-571',
+  chartOfAccountId: 'compte-571',
+  accountNumber: '571',
+  label: 'Caisse',
+  kind: 'CASH',
+  journal: 'CASH'
+};
+const BANQUE_521 = {
+  treasuryAccountId: 'tresorerie-banque',
+  chartOfAccountId: 'compte-banque',
+  accountNumber: '521',
+  label: 'Banque',
+  kind: 'BANK',
+  journal: 'BANK'
+};
+const assertTreasuryCanPayTx = jest.fn();
+jest.mock('../../src/lib/treasury/balance', () => ({
+  assertTreasuryCanPayTx: (...args: any[]) => assertTreasuryCanPayTx(...args)
+}));
+
 jest.mock('../../src/lib/treasury/accounts', () => ({
-  ensureDefaultTreasuryAccountTx: async () => ({
-    treasuryAccountId: 'tresorerie-571',
-    chartOfAccountId: 'compte-571',
-    accountNumber: '571',
-    label: 'Caisse',
-    kind: 'CASH',
-    journal: 'CASH'
-  })
+  ensureDefaultTreasuryAccountTx: async () => CAISSE_571,
+  resolveOutflowTreasuryAccountTx: async (_tx: unknown, _tenantId: string, params: any) =>
+    params.treasuryAccountId === 'tresorerie-banque' || ['BANK_TRANSFER', 'CHECK', 'CARD'].includes(params.method)
+      ? BANQUE_521
+      : CAISSE_571
 }));
 
 jest.mock('../../src/lib/finance/accounting', () => ({
@@ -388,6 +411,7 @@ function monthSequence(startYear: number, startMonth: number, count: number) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  assertTreasuryCanPayTx.mockResolvedValue(undefined);
   store.accounts = [];
   store.leases = [];
   store.payments = [];
@@ -886,5 +910,77 @@ describe('getLandLease', () => {
 
   it('refuse un bail introuvable', async () => {
     await expect(getLandLease(TENANT_ID, 'bail-inconnu')).rejects.toThrow(/introuvable/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Controle de solde et compte payeur (BUG-2026-09-29-032)
+// ---------------------------------------------------------------------------
+
+describe('validateLandLeasePaymentTx — compte payeur et controle de solde (BUG-2026-09-29-032)', () => {
+  async function brouillon(montant = 400_000) {
+    const owner = await seedLease();
+    return {
+      owner,
+      payment: await runTransaction((tx: any) =>
+        createLandLeasePaymentTx(tx, TENANT_ID, {
+          landLeaseId: owner.id,
+          paymentDate: new Date('2026-03-01T00:00:00.000Z'),
+          amount: montant,
+          coverageStartDate: new Date('2026-03-01'),
+          coverageEndDate: new Date('2027-02-28'),
+          createdByUserId: GESTIONNAIRE_ID
+        })
+      )
+    };
+  }
+  const compteDe = (o: any): string => o.thirdPartyAccountId ?? o.landlordAccountId;
+  const valider = (id: string, payer?: any) =>
+    runTransaction((tx: any) => validateLandLeasePaymentTx(tx, TENANT_ID, id, DIRIGEANT_ID, payer));
+
+  it('controle le solde de la caisse par defaut avant d ecrire, pour le montant du reglement', async () => {
+    const { payment } = await brouillon(400_000);
+    await valider(payment.id);
+    expect(assertTreasuryCanPayTx).toHaveBeenCalledTimes(1);
+    expect(assertTreasuryCanPayTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      expect.objectContaining({ chartOfAccountId: 'compte-571' }),
+      400_000
+    );
+    const lignes = postDocumentEntryTx.mock.calls.at(-1)![1].lines;
+    expect(lignes.find((l: any) => l.credit)!.accountId).toBe('compte-571');
+  });
+
+  it('REFUSE (400) un solde insuffisant : aucune ecriture, aucun mouvement, la piece reste en brouillon', async () => {
+    const { owner, payment } = await brouillon(400_000);
+    assertTreasuryCanPayTx.mockRejectedValueOnce(
+      Object.assign(new Error('Solde insuffisant sur « Caisse »'), { status: 400 })
+    );
+    const mouvementsAvant = store.movements.length;
+    const soldeAvant = store.accounts.find(a => a.id === compteDe(owner))?.balance;
+
+    await expect(valider(payment.id)).rejects.toMatchObject({ status: 400 });
+
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
+    expect(store.movements).toHaveLength(mouvementsAvant);
+    expect(store.accounts.find(a => a.id === compteDe(owner))?.balance).toBe(soldeAvant);
+    expect(store.payments.find(p => p.id === payment.id)!.validatedAt).toBe(null);
+  });
+
+  it('sort de la banque pour un virement, et du compte CHOISI quand il y en a un', async () => {
+    const a = await brouillon(150_000);
+    await valider(a.payment.id, { method: 'BANK_TRANSFER' });
+    expect(postDocumentEntryTx.mock.calls.at(-1)![1].lines.find((l: any) => l.credit)!.accountId).toBe('compte-banque');
+    expect(assertTreasuryCanPayTx).toHaveBeenLastCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      expect.objectContaining({ treasuryAccountId: 'tresorerie-banque' }),
+      150_000
+    );
+
+    const b = await brouillon(90_000);
+    await valider(b.payment.id, { method: 'CHECK', treasuryAccountId: 'tresorerie-banque' });
+    expect(postDocumentEntryTx.mock.calls.at(-1)![1].lines.find((l: any) => l.credit)!.accountId).toBe('compte-banque');
   });
 });
