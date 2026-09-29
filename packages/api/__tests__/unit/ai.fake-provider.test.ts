@@ -56,6 +56,13 @@ describe('FakeProvider', () => {
     expect(text).toContain('confirmation');
   });
 
+  it('reconnaît le format de numéro de bail réel BAIL-AAAA-NNNN', async () => {
+    const { calls } = await converse('Génère la quittance du bail BAIL-2026-0001 pour 2026-05', {
+      search_leases: { items: [{ id: 'lease-uuid', leaseNumber: 'BAIL-2026-0001' }] }
+    });
+    expect(calls[0]).toEqual({ name: 'search_leases', input: { leaseNumber: 'BAIL-2026-0001' } });
+  });
+
   it('utilise le bail actif et un mois en lettres (année courante par défaut)', async () => {
     const { calls } = await converse('Je voudrais la quittance de février', {
       search_leases: { leases: [{ id: 'lease-1' }] }

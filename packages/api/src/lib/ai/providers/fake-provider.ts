@@ -11,7 +11,7 @@ import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, L
  * confirmation humaine restent seuls maîtres de la génération.
  *
  * Sans script, des règles par mots-clés lisent le dernier message utilisateur :
- * - « quittance » (+ `L-\d+` ou le bail actif, + période `YYYY-MM` ou mois en
+ * - « quittance » (+ `L-\d+` ou `BAIL-AAAA-NNNN` ou le bail actif, + période `YYYY-MM` ou mois en
  *   lettres) : search_leases puis propose_rental_document ;
  * - « relevé » (+ période : deux dates, un ou deux mois ; à défaut les 12
  *   derniers mois) : search_leases puis propose_rental_document (RENT_RECEIPT
@@ -297,7 +297,7 @@ export class FakeProvider implements LlmProvider {
 
   private decide(question: string, round: number, results: ToolResult[]): FakeStep {
     const normalized = normalize(question);
-    const leaseNumber = /\bL-\d+\b/i.exec(question)?.[0].toUpperCase() ?? null;
+    const leaseNumber = /\b(?:BAIL-\d{4}-\d+|L-\d+)\b/i.exec(question)?.[0].toUpperCase() ?? null;
     const call = (name: CopilotToolName, input: unknown): FakeStep => ({ toolCalls: [{ name, input }] });
     const renterName = extractRenterName(question);
     const leaseSearch = (): FakeStep =>

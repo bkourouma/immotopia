@@ -293,3 +293,13 @@ describe('cartes : libellés et documents', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 });
+
+describe('formatCopilotAmount', () => {
+  it('met des séparateurs de milliers selon la langue active et tolère les valeurs non numériques', async () => {
+    const { formatCopilotAmount } = await import('../../components/copilot/copilot-labels');
+    const { activeLocale } = await import('../../i18n/format');
+    expect(formatCopilotAmount('1500000')).toBe((1500000).toLocaleString(activeLocale()));
+    expect(formatCopilotAmount(null)).toBe('');
+    expect(formatCopilotAmount('abc')).toBe('abc');
+  });
+});
