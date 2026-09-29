@@ -18,6 +18,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/copilot-openrouter` — 2026-09-29
+
+**Fait :** fournisseur LLM `openrouter` (fetch + SSE, API OpenAI-compatible) ; réglage de la plateforme en base (`PlatformAiSettings`, migration `20261004090000`) prioritaire sur les variables `AI_*` ; écran super-admin `/admin/ai-settings` (fournisseur, modèle avec recherche dans le catalogue OpenRouter, effort/repli pour Anthropic) ; routes `/api/platform/ai-settings[/models]` ; wiki mis à jour (3 lignes).
+
+**Reste :** appel réel à OpenRouter jamais testé (clé `OPENROUTER_API_KEY` à poser dans `packages/api/.env` par l'utilisateur) ; le comportement des `tool_calls` dépend du modèle choisi ; cache du réglage de 30 s par instance ; tour de chat complet non rejoué dans le navigateur avec le faux fournisseur.
+
+**Pièges :** `getLlmProvider()` est devenu asynchrone. `npm run i18n:extract` déplace les 2 traductions « pack Patrimoine » d'`error-middleware.ts` en orphelines (restaurées à la main dans `packages/api/src/i18n/locales/{en,ar}.json`). `prisma generate` échoue en EPERM tant que l'API tourne : l'arrêter d'abord. Le réglage local de la base a été passé sur `fake` pendant la recette ; le remettre sur `disabled` ou `openrouter` depuis l'écran.
+
+**Poste local :** `main` avancé à `origin/main` (19 commits) le 2026-09-29, 16 migrations appliquées. Non commités : `.claude/launch.json`, `docs/Compte-rendu-entretien-module-syndic.md`, `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx`, `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md`. L'ancien HANDOFF local (sections « Production ») a été écrasé ; copie dans le scratchpad de la session.
+
+---
+
 ## Branche `type/sujet` — AAAA-MM-JJ
 
 **État :** en cours | prêt à relire | bloqué
