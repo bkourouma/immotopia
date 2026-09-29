@@ -1132,5 +1132,6 @@
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus dans votre formule. {{policy}} Archivez les actifs dont vous n’avez plus besoin ou contactez-nous depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included in your plan. {{policy}} Archive the assets you no longer need or contact us from {{url}}.",
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}.",
   "Vue consolidée": "Consolidated view",
-  "Vue patrimoine indisponible.": "Portfolio view unavailable."
+  "Vue patrimoine indisponible.": "Portfolio view unavailable.",
+  "Ce bien porte un prêt actif : soldez-le ou supprimez-le avant de supprimer le bien.": "This property carries an active loan: close or delete the loan before deleting the property."
 }

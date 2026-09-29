@@ -80,11 +80,19 @@ Reste à faire :
 - Recette navigateur de bout en bout : jamais faite (les écrans sont testés par des tests
   automatiques seulement) ; le paiement mobile money réel n'est pas testable sans identifiants
   PaySecureHub de production (simulateur seulement).
-- Décisions métier ouvertes : prix exact du palier particulier ; liste des statuts juridiques
-  fonciers à faire valider par un juriste local ; hypothèses de croissance et d'inflation par défaut
-  des projections ; responsabilité juridique d'un calcul fondé sur un paramètre fiscal validé par
-  l'utilisateur ; conservation et suppression des données d'un espace gratuit, conditions d'utilisation
-  et protection des données par pays ; durée d'essai ; captcha à l'inscription.
+- Décisions métier ouvertes : validation par un juriste local de la liste des statuts juridiques
+  fonciers ; relecture juridique des conditions d'utilisation, de la conservation des données et de la
+  protection des données par pays, et de la mention « indicatif, non vérifié par ImmoTopia » avant le
+  lot 6 ; durée d'essai ; captcha à revoir avant l'ouverture publique.
+- Décisions du 2026-09-29 (à la suite de la PR) : pack Particulier plus conservé à 2 900 FCFA HT par
+  mois et 100 actifs (modifiable au catalogue) ; pas de captcha maintenant ; conservation des données,
+  suppression sur demande à l'équipe (libre-service dans un lot ultérieur) ; hypothèses de projection par
+  défaut conservées, affichées comme indicatives ; liste des statuts fonciers conservée, marquée à
+  valider ; suppression d'un bien refusée (409) tant qu'un prêt actif y est adossé ; lot 6 : la
+  responsabilité d'un calcul fondé sur un paramètre validé revient à l'utilisateur, avec mention
+  explicite (à faire relire par un juriste avant l'ouverture publique) ;
+  `docs/documentation payhubsecure.docx` retiré du suivi git et ajouté à `.gitignore` (il reste dans
+  l'historique tant qu'il n'est pas purgé).
 
 Pièges et décisions :
 
@@ -101,12 +109,8 @@ Pièges et décisions :
 - Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le résultat non validé
   (`tax/engine.ts`, `allValidated`) ; `TaxParameter` est global, sans `tenantId` : la validation
   personnelle du lot 6 exige une portée par tenant.
-- Supprimer un bien supprime aussi ses prêts, valorisations et parts (cascade préexistante) ; une dette
-  immobilière disparaît donc avec le bien : refuser la suppression d'un bien portant un prêt actif est
-  une décision produit non prise.
-- `docs/documentation payhubsecure.docx` est suivi par git alors que `docs/integrations/paysecurehub.md`
-  dit le fichier conservé hors du dépôt (il contient des coordonnées d'une personne réelle) : à signaler
-  au propriétaire du dépôt.
+- Supprimer un bien supprime ses valorisations et parts en cascade ; la suppression est refusée (409)
+  tant qu'un prêt actif y est adossé (`deleteProperty`).
 - Écrire un `.env` dans le dépôt est bloqué par une règle de refus : la base locale jetable se configure
   par variables d'environnement (PostgreSQL 16, bases `immotopia` et `immotopia_isolation_test`).
 - Jest : chemin du fichier de test AVANT `--selectProjects`, et `--forceExit` ; ne jamais écrire

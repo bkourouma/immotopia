@@ -984,6 +984,17 @@ export async function deleteProperty(
     throw new ConflictError('Cannot delete property - has active deals');
   }
 
+  // La suppression du bien emporte ses prets en cascade : une dette active ne
+  // doit pas disparaitre en silence (patrimoine, valeur nette).
+  if (property.tenantId) {
+    const activeLoans = await prisma.propertyLoan.count({
+      where: { tenantId: property.tenantId, propertyId, status: 'ACTIVE' }
+    });
+    if (activeLoans > 0) {
+      throw new ConflictError('Ce bien porte un prêt actif : soldez-le ou supprimez-le avant de supprimer le bien.');
+    }
+  }
+
   // Log before deletion for audit
   logger.info('Property being deleted (hard delete)', {
     propertyId,

@@ -18,6 +18,8 @@ obtient son espace de patrimoine, démarre gratuitement, et paie un palier supé
 | Application      | **Garde propre au palier gratuit** ; `SUBSCRIPTION_ENFORCEMENT` global et les agences en production restent inchangés |
 | Palier payant    | **Nouveau pack particulier moins cher** ; prix et plafond provisoires, ajustables sans migration (voir plan)          |
 | Paiement         | Mobile money via PaySecureHub (déjà présent) ; validation réelle impossible sans identifiants de production           |
+| Prix payant      | Confirmé le 2026-09-29 : 2 900 FCFA HT par mois, 100 actifs (modifiable au catalogue sans migration)                  |
+| Données          | Confirmé le 2026-09-29 : conservation, suppression sur demande ; pas de captcha à ce stade                            |
 
 ## User Scenarios & Testing _(mandatory)_
 

@@ -74,3 +74,6 @@ CLAUDE.local.md
 
 # Canal partagé entre les processus développement et recette
 .agent-bus/
+
+# Documentation du fournisseur de paiement : coordonnees personnelles, conservee hors du depot
+docs/documentation payhubsecure.docx

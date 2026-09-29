@@ -1132,5 +1132,6 @@
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus dans votre formule. {{policy}} Archivez les actifs dont vous n’avez plus besoin ou contactez-nous depuis {{url}}.": "أنت تستخدم {{used}} {{label}} من أصل {{limit}} مشمولة في خطتك. {{policy}} أرشِف الأصول التي لم تعد بحاجة إليها أو تواصل معنا عبر {{url}}.",
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "أنت تستخدم {{used}} {{label}} من أصل {{limit}} مشمولة. {{policy}} أضف امتدادًا من {{url}}.",
   "Vue consolidée": "نظرة موحّدة",
-  "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح."
+  "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح.",
+  "Ce bien porte un prêt actif : soldez-le ou supprimez-le avant de supprimer le bien.": "هذا العقار يحمل قرضًا نشطًا: قم بتسديده أو حذفه قبل حذف العقار."
 }
