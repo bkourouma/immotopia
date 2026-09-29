@@ -7,7 +7,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { PaymentDeclarationStatus, RentalPaymentStatus, RentalInstallmentStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { compteLocataireTx, libellePeriodeEcheance } from './rental-installment-service';
+import { compteLocataireTx, inscrireEcheanceFactureeTx, libellePeriodeEcheance } from './rental-installment-service';
 import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental-payment-service';
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 
@@ -92,6 +92,7 @@ export async function approvePaymentDeclaration(
         periodYear: number | null;
         periodMonth: number | null;
       } | null = null;
+      let echeanceAffectee: Parameters<typeof inscrireEcheanceFactureeTx>[2] | null = null;
 
       // Allocate payment to installment if specified
       if (declaration.installment_id) {
@@ -163,6 +164,8 @@ export async function approvePaymentDeclaration(
                 paid_at: newStatus === RentalInstallmentStatus.PAID ? new Date() : undefined
               }
             });
+
+            echeanceAffectee = { ...installment, status: newStatus };
           }
         }
       }
@@ -174,6 +177,12 @@ export async function approvePaymentDeclaration(
       const compteId = await compteLocataireTx(tx, tenantId, declaration.declared_by);
       const moyen = libelleMoyen(declaration.payment_method);
       const dateReglement = declaration.payment_date;
+
+      // Une échéance encore en brouillon, réglée directement, n'a jamais été
+      // facturée au compte (BUG-2026-09-29-005) : sans effet si elle l'est déjà.
+      if (echeanceAffectee) {
+        await inscrireEcheanceFactureeTx(tx, tenantId, echeanceAffectee);
+      }
 
       if (affectation) {
         await inscrireAllocationTx(tx, {

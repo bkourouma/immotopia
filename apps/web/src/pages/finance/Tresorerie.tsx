@@ -84,6 +84,34 @@ const OPTIONS_NATURE = (Object.keys(KIND_LABEL) as TreasuryAccountKind[]).map(ki
   label: KIND_LABEL[kind]
 }));
 
+/**
+ * Opérateurs Mobile Money : les codes attendus par l'API (`MobileMoneyOperator`),
+ * avec des libellés français. Le champ était une saisie libre (« Ex. Wave, Orange
+ * Money, MTN ») que l'API refusait en 400 : « Orange » ou « Orange Money » ne
+ * passaient pas, seul « ORANGE » (BUG-2026-09-29-004).
+ */
+const OPTIONS_OPERATEUR_MOBILE_MONEY = [
+  { value: 'ORANGE', label: t('Orange Money') },
+  { value: 'MTN', label: t('MTN MoMo') },
+  { value: 'MOOV', label: t('Moov Money') },
+  { value: 'WAVE', label: t('Wave') },
+  { value: 'OTHER', label: t('Autre') }
+];
+
+function libelleOperateur(code: string | null | undefined): string {
+  if (!code) return '—';
+  return OPTIONS_OPERATEUR_MOBILE_MONEY.find(o => o.value === code)?.label ?? code;
+}
+
+/** Numéro d'exemple selon la nature choisie (SYSCOHADA) : « 5711 » ne vaut que pour une caisse. */
+const EXEMPLE_NUMERO_COMPTE: Record<TreasuryAccountKind, string> = {
+  CASH: '5711',
+  BANK: '5211',
+  MOBILE_MONEY: '5522',
+  CHECKS_TO_CASH: '513',
+  CARDS_TO_CASH: '515'
+};
+
 function dateHeure(iso: string): string {
   return dayjs(iso).format(dateFormat('dateTime'));
 }
@@ -280,7 +308,7 @@ export const Tresorerie: React.FC = () => {
       key: 'detail',
       render: (_, c) =>
         c.kind === 'MOBILE_MONEY'
-          ? c.mmOperator || '—'
+          ? libelleOperateur(c.mmOperator)
           : c.kind === 'BANK'
             ? [c.bankName, c.bankAccountRef].filter(Boolean).join(' · ') || '—'
             : '—'
@@ -736,7 +764,7 @@ export const Tresorerie: React.FC = () => {
             )}
             rules={[{ required: true, message: t('Le numéro de compte est obligatoire.') }]}
           >
-            <Input placeholder="5711" />
+            <Input placeholder={natureChoisie ? EXEMPLE_NUMERO_COMPTE[natureChoisie] : '5711'} />
           </Form.Item>
           {natureChoisie === 'MOBILE_MONEY' && (
             <Form.Item
@@ -744,7 +772,7 @@ export const Tresorerie: React.FC = () => {
               label={t('Opérateur Mobile Money')}
               rules={[{ required: true, message: t("L'opérateur est obligatoire.") }]}
             >
-              <Input placeholder={t('Ex. Wave, Orange Money, MTN')} />
+              <Select options={OPTIONS_OPERATEUR_MOBILE_MONEY} placeholder={t("Choisir l'opérateur")} />
             </Form.Item>
           )}
           {natureChoisie === 'BANK' && (

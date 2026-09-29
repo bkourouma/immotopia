@@ -95,7 +95,9 @@ async function loadPropertyLabelsByClient(tenantId: string, tenantClientIds: str
   });
 
   for (const lease of leases) {
-    const label = lease.property?.internalReference || lease.property?.title;
+    // Le titre d'abord : c'est le nom que l'agence donne au bien ; une référence
+    // technique (PROP-2026…) ne dit rien à personne (BUG-2026-09-29-005).
+    const label = lease.property?.title || lease.property?.internalReference;
     if (!label) {
       continue;
     }
@@ -112,18 +114,123 @@ async function loadPropertyLabelsByClient(tenantId: string, tenantClientIds: str
 }
 
 // ---------------------------------------------------------------------------
+// Règle de lecture commune (BUG-2026-09-29-005)
+//
+// La balance clients et le relevé d'un locataire sont deux vues du MÊME
+// compte : elles doivent donner les mêmes chiffres, et le même que le portail
+// locataire. Trois règles, appliquées ici et nulle part ailleurs :
+//
+// 1. **Exigibilité.** Seuls les mouvements dont la date est atteinte
+//    (`movementDate <= asOf`, aujourd'hui par défaut) comptent. Les échéances
+//    futures, écrites d'avance au grand livre, n'entrent ni dans le solde ni
+//    dans « Facturé ».
+// 2. **Dépôt de garantie.** Une collecte de dépôt s'appuie sur un règlement,
+//    que le grand livre a porté en entier comme « avance reçue »
+//    (`ADVANCE_RECEIVED`) avant que la collecte n'existe. Or ce dépôt est une
+//    somme DÉTENUE pour le locataire (voir `rental-deposit-balance.ts`), ni un
+//    règlement de loyer ni une avance : la part de l'avance qui a servi de
+//    dépôt est donc retirée de la lecture. La règle se lit sur les collectes
+//    (`RentalDepositMovement`, type COLLECT) : elle corrige aussi les
+//    comptes déjà écrits, sans réécrire aucun mouvement posté.
+// 3. **Colonnes.** Une imputation d'avance (`ADVANCE_APPLIED`) reprend un
+//    crédit déjà compté, elle n'est ni un loyer facturé ni un règlement ; une
+//    annulation (`VOID`) ou une remise (`WAIVER`) corrige la colonne qu'elle
+//    annule au lieu d'alimenter l'autre. Facturé - Réglé = solde, toujours.
+// ---------------------------------------------------------------------------
+
+/** Ce qui a été déposé en garantie à partir de chaque règlement (COLLECT), par identifiant de règlement. */
+export async function loadDepositCollectsByPayment(tenantId: string): Promise<Map<string, number>> {
+  const collects = await prisma.rentalDepositMovement.findMany({
+    where: { tenant_id: tenantId, type: 'COLLECT', payment_id: { not: null } },
+    select: { payment_id: true, amount: true }
+  });
+
+  const byPayment = new Map<string, number>();
+  for (const collect of collects) {
+    if (!collect.payment_id) {
+      continue;
+    }
+    const total = (byPayment.get(collect.payment_id) ?? 0) + toAmountOrZero(collect.amount as never);
+    byPayment.set(collect.payment_id, roundMoney(total));
+  }
+  return byPayment;
+}
+
+/** Part d'une avance reçue qui est en réalité un dépôt de garantie (jamais plus que l'avance elle-même). */
+export function depositShareOfAdvance(
+  movement: { type: unknown; sourceType: string; sourceId: string; credit: unknown },
+  collects: Map<string, number>
+): number {
+  if (movement.type !== 'ADVANCE_RECEIVED' || movement.sourceType !== 'RENTAL_PAYMENT') {
+    return 0;
+  }
+  const held = collects.get(movement.sourceId) ?? 0;
+  return held > 0 ? Math.min(held, toAmountOrZero(movement.credit as never)) : 0;
+}
+
+interface AccountSums {
+  debit: number;
+  credit: number;
+  advanceApplied: number;
+  voidDebit: number;
+  voidOrWaiverCredit: number;
+}
+
+function emptySums(): AccountSums {
+  return { debit: 0, credit: 0, advanceApplied: 0, voidDebit: 0, voidOrWaiverCredit: 0 };
+}
+
+async function sumMovementsByAccount(
+  tenantId: string,
+  accountIds: string[],
+  extraWhere: Record<string, unknown>
+): Promise<Map<string, AccountSums>> {
+  const grouped = await prisma.thirdPartyMovement.groupBy({
+    by: ['accountId', 'type'],
+    where: { tenantId, accountId: { in: accountIds }, ...extraWhere },
+    _sum: { debit: true, credit: true }
+  });
+
+  const sums = new Map<string, AccountSums>();
+  for (const group of grouped) {
+    const entry = sums.get(group.accountId) ?? emptySums();
+    const debit = toAmountOrZero(group._sum.debit);
+    const credit = toAmountOrZero(group._sum.credit);
+    entry.debit += debit;
+    entry.credit += credit;
+    if (group.type === 'ADVANCE_APPLIED') {
+      entry.advanceApplied += debit;
+    } else if (group.type === 'VOID') {
+      entry.voidDebit += debit;
+      entry.voidOrWaiverCredit += credit;
+    } else if (group.type === 'WAIVER') {
+      entry.voidOrWaiverCredit += credit;
+    }
+    sums.set(group.accountId, entry);
+  }
+  return sums;
+}
+
+// ---------------------------------------------------------------------------
 // A. Balance clients
 // ---------------------------------------------------------------------------
 
 /**
  * Voir `GetClientsBalance` dans `./types.ts`.
  *
- * Une seule requête `groupBy` porte l'agrégation des montants facturés et
- * réglés sur la période filtrée ; le solde affiché, lui, est le solde
- * courant du compte (`ThirdPartyAccount.balance`), tenu à jour par le grand
- * livre à chaque mouvement — jamais recalculé ici.
+ * Les montants s'agrègent en SQL (`groupBy` par compte et par type de
+ * mouvement, jamais l'ensemble des mouvements en mémoire) et suivent la règle
+ * de lecture commune ci-dessus. Le solde est le solde de clôture du relevé du
+ * même compte à la même date : cumul de tous les mouvements échus jusqu'à la
+ * fin de la période (aujourd'hui sans borne), et non le champ
+ * `ThirdPartyAccount.balance`, qui suit l'ordre d'écriture et compte les
+ * échéances futures.
  */
 export const getClientsBalance: GetClientsBalance = async (tenantId, filters) => {
+  const asOf = filters?.asOf ?? new Date();
+  const range = filters?.range;
+  const upper = range?.to && range.to.getTime() < asOf.getTime() ? range.to : asOf;
+
   // Comptes TENANT du tenant : une ligne par locataire, chargée une seule
   // fois (une poignée de colonnes par client, pas un mouvement).
   const tenantAccounts = await prisma.thirdPartyAccount.findMany({
@@ -144,22 +251,61 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
     }
   }
 
-  const movementDateFilter = buildMovementDateFilter(filters?.range);
   const accountIds = tenantAccounts.map(account => account.id);
 
-  const grouped = await prisma.thirdPartyMovement.groupBy({
-    by: ['accountId'],
-    where: {
-      tenantId,
-      accountId: { in: accountIds },
-      ...(movementDateFilter ? { movementDate: movementDateFilter } : {}),
-      ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
-    },
-    _sum: { debit: true, credit: true }
+  const periodSums = await sumMovementsByAccount(tenantId, accountIds, {
+    movementDate: { ...(range?.from ? { gte: range.from } : {}), lte: upper },
+    ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
   });
 
-  if (grouped.length === 0) {
+  if (periodSums.size === 0) {
     return { lines: [], totalBalance: 0, currency: DEFAULT_CURRENCY };
+  }
+
+  // Le solde couvre tout le compte depuis son ouverture, comme la clôture du
+  // relevé : on ne relit que si la période ou le bien le distinguent.
+  const cumulativeSums =
+    range?.from || leaseIdFilter
+      ? await sumMovementsByAccount(tenantId, accountIds, { movementDate: { lte: upper } })
+      : periodSums;
+
+  // Dépôts de garantie logés dans les avances reçues, à retirer des crédits.
+  const collects = await loadDepositCollectsByPayment(tenantId);
+  const heldInPeriod = new Map<string, number>();
+  const heldCumulative = new Map<string, number>();
+  if (collects.size > 0) {
+    const advances = await prisma.thirdPartyMovement.findMany({
+      where: {
+        tenantId,
+        accountId: { in: accountIds },
+        type: 'ADVANCE_RECEIVED',
+        sourceType: 'RENTAL_PAYMENT',
+        sourceId: { in: Array.from(collects.keys()) },
+        movementDate: { lte: upper }
+      },
+      select: {
+        accountId: true,
+        type: true,
+        sourceType: true,
+        sourceId: true,
+        credit: true,
+        movementDate: true,
+        leaseId: true
+      }
+    });
+    for (const advance of advances) {
+      const share = depositShareOfAdvance(advance, collects);
+      if (share <= 0) {
+        continue;
+      }
+      heldCumulative.set(advance.accountId, roundMoney((heldCumulative.get(advance.accountId) ?? 0) + share));
+      const inPeriod =
+        (!range?.from || advance.movementDate.getTime() >= range.from.getTime()) &&
+        (!leaseIdFilter || (advance.leaseId !== null && leaseIdFilter.includes(advance.leaseId)));
+      if (inPeriod) {
+        heldInPeriod.set(advance.accountId, roundMoney((heldInPeriod.get(advance.accountId) ?? 0) + share));
+      }
+    }
   }
 
   const accountById = new Map(tenantAccounts.map(account => [account.id, account]));
@@ -168,17 +314,25 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
     .filter((id): id is string => Boolean(id));
   const propertyLabelsByClient = await loadPropertyLabelsByClient(tenantId, tenantClientIds);
 
-  const lines: ClientsBalanceLine[] = grouped.map(group => {
-    const account = accountById.get(group.accountId)!;
+  const lines: ClientsBalanceLine[] = Array.from(periodSums.entries()).map(([accountId, period]) => {
+    const account = accountById.get(accountId)!;
     const tenantClientId = account.tenantClientId ?? '';
+    const cumulative = cumulativeSums.get(accountId) ?? emptySums();
+    const heldPeriod = heldInPeriod.get(accountId) ?? 0;
+    const heldTotal = heldCumulative.get(accountId) ?? 0;
+
+    const totalBilled = period.debit - period.advanceApplied - period.voidDebit - period.voidOrWaiverCredit;
+    const totalSettled =
+      period.credit - period.voidOrWaiverCredit - period.advanceApplied - period.voidDebit - heldPeriod;
+
     return {
       accountId: account.id,
       tenantClientId,
       label: account.label,
       propertyLabels: propertyLabelsByClient.get(tenantClientId) ?? [],
-      totalBilled: roundMoney(toAmountOrZero(group._sum.debit)),
-      totalSettled: roundMoney(toAmountOrZero(group._sum.credit)),
-      balance: roundMoney(toAmountOrZero(account.balance)),
+      totalBilled: roundMoney(totalBilled),
+      totalSettled: roundMoney(totalSettled),
+      balance: roundMoney(cumulative.debit - (cumulative.credit - heldTotal)),
       currency: account.currency
     };
   });
@@ -225,7 +379,7 @@ function toUtcMidnight(date: Date): number {
 export const getClientsAgingBalance: GetClientsAgingBalance = async (tenantId, filters) => {
   const asOf = filters?.asOf ?? new Date();
 
-  const base = await getClientsBalance(tenantId, { range: filters?.range, propertyId: filters?.propertyId });
+  const base = await getClientsBalance(tenantId, { range: filters?.range, propertyId: filters?.propertyId, asOf });
   if (base.lines.length === 0) {
     return { lines: [], totalBalance: 0, currency: base.currency };
   }
@@ -372,7 +526,8 @@ async function getBalanceAtOrBefore(tenantId: string, accountId: string, atOrBef
  * Relevé à une date : mouvements échus (`movementDate <= asOf`), soldes
  * recalculés chronologiquement. Les échéances futures, écrites d'avance au
  * grand livre, n'y apparaissent pas et ne faussent ni « solde après » ni
- * la clôture.
+ * la clôture. Le dépôt de garantie porté en avance en est retiré (règle de
+ * lecture commune, voir plus haut) : la clôture est celle de la balance.
  */
 async function getAccountStatementAsOf(
   tenantId: string,
@@ -388,12 +543,23 @@ async function getAccountStatementAsOf(
     orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }]
   });
 
+  const collects = await loadDepositCollectsByPayment(tenantId);
+
   let running = 0;
   let openingBalance = 0;
   const inPeriod: ThirdPartyMovementRecord[] = [];
 
   for (const row of rows) {
     const record = toMovementRecord(row);
+    const held = depositShareOfAdvance(row, collects);
+    if (held > 0) {
+      // Somme détenue, pas un règlement : la part déposée n'est pas au compte.
+      const remaining = roundMoney((record.amountSettled ?? 0) - held);
+      if (remaining <= 0) {
+        continue;
+      }
+      record.amountSettled = remaining;
+    }
     running = roundMoney(running + (record.amountBilled ?? 0) - (record.amountSettled ?? 0));
 
     if (range?.from && row.movementDate.getTime() < range.from.getTime()) {
@@ -430,8 +596,12 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
   const skip = filters?.skip ?? 0;
   const take = filters?.take ?? 50;
 
-  if (filters?.asOf) {
-    return getAccountStatementAsOf(tenantId, account, filters.asOf, range, skip, take);
+  // Le relevé d'un locataire suit la même règle que la balance et que le
+  // portail : ce qui est échu à ce jour (BUG-2026-09-29-005). Les autres tiers
+  // gardent leur relevé complet.
+  const asOf = filters?.asOf ?? (account.kind === 'TENANT' ? new Date() : undefined);
+  if (asOf) {
+    return getAccountStatementAsOf(tenantId, account, asOf, range, skip, take);
   }
 
   const movementDateFilter = buildMovementDateFilter(range);

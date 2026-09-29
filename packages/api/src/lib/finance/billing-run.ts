@@ -296,7 +296,9 @@ async function applyAdvancesTx(
     select: {
       id: true,
       amount: true,
-      allocations: { select: { amount: true } }
+      allocations: { select: { amount: true } },
+      // Ce qui a été déposé en garantie n'est plus disponible pour un loyer.
+      depositMovements: { where: { type: 'COLLECT' }, select: { amount: true } }
     }
   });
 
@@ -308,7 +310,8 @@ async function applyAdvancesTx(
     }
 
     const alreadyAllocated = payment.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
-    const reliquat = roundMoney(Number(payment.amount) - alreadyAllocated);
+    const deposited = (payment.depositMovements ?? []).reduce((sum, movement) => sum + Number(movement.amount), 0);
+    const reliquat = roundMoney(Number(payment.amount) - alreadyAllocated - deposited);
     if (reliquat <= 0) {
       continue;
     }

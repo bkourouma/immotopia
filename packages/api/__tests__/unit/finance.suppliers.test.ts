@@ -64,23 +64,24 @@ jest.mock('../../src/lib/finance/cost-allocation', () => ({
   syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
 }));
 
-// Lot 10 : la caisse ne se lit plus dans `accounting.ts` mais se resout par
-// `treasury/accounts.ts`. On la mocke pour renvoyer le meme compte 571 qu'avant,
-// afin que ce fichier continue de verifier les memes ecritures.
-jest.mock('../../src/lib/treasury/accounts', () => ({
-  ensureDefaultTreasuryAccountTx: async () => ({
-    treasuryAccountId: 'tresorerie-571',
-    chartOfAccountId: 'compte-571',
-    accountNumber: '571',
-    label: 'Caisse',
-    kind: 'CASH',
-    journal: 'CASH'
-  })
+// Lot 10 : le compte qui PAIE un reglement se resout par `treasury/accounts.ts`
+// (reel, pas mocke : c'est lui qui decide d'ou sort l'argent, et le defaut du
+// 29 septembre 2026 y vivait). Il lit `treasuryAccount`, dont le magasin est
+// seme dans `beforeEach` : une caisse 571, une banque 521 et une seconde banque.
+//
+// Le controle de solde (`treasury/balance.ts`) est, lui, mocke : il a ses
+// propres tests dans `treasury.test.ts`, ici on verifie qu'il est appele pour
+// le bon compte et le bon montant, et qu'un refus n'ecrit rien.
+const assertTreasuryCanPayTx = jest.fn();
+jest.mock('../../src/lib/treasury/balance', () => ({
+  assertTreasuryCanPayTx: (...args: any[]) => assertTreasuryCanPayTx(...args)
 }));
 
 jest.mock('../../src/lib/finance/accounting', () => ({
   postDocumentEntryTx: (...args: any[]) => postDocumentEntryTx(...args),
-  ensureOperationalJournalTx: async () => 'journal-operationnel',
+  // Le journal suit le type demande (caisse, banque) ; sans type, le journal general.
+  ensureOperationalJournalTx: async (_tx: unknown, _tenantId: string, _year: number, type?: string) =>
+    type ? `journal-${type}` : 'journal-operationnel',
   ensureOperationalChartOfAccountsTx: async () => COMPTES_OPERATIONNELS,
   // Resout le compte de charge d'un poste. La doublure rend le compte par
   // defaut pour chaque poste : ces fichiers verifient COMMENT l'ecriture est
@@ -117,6 +118,7 @@ const store = {
   constructionSites: [] as Row[],
   costCategories: [] as Row[],
   chartOfAccounts: [] as Row[],
+  treasuryAccounts: [] as Row[],
   journals: [] as Row[],
   payments: [] as Row[],
   voidDocuments: [] as Row[],
@@ -220,6 +222,16 @@ const mockPrisma: Row = {
       const rows = store.costAllocations.filter(a => matchesFlat(a, where));
       rows.forEach(a => Object.assign(a, data));
       return { count: rows.length };
+    })
+  },
+
+  // Comptes de tresorerie de l'agence : lus par `resolveOutflowTreasuryAccountTx`,
+  // par defaut d'abord puis par anciennete, comme la requete reelle.
+  treasuryAccount: {
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const rows = store.treasuryAccounts.filter(a => matchesFlat(a, where));
+      rows.sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.seq - b.seq);
+      return rows[0] ?? null;
     })
   },
 
@@ -375,9 +387,26 @@ function tx(): any {
   return mockPrisma;
 }
 
+let treasurySeq = 0;
+
+function treasuryRow(key: string, kind: string, number: string, label: string, isDefault: boolean): Row {
+  return {
+    id: `tresorerie-${key}`,
+    tenantId: TENANT_ID,
+    kind,
+    label,
+    accountNumber: number,
+    chartOfAccountId: `compte-${key}`,
+    isActive: true,
+    isDefault,
+    seq: treasurySeq++
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   raiseBudgetAlertIfNeededTx.mockResolvedValue(null);
+  assertTreasuryCanPayTx.mockResolvedValue(undefined);
   store.thirdPartyAccounts = [];
   store.suppliers = [];
   store.invoices = [];
@@ -386,6 +415,12 @@ beforeEach(() => {
   store.constructionSites = [];
   store.costCategories = [];
   store.chartOfAccounts = [];
+  store.treasuryAccounts = [
+    treasuryRow('caisse', 'CASH', '571', 'Caisse principale', true),
+    treasuryRow('banque', 'BANK', '521', 'Banque principale', true),
+    treasuryRow('banque-2', 'BANK', '52112', 'Ecobank', false),
+    treasuryRow('orange', 'MOBILE_MONEY', '5522', 'Orange Money', true)
+  ];
   store.journals = [];
   store.payments = [];
   store.voidDocuments = [];
@@ -794,16 +829,110 @@ describe('validateSupplierPaymentTx', () => {
   async function saisirReglement(
     supplierId: string,
     amount: number,
-    allocations: Array<{ invoiceId: string; amount: number }>
+    allocations: Array<{ invoiceId: string; amount: number }>,
+    extra: { method?: string; treasuryAccountId?: string; paymentDate?: Date } = {}
   ) {
     return createSupplierPaymentTx(tx(), TENANT_ID, {
       supplierId,
-      paymentDate: new Date('2026-09-10T00:00:00.000Z'),
+      paymentDate: extra.paymentDate ?? new Date('2026-09-10T00:00:00.000Z'),
       amount,
+      method: extra.method,
+      treasuryAccountId: extra.treasuryAccountId,
       allocations,
       createdByUserId: USER_ID
     });
   }
+
+  /** L'ecriture postee par le dernier reglement valide : ses lignes et sa reference. */
+  function derniereEcriture() {
+    const appels = postDocumentEntryTx.mock.calls.filter(([, p]) => p.documentType === 'SUPPLIER_PAYMENT');
+    return appels[appels.length - 1][1];
+  }
+
+  describe('compte de tresorerie et reference (BUG-2026-09-29-002)', () => {
+    it.each([
+      ['BANK_TRANSFER', 'compte-banque', 'journal-BANK'],
+      ['CHECK', 'compte-banque', 'journal-BANK'],
+      ['CASH', 'compte-caisse', 'journal-CASH'],
+      ['MOBILE_MONEY', 'compte-orange', 'journal-BANK']
+    ])('un reglement en %s sort de %s, pas toujours de la caisse', async (method, compte, journal) => {
+      const supplier = await createSupplier('SERVICES');
+      const draft = await saisirReglement(supplier.id, 200000, [], { method });
+      await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+      const ecriture = derniereEcriture();
+      const sortie = ecriture.lines.find((l: Row) => l.credit);
+      expect(sortie.accountId).toBe(compte);
+      // Le journal est celui de la tresorerie (banque ou caisse), pas le journal general.
+      expect(ecriture.journalId).toBe(journal);
+    });
+
+    it('sort du compte de tresorerie CHOISI a la saisie, et le controle de solde porte sur lui', async () => {
+      const supplier = await createSupplier('SERVICES');
+      const draft = await saisirReglement(supplier.id, 75000, [], {
+        method: 'BANK_TRANSFER',
+        treasuryAccountId: 'tresorerie-banque-2'
+      });
+      // Le choix est retenu par le brouillon : il survit jusqu'a la validation,
+      // faite par une autre personne, une autre session.
+      await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, 'autre-utilisateur');
+
+      const sortie = derniereEcriture().lines.find((l: Row) => l.credit);
+      expect(sortie.accountId).toBe('compte-banque-2');
+      expect(assertTreasuryCanPayTx).toHaveBeenCalledWith(
+        expect.anything(),
+        TENANT_ID,
+        expect.objectContaining({ chartOfAccountId: 'compte-banque-2' }),
+        75000
+      );
+    });
+
+    it('refuse a la saisie un compte qui ne correspond pas au mode (virement depuis la caisse)', async () => {
+      const supplier = await createSupplier('SERVICES');
+      await expect(
+        saisirReglement(supplier.id, 10000, [], { method: 'BANK_TRANSFER', treasuryAccountId: 'tresorerie-caisse' })
+      ).rejects.toThrow(/ne correspond pas au mode/);
+      expect(store.payments).toHaveLength(0);
+    });
+
+    it('donne a CHAQUE reglement une reference d ecriture distincte, meme jour, meme fournisseur', async () => {
+      const supplier = await createSupplier('SERVICES');
+      const references = new Set<string>();
+      for (const montant of [200000, 10000, 5000]) {
+        const draft = await saisirReglement(supplier.id, montant, [], { method: 'CHECK' });
+        await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+        references.add(derniereEcriture().reference);
+      }
+      expect(references.size).toBe(3);
+    });
+
+    it('ecrit les libelles avec leurs accents', async () => {
+      const supplier = await createSupplier('SERVICES', { name: 'BTP Sahel OI' });
+      const draft = await saisirReglement(supplier.id, 10000, [], { method: 'CASH' });
+      await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+      expect(derniereEcriture().description).toBe('Règlement fournisseur — BTP Sahel OI');
+    });
+  });
+
+  describe('controle de solde (BUG-2026-09-29-003)', () => {
+    it('refuse la validation quand la tresorerie ne couvre pas le reglement : aucune ecriture, aucun mouvement', async () => {
+      const supplier = await createSupplier('SERVICES');
+      const draft = await saisirReglement(supplier.id, 200000, [], { method: 'CASH' });
+      assertTreasuryCanPayTx.mockRejectedValueOnce(
+        Object.assign(new Error('Solde insuffisant sur « Caisse principale »'), { status: 400 })
+      );
+      postDocumentEntryTx.mockClear();
+      const mouvementsAvant = store.movements.length;
+
+      await expect(validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID)).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringContaining('Solde insuffisant')
+      });
+      expect(postDocumentEntryTx).not.toHaveBeenCalled();
+      expect(store.movements).toHaveLength(mouvementsAvant);
+      expect(store.payments.find(p => p.id === draft.id)!.validatedAt).toBeNull();
+    });
+  });
 
   it('reglement partiel : le solde fournisseur diminue du montant regle', async () => {
     const supplier = await createSupplier('SERVICES');

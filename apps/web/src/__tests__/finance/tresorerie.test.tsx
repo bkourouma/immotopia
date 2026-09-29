@@ -165,7 +165,10 @@ describe('Trésorerie — onglet Comptes', () => {
 
     await user.type(screen.getByLabelText('Libellé'), 'Wave agence');
     await user.type(screen.getByLabelText('Numéro de compte'), '5521');
-    await user.type(screen.getByLabelText('Opérateur Mobile Money'), 'Wave');
+    // Une liste de l'opérateur, aux libellés français : la saisie libre était
+    // refusée en 400 par l'API (« Orange » ne passait pas, seul « ORANGE »).
+    await user.click(screen.getByLabelText('Opérateur Mobile Money'));
+    await user.click(await screen.findByText('Wave'));
 
     await user.click(screen.getByRole('button', { name: 'Créer' }));
 
@@ -174,7 +177,7 @@ describe('Trésorerie — onglet Comptes', () => {
       kind: 'MOBILE_MONEY',
       label: 'Wave agence',
       accountNumber: '5521',
-      mmOperator: 'Wave',
+      mmOperator: 'WAVE',
       bankName: undefined,
       bankAccountRef: undefined,
       isDefault: undefined

@@ -9,6 +9,7 @@ import {
   getSuppliersBalance,
   validateSupplierInvoiceTx
 } from '../lib/finance/suppliers';
+import { unpackPaymentMethod } from '../lib/finance/supplier-payment-method';
 import { resolveRange } from '../lib/finance/schemas';
 import { roundMoneyXof } from '../lib/finance/money';
 import { toAmount, toAmountOrZero } from '../lib/finance/types';
@@ -17,6 +18,7 @@ import {
   createSupplierInvoiceSchema,
   createSupplierPaymentSchema,
   createSupplierSchema,
+  listSupplierPaymentsQuerySchema,
   listSuppliersQuerySchema,
   suppliersBalanceQuerySchema,
   uuidPathParamSchema,
@@ -741,6 +743,115 @@ export const voidSupplierInvoiceHandler = asyncHandler(async (req: Request, res:
 });
 
 // ---------------------------------------------------------------------------
+// J bis. GET suppliers/:supplierId/payments — règlements d'un fournisseur
+//
+// Ajoutée le 29 septembre 2026 (BUG-2026-09-29-001). Les règlements n'étaient
+// relisibles nulle part : l'écran les gardait en mémoire de page, si bien qu'un
+// règlement saisi par une personne puis validé par une autre ne pouvait plus
+// être retrouvé, donc plus annulé. Lecture directe, filtrée par `tenantId`,
+// comme les autres lectures de ce contrôleur ; `?invoiceId=` restreint aux
+// règlements qui s'affectent à une facture. Statut déduit comme partout :
+// annulé (pièce d'annulation), validé (`validatedAt`), sinon brouillon.
+// ---------------------------------------------------------------------------
+
+export const listSupplierPaymentsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const supplierId = requireUuidParam(req, 'supplierId');
+  const query = listSupplierPaymentsQuerySchema.parse(req.query ?? {});
+
+  const supplier = await prisma.supplier.findFirst({
+    where: { id: supplierId, tenantId },
+    select: { id: true, name: true }
+  });
+  if (!supplier) {
+    throw new NotFoundError('Fournisseur introuvable ou inaccessible.');
+  }
+
+  const userSelect = { id: true, fullName: true, email: true } as const;
+  const payments = await prisma.supplierPayment.findMany({
+    where: {
+      tenantId,
+      supplierId,
+      ...(query.invoiceId ? { allocations: { some: { invoiceId: query.invoiceId } } } : {})
+    },
+    include: {
+      allocations: true,
+      createdBy: { select: userSelect },
+      validatedBy: { select: userSelect }
+    },
+    orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }]
+  });
+
+  const paymentIds = payments.map(p => p.id);
+  const invoiceIds = [...new Set(payments.flatMap(p => p.allocations.map(a => a.invoiceId)))];
+  const treasuryIds = [
+    ...new Set(payments.map(p => unpackPaymentMethod(p.method).treasuryAccountId).filter(Boolean))
+  ] as string[];
+
+  const [voids, invoices, treasuries] = await Promise.all([
+    paymentIds.length
+      ? prisma.voidDocument.findMany({
+          where: { tenantId, documentType: 'SUPPLIER_PAYMENT' as any, documentId: { in: paymentIds } },
+          include: { voidedBy: { select: userSelect } }
+        })
+      : Promise.resolve([]),
+    invoiceIds.length
+      ? prisma.supplierInvoice.findMany({
+          where: { id: { in: invoiceIds }, tenantId },
+          select: { id: true, reference: true }
+        })
+      : Promise.resolve([]),
+    treasuryIds.length
+      ? prisma.treasuryAccount.findMany({
+          where: { id: { in: treasuryIds }, tenantId },
+          select: { id: true, label: true }
+        })
+      : Promise.resolve([])
+  ]);
+
+  const voidByPayment = new Map(voids.map(v => [v.documentId, v]));
+  const referenceById = new Map(invoices.map(i => [i.id, i.reference]));
+  const treasuryLabelById = new Map(treasuries.map(a => [a.id, a.label]));
+  const nameOf = (user: { fullName: string | null; email: string } | null | undefined) =>
+    user ? user.fullName || user.email : null;
+
+  res.status(200).json({
+    success: true,
+    data: payments.map(payment => {
+      const voided = voidByPayment.get(payment.id);
+      const { method, treasuryAccountId } = unpackPaymentMethod(payment.method);
+      return {
+        ...toSupplierPaymentResponse({
+          id: payment.id,
+          supplierId: payment.supplierId,
+          supplierLabel: supplier.name,
+          paymentDate: payment.paymentDate,
+          amount: toAmountOrZero(payment.amount as any),
+          currency: payment.currency,
+          status: voided ? 'VOIDED' : payment.validatedAt ? 'VALIDATED' : 'DRAFT',
+          allocations: payment.allocations.map(a => ({
+            invoiceId: a.invoiceId,
+            invoiceReference: referenceById.get(a.invoiceId) ?? 'Facture inconnue',
+            amount: toAmountOrZero(a.amount as any)
+          }))
+        }),
+        method,
+        treasuryAccountId,
+        treasuryLabel: treasuryAccountId ? (treasuryLabelById.get(treasuryAccountId) ?? null) : null,
+        createdByUserId: payment.createdByUserId,
+        createdByName: nameOf(payment.createdBy),
+        validatedByUserId: payment.validatedByUserId,
+        validatedByName: nameOf(payment.validatedBy),
+        validatedAt: payment.validatedAt,
+        voidedAt: voided?.voidedAt ?? null,
+        voidReason: voided?.reason ?? null,
+        voidedByName: nameOf(voided?.voidedBy)
+      };
+    })
+  });
+});
+
+// ---------------------------------------------------------------------------
 // J. POST suppliers/:supplierId/payments — règlement
 // ---------------------------------------------------------------------------
 
@@ -756,6 +867,7 @@ export const createSupplierPaymentHandler = asyncHandler(async (req: Request, re
       paymentDate: body.paymentDate,
       amount: body.amount,
       method: body.method,
+      treasuryAccountId: body.treasuryAccountId ?? null,
       allocations: body.allocations,
       createdByUserId: actorUserId
     })

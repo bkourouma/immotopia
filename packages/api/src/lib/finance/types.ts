@@ -292,7 +292,7 @@ export interface ClientsBalanceResult {
  */
 export type GetClientsBalance = (
   tenantId: string,
-  filters?: { range?: PeriodRange; propertyId?: string }
+  filters?: { range?: PeriodRange; propertyId?: string; asOf?: Date }
 ) => Promise<ClientsBalanceResult>;
 
 export interface ClientsAgingBalanceLine extends ClientsBalanceLine {

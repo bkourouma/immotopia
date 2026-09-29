@@ -60,7 +60,9 @@ import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import { roundLineQuantity, roundMoneyXof } from './money';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
-import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
+import { resolveOutflowTreasuryAccountTx } from '../treasury/accounts';
+import { assertTreasuryCanPayTx } from '../treasury/balance';
+import { packPaymentMethod, unpackPaymentMethod } from './supplier-payment-method';
 import type {
   CreateSupplierInvoiceTx,
   CreateSupplierPaymentTx,
@@ -115,7 +117,6 @@ interface OperationalAccounts {
   journalId: string;
   fournisseursAccountId: string;
   achatsAccountId: string;
-  banqueAccountId: string;
   /**
    * 311 — Stocks de matieres et fournitures.
    *
@@ -150,10 +151,9 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes, cashTreasury] = await Promise.all([
+  const [journalId, comptes] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getFullYear()),
-    ensureOperationalChartOfAccountsTx(tx, tenantId),
-    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH')
+    ensureOperationalChartOfAccountsTx(tx, tenantId)
   ]);
 
   const exiger = (numero: string): string => {
@@ -168,10 +168,10 @@ async function resolveOperationalAccounts(
     journalId,
     fournisseursAccountId: exiger('401'),
     achatsAccountId: exiger('601'),
-    // La tresorerie est resolue par `treasury/accounts.ts` : la caisse par
-    // defaut de l'agence, reprise si un compte 571 heberge deja des
-    // ecritures (voir la doc de `ensureDefaultTreasuryAccountTx`).
-    banqueAccountId: cashTreasury.chartOfAccountId,
+    // Le compte de tresorerie n'est PAS resolu ici : une facture n'en touche
+    // aucun, et un reglement le tire de son mode et du compte choisi
+    // (`resolveOutflowTreasuryAccountTx`) — il sortait jusqu'au 29 septembre
+    // 2026 de la caisse par defaut, quel que soit le mode.
     stocksAccountId: comptes.get('311') ?? null
   };
 }
@@ -697,6 +697,18 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
     }
   }
 
+  // Le compte choisi est verifie des la saisie (agence, actif, nature
+  // compatible avec le mode) : un refus arrive a la personne qui l'a choisi, pas
+  // a celle qui valide. Sans compte choisi, on resout quand meme le defaut pour
+  // que l'agence ait bien un compte de la bonne nature au moment de valider.
+  const method = params.method ?? DEFAULT_PAYMENT_METHOD;
+  if (params.treasuryAccountId) {
+    await resolveOutflowTreasuryAccountTx(tx, tenantId, {
+      method,
+      treasuryAccountId: params.treasuryAccountId
+    });
+  }
+
   // BROUILLON. Ni ecriture, ni mouvement de compte : un reglement saisi n'a
   // encore rien regle. Tout cela nait a la validation
   // (`validateSupplierPaymentTx`), comme pour la facture et la piece de caisse.
@@ -708,7 +720,7 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
       amount,
       currency: DEFAULT_CURRENCY,
       // Le mode reellement choisi, et « OTHER » seulement a defaut.
-      method: params.method ?? DEFAULT_PAYMENT_METHOD,
+      method: packPaymentMethod(method, params.treasuryAccountId),
       createdByUserId: params.createdByUserId
     }
   });
@@ -786,17 +798,34 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
   const amount = toAmountOrZero(payment.amount);
   const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
+  // D'ou sort l'argent : le compte choisi a la saisie, sinon celui qui
+  // correspond au mode (virement, cheque -> banque ; especes -> caisse). Jusqu'au
+  // 29 septembre 2026 tout sortait de la caisse (BUG-2026-09-29-002).
+  const { method, treasuryAccountId } = unpackPaymentMethod(payment.method);
+  const treasury = await resolveOutflowTreasuryAccountTx(tx, tenantId, { method, treasuryAccountId });
+
+  // Pas de sortie a decouvert (BUG-2026-09-29-003). Le controle prend un verrou
+  // sur le compte puis lit son solde DANS cette transaction, juste avant
+  // d'ecrire : deux validations simultanees ne se depassent pas ensemble.
+  await assertTreasuryCanPayTx(tx, tenantId, treasury, amount);
+
+  const journalId = await ensureOperationalJournalTx(tx, tenantId, payment.paymentDate.getFullYear(), treasury.journal);
+  const libelle = `Règlement — ${supplier.name}`;
+
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
-    journalId: accounts.journalId,
+    journalId,
     entryDate: payment.paymentDate,
-    reference: `REG-${supplier.id}-${payment.paymentDate.getTime()}`,
-    description: `Reglement fournisseur — ${supplier.name}`,
+    // Une reference PAR reglement : l'ancienne (fournisseur + date) etait la
+    // meme pour tous les reglements du jour, et l'annulation ne disait pas
+    // lequel elle annulait. Meme forme que `TACH-REG-` et `SAL-REG-`.
+    reference: `REG-${payment.id}`,
+    description: `Règlement fournisseur — ${supplier.name}`,
     documentType: 'SUPPLIER_PAYMENT',
     documentId: payment.id,
     lines: [
-      { accountId: accounts.fournisseursAccountId, debit: amount, label: `Reglement — ${supplier.name}` },
-      { accountId: accounts.banqueAccountId, credit: amount, label: `Reglement — ${supplier.name}` }
+      { accountId: accounts.fournisseursAccountId, debit: amount, label: libelle },
+      { accountId: treasury.chartOfAccountId, credit: amount, label: libelle }
     ]
   });
 

@@ -43,7 +43,9 @@ const createSupplierInvoice = vi.fn();
 const validateSupplierInvoice = vi.fn();
 const voidSupplierInvoice = vi.fn();
 const createSupplierPayment = vi.fn();
+const listSupplierPayments = vi.fn();
 const validateSupplierPayment = vi.fn();
+const voidSupplierPayment = vi.fn();
 const listConstructionSites = vi.fn();
 const listCostCategories = vi.fn();
 
@@ -56,9 +58,26 @@ vi.mock('../../services/finance-lot2-service', () => ({
   validateSupplierInvoice: (...a: unknown[]) => validateSupplierInvoice(...a),
   voidSupplierInvoice: (...a: unknown[]) => voidSupplierInvoice(...a),
   createSupplierPayment: (...a: unknown[]) => createSupplierPayment(...a),
+  listSupplierPayments: (...a: unknown[]) => listSupplierPayments(...a),
   validateSupplierPayment: (...a: unknown[]) => validateSupplierPayment(...a),
+  voidSupplierPayment: (...a: unknown[]) => voidSupplierPayment(...a),
   listConstructionSites: (...a: unknown[]) => listConstructionSites(...a),
   listCostCategories: (...a: unknown[]) => listCostCategories(...a)
+}));
+
+// Permissions de la personne connectée : `null` = aucun filtrage (administrateur).
+// Un test qui veut un Comptable sans droit de validation pose un ensemble sans
+// `FINANCE_DOCUMENTS_VALIDATE`.
+let permissionsDetenues: Set<string> | null = null;
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues, ready: true })
+}));
+
+// `TreasuryAccountSelector` appelle `listTreasuryAccounts` : sans ce mock, une
+// vraie requête réseau partirait depuis le formulaire de règlement.
+const listTreasuryAccounts = vi.fn();
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: (...a: unknown[]) => listTreasuryAccounts(...a)
 }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
@@ -209,8 +228,36 @@ function mountFacture(url: string) {
   );
 }
 
+function compteTresorerie(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'compte-caisse',
+    kind: 'CASH',
+    label: 'Caisse principale',
+    accountNumber: '5711',
+    mmOperator: null,
+    bankName: null,
+    bankAccountRef: null,
+    isDefault: true,
+    isActive: true,
+    balance: 0,
+    ...overrides
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  permissionsDetenues = null;
+  listSupplierPayments.mockResolvedValue([]);
+  listTreasuryAccounts.mockResolvedValue([
+    compteTresorerie(),
+    compteTresorerie({ id: 'compte-banque', kind: 'BANK', label: 'Banque principale', accountNumber: '5211' }),
+    compteTresorerie({
+      id: 'compte-cheques',
+      kind: 'CHECKS_TO_CASH',
+      label: 'Chèques à encaisser',
+      accountNumber: '513'
+    })
+  ]);
   listConstructionSites.mockResolvedValue([chantier()]);
   listCostCategories.mockResolvedValue([poste()]);
   listSupplierInvoices.mockResolvedValue([]);
@@ -652,14 +699,17 @@ describe('Règlement — avertissement avant de valider un règlement déjà sol
         remainingPayable: 0
       })
     ]);
-    createSupplierPayment.mockResolvedValue(
-      reglement({
-        id: 'regl-doublon',
-        supplierId: 'frs-01',
-        amount: 28_000_000,
-        allocations: [{ invoiceId: 'fact-deja-soldee', invoiceReference: 'FRS-QA-001', amount: 28_000_000 }]
-      })
-    );
+    const doublon = reglement({
+      id: 'regl-doublon',
+      supplierId: 'frs-01',
+      amount: 28_000_000,
+      allocations: [{ invoiceId: 'fact-deja-soldee', invoiceReference: 'FRS-QA-001', amount: 28_000_000 }]
+    });
+    // Le règlement saisi se relit du serveur : la liste le renvoie après la création.
+    createSupplierPayment.mockImplementation(async () => {
+      listSupplierPayments.mockResolvedValue([doublon]);
+      return doublon;
+    });
     const user = userEvent.setup({ delay: null });
     mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
 
@@ -681,6 +731,213 @@ describe('Règlement — avertissement avant de valider un règlement déjà sol
 
     await user.click(boutonValider);
     expect(await screen.findByText(/risque de payer deux fois la même facture/)).toBeInTheDocument();
+  });
+});
+
+describe('Règlements relus du serveur (BUG-2026-09-29-001)', () => {
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', name: 'BTP Sahel OI', kind: 'SERVICES' })]);
+    listSupplierInvoices.mockResolvedValue([]);
+  });
+
+  const url = '/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01';
+
+  it('liste, dès le chargement, les règlements saisis par une autre personne, avec statut, mode, compte et acteurs', async () => {
+    listSupplierPayments.mockResolvedValue([
+      reglement({
+        id: 'regl-valide',
+        amount: 10_000,
+        status: 'VALIDATED',
+        method: 'CHECK',
+        treasuryLabel: 'Banque principale',
+        createdByName: 'Aïcha Comptable',
+        validatedByName: 'Awa Konaté'
+      }),
+      reglement({ id: 'regl-brouillon', amount: 200_000, status: 'DRAFT', method: 'BANK_TRANSFER' }),
+      reglement({
+        id: 'regl-annule',
+        amount: 5_000,
+        status: 'VOIDED',
+        method: 'CASH',
+        voidReason: 'Chèque perdu'
+      })
+    ]);
+    mountFacture(url);
+
+    expect(await screen.findByText('Règlements de BTP Sahel OI', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(listSupplierPayments).toHaveBeenCalledWith('agence-1', 'frs-01');
+    // Mode en français, compte de trésorerie, saisisseur et valideur.
+    expect(await screen.findByText('Chèque')).toBeInTheDocument();
+    expect(screen.getByText('Banque principale')).toBeInTheDocument();
+    expect(screen.getByText('Aïcha Comptable')).toBeInTheDocument();
+    expect(screen.getByText('Validé par Awa Konaté')).toBeInTheDocument();
+    expect(screen.getByText('Virement bancaire')).toBeInTheDocument();
+    expect(screen.getByText('Chèque perdu')).toBeInTheDocument();
+    // Brouillon : « Valider » ; validé : « Annuler » ; annulé : aucune action.
+    expect(screen.getAllByRole('button', { name: 'Valider' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Annuler' })).toHaveLength(1);
+  });
+
+  it('annule un règlement validé par une autre personne, avec un motif, puis relit la liste', async () => {
+    listSupplierPayments.mockResolvedValue([
+      reglement({ id: 'regl-a31c', amount: 10_000, status: 'VALIDATED', method: 'CHECK' })
+    ]);
+    voidSupplierPayment.mockImplementation(async () => {
+      listSupplierPayments.mockResolvedValue([
+        reglement({ id: 'regl-a31c', amount: 10_000, status: 'VOIDED', method: 'CHECK', voidReason: 'Erreur' })
+      ]);
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFacture(url);
+
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }, { timeout: 8000 }));
+    await user.type(await screen.findByLabelText("Motif de l'annulation"), 'Erreur');
+    await user.click(screen.getByRole('button', { name: "Confirmer l'annulation" }));
+
+    await waitFor(() => expect(voidSupplierPayment).toHaveBeenCalledWith('agence-1', 'regl-a31c', 'Erreur'));
+    await waitFor(() => expect(listSupplierPayments.mock.calls.length).toBeGreaterThan(1));
+    expect(await screen.findByText('Annulée', {}, { timeout: 8000 })).toBeInTheDocument();
+  });
+
+  it('valide un règlement en brouillon saisi ailleurs, puis relit la liste', async () => {
+    listSupplierPayments.mockResolvedValue([reglement({ id: 'regl-b', amount: 10_000, status: 'DRAFT' })]);
+    validateSupplierPayment.mockResolvedValue(reglement({ id: 'regl-b', status: 'VALIDATED' }));
+    const user = userEvent.setup({ delay: null });
+    mountFacture(url);
+
+    await user.click(await screen.findByRole('button', { name: 'Valider' }, { timeout: 8000 }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmer la validation' }));
+
+    await waitFor(() => expect(validateSupplierPayment).toHaveBeenCalledWith('agence-1', 'regl-b'));
+    await waitFor(() => expect(listSupplierPayments.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it('dit pourquoi une validation est refusée (solde insuffisant), avec le message du serveur', async () => {
+    listSupplierPayments.mockResolvedValue([reglement({ id: 'regl-c', amount: 200_000, status: 'DRAFT' })]);
+    validateSupplierPayment.mockRejectedValue({
+      response: { status: 400, data: { message: 'Solde insuffisant sur « Caisse principale »' } }
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFacture(url);
+
+    await user.click(await screen.findByRole('button', { name: 'Valider' }, { timeout: 8000 }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmer la validation' }));
+
+    expect(await screen.findByText(/Solde insuffisant sur/)).toBeInTheDocument();
+  });
+});
+
+describe('Règlement — compte de trésorerie (BUG-2026-09-29-002)', () => {
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', name: 'BTP Sahel OI', kind: 'SERVICES' })]);
+  });
+
+  it('propose les comptes qui peuvent PAYER le mode choisi, et envoie le compte retenu', async () => {
+    createSupplierPayment.mockResolvedValue(reglement({ id: 'regl-x' }));
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await screen.findByText('Règlement', {}, { timeout: 8000 });
+    await user.type(screen.getByLabelText('Montant du règlement'), '200000');
+    await user.click(screen.getByLabelText('Mode de règlement'));
+    await user.click(await screen.findByText('Chèque'));
+
+    // Un chèque ÉMIS sort de la banque : ni la caisse, ni les « chèques à encaisser ».
+    await user.click(screen.getByLabelText('Compte de trésorerie'));
+    expect(await screen.findByText('Banque principale · 5211')).toBeInTheDocument();
+    expect(screen.queryByText('Caisse principale · 5711')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chèques à encaisser · 513')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Banque principale · 5211'));
+
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le règlement' }));
+
+    await waitFor(() => expect(createSupplierPayment).toHaveBeenCalledTimes(1));
+    expect(createSupplierPayment.mock.calls[0][1]).toMatchObject({
+      method: 'CHECK',
+      treasuryAccountId: 'compte-banque'
+    });
+  });
+
+  it('sans compte choisi, n’en envoie aucun : le serveur prend celui du mode', async () => {
+    createSupplierPayment.mockResolvedValue(reglement({ id: 'regl-y' }));
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await screen.findByText('Règlement', {}, { timeout: 8000 });
+    await user.type(screen.getByLabelText('Montant du règlement'), '5000');
+    await user.click(screen.getByLabelText('Mode de règlement'));
+    await user.click(await screen.findByText('Espèces'));
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le règlement' }));
+
+    await waitFor(() => expect(createSupplierPayment).toHaveBeenCalledTimes(1));
+    expect(createSupplierPayment.mock.calls[0][1]).toMatchObject({ method: 'CASH', treasuryAccountId: null });
+  });
+});
+
+describe('Actions réservées aux validateurs (BUG-2026-09-29-006, volet fournisseurs)', () => {
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', name: 'BTP Sahel OI', kind: 'SERVICES' })]);
+    listSupplierInvoices.mockResolvedValue([
+      facture({ id: 'fact-brouillon', status: 'DRAFT', reference: 'FRS-B-001' }),
+      facture({ id: 'fact-validee', status: 'VALIDATED', reference: 'FRS-V-001', remainingPayable: 100 })
+    ]);
+    listSupplierPayments.mockResolvedValue([
+      reglement({ id: 'regl-brouillon', status: 'DRAFT', amount: 1_000 }),
+      reglement({ id: 'regl-valide', status: 'VALIDATED', amount: 2_000 })
+    ]);
+  });
+
+  const url = '/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01';
+
+  it('masque Valider et Annuler (factures et règlements) sans FINANCE_DOCUMENTS_VALIDATE', async () => {
+    permissionsDetenues = new Set(['FINANCE_DOCUMENTS_CREATE', 'FINANCE_ACCOUNTS_READ']);
+    mountFacture(url);
+
+    await screen.findByText('FRS-B-001', {}, { timeout: 8000 });
+    await screen.findByText('Règlements de BTP Sahel OI');
+    expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+    // La saisie reste offerte, et « Dupliquer » aussi.
+    expect(screen.getByRole('button', { name: 'Enregistrer le règlement' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Dupliquer' }).length).toBeGreaterThan(0);
+  });
+
+  it('propose Valider et Annuler à qui détient FINANCE_DOCUMENTS_VALIDATE', async () => {
+    permissionsDetenues = new Set(['FINANCE_DOCUMENTS_VALIDATE']);
+    mountFacture(url);
+
+    await screen.findByText('FRS-B-001', {}, { timeout: 8000 });
+    await screen.findByText('Règlements de BTP Sahel OI');
+    // Une facture brouillon + un règlement brouillon ; une facture validée + un règlement validé.
+    expect(screen.getAllByRole('button', { name: 'Valider' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Annuler' })).toHaveLength(2);
+  });
+
+  it('propose les actions quand la navigation n’est pas filtrée (administrateur d’agence)', async () => {
+    permissionsDetenues = null;
+    mountFacture(url);
+
+    await screen.findByText('FRS-B-001', {}, { timeout: 8000 });
+    expect(await screen.findAllByRole('button', { name: 'Valider' })).toHaveLength(2);
+  });
+
+  it('remplace un 403 par un message clair, et non par le texte technique du serveur', async () => {
+    permissionsDetenues = null; // les droits ont pu changer depuis le chargement
+    validateSupplierInvoice.mockRejectedValue({
+      response: {
+        status: 403,
+        data: { message: 'Forbidden', requiredPermission: 'FINANCE_DOCUMENTS_VALIDATE' }
+      }
+    });
+    const user = userEvent.setup({ delay: null });
+    mountFacture(url);
+
+    await screen.findByText('FRS-B-001', {}, { timeout: 8000 });
+    const boutons = await screen.findAllByRole('button', { name: 'Valider' });
+    await user.click(boutons[0]);
+    await user.click(await screen.findByRole('button', { name: 'Confirmer la validation' }));
+
+    expect(await screen.findByText("Vous n'avez pas le droit de valider une facture fournisseur.")).toBeInTheDocument();
   });
 });
 

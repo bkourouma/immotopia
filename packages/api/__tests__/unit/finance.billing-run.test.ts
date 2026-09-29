@@ -138,7 +138,8 @@ const mockPrisma: Row = {
       return sorted.map(p => ({
         id: p.id,
         amount: p.amount,
-        allocations: store.allocations.filter(a => a.payment_id === p.id).map(a => ({ amount: a.amount }))
+        allocations: store.allocations.filter(a => a.payment_id === p.id).map(a => ({ amount: a.amount })),
+        depositMovements: p.depositCollected ? [{ amount: p.depositCollected }] : []
       }));
     })
   },
@@ -495,6 +496,29 @@ describe('runRentBilling — avances', () => {
       expect.anything(),
       expect.objectContaining({ sourceType: 'RENT_BILLING_RUN' })
     );
+  });
+
+  it("n'impute jamais sur un loyer l'argent déposé en garantie (BUG-2026-09-29-005)", async () => {
+    const lease = seedLease({ rent_amount: 400000 });
+    // Règlement de 800 000 entièrement collecté comme dépôt de garantie.
+    seedPayment({ renter_client_id: lease.primary_renter_client_id, amount: 800000, depositCollected: 800000 });
+
+    const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(result.summary?.advancesApplied).toHaveLength(0);
+    expect(store.allocations).toHaveLength(0);
+    expect(store.installments[0].status).not.toBe('PAID');
+  });
+
+  it("n'impute que la part d'un règlement qui n'est pas déposée en garantie", async () => {
+    const lease = seedLease({ rent_amount: 400000 });
+    seedPayment({ renter_client_id: lease.primary_renter_client_id, amount: 1000000, depositCollected: 800000 });
+
+    const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(result.summary?.advancesApplied).toEqual([
+      expect.objectContaining({ tenantClientId: lease.primary_renter_client_id, amount: 200000 })
+    ]);
   });
 
   it('impute une avance partiellement et laisse le reliquat disponible', async () => {

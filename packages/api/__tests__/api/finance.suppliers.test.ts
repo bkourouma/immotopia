@@ -81,6 +81,10 @@ const voidDocumentFindUniqueOrThrow = jest.fn();
 const supplierPaymentAllocationFindMany = jest.fn();
 const retentionGuaranteeFindMany = jest.fn();
 const voidDocumentFindMany = jest.fn();
+// Liste des reglements d'un fournisseur (BUG-2026-09-29-001) : les reglements
+// eux-memes et le libelle du compte de tresorerie choisi.
+const supplierPaymentFindMany = jest.fn();
+const treasuryAccountFindMany = jest.fn();
 
 /**
  * Le contrôleur ouvre ses transactions via `prisma.$transaction(tx => ...)`
@@ -110,7 +114,11 @@ function fakePrismaClient() {
       findMany: (...args: any[]) => constructionSiteFindMany(...args)
     },
     supplierPayment: {
-      findUniqueOrThrow: (...args: any[]) => supplierPaymentFindUniqueOrThrow(...args)
+      findUniqueOrThrow: (...args: any[]) => supplierPaymentFindUniqueOrThrow(...args),
+      findMany: (...args: any[]) => supplierPaymentFindMany(...args)
+    },
+    treasuryAccount: {
+      findMany: (...args: any[]) => treasuryAccountFindMany(...args)
     },
     supplierPaymentAllocation: {
       findMany: (...args: any[]) => supplierPaymentAllocationFindMany(...args)
@@ -955,6 +963,133 @@ describe('POST /tenants/:tenantId/finance/supplier-payments/:paymentId/void', ()
 // J. POST suppliers/:supplierId/payments — règlement
 // ---------------------------------------------------------------------------
 
+describe('GET /tenants/:tenantId/finance/suppliers/:supplierId/payments', () => {
+  const TREASURY = '5b0fd0c6-6c2b-4c39-9a52-3b1c1f7d0a11';
+  const ligne = (id: string, extra: Record<string, unknown>) => ({
+    id,
+    tenantId: TENANT_A,
+    supplierId: SUPPLIER_A,
+    paymentDate: new Date('2026-09-12T00:00:00.000Z'),
+    amount: 200_000,
+    currency: 'XOF',
+    method: 'BANK_TRANSFER',
+    createdByUserId: 'compta',
+    validatedByUserId: null,
+    validatedAt: null,
+    createdAt: new Date('2026-09-12T08:00:00.000Z'),
+    allocations: [],
+    createdBy: { id: 'compta', fullName: 'Aïcha Comptable', email: 'compta@x.test' },
+    validatedBy: null,
+    ...extra
+  });
+
+  beforeEach(() => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A, name: 'BTP Sahel OI' });
+    supplierInvoiceFindMany.mockResolvedValue([{ id: INVOICE_A, reference: 'FACT-BTP-001' }]);
+    voidDocumentFindMany.mockResolvedValue([]);
+    treasuryAccountFindMany.mockResolvedValue([{ id: TREASURY, label: 'Banque principale' }]);
+  });
+
+  it("relit les règlements d'un fournisseur saisis par quelqu'un d'autre, avec statut, mode, compte et acteurs", async () => {
+    supplierPaymentFindMany.mockResolvedValue([
+      ligne('p-valide', {
+        method: `BANK_TRANSFER@${TREASURY}`,
+        validatedByUserId: 'admin',
+        validatedAt: new Date('2026-09-13T09:00:00.000Z'),
+        validatedBy: { id: 'admin', fullName: null, email: 'admin@x.test' },
+        allocations: [{ id: 'a1', paymentId: 'p-valide', invoiceId: INVOICE_A, amount: 200_000 }]
+      }),
+      ligne('p-brouillon', { amount: 10_000, method: 'CHECK' }),
+      ligne('p-annule', {
+        amount: 5_000,
+        validatedAt: new Date('2026-09-13T10:00:00.000Z'),
+        validatedByUserId: 'admin',
+        validatedBy: { id: 'admin', fullName: 'Awa Konaté', email: 'admin@x.test' }
+      })
+    ]);
+    voidDocumentFindMany.mockResolvedValue([
+      {
+        documentId: 'p-annule',
+        reason: 'Virement rejeté',
+        voidedAt: new Date('2026-09-14T08:00:00.000Z'),
+        voidedBy: { id: 'admin', fullName: 'Awa Konaté', email: 'admin@x.test' }
+      }
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments`);
+
+    expect(response.status).toBe(200);
+    const [valide, brouillon, annule] = response.body.data;
+    expect(valide).toMatchObject({
+      id: 'p-valide',
+      status: 'VALIDATED',
+      supplierLabel: 'BTP Sahel OI',
+      method: 'BANK_TRANSFER',
+      treasuryAccountId: TREASURY,
+      treasuryLabel: 'Banque principale',
+      createdByName: 'Aïcha Comptable',
+      validatedByName: 'admin@x.test',
+      allocations: [{ invoiceId: INVOICE_A, invoiceReference: 'FACT-BTP-001', amount: 200_000 }]
+    });
+    expect(brouillon).toMatchObject({ id: 'p-brouillon', status: 'DRAFT', method: 'CHECK', treasuryLabel: null });
+    expect(annule).toMatchObject({
+      id: 'p-annule',
+      status: 'VOIDED',
+      voidReason: 'Virement rejeté',
+      voidedByName: 'Awa Konaté'
+    });
+  });
+
+  it("ne lit que les règlements de l'agence et du fournisseur demandés", async () => {
+    supplierPaymentFindMany.mockResolvedValue([]);
+
+    await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments`);
+
+    expect(supplierFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: SUPPLIER_A, tenantId: TENANT_A } })
+    );
+    expect(supplierPaymentFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT_A, supplierId: SUPPLIER_A } })
+    );
+  });
+
+  it("restreint aux règlements d'une facture avec ?invoiceId=", async () => {
+    supplierPaymentFindMany.mockResolvedValue([]);
+
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments?invoiceId=${INVOICE_A}`
+    );
+
+    expect(response.status).toBe(200);
+    expect(supplierPaymentFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: TENANT_A,
+          supplierId: SUPPLIER_A,
+          allocations: { some: { invoiceId: INVOICE_A } }
+        }
+      })
+    );
+  });
+
+  it("renvoie 404 pour un fournisseur d'une autre agence", async () => {
+    supplierFindFirst.mockResolvedValue(null);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments`);
+
+    expect(response.status).toBe(404);
+    expect(supplierPaymentFindMany).not.toHaveBeenCalled();
+  });
+
+  it('rejette en 400 un filtre invoiceId qui n’est pas un identifiant', async () => {
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments?invoiceId=abc`
+    );
+
+    expect(response.status).toBe(400);
+  });
+});
+
 describe('POST /tenants/:tenantId/finance/suppliers/:supplierId/payments', () => {
   it('enregistre le règlement en brouillon (cas nominal, 201)', async () => {
     createSupplierPaymentTx.mockResolvedValue(paymentRecord());
@@ -984,6 +1119,33 @@ describe('POST /tenants/:tenantId/finance/suppliers/:supplierId/payments', () =>
       TENANT_A,
       expect.objectContaining({ supplierId: SUPPLIER_A, amount: 500_000, createdByUserId: 'user-1' })
     );
+  });
+
+  it('transmet le compte de trésorerie choisi au domaine', async () => {
+    createSupplierPaymentTx.mockResolvedValue(paymentRecord());
+    supplierFindFirst.mockResolvedValue({ name: 'Ciments du Fouta' });
+    supplierInvoiceFindMany.mockResolvedValue([]);
+    const treasuryAccountId = '5b0fd0c6-6c2b-4c39-9a52-3b1c1f7d0a11';
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments`)
+      .send({ paymentDate: '2026-09-12', amount: 500_000, method: 'BANK_TRANSFER', treasuryAccountId });
+
+    expect(response.status).toBe(201);
+    expect(createSupplierPaymentTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_A,
+      expect.objectContaining({ method: 'BANK_TRANSFER', treasuryAccountId })
+    );
+  });
+
+  it("rejette en 400 un compte de trésorerie qui n'est pas un identifiant", async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments`)
+      .send({ paymentDate: '2026-09-12', amount: 1, method: 'CASH', treasuryAccountId: 'caisse' });
+
+    expect(response.status).toBe(400);
+    expect(createSupplierPaymentTx).not.toHaveBeenCalled();
   });
 
   it('rejette en 400 un corps sans mode de règlement', async () => {

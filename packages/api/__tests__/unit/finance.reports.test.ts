@@ -13,7 +13,8 @@ jest.mock('@prisma/client', () => {
     accounts: [] as Row[],
     movements: [] as Row[],
     leases: [] as Row[],
-    installments: [] as Row[]
+    installments: [] as Row[],
+    depositCollects: [] as Row[]
   };
 
   const inFilter = (filter: any, value: unknown) => !filter?.in || filter.in.includes(value);
@@ -37,6 +38,9 @@ jest.mock('@prisma/client', () => {
       }
     }
     if (where.leaseId && !inFilter(where.leaseId, m.leaseId)) return false;
+    if (where.type !== undefined && m.type !== where.type) return false;
+    if (where.sourceType !== undefined && m.sourceType !== where.sourceType) return false;
+    if (where.sourceId && typeof where.sourceId === 'object' && !inFilter(where.sourceId, m.sourceId)) return false;
     if (where.movementDate && !matchesMovementDate(m.movementDate, where.movementDate)) return false;
     return true;
   };
@@ -73,9 +77,28 @@ jest.mock('@prisma/client', () => {
     thirdPartyMovement: {
       groupBy: jest.fn(async (args: Row) => {
         const rows = store.movements.filter(m => matchesMovement(m, args.where ?? {}));
-        const sums = new Map<string, { debitSum: number; hasDebit: boolean; creditSum: number; hasCredit: boolean }>();
+        const byType = (args.by ?? []).includes('type');
+        const sums = new Map<
+          string,
+          {
+            accountId: string;
+            type?: string;
+            debitSum: number;
+            hasDebit: boolean;
+            creditSum: number;
+            hasCredit: boolean;
+          }
+        >();
         for (const m of rows) {
-          const entry = sums.get(m.accountId) ?? { debitSum: 0, hasDebit: false, creditSum: 0, hasCredit: false };
+          const key = byType ? `${m.accountId}|${m.type}` : m.accountId;
+          const entry = sums.get(key) ?? {
+            accountId: m.accountId,
+            type: byType ? m.type : undefined,
+            debitSum: 0,
+            hasDebit: false,
+            creditSum: 0,
+            hasCredit: false
+          };
           if (m.debit !== null && m.debit !== undefined) {
             entry.debitSum += Number(m.debit);
             entry.hasDebit = true;
@@ -84,10 +107,11 @@ jest.mock('@prisma/client', () => {
             entry.creditSum += Number(m.credit);
             entry.hasCredit = true;
           }
-          sums.set(m.accountId, entry);
+          sums.set(key, entry);
         }
-        return Array.from(sums.entries()).map(([accountId, e]) => ({
-          accountId,
+        return Array.from(sums.values()).map(e => ({
+          accountId: e.accountId,
+          ...(byType ? { type: e.type } : {}),
           _sum: { debit: e.hasDebit ? e.debitSum : null, credit: e.hasCredit ? e.creditSum : null }
         }));
       }),
@@ -106,6 +130,15 @@ jest.mock('@prisma/client', () => {
         return rows[0] ?? null;
       }),
       count: jest.fn(async (args: Row) => store.movements.filter(m => matchesMovement(m, args.where ?? {})).length)
+    },
+    rentalDepositMovement: {
+      findMany: jest.fn(async (args: Row) => {
+        const where = args.where ?? {};
+        return store.depositCollects.filter(
+          d =>
+            (where.tenant_id === undefined || d.tenant_id === where.tenant_id) && (!where.type || d.type === where.type)
+        );
+      })
     },
     rentalLease: {
       findMany: jest.fn(async (args: Row) => {
@@ -167,6 +200,7 @@ function resetStore() {
   store.movements.length = 0;
   store.leases.length = 0;
   store.installments.length = 0;
+  store.depositCollects.length = 0;
 }
 
 function seedAccount(
@@ -231,7 +265,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
         property: { title: 'Appartement Plateau', internalReference: 'REF-B' }
       });
 
-      seedAccount({ id: 'acc-a', tenantClientId: 'client-a', label: 'Awa Diop', balance: 40000 });
+      seedAccount({ id: 'acc-a', tenantClientId: 'client-a', label: 'Awa Diop', balance: 90000 });
       seedAccount({ id: 'acc-b', tenantClientId: 'client-b', label: 'Moussa Ba', balance: -20000 });
 
       seedMovement({
@@ -287,7 +321,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       });
     });
 
-    it('renvoie une ligne par locataire, avec le solde courant du compte et un total de controle', async () => {
+    it('renvoie une ligne par locataire, avec le solde de cloture (releve) et un total de controle', async () => {
       const result = await getClientsBalance(TENANT_ID);
 
       const lineA = result.lines.find(l => l.accountId === 'acc-a')!;
@@ -295,8 +329,9 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       expect(lineA.totalBilled).toBe(150000);
       expect(lineA.totalSettled).toBe(60000);
-      expect(lineA.balance).toBe(40000);
-      expect(lineA.propertyLabels).toEqual(['REF-A']);
+      expect(lineA.balance).toBe(90000);
+      // Le nom du bien, pas sa reference technique.
+      expect(lineA.propertyLabels).toEqual(['Villa Almadies']);
 
       expect(lineB.totalBilled).toBe(30000);
       expect(lineB.totalSettled).toBe(50000);
@@ -304,7 +339,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       // Total de controle : somme des SOLDES (pas des montants factures/regles).
       expect(result.totalBalance).toBe(lineA.balance + lineB.balance);
-      expect(result.totalBalance).toBe(20000);
+      expect(result.totalBalance).toBe(70000);
     });
 
     it('filtre par periode : seuls les mouvements de la fenetre entrent dans les totaux factures/regles', async () => {
@@ -318,8 +353,8 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       expect(line.accountId).toBe('acc-a');
       expect(line.totalBilled).toBe(50000);
       expect(line.totalSettled).toBe(0);
-      // Le solde reste le solde COURANT du compte, pas recalcule sur la periode.
-      expect(line.balance).toBe(40000);
+      // Le solde est celui de la cloture a la fin de la periode, tout l'historique compris.
+      expect(line.balance).toBe(90000);
     });
 
     it('filtre par bien : seuls les locataires ayant un bail sur ce bien apparaissent', async () => {
@@ -327,7 +362,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].accountId).toBe('acc-b');
-      expect(result.lines[0].propertyLabels).toEqual(['REF-B']);
+      expect(result.lines[0].propertyLabels).toEqual(['Appartement Plateau']);
     });
 
     it('renvoie une balance vide quand rien ne correspond au filtre', async () => {
@@ -663,6 +698,154 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
         expect(normalized).not.toContain('debit');
         expect(normalized).not.toContain('credit');
       }
+    });
+  });
+
+  // BUG-2026-09-29-005 : la balance et le relevé d'un même locataire doivent
+  // dire la même chose, et le dépôt de garantie n'est pas un règlement.
+  describe('règle commune balance / relevé (dépôt de garantie, exigibilité)', () => {
+    const ASOF = new Date('2026-09-29T12:00:00.000Z');
+
+    function seedMariam() {
+      seedLease({
+        id: 'lease-m',
+        property_id: 'prop-m',
+        primary_renter_client_id: 'client-m',
+        property: { title: 'Villa Riviera OI', internalReference: 'PROP-20260928-76E4-0036' }
+      });
+      seedAccount({ id: 'acc-m', tenantClientId: 'client-m', label: 'Mariam Koné', balance: -1200000 });
+      const base = { accountId: 'acc-m', leaseId: 'lease-m' };
+      seedMovement({
+        ...base,
+        id: 'mm1',
+        movementDate: new Date('2026-09-01T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 400000,
+        sourceType: 'RENTAL_INSTALLMENT',
+        sourceId: 'inst-09',
+        label: 'Loyer de septembre 2026'
+      });
+      // Dépôt de garantie 800 000 (Mobile Money) : porté en entier comme avance reçue.
+      seedMovement({
+        ...base,
+        id: 'mm2',
+        movementDate: new Date('2026-09-02T00:00:00.000Z'),
+        type: 'ADVANCE_RECEIVED',
+        credit: 800000,
+        sourceType: 'RENTAL_PAYMENT',
+        sourceId: 'pay-depot',
+        label: 'Règlement (Mobile Money) reçu en avance, non affecté'
+      });
+      // Loyer de septembre payé par virement : avance reçue, puis affectée.
+      seedMovement({
+        ...base,
+        id: 'mm3',
+        movementDate: new Date('2026-09-03T00:00:00.000Z'),
+        type: 'ADVANCE_RECEIVED',
+        credit: 400000,
+        sourceType: 'RENTAL_PAYMENT',
+        sourceId: 'pay-loyer',
+        label: 'Règlement (virement bancaire) reçu en avance, non affecté'
+      });
+      seedMovement({
+        ...base,
+        id: 'mm4',
+        movementDate: new Date('2026-09-03T00:00:00.000Z'),
+        type: 'PAYMENT',
+        credit: 400000,
+        sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+        sourceId: 'alloc-1',
+        label: "Règlement affecté à l'échéance de septembre 2026"
+      });
+      seedMovement({
+        ...base,
+        id: 'mm5',
+        movementDate: new Date('2026-09-03T00:00:00.000Z'),
+        type: 'ADVANCE_APPLIED',
+        debit: 400000,
+        sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+        sourceId: 'alloc-1',
+        label: "Avance imputée sur l'échéance de septembre 2026"
+      });
+      store.depositCollects.push({
+        tenant_id: TENANT_ID,
+        type: 'COLLECT',
+        payment_id: 'pay-depot',
+        amount: 800000
+      });
+    }
+
+    it("le dépôt de garantie n'est ni un règlement ni une avance : solde 0, facturé 400 000, réglé 400 000", async () => {
+      seedMariam();
+
+      const balance = await getClientsBalance(TENANT_ID, { asOf: ASOF });
+      const line = balance.lines.find(l => l.accountId === 'acc-m')!;
+
+      expect(line.totalBilled).toBe(400000);
+      expect(line.totalSettled).toBe(400000);
+      expect(line.balance).toBe(0);
+      expect(line.propertyLabels).toEqual(['Villa Riviera OI']);
+    });
+
+    it('le relevé ne montre pas le dépôt comme une avance et sa clôture égale la balance', async () => {
+      seedMariam();
+
+      const statement = await getAccountStatement(TENANT_ID, 'acc-m', { asOf: ASOF });
+      const balance = await getClientsBalance(TENANT_ID, { asOf: ASOF });
+
+      expect(statement.movements.map(m => m.id)).not.toContain('mm2');
+      expect(statement.closingBalance).toBe(0);
+      expect(statement.closingBalance).toBe(balance.lines[0].balance);
+    });
+
+    it("par défaut (sans asOf), le relevé d'un locataire ne compte que l'échu, comme la balance", async () => {
+      seedAccount({ id: 'acc-z', tenantClientId: 'client-z', label: 'Aminata Traoré', balance: 200000 });
+      seedMovement({
+        id: 'z1',
+        accountId: 'acc-z',
+        movementDate: new Date('2020-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 100000,
+        label: 'Loyer échu'
+      });
+      seedMovement({
+        id: 'z2',
+        accountId: 'acc-z',
+        movementDate: new Date('2999-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 100000,
+        label: 'Loyer futur'
+      });
+
+      const statement = await getAccountStatement(TENANT_ID, 'acc-z');
+      const balance = await getClientsBalance(TENANT_ID);
+      const line = balance.lines.find(l => l.accountId === 'acc-z')!;
+
+      expect(statement.movements.map(m => m.id)).toEqual(['z1']);
+      expect(statement.closingBalance).toBe(100000);
+      expect(line.balance).toBe(100000);
+      expect(line.totalBilled).toBe(100000);
+    });
+
+    it("les imputations d'avance et les annulations ne sont pas comptées comme des factures", async () => {
+      seedAccount({ id: 'acc-v', tenantClientId: 'client-v', label: 'Aminata', balance: 0 });
+      const d = (day: number) => new Date(`2026-08-${String(day).padStart(2, '0')}T00:00:00.000Z`);
+      const move = (row: Record<string, any>) =>
+        seedMovement({ accountId: 'acc-v', sourceType: 'RENTAL_PAYMENT', ...row });
+      move({ id: 'v1', movementDate: d(1), type: 'INSTALLMENT', debit: 300000, sourceId: 'i1', label: 'Loyer' });
+      move({ id: 'v2', movementDate: d(2), type: 'ADVANCE_RECEIVED', credit: 300000, sourceId: 'p1', label: 'Avance' });
+      move({ id: 'v3', movementDate: d(3), type: 'ADVANCE_APPLIED', debit: 300000, sourceId: 'a1', label: 'Imputée' });
+      move({ id: 'v4', movementDate: d(3), type: 'PAYMENT', credit: 300000, sourceId: 'a1', label: 'Règlement' });
+      move({ id: 'v5', movementDate: d(4), type: 'INSTALLMENT', debit: 300000, sourceId: 'i2', label: 'Loyer 2' });
+      move({ id: 'v6', movementDate: d(5), type: 'VOID', credit: 300000, sourceId: 'i2v', label: 'Annulation' });
+
+      const balance = await getClientsBalance(TENANT_ID, { asOf: ASOF });
+      const line = balance.lines.find(l => l.accountId === 'acc-v')!;
+
+      expect(line.totalBilled).toBe(300000);
+      expect(line.totalSettled).toBe(300000);
+      expect(line.balance).toBe(0);
+      expect(line.totalBilled - line.totalSettled).toBe(line.balance);
     });
   });
 });

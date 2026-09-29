@@ -9,6 +9,7 @@ import { journalResolver } from '../owner-account/accounts';
 import { reverseDocumentEntryTx } from '../owner-account/sync';
 import { DEFAULT_WITHHOLDING_ACCOUNT, getAgencyFinanceSettings } from '../settings/finance-settings';
 import { ensureChartAccountTx, ensureDefaultTreasuryAccountTx, journalForKind } from './accounts';
+import { assertTreasuryCanPayTx } from './balance';
 
 /**
  * Trésorerie de l'agence — lot 10 (conformité SYSCOHADA).
@@ -352,6 +353,10 @@ export async function createTransfer(
   const journalType = from.kind === TreasuryAccountKind.CASH && to.kind === TreasuryAccountKind.CASH ? 'CASH' : 'BANK';
 
   const created = await prisma.$transaction(async tx => {
+    // Le compte de départ doit couvrir la sortie (BUG-2026-09-29-003) : contrôle
+    // et écriture dans la MÊME transaction, sous verrou du compte, avant toute
+    // écriture.
+    await assertTreasuryCanPayTx(tx, tenantId, from, amount);
     const year = input.transferredAt.getUTCFullYear();
     const last = await tx.treasuryTransfer.findFirst({
       where: { tenantId, year },
@@ -568,6 +573,8 @@ export async function createTaxRemittance(
   const withholdingAccountNumber = settings.withholdingAccountNumber ?? DEFAULT_WITHHOLDING_ACCOUNT;
 
   const created = await prisma.$transaction(async tx => {
+    // Un versement à la DGI est une sortie de trésorerie : même contrôle de solde.
+    await assertTreasuryCanPayTx(tx, tenantId, treasury, amount);
     const year = input.paidAt.getUTCFullYear();
     const last = await tx.taxRemittance.findFirst({
       where: { tenantId, year },

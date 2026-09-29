@@ -15,6 +15,7 @@ import {
   annulerPieceTx,
   compteLocataireDuBailTx,
   compteLocataireTx,
+  inscrireEcheanceFactureeTx,
   libellePeriodeEcheance
 } from './rental-installment-service';
 
@@ -612,6 +613,17 @@ export async function allocatePaymentTx(
           paid_at: newStatus === RentalInstallmentStatus.PAID ? new Date() : undefined
         }
       });
+
+      // Une échéance encore en brouillon que l'on règle directement n'a jamais
+      // été facturée au compte : elle passe de DRAFT à PAID/PARTIAL sans
+      // franchir « exigible », seul moment où le grand livre l'inscrit. Sans
+      // cette écriture le règlement crédite un loyer que le compte ignore, et
+      // le locataire apparaît créditeur d'un loyer qu'il a payé
+      // (BUG-2026-09-29-005). Sans effet si elle est déjà inscrite : la clé
+      // `(RENTAL_INSTALLMENT, id, INSTALLMENT)` n'admet qu'un mouvement.
+      if (compteId) {
+        await inscrireEcheanceFactureeTx(tx, tenantId, { ...installment, status: newStatus });
+      }
     }
 
     // Ce qui reste non affecté après cette opération est une avance reçue.

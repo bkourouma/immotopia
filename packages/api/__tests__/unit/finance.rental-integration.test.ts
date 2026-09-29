@@ -709,6 +709,40 @@ describe('Règlement encaissé', () => {
     expect(store.installments[0].status).toBe(RentalInstallmentStatus.PAID);
   });
 
+  it("facture l'échéance encore en brouillon que l'on règle directement (BUG-2026-09-29-005)", async () => {
+    // Échéance jamais passée par « exigible » : aucune facturation au compte.
+    const echeance = seedEcheance();
+    const payment = await createPayment(
+      TENANT_ID,
+      {
+        leaseId: LEASE_ID,
+        renterClientId: CLIENT_ID,
+        method: RentalPaymentMethod.BANK_TRANSFER,
+        amount: 105000,
+        idempotencyKey: 'idem-brouillon'
+      },
+      ACTOR_ID
+    );
+
+    await allocatePayment(TENANT_ID, payment.id, { installmentIds: [echeance.id] }, ACTOR_ID);
+
+    expect(store.installments[0].status).toBe(RentalInstallmentStatus.PAID);
+    expect(mouvements('INSTALLMENT')).toHaveLength(1);
+    expect(mouvements('INSTALLMENT')[0]).toMatchObject({ debit: 105000, sourceId: echeance.id });
+    // Facturé 105 000, réglé 105 000 : le compte est à zéro, et non créditeur.
+    expect(compte()?.balance).toBe(0);
+  });
+
+  it("ne facture qu'une fois l'échéance déjà exigible que l'on règle ensuite", async () => {
+    const echeance = seedEcheance();
+    await updateInstallmentStatus(TENANT_ID, echeance.id);
+    const payment = seedReglement({ amount: 40000 });
+
+    await allocatePayment(TENANT_ID, payment.id, { installmentIds: [echeance.id] }, ACTOR_ID);
+
+    expect(mouvements('INSTALLMENT')).toHaveLength(1);
+  });
+
   it("affecte un règlement jamais porté au compte sans inventer d'imputation d'avance", async () => {
     const echeance = seedEcheance();
     await updateInstallmentStatus(TENANT_ID, echeance.id);

@@ -345,6 +345,14 @@ export type CreateSupplierPaymentTx = (
      * pour ne rien casser — a defaut, « OTHER » comme avant.
      */
     method?: string;
+    /**
+     * Le compte de trésorerie qui paiera (caisse, banque, Mobile Money).
+     * Ajouté le 29 septembre 2026 (BUG-2026-09-29-002) : tout règlement sortait
+     * de la caisse. Facultatif : à défaut, le compte par défaut de la nature
+     * qui correspond au mode (virement, chèque → banque ; espèces → caisse).
+     * Vérifié à la saisie (agence, actif, nature compatible avec le mode).
+     */
+    treasuryAccountId?: string | null;
     allocations: Array<{ invoiceId: string; amount: number }>;
     createdByUserId: string;
   }

@@ -212,7 +212,16 @@ export const createSupplierPaymentSchema = z.object({
   // place. Le champ reste exigé ici pour respecter `openapi.yaml`, même s'il
   // n'est pas transmis au domaine.
   method: z.string().min(1, 'Le mode de règlement est obligatoire.'),
+  // Compte de trésorerie qui paie (caisse, banque, Mobile Money). Facultatif :
+  // à défaut, le compte par défaut de la nature qui correspond au mode. Le
+  // serveur le vérifie (agence, actif, nature compatible avec le mode).
+  treasuryAccountId: z.string().uuid('Identifiant de compte de trésorerie invalide.').nullish(),
   allocations: z.array(supplierPaymentAllocationSchema).optional().default([])
+});
+
+/** Filtre de la liste des règlements d'un fournisseur : ceux d'une seule facture. */
+export const listSupplierPaymentsQuerySchema = z.object({
+  invoiceId: z.string().uuid('Identifiant de facture invalide.').optional()
 });
 
 export type CreateSupplierPaymentInput = z.infer<typeof createSupplierPaymentSchema>;

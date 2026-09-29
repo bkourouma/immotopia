@@ -93,6 +93,37 @@ export function allowedKindsForMethod(method: PaymentMethodLike): TreasuryAccoun
   }
 }
 
+/**
+ * Natures de compte qui peuvent PAYER un règlement sortant (fournisseur…).
+ *
+ * Différent de `allowedKindsForMethod`, qui décrit où ENTRE un encaissement :
+ * un chèque reçu attend en « chèques à encaisser », mais un chèque émis sort de
+ * la banque, et une carte de même. Un règlement en espèces sort de la caisse,
+ * un virement de la banque, un Mobile Money d'un portefeuille. Un mode « autre »
+ * ou inconnu accepte tout compte réellement disponible.
+ */
+export function outflowKindsForMethod(method: PaymentMethodLike): TreasuryAccountKind[] {
+  switch (method) {
+    case 'CASH':
+      return ['CASH'];
+    case 'MOBILE_MONEY':
+      return ['MOBILE_MONEY'];
+    case 'BANK_TRANSFER':
+    case 'CHECK':
+    case 'CARD':
+      return ['BANK'];
+    default:
+      return ['CASH', 'BANK', 'MOBILE_MONEY'];
+  }
+}
+
+/** Nature du compte pris par défaut pour un règlement sortant sans compte désigné. */
+export function defaultOutflowKindForMethod(method: PaymentMethodLike): TreasuryAccountKind {
+  if (method === 'CASH') return 'CASH';
+  if (method === 'MOBILE_MONEY') return 'MOBILE_MONEY';
+  return 'BANK';
+}
+
 export const journalForKind = (kind: TreasuryAccountKind): 'CASH' | 'BANK' => (kind === 'CASH' ? 'CASH' : 'BANK');
 
 type TreasuryRow = {
@@ -278,6 +309,34 @@ export async function resolveTreasuryAccountTx(
     return toResolved(row);
   }
   return ensureDefaultTreasuryAccountTx(tx, tenantId, defaultKindForMethod(params.method), params.mmOperator);
+}
+
+/**
+ * Le compte de trésorerie qui PAIE un règlement sortant : celui que la pièce
+ * désigne (vérifié : agence, actif, nature compatible avec le mode), sinon le
+ * compte par défaut de la nature qui correspond au mode — banque pour un
+ * virement ou un chèque, caisse pour des espèces, portefeuille pour un Mobile
+ * Money. Jamais la caisse « par défaut de tout » : un virement bancaire ne
+ * sort pas de la caisse (BUG-2026-09-29-002).
+ */
+export async function resolveOutflowTreasuryAccountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  params: { method: PaymentMethodLike; treasuryAccountId?: string | null }
+): Promise<ResolvedTreasury> {
+  if (params.treasuryAccountId) {
+    const row = await tx.treasuryAccount.findFirst({
+      where: { id: params.treasuryAccountId, tenantId },
+      select: { ...treasurySelect, isActive: true }
+    });
+    if (!row) throw badRequest('Compte de trésorerie introuvable');
+    if (!row.isActive) throw badRequest('Ce compte de trésorerie est désactivé');
+    if (!outflowKindsForMethod(params.method).includes(row.kind)) {
+      throw badRequest('Ce compte de trésorerie ne correspond pas au mode de règlement');
+    }
+    return toResolved(row);
+  }
+  return ensureDefaultTreasuryAccountTx(tx, tenantId, defaultOutflowKindForMethod(params.method));
 }
 
 /**

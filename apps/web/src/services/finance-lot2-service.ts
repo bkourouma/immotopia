@@ -146,6 +146,23 @@ export async function voidSupplierInvoice(
   return response.data.data;
 }
 
+/**
+ * Les règlements d'un fournisseur (brouillons, validés, annulés), quel que soit
+ * celui qui les a saisis. `invoiceId` restreint aux règlements affectés à une
+ * facture. Sans cette lecture, un règlement disparaissait au rechargement de la
+ * page et ne pouvait plus être validé ni annulé par une autre personne.
+ */
+export async function listSupplierPayments(
+  tenantId: string,
+  supplierId: string,
+  filters?: { invoiceId?: string }
+): Promise<SupplierPayment[]> {
+  const response = await apiClient.get<ApiResponse<SupplierPayment[]>>(
+    `${base(tenantId)}/suppliers/${supplierId}/payments${toQuery(filters)}`
+  );
+  return response.data.data;
+}
+
 export async function createSupplierPayment(
   tenantId: string,
   params: CreateSupplierPaymentInput

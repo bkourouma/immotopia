@@ -195,6 +195,19 @@ export interface SupplierPayment {
   currency: string;
   status: DocumentStatus;
   allocations: Array<{ invoiceId: string; invoiceReference: string; amount: number }>;
+  /**
+   * Champs de la liste (`GET .../suppliers/:id/payments`) : absents des réponses
+   * de création et de validation, qui ne portent que l'essentiel.
+   */
+  method?: string;
+  treasuryAccountId?: string | null;
+  treasuryLabel?: string | null;
+  createdByName?: string | null;
+  validatedByName?: string | null;
+  validatedAt?: string | null;
+  voidedAt?: string | null;
+  voidReason?: string | null;
+  voidedByName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +391,11 @@ export interface CreateSupplierPaymentInput {
    * que l'intercepteur ne remonte le détail des erreurs.
    */
   method: string;
+  /**
+   * Compte de trésorerie qui paie. Vide : le compte par défaut de la nature qui
+   * correspond au mode (virement, chèque -> banque ; espèces -> caisse).
+   */
+  treasuryAccountId?: string | null;
   /** Vide pour un acompte : le compte du fournisseur devient alors débiteur. */
   allocations: Array<{ invoiceId: string; amount: number }>;
 }
