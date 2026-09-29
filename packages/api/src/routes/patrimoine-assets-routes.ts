@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
-import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { requirePatrimoinePersonalEdit, requirePatrimoinePersonalView } from '../middleware/patrimoine-rbac-middleware';
 import {
   archiveAssetHandler,
   createAssetHandler,
@@ -41,18 +41,8 @@ import { getPatrimoineUsageHandler } from '../controllers/personal-space-control
 const router = Router();
 const BASE = '/tenants/:tenantId/patrimoine';
 
-const read = [
-  authenticate,
-  requireTenantAccess,
-  enforcePropertyTenantIsolation,
-  requireAnyPropertyPermission(['PROPERTIES_VIEW'])
-];
-const write = [
-  authenticate,
-  requireTenantAccess,
-  enforcePropertyTenantIsolation,
-  requirePropertyPermission('PROPERTIES_EDIT')
-];
+const read = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation, requirePatrimoinePersonalView];
+const write = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation, requirePatrimoinePersonalEdit];
 
 // Compteur d'actifs du palier (lot 4B) : chemin statique, avant toute route paramétrée.
 router.get(`${BASE}/usage`, ...read, getPatrimoineUsageHandler);
@@ -65,7 +55,7 @@ router.patch(`${BASE}/assets/:assetId`, ...write, updateAssetHandler);
 router.post(`${BASE}/assets/:assetId/dispose`, ...write, disposeAssetHandler);
 router.post(`${BASE}/assets/:assetId/archive`, ...write, archiveAssetHandler);
 router.get(`${BASE}/assets/:assetId/valuations`, ...read, listAssetValuationsHandler);
-// Suggestion : lecture seule (aucune écriture), donc garde PROPERTIES_VIEW. Chemin statique avant `:valuationId`.
+// Suggestion : lecture seule (aucune écriture), donc garde PATRIMOINE_PERSONAL_VIEW. Chemin statique avant `:valuationId`.
 router.post(`${BASE}/assets/:assetId/valuations/suggest`, ...read, suggestAssetValuationHandler);
 router.post(`${BASE}/assets/:assetId/valuations`, ...write, createAssetValuationHandler);
 router.patch(`${BASE}/assets/:assetId/valuations/:valuationId`, ...write, updateAssetValuationHandler);

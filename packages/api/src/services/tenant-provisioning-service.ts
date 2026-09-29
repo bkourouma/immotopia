@@ -38,6 +38,7 @@ import {
   packsForModules
 } from '../lib/subscription';
 import { ValidationError } from '../middleware/error-middleware';
+import { ensurePersonalSpaceOwnerRole, grantPersonalSpaceOwnerRole } from '../lib/patrimoine/personal-permissions';
 import {
   linkExtensionsToPacksTx,
   loadCatalogByCodes,
@@ -368,11 +369,19 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
     await tx.userRole.create({
       data: { userId: adminUser.id, roleId: tenantAdminRole.id, tenantId: tenant.id }
     });
+    // Espace PARTICULIER : l'administrateur porte aussi PATRIMOINE_PERSONAL_* (role PERSONAL_SPACE_OWNER),
+    // que TENANT_ADMIN d'agence n'a pas ; l'invitation lui rend les deux roles.
+    const inviteRoleIds = [tenantAdminRole.id];
+    if (type === TenantType.PARTICULIER) {
+      const ownerRoleId = await ensurePersonalSpaceOwnerRole(tx);
+      await grantPersonalSpaceOwnerRole(tx, ownerRoleId, adminUser.id, tenant.id);
+      inviteRoleIds.push(ownerRoleId);
+    }
 
     const { invitation, token } = await createInvitationRecordTx(tx, {
       tenantId: tenant.id,
       email: input.adminEmail,
-      roleIds: [tenantAdminRole.id],
+      roleIds: inviteRoleIds,
       invitedByUserId: actorUserId
     });
 

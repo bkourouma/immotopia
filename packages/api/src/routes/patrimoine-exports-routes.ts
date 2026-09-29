@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
-import { requireAnyPropertyPermission } from '../middleware/property-rbac-middleware';
+import { requirePatrimoinePersonalView } from '../middleware/patrimoine-rbac-middleware';
 import { exportNetWorthHandler } from '../controllers/patrimoine-net-worth-export-controller';
 
 /**
@@ -14,20 +14,14 @@ import { exportNetWorthHandler } from '../controllers/patrimoine-net-worth-expor
  */
 
 /**
- * Permission de lecture de l'export : UNE seule constante, à remplacer par
- * `PATRIMOINE_PERSONAL_VIEW` quand la permission dédiée existera.
+ * L'export contient la valeur nette, les actifs non immobiliers et les dettes :
+ * mêmes données personnelles que `net-worth`, donc même permission dédiée
+ * `PATRIMOINE_PERSONAL_VIEW` (pas `PROPERTIES_VIEW`, que porte tout membre d'agence).
  */
-const NET_WORTH_EXPORT_READ_PERMISSIONS = ['PROPERTIES_VIEW'];
-
 const router = Router();
 const BASE = '/tenants/:tenantId/patrimoine';
 
-const read = [
-  authenticate,
-  requireTenantAccess,
-  enforcePropertyTenantIsolation,
-  requireAnyPropertyPermission(NET_WORTH_EXPORT_READ_PERMISSIONS)
-];
+const read = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation, requirePatrimoinePersonalView];
 
 router.get(`${BASE}/net-worth/export`, ...read, exportNetWorthHandler);
 
