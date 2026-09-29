@@ -1,5 +1,48 @@
 # PRD — ImmoCopilot : Assistant IA Opérationnel In-App
 
+> [!WARNING]
+> **Écarts avec le code (29 septembre 2026).** Ce PRD est un document de cadrage
+> écrit avant vérification. Le code livré diffère sur les points suivants ; là où
+> ils divergent, font foi la [spécification 022](../../specs/022-assistant-ia-immocopilot/spec.md)
+> (table complète), le [plan](PLAN_IMMOCOPILOT.md) et l'[ADR-004](adr/ADR-004-assistant-ia-immocopilot.md).
+>
+> - **Chemins** : `/api/tenants/:tenantId/ai/*` (pas de `/api/v1`) ; pages web au
+>   singulier (`/tenant/:tenantId/properties/:id`). Code dans `packages/api/src/lib/ai/*`,
+>   `routes/ai-routes.ts`, `controllers/ai-controller.ts` (pas `src/ai/`).
+> - **Permissions** : `RENTAL_VIEW`, `DOCUMENTS_VIEW`, `DOCUMENTS_GENERATE` n'existent
+>   pas. Réelles : `PROPERTIES_VIEW`, `RENTAL_LEASES_VIEW`, `RENTAL_DOCUMENTS_VIEW`,
+>   `RENTAL_DOCUMENTS_GENERATE`, `RENTAL_DOCUMENTS_EDIT`. `TENANT_AGENT` n'a aucune
+>   permission `RENTAL_*` par défaut (`TENANT_ADMIN` et `TENANT_MANAGER` les ont) ;
+>   le correctif RBAC de `document-routes.ts` lui retire la génération et le
+>   téléchargement de documents.
+> - **Identité** : le JWT ne porte pas le `tenantId` ; il vient de l'URL, contrôlé
+>   par `requireTenantAccess` (`req.tenantContext.tenantId`, `req.user.userId`).
+>   `requireTenantCollaborator` est ajouté (les clients de portail passent
+>   `requireTenantAccess`), et le **super-admin est refusé**.
+> - **Authentification web** : cookie `httpOnly` `accessToken` avec
+>   `credentials: 'include'`, pas de jeton Bearer ; le flux est un `fetch` en
+>   streaming (`EventSource` ne fait pas de POST).
+> - **Enums** : `PropertyType` (`APPARTEMENT`, `MAISON_VILLA`…), `PropertyStatus`
+>   (`AVAILABLE`, `RENTED`, `SOLD`… ; pas de `UNDER_MAINTENANCE`),
+>   `RentalDocumentType` (`RENT_RECEIPT`, `STATEMENT`…). `city` cherche dans
+>   `address` ou `locationZone`.
+> - **Documents** : pas d'avis d'échéance ni de relance (`DocumentType` :
+>   `LEASE_HABITATION`, `LEASE_COMMERCIAL`, `RENT_RECEIPT`, `RENT_STATEMENT`) ; sortie
+>   **DOCX** uniquement, ni PDF ni Excel. La **quittance part d'un paiement
+>   encaissé** (pas d'un bail et d'une période) : sans paiement, pas de
+>   proposition. MVP : quittance et relevé de compte. `sendEmailCopy` abandonné.
+> - **Outils** : `search_properties`, `search_leases` (nouveau : le bail se désigne
+>   par son numéro), `list_lease_documents`, `list_property_documents`,
+>   `propose_rental_document`. `execute_rental_document_generation` **n'est pas un
+>   outil du modèle** : la génération passe par `POST /ai/actions/execute`, avec un
+>   jeton de proposition signé à usage unique.
+> - **Fournisseur** : interface `LlmProvider` avec `anthropic` (SDK
+>   `@anthropic-ai/sdk`) et `fake` ; pas de Gemini ni d'OpenAI. **Désactivé par
+>   défaut** (`AI_PROVIDER=disabled`).
+> - **Tests** : Jest côté API, Vitest côté web seulement.
+> - **Transfert de données** : l'activation avec un fournisseur externe est une
+>   décision juridique, voir [SECURITY.md](../governance/SECURITY.md).
+
 | Métadonnée          | Valeur                                                                                       |
 | :------------------ | :------------------------------------------------------------------------------------------- |
 | **Produit**         | ImmoTopia SaaS (Gestion immobilière multi-tenant)                                            |

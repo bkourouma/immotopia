@@ -38,34 +38,53 @@ Pièges et décisions :
 
 ---
 
-## Branche `feat/immocopilot` — 2026-09-29
+## Branche `feat/immocopilot-o9nygz` — 2026-09-29
 
-**État :** en cours — plan validé, aucun code écrit
-**Dernier commit :** voir `git log -1` sur la branche (worktree `.claude/worktrees/immocopilot` en local ; session déplacée dans le cloud)
+**État :** prêt à relire — code, docs et wiki livrés ; recette navigateur non jouée
+**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
 
 Fait :
 
-- PRD et spec 022 commités ; plan d'implémentation Opus vérifié contre le
-  code : `docs/architecture/PLAN_IMMOCOPILOT.md` (table PRD vs réalité, décisions,
-  contrats figés, lots A–G avec territoires disjoints, commandes, recette).
+- Lots A à G du plan `docs/architecture/PLAN_IMMOCOPILOT.md` : correctif RBAC des
+  routes de documents, contrats et config `AI_*`, fournisseurs LLM (Anthropic +
+  faux), outils/jeton/exécution confirmée, orchestrateur SSE et routes `/ai/*`,
+  bouton flottant + tiroir web, docs (SECURITY §12, RUNBOOK, spec 022, ADR-004,
+  encadré PRD), wiki xlsx (697 lignes) et miroir.
+- Relectures : `security-auditor` (0 bloquant, 0 important, 7 mineurs) et
+  `code-reviewer` (0 bloquant, 4 importants corrigés). Corrections appliquées.
+- Vérifié : typecheck 71 erreurs (base 72, aucune dans les fichiers ajoutés),
+  lint 0 erreur, `check:architecture`, `wiki:check`, `npm test`, bundle d'entrée
+  225 214 o gzip (budget 225 280 o, marge ~66 o).
 
 Reste à faire :
 
-- Exécuter les lots dans l'ordre du plan §9 (A+B, puis C/D/F1/F2 en parallèle,
-  puis E, F3, G), sous-agents **Sonnet** ; relecture `code-reviewer` +
-  `security-auditor` ; wiki xlsx + `wiki:export` ; recette démo avec
-  `AI_PROVIDER=fake` ; PR vers `main`.
+- Recette navigateur (plan §6) avec `AI_PROVIDER=fake` : non jouée (pas de base ni
+  de `.env` dans le cloud). `npm run test:isolation` non joué (pas de
+  `DATABASE_URL_TEST`) : les 3 cas de jeton inter-agences ne sont pas prouvés.
+- Mineurs de l'audit laissés ouverts : usage unique du jeton et idempotence des
+  quittances non atomiques hors instance unique ; limites de débit par
+  utilisateur+agence (pas de plafond par agence) ; injection de prompt résiduelle
+  (confirmation humaine obligatoire) ; écart de permission GENERATE sans VIEW pour
+  le téléchargement ; logs `generateDocument` préexistants qui contiennent des
+  téléphones et `filePath`.
+- Activer l'assistant en production = décision juridique (données personnelles
+  envoyées au fournisseur) ; proxy SSE : pas de mise en tampon.
 
 Pièges et décisions :
 
-- Le PRD est faux sur les permissions, les enums, le générateur (quittance =
-  paiement, DOCX, pas d'avis d'échéance) et l'authentification (cookie, pas de
-  Bearer) : suivre le plan, pas le PRD.
-- Assistant désactivé par défaut (`AI_PROVIDER=disabled`) ; jamais d'exécution
-  d'écriture par le LLM, seulement par `POST /ai/actions/execute` avec jeton.
-- Un cloud n'a ni `.env` ni base locale : `test:isolation` et la recette
-  navigateur demandent `DATABASE_URL_TEST` / `demo:sync` ; ne pas les déclarer
-  vérifiés sans les avoir joués.
+- Le PRD est faux sur permissions, enums, générateur (quittance = paiement, DOCX,
+  pas d'avis d'échéance) et authentification (cookie, pas de Bearer) : suivre le
+  plan et la spec 022 corrigée.
+- Assistant désactivé par défaut (`AI_PROVIDER=disabled`) ; aucune écriture par
+  le LLM, seulement `POST /ai/actions/execute` avec jeton signé, à usage unique.
+- `postEventStream` vit dans `utils/event-stream.ts` (et non `api-client.ts`) pour
+  rester hors du bundle d'entrée.
+- Piège `i18n:extract` : `--only` détruit `common.json`, et l'extracteur déplace
+  en `*.orphans.json` les clés passées par `t(variable)` (messages « Le pack
+  Patrimoine… ») : les restaurer à la main.
+- Le correctif RBAC retire génération et téléchargement à `TENANT_AGENT` (voulu).
+- Les tests jest se lancent avec `--runTestsByPath` : sinon `--selectProjects`
+  avale les chemins et lance toute la suite.
 
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
