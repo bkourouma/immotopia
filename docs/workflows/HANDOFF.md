@@ -38,6 +38,40 @@ Pièges et décisions :
 
 ---
 
+## Branche `fix/quittance-champs-modele` — 2026-09-29
+
+**État :** prêt à relire
+**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
+
+Fait :
+
+- Quittance (`RENT_RECEIPT`) et relevé (`RENT_STATEMENT`) : `document-context-builder.ts`
+  fournit maintenant les 19 et 35 champs des modèles `assets/modeles_documents/`
+  (`Reçu_Loyer.docx`, `Releve_Compte.docx`), en gardant toutes les clés existantes ;
+  helpers purs dans `document-context-helpers.ts`. Une donnée optionnelle absente
+  s'écrit « — » : le rendu (`nullGetter`, `sanitizeContext`) remplace toute valeur
+  vide par `{{NOM}}`.
+- Vérifié de bout en bout sur une base locale : quittance et relevé régénérés,
+  `.docx` relus, aucun `{{…}}` restant ; le modèle pose lui-même « FCFA » sur les
+  montants de la quittance, qui sont donc fournis sans devise.
+
+Reste à faire :
+
+- **Baux** (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : même défaut, non traité ici
+  (environ 20 champs du modèle d'habitation non fournis, le commercial délègue à
+  l'habitation). Tâche suggérée à part.
+- Le numéro de reçu du modèle (`RECU_NUMERO`) est le numéro de paiement ; le numéro
+  définitif `RCU-…` est attribué après le rendu.
+
+Pièges et décisions :
+
+- Ventilation d'un paiement dans la quittance : loyer d'abord, puis charges, puis
+  pénalités, chacun plafonné à son dû ; l'excédent va au loyer. Relevé : 3 lignes
+  d'opérations, la 3ᵉ regroupe les échéances suivantes (signalé dans `OBSERVATIONS`).
+- Bailleur : propriétaire du bail ou du bien, sinon l'agence gestionnaire.
+- La section `fix/copilot-fake-numero-bail` (PR #51) liste encore ce défaut comme
+  « à faire » : la retirer à la fusion.
+
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
 **État :** prêt à relire (documentation seule)
