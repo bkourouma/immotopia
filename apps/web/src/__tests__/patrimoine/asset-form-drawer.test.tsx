@@ -289,4 +289,29 @@ describe('<AssetFormDrawer>', () => {
     );
     await waitFor(() => expect(listProperties).toHaveBeenCalledWith('agence-1', { limit: 100 }));
   });
+
+  it('exige une source pour une première valorisation en expertise et reporte l’erreur serveur', async () => {
+    const user = userEvent.setup();
+    createAsset.mockRejectedValueOnce({
+      response: { data: { errors: [{ path: 'initialValuation.source', message: 'Source refusée par le serveur' }] } }
+    });
+    monter();
+
+    await user.type(screen.getByLabelText("Nom de l'actif"), 'Objet');
+    await user.type(await screen.findByLabelText('Libellé'), 'Objet rare');
+    await user.type(screen.getByLabelText('Valeur estimée'), '1000000');
+    await user.click(screen.getAllByLabelText('Méthode')[0]);
+    await user.click(await screen.findByTitle('Expertise'));
+    await user.click(screen.getByRole('button', { name: "Créer l'actif" }));
+
+    expect(
+      await screen.findByText("Indiquez l'expert ou le document (source) pour une expertise.")
+    ).toBeInTheDocument();
+    expect(createAsset).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('Source'), 'Cabinet Kouassi');
+    await user.click(screen.getByRole('button', { name: "Créer l'actif" }));
+
+    expect(await screen.findByText('Source refusée par le serveur')).toBeInTheDocument();
+  });
 });

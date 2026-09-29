@@ -141,7 +141,7 @@ export const AssetsPage: React.FC = () => {
                   <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>
                     <span>{formatAmount(asset.currentValue.amount, asset.currentValue.currency)}</span>
                     <ReliabilityBadge reliability={asset.currentValue.reliability} />
-                    {asset.stale && <StaleTag />}
+                    {asset.stale && <StaleTag status={asset.status} />}
                   </Space>
                 ) : (
                   <Text type="secondary">{t('Sans valeur')}</Text>

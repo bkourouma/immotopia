@@ -44,6 +44,12 @@
 - `POST /patrimoine/assets/:assetId/valuations/suggest` : corps facultatif `{ asOf? }` ; lit les détails de
   l'actif ; renvoie la suggestion ou la liste des champs manquants ; n'écrit rien.
 - Les routes de valorisation du lot 1 calculent et renvoient `reliability`, `reliabilityReason`, `method`.
+- `reliabilityReasons` est **écrit** à la saisie (service des actifs, module Bien, bascule d'un lot de
+  chantier : logique pure dans `lib/patrimoine/assets/stored-reliability.ts`) mais **la lecture recalcule** :
+  l'ancienneté à la date du jour et le statut juridique courant de l'actif. La colonne sert d'instantané de
+  saisie et à distinguer une ligne antérieure au lot 2 (`reliability` nulle) ; l'API ne la relit pas.
+- Une méthode calculée est vérifiée par le serveur à l'écriture (recalcul à la date de la ligne) : montant
+  non retrouvé, ou suggestion refusée, donne `MANUAL` (voir la section finale du contrat).
 - `GET /patrimoine/net-worth` renvoie `lowReliabilityShare` et, par actif, `stale: boolean`.
 - Permissions inchangées (`PROPERTIES_VIEW` en lecture, `PROPERTIES_EDIT` en écriture).
 

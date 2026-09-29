@@ -176,7 +176,9 @@ describe('valorisations (lot 2)', () => {
       'UNIT_VALUE'
     ];
     for (const method of methods) {
-      expect(createAssetValuationSchema.safeParse({ ...valuation, method }).success).toBe(true);
+      expect(createAssetValuationSchema.safeParse({ ...valuation, method, source: 'Cabinet Diallo' }).success).toBe(
+        true
+      );
     }
     expect(createAssetValuationSchema.safeParse({ ...valuation, method: 'MAGIC' }).success).toBe(false);
   });
@@ -196,5 +198,43 @@ describe('valorisations (lot 2)', () => {
     expect(suggestValuationSchema.safeParse({ asOf: '2026-06-30' }).success).toBe(true);
     expect(suggestValuationSchema.safeParse({ asOf: 'hier' }).success).toBe(false);
     expect(suggestValuationSchema.safeParse({ asOf: '2026-06-30', amount: 1 }).success).toBe(false);
+  });
+  it('suggestion : asOf borné à 1900-2100 et refusé s’il n’existe pas', () => {
+    expect(suggestValuationSchema.safeParse({ asOf: '1899-12-31' }).success).toBe(false);
+    expect(suggestValuationSchema.safeParse({ asOf: '2101-01-01' }).success).toBe(false);
+    expect(suggestValuationSchema.safeParse({ asOf: '2026-02-30' }).success).toBe(false);
+    expect(suggestValuationSchema.safeParse({ asOf: '1900-01-01' }).success).toBe(true);
+    expect(suggestValuationSchema.safeParse({ asOf: '2100-12-31' }).success).toBe(true);
+  });
+
+  it('expertise : la source est obligatoire (création, valorisation initiale, modification)', () => {
+    const expert = { ...valuation, method: 'EXPERT_APPRAISAL' };
+    for (const source of [undefined, null, '', '   ']) {
+      const created = createAssetValuationSchema.safeParse({ ...expert, source });
+      expect(created.success).toBe(false);
+      expect(fieldsOf(created)).toEqual(['source']);
+      const initial = createAssetSchema.safeParse({ ...asset, initialValuation: { ...expert, source } });
+      expect(initial.success).toBe(false);
+      expect(fieldsOf(initial)).toEqual(['initialValuation.source']);
+    }
+    expect(createAssetValuationSchema.safeParse({ ...expert, source: 'Cabinet Diallo' }).success).toBe(true);
+    expect(createAssetSchema.safeParse({ ...asset, initialValuation: { ...expert, source: 'Cabinet' } }).success).toBe(
+      true
+    );
+  });
+
+  it('expertise : une saisie manuelle ou de marché n’exige pas de source', () => {
+    for (const method of ['MANUAL', 'MARKET_ESTIMATE']) {
+      expect(createAssetValuationSchema.safeParse({ ...valuation, method }).success).toBe(true);
+    }
+  });
+
+  it('modification : method = EXPERT_APPRAISAL avec une source effacée est refusé d’emblée', () => {
+    const cleared = updateAssetValuationSchema.safeParse({ method: 'EXPERT_APPRAISAL', source: null });
+    expect(cleared.success).toBe(false);
+    expect(fieldsOf(cleared)).toEqual(['source']);
+    expect(updateAssetValuationSchema.safeParse({ method: 'EXPERT_APPRAISAL', source: 'Cabinet' }).success).toBe(true);
+    // Sans `source` dans le corps, la source finale se vérifie sur la ligne fusionnée (service).
+    expect(updateAssetValuationSchema.safeParse({ method: 'EXPERT_APPRAISAL' }).success).toBe(true);
   });
 });

@@ -48,6 +48,8 @@ export type ReliabilityReason =
   | 'LEGAL_STATUS_FRAGILE'
   | 'LEGAL_STATUS_UNKNOWN';
 
+export type SuggestRefusalReason = 'ZERO_VALUE' | 'OUT_OF_RANGE' | 'ACQUISITION_DATE_IN_FUTURE';
+
 export type SuggestResponse =
   | {
       ok: true;
@@ -56,7 +58,12 @@ export type SuggestResponse =
       method: ValuationMethod;
       assumptions: { key: string; value: string | number }[];
     }
-  | { ok: false; missing: string[] };
+  | {
+      ok: false;
+      missing: string[];
+      /** Refus métier qui n'est pas un champ manquant. */
+      reason?: SuggestRefusalReason;
+    };
 export type DebtStatus = 'ACTIVE' | 'CLOSED' | 'DEFAULTED';
 
 export interface AssetValuationDto {

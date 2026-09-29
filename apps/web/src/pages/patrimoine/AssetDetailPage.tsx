@@ -1,20 +1,36 @@
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Tabs, Tag } from 'antd';
+import { Alert, Button, Tabs, Tag } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getAsset } from '../../services/patrimoine-assets-service';
+import { getAsset, listAssetValuations, type AssetDto } from '../../services/patrimoine-assets-service';
 import { useAuth } from '../../hooks/useAuth';
-import { detailKey, STALE_TIME } from '../../lib/query-keys';
+import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, SkeletonDetail, StateBlock } from '../../components/primitives';
 import { AssetFormDrawer } from '../../components/patrimoine/actifs/AssetFormDrawer';
 import { AssetHoldingsTab } from '../../components/patrimoine/actifs/AssetHoldingsTab';
 import { AssetInfoTab } from '../../components/patrimoine/actifs/AssetInfoTab';
 import { AssetValuationsTab } from '../../components/patrimoine/actifs/AssetValuationsTab';
 import { DebtsPanel } from '../../components/patrimoine/actifs/DebtsPanel';
-import { assetClassLabel, assetStatusLabel } from '../../components/patrimoine/actifs/asset-classes';
+import {
+  assetClassLabel,
+  assetStatusLabel,
+  FRAGILE_LEGAL_STATUSES
+} from '../../components/patrimoine/actifs/asset-classes';
 import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
 import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
 import { t } from '../../i18n/t';
+
+/** Rappel pour un bien immobilier dont le statut juridique plafonne ou empêche de fiabiliser la valeur. */
+function legalStatusHint(asset: AssetDto): string | null {
+  if (asset.assetClass !== 'REAL_ESTATE' || asset.status !== 'ACTIVE') return null;
+  const status = asset.details?.legalStatus;
+  if (typeof status !== 'string' || status === '') {
+    return t('Renseignez le statut juridique du bien pour fiabiliser sa valeur.');
+  }
+  return FRAGILE_LEGAL_STATUSES.includes(status)
+    ? t('Statut juridique fragile : la fiabilité de la valeur est plafonnée.')
+    : null;
+}
 
 /**
  * Fiche d'un actif : valeurs, dettes, détenteurs (actifs non immobiliers) et
@@ -31,6 +47,14 @@ export const AssetDetailPage: React.FC = () => {
   const assetQuery = useQuery({
     queryKey: detailKey('patrimoine-asset', agence, assetId ?? ''),
     queryFn: () => getAsset(agence as string, assetId as string),
+    enabled: Boolean(agence && assetId),
+    staleTime: STALE_TIME.list
+  });
+
+  // Même clé que l'onglet Valeurs : une seule requête, dont on tire les raisons de la valeur courante.
+  const valuationsQuery = useQuery({
+    queryKey: queryKey('patrimoine-asset-valuations', agence, { assetId }),
+    queryFn: () => listAssetValuations(agence as string, assetId as string),
     enabled: Boolean(agence && assetId),
     staleTime: STALE_TIME.list
   });
@@ -53,6 +77,12 @@ export const AssetDetailPage: React.FC = () => {
   const asset = assetQuery.data;
   const isRealEstate = asset.assetClass === 'REAL_ESTATE';
   const current = asset.currentValue;
+  const currentReasons = current
+    ? (valuationsQuery.data ?? []).find(
+        v => v.valuatedAt.slice(0, 10) === current.valuatedAt.slice(0, 10) && v.estimatedValue === current.amount
+      )?.reliabilityReasons
+    : undefined;
+  const legalHint = legalStatusHint(asset);
 
   const items = [
     {
@@ -104,8 +134,8 @@ export const AssetDetailPage: React.FC = () => {
         )}
         {current && (
           <span style={{ marginInlineStart: 8, display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-            <ReliabilityBadge reliability={current.reliability} />
-            {asset.stale && <StaleTag />}
+            <ReliabilityBadge reliability={current.reliability} reasons={currentReasons} />
+            {asset.stale && <StaleTag status={asset.status} />}
           </span>
         )}
         {isRealEstate && (
@@ -114,6 +144,20 @@ export const AssetDetailPage: React.FC = () => {
           </p>
         )}
       </div>
+
+      {legalHint && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          title={legalHint}
+          action={
+            <Button size="small" onClick={() => setEditOpen(true)}>
+              {t("Modifier l'actif")}
+            </Button>
+          }
+        />
+      )}
 
       <Tabs items={items} />
 

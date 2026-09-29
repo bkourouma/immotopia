@@ -6,11 +6,11 @@
  * refus avec la liste des champs manquants, jamais une valeur inventée.
  *
  * Convention de durée : une année = 365,25 jours (années bissextiles lissées),
- * les années écoulées sont fractionnaires. Montants arrondis au franc par
- * `roundMoneyXof`, uniquement au résultat final.
+ * les années écoulées sont fractionnaires. Montants arrondis au résultat final
+ * seulement : au franc (`roundMoneyXof`) en XOF, au centime sinon.
  */
 
-import { roundMoneyXof } from '../../finance/money';
+import { roundMoney, roundMoneyXof } from '../../finance/money';
 import type { AssetClassKey } from './asset-classes';
 
 export type ValuationMethodKey =
@@ -26,6 +26,23 @@ export type ValuationMethodKey =
   | 'DISCOUNTED_CLAIM'
   | 'UNIT_VALUE';
 
+/** Méthodes dont le montant se recalcule : le serveur les vérifie à l'écriture. */
+export const COMPUTED_VALUATION_METHODS = [
+  'DEPRECIATION_LINEAR',
+  'DEPRECIATION_DECLINING',
+  'EQUITY_SHARE',
+  'UNIT_COST',
+  'ACCRUED_SAVINGS',
+  'DISCOUNTED_CLAIM',
+  'UNIT_VALUE'
+] as const satisfies readonly ValuationMethodKey[];
+
+/** Plafond d'un montant : colonne `Decimal(14,2)`. */
+export const MAX_VALUATION_AMOUNT = 999_999_999_999.99;
+
+/** Raison métier d'un refus qui n'est pas un champ manquant. */
+export type SuggestRefusalReason = 'ZERO_VALUE' | 'OUT_OF_RANGE' | 'ACQUISITION_DATE_IN_FUTURE';
+
 export interface ValuationAssumption {
   key: string;
   value: string | number;
@@ -37,11 +54,13 @@ export interface SuggestValuationInput {
   acquisitionCost: number | null;
   acquisitionDate: Date | null;
   lastValuation: { valuatedAt: Date; estimatedValue: number } | null;
+  /** Devise de l'actif ; XOF par défaut. Conditionne l'arrondi (franc en XOF, centime sinon). */
+  currency?: string;
 }
 
 export type SuggestValuationResult =
   | { ok: true; amount: number; method: ValuationMethodKey; assumptions: ValuationAssumption[] }
-  | { ok: false; missing: string[] };
+  | { ok: false; missing: string[]; reason?: SuggestRefusalReason };
 
 const DAYS_PER_YEAR = 365.25;
 const MS_PER_DAY = 86_400_000;
@@ -50,6 +69,7 @@ type Computed = Extract<SuggestValuationResult, { ok: true }>;
 type Missing = Extract<SuggestValuationResult, { ok: false }>;
 
 const refuse = (...missing: string[]): Missing => ({ ok: false, missing });
+const refuseFor = (reason: SuggestRefusalReason): Missing => ({ ok: false, missing: [], reason });
 
 /** Années fractionnaires entre deux dates (365,25 jours l'an). */
 export function yearsBetween(from: Date, to: Date): number {
@@ -61,8 +81,20 @@ function num(details: Record<string, unknown>, key: string): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+/** Résultat brut : l'arrondi et les bornes sont appliqués une seule fois, par `finalize`. */
 function done(amount: number, method: ValuationMethodKey, assumptions: ValuationAssumption[]): Computed {
-  return { ok: true, amount: roundMoneyXof(amount), method, assumptions };
+  return { ok: true, amount, method, assumptions };
+}
+
+/** Arrondit selon la devise puis refuse un montant nul, non fini ou hors de la colonne `Decimal(14,2)`. */
+function finalize(result: SuggestValuationResult, currency: string): SuggestValuationResult {
+  if (!result.ok) return result;
+  if (!Number.isFinite(result.amount) || Math.abs(result.amount) > MAX_VALUATION_AMOUNT) {
+    return refuseFor('OUT_OF_RANGE');
+  }
+  const amount = currency === 'XOF' ? roundMoneyXof(result.amount) : roundMoney(result.amount);
+  if (amount <= 0) return refuseFor('ZERO_VALUE');
+  return { ...result, amount };
 }
 
 /** Amortissement linéaire ou dégressif d'un véhicule ou équipement ; plancher = valeur résiduelle. */
@@ -76,6 +108,7 @@ function vehicleEquipment(input: SuggestValuationInput, asOf: Date): SuggestValu
   if (date === null) missing.push('acquisitionDate');
   if (declining ? rate === null : life === null) missing.push(declining ? 'decliningRatePercent' : 'usefulLifeYears');
   if (missing.length > 0 || cost === null || date === null) return refuse(...missing);
+  if (date.getTime() > asOf.getTime()) return refuseFor('ACQUISITION_DATE_IN_FUTURE');
 
   const residualPercent = num(details, 'residualValuePercent') ?? 0;
   const residual = (cost * residualPercent) / 100;
@@ -146,6 +179,8 @@ function savings(input: SuggestValuationInput, asOf: Date): SuggestValuationResu
   if (rate === null) missing.push('expectedRatePercent');
   if (start === null) missing.push('acquisitionDate');
   if (missing.length > 0 || principal === null || rate === null || start === null) return refuse(...missing);
+  // Sans valorisation antérieure, le capital court depuis la date d'acquisition : elle ne peut pas être future.
+  if (!lastValuation && start.getTime() > asOf.getTime()) return refuseFor('ACQUISITION_DATE_IN_FUTURE');
 
   const years = Math.max(0, yearsBetween(start, asOf));
   return done(principal * Math.pow(1 + rate / 100, years), 'ACCRUED_SAVINGS', [
@@ -189,12 +224,14 @@ function agriculture(input: SuggestValuationInput): SuggestValuationResult {
 /**
  * Suggère une valeur selon la classe. `MOVABLE`, `OTHER` et `REAL_ESTATE` n'ont
  * pas de méthode calculable (`missing: []`) ; un solde se saisit (`['balance']`).
- * Une date d'acquisition postérieure à `asOf` est refusée.
+ * Refus métier avec `reason` : date d'acquisition postérieure à `asOf` (classes
+ * qui l'utilisent seulement), montant nul ou hors bornes.
  */
 export function suggestValuation(input: SuggestValuationInput, asOf: Date): SuggestValuationResult {
-  if (input.acquisitionDate !== null && input.acquisitionDate.getTime() > asOf.getTime()) {
-    return refuse('acquisitionDate');
-  }
+  return finalize(compute(input, asOf), input.currency ?? 'XOF');
+}
+
+function compute(input: SuggestValuationInput, asOf: Date): SuggestValuationResult {
   switch (input.assetClass) {
     case 'VEHICLE_EQUIPMENT':
       return vehicleEquipment(input, asOf);

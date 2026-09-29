@@ -108,7 +108,7 @@ describe('VEHICLE_EQUIPMENT', () => {
       }),
       AS_OF
     );
-    expect(result).toEqual({ ok: false, missing: ['acquisitionDate'] });
+    expect(result).toEqual({ ok: false, missing: [], reason: 'ACQUISITION_DATE_IN_FUTURE' });
   });
 });
 
@@ -265,5 +265,134 @@ describe('classes sans méthode calculable', () => {
 
   it('CASH : invite à saisir le solde', () => {
     expect(suggestValuation(input({ assetClass: 'CASH' }), AS_OF)).toEqual({ ok: false, missing: ['balance'] });
+  });
+});
+
+describe('date d’acquisition future : seules les classes qui l’utilisent la refusent', () => {
+  const future = new Date(AS_OF.getTime() + DAY);
+
+  it('épargne sans valorisation : refus motivé', () => {
+    const details = { savingsKind: 'PLACEMENT', expectedRatePercent: 6, principal: 5_000_000 };
+    expect(
+      suggestValuation(input({ assetClass: 'SAVINGS_INVESTMENT', details, acquisitionDate: future }), AS_OF)
+    ).toEqual({ ok: false, missing: [], reason: 'ACQUISITION_DATE_IN_FUTURE' });
+  });
+
+  it('épargne avec valorisation antérieure : la date d’acquisition future est ignorée', () => {
+    const details = { savingsKind: 'PLACEMENT', expectedRatePercent: 6 };
+    const result = suggestValuation(
+      input({
+        assetClass: 'SAVINGS_INVESTMENT',
+        details,
+        acquisitionDate: future,
+        lastValuation: { valuatedAt: yearsAgo(1), estimatedValue: 1_000_000 }
+      }),
+      AS_OF
+    );
+    expect(result).toMatchObject({ ok: true, amount: 1_060_000 });
+  });
+
+  it('stock, créance, entreprise, agriculture : la date d’acquisition future n’empêche rien', () => {
+    expect(
+      suggestValuation(
+        input({
+          assetClass: 'RECEIVABLE',
+          details: { principal: 100, collectibilityPercent: 50 },
+          acquisitionDate: future
+        }),
+        AS_OF
+      )
+    ).toMatchObject({ ok: true, amount: 50 });
+    expect(
+      suggestValuation(
+        input({ assetClass: 'INVENTORY', details: { quantity: 2, unitCost: 10 }, acquisitionDate: future }),
+        AS_OF
+      )
+    ).toMatchObject({ ok: true, amount: 20 });
+  });
+});
+
+describe('montant nul ou hors bornes', () => {
+  it('stock de quantité 0 : ZERO_VALUE', () => {
+    expect(suggestValuation(input({ assetClass: 'INVENTORY', details: { quantity: 0, unitCost: 10 } }), AS_OF)).toEqual(
+      {
+        ok: false,
+        missing: [],
+        reason: 'ZERO_VALUE'
+      }
+    );
+  });
+
+  it('décote de 100 % : ZERO_VALUE', () => {
+    expect(
+      suggestValuation(
+        input({ assetClass: 'INVENTORY', details: { quantity: 5, unitCost: 10, writeDownPercent: 100 } }),
+        AS_OF
+      )
+    ).toMatchObject({ ok: false, reason: 'ZERO_VALUE' });
+  });
+
+  it('véhicule totalement amorti sans résiduelle : ZERO_VALUE', () => {
+    expect(
+      suggestValuation(
+        input({
+          assetClass: 'VEHICLE_EQUIPMENT',
+          details: { kind: 'a', usefulLifeYears: 4 },
+          acquisitionCost: 8_000_000,
+          acquisitionDate: yearsAgo(10)
+        }),
+        AS_OF
+      )
+    ).toEqual({ ok: false, missing: [], reason: 'ZERO_VALUE' });
+  });
+
+  it('épargne à 100 % sur 7 979 ans : le calcul déborde en Infinity, OUT_OF_RANGE', () => {
+    expect(
+      suggestValuation(
+        input({
+          assetClass: 'SAVINGS_INVESTMENT',
+          details: { savingsKind: 'PLACEMENT', expectedRatePercent: 100, principal: 1000 },
+          acquisitionDate: yearsAgo(7979)
+        }),
+        AS_OF
+      )
+    ).toEqual({ ok: false, missing: [], reason: 'OUT_OF_RANGE' });
+  });
+
+  it('au-delà de 999 999 999 999,99 : OUT_OF_RANGE', () => {
+    expect(
+      suggestValuation(
+        input({ assetClass: 'AGRICULTURE', details: { agricultureKind: 'LIVESTOCK', headcount: 1e12, unitValue: 10 } }),
+        AS_OF
+      )
+    ).toMatchObject({ ok: false, reason: 'OUT_OF_RANGE' });
+  });
+
+  it('exactement le plafond : accepté', () => {
+    expect(
+      suggestValuation(
+        input({
+          assetClass: 'AGRICULTURE',
+          currency: 'EUR',
+          details: { agricultureKind: 'LIVESTOCK', headcount: 1, unitValue: 999_999_999_999.99 }
+        }),
+        AS_OF
+      )
+    ).toMatchObject({ ok: true, amount: 999_999_999_999.99 });
+  });
+});
+
+describe('arrondi selon la devise', () => {
+  const details = { agricultureKind: 'LIVESTOCK', headcount: 1, unitValue: 1234.56 };
+
+  it('XOF : au franc', () => {
+    expect(suggestValuation(input({ assetClass: 'AGRICULTURE', details }), AS_OF)).toMatchObject({ amount: 1235 });
+  });
+
+  it('EUR : 1 234,56 reste 1 234,56', () => {
+    expect(suggestValuation(input({ assetClass: 'AGRICULTURE', details, currency: 'EUR' }), AS_OF)).toMatchObject({
+      ok: true,
+      amount: 1234.56
+    });
   });
 });

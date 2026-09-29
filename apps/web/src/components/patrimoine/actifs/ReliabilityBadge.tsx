@@ -42,9 +42,14 @@ export const ReliabilityBadge: React.FC<{
   );
 };
 
-/** Pastille « Valeur périmée » (seuil de péremption de la classe, décidé par le serveur). */
-export const StaleTag: React.FC = () => (
-  <Tag color="orange" style={{ marginInlineEnd: 0 }}>
-    {t('Valeur périmée')}
-  </Tag>
-);
+/**
+ * Pastille « Valeur périmée » (seuil de péremption de la classe, décidé par le
+ * serveur). Jamais affichée pour un actif qui n'est pas `ACTIVE`, même si le
+ * serveur la fournit.
+ */
+export const StaleTag: React.FC<{ status?: string }> = ({ status = 'ACTIVE' }) =>
+  status === 'ACTIVE' ? (
+    <Tag color="orange" style={{ marginInlineEnd: 0 }}>
+      {t('Valeur périmée')}
+    </Tag>
+  ) : null;

@@ -73,7 +73,8 @@ Migration `20261004160000_patrimoine_multi_actifs`. Détail :
   `ValuationMethod` passe de 3 à 11 valeurs (`DEPRECIATION_LINEAR`,
   `DEPRECIATION_DECLINING`, `EQUITY_SHARE`, `UNIT_COST`, `BALANCE`,
   `ACCRUED_SAVINGS`, `DISCOUNTED_CLAIM`, `UNIT_VALUE`) et `AssetValuation` gagne
-  `reliabilityReasons` (`text[] NOT NULL DEFAULT '{}'`, clés de raison stables).
+  `reliabilityReasons` (`text[] NOT NULL DEFAULT '{}'`, clés de raison stables ; écrit à la saisie, la lecture
+  recalcule la fiabilité effective).
 - `PatrimonyDocument` : `assetId` facultatif (`SetNull`).
 - `PropertyExpense`, `WorkProgram`, `OwnerStatement*` : inchangés, rattachés au bien.
 - Données : un `Asset` `REAL_ESTATE` est créé par bien portant des données

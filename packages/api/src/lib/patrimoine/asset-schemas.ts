@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { ASSET_CLASSES, parseAssetDetails, type AssetDetails, type ValuationMethodKey } from './assets';
+import {
+  ASSET_CLASSES,
+  MAX_VALUATION_AMOUNT,
+  parseAssetDetails,
+  type AssetDetails,
+  type ValuationMethodKey
+} from './assets';
 import { ValidationError } from '../../middleware/error-middleware';
 
 /**
@@ -36,7 +42,7 @@ export const SHORT_TEXT_MAX = 200;
 export const NOTES_MAX = 2000;
 
 /** Plafonds alignés sur les colonnes Prisma (`Decimal(14,2)`, `Decimal(6,4)`, `Decimal(18,6)`). */
-export const MAX_MONEY = 999_999_999_999.99;
+export const MAX_MONEY = MAX_VALUATION_AMOUNT;
 export const MAX_INTEREST_RATE = 99.9999;
 export const MIN_EXCHANGE_RATE = 0.000001;
 export const MAX_EXCHANGE_RATE = 1_000_000_000;
@@ -82,6 +88,15 @@ const strictDate = z
 /** Date facultative : `null` reste permis pour effacer la valeur ; nombres et booléens sont refusés. */
 const optionalNullableDate = strictDate.nullable().optional();
 
+export const EXPERT_SOURCE_MESSAGE = 'Une expertise exige une source (nom de l’expert ou référence du rapport).';
+
+/** Une expertise sans source ne prouve rien : erreur sur le champ `source`. */
+function requireExpertSource(value: { method?: string; source?: string | null }, ctx: z.RefinementCtx): void {
+  if (value.method === 'EXPERT_APPRAISAL' && !value.source) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: EXPERT_SOURCE_MESSAGE, path: ['source'] });
+  }
+}
+
 export const initialValuationSchema = z
   .object({
     valuatedAt: strictDate,
@@ -90,7 +105,8 @@ export const initialValuationSchema = z
     source: optionalNullableShortText,
     notes: optionalNullableText
   })
-  .strict();
+  .strict()
+  .superRefine(requireExpertSource);
 
 const assetFields = {
   name: z.string().trim().min(1).max(SHORT_TEXT_MAX),
@@ -137,13 +153,21 @@ const valuationFields = {
   notes: optionalNullableText
 };
 
-export const createAssetValuationSchema = z.object(valuationFields).strict();
+export const createAssetValuationSchema = z.object(valuationFields).strict().superRefine(requireExpertSource);
 
+/**
+ * PATCH : la source finale d'une expertise se vérifie sur la ligne fusionnée
+ * (service). Ici, seul un corps qui pose `method = EXPERT_APPRAISAL` en effaçant
+ * la source, ou en la laissant vide, est refusé d'emblée.
+ */
 export const updateAssetValuationSchema = z
   .object(valuationFields)
   .partial()
   .strict()
-  .refine(value => Object.keys(value).length > 0, { message: 'Au moins un champ est requis' });
+  .refine(value => Object.keys(value).length > 0, { message: 'Au moins un champ est requis' })
+  .superRefine((value, ctx) => {
+    if (value.method === 'EXPERT_APPRAISAL' && value.source !== undefined) requireExpertSource(value, ctx);
+  });
 
 const debtFields = {
   lender: z.string().trim().min(2).max(SHORT_TEXT_MAX),
@@ -193,7 +217,9 @@ export const setAssetHoldingSchema = z
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date AAAA-MM-JJ attendue');
 
 /** Suggestion de valeur (lot 2) : `asOf` facultatif, défaut aujourd'hui. */
-export const suggestValuationSchema = z.object({ asOf: isoDay.optional() }).strict();
+export const suggestValuationSchema = z
+  .object({ asOf: isoDay.refine(value => parseStrictDate(value) !== null, DATE_ERROR).optional() })
+  .strict();
 
 export const netWorthQuerySchema = z.object({ asOf: isoDay.optional() }).strict();
 

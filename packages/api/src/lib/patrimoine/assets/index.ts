@@ -38,8 +38,9 @@ export type {
   NetWorthValuationInput
 } from './net-worth';
 
-export { suggestValuation, yearsBetween } from './valuation-methods';
+export { COMPUTED_VALUATION_METHODS, MAX_VALUATION_AMOUNT, suggestValuation, yearsBetween } from './valuation-methods';
 export type {
+  SuggestRefusalReason,
   SuggestValuationInput,
   SuggestValuationResult,
   ValuationAssumption,
@@ -48,5 +49,8 @@ export type {
 
 export { computeReliability } from './reliability';
 export type { Reliability, ReliabilityInput, ReliabilityReason, ReliabilityResult } from './reliability';
+
+export { computeStoredReliability, effectiveReliability, legalStatusOf } from './stored-reliability';
+export type { ReliabilityLine, ReliabilityView } from './stored-reliability';
 
 export { isStale, monthsBetween, STALENESS_MONTHS } from './staleness';

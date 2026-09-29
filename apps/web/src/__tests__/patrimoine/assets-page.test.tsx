@@ -122,6 +122,14 @@ describe('<AssetsPage>', () => {
     expect(await screen.findByText('Commencez par ajouter votre premier actif')).toBeInTheDocument();
   });
 
+  it('ne signale jamais « Valeur périmée » pour un actif qui n’est pas actif', async () => {
+    listAssets.mockResolvedValue([actif({ status: 'ARCHIVED', stale: true })]);
+    monter();
+
+    expect(await screen.findByText('Toyota Hilux')).toBeInTheDocument();
+    expect(screen.queryByText('Valeur périmée')).not.toBeInTheDocument();
+  });
+
   it('ne signale pas comme périmée une valeur que le serveur ne juge pas périmée', async () => {
     listAssets.mockResolvedValue([
       actif({

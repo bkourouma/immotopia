@@ -1,4 +1,6 @@
 import { Prisma } from '@prisma/client';
+import { computeStoredReliability } from './assets/stored-reliability';
+import type { Reliability, ReliabilityReason, ValuationMethodKey } from './assets';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
@@ -23,7 +25,7 @@ export interface PropertyAssetClient {
  * ou valorisé ensuite reste invisible de la valeur nette tant qu'aucun actif
  * ne le porte. Cette fonction le crée à la volée.
  *
- * - Idempotente : upsert par `propertyId` (unique) ; sur course (P2002),
+ * - Idempotente : upsert par `propertyId` (unique) et `tenantId` ; sur course (P2002),
  *   l'actif du concurrent est relu, jamais de doublon ni d'échec.
  * - No-op silencieux (retourne `null`) si le bien est sans agence ou
  *   n'appartient pas à `tenantId`.
@@ -42,12 +44,12 @@ export async function ensurePropertyAsset(
   });
   if (!property) return null;
 
-  const existing = await client.asset.findUnique({ where: { propertyId }, select: { id: true } });
+  const existing = await client.asset.findUnique({ where: { propertyId, tenantId }, select: { id: true } });
   if (existing) return existing;
 
   try {
     return await client.asset.upsert({
-      where: { propertyId },
+      where: { propertyId, tenantId },
       update: {},
       create: {
         tenantId,
@@ -63,8 +65,35 @@ export async function ensurePropertyAsset(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return client.asset.findUnique({ where: { propertyId }, select: { id: true } });
+      return client.asset.findUnique({ where: { propertyId, tenantId }, select: { id: true } });
     }
     throw error;
   }
+}
+
+/** Client capable de relire les détails de l'actif lié : celui de `ensurePropertyAsset` plus `findFirst`. */
+export interface PropertyReliabilityClient extends PropertyAssetClient {
+  asset: PropertyAssetClient['asset'] & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    findFirst(args: any): PromiseLike<{ details: unknown } | null>;
+  };
+}
+
+/**
+ * Fiabilité à stocker pour une valorisation saisie par le module Bien, calculée
+ * comme celle du service des actifs : le statut juridique vient des `details`
+ * de l'actif immobilier lié (créé à la volée si besoin). Sans agence ou sans
+ * actif, le statut est inconnu : la fiabilité est plafonnée en conséquence.
+ */
+export async function storedPropertyReliability(
+  client: PropertyReliabilityClient,
+  tenantId: string,
+  propertyId: string,
+  line: { method: ValuationMethodKey; valuatedAt: Date; source: string | null }
+): Promise<{ reliability: Reliability; reliabilityReasons: ReliabilityReason[] }> {
+  const asset = await ensurePropertyAsset(client, tenantId, propertyId);
+  const row = asset
+    ? await client.asset.findFirst({ where: { id: asset.id, tenantId }, select: { details: true } })
+    : null;
+  return computeStoredReliability({ assetClass: 'REAL_ESTATE', details: row?.details ?? {} }, line);
 }

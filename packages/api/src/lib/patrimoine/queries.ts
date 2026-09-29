@@ -8,7 +8,7 @@ import { materializeManagementFees } from '../rental-fees/materialize';
 import { ownerSharesByProperty } from '../ownership/service';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
-import { ensurePropertyAsset } from './property-asset';
+import { ensurePropertyAsset, storedPropertyReliability } from './property-asset';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -89,7 +89,11 @@ export async function createPropertyValuation(
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
-  await ensurePropertyAsset(prisma, tenantId, propertyId);
+  const reliability = await storedPropertyReliability(prisma, tenantId, propertyId, {
+    method: data.method,
+    valuatedAt: data.valuatedAt,
+    source: null
+  });
   return prisma.assetValuation.create({
     data: {
       tenantId,
@@ -100,7 +104,8 @@ export async function createPropertyValuation(
       acquisitionCost: toDecimal(data.acquisitionCost),
       acquisitionDate: data.acquisitionDate,
       method: data.method,
-      notes: data.notes
+      notes: data.notes,
+      ...reliability
     },
     include: { property: true }
   });
@@ -126,6 +131,13 @@ export async function updatePropertyValuation(
   });
   if (!existing) throw notFound('Valorisation introuvable');
 
+  // Fiabilité recalculée sur la ligne fusionnée avec le PATCH (la source, absente du module Bien, reste celle de la ligne).
+  const reliability = await storedPropertyReliability(prisma, tenantId, propertyId, {
+    method: data.method ?? existing.method,
+    valuatedAt: data.valuatedAt ?? existing.valuatedAt,
+    source: existing.source
+  });
+
   return prisma.assetValuation.update({
     where: { id: valuationId, tenantId },
     data: {
@@ -135,7 +147,8 @@ export async function updatePropertyValuation(
       acquisitionCost: toDecimal(data.acquisitionCost),
       acquisitionDate: data.acquisitionDate,
       method: data.method,
-      notes: data.notes
+      notes: data.notes,
+      ...reliability
     },
     include: { property: true }
   });

@@ -47,6 +47,32 @@ interface ValuationFormValues {
 
 const FORM_FIELDS = ['valuatedAt', 'estimatedValue', 'currency', 'method', 'source', 'notes'];
 
+/** Méthodes que le serveur recalcule : un montant retouché à la main les fait repasser en saisie manuelle. */
+const COMPUTED_METHODS: readonly string[] = [
+  'DEPRECIATION_LINEAR',
+  'DEPRECIATION_DECLINING',
+  'EQUITY_SHARE',
+  'UNIT_COST',
+  'ACCRUED_SAVINGS',
+  'DISCOUNTED_CLAIM',
+  'UNIT_VALUE'
+];
+
+const isComputed = (method: string | undefined): boolean => method !== undefined && COMPUTED_METHODS.includes(method);
+
+/** Méthode à envoyer : celle de la suggestion seulement si son montant est inchangé. */
+function methodForAmount(
+  prefill: Partial<ValuationFormValues> | null | undefined,
+  amount: number | null | undefined,
+  method: AssetValuationDto['method']
+): AssetValuationDto['method'] {
+  if (!prefill || !isComputed(prefill.method) || method !== prefill.method) return method;
+  return Number(amount) === prefill.estimatedValue ? method : 'MANUAL';
+}
+
+const isForbidden = (error: unknown): boolean =>
+  (error as { response?: { status?: number } })?.response?.status === 403;
+
 const ValuationFormModal: React.FC<{
   open: boolean;
   asset: AssetDto;
@@ -57,6 +83,10 @@ const ValuationFormModal: React.FC<{
   onSubmit: (payload: AssetValuationInput) => Promise<void>;
 }> = ({ open, asset, valuation, prefill, onClose, onSubmit }) => {
   const [form] = Form.useForm<ValuationFormValues>();
+  const method = Form.useWatch('method', form);
+  const amount = Form.useWatch('estimatedValue', form);
+  const noteManual =
+    !valuation && isComputed(prefill?.method) && method === 'MANUAL' && Number(amount) !== prefill?.estimatedValue;
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -92,7 +122,7 @@ const ValuationFormModal: React.FC<{
         valuatedAt: values.valuatedAt,
         estimatedValue: values.estimatedValue,
         currency: values.currency,
-        method: values.method,
+        method: methodForAmount(valuation ? null : prefill, values.estimatedValue, values.method),
         source: values.source?.trim() || null,
         notes: values.notes?.trim() || null
       });
@@ -123,7 +153,14 @@ const ValuationFormModal: React.FC<{
       destroyOnHidden
     >
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
-      <Form form={form} layout="vertical">
+      <Form
+        form={form}
+        layout="vertical"
+        onValuesChange={changed => {
+          if (!('estimatedValue' in changed) || valuation || !prefill?.method) return;
+          form.setFieldValue('method', methodForAmount(prefill, changed.estimatedValue, prefill.method));
+        }}
+      >
         <Form.Item
           name="valuatedAt"
           label={t('Date de la valeur')}
@@ -134,6 +171,7 @@ const ValuationFormModal: React.FC<{
         <Form.Item
           name="estimatedValue"
           label={t('Valeur estimée')}
+          extra={noteManual ? t('Montant modifié : la valeur sera enregistrée comme saisie manuelle.') : undefined}
           rules={[
             { required: true, message: t('Champ obligatoire') },
             {
@@ -152,7 +190,17 @@ const ValuationFormModal: React.FC<{
         <Form.Item name="method" label={t('Méthode')} rules={[{ required: true }]}>
           <Select options={VALUATION_METHODS.map(value => ({ value, label: valuationMethodName(value) }))} />
         </Form.Item>
-        <Form.Item name="source" label={t('Source')}>
+        <Form.Item
+          name="source"
+          label={t('Source')}
+          rules={[
+            {
+              required: method === 'EXPERT_APPRAISAL',
+              whitespace: true,
+              message: t("Indiquez l'expert ou le document (source) pour une expertise.")
+            }
+          ]}
+        >
           <Input maxLength={160} />
         </Form.Item>
         <Form.Item name="notes" label={t('Notes')}>
@@ -168,89 +216,127 @@ const MONEY_KEYS = ['companyValue', 'netIncome', 'unitCost', 'principal', 'unitV
 
 function assumptionValue(key: string, value: string | number, currency: string): string {
   if (typeof value === 'number') {
-    if (PERCENT_KEY.test(key)) return `${value} %`;
+    // Le libellé d'un pourcentage porte déjà « (%) » : pas de second « % » dans ce cas.
+    if (PERCENT_KEY.test(key)) return detailKeyLabel(key).includes('(%)') ? String(value) : `${value} %`;
+    if (key === 'usefulLifeYears') {
+      return value > 1 ? t('{{nombre}} ans', { nombre: value }) : t('{{nombre}} an', { nombre: value });
+    }
     if (MONEY_KEYS.includes(key)) return formatAmount(value, currency);
   }
   return String(value);
 }
 
-/** Résultat d'une suggestion : valeur, méthode, hypothèses ; ou champs à compléter. Rien n'est enregistré ici. */
-const SuggestionResult: React.FC<{
+type SuggestOk = Extract<SuggestResponse, { ok: true }>;
+type SuggestRefused = Extract<SuggestResponse, { ok: false }>;
+
+const wrapperStyle = { marginBottom: 'var(--space-4)' };
+
+/** Valeur calculée : montant, méthode, hypothèses. Rien n'est enregistré sans confirmation. */
+const SuggestionOk: React.FC<{
   asset: AssetDto;
-  result: SuggestResponse;
-  onSave: (result: Extract<SuggestResponse, { ok: true }>) => Promise<void>;
-  onEdit: (result: Extract<SuggestResponse, { ok: true }>) => void;
-  onCompleteInfo?: () => void;
+  result: SuggestOk;
+  canWrite: boolean;
+  onSave: (result: SuggestOk) => Promise<void>;
+  onEdit: (result: SuggestOk) => void;
   onDismiss: () => void;
-}> = ({ asset, result, onSave, onEdit, onCompleteInfo, onDismiss }) => {
-  const wrapperStyle = { marginBottom: 'var(--space-4)' };
-  if (result.ok) {
-    return (
-      <Alert
-        type="info"
-        showIcon
-        closable={{ onClose: onDismiss }}
-        style={wrapperStyle}
-        title={t('Valeur calculée : {{montant}}', { montant: formatAmount(result.amount, result.currency) })}
-        description={
-          <div>
-            <Descriptions column={1} size="small" style={{ marginTop: 'var(--space-2)' }}>
-              <Descriptions.Item label={t('Méthode')}>{valuationMethodName(result.method)}</Descriptions.Item>
-              {(result.assumptions ?? []).map(item => (
-                <Descriptions.Item key={item.key} label={detailKeyLabel(item.key)}>
-                  {assumptionValue(item.key, item.value, asset.currency)}
-                </Descriptions.Item>
-              ))}
-            </Descriptions>
+}> = ({ asset, result, canWrite, onSave, onEdit, onDismiss }) => {
+  const amount = formatAmount(result.amount, result.currency);
+  const savable = canWrite && result.amount > 0;
+  return (
+    <Alert
+      type="info"
+      showIcon
+      closable={{ onClose: onDismiss }}
+      style={wrapperStyle}
+      title={t('Valeur calculée : {{montant}}', { montant: amount })}
+      description={
+        <div>
+          <Descriptions column={1} size="small" style={{ marginTop: 'var(--space-2)' }}>
+            <Descriptions.Item label={t('Méthode')}>{valuationMethodName(result.method)}</Descriptions.Item>
+            {(result.assumptions ?? []).map(item => (
+              <Descriptions.Item key={item.key} label={detailKeyLabel(item.key)}>
+                {assumptionValue(item.key, item.value, asset.currency)}
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+          {canWrite && (
             <Space wrap>
-              <ConfirmAction
-                title={t('Enregistrer cette valeur de {{montant}} ?', {
-                  montant: formatAmount(result.amount, result.currency)
-                })}
-                description={t("Une valeur datée d'aujourd'hui sera ajoutée à l'historique.")}
-                okText={t('Enregistrer')}
-                onConfirm={() => onSave(result)}
-              >
-                <Button type="primary">{t('Enregistrer cette valeur')}</Button>
-              </ConfirmAction>
+              {savable && (
+                <ConfirmAction
+                  title={t('Enregistrer cette valeur de {{montant}} ?', { montant: amount })}
+                  description={t("Une valeur datée d'aujourd'hui sera ajoutée à l'historique.")}
+                  okText={t('Enregistrer')}
+                  onConfirm={() => onSave(result)}
+                >
+                  <Button type="primary">{t('Enregistrer cette valeur')}</Button>
+                </ConfirmAction>
+              )}
               <Button onClick={() => onEdit(result)}>{t('Modifier')}</Button>
             </Space>
-          </div>
-        }
-      />
-    );
+          )}
+        </div>
+      }
+    />
+  );
+};
+
+function refusalTitle(result: SuggestRefused): string {
+  switch (result.reason) {
+    case 'ZERO_VALUE':
+      return t(
+        'Cette classe donne une valeur nulle avec les informations actuelles : saisissez la valeur manuellement.'
+      );
+    case 'OUT_OF_RANGE':
+      return t("Le calcul donne un montant hors limites : vérifiez les informations de l'actif.");
+    case 'ACQUISITION_DATE_IN_FUTURE':
+      return t(
+        "La date d'acquisition est postérieure à la date de calcul : corrigez-la dans les informations de l'actif."
+      );
+    default:
+      return result.missing.length === 0
+        ? t('Cette classe se valorise par saisie manuelle ou expertise.')
+        : t('Il manque des informations pour calculer une valeur');
   }
-  const only = result.missing.length === 1 ? result.missing[0] : null;
+}
+
+/** Suggestion refusée : champs à compléter, ou raison métier (valeur nulle, hors limites, date future). */
+const SuggestionMissing: React.FC<{
+  result: SuggestRefused;
+  onCompleteInfo?: () => void;
+  onDismiss: () => void;
+}> = ({ result, onCompleteInfo, onDismiss }) => {
+  const missing = result.reason ? [] : result.missing;
+  const only = missing.length === 1 ? missing[0] : null;
+  const completeLink = onCompleteInfo && (
+    <Button type="link" style={{ paddingInline: 0 }} onClick={onCompleteInfo}>
+      {t("Compléter les informations de l'actif")}
+    </Button>
+  );
+  const showBody = missing.length > 0 || result.reason === 'ACQUISITION_DATE_IN_FUTURE';
   return (
     <Alert
       type="warning"
       showIcon
       closable={{ onClose: onDismiss }}
       style={wrapperStyle}
-      title={
-        result.missing.length === 0
-          ? t('Cette classe se valorise par saisie manuelle ou expertise.')
-          : t('Il manque des informations pour calculer une valeur')
-      }
+      title={refusalTitle(result)}
       description={
-        result.missing.length === 0 ? undefined : (
+        showBody ? (
           <div>
-            <ul style={{ margin: 0, paddingInlineStart: 20 }}>
-              {result.missing.map(key => (
-                <li key={key}>{detailKeyLabel(key)}</li>
-              ))}
-            </ul>
+            {missing.length > 0 && (
+              <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+                {missing.map(key => (
+                  <li key={key}>{detailKeyLabel(key)}</li>
+                ))}
+              </ul>
+            )}
             {only === 'balance' ? (
               <p style={{ margin: 0 }}>{t('Un solde se saisit directement : ajoutez une valeur.')}</p>
             ) : (
-              onCompleteInfo && (
-                <Button type="link" style={{ paddingInline: 0 }} onClick={onCompleteInfo}>
-                  {t("Compléter les informations de l'actif")}
-                </Button>
-              )
+              completeLink
             )}
           </div>
-        )
+        ) : undefined
       }
     />
   );
@@ -294,7 +380,9 @@ export const AssetValuationsTab: React.FC<{
   asset: AssetDto;
   /** Ouvre l'édition de l'actif (champs manquants à une suggestion). */
   onCompleteInfo?: () => void;
-}> = ({ tenantId, asset, onCompleteInfo }) => {
+  /** Faux pour un utilisateur en lecture seule : aucun bouton d'écriture. Par défaut vrai. */
+  canWrite?: boolean;
+}> = ({ tenantId, asset, onCompleteInfo, canWrite: canWriteProp = true }) => {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -302,6 +390,9 @@ export const AssetValuationsTab: React.FC<{
   const [prefill, setPrefill] = useState<Partial<ValuationFormValues> | null>(null);
   const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null);
   const [suggesting, setSuggesting] = useState(false);
+  // Le client ne connaît pas les permissions : un refus 403 du serveur retire aussi les boutons d'écriture.
+  const [denied, setDenied] = useState(false);
+  const canWrite = canWriteProp && !denied;
 
   const valuationsQuery = useQuery({
     queryKey: queryKey('patrimoine-asset-valuations', tenantId, { assetId: asset.id }),
@@ -320,12 +411,17 @@ export const AssetValuationsTab: React.FC<{
   };
 
   const handleSubmit = async (payload: AssetValuationInput) => {
-    if (editing) {
-      await updateAssetValuation(tenantId, asset.id, editing.id, payload);
-      message.success(t('Valeur modifiée.'));
-    } else {
-      await createAssetValuation(tenantId, asset.id, payload);
-      message.success(t('Valeur ajoutée.'));
+    try {
+      if (editing) {
+        await updateAssetValuation(tenantId, asset.id, editing.id, payload);
+        message.success(t('Valeur modifiée.'));
+      } else {
+        await createAssetValuation(tenantId, asset.id, payload);
+        message.success(t('Valeur ajoutée.'));
+      }
+    } catch (error) {
+      if (isForbidden(error)) setDenied(true);
+      throw error;
     }
     await refresh();
   };
@@ -336,6 +432,7 @@ export const AssetValuationsTab: React.FC<{
       message.success(t('Valeur supprimée.'));
       await refresh();
     } catch (error) {
+      if (isForbidden(error)) setDenied(true);
       message.error(apiErrorMessage(error, t('Impossible de supprimer cette valeur.')));
     }
   };
@@ -371,6 +468,7 @@ export const AssetValuationsTab: React.FC<{
       setSuggestion(null);
       await refresh();
     } catch (error) {
+      if (isForbidden(error)) setDenied(true);
       message.error(apiErrorMessage(error, t("Impossible d'enregistrer cette valeur.")));
     }
   };
@@ -383,24 +481,29 @@ export const AssetValuationsTab: React.FC<{
           <Button icon={<CalculatorOutlined />} loading={suggesting} onClick={handleSuggest}>
             {t('Calculer une valeur')}
           </Button>
-          <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
-            {t('Ajouter une valeur')}
-          </Button>
+          {canWrite && (
+            <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
+              {t('Ajouter une valeur')}
+            </Button>
+          )}
         </Space>
       }
     >
-      {suggestion && (
-        <SuggestionResult
+      {suggestion?.ok === true && (
+        <SuggestionOk
           asset={asset}
           result={suggestion}
+          canWrite={canWrite}
           onSave={handleSaveSuggestion}
           onEdit={result => {
             setSuggestion(null);
             openForm(null, { estimatedValue: result.amount, currency: result.currency, method: result.method });
           }}
-          onCompleteInfo={onCompleteInfo}
           onDismiss={() => setSuggestion(null)}
         />
+      )}
+      {suggestion?.ok === false && (
+        <SuggestionMissing result={suggestion} onCompleteInfo={onCompleteInfo} onDismiss={() => setSuggestion(null)} />
       )}
       {valuationsQuery.error ? (
         <StateBlock
@@ -446,14 +549,15 @@ export const AssetValuationsTab: React.FC<{
               {
                 title: t('Actions'),
                 key: 'actions',
-                render: (_: unknown, row) => (
-                  <Space>
-                    <a onClick={() => openForm(row)}>{t('Modifier')}</a>
-                    <ConfirmAction title={t('Supprimer cette valeur ?')} danger onConfirm={() => handleDelete(row)}>
-                      <a>{t('Supprimer')}</a>
-                    </ConfirmAction>
-                  </Space>
-                )
+                render: (_: unknown, row) =>
+                  canWrite && (
+                    <Space>
+                      <a onClick={() => openForm(row)}>{t('Modifier')}</a>
+                      <ConfirmAction title={t('Supprimer cette valeur ?')} danger onConfirm={() => handleDelete(row)}>
+                        <a>{t('Supprimer')}</a>
+                      </ConfirmAction>
+                    </Space>
+                  )
               }
             ]}
           />

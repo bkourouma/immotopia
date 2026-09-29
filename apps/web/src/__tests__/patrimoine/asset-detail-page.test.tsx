@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -136,5 +137,55 @@ describe('<AssetDetailPage>', () => {
     monter();
 
     expect(await screen.findByText('Impossible de charger ces données')).toBeInTheDocument();
+  });
+
+  it('donne les raisons de la valeur courante en infobulle sur l’en-tête', async () => {
+    const user = userEvent.setup();
+    getAsset.mockResolvedValue(actif());
+    monter();
+
+    await screen.findByText('Cabinet Kouassi');
+    const badges = screen.getAllByText('Élevée');
+    await user.hover(badges[0]);
+
+    expect(within(await screen.findByRole('tooltip')).getByText('Expertise')).toBeInTheDocument();
+  });
+
+  it('ne signale jamais « Valeur périmée » pour un actif archivé', async () => {
+    getAsset.mockResolvedValue(actif({ status: 'ARCHIVED', stale: true }));
+    monter();
+
+    await screen.findByText('Cabinet Kouassi');
+    expect(screen.queryByText('Valeur périmée')).not.toBeInTheDocument();
+  });
+
+  it('signale « Valeur périmée » pour un actif actif', async () => {
+    getAsset.mockResolvedValue(actif({ stale: true }));
+    monter();
+
+    expect(await screen.findByText('Valeur périmée')).toBeInTheDocument();
+  });
+
+  it.each([
+    [{ legalStatus: 'ATTESTATION_COUTUMIERE' }, 'Statut juridique fragile : la fiabilité de la valeur est plafonnée.'],
+    [{}, 'Renseignez le statut juridique du bien pour fiabiliser sa valeur.']
+  ])('rappelle le statut juridique d’un bien (%o) et ouvre l’édition', async (details, texte) => {
+    const user = userEvent.setup();
+    getAsset.mockResolvedValue(actif({ assetClass: 'REAL_ESTATE', propertyId: 'p1', details }));
+    monter();
+
+    expect(await screen.findByText(texte)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: "Modifier l'actif" }));
+    expect(await screen.findByText('Modifier un actif')).toBeInTheDocument();
+  });
+
+  it('n’affiche aucun rappel pour un titre foncier ni hors immobilier', async () => {
+    getAsset.mockResolvedValue(
+      actif({ assetClass: 'REAL_ESTATE', propertyId: 'p1', details: { legalStatus: 'TITRE_FONCIER' } })
+    );
+    monter();
+
+    await screen.findByText('Cabinet Kouassi');
+    expect(screen.queryByRole('button', { name: "Modifier l'actif" })).not.toBeInTheDocument();
   });
 });

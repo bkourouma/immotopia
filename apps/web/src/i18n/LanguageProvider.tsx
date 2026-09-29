@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useEffect, useMemo, useRef, useState
 import type { ReactNode } from 'react';
 import dayjs from 'dayjs';
 import type { Locale as AntdLocale } from 'antd/es/locale';
-import frFR from 'antd/locale/fr_FR';
+import frFR from 'antd/es/locale/fr_FR';
 import { i18next, loadLanguage } from './index';
 import {
   DEFAULT_LANGUAGE,

@@ -237,6 +237,11 @@ function CurrencyFields({ form, locked }: { form: FormInstance<FormValues>; lock
 }
 
 function ValuationFields() {
+  const form = Form.useFormInstance();
+  const method = Form.useWatch(['initialValuation', 'method'], form);
+  const amount = Form.useWatch(['initialValuation', 'estimatedValue'], form);
+  // Une expertise sans source est refusée par le serveur ; sans montant, aucune valorisation n'est créée.
+  const sourceRequired = method === 'EXPERT_APPRAISAL' && typeof amount === 'number';
   return (
     <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
       <legend style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>
@@ -256,7 +261,17 @@ function ValuationFields() {
           }))}
         />
       </Form.Item>
-      <Form.Item name={['initialValuation', 'source']} label={t('Source')}>
+      <Form.Item
+        name={['initialValuation', 'source']}
+        label={t('Source')}
+        rules={[
+          {
+            required: sourceRequired,
+            whitespace: true,
+            message: t("Indiquez l'expert ou le document (source) pour une expertise.")
+          }
+        ]}
+      >
         <Input maxLength={160} />
       </Form.Item>
     </fieldset>

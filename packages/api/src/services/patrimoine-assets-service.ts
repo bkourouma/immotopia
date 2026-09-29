@@ -23,12 +23,12 @@ import type {
   ValuationMethodKey
 } from '../lib/patrimoine/assets';
 import { assetScopeData, assetScopeWhere } from '../lib/patrimoine/asset-scope';
-import { validateAssetDetails } from '../lib/patrimoine/asset-schemas';
+import { EXPERT_SOURCE_MESSAGE, validateAssetDetails } from '../lib/patrimoine/asset-schemas';
 import { assertAssetQuota, assertValuationQuota, LIST_ASSETS_HARD_LIMIT } from './patrimoine-assets/limits';
 import { auditPatrimoine, changedFields, PATRIMOINE_ASSET_AUDIT as AUDIT } from './patrimoine-assets/audit';
 import { computeStoredReliability, effectiveReliability } from './patrimoine-assets/reliability-view';
-import { buildSuggestion } from './patrimoine-assets/valuation-suggest';
-import type { SuggestResponse } from './patrimoine-assets/valuation-suggest';
+import { buildSuggestion, verifiedMethod } from './patrimoine-assets/valuation-suggest';
+import type { SuggestAssetInput, SuggestLastValuation, SuggestResponse } from './patrimoine-assets/valuation-suggest';
 import type {
   createAssetSchema,
   updateAssetSchema,
@@ -327,7 +327,7 @@ function figuresOf(asset: AssetRow, valuations: ValuationRow[], loans: LoanRow[]
           reliability: effectiveReliability(asset, latest.row, now).reliability
         }
       : null,
-    stale: isStale(asset.assetClass, latest ? latest.valuatedAt : null, now),
+    stale: asset.status === 'ACTIVE' && isStale(asset.assetClass, latest ? latest.valuatedAt : null, now),
     outstandingDebtXof: debt
   };
 }
@@ -430,23 +430,26 @@ export async function createAsset(tenantId: string, input: CreateAssetInput, act
       }
     });
     if (input.initialValuation) {
+      const initial = input.initialValuation;
+      const method = verifiedMethod(suggestInputOf(asset), null, {
+        method: initial.method,
+        valuatedAt: initial.valuatedAt,
+        estimatedValue: initial.estimatedValue,
+        currency: asset.currency
+      });
       await tx.assetValuation.create({
         data: {
           tenantId,
           ...assetScopeData(asset),
-          valuatedAt: input.initialValuation.valuatedAt,
-          estimatedValue: input.initialValuation.estimatedValue,
+          valuatedAt: initial.valuatedAt,
+          estimatedValue: initial.estimatedValue,
           currency: asset.currency,
-          method: input.initialValuation.method,
-          source: input.initialValuation.source ?? null,
-          notes: input.initialValuation.notes ?? null,
+          method,
+          source: initial.source ?? null,
+          notes: initial.notes ?? null,
           ...computeStoredReliability(
             { assetClass: asset.assetClass, details },
-            {
-              method: input.initialValuation.method,
-              valuatedAt: input.initialValuation.valuatedAt,
-              source: input.initialValuation.source ?? null
-            }
+            { method, valuatedAt: initial.valuatedAt, source: initial.source ?? null }
           )
         }
       });
@@ -600,7 +603,12 @@ export async function createAssetValuation(
   await assertValuationQuota(tenantId, asset);
   const currency = input.currency ?? asset.currency;
   assertLineCurrency(asset, currency);
-  const method = input.method ?? 'MANUAL';
+  const method = verifiedMethod(suggestInputOf(asset), await lastValuationBefore(tenantId, asset, input.valuatedAt), {
+    method: input.method ?? 'MANUAL',
+    valuatedAt: input.valuatedAt,
+    estimatedValue: input.estimatedValue,
+    currency
+  });
   const reliability = computeStoredReliability(asset, {
     method,
     valuatedAt: input.valuatedAt,
@@ -631,10 +639,47 @@ export async function createAssetValuation(
   return toValuationDto(row, asset);
 }
 
+/** Champs de l'actif utiles au recalcul d'une suggestion. */
+function suggestInputOf(
+  asset: Pick<
+    AssetRow,
+    'assetClass' | 'currency' | 'exchangeRateToXof' | 'details' | 'acquisitionCost' | 'acquisitionDate'
+  >
+): SuggestAssetInput {
+  return {
+    assetClass: asset.assetClass,
+    currency: asset.currency,
+    exchangeRateToXof: asset.exchangeRateToXof === null ? null : num(asset.exchangeRateToXof),
+    details: asset.details,
+    acquisitionCost: asset.acquisitionCost === null ? null : num(asset.acquisitionCost),
+    acquisitionDate: asset.acquisitionDate
+  };
+}
+
+/** Dernière valorisation strictement antérieure à `before` (hors la ligne `excludeId`), base du recalcul d'une méthode calculée. */
+async function lastValuationBefore(
+  tenantId: string,
+  asset: AssetRow,
+  before: Date,
+  excludeId?: string
+): Promise<SuggestLastValuation | null> {
+  const row = await prisma.assetValuation.findFirst({
+    where: {
+      tenantId,
+      ...assetScopeWhere(asset),
+      valuatedAt: { lt: before },
+      ...(excludeId ? { id: { not: excludeId } } : {})
+    },
+    select: { valuatedAt: true, estimatedValue: true, currency: true },
+    orderBy: [{ valuatedAt: 'desc' }, { createdAt: 'desc' }]
+  });
+  return row ? { valuatedAt: row.valuatedAt, estimatedValue: num(row.estimatedValue), currency: row.currency } : null;
+}
+
 async function findValuationOrThrow(tenantId: string, asset: AssetRow, valuationId: string) {
   const row = await prisma.assetValuation.findFirst({
     where: { id: valuationId, tenantId, ...assetScopeWhere(asset) },
-    select: { id: true, valuatedAt: true, method: true, source: true }
+    select: { id: true, valuatedAt: true, method: true, source: true, estimatedValue: true, currency: true }
   });
   if (!row) throw new NotFoundError(NOT_FOUND_VALUATION);
   return row;
@@ -651,11 +696,35 @@ export async function updateAssetValuation(
   assertNotArchived(asset);
   const existing = await findValuationOrThrow(tenantId, asset, valuationId);
   if (input.currency !== undefined) assertLineCurrency(asset, input.currency);
-  // Fiabilité recalculée sur la ligne fusionnée avec le PATCH ; le corps ne peut jamais la fixer (schéma strict).
-  const reliability = computeStoredReliability(asset, {
+  // Ligne fusionnée avec le PATCH : elle sert à la source d'une expertise, à la vérification d'une
+  // méthode calculée et à la fiabilité ; le corps ne peut jamais fixer la fiabilité (schéma strict).
+  const merged = {
     method: input.method ?? existing.method,
     valuatedAt: input.valuatedAt ?? existing.valuatedAt,
+    estimatedValue: input.estimatedValue ?? num(existing.estimatedValue),
+    currency: input.currency ?? existing.currency,
     source: input.source !== undefined ? input.source : existing.source
+  };
+  if (merged.method === 'EXPERT_APPRAISAL' && !merged.source) {
+    throw fieldError('source', EXPERT_SOURCE_MESSAGE);
+  }
+  // Un montant, une date, une devise ou une méthode retouchés relancent la vérification d'une méthode calculée.
+  const touched =
+    input.method !== undefined ||
+    input.estimatedValue !== undefined ||
+    input.valuatedAt !== undefined ||
+    input.currency !== undefined;
+  const method = touched
+    ? verifiedMethod(
+        suggestInputOf(asset),
+        await lastValuationBefore(tenantId, asset, merged.valuatedAt, valuationId),
+        merged
+      )
+    : merged.method;
+  const reliability = computeStoredReliability(asset, {
+    method,
+    valuatedAt: merged.valuatedAt,
+    source: merged.source
   });
   const row = await prisma.assetValuation.update({
     where: { id: valuationId, tenantId },
@@ -663,7 +732,7 @@ export async function updateAssetValuation(
       ...(input.valuatedAt !== undefined ? { valuatedAt: input.valuatedAt } : {}),
       ...(input.estimatedValue !== undefined ? { estimatedValue: input.estimatedValue } : {}),
       ...(input.currency !== undefined ? { currency: input.currency } : {}),
-      ...(input.method !== undefined ? { method: input.method } : {}),
+      ...(input.method !== undefined || method !== existing.method ? { method } : {}),
       ...(input.source !== undefined ? { source: input.source } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       ...reliability
@@ -728,18 +797,7 @@ export async function suggestAssetValuation(
     },
     asOf
   );
-  return buildSuggestion(
-    {
-      assetClass: asset.assetClass,
-      currency: asset.currency,
-      exchangeRateToXof: asset.exchangeRateToXof === null ? null : num(asset.exchangeRateToXof),
-      details: asset.details,
-      acquisitionCost: asset.acquisitionCost === null ? null : num(asset.acquisitionCost),
-      acquisitionDate: asset.acquisitionDate
-    },
-    last,
-    asOf
-  );
+  return buildSuggestion(suggestInputOf(asset), last, asOf);
 }
 
 // ---------------------------------------------------------------- Dettes

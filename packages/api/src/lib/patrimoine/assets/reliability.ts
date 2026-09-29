@@ -51,7 +51,9 @@ function baseLevel(method: ValuationMethodKey, hasSource: boolean): { level: Rel
       return { level: 'HIGH', reason: 'METHOD_EXPERT' };
     case 'BALANCE':
       return { level: 'HIGH', reason: 'METHOD_BALANCE' };
+    // Une estimation de marché est une saisie : sans source, elle n'est pas plus fiable qu'une saisie manuelle.
     case 'MANUAL':
+    case 'MARKET_ESTIMATE':
       return hasSource
         ? { level: 'MEDIUM', reason: 'METHOD_MANUAL_WITH_SOURCE' }
         : { level: 'LOW', reason: 'METHOD_MANUAL_NO_SOURCE' };

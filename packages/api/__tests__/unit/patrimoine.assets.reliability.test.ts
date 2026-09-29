@@ -79,10 +79,20 @@ describe('niveau de base par méthode', () => {
     'UNIT_COST',
     'ACCRUED_SAVINGS',
     'DISCOUNTED_CLAIM',
-    'UNIT_VALUE',
-    'MARKET_ESTIMATE'
+    'UNIT_VALUE'
   ] as const)('%s : moyenne', method => {
     expect(computeReliability(input({ method }))).toEqual({ level: 'MEDIUM', reasons: ['METHOD_COMPUTED'] });
+  });
+
+  it('estimation de marché : traitée comme une saisie manuelle, mêmes raisons', () => {
+    expect(computeReliability(input({ method: 'MARKET_ESTIMATE' }))).toEqual({
+      level: 'LOW',
+      reasons: ['METHOD_MANUAL_NO_SOURCE']
+    });
+    expect(computeReliability(input({ method: 'MARKET_ESTIMATE', hasSource: true }))).toEqual({
+      level: 'MEDIUM',
+      reasons: ['METHOD_MANUAL_WITH_SOURCE']
+    });
   });
 
   it('saisie manuelle : moyenne avec source, faible sans, jamais élevée', () => {

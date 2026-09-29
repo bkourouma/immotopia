@@ -30,6 +30,7 @@ function matches(row: Row, where: Row): boolean {
       if ('not' in expected) {
         return expected.not === null ? actual !== null : Array.isArray(expected.not) ? true : actual !== expected.not;
       }
+      if ('lt' in expected) return actual instanceof Date && actual.getTime() < (expected.lt as Date).getTime();
       if ('notIn' in expected) return !expected.notIn.includes(actual);
       if ('contains' in expected) return String(actual).toLowerCase().includes(String(expected.contains).toLowerCase());
     }
@@ -1158,6 +1159,225 @@ describe('fiabilité et suggestion (lot 2)', () => {
       await expect(service.suggestAssetValuation(TENANT_A, 'a-car', { asOf: '2026-02-30' })).rejects.toMatchObject({
         name: 'ValidationError'
       });
+    });
+  });
+});
+
+describe('méthode calculée vérifiée par le serveur (lot 2, relecture)', () => {
+  const stockDetails = { quantity: 10, unitCost: 100 };
+  const seedStock = () => seedAsset({ id: 'a-stock', name: 'Stock', assetClass: 'INVENTORY', details: stockDetails });
+  // Date du jour : la fiabilité perd des niveaux à l'ancienneté, ce que ces tests n'examinent pas.
+  const stockLine = { valuatedAt: new Date(), method: 'UNIT_COST' as const };
+
+  it('montant retrouvé par le recalcul : la méthode est conservée, fiabilité moyenne (calculée)', async () => {
+    seedStock();
+    const dto = await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1000 });
+    expect(dto.method).toBe('UNIT_COST');
+    expect(store.assetValuation[0]).toMatchObject({ method: 'UNIT_COST', reliability: 'MEDIUM' });
+  });
+
+  it('écart d’un franc toléré en XOF, refusé au-delà', async () => {
+    seedStock();
+    expect(
+      (await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1001 })).method
+    ).toBe('UNIT_COST');
+    expect(
+      (await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1002 })).method
+    ).toBe('MANUAL');
+  });
+
+  it('montant retouché à la main : MANUAL, fiabilité calculée sur MANUAL (faible sans source)', async () => {
+    seedStock();
+    const dto = await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1500 });
+    expect(dto.method).toBe('MANUAL');
+    expect(store.assetValuation[0]).toMatchObject({
+      method: 'MANUAL',
+      reliability: 'LOW',
+      reliabilityReasons: ['METHOD_MANUAL_NO_SOURCE']
+    });
+  });
+
+  it('suggestion ok:false (détails incomplets) : MANUAL', async () => {
+    seedAsset({ id: 'a-stock', name: 'Stock', assetClass: 'INVENTORY', details: {} });
+    const dto = await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1000 });
+    expect(dto.method).toBe('MANUAL');
+  });
+
+  it('méthode qui ne correspond pas à celle de la classe : MANUAL même si le montant est juste', async () => {
+    seedStock();
+    const dto = await service.createAssetValuation(TENANT_A, 'a-stock', {
+      valuatedAt: iso('2026-01-01'),
+      method: 'DISCOUNTED_CLAIM',
+      estimatedValue: 1000
+    });
+    expect(dto.method).toBe('MANUAL');
+  });
+
+  it('devise étrangère : tolérance de 0,01', async () => {
+    seedAsset({
+      id: 'a-eur',
+      name: 'Cheptel',
+      assetClass: 'AGRICULTURE',
+      currency: 'EUR',
+      exchangeRateToXof: 655.957,
+      details: { agricultureKind: 'LIVESTOCK', headcount: 1, unitValue: 1234.56 }
+    });
+    const base = { valuatedAt: iso('2026-01-01'), method: 'UNIT_VALUE' as const };
+    expect((await service.createAssetValuation(TENANT_A, 'a-eur', { ...base, estimatedValue: 1234.56 })).method).toBe(
+      'UNIT_VALUE'
+    );
+    expect((await service.createAssetValuation(TENANT_A, 'a-eur', { ...base, estimatedValue: 1234.58 })).method).toBe(
+      'MANUAL'
+    );
+  });
+
+  it('BALANCE, MANUAL, MARKET_ESTIMATE et EXPERT_APPRAISAL ne sont pas recalculées', async () => {
+    seedAsset({ id: 'a-cash', name: 'Compte', assetClass: 'CASH' });
+    for (const method of ['BALANCE', 'MARKET_ESTIMATE'] as const) {
+      const dto = await service.createAssetValuation(TENANT_A, 'a-cash', {
+        valuatedAt: iso('2026-01-01'),
+        method,
+        estimatedValue: 777
+      });
+      expect(dto.method).toBe(method);
+    }
+    const expert = await service.createAssetValuation(TENANT_A, 'a-cash', {
+      valuatedAt: iso('2026-01-01'),
+      method: 'EXPERT_APPRAISAL',
+      source: 'Cabinet Diallo',
+      estimatedValue: 777
+    });
+    expect(expert.method).toBe('EXPERT_APPRAISAL');
+  });
+
+  it('épargne : le recalcul part de la dernière valorisation antérieure', async () => {
+    seedAsset({
+      id: 'a-sav',
+      name: 'Placement',
+      assetClass: 'SAVINGS_INVESTMENT',
+      details: { savingsKind: 'PLACEMENT', expectedRatePercent: 10 }
+    });
+    seedValuation({ assetId: 'a-sav', estimatedValue: 1000, valuatedAt: iso('2025-01-01') });
+    const good = await service.createAssetValuation(TENANT_A, 'a-sav', {
+      valuatedAt: iso('2026-01-01'),
+      method: 'ACCRUED_SAVINGS',
+      estimatedValue: 1100
+    });
+    expect(good.method).toBe('ACCRUED_SAVINGS');
+    const bad = await service.createAssetValuation(TENANT_A, 'a-sav', {
+      valuatedAt: iso('2026-01-01'),
+      method: 'ACCRUED_SAVINGS',
+      estimatedValue: 1200
+    });
+    expect(bad.method).toBe('MANUAL');
+  });
+
+  it('modification du montant d’une ligne calculée : stockée MANUAL', async () => {
+    seedStock();
+    const created = await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1000 });
+    const updated = await service.updateAssetValuation(TENANT_A, 'a-stock', created.id, { estimatedValue: 1300 });
+    expect(updated.method).toBe('MANUAL');
+    expect(store.assetValuation[0]).toMatchObject({ method: 'MANUAL', reliability: 'LOW' });
+  });
+
+  it('modification des seules notes : la méthode calculée est conservée', async () => {
+    seedStock();
+    const created = await service.createAssetValuation(TENANT_A, 'a-stock', { ...stockLine, estimatedValue: 1000 });
+    store.asset[0].details = { quantity: 99, unitCost: 100 };
+    const updated = await service.updateAssetValuation(TENANT_A, 'a-stock', created.id, { notes: 'inventaire' });
+    expect(updated.method).toBe('UNIT_COST');
+  });
+
+  it('modification vers une méthode calculée avec le bon montant : conservée', async () => {
+    seedStock();
+    const created = await service.createAssetValuation(TENANT_A, 'a-stock', {
+      valuatedAt: iso('2026-01-01'),
+      estimatedValue: 1000
+    });
+    const updated = await service.updateAssetValuation(TENANT_A, 'a-stock', created.id, { method: 'UNIT_COST' });
+    expect(updated.method).toBe('UNIT_COST');
+  });
+
+  it('valorisation initiale à la création de l’actif : méthode calculée vérifiée aussi', async () => {
+    const dto = await service.createAsset(TENANT_A, {
+      name: 'Stock',
+      assetClass: 'INVENTORY',
+      details: { designation: 'Riz', unit: 'sac', ...stockDetails },
+      initialValuation: { valuatedAt: iso('2026-01-01'), estimatedValue: 1234, method: 'UNIT_COST' }
+    } as never);
+    expect(dto.currentValue).not.toBeNull();
+    expect(store.assetValuation[0].method).toBe('MANUAL');
+  });
+});
+
+describe('expertise et péremption (lot 2, relecture)', () => {
+  it('modification : passer en expertise sans source finale est refusé (champ source)', async () => {
+    seedAsset({ id: 'a-cash', name: 'Compte', assetClass: 'CASH' });
+    seedValuation({ id: 'v-1', assetId: 'a-cash', estimatedValue: 5, valuatedAt: iso('2026-01-01') });
+    await expect(
+      service.updateAssetValuation(TENANT_A, 'a-cash', 'v-1', { method: 'EXPERT_APPRAISAL' })
+    ).rejects.toMatchObject({ name: 'ValidationError', errors: [expect.objectContaining({ field: 'source' })] });
+    expect(store.assetValuation[0].method).toBe('MANUAL');
+  });
+
+  it('modification : passer en expertise avec la source déjà présente, ou fournie, est accepté', async () => {
+    seedAsset({ id: 'a-cash', name: 'Compte', assetClass: 'CASH' });
+    seedValuation({
+      id: 'v-1',
+      assetId: 'a-cash',
+      estimatedValue: 5,
+      valuatedAt: iso('2026-01-01'),
+      source: 'Notaire'
+    });
+    expect((await service.updateAssetValuation(TENANT_A, 'a-cash', 'v-1', { method: 'EXPERT_APPRAISAL' })).method).toBe(
+      'EXPERT_APPRAISAL'
+    );
+    await expect(service.updateAssetValuation(TENANT_A, 'a-cash', 'v-1', { source: null })).rejects.toMatchObject({
+      name: 'ValidationError'
+    });
+  });
+
+  it('stale n’est vrai que pour un actif ACTIVE', async () => {
+    seedAsset({ id: 'a-old', name: 'Vieux', assetClass: 'CASH' });
+    seedAsset({ id: 'a-disp', name: 'Cédé', assetClass: 'CASH', status: 'DISPOSED', disposedAt: iso('2020-01-01') });
+    seedAsset({ id: 'a-arch', name: 'Archivé', assetClass: 'CASH', status: 'ARCHIVED' });
+    expect((await service.getAsset(TENANT_A, 'a-old')).stale).toBe(true);
+    expect((await service.getAsset(TENANT_A, 'a-disp')).stale).toBe(false);
+    expect((await service.getAsset(TENANT_A, 'a-arch')).stale).toBe(false);
+  });
+});
+
+describe('suggestion : refus motivés (lot 2, relecture)', () => {
+  it('quantité nulle : ok false avec reason ZERO_VALUE', async () => {
+    seedAsset({ id: 'a-stock', name: 'Stock', assetClass: 'INVENTORY', details: { quantity: 0, unitCost: 100 } });
+    expect(await service.suggestAssetValuation(TENANT_A, 'a-stock', { asOf: '2026-01-01' })).toEqual({
+      ok: false,
+      missing: [],
+      reason: 'ZERO_VALUE'
+    });
+  });
+
+  it('champ manquant : pas de reason', async () => {
+    seedAsset({ id: 'a-stock', name: 'Stock', assetClass: 'INVENTORY', details: {} });
+    expect(await service.suggestAssetValuation(TENANT_A, 'a-stock', { asOf: '2026-01-01' })).toEqual({
+      ok: false,
+      missing: ['quantity', 'unitCost']
+    });
+  });
+
+  it('devise étrangère : 1 234,56 EUR reste 1 234,56', async () => {
+    seedAsset({
+      id: 'a-eur',
+      name: 'Cheptel',
+      assetClass: 'AGRICULTURE',
+      currency: 'EUR',
+      exchangeRateToXof: 655.957,
+      details: { agricultureKind: 'LIVESTOCK', headcount: 1, unitValue: 1234.56 }
+    });
+    expect(await service.suggestAssetValuation(TENANT_A, 'a-eur', { asOf: '2026-01-01' })).toMatchObject({
+      ok: true,
+      amount: 1234.56,
+      currency: 'EUR'
     });
   });
 });
