@@ -75,6 +75,13 @@ Migration `20261004160000_patrimoine_multi_actifs`. Détail :
   `ACCRUED_SAVINGS`, `DISCOUNTED_CLAIM`, `UNIT_VALUE`) et `AssetValuation` gagne
   `reliabilityReasons` (`text[] NOT NULL DEFAULT '{}'`, clés de raison stables ; écrit à la saisie, la lecture
   recalcule la fiabilité effective).
+- Lot 3 (spec 025), migration `20261004190000_patrimoine_scenarios` : enum
+  `ProjectionScenarioKey` (`PRUDENT`, `CENTRAL`, `OPTIMISTIC`) et `PatrimonyScenario`
+  (table `patrimony_scenarios`, porte `tenantId`, FK `Tenant` en `Cascade`) : hypothèses
+  (`assumptions`) et opérations de simulation (`operations`) en JSON versionné
+  (`schemaVersion`), jamais de résultat de calcul. Unicité `(tenantId, name)`, index
+  `(tenantId, updatedAt)` ; CHECK SQL `horizon_years BETWEEN 1 AND 30` et
+  `char_length(name) BETWEEN 1 AND 120`.
 - `PatrimonyDocument` : `assetId` facultatif (`SetNull`).
 - `PropertyExpense`, `WorkProgram`, `OwnerStatement*` : inchangés, rattachés au bien.
 - Données : un `Asset` `REAL_ESTATE` est créé par bien portant des données

@@ -727,7 +727,8 @@ model Tenant {
   holdingEntities          HoldingEntity[]
   propertyHoldings         PropertyHolding[]
   assets                   Asset[]
-  propertyTaxProfiles      PropertyTaxProfile[]
+  patrimonyScenarios       PatrimonyScenario[]
+  propertyTaxProfiles     PropertyTaxProfile[]
   cashSessions             CashSession[]
   treasuryAccounts         TreasuryAccount[]
   treasuryTransfers        TreasuryTransfer[]
@@ -5156,6 +5157,38 @@ model AssetValuation {
   @@index([assetId])
   @@index([tenantId, assetId, valuatedAt])
   @@map("asset_valuations")
+}
+
+/// Scénario de projection de patrimoine (lot 3, spec 025) : hypothèses et
+/// opérations de simulation nommées, sans aucun résultat de calcul. CHECK SQL :
+/// horizon_years entre 1 et 30 (patrimony_scenarios_horizon_years_chk), nom de
+/// 1 à 120 caractères (patrimony_scenarios_name_length_chk).
+model PatrimonyScenario {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  name            String
+  horizonYears    Int                   @map("horizon_years")
+  baseScenario    ProjectionScenarioKey @default(CENTRAL) @map("base_scenario")
+  /// Surcharges par rapport au scénario de base, validées par un schéma zod versionné.
+  assumptions     Json                  @default("{}")
+  /// Opérations de simulation (vente, achat, emprunt, remboursement anticipé, épargne).
+  operations      Json                  @default("[]")
+  schemaVersion   Int                   @default(1) @map("schema_version")
+  createdByUserId String?               @map("created_by_user_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, updatedAt])
+  @@map("patrimony_scenarios")
+}
+
+enum ProjectionScenarioKey {
+  PRUDENT
+  CENTRAL
+  OPTIMISTIC
 }
 
 model PropertyLoan {
