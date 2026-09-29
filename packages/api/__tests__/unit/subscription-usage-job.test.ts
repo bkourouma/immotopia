@@ -16,7 +16,11 @@ const mockState: {
   snapshots: Row[];
   alerts: Row[];
   entitlements: Row;
-} = { subscriptions: [], invoices: [], snapshots: [], alerts: [], entitlements: {} };
+  /** Abonnements consideres gratuits par `isFreeSubscription` (ids). */
+  free: string[];
+  /** Type du tenant lu par `notify`. */
+  tenantType: string;
+} = { subscriptions: [], invoices: [], snapshots: [], alerts: [], entitlements: {}, free: [], tenantType: 'AGENCY' };
 
 const mockFake: Row = {
   subscription: {
@@ -99,7 +103,13 @@ const mockFake: Row = {
     ),
     findMany: jest.fn(async () => mockState.alerts)
   },
-  tenant: { findUnique: jest.fn(async () => ({ name: 'Ivoire Résidences', contactEmail: 'contact@ivoire.test' })) },
+  tenant: {
+    findUnique: jest.fn(async () => ({
+      name: 'Ivoire Résidences',
+      contactEmail: 'contact@ivoire.test',
+      type: mockState.tenantType
+    }))
+  },
   role: { findUnique: jest.fn(async () => ({ id: 'role-admin' })) },
   userRole: { findMany: jest.fn(async () => [{ userId: 'u-admin' }]) },
   user: {
@@ -124,6 +134,7 @@ jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() 
 // ici l'etape est neutre, l'echeance juge sur les factures du faux client.
 const mockBillingStep = jest.fn(async () => ({ periodInvoice: 'NONE', overageInvoices: 0, overdue: 0 }));
 jest.mock('../../src/services/platform-invoice-service', () => ({
+  isFreeSubscription: jest.fn(async (_db: unknown, id: string) => mockState.free.includes(id)),
   runPlatformBillingStep: (...args: unknown[]) => mockBillingStep(...(args as []))
 }));
 jest.mock('../../src/services/subscription-v2-service', () => {
@@ -156,7 +167,11 @@ const subscriptionService = jest.requireMock('../../src/services/subscription-v2
 const T = 'tenant-ivoire';
 const DAY = 24 * 60 * 60 * 1000;
 
-function capacities(lots: { used: number; limit: number }, copro = { used: 0, limit: 0 }) {
+function capacities(
+  lots: { used: number; limit: number },
+  copro = { used: 0, limit: 0 },
+  actifs = { used: 0, limit: 0 }
+) {
   const cap = (c: { used: number; limit: number }) => ({
     included: c.limit,
     extensions: 0,
@@ -169,7 +184,8 @@ function capacities(lots: { used: number; limit: number }, copro = { used: 0, li
     LOTS: cap(lots),
     COPROPRIETES: cap(copro),
     CHANTIERS: cap({ used: 0, limit: 0 }),
-    BIENS_DETENUS: cap({ used: 0, limit: 0 })
+    BIENS_DETENUS: cap({ used: 0, limit: 0 }),
+    ACTIFS: cap(actifs)
   };
 }
 
@@ -195,6 +211,8 @@ beforeEach(() => {
   mockState.invoices = [];
   mockState.snapshots = [];
   mockState.alerts = [];
+  mockState.free = [];
+  mockState.tenantType = 'AGENCY';
   mockState.entitlements = {
     phase: 'ACTIVE',
     readOnly: false,
@@ -249,6 +267,70 @@ describe('seuils d’alerte', () => {
     await evaluateQuotaAlerts(T, new Date('2026-09-16T00:00:00Z'));
     await evaluateQuotaAlerts(T, new Date('2026-10-16T00:00:00Z'));
     expect(mockState.alerts.map(a => a.periodStart.toISOString().slice(0, 10))).toEqual(['2026-09-15', '2026-10-15']);
+  });
+});
+
+describe('espace particulier : palier gratuit, capacite ACTIFS', () => {
+  it('une agence sans plafond d’actifs : ACTIFS ignore (ni alerte ni releve), meme avec des actifs', async () => {
+    seedSubscription({});
+    mockState.entitlements.capacities = capacities({ used: 0, limit: 100 }, undefined, { used: 5, limit: 0 });
+    expect(await evaluateQuotaAlerts(T, new Date('2026-09-16T10:00:00Z'))).toEqual([]);
+    expect(await recordUsageSnapshots(T, new Date('2026-09-16T10:00:00Z'))).toBe(4);
+    expect(mockState.snapshots.some(s => s.capacityKey === 'ACTIFS')).toBe(false);
+  });
+
+  it('un particulier a 10/10 actifs : alerte 80 et 100 % a l’utilisateur, RIEN au super-admin', async () => {
+    mockState.tenantType = 'PARTICULIER';
+    seedSubscription({});
+    mockState.entitlements.quotaPolicy = 'BLOCK';
+    mockState.entitlements.capacities = capacities({ used: 0, limit: 0 }, undefined, { used: 10, limit: 10 });
+    const raised = await evaluateQuotaAlerts(T, new Date('2026-09-16T10:00:00Z'));
+    expect(raised.map(a => [a.capacityKey, a.threshold])).toEqual([
+      ['ACTIFS', 80],
+      ['ACTIFS', 100]
+    ]);
+    const recipients = emailService.sendEmail.mock.calls.map(c => c[0].to);
+    expect(recipients).toEqual(['admin@ivoire.test', 'admin@ivoire.test']);
+    expect(recipients).not.toContain('root@immotopia.test');
+    expect(await recordUsageSnapshots(T, new Date('2026-09-16T10:00:00Z'))).toBe(5);
+    expect(mockState.snapshots.find(s => s.capacityKey === 'ACTIFS')).toMatchObject({ used: 10, limit: 10 });
+  });
+
+  it('une agence avec ACTIFS plafonne continue de prevenir le super-admin (comportement inchange)', async () => {
+    seedSubscription({});
+    mockState.entitlements.capacities = capacities({ used: 85, limit: 100 });
+    await evaluateQuotaAlerts(T, new Date('2026-09-16T10:00:00Z'));
+    expect(emailService.sendEmail.mock.calls.map(c => c[0].to)).toContain('root@immotopia.test');
+  });
+
+  it('abonnement gratuit : pas de rappel de fin d’essai ; un abonnement payant en recoit toujours', async () => {
+    const END = new Date('2026-10-25T00:00:00Z');
+    seedSubscription({ status: 'TRIALING', trialEndsAt: END, currentPeriodEnd: END });
+    mockState.free = ['sub-1'];
+    expect(await sendTrialReminders(T, new Date(END.getTime() - 6 * DAY))).toBeNull();
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    mockState.free = [];
+    expect(await sendTrialReminders(T, new Date(END.getTime() - 6 * DAY))).toBe(7);
+  });
+
+  it('abonnement gratuit echu, sans aucune facture : renouvele, jamais PAST_DUE ; le payant sans facture payee passe PAST_DUE', async () => {
+    const END = new Date('2026-10-01T00:00:00Z');
+    seedSubscription({});
+    mockState.free = ['sub-1'];
+    const outcome = await processBillingBoundary('sub-1', new Date('2026-10-01T03:00:00Z'));
+    expect(outcome.action).toBe('RENEWED');
+    expect(mockState.subscriptions[0]).toMatchObject({
+      status: 'ACTIVE',
+      currentPeriodStart: END,
+      currentPeriodEnd: new Date('2026-11-01T00:00:00Z'),
+      pastDueAt: null
+    });
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+
+    mockState.subscriptions = [];
+    mockState.free = [];
+    seedSubscription({});
+    expect((await processBillingBoundary('sub-1', new Date('2026-10-01T03:00:00Z'))).action).toBe('PAST_DUE');
   });
 });
 

@@ -84,6 +84,12 @@ Migration `20261004160000_patrimoine_multi_actifs`. Détail :
   `char_length(name) BETWEEN 1 AND 120`.
 - `PatrimonyDocument` : `assetId` facultatif (`SetNull`).
 - `PropertyExpense`, `WorkProgram`, `OwnerStatement*` : inchangés, rattachés au bien.
+- Lot 4A (spec 026), migrations `20261004220000_particulier_enums` (valeurs d'enum, seules dans leur
+  transaction) et `20261004220100_particulier_catalogue` (lignes de catalogue) : `TenantType.PARTICULIER`
+  (espace personnel), `CapacityKey.ACTIFS` (actifs `Asset` non archivés du tenant) et les packs
+  `PARTICULIER_GRATUIT` (0 FCFA, 10 actifs) et `PARTICULIER_PLUS` (2 900 FCFA HT/mois, 100 actifs ; prix et
+  plafonds provisoires, modifiables via `updateCatalogItem` sans migration), `tierGroup = PARTICULIER`. Aucune
+  table ni colonne nouvelle.
 - Données : un `Asset` `REAL_ESTATE` est créé par bien portant des données
   patrimoniales ou détenu en propre (activation `HELD_PROPERTY` ouverte) ; les
   biens sans tenant sont ignorés ; aucune ligne existante n'est réécrite.

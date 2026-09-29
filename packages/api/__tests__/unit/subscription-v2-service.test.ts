@@ -168,6 +168,8 @@ const fake: Row = {
   syndicateLot: { findMany: jest.fn(async () => []) },
   siteLot: { findMany: jest.fn(async () => []) },
   lotActivation: { findMany: jest.fn(async () => []) },
+  // Capacite ACTIFS (lot 4A) : nombre d'actifs non archives.
+  asset: { count: jest.fn(async () => 0) },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
 
@@ -188,6 +190,8 @@ import {
   applyDueItemTransitionsTx,
   changePack,
   clearSubscriptionManualReadOnly,
+  countActiveAssets,
+  getUsage,
   monthlyOverageWindow,
   previewNextInvoice,
   registerUsageProvider,
@@ -591,6 +595,43 @@ describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', ()
     expect(preview.overageBilling).toBe('IN_PERIOD_INVOICE');
     expect(preview.overageInvoice).toBeNull();
     expect(preview.lines.filter(l => l.kind === 'OVERAGE').reduce((sum, l) => sum + l.amount, 0)).toBe(12 * 150);
+  });
+});
+
+describe('capacite ACTIFS (lot 4A, packs Particulier)', () => {
+  it('countActiveAssets compte les actifs NON archives du tenant, sans jointure', async () => {
+    const count = fake.asset.count as jest.Mock;
+    count.mockClear();
+    count.mockResolvedValueOnce(7);
+    expect(await countActiveAssets(fake as any, T)).toBe(7);
+    expect(count).toHaveBeenCalledWith({ where: { tenantId: T, status: { not: 'ARCHIVED' } } });
+  });
+
+  it('getUsage renvoie ACTIFS a cote des autres capacites, BIENS_DETENUS inchange', async () => {
+    (fake.asset.count as jest.Mock).mockResolvedValueOnce(3);
+    const usage = await getUsage(T, fake as any);
+    expect(Object.keys(usage).sort()).toEqual(['ACTIFS', 'BIENS_DETENUS', 'CHANTIERS', 'COPROPRIETES', 'LOTS']);
+    expect(usage.ACTIFS).toBe(3);
+  });
+
+  it('un particulier Plus au-dela de 100 actifs : aucun depassement facture (le plafond est une garde, pas un tarif)', async () => {
+    seed('ACTIVE', ['PARTICULIER_PLUS']);
+    Object.assign(db.subscriptions[0], { quotaPolicy: 'BILL_OVERAGE' });
+    registerUsageProvider('LOTS', async () => 0);
+    registerUsageProvider('COPROPRIETES', async () => 0);
+    registerUsageProvider('CHANTIERS', async () => 0);
+    registerUsageProvider('BIENS_DETENUS', async () => 0);
+    registerUsageProvider('ACTIFS', async () => 250);
+    const preview = await previewNextInvoice(T, { now: ON_16TH });
+    expect(preview.lines.filter(l => l.kind === 'OVERAGE')).toHaveLength(0);
+    expect(preview.amountExclTax).toBe(2_900);
+  });
+
+  it('les packs Particulier Gratuit et Plus ne se cumulent pas', async () => {
+    seed('ACTIVE', ['PARTICULIER_GRATUIT']);
+    await expect(addSubscriptionItem(T, { code: 'PARTICULIER_PLUS', quantity: 1 }, 'admin-1')).rejects.toThrow(
+      /incompatible/
+    );
   });
 });
 

@@ -40,7 +40,7 @@ import { frontendUrl } from '../config/env';
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { addBillingPeriod, CAPACITY_KEYS, CapacityKeyCode } from '../lib/subscription';
-import { runPlatformBillingStep } from '../services/platform-invoice-service';
+import { isFreeSubscription, runPlatformBillingStep } from '../services/platform-invoice-service';
 import {
   applyDueItemTransitionsTx,
   getEntitlements,
@@ -64,8 +64,15 @@ const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
   LOTS: 'lots',
   COPROPRIETES: 'copropriétés',
   CHANTIERS: 'chantiers',
-  BIENS_DETENUS: 'biens détenus'
+  BIENS_DETENUS: 'biens détenus',
+  ACTIFS: 'actifs'
 };
+
+/**
+ * ACTIFS n'existe que pour les packs Particulier : sans plafond d'actifs
+ * (agence, pack Patrimoine), la capacite est ignoree — ni releve, ni alerte.
+ */
+const isActifsWithoutCap = (key: CapacityKeyCode, limit: number) => key === 'ACTIFS' && limit <= 0;
 
 type SubscriptionRow = Prisma.SubscriptionGetPayload<object>;
 
@@ -145,7 +152,11 @@ async function sendMail(to: Recipient[], subject: string, text: string, tenantId
   return sent;
 }
 
-/** Previent l'agence (in-app : la ligne deja ecrite ; e-mail aux administrateurs) et le super-admin. */
+/**
+ * Previent l'agence (in-app : la ligne deja ecrite ; e-mail aux administrateurs) et le super-admin.
+ * Un espace PARTICULIER (libre-service, potentiellement tres nombreux) ne
+ * declenche aucun e-mail au super-admin : seul l'utilisateur est prevenu.
+ */
 async function notify(
   tenantId: string,
   notice: { subject: string; text: string; adminSubject: string; adminText: string }
@@ -153,7 +164,11 @@ async function notify(
   const agencySent = await runWithTenantContext({ tenantId }, async () =>
     sendMail(await agencyAdminRecipients(tenantId), notice.subject, notice.text, tenantId)
   );
-  const adminSent = await sendMail(await superAdminRecipients(), notice.adminSubject, notice.adminText);
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { type: true } });
+  const adminSent =
+    tenant?.type === 'PARTICULIER'
+      ? 0
+      : await sendMail(await superAdminRecipients(), notice.adminSubject, notice.adminText);
   return { agencySent, adminSent };
 }
 
@@ -207,7 +222,10 @@ export async function processBillingBoundary(subscriptionId: string, now: Date =
       },
       select: { id: true }
     });
-    if (paid) {
+    // Abonnement gratuit : aucune facture n'existe ni n'est attendue, il se
+    // renouvelle d'office (et sort de l'etat d'essai s'il y etait).
+    const free = paid ? false : await isFreeSubscription(tx, sub.id);
+    if (paid || free) {
       await tx.subscription.update({
         where: { id: sub.id },
         data: {
@@ -291,8 +309,11 @@ export async function recordUsageSnapshots(tenantId: string, now: Date = new Dat
   const entitlements = await getEntitlements(tenantId, { fresh: true, now });
   const snapshotDate = utcDay(now);
   const periodStart = alertPeriodStart(sub, now);
+  let recorded = 0;
   for (const key of CAPACITY_KEYS) {
     const capacity = entitlements.capacities[key];
+    if (isActifsWithoutCap(key, capacity.limit)) continue;
+    recorded += 1;
     const where = { tenantId_capacityKey_snapshotDate: { tenantId, capacityKey: key as CapacityKey, snapshotDate } };
     // eslint-disable-next-line no-await-in-loop -- trois capacites.
     const existing = await prisma.usageSnapshot.findUnique({ where, select: { used: true } });
@@ -314,7 +335,7 @@ export async function recordUsageSnapshots(tenantId: string, now: Date = new Dat
       update: { periodStart, used, limit: capacity.limit, overage: Math.max(0, used - capacity.limit), details }
     });
   }
-  return CAPACITY_KEYS.length;
+  return recorded;
 }
 
 // ------------------------------------------------------------------ 3. alertes
@@ -347,6 +368,7 @@ export async function evaluateQuotaAlerts(tenantId: string, now: Date = new Date
 
   for (const key of CAPACITY_KEYS) {
     const { used, limit } = entitlements.capacities[key];
+    if (isActifsWithoutCap(key, limit)) continue;
     for (const threshold of crossedThresholds(used, limit)) {
       let created;
       try {
@@ -409,6 +431,8 @@ export function dueTrialReminder(trialEndsAt: Date, now: Date): number | null {
 export async function sendTrialReminders(tenantId: string, now: Date = new Date()): Promise<number | null> {
   const sub = await prisma.subscription.findUnique({ where: { tenantId } });
   if (!sub || sub.status !== SubscriptionStatus.TRIALING) return null;
+  // Un abonnement gratuit n'a pas d'essai qui expire : aucun rappel de fin d'essai.
+  if (await isFreeSubscription(prisma, sub.id)) return null;
   const trialEndsAt = sub.trialEndsAt ?? sub.currentPeriodEnd;
   const reminder = dueTrialReminder(trialEndsAt, now);
   if (reminder === null) return null;

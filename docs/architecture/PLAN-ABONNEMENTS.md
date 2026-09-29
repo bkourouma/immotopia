@@ -28,6 +28,20 @@ La seule source de prix est la grille du site
 | `EXT_CHANTIER` | EXTENSION (Promoteur ou Intégré) |                                                        40 000 (35 000 avec l'Intégré) |               — | —         | 1 chantier                            |
 | `SETUP_<PACK>` | SETUP, facturé une fois          |                                                                                     0 | montant du pack | —         | —                                     |
 
+**Packs Particulier (lot 4A, spec 026).** `PARTICULIER_GRATUIT` (0 FCFA, mise en
+route 0, 10 actifs) et `PARTICULIER_PLUS` (**2 900 FCFA HT/mois, provisoire**,
+mise en route 0, 100 actifs) ouvrent le module Patrimoine (fonctionnalités
+`CORE`, `RENTAL`, `PATRIMOINE`) et portent `rules.tierGroup = PARTICULIER` : ils ne
+se cumulent pas. Leur capacité est `ACTIFS` (actifs `Asset` non archivés), sans
+extension ni dépassement facturé : le plafond est une garde (lot 4B), pas un
+tarif. Prix et plafonds se modifient dans le catalogue (`updateCatalogItem`),
+sans migration. Un abonnement dont tous les éléments vivants ont un prix
+(mensuel et de mise en route) nul (`isFreeSubscription`) n'émet **aucune**
+facture périodique ni de dépassement, se renouvelle d'office à l'échéance sans
+facture, n'a pas de rappel de fin d'essai, et ses alertes de seuil ne partent
+qu'à l'utilisateur (jamais au super-administrateur pour un tenant `PARTICULIER`).
+Les packs Particulier n'ont pas de ligne `SETUP_*`.
+
 Les variantes de prix vivent dans `catalog_items.rules` (`CatalogRules` :
 `byHeldPacks`, `lotTiers`, `requiresAnyOf`). Le catalogue est amorcé par la
 migration et réaligné par `npm run db:seed:catalog` (`--missing-only` pour ne

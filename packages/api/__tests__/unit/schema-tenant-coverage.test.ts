@@ -84,7 +84,11 @@ const GLOBAL_MODELS = new Set([
   // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
   // fiscal versionné par pays et par année, alimenté par migration, commun à
   // toutes les agences. Aucune écriture applicative (lecture seule).
-  'TaxParameter'
+  'TaxParameter',
+  // Anti-abus d'inscription : compteur par IP hachée (HMAC), sans agence par
+  // nature — une inscription précède tout rattachement à une agence. Ne porte
+  // aucune donnée d'agence ni d'utilisateur.
+  'SignupAttempt'
 ]);
 
 /**

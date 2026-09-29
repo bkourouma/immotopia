@@ -6,6 +6,8 @@ import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { RegisterRequest, LoginRequest, PasswordResetRequest, ForgotPasswordRequest } from '../types/auth-types';
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
+import { frontendUrl, isProduction } from '../config/env';
+import { AppError, BadRequestError } from '../middleware/error-middleware';
 import { logAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import type { Language } from '../i18n';
@@ -13,74 +15,135 @@ import type { Language } from '../i18n';
 /** Entity type used for every authentication event. */
 const AUTH_ENTITY = 'User';
 
+/** Réponse unique de l'inscription, que l'adresse existe ou non (anti-sondage des comptes). */
+export const REGISTRATION_ACCEPTED_MESSAGE =
+  'Si cette adresse est valide, un e-mail de vérification vient de vous être envoyé.';
+
+/** Vrai quand une erreur Prisma est une violation de contrainte d'unicité (P2002). */
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
+}
+
 /**
- * Register a new user
- * @param data - Registration data
- * @returns Created user (without password hash)
+ * Invalide les liens de vérification en cours de l'utilisateur et en émet un
+ * nouveau (valable 24 h). Retourne le jeton à envoyer par e-mail.
  */
-export async function registerUser(data: RegisterRequest) {
+async function issueVerificationToken(userId: string): Promise<string> {
+  const verificationToken = crypto.randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 24);
+
+  await prisma.$transaction(async tx => {
+    await tx.emailVerificationToken.updateMany({
+      where: { userId, used: false },
+      data: { used: true }
+    });
+    await tx.emailVerificationToken.create({
+      data: { token: verificationToken, userId, expiresAt }
+    });
+  });
+  return verificationToken;
+}
+
+/** Envoie un e-mail sans jamais faire échouer l'inscription (l'utilisateur peut demander un renvoi). */
+async function sendQuietly(userId: string, what: string, send: () => Promise<void>): Promise<void> {
+  try {
+    await send();
+    logger.info(`${what} sent`, { userId });
+  } catch (error) {
+    logger.error(`Failed to send ${what}`, { userId, error });
+  }
+}
+
+/**
+ * Register a new user.
+ *
+ * La réponse est identique que l'adresse existe déjà ou non (aucune fuite sur
+ * l'existence d'un compte) : un compte non vérifié reçoit un nouveau lien de
+ * vérification, un compte vérifié un e-mail « vous avez déjà un compte », et
+ * aucun utilisateur n'est créé dans ces deux cas. Le hash du mot de passe est
+ * calculé dans tous les cas pour que les temps de réponse restent comparables.
+ *
+ * En production, sans serveur d'e-mails, le lien de vérification ne peut pas
+ * arriver : l'inscription est refusée (503 `SIGNUP_UNAVAILABLE`) plutôt que de
+ * créer des comptes jamais vérifiables.
+ */
+export async function registerUser(data: RegisterRequest): Promise<void> {
+  if (isProduction && !isEmailDeliveryConfigured()) {
+    throw new AppError("L'inscription est momentanément indisponible.", 503, 'SIGNUP_UNAVAILABLE');
+  }
+
   // Validate password strength
   const passwordValidation = validatePasswordStrength(data.password);
   if (!passwordValidation.isValid) {
-    throw new Error(passwordValidation.error);
+    throw new BadRequestError(passwordValidation.error);
   }
 
-  // Check if email already exists
+  // Toujours calculé, même pour une adresse déjà connue (temps de réponse).
+  const passwordHash = await hashPassword(data.password);
+
   const existingUser = await prisma.user.findUnique({
-    where: { email: data.email }
+    where: { email: data.email },
+    select: { id: true, email: true, emailVerified: true }
   });
 
   if (existingUser) {
-    throw new Error('Cette adresse email est déjà utilisée.');
+    await notifyExistingAccount(existingUser);
+    return;
   }
 
-  // Hash password
-  const passwordHash = await hashPassword(data.password);
-
-  // Generate email verification token (UUID v4)
-  const verificationToken = crypto.randomUUID();
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
-
-  // Create user and verification token in transaction
-  const result = await prisma.$transaction(async tx => {
-    // Create user
-    const user = await tx.user.create({
+  let user: { id: string };
+  try {
+    user = await prisma.user.create({
       data: {
         email: data.email,
-        passwordHash: passwordHash,
+        passwordHash,
         fullName: data.fullName,
         globalRole: GlobalRole.USER, // Default role
         emailVerified: false,
         isActive: true
-      }
+      },
+      select: { id: true }
     });
-
-    // Create email verification token
-    await tx.emailVerificationToken.create({
-      data: {
-        token: verificationToken,
-        userId: user.id,
-        expiresAt: expiresAt
-      }
-    });
-
-    return user;
-  });
-
-  // Send verification email (don't fail registration if email fails)
-  try {
-    await emailService.sendVerificationEmail(data.email, verificationToken);
-    logger.info('Email verification sent', { userId: result.id, email: data.email });
   } catch (error) {
-    logger.error('Failed to send verification email', { userId: result.id, email: data.email, error });
-    // Continue even if email fails - user can request resend
+    if (isUniqueViolation(error)) {
+      // Inscription concurrente de la même adresse : même réponse.
+      return;
+    }
+    throw error;
   }
 
-  // Return user without password hash
-  const { passwordHash: removedPasswordHash, ...userPublic } = result;
-  void removedPasswordHash;
-  return userPublic;
+  const verificationToken = await issueVerificationToken(user.id);
+  await sendQuietly(user.id, 'verification email', () =>
+    emailService.sendVerificationEmail(data.email, verificationToken)
+  );
+}
+
+/** E-mail sobre à une adresse déjà inscrite et vérifiée : ni lien de vérification ni création de compte. */
+function sendAccountAlreadyExistsEmail(to: string): Promise<void> {
+  const loginLink = `${frontendUrl}/login`;
+  return emailService.sendEmail({
+    to,
+    subject: 'Vous avez déjà un compte',
+    html: `
+      <p>Vous avez déjà un compte avec cette adresse e-mail.</p>
+      <p>Pour vous connecter : <a href="${loginLink}">${loginLink}</a></p>
+      <p>Si vous avez oublié votre mot de passe, utilisez « Mot de passe oublié » sur la page de connexion.
+      Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.</p>
+    `
+  });
+}
+
+/** Courriel envoyé à une adresse déjà inscrite : nouveau lien, ou rappel de compte. */
+async function notifyExistingAccount(existing: { id: string; email: string; emailVerified: boolean }): Promise<void> {
+  if (existing.emailVerified) {
+    await sendQuietly(existing.id, 'existing account email', () => sendAccountAlreadyExistsEmail(existing.email));
+    return;
+  }
+  const verificationToken = await issueVerificationToken(existing.id);
+  await sendQuietly(existing.id, 'verification email', () =>
+    emailService.sendVerificationEmail(existing.email, verificationToken)
+  );
 }
 
 /**
@@ -143,7 +206,8 @@ export async function resendVerificationEmail(email: string) {
   }
 
   if (user.emailVerified) {
-    throw new Error('Cette adresse email est déjà vérifiée.');
+    // Même réponse que pour une adresse inconnue : ne révèle pas le compte.
+    return;
   }
 
   // Invalidate previous tokens
@@ -198,17 +262,7 @@ export async function loginUser(data: LoginRequest) {
 
   // Check if email is verified
   if (!user.emailVerified) {
-    if (!isEmailDeliveryConfigured()) {
-      // No mailer: the verification link can never arrive. Mark the address
-      // verified so the same account is not blocked on every subsequent login.
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { emailVerified: true }
-      });
-      logger.warn('Email verification skipped at login: mailer is not configured', {
-        userId: user.id
-      });
-    } else {
+    if (isEmailDeliveryConfigured()) {
       try {
         await resendVerificationEmail(user.email);
         logger.info('Verification email auto-resent on login attempt', { userId: user.id, email: user.email });
@@ -217,6 +271,22 @@ export async function loginUser(data: LoginRequest) {
       }
       throw new Error('Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.');
     }
+    if (isProduction) {
+      // Production sans serveur d'e-mails : aucune vérification automatique.
+      logger.warn('Login refused: email not verified and mailer is not configured', { userId: user.id });
+      throw new Error(
+        "Votre adresse email n'est pas vérifiée et le service d'e-mails est momentanément indisponible. Réessayez plus tard."
+      );
+    }
+    // Hors production sans serveur d'e-mails (développement, tests) : le lien ne
+    // peut jamais arriver, on marque l'adresse vérifiée pour ne pas bloquer le compte.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true }
+    });
+    logger.warn('Email verification skipped at login: mailer is not configured', {
+      userId: user.id
+    });
   }
 
   // Verify password

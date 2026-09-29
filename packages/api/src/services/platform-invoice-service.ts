@@ -23,13 +23,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import {
-  InvoiceLineKind,
-  InvoiceStatus,
-  PlatformPaymentMethod,
-  Prisma,
-  SubscriptionStatus
-} from '@prisma/client';
+import { InvoiceLineKind, InvoiceStatus, PlatformPaymentMethod, Prisma, SubscriptionStatus } from '@prisma/client';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
@@ -51,7 +45,7 @@ import {
   withoutPendingLines
 } from '../lib/subscription/platform-invoice';
 import { buildPlatformInvoicePdf, formatFcfa } from '../lib/subscription/platform-invoice-pdf';
-import { loadCatalogByCodes, previewNextInvoice } from './subscription-v2-service';
+import { loadExistingCatalogByCodes, previewNextInvoice } from './subscription-v2-service';
 
 type Db = PrismaTransactionClient | typeof prisma;
 type InvoiceNature = 'PERIOD' | 'OVERAGE';
@@ -89,7 +83,15 @@ async function customerOf(db: Db, tenantId: string): Promise<PlatformCustomerInf
   const [tenant, finance] = await Promise.all([
     db.tenant.findUnique({
       where: { id: tenantId },
-      select: { name: true, legalName: true, address: true, city: true, country: true, contactEmail: true, contactPhone: true }
+      select: {
+        name: true,
+        legalName: true,
+        address: true,
+        city: true,
+        country: true,
+        contactEmail: true,
+        contactPhone: true
+      }
     }),
     db.agencyFinanceSettings.findFirst({ where: { tenantId }, select: { taxpayerNumber: true } })
   ]);
@@ -166,7 +168,7 @@ async function autoSetupLines(
   if (previous > 0) return [];
   const setupCodes = packCodes.map(code => `SETUP_${code}`);
   const [catalog, existingSetups] = await Promise.all([
-    loadCatalogByCodes(prisma, setupCodes),
+    loadExistingCatalogByCodes(prisma, setupCodes),
     prisma.subscriptionItem.findMany({
       where: { tenantId, catalogItem: { code: { in: setupCodes } } },
       select: { catalogItem: { select: { code: true } } }
@@ -224,9 +226,7 @@ export async function buildPlatformInvoiceDraft(
       subscriptionId: subscription.id,
       periodStart: overage.periodStart,
       periodEnd: overage.periodEnd,
-      newLines: overage.lines
-        .filter(l => l.kind !== 'TAX')
-        .map(l => ({ ...l, metadata: { usage: overage.usage } })),
+      newLines: overage.lines.filter(l => l.kind !== 'TAX').map(l => ({ ...l, metadata: { usage: overage.usage } })),
       pendingLineIds: [],
       setupItemIds: [],
       recurringItemIds: [],
@@ -246,7 +246,9 @@ export async function buildPlatformInvoiceDraft(
       subscriptionItemId: p.subscriptionItemId ?? undefined
     }))
   );
-  const setupItemIds = ownLines.filter(l => l.kind === 'SETUP' && l.subscriptionItemId).map(l => l.subscriptionItemId as string);
+  const setupItemIds = ownLines
+    .filter(l => l.kind === 'SETUP' && l.subscriptionItemId)
+    .map(l => l.subscriptionItemId as string);
   const recurringItemIds = ownLines
     .filter(l => (l.kind === 'PACK' || l.kind === 'EXTENSION') && l.subscriptionItemId)
     .map(l => l.subscriptionItemId as string);
@@ -282,7 +284,10 @@ export interface GenerateResult {
 async function loadInvoice(db: Db, tenantId: string, invoiceId: string) {
   const invoice = await db.invoice.findFirst({
     where: { id: invoiceId, tenantId, kind: PLATFORM },
-    include: { lines: { orderBy: { sortOrder: 'asc' } }, creditedInvoice: { select: { id: true, invoiceNumber: true } } }
+    include: {
+      lines: { orderBy: { sortOrder: 'asc' } },
+      creditedInvoice: { select: { id: true, invoiceNumber: true } }
+    }
   });
   if (!invoice) throw new NotFoundError('Facture introuvable.');
   return invoice;
@@ -374,7 +379,8 @@ export async function generateInvoiceForPeriodTx(
         where: { id: line.pendingId, tenantId, invoiceId: null },
         data: { invoiceId: invoice.id, sortOrder }
       });
-      if (attached.count !== 1) throw new ConflictError('Des lignes en attente ont changé pendant la génération : relancez-la.');
+      if (attached.count !== 1)
+        throw new ConflictError('Des lignes en attente ont changé pendant la génération : relancez-la.');
       continue;
     }
     // eslint-disable-next-line no-await-in-loop -- quelques lignes par facture.
@@ -433,6 +439,26 @@ export async function generateInvoiceForPeriodTx(
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+// =============================================================== abonnement gratuit
+
+/**
+ * Vrai quand TOUS les elements vivants de l'abonnement (ACTIVE, ou
+ * SCHEDULED a venir) ont un prix mensuel ET de mise en route nuls — par
+ * exemple le seul pack Particulier Gratuit. Un abonnement gratuit ne genere
+ * AUCUNE facture periodique (sinon une facture a zero, payee d'office, serait
+ * emise a chaque periode) et ne se renouvelle pas par facture : voir
+ * `processBillingBoundary` (subscription-usage-job). Un abonnement sans
+ * element n'est pas « gratuit » : il reste un cas anormal a traiter.
+ * Les prix lus sont ceux figes dans SubscriptionItem (D12).
+ */
+export async function isFreeSubscription(db: Db, subscriptionId: string): Promise<boolean> {
+  const items = await db.subscriptionItem.findMany({
+    where: { subscriptionId, status: { in: ['ACTIVE', 'SCHEDULED'] } },
+    select: { unitMonthlyPrice: true, unitSetupPrice: true }
+  });
+  return items.length > 0 && items.every(i => toNumber(i.unitMonthlyPrice) === 0 && toNumber(i.unitSetupPrice) === 0);
 }
 
 // =============================================================== emission
@@ -500,6 +526,9 @@ export async function generateInvoiceForPeriod(tenantId: string, options: Genera
     throw new BadRequestError('Abonnement résilié : aucune facture à émettre.');
   }
 
+  // Emission automatique : jamais de facture pour un abonnement gratuit.
+  if (options.automatic && (await isFreeSubscription(prisma, subscription.id))) return null;
+
   const draft = await buildPlatformInvoiceDraft(tenantId, nature, { at });
   if (!draft) return null;
 
@@ -518,7 +547,13 @@ export async function generateInvoiceForPeriod(tenantId: string, options: Genera
     if (!isUniqueViolation(error)) throw error;
     // Course perdue contre une generation concurrente : renvoyer la sienne.
     const existing = await prisma.invoice.findFirst({
-      where: { tenantId, kind: PLATFORM, billingNature: nature, periodStart: draft.periodStart, status: { not: 'CANCELED' } }
+      where: {
+        tenantId,
+        kind: PLATFORM,
+        billingNature: nature,
+        periodStart: draft.periodStart,
+        status: { not: 'CANCELED' }
+      }
     });
     if (!existing) throw error;
     return { invoice: await loadInvoice(prisma, tenantId, existing.id), created: false, issued: false };
@@ -592,7 +627,12 @@ export interface CreditNoteInput {
  * payable : PAID par COMPENSATION si la facture n'etait pas reglee,
  * REFUND_DUE (remboursement a traiter hors ligne) si elle l'etait.
  */
-export async function issueCreditNote(tenantId: string, invoiceId: string, input: CreditNoteInput, actorUserId: string) {
+export async function issueCreditNote(
+  tenantId: string,
+  invoiceId: string,
+  input: CreditNoteInput,
+  actorUserId: string
+) {
   const reason = input.reason?.trim();
   if (!reason) throw new BadRequestError("La raison de l'avoir est obligatoire.");
   const now = new Date();
@@ -607,7 +647,10 @@ export async function issueCreditNote(tenantId: string, invoiceId: string, input
     if (!allowed.includes(original.status)) {
       throw new BadRequestError('Seule une facture émise peut être annulée par un avoir.');
     }
-    const already = await tx.invoice.findFirst({ where: { tenantId, creditedInvoiceId: original.id }, select: { id: true } });
+    const already = await tx.invoice.findFirst({
+      where: { tenantId, creditedInvoiceId: original.id },
+      select: { id: true }
+    });
     if (already) throw new ConflictError('Cette facture a déjà un avoir.');
 
     const wasPaid = original.status === InvoiceStatus.PAID;
@@ -712,7 +755,10 @@ export async function issueCreditNote(tenantId: string, invoiceId: string, input
         .filter(l => l.kind === InvoiceLineKind.SETUP && l.subscriptionItemId)
         .map(l => l.subscriptionItemId as string);
       if (setupIds.length) {
-        await tx.subscriptionItem.updateMany({ where: { tenantId, id: { in: setupIds } }, data: { billedThrough: null } });
+        await tx.subscriptionItem.updateMany({
+          where: { tenantId, id: { in: setupIds } },
+          data: { billedThrough: null }
+        });
       }
     }
     return note;
@@ -740,7 +786,10 @@ export async function issueCreditNote(tenantId: string, invoiceId: string, input
 
 // =============================================================== lecture
 
-export function serializePlatformInvoice(invoice: Awaited<ReturnType<typeof loadInvoice>>, options: { withLines?: boolean } = {}) {
+export function serializePlatformInvoice(
+  invoice: Awaited<ReturnType<typeof loadInvoice>>,
+  options: { withLines?: boolean } = {}
+) {
   return {
     id: invoice.id,
     tenantId: invoice.tenantId,
@@ -812,7 +861,10 @@ export async function listPlatformInvoices(tenantId: string, options: ListPlatfo
   const [rows, total] = await Promise.all([
     prisma.invoice.findMany({
       where,
-      include: { lines: { orderBy: { sortOrder: 'asc' } }, creditedInvoice: { select: { id: true, invoiceNumber: true } } },
+      include: {
+        lines: { orderBy: { sortOrder: 'asc' } },
+        creditedInvoice: { select: { id: true, invoiceNumber: true } }
+      },
       orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit
@@ -825,7 +877,11 @@ export async function listPlatformInvoices(tenantId: string, options: ListPlatfo
   };
 }
 
-export async function getPlatformInvoice(tenantId: string, invoiceId: string, options: { includeDrafts?: boolean } = {}) {
+export async function getPlatformInvoice(
+  tenantId: string,
+  invoiceId: string,
+  options: { includeDrafts?: boolean } = {}
+) {
   const invoice = await loadInvoice(prisma, tenantId, invoiceId);
   if (invoice.status === InvoiceStatus.DRAFT && !options.includeDrafts) throw new NotFoundError('Facture introuvable.');
   return serializePlatformInvoice(invoice, { withLines: true });
@@ -872,7 +928,9 @@ export async function renderPlatformInvoicePdf(
 ): Promise<{ filename: string; buffer: Buffer }> {
   const invoice = await loadInvoice(prisma, tenantId, invoiceId);
   if (invoice.status === InvoiceStatus.DRAFT && !options.includeDrafts) throw new NotFoundError('Facture introuvable.');
-  const customer = invoice.customerSnapshot ? (invoice.customerSnapshot as unknown as PlatformCustomerInfo) : await customerOf(prisma, tenantId);
+  const customer = invoice.customerSnapshot
+    ? (invoice.customerSnapshot as unknown as PlatformCustomerInfo)
+    : await customerOf(prisma, tenantId);
   const buffer = await buildPlatformInvoicePdf(payloadForPdf(invoice, customer));
   const base = isDraftNumber(invoice.invoiceNumber) ? `brouillon-${invoice.id.slice(0, 8)}` : invoice.invoiceNumber;
   return { filename: `${invoice.billingNature === 'CREDIT_NOTE' ? 'avoir' : 'facture'}-${base}.pdf`, buffer };
@@ -922,9 +980,12 @@ export async function sendPlatformInvoiceEmail(tenantId: string, invoiceId: stri
             amount
           })
         : invoice.status === InvoiceStatus.PAID
-          ? t('Votre facture {{number}} ({{amount}}) est jointe. Elle est déjà réglée.', { number: invoice.invoiceNumber, amount })
+          ? t('Votre facture {{number}} ({{amount}}) est jointe. Elle est déjà réglée.', {
+              number: invoice.invoiceNumber,
+              amount
+            })
           : t(
-              'Votre facture {{number}} d\'un montant de {{amount}} TTC est jointe. Elle est à régler avant le {{date}} depuis {{url}}.',
+              "Votre facture {{number}} d'un montant de {{amount}} TTC est jointe. Elle est à régler avant le {{date}} depuis {{url}}.",
               {
                 number: invoice.invoiceNumber,
                 amount,
@@ -945,14 +1006,26 @@ export async function sendPlatformInvoiceEmail(tenantId: string, invoiceId: stri
           });
           sent += 1;
         } catch (error) {
-          logger.warn('Platform invoice e-mail failed', { tenantId, invoiceId, error: error instanceof Error ? error.message : String(error) });
+          logger.warn('Platform invoice e-mail failed', {
+            tenantId,
+            invoiceId,
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
       }
-      if (sent > 0) await prisma.invoice.updateMany({ where: { id: invoiceId, tenantId, kind: PLATFORM }, data: { sentAt: new Date() } });
+      if (sent > 0)
+        await prisma.invoice.updateMany({
+          where: { id: invoiceId, tenantId, kind: PLATFORM },
+          data: { sentAt: new Date() }
+        });
       return sent;
     });
   } catch (error) {
-    logger.warn('Platform invoice e-mail skipped', { tenantId, invoiceId, error: error instanceof Error ? error.message : String(error) });
+    logger.warn('Platform invoice e-mail skipped', {
+      tenantId,
+      invoiceId,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return 0;
   }
 }
@@ -990,22 +1063,41 @@ export function dueOverageWindows(
  * passe PAST_DUE) :
  * 1. annuel : facture de depassement de chaque fenetre mensuelle ecoulee
  *    (§6 ter), avant que le renouvellement ne deplace l'ancrage des fenetres ;
+ * 0. abonnement gratuit (`isFreeSubscription`) : aucune facture, retour immediat ;
  * 2. echeance d'essai ou de periode atteinte : facture de la periode
  *    suivante generee, emise et envoyee (une facture a zero est PAYEE
  *    d'office, donc renouvelee) ;
  * 3. factures emises dont l'echeance est passee -> OVERDUE.
  */
-export async function runPlatformBillingStep(subscriptionId: string, now: Date = new Date()): Promise<BillingStepOutcome> {
+export async function runPlatformBillingStep(
+  subscriptionId: string,
+  now: Date = new Date()
+): Promise<BillingStepOutcome> {
   const outcome: BillingStepOutcome = { periodInvoice: 'NONE', overageInvoices: 0, overdue: 0 };
   const sub = await prisma.subscription.findUnique({ where: { id: subscriptionId } });
   if (!sub) return outcome;
-  const live: SubscriptionStatus[] = [SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE];
+  const live: SubscriptionStatus[] = [
+    SubscriptionStatus.TRIALING,
+    SubscriptionStatus.ACTIVE,
+    SubscriptionStatus.PAST_DUE
+  ];
   if (!live.includes(sub.status)) return outcome;
   const tenantId = sub.tenantId;
+  // Abonnement gratuit (tous les elements a prix nul) : aucune facture de periode
+  // ni de depassement. `processBillingBoundary` le renouvelle sans facture.
+  if (await isFreeSubscription(prisma, sub.id)) {
+    outcome.overdue = await markOverdueInvoices(tenantId, now);
+    return outcome;
+  }
 
-  if (sub.billingCycle === 'ANNUAL' && sub.status !== SubscriptionStatus.TRIALING && sub.quotaPolicy === 'BILL_OVERAGE') {
+  if (
+    sub.billingCycle === 'ANNUAL' &&
+    sub.status !== SubscriptionStatus.TRIALING &&
+    sub.quotaPolicy === 'BILL_OVERAGE'
+  ) {
     const metadata = metadataOf(sub.metadata);
-    const checked = typeof metadata.overageCheckedThrough === 'string' ? new Date(metadata.overageCheckedThrough) : null;
+    const checked =
+      typeof metadata.overageCheckedThrough === 'string' ? new Date(metadata.overageCheckedThrough) : null;
     const windows = dueOverageWindows(sub.currentPeriodStart, sub.currentPeriodEnd, now, checked);
     for (const window of windows) {
       // Un instant DANS la fenetre : `previewNextInvoice` la retrouve.
@@ -1027,7 +1119,7 @@ export async function runPlatformBillingStep(subscriptionId: string, now: Date =
   }
 
   const boundary =
-    sub.status === SubscriptionStatus.TRIALING ? sub.trialEndsAt ?? sub.currentPeriodEnd : sub.currentPeriodEnd;
+    sub.status === SubscriptionStatus.TRIALING ? (sub.trialEndsAt ?? sub.currentPeriodEnd) : sub.currentPeriodEnd;
   if (boundary.getTime() <= now.getTime()) {
     const res = await generateInvoiceForPeriod(tenantId, { nature: 'PERIOD', automatic: true, at: now });
     if (res) outcome.periodInvoice = res.created ? 'CREATED' : 'EXISTING';
@@ -1052,12 +1144,17 @@ export async function markPlatformInvoicePaid(
   actorUserId: string
 ) {
   const invoice = await loadInvoice(prisma, tenantId, invoiceId);
-  if (invoice.billingNature === 'CREDIT_NOTE') throw new BadRequestError("Un avoir ne se règle pas.");
+  if (invoice.billingNature === 'CREDIT_NOTE') throw new BadRequestError('Un avoir ne se règle pas.');
   const { recordManualPayment } = await import('./platform-payment-service');
   return recordManualPayment(
     tenantId,
     invoiceId,
-    { method: input.method, paidAt: input.paidAt ?? new Date(), reference: input.reference ?? null, note: input.note ?? null },
+    {
+      method: input.method,
+      paidAt: input.paidAt ?? new Date(),
+      reference: input.reference ?? null,
+      note: input.note ?? null
+    },
     actorUserId
   );
 }

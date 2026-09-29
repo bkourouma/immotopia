@@ -43,7 +43,7 @@ import { logger } from '../utils/logger';
 const router = Router();
 
 // Register and Login
-router.post('/register', registrationRateLimiter, validate(registerSchema), register);
+router.post('/register', registrationRateLimiter, validate(registerSchema), asyncHandler(register));
 router.post('/login', loginRateLimiter, validate(loginSchema), login);
 
 // Email Verification

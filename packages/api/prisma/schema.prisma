@@ -19,6 +19,7 @@ enum GlobalRole {
 enum TenantType {
   AGENCY
   OPERATOR
+  PARTICULIER // Espace personnel en libre-service (lot 4) : patrimoine seul, palier gratuit ou Plus
 }
 
 enum ClientType {
@@ -104,6 +105,7 @@ enum CapacityKey {
   COPROPRIETES // Coproprietes actives (ACTIVE, IN_DISPUTE)
   CHANTIERS // Chantiers actifs (PLANNED, IN_PROGRESS, SUSPENDED)
   BIENS_DETENUS // Biens detenus en propre (pack Patrimoine), loues ou non
+  ACTIFS // Actifs Asset non archives (packs Particulier) ; pas d'extension ni de depassement facture
 }
 
 enum SubscriptionItemStatus {
@@ -8422,4 +8424,18 @@ model TaxParameter {
   @@unique([country, year, taxKind, key, propertyKind, occupancy, ownerKind, bracketIndex], map: "tax_parameters_selector_key")
   @@index([country, year])
   @@map("tax_parameters")
+}
+
+// Anti-abus d'inscription : une ligne par inscription ACCEPTÉE depuis une adresse IP.
+// Modèle global (aucune agence : l'inscription précède tout rattachement). L'IP n'est jamais
+// stockée en clair : `ipHash` est un HMAC-SHA256 (services/signup-guard-service.ts).
+// Lignes purgées après 24 h par le service lui-même.
+model SignupAttempt {
+  id        BigInt   @id @default(autoincrement())
+  ipHash    String   @map("ip_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
+  @@map("signup_attempts")
 }

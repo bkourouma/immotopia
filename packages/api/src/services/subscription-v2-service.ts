@@ -35,6 +35,7 @@ import {
   EXTENSION,
   InvoiceTotals,
   MODULE_KEYS,
+  PARTICULIER_PACKS,
   PATRIMOINE_PACKS,
   PLATFORM_INVOICE_ISSUER,
   PLATFORM_TAX_RATE_PERCENT,
@@ -137,6 +138,16 @@ export async function loadCatalogByCodes(db: Db, codes: readonly string[]): Prom
   return map;
 }
 
+/**
+ * Comme `loadCatalogByCodes`, mais les codes absents sont simplement omis
+ * (aucune erreur). Sert aux lignes optionnelles : la mise en route
+ * `SETUP_<pack>` n'existe pas pour les packs Particulier (mise en route 0).
+ */
+export async function loadExistingCatalogByCodes(db: Db, codes: readonly string[]): Promise<Map<string, CatalogEntry>> {
+  const rows = await db.catalogItem.findMany({ where: { code: { in: [...new Set(codes)] } }, include: catalogInclude });
+  return new Map(rows.map(r => [r.code, toCatalogEntry(r)]));
+}
+
 /** Une offre du catalogue par code ; leve NotFoundError si elle manque. */
 export async function loadCatalogItem(db: Db, code: string): Promise<CatalogEntry> {
   return requireEntry(await loadCatalogByCodes(db, [code]), code);
@@ -212,8 +223,18 @@ const usageProviders: Record<CapacityKeyCode, UsageProvider> = {
   LOTS: countActiveLots,
   COPROPRIETES: countActiveCopros,
   CHANTIERS: countActiveSites,
-  BIENS_DETENUS: countHeldProperties
+  BIENS_DETENUS: countHeldProperties,
+  ACTIFS: countActiveAssets
 };
+
+/**
+ * Actifs de patrimoine (`Asset`) non archives du tenant (capacite ACTIFS,
+ * packs Particulier). Comptage direct filtre par `tenantId`, sans jointure ;
+ * `DISPOSED` (vendu, cede) reste compte, seul `ARCHIVED` libere une place.
+ */
+export async function countActiveAssets(db: Db, tenantId: string): Promise<number> {
+  return db.asset.count({ where: { tenantId, status: { not: 'ARCHIVED' } } });
+}
 
 export function registerUsageProvider(capacityKey: CapacityKeyCode, provider: UsageProvider): void {
   usageProviders[capacityKey] = provider;
@@ -1424,25 +1445,29 @@ async function computeOverageForUsage(
     featuresFor: () => [],
     now: at
   });
-  const extensionCodes: Record<CapacityKeyCode, string> = {
+  // ACTIFS n'a ni extension ni depassement facture : au-dela du plafond, le
+  // palier gratuit refuse l'ajout (garde du lot 4B) ; rien n'est facture.
+  const extensionCodes: Partial<Record<CapacityKeyCode, string>> = {
     LOTS: EXTENSION.LOTS_10,
     COPROPRIETES: EXTENSION.COPRO,
     CHANTIERS: EXTENSION.CHANTIER,
     BIENS_DETENUS: EXTENSION.BIENS_10
   };
-  const extensions = await loadCatalogByCodes(prisma, Object.values(extensionCodes));
+  const extensions = await loadCatalogByCodes(prisma, Object.values(extensionCodes) as string[]);
   const lines: ChargeLine[] = [];
   const retained = {} as Record<CapacityKeyCode, { used: number; limit: number }>;
   for (const key of CAPACITY_KEYS) {
     const capacity = entitlements.capacities[key];
     retained[key] = { used: capacity.used, limit: capacity.limit };
+    const extensionCode = extensionCodes[key];
+    if (!extensionCode) continue;
     lines.push(
       ...computeOverageLines({
         capacityKey: key,
         limit: capacity.limit,
         used: capacity.used,
         heldPacks: held,
-        extension: requireEntry(extensions, extensionCodes[key])
+        extension: requireEntry(extensions, extensionCode)
       })
     );
   }
@@ -1621,6 +1646,14 @@ export function planInitialItems(
     if (tierClash) {
       throw new BadRequestError(
         'Patrimoine Essentiel et Patrimoine Pro ne se cumulent pas : choisissez l’un des deux.'
+      );
+    }
+    const particulierClash = check.conflicts.find(
+      ([a, b]) => PARTICULIER_PACKS.includes(a) && PARTICULIER_PACKS.includes(b)
+    );
+    if (particulierClash) {
+      throw new BadRequestError(
+        'Particulier Gratuit et Particulier Plus ne se cumulent pas : choisissez l’un des deux.'
       );
     }
     throw new BadRequestError(
