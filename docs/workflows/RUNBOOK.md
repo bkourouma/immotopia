@@ -217,6 +217,28 @@ Isolation multi-tenant de bout en bout :
 npm run test:isolation -w @immotopia/api
 ```
 
+Rejouer la suite dans un environnement neuf (sans `.env`, tout en variables
+d'environnement) :
+
+```bash
+# Base vierge dédiée (PostgreSQL 16 ; « immo » = super-utilisateur local)
+PGPASSWORD=immo_local_pw psql -h localhost -U immo -d postgres \
+  -c 'CREATE DATABASE immotopia_isolation'
+
+export DATABASE_URL_TEST="postgresql://immo:immo_local_pw@localhost:5432/immotopia_isolation"
+export JWT_SECRET="$(openssl rand -hex 48)"   # sans lui, l'API ne démarre pas
+npm run test:isolation -w @immotopia/api
+```
+
+Le runner recopie `DATABASE_URL_TEST` dans `DATABASE_URL`, applique lui-même
+`prisma migrate deploy` ; aucun seed n'est nécessaire (les fixtures créent le
+rôle `TENANT_ADMIN` et ses permissions). **Un succès se lit dans « Tests: 43
+passed, 43 total »** (suite `api-app`), jamais dans le seul code de sortie : sans
+base, le script sort en succès et la suite s'ignore. Jest signale « did not exit
+one second after the test run » (file d'audit ouverte) : sans effet sur le
+résultat. Les données de test des baux restent en base (pas de cascade
+`rental_*` dans le nettoyage) : la base est jetable.
+
 i18n (voir aussi [docs/architecture/i18n.md](../architecture/i18n.md)) :
 
 ```bash

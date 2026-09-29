@@ -38,57 +38,6 @@ Pièges et décisions :
 
 ---
 
-## Branche `fix/copilot-fake-numero-bail` — 2026-09-29
-
-**État :** prêt à relire
-**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
-
-Fait :
-
-- Recette d'ImmoCopilot jouée (PR #49 fusionnée) sur une base PostgreSQL 16 locale
-  jetable, API avec `AI_PROVIDER=fake`, Chromium piloté par `playwright-core`
-  (installé hors dépôt). Les 12 scénarios du plan §6 passent : bouton et
-  raccourcis, biens, quittance (proposition, confirmation, `.docx` téléchargé),
-  double clic (un seul document), jeton expiré (410), `TENANT_AGENT` (2 outils,
-  génération et téléchargement 403), propriétaire/locataire/super-admin refusés,
-  assistant désactivé (503, pas de bouton), arabe (RTL, tiroir à gauche), 375 px,
-  injection sans document créé, fermeture en plein flux sans erreur. Jeton de
-  l'agence A sur l'agence B : `PROPOSAL_INVALID` sur vraie base. Relevé de compte
-  (`RENT_STATEMENT`) généré aussi.
-- Correctifs : le faux fournisseur ne reconnaissait que `L-102` alors que les
-  baux se numérotent `BAIL-AAAA-NNNN` (il prenait le premier bail actif) ; montants
-  des cartes formatés avec la locale active.
-- Quittance et relevé : champs des modèles DOCX désormais tous fournis (PR #53
-  fusionnée) ; le rendu laissait `{{…}}` parce que les noms de champs des modèles
-  et du constructeur de contexte divergeaient. Ventilation d'un paiement : loyer,
-  puis charges, puis pénalités ; une donnée absente s'écrit « — ».
-
-Reste à faire :
-
-- **Baux** (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : même défaut que la quittance
-  (environ 20 champs du modèle d'habitation non fournis par
-  `document-context-builder.ts`, le commercial délègue à l'habitation) : `{{…}}` en
-  clair dans les contrats. Non traité.
-- `RECU_NUMERO` de la quittance est le numéro de paiement ; le numéro définitif
-  `RCU-…` est attribué après le rendu.
-- `test:isolation` (base dédiée) toujours non joué avec la suite.
-- Mineurs d'audit de la PR #49 toujours ouverts.
-
-Pièges et décisions :
-
-- Le cloud n'a pas de `.env` : tout passe par variables d'environnement en ligne
-  de commande (`DATABASE_URL`, `JWT_SECRET` généré, `AI_PROVIDER=fake`, ports
-  8001/3000). Base : `pg_ctlcluster 16 main start` puis utilisateur et base créés
-  à la main ; `db:seed:rbac`, `geographic`, `catalog`, `db:seed`, `rbac` de
-  nouveau, `document-templates` (exige `JWT_SECRET`), `tenant-members`. Le seed
-  `seed-demo-locative.ts` cible une agence du dump de démo : sur une base neuve,
-  créer soi-même biens, contacts et baux via les services.
-- Le modèle `RENT_STATEMENT` est bien semé par `db:seed:document-templates`
-  (4 modèles globaux).
-- Une quittance déjà générée pour la période est présentée au lieu d'être
-  proposée de nouveau (idempotence) : changer de période pour rejouer.
-- `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
-
 ## Branche `fix/copilot-baux` — 2026-09-29
 
 **État :** prêt à relire
