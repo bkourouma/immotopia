@@ -123,9 +123,14 @@ const envSchema = z
 
     // ImmoCopilot (lib/ai, docs/architecture/PLAN_IMMOCOPILOT.md).
     // `disabled` : l'assistant est coupe et l'application marche sans cle.
-    // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`.
-    AI_PROVIDER: z.enum(['disabled', 'fake', 'anthropic']).default('disabled'),
+    // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`,
+    // OPENROUTER_API_KEY si `openrouter`.
+    AI_PROVIDER: z.enum(['disabled', 'fake', 'anthropic', 'openrouter']).default('disabled'),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    OPENROUTER_API_KEY: z.string().min(1).optional(),
+    OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
+    // Identifiant du modele : `claude-opus-5-5` pour anthropic, un identifiant
+    // OpenRouter (`fournisseur/modele`, ex. `anthropic/claude-sonnet-4.5`) pour openrouter.
     AI_MODEL: z.string().min(1).default('claude-opus-5-5'),
     AI_EFFORT: z.enum(['low', 'medium', 'high']).default('low'),
     AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1024).max(64000).default(16000),
@@ -144,6 +149,23 @@ const envSchema = z
         path: ['ANTHROPIC_API_KEY'],
         message: 'variable requise quand AI_PROVIDER=anthropic'
       });
+    }
+    if (value.AI_PROVIDER === 'openrouter') {
+      if (!value.OPENROUTER_API_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OPENROUTER_API_KEY'],
+          message: 'variable requise quand AI_PROVIDER=openrouter'
+        });
+      }
+      // Le défaut anthropic n'existe pas chez OpenRouter : exiger un identifiant `fournisseur/modele`.
+      if (!value.AI_MODEL.includes('/')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AI_MODEL'],
+          message: 'identifiant OpenRouter requis quand AI_PROVIDER=openrouter (ex. anthropic/claude-sonnet-4.5)'
+        });
+      }
     }
     if (value.AI_PROVIDER === 'fake' && value.NODE_ENV === 'production') {
       ctx.addIssue({

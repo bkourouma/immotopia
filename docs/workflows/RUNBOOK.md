@@ -322,19 +322,22 @@ menace : [SECURITY.md](../governance/SECURITY.md) (section « Assistant IA »).
 Variables du backend (validées par `packages/api/src/config/env.ts`,
 documentées dans `packages/api/env.example`) :
 
-| Variable                  | Défaut            | Rôle                                                                                              |
-| ------------------------- | ----------------- | ------------------------------------------------------------------------------------------------- |
-| `AI_PROVIDER`             | `disabled`        | `disabled`, `fake` (déterministe, refusé en production) ou `anthropic`.                           |
-| `ANTHROPIC_API_KEY`       | aucune            | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`. |
-| `AI_MODEL`                | `claude-opus-5-5` | Modèle du fournisseur `anthropic`.                                                                |
-| `AI_EFFORT`               | `low`             | Effort de raisonnement : `low`, `medium` ou `high`.                                               |
-| `AI_MAX_OUTPUT_TOKENS`    | `16000`           | Plafond de tokens de sortie par tour (1024 à 64000).                                              |
-| `AI_MAX_TOOL_ROUNDS`      | `4`               | Tours d'outils maximum par requête de chat (1 à 8).                                               |
-| `AI_REQUEST_TIMEOUT_MS`   | `60000`           | Délai maximal d'un appel au fournisseur.                                                          |
-| `AI_PROPOSAL_TTL_SECONDS` | `300`             | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.               |
-| `AI_REFUSAL_FALLBACK`     | `on`              | Repli serveur en cas de refus du modèle ; `off` le coupe.                                         |
+| Variable                  | Défaut                         | Rôle                                                                                                                                                   |
+| ------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AI_PROVIDER`             | `disabled`                     | `disabled`, `fake` (déterministe, refusé en production), `anthropic` ou `openrouter`.                                                                  |
+| `ANTHROPIC_API_KEY`       | aucune                         | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`.                                                      |
+| `OPENROUTER_API_KEY`      | aucune                         | Exigée si `AI_PROVIDER=openrouter`. Mêmes règles que la clé Anthropic (jamais par défaut ni `VITE_*`).                                                 |
+| `OPENROUTER_BASE_URL`     | `https://openrouter.ai/api/v1` | Point d'entrée OpenAI-compatible d'OpenRouter.                                                                                                         |
+| `AI_MODEL`                | `claude-opus-5-5`              | Modèle : `claude-opus-5-5` pour `anthropic` ; identifiant OpenRouter `fournisseur/modele` (ex. `anthropic/claude-sonnet-4.5`) exigé pour `openrouter`. |
+| `AI_EFFORT`               | `low`                          | Effort de raisonnement (`anthropic` seulement) : `low`, `medium` ou `high`.                                                                            |
+| `AI_MAX_OUTPUT_TOKENS`    | `16000`                        | Plafond de tokens de sortie par tour (1024 à 64000).                                                                                                   |
+| `AI_MAX_TOOL_ROUNDS`      | `4`                            | Tours d'outils maximum par requête de chat (1 à 8).                                                                                                    |
+| `AI_REQUEST_TIMEOUT_MS`   | `60000`                        | Délai maximal d'un appel au fournisseur.                                                                                                               |
+| `AI_PROPOSAL_TTL_SECONDS` | `300`                          | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.                                                                    |
+| `AI_REFUSAL_FALLBACK`     | `on`                           | Repli serveur en cas de refus (`anthropic` seulement) ; `off` le coupe.                                                                                |
 
-Sans ces réglages, le serveur ne démarre pas dans deux cas : `anthropic` sans
+Sans ces réglages, le serveur ne démarre pas dans quatre cas : `openrouter` sans
+`OPENROUTER_API_KEY` ou avec un `AI_MODEL` sans `/` ; `anthropic` sans
 `ANTHROPIC_API_KEY`, et `fake` avec `NODE_ENV=production`. Faire tourner
 `JWT_SECRET` invalide les propositions en cours (5 minutes au plus).
 

@@ -249,10 +249,12 @@ Plan de réalisation : [PLAN_IMMOCOPILOT.md](../architecture/PLAN_IMMOCOPILOT.md
 `enabled: false`, le bouton est masqué, `POST /ai/chat` et
 `POST /ai/actions/execute` répondent 503 `AI_DISABLED`. Le faux fournisseur
 (`fake`) est refusé en production (`config/env.ts`), `anthropic` exige
-`ANTHROPIC_API_KEY`, sans valeur par défaut.
+`ANTHROPIC_API_KEY`, `openrouter` exige `OPENROUTER_API_KEY` et un identifiant de
+modèle OpenRouter (`AI_MODEL`), sans valeur par défaut pour les clés.
 
 **Transfert de données personnelles : décision juridique.** Avec
-`AI_PROVIDER=anthropic`, le texte saisi et les résultats d'outils quittent
+`AI_PROVIDER=anthropic` ou `openrouter` (qui relaie en plus vers le fournisseur du
+modèle choisi, second sous-traitant à couvrir), le texte saisi et les résultats d'outils quittent
 l'infrastructure pour le fournisseur du modèle. Ces résultats contiennent des
 données personnelles (nom du locataire principal, montant et période d'une
 quittance) et des données commerciales (références, adresses, prix). Activer

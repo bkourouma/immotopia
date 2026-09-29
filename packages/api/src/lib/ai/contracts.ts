@@ -158,7 +158,7 @@ export interface ActionExecutedPayload {
 export interface CopilotStatus {
   enabled: boolean;
   reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';
-  provider: 'fake' | 'anthropic' | null;
+  provider: 'fake' | 'anthropic' | 'openrouter' | null;
   tools: CopilotToolName[];
   limits: { maxMessages: number; maxMessageChars: number };
 }
@@ -253,7 +253,7 @@ export interface LlmTurnResult {
 }
 
 export interface LlmProvider {
-  readonly id: 'fake' | 'anthropic';
+  readonly id: 'fake' | 'anthropic' | 'openrouter';
   runTurn(
     req: {
       system: string;
