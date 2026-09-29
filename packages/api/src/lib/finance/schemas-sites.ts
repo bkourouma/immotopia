@@ -117,6 +117,18 @@ export const validationQueueQuerySchema = z.object({
 export type ValidationQueueQuery = z.infer<typeof validationQueueQuerySchema>;
 
 // ---------------------------------------------------------------------------
+// GET cash-vouchers — liste des pièces de caisse (BUG-2026-09-29-020)
+// ---------------------------------------------------------------------------
+
+export const listCashVouchersQuerySchema = z
+  .object({
+    siteId: uuidSchema.optional()
+  })
+  .strict('Filtre inconnu : la liste des pièces de caisse ne se filtre que par chantier.');
+
+export type ListCashVouchersQuery = z.infer<typeof listCashVouchersQuerySchema>;
+
+// ---------------------------------------------------------------------------
 // POST cash-vouchers/:voucherId/void
 // ---------------------------------------------------------------------------
 

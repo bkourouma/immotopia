@@ -756,6 +756,10 @@ describe('La méthode de valorisation enregistre une DÉCISION', () => {
 
     expect(screen.getByText(/Aucune décision n'a encore été arrêtée/i)).toBeInTheDocument();
     expect(normaliser(document.body.textContent ?? '')).toContain("s'applique par defaut");
+    // BUG-2026-09-29-028 : la date de creation des reglages n'est pas une
+    // decision, elle ne doit pas s'afficher comme « arretee le ».
+    expect(document.body.textContent ?? '').not.toContain('12/03/2026');
+    expect(document.body.textContent ?? '').not.toMatch(/arrêtée le/);
   }, 30000);
 
   it('exige le motif avant d’enregistrer la décision, et le dit avant l’envoi', async () => {

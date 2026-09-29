@@ -51,6 +51,7 @@ import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { writeErrorMessage } from '../../utils/error-handler';
+import { BonRapproche, RapprochementBonDeCommande } from '../../components/finance/RapprochementBonDeCommande';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 import type { TreasuryPaymentMethod } from '../../components/finance/TreasuryAccountSelector';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
@@ -444,6 +445,8 @@ export const FactureFournisseur: React.FC = () => {
   };
 
   const [cibleAnnulation, setCibleAnnulation] = useState<SupplierInvoice | null>(null);
+  // Facture dont on rapproche le bon de commande (BUG-2026-09-29-033).
+  const [cibleRapprochement, setCibleRapprochement] = useState<SupplierInvoice | null>(null);
   const [motifAnnulation, setMotifAnnulation] = useState('');
   const [annulationEnCours, setAnnulationEnCours] = useState(false);
 
@@ -713,6 +716,16 @@ export const FactureFournisseur: React.FC = () => {
     { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
     { title: t('Date'), key: 'date', render: (_, f) => dateCourte(f.invoiceDate) },
     { title: t('Chantier'), key: 'chantier', render: (_, f) => f.siteLabel ?? '—' },
+    {
+      title: t('Bon de commande'),
+      key: 'bon',
+      render: (_, f) =>
+        f.purchaseOrderId ? (
+          <BonRapproche tenantId={tenantId} supplierId={f.supplierId} purchaseOrderId={f.purchaseOrderId} />
+        ) : (
+          '—'
+        )
+    },
     { title: t('Montant'), key: 'montant', align: 'end', render: (_, f) => <MoneyValue value={f.amount} /> },
     {
       title: t('Statut'),
@@ -746,6 +759,13 @@ export const FactureFournisseur: React.FC = () => {
           {f.status === 'VALIDATED' && peutValider && (
             <Button type="link" onClick={() => ouvrirAnnulation(f)}>
               {t('Annuler')}
+            </Button>
+          )}
+          {/* Rapprochement à un bon de commande (BUG-2026-09-29-033) : une
+              facture en BROUILLON seulement, le serveur refuse le reste. */}
+          {f.status === 'DRAFT' && (
+            <Button type="link" onClick={() => setCibleRapprochement(f)}>
+              {f.purchaseOrderId ? t('Changer de bon') : t('Rapprocher d’un bon')}
             </Button>
           )}
           <Button type="link" loading={duplicationEnCours === f.id} onClick={() => dupliquerFacture(f)}>
@@ -1016,7 +1036,18 @@ export const FactureFournisseur: React.FC = () => {
                         ? { label: 'Annuler', onClick: () => ouvrirAnnulation(f) }
                         : undefined
                 }
-                secondaryActions={[{ key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerFacture(f) }]}
+                secondaryActions={[
+                  ...(f.status === 'DRAFT'
+                    ? [
+                        {
+                          key: 'rapprocher',
+                          label: f.purchaseOrderId ? t('Changer de bon') : t('Rapprocher d’un bon'),
+                          onClick: () => setCibleRapprochement(f)
+                        }
+                      ]
+                    : []),
+                  { key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerFacture(f) }
+                ]}
               />
             )}
           />
@@ -1353,6 +1384,12 @@ export const FactureFournisseur: React.FC = () => {
           </Card>
         </>
       )}
+
+      <RapprochementBonDeCommande
+        tenantId={tenantId}
+        facture={cibleRapprochement}
+        onClose={() => setCibleRapprochement(null)}
+      />
 
       <Modal
         title={

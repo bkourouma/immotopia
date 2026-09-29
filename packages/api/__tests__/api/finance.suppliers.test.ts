@@ -440,6 +440,20 @@ describe('GET /tenants/:tenantId/finance/suppliers/:supplierId/invoices', () => 
     expect(supplierPaymentAllocationFindMany).not.toHaveBeenCalled();
   });
 
+  // BUG-2026-09-29-033 : l'écran doit savoir quel bon une facture a déjà rapproché.
+  it('rend le bon de commande rapproché de chaque facture, nul quand il n’y en a pas', async () => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A });
+    supplierInvoiceFindMany.mockResolvedValue([
+      invoiceRow({ id: INVOICE_A, purchaseOrderId: 'bon-1' }),
+      invoiceRow({ id: 'invoice-2', purchaseOrderId: null })
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((f: any) => f.purchaseOrderId)).toEqual(['bon-1', null]);
+  });
+
   it('renvoie 404 quand le fournisseur est inexistant', async () => {
     supplierFindFirst.mockResolvedValue(null);
 

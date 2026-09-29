@@ -18,6 +18,7 @@ import {
   uuidPathParamSchema
 } from '../lib/finance/schemas-purchase-orders';
 import { prisma } from '../utils/database';
+import { toAmountOrZero } from '../lib/finance/types';
 
 /**
  * Contrôleur des sept points d'entrée agence « bons de commande et engagé » —
@@ -181,7 +182,28 @@ export const getPurchaseOrderHandler = asyncHandler(async (req: Request, res: Re
 
   const order = await getPurchaseOrder(tenantId, orderId);
 
-  res.status(200).json({ success: true, data: toPurchaseOrderResponse(order) });
+  // Les factures rapprochées de ce bon, tous statuts confondus (BUG-2026-09-29-033) :
+  // le bon est déjà résolu dans l'agence de l'URL ci-dessus, la lecture reste
+  // néanmoins filtrée par `tenantId`.
+  const invoices = await prisma.supplierInvoice.findMany({
+    where: { tenantId, purchaseOrderId: orderId },
+    select: { id: true, reference: true, invoiceDate: true, amount: true, status: true },
+    orderBy: [{ invoiceDate: 'desc' }, { createdAt: 'desc' }]
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      ...toPurchaseOrderResponse(order),
+      invoices: invoices.map(invoice => ({
+        id: invoice.id,
+        reference: invoice.reference,
+        invoiceDate: invoice.invoiceDate,
+        amount: toAmountOrZero(invoice.amount as any),
+        status: invoice.status
+      }))
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

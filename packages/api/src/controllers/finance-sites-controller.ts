@@ -18,6 +18,7 @@ import {
   validateCashVoucherTx
 } from '../lib/finance/cash';
 import { voidDocumentTx } from '../lib/finance/accounting';
+import { listCashVouchers } from '../lib/finance/cash-list';
 import { getValidationQueue } from '../lib/finance/validation-queue';
 import type {
   CashVoucherRecord,
@@ -31,6 +32,7 @@ import {
   createConstructionSiteSchema,
   createCostCategorySchema,
   setCostCategoryAccountSchema,
+  listCashVouchersQuerySchema,
   listConstructionSitesQuerySchema,
   uuidPathParamSchema,
   voidCashVoucherSchema,
@@ -355,6 +357,23 @@ export const createCashVoucherHandler = asyncHandler(async (req: Request, res: R
   );
 
   res.status(201).json({ success: true, data: toCashVoucherResponse(voucher) });
+});
+
+// ---------------------------------------------------------------------------
+// G bis. Pièces de caisse — liste (BUG-2026-09-29-020)
+//
+// Lecture seule. Sans elle, une pièce validée ne se retrouvait plus une fois
+// la page quittée : ni impression, ni annulation. Le chantier éventuel du
+// filtre est vérifié comme appartenant à l'agence (assertBelongsToTenant, dans le domaine).
+// ---------------------------------------------------------------------------
+
+export const listCashVouchersHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const query = listCashVouchersQuerySchema.parse(req.query ?? {});
+
+  const vouchers = await listCashVouchers(prisma as any, tenantId, { siteId: query.siteId });
+
+  res.status(200).json({ success: true, data: vouchers });
 });
 
 // ---------------------------------------------------------------------------

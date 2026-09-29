@@ -10,6 +10,7 @@ import {
 } from '../middleware/finance-rbac-middleware';
 import {
   createCashVoucherHandler,
+  listCashVouchersHandler,
   createConstructionSiteHandler,
   createCostCategoryHandler,
   deleteDraftCashVoucherHandler,
@@ -79,6 +80,8 @@ router.put(
 // ---------------------------------------------------------------------------
 // Pièces de caisse
 // ---------------------------------------------------------------------------
+
+router.get('/tenants/:tenantId/finance/cash-vouchers', requireAccountsRead, listCashVouchersHandler);
 
 router.post('/tenants/:tenantId/finance/sites/:siteId/cash-vouchers', requireDocumentsCreate, createCashVoucherHandler);
 

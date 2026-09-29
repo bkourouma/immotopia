@@ -93,6 +93,12 @@ jest.mock('../../src/lib/finance/cash', () => ({
     formatCashVoucherNumber(voucherYear, voucherNumber)
 }));
 
+const listCashVouchers = jest.fn();
+
+jest.mock('../../src/lib/finance/cash-list', () => ({
+  listCashVouchers: (...args: any[]) => listCashVouchers(...args)
+}));
+
 const getValidationQueue = jest.fn();
 
 jest.mock('../../src/lib/finance/validation-queue', () => ({
@@ -678,6 +684,59 @@ describe('GET /tenants/:tenantId/finance/validation-queue', () => {
 // avait cette voie, si bien qu'une erreur sur une piece de caisse validee etait
 // definitive et que le cout du chantier restait faux pour toujours.
 // ---------------------------------------------------------------------------
+
+// BUG-2026-09-29-020 : sans liste, une pièce validée était introuvable.
+describe('GET /tenants/:tenantId/finance/cash-vouchers', () => {
+  beforeEach(() => {
+    listCashVouchers.mockReset();
+    guardCalls = [];
+  });
+
+  it('liste les pièces de l’agence de l’URL, sans filtre par défaut', async () => {
+    listCashVouchers.mockResolvedValue([{ id: VOUCHER_A, status: 'VALIDATED', number: '2026-0001' }]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/cash-vouchers`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([{ id: VOUCHER_A, status: 'VALIDATED', number: '2026-0001' }]);
+    expect(listCashVouchers).toHaveBeenCalledWith(expect.anything(), TENANT_A, { siteId: undefined });
+  });
+
+  it('transmet le chantier du filtre au domaine, qui le vérifie contre l’agence', async () => {
+    listCashVouchers.mockResolvedValue([]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/cash-vouchers?siteId=${SITE_A}`);
+
+    expect(response.status).toBe(200);
+    expect(listCashVouchers).toHaveBeenCalledWith(expect.anything(), TENANT_A, { siteId: SITE_A });
+  });
+
+  it('renvoie 404 quand le chantier appartient à une autre agence', async () => {
+    listCashVouchers.mockRejectedValue(new NotFoundError('Chantier introuvable.'));
+
+    const response = await request(app).get(`/api/tenants/${TENANT_B}/finance/cash-vouchers?siteId=${SITE_A}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('rejette en 400 un identifiant de chantier malformé ou un filtre inconnu', async () => {
+    const malforme = await request(app).get(`/api/tenants/${TENANT_A}/finance/cash-vouchers?siteId=pas-un-uuid`);
+    const inconnu = await request(app).get(`/api/tenants/${TENANT_A}/finance/cash-vouchers?status=VALIDATED`);
+
+    expect(malforme.status).toBe(400);
+    expect(inconnu.status).toBe(400);
+    expect(listCashVouchers).not.toHaveBeenCalled();
+  });
+
+  it('est en lecture : porte la garde de lecture des comptes, jamais celle de validation', async () => {
+    listCashVouchers.mockResolvedValue([]);
+
+    await request(app).get(`/api/tenants/${TENANT_A}/finance/cash-vouchers`);
+
+    expect(guardCalls).toContain('accountsRead');
+    expect(guardCalls).not.toContain('documentsValidate');
+  });
+});
 
 describe('POST /tenants/:tenantId/finance/cash-vouchers/:voucherId/void', () => {
   beforeEach(() => {

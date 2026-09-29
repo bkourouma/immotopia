@@ -188,6 +188,18 @@ export interface PurchaseOrderLine {
   unitPrice?: number | null;
 }
 
+/**
+ * Une facture rapprochée d'un bon, telle que la FICHE du bon la rend
+ * (BUG-2026-09-29-033). Seules les validées comptent dans `invoicedAmount`.
+ */
+export interface PurchaseOrderInvoice {
+  id: string;
+  reference: string;
+  invoiceDate: string;
+  amount: number;
+  status: 'DRAFT' | 'VALIDATED';
+}
+
 export interface PurchaseOrder {
   id: string;
   siteId: string;
@@ -205,6 +217,8 @@ export interface PurchaseOrder {
   /** Reste à facturer. C'est cette part qui compte dans l'engagé. */
   remainingAmount: number;
   invoicingState: PurchaseOrderInvoicingState;
+  /** Posées par le DÉTAIL du bon seulement, jamais par la liste. */
+  invoices?: PurchaseOrderInvoice[];
 }
 
 export interface CreatePurchaseOrderInput {

@@ -65,8 +65,15 @@ export function formatMoney(
   const numeric = typeof value === 'number' ? value : Number(String(value).replace(/\s/g, ''));
   if (!Number.isFinite(numeric)) return placeholder;
 
+  // Jamais « -0 » : un zero negatif (`0 * -1`, `payé - consommé` a l'arrondi)
+  // s'ecrirait « -0 FCFA ». On arrondit d'abord au nombre de decimales
+  // affiche, puis on ramene tout zero (negatif compris) a un vrai zero.
+  const facteur = 10 ** fractionDigits;
+  const arrondi = Math.round(numeric * facteur) / facteur;
+  const affichable = arrondi === 0 ? 0 : numeric;
+
   // fr-FR pose une espace insecable etroite (U+202F) comme separateur.
-  const formatted = numeric.toLocaleString(activeLocale(), {
+  const formatted = affichable.toLocaleString(activeLocale(), {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
   });

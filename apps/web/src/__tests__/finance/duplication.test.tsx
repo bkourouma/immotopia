@@ -70,6 +70,7 @@ const createSupplierPayment = vi.fn();
 const listSupplierPayments = vi.fn();
 const validateSupplierPayment = vi.fn();
 const voidSupplierPayment = vi.fn();
+const listCashVouchers = vi.fn();
 const createCashVoucher = vi.fn();
 const validateCashVoucher = vi.fn();
 const voidCashVoucher = vi.fn();
@@ -88,6 +89,7 @@ vi.mock('../../services/finance-lot2-service', () => ({
   listSupplierPayments: (...a: unknown[]) => listSupplierPayments(...a),
   validateSupplierPayment: (...a: unknown[]) => validateSupplierPayment(...a),
   voidSupplierPayment: (...a: unknown[]) => voidSupplierPayment(...a),
+  listCashVouchers: (...a: unknown[]) => listCashVouchers(...a),
   createCashVoucher: (...a: unknown[]) => createCashVoucher(...a),
   validateCashVoucher: (...a: unknown[]) => validateCashVoucher(...a),
   voidCashVoucher: (...a: unknown[]) => voidCashVoucher(...a),
@@ -327,6 +329,7 @@ beforeEach(() => {
   listSuppliers.mockResolvedValue([fournisseur()]);
   listCostCategories.mockResolvedValue([POSTE_GROS_OEUVRE, POSTE_MAIN_OEUVRE]);
   listSupplierInvoices.mockResolvedValue([]);
+  listCashVouchers.mockResolvedValue([]);
   listPurchaseOrders.mockResolvedValue([]);
 });
 

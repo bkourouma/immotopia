@@ -850,7 +850,9 @@ export const StockReferentiel: React.FC = () => {
             </Title>
             <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
               <strong>{STOCK_VALUATION_METHOD_LABELS[reglages?.valuationMethod ?? 'WEIGHTED_AVERAGE']}</strong>
-              {reglages?.decidedAt ? (
+              {/* Sans motif, la date n'est pas celle d'une décision : c'est le
+                  premier regard sur les réglages par défaut (BUG-…-028). */}
+              {reglages?.decidedAt && reglages.decisionNote ? (
                 <>
                   {' '}
                   {t('— arrêtée le')} {dateCourte(reglages.decidedAt)}

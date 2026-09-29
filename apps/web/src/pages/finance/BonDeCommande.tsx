@@ -14,7 +14,8 @@ import {
 } from '../../services/finance-lot3-service';
 import { listConstructionSites, listCostCategories, listSuppliers } from '../../services/finance-lot2-service';
 import { INVOICING_STATE_LABELS, PURCHASE_ORDER_STATUS_LABELS } from '../../types/finance-lot3-types';
-import type { PurchaseOrder, PurchaseOrderStatus } from '../../types/finance-lot3-types';
+import type { PurchaseOrder, PurchaseOrderInvoice, PurchaseOrderStatus } from '../../types/finance-lot3-types';
+import { DOCUMENT_STATUS_LABELS } from '../../types/finance-lot2-types';
 import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
@@ -675,6 +676,58 @@ export const BonDeCommande: React.FC = () => {
                   ]
                 : undefined
             }
+          />
+        )}
+      />
+
+      {/* BUG-2026-09-29-033 : les factures rapprochées de ce bon. Seules les
+          factures VALIDÉES comptent dans « Facturé » (calculé par le serveur) ;
+          un brouillon rapproché est listé mais ne diminue pas encore le reste
+          à facturer. Le rapprochement se fait depuis la facture. */}
+      <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
+        {t('Factures rapprochées')}
+      </Title>
+      <DataView<PurchaseOrderInvoice>
+        paginated={false}
+        items={bon.invoices ?? []}
+        total={(bon.invoices ?? []).length}
+        page={1}
+        pageSize={Math.max((bon.invoices ?? []).length, 1)}
+        onPageChange={() => {}}
+        emptyDescription={t(
+          "Aucune facture n'est rapprochée de ce bon. Le rapprochement se fait depuis la liste des factures du fournisseur."
+        )}
+        columns={[
+          { title: t('Référence'), key: 'reference', render: (_, f) => f.reference },
+          { title: t('Date'), key: 'date', width: 120, render: (_, f) => dateCourte(f.invoiceDate) },
+          { title: t('Montant'), key: 'montant', align: 'end', render: (_, f) => <MoneyValue value={f.amount} /> },
+          {
+            title: t('Statut'),
+            key: 'statut',
+            render: (_, f) => (
+              <StatusTag
+                status={f.status}
+                tone={f.status === 'VALIDATED' ? 'success' : 'neutral'}
+                label={DOCUMENT_STATUS_LABELS[f.status]}
+              />
+            )
+          }
+        ]}
+        rowKey={f => f.id}
+        aria-label={t('Factures rapprochées du bon de commande')}
+        renderCard={f => (
+          <DataCard
+            title={f.reference}
+            aria-label={f.reference}
+            subtitle={dateCourte(f.invoiceDate)}
+            status={
+              <StatusTag
+                status={f.status}
+                tone={f.status === 'VALIDATED' ? 'success' : 'neutral'}
+                label={DOCUMENT_STATUS_LABELS[f.status]}
+              />
+            }
+            highlight={<MoneyValue value={f.amount} />}
           />
         )}
       />

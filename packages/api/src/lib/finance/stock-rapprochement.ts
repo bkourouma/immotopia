@@ -189,7 +189,10 @@ async function resolveFreeLocationLabel(
   tenantId: string,
   site: SiteShape
 ): Promise<string> {
-  const base = `Chantier ${site.name}`.trim();
+  // « Chantier Émeraude » reste tel quel : préfixer un nom qui commence déjà par
+  // « Chantier » donnait « Chantier Chantier Émeraude » (BUG-2026-09-29-029).
+  const name = site.name.trim();
+  const base = /^chantier(\s|$)/i.test(name) ? name : `Chantier ${name}`.trim();
 
   for (const candidate of [base, ...[2, 3, 4, 5, 6, 7, 8, 9].map(n => `${base} (${n})`)]) {
     const taken = await tx.stockLocation.findFirst({ where: { tenantId, label: candidate }, select: { id: true } });

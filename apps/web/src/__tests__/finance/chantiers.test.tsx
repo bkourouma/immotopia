@@ -28,7 +28,9 @@ const listConstructionSites = vi.fn();
 const createConstructionSite = vi.fn();
 const getSiteDetail = vi.fn();
 const listCostCategories = vi.fn();
+const listCashVouchers = vi.fn();
 const createCashVoucher = vi.fn();
+const voidCashVoucher = vi.fn();
 const validateCashVoucher = vi.fn();
 const getCashVoucherPdfUrl = vi.fn();
 
@@ -37,9 +39,18 @@ vi.mock('../../services/finance-lot2-service', () => ({
   createConstructionSite: (...a: unknown[]) => createConstructionSite(...a),
   getSiteDetail: (...a: unknown[]) => getSiteDetail(...a),
   listCostCategories: (...a: unknown[]) => listCostCategories(...a),
+  listCashVouchers: (...a: unknown[]) => listCashVouchers(...a),
   createCashVoucher: (...a: unknown[]) => createCashVoucher(...a),
+  voidCashVoucher: (...a: unknown[]) => voidCashVoucher(...a),
   validateCashVoucher: (...a: unknown[]) => validateCashVoucher(...a),
   getCashVoucherPdfUrl: (...a: unknown[]) => getCashVoucherPdfUrl(...a)
+}));
+
+const listSiteProgress = vi.fn();
+const recordSiteProgress = vi.fn();
+vi.mock('../../services/finance-lot3-service', () => ({
+  listSiteProgress: (...a: unknown[]) => listSiteProgress(...a),
+  recordSiteProgress: (...a: unknown[]) => recordSiteProgress(...a)
 }));
 
 const listProperties = vi.fn();
@@ -223,6 +234,8 @@ beforeEach(() => {
     poste({ id: 'poste-main-oeuvre', label: "Main-d'œuvre", position: 5 })
   ]);
   getCashVoucherPdfUrl.mockReturnValue('/tenants/agence-1/finance/cash-vouchers/piece-1.pdf');
+  listSiteProgress.mockResolvedValue([]);
+  listCashVouchers.mockResolvedValue([]);
 });
 
 describe('Chantiers — liste et création', () => {
@@ -322,7 +335,9 @@ describe('Détail d’un chantier', () => {
 
     await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
 
-    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    // Le seul champ numérique de la fiche est le pourcentage d'un point
+    // d'avancement (BUG-2026-09-29-025) : aucun ne porte sur le coût.
+    expect(screen.queryByRole('spinbutton', { name: /coût/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /coût/i })).not.toBeInTheDocument();
   });
 
@@ -414,6 +429,72 @@ describe('Détail d’un chantier', () => {
 
     expect(await screen.findByText('pièce de caisse', {}, { timeout: 8000 })).toBeInTheDocument();
   });
+});
+
+// BUG-2026-09-29-025 : l'API d'avancement existait sans aucun écran.
+describe('Avancement physique du chantier', () => {
+  it('affiche l’historique des points d’avancement, note et auteur compris', async () => {
+    getSiteDetail.mockResolvedValue(detail());
+    listSiteProgress.mockResolvedValue([
+      {
+        id: 'point-2',
+        siteId: 'chantier-1',
+        entryDate: '2026-09-20',
+        percent: 40,
+        note: 'Élévation des murs',
+        createdByLabel: 'Awa Diallo',
+        createdAt: '2026-09-20T10:00:00.000Z'
+      },
+      {
+        id: 'point-1',
+        siteId: 'chantier-1',
+        entryDate: '2026-09-01',
+        percent: 15,
+        note: 'Fondations terminées',
+        createdByLabel: 'Awa Diallo',
+        createdAt: '2026-09-01T10:00:00.000Z'
+      }
+    ]);
+    mountDetail();
+
+    expect(await screen.findByText('Fondations terminées', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Élévation des murs')).toBeInTheDocument();
+    expect(listSiteProgress).toHaveBeenCalledWith('agence-1', 'chantier-1');
+  });
+
+  it('enregistre un point d’avancement puis relit la fiche et l’historique', async () => {
+    getSiteDetail.mockResolvedValue(detail());
+    recordSiteProgress.mockResolvedValue({
+      id: 'point-3',
+      siteId: 'chantier-1',
+      entryDate: '2026-09-29',
+      percent: 15,
+      note: 'Fondations terminées',
+      createdByLabel: 'Awa Diallo',
+      createdAt: '2026-09-29T10:00:00.000Z'
+    });
+    const user = userEvent.setup({ delay: null });
+    mountDetail();
+
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+    const bouton = screen.getByRole('button', { name: /Enregistrer le point d'avancement/ });
+    // Sans pourcentage, rien ne part.
+    expect(bouton).toBeDisabled();
+
+    await user.type(screen.getByLabelText('Avancement (%)'), '15');
+    await user.type(screen.getByLabelText('Note'), 'Fondations terminées');
+    const appelsFiche = getSiteDetail.mock.calls.length;
+    const appelsHistorique = listSiteProgress.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: /Enregistrer le point d'avancement/ }));
+
+    await waitFor(() => expect(recordSiteProgress).toHaveBeenCalledTimes(1));
+    expect(recordSiteProgress).toHaveBeenCalledWith(
+      'agence-1',
+      expect.objectContaining({ siteId: 'chantier-1', percent: 15, note: 'Fondations terminées' })
+    );
+    await waitFor(() => expect(getSiteDetail.mock.calls.length).toBeGreaterThan(appelsFiche));
+    await waitFor(() => expect(listSiteProgress.mock.calls.length).toBeGreaterThan(appelsHistorique));
+  }, 30000);
 });
 
 describe('Pièce de caisse', () => {
@@ -529,7 +610,10 @@ describe('Pièce de caisse', () => {
     // Et surtout : le champ ne garde pas l'identifiant brut, faute d'option
     // portant encore son libellé.
     expect(screen.queryByText('chantier-clos')).not.toBeInTheDocument();
-    expect(screen.queryByText('Chantier clos — Marcory')).not.toBeInTheDocument();
+    // Le FILTRE de la liste, lui, garde le chantier clos : ses pièces restent
+    // consultables. Seul le champ du formulaire est relâché.
+    const champFormulaire = document.querySelector('#caisse-chantier')?.closest('.ant-select');
+    expect(champFormulaire?.textContent ?? '').not.toContain('Chantier clos — Marcory');
   });
 
   it('ne dit rien de tel quand le chantier passé en adresse est ouvert', async () => {
@@ -556,6 +640,87 @@ describe('Pièce de caisse', () => {
 
     ouvrir.mockRestore();
   }, 15000);
+});
+
+// BUG-2026-09-29-020 : une pièce validée par quelqu'un d'autre, ou après avoir
+// quitté la page, ne se retrouvait plus — ni impression, ni annulation.
+describe('Pièce de caisse — liste des pièces de l’agence', () => {
+  function pieceValidee(overrides: Partial<CashVoucher> = {}): CashVoucher {
+    return voucher({
+      id: 'piece-validee',
+      number: '2026-0001',
+      beneficiary: 'Quincaillerie Bingerville',
+      amount: 250_000,
+      status: 'VALIDATED',
+      validatedAt: '2026-09-29T09:00:00.000Z',
+      createdByLabel: 'Compta OI',
+      ...overrides
+    });
+  }
+
+  it('retrouve une pièce validée sans qu’elle ait été émise dans cette session, avec « Imprimer le bon » et « Annuler la pièce »', async () => {
+    listConstructionSites.mockResolvedValue([chantier()]);
+    listCashVouchers.mockResolvedValue([pieceValidee()]);
+    mountCaisse();
+
+    expect(await screen.findByText('Pièce 2026-0001', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annuler la pièce' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Imprimer le bon/ })).toBeInTheDocument();
+    expect(listCashVouchers).toHaveBeenCalledWith('agence-1', { siteId: undefined });
+  }, 30000);
+
+  it('filtre la liste par le chantier passé en adresse', async () => {
+    listConstructionSites.mockResolvedValue([chantier()]);
+    mountCaisse('/tenant/agence-1/finance/pieces-de-caisse?chantierId=chantier-1');
+
+    await waitFor(() => expect(listCashVouchers).toHaveBeenCalledWith('agence-1', { siteId: 'chantier-1' }), {
+      timeout: 8000
+    });
+  });
+
+  it('annule une pièce validée par contre-écriture, avec un motif obligatoire, puis relit la liste', async () => {
+    listConstructionSites.mockResolvedValue([chantier()]);
+    listCashVouchers.mockResolvedValue([pieceValidee()]);
+    voidCashVoucher.mockResolvedValue(undefined);
+    const user = userEvent.setup({ delay: null });
+    mountCaisse();
+
+    await screen.findByText('Pièce 2026-0001', {}, { timeout: 8000 });
+    const appelsAvant = listCashVouchers.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Annuler la pièce' }));
+
+    const confirmer = await screen.findByRole('button', { name: "Confirmer l'annulation" });
+    // Sans motif, rien ne part.
+    expect(confirmer).toBeDisabled();
+    await user.type(screen.getByLabelText("Motif de l'annulation"), 'Erreur sur le bénéficiaire');
+    await user.click(screen.getByRole('button', { name: "Confirmer l'annulation" }));
+
+    await waitFor(() =>
+      expect(voidCashVoucher).toHaveBeenCalledWith('agence-1', 'piece-validee', 'Erreur sur le bénéficiaire')
+    );
+    await waitFor(() => expect(listCashVouchers.mock.calls.length).toBeGreaterThan(appelsAvant));
+  }, 30000);
+
+  it('ne propose plus d’annuler une pièce déjà annulée, ni de valider ce qui l’est', async () => {
+    listConstructionSites.mockResolvedValue([chantier()]);
+    listCashVouchers.mockResolvedValue([pieceValidee({ status: 'VOIDED', voidedAt: '2026-09-29T10:00:00.000Z' })]);
+    mountCaisse();
+
+    await screen.findByText('Pièce 2026-0001', {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: 'Annuler la pièce' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Imprimer le bon/ })).toBeInTheDocument();
+  }, 30000);
+
+  it('propose « Valider » sur un brouillon de la liste, désigné par son bénéficiaire faute de numéro', async () => {
+    listConstructionSites.mockResolvedValue([chantier()]);
+    listCashVouchers.mockResolvedValue([voucher({ id: 'brouillon-1', beneficiary: 'Sékou Traoré' })]);
+    mountCaisse();
+
+    expect(await screen.findByText('Pièce à valider — Sékou Traoré', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Supprimer le brouillon' })).toBeInTheDocument();
+  }, 30000);
 });
 
 describe('Vocabulaire (P-1 du PRD)', () => {

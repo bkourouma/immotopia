@@ -51,6 +51,7 @@ vi.mock('../../services/treasury-service', () => ({
 
 const listConstructionSites = vi.fn();
 const listCostCategories = vi.fn();
+const listCashVouchers = vi.fn();
 const createCashVoucher = vi.fn();
 const validateCashVoucher = vi.fn();
 const voidCashVoucher = vi.fn();
@@ -60,6 +61,7 @@ const getCashVoucherPdfUrl = vi.fn();
 vi.mock('../../services/finance-lot2-service', () => ({
   listConstructionSites: (...a: unknown[]) => listConstructionSites(...a),
   listCostCategories: (...a: unknown[]) => listCostCategories(...a),
+  listCashVouchers: (...a: unknown[]) => listCashVouchers(...a),
   createCashVoucher: (...a: unknown[]) => createCashVoucher(...a),
   validateCashVoucher: (...a: unknown[]) => validateCashVoucher(...a),
   voidCashVoucher: (...a: unknown[]) => voidCashVoucher(...a),
@@ -108,6 +110,7 @@ function mount(url: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listCashVouchers.mockResolvedValue([]);
   getCurrentCashSession.mockResolvedValue(null);
   listCashSessions.mockResolvedValue([]);
   listConstructionSites.mockResolvedValue([chantier()]);
@@ -133,6 +136,10 @@ describe('Caisse et pièce de caisse ne partagent plus leur adresse', () => {
     mount('/tenant/agence-1/finance/pieces-de-caisse?chantierId=chantier-1');
 
     await screen.findByRole('heading', { name: 'Pièce de caisse' }, { timeout: 8000 });
-    expect(await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 })).toBeInTheDocument();
+    // Le chantier est prérempli dans le formulaire ET dans le filtre de la liste
+    // des pièces (BUG-2026-09-29-020) : il paraît donc deux fois.
+    expect(
+      (await screen.findAllByText('Villa duplex — Angré Centre', {}, { timeout: 8000 })).length
+    ).toBeGreaterThanOrEqual(1);
   });
 });

@@ -513,7 +513,10 @@ export const listSupplierInvoicesHandler = asyncHandler(async (req: Request, res
     success: true,
     data: invoices.map((row: any) => ({
       ...toSupplierInvoiceResponseFromRow(row, resteParFacture.get(row.id) ?? null),
-      siteLabel: row.siteId ? (nomParChantier.get(row.siteId) ?? null) : null
+      siteLabel: row.siteId ? (nomParChantier.get(row.siteId) ?? null) : null,
+      // Ajout additif (BUG-2026-09-29-033) : le bon de commande rapproché, pour
+      // que l'écran sache si une facture est déjà rattachée à un bon.
+      purchaseOrderId: row.purchaseOrderId ?? null
     }))
   });
 });

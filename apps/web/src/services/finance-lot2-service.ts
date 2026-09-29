@@ -321,6 +321,22 @@ export async function createCashVoucher(tenantId: string, params: CreateCashVouc
   return versLaPieceDeLEcran(response.data.data);
 }
 
+/**
+ * Les pièces de caisse de l'agence, la plus récente d'abord, éventuellement
+ * d'un seul chantier (BUG-2026-09-29-020).
+ *
+ * Sans cette lecture, une pièce validée ne se retrouvait plus une fois la page
+ * quittée. Le statut (`DRAFT`, `VALIDATED`, `VOIDED`) est dérivé par le
+ * serveur, jamais recomposé ici.
+ */
+export async function listCashVouchers(tenantId: string, filters: { siteId?: string } = {}): Promise<CashVoucher[]> {
+  const response = await apiClient.get<ApiResponse<Array<CashVoucher & { beneficiaryName?: string }>>>(
+    `${base(tenantId)}/cash-vouchers`,
+    { params: filters.siteId ? { siteId: filters.siteId } : {} }
+  );
+  return response.data.data.map(versLaPieceDeLEcran);
+}
+
 export async function validateCashVoucher(tenantId: string, voucherId: string): Promise<CashVoucher> {
   const response = await apiClient.post<ApiResponse<CashVoucher>>(
     `${base(tenantId)}/cash-vouchers/${voucherId}/validate`,

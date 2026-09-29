@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import { CopyOutlined, PrinterOutlined, SendOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import type { ColumnsType } from 'antd/es/table';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   createCashVoucher,
   getCashVoucherPdfUrl,
+  listCashVouchers,
   listConstructionSites,
   listCostCategories,
   deleteDraftCashVoucher,
@@ -15,8 +17,17 @@ import {
 } from '../../services/finance-lot2-service';
 import { DOCUMENT_STATUS_LABELS } from '../../types/finance-lot2-types';
 import type { CashVoucher, DocumentStatus } from '../../types/finance-lot2-types';
-import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { PageHeader, StateBlock, MoneyValue, StatusTag, ConfirmAction } from '../../components/primitives';
+import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import {
+  PageHeader,
+  StateBlock,
+  MoneyValue,
+  StatusTag,
+  ConfirmAction,
+  DataView,
+  DataCard
+} from '../../components/primitives';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { montantSaisiProps } from '../../utils/montant-saisi';
@@ -24,6 +35,8 @@ import { montantSaisiProps } from '../../utils/montant-saisi';
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 const { Title, Text } = Typography;
+
+const PERMISSION_VALIDER = 'FINANCE_DOCUMENTS_VALIDATE';
 
 /**
  * Pièce de caisse — récit B10 du lot 2
@@ -52,10 +65,19 @@ const { Title, Text } = Typography;
  * bouton est `danger`, et `<ConfirmAction>` porte explicitement la mention de
  * l'irréversibilité dans sa description.
  *
- * **L'état de liste ne s'applique pas ici** : ce n'est pas une liste mais un
- * geste ponctuel. Le seul état porté par l'URL est le chantier préremply
- * lorsqu'on arrive depuis `ChantierDetail.tsx` (`?chantierId=`), en cohérence
- * avec le principe général — un lien partagé rouvre le même contexte.
+ * **La liste des pièces (BUG-2026-09-29-020).** Sous le formulaire, toutes les
+ * pièces de l'agence (`GET .../cash-vouchers`), filtrables par chantier : une
+ * pièce validée par quelqu'un d'autre, ou après avoir quitté la page, reste
+ * atteignable pour être imprimée ou annulée. Le seul état porté par l'URL est
+ * le chantier préremply lorsqu'on arrive depuis `ChantierDetail.tsx`
+ * (`?chantierId=`) — il filtre aussi la liste.
+ *
+ * **Une pièce validée ne se rouvre jamais.** Ni la spec (« La validation est
+ * irréversible ») ni le wiki ne prévoient de réouverture : la seule voie de
+ * correction est l'ANNULATION par contre-écriture, avec motif, qui garde la
+ * pièce d'origine et pose la pièce d'annulation liée. Réservée au droit de
+ * validation (`FINANCE_DOCUMENTS_VALIDATE`), comme côté serveur. Pour ressaisir
+ * une pièce erronée : annuler, puis « Dupliquer ».
  *
  * **Dupliquer.** Beaucoup de pièces se ressemblent d'un mois à l'autre. Il
  * n'existe aucune LISTE des pièces de caisse dans l'application : la
@@ -86,7 +108,11 @@ function dateCourte(iso: string): string {
 export const PieceDeCaisse: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  // Valider et annuler exigent le droit de validation ; `null` : pas de filtrage.
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutValider = permissions === null || permissions.has(PERMISSION_VALIDER);
   const chantierPreselectionne = searchParams.get('chantierId') || undefined;
 
   const [siteId, setSiteId] = useState<string | undefined>(chantierPreselectionne);
@@ -99,7 +125,8 @@ export const PieceDeCaisse: React.FC = () => {
   const [emissionEnCours, setEmissionEnCours] = useState(false);
   const [validationEnCours, setValidationEnCours] = useState(false);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
-  const [annulationOuverte, setAnnulationOuverte] = useState(false);
+  const [cibleAnnulation, setCibleAnnulation] = useState<CashVoucher | null>(null);
+  const [filtreChantier, setFiltreChantier] = useState<string | undefined>(chantierPreselectionne);
   const [motifAnnulation, setMotifAnnulation] = useState('');
   const [annulationEnCours, setAnnulationEnCours] = useState(false);
   const [piece, setPiece] = useState<CashVoucher | null>(null);
@@ -116,6 +143,19 @@ export const PieceDeCaisse: React.FC = () => {
     queryFn: () => listCostCategories(tenantId as string),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.reference
+  });
+
+  // La liste des pièces de l'agence (BUG-2026-09-29-020), filtrée par chantier.
+  const {
+    data: pieces,
+    isPending: piecesEnAttente,
+    error: erreurPieces,
+    refetch: relirePieces
+  } = useQuery({
+    queryKey: queryKey('cash-vouchers', tenantId, { siteId: filtreChantier }),
+    queryFn: () => listCashVouchers(tenantId as string, { siteId: filtreChantier }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
   });
 
   // Un chantier clôturé a un coût figé qui n'accepte plus d'imputation
@@ -201,12 +241,22 @@ export const PieceDeCaisse: React.FC = () => {
     }
   };
 
-  const valider = async () => {
-    if (!piece) return;
+  // Toute écriture change la liste des pièces ET le coût du chantier
+  // (dérivé des imputations validées non annulées) : on relit les deux.
+  const relireApresEcriture = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: entityKeyPrefix('cash-vouchers', tenantId) }),
+      queryClient.invalidateQueries({ queryKey: entityKeyPrefix('construction-sites', tenantId) }),
+      queryClient.invalidateQueries({ queryKey: entityKeyPrefix('validation-queue', tenantId) })
+    ]);
+
+  const valider = async (cible: CashVoucher | null = piece) => {
+    if (!cible) return;
     setValidationEnCours(true);
     try {
-      const pieceValidee = await validateCashVoucher(tenantId, piece.id);
-      setPiece(pieceValidee);
+      const pieceValidee = await validateCashVoucher(tenantId, cible.id);
+      if (piece?.id === cible.id) setPiece(pieceValidee);
+      await relireApresEcriture();
       // Ici le numéro existe : c'est la validation qui vient de le poser.
       message.success(t('Pièce {{number}} validée.', { number: pieceValidee.number }));
     } catch (err: any) {
@@ -225,12 +275,13 @@ export const PieceDeCaisse: React.FC = () => {
    * validées et non annulées.
    */
   const annuler = async () => {
-    if (!tenantId || !piece || !motifAnnulation.trim()) return;
+    if (!tenantId || !cibleAnnulation || !motifAnnulation.trim()) return;
     setAnnulationEnCours(true);
     try {
-      await voidCashVoucher(tenantId, piece.id, motifAnnulation.trim());
-      setPiece({ ...piece, status: 'VOIDED' });
-      setAnnulationOuverte(false);
+      await voidCashVoucher(tenantId, cibleAnnulation.id, motifAnnulation.trim());
+      if (piece?.id === cibleAnnulation.id) setPiece({ ...piece, status: 'VOIDED' });
+      await relireApresEcriture();
+      setCibleAnnulation(null);
       setMotifAnnulation('');
       message.success(t('Pièce de caisse annulée.'));
     } catch (err: any) {
@@ -252,14 +303,17 @@ export const PieceDeCaisse: React.FC = () => {
    * définitive : la validation la refusait, et rien ne permettait de s'en
    * défaire. Elle bloquait alors toute nouvelle clôture du chantier.
    */
-  const supprimerLeBrouillon = async () => {
-    if (!tenantId || !piece) return;
+  const supprimerLeBrouillon = async (cible: CashVoucher | null = piece) => {
+    if (!tenantId || !cible) return;
     setSuppressionEnCours(true);
     try {
-      await deleteDraftCashVoucher(tenantId, piece.id);
+      await deleteDraftCashVoucher(tenantId, cible.id);
       message.success(t('Brouillon supprimé. Il n’avait ni numéro ni écriture : rien n’en reste.'));
-      setPiece(null);
-      reinitialiserFormulaire();
+      if (piece?.id === cible.id) {
+        setPiece(null);
+        reinitialiserFormulaire();
+      }
+      await relireApresEcriture();
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('La suppression a échoué.'));
     } finally {
@@ -267,9 +321,9 @@ export const PieceDeCaisse: React.FC = () => {
     }
   };
 
-  const imprimer = () => {
-    if (!piece) return;
-    const url = getCashVoucherPdfUrl(tenantId, piece.id);
+  const imprimer = (cible: CashVoucher | null = piece) => {
+    if (!cible) return;
+    const url = getCashVoucherPdfUrl(tenantId, cible.id);
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -287,9 +341,9 @@ export const PieceDeCaisse: React.FC = () => {
    * lui seul. Ce qui n'est jamais repris : le numéro, le statut, la date de
    * validation.
    */
-  const dupliquerPiece = () => {
-    if (!piece) return;
-    const source = piece;
+  const dupliquerPiece = (cible: CashVoucher | null = piece) => {
+    if (!cible) return;
+    const source = cible;
     setPiece(null);
     setSiteId(source.siteId);
     setCostCategoryId(source.costCategoryId);
@@ -308,6 +362,79 @@ export const PieceDeCaisse: React.FC = () => {
   };
 
   const formulaireVerrouille = Boolean(piece);
+
+  const liste = pieces ?? [];
+
+  /** Une pièce non validée n'a pas de numéro : on la nomme par son bénéficiaire. */
+  const libellePiece = (p: CashVoucher) =>
+    p.number
+      ? t('Pièce {{number}}', { number: p.number })
+      : t('Pièce à valider — {{beneficiary}}', { beneficiary: p.beneficiary });
+
+  const colonnesPieces: ColumnsType<CashVoucher> = [
+    { title: t('Pièce'), key: 'piece', render: (_, p) => libellePiece(p) },
+    { title: t('Date'), key: 'date', width: 110, render: (_, p) => dateCourte(p.voucherDate) },
+    { title: t('Chantier'), key: 'chantier', render: (_, p) => p.siteLabel },
+    { title: t('Poste'), key: 'poste', render: (_, p) => p.costCategoryLabel },
+    { title: t('Montant'), key: 'montant', align: 'end', render: (_, p) => <MoneyValue value={p.amount} /> },
+    {
+      title: t('Statut'),
+      key: 'statut',
+      render: (_, p) => (
+        <StatusTag status={p.status} tone={TONE_PIECE[p.status]} label={DOCUMENT_STATUS_LABELS[p.status]} />
+      )
+    },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_, p) => (
+        <Space size="small" wrap>
+          {p.status === 'DRAFT' && peutValider && (
+            <ConfirmAction
+              title={t('Valider la pièce de {{beneficiary}} ?', { beneficiary: p.beneficiary })}
+              description={t(
+                "La validation est irréversible : une fois validée, cette pièce ne peut plus être ni modifiée ni reprise depuis cet écran. C'est à cet instant qu'elle reçoit son numéro."
+              )}
+              okText={t('Valider')}
+              danger
+              onConfirm={() => valider(p)}
+            >
+              <Button type="link" danger>
+                {t('Valider')}
+              </Button>
+            </ConfirmAction>
+          )}
+          {p.status === 'DRAFT' && (
+            <ConfirmAction
+              title={t('Supprimer ce brouillon ?')}
+              description={t(
+                "Ce brouillon n'a ni numéro, ni écriture, ni imputation : le supprimer ne laisse aucune trace et ne change aucun coût. C'est la différence avec l'annulation, qui ne vaut que pour une pièce déjà validée."
+              )}
+              okText={t('Supprimer')}
+              danger
+              onConfirm={() => supprimerLeBrouillon(p)}
+            >
+              <Button type="link" danger>
+                {t('Supprimer le brouillon')}
+              </Button>
+            </ConfirmAction>
+          )}
+          {p.status === 'VALIDATED' && peutValider && (
+            <Button type="link" danger onClick={() => setCibleAnnulation(p)}>
+              {t('Annuler la pièce')}
+            </Button>
+          )}
+          <Button type="link" icon={<PrinterOutlined />} onClick={() => imprimer(p)}>
+            {t('Imprimer le bon')}
+          </Button>
+          <Button type="link" onClick={() => dupliquerPiece(p)}>
+            {t('Dupliquer')}
+          </Button>
+        </Space>
+      )
+    }
+  ];
 
   return (
     <>
@@ -421,7 +548,7 @@ export const PieceDeCaisse: React.FC = () => {
               {/*
                 Sans condition de statut : une pièce annulée se duplique aussi.
               */}
-              <Button icon={<CopyOutlined />} onClick={dupliquerPiece}>
+              <Button icon={<CopyOutlined />} onClick={() => dupliquerPiece()}>
                 {t('Dupliquer')}
               </Button>
             </Space>
@@ -481,7 +608,7 @@ export const PieceDeCaisse: React.FC = () => {
                 )}
                 okText={t('Valider')}
                 danger
-                onConfirm={valider}
+                onConfirm={() => valider()}
               >
                 <Button danger loading={validationEnCours}>
                   {t('Valider la pièce')}
@@ -496,29 +623,97 @@ export const PieceDeCaisse: React.FC = () => {
                 )}
                 okText={t('Supprimer')}
                 danger
-                onConfirm={supprimerLeBrouillon}
+                onConfirm={() => supprimerLeBrouillon()}
               >
                 <Button danger loading={suppressionEnCours}>
                   {t('Supprimer le brouillon')}
                 </Button>
               </ConfirmAction>
             )}
-            {piece.status === 'VALIDATED' && (
-              <Button danger onClick={() => setAnnulationOuverte(true)}>
+            {piece.status === 'VALIDATED' && peutValider && (
+              <Button danger onClick={() => setCibleAnnulation(piece)}>
                 {t('Annuler la pièce')}
               </Button>
             )}
-            <Button icon={<PrinterOutlined />} onClick={imprimer}>
+            <Button icon={<PrinterOutlined />} onClick={() => imprimer()}>
               {t('Imprimer le bon')}
             </Button>
           </Space>
         </Card>
       )}
 
+      <Card style={{ marginTop: 'var(--space-6)' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 'var(--space-3)',
+            marginBottom: 'var(--space-4)'
+          }}
+        >
+          <Title level={4} style={{ margin: 0 }}>
+            {t('Pièces de caisse')}
+          </Title>
+          <div style={{ minWidth: 240 }}>
+            <label htmlFor="caisse-filtre-chantier">{t('Chantier')}</label>
+            <Select
+              id="caisse-filtre-chantier"
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Tous les chantiers')}
+              value={filtreChantier}
+              onChange={valeur => setFiltreChantier(valeur ?? undefined)}
+              // Une pièce peut porter sur un chantier clôturé depuis : le
+              // filtre, lui, les propose tous.
+              options={(chantiers ?? []).map(chantier => ({ value: chantier.id, label: chantier.name }))}
+            />
+          </div>
+        </div>
+
+        <DataView<CashVoucher>
+          paginated={false}
+          scrollX={960}
+          items={liste}
+          total={liste.length}
+          page={1}
+          pageSize={Math.max(liste.length, 1)}
+          onPageChange={() => {}}
+          loading={piecesEnAttente}
+          error={erreurPieces ? t('Impossible de charger les pièces de caisse.') : null}
+          onRetry={() => relirePieces()}
+          emptyDescription={t('Aucune pièce de caisse enregistrée.')}
+          columns={colonnesPieces}
+          rowKey={p => p.id}
+          aria-label={t('Pièces de caisse')}
+          renderCard={p => (
+            <DataCard
+              title={libellePiece(p)}
+              aria-label={libellePiece(p)}
+              subtitle={`${dateCourte(p.voucherDate)} · ${p.siteLabel}`}
+              status={
+                <StatusTag status={p.status} tone={TONE_PIECE[p.status]} label={DOCUMENT_STATUS_LABELS[p.status]} />
+              }
+              highlight={<MoneyValue value={p.amount} />}
+              fields={[{ label: t('Motif'), value: p.reason }]}
+              primaryAction={{ label: t('Imprimer le bon'), onClick: () => imprimer(p) }}
+              secondaryActions={[
+                ...(p.status === 'VALIDATED' && peutValider
+                  ? [{ key: 'annuler', label: t('Annuler la pièce'), onClick: () => setCibleAnnulation(p) }]
+                  : []),
+                { key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerPiece(p) }
+              ]}
+            />
+          )}
+        />
+      </Card>
+
       <Modal
         title={t('Annuler cette pièce de caisse ?')}
-        open={annulationOuverte}
-        onCancel={() => setAnnulationOuverte(false)}
+        open={Boolean(cibleAnnulation)}
+        onCancel={() => setCibleAnnulation(null)}
         onOk={annuler}
         okText={t("Confirmer l'annulation")}
         okButtonProps={{ danger: true, disabled: !motifAnnulation.trim(), loading: annulationEnCours }}

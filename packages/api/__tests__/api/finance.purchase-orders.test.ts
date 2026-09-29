@@ -77,9 +77,12 @@ jest.mock('../../src/lib/finance/purchase-orders', () => ({
 // neutre, comme au lot 2 (`__tests__/api/finance.suppliers.test.ts`).
 const transactionMock = jest.fn(async (callback: any) => callback('tx-token'));
 
+const supplierInvoiceFindMany = jest.fn();
+
 jest.mock('../../src/utils/database', () => ({
   prisma: {
-    $transaction: (callback: any) => transactionMock(callback)
+    $transaction: (callback: any) => transactionMock(callback),
+    supplierInvoice: { findMany: (...args: any[]) => supplierInvoiceFindMany(...args) }
   }
 }));
 
@@ -347,6 +350,35 @@ describe('POST /tenants/:tenantId/finance/purchase-orders', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /tenants/:tenantId/finance/purchase-orders/:orderId', () => {
+  beforeEach(() => {
+    supplierInvoiceFindMany.mockReset();
+    supplierInvoiceFindMany.mockResolvedValue([]);
+  });
+
+  // BUG-2026-09-29-033 : la fiche du bon montre les factures qui lui sont rapprochées.
+  it('joint au détail les factures rapprochées du bon, lues dans l’agence de l’URL', async () => {
+    getPurchaseOrder.mockResolvedValue(samplePurchaseOrder({ status: 'ISSUED' }));
+    supplierInvoiceFindMany.mockResolvedValue([
+      { id: INVOICE_A, reference: 'FAC-001', invoiceDate: new Date('2026-09-10'), amount: '400000', status: 'DRAFT' }
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/purchase-orders/${ORDER_A}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.invoices).toEqual([
+      { id: INVOICE_A, reference: 'FAC-001', invoiceDate: '2026-09-10T00:00:00.000Z', amount: 400_000, status: 'DRAFT' }
+    ]);
+    expect(supplierInvoiceFindMany.mock.calls[0][0].where).toEqual({ tenantId: TENANT_A, purchaseOrderId: ORDER_A });
+  });
+
+  it('renvoie une liste de factures vide pour un bon sans rapprochement', async () => {
+    getPurchaseOrder.mockResolvedValue(samplePurchaseOrder());
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/purchase-orders/${ORDER_A}`);
+
+    expect(response.body.data.invoices).toEqual([]);
+  });
+
   it('renvoie le détail du bon (cas nominal)', async () => {
     getPurchaseOrder.mockResolvedValue(samplePurchaseOrder());
 

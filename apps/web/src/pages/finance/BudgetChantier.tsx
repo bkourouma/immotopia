@@ -17,7 +17,7 @@ import {
 import { listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
 import { SITE_BUDGET_STATUS_LABELS } from '../../types/finance-lot3-types';
 import type { BudgetAmendment, SiteBudget } from '../../types/finance-lot3-types';
-import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
   StateBlock,
@@ -333,7 +333,15 @@ export const BudgetChantier: React.FC = () => {
     if (!tenantId || !budget) return;
     try {
       await validateBudgetAmendment(tenantId, avenant.id);
-      await queryClient.invalidateQueries({ queryKey: detailKey('budget-amendments', tenantId, budget.id) });
+      // Valider un avenant change le budget RÉVISÉ (`revisedTotal`, dérivé par
+      // le serveur), donc aussi l'engagé et le tableau de bord : tout se
+      // rafraîchit tout de suite, plus au rechargement (BUG-…-026).
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: detailKey('budget-amendments', tenantId, budget.id) }),
+        queryClient.invalidateQueries({ queryKey: detailKey('site-budget', tenantId, siteId ?? '') }),
+        queryClient.invalidateQueries({ queryKey: detailKey('site-engagement', tenantId, siteId ?? '') }),
+        queryClient.invalidateQueries({ queryKey: entityKeyPrefix('sites-dashboard', tenantId) })
+      ]);
       message.success(t('Avenant validé.'));
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('La validation a échoué.'));
@@ -405,7 +413,17 @@ export const BudgetChantier: React.FC = () => {
     { title: t('Date'), key: 'date', width: 120, render: (_, a) => dateCourte(a.amendmentDate) },
     { title: t('Motif'), key: 'motif', render: (_, a) => a.reason },
     { title: t('Saisi par'), key: 'saisi', render: (_, a) => a.createdByLabel },
-    { title: t('Écart'), key: 'ecart', align: 'end', render: (_, a) => <MoneyValue value={a.totalDelta} signed /> },
+    {
+      title: t('Écart'),
+      key: 'ecart',
+      align: 'end',
+      render: (_, a) => (
+        <>
+          {a.totalDelta > 0 ? '+' : ''}
+          <MoneyValue value={a.totalDelta} signed />
+        </>
+      )
+    },
     {
       title: t('Statut'),
       key: 'statut',

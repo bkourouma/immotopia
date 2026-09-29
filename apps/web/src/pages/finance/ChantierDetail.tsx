@@ -17,6 +17,7 @@ import {
   StatCard,
   StatusTag
 } from '../../components/primitives';
+import { AvancementChantier } from '../../components/finance/AvancementChantier';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -134,7 +135,24 @@ export const ChantierDetail: React.FC = () => {
     { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
     { title: t('Nature'), key: 'nature', render: (_, l) => libelleNature(l.sourceType) },
     // Libellé lisible, jamais l'identifiant de la pièce (l.sourceId).
-    { title: t('Pièce d’origine'), key: 'piece', render: (_, l) => l.sourceLabel },
+    {
+      title: t('Pièce d’origine'),
+      key: 'piece',
+      // Une pièce de caisse renvoie à la liste des pièces du chantier, où on
+      // l'imprime ou l'annule (BUG-2026-09-29-020).
+      render: (_, l) =>
+        l.sourceType === 'CASH_VOUCHER' ? (
+          <Button
+            type="link"
+            style={{ padding: 0, height: 'auto' }}
+            onClick={() => navigate(`/tenant/${tenantId}/finance/pieces-de-caisse?chantierId=${siteId}`)}
+          >
+            {l.sourceLabel}
+          </Button>
+        ) : (
+          l.sourceLabel
+        )
+    },
     {
       title: t('Montant'),
       key: 'montant',
@@ -218,6 +236,8 @@ export const ChantierDetail: React.FC = () => {
           value={dateCourteOuTiret(site.status === 'CLOSED' ? site.closedAt : site.plannedEndDate)}
         />
       </div>
+
+      <AvancementChantier tenantId={tenantId} siteId={siteId} />
 
       <Title level={4}>{t('Sous-totaux par poste')}</Title>
       <DataView<LignePoste>

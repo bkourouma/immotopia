@@ -328,6 +328,16 @@ describe('enableStockOnSiteTx', () => {
     expect(store.locations).toHaveLength(2);
   });
 
+  // BUG-2026-09-29-029 : « Chantier Chantier Émeraude OI ».
+  it('ne double pas le préfixe « Chantier » quand le nom du chantier le porte déjà', async () => {
+    const site = seedSite({ name: 'Chantier Émeraude OI' });
+
+    const status = await bascule(site);
+
+    expect(status.stockLocationLabel).toBe('Chantier Émeraude OI');
+    expect(store.locations[0].label).toBe('Chantier Émeraude OI');
+  });
+
   it('REFUSE un chantier déjà basculé — redater changerait rétroactivement les imputations', async () => {
     const { site } = seedSwitchedSite();
 

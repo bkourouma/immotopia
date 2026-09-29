@@ -465,6 +465,29 @@ describe('Avenants', () => {
 
     await waitFor(() => expect(validateBudgetAmendment).toHaveBeenCalledWith('agence-1', 'avenant-1'));
   });
+
+  // BUG-2026-09-29-026 : le budget révisé n'était mis à jour qu'au rechargement.
+  it('rafraîchit le budget révisé et l’engagé dès que l’avenant est validé', async () => {
+    getSiteBudget.mockResolvedValueOnce(budget()).mockResolvedValue(budget({ revisedTotal: 26_700_000 }));
+    listBudgetAmendments.mockResolvedValue([avenant()]);
+    validateBudgetAmendment.mockResolvedValue(
+      avenant({ status: 'VALIDATED', validatedAt: '2026-06-02T00:00:00.000Z' })
+    );
+    const user = userEvent.setup({ delay: null });
+    mountBudget();
+
+    await screen.findByText('Renchérissement du ciment', {}, { timeout: 8000 });
+    expect(screen.queryByText(/26\s700\s000/)).not.toBeInTheDocument();
+    const appelsBudget = getSiteBudget.mock.calls.length;
+    const appelsEngage = getSiteEngagement.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: 'Valider' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmer la validation' }));
+
+    await waitFor(() => expect(getSiteBudget.mock.calls.length).toBeGreaterThan(appelsBudget));
+    await waitFor(() => expect(getSiteEngagement.mock.calls.length).toBeGreaterThan(appelsEngage));
+    expect(await screen.findByText(/26\s700\s000/, {}, { timeout: 8000 })).toBeInTheDocument();
+  }, 30000);
 });
 
 describe('Vocabulaire (P-1 du PRD)', () => {

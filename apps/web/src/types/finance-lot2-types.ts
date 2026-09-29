@@ -125,6 +125,12 @@ export interface SupplierInvoice {
   status: DocumentStatus;
   validatedAt: string | null;
   /**
+   * Le bon de commande rapproché de la facture, ou `null` (BUG-2026-09-29-033).
+   * Posé par la liste des factures d'un fournisseur ; optionnel : un ancien
+   * cache ou une réponse de création ne le porte pas.
+   */
+  purchaseOrderId?: string | null;
+  /**
    * Ce qui reste à payer sur la facture — `amount` diminué des règlements
    * VALIDÉS non annulés et des retenues de garantie encore DÉTENUES (une
    * retenue peut solder le reste dû sans aucun versement). `null` quand la
@@ -305,6 +311,10 @@ export interface CashVoucher {
   reason: string;
   status: DocumentStatus;
   validatedAt: string | null;
+  /** Posés par la LISTE des pièces (BUG-2026-09-29-020) ; absents de l'émission et de la validation. */
+  voidedAt?: string | null;
+  voidReason?: string | null;
+  createdByLabel?: string;
 }
 
 // ---------------------------------------------------------------------------

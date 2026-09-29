@@ -23,6 +23,13 @@ import {
 const wrap = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 describe('MoneyValue', () => {
+  it("n'ecrit jamais « -0 » : zero negatif et arrondi a zero valent 0 (BUG-2026-09-29-027)", () => {
+    expect(formatMoney(-0)).toBe('0 FCFA');
+    expect(formatMoney(300000 - 300000 - 0.2)).toBe('0 FCFA');
+    expect(formatMoney('-0')).toBe('0 FCFA');
+    expect(formatMoney(-1500)).toContain('-');
+  });
+
   it('formate en fr-FR, sans decimale, devise suffixee', () => {
     // toLocaleString('fr-FR') pose une espace insecable etroite : on compare
     // sur les chiffres plutot que sur l'espace exact.
