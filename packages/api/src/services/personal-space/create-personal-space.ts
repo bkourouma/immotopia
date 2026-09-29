@@ -85,6 +85,8 @@ async function createInTransaction(
   contactEmail: string,
   input: CreatePersonalSpaceInput
 ): Promise<PersonalSpaceResult> {
+  // Hors transaction : la premiere creation du role reste sure en concurrence (upserts natifs, sans course sur la contrainte unique).
+  const ownerRoleId = await ensurePersonalSpaceOwnerRole(prisma);
   return prisma.$transaction(async tx => {
     // Garde d'unicite sous concurrence : les creations d'un meme utilisateur
     // s'executent l'une apres l'autre (verrou tenu jusqu'a la fin de la transaction).
@@ -118,7 +120,6 @@ async function createInTransaction(
     });
     await tx.userRole.create({ data: { userId, roleId: core.tenantAdminRoleId, tenantId: core.tenant.id } });
     // Donnees personnelles du patrimoine : role dedie (PATRIMOINE_PERSONAL_*), que TENANT_ADMIN d'agence n'a pas.
-    const ownerRoleId = await ensurePersonalSpaceOwnerRole(tx);
     await grantPersonalSpaceOwnerRole(tx, ownerRoleId, userId, core.tenant.id);
 
     return { tenantId: core.tenant.id, slug: core.tenant.slug, name: core.tenant.name };
