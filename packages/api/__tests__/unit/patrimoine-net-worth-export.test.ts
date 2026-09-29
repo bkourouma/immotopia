@@ -319,6 +319,10 @@ describe('netWorthExportQuerySchema', () => {
   it('exige un format connu et refuse un paramètre inattendu', () => {
     expect(netWorthExportQuerySchema.safeParse({ format: 'pdf' }).success).toBe(true);
     expect(netWorthExportQuerySchema.safeParse({ format: 'xlsx', asOf: '2026-09-29' }).success).toBe(true);
+    // Bornes de asOf : une année < 0100 donnait une erreur trompeuse sur `from` (Date.UTC reporte 0-99 en 19xx).
+    expect(netWorthExportQuerySchema.safeParse({ format: 'pdf', asOf: '0001-03-15' }).success).toBe(false);
+    expect(netWorthExportQuerySchema.safeParse({ format: 'pdf', asOf: '2101-01-01' }).success).toBe(false);
+    expect(netWorthExportQuerySchema.safeParse({ format: 'pdf', asOf: '1970-01-01' }).success).toBe(true);
     expect(netWorthExportQuerySchema.safeParse({ format: 'csv' }).success).toBe(false);
     expect(netWorthExportQuerySchema.safeParse({}).success).toBe(false);
     expect(netWorthExportQuerySchema.safeParse({ format: 'pdf', tenantId: 'autre' }).success).toBe(false);

@@ -10,6 +10,8 @@ export const netWorthExportQuerySchema = z
     asOf: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date AAAA-MM-JJ attendue')
+      // Bornes : une année < 0100 est reportée en 19xx par Date.UTC et donnait une erreur trompeuse sur `from`.
+      .refine(v => v >= '1970-01-01' && v <= '2100-12-31', 'Date comprise entre 1970 et 2100 attendue')
       .optional()
   })
   .strict();

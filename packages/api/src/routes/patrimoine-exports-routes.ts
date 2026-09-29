@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requirePatrimoinePersonalView } from '../middleware/patrimoine-rbac-middleware';
+import { patrimoineExportRateLimiter } from '../middleware/rate-limit-middleware';
 import { exportNetWorthHandler } from '../controllers/patrimoine-net-worth-export-controller';
 
 /**
@@ -21,7 +22,14 @@ import { exportNetWorthHandler } from '../controllers/patrimoine-net-worth-expor
 const router = Router();
 const BASE = '/tenants/:tenantId/patrimoine';
 
-const read = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation, requirePatrimoinePersonalView];
+/** Export coûteux : limiteur posé après l'authentification et l'accès à l'agence, avant les gardes lourdes. */
+const read = [
+  authenticate,
+  requireTenantAccess,
+  patrimoineExportRateLimiter,
+  enforcePropertyTenantIsolation,
+  requirePatrimoinePersonalView
+];
 
 router.get(`${BASE}/net-worth/export`, ...read, exportNetWorthHandler);
 

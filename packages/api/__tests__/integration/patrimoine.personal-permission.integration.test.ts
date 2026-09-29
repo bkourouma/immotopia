@@ -100,6 +100,7 @@ maybeDescribe('permissions personnelles du patrimoine (base dédiée)', () => {
       ['/usage'],
       ['/net-worth'],
       ['/net-worth/history'],
+      ['/net-worth/export?format=xlsx'],
       ['/assets'],
       ['/debts'],
       ['/entities'],
