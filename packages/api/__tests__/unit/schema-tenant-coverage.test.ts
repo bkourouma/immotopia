@@ -84,7 +84,10 @@ const GLOBAL_MODELS = new Set([
   // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
   // fiscal versionné par pays et par année, alimenté par migration, commun à
   // toutes les agences. Aucune écriture applicative (lecture seule).
-  'TaxParameter'
+  'TaxParameter',
+  // Reglage ImmoCopilot de la plateforme : ligne unique (id 'default') editee par le
+  // super-admin (fournisseur, modele, effort, repli). Aucune donnee d'agence, aucune cle API.
+  'PlatformAiSettings'
 ]);
 
 /**

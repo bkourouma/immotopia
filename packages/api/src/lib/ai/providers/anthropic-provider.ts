@@ -3,7 +3,16 @@ import { env } from '../../../config/env';
 import { AppError } from '../../../middleware/error-middleware';
 import { t } from '../../../i18n';
 import { logger } from '../../../utils/logger';
-import type { CopilotErrorCode, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, LlmTurnResult } from '../contracts';
+import { getEffectiveAiConfig } from '../../../services/ai-settings-service';
+import type {
+  CopilotErrorCode,
+  LlmBlock,
+  LlmMessage,
+  LlmProvider,
+  LlmToolSpec,
+  LlmTurnResult,
+  ProviderRuntimeConfig
+} from '../contracts';
 
 /**
  * Fournisseur Anthropic d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md,
@@ -112,14 +121,18 @@ function fromAnthropicContent(content: Anthropic.Beta.Messages.BetaContentBlock[
 export interface AnthropicProviderOptions {
   /** Injection pour les tests ; par défaut un client construit depuis `env`. */
   client?: Anthropic;
+  /** Injection pour les tests ; par défaut la configuration effective (base, sinon env). */
+  getConfig?: () => Promise<ProviderRuntimeConfig>;
 }
 
 export class AnthropicProvider implements LlmProvider {
   readonly id = 'anthropic' as const;
   private client: Anthropic | null;
+  private readonly getConfig: () => Promise<ProviderRuntimeConfig>;
 
   constructor(options: AnthropicProviderOptions = {}) {
     this.client = options.client ?? null;
+    this.getConfig = options.getConfig ?? getEffectiveAiConfig;
   }
 
   private getClient(): Anthropic {
@@ -137,10 +150,13 @@ export class AnthropicProvider implements LlmProvider {
   ): Promise<LlmTurnResult> {
     if (signal.aborted) throw createAbortError();
 
-    const useFallback = env.AI_REFUSAL_FALLBACK !== 'off';
+    // Modèle, effort et repli relus à chaque tour : un changement d'admin s'applique à chaud.
+    const config = await this.getConfig();
+    if (signal.aborted) throw createAbortError(); // coupé pendant la lecture de la configuration
+    const useFallback = config.refusalFallback;
 
     const params: Anthropic.Beta.Messages.MessageCreateParams = {
-      model: env.AI_MODEL,
+      model: config.model,
       max_tokens: req.maxOutputTokens,
       system: req.system,
       messages: toAnthropicMessages(req.messages),
@@ -151,7 +167,7 @@ export class AnthropicProvider implements LlmProvider {
         eager_input_streaming: true
       })),
       tool_choice: { type: 'auto' },
-      output_config: { effort: env.AI_EFFORT },
+      output_config: { effort: config.effort },
       ...(useFallback ? { fallbacks: 'default' as const, betas: [SERVER_SIDE_FALLBACK_BETA] } : {})
     };
 

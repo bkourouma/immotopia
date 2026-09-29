@@ -30,6 +30,13 @@ import type { LlmMessage, LlmToolSpec } from '../../src/lib/ai/contracts';
 
 const mutableEnv = env as unknown as Record<string, unknown>;
 
+// Configuration effective injectée (le service lirait sinon la base) : reflète l'env simulé.
+const getConfig = async () => ({
+  model: env.AI_MODEL,
+  effort: env.AI_EFFORT,
+  refusalFallback: env.AI_REFUSAL_FALLBACK !== 'off'
+});
+
 const tools: LlmToolSpec[] = [
   { name: 'search_properties', description: 'Cherche des biens', inputSchema: { type: 'object', properties: {} } }
 ];
@@ -65,7 +72,11 @@ describe('AnthropicProvider', () => {
       })
     );
     const deltas: string[] = [];
-    const result = await new AnthropicProvider().runTurn(req, d => deltas.push(d), new AbortController().signal);
+    const result = await new AnthropicProvider({ getConfig }).runTurn(
+      req,
+      d => deltas.push(d),
+      new AbortController().signal
+    );
 
     expect(Anthropic).toHaveBeenCalledWith({ apiKey: 'sk-test-key' });
     const [params, options] = mockStream.mock.calls[0];
@@ -101,7 +112,7 @@ describe('AnthropicProvider', () => {
   it('coupe le repli serveur avec AI_REFUSAL_FALLBACK=off', async () => {
     mutableEnv.AI_REFUSAL_FALLBACK = 'off';
     mockStream.mockReturnValue(fakeStream({ message: { stop_reason: 'end_turn', content: [] } }));
-    await new AnthropicProvider().runTurn(req, () => undefined, new AbortController().signal);
+    await new AnthropicProvider({ getConfig }).runTurn(req, () => undefined, new AbortController().signal);
     const [params] = mockStream.mock.calls[0];
     expect(params).not.toHaveProperty('fallbacks');
     expect(params).not.toHaveProperty('betas');
@@ -117,7 +128,7 @@ describe('AnthropicProvider', () => {
         }
       })
     );
-    const result = await new AnthropicProvider().runTurn(
+    const result = await new AnthropicProvider({ getConfig }).runTurn(
       {
         ...req,
         messages: [
@@ -153,14 +164,18 @@ describe('AnthropicProvider', () => {
     ['pause_turn', 'other']
   ])('remonte stop_reason %s en %s', async (stop, expected) => {
     mockStream.mockReturnValue(fakeStream({ message: { stop_reason: stop, content: [] } }));
-    const result = await new AnthropicProvider().runTurn(req, () => undefined, new AbortController().signal);
+    const result = await new AnthropicProvider({ getConfig }).runTurn(
+      req,
+      () => undefined,
+      new AbortController().signal
+    );
     expect(result.stopReason).toBe(expected);
   });
 
   it("lève une erreur d'abandon quand le signal est coupé", async () => {
     mockStream.mockReturnValue(fakeStream({ hang: true }));
     const controller = new AbortController();
-    const promise = new AnthropicProvider().runTurn(req, () => undefined, controller.signal);
+    const promise = new AnthropicProvider({ getConfig }).runTurn(req, () => undefined, controller.signal);
     controller.abort();
     const error = await promise.catch(e => e);
     expect(isAbortError(error)).toBe(true);
@@ -170,7 +185,9 @@ describe('AnthropicProvider', () => {
   it("n'appelle pas le SDK si le signal est déjà coupé", async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(new AnthropicProvider().runTurn(req, () => undefined, controller.signal)).rejects.toMatchObject({
+    await expect(
+      new AnthropicProvider({ getConfig }).runTurn(req, () => undefined, controller.signal)
+    ).rejects.toMatchObject({
       name: 'AbortError'
     });
     expect(mockStream).not.toHaveBeenCalled();
@@ -181,7 +198,7 @@ describe('AnthropicProvider', () => {
     try {
       mutableEnv.AI_REQUEST_TIMEOUT_MS = 5000;
       mockStream.mockReturnValue(fakeStream({ hang: true }));
-      const promise = new AnthropicProvider().runTurn(req, () => undefined, new AbortController().signal);
+      const promise = new AnthropicProvider({ getConfig }).runTurn(req, () => undefined, new AbortController().signal);
       const assertion = expect(promise).rejects.toMatchObject({
         code: 'PROVIDER_UNAVAILABLE',
         copilotCode: 'PROVIDER_UNAVAILABLE',
@@ -199,7 +216,7 @@ describe('AnthropicProvider', () => {
     mockStream.mockReturnValue(
       fakeStream({ error: Object.assign(new Error('secret upstream detail'), { status: 401 }) })
     );
-    const error = await new AnthropicProvider()
+    const error = await new AnthropicProvider({ getConfig })
       .runTurn(req, () => undefined, new AbortController().signal)
       .catch(e => e);
     expect(error).toBeInstanceOf(LlmProviderError);
@@ -211,7 +228,7 @@ describe('AnthropicProvider', () => {
 
   it('marque les erreurs 429 et 5xx comme réessayables', async () => {
     mockStream.mockReturnValue(fakeStream({ error: Object.assign(new Error('x'), { status: 529 }) }));
-    const error = await new AnthropicProvider()
+    const error = await new AnthropicProvider({ getConfig })
       .runTurn(req, () => undefined, new AbortController().signal)
       .catch(e => e);
     expect(error.retryable).toBe(true);

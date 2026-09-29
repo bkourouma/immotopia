@@ -135,6 +135,7 @@ function buildRouteLabels(): Record<string, string> {
     statistics: t('Statistiques'),
     audit: t("Journaux d'audit"),
     'roles-permissions': t('Rôles et permissions'),
+    'ai-settings': t('Assistant IA'),
 
     // Administration d'agence
     tenant: t('Agence'),
