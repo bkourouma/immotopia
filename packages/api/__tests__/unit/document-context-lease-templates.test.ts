@@ -299,6 +299,25 @@ describe('buildLeaseHabitationContext + contrat_bail_habitation.docx', () => {
     expect(text).toContain('CNI n° C0012345');
   });
 
+  it("journaux : aucune coordonnee personnelle (telephone, e-mail, adresse) n'est ecrite en clair", async () => {
+    rentalLeaseFindFirst.mockResolvedValue(fullLease());
+
+    await buildLeaseHabitationContext('agency-1', 'lease-1');
+
+    const { logger } = jest.requireMock('../../src/utils/logger') as {
+      logger: Record<'info' | 'warn' | 'error' | 'debug', jest.Mock>;
+    };
+    const logged = JSON.stringify(
+      (['info', 'warn', 'error', 'debug'] as const).flatMap(level => logger[level].mock.calls)
+    );
+    // Valeurs de la fiche CRM, de l'agence et du bailleur fournies par la fixture
+    expect(logged).not.toContain('+225 07 11 22 33');
+    expect(logged).not.toContain('+225 05 44 55 66');
+    expect(logged).not.toContain('+225 27 00 00 00');
+    expect(logged).not.toContain('12 rue des Palmiers');
+    expect(logged).not.toMatch(/@[a-z0-9-]+\.[a-z]{2,}/i);
+  });
+
   it('donnees absentes : « — » lisible, jamais un champ en clair', async () => {
     rentalLeaseFindFirst.mockResolvedValue(bareLease());
 

@@ -95,9 +95,7 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
         clientType,
         clientId: client.id,
         hasCrmContactId: !!details?.crmContactId,
-        crmContactId: details?.crmContactId,
-        hasPhoneInDetails: !!(details?.phone || details?.telephone || details?.mobile),
-        phoneInDetails: details?.phone || details?.telephone || details?.mobile
+        hasPhoneInDetails: !!(details?.phone || details?.telephone || details?.mobile)
       });
 
       // If we have a crmContactId, fetch the contact
@@ -125,30 +123,24 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
           if (contact) {
             logger.info('getPhoneFromClient: CRM contact found', {
               clientType,
-              crmContactId: contact.id,
-              phonePrimary: contact.phonePrimary,
-              phoneSecondary: contact.phoneSecondary,
-              whatsappNumber: contact.whatsappNumber
+              crmContactId: contact.id
             });
 
             if (contact.phonePrimary) {
               logger.info('getPhoneFromClient: Returning phonePrimary from CRM contact', {
-                clientType,
-                phone: contact.phonePrimary
+                clientType
               });
               return contact.phonePrimary;
             }
             if (contact.phoneSecondary) {
               logger.info('getPhoneFromClient: Returning phoneSecondary from CRM contact', {
-                clientType,
-                phone: contact.phoneSecondary
+                clientType
               });
               return contact.phoneSecondary;
             }
             if (contact.whatsappNumber) {
               logger.info('getPhoneFromClient: Returning whatsappNumber from CRM contact', {
-                clientType,
-                phone: contact.whatsappNumber
+                clientType
               });
               return contact.whatsappNumber;
             }
@@ -186,13 +178,11 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
       const phoneFromDetails = details?.phone || details?.telephone || details?.mobile || '';
       if (phoneFromDetails) {
         logger.info('getPhoneFromClient: Returning phone from details', {
-          clientType,
-          phone: phoneFromDetails
+          clientType
         });
       } else {
         logger.warn('getPhoneFromClient: No phone found in details', {
-          clientType,
-          detailsKeys: Object.keys(details || {})
+          clientType
         });
       }
       return phoneFromDetails;
@@ -540,20 +530,12 @@ async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: str
     leaseId: lease.id,
     tenantId: lease.tenant_id,
     tenantName: lease.tenant.name,
-    tenantAddress: lease.tenant.address,
     tenantCity: lease.tenant.city,
-    tenantContactPhone: lease.tenant.contactPhone,
-    tenantContactEmail: lease.tenant.contactEmail,
     hasLOCATAIRE_TELEPHONE: !!context.LOCATAIRE_TELEPHONE,
-    LOCATAIRE_TELEPHONE: context.LOCATAIRE_TELEPHONE,
     hasBAILLEUR_TELEPHONE: !!context.BAILLEUR_TELEPHONE,
-    BAILLEUR_TELEPHONE: context.BAILLEUR_TELEPHONE,
     hasAGENCE_ADRESSE: !!context.AGENCE_ADRESSE,
-    AGENCE_ADRESSE: context.AGENCE_ADRESSE,
     hasAGENCE_TELEPHONE: !!context.AGENCE_TELEPHONE,
-    AGENCE_TELEPHONE: context.AGENCE_TELEPHONE,
-    hasAGENCE_EMAIL: !!context.AGENCE_EMAIL,
-    AGENCE_EMAIL: context.AGENCE_EMAIL
+    hasAGENCE_EMAIL: !!context.AGENCE_EMAIL
   });
 
   // Add co-renters if any
