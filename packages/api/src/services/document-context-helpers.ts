@@ -140,9 +140,9 @@ export function breakdownPayment(
 
 /**
  * Preavis du preneur par defaut, quand le bail n'en porte pas : le schema
- * `RentalLease` n'a aucune colonne de preavis. Valeurs d'usage a faire valider
- * par le metier ; elles remplissent la clause de resiliation du modele plutot
- * que de laisser un champ vide dans un contrat.
+ * `RentalLease` n'a aucune colonne de preavis. Valeurs validees par le metier
+ * (3 mois en habitation, 6 mois en commercial) ; elles remplissent la clause de
+ * resiliation du modele plutot que de laisser un champ vide dans un contrat.
  */
 export const DEFAULT_NOTICE_HABITATION = '3 mois';
 export const DEFAULT_NOTICE_COMMERCIAL = '6 mois';

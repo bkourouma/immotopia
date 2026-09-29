@@ -7,6 +7,7 @@ import { DocumentType, RentalDocumentStatus, RentalDocumentType } from '@prisma/
 import { resolveTemplate } from './document-template-service';
 import { buildDocumentContext, validateContext } from './document-context-builder';
 import { renderDocx, calculateHash, saveGeneratedDocument } from './docx-renderer';
+import { withDocumentNumberLock } from './document-number-lock';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -14,34 +15,25 @@ import * as path from 'path';
  * Generate document number based on type and period
  */
 async function generateDocumentNumber(tenantId: string, docType: DocumentType, periodKey: string): Promise<string> {
-  // Get or create counter
-  let counter = await prisma.documentCounter.findUnique({
+  // Incrément atomique (INSERT ... ON CONFLICT DO UPDATE) : deux générations
+  // simultanées ne lisent plus le même « dernier numéro » (P2002 sur l'index unique).
+  const counter = await prisma.documentCounter.upsert({
     where: {
       tenant_id_doc_type_period_key: {
         tenant_id: tenantId,
         doc_type: docType,
         period_key: periodKey
       }
-    }
+    },
+    create: {
+      tenant_id: tenantId,
+      doc_type: docType,
+      period_key: periodKey,
+      last_number: 1
+    },
+    update: { last_number: { increment: 1 } }
   });
-
-  if (!counter) {
-    counter = await prisma.documentCounter.create({
-      data: {
-        tenant_id: tenantId,
-        doc_type: docType,
-        period_key: periodKey,
-        last_number: 0
-      }
-    });
-  }
-
-  // Increment counter
-  const newNumber = counter.last_number + 1;
-  await prisma.documentCounter.update({
-    where: { id: counter.id },
-    data: { last_number: newNumber }
-  });
+  const newNumber = counter.last_number;
 
   // Format document number based on type
   let documentNumber: string;
@@ -79,6 +71,35 @@ async function generateDocumentNumber(tenantId: string, docType: DocumentType, p
   }
 
   return documentNumber;
+}
+
+/** Échappe un texte pour l'insérer tel quel dans une expression régulière. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Numéro du prochain contrat d'un bail : le numéro du bail pour le premier
+ * (« BAIL-2026-0012 »), puis « -A2 », « -A3 »… pour les suivants. À appeler
+ * DANS `withDocumentNumberLock`, avec l'écriture du document : sans le verrou,
+ * deux générations simultanées liraient le même dernier suffixe.
+ */
+export async function nextLeaseContractNumber(tenantId: string, leaseNumber: string): Promise<string> {
+  const existing = await prisma.rentalDocument.findMany({
+    where: {
+      tenant_id: tenantId,
+      OR: [{ document_number: leaseNumber }, { document_number: { startsWith: `${leaseNumber}-A` } }]
+    },
+    select: { document_number: true }
+  });
+  const pattern = new RegExp(`^${escapeRegExp(leaseNumber)}(?:-A(\\d+))?$`);
+  let highest = 0; // 0 : aucun contrat ; 1 : le contrat au numéro du bail ; n : « -An »
+  for (const row of existing) {
+    const match = row.document_number ? pattern.exec(row.document_number) : null;
+    if (!match) continue;
+    highest = Math.max(highest, match[1] ? Number(match[1]) : 1);
+  }
+  return highest === 0 ? leaseNumber : `${leaseNumber}-A${highest + 1}`;
 }
 
 /**
@@ -162,6 +183,15 @@ export async function generateDocument(
     });
   }
 
+  // 3b. Numéro définitif de la quittance (RCU-…) : attribué AVANT le rendu pour
+  // que « N° Reçu » du modèle soit le numéro du document enregistré, et non la
+  // référence du paiement (valeur provisoire du contexte).
+  let receiptNumber: string | null = null;
+  if (docType === DocumentType.RENT_RECEIPT) {
+    receiptNumber = await generateDocumentNumber(tenantId, docType, getPeriodKey(docType));
+    context.RECU_NUMERO = receiptNumber;
+  }
+
   // 4. Render DOCX
   const docxBuffer = await renderDocx(template, context);
 
@@ -201,49 +231,21 @@ export async function generateDocument(
     leaseId = sourceKey;
   }
 
-  // 7. Generate document number
-  // For lease contracts, use the lease_number as document_number
-  let documentNumber: string;
-  if (docType === DocumentType.LEASE_HABITATION || docType === DocumentType.LEASE_COMMERCIAL) {
-    if (leaseId) {
-      // Fetch the lease to get its lease_number
-      const lease = await prisma.rentalLease.findFirst({
-        where: { id: leaseId, tenant_id: tenantId },
-        select: { lease_number: true }
-      });
-
-      if (lease?.lease_number) {
-        documentNumber = lease.lease_number;
-        logger.info('Using lease_number as document_number', {
-          leaseId,
-          leaseNumber: lease.lease_number,
-          documentNumber
-        });
-      } else {
-        // Fallback: generate document number if lease not found
-        const periodKey = getPeriodKey(docType);
-        documentNumber = await generateDocumentNumber(tenantId, docType, periodKey);
-        logger.warn('Lease not found, generated document number instead', {
-          leaseId,
-          documentNumber
-        });
-      }
-    } else {
-      // Fallback: generate document number if no leaseId
-      const periodKey = getPeriodKey(docType);
-      documentNumber = await generateDocumentNumber(tenantId, docType, periodKey);
-      logger.warn('No leaseId, generated document number instead', {
-        documentNumber
-      });
-    }
-  } else {
-    // For other document types, generate document number as before
-    const periodKey = getPeriodKey(docType);
-    documentNumber = await generateDocumentNumber(tenantId, docType, periodKey);
+  // 7. Document number
+  const isLeaseContract = docType === DocumentType.LEASE_HABITATION || docType === DocumentType.LEASE_COMMERCIAL;
+  // Un contrat de bail porte le numéro du bail (« BAIL-2026-0012 ») ; un bail peut
+  // avoir plusieurs contrats : les suivants prennent « -A2 », « -A3 »…
+  let leaseNumber: string | null = null;
+  if (isLeaseContract && leaseId) {
+    const lease = await prisma.rentalLease.findFirst({
+      where: { id: leaseId, tenant_id: tenantId },
+      select: { lease_number: true }
+    });
+    leaseNumber = lease?.lease_number || null;
   }
-
-  // 8. Save file
-  const filePath = await saveGeneratedDocument(tenantId, docType, documentNumber, sourceKey, docxBuffer);
+  // Hors contrat de bail (ou bail sans numéro) : compteur habituel.
+  const counterNumber = async (): Promise<string> =>
+    receiptNumber ?? (await generateDocumentNumber(tenantId, docType, getPeriodKey(docType)));
 
   // 9. Map DocumentType to RentalDocumentType
   let rentalDocType: RentalDocumentType;
@@ -262,68 +264,79 @@ export async function generateDocument(
       rentalDocType = RentalDocumentType.OTHER;
   }
 
-  // 10. Create document record
-  const document = await prisma.rentalDocument.create({
-    data: {
-      tenant_id: tenantId,
-      type: rentalDocType,
-      status: RentalDocumentStatus.FINAL,
-      lease_id: leaseId,
-      installment_id: installmentId,
-      payment_id: paymentId,
-      document_number: documentNumber,
-      file_path: filePath,
-      file_hash: fileHash,
-      template_id: template.id,
-      template_hash: templateHash,
-      revision: 1,
-      issued_at: new Date(),
-      created_by_user_id: actorUserId,
-      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    },
-    include: {
-      lease: {
-        select: {
-          id: true,
-          lease_number: true
-        }
+  // 8 + 10. Save file and create the document record
+  const persist = async (documentNumber: string) => {
+    const filePath = await saveGeneratedDocument(tenantId, docType, documentNumber, sourceKey, docxBuffer);
+    const document = await prisma.rentalDocument.create({
+      data: {
+        tenant_id: tenantId,
+        type: rentalDocType,
+        status: RentalDocumentStatus.FINAL,
+        lease_id: leaseId,
+        installment_id: installmentId,
+        payment_id: paymentId,
+        document_number: documentNumber,
+        file_path: filePath,
+        file_hash: fileHash,
+        template_id: template.id,
+        template_hash: templateHash,
+        revision: 1,
+        issued_at: new Date(),
+        created_by_user_id: actorUserId,
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       },
-      installment: {
-        select: {
-          id: true,
-          period_year: true,
-          period_month: true
-        }
-      },
-      payment: {
-        select: {
-          id: true,
-          amount: true,
-          method: true
-        }
-      },
-      template: {
-        select: {
-          id: true,
-          name: true,
-          doc_type: true
-        }
-      },
-      createdBy: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
+      include: {
+        lease: {
+          select: {
+            id: true,
+            lease_number: true
+          }
+        },
+        installment: {
+          select: {
+            id: true,
+            period_year: true,
+            period_month: true
+          }
+        },
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            method: true
+          }
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            doc_type: true
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
         }
       }
-    }
-  });
+    });
+    return document;
+  };
+
+  // Choisir le suffixe puis écrire la ligne : une seule section critique par numéro de bail.
+  const document = leaseNumber
+    ? await withDocumentNumberLock(`lease-contract:${tenantId}:${leaseNumber}`, async () =>
+        persist(await nextLeaseContractNumber(tenantId, leaseNumber as string))
+      )
+    : await persist(await counterNumber());
 
   logger.info('Document generated', {
     documentId: document.id,
     tenantId,
     docType,
-    documentNumber,
+    documentNumber: document.document_number,
     templateId: template.id
   });
 
@@ -336,7 +349,7 @@ export async function generateDocument(
     entityId: document.id,
     payload: {
       docType,
-      documentNumber,
+      documentNumber: document.document_number,
       templateId: template.id,
       sourceKey
     }
@@ -388,6 +401,11 @@ export async function regenerateDocument(
     throw new BadRequestError(`Champs critiques manquants: ${validation.missing.join(', ')}`);
   }
 
+  // Quittance : « N° Reçu » reste le numéro du document enregistré.
+  if (docType === DocumentType.RENT_RECEIPT && existingDoc.document_number) {
+    context.RECU_NUMERO = existingDoc.document_number;
+  }
+
   // Render DOCX
   const docxBuffer = await renderDocx(template, context);
 
@@ -395,41 +413,18 @@ export async function regenerateDocument(
   const fileHash = calculateHash(docxBuffer);
   const templateHash = template.file_hash_sha256;
 
-  // Determine document number
-  // For lease contracts, use the lease_number as document_number (even on regeneration)
-  let documentNumber: string;
-  if (docType === DocumentType.LEASE_HABITATION || docType === DocumentType.LEASE_COMMERCIAL) {
-    if (existingDoc.lease_id) {
-      // Fetch the lease to get its lease_number
-      const lease = await prisma.rentalLease.findFirst({
-        where: { id: existingDoc.lease_id, tenant_id: tenantId },
-        select: { lease_number: true }
-      });
-
-      if (lease?.lease_number) {
-        documentNumber = lease.lease_number;
-        logger.info('Regenerate: Using lease_number as document_number', {
-          leaseId: existingDoc.lease_id,
-          leaseNumber: lease.lease_number,
-          documentNumber,
-          previousDocumentNumber: existingDoc.document_number
-        });
-      } else {
-        // Fallback: use existing document_number if lease not found
-        documentNumber = existingDoc.document_number || 'REGENERATED';
-        logger.warn('Regenerate: Lease not found, keeping existing document_number', {
-          leaseId: existingDoc.lease_id,
-          documentNumber
-        });
-      }
-    } else {
-      // Fallback: use existing document_number if no leaseId
-      documentNumber = existingDoc.document_number || 'REGENERATED';
-    }
-  } else {
-    // For other document types, keep existing document_number
-    documentNumber = existingDoc.document_number || 'REGENERATED';
+  // Determine document number : « Régénérer » garde le numéro du document (pour un
+  // contrat de bail : « BAIL-2026-0012 », ou « BAIL-2026-0012-A2 » pour un
+  // deuxième contrat du même bail). Seul un document sans numéro en reçoit un.
+  let documentNumber: string | null = existingDoc.document_number;
+  if (!documentNumber && existingDoc.lease_id) {
+    const lease = await prisma.rentalLease.findFirst({
+      where: { id: existingDoc.lease_id, tenant_id: tenantId },
+      select: { lease_number: true }
+    });
+    documentNumber = lease?.lease_number || null;
   }
+  documentNumber = documentNumber || 'REGENERATED';
 
   // Save new file (overwrite old one or create new path)
   const filePath = await saveGeneratedDocument(
@@ -441,12 +436,11 @@ export async function regenerateDocument(
   );
 
   // Update existing document with new file and increment revision
-  // Also update document_number if it changed (e.g., corrected from wrong lease number)
   const updatedDocument = await prisma.rentalDocument.update({
     where: { id: documentId },
     data: {
       revision: existingDoc.revision + 1,
-      document_number: documentNumber, // Update document_number if it changed
+      document_number: documentNumber,
       file_path: filePath,
       file_hash: fileHash,
       template_id: template.id,
