@@ -417,6 +417,9 @@ const TenantEdit = lazy(() =>
 const Statistics = lazy(() =>
   import(/* webpackChunkName: "admin" */ './pages/admin/Statistics').then(m => ({ default: m.Statistics }))
 );
+const AiSettingsPage = lazy(() =>
+  import(/* webpackChunkName: "admin" */ './pages/admin/AiSettings').then(m => ({ default: m.AiSettingsPage }))
+);
 const AuditLogs = lazy(() =>
   import(/* webpackChunkName: "admin" */ './pages/admin/AuditLogs').then(m => ({ default: m.AuditLogs }))
 );
@@ -1181,6 +1184,7 @@ function App() {
                           />
                           <Route path="/admin/statistics" element={<Statistics />} />
                           <Route path="/admin/audit" element={<AuditLogs />} />
+                          <Route path="/admin/ai-settings" element={<AiSettingsPage />} />
                           <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
                         </Route>
                         {/* Property Routes */}

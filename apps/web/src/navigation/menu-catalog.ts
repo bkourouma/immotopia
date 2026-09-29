@@ -134,6 +134,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'admin-roles': ['PLATFORM_TENANTS_EDIT'],
   'admin-statistics': ['PLATFORM_TENANTS_VIEW'],
   'admin-audit': ['PLATFORM_TENANTS_VIEW'],
+  'admin-ai-settings': ['PLATFORM_TENANTS_EDIT'],
 
   // Parc immobilier.
   biens: ['PROPERTIES_VIEW'],

@@ -122,7 +122,10 @@ export enum AuditActionKey {
   AI_PROPOSAL_ISSUED = 'AI_PROPOSAL_ISSUED',
   AI_PROPOSAL_REDEEMED = 'AI_PROPOSAL_REDEEMED',
   AI_ACTION_EXECUTED = 'AI_ACTION_EXECUTED',
-  AI_ACTION_REJECTED = 'AI_ACTION_REJECTED'
+  AI_ACTION_REJECTED = 'AI_ACTION_REJECTED',
+
+  // Réglage ImmoCopilot de la plateforme (super-admin) : jamais de secret dans le payload.
+  AI_SETTINGS_UPDATED = 'AI_SETTINGS_UPDATED'
 }
 
 // Audit log entry

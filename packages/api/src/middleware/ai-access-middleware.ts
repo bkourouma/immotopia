@@ -11,7 +11,7 @@ import { t } from '../i18n';
  * - Refuse le super-admin (MVP : l'assistant est réservé aux collaborateurs
  *   d'une agence ; le super-admin passe `requireTenantCollaborator` par
  *   dérogation, d'où cette garde explicite).
- * - Répond 503 `AI_DISABLED` quand `AI_PROVIDER=disabled`, sauf pour le
+ * - Répond 503 `AI_DISABLED` quand le réglage effectif (base, sinon `AI_PROVIDER`) est `disabled`, sauf pour le
  *   statut, qui doit pouvoir répondre `enabled: false` au menu web.
  */
 
@@ -27,7 +27,7 @@ function isSuperAdmin(req: Request): boolean {
 }
 
 function createGuard(options: { allowDisabled: boolean }): RequestHandler {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     if (!req.user?.userId || !req.tenantContext) {
       next(new ForbiddenError());
       return;
@@ -36,8 +36,13 @@ function createGuard(options: { allowDisabled: boolean }): RequestHandler {
       next(new ForbiddenError("L'assistant IA n'est pas disponible pour ce compte."));
       return;
     }
-    if (!options.allowDisabled && getLlmProvider() === null) {
-      next(new AiDisabledError());
+    try {
+      if (!options.allowDisabled && (await getLlmProvider()) === null) {
+        next(new AiDisabledError());
+        return;
+      }
+    } catch (error) {
+      next(error);
       return;
     }
     next();

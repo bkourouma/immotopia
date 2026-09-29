@@ -10,6 +10,7 @@ import { configurePassport } from './config/passport';
 import authRoutes from './routes/auth-routes';
 import tenantRoutes from './routes/tenant-routes';
 import adminRoutes from './routes/admin-routes';
+import platformAiSettingsRoutes from './routes/platform-ai-settings-routes';
 import roleRoutes from './routes/role-routes';
 import crmRoutes from './routes/crm-routes';
 import dashboardRoutes from './routes/dashboard-routes';
@@ -203,6 +204,7 @@ app.use('/api/auth', authRoutes);
 // reject anything without a tenant id in the path. /api/admin is platform-wide,
 // so it has to be mounted before them or the whole back-office answers 400.
 app.use('/api/admin', adminRoutes);
+app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage ImmoCopilot (super-admin)
 app.use('/api/roles', roleRoutes);
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT

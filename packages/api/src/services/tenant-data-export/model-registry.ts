@@ -89,7 +89,9 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   TenantDataExport: "Historique des exports eux-memes : chemins disque internes, sans donnee metier de l'agence.",
   // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
   // fiscal de la plateforme, commun à toutes les agences.
-  TaxParameter: 'Référentiel fiscal de la plateforme, commun à toutes les agences.'
+  TaxParameter: 'Référentiel fiscal de la plateforme, commun à toutes les agences.',
+  // Réglage IA (fournisseur, modèle) : singleton de la plateforme, sans donnée d'agence ni secret.
+  PlatformAiSettings: "Réglage global de l'assistant IA de la plateforme (fournisseur, modèle), sans donnée d'agence."
 };
 
 /** Champs d'agence reconnus, comme `schema-tenant-coverage.test.ts`. */
