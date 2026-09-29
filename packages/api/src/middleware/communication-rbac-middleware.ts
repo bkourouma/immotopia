@@ -6,3 +6,13 @@
 import { requireAnyPermission } from './rbac-middleware';
 
 export const requireCommunicationPermission = requireAnyPermission(['TENANT_ADMIN', 'COMMUNICATION_VIEW']);
+
+/**
+ * Envois de groupe WhatsApp (invitation en masse, diffusion) : réservés à
+ * l'administrateur de l'agence (et au super-admin, qui les porte toutes). Le
+ * groupe visé est une variable d'environnement unique de la plateforme
+ * (`WHATSAPP_GROUP_BROADCAST_TO`) : il n'existe pas encore de permission
+ * d'écriture dédiée à la communication, donc on n'ouvre pas ces actions à tous
+ * les détenteurs de `COMMUNICATION_VIEW` (agents, gestionnaires).
+ */
+export const requireCommunicationGroupSend = requireAnyPermission(['TENANT_ADMIN']);

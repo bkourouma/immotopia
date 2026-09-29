@@ -382,6 +382,9 @@ import {
 
 const TENANT_ID = 'tenant-1';
 const USER_ID = 'user-1';
+// Le compte choisi transite par la colonne `method` (`MODE@<uuid>`) : la relecture
+// ignore tout identifiant qui n'est pas un UUID, comme ceux de la base.
+const BANQUE_2_ID = '22222222-2222-4222-8222-222222222222';
 
 function tx(): any {
   return mockPrisma;
@@ -418,7 +421,7 @@ beforeEach(() => {
   store.treasuryAccounts = [
     treasuryRow('caisse', 'CASH', '571', 'Caisse principale', true),
     treasuryRow('banque', 'BANK', '521', 'Banque principale', true),
-    treasuryRow('banque-2', 'BANK', '52112', 'Ecobank', false),
+    { ...treasuryRow('banque-2', 'BANK', '52112', 'Ecobank', false), id: BANQUE_2_ID },
     treasuryRow('orange', 'MOBILE_MONEY', '5522', 'Orange Money', true)
   ];
   store.journals = [];
@@ -871,7 +874,7 @@ describe('validateSupplierPaymentTx', () => {
       const supplier = await createSupplier('SERVICES');
       const draft = await saisirReglement(supplier.id, 75000, [], {
         method: 'BANK_TRANSFER',
-        treasuryAccountId: 'tresorerie-banque-2'
+        treasuryAccountId: BANQUE_2_ID
       });
       // Le choix est retenu par le brouillon : il survit jusqu'a la validation,
       // faite par une autre personne, une autre session.

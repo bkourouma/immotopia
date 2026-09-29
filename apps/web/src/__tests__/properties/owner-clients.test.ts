@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * getOwnerClients : rattrapage (POST) puis liste des seuls clients OWNER ; un
- * échec du rattrapage ne masque pas la liste (BUG-2026-09-28-019).
+ * getOwnerClients : lecture pure de la liste des clients OWNER. Aucune écriture
+ * (le rattrapage `sync-owners` n'est plus déclenché à l'ouverture d'un
+ * formulaire) — BUG-2026-09-28-019 et correctif de sécurité.
  */
 
 const get = vi.fn();
@@ -25,18 +26,10 @@ beforeEach(() => {
 });
 
 describe('getOwnerClients', () => {
-  it('rattrape d’abord, puis ne garde que les propriétaires', async () => {
-    post.mockResolvedValue({ data: { success: true, data: { examined: 1, created: 1 } } });
+  it('ne garde que les propriétaires et ne déclenche aucune écriture', async () => {
     const owners = await getOwnerClients('agence-1');
-    expect(post).toHaveBeenCalledWith('/tenants/agence-1/clients/sync-owners');
-    expect(post.mock.invocationCallOrder[0]).toBeLessThan(get.mock.invocationCallOrder[0]);
-    expect(owners.map(o => o.id)).toEqual(['c1']);
-  });
-
-  it('liste quand même si le rattrapage échoue', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    post.mockRejectedValue(new Error('403'));
-    const owners = await getOwnerClients('agence-1');
+    expect(post).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledWith('/tenants/agence-1/clients');
     expect(owners.map(o => o.id)).toEqual(['c1']);
   });
 });

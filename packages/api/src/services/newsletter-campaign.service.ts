@@ -49,8 +49,31 @@ export function sanitizeHtml(html: string): string {
   });
 }
 
-function replaceVariables(text: string, vars: Record<string, string>): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Variables construites par le serveur (URL) : jamais échappées dans le HTML. */
+const TRUSTED_URL_VARIABLES = new Set(['lien_desinscription']);
+
+/**
+ * Remplace les {{variables}}. Les valeurs viennent de données saisies (nom d'un
+ * abonné, d'un contact) : dans le HTML elles sont échappées, sinon un nom
+ * comme `<a href=...>` injecterait des balises dans le message envoyé. Dans le
+ * sujet (texte brut) elles sont insérées telles quelles, sans saut de ligne
+ * (pas d'injection d'en-tête).
+ */
+function replaceVariables(text: string, vars: Record<string, string>, mode: 'html' | 'text' = 'text'): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const value = String(vars[key] ?? '');
+    if (mode === 'html') return TRUSTED_URL_VARIABLES.has(key) ? value : escapeHtml(value);
+    return value.replace(/[\r\n]+/g, ' ');
+  });
 }
 
 /**
@@ -276,8 +299,11 @@ export async function getCampaign(tenantId: string, campaignId: string) {
     prisma.newsletterCampaignRecipient.count({ where: { campaignId, status: 'SENT', openedAt: { not: null } } })
   ]);
 
+  // `renderedHtml` est le HTML d'un envoi réel ; par prudence, il n'est jamais
+  // renvoyé (il a porté les jetons de désinscription et d'ouverture d'un destinataire).
+  const { renderedHtml: _renderedHtml, ...safeCampaign } = campaign;
   return {
-    ...campaign,
+    ...safeCampaign,
     listName: campaign.list.name,
     sentCount,
     failedCount,
@@ -324,7 +350,7 @@ export async function getPreviewHtml(tenantId: string, campaignId: string): Prom
   };
   return {
     subject: replaceVariables(campaign.subject, vars),
-    html: replaceVariables(html, vars)
+    html: replaceVariables(html, vars, 'html')
   };
 }
 
@@ -367,7 +393,18 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
     data: { status: 'SENDING' }
   });
 
-  let renderedHtml = '';
+  // Rendu conservé avec des valeurs d'exemple : jamais le HTML d'un vrai
+  // destinataire (ses jetons de désinscription et d'ouverture).
+  const renderedHtml = replaceVariables(
+    bodyHtml,
+    {
+      prenom: 'Prénom',
+      nom: 'Nom',
+      email: 'exemple@test.com',
+      lien_desinscription: `${baseUrl}/newsletter/unsubscribe?token=preview`
+    },
+    'html'
+  );
   let successfulRecipients = 0;
   let whatsappSentCount = 0;
   let whatsappFailureCount = 0;
@@ -384,13 +421,12 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
       lien_desinscription: `${baseUrl}/newsletter/unsubscribe?token=${unsubscribeToken}`
     };
     const subject = replaceVariables(campaign.subject, vars);
-    const personalizedHtml = replaceVariables(bodyHtml, vars);
+    const personalizedHtml = replaceVariables(bodyHtml, vars, 'html');
     const whatsappBody = buildWhatsappBody(subject, personalizedHtml);
     let html = personalizedHtml;
     const trackingPixel = `<img src="${apiBaseUrl}/api/newsletter/track/open?token=${openToken}" width="1" height="1" alt="" style="display:none" />`;
     html = html.replace(/<\/body>/i, `${trackingPixel}</body>`);
     if (!/<\/body>/i.test(html)) html += trackingPixel;
-    if (i === 0) renderedHtml = html;
 
     let emailSent = false;
     let whatsappSent = false;
@@ -466,7 +502,7 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
     data: {
       status: finalStatus,
       sentAt: new Date(),
-      renderedHtml: renderedHtml || bodyHtml
+      renderedHtml
     }
   });
 

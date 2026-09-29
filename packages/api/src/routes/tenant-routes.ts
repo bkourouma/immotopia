@@ -145,6 +145,7 @@ router.post(
   authenticate,
   requireTenantAccess,
   requireTenantCollaborator,
+  requirePermission('CRM_CONTACTS_EDIT'),
   syncOwnerClientsHandler
 );
 

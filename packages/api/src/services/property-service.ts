@@ -454,6 +454,22 @@ export async function updateProperty(
     throw new BadRequestError('Le propriétaire de ce bien ne peut pas être retiré.');
   }
 
+  // Bien en mandat de gestion : comme à la création, le nouveau propriétaire
+  // est un client de CETTE agence. Un compte d'une autre agence, ou inconnu,
+  // lève la même NotFoundError qu'un objet inexistant.
+  if (data.ownerUserId && existing.ownershipType === PropertyOwnershipType.CLIENT) {
+    const ownerTenantId = tenantId || existing.tenantId;
+    const ownerClient = ownerTenantId
+      ? await prisma.tenantClient.findUnique({
+          where: { userId_tenantId: { userId: data.ownerUserId, tenantId: ownerTenantId } },
+          select: { id: true }
+        })
+      : null;
+    if (!ownerClient) {
+      throw new NotFoundError('Propriétaire introuvable.');
+    }
+  }
+
   // Validate against template if typeSpecificData is provided
   // Merge typeSpecificData fields into the data object for validation
   if (data.typeSpecificData) {

@@ -278,19 +278,11 @@ export async function createDepositMovement(
     }
   }
 
-  // Validate COLLECT movement - must be single payment equal to target amount
+  // Validate COLLECT movement - must be single payment equal to target amount.
+  // « Une seule collecte par dépôt » se contrôle DANS la transaction, sous
+  // verrou (voir plus bas) : hors transaction, deux requêtes simultanées
+  // passaient toutes deux le contrôle.
   if (type === RentalDepositMovementType.COLLECT) {
-    const existingCollectMovements = await prisma.rentalDepositMovement.findMany({
-      where: {
-        deposit_id: depositId,
-        type: RentalDepositMovementType.COLLECT
-      }
-    });
-
-    if (existingCollectMovements.length > 0) {
-      throw new Error("Le dépôt de garantie ne peut être collecté qu'une seule fois");
-    }
-
     if (Number(amount) !== Number(deposit.target_amount)) {
       throw new Error('Le montant collecté doit être égal au dépôt de garantie attendu');
     }
@@ -305,14 +297,17 @@ export async function createDepositMovement(
     throw new Error('Le montant du mouvement doit être positif');
   }
 
-  // Validate movement types that reduce balance
-  if (type === RentalDepositMovementType.REFUND || type === RentalDepositMovementType.FORFEIT) {
-    const availableAmount =
-      Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
-    if (amount > availableAmount) {
-      throw new Error('Le solde du dépôt de garantie est insuffisant pour ce mouvement');
+  // Solde disponible d'un dépôt : contrôle des mouvements qui le réduisent,
+  // refait dans la transaction sous verrou sur une lecture fraîche.
+  const assertBalanceCovers = (row: typeof deposit) => {
+    if (type === RentalDepositMovementType.REFUND || type === RentalDepositMovementType.FORFEIT) {
+      const availableAmount = Number(row.collected_amount) - Number(row.refunded_amount) - Number(row.forfeited_amount);
+      if (amount > availableAmount) {
+        throw new Error('Le solde du dépôt de garantie est insuffisant pour ce mouvement');
+      }
     }
-  }
+  };
+  assertBalanceCovers(deposit);
 
   // Update deposit aggregated amounts
   const updateData: any = {};
@@ -342,6 +337,29 @@ export async function createDepositMovement(
   // ecrite dans la meme transaction : un remboursement enregistre sur un
   // compte finalement invalide ne doit rien laisser derriere lui.
   const movement = await prisma.$transaction(async tx => {
+    // Verrous consultatifs, toujours pris dans le même ordre (paiement, puis
+    // dépôt) : la collecte et l'affectation d'un même paiement (allocatePaymentTx)
+    // se sérialisent, et deux mouvements d'un même dépôt aussi.
+    if (paymentId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rental-payment:${paymentId}`}))`;
+    }
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rental-deposit:${depositId}`}))`;
+
+    // Lecture fraîche du dépôt, sous verrou.
+    const lockedDeposit = await tx.rentalSecurityDeposit.findFirst({ where: { id: depositId, tenant_id: tenantId } });
+    if (!lockedDeposit) {
+      throw new Error('Dépôt de garantie introuvable');
+    }
+    assertBalanceCovers(lockedDeposit);
+    if (type === RentalDepositMovementType.COLLECT) {
+      const existingCollect = await tx.rentalDepositMovement.findMany({
+        where: { deposit_id: depositId, type: RentalDepositMovementType.COLLECT }
+      });
+      if (existingCollect.length > 0) {
+        throw new Error("Le dépôt de garantie ne peut être collecté qu'une seule fois");
+      }
+    }
+
     await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
 
     // Un paiement ne sert qu'à une destination à la fois : la collecte ne peut

@@ -23,8 +23,9 @@ import type { PropertyOwnership } from '../../services/property-ownership-servic
  */
 
 vi.mock('../../components/properties/PropertyMandateCard', () => ({ PropertyMandateCard: () => null }));
+const syncOwnerClients = vi.fn(async () => ({ examined: 0, created: 0 }));
 vi.mock('../../services/tenant-service', () => ({
-  syncOwnerClients: vi.fn(async () => ({ examined: 0, created: 0 }))
+  syncOwnerClients: (...a: unknown[]) => (syncOwnerClients as (...x: unknown[]) => unknown)(...a)
 }));
 
 const getPropertyOwnership = vi.fn();
@@ -70,6 +71,7 @@ function monter() {
 }
 
 beforeEach(() => {
+  syncOwnerClients.mockClear();
   getPropertyOwnership.mockReset();
   updatePropertyOwnership.mockReset();
 });
@@ -108,6 +110,18 @@ describe('Indivision — lecture', () => {
     expect(screen.getAllByText('50 %')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: "Supprimer l'indivision" })).toBeInTheDocument();
+  });
+});
+
+describe('Indivision — ouverture de la modale', () => {
+  it("n'écrit rien : aucun rattrapage des propriétaires à l'ouverture", async () => {
+    getPropertyOwnership.mockResolvedValue(indivision());
+    const utilisateur = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
+    monter();
+
+    await utilisateur.click(await screen.findByRole('button', { name: "Définir l'indivision" }));
+
+    expect(syncOwnerClients).not.toHaveBeenCalled();
   });
 });
 

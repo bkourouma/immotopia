@@ -384,6 +384,9 @@ const mockPrisma: Row = {
     count: jest.fn(async ({ where }: Row) => store.movements.filter(m => matchRow(m, where)).length)
   },
 
+  // Verrou consultatif pris par l'allocation d'un paiement : sans effet en mémoire.
+  $executeRaw: jest.fn(async () => 0),
+
   $transaction: jest.fn(async (callback: (tx: Row) => Promise<any>) => {
     const snapshot = structuredClone({
       leases: store.leases,

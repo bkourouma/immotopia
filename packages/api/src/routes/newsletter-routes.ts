@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireTenantCollaborator } from '../middleware/tenant-middleware';
+import { requireCommunicationPermission } from '../middleware/communication-rbac-middleware';
 import * as controller from '../controllers/newsletter-controller';
 
 const router = Router({ mergeParams: true });
@@ -12,6 +13,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 *
 router.use(authenticate);
 router.use(requireTenantAccess);
 router.use(requireTenantCollaborator);
+// Comptable, locataire ou collaborateur sans droit de communication : 403.
+router.use(requireCommunicationPermission);
 router.use(enforceTenantIsolation);
 
 // Lists

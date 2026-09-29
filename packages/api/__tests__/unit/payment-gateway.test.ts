@@ -177,6 +177,7 @@ const mockPrisma: Row = {
   treasuryAccount: delegate(() => store.treasuryAccounts, 'treasury'),
   tenantClient: delegate(() => store.tenantClients, 'client'),
   crmContact: delegate(() => store.crmContacts, 'contact'),
+  $executeRaw: jest.fn(async () => 0),
   $transaction: jest.fn(async (arg: unknown) => {
     if (typeof arg === 'function') return (arg as (tx: Row) => Promise<unknown>)(mockPrisma);
     return Promise.all(arg as Promise<unknown>[]);

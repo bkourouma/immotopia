@@ -10,6 +10,7 @@ import { env } from '../config/env';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import crypto from 'crypto';
+import { newOutOfBandResetToken } from '../lib/reset-token-channel';
 
 /**
  * Interface for registering a tenant client
@@ -761,7 +762,9 @@ export async function getOrCreateTenantClientFromContact(
     const throwawayPassword = crypto.randomBytes(32).toString('base64url');
     const passwordHash = await import('bcrypt').then(bcrypt => bcrypt.hash(throwawayPassword, 10));
 
-    const resetToken = crypto.randomUUID();
+    // Jeton partagé aussi par WhatsApp (numéro saisi par l'agence) : son usage
+    // ne valide jamais l'e-mail du compte (voir lib/reset-token-channel).
+    const resetToken = newOutOfBandResetToken();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
 

@@ -70,7 +70,7 @@ describe('subscribePublic', () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
   });
 
-  it('réactive directement un ancien désabonné quand la liste est sans double opt-in', async () => {
+  it('ré-inscrit un ancien désabonné par e-mail de confirmation, même sans double opt-in', async () => {
     mockPrisma.newsletterList.findFirst.mockResolvedValue(list(false));
     mockPrisma.newsletterSubscriber.findUnique.mockResolvedValue({
       id: 'sub-1',
@@ -80,9 +80,9 @@ describe('subscribePublic', () => {
 
     const result = await subscribePublic({ listToken: 'lst_abc', email: 'abonne@example.test' });
 
-    expect(result.success).toBe(true);
-    expect(mockPrisma.newsletterSubscriber.update.mock.calls[0][0].data.status).toBe('ACTIVE');
-    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(result.pendingConfirmation).toBe(true);
+    expect(mockPrisma.newsletterSubscriber.update.mock.calls[0][0].data.status).toBe('PENDING_CONFIRMATION');
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -135,5 +135,49 @@ describe('unsubscribeByToken', () => {
   it('refuse un jeton inconnu', async () => {
     mockPrisma.newsletterCampaignRecipient.findFirst.mockResolvedValue(null);
     expect(await unsubscribeByToken('nope')).toEqual({ success: false });
+  });
+});
+
+describe('subscribePublic — sécurité', () => {
+  it('ne réactive jamais un abonné désabonné sans confirmation par e-mail, même sans double opt-in', async () => {
+    mockPrisma.newsletterList.findFirst.mockResolvedValue(list(false));
+    mockPrisma.newsletterSubscriber.findUnique.mockResolvedValue({
+      id: 'sub-1',
+      status: 'UNSUBSCRIBED',
+      name: 'Victime'
+    });
+
+    const result = await subscribePublic({ listToken: 'lst_abc', email: 'victime@example.test' });
+
+    expect(result.pendingConfirmation).toBe(true);
+    const data = mockPrisma.newsletterSubscriber.update.mock.calls[0][0].data;
+    expect(data.status).toBe('PENDING_CONFIRMATION');
+    expect(data.confirmationToken).toEqual(expect.any(String));
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail.mock.calls[0][0].to).toBe('victime@example.test');
+  });
+
+  it('rejette < et > dans le nom saisi publiquement', async () => {
+    mockPrisma.newsletterList.findFirst.mockResolvedValue(list(true));
+
+    const result = await subscribePublic({
+      listToken: 'lst_abc',
+      email: 'x@example.test',
+      name: '<a href="https://evil.test">cliquez</a>'
+    });
+
+    expect(result.success).toBe(false);
+    expect(mockPrisma.newsletterSubscriber.create).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('échappe le prénom dans l’e-mail de confirmation', async () => {
+    mockPrisma.newsletterList.findFirst.mockResolvedValue(list(true));
+
+    await subscribePublic({ listToken: 'lst_abc', email: 'x@example.test', name: "O'Neil & Fils" });
+
+    const html: string = mockSendEmail.mock.calls[0][0].html;
+    expect(html).toContain('O&#39;Neil');
+    expect(html).not.toContain('& Fils');
   });
 });

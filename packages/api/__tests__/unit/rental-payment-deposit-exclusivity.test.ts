@@ -18,6 +18,9 @@ const store = {
   seq: 0
 };
 
+const lockQueues = new Map<string, Promise<void>>();
+const lockMode = { enabled: false };
+
 const nextId = (p: string) => `${p}-${++store.seq}`;
 
 const mockPrisma: Row = {
@@ -83,7 +86,30 @@ const mockPrisma: Row = {
     })
   },
   thirdPartyMovement: { count: jest.fn(async () => 0), findUnique: jest.fn(async () => null) },
-  $transaction: jest.fn(async (cb: (tx: Row) => Promise<any>) => cb(mockPrisma))
+  $executeRaw: jest.fn(async () => 0),
+  $transaction: jest.fn(async (cb: (tx: Row) => Promise<any>) => {
+    if (!lockMode.enabled) return cb(mockPrisma);
+    // Simule pg_advisory_xact_lock : file d'attente par clé, libérée en fin de transaction.
+    const releases: Array<() => void> = [];
+    const tx: Row = Object.create(mockPrisma);
+    tx.$executeRaw = async (_strings: TemplateStringsArray, key: string) => {
+      const previous = lockQueues.get(key) ?? Promise.resolve();
+      let release!: () => void;
+      const mine = new Promise<void>(resolve => (release = resolve));
+      lockQueues.set(
+        key,
+        previous.then(() => mine)
+      );
+      releases.push(release);
+      await previous;
+      return 0;
+    };
+    try {
+      return await cb(tx);
+    } finally {
+      releases.forEach(release => release());
+    }
+  })
 };
 
 jest.mock('../../src/utils/database', () => ({
@@ -152,6 +178,8 @@ function seed() {
 }
 
 beforeEach(() => {
+  lockMode.enabled = false;
+  lockQueues.clear();
   seed();
   store.seq = 0;
   jest.clearAllMocks();
@@ -217,5 +245,38 @@ describe("l'annulation d'un paiement défait la collecte de dépôt rattachée",
 
     await createDepositMovement(T, 'dep-1', 'COLLECT' as any, 150_000, 'pay-2');
     expect(store.deposits[0].collected_amount).toBe(150_000);
+  });
+});
+
+describe('concurrence : verrou consultatif par paiement et par dépôt', () => {
+  beforeEach(() => {
+    lockMode.enabled = true;
+  });
+
+  it('deux collectes simultanées du même dépôt : une seule aboutit', async () => {
+    store.payments.push({ ...store.payments[0], id: 'pay-2' });
+
+    const results = await Promise.allSettled([
+      createDepositMovement(T, 'dep-1', 'COLLECT' as any, 150_000, 'pay-1'),
+      createDepositMovement(T, 'dep-1', 'COLLECT' as any, 150_000, 'pay-2')
+    ]);
+
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(store.movements.filter(m => m.type === 'COLLECT')).toHaveLength(1);
+    expect(store.deposits[0].collected_amount).toBe(150_000);
+  });
+
+  it("collecte et affectation simultanées du même paiement : l'argent ne sert qu'une fois", async () => {
+    const results = await Promise.allSettled([
+      createDepositMovement(T, 'dep-1', 'COLLECT' as any, 150_000, 'pay-1'),
+      mockPrisma.$transaction((tx: Row) =>
+        allocatePaymentTx(tx as any, T, 'pay-1', { installmentIds: ['inst-1'] }, 'actor')
+      )
+    ]);
+
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    const collecte = store.movements.filter(m => m.type === 'COLLECT').length;
+    // Soit le dépôt, soit le loyer a consommé le paiement, jamais les deux.
+    expect(collecte + store.allocations.length).toBe(1);
   });
 });

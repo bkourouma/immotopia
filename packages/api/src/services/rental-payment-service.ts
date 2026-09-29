@@ -458,6 +458,12 @@ export async function allocatePaymentTx(
   data: AllocatePaymentData,
   _actorUserId: string
 ): Promise<{ allocations: any[]; totalAllocated: number; payment: any; installments: any[] }> {
+  // Verrou consultatif par paiement : l'affectation à des loyers et la collecte
+  // du dépôt de garantie (rental-deposit-service) lisent « le disponible » puis
+  // écrivent ; sans verrou, deux requêtes simultanées dépensaient deux fois le
+  // même argent. Libéré à la fin de la transaction.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rental-payment:${paymentId}`}))`;
+
   // Get payment with allocations
   const payment = await tx.rentalPayment.findFirst({
     where: {

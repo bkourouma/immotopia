@@ -173,8 +173,8 @@ export async function sendGroupBroadcastHandler(req: Request, res: Response): Pr
       success: true,
       message: 'Message groupe WhatsApp envoyé.',
       data: {
+        // `target` (groupe unique de la plateforme) n'est jamais renvoyé.
         provider: result.provider,
-        target: result.target,
         messageId: result.messageId ?? null,
         mediaUrl: result.mediaUrl ?? null,
         usedFallbackTextOnly: Boolean(result.usedFallbackTextOnly)

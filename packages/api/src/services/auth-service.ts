@@ -9,6 +9,7 @@ import { prisma } from '../utils/database';
 import { logAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import type { Language } from '../i18n';
+import { provesEmailOwnership } from '../lib/reset-token-channel';
 
 /** Entity type used for every authentication event. */
 const AUTH_ENTITY = 'User';
@@ -557,11 +558,13 @@ export async function resetPassword(data: PasswordResetRequest) {
     // l'email au passage, sinon un compte cree par l'agence (portail locataire
     // ou proprietaire) reste bloque au login par le controle emailVerified,
     // sans autre issue que de chercher un second email de verification.
+    // Exception : un lien partage hors e-mail (WhatsApp, numero saisi par
+    // l'agence) ne prouve pas le controle de l'adresse et ne la valide pas.
     await tx.user.update({
       where: { id: resetToken.userId },
       data: {
         passwordHash: passwordHash,
-        emailVerified: true
+        ...(provesEmailOwnership(resetToken.token) ? { emailVerified: true } : {})
       }
     });
 

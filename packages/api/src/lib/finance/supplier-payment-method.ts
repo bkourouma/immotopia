@@ -13,15 +13,38 @@
  * points à toucher.
  */
 
+import { badRequest } from '../errors';
+
 const METHOD_ACCOUNT_SEPARATOR = '@';
 
+/** Modes de règlement acceptés (ceux que propose l'écran). */
+export const SUPPLIER_PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'CHECK', 'MOBILE_MONEY', 'CARD', 'OTHER'] as const;
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Compose la valeur stockée. Le mode est validé (liste blanche, jamais de « @ ») :
+ * une saisie libre malformée ne s'enregistre pas, elle brouillerait la relecture.
+ */
 export function packPaymentMethod(method: string, treasuryAccountId: string | null | undefined): string {
+  if (!(SUPPLIER_PAYMENT_METHODS as readonly string[]).includes(method)) {
+    throw badRequest('Mode de règlement invalide.');
+  }
   return treasuryAccountId ? `${method}${METHOD_ACCOUNT_SEPARATOR}${treasuryAccountId}` : method;
 }
 
-/** Inverse de `packPaymentMethod` : le mode, et le compte choisi s'il y en a un. */
+/**
+ * Inverse de `packPaymentMethod` : le mode, et le compte choisi s'il y en a un.
+ * Tolérante : une valeur ancienne ou malformée ne lève jamais (la liste des
+ * règlements d'un fournisseur doit rester lisible) ; un identifiant qui n'est
+ * pas un UUID est ignoré.
+ */
 export function unpackPaymentMethod(stored: string): { method: string; treasuryAccountId: string | null } {
   const at = stored.indexOf(METHOD_ACCOUNT_SEPARATOR);
   if (at < 0) return { method: stored, treasuryAccountId: null };
-  return { method: stored.slice(0, at), treasuryAccountId: stored.slice(at + 1) || null };
+  const candidate = stored.slice(at + 1);
+  return {
+    method: stored.slice(0, at),
+    treasuryAccountId: UUID_PATTERN.test(candidate) ? candidate : null
+  };
 }

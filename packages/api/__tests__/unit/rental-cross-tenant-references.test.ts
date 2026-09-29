@@ -92,6 +92,7 @@ const mockPrisma: Row = {
       return created;
     })
   },
+  $executeRaw: jest.fn(async () => 0),
   $transaction: jest.fn(async (callback: (tx: Row) => Promise<any>) => callback(mockPrisma))
 };
 

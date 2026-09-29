@@ -288,9 +288,10 @@ export async function getTenantClients(tenantId: string): Promise<TenantClientsR
 }
 
 /**
- * Rattrape les propriétaires : crée le client Propriétaire de chaque contact
- * CRM au rôle Propriétaire qui n'en a pas encore (idempotent). Écriture, donc
- * POST explicite — jamais dans la lecture de la liste.
+ * Rattrapage explicite : rattache le client Propriétaire de chaque contact CRM
+ * au rôle Propriétaire dont l'e-mail correspond déjà à un compte (jamais de
+ * création de compte). Écriture, donc POST à déclencher par un geste de
+ * l'utilisateur — jamais à l'ouverture d'un formulaire ni dans la lecture.
  */
 export async function syncOwnerClients(tenantId: string): Promise<{ examined: number; created: number }> {
   const response = await apiClient.post(`/tenants/${tenantId}/clients/sync-owners`);
@@ -298,17 +299,11 @@ export async function syncOwnerClients(tenantId: string): Promise<{ examined: nu
 }
 
 /**
- * Propriétaires de l'agence (clients de type OWNER), rattrapage compris : une
- * seule source pour le vendeur d'un mandat, le propriétaire d'un bien (création
- * et modification) et l'indivision. Un échec du rattrapage ne masque pas la
- * liste : on lit alors ce qui existe.
+ * Propriétaires de l'agence (clients de type OWNER) : lecture pure, une seule
+ * source pour le vendeur d'un mandat, le propriétaire d'un bien (création et
+ * modification) et l'indivision. Aucune écriture n'est déclenchée ici.
  */
 export async function getOwnerClients(tenantId: string): Promise<TenantClient[]> {
-  try {
-    await syncOwnerClients(tenantId);
-  } catch (error) {
-    console.error('Owner clients sync failed:', error);
-  }
   const response = await getTenantClients(tenantId);
   return (response.data ?? []).filter(client => client.clientType === 'OWNER');
 }

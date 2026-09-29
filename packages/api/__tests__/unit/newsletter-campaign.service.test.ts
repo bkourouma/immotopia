@@ -40,7 +40,12 @@ jest.mock('../../src/services/providers/whatsapp.provider', () => ({
   sendText: jest.fn()
 }));
 
-import { getCampaignRecipients, getPreviewHtml, sendCampaign } from '../../src/services/newsletter-campaign.service';
+import {
+  getCampaign,
+  getCampaignRecipients,
+  getPreviewHtml,
+  sendCampaign
+} from '../../src/services/newsletter-campaign.service';
 
 const TEMPLATE_HTML =
   '<div><p>Bonjour {{prenom}},</p><div>{{contenu}}</div><p><a href="{{lien_desinscription}}">Se désabonner</a></p></div>';
@@ -123,5 +128,52 @@ describe('getCampaignRecipients', () => {
     const query = mockPrisma.newsletterCampaignRecipient.findMany.mock.calls[0][0];
     expect(query.where).toEqual({ campaignId: 'camp-1', tenantId: 'tenant-1' });
     expect(Object.keys(query.select).sort()).toEqual(['email', 'failureReason', 'id', 'openedAt', 'sentAt', 'status']);
+  });
+});
+
+describe('sendCampaign — variables échappées', () => {
+  it('échappe le nom du destinataire dans le HTML et garde le sujet en texte brut', async () => {
+    mockPrisma.newsletterSubscriber.findMany.mockResolvedValue([
+      { id: 'sub-1', email: 'x@example.test', name: '<img src=x onerror=alert(1)> Koné', status: 'ACTIVE' }
+    ]);
+    mockPrisma.newsletterCampaign.findFirst.mockResolvedValue({
+      ...baseCampaign,
+      subject: 'Bonjour {{prenom}}'
+    });
+
+    await sendCampaign('tenant-1', 'camp-1');
+
+    const { html, subject } = mockSendEmail.mock.calls[0][0];
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('&lt;img');
+    expect(subject).not.toMatch(/[\r\n]/);
+  });
+
+  it('ne range pas dans la campagne le HTML du premier destinataire (jetons de désinscription/ouverture)', async () => {
+    await sendCampaign('tenant-1', 'camp-1');
+
+    const sent = mockSendEmail.mock.calls[0][0].html as string;
+    const token = /unsubscribe\?token=([a-f0-9]+)/.exec(sent)![1];
+    const stored = mockPrisma.newsletterCampaign.update.mock.calls
+      .map(c => c[0].data.renderedHtml)
+      .filter(Boolean)
+      .join('');
+    expect(stored).not.toContain(token);
+    expect(stored).not.toContain('track/open');
+  });
+});
+
+describe('getCampaign', () => {
+  it('ne renvoie pas renderedHtml (jetons du premier destinataire)', async () => {
+    mockPrisma.newsletterCampaign.findFirst.mockResolvedValue({
+      ...baseCampaign,
+      renderedHtml: '<a href="/newsletter/unsubscribe?token=secret">x</a>'
+    });
+    mockPrisma.newsletterCampaignRecipient.count.mockResolvedValue(0);
+
+    const campaign = await getCampaign('tenant-1', 'camp-1');
+
+    expect(campaign).not.toHaveProperty('renderedHtml');
+    expect(JSON.stringify(campaign)).not.toContain('secret');
   });
 });

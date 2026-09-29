@@ -239,6 +239,15 @@ export function generateConfirmationToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getBaseUrl(): string {
   return process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000';
 }
@@ -282,6 +291,10 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
   if (!isValidEmail(email)) {
     return { success: false, message: 'Adresse email invalide.' };
   }
+  // Le nom est repris dans des e-mails : pas de balise (« < » et « > »).
+  if (input.name && /[<>]/.test(input.name)) {
+    return { success: false, message: 'Le nom contient des caractères non autorisés.' };
+  }
 
   const existing = await prisma.newsletterSubscriber.findUnique({
     where: { listId_email: { listId: list.id, email } }
@@ -298,22 +311,9 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
       };
     }
     if (existing.status === 'UNSUBSCRIBED') {
-      // Ré-inscription : on met à jour au lieu de créer
-      if (!list.doubleOptIn) {
-        await prisma.newsletterSubscriber.update({
-          where: { id: existing.id },
-          data: {
-            status: 'ACTIVE',
-            confirmationToken: null,
-            confirmationTokenExpiresAt: null,
-            subscribedAt: new Date(),
-            confirmedAt: new Date(),
-            unsubscribedAt: null,
-            name: input.name?.trim() || existing.name
-          }
-        });
-        return { success: true, message: 'Votre inscription est confirmée.' };
-      }
+      // Ré-inscription : on met à jour au lieu de créer. Toujours par e-mail de
+      // confirmation, même sans double opt-in : sinon n'importe qui pourrait
+      // réactiver un abonné désabonné en saisissant son adresse.
       const token = generateConfirmationToken();
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + CONFIRMATION_TOKEN_EXPIRY_DAYS);
@@ -372,7 +372,7 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
 
 async function sendConfirmationEmail(to: string, token: string, name?: string): Promise<void> {
   const confirmUrl = `${getBaseUrl()}/newsletter/confirm?token=${token}`;
-  const prenom = name?.split(/\s+/)[0] || 'Cher abonné';
+  const prenom = escapeHtml(name?.split(/\s+/)[0] || 'Cher abonné');
   await emailService.sendEmail({
     to,
     subject: 'Confirmez votre inscription à notre newsletter',

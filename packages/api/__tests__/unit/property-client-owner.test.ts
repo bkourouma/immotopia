@@ -12,6 +12,7 @@ const propertiesCreated: Row[] = [];
 
 const tx: Row = {
   property: {
+    update: jest.fn(async ({ data }: Row) => ({ id: 'p1', status: 'AVAILABLE', tenantId: 'tenant-a', ...data })),
     create: jest.fn(async ({ data }: Row) => {
       const created = { id: 'p1', containerParentId: null, ...data };
       propertiesCreated.push(created);
@@ -50,6 +51,9 @@ const mockPrisma: Row = {
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/property-quality-service', () => ({
+  calculateAndStoreQualityScore: jest.fn(async () => undefined)
+}));
 jest.mock('../../src/services/lot-registry-service', () => ({ syncLotActivationsTx: jest.fn() }));
 jest.mock('../../src/utils/property-reference-generator', () => ({
   generatePropertyReference: jest.fn(async () => 'PROP-1')
@@ -62,7 +66,7 @@ jest.mock('../../src/lib/properties/schemas', () => ({
   updatePropertySchema: { parse: jest.fn() }
 }));
 
-import { createProperty } from '../../src/services/property-service';
+import { createProperty, updateProperty } from '../../src/services/property-service';
 import { NotFoundError } from '../../src/middleware/error-middleware';
 
 const base: any = {
@@ -115,5 +119,21 @@ describe('createMandate — propriétaire', () => {
       createMandate('tenant-a', { propertyId: 'p1', tenantId: 'tenant-a', startDate: new Date() } as any)
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(mockPrisma.propertyMandate.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('updateProperty — mandat de gestion', () => {
+  it("refuse un nouveau propriétaire qui n'est pas client de l'agence (NotFoundError)", async () => {
+    clients.push({ userId: 'user-b', tenantId: 'tenant-b', clientType: 'OWNER' });
+    await expect(updateProperty('p1', { ownerUserId: 'user-b' } as any, 'tenant-a')).rejects.toBeInstanceOf(
+      NotFoundError
+    );
+    expect(tx.property.update).not.toHaveBeenCalled();
+  });
+
+  it('accepte un client propriétaire de la même agence', async () => {
+    clients.push({ userId: 'user-a', tenantId: 'tenant-a', clientType: 'OWNER' });
+    await updateProperty('p1', { ownerUserId: 'user-a' } as any, 'tenant-a');
+    expect(tx.property.update.mock.calls[0][0].data.ownerUserId).toBe('user-a');
   });
 });

@@ -19,7 +19,6 @@ import {
   updatePropertyOwnership,
   type PropertyOwnership
 } from '../../services/property-ownership-service';
-import { syncOwnerClients } from '../../services/tenant-service';
 import { PropertyMandateCard } from './PropertyMandateCard';
 import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
@@ -93,22 +92,10 @@ export const PropertyOwnershipCard: React.FC<PropertyOwnershipCardProps> = ({ te
    * les quotes-parts déjà posées si elles existent, sinon le propriétaire des
    * baux à 100 % si l'indivision est vide et qu'il existe, sinon rien.
    */
-  const ouvrirModale = async () => {
+  const ouvrirModale = () => {
     setErreurEnvoi(null);
     if (!donnees) return;
-    let courant = donnees;
-    // Rattrape les contacts convertis au rôle Propriétaire sans client (POST
-    // explicite, jamais dans la lecture) ; la liste des propriétaires est
-    // relue seulement si quelque chose a été créé. BUG-2026-09-28-019.
-    try {
-      const { created } = await syncOwnerClients(tenantId);
-      if (created > 0) {
-        courant = await getPropertyOwnership(tenantId, propertyId);
-        setDonnees(courant);
-      }
-    } catch {
-      // Le rattrapage est un plus : la modale s'ouvre avec la liste connue.
-    }
+    const courant = donnees;
     if (courant.shares.length > 0) {
       setLignes(courant.shares.map(part => ({ ownerClientId: part.ownerClientId, sharePercent: part.sharePercent })));
     } else if (courant.leaseOwner) {
