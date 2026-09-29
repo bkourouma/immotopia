@@ -16,12 +16,12 @@
     `ATTESTATION_COUTUMIERE`, `AUTRE`).
   - `VEHICLE_EQUIPMENT` : `usefulLifeYears`, `residualValuePercent`, `depreciationMethod`
     (`LINEAR` | `DECLINING`), `decliningRatePercent`.
-  - `BUSINESS_EQUITY` : `companyValueXof` (valeur de l'entreprise) ou `companyEquityXof`,
-    `netIncomeXof` avec `earningsMultiple`.
+  - `BUSINESS_EQUITY` : `companyValue` (valeur de l'entreprise) ou `companyEquity`,
+    `netIncome` avec `earningsMultiple`.
   - `INVENTORY` : `writeDownPercent`.
-  - `RECEIVABLE` : `principalXof`, `collectibilityPercent`.
-  - `AGRICULTURE` : `unitValueXof` (par tête, par hectare ou par unité de récolte).
-  - `SAVINGS_INVESTMENT` : `principalXof`, `expectedRatePercent` (existe déjà).
+  - `RECEIVABLE` : `principal`, `collectibilityPercent`.
+  - `AGRICULTURE` : `unitValue` (par tête, par hectare ou par unité de récolte).
+  - `SAVINGS_INVESTMENT` : `principal`, `expectedRatePercent` (existe déjà).
 
 ## Domaine pur (`lib/patrimoine/assets/`)
 
