@@ -1,4 +1,5 @@
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
+import { MAX_CONCURRENT_EXCLUSIVE_SECTIONS } from './pool-guard';
 
 /**
  * Verrous consultatifs PostgreSQL d'ImmoCopilot : rendent atomiques, entre
@@ -58,13 +59,15 @@ async function withLocalMutex<T>(key: string, fn: () => Promise<T>): Promise<T> 
 }
 
 /**
- * Plafond de sections exclusives SIMULTANÉES dans ce processus. Chacune garde
- * une connexion « gardienne » pendant toute sa durée, plus au moins une autre
- * pour son travail : sans plafond, quelques clés différentes suffisent à
- * saturer le pool Prisma (P2024) et à dégrader toute l'API. À dimensionner
- * avec `connection_limit` (voir env.example) : 2 connexions par section.
+ * Plafond de sections exclusives SIMULTANÉES dans ce processus (voir
+ * `pool-guard.ts`, qui le porte pour que `config/env.ts` puisse le lire sans
+ * charger la base). Chacune garde une connexion « gardienne » pendant toute sa
+ * durée, plus au moins une autre pour son travail : sans plafond, quelques clés
+ * différentes suffisent à saturer le pool Prisma (P2024) et à dégrader toute
+ * l'API. À dimensionner avec `connection_limit` (voir env.example) : 2
+ * connexions par section.
  */
-export const MAX_CONCURRENT_EXCLUSIVE_SECTIONS = 2;
+export { MAX_CONCURRENT_EXCLUSIVE_SECTIONS };
 
 /**
  * Sémaphore de processus : les appels au-delà du plafond attendent en mémoire
