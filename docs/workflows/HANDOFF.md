@@ -38,57 +38,7 @@ Pièges et décisions :
 
 ---
 
-## Branche `fix/copilot-fake-numero-bail` — 2026-09-29
-
-**État :** prêt à relire
-**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
-
-Fait :
-
-- Recette d'ImmoCopilot jouée (PR #49 fusionnée) sur une base PostgreSQL 16 locale
-  jetable, API avec `AI_PROVIDER=fake`, Chromium piloté par `playwright-core`
-  (installé hors dépôt). Les 12 scénarios du plan §6 passent : bouton et
-  raccourcis, biens, quittance (proposition, confirmation, `.docx` téléchargé),
-  double clic (un seul document), jeton expiré (410), `TENANT_AGENT` (2 outils,
-  génération et téléchargement 403), propriétaire/locataire/super-admin refusés,
-  assistant désactivé (503, pas de bouton), arabe (RTL, tiroir à gauche), 375 px,
-  injection sans document créé, fermeture en plein flux sans erreur. Jeton de
-  l'agence A sur l'agence B : `PROPOSAL_INVALID` sur vraie base. Relevé de compte
-  (`RENT_STATEMENT`) généré aussi.
-- Correctifs : le faux fournisseur ne reconnaissait que `L-102` alors que les
-  baux se numérotent `BAIL-AAAA-NNNN` (il prenait le premier bail actif) ; montants
-  des cartes formatés avec la locale active.
-- Quittance et relevé : champs des modèles DOCX désormais tous fournis (PR #53
-  fusionnée) ; le rendu laissait `{{…}}` parce que les noms de champs des modèles
-  et du constructeur de contexte divergeaient. Ventilation d'un paiement : loyer,
-  puis charges, puis pénalités ; une donnée absente s'écrit « — ».
-
-Reste à faire :
-
-- **Baux** (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : même défaut que la quittance
-  (environ 20 champs du modèle d'habitation non fournis par
-  `document-context-builder.ts`, le commercial délègue à l'habitation) : `{{…}}` en
-  clair dans les contrats. Non traité.
-- `RECU_NUMERO` de la quittance est le numéro de paiement ; le numéro définitif
-  `RCU-…` est attribué après le rendu.
-- `test:isolation` (base dédiée) toujours non joué avec la suite.
-- Mineurs d'audit de la PR #49 toujours ouverts.
-
-Pièges et décisions :
-
-- Le cloud n'a pas de `.env` : tout passe par variables d'environnement en ligne
-  de commande (`DATABASE_URL`, `JWT_SECRET` généré, `AI_PROVIDER=fake`, ports
-  8001/3000). Base : `pg_ctlcluster 16 main start` puis utilisateur et base créés
-  à la main ; `db:seed:rbac`, `geographic`, `catalog`, `db:seed`, `rbac` de
-  nouveau, `document-templates` (exige `JWT_SECRET`), `tenant-members`. Le seed
-  `seed-demo-locative.ts` cible une agence du dump de démo : sur une base neuve,
-  créer soi-même biens, contacts et baux via les services.
-- Le modèle `RENT_STATEMENT` est bien semé par `db:seed:document-templates`
-  (4 modèles globaux).
-- Une quittance déjà générée pour la période est présentée au lieu d'être
-  proposée de nouveau (idempotence) : changer de période pour rejouer.
-- `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
-
+## Branche `fix/copilot-audit` — 2026-09-29
 ## Branche `fix/copilot-audit` — 2026-09-29
 
 **État :** prêt à relire
@@ -136,43 +86,43 @@ Pièges et décisions :
   les restaurer à la main.
 - Aucun verrou de schéma : pas de migration, les verrous sont consultatifs.
 
-## Branche `fix/copilot-isolation` — 2026-09-29
+## Branche `fix/copilot-baux` — 2026-09-29
 
 **État :** prêt à relire
 **Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
 
 Fait :
 
-- `npm run test:isolation` joué pour de vrai sur une base PostgreSQL 16 dédiée :
-  **43 tests sur 43 verts, 0 ignoré** (les 31 auparavant ignorés, dont les 3 cas
-  ImmoCopilot, plus 12 ajoutés). Aucun défaut d'isolation dans le code de
-  production.
-- Nouveaux cas : témoin positif du jeton (valide de B sur B, 404 puis 409 au
-  rejeu), jeton d'un autre utilisateur de la même agence, bail de A dans un jeton
-  de B, quittance avec bail/paiement/échéance croisés (3 combinaisons), document
-  de A téléchargé via l'URL de B, contexte d'écran de `POST /ai/chat` visant A
-  depuis B (rien de A n'atteint le modèle), `GET /ai/status` (membre, autre
-  agence, sans agence, anonyme), outil forcé sur le bail de A. Fixtures :
-  `createOutsiderUser`, `createRentalFixtureDirect`.
-- Commandes de rejeu : `docs/workflows/RUNBOOK.md` (section « Isolation multi-tenant
-  de bout en bout »).
+- Contrats de bail (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : `document-context-builder.ts`
+  fournit maintenant les 27 et 33 champs des modèles `contrat_bail_habitation.docx` et
+  `contrat_bail_commercial.docx`, en gardant toutes les clés existantes. Le commercial ne
+  délègue plus à l'habitation : il a ses champs propres. Chargement de la fiche CRM du
+  locataire et du bailleur (`details.crmContactId`) pour adresse, pièce d'identité,
+  société, RCCM, représentant, activité. Une donnée absente s'écrit « — ».
+- Vérifié de bout en bout sur une base locale : contrats habitation et commercial
+  générés (données complètes, puis minimum), `.docx` relus, aucun `{{…}}` restant.
 
 Reste à faire :
 
-- Le cas passant de `POST /ai/actions/execute` ne couvre pas la génération DOCX
-  réussie (il faut un modèle de document) : vérification et 404 seulement.
-- `cleanupTenants` échoue en silence dès qu'un bail existe (pas de cascade sur les
-  tables `rental_*`) : données de test laissées en base jetable.
-- Pas de test mutant sur le code de production (les témoins positifs en tiennent
-  lieu).
+- **Un seul contrat par bail** (préexistant) : le numéro de document d'un contrat est
+  le numéro du bail (`document-generation-service.ts`), et l'index unique
+  `(tenant_id, document_number)` refuse un second contrat sur le même bail (P2002).
+- Préavis (`PREAVIS_PRENEUR`) : constantes choisies faute de colonne (3 mois habitation,
+  6 mois commercial : `DEFAULT_NOTICE_HABITATION` / `_COMMERCIAL`) : à faire valider par le
+  métier. `PAS_DE_PORTE` vaut toujours « — » (aucune donnée dans le schéma).
+- Les modèles écrivent « FCFA » en dur : un bail dans une autre devise afficherait le
+  bon chiffre avec la mauvaise unité. Le modèle dit « par jour de retard » alors que le
+  service de pénalités applique un montant unique : texte du modèle à revoir.
 
 Pièges et décisions :
 
-- `getUserPermissions` met les droits en cache 5 minutes par utilisateur : les
-  permissions d'un rôle de test doivent être accordées **à la création du rôle**,
-  pas dans un `beforeAll` tardif (cause des 2 échecs du premier passage).
-- Le fichier reste seul dans `APP_LEVEL_TESTS` (projet `api-app`, sans vérification
-  de types) : d'où l'extension de `isolation.test.ts` plutôt qu'un fichier voisin.
+- Les modèles posent eux-mêmes « FCFA » et « m² » : loyer, charges, dépôt et surface sont
+  fournis sans unité. `TAUX_PENALITE` vaut « 2 % » (stocké en pourcentage) ou un montant
+  fixe avec devise.
+- Sans fiche CRM liée, adresse, pièce d'identité, RCCM, représentant et activité valent « — ».
+- Un sous-agent lancé avec l'option d'isolation automatique travaille dans son propre
+  worktree (`.claude/worktrees/agent-*`) et non dans celui indiqué au prompt : ne pas
+  cumuler les deux.
 
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
