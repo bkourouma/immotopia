@@ -56,7 +56,12 @@ type SuggestResponse =
       method: ValuationMethod;
       assumptions: { key: string; value: string | number }[]; // ex. { key: 'usefulLifeYears', value: 5 }
     }
-  | { ok: false; missing: string[] }; // clés des champs manquants, sous `details.`
+  | {
+      ok: false;
+      missing: string[]; // clés des champs manquants, sous `details.`
+      // Raison métier d'un refus qui n'est pas un champ manquant (facultative) :
+      reason?: "ZERO_VALUE" | "OUT_OF_RANGE" | "ACQUISITION_DATE_IN_FUTURE";
+    };
 ```
 
 Réponse `{ data: SuggestResponse }`. `ok: false` est une réponse **200**, pas une erreur : c'est un
@@ -87,3 +92,24 @@ Champs facultatifs ajoutés (schémas `.strict()` ; la version 1 reste lisible) 
 
 Les montants de ces champs sont dans la devise de l'actif (convention du lot 1 : `estimatedValue` suit la
 devise de l'actif).
+
+## Règles de cohérence ajoutées après relecture
+
+- **Méthode calculée vérifiée par le serveur.** À la création ou à la modification d'une valorisation dont
+  la méthode est calculée (`DEPRECIATION_LINEAR`, `DEPRECIATION_DECLINING`, `EQUITY_SHARE`, `UNIT_COST`,
+  `ACCRUED_SAVINGS`, `DISCOUNTED_CLAIM`, `UNIT_VALUE`), le serveur recalcule la suggestion à la date de la
+  valorisation. Si le montant ne correspond pas (écart de plus de 1 unité en XOF, de 0,01 dans une autre
+  devise), la valorisation est enregistrée avec la méthode `MANUAL` : un montant retouché à la main n'est
+  jamais présenté comme calculé. `BALANCE` (solde saisi), `MANUAL`, `MARKET_ESTIMATE` et `EXPERT_APPRAISAL`
+  ne sont pas concernés.
+- **Estimation de marché.** `MARKET_ESTIMATE` est traitée comme une saisie manuelle pour la fiabilité
+  (faible sans source, moyenne avec source), avec les mêmes clés de raison que `MANUAL`.
+- **Expertise.** `EXPERT_APPRAISAL` exige une `source` non vide (erreur 422, champ `source`).
+- **Suggestion nulle ou hors bornes.** Une suggestion dont le montant est nul, non fini ou supérieur à
+  999 999 999 999,99 est renvoyée `ok: false` avec `reason` (`ZERO_VALUE` ou `OUT_OF_RANGE`) et
+  `missing: []`. Une date d'acquisition postérieure à la date de calcul, pour les seules classes qui
+  utilisent cette date, est renvoyée `ok: false` avec `reason: 'ACQUISITION_DATE_IN_FUTURE'`.
+- **`stale`** n'est vrai que pour un actif `ACTIVE`.
+- **`asOf`** de la suggestion est borné à 1900-01-01 … 2100-12-31.
+- **Valorisations saisies par le module Bien** (`/properties/:propertyId/valuations` et bascule d'un lot de
+  chantier) calculent et stockent la fiabilité comme celles des actifs.
