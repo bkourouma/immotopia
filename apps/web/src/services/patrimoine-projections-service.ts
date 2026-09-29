@@ -38,6 +38,7 @@ export interface ProjectionPoint {
 export type ProjectionWarning =
   | { code: 'ASSET_WITHOUT_VALUE'; assetId: string }
   | { code: 'LOAN_PAYMENT_TOO_LOW'; loanId: string }
+  | { code: 'LOAN_MATURED_WITH_BALANCE'; loanId?: string }
   | { code: 'NEGATIVE_CASH'; year: number }
   | { code: 'LOW_RELIABILITY_START'; sharePercent: number }
   | {
@@ -78,13 +79,17 @@ export interface ScenarioDto {
   updatedAt: string;
 }
 
-/** Corps de création d'un scénario ; la mise à jour accepte les mêmes champs, facultatifs. */
-export interface ScenarioInput {
-  name: string;
+/** Réglages d'un scénario (tout sauf son nom). */
+export interface ScenarioSettings {
   horizonYears: number;
   baseScenario: ProjectionScenarioKey;
   assumptions?: Partial<ProjectionAssumptions>;
   operations?: SimulationOperation[];
+}
+
+/** Corps de création d'un scénario ; la mise à jour accepte les mêmes champs, facultatifs. */
+export interface ScenarioInput extends ScenarioSettings {
+  name: string;
 }
 
 type Envelope<T> = { data: T };

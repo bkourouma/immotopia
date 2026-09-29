@@ -202,3 +202,80 @@ describe('projection de la valeur nette', () => {
     expect(JSON.stringify(data)).toBe(before);
   });
 });
+
+describe('avertissement LOAN_MATURED_WITH_BALANCE', () => {
+  const warnings = (loans: ProjectionLoanInput[]) => projectNetWorth(input([], loans), flat, 3).warnings;
+
+  it('dette échue en 2025 avec 5 000 000 restants : avertissement une seule fois, valeur constante', () => {
+    const matured = loan({
+      id: 'echue',
+      remainingCapital: 5_000_000,
+      annualRatePercent: 0,
+      monthlyPayment: 100_000,
+      endDate: new Date('2025-06-01T00:00:00Z')
+    });
+    const result = projectNetWorth(input([], [matured]), flat, 3);
+    expect(result.warnings.filter(w => w.code === 'LOAN_MATURED_WITH_BALANCE')).toEqual([
+      { code: 'LOAN_MATURED_WITH_BALANCE', loanId: 'echue' }
+    ]);
+    expect(result.points.map(point => point.debts)).toEqual([5_000_000, 5_000_000, 5_000_000, 5_000_000]);
+  });
+
+  it('dette normale soldée avant l’échéance : aucun avertissement', () => {
+    const normal = loan({
+      id: 'normale',
+      remainingCapital: 1_200_000,
+      annualRatePercent: 0,
+      monthlyPayment: 100_000,
+      endDate: new Date('2028-01-01T00:00:00Z')
+    });
+    expect(warnings([normal]).filter(w => w.code === 'LOAN_MATURED_WITH_BALANCE')).toEqual([]);
+  });
+
+  it('dette in fine (intérêts seulement) qui arrive à terme dans l’horizon : avertissement une fois', () => {
+    const inFine = loan({
+      id: 'infine',
+      remainingCapital: 10_000_000,
+      annualRatePercent: 6,
+      monthlyPayment: 50_000,
+      endDate: new Date('2027-06-01T00:00:00Z')
+    });
+    const result = warnings([inFine]).filter(w => w.code === 'LOAN_MATURED_WITH_BALANCE');
+    expect(result).toEqual([{ code: 'LOAN_MATURED_WITH_BALANCE', loanId: 'infine' }]);
+  });
+
+  it('une dette échue et soldée (restant nul) ne déclenche rien', () => {
+    const done = loan({ id: 'soldee', remainingCapital: 0, endDate: new Date('2025-06-01T00:00:00Z') });
+    expect(warnings([done]).filter(w => w.code === 'LOAN_MATURED_WITH_BALANCE')).toEqual([]);
+  });
+});
+
+describe('prudent ≤ central ≤ optimiste, à chaque année', () => {
+  it('vaut pour un patrimoine de classes variées avec une dette', () => {
+    const classes = [
+      'REAL_ESTATE',
+      'BUSINESS_EQUITY',
+      'INVENTORY',
+      'CASH',
+      'SAVINGS_INVESTMENT',
+      'RECEIVABLE',
+      'AGRICULTURE',
+      'MOVABLE',
+      'VEHICLE_EQUIPMENT',
+      'OTHER'
+    ] as const;
+    const assets = classes.map((assetClass, index) =>
+      asset({ id: `a${index}`, assetClass, valueXof: 1_000_000 * (index + 1) })
+    );
+    const loans = [loan({ id: 'l', remainingCapital: 8_000_000, annualRatePercent: 6, monthlyPayment: 150_000 })];
+    const runs = (['PRUDENT', 'CENTRAL', 'OPTIMISTIC'] as const).map(key =>
+      projectNetWorth(input(assets, loans), resolveAssumptions(key).assumptions, 30)
+    );
+    for (let year = 0; year <= 30; year += 1) {
+      const [prudent, central, optimistic] = runs.map(run => run.points[year]?.netWorth ?? Number.NaN);
+      expect(prudent).toBeLessThanOrEqual(central as number);
+      expect(central).toBeLessThanOrEqual(optimistic as number);
+    }
+    expect(runs[0]?.points[30]?.netWorth).toBeLessThan(runs[2]?.points[30]?.netWorth as number);
+  });
+});

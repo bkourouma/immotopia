@@ -11,11 +11,17 @@ const TENANT_B = 'tenant-b';
 const SCENARIO_MISSING = '99999999-9999-4999-8999-999999999999';
 const ASSET = '11111111-1111-4111-8111-111111111111';
 
-const store = { patrimonyScenario: [] as Row[], asset: [] as Row[] };
+const store = { patrimonyScenario: [] as Row[], asset: [] as Row[], propertyLoan: [] as Row[] };
+/** Journal des appels qui doivent se faire DANS la transaction, dans l'ordre. */
+const txLog: string[] = [];
 let seq = 0;
 
 const known = (code: string) => new Prisma.PrismaClientKnownRequestError('boom', { code, clientVersion: 'test' });
-const matches = (row: Row, where: Row) => Object.entries(where).every(([key, value]) => row[key] === value);
+const matches = (row: Row, where: Row): boolean =>
+  Object.entries(where).every(([key, value]) => {
+    if (key === 'OR') return (value as Row[]).some(clause => matches(row, clause));
+    return value && typeof value === 'object' && 'in' in value ? value.in.includes(row[key]) : row[key] === value;
+  });
 
 const scenarioDelegate = {
   findFirst: jest.fn(async ({ where }: Row) => {
@@ -64,8 +70,27 @@ const prismaMock: Row = {
   patrimonyScenario: scenarioDelegate,
   asset: { findMany: jest.fn(async ({ where }: Row) => store.asset.filter(r => matches(r, where))) },
   assetValuation: { findMany: jest.fn(async () => []) },
-  propertyLoan: { findMany: jest.fn(async () => []) }
+  propertyLoan: { findMany: jest.fn(async ({ where }: Row) => store.propertyLoan.filter(r => matches(r, where))) },
+  $transaction: jest.fn()
 };
+// Transaction interactive : le verrou, le comptage et la création passent tous par `tx`.
+const tx: Row = {
+  $executeRaw: jest.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    txLog.push(`lock:${strings.join('?')}:${values.join(',')}`);
+    return 0;
+  }),
+  patrimonyScenario: {
+    count: jest.fn(async (args: Row) => {
+      txLog.push('count');
+      return scenarioDelegate.count(args);
+    }),
+    create: jest.fn(async (args: Row) => {
+      txLog.push('create');
+      return scenarioDelegate.create(args);
+    })
+  }
+};
+prismaMock.$transaction.mockImplementation(async (callback: (client: Row) => Promise<unknown>) => callback(tx));
 
 jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
 const mockAudit = jest.fn();
@@ -88,9 +113,30 @@ const body = (name: string, extra: Row = {}) => ({
   ...extra
 });
 
+function seedAsset(row: Row): Row {
+  const asset = {
+    tenantId: TENANT_A,
+    name: 'Villa',
+    assetClass: 'REAL_ESTATE',
+    status: 'ACTIVE',
+    currency: 'XOF',
+    exchangeRateToXof: null,
+    disposedAt: null,
+    propertyId: null,
+    details: {},
+    ...row
+  };
+  store.asset.push(asset);
+  return asset;
+}
+
 beforeEach(() => {
   store.patrimonyScenario = [];
   store.asset = [];
+  store.propertyLoan = [];
+  txLog.length = 0;
+  prismaMock.$transaction.mockClear();
+  prismaMock.asset.findMany.mockClear();
   seq = 0;
   mockAudit.mockClear();
   Object.values(scenarioDelegate).forEach(fn => fn.mockClear());
@@ -249,10 +295,12 @@ describe('audit', () => {
 
 describe('exécution (run) et JSON corrompu', () => {
   it('recharge le patrimoine et rend une référence disparue en OPERATION_NOT_APPLICABLE', async () => {
+    seedAsset({ id: ASSET });
     const created = await createScenario(
       TENANT_A,
       body('Vente', { operations: [{ type: 'SELL_ASSET', year: 1, assetId: ASSET }] })
     );
+    store.asset = []; // l'actif disparaît après l'enregistrement
     const result = await runScenario(TENANT_A, created.id, { compareScenarios: true });
     expect(result.base.points).toHaveLength(11);
     expect(result.simulated?.warnings).toContainEqual({
@@ -265,18 +313,7 @@ describe('exécution (run) et JSON corrompu', () => {
   });
 
   it('un actif désormais archivé devient ASSET_NOT_ACTIVE (avertissement)', async () => {
-    store.asset.push({
-      id: ASSET,
-      tenantId: TENANT_A,
-      name: 'Villa',
-      assetClass: 'REAL_ESTATE',
-      status: 'ARCHIVED',
-      currency: 'XOF',
-      exchangeRateToXof: null,
-      disposedAt: null,
-      propertyId: null,
-      details: {}
-    });
+    seedAsset({ id: ASSET, status: 'ARCHIVED' });
     const created = await createScenario(
       TENANT_A,
       body('Vente', { operations: [{ type: 'SELL_ASSET', year: 1, assetId: ASSET }] })
@@ -332,5 +369,145 @@ describe('exécution (run) et JSON corrompu', () => {
     expect(failure.errors.every((e: Row) => typeof e.field === 'string' && typeof e.message === 'string')).toBe(true);
     const notArray = await runScenario(TENANT_A, '00000000-0000-4000-8000-0000000000ab').catch(error => error);
     expect(notArray.statusCode).toBe(422);
+  });
+});
+
+describe('plafond sous verrou consultatif', () => {
+  it('prend le verrou (par agence) avant le comptage, puis crée, dans la même transaction', async () => {
+    await createScenario(TENANT_A, body('Plan A'));
+    expect(txLog).toEqual([`lock:SELECT pg_advisory_xact_lock(hashtext(?)):${TENANT_A}`, 'count', 'create']);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('un refus pour plafond atteint se fait sous verrou et ne crée rien', async () => {
+    for (let i = 0; i < MAX_SCENARIOS_PER_TENANT; i += 1) {
+      store.patrimonyScenario.push({ id: `s-${i}`, tenantId: TENANT_A, name: `N${i}` });
+    }
+    await expect(createScenario(TENANT_A, body('Un de trop'))).rejects.toMatchObject({ statusCode: 409 });
+    expect(txLog).toEqual([expect.stringMatching(/^lock:/), 'count']);
+    expect(store.patrimonyScenario).toHaveLength(MAX_SCENARIOS_PER_TENANT);
+  });
+});
+
+describe('références vérifiées à l’enregistrement', () => {
+  const LOAN_A = '22222222-2222-4222-8222-222222222222';
+  const LOAN_B = '33333333-3333-4333-8333-333333333333';
+  const ASSET_B = '44444444-4444-4444-8444-444444444444';
+  const MISSING = '55555555-5555-4555-8555-555555555555';
+
+  const attempt = (operations: Row[], run = createScenario) =>
+    run(TENANT_A, body('Plan', { operations }) as any).then(
+      () => null,
+      (error: any) => ({ status: error.statusCode, message: error.message, errors: error.errors })
+    );
+
+  beforeEach(() => {
+    seedAsset({ id: ASSET });
+    seedAsset({ id: ASSET_B, tenantId: TENANT_B });
+    store.propertyLoan.push({ id: LOAN_A, tenantId: TENANT_A }, { id: LOAN_B, tenantId: TENANT_B });
+  });
+
+  it('accepte les actifs et dettes de l’agence', async () => {
+    await expect(
+      createScenario(
+        TENANT_A,
+        body('Plan', {
+          operations: [
+            { type: 'SELL_ASSET', year: 1, assetId: ASSET },
+            { type: 'PREPAY_LOAN', year: 2, loanId: LOAN_A, amount: 1 }
+          ]
+        })
+      )
+    ).resolves.toMatchObject({ name: 'Plan' });
+  });
+
+  it('un actif d’une autre agence donne EXACTEMENT la même réponse qu’un actif inexistant', async () => {
+    const foreign = await attempt([{ type: 'SELL_ASSET', year: 1, assetId: ASSET_B }]);
+    const missing = await attempt([{ type: 'SELL_ASSET', year: 1, assetId: MISSING }]);
+    expect(foreign).toEqual({
+      status: 422,
+      message: expect.any(String),
+      errors: [{ field: 'operations.0.assetId', message: 'Actif introuvable' }]
+    });
+    expect(foreign).toEqual(missing);
+    expect(store.patrimonyScenario).toHaveLength(0);
+  });
+
+  it('une dette d’une autre agence donne la même réponse qu’une dette inexistante', async () => {
+    const ops = (loanId: string) => [
+      { type: 'MONTHLY_SAVING', fromYear: 1, amount: 1 },
+      { type: 'PREPAY_LOAN', year: 1, loanId, amount: 1 }
+    ];
+    const foreign = await attempt(ops(LOAN_B));
+    const missing = await attempt(ops(MISSING));
+    expect(foreign?.errors).toEqual([{ field: 'operations.1.loanId', message: 'Dette introuvable' }]);
+    expect(foreign).toEqual(missing);
+  });
+
+  it('un identifiant qui n’est pas un UUID est refusé sans requête invalide', async () => {
+    const result = await attempt([{ type: 'SELL_ASSET', year: 1, assetId: 'pas-un-uuid' }]);
+    expect(result?.errors).toEqual([{ field: 'operations.0.assetId', message: 'Actif introuvable' }]);
+  });
+
+  it('une dette synthétique sim-loan-<i> visant un TAKE_LOAN de la liste reste valide', async () => {
+    const takeLoan = { type: 'TAKE_LOAN', year: 1, amount: 1000, annualRatePercent: 0, termYears: 5 };
+    await expect(
+      createScenario(
+        TENANT_A,
+        body('Plan', { operations: [takeLoan, { type: 'PREPAY_LOAN', year: 2, loanId: 'sim-loan-0', amount: 10 }] })
+      )
+    ).resolves.toBeDefined();
+    const wrong = await attempt([
+      { type: 'MONTHLY_SAVING', fromYear: 1, amount: 1 },
+      { type: 'PREPAY_LOAN', year: 2, loanId: 'sim-loan-0', amount: 10 }
+    ]);
+    expect(wrong?.errors).toEqual([{ field: 'operations.1.loanId', message: 'Dette introuvable' }]);
+  });
+
+  it('les requêtes de vérification portent le tenantId', async () => {
+    await attempt([{ type: 'SELL_ASSET', year: 1, assetId: ASSET_B }]);
+    const [[assetArgs]] = prismaMock.asset.findMany.mock.calls.slice(-1);
+    expect(assetArgs.where.tenantId).toBe(TENANT_A);
+  });
+
+  it('PATCH : mêmes vérifications, et rien n’est modifié en cas de refus', async () => {
+    const created = await createScenario(TENANT_A, body('Plan'));
+    const foreign = await updateScenario(TENANT_A, created.id, {
+      operations: [{ type: 'SELL_ASSET', year: 1, assetId: ASSET_B }]
+    }).catch(error => ({ status: error.statusCode, errors: error.errors }));
+    const missing = await updateScenario(TENANT_A, created.id, {
+      operations: [{ type: 'SELL_ASSET', year: 1, assetId: MISSING }]
+    }).catch(error => ({ status: error.statusCode, errors: error.errors }));
+    expect(foreign).toEqual({ status: 422, errors: [{ field: 'operations.0.assetId', message: 'Actif introuvable' }] });
+    expect(foreign).toEqual(missing);
+    expect(scenarioDelegate.update).not.toHaveBeenCalled();
+  });
+
+  it('PATCH sans opérations ne vérifie aucune référence', async () => {
+    const created = await createScenario(TENANT_A, body('Plan'));
+    prismaMock.asset.findMany.mockClear();
+    await updateScenario(TENANT_A, created.id, { name: 'Autre' });
+    expect(prismaMock.asset.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH d’opérations seules : horizon enregistré', () => {
+  it('refuse (422) une année au-delà de l’horizon enregistré, sans rien modifier', async () => {
+    const created = await createScenario(TENANT_A, body('Plan', { horizonYears: 5 }));
+    const failure = await updateScenario(TENANT_A, created.id, {
+      operations: [{ type: 'MONTHLY_SAVING', fromYear: 8, amount: 100 }]
+    }).catch(error => error);
+    expect(failure.statusCode).toBe(422);
+    expect(failure.errors).toEqual([{ field: 'operations.0.fromYear', message: expect.any(String) }]);
+    expect(scenarioDelegate.update).not.toHaveBeenCalled();
+    expect(store.patrimonyScenario[0].operations).toEqual([]);
+  });
+
+  it('accepte des opérations qui tiennent dans l’horizon enregistré', async () => {
+    const created = await createScenario(TENANT_A, body('Plan', { horizonYears: 5 }));
+    const updated = await updateScenario(TENANT_A, created.id, {
+      operations: [{ type: 'MONTHLY_SAVING', fromYear: 5, amount: 100 }]
+    });
+    expect(updated.operations).toHaveLength(1);
   });
 });

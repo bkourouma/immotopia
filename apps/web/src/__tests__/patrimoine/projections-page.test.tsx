@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -12,30 +12,21 @@ import { ProjectionsPage } from '../../pages/patrimoine/ProjectionsPage';
  * simulations d'opérations et scénarios enregistrés (lot 3).
  */
 
-const runProjection = vi.fn();
-const runScenario = vi.fn();
-const listScenarios = vi.fn();
-const createScenario = vi.fn();
-const getScenario = vi.fn();
-const updateScenario = vi.fn();
-const deleteScenario = vi.fn();
-const listAssets = vi.fn();
-const listDebts = vi.fn();
-
-vi.mock('../../services/patrimoine-projections-service', () => ({
-  runProjection: (...a: unknown[]) => runProjection(...a),
-  runScenario: (...a: unknown[]) => runScenario(...a),
-  listScenarios: (...a: unknown[]) => listScenarios(...a),
-  createScenario: (...a: unknown[]) => createScenario(...a),
-  getScenario: (...a: unknown[]) => getScenario(...a),
-  updateScenario: (...a: unknown[]) => updateScenario(...a),
-  deleteScenario: (...a: unknown[]) => deleteScenario(...a)
+/**
+ * Seul `utils/api-client` est simulé (frontière réseau, `.claude/rules/testing.md`) :
+ * les vrais services et composants tournent par-dessus, donc les URL et les corps
+ * vérifiés ici sont ceux réellement envoyés par l'écran.
+ */
+vi.mock('../../utils/api-client', () => ({
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }
 }));
 
-vi.mock('../../services/patrimoine-assets-service', () => ({
-  listAssets: (...a: unknown[]) => listAssets(...a),
-  listDebts: (...a: unknown[]) => listDebts(...a)
-}));
+import apiClient from '../../utils/api-client';
+
+const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+const post = apiClient.post as unknown as ReturnType<typeof vi.fn>;
+const patch = apiClient.patch as unknown as ReturnType<typeof vi.fn>;
+const del = apiClient.delete as unknown as ReturnType<typeof vi.fn>;
 
 vi.mock('../../hooks/useAuth', () => ({
   useAuth: () => ({ tenantMembership: { tenantId: 'agence-1' } })
@@ -44,6 +35,9 @@ vi.mock('../../hooks/useAuth', () => ({
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
+
+const BASE_URL = '/tenants/agence-1/patrimoine';
+const envelope = (data: unknown) => ({ data: { data } });
 
 const point = (year: number, netWorth: number, assets = 100_000_000) => ({
   year,
@@ -100,31 +94,107 @@ function monter() {
   );
 }
 
-const ops = (call: unknown[]) => (call[1] as { operations?: unknown[] }).operations;
+type Body = {
+  horizonYears?: number;
+  operations?: unknown[];
+  compareScenarios?: boolean;
+  [key: string]: unknown;
+};
+
+const ASSETS = [
+  {
+    id: 'a1',
+    name: 'Villa Cocody',
+    status: 'ACTIVE',
+    assetClass: 'REAL_ESTATE',
+    currentValue: { amount: 1 },
+    outstandingDebtXof: 5_000_000
+  },
+  {
+    id: 'a2',
+    name: 'Stock sans valeur',
+    status: 'ACTIVE',
+    assetClass: 'INVENTORY',
+    currentValue: null,
+    outstandingDebtXof: 0
+  },
+  {
+    id: 'a3',
+    name: 'Vieux camion',
+    status: 'DISPOSED',
+    assetClass: 'VEHICLE',
+    currentValue: { amount: 1 },
+    outstandingDebtXof: 0
+  },
+  {
+    id: 'a4',
+    name: 'Compte courant',
+    status: 'ACTIVE',
+    assetClass: 'CASH',
+    currentValue: { amount: 1 },
+    outstandingDebtXof: 0
+  },
+  {
+    id: 'a5',
+    name: 'Terrain nu',
+    status: 'ACTIVE',
+    assetClass: 'REAL_ESTATE',
+    currentValue: { amount: 1 },
+    outstandingDebtXof: 0
+  }
+];
+
+/** Corps des appels `POST /projections` reçus par le réseau simulé. */
+const projectionBodies = (): Body[] =>
+  post.mock.calls.filter(call => call[0] === `${BASE_URL}/projections`).map(call => call[1] as Body);
+const withOps = () => projectionBodies().filter(body => body.operations !== undefined);
+const postsTo = (url: string) => post.mock.calls.filter(call => call[0] === url);
+
+let scenarios: unknown[];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  runProjection.mockImplementation(async (_tenant: string, body: { operations?: unknown[] }) =>
-    body.operations?.length ? SIMULATED : BASE
-  );
-  runScenario.mockResolvedValue(SIMULATED);
-  listScenarios.mockResolvedValue([]);
-  listAssets.mockResolvedValue([
-    { id: 'a1', name: 'Villa Cocody', status: 'ACTIVE' },
-    { id: 'a2', name: 'Stock sans valeur', status: 'ACTIVE' },
-    { id: 'a3', name: 'Vieux camion', status: 'DISPOSED' }
-  ]);
-  listDebts.mockResolvedValue([{ id: 'd1', lender: 'Banque du Sahel', status: 'ACTIVE' }]);
+  scenarios = [];
+  get.mockImplementation(async (url: string) => {
+    if (url === `${BASE_URL}/assets`) return envelope(ASSETS);
+    if (url === `${BASE_URL}/debts`) return envelope([{ id: 'd1', lender: 'Banque du Sahel', status: 'ACTIVE' }]);
+    if (url === `${BASE_URL}/scenarios`) return envelope(scenarios);
+    throw new Error(`GET inattendu : ${url}`);
+  });
+  post.mockImplementation(async (url: string, body: Body) => {
+    if (url === `${BASE_URL}/projections`) return envelope(body.operations?.length ? SIMULATED : BASE);
+    if (url === `${BASE_URL}/scenarios/s1/run`) return envelope(SIMULATED);
+    throw new Error(`POST inattendu : ${url}`);
+  });
+  patch.mockResolvedValue(envelope(SCENARIO));
+  del.mockResolvedValue({ data: undefined });
 });
+
+/** Réponse d'erreur telle que la lève axios. */
+const httpError = (status: number, data: unknown) => ({ response: { status, data } });
+
+/** Les prochaines projections échouent (toute la suite `POST /projections`). */
+const failProjections = (build: (body: Body) => unknown | null) =>
+  post.mockImplementation(async (url: string, body: Body) => {
+    if (url === `${BASE_URL}/projections`) {
+      const failure = build(body);
+      if (failure) throw failure;
+      return envelope(BASE);
+    }
+    throw new Error(`POST inattendu : ${url}`);
+  });
 
 const MENTION_1 = 'Ces projections reposent sur des hypothèses indicatives, elles ne sont pas une prévision.';
 
+const MENTION_2 =
+  'Les mensualités de vos dettes sont supposées payées par vos revenus, qui ne sont pas modélisés : la valeur nette augmente donc du capital remboursé.';
+const MENTION_3 = 'Une simulation ne modifie pas vos données.';
+
 describe('<ProjectionsPage>', () => {
   it('affiche un état vide explicite quand aucun actif n’est valorisé, avec un lien vers Mes actifs', async () => {
-    runProjection.mockResolvedValue({
-      assumptionsUsed: ASSUMPTIONS,
-      base: { points: [point(0, 0, 0), point(1, 0, 0)], warnings: [] }
-    });
+    post.mockResolvedValue(
+      envelope({ assumptionsUsed: ASSUMPTIONS, base: { points: [point(0, 0, 0), point(1, 0, 0)], warnings: [] } })
+    );
     monter();
 
     expect(await screen.findByText(/Ajoutez un actif avec une valeur pour lancer une projection/)).toBeInTheDocument();
@@ -133,21 +203,20 @@ describe('<ProjectionsPage>', () => {
       '/tenant/agence-1/patrimoine/actifs'
     );
     expect(screen.queryByText('Tableau annuel')).not.toBeInTheDocument();
-    // Les mentions restent visibles même sans projection.
+    // Les trois mentions restent visibles même sans projection.
     expect(screen.getByText(MENTION_1)).toBeInTheDocument();
+    expect(screen.getByText(MENTION_2)).toBeInTheDocument();
+    expect(screen.getByText(MENTION_3)).toBeInTheDocument();
   });
 
-  it('affiche la projection, le tableau annuel et les mentions obligatoires', async () => {
+  it('affiche la projection, le tableau annuel et les trois mentions obligatoires', async () => {
     monter();
 
     expect(await screen.findByText('Tableau annuel')).toBeInTheDocument();
-    expect(runProjection).toHaveBeenCalledWith('agence-1', { horizonYears: 10, baseScenario: 'CENTRAL' });
+    expect(post).toHaveBeenCalledWith(`${BASE_URL}/projections`, { horizonYears: 10, baseScenario: 'CENTRAL' });
     expect(screen.getByText(MENTION_1)).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Les mensualités de vos dettes sont supposées payées par vos revenus, qui ne sont pas modélisés : la valeur nette augmente donc du capital remboursé.'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByText(MENTION_2)).toBeInTheDocument();
+    expect(screen.getByText(MENTION_3)).toBeInTheDocument();
     expect(screen.getAllByText("Valeur réelle (pouvoir d'achat d'aujourd'hui)").length).toBeGreaterThan(0);
     expect(screen.getByText("Aujourd'hui")).toBeInTheDocument();
     expect(screen.getAllByText(/86\s000\s000/).length).toBeGreaterThan(0);
@@ -159,7 +228,7 @@ describe('<ProjectionsPage>', () => {
 
   it('propose de réessayer après une erreur', async () => {
     const user = userEvent.setup();
-    runProjection.mockRejectedValueOnce(new Error('boom'));
+    post.mockRejectedValueOnce(new Error('boom'));
     monter();
 
     await user.click(await screen.findByRole('button', { name: /Réessayer/ }));
@@ -174,7 +243,7 @@ describe('<ProjectionsPage>', () => {
     await user.click(screen.getByRole('switch'));
 
     await waitFor(() =>
-      expect(runProjection).toHaveBeenLastCalledWith('agence-1', {
+      expect(post).toHaveBeenLastCalledWith(`${BASE_URL}/projections`, {
         horizonYears: 10,
         baseScenario: 'CENTRAL',
         compareScenarios: true
@@ -182,7 +251,7 @@ describe('<ProjectionsPage>', () => {
     );
   });
 
-  it('relance l’appel avec l’horizon et le scénario choisis', async () => {
+  it('relance l’appel avec l’horizon et le scénario choisis, un seul appel par saisie', async () => {
     const user = userEvent.setup();
     monter();
     await screen.findByText('Tableau annuel');
@@ -193,8 +262,49 @@ describe('<ProjectionsPage>', () => {
     await user.type(horizon, '20');
 
     await waitFor(() =>
-      expect(runProjection).toHaveBeenLastCalledWith('agence-1', { horizonYears: 20, baseScenario: 'OPTIMISTIC' })
+      expect(post).toHaveBeenLastCalledWith(`${BASE_URL}/projections`, { horizonYears: 20, baseScenario: 'OPTIMISTIC' })
     );
+    // Aucun appel pour les valeurs intermédiaires (« 2 »).
+    expect(projectionBodies().some(body => body.horizonYears === 2)).toBe(false);
+  });
+
+  it('signale un horizon vide ou nul sans rien envoyer, puis reprend après un délai d’inactivité', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      monter();
+      await screen.findByText('Tableau annuel');
+      const horizon = screen.getByLabelText('Horizon (années)');
+      const calls = () => projectionBodies().length;
+      const before = calls();
+
+      fireEvent.change(horizon, { target: { value: '' } });
+      expect(screen.getByText('Indiquez un horizon de 1 à 30 ans')).toBeInTheDocument();
+      fireEvent.change(horizon, { target: { value: '0' } });
+      expect(screen.getByText('Indiquez un horizon de 1 à 30 ans')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(calls()).toBe(before);
+
+      // Anti-rebond : deux saisies rapprochées, un seul appel, après 400 ms.
+      fireEvent.change(horizon, { target: { value: '1' } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      fireEvent.change(horizon, { target: { value: '15' } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(calls()).toBe(before);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      await waitFor(() => expect(calls()).toBe(before + 1));
+      expect(projectionBodies().at(-1)).toEqual({ horizonYears: 15, baseScenario: 'CENTRAL' });
+      expect(screen.queryByText('Indiquez un horizon de 1 à 30 ans')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('relance l’appel avec une surcharge d’hypothèse, la signale, puis la rétablit', async () => {
@@ -208,7 +318,7 @@ describe('<ProjectionsPage>', () => {
     await user.click(screen.getByRole('button', { name: 'Appliquer les hypothèses' }));
 
     await waitFor(() =>
-      expect(runProjection).toHaveBeenLastCalledWith('agence-1', {
+      expect(post).toHaveBeenLastCalledWith(`${BASE_URL}/projections`, {
         horizonYears: 10,
         baseScenario: 'CENTRAL',
         assumptions: { growthPercentByClass: { REAL_ESTATE: 7 } }
@@ -218,7 +328,7 @@ describe('<ProjectionsPage>', () => {
 
     await user.click(screen.getByRole('button', { name: 'Rétablir les hypothèses par défaut' }));
     await waitFor(() =>
-      expect(runProjection).toHaveBeenLastCalledWith('agence-1', { horizonYears: 10, baseScenario: 'CENTRAL' })
+      expect(post).toHaveBeenLastCalledWith(`${BASE_URL}/projections`, { horizonYears: 10, baseScenario: 'CENTRAL' })
     );
     await waitFor(() => expect(screen.queryByText('Personnalisée')).not.toBeInTheDocument());
   });
@@ -227,7 +337,7 @@ describe('<ProjectionsPage>', () => {
     const user = userEvent.setup();
     monter();
     await screen.findByText('Tableau annuel');
-    const calls = runProjection.mock.calls.length;
+    const calls = post.mock.calls.length;
 
     const growth = screen.getByLabelText('Immobilier (%)');
     await user.clear(growth);
@@ -235,22 +345,26 @@ describe('<ProjectionsPage>', () => {
     await user.click(screen.getByRole('button', { name: 'Appliquer les hypothèses' }));
 
     expect(await screen.findByText(/comprise entre −50 % et 100 %/)).toBeInTheDocument();
-    expect(runProjection.mock.calls.length).toBe(calls);
+    expect(post.mock.calls.length).toBe(calls);
   });
 
-  it('envoie une opération de chaque type dans le corps exact et affiche l’écart', async () => {
+  it('envoie une opération de chaque type dans le corps exact, sans comparaison, et affiche l’écart', async () => {
     const user = userEvent.setup();
     monter();
     await screen.findByText('Tableau annuel');
-    await screen.findByText('Une simulation ne modifie pas vos données.');
-    await waitFor(() => expect(listAssets).toHaveBeenCalled());
+    await screen.findByText(MENTION_3);
+    await user.click(screen.getByRole('switch'));
+    await waitFor(() => expect(projectionBodies().at(-1)?.compareScenarios).toBe(true));
 
     const choisirType = (value: string) => user.selectOptions(screen.getByLabelText("Type d'opération"), value);
     const ajouter = () => user.click(screen.getByRole('button', { name: "Ajouter l'opération" }));
 
-    // Vente : les actifs cédés ne sont pas proposés.
+    // Vente : seuls les actifs en cours, valorisés et hors trésorerie sont proposés.
     await screen.findByRole('option', { name: 'Villa Cocody' });
-    expect(screen.queryByRole('option', { name: 'Vieux camion' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Terrain nu' })).toBeInTheDocument();
+    for (const absent of ['Vieux camion', 'Stock sans valeur', 'Compte courant']) {
+      expect(screen.queryByRole('option', { name: absent })).not.toBeInTheDocument();
+    }
     await user.selectOptions(screen.getByLabelText('Actif à vendre'), 'a1');
     await user.type(screen.getByLabelText('Année'), '2');
     await user.type(screen.getByLabelText('Prix de vente (facultatif)'), '1000000');
@@ -285,14 +399,13 @@ describe('<ProjectionsPage>', () => {
     await ajouter();
 
     expect(screen.getByText(/Opérations simulées \(5\)/)).toBeInTheDocument();
-    expect(runProjection.mock.calls.every(call => ops(call) === undefined)).toBe(true);
+    expect(withOps()).toHaveLength(0);
 
     await user.click(screen.getByRole('button', { name: 'Lancer la simulation' }));
 
-    await waitFor(() => expect(runProjection.mock.calls.some(call => ops(call) !== undefined)).toBe(true));
-    const call = runProjection.mock.calls.find(c => ops(c) !== undefined) as unknown[];
-    expect(call[0]).toBe('agence-1');
-    expect(call[1]).toEqual({
+    await waitFor(() => expect(withOps()).toHaveLength(1));
+    // `compareScenarios` n'est demandé que pour la projection de base.
+    expect(withOps()[0]).toEqual({
       horizonYears: 10,
       baseScenario: 'CENTRAL',
       operations: [
@@ -305,6 +418,20 @@ describe('<ProjectionsPage>', () => {
     });
     expect(await screen.findByText(/Valeur nette à l'année 2 : \+5\s000\s000/)).toBeInTheDocument();
     expect(screen.getByText('Écart avec la base')).toBeInTheDocument();
+  });
+
+  it('prévient qu’une vente ne solde pas la dette adossée à l’actif choisi', async () => {
+    const user = userEvent.setup();
+    monter();
+    await screen.findByText('Tableau annuel');
+    await screen.findByRole('option', { name: 'Villa Cocody' });
+    const note = /La dette adossée à cet actif n'est pas soldée par la vente/;
+
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Actif à vendre'), 'a1');
+    expect(screen.getByText(note)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Actif à vendre'), 'a5');
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
   });
 
   it('retire une opération de la liste', async () => {
@@ -333,19 +460,12 @@ describe('<ProjectionsPage>', () => {
     expect(screen.getByText(/Opérations simulées \(0\)/)).toBeInTheDocument();
   });
 
-  it('affiche une erreur 422 sur l’opération et le champ concernés', async () => {
+  it.each([
+    ['operations.0.year', 'Année hors de la période projetée', /Année :/],
+    ['operations.0.assetId', 'Un compte de trésorerie ne se vend pas', /Actif :/]
+  ])('affiche une erreur 422 sur %s, avec le message du serveur', async (field, message, label) => {
     const user = userEvent.setup();
-    runProjection.mockImplementation(async (_tenant: string, body: { operations?: unknown[] }) => {
-      if (body.operations?.length) {
-        throw {
-          response: {
-            status: 422,
-            data: { errors: [{ field: 'operations.0.year', message: 'Année hors de la période projetée' }] }
-          }
-        };
-      }
-      return BASE;
-    });
+    failProjections(body => (body.operations?.length ? httpError(422, { errors: [{ field, message }] }) : null));
     monter();
     await screen.findByText('Tableau annuel');
 
@@ -355,28 +475,31 @@ describe('<ProjectionsPage>', () => {
     await user.click(screen.getByRole('button', { name: "Ajouter l'opération" }));
     await user.click(screen.getByRole('button', { name: 'Lancer la simulation' }));
 
-    const alerte = await screen.findByText(/Année hors de la période projetée/);
+    const alerte = await screen.findByText(new RegExp(message));
     expect(alerte.textContent).toMatch(/Opération 1/);
-    expect(alerte.textContent).toMatch(/Année :/);
+    expect(alerte.textContent).toMatch(label);
     // La projection de base reste affichée.
     expect(screen.getByText('Tableau annuel')).toBeInTheDocument();
   });
 
   it('rend les avertissements du contrat en texte lisible', async () => {
-    runProjection.mockResolvedValue({
-      ...BASE,
-      base: {
-        ...BASE.base,
-        warnings: [
-          { code: 'LOW_RELIABILITY_START', sharePercent: 12.5 },
-          { code: 'ASSET_WITHOUT_VALUE', assetId: 'a2' },
-          { code: 'ASSET_WITHOUT_VALUE', assetId: 'inconnu' },
-          { code: 'LOAN_PAYMENT_TOO_LOW', loanId: 'd1' },
-          { code: 'NEGATIVE_CASH', year: 3 },
-          { code: 'OPERATION_NOT_APPLICABLE', index: 0, reason: 'ASSET_NOT_FOUND' }
-        ]
-      }
-    });
+    post.mockResolvedValue(
+      envelope({
+        ...BASE,
+        base: {
+          ...BASE.base,
+          warnings: [
+            { code: 'LOW_RELIABILITY_START', sharePercent: 12.5 },
+            { code: 'ASSET_WITHOUT_VALUE', assetId: 'a2' },
+            { code: 'ASSET_WITHOUT_VALUE', assetId: 'inconnu' },
+            { code: 'LOAN_PAYMENT_TOO_LOW', loanId: 'd1' },
+            { code: 'LOAN_MATURED_WITH_BALANCE', loanId: 'd1' },
+            { code: 'NEGATIVE_CASH', year: 3 },
+            { code: 'OPERATION_NOT_APPLICABLE', index: 0, reason: 'ASSET_NOT_FOUND' }
+          ]
+        }
+      })
+    );
     monter();
 
     expect(
@@ -387,7 +510,14 @@ describe('<ProjectionsPage>', () => {
       screen.getByText("Un actif n'a pas de valeur : il n'est pas compté dans la projection.")
     ).toBeInTheDocument();
     expect(
-      screen.getByText("La mensualité d'une dette ne couvre pas ses intérêts : son capital augmente.")
+      screen.getByText(
+        "La mensualité d'une dette ne couvre pas ses intérêts : son capital ne diminue pas et les intérêts non payés ne sont pas comptés."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Une dette est arrivée à échéance avec un solde restant dû : ce solde est conservé tel quel, sans intérêt.'
+      )
     ).toBeInTheDocument();
     expect(screen.getByText('La trésorerie devient négative en année 3.')).toBeInTheDocument();
     expect(
@@ -397,26 +527,30 @@ describe('<ProjectionsPage>', () => {
 
   it('enregistre, ouvre puis supprime un scénario', async () => {
     const user = userEvent.setup();
-    listScenarios.mockResolvedValue([SCENARIO]);
-    createScenario.mockResolvedValue(SCENARIO);
-    deleteScenario.mockResolvedValue(undefined);
+    scenarios = [SCENARIO];
+    post.mockImplementation(async (url: string, body: Body) => {
+      if (url === `${BASE_URL}/scenarios`) return envelope(SCENARIO);
+      if (url === `${BASE_URL}/scenarios/s1/run`) return envelope(SIMULATED);
+      return envelope(body.operations?.length ? SIMULATED : BASE);
+    });
     monter();
     await screen.findByText('Tableau annuel');
 
     await user.type(screen.getByLabelText('Nom du scénario'), 'Mon plan');
     await user.click(screen.getByRole('button', { name: 'Enregistrer ce scénario' }));
-    await waitFor(() =>
-      expect(createScenario).toHaveBeenCalledWith('agence-1', {
-        name: 'Mon plan',
-        horizonYears: 10,
-        baseScenario: 'CENTRAL',
-        operations: []
-      })
-    );
+    await waitFor(() => expect(postsTo(`${BASE_URL}/scenarios`)).toHaveLength(1));
+    expect(postsTo(`${BASE_URL}/scenarios`)[0][1]).toEqual({
+      name: 'Mon plan',
+      horizonYears: 10,
+      baseScenario: 'CENTRAL',
+      assumptions: {},
+      operations: []
+    });
     expect(await screen.findByText('Scénario enregistré.')).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: 'Ouvrir' }));
-    await waitFor(() => expect(runScenario).toHaveBeenCalledWith('agence-1', 's1', { compareScenarios: false }));
+    await waitFor(() => expect(postsTo(`${BASE_URL}/scenarios/s1/run`)).toHaveLength(1));
+    expect(postsTo(`${BASE_URL}/scenarios/s1/run`)[0][1]).toEqual({});
     expect(screen.getByLabelText('Horizon (années)')).toHaveValue(5);
     expect(screen.getByLabelText('Scénario de base')).toHaveValue('PRUDENT');
     expect(await screen.findByText(/Vente de « Villa Cocody » en année 3/)).toBeInTheDocument();
@@ -424,12 +558,44 @@ describe('<ProjectionsPage>', () => {
     await user.click(screen.getByRole('button', { name: 'Supprimer' }));
     const boutons = await screen.findAllByRole('button', { name: 'Supprimer' });
     await user.click(boutons[boutons.length - 1]);
-    await waitFor(() => expect(deleteScenario).toHaveBeenCalledWith('agence-1', 's1'));
+    await waitFor(() => expect(del).toHaveBeenCalledWith(`${BASE_URL}/scenarios/s1`));
+  });
+
+  it('met à jour un scénario avec les réglages courants, sans nom, hypothèses vides comprises', async () => {
+    const user = userEvent.setup();
+    scenarios = [SCENARIO];
+    monter();
+    await screen.findByText('Tableau annuel');
+
+    await user.selectOptions(screen.getByLabelText('Scénario de base'), 'OPTIMISTIC');
+    await user.selectOptions(screen.getByLabelText("Type d'opération"), 'MONTHLY_SAVING');
+    await user.type(screen.getByLabelText('Montant par mois'), '10000');
+    await user.type(screen.getByLabelText("De l'année"), '1');
+    await user.click(screen.getByRole('button', { name: "Ajouter l'opération" }));
+
+    await user.click(await screen.findByRole('button', { name: 'Mettre à jour' }));
+    const confirmations = await screen.findAllByRole('button', { name: 'Mettre à jour' });
+    await user.click(confirmations[confirmations.length - 1]);
+
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(patch.mock.calls[0][0]).toBe(`${BASE_URL}/scenarios/s1`);
+    const body = patch.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty('name');
+    expect(body).toEqual({
+      horizonYears: 10,
+      baseScenario: 'OPTIMISTIC',
+      assumptions: {},
+      operations: [{ type: 'MONTHLY_SAVING', fromYear: 1, amount: 10000 }]
+    });
+    expect(await screen.findByText('Scénario mis à jour.')).toBeInTheDocument();
   });
 
   it('affiche en clair un conflit 409 à l’enregistrement', async () => {
     const user = userEvent.setup();
-    createScenario.mockRejectedValue({ response: { status: 409, data: { error: 'Un scénario porte déjà ce nom.' } } });
+    post.mockImplementation(async (url: string) => {
+      if (url === `${BASE_URL}/scenarios`) throw httpError(409, { error: 'Un scénario porte déjà ce nom.' });
+      return envelope(BASE);
+    });
     monter();
     await screen.findByText('Tableau annuel');
 
@@ -443,8 +609,11 @@ describe('<ProjectionsPage>', () => {
 
   it('retire les boutons d’écriture après un refus 403', async () => {
     const user = userEvent.setup();
-    listScenarios.mockResolvedValue([SCENARIO]);
-    createScenario.mockRejectedValue({ response: { status: 403, data: { error: 'Accès refusé' } } });
+    scenarios = [SCENARIO];
+    post.mockImplementation(async (url: string) => {
+      if (url === `${BASE_URL}/scenarios`) throw httpError(403, { error: 'Accès refusé' });
+      return envelope(BASE);
+    });
     monter();
     await screen.findByText('Tableau annuel');
     await screen.findByText('Vente de la villa');
@@ -462,8 +631,8 @@ describe('<ProjectionsPage>', () => {
 
   it('renomme un scénario', async () => {
     const user = userEvent.setup();
-    listScenarios.mockResolvedValue([SCENARIO]);
-    updateScenario.mockResolvedValue({ ...SCENARIO, name: 'Nouveau nom' });
+    scenarios = [SCENARIO];
+    patch.mockResolvedValue(envelope({ ...SCENARIO, name: 'Nouveau nom' }));
     monter();
     await screen.findByText('Tableau annuel');
 
@@ -473,6 +642,6 @@ describe('<ProjectionsPage>', () => {
     await user.type(champ, 'Nouveau nom');
     await user.click(screen.getByRole('button', { name: 'Valider' }));
 
-    await waitFor(() => expect(updateScenario).toHaveBeenCalledWith('agence-1', 's1', { name: 'Nouveau nom' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith(`${BASE_URL}/scenarios/s1`, { name: 'Nouveau nom' }));
   });
 });

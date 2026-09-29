@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Card, Switch } from 'antd';
+import { Alert } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { listAssets, listDebts } from '../../services/patrimoine-assets-service';
 import {
@@ -10,28 +10,17 @@ import {
   type ProjectionResponse,
   type ProjectionScenarioKey,
   type ScenarioDto,
-  type ScenarioInput,
+  type ScenarioSettings,
   type SimulationOperation
 } from '../../services/patrimoine-projections-service';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, SkeletonStats, StateBlock } from '../../components/primitives';
 import { apiErrorMessage } from '../../components/patrimoine/actifs/asset-format';
-import { AssumptionsPanel, type AssumptionOverrides } from '../../components/patrimoine/projections/AssumptionsPanel';
-import { NumField, SelectField } from '../../components/patrimoine/projections/projection-fields';
-import {
-  DEFAULT_HORIZON,
-  MAX_HORIZON,
-  SCENARIO_KEYS,
-  collectWarnings,
-  scenarioLabel,
-  warningText
-} from '../../components/patrimoine/projections/projection-helpers';
-import {
-  ProjectionChartCard,
-  ProjectionTableCard,
-  SimulationDeltaCard
-} from '../../components/patrimoine/projections/ProjectionResults';
+import type { AssumptionOverrides } from '../../components/patrimoine/projections/AssumptionsPanel';
+import { ProjectionControls } from '../../components/patrimoine/projections/ProjectionControls';
+import { ProjectionOutcome } from '../../components/patrimoine/projections/ProjectionOutcome';
+import { DEFAULT_HORIZON, parseHorizon } from '../../components/patrimoine/projections/projection-helpers';
 import { ScenariosPanel } from '../../components/patrimoine/projections/ScenariosPanel';
 import { SimulationPanel } from '../../components/patrimoine/projections/SimulationPanel';
 import { t } from '../../i18n/t';
@@ -46,6 +35,26 @@ function assumptionsBody(overrides: AssumptionOverrides): ProjectionRequest['ass
     ...(overrides.inflation !== undefined ? { inflationPercent: overrides.inflation } : {})
   };
 }
+
+const HORIZON_DEBOUNCE_MS = 400;
+
+/** Valeur qui ne suit `value` qu'après `delay` ms sans changement (un appel par pause de frappe, pas par touche). */
+function useDebounced<T>(value: T, delay: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return settled;
+}
+
+const NotSelected: React.FC = () => (
+  <StateBlock
+    variant="empty"
+    title={t('Aucune agence sélectionnée')}
+    description={t('Votre compte doit être rattaché à une agence pour consulter son patrimoine.')}
+  />
+);
 
 /**
  * Projections du patrimoine : valeur nette année par année selon un scénario,
@@ -68,29 +77,37 @@ export const ProjectionsPage: React.FC = () => {
   const [dirty, setDirty] = useState(false);
 
   const touch = () => setDirty(true);
-  const horizonYears = Math.min(MAX_HORIZON, Math.max(1, Math.round(Number(horizon)) || DEFAULT_HORIZON));
+  // Saisie invalide (vide, 0, hors 1..30) : erreur de champ et aucun appel ; jamais de repli silencieux.
+  const horizonInput = parseHorizon(horizon);
+  const debouncedHorizon = useDebounced(horizon, HORIZON_DEBOUNCE_MS);
+  const settledHorizon = parseHorizon(debouncedHorizon);
+  const horizonYears = settledHorizon ?? DEFAULT_HORIZON;
+  const horizonReady = horizonInput !== null && horizon === debouncedHorizon;
   const scenarioMode = opened !== null && !dirty;
 
+  const assumptions = assumptionsBody(overrides);
   const request: ProjectionRequest = {
     horizonYears,
     baseScenario,
-    ...(assumptionsBody(overrides) ? { assumptions: assumptionsBody(overrides) } : {}),
+    ...(assumptions ? { assumptions } : {}),
     ...(compare ? { compareScenarios: true } : {})
   };
 
   const baseline = useQuery({
     queryKey: queryKey('patrimoine-projection', agence, { ...request }),
     queryFn: () => runProjection(agence as string, request),
-    enabled: Boolean(agence) && !scenarioMode,
+    enabled: Boolean(agence) && !scenarioMode && horizonReady,
     staleTime: STALE_TIME.list,
     retry: false
   });
 
-  const simulationRequest: ProjectionRequest = { ...request, operations: applied };
+  // Le résultat de la comparaison n'est lu que sur la projection de base : la simulation ne la demande pas.
+  const { compareScenarios: _compare, ...withoutCompare } = request;
+  const simulationRequest: ProjectionRequest = { ...withoutCompare, operations: applied };
   const simulation = useQuery({
     queryKey: queryKey('patrimoine-simulation', agence, { ...simulationRequest }),
     queryFn: () => runProjection(agence as string, simulationRequest),
-    enabled: Boolean(agence) && !scenarioMode && applied.length > 0,
+    enabled: Boolean(agence) && !scenarioMode && horizonReady && applied.length > 0,
     staleTime: STALE_TIME.list,
     retry: false
   });
@@ -116,15 +133,7 @@ export const ProjectionsPage: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  if (!agence) {
-    return (
-      <StateBlock
-        variant="empty"
-        title={t('Aucune agence sélectionnée')}
-        description={t('Votre compte doit être rattaché à une agence pour consulter son patrimoine.')}
-      />
-    );
-  }
+  if (!agence) return <NotSelected />;
 
   const active = scenarioMode ? scenarioRun : baseline;
   const data: ProjectionResponse | undefined = scenarioMode
@@ -151,13 +160,11 @@ export const ProjectionsPage: React.FC = () => {
     setDirty(false);
   };
 
-  const current: ScenarioInput = {
-    name: '',
-    horizonYears,
-    baseScenario,
-    ...(assumptionsBody(overrides) ? { assumptions: assumptionsBody(overrides) } : {}),
-    operations
-  };
+  // Réglages enregistrables ; `assumptions` toujours présent (même vide) : « Mettre à jour » remplace les réglages.
+  const current: ScenarioSettings | null =
+    horizonInput === null
+      ? null
+      : { horizonYears: horizonInput, baseScenario, assumptions: assumptions ?? {}, operations };
 
   return (
     <>
@@ -176,37 +183,22 @@ export const ProjectionsPage: React.FC = () => {
         )}
       />
 
-      <Card style={{ marginBottom: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'flex-end' }}>
-          <NumField
-            id="projection-horizon"
-            label={t('Horizon (années)')}
-            value={horizon}
-            onChange={value => {
-              touch();
-              setHorizon(value);
-            }}
-            min={1}
-            max={MAX_HORIZON}
-            step={1}
-          />
-          <SelectField
-            id="projection-scenario"
-            label={t('Scénario de base')}
-            value={baseScenario}
-            onChange={value => {
-              touch();
-              setBaseScenario(value as ProjectionScenarioKey);
-              setOverrides(NO_OVERRIDES);
-            }}
-            options={SCENARIO_KEYS.map(key => ({ value: key, label: scenarioLabel(key) }))}
-          />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: 32 }}>
-            <Switch checked={compare} onChange={setCompare} />
-            <span>{t('Comparer les trois scénarios')}</span>
-          </label>
-        </div>
-      </Card>
+      <ProjectionControls
+        horizon={horizon}
+        horizonInvalid={horizonInput === null}
+        baseScenario={baseScenario}
+        compare={compare}
+        onHorizon={value => {
+          touch();
+          setHorizon(value);
+        }}
+        onBaseScenario={value => {
+          touch();
+          setBaseScenario(value);
+          setOverrides(NO_OVERRIDES);
+        }}
+        onCompare={setCompare}
+      />
 
       {active.error ? (
         <StateBlock
@@ -228,45 +220,21 @@ export const ProjectionsPage: React.FC = () => {
           }
         />
       ) : (
-        <>
-          {collectWarnings(data).length > 0 && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 'var(--space-4)' }}
-              title={t('À savoir sur ces résultats')}
-              description={
-                <ul style={{ margin: 0, paddingInlineStart: 20 }}>
-                  {collectWarnings(data).map((warning, index) => (
-                    <li key={index}>
-                      {warningText(
-                        warning,
-                        warning.code === 'ASSET_WITHOUT_VALUE' ? nameOfAsset(warning.assetId) : undefined
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              }
-            />
-          )}
-          <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-            <ProjectionChartCard data={data} baseScenario={baseScenario} compare={compare} />
-            <SimulationDeltaCard data={data} />
-            <ProjectionTableCard points={data.base.points} />
-            <AssumptionsPanel
-              used={data.assumptionsUsed}
-              overrides={overrides}
-              onApply={next => {
-                touch();
-                setOverrides(next);
-              }}
-              onReset={() => {
-                touch();
-                setOverrides(NO_OVERRIDES);
-              }}
-            />
-          </div>
-        </>
+        <ProjectionOutcome
+          data={data}
+          baseScenario={baseScenario}
+          compare={compare}
+          nameOfAsset={nameOfAsset}
+          overrides={overrides}
+          onApply={next => {
+            touch();
+            setOverrides(next);
+          }}
+          onReset={() => {
+            touch();
+            setOverrides(NO_OVERRIDES);
+          }}
+        />
       )}
 
       <div style={{ display: 'grid', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>

@@ -74,11 +74,15 @@ function fail(index: number, field: string, message: string): never {
 function skip(
   ctx: OperationContext,
   reason: 'ASSET_NOT_FOUND' | 'ASSET_NOT_ACTIVE' | 'LOAN_NOT_FOUND',
-  field: string
+  field: string,
+  message: string = MESSAGES[reason]
 ): void {
-  if (!ctx.lenient) fail(ctx.index, field, MESSAGES[reason]);
+  if (!ctx.lenient) fail(ctx.index, field, message);
   ctx.state.warnings.push({ code: 'OPERATION_NOT_APPLICABLE', index: ctx.index, reason });
 }
+
+const CASH_NOT_SELLABLE = 'Un compte de trésorerie ne se vend pas : utilisez un retrait ou une épargne mensuelle.';
+const NO_VALUE = "Cet actif n'a pas de valeur : ajoutez-en une avant de le vendre.";
 
 const MESSAGES = {
   ASSET_NOT_FOUND: 'Actif introuvable',
@@ -93,8 +97,14 @@ function cashOf(state: ProjectionState): number {
 function sellAsset(op: Extract<SimulationOperation, { type: 'SELL_ASSET' }>, ctx: OperationContext): void {
   const { state } = ctx;
   if (state.soldIds.has(op.assetId)) fail(ctx.index, 'assetId', 'Cet actif est déjà vendu par une autre opération');
+  const excluded = state.excluded.get(op.assetId);
+  if (excluded === 'CASH') fail(ctx.index, 'assetId', CASH_NOT_SELLABLE);
   const asset = state.assets.find(candidate => candidate.id === op.assetId && candidate.id !== CASH_POOL_ID);
-  if (!asset) return skip(ctx, state.excluded.has(op.assetId) ? 'ASSET_NOT_ACTIVE' : 'ASSET_NOT_FOUND', 'assetId');
+  if (!asset) {
+    if (excluded === 'NO_VALUE') return skip(ctx, 'ASSET_NOT_ACTIVE', 'assetId', NO_VALUE);
+    return skip(ctx, excluded ? 'ASSET_NOT_ACTIVE' : 'ASSET_NOT_FOUND', 'assetId');
+  }
+  if (asset.assetClass === 'CASH') fail(ctx.index, 'assetId', CASH_NOT_SELLABLE);
   if (asset.status !== 'ACTIVE') return skip(ctx, 'ASSET_NOT_ACTIVE', 'assetId');
   const price = op.salePrice ?? roundMoneyXof(asset.value);
   addToCash(state, roundMoneyXof(price * (1 - (op.feesPercent ?? 0) / 100)));
@@ -178,7 +188,7 @@ function poolCashAccounts(state: ProjectionState): void {
   const accounts = state.assets.filter(asset => asset.assetClass === 'CASH' && asset.growthPercent === null);
   if (accounts.length === 0) return;
   const total = accounts.reduce((sum, account) => sum + account.value, 0);
-  for (const account of accounts) state.excluded.add(account.id);
+  for (const account of accounts) state.excluded.set(account.id, 'CASH');
   state.assets = state.assets.filter(asset => !accounts.includes(asset));
   addToCash(state, total);
 }

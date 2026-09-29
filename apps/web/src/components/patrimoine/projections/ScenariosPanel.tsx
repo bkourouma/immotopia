@@ -7,7 +7,7 @@ import {
   listScenarios,
   updateScenario,
   type ScenarioDto,
-  type ScenarioInput
+  type ScenarioSettings
 } from '../../../services/patrimoine-projections-service';
 import { apiErrorMessage } from '../actifs/asset-format';
 import { ConfirmAction, StateBlock } from '../../primitives';
@@ -37,7 +37,8 @@ function scenarioErrorMessage(error: unknown, fallback: string): string {
  */
 export const ScenariosPanel: React.FC<{
   tenantId: string;
-  current: ScenarioInput;
+  /** Réglages courants ; `null` tant que l'horizon saisi est invalide (rien à enregistrer). */
+  current: ScenarioSettings | null;
   onOpen: (scenario: ScenarioDto) => void;
   openedId: string | null;
 }> = ({ tenantId, current, onOpen, openedId }) => {
@@ -75,6 +76,7 @@ export const ScenariosPanel: React.FC<{
 
   const trimmed = name.trim();
   const save = async () => {
+    if (!current) return;
     const saved = await run(
       () => createScenario(tenantId, { ...current, name: trimmed }),
       t("Impossible d'enregistrer ce scénario."),
@@ -110,7 +112,7 @@ export const ScenariosPanel: React.FC<{
               onChange={event => setName(event.target.value)}
             />
           </div>
-          <Button type="primary" onClick={save} disabled={!trimmed} loading={write.isPending}>
+          <Button type="primary" onClick={save} disabled={!trimmed || !current} loading={write.isPending}>
             {t('Enregistrer ce scénario')}
           </Button>
         </div>
@@ -179,15 +181,18 @@ export const ScenariosPanel: React.FC<{
                         <ConfirmAction
                           title={t('Mettre à jour « {{name}} » avec les réglages actuels ?', { name: scenario.name })}
                           okText={t('Mettre à jour')}
-                          onConfirm={() =>
-                            run(
+                          onConfirm={async () => {
+                            if (!current) return;
+                            await run(
                               () => updateScenario(tenantId, scenario.id, current),
                               t('Impossible de mettre à jour ce scénario.'),
                               t('Scénario mis à jour.')
-                            )
-                          }
+                            );
+                          }}
                         >
-                          <Button size="small">{t('Mettre à jour')}</Button>
+                          <Button size="small" disabled={!current}>
+                            {t('Mettre à jour')}
+                          </Button>
                         </ConfirmAction>
                         <ConfirmAction
                           danger

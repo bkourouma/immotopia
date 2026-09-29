@@ -5169,10 +5169,11 @@ model PatrimonyScenario {
   name            String
   horizonYears    Int                   @map("horizon_years")
   baseScenario    ProjectionScenarioKey @default(CENTRAL) @map("base_scenario")
-  /// Surcharges par rapport au scénario de base, validées par un schéma zod versionné.
+  /// Surcharges par rapport au scénario de base, validées par un schéma zod à l'écriture ; la lecture tolère un JSON illisible.
   assumptions     Json                  @default("{}")
   /// Opérations de simulation (vente, achat, emprunt, remboursement anticipé, épargne).
   operations      Json                  @default("[]")
+  /// Version du format du JSON : écrite à la création mais PAS ENCORE LUE (la lecture ne migre rien) ; réservée à une évolution future des schémas.
   schemaVersion   Int                   @default(1) @map("schema_version")
   createdByUserId String?               @map("created_by_user_id")
   createdAt       DateTime              @default(now()) @map("created_at")

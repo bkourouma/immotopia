@@ -258,6 +258,26 @@ export const chargeCallNoticeRateLimiter = rateLimit({
 });
 
 /**
+ * Patrimoine : projection, simulation et exécution d'un scénario. Un appel
+ * recharge le patrimoine de l'agence et calcule jusqu'à 30 ans de trajectoires,
+ * bien plus coûteux qu'une lecture. 30 par minute, par utilisateur ET par
+ * agence (posé après `authenticate` et `requireTenantAccess`, avant les gardes
+ * lourdes). Compteurs en mémoire, purgés à chaque fenêtre.
+ */
+export const patrimoineProjectionRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: 'Trop de calculs de projection en peu de temps. Réessayez dans une minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * ImmoCopilot : chaque tour de chat appelle un fournisseur LLM payant.
  * 20 par minute et, en plus, 300 par jour, par utilisateur ET par agence
  * (posés après `authenticate` et `requireTenantAccess`). Le budget suppose une

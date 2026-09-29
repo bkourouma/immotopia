@@ -6,12 +6,14 @@
  * Chaque année : croissance composée des actifs, 12 mensualités des dettes,
  * versements d'épargne ; les opérations de simulation s'appliquent ensuite.
  *
- * Clés de `details` lues pour un véhicule, DÉRIVÉES PAR LA COUCHE SERVICE à
- * partir des `details` du lot 2 (le domaine ne les calcule pas) :
+ * Clés de `details` lues pour un véhicule, DÉRIVÉES PAR LA COUCHE SERVICE
+ * (`services/patrimoine-projections/load-input.ts`) du coût d'acquisition,
+ * quand celui-ci est connu :
  * - `annuityXof` : annuité d'amortissement linéaire constante ;
  * - `residualValueXof` : valeur plancher explicite.
- * Sans elles, repli sur `usefulLifeYears` / `residualValuePercent` du lot 2,
- * appliqués à la valeur courante.
+ * Sans coût d'acquisition (donc sans ces clés), le domaine se replie sur
+ * `usefulLifeYears` / `residualValuePercent`, appliqués à la VALEUR COURANTE :
+ * la durée de vie redémarre alors depuis la valeur d'aujourd'hui.
  */
 
 import { roundMoneyXof } from '../../finance/money';
@@ -58,6 +60,7 @@ export interface ProjectionPoint {
 export type ProjectionWarning =
   | { code: 'ASSET_WITHOUT_VALUE'; assetId: string }
   | { code: 'LOAN_PAYMENT_TOO_LOW'; loanId: string }
+  | { code: 'LOAN_MATURED_WITH_BALANCE'; loanId: string }
   | { code: 'NEGATIVE_CASH'; year: number }
   | { code: 'LOW_RELIABILITY_START'; sharePercent: number }
   | {
@@ -101,12 +104,14 @@ export interface SavingPlan {
 }
 
 /** État mutable interne d'une projection ; il est toujours construit à neuf depuis l'entrée. */
+export type ExcludedKind = 'INACTIVE' | 'NO_VALUE' | 'CASH';
+
 export interface ProjectionState {
   assets: SimAsset[];
   loans: SimLoan[];
   savings: SavingPlan[];
-  /** Actifs connus mais hors projection (archivés, sans valeur, fondus dans la trésorerie). */
-  excluded: Set<string>;
+  /** Actifs connus mais hors projection, avec la raison (archivé, sans valeur, compte de trésorerie fondu). */
+  excluded: Map<string, ExcludedKind>;
   soldIds: Set<string>;
   warnings: ProjectionWarning[];
 }
@@ -166,15 +171,15 @@ export function buildState(input: ProjectionInput): ProjectionState {
     assets: [],
     loans: [],
     savings: [],
-    excluded: new Set(),
+    excluded: new Map(),
     soldIds: new Set(),
     warnings: []
   };
   for (const asset of input.assets) {
     if (asset.status === 'ARCHIVED') {
-      state.excluded.add(asset.id);
+      state.excluded.set(asset.id, 'INACTIVE');
     } else if (asset.valueXof === null) {
-      state.excluded.add(asset.id);
+      state.excluded.set(asset.id, asset.assetClass === 'CASH' ? 'CASH' : 'NO_VALUE');
       state.warnings.push({ code: 'ASSET_WITHOUT_VALUE', assetId: asset.id });
     } else {
       state.assets.push(buildAsset(asset, asset.valueXof));
@@ -183,15 +188,24 @@ export function buildState(input: ProjectionInput): ProjectionState {
   for (const loan of input.loans) {
     if (loan.status !== 'ACTIVE') continue;
     if (paymentTooLow(loan)) state.warnings.push({ code: 'LOAN_PAYMENT_TOO_LOW', loanId: loan.id });
+    const monthsLeft = monthsUntil(loan.endDate, input.today);
+    if (monthsLeft === 0) warnMaturedWithBalance(state, loan.id, loan.remainingCapital);
     state.loans.push({
       id: loan.id,
       remaining: loan.remainingCapital,
       annualRatePercent: loan.annualRatePercent,
       monthlyPayment: loan.monthlyPayment,
-      monthsLeft: monthsUntil(loan.endDate, input.today)
+      monthsLeft
     });
   }
   return state;
+}
+
+/** Dette à l'échéance avec un restant dû : avertissement, une seule fois par dette. */
+function warnMaturedWithBalance(state: ProjectionState, loanId: string, remaining: number): void {
+  if (roundMoneyXof(remaining) <= 0) return;
+  const already = state.warnings.some(w => w.code === 'LOAN_MATURED_WITH_BALANCE' && w.loanId === loanId);
+  if (!already) state.warnings.push({ code: 'LOAN_MATURED_WITH_BALANCE', loanId });
 }
 
 function nextAssetValue(asset: SimAsset, assumptions: ResolvedAssumptions): number {
@@ -209,6 +223,7 @@ export function advanceYear(state: ProjectionState, assumptions: ResolvedAssumpt
     const next = advanceLoan(loan, loan.annualRatePercent, loan.monthlyPayment, MONTHS_PER_YEAR);
     loan.remaining = next.remaining;
     loan.monthsLeft = next.monthsLeft;
+    if (loan.monthsLeft === 0) warnMaturedWithBalance(state, loan.id, loan.remaining);
   }
   const saved = state.savings
     .filter(plan => year >= plan.fromYear && year <= plan.toYear)
@@ -239,10 +254,11 @@ export function addToCash(state: ProjectionState, amount: number): void {
 export function snapshot(state: ProjectionState, year: number, assumptions: ResolvedAssumptions): ProjectionPoint {
   const totals = new Map<AssetClassKey, number>();
   for (const asset of state.assets) {
-    totals.set(asset.assetClass, (totals.get(asset.assetClass) ?? 0) + roundMoneyXof(asset.value));
+    totals.set(asset.assetClass, (totals.get(asset.assetClass) ?? 0) + asset.value);
   }
+  // Somme non arrondie puis un seul arrondi par classe : trois comptes ou un compte fondu donnent le même chiffre.
   const byClass = ASSET_CLASSES.filter(assetClass => totals.has(assetClass))
-    .map(assetClass => ({ assetClass, value: totals.get(assetClass) ?? 0 }))
+    .map(assetClass => ({ assetClass, value: roundMoneyXof(totals.get(assetClass) ?? 0) }))
     .sort((a, b) => b.value - a.value);
   const assets = byClass.reduce((sum, entry) => sum + entry.value, 0);
   const debts = state.loans.reduce((sum, loan) => sum + roundMoneyXof(loan.remaining), 0);

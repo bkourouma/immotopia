@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
+import { patrimoineProjectionRateLimiter } from '../middleware/rate-limit-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import {
@@ -32,6 +33,14 @@ const read = [
   enforcePropertyTenantIsolation,
   requireAnyPropertyPermission(['PROPERTIES_VIEW'])
 ];
+/** Calcul coûteux : limiteur posé après l'authentification et l'accès à l'agence, avant les gardes lourdes. */
+const compute = [
+  authenticate,
+  requireTenantAccess,
+  patrimoineProjectionRateLimiter,
+  enforcePropertyTenantIsolation,
+  requireAnyPropertyPermission(['PROPERTIES_VIEW'])
+];
 const write = [
   authenticate,
   requireTenantAccess,
@@ -39,12 +48,12 @@ const write = [
   requirePropertyPermission('PROPERTIES_EDIT')
 ];
 
-router.post(`${BASE}/projections`, ...read, projectionHandler);
+router.post(`${BASE}/projections`, ...compute, projectionHandler);
 router.get(`${BASE}/scenarios`, ...read, listScenariosHandler);
 router.post(`${BASE}/scenarios`, ...write, createScenarioHandler);
 router.get(`${BASE}/scenarios/:scenarioId`, ...read, getScenarioHandler);
 router.patch(`${BASE}/scenarios/:scenarioId`, ...write, updateScenarioHandler);
 router.delete(`${BASE}/scenarios/:scenarioId`, ...write, deleteScenarioHandler);
-router.post(`${BASE}/scenarios/:scenarioId/run`, ...read, runScenarioHandler);
+router.post(`${BASE}/scenarios/:scenarioId/run`, ...compute, runScenarioHandler);
 
 export default router;

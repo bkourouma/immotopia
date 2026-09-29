@@ -123,3 +123,76 @@ describe('schémas de projection', () => {
     expect(scenarioUpdateSchema.safeParse({ horizonYears: 40 }).success).toBe(false);
   });
 });
+
+describe('messages de validation en français', () => {
+  const messages = (result: { success: boolean; error?: { issues: { message: string }[] } }): string[] =>
+    result.error?.issues.map(issue => issue.message) ?? [];
+  const request = (extra: object) => ({ horizonYears: 10, baseScenario: 'CENTRAL', ...extra });
+
+  it('horizon', () => {
+    for (const horizonYears of [0, 31, 2.5]) {
+      expect(messages(projectionRequestSchema.safeParse(request({ horizonYears })))).toEqual([
+        "L'horizon doit être un entier de 1 à 30 ans"
+      ]);
+    }
+  });
+
+  it('nombre d’opérations', () => {
+    const operations = Array.from({ length: 51 }, () => ({ type: 'MONTHLY_SAVING', fromYear: 1, amount: 1 }));
+    expect(messages(projectionRequestSchema.safeParse(request({ operations })))).toEqual([
+      'Au plus 50 opérations par simulation'
+    ]);
+  });
+
+  it('montants, plafond, taux, durée et année', () => {
+    const one = (op: object) => messages(simulationOperationSchema.safeParse(op));
+    expect(one({ ...sell, salePrice: 0 })).toEqual(['Le montant doit être supérieur à 0']);
+    expect(one({ ...sell, salePrice: 1e15 })).toEqual(['Le montant est trop élevé (999 999 999 999,99 au plus)']);
+    expect(one({ ...sell, feesPercent: 101 })).toEqual(['Le taux doit être compris entre 0 et 100']);
+    expect(one({ ...sell, year: 0 })).toEqual(["L'année doit être un entier de 1 à 30"]);
+    expect(one({ type: 'TAKE_LOAN', year: 1, amount: 10, annualRatePercent: 5, termYears: 31 })).toEqual([
+      'La durée doit être un entier de 1 à 30 ans'
+    ]);
+    expect(one({ ...sell, salePrice: 'beaucoup' })).toEqual(['Un nombre est attendu']);
+  });
+
+  it('croissance et inflation', () => {
+    expect(messages(projectionAssumptionsSchema.safeParse({ growthPercentByClass: { CASH: 101 } }))).toEqual([
+      'La croissance doit être comprise entre -50 et 100 %'
+    ]);
+    expect(messages(projectionAssumptionsSchema.safeParse({ inflationPercent: -1 }))).toEqual([
+      "L'inflation doit être comprise entre 0 et 100 %"
+    ]);
+  });
+
+  it('nom du scénario : 1 à 120 caractères', () => {
+    const body = { horizonYears: 5, baseScenario: 'CENTRAL' };
+    expect(messages(scenarioBodySchema.safeParse({ ...body, name: '   ' }))).toEqual(['Le nom est obligatoire']);
+    expect(messages(scenarioBodySchema.safeParse({ ...body, name: 'x'.repeat(121) }))).toEqual([
+      'Le nom ne peut pas dépasser 120 caractères'
+    ]);
+  });
+});
+
+describe('caractère nul dans un nom', () => {
+  it('refuse \\u0000 dans le nom d’un scénario, à la création comme à la modification', () => {
+    const body = { horizonYears: 5, baseScenario: 'CENTRAL', name: 'Plan\u0000B' };
+    const created = scenarioBodySchema.safeParse(body);
+    expect(created.success).toBe(false);
+    expect(created.error?.issues[0]).toMatchObject({ path: ['name'], message: 'Caractère interdit' });
+    expect(scenarioUpdateSchema.safeParse({ name: 'a\u0000' }).success).toBe(false);
+    expect(scenarioBodySchema.safeParse({ ...body, name: 'Plan B' }).success).toBe(true);
+  });
+
+  it('refuse \\u0000 dans le nom d’un achat', () => {
+    const result = simulationOperationSchema.safeParse({
+      type: 'BUY_ASSET',
+      year: 1,
+      assetClass: 'MOVABLE',
+      name: 'Camion\u0000',
+      price: 10
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({ path: ['name'], message: 'Caractère interdit' });
+  });
+});

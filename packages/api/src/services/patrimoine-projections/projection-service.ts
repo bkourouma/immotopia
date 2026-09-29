@@ -11,9 +11,11 @@ import type {
   ProjectionRequestBody,
   ProjectionResult,
   ProjectionScenarioKey,
+  ProjectionInput,
   ResolvedAssumptions,
   SimulationDelta,
-  SimulationOperation
+  SimulationOperation,
+  SimulationResult
 } from '../../lib/patrimoine/projection';
 import { loadProjectionInput } from './load-input';
 
@@ -64,6 +66,37 @@ function withStartWarning(result: ProjectionResult, sharePercent: number): Proje
   return result;
 }
 
+/** Base + simulation : `simulateProjection` calcule déjà la base, elle n'est pas recalculée. */
+function simulate(
+  input: ProjectionInput,
+  assumptions: ResolvedAssumptions,
+  request: ProjectionRequest,
+  operations: SimulationOperation[],
+  options: ProjectionOptions
+): SimulationResult {
+  try {
+    return simulateProjection(input, assumptions, request.horizonYears, operations, {
+      lenientReferences: options.lenientReferences === true
+    });
+  } catch (error) {
+    if (error instanceof ProjectionOperationError) throw toValidationError(error);
+    throw error;
+  }
+}
+
+function compareScenarios(
+  input: ProjectionInput,
+  request: ProjectionRequest,
+  lowReliabilityShare: number
+): Record<ProjectionScenarioKey, ProjectionResult> {
+  const byScenario = {} as Record<ProjectionScenarioKey, ProjectionResult>;
+  for (const key of PROJECTION_SCENARIO_KEYS) {
+    const resolved = resolveAssumptions(key, request.assumptions).assumptions;
+    byScenario[key] = withStartWarning(projectNetWorth(input, resolved, request.horizonYears), lowReliabilityShare);
+  }
+  return byScenario;
+}
+
 export async function computeProjection(
   tenantId: string,
   request: ProjectionRequest,
@@ -72,32 +105,20 @@ export async function computeProjection(
   const operations = request.operations ?? [];
   const { input, lowReliabilityShare } = await loadProjectionInput(tenantId, assetIdsOf(operations));
   const { assumptions } = resolveAssumptions(request.baseScenario, request.assumptions);
-  const { horizonYears } = request;
 
-  const response: ProjectionResponse = {
-    assumptionsUsed: assumptions,
-    base: projectNetWorth(input, assumptions, horizonYears)
-  };
+  let response: ProjectionResponse;
   if (operations.length > 0) {
-    try {
-      const simulation = simulateProjection(input, assumptions, horizonYears, operations, {
-        lenientReferences: options.lenientReferences === true
-      });
-      response.simulated = withStartWarning(simulation.simulated, lowReliabilityShare);
-      response.delta = simulation.delta;
-    } catch (error) {
-      if (error instanceof ProjectionOperationError) throw toValidationError(error);
-      throw error;
-    }
+    const simulation = simulate(input, assumptions, request, operations, options);
+    response = {
+      assumptionsUsed: assumptions,
+      base: simulation.base,
+      simulated: withStartWarning(simulation.simulated, lowReliabilityShare),
+      delta: simulation.delta
+    };
+  } else {
+    response = { assumptionsUsed: assumptions, base: projectNetWorth(input, assumptions, request.horizonYears) };
   }
-  if (request.compareScenarios === true) {
-    const byScenario = {} as Record<ProjectionScenarioKey, ProjectionResult>;
-    for (const key of PROJECTION_SCENARIO_KEYS) {
-      const resolved = resolveAssumptions(key, request.assumptions).assumptions;
-      byScenario[key] = withStartWarning(projectNetWorth(input, resolved, horizonYears), lowReliabilityShare);
-    }
-    response.byScenario = byScenario;
-  }
+  if (request.compareScenarios === true) response.byScenario = compareScenarios(input, request, lowReliabilityShare);
   withStartWarning(response.base, lowReliabilityShare);
   return response;
 }

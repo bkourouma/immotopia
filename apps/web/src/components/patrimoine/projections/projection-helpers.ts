@@ -15,6 +15,13 @@ export const MAX_OPERATIONS = 50;
 export const MAX_HORIZON = 30;
 export const DEFAULT_HORIZON = 10;
 
+/** Horizon saisi : entier de 1 à 30, sinon `null` (jamais de valeur de repli). */
+export function parseHorizon(value: string): number | null {
+  if (value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_HORIZON ? parsed : null;
+}
+
 export const SCENARIO_KEYS: readonly ProjectionScenarioKey[] = ['PRUDENT', 'CENTRAL', 'OPTIMISTIC'];
 
 export function scenarioLabel(key: ProjectionScenarioKey | string): string {
@@ -53,7 +60,13 @@ export function warningText(warning: ProjectionWarning, assetName?: string): str
         ? t("« {{name}} » n'a pas de valeur : il n'est pas compté dans la projection.", { name: assetName })
         : t("Un actif n'a pas de valeur : il n'est pas compté dans la projection.");
     case 'LOAN_PAYMENT_TOO_LOW':
-      return t("La mensualité d'une dette ne couvre pas ses intérêts : son capital augmente.");
+      return t(
+        "La mensualité d'une dette ne couvre pas ses intérêts : son capital ne diminue pas et les intérêts non payés ne sont pas comptés."
+      );
+    case 'LOAN_MATURED_WITH_BALANCE':
+      return t(
+        'Une dette est arrivée à échéance avec un solde restant dû : ce solde est conservé tel quel, sans intérêt.'
+      );
     case 'NEGATIVE_CASH':
       return t('La trésorerie devient négative en année {{year}}.', { year: warning.year });
     case 'OPERATION_NOT_APPLICABLE':

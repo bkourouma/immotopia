@@ -16,6 +16,7 @@ import type {
   SimulationOperation
 } from '../../lib/patrimoine/projection';
 import { PATRIMOINE_SCENARIO_AUDIT as AUDIT, auditScenario, changedFields } from './audit';
+import { isUuid } from './load-input';
 import { computeProjection } from './projection-service';
 import type { ProjectionResponse } from './projection-service';
 
@@ -131,31 +132,106 @@ export async function getScenario(tenantId: string, scenarioId: string): Promise
 
 // ---------------------------------------------------------------- Écriture
 
+/** Références (actifs, dettes) d'opérations : `assetId`/`loanId` avec leur position dans la liste. */
+interface OperationReference {
+  index: number;
+  field: 'assetId' | 'loanId';
+  id: string;
+}
+
+const SYNTHETIC_LOAN = /^sim-loan-(\d+)$/;
+
+function operationReferences(operations: SimulationOperation[]): OperationReference[] {
+  return operations.flatMap((op, index): OperationReference[] => {
+    if (op.type === 'SELL_ASSET') return [{ index, field: 'assetId', id: op.assetId }];
+    if (op.type === 'PREPAY_LOAN') return [{ index, field: 'loanId', id: op.loanId }];
+    return [];
+  });
+}
+
+/** Identifiants d'actifs de l'agence parmi `ids` (UUID valides seulement) : une requête, `tenantId` posé. */
+async function assetIdsOwned(tenantId: string, ids: string[]): Promise<Set<string>> {
+  const valid = [...new Set(ids.filter(isUuid))];
+  if (valid.length === 0) return new Set();
+  const rows = await prisma.asset.findMany({ where: { tenantId, id: { in: valid } }, select: { id: true } });
+  return new Set(rows.map(row => row.id));
+}
+
+/** Identifiants de dettes de l'agence parmi `ids` (UUID valides seulement). */
+async function loanIdsOwned(tenantId: string, ids: string[]): Promise<Set<string>> {
+  const valid = [...new Set(ids.filter(isUuid))];
+  if (valid.length === 0) return new Set();
+  const rows = await prisma.propertyLoan.findMany({ where: { tenantId, id: { in: valid } }, select: { id: true } });
+  return new Set(rows.map(row => row.id));
+}
+
+/**
+ * À l'enregistrement, chaque actif et chaque dette cités appartiennent à l'agence.
+ * Un identifiant d'une autre agence donne la même erreur qu'un identifiant
+ * inexistant. `sim-loan-<i>` (dette synthétique) est valide si l'opération `i`
+ * de la même liste est un `TAKE_LOAN`.
+ */
+async function assertReferencesBelongToTenant(tenantId: string, operations: SimulationOperation[]): Promise<void> {
+  const references = operationReferences(operations);
+  if (references.length === 0) return;
+  const [assets, loans] = await Promise.all([
+    assetIdsOwned(
+      tenantId,
+      references.filter(ref => ref.field === 'assetId').map(ref => ref.id)
+    ),
+    loanIdsOwned(
+      tenantId,
+      references.filter(ref => ref.field === 'loanId').map(ref => ref.id)
+    )
+  ]);
+  const errors = references.flatMap(ref => {
+    if (ref.field === 'assetId') return assets.has(ref.id) ? [] : [{ ref, message: 'Actif introuvable' }];
+    const synthetic = SYNTHETIC_LOAN.exec(ref.id);
+    if (synthetic && operations[Number(synthetic[1])]?.type === 'TAKE_LOAN') return [];
+    return loans.has(ref.id) ? [] : [{ ref, message: 'Dette introuvable' }];
+  });
+  if (errors.length > 0) {
+    throw new ValidationError(
+      'Les opérations de la simulation sont invalides.',
+      errors.map(({ ref, message }) => ({ field: `operations.${ref.index}.${ref.field}`, message }))
+    );
+  }
+}
+
+/**
+ * Plafond vérifié sous verrou consultatif (par agence) : sans lui, des créations
+ * concurrentes lisent toutes le même `count` et dépassent le plafond.
+ */
+async function createRowUnderCap(tenantId: string, data: Prisma.PatrimonyScenarioUncheckedCreateInput) {
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+    const count = await tx.patrimonyScenario.count({ where: { tenantId } });
+    if (count >= MAX_SCENARIOS_PER_TENANT) {
+      throw new ConflictError(
+        `Limite atteinte : une agence ne peut pas enregistrer plus de ${MAX_SCENARIOS_PER_TENANT} scénarios. ` +
+          'Supprimez des scénarios avant d’en créer un nouveau.'
+      );
+    }
+    return tx.patrimonyScenario.create({ data, select: SCENARIO_SELECT });
+  });
+}
+
 export async function createScenario(
   tenantId: string,
   input: ScenarioBody,
   actorUserId?: string
 ): Promise<ScenarioDto> {
-  const count = await prisma.patrimonyScenario.count({ where: { tenantId } });
-  if (count >= MAX_SCENARIOS_PER_TENANT) {
-    throw new ConflictError(
-      `Limite atteinte : une agence ne peut pas enregistrer plus de ${MAX_SCENARIOS_PER_TENANT} scénarios. ` +
-        'Supprimez des scénarios avant d’en créer un nouveau.'
-    );
-  }
+  await assertReferencesBelongToTenant(tenantId, input.operations ?? []);
   let row: ScenarioRow;
   try {
-    row = await prisma.patrimonyScenario.create({
-      data: {
-        tenantId,
-        name: input.name,
-        horizonYears: input.horizonYears,
-        baseScenario: input.baseScenario,
-        assumptions: (input.assumptions ?? {}) as Prisma.InputJsonValue,
-        operations: (input.operations ?? []) as Prisma.InputJsonValue,
-        createdByUserId: actorUserId ?? null
-      },
-      select: SCENARIO_SELECT
+    row = await createRowUnderCap(tenantId, {
+      tenantId,
+      name: input.name,
+      horizonYears: input.horizonYears,
+      baseScenario: input.baseScenario,
+      assumptions: (input.assumptions ?? {}) as Prisma.InputJsonValue,
+      operations: (input.operations ?? []) as Prisma.InputJsonValue,
+      createdByUserId: actorUserId ?? null
     });
   } catch (error) {
     if (isPrismaCode(error, 'P2002')) throw new ConflictError(DUPLICATE_NAME);
@@ -171,22 +247,32 @@ export async function createScenario(
   return toDto(row);
 }
 
+function yearIssues(error: z.ZodError): { field: string; message: string }[] {
+  return error.errors.map(issue => ({ field: issue.path.join('.'), message: issue.message }));
+}
+
 /**
- * Un nouvel horizon sans nouvelles opérations doit rester compatible avec les
- * années des opérations déjà enregistrées.
+ * Années et horizon doivent rester cohérents après la modification : un nouvel
+ * horizon sans nouvelles opérations est confronté aux opérations enregistrées ;
+ * de nouvelles opérations sans horizon sont confrontées à l'horizon ENREGISTRÉ.
+ * (Si les deux sont fournis, le schéma du corps les a déjà croisés.)
  */
-function assertHorizonFitsStoredOperations(row: ScenarioRow, input: ScenarioUpdateBody): void {
-  if (input.horizonYears === undefined || input.operations !== undefined) return;
+function assertYearsFitHorizon(row: ScenarioRow, input: ScenarioUpdateBody): void {
+  const horizonGiven = input.horizonYears !== undefined;
+  const operationsGiven = input.operations !== undefined;
+  if (horizonGiven === operationsGiven) return;
   const parsed = projectionRequestSchema.safeParse({
-    horizonYears: input.horizonYears,
+    horizonYears: input.horizonYears ?? row.horizonYears,
     baseScenario: row.baseScenario,
-    operations: readOperations(row.operations)
+    operations: input.operations ?? readOperations(row.operations)
   });
-  if (!parsed.success)
-    throw new ValidationError(
-      'Les opérations enregistrées dépassent le nouvel horizon.',
-      parsed.error.errors.map(issue => ({ field: issue.path.join('.'), message: issue.message }))
-    );
+  if (parsed.success) return;
+  throw new ValidationError(
+    horizonGiven
+      ? 'Les opérations enregistrées dépassent le nouvel horizon.'
+      : "Les opérations dépassent l'horizon enregistré du scénario.",
+    yearIssues(parsed.error)
+  );
 }
 
 export async function updateScenario(
@@ -198,7 +284,8 @@ export async function updateScenario(
   const fields = changedFields(input);
   if (fields.length === 0) throw new BadRequestError('Aucun champ à modifier.');
   const existing = await findScenarioOrThrow(tenantId, scenarioId);
-  assertHorizonFitsStoredOperations(existing, input);
+  assertYearsFitHorizon(existing, input);
+  if (input.operations !== undefined) await assertReferencesBelongToTenant(tenantId, input.operations);
   let row: ScenarioRow;
   try {
     row = await prisma.patrimonyScenario.update({

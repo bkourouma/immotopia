@@ -79,11 +79,14 @@ export function paymentTooLow(
   return loan.monthlyPayment <= firstInterest;
 }
 
+const MIN_MONTHLY_RATE = 1e-9;
+
 /** Mensualité constante (annuité) ; taux nul : capital réparti également. Non arrondie, pour solder exactement. */
 export function levelPayment(amount: number, annualRatePercent: number, termYears: number): number {
   const months = 12 * termYears;
   const monthlyRate = annualRatePercent / 12 / 100;
-  if (monthlyRate === 0) return amount / months;
+  // En dessous de 1e-9 par mois, 1 − (1 + r)^−n s'annule en flottant (résultat infini) : taux traité comme nul.
+  if (monthlyRate < MIN_MONTHLY_RATE) return amount / months;
   return (amount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months));
 }
 

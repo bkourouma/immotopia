@@ -11,7 +11,8 @@ export const NumField: React.FC<{
   max?: number;
   step?: number | 'any';
   hint?: string;
-}> = ({ id, label, value, onChange, min, max, step = 'any', hint }) => (
+  error?: string;
+}> = ({ id, label, value, onChange, min, max, step = 'any', hint, error }) => (
   <div style={{ flex: '1 1 160px', minWidth: 140 }}>
     <label htmlFor={id} style={{ display: 'block', marginBottom: 4 }}>
       {label}
@@ -24,8 +25,16 @@ export const NumField: React.FC<{
       max={max}
       step={step}
       value={value}
+      status={error ? 'error' : undefined}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? `${id}-error` : undefined}
       onChange={event => onChange(event.target.value)}
     />
+    {error && (
+      <div id={`${id}-error`} role="alert" style={{ color: 'var(--color-error, #cf1322)' }}>
+        {error}
+      </div>
+    )}
     {hint && <div style={{ fontSize: 'var(--font-size-sm)', opacity: 0.7 }}>{hint}</div>}
   </div>
 );

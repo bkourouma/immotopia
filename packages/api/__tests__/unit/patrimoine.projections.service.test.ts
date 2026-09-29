@@ -45,6 +45,14 @@ jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
 const mockAudit = jest.fn();
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (entry: unknown) => mockAudit(entry) }));
 
+// `projectNetWorth` compté au niveau du service (la simulation appelle sa propre copie du domaine).
+jest.mock('../../src/lib/patrimoine/projection', () => {
+  const actual = jest.requireActual('../../src/lib/patrimoine/projection');
+  return { ...actual, projectNetWorth: jest.fn(actual.projectNetWorth) };
+});
+
+import * as projectionDomain from '../../src/lib/patrimoine/projection';
+import { suggestValuation } from '../../src/lib/patrimoine/assets';
 import { computeProjection, runProjection } from '../../src/services/patrimoine-projections/projection-service';
 import { ValidationError } from '../../src/middleware/error-middleware';
 
@@ -380,5 +388,210 @@ describe('comparaison des scénarios', () => {
     expect(result.byScenario?.OPTIMISTIC.points[1].assets).toBe(10_600_000);
     expect(result.byScenario?.PRUDENT.points[1].realNetWorth).toBe(10_200_000);
     expect(result.assumptionsUsed.inflationPercent).toBe(0);
+  });
+});
+
+describe('amortissement des véhicules (annuité et résiduelle dérivées du coût d’acquisition)', () => {
+  const VEHICLE = ID(7);
+  const at = (results: { points: { assets: number }[] }) => results.points.map(p => p.assets);
+
+  function seedVehicle(details: Row, valuation: number, extra: Row = {}) {
+    seedAsset({
+      id: VEHICLE,
+      name: 'Camion',
+      assetClass: 'VEHICLE_EQUIPMENT',
+      acquisitionCost: 5_000_000,
+      details,
+      ...extra
+    });
+    seedValuation({ assetId: VEHICLE, estimatedValue: valuation, currency: extra.currency ?? 'XOF' });
+  }
+
+  it('linéaire : annuité constante depuis le coût, plancher = 10 % du coût (et non de la valeur courante)', async () => {
+    seedVehicle({ usefulLifeYears: 5, residualValuePercent: 10 }, 4_000_000);
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 6 });
+    // annuité = (5 000 000 − 500 000) / 5 = 900 000 ; plancher 500 000.
+    expect(at(result.base)).toEqual([4_000_000, 3_100_000, 2_200_000, 1_300_000, 500_000, 500_000, 500_000]);
+  });
+
+  it('sans coût d’acquisition : repli inchangé (durée de vie depuis la valeur courante)', async () => {
+    seedVehicle({ usefulLifeYears: 5, residualValuePercent: 10 }, 4_000_000, { acquisitionCost: null });
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 2 });
+    // annuité = (4 000 000 − 400 000) / 5 = 720 000.
+    expect(at(result.base)).toEqual([4_000_000, 3_280_000, 2_560_000]);
+  });
+
+  it('sans durée d’utilité : valeur constante, même avec un coût', async () => {
+    seedVehicle({}, 4_000_000);
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 2 });
+    expect(at(result.base)).toEqual([4_000_000, 4_000_000, 4_000_000]);
+  });
+
+  it('n’écrase pas une clé déjà présente dans les details', async () => {
+    seedVehicle(
+      { usefulLifeYears: 5, residualValuePercent: 10, residualValueXof: 1_000_000, annuityXof: 1_500_000 },
+      4_000_000
+    );
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 3 });
+    expect(at(result.base)).toEqual([4_000_000, 2_500_000, 1_000_000, 1_000_000]);
+  });
+
+  it('dégressif : seule la résiduelle est dérivée (plancher = 10 % du coût)', async () => {
+    seedVehicle({ depreciationMethod: 'DECLINING', decliningRatePercent: 20, residualValuePercent: 10 }, 4_000_000);
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 10 });
+    expect(at(result.base)[1]).toBe(3_200_000);
+    expect(at(result.base)[2]).toBe(2_560_000);
+    expect(at(result.base)[10]).toBe(500_000);
+  });
+
+  it('coût en devise étrangère : converti en XOF au taux de l’actif', async () => {
+    seedVehicle({ usefulLifeYears: 4 }, 800, {
+      acquisitionCost: 1000,
+      currency: 'EUR',
+      exchangeRateToXof: 600
+    });
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 4 });
+    // valeur 480 000 XOF ; annuité = 600 000 / 4 = 150 000 ; plancher 0.
+    expect(at(result.base)).toEqual([480_000, 330_000, 180_000, 30_000, 0]);
+  });
+
+  it('acheté il y a 2 ans : même trajectoire que la suggestion de valorisation du lot 2', async () => {
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const acquisitionDate = new Date(now - 2 * 365.25 * DAY);
+    const details = { usefulLifeYears: 5, residualValuePercent: 10 };
+    const suggestionAt = (elapsedYears: number) => {
+      const result = suggestValuation(
+        { assetClass: 'VEHICLE_EQUIPMENT', details, acquisitionCost: 5_000_000, acquisitionDate, lastValuation: null },
+        new Date(acquisitionDate.getTime() + elapsedYears * 365.25 * DAY)
+      );
+      if (!result.ok) throw new Error('suggestion refusée');
+      return result.amount;
+    };
+    seedVehicle(details, suggestionAt(2), { acquisitionDate });
+    const result = await runProjection(TENANT_A, { ...base, horizonYears: 5 });
+    expect(at(result.base)).toEqual([0, 1, 2, 3, 4, 5].map(t => suggestionAt(2 + t)));
+    expect(at(result.base)[0]).toBe(3_200_000);
+  });
+});
+
+describe('chargement borné', () => {
+  const ARCHIVED = ID(60);
+
+  const assetWhere = () => prismaMock.asset.findMany.mock.calls.slice(-1)[0][0].where;
+
+  it('ne lit que les actifs ACTIVE et ceux cités par une opération (UUID valides)', async () => {
+    await runProjection(TENANT_A, {
+      ...base,
+      operations: [
+        { type: 'SELL_ASSET', year: 1, assetId: ARCHIVED },
+        { type: 'SELL_ASSET', year: 2, assetId: 'pas-un-uuid' }
+      ]
+    }).catch(() => undefined);
+    expect(assetWhere()).toEqual({ tenantId: TENANT_A, OR: [{ status: 'ACTIVE' }, { id: { in: [ARCHIVED] } }] });
+  });
+
+  it('sans opération : seuls les actifs ACTIVE sont demandés', async () => {
+    await runProjection(TENANT_A, base);
+    expect(assetWhere()).toEqual({ tenantId: TENANT_A, OR: [{ status: 'ACTIVE' }] });
+  });
+
+  it('un actif archivé non cité n’est pas chargé, un actif archivé cité reste distinguable', async () => {
+    seedAsset({ id: ARCHIVED, name: 'Vieux', assetClass: 'MOVABLE', status: 'ARCHIVED' });
+    seedAsset({ id: ID(61), name: 'Autre archivé', assetClass: 'MOVABLE', status: 'ARCHIVED' });
+    await runProjection(TENANT_A, base);
+    const cited = await runProjection(TENANT_A, {
+      ...base,
+      operations: [{ type: 'SELL_ASSET', year: 1, assetId: ARCHIVED }]
+    }).catch(error => error);
+    expect(cited.errors[0].message).toMatch(/n'est plus actif/);
+  });
+
+  it('les dettes sont chargées avec un plafond et un tri stable', async () => {
+    await runProjection(TENANT_A, base);
+    const args = prismaMock.propertyLoan.findMany.mock.calls.slice(-1)[0][0];
+    expect(args.take).toBe(2000);
+    expect(args.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+    expect(args.where).toEqual({ tenantId: TENANT_A, status: 'ACTIVE' });
+  });
+
+  it('une dette adossée à un actif archivé reste comptée, comme dans la valeur nette', async () => {
+    seedAsset({ id: ARCHIVED, name: 'Vieux', assetClass: 'MOVABLE', status: 'ARCHIVED' });
+    seedLoan({ assetId: ARCHIVED, remainingCapital: 300_000, monthlyPayment: 10_000 });
+    const result = await runProjection(TENANT_A, base);
+    expect(result.base.points[0].debts).toBe(300_000);
+    expect(result.base.points[0].assets).toBe(0);
+  });
+});
+
+describe('pas de calcul redondant de la base', () => {
+  const projectNetWorth = projectionDomain.projectNetWorth as unknown as jest.Mock;
+
+  beforeEach(() => {
+    seedAsset({ id: ID(1), name: 'Villa', assetClass: 'REAL_ESTATE' });
+    seedValuation({ assetId: ID(1), estimatedValue: 10_000_000 });
+    projectNetWorth.mockClear();
+  });
+
+  it('sans opération : la base est calculée une fois', async () => {
+    await runProjection(TENANT_A, base);
+    expect(projectNetWorth).toHaveBeenCalledTimes(1);
+  });
+
+  it('avec opérations : la base vient de la simulation, le service ne la recalcule pas', async () => {
+    const result = await runProjection(TENANT_A, {
+      ...base,
+      operations: [{ type: 'MONTHLY_SAVING', fromYear: 1, amount: 1 }]
+    });
+    expect(projectNetWorth).not.toHaveBeenCalled();
+    expect(result.base.points).toHaveLength(3);
+    expect(result.delta).toHaveLength(3);
+  });
+
+  it('avec opérations et comparaison : seulement les trois scénarios', async () => {
+    await runProjection(TENANT_A, {
+      ...base,
+      compareScenarios: true,
+      operations: [{ type: 'MONTHLY_SAVING', fromYear: 1, amount: 1 }]
+    });
+    expect(projectNetWorth).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('vente : messages distincts (service)', () => {
+  const failure = (assetId: string) =>
+    runProjection(TENANT_A, { ...base, operations: [{ type: 'SELL_ASSET', year: 1, assetId }] }).catch(error => error);
+
+  it('compte de trésorerie, actif sans valeur, actif archivé : trois messages', async () => {
+    seedAsset({ id: ID(1), name: 'Banque', assetClass: 'CASH' });
+    seedValuation({ assetId: ID(1), estimatedValue: 1_000 });
+    seedAsset({ id: ID(2), name: 'Terrain', assetClass: 'REAL_ESTATE' });
+    seedAsset({ id: ID(3), name: 'Vieux', assetClass: 'MOVABLE', status: 'ARCHIVED' });
+    const cash = await failure(ID(1));
+    const empty = await failure(ID(2));
+    const archived = await failure(ID(3));
+    expect(cash.errors).toEqual([
+      {
+        field: 'operations.0.assetId',
+        message: 'Un compte de trésorerie ne se vend pas : utilisez un retrait ou une épargne mensuelle.'
+      }
+    ]);
+    expect(empty.errors[0].message).toBe("Cet actif n'a pas de valeur : ajoutez-en une avant de le vendre.");
+    expect(archived.errors[0].message).toMatch(/n'est plus actif/);
+  });
+});
+
+describe('avertissement de dette échue (service)', () => {
+  it('dette échue avec un restant dû : avertissement et valeur constante', async () => {
+    const loanId = ID(950);
+    seedLoan({
+      id: loanId,
+      remainingCapital: 5_000_000,
+      monthlyPayment: 100_000,
+      endDate: new Date('2025-06-01T00:00:00Z')
+    });
+    const result = await runProjection(TENANT_A, base);
+    expect(result.base.warnings).toContainEqual({ code: 'LOAN_MATURED_WITH_BALANCE', loanId });
+    expect(result.base.points.map(p => p.debts)).toEqual([5_000_000, 5_000_000, 5_000_000]);
   });
 });

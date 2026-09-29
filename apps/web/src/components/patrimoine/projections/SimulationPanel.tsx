@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Alert, Button, Card, Input, Typography } from 'antd';
+import { Alert, Button, Card, Typography } from 'antd';
 import type { AssetDto, DebtDto } from '../../../services/patrimoine-assets-service';
 import type { SimulationOperation } from '../../../services/patrimoine-projections-service';
-import { assetClassOptions } from '../actifs/asset-classes';
 import { apiErrorMessage } from '../actifs/asset-format';
 import { t } from '../../../i18n/t';
-import { NumField, SelectField } from './projection-fields';
+import { OperationFields } from './OperationForms';
+import { SelectField } from './projection-fields';
 import {
   MAX_OPERATIONS,
   OPERATION_TYPES,
@@ -30,10 +30,6 @@ const AddForm: React.FC<{
   const [invalid, setInvalid] = useState(false);
   const set = (key: string) => (value: string) => setValues(current => ({ ...current, [key]: value }));
   const v = (key: string) => values[key] ?? '';
-  const yearField = (key = 'year', label = t('Année')) => (
-    <NumField id={`op-${key}`} label={label} value={v(key)} onChange={set(key)} min={1} max={horizon} step={1} />
-  );
-
   const submit = () => {
     const operation = buildOperation(type, values);
     if (!operation) {
@@ -65,129 +61,7 @@ const AddForm: React.FC<{
         options={OPERATION_TYPES.map(key => ({ value: key, label: operationTypeLabel(key) }))}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        {type === 'SELL_ASSET' && (
-          <>
-            <SelectField
-              id="op-assetId"
-              label={t('Actif à vendre')}
-              value={v('assetId')}
-              onChange={set('assetId')}
-              placeholder={t('Choisir un actif')}
-              options={assets.filter(a => a.status === 'ACTIVE').map(a => ({ value: a.id, label: a.name }))}
-            />
-            {yearField()}
-            <NumField
-              id="op-salePrice"
-              label={t('Prix de vente (facultatif)')}
-              value={v('salePrice')}
-              onChange={set('salePrice')}
-              min={0}
-            />
-            <NumField
-              id="op-feesPercent"
-              label={t('Frais (%)')}
-              value={v('feesPercent')}
-              onChange={set('feesPercent')}
-              min={0}
-              max={100}
-            />
-          </>
-        )}
-        {type === 'BUY_ASSET' && (
-          <>
-            <SelectField
-              id="op-assetClass"
-              label={t('Classe')}
-              value={v('assetClass')}
-              onChange={set('assetClass')}
-              placeholder={t('Choisir une classe')}
-              options={assetClassOptions()}
-            />
-            <div style={{ flex: '1 1 200px', minWidth: 160 }}>
-              <label htmlFor="op-name" style={{ display: 'block', marginBottom: 4 }}>
-                {t("Nom de l'actif")}
-              </label>
-              <Input
-                id="op-name"
-                maxLength={200}
-                value={v('name')}
-                onChange={event => set('name')(event.target.value)}
-              />
-            </div>
-            <NumField id="op-price" label={t('Prix')} value={v('price')} onChange={set('price')} min={0} />
-            {yearField()}
-            <NumField
-              id="op-growthPercent"
-              label={t('Croissance (%) (facultatif)')}
-              value={v('growthPercent')}
-              onChange={set('growthPercent')}
-              min={-50}
-              max={100}
-            />
-          </>
-        )}
-        {type === 'TAKE_LOAN' && (
-          <>
-            <NumField
-              id="op-amount"
-              label={t('Montant emprunté')}
-              value={v('amount')}
-              onChange={set('amount')}
-              min={0}
-            />
-            <NumField
-              id="op-annualRatePercent"
-              label={t('Taux annuel (%)')}
-              value={v('annualRatePercent')}
-              onChange={set('annualRatePercent')}
-              min={0}
-              max={100}
-            />
-            <NumField
-              id="op-termYears"
-              label={t('Durée (années)')}
-              value={v('termYears')}
-              onChange={set('termYears')}
-              min={1}
-              max={30}
-              step={1}
-            />
-            {yearField()}
-          </>
-        )}
-        {type === 'PREPAY_LOAN' && (
-          <>
-            <SelectField
-              id="op-loanId"
-              label={t('Dette à rembourser')}
-              value={v('loanId')}
-              onChange={set('loanId')}
-              placeholder={t('Choisir une dette')}
-              options={debts.filter(d => d.status === 'ACTIVE').map(d => ({ value: d.id, label: d.lender }))}
-            />
-            <NumField
-              id="op-amount"
-              label={t('Montant remboursé')}
-              value={v('amount')}
-              onChange={set('amount')}
-              min={0}
-            />
-            {yearField()}
-          </>
-        )}
-        {type === 'MONTHLY_SAVING' && (
-          <>
-            <NumField
-              id="op-amount"
-              label={t('Montant par mois')}
-              value={v('amount')}
-              onChange={set('amount')}
-              min={0}
-            />
-            {yearField('fromYear', t("De l'année"))}
-            {yearField('toYear', t("À l'année (facultatif)"))}
-          </>
-        )}
+        <OperationFields type={type} v={v} set={set} horizon={horizon} assets={assets} debts={debts} />
       </div>
       {invalid && (
         <Alert type="error" showIcon title={t('Renseignez les champs obligatoires avec des valeurs valides.')} />

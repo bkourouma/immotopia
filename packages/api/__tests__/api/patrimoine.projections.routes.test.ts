@@ -262,3 +262,48 @@ describe('scénarios', () => {
     expect(conflict.status).toBe(409);
   });
 });
+
+describe('limiteur de calcul (30 par minute, par utilisateur et par agence)', () => {
+  const LIMIT = 30;
+  const url = (tenant: string) => `/api/tenants/${tenant}/patrimoine`;
+  const project = (tenant: string, perms = READ) =>
+    request(app)
+      .post(`${url(tenant)}/projections`)
+      .set('x-perms', perms)
+      .send(projectionBody);
+
+  it('le 31e appel de la minute reçoit 429, sans appeler le service', async () => {
+    for (let i = 0; i < LIMIT; i += 1) expect((await project('tenant-rl-a')).status).toBe(200);
+    expect(mockProjection.runProjection).toHaveBeenCalledTimes(LIMIT);
+    const limited = await project('tenant-rl-a');
+    expect(limited.status).toBe(429);
+    expect(limited.body).toMatchObject({ success: false, code: 'RATE_LIMITED' });
+    expect(limited.body.message).toBe('Trop de calculs de projection en peu de temps. Réessayez dans une minute.');
+    expect(mockProjection.runProjection).toHaveBeenCalledTimes(LIMIT);
+  });
+
+  it('le budget est partagé avec l’exécution d’un scénario, et propre à chaque agence', async () => {
+    // tenant-rl-a a épuisé son budget dans le test précédent (même minute).
+    const run = await request(app)
+      .post(`${url('tenant-rl-a')}/scenarios/${SCENARIO}/run`)
+      .set('x-perms', READ)
+      .send({});
+    expect(run.status).toBe(429);
+    expect(mockScenarios.runScenario).not.toHaveBeenCalled();
+    expect((await project('tenant-rl-b')).status).toBe(200);
+  });
+
+  it('le limiteur passe avant les gardes de permission (un refus 403 consomme aussi le budget)', async () => {
+    for (let i = 0; i < LIMIT; i += 1) expect((await project('tenant-rl-c', '')).status).toBe(403);
+    expect((await project('tenant-rl-c', '')).status).toBe(429);
+  });
+
+  it('ne limite ni les lectures ni les écritures de scénarios', async () => {
+    for (let i = 0; i < LIMIT + 5; i += 1) {
+      const res = await request(app)
+        .get(`${url('tenant-rl-d')}/scenarios`)
+        .set('x-perms', READ);
+      expect(res.status).toBe(200);
+    }
+  });
+});

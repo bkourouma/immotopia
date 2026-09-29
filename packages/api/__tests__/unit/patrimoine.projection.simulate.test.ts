@@ -271,3 +271,101 @@ describe('simulation d’opérations', () => {
     expect(delta[30]?.netWorth).toBe(30 * 12_000);
   });
 });
+
+describe('vente : messages distincts', () => {
+  const sellOf = (assetId: string): SimulationOperation[] => [{ type: 'SELL_ASSET', year: 1, assetId }];
+  const failure = (input: ProjectionInput, operations: SimulationOperation[]) => {
+    try {
+      applyOperations(input, operations, assumptions, 3);
+    } catch (error) {
+      return error as ProjectionOperationError;
+    }
+    throw new Error('Aucune erreur levée');
+  };
+
+  it('un compte de trésorerie ne se vend pas (assetId, message dédié)', () => {
+    const error = failure(baseInput, sellOf('bank'));
+    expect(error).toBeInstanceOf(ProjectionOperationError);
+    expect(error.field).toBe('assetId');
+    expect(error.message).toBe(
+      'Un compte de trésorerie ne se vend pas : utilisez un retrait ou une épargne mensuelle.'
+    );
+  });
+
+  it('un compte de trésorerie sans valeur reçoit le même message (pas « sans valeur »)', () => {
+    const input = { ...baseInput, assets: [asset({ id: 'bank', assetClass: 'CASH', valueXof: null })] };
+    expect(failure(input, sellOf('bank')).message).toMatch(/trésorerie ne se vend pas/);
+  });
+
+  it('un compte de trésorerie avec taux propre ne se vend pas non plus', () => {
+    const input = {
+      ...baseInput,
+      assets: [asset({ id: 'bank', assetClass: 'CASH', valueXof: 1_000_000, growthPercentOverride: 2 })]
+    };
+    expect(failure(input, sellOf('bank')).message).toMatch(/trésorerie ne se vend pas/);
+  });
+
+  it('un actif sans valeur : message dédié, distinct de « n’est plus actif »', () => {
+    const input = { ...baseInput, assets: [asset({ id: 'terrain', valueXof: null })] };
+    const error = failure(input, sellOf('terrain'));
+    expect(error.field).toBe('assetId');
+    expect(error.message).toBe("Cet actif n'a pas de valeur : ajoutez-en une avant de le vendre.");
+  });
+
+  it('un actif archivé garde le message existant', () => {
+    const input = { ...baseInput, assets: [asset({ id: 'vieux', status: 'ARCHIVED', valueXof: null })] };
+    expect(failure(input, sellOf('vieux')).message).toMatch(/n'est plus actif/);
+  });
+
+  it('mode indulgent : un actif sans valeur devient OPERATION_NOT_APPLICABLE, un compte CASH reste une erreur', () => {
+    const input = { ...baseInput, assets: [asset({ id: 'terrain', valueXof: null }), ...baseInput.assets] };
+    const result = applyOperations(input, sellOf('terrain'), assumptions, 2, { lenientReferences: true });
+    expect(result.warnings).toContainEqual({ code: 'OPERATION_NOT_APPLICABLE', index: 0, reason: 'ASSET_NOT_ACTIVE' });
+    expect(() => applyOperations(input, sellOf('bank'), assumptions, 2, { lenientReferences: true })).toThrow(
+      ProjectionOperationError
+    );
+  });
+});
+
+describe('cohérence base / simulation', () => {
+  it('trois comptes de 1 000 001 à 3 % : aucun bruit d’arrondi entre la base et la simulation (delta nul)', () => {
+    const cash = ['c1', 'c2', 'c3'].map(id => asset({ id, assetClass: 'CASH', valueXof: 1_000_001 }));
+    const input: ProjectionInput = { today: TODAY, assets: cash, loans: [] };
+    const three = resolveAssumptions('CENTRAL', { growthPercentByClass: { CASH: 3 }, inflationPercent: 0 }).assumptions;
+    // Épargne d'1 XOF au bout de 10 ans : elle force la fusion des comptes sans rien changer avant.
+    const operations: SimulationOperation[] = [{ type: 'MONTHLY_SAVING', fromYear: 10, amount: 1 }];
+    const result = simulateProjection(input, three, 10, operations);
+    expect(result.delta.slice(0, 10).map(d => d.netWorth)).toEqual(Array(10).fill(0));
+    // Somme non arrondie, un seul arrondi : 3 × 1 000 001 × 1,03 = 3 090 003,09.
+    expect(result.base.points[1]?.assets).toBe(3_090_003);
+  });
+});
+
+describe('opérations fournies dans le désordre des années', () => {
+  it('donnent le même résultat que dans l’ordre chronologique', () => {
+    const ordered: SimulationOperation[] = [
+      { type: 'SELL_ASSET', year: 1, assetId: 'house' },
+      { type: 'BUY_ASSET', year: 2, assetClass: 'MOVABLE', name: 'Camion', price: 3_000_000 },
+      { type: 'TAKE_LOAN', year: 3, amount: 1_000_000, annualRatePercent: 5, termYears: 2 }
+    ];
+    const shuffled = [ordered[2], ordered[0], ordered[1]] as SimulationOperation[];
+    const a = applyOperations(baseInput, ordered, assumptions, 4);
+    const b = applyOperations(baseInput, shuffled, assumptions, 4);
+    expect(b.points).toEqual(a.points);
+    expect(b.warnings.map(w => w.code).sort()).toEqual(a.warnings.map(w => w.code).sort());
+  });
+
+  it('une erreur porte l’index d’origine (position dans la liste fournie)', () => {
+    const operations: SimulationOperation[] = [
+      { type: 'PREPAY_LOAN', year: 3, loanId: 'l1', amount: 999_999_999 },
+      { type: 'MONTHLY_SAVING', fromYear: 1, amount: 1 }
+    ];
+    try {
+      applyOperations(baseInput, operations, assumptions, 4);
+      throw new Error('Aucune erreur levée');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ProjectionOperationError);
+      expect((error as ProjectionOperationError).index).toBe(0);
+    }
+  });
+});

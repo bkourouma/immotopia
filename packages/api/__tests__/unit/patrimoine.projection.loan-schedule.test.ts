@@ -64,3 +64,16 @@ describe('échéancier de dette', () => {
     expect(monthsUntil(new Date('2025-01-01T00:00:00Z'), today)).toBe(0);
   });
 });
+
+describe('mensualité constante : taux quasi nul', () => {
+  it('un taux annuel de 1e-14 % (mensuel < 1e-9) est traité comme nul, jamais Infinity', () => {
+    const payment = levelPayment(1_200_000, 1e-12, 20);
+    expect(Number.isFinite(payment)).toBe(true);
+    expect(payment).toBeCloseTo(1_200_000 / 240, 6);
+    expect(levelPayment(1_200_000, 0, 20)).toBeCloseTo(5_000, 6);
+  });
+
+  it('un taux ordinaire garde la formule d’annuité', () => {
+    expect(levelPayment(10_000_000, 6, 10)).toBeCloseTo(111_020.5, 0);
+  });
+});

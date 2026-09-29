@@ -41,7 +41,7 @@ export const ProjectionChartCard: React.FC<{
         style={{ width: '100%', height: 320 }}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 8, right: 20, left: 12, bottom: 8 }}>
+          <LineChart data={rows} margin={{ top: 8, right: 16, left: 16, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="year" />
             <YAxis width={70} tickFormatter={compact} />
