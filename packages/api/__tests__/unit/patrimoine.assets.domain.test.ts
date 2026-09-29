@@ -72,7 +72,7 @@ describe('constantes des classes', () => {
       'MOVABLE',
       'OTHER'
     ]);
-    expect(ASSET_DETAILS_VERSION).toBe(1);
+    expect(ASSET_DETAILS_VERSION).toBe(2);
   });
 
   it('fournit un libellé français stable pour chaque classe', () => {
@@ -183,7 +183,13 @@ describe('computeNetWorth - scénarios d’acceptation', () => {
     });
     const result = computeNetWorth([a], [], AS_OF);
     expect(result.totalAssets).toBe(7_000_000);
-    expect(result.assets[0]).toEqual({ id: 'v', valueXof: 7_000_000, valuatedAt: new Date('2026-05-01T00:00:00Z') });
+    expect(result.assets[0]).toEqual({
+      id: 'v',
+      valueXof: 7_000_000,
+      valuatedAt: new Date('2026-05-01T00:00:00Z'),
+      reliability: null,
+      stale: false
+    });
   });
 
   it('exclut et signale un actif sans valorisation', () => {
@@ -531,5 +537,109 @@ describe('parseAssetDetails - détails invalides', () => {
       success: false,
       issues: [{ path: 'assetClass', message: "Classe d'actif inconnue" }]
     });
+  });
+});
+
+describe('détails de classe, version 2 (lot 2)', () => {
+  it('garde valides les détails de la version 1', () => {
+    expect(parseAssetDetails('REAL_ESTATE', {}).success).toBe(true);
+    expect(parseAssetDetails('VEHICLE_EQUIPMENT', { kind: 'Camion' }).success).toBe(true);
+    expect(parseAssetDetails('RECEIVABLE', { debtor: 'Awa' }).success).toBe(true);
+  });
+
+  it('accepte les champs de valorisation facultatifs', () => {
+    expect(parseAssetDetails('REAL_ESTATE', { legalStatus: 'ACD' }).success).toBe(true);
+    expect(
+      parseAssetDetails('VEHICLE_EQUIPMENT', {
+        kind: 'Camion',
+        usefulLifeYears: 7.5,
+        residualValuePercent: 10,
+        depreciationMethod: 'DECLINING',
+        decliningRatePercent: 20
+      }).success
+    ).toBe(true);
+    expect(
+      parseAssetDetails('BUSINESS_EQUITY', {
+        companyName: 'X',
+        legalForm: 'SARL',
+        country: 'CI',
+        ownershipPercent: 30,
+        netIncome: 10,
+        earningsMultiple: 5
+      }).success
+    ).toBe(true);
+    expect(
+      parseAssetDetails('INVENTORY', { designation: 'a', quantity: 1, unit: 'u', unitCost: 1, writeDownPercent: 10 })
+        .success
+    ).toBe(true);
+    expect(parseAssetDetails('RECEIVABLE', { debtor: 'A', principal: 100, collectibilityPercent: 75 }).success).toBe(
+      true
+    );
+    expect(parseAssetDetails('AGRICULTURE', { agricultureKind: 'LIVESTOCK', unitValue: 50000 }).success).toBe(true);
+    expect(parseAssetDetails('SAVINGS_INVESTMENT', { savingsKind: 'PLACEMENT', principal: 5_000_000 }).success).toBe(
+      true
+    );
+  });
+
+  it('refuse les valeurs hors bornes', () => {
+    expect(parseAssetDetails('REAL_ESTATE', { legalStatus: 'INCONNU' }).success).toBe(false);
+    expect(parseAssetDetails('VEHICLE_EQUIPMENT', { kind: 'a', usefulLifeYears: 0.5 }).success).toBe(false);
+    expect(parseAssetDetails('VEHICLE_EQUIPMENT', { kind: 'a', usefulLifeYears: 51 }).success).toBe(false);
+    expect(parseAssetDetails('VEHICLE_EQUIPMENT', { kind: 'a', residualValuePercent: 101 }).success).toBe(false);
+    expect(parseAssetDetails('VEHICLE_EQUIPMENT', { kind: 'a', depreciationMethod: 'X' }).success).toBe(false);
+    expect(
+      parseAssetDetails('BUSINESS_EQUITY', {
+        companyName: 'X',
+        legalForm: 'SARL',
+        country: 'CI',
+        ownershipPercent: 30,
+        earningsMultiple: 0
+      }).success
+    ).toBe(false);
+    expect(parseAssetDetails('RECEIVABLE', { debtor: 'A', principal: -1 }).success).toBe(false);
+    expect(parseAssetDetails('RECEIVABLE', { debtor: 'A', principal: 1_000_000_000_000 }).success).toBe(false);
+    expect(parseAssetDetails('AGRICULTURE', { agricultureKind: 'HARVEST', unitValue: -1 }).success).toBe(false);
+  });
+
+  it('reste strict : un champ étranger à la classe est refusé', () => {
+    expect(parseAssetDetails('REAL_ESTATE', { usefulLifeYears: 5 }).success).toBe(false);
+  });
+});
+
+describe('valeur nette et fiabilité (lot 2)', () => {
+  const valued = (id: string, value: number, reliability?: 'HIGH' | 'MEDIUM' | 'LOW' | null) =>
+    asset({
+      id,
+      valuations: [
+        { valuatedAt: new Date('2026-09-01T00:00:00Z'), estimatedValue: value, currency: 'XOF', reliability }
+      ]
+    });
+
+  it('calcule la part de valeur LOW ou sans fiabilité', () => {
+    const result = computeNetWorth(
+      [valued('a', 600, 'HIGH'), valued('b', 300, 'LOW'), valued('c', 100, null), valued('d', 0, undefined)],
+      [],
+      AS_OF
+    );
+    expect(result.lowReliabilityShare).toBe(40);
+    expect(result.assets.find(a => a.id === 'b')?.reliability).toBe('LOW');
+    expect(result.assets.find(a => a.id === 'a')?.reliability).toBe('HIGH');
+  });
+
+  it('arrondit la part à deux décimales et vaut 0 sans actif', () => {
+    const result = computeNetWorth([valued('a', 2, 'HIGH'), valued('b', 1, 'LOW')], [], AS_OF);
+    expect(result.lowReliabilityShare).toBe(33.33);
+    expect(computeNetWorth([], [], AS_OF).lowReliabilityShare).toBe(0);
+  });
+
+  it('marque périmé un compte valorisé il y a 4 mois, pas un terrain', () => {
+    const old = [{ valuatedAt: new Date('2026-05-29T00:00:00Z'), estimatedValue: 10, currency: 'XOF' }];
+    const result = computeNetWorth(
+      [asset({ id: 'cash', assetClass: 'CASH', valuations: old }), asset({ id: 'land', valuations: old })],
+      [],
+      AS_OF
+    );
+    expect(result.assets.find(a => a.id === 'cash')?.stale).toBe(true);
+    expect(result.assets.find(a => a.id === 'land')?.stale).toBe(false);
   });
 });

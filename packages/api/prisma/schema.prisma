@@ -4856,6 +4856,21 @@ enum ValuationMethod {
   MANUAL
   MARKET_ESTIMATE
   EXPERT_APPRAISAL
+  /// Amortissement linéaire d'un actif (véhicule, équipement) : lot 2, spec 024.
+  DEPRECIATION_LINEAR
+  DEPRECIATION_DECLINING
+  /// Part détenue dans une entreprise.
+  EQUITY_SHARE
+  /// Coût unitaire x quantité (stocks).
+  UNIT_COST
+  /// Solde saisi (trésorerie).
+  BALANCE
+  /// Épargne cumulée avec rendement.
+  ACCRUED_SAVINGS
+  /// Créance actualisée.
+  DISCOUNTED_CLAIM
+  /// Valeur unitaire x quantité (agriculture).
+  UNIT_VALUE
 }
 
 enum LoanStatus {
@@ -5110,24 +5125,26 @@ model Asset {
 }
 
 model AssetValuation {
-  id              String                @id @default(uuid()) @db.Uuid
-  tenantId        String                @map("tenant_id")
+  id                 String                @id @default(uuid()) @db.Uuid
+  tenantId           String                @map("tenant_id")
   /// Exactement un de propertyId / assetId (CHECK asset_valuations_one_target_chk).
-  propertyId      String?               @map("property_id")
-  assetId         String?               @map("asset_id") @db.Uuid
-  valuatedAt      DateTime              @map("valuated_at")
-  estimatedValue  Decimal               @map("estimated_value") @db.Decimal(14, 2)
-  currency        String                @default("XOF")
-  acquisitionCost Decimal?              @map("acquisition_cost") @db.Decimal(14, 2)
-  acquisitionDate DateTime?             @map("acquisition_date")
-  method          ValuationMethod       @default(MANUAL)
+  propertyId         String?               @map("property_id")
+  assetId            String?               @map("asset_id") @db.Uuid
+  valuatedAt         DateTime              @map("valuated_at")
+  estimatedValue     Decimal               @map("estimated_value") @db.Decimal(14, 2)
+  currency           String                @default("XOF")
+  acquisitionCost    Decimal?              @map("acquisition_cost") @db.Decimal(14, 2)
+  acquisitionDate    DateTime?             @map("acquisition_date")
+  method             ValuationMethod       @default(MANUAL)
   /// Origine de la valeur (facture, relevé, expert...). Renseigné à partir du lot 2.
-  source          String?
+  source             String?
   /// Fiabilité affichée (lot 2) ; nulle au lot 1.
-  reliability     ValuationReliability?
-  notes           String?
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
+  reliability        ValuationReliability?
+  /// Clés de raison stables de la fiabilité (spec 024), traduites côté web. Vide avant le lot 2.
+  reliabilityReasons String[]              @default([]) @map("reliability_reasons")
+  notes              String?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)

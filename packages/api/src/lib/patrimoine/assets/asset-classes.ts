@@ -29,7 +29,7 @@ export const ASSET_CLASSES = [
 export type AssetClassKey = (typeof ASSET_CLASSES)[number];
 
 /** Version courante des schémas de `details` ; à incrémenter à toute évolution incompatible. */
-export const ASSET_DETAILS_VERSION = 1;
+export const ASSET_DETAILS_VERSION = 2;
 
 /**
  * Libellés français des classes. Le texte français est la clé de traduction
@@ -52,6 +52,21 @@ const LEGAL_FORMS = ['SARL', 'SA', 'SAS', 'SCI', 'GIE', 'SNC', 'EI', 'AUTRE'] as
 const CASH_KINDS = ['BANK', 'MOBILE_MONEY', 'CASH_ON_HAND'] as const;
 const SAVINGS_KINDS = ['PLACEMENT', 'TONTINE', 'LIFE_INSURANCE', 'OTHER'] as const;
 const AGRICULTURE_KINDS = ['PLANTATION', 'LIVESTOCK', 'HARVEST'] as const;
+const DEPRECIATION_METHODS = ['LINEAR', 'DECLINING'] as const;
+
+/** Statuts juridiques d'un bien immobilier ; `AUTRE` est neutre : ni plafond bas, ni absence. */
+export const ASSET_LEGAL_STATUSES = [
+  'TITRE_FONCIER',
+  'ACD',
+  'CERTIFICAT_PROPRIETE',
+  'LETTRE_ATTRIBUTION',
+  'ATTESTATION_COUTUMIERE',
+  'AUTRE'
+] as const;
+export type AssetLegalStatus = (typeof ASSET_LEGAL_STATUSES)[number];
+
+/** Statuts qui plafonnent la fiabilité d'une valeur à « faible ». */
+export const FRAGILE_LEGAL_STATUSES: readonly AssetLegalStatus[] = ['LETTRE_ATTRIBUTION', 'ATTESTATION_COUTUMIERE'];
 
 /** Année maximale d'un véhicule : l'année en cours + 1 (modèles annoncés), évaluée à chaque validation. */
 const MIN_VEHICLE_YEAR = 1950;
@@ -65,6 +80,10 @@ const requiredText = z.string().trim().min(1).max(SHORT_TEXT_MAX);
 const optionalText = z.string().trim().min(1).max(SHORT_TEXT_MAX).optional();
 const percent = z.number().finite().min(0).max(100);
 const nonNegativeAmount = z.number().finite().min(0).max(MAX_QUANTITY);
+/** Durée d'utilité : entier ou décimal, de 1 à 50 ans. */
+const usefulLifeYears = z.number().finite().min(1).max(50);
+/** Multiple de résultat strictement positif, plafonné à 100. */
+const earningsMultiple = z.number().finite().gt(0).max(100);
 
 /** Date ISO : `AAAA-MM-JJ` ou date-heure ISO 8601, et réellement existante. */
 const isoDate = z
@@ -74,7 +93,7 @@ const isoDate = z
     message: 'Date ISO invalide (format AAAA-MM-JJ attendu)'
   });
 
-export const realEstateDetailsSchema = z.object({}).strict();
+export const realEstateDetailsSchema = z.object({ legalStatus: z.enum(ASSET_LEGAL_STATUSES).optional() }).strict();
 
 export const businessEquityDetailsSchema = z
   .object({
@@ -82,7 +101,10 @@ export const businessEquityDetailsSchema = z
     legalForm: z.enum(LEGAL_FORMS),
     country: requiredText,
     ownershipPercent: percent,
-    sector: optionalText
+    sector: optionalText,
+    companyValue: nonNegativeAmount.optional(),
+    netIncome: nonNegativeAmount.optional(),
+    earningsMultiple: earningsMultiple.optional()
   })
   .strict();
 
@@ -91,7 +113,8 @@ export const inventoryDetailsSchema = z
     designation: requiredText,
     quantity: nonNegativeAmount,
     unit: requiredText,
-    unitCost: nonNegativeAmount
+    unitCost: nonNegativeAmount,
+    writeDownPercent: percent.optional()
   })
   .strict();
 
@@ -108,7 +131,11 @@ export const vehicleEquipmentDetailsSchema = z
         message: `L'année doit être comprise entre ${MIN_VEHICLE_YEAR} et l'année en cours + 1`
       })
       .optional(),
-    registration: optionalText
+    registration: optionalText,
+    usefulLifeYears: usefulLifeYears.optional(),
+    residualValuePercent: percent.optional(),
+    depreciationMethod: z.enum(DEPRECIATION_METHODS).optional(),
+    decliningRatePercent: percent.optional()
   })
   .strict();
 
@@ -128,7 +155,8 @@ export const savingsInvestmentDetailsSchema = z
   .object({
     savingsKind: z.enum(SAVINGS_KINDS),
     organization: optionalText,
-    expectedRatePercent: percent.optional()
+    expectedRatePercent: percent.optional(),
+    principal: nonNegativeAmount.optional()
   })
   .strict();
 
@@ -136,7 +164,9 @@ export const receivableDetailsSchema = z
   .object({
     debtor: requiredText,
     dueDate: isoDate.optional(),
-    ratePercent: percent.optional()
+    ratePercent: percent.optional(),
+    principal: nonNegativeAmount.optional(),
+    collectibilityPercent: percent.optional()
   })
   .strict();
 
@@ -145,7 +175,8 @@ export const agricultureDetailsSchema = z
     agricultureKind: z.enum(AGRICULTURE_KINDS),
     crop: optionalText,
     areaHectares: nonNegativeAmount.optional(),
-    headcount: z.number().int().min(0).max(1_000_000_000).optional()
+    headcount: z.number().int().min(0).max(1_000_000_000).optional(),
+    unitValue: nonNegativeAmount.optional()
   })
   .strict();
 

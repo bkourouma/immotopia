@@ -69,6 +69,11 @@ Migration `20261004160000_patrimoine_multi_actifs`. Détail :
   plus de `(propertyId, entityId)`. Suppression d'un actif : cascade sur ses
   valorisations et parts, `Restrict` sur ses prêts (une dette ne disparaît pas en
   silence). `AssetValuation` gagne `source` et `reliability` (lot 2).
+- Lot 2 (spec 024), migration `20261004180000_valorisation_par_classe` :
+  `ValuationMethod` passe de 3 à 11 valeurs (`DEPRECIATION_LINEAR`,
+  `DEPRECIATION_DECLINING`, `EQUITY_SHARE`, `UNIT_COST`, `BALANCE`,
+  `ACCRUED_SAVINGS`, `DISCOUNTED_CLAIM`, `UNIT_VALUE`) et `AssetValuation` gagne
+  `reliabilityReasons` (`text[] NOT NULL DEFAULT '{}'`, clés de raison stables).
 - `PatrimonyDocument` : `assetId` facultatif (`SetNull`).
 - `PropertyExpense`, `WorkProgram`, `OwnerStatement*` : inchangés, rattachés au bien.
 - Données : un `Asset` `REAL_ESTATE` est créé par bien portant des données

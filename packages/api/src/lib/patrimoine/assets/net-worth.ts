@@ -22,6 +22,8 @@
 
 import { roundMoneyXof, roundPercent } from '../../finance/money';
 import { ASSET_CLASSES, type AssetClassKey } from './asset-classes';
+import type { Reliability } from './reliability';
+import { isStale } from './staleness';
 
 const BASE_CURRENCY = 'XOF';
 
@@ -33,6 +35,8 @@ export interface NetWorthValuationInput {
   valuatedAt: Date;
   estimatedValue: number;
   currency: string;
+  /** Fiabilité de la valorisation ; absente ou nulle (antérieure au lot 2) : comptée comme peu fiable. */
+  reliability?: Reliability | null;
 }
 
 export interface NetWorthAssetInput {
@@ -70,8 +74,10 @@ export interface NetWorthResult {
   totalAssets: number;
   totalDebts: number;
   netWorth: number;
+  /** Part de `totalAssets` reposant sur des valeurs de fiabilité LOW ou inconnue, de 0 à 100 ; 0 si le total est nul. */
+  lowReliabilityShare: number;
   byClass: NetWorthClassBreakdown[];
-  assets: { id: string; valueXof: number; valuatedAt: Date }[];
+  assets: { id: string; valueXof: number; valuatedAt: Date; reliability: Reliability | null; stale: boolean }[];
   excluded: { assetId: string; reason: NetWorthAssetExclusionReason }[];
   excludedLoans: { loanId: string; reason: 'MISSING_EXCHANGE_RATE' }[];
 }
@@ -113,7 +119,8 @@ export function toXof(amount: number, currency: string, rate: number | null): nu
 }
 
 type AssetEvaluation =
-  { included: true; valueXof: number; valuatedAt: Date } | { included: false; reason: NetWorthAssetExclusionReason };
+  | { included: true; valueXof: number; valuatedAt: Date; reliability: Reliability | null }
+  | { included: false; reason: NetWorthAssetExclusionReason };
 
 /** Un actif cédé compte encore tant que la date de sortie n'est pas atteinte. */
 function statusExclusion(asset: NetWorthAssetInput, asOf: Date): NetWorthAssetExclusionReason | null {
@@ -135,7 +142,12 @@ function evaluateAsset(asset: NetWorthAssetInput, asOf: Date): AssetEvaluation {
   const converted = toXof(valuation.estimatedValue, valuation.currency, asset.exchangeRateToXof);
   if (converted === null) return { included: false, reason: 'MISSING_EXCHANGE_RATE' };
 
-  return { included: true, valueXof: roundMoneyXof(converted), valuatedAt: valuation.valuatedAt };
+  return {
+    included: true,
+    valueXof: roundMoneyXof(converted),
+    valuatedAt: valuation.valuatedAt,
+    reliability: valuation.reliability ?? null
+  };
 }
 
 function buildByClass(
@@ -183,6 +195,7 @@ export function computeNetWorth(assets: NetWorthAssetInput[], loans: NetWorthLoa
   const excluded: NetWorthResult['excluded'] = [];
   const values = new Map<string, number>();
   let totalAssets = 0;
+  let lowReliabilityValue = 0;
 
   for (const asset of assets) {
     const evaluation = evaluateAsset(asset, asOf);
@@ -190,9 +203,16 @@ export function computeNetWorth(assets: NetWorthAssetInput[], loans: NetWorthLoa
       excluded.push({ assetId: asset.id, reason: evaluation.reason });
       continue;
     }
-    included.push({ id: asset.id, valueXof: evaluation.valueXof, valuatedAt: evaluation.valuatedAt });
+    included.push({
+      id: asset.id,
+      valueXof: evaluation.valueXof,
+      valuatedAt: evaluation.valuatedAt,
+      reliability: evaluation.reliability,
+      stale: isStale(asset.assetClass, evaluation.valuatedAt, asOf)
+    });
     values.set(asset.id, evaluation.valueXof);
     totalAssets += evaluation.valueXof;
+    if (evaluation.reliability === null || evaluation.reliability === 'LOW') lowReliabilityValue += evaluation.valueXof;
   }
 
   const { totalDebts, excludedLoans } = computeDebts(loans);
@@ -203,6 +223,7 @@ export function computeNetWorth(assets: NetWorthAssetInput[], loans: NetWorthLoa
     totalAssets,
     totalDebts,
     netWorth: totalAssets - totalDebts,
+    lowReliabilityShare: totalAssets > 0 ? roundPercent((lowReliabilityValue / totalAssets) * 100) : 0,
     byClass: buildByClass(assets, values, totalAssets),
     assets: included,
     excluded,
