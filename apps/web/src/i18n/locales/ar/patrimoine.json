@@ -322,6 +322,8 @@
   "Expire dans {{diffDays}}j": "ينتهي خلال {{diffDays}} يومًا",
   "Export impossible": "تعذّر التصدير",
   "Exporter": "تصدير",
+  "Exporter en Excel": "تصدير بصيغة Excel",
+  "Exporter en PDF": "تصدير بصيغة PDF",
   "Faible": "ضعيفة",
   "Fiabilité": "الموثوقية",
   "Fichier": "الملف",

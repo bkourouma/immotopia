@@ -322,6 +322,8 @@
   "Expire dans {{diffDays}}j": "Expires in {{diffDays}}d",
   "Export impossible": "Export failed",
   "Exporter": "Export",
+  "Exporter en Excel": "Export to Excel",
+  "Exporter en PDF": "Export to PDF",
   "Faible": "Low",
   "Fiabilité": "Reliability",
   "Fichier": "File",

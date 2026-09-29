@@ -55,6 +55,7 @@ import coOwnerPortalRoutes from './routes/coowner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import patrimoineAssetsRoutes from './routes/patrimoine-assets-routes';
+import patrimoineExportsRoutes from './routes/patrimoine-exports-routes';
 import personalSpaceRoutes from './routes/personal-space-routes';
 import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
@@ -271,6 +272,7 @@ app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
 app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', patrimoineEntitiesRoutes); // Patrimoine — entités détentrices et fiscalité (lot P4, tenant-scoped)
 app.use('/api', patrimoineAssetsRoutes); // Patrimoine — actifs, dettes, valeur nette (lot 1 multi-actifs, tenant-scoped)
+app.use('/api', patrimoineExportsRoutes); // Patrimoine — exports PDF/Excel de la situation patrimoniale (lot 5, tenant-scoped)
 app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et scénarios (lot 3, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
