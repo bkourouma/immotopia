@@ -31,6 +31,7 @@
   "Image retirée": "تمت إزالة الصورة",
   "Impossible de charger les modèles de documents.": "تعذّر تحميل نماذج المستندات.",
   "Le modèle ne sera plus proposé à la génération. Cette action est définitive.": "لن يظهر النموذج بعد الآن عند إنشاء المستندات. لا يمكن التراجع عن هذا الإجراء.",
+  "Les grandes images sont réduites automatiquement à 800 px.": "يتم تصغير الصور الكبيرة تلقائيًا إلى 800 بكسل.",
   "Modèle {{name}}": "النموذج {{name}}",
   "Modèles de documents": "نماذج المستندات",
   "Nom": "الاسم",

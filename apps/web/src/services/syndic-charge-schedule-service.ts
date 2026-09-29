@@ -6,6 +6,7 @@ import {
   CreateChargeScheduleRequest,
   DeleteChargeScheduleResult,
   ExecuteChargeScheduleResult,
+  ResendChargeScheduleRunNoticesResult,
   UpdateChargeScheduleRequest
 } from '../types/syndic-types';
 
@@ -104,6 +105,20 @@ export async function executeChargeScheduleNow(
 ): Promise<ExecuteChargeScheduleResult> {
   const response = await apiClient.post<{ success: boolean; data: ExecuteChargeScheduleResult }>(
     `${scheduleBase(tenantId, syndicId, scheduleId)}/executer`,
+    {}
+  );
+  return response.data.data;
+}
+
+/** « Renvoyer les avis non envoyés » d'une exécution (anomalie recette, correctif Syndic). */
+export async function resendChargeScheduleRunNotices(
+  tenantId: string,
+  syndicId: string,
+  scheduleId: string,
+  runId: string
+): Promise<ResendChargeScheduleRunNoticesResult> {
+  const response = await apiClient.post<{ success: boolean; data: ResendChargeScheduleRunNoticesResult }>(
+    `${scheduleBase(tenantId, syndicId, scheduleId)}/executions/${runId}/renvoyer-avis`,
     {}
   );
   return response.data.data;

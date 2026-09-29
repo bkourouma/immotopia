@@ -19,11 +19,18 @@ const mockPrisma = createFakePrisma();
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 const mockSendEmail = jest.fn(async (_params: any) => undefined);
+const mockIsEmailDeliveryConfigured = jest.fn(() => true);
 jest.mock('../../src/services/email-service', () => ({
-  emailService: { sendEmail: (params: any) => mockSendEmail(params) }
+  emailService: { sendEmail: (params: any) => mockSendEmail(params) },
+  isEmailDeliveryConfigured: () => mockIsEmailDeliveryConfigured()
+}));
+const mockGetEmailNotificationConfig = jest.fn(async (..._args: any[]) => ({
+  enabled: true,
+  subjectOverride: null,
+  bodyHtmlOverride: null
 }));
 jest.mock('../../src/services/email-notification-config-service', () => ({
-  getEmailNotificationConfig: jest.fn(async () => ({ enabled: true, subjectOverride: null, bodyHtmlOverride: null }))
+  getEmailNotificationConfig: (...args: any[]) => mockGetEmailNotificationConfig(...args)
 }));
 jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
   sendWhatsappNotification: jest.fn(async () => false)
@@ -48,6 +55,7 @@ import {
   listChargeSchedules,
   pauseChargeSchedule,
   previewChargeSchedule,
+  resendChargeScheduleRunNotices,
   resumeChargeSchedule,
   updateChargeSchedule
 } from '../../src/lib/syndics/charge-schedules';
@@ -180,6 +188,14 @@ function seed() {
   mockPrisma.reset();
   mockSendEmail.mockReset();
   mockSendEmail.mockImplementation(async () => undefined);
+  mockIsEmailDeliveryConfigured.mockReset();
+  mockIsEmailDeliveryConfigured.mockImplementation(() => true);
+  mockGetEmailNotificationConfig.mockReset();
+  mockGetEmailNotificationConfig.mockImplementation(async () => ({
+    enabled: true,
+    subjectOverride: null,
+    bodyHtmlOverride: null
+  }));
   mockGetEntitlements.mockReset();
   mockGetEntitlements.mockImplementation(async () => fullEntitlements());
   for (const [syndicId, info] of Object.entries(syndicates)) {
@@ -850,6 +866,33 @@ describe('destinataire de l avis', () => {
     expect(mail.html).not.toContain('<img src=x');
     expect(mail.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
+
+  it('correctif BUG-2026-09-27 : lot sans ownerContactId mais avec coownerId (creation via Profils et copropriétaires) -> avis envoye au coproprietaire', async () => {
+    // Avant correctif, notifyChargeCall ne lisait que `lot.owner`
+    // (`ownerContactId`) : un lot cree par l'ecran des copropriétaires, qui
+    // ne renseigne que `coownerId`, tombait systematiquement en NO_OWNER.
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L1)!;
+    lot.ownerContactId = null;
+    lot.owner = null;
+    lot.coownerId = BAKARY;
+    lot.coowner = contacts[BAKARY];
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({ status: 'SUCCESS', notificationsSent: 2, notificationsSkipped: 0 });
+    expect(mockSendEmail.mock.calls.map(([mail]) => mail.to)).toEqual(['bakary@example.test', 'bakary@example.test']);
+  });
+
+  it('noticeSentAt : pose quand un avis part, jamais quand aucun avis ne part', async () => {
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L2)!;
+    lot.owner = null;
+    lot.ownerContactId = null;
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    const l1Call = calls().find(call => call.lotId === L1)!;
+    const l2Call = calls().find(call => call.lotId === L2)!;
+    expect(l1Call.noticeSentAt).toBeInstanceOf(Date);
+    expect(l2Call.noticeSentAt).toBeFalsy();
+  });
 });
 
 describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, avec sa raison', () => {
@@ -874,7 +917,7 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
     expect(history.notes).toBe('Avis non envoyé (lot sans copropriétaire) : A-02');
   });
 
-  it('aucun canal d envoi (pas d e-mail utilisable, pas de WhatsApp) -> ignore, note dediee', async () => {
+  it('copropriétaire sans e-mail ni WhatsApp (NO_EMAIL) -> ignore, note dediee', async () => {
     const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L1)!;
     lot.owner = { ...lot.owner, email: null };
     const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
@@ -887,14 +930,49 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
     });
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
-    expect(history.notes).toContain("Avis non envoyé (aucun canal d'envoi : pas d'e-mail utilisable");
-    expect(history.notes).toContain('A-01');
+    expect(history.notes).toBe('Avis non envoyé (copropriétaire sans e-mail ni WhatsApp exploitable) : A-01');
   });
 
-  it('exception de notifyChargeCall (e-mail en echec) -> ignore, note dediee, warn journalise', async () => {
+  it('notification e-mail desactivee pour l agence (NOTIFICATION_DISABLED) -> ignore, note dediee', async () => {
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: false,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({
+      status: 'SUCCESS',
+      callsCreated: 2,
+      notificationsSent: 0,
+      notificationsSkipped: 2
+    });
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toContain("Avis non envoyé (notification e-mail désactivée pour l'agence)");
+  });
+
+  it('serveur sans transport e-mail configure (EMAIL_NOT_CONFIGURED) -> aucune tentative, note dediee', async () => {
+    mockIsEmailDeliveryConfigured.mockImplementation(() => false);
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({
+      status: 'SUCCESS',
+      callsCreated: 2,
+      notificationsSent: 0,
+      notificationsSkipped: 2
+    });
+    // Ni l'e-mail ni la config de notification ne sont consultes : on sait deja qu'il ne partira pas.
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockGetEmailNotificationConfig).not.toHaveBeenCalled();
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history.notes).toContain("Avis non envoyé (envoi d'e-mails non configuré sur le serveur)");
+  });
+
+  it('exception de notifyChargeCall (e-mail en echec) -> ignore, note dediee avec motif court, catchee dans notifyChargeCall', async () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
     mockSendEmail.mockImplementationOnce(async () => {
-      throw new Error('SMTP indisponible');
+      throw Object.assign(new Error('rejected'), { responseCode: 550, response: '550 mailbox unavailable' });
     });
     const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
     const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
@@ -905,10 +983,11 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
       notificationsSkipped: 1
     });
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
-    expect(history.notes).toBe("Avis non envoyé (échec de l'envoi) : A-01");
+    // Motif court et non sensible (code + reponse SMTP), jamais les identifiants du transporteur.
+    expect(history.notes).toBe("Avis non envoyé (échec de l'envoi) : A-01 (550 550 mailbox unavailable)");
     expect(warn).toHaveBeenCalledWith(
-      'Scheduled charge call notification failed',
-      expect.objectContaining({ error: 'SMTP indisponible' })
+      'notifyChargeCall: email send failed',
+      expect.objectContaining({ error: 'rejected' })
     );
     warn.mockRestore();
   });
@@ -937,6 +1016,115 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
       'Avis non envoyé (propriétaire du lot différent du copropriétaire actuel) : A-01',
       'Avis non envoyé (lot sans copropriétaire) : A-02'
     ]);
+  });
+});
+
+describe('renvoi des avis non envoyes (item 4, anomalie recette)', () => {
+  it('renvoie les appels encore dus sans avis parti, recalcule les compteurs et les notes', async () => {
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: false,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(executed.run).toMatchObject({ notificationsSent: 0, notificationsSkipped: 2 });
+    expect(mockSendEmail).not.toHaveBeenCalled();
+
+    // L'agence réactive la notification, puis renvoie — une minute plus tard (garde anti-rafale).
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: true,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const later = new Date(NOW.getTime() + 2 * 60 * 1000);
+    const resent = await resendChargeScheduleRunNotices(TENANT_A, S1, schedule.id, executed.run.runId!, later);
+    expect(resent).toMatchObject({ resent: 2, stillSkipped: 0 });
+    expect(mockSendEmail).toHaveBeenCalledTimes(2);
+
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history).toMatchObject({ notificationsSent: 2, notificationsSkipped: 0, notes: null });
+
+    const l1Call = calls().find(call => call.lotId === L1)!;
+    expect(l1Call.noticeSentAt).toBeInstanceOf(Date);
+  });
+
+  it('rien a renvoyer (tous les avis dus deja envoyes) -> 409', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(executed.run).toMatchObject({ notificationsSent: 2, notificationsSkipped: 0 });
+    const later = new Date(NOW.getTime() + 2 * 60 * 1000);
+    await expect(
+      resendChargeScheduleRunNotices(TENANT_A, S1, schedule.id, executed.run.runId!, later)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('execution sans appel emis (FAILED : budget non approuve) -> 409', async () => {
+    // S2 / BUD2 est en brouillon (voir `seed`) : aucun appel n'est emis.
+    const schedule = await createChargeSchedule(TENANT_A, S2, input({ budgetId: BUD2 }), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S2, schedule.id, NOW);
+    expect(executed.run.status).toBe('FAILED');
+    const later = new Date(NOW.getTime() + 2 * 60 * 1000);
+    await expect(
+      resendChargeScheduleRunNotices(TENANT_A, S2, schedule.id, executed.run.runId!, later)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('garde anti-rafale : un second renvoi a moins d une minute du precedent est refuse', async () => {
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: false,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: true,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const soon = new Date(NOW.getTime() + 30 * 1000);
+    await expect(
+      resendChargeScheduleRunNotices(TENANT_A, S1, schedule.id, executed.run.runId!, soon)
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('deux renvois simultanes : un seul envoie, l autre recoit 409', async () => {
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: false,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    mockGetEmailNotificationConfig.mockImplementation(async () => ({
+      enabled: true,
+      subjectOverride: null,
+      bodyHtmlOverride: null
+    }));
+    const later = new Date(NOW.getTime() + 5 * 60 * 1000);
+    const outcomes = await Promise.allSettled([
+      resendChargeScheduleRunNotices(TENANT_A, S1, schedule.id, executed.run.runId!, later),
+      resendChargeScheduleRunNotices(TENANT_A, S1, schedule.id, executed.run.runId!, later)
+    ]);
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+    const rejected = outcomes.find(outcome => outcome.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ statusCode: 409 });
+    const sentTo = mockSendEmail.mock.calls.map(call => (call[0] as any).to);
+    expect(new Set(sentTo).size).toBe(sentTo.length);
+  });
+
+  it('run d une autre agence, ou programmation inexistante -> 404 (comme un run inexistant)', async () => {
+    const scheduleA = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const executed = await executeChargeScheduleNow(TENANT_A, S1, scheduleA.id, NOW);
+    const later = new Date(NOW.getTime() + 2 * 60 * 1000);
+    await expect(
+      resendChargeScheduleRunNotices(TENANT_B, SB, scheduleA.id, executed.run.runId!, later)
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(resendChargeScheduleRunNotices(TENANT_A, S1, scheduleA.id, id(999), later)).rejects.toMatchObject({
+      statusCode: 404
+    });
   });
 });
 

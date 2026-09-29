@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { PatrimoineOverview } from '../../components/patrimoine/PatrimoineOverview';
+import { PatrimoineExportButton } from '../../components/patrimoine/PatrimoineExportButton';
 import { WorkProgramTimeline } from '../../components/patrimoine/WorkProgramTimeline';
 import { getPatrimoineOverview, listTenantWorkPrograms } from '../../services/patrimoine-service';
 import { useAuth } from '../../hooks/useAuth';
@@ -69,6 +70,7 @@ export const PatrimoineOverviewPage: React.FC = () => {
         // « Voir les biens », et non « Voir les biens (/properties) » :
         // l'adresse technique n'apprend rien à qui lit le bouton.
         primaryAction={{ label: t('Voir les biens'), onClick: () => navigate(`/tenant/${agence}/properties`) }}
+        extra={<PatrimoineExportButton tenantId={agence} />}
       />
 
       {apercu.error ? (

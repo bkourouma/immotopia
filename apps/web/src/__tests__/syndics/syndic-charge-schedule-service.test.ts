@@ -9,6 +9,7 @@ import {
   listChargeSchedules,
   pauseChargeSchedule,
   previewChargeSchedule,
+  resendChargeScheduleRunNotices,
   resumeChargeSchedule,
   updateChargeSchedule
 } from '../../services/syndic-charge-schedule-service';
@@ -134,6 +135,20 @@ describe('syndic-charge-schedule-service (lot S4)', () => {
       '/tenants/tenant-1/syndics/syndic-1/programmations/sched-1/executions',
       { params: { limit: 20 } }
     );
+  });
+
+  it('resendChargeScheduleRunNotices envoie POST .../executions/:runId/renvoyer-avis', async () => {
+    mockApiClient.post.mockResolvedValue({
+      data: { success: true, data: { resent: 2, stillSkipped: 0, run: { id: 'run-1' } } }
+    });
+
+    const result = await resendChargeScheduleRunNotices('tenant-1', 'syndic-1', 'sched-1', 'run-1');
+
+    expect(mockApiClient.post).toHaveBeenCalledWith(
+      '/tenants/tenant-1/syndics/syndic-1/programmations/sched-1/executions/run-1/renvoyer-avis',
+      {}
+    );
+    expect(result.resent).toBe(2);
   });
 
   it('previewChargeSchedule envoie GET .../apercu', async () => {

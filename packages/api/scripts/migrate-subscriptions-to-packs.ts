@@ -56,7 +56,15 @@ interface TenantReport {
   packs: string[];
   toReview: boolean;
   subscription: 'conservé' | 'créé (essai 30 j)' | 'déjà migré';
-  lots: { total: number; logements: number; copro: number; programme: number; added: number; removed: number };
+  lots: {
+    total: number;
+    logements: number;
+    copro: number;
+    programme: number;
+    biens: number;
+    added: number;
+    removed: number;
+  };
   capacities: Record<CapacityKeyCode, { limit: number; used: number }>;
   overrides: string[];
 }
@@ -71,7 +79,10 @@ function ceilToTen(n: number): number {
   return Math.ceil(n / 10) * 10;
 }
 
-async function migrateTenant(tenant: { id: string; name: string; status: string }, dryRun: boolean): Promise<TenantReport> {
+async function migrateTenant(
+  tenant: { id: string; name: string; status: string },
+  dryRun: boolean
+): Promise<TenantReport> {
   const now = new Date();
   const [moduleRows, subscription, existingItems, overridesBefore] = await Promise.all([
     prisma.tenantModule.findMany({ where: { tenantId: tenant.id } }),
@@ -137,14 +148,16 @@ async function migrateTenant(tenant: { id: string; name: string; status: string 
           }
         });
       } else {
-        const metadata = (sub.metadata && typeof sub.metadata === 'object' && !Array.isArray(sub.metadata)
-          ? sub.metadata
-          : {}) as Record<string, unknown>;
+        const metadata = (
+          sub.metadata && typeof sub.metadata === 'object' && !Array.isArray(sub.metadata) ? sub.metadata : {}
+        ) as Record<string, unknown>;
         sub = await tx.subscription.update({
           where: { tenantId: tenant.id },
           data: {
             metadata: { ...metadata, packMigration: marker } as Prisma.InputJsonValue,
-            ...(sub.status === SubscriptionStatus.TRIALING && !sub.trialEndsAt ? { trialEndsAt: sub.currentPeriodEnd } : {}),
+            ...(sub.status === SubscriptionStatus.TRIALING && !sub.trialEndsAt
+              ? { trialEndsAt: sub.currentPeriodEnd }
+              : {}),
             ...(!sub.nextBillingAt ? { nextBillingAt: sub.currentPeriodEnd } : {})
           }
         });
@@ -186,11 +199,16 @@ async function migrateTenant(tenant: { id: string; name: string; status: string 
   const reconcile = await reconcileLotActivations(tenant.id, { dryRun });
 
   // --- 5. Capacites et derogation « Reprise »
-  const usedLots = dryRun ? (await computeQualifyingUnits(prisma, tenant.id)).length : reconcile.qualifying;
+  // reconcile.byKind est toujours calcule (dryRun compris, voir reconcileLotActivationsTx) :
+  // BIENS_DETENUS (pack Patrimoine) est une capacite a part, jamais comptee dans LOTS.
+  const heldCount = reconcile.byKind.HELD_PROPERTY;
+  const usedLots =
+    (dryRun ? (await computeQualifyingUnits(prisma, tenant.id)).length : reconcile.qualifying) - heldCount;
   const usage: Record<CapacityKeyCode, number> = {
     LOTS: usedLots,
     COPROPRIETES: await countActiveCopros(prisma, tenant.id),
-    CHANTIERS: await countActiveSites(prisma, tenant.id)
+    CHANTIERS: await countActiveSites(prisma, tenant.id),
+    BIENS_DETENUS: heldCount
   };
   const limits = computeCapacityLimits(itemsForLimits, overridesBefore, now);
   const overrides: string[] = [];
@@ -204,7 +222,9 @@ async function migrateTenant(tenant: { id: string; name: string; status: string 
       o => o.capacityKey === key && o.reason.startsWith(REPRISE_REASON_PREFIX) && isOverrideActive(o, now)
     );
     if (existingReprise) {
-      overrides.push(`${key} +${existingReprise.delta} (déjà accordée, expire le ${existingReprise.expiresAt?.toISOString().slice(0, 10)})`);
+      overrides.push(
+        `${key} +${existingReprise.delta} (déjà accordée, expire le ${existingReprise.expiresAt?.toISOString().slice(0, 10)})`
+      );
       continue;
     }
     const delta = key === 'LOTS' ? ceilToTen(over) : over;
@@ -244,6 +264,7 @@ async function migrateTenant(tenant: { id: string; name: string; status: string 
       logements: reconcile.byKind.RENTAL_UNIT,
       copro: reconcile.byKind.COPRO_LOT,
       programme: reconcile.byKind.PROGRAM_LOT,
+      biens: reconcile.byKind.HELD_PROPERTY,
       added: reconcile.added.length,
       removed: reconcile.removed.length
     },
@@ -265,7 +286,9 @@ async function main() {
     orderBy: { name: 'asc' }
   });
 
-  console.log(`Reprise des abonnements vers les packs${dryRun ? ' (SIMULATION, aucune écriture)' : ''} — ${tenants.length} agence(s)\n`);
+  console.log(
+    `Reprise des abonnements vers les packs${dryRun ? ' (SIMULATION, aucune écriture)' : ''} — ${tenants.length} agence(s)\n`
+  );
   const reports: TenantReport[] = [];
   for (const tenant of tenants) {
     reports.push(await migrateTenant(tenant, dryRun));
@@ -277,7 +300,7 @@ async function main() {
     console.log(`    packs         : ${r.packs.join(' + ')}${r.toReview ? '  ⚠ à revoir' : ''}`);
     console.log(`    abonnement    : ${r.subscription}`);
     console.log(
-      `    lots comptés  : ${r.lots.total} (logements ${r.lots.logements}, copropriété ${r.lots.copro}, programme ${r.lots.programme})` +
+      `    lots comptés  : ${r.lots.total} (logements ${r.lots.logements}, copropriété ${r.lots.copro}, programme ${r.lots.programme}, biens détenus ${r.lots.biens})` +
         ` — registre +${r.lots.added} / -${r.lots.removed}`
     );
     console.log(

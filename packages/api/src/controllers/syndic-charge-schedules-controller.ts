@@ -11,6 +11,7 @@ import {
   listChargeSchedules,
   pauseChargeSchedule,
   previewChargeSchedule,
+  resendChargeScheduleRunNotices,
   resumeChargeSchedule,
   updateChargeSchedule
 } from '../lib/syndics/charge-schedules';
@@ -39,6 +40,7 @@ const syndicIdOf = (req: Request) =>
   assertUuidOrNotFound(req.params.syndicId, 'Copropriete introuvable ou inaccessible.');
 const scheduleIdOf = (req: Request) => assertUuidOrNotFound(req.params.scheduleId, 'Programmation introuvable.');
 const chargeIdOf = (req: Request) => assertUuidOrNotFound(req.params.chargeId, 'Appel de charges introuvable.');
+const runIdOf = (req: Request) => assertUuidOrNotFound(req.params.runId, 'Exécution introuvable.');
 
 export const listChargeSchedulesHandler = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await listChargeSchedules(tenantIdOf(req), syndicIdOf(req)) });
@@ -74,6 +76,16 @@ export const resumeChargeScheduleHandler = asyncHandler(async (req: Request, res
 
 export const executeChargeScheduleHandler = asyncHandler(async (req: Request, res: Response) => {
   const result = await executeChargeScheduleNow(tenantIdOf(req), syndicIdOf(req), scheduleIdOf(req));
+  res.json({ success: true, data: result });
+});
+
+export const resendChargeScheduleRunNoticesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const result = await resendChargeScheduleRunNotices(
+    tenantIdOf(req),
+    syndicIdOf(req),
+    scheduleIdOf(req),
+    runIdOf(req)
+  );
   res.json({ success: true, data: result });
 });
 

@@ -14,6 +14,7 @@ import {
   listChargeSchedulesHandler,
   pauseChargeScheduleHandler,
   previewChargeScheduleHandler,
+  resendChargeScheduleRunNoticesHandler,
   resumeChargeScheduleHandler,
   updateChargeScheduleHandler
 } from '../controllers/syndic-charge-schedules-controller';
@@ -48,6 +49,14 @@ router.post(`${SCHEDULE}/reprise`, ...guards, canEdit, resumeChargeScheduleHandl
 // Limiteurs par utilisateur et agence, posés APRÈS les gardes (ils lisent la session et l'agence).
 router.post(`${SCHEDULE}/executer`, ...guards, canEdit, chargeScheduleExecuteRateLimiter, executeChargeScheduleHandler);
 router.get(`${SCHEDULE}/executions`, ...guards, canView, listChargeScheduleRunsHandler);
+// Même limiteur que « Exécuter » : un renvoi part aussi des e-mails/WhatsApp.
+router.post(
+  `${SCHEDULE}/executions/:runId/renvoyer-avis`,
+  ...guards,
+  canEdit,
+  chargeScheduleExecuteRateLimiter,
+  resendChargeScheduleRunNoticesHandler
+);
 router.get(`${SCHEDULE}/apercu`, ...guards, canView, previewChargeScheduleHandler);
 router.get(
   `${SYNDIC}/charges/:chargeId/avis`,

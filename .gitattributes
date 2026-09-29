@@ -1,2 +1,6 @@
 # Les hooks shell gardent des fins de ligne LF : bash échoue sur un CRLF.
 *.sh text eol=lf
+
+# Fichiers texte lus par les scripts de déploiement : une fin de ligne CRLF
+# se retrouverait telle quelle dans un nom de migration compare en base.
+infra/scripts/*.txt text eol=lf

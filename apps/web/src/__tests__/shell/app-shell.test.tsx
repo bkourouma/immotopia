@@ -5,7 +5,7 @@ import AuthContext from '../../context/AuthContext';
 import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
 import { AppNavigation } from '../../components/shell/AppNavigation';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 // La coquille porte desormais le selecteur de langue : sans ce provider,
 // `useLanguage` leve, et c'est voulu — un provider oublie doit se voir.
 import { LanguageProvider } from '../../i18n/LanguageProvider';
@@ -202,7 +202,7 @@ describe('AppNavigation — intertitres de domaine', () => {
   function renderNav(variant: 'sidebar' | 'rail') {
     return render(
       <MemoryRouter initialEntries={[`/tenant/${TENANT}/rental/leases`]}>
-        <AppNavigation persona={NAVIGATION.collaborateur} context={{ tenantId: TENANT }} variant={variant} />
+        <AppNavigation persona={getNavigation().collaborateur} context={{ tenantId: TENANT }} variant={variant} />
       </MemoryRouter>
     );
   }
@@ -233,7 +233,7 @@ describe('AppNavigation — intertitres de domaine', () => {
   it('coiffe le portail propriétaire de « Mon portefeuille » et « Suivi des bâtiments »', () => {
     render(
       <MemoryRouter initialEntries={['/owner/revenues']}>
-        <AppNavigation persona={NAVIGATION.proprietaire} context={{}} variant="sidebar" />
+        <AppNavigation persona={getNavigation().proprietaire} context={{}} variant="sidebar" />
       </MemoryRouter>
     );
     expect(screen.getByText('Mon portefeuille')).toBeInTheDocument();

@@ -4,7 +4,7 @@ import type { EmailNotificationKey } from '../../constants/email-notification-ke
 import type { WhatsappNotificationKey } from '../../constants/whatsapp-notification-keys';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
-import { emailService } from '../../services/email-service';
+import { emailService, isEmailDeliveryConfigured } from '../../services/email-service';
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
 import { paidFromAllocations } from './charge-allocation';
 import { computeOutstanding } from './finance-utils';
@@ -83,7 +83,60 @@ async function resolveAttachments(chargeCallId: string, options: NotifyChargeCal
   }
 }
 
-export async function notifyChargeCall(chargeCallId: string, options: NotifyChargeCallOptions = {}) {
+/**
+ * Raison pour laquelle `notifyChargeCall` n'a envoyé aucun avis (ou, pour les
+ * deux premières, n'a rien tenté du tout). BUG-2026-09-27 : `NO_OWNER` et
+ * `OWNER_NOT_CURRENT` sont distincts d'un simple défaut de canal, et
+ * `NO_EMAIL`/`NOTIFICATION_DISABLED`/`EMAIL_NOT_CONFIGURED` remplacent un
+ * fourre-tout unique pour que l'écran et le renvoi sachent quoi faire.
+ */
+export type NotifyChargeCallSkipReason =
+  | 'CHARGE_CALL_NOT_FOUND'
+  | 'ALREADY_PAID'
+  /** Le lot n'a ni propriétaire (`ownerContactId`) ni copropriétaire (`coownerId`). */
+  | 'NO_OWNER'
+  /** Le contact résolu n'est plus un copropriétaire actuel du lot (fiches `LotOwnerProfile`). */
+  | 'OWNER_NOT_CURRENT'
+  /** Copropriétaire sans e-mail exploitable, et sans WhatsApp exploitable non plus. */
+  | 'NO_EMAIL'
+  /** Le copropriétaire a un e-mail, mais la notification « Appel de charges émis » est désactivée pour l'agence. */
+  | 'NOTIFICATION_DISABLED'
+  /** Le copropriétaire a un e-mail et la notification est activée, mais le serveur n'a aucun transport e-mail configuré. */
+  | 'EMAIL_NOT_CONFIGURED'
+  /** L'envoi a été tenté (e-mail configuré, activé) et a échoué. */
+  | 'SEND_FAILED';
+
+export interface NotifyChargeCallResult {
+  emailSent: boolean;
+  whatsappSent: boolean;
+  skipped?: NotifyChargeCallSkipReason;
+  /** `SEND_FAILED` seulement : motif court et non sensible (code/réponse SMTP), jamais d'identifiants. */
+  skipDetail?: string;
+}
+
+/** Motif court, non sensible, tiré d'une erreur d'envoi (jamais `command` : peut porter les identifiants SMTP en base64). */
+/** Le motif est affiché dans les notes de l'exécution : aucune adresse e-mail n'y figure. */
+function maskEmailAddresses(text: string): string {
+  return text.replace(/[^\s<>"'@]+@[^\s<>"'@]+/g, '<adresse>');
+}
+
+function emailFailureDetail(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const err = error as { code?: unknown; responseCode?: unknown; response?: unknown; message?: unknown };
+    const codes = [err.responseCode, err.code].filter(part => part !== undefined && part !== null).map(String);
+    const response = typeof err.response === 'string' ? err.response.trim().slice(0, 160) : undefined;
+    const detail = [...codes, response].filter(Boolean).join(' ').trim();
+    if (detail) return maskEmailAddresses(detail).slice(0, 200);
+    if (typeof err.message === 'string' && err.message.trim())
+      return maskEmailAddresses(err.message.trim()).slice(0, 200);
+  }
+  return 'erreur inconnue';
+}
+
+export async function notifyChargeCall(
+  chargeCallId: string,
+  options: NotifyChargeCallOptions = {}
+): Promise<NotifyChargeCallResult> {
   const eventKeyEmail: EmailNotificationKey = 'CHARGE_CALL_ISSUED';
   const eventKeyWhatsApp: WhatsappNotificationKey = 'CHARGE_CALL_ISSUED';
 
@@ -93,6 +146,7 @@ export async function notifyChargeCall(chargeCallId: string, options: NotifyChar
       lot: {
         include: {
           owner: true,
+          coowner: true,
           property: {
             select: {
               title: true,
@@ -109,39 +163,49 @@ export async function notifyChargeCall(chargeCallId: string, options: NotifyChar
 
   if (!chargeCall) {
     logger.warn('notifyChargeCall: charge call not found', { chargeCallId });
-    return { emailSent: false, whatsappSent: false, skipped: 'CHARGE_CALL_NOT_FOUND' as const };
+    return { emailSent: false, whatsappSent: false, skipped: 'CHARGE_CALL_NOT_FOUND' };
   }
 
   // Lot S2 : un appel entierement couvert (par un paiement ou par l'avance du
   // lot, imputee a la creation) n'est pas notifie comme « a payer ».
   if (computeOutstanding(Number(chargeCall.amount), paidFromAllocations(chargeCall.allocations)) <= 0) {
     logger.info('notifyChargeCall: charge call already covered, skipping notifications', { chargeCallId });
-    return { emailSent: false, whatsappSent: false, skipped: 'ALREADY_PAID' as const };
+    return { emailSent: false, whatsappSent: false, skipped: 'ALREADY_PAID' };
   }
 
-  const owner = chargeCall.lot?.owner;
   const tenantId = chargeCall.syndicate.tenantId;
+  const lot = chargeCall.lot;
+  // Correctif BUG-2026-09-27 : meme regle de resolution du destinataire que
+  // les quittances (`charge-receipt-queries.ts` :
+  // `lot?.ownerContactId ?? lot?.coownerId`) — un lot cree depuis l'ecran
+  // « Profils et copropriétaires » ne renseigne souvent que `coownerId`
+  // (LotOwnerProfile / coowner), jamais `ownerContactId` seul : avant ce
+  // correctif, notifyChargeCall ne regardait que `lot.owner`
+  // (`ownerContactId`) et envoyait NO_OWNER_CONTACT pour tous ces lots.
+  const recipient = lot?.ownerContactId ? lot.owner : lot?.coownerId ? lot.coowner : null;
 
-  if (!owner) {
-    logger.info('notifyChargeCall: no owner linked to lot, skipping notifications', {
+  if (!recipient) {
+    logger.info('notifyChargeCall: no owner or coowner linked to lot, skipping notifications', {
       chargeCallId,
       lotId: chargeCall.lotId
     });
-    return { emailSent: false, whatsappSent: false, skipped: 'NO_OWNER_CONTACT' as const };
+    return { emailSent: false, whatsappSent: false, skipped: 'NO_OWNER' };
   }
 
-  if (!(await isCurrentLotOwner(chargeCall.lotId, owner.id))) {
+  if (!(await isCurrentLotOwner(chargeCall.lotId, recipient.id))) {
     logger.warn('notifyChargeCall: lot owner is not a current co-owner, skipping notifications', {
       chargeCallId,
       lotId: chargeCall.lotId
     });
-    return { emailSent: false, whatsappSent: false, skipped: 'OWNER_NOT_CURRENT' as const };
+    return { emailSent: false, whatsappSent: false, skipped: 'OWNER_NOT_CURRENT' };
   }
 
   const dueDate = new Date(chargeCall.dueDate).toLocaleDateString('fr-FR');
   const amount = Number(chargeCall.amount).toLocaleString('fr-FR');
   const ownerName =
-    [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim() || owner.legalName || 'Copropriétaire';
+    [recipient.firstName, recipient.lastName].filter(Boolean).join(' ').trim() ||
+    recipient.legalName ||
+    'Copropriétaire';
 
   const templateVars = {
     ownerName,
@@ -156,22 +220,43 @@ export async function notifyChargeCall(chargeCallId: string, options: NotifyChar
 
   let emailSent = false;
   let whatsappSent = false;
+  let emailBlockReason: NotifyChargeCallSkipReason | undefined;
+  let emailBlockDetail: string | undefined;
 
-  if (owner.email?.trim()) {
-    const emailConfig = await getEmailNotificationConfig(tenantId, eventKeyEmail);
-    if (emailConfig.enabled) {
-      const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
-      const subjectTpl = emailConfig.subjectOverride || defaults.subject;
-      const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
-
-      const attachments = await resolveAttachments(chargeCallId, options);
-      await emailService.sendEmail({
-        to: owner.email,
-        subject: applyTemplate(subjectTpl, templateVars),
-        html: applyTemplate(bodyTpl, templateVars, true),
-        ...(attachments.length > 0 ? { attachments } : {})
+  if (recipient.email?.trim()) {
+    if (!isEmailDeliveryConfigured()) {
+      // Aucun transport e-mail au niveau serveur : ne pas tenter l'envoi (il
+      // ne partirait de toute facon jamais), ne pas lever.
+      emailBlockReason = 'EMAIL_NOT_CONFIGURED';
+      logger.warn('notifyChargeCall: email delivery not configured on the server, skipping email attempt', {
+        chargeCallId
       });
-      emailSent = true;
+    } else {
+      const emailConfig = await getEmailNotificationConfig(tenantId, eventKeyEmail);
+      if (!emailConfig.enabled) {
+        emailBlockReason = 'NOTIFICATION_DISABLED';
+      } else {
+        const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
+        const subjectTpl = emailConfig.subjectOverride || defaults.subject;
+        const bodyTpl = emailConfig.bodyHtmlOverride || defaults.bodyHtml;
+        const attachments = await resolveAttachments(chargeCallId, options);
+        try {
+          await emailService.sendEmail({
+            to: recipient.email,
+            subject: applyTemplate(subjectTpl, templateVars),
+            html: applyTemplate(bodyTpl, templateVars, true),
+            ...(attachments.length > 0 ? { attachments } : {})
+          });
+          emailSent = true;
+        } catch (error) {
+          emailBlockReason = 'SEND_FAILED';
+          emailBlockDetail = emailFailureDetail(error);
+          logger.warn('notifyChargeCall: email send failed', {
+            chargeCallId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
     }
   }
 
@@ -179,10 +264,10 @@ export async function notifyChargeCall(chargeCallId: string, options: NotifyChar
     tenantId,
     notificationKey: eventKeyWhatsApp,
     variables: templateVars,
-    contactId: owner.id
+    contactId: recipient.id
   });
   if (!whatsappSent) {
-    const directPhone = getOwnerWhatsappTarget(owner);
+    const directPhone = getOwnerWhatsappTarget(recipient);
     if (directPhone) {
       whatsappSent = await sendWhatsappNotification({
         tenantId,
@@ -196,12 +281,29 @@ export async function notifyChargeCall(chargeCallId: string, options: NotifyChar
   logger.info('notifyChargeCall completed', {
     chargeCallId,
     tenantId,
-    ownerId: owner.id,
+    ownerId: recipient.id,
     emailSent,
     whatsappSent
   });
 
-  return { emailSent, whatsappSent };
+  if (emailSent || whatsappSent) {
+    // Traçabilité par appel (item 3, correctif renvoi) : filtré par id ET par
+    // agence via le syndicat, defense en profondeur meme si chargeCallId est
+    // deja connu appartenir a cette agence par l'appelant.
+    await prisma.chargeCall.updateMany({
+      where: { id: chargeCallId, syndicate: { tenantId } },
+      data: { noticeSentAt: new Date() }
+    });
+    return { emailSent, whatsappSent };
+  }
+
+  const skipped: NotifyChargeCallSkipReason = emailBlockReason ?? 'NO_EMAIL';
+  return {
+    emailSent,
+    whatsappSent,
+    skipped,
+    ...(skipped === 'SEND_FAILED' && emailBlockDetail ? { skipDetail: emailBlockDetail } : {})
+  };
 }
 
 export async function notifyMeetingConvocation(meetingId: string) {

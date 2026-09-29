@@ -110,7 +110,7 @@ export interface ProvisionTenantRequest {
   billingCycle?: 'MONTHLY' | 'ANNUAL';
   type?: TenantType;
   /** DEPRECIE : ancien format, converti en packs quand `items` est absent. */
-  modules?: Array<'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER'>;
+  modules?: Array<'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE'>;
   legalName?: string;
   contactEmail?: string;
   contactPhone?: string;

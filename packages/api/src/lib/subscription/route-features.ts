@@ -85,6 +85,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/treasury', feature: 'CORE' },
   { prefix: '/settings/finance', feature: 'CORE' },
   { prefix: '/settings/payment-gateway', feature: 'CORE' },
+  {
+    prefix: '/settings/owner-portal',
+    feature: 'CORE',
+    note: 'Masquage de la vue patrimoine du portail propriétaire (lot P5).'
+  },
   { prefix: '/finance/accounting', feature: 'CORE', note: 'Journal, grand livre, balances, exports.' },
   { prefix: '/finance/accounts', feature: 'CORE' },
   { prefix: '/finance/clients', feature: 'CORE', note: 'Balances clients.' },
@@ -128,6 +133,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/properties/:propertyId/loans', feature: 'PATRIMOINE' },
   { prefix: '/properties/:propertyId/work-programs', feature: 'PATRIMOINE' },
   { prefix: '/properties/:propertyId/yield', feature: 'PATRIMOINE' },
+  {
+    prefix: '/properties/:propertyId/patrimoine',
+    feature: 'PATRIMOINE',
+    note: "Export du patrimoine d'un seul bien (lot P3) ; l'export d'agence est deja couvert par /patrimoine."
+  },
 
   // ------------------------------------------------------------ syndic
   { prefix: '/syndics', feature: 'SYNDIC' },

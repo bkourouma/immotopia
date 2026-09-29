@@ -31,6 +31,10 @@ import {
   updatePropertyValuationHandler,
   updatePropertyWorkProgramHandler
 } from '../controllers/patrimoine-controller';
+import {
+  exportAgencyPatrimoineHandler,
+  exportPropertyPatrimoineHandler
+} from '../controllers/patrimoine-export-controller';
 
 const router = Router();
 
@@ -56,6 +60,16 @@ router.get(
   '/tenants/:tenantId/patrimoine/performance',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getPatrimoinePerformanceHandler
+);
+
+// Export "toute l'agence" (lot P3) : declaree ici, AVANT toute route qui
+// pourrait la capturer -- aucune ne le fait aujourd'hui (`:workProgramId`
+// est plus loin sous /patrimoine/work-programs/), mais l'ordre reste le
+// premier gardien si ca change.
+router.get(
+  '/tenants/:tenantId/patrimoine/export',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  exportAgencyPatrimoineHandler
 );
 
 router.get(
@@ -187,6 +201,13 @@ router.get(
   '/tenants/:tenantId/properties/:propertyId/yield',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getPropertyYieldHandler
+);
+
+// Export d'un seul bien (lot P3).
+router.get(
+  '/tenants/:tenantId/properties/:propertyId/patrimoine/export',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  exportPropertyPatrimoineHandler
 );
 
 export default router;

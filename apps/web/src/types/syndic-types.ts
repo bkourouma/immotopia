@@ -310,8 +310,27 @@ export interface CreateMeetingProxyRequest {
   representativeContactId: string;
 }
 
-/** Lot d'une assemblee : le detail inclut le coproprietaire (`owner`). */
-export type MeetingLot = SyndicateLot & { owner?: MeetingContact | null };
+/**
+ * Votant d'un lot à la date de l'AG (calculé côté API, seule source — sert
+ * aussi au décompte en tantièmes et à l'article 26). En indivision, un lot
+ * porte plusieurs votants, le plus gros détenteur d'abord.
+ */
+export interface MeetingVoter {
+  contactId: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  legalName?: string | null;
+  email?: string | null;
+  ownershipPercentage: number;
+}
+
+/**
+ * Lot d'une assemblee : le detail inclut le coproprietaire actuel (`owner`)
+ * et, quand l'API le fournit, les votants à la date de l'AG (`voters`, trié
+ * par part décroissante, vide si aucun votant connu). `voters` peut manquer
+ * sur une API plus ancienne : repli sur `owner` dans ce cas.
+ */
+export type MeetingLot = SyndicateLot & { owner?: MeetingContact | null; voters?: MeetingVoter[] };
 
 /** Tantiemes representes (lots ayant vote au moins une fois) sur le total. */
 export interface MeetingAttendance {
@@ -1443,6 +1462,16 @@ export interface ChargeScheduleRunResult {
 export interface ExecuteChargeScheduleResult {
   run: ChargeScheduleRunResult;
   schedule: ChargeSchedule;
+}
+
+/** Renvoi des avis non envoyés d'une exécution (anomalie recette, correctif Syndic). */
+export interface ResendChargeScheduleRunNoticesResult {
+  /** Avis effectivement envoyés lors de CE renvoi (pas le total de l'exécution). */
+  resent: number;
+  /** Toujours non envoyés après ce renvoi. */
+  stillSkipped: number;
+  /** Exécution mise à jour (compteurs et notes recalculés sur l'ensemble des appels non couverts). */
+  run: ChargeScheduleRun;
 }
 
 export interface DeleteChargeScheduleResult {

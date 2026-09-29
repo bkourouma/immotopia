@@ -3,12 +3,19 @@ import { App as AntApp, Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useDisabledMenuKeys, useFeatureAccess, useFilteredNavigation } from '../../hooks/useMenuAccess';
+import {
+  useDisabledMenuKeys,
+  useFeatureAccess,
+  useFilteredNavigation,
+  useOwnAssetsOnly
+} from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
+import { withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
+import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
 import { AccountNotLinked } from '../primitives/AccountNotLinked';
 import { SkeletonDetail } from '../primitives/Skeleton';
 import { AppHeader } from './AppHeader';
@@ -114,7 +121,7 @@ export const AppShell: React.FC = () => {
    */
   const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
 
-  const personaNav = persona && persona !== 'non-rattache' ? NAVIGATION[persona] : null;
+  const personaNav = persona && persona !== 'non-rattache' ? getNavigation()[persona] : null;
 
   /**
    * Menus coupes pour ce compte (Admin > Roles et permissions > Menus).
@@ -125,7 +132,43 @@ export const AppShell: React.FC = () => {
   const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
   const featureAccess = useFeatureAccess(navContext.tenantId, persona === 'collaborateur');
-  const nav = useFilteredNavigation(personaNav, disabledMenuKeys, featureAccess);
+  // Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : masque les
+  // entrées de gestion pour un tiers (mandat, relevés et comptes propriétaires).
+  const ownAssetsOnly = useOwnAssetsOnly(navContext.tenantId, persona === 'collaborateur');
+
+  /**
+   * « Mon patrimoine » (portail propriétaire, lot P5) : masqué par un réglage
+   * d'agence, pas par le RBAC — `null` tant que la réponse n'est pas arrivée
+   * ou que le persona n'est pas propriétaire, pour ne jamais faire clignoter
+   * l'entrée. Un échec réseau ne restreint pas (même garde-fou que les menus
+   * coupés) : on retombe sur `true`.
+   */
+  const [ownerPatrimoineEnabled, setOwnerPatrimoineEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (persona !== 'proprietaire') {
+      setOwnerPatrimoineEnabled(null);
+      return;
+    }
+    let cancelled = false;
+    ownerPortalPatrimoineService
+      .getSettings()
+      .then(settings => {
+        if (!cancelled) setOwnerPatrimoineEnabled(settings.enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerPatrimoineEnabled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [persona]);
+
+  const effectiveDisabledMenuKeys = useMemo(
+    () => withOwnerPatrimoineMenu(disabledMenuKeys, ownerPatrimoineEnabled),
+    [disabledMenuKeys, ownerPatrimoineEnabled]
+  );
+
+  const nav = useFilteredNavigation(personaNav, effectiveDisabledMenuKeys, featureAccess, ownAssetsOnly);
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
   // SUBSCRIPTION_READ_ONLY, 409 QUOTA_EXCEEDED) traduits en message clair, sur

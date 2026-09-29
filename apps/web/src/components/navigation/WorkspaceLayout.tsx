@@ -31,6 +31,8 @@ export interface WorkspaceLayoutProps {
   tabs: WorkspaceTabItem[];
   /** `aria-label` du groupe d'onglets — déjà passé par `t()`. */
   tabsLabel: string;
+  /** Contrôle posé en bout de ligne du titre, par exemple un sélecteur. Sans lui, rendu inchangé. */
+  titleAside?: React.ReactNode;
 }
 
 export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
@@ -38,29 +40,42 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
   title,
   titleLoading = false,
   tabs,
-  tabsLabel
+  tabsLabel,
+  titleAside
 }) => (
   <div>
-    <div style={{ marginBottom: 'var(--space-3)' }}>
-      <Text
-        style={{
-          display: 'block',
-          fontSize: 'var(--font-size-caption)',
-          fontWeight: 'var(--font-weight-caption)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          color: 'var(--text-tertiary)'
-        }}
-      >
-        {eyebrow}
-      </Text>
-      {titleLoading ? (
-        <Skeleton.Input active size="small" style={{ marginTop: 'var(--space-1)', maxWidth: 280 }} />
-      ) : (
-        <Title level={3} style={{ margin: 0 }}>
-          {title}
-        </Title>
-      )}
+    <div
+      style={{
+        marginBottom: 'var(--space-3)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'flex-end',
+        justifyContent: 'space-between',
+        gap: 'var(--space-3)'
+      }}
+    >
+      <div>
+        <Text
+          style={{
+            display: 'block',
+            fontSize: 'var(--font-size-caption)',
+            fontWeight: 'var(--font-weight-caption)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            color: 'var(--text-tertiary)'
+          }}
+        >
+          {eyebrow}
+        </Text>
+        {titleLoading ? (
+          <Skeleton.Input active size="small" style={{ marginTop: 'var(--space-1)', maxWidth: 280 }} />
+        ) : (
+          <Title level={3} style={{ margin: 0 }}>
+            {title}
+          </Title>
+        )}
+      </div>
+      {titleAside}
     </div>
 
     <div style={{ marginBottom: 'var(--space-5)' }}>

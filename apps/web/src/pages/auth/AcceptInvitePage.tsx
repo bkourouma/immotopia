@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Card, Form, Input, Progress, Result, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, CheckCircleOutlined, LockOutlined, UserAddOutlined, UserOutlined } from '@ant-design/icons';
 import { acceptInvitation } from '../../services/invitation-service';
+import { useAuth } from '../../context/AuthContext';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -40,6 +41,7 @@ const getPasswordStrength = (
 export const AcceptInvitePage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [form] = Form.useForm<AcceptInviteFormValues>();
   const passwordValue = Form.useWatch('password', form) || '';
   const passwordStrength = getPasswordStrength(passwordValue);
@@ -48,6 +50,10 @@ export const AcceptInvitePage: React.FC = () => {
   const [generalError, setGeneralError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  // Un compte existe deja pour l'e-mail invite : l'API refuse de reecrire
+  // son mot de passe et demande une connexion avec CE compte avant de
+  // rattacher l'agence (voir invitation-service.ts, acceptInvitation).
+  const [requiresLogin, setRequiresLogin] = useState(false);
 
   useEffect(() => {
     const inviteToken = searchParams.get('token');
@@ -66,12 +72,16 @@ export const AcceptInvitePage: React.FC = () => {
     }
 
     setGeneralError('');
+    setRequiresLogin(false);
     setIsSubmitting(true);
 
     try {
       const response = await acceptInvitation({
         token,
-        password: values.password,
+        // Un compte deja connecte n'envoie pas de mot de passe : l'API
+        // l'ignorerait de toute facon (elle ne reecrit jamais le mot de
+        // passe d'un compte existant), autant ne pas le collecter.
+        ...(isAuthenticated ? {} : { password: values.password }),
         fullName: values.fullName
       });
 
@@ -84,12 +94,48 @@ export const AcceptInvitePage: React.FC = () => {
         setGeneralError(response.message || t("Erreur lors de l'acceptation de l'invitation."));
       }
     } catch (err: any) {
-      setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez reessayer.'));
+      if (err?.response?.data?.code === 'INVITATION_REQUIRES_LOGIN') {
+        setRequiresLogin(true);
+      } else {
+        setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez reessayer.'));
+      }
       console.error('Accept invite error:', err);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const loginRedirectUrl = `/login?redirect=${encodeURIComponent(`/auth/accept-invite?token=${token}`)}`;
+
+  if (requiresLogin) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          background: '#f0f2f5'
+        }}
+      >
+        <Card style={{ maxWidth: 520, width: '100%' }}>
+          <Result
+            status="info"
+            title={t('Connectez-vous pour accepter')}
+            subTitle={t(
+              'Un compte existe deja avec cette adresse e-mail. Connectez-vous avec ce compte pour accepter cette invitation.'
+            )}
+            extra={
+              <Button type="primary" onClick={() => navigate(loginRedirectUrl)}>
+                {t('Se connecter')}
+              </Button>
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -141,7 +187,9 @@ export const AcceptInvitePage: React.FC = () => {
         }
       >
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          {t('Creez votre mot de passe pour rejoindre votre equipe.')}
+          {isAuthenticated
+            ? t('Vous etes connecte : confirmez pour rejoindre cette equipe.')
+            : t('Creez votre mot de passe pour rejoindre votre equipe.')}
         </Text>
 
         <Form<AcceptInviteFormValues>
@@ -162,66 +210,82 @@ export const AcceptInvitePage: React.FC = () => {
             />
           )}
 
-          <Form.Item
-            name="fullName"
-            label={t('Nom complet')}
-            rules={[{ required: true, message: t('Le nom complet est requis.') }]}
-          >
-            <Input size="large" prefix={<UserOutlined />} placeholder={t('Jean Dupont')} autoComplete="name" />
-          </Form.Item>
-
-          <Form.Item
-            name="password"
-            label={t('Mot de passe')}
-            rules={[
-              { required: true, message: t('Le mot de passe est requis.') },
-              { min: 8, message: t('Minimum 8 caracteres.') },
-              { pattern: /[A-Z]/, message: t('Ajoutez au moins une majuscule.') },
-              { pattern: /[a-z]/, message: t('Ajoutez au moins une minuscule.') },
-              { pattern: /[0-9]/, message: t('Ajoutez au moins un chiffre.') },
-              {
-                pattern: /[^A-Za-z0-9]/,
-                message: t('Ajoutez au moins un caractere special.')
-              }
-            ]}
-          >
-            <Input.Password size="large" prefix={<LockOutlined />} placeholder="********" autoComplete="new-password" />
-          </Form.Item>
-
-          {passwordValue && (
-            <div style={{ marginBottom: 16 }}>
-              <Space orientation="vertical" size={4} style={{ width: '100%' }}>
-                <Progress
-                  percent={passwordStrength.percent}
-                  status={passwordStrength.status}
-                  showInfo={false}
-                  size={[100, 8]}
-                />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t('Force du mot de passe:')} {passwordStrength.label}
-                </Text>
-              </Space>
-            </div>
+          {!isAuthenticated && (
+            <Form.Item
+              name="fullName"
+              label={t('Nom complet')}
+              rules={[{ required: true, message: t('Le nom complet est requis.') }]}
+            >
+              <Input size="large" prefix={<UserOutlined />} placeholder={t('Jean Dupont')} autoComplete="name" />
+            </Form.Item>
           )}
 
-          <Form.Item
-            name="confirmPassword"
-            label={t('Confirmer le mot de passe')}
-            dependencies={['password']}
-            rules={[
-              { required: true, message: t('La confirmation du mot de passe est requise.') },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue('password') === value) {
-                    return Promise.resolve();
+          {!isAuthenticated && (
+            <>
+              <Form.Item
+                name="password"
+                label={t('Mot de passe')}
+                rules={[
+                  { required: true, message: t('Le mot de passe est requis.') },
+                  { min: 8, message: t('Minimum 8 caracteres.') },
+                  { pattern: /[A-Z]/, message: t('Ajoutez au moins une majuscule.') },
+                  { pattern: /[a-z]/, message: t('Ajoutez au moins une minuscule.') },
+                  { pattern: /[0-9]/, message: t('Ajoutez au moins un chiffre.') },
+                  {
+                    pattern: /[^A-Za-z0-9]/,
+                    message: t('Ajoutez au moins un caractere special.')
                   }
-                  return Promise.reject(new Error(t('Les mots de passe ne correspondent pas.')));
-                }
-              })
-            ]}
-          >
-            <Input.Password size="large" prefix={<LockOutlined />} placeholder="********" autoComplete="new-password" />
-          </Form.Item>
+                ]}
+              >
+                <Input.Password
+                  size="large"
+                  prefix={<LockOutlined />}
+                  placeholder="********"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+
+              {passwordValue && (
+                <div style={{ marginBottom: 16 }}>
+                  <Space orientation="vertical" size={4} style={{ width: '100%' }}>
+                    <Progress
+                      percent={passwordStrength.percent}
+                      status={passwordStrength.status}
+                      showInfo={false}
+                      size={[100, 8]}
+                    />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {t('Force du mot de passe:')} {passwordStrength.label}
+                    </Text>
+                  </Space>
+                </div>
+              )}
+
+              <Form.Item
+                name="confirmPassword"
+                label={t('Confirmer le mot de passe')}
+                dependencies={['password']}
+                rules={[
+                  { required: true, message: t('La confirmation du mot de passe est requise.') },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!value || getFieldValue('password') === value) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error(t('Les mots de passe ne correspondent pas.')));
+                    }
+                  })
+                ]}
+              >
+                <Input.Password
+                  size="large"
+                  prefix={<LockOutlined />}
+                  placeholder="********"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+            </>
+          )}
 
           <Form.Item style={{ marginBottom: 16 }}>
             <Button type="primary" htmlType="submit" size="large" block loading={isSubmitting} disabled={!token}>

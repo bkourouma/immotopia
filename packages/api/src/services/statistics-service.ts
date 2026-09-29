@@ -27,6 +27,7 @@ export interface GlobalStatistics {
     MODULE_AGENCY: number;
     MODULE_SYNDIC: number;
     MODULE_PROMOTER: number;
+    MODULE_PATRIMOINE: number;
   };
   recentActivity: {
     tenantsCreatedLast30Days: number;
@@ -132,7 +133,8 @@ export async function getGlobalStatistics(): Promise<GlobalStatistics> {
     {
       MODULE_AGENCY: 0,
       MODULE_SYNDIC: 0,
-      MODULE_PROMOTER: 0
+      MODULE_PROMOTER: 0,
+      MODULE_PATRIMOINE: 0
     } as Record<string, number>
   );
 

@@ -16,7 +16,7 @@ import {
   type ScheduleTiming,
   type SchedulePeriod
 } from './charge-schedule-periods';
-import { notifyChargeCall } from './notifications';
+import { notifyChargeCall, type NotifyChargeCallResult, type NotifyChargeCallSkipReason } from './notifications';
 import {
   assertNoRegularBatchForPeriodTx,
   createChargeCallBatchWithCallsTx,
@@ -270,29 +270,44 @@ async function recordFailure(
   }
 }
 
-interface NotificationSummary {
+export interface NotificationSummary {
   sent: number;
   skipped: number;
   /** Remarque non sensible pour le journal (lots dont l'avis n'est pas parti). */
   notes: string | null;
 }
 
-/** Raison pour laquelle un appel non couvert n'a reçu aucun avis. */
-type SkipReason = 'OWNER_NOT_CURRENT' | 'NO_OWNER' | 'NO_CHANNEL' | 'SEND_FAILED';
+/**
+ * Raison pour laquelle un appel non couvert n'a reçu aucun avis — reprend
+ * `NotifyChargeCallSkipReason` (moins `CHARGE_CALL_NOT_FOUND`/`ALREADY_PAID`,
+ * deja filtres avant d'arriver ici).
+ */
+type SkipReason = Exclude<NotifyChargeCallSkipReason, 'CHARGE_CALL_NOT_FOUND' | 'ALREADY_PAID'>;
 
 const SKIP_REASON_LABELS: Record<SkipReason, string> = {
   OWNER_NOT_CURRENT: 'propriétaire du lot différent du copropriétaire actuel',
   NO_OWNER: 'lot sans copropriétaire',
-  NO_CHANNEL: "aucun canal d'envoi : pas d'e-mail utilisable ou notification désactivée, et pas de WhatsApp",
+  NO_EMAIL: 'copropriétaire sans e-mail ni WhatsApp exploitable',
+  NOTIFICATION_DISABLED: "notification e-mail désactivée pour l'agence",
+  EMAIL_NOT_CONFIGURED: "envoi d'e-mails non configuré sur le serveur",
   SEND_FAILED: "échec de l'envoi"
 };
 
 /** Classe le résultat d'un `notifyChargeCall` réussi : `null` si un avis est bien parti. */
-function classifySkip(result: { emailSent: boolean; whatsappSent: boolean; skipped?: string }): SkipReason | null {
+function classifySkip(result: NotifyChargeCallResult): SkipReason | null {
   if (result.emailSent || result.whatsappSent) return null;
-  if (result.skipped === 'OWNER_NOT_CURRENT') return 'OWNER_NOT_CURRENT';
-  if (result.skipped === 'NO_OWNER_CONTACT') return 'NO_OWNER';
-  return 'NO_CHANNEL';
+  switch (result.skipped) {
+    case 'OWNER_NOT_CURRENT':
+    case 'NO_OWNER':
+    case 'NO_EMAIL':
+    case 'NOTIFICATION_DISABLED':
+    case 'EMAIL_NOT_CONFIGURED':
+    case 'SEND_FAILED':
+      return result.skipped;
+    default:
+      // `notifyChargeCall` n'a pas classe ce cas (defensif) : traite comme un echec d'envoi.
+      return 'SEND_FAILED';
+  }
 }
 
 /** Une ligne par raison groupant les lots concernés, dans le style de la note historique. */
@@ -308,9 +323,10 @@ function buildSkipNotes(byReason: Record<SkipReason, string[]>): string | null {
  * signature, cachet) et les moyens de paiement sont lus UNE fois par
  * exécution, pas une fois par appel. Tout appel non notifié (canal
  * indisponible, propriétaire changé, ou exception) compte en `skipped` :
- * `sent + skipped === calls.length`.
+ * `sent + skipped === calls.length`. Exportee : reutilisee telle quelle par
+ * le renvoi des avis non envoyes (`resendUncoveredNotices` ci-dessous).
  */
-async function notifyUncoveredCalls(
+export async function notifyUncoveredCalls(
   schedule: SyndicChargeSchedule,
   calls: Array<{ id: string; lotNumber: string }>
 ): Promise<NotificationSummary> {
@@ -320,7 +336,9 @@ async function notifyUncoveredCalls(
   const byReason: Record<SkipReason, string[]> = {
     OWNER_NOT_CURRENT: [],
     NO_OWNER: [],
-    NO_CHANNEL: [],
+    NO_EMAIL: [],
+    NOTIFICATION_DISABLED: [],
+    EMAIL_NOT_CONFIGURED: [],
     SEND_FAILED: []
   };
   for (const call of calls) {
@@ -331,9 +349,17 @@ async function notifyUncoveredCalls(
         ]
       });
       const reason = classifySkip(result);
-      if (reason) byReason[reason].push(call.lotNumber);
-      else sent += 1;
+      if (!reason) {
+        sent += 1;
+      } else if (reason === 'SEND_FAILED' && result.skipDetail) {
+        byReason[reason].push(`${call.lotNumber} (${result.skipDetail})`);
+      } else {
+        byReason[reason].push(call.lotNumber);
+      }
     } catch (error) {
+      // Filet de securite : `notifyChargeCall` catche deja l'echec d'envoi
+      // e-mail en interne (SEND_FAILED) — une exception ici est un imprevu
+      // (ex. base indisponible), journalise et compte quand meme en skipped.
       logger.warn('Scheduled charge call notification failed', {
         chargeCallId: call.id,
         error: error instanceof Error ? error.message : String(error)
@@ -469,7 +495,11 @@ export async function executeSchedulePeriod(
       notificationsSent: notifications.sent,
       notificationsSkipped: notifications.skipped,
       notes: notifications.notes,
-      finishedAt: new Date()
+      // Coherent avec `createdAt: now` ci-dessus (et avec la garde anti-rafale
+      // du renvoi, qui compare `finishedAt` a son propre `now`) : un rattrapage
+      // dont `now` est fourni par l'appelant ne doit pas dater sa fin du vrai
+      // horodatage serveur.
+      finishedAt: now
     }
   });
   return outcome(period, {

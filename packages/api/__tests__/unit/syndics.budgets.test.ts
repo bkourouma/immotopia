@@ -46,6 +46,12 @@ jest.mock('@prisma/client', () => {
     syndicateLot: {
       findMany: jest.fn()
     },
+    syndicChargeSchedule: {
+      findFirst: jest.fn()
+    },
+    gMResolution: {
+      findFirst: jest.fn()
+    },
     budgetAllocation: {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
@@ -71,7 +77,8 @@ jest.mock('@prisma/client', () => {
 import {
   createChargeCallBatchBySyndicate,
   generateChargeCallsFromBudget,
-  recomputeBudgetAllocationsByBudget
+  recomputeBudgetAllocationsByBudget,
+  updateBudgetBySyndicate
 } from '../../src/lib/syndics/queries';
 
 const { __mockPrisma: mockPrisma, __mockTx: mockTx } = jest.requireMock('@prisma/client') as {
@@ -189,5 +196,101 @@ describe('Syndics budget queries - US4', () => {
       .map((key: string) => key.slice('syndic-lot-allocation:'.length))
       .filter((lotId: string, index: number, all: string[]) => index === 0 || all[index - 1] !== lotId);
     expect(lockedLots).toEqual(['lot-a', 'lot-b']);
+  });
+});
+
+describe('Syndics budget status transitions - anomalie N.8-2', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrisma.syndicate.findFirst.mockResolvedValue({ id: 'syndic-1' });
+    mockPrisma.syndicChargeSchedule.findFirst.mockResolvedValue(null);
+    mockPrisma.syndicateBudget.update.mockImplementation(async ({ where, data }: any) => ({
+      id: where.id,
+      ...data,
+      lines: [],
+      allocations: []
+    }));
+  });
+
+  const mockBudget = (status: string) =>
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({ id: 'budget-1', status });
+
+  it.each([
+    ['DRAFT', 'APPROVED'],
+    ['APPROVED', 'REVISED'],
+    ['REVISED', 'APPROVED'],
+    ['APPROVED', 'CLOSED'],
+    ['REVISED', 'CLOSED']
+  ])('autorise la transition %s -> %s', async (from, to) => {
+    mockBudget(from);
+    const result = await updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-1', { status: to as any });
+    expect(result.status).toBe(to);
+    expect(mockPrisma.syndicateBudget.update).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['DRAFT', 'CLOSED'],
+    ['DRAFT', 'REVISED'],
+    ['CLOSED', 'DRAFT'],
+    ['CLOSED', 'APPROVED']
+  ])('refuse la transition %s -> %s (409)', async (from, to) => {
+    mockBudget(from);
+    await expect(
+      updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-1', { status: to as any })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.syndicateBudget.update).not.toHaveBeenCalled();
+  });
+
+  it('refuse toute modification (label, montant) d un budget clôturé', async () => {
+    mockBudget('CLOSED');
+    await expect(
+      updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-1', { label: 'Nouveau libellé' })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.syndicateBudget.update).not.toHaveBeenCalled();
+  });
+
+  it('refuse la clôture si une programmation active pointe sur le budget', async () => {
+    mockBudget('APPROVED');
+    mockPrisma.syndicChargeSchedule.findFirst.mockResolvedValue({ id: 'schedule-1' });
+    await expect(
+      updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-1', { status: 'CLOSED' })
+    ).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.syndicateBudget.update).not.toHaveBeenCalled();
+    // Seules les programmations actives et non terminées bloquent.
+    const where = mockPrisma.syndicChargeSchedule.findFirst.mock.calls[0][0].where;
+    expect(where).toMatchObject({ tenantId: 'tenant-1', budgetId: 'budget-1', active: true });
+    expect(where.OR).toEqual([{ endDate: null }, { endDate: { gte: expect.any(Date) } }]);
+  });
+
+  it('refuse le recalcul de répartition sur un budget clôturé', async () => {
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({ id: 'budget-1', status: 'CLOSED', lines: [] });
+    await expect(recomputeBudgetAllocationsByBudget('tenant-1', 'syndic-1', 'budget-1')).rejects.toMatchObject({
+      status: 409
+    });
+  });
+
+  it('refuse la génération d appels sur un budget clôturé (deja bloque par le controle APPROVED)', async () => {
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({
+      id: 'budget-1',
+      status: 'CLOSED',
+      totalAmount: 100000,
+      currency: 'XOF',
+      allocations: []
+    });
+    await expect(
+      generateChargeCallsFromBudget('tenant-1', 'syndic-1', 'budget-1', {
+        label: 'Appels',
+        period: '2026-01',
+        dueDate: new Date('2026-01-31T00:00:00.000Z'),
+        batchType: 'REGULAR'
+      })
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('isolation tenant : budget d une autre agence -> NotFound', async () => {
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue(null);
+    await expect(
+      updateBudgetBySyndicate('tenant-1', 'syndic-1', 'budget-inconnu', { status: 'APPROVED' })
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

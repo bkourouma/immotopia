@@ -8,6 +8,8 @@ import {
   DEFAULT_MAJORITY_RULE,
   type MajorityLot
 } from './meeting-majority';
+// Ecart recette (lot syndic-ecarts, T2) : votant d'un lot a la date de l'AG.
+import { toMajorityLotsAt, votersAt, type LotOwnerProfileForVoters } from './meeting-voters';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
 // Lot S2 (audit S1) : le logo prive de la copropriete est supprime avec elle.
@@ -171,39 +173,60 @@ async function assertMandatingAgencyOfTenant(tenantId: string, mandatingAgencyId
   });
 }
 
+/**
+ * Ecart recette (lot syndic-ecarts, T1) : `buildPagination()` etait appele
+ * sans argument, tronquant silencieusement la liste a `DEFAULT_LIMIT` (20)
+ * copropretes des que l'agence en avait davantage. `page`/`limit` sont
+ * desormais transmis par le controleur (query string validee par
+ * `paginationQuerySchema`), et la reponse porte `total`/`totalPages` — meme
+ * filtre (`tenantId`, statut hors liquidation) pour la page et le compte.
+ */
 export async function listSyndicatesByTenant(tenantId: string, pagination?: PaginationInput) {
   const pager = buildPagination(pagination);
-  return prisma.syndicate.findMany({
-    where: {
-      tenantId,
-      status: {
-        not: 'IN_LIQUIDATION'
-      }
-    },
-    include: {
-      // Le compte complet (pas seulement lots/chargeCalls) permet a la liste
-      // web de savoir, sans requete supplementaire, si le bouton
-      // « Supprimer » doit etre desactive (ecart recette #8 : seule une
-      // copropriete vide peut etre supprimee — voir
-      // `deleteEmptySyndicateByTenant`).
-      // Lot S1 : resume du mandant, expose par toSyndicateResponse.
-      mandatingAgency: { select: { id: true, name: true } },
-      _count: {
-        select: {
-          lots: true,
-          chargeCalls: true,
-          budgets: true,
-          generalMeetings: true,
-          documents: true,
-          serviceContracts: true,
-          incidents: true
+  const where: Prisma.SyndicateWhereInput = {
+    tenantId,
+    status: {
+      not: 'IN_LIQUIDATION'
+    }
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.syndicate.findMany({
+      where,
+      include: {
+        // Le compte complet (pas seulement lots/chargeCalls) permet a la liste
+        // web de savoir, sans requete supplementaire, si le bouton
+        // « Supprimer » doit etre desactive (ecart recette #8 : seule une
+        // copropriete vide peut etre supprimee — voir
+        // `deleteEmptySyndicateByTenant`).
+        // Lot S1 : resume du mandant, expose par toSyndicateResponse.
+        mandatingAgency: { select: { id: true, name: true } },
+        _count: {
+          select: {
+            lots: true,
+            chargeCalls: true,
+            budgets: true,
+            generalMeetings: true,
+            documents: true,
+            serviceContracts: true,
+            incidents: true
+          }
         }
-      }
-    },
-    skip: pager.skip,
-    take: pager.take,
-    orderBy: { createdAt: 'desc' }
-  });
+      },
+      skip: pager.skip,
+      take: pager.take,
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.syndicate.count({ where })
+  ]);
+
+  return {
+    items,
+    total,
+    page: pager.page,
+    limit: pager.limit,
+    totalPages: Math.ceil(total / pager.limit)
+  };
 }
 
 export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId: string) {
@@ -1502,6 +1525,32 @@ const MEETING_CONTACT_SELECT = {
 } as const;
 
 /**
+ * `LotOwnerProfile.ownershipPercentage` est un `Prisma.Decimal` : converti en
+ * `number` ici (frontiere Prisma), pour que `lib/syndics/meeting-voters.ts`
+ * reste un module pur sans dependance a Prisma.
+ */
+function normalizeOwnerProfilesForVoters(
+  profiles: Array<{
+    contactId: string;
+    ownershipPercentage: unknown;
+    ownedSince: Date;
+    ownedUntil: Date | null;
+    contact: {
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      legalName: string | null;
+      email: string | null;
+    };
+  }>
+): LotOwnerProfileForVoters[] {
+  return profiles.map(profile => ({
+    ...profile,
+    ownershipPercentage: Number(profile.ownershipPercentage)
+  }));
+}
+
+/**
  * Une assemblee cloturee ou annulee est figee : plus de vote, de resolution ni
  * de pouvoir. Messages fixes (le texte francais sert de cle de traduction).
  */
@@ -1534,6 +1583,20 @@ function meetingTransitionErrorMessage(from: string, to: string): string {
   return "Transition de statut d'assemblee impossible";
 }
 
+/**
+ * Profils de propriete d'un lot, tels que necessaires a `votersAt` /
+ * `toMajorityLotsAt` : `select` minimal — jamais `portalAccessToken` ni le
+ * reste de `LotOwnerProfile` dans une reponse (ecart recette, lot
+ * syndic-ecarts T2).
+ */
+const LOT_OWNER_PROFILE_SELECT_FOR_VOTERS = {
+  contactId: true,
+  ownershipPercentage: true,
+  ownedSince: true,
+  ownedUntil: true,
+  contact: { select: MEETING_CONTACT_SELECT }
+} as const;
+
 export async function getMeetingByTenant(tenantId: string, syndicateId: string, meetingId: string) {
   const meeting = await prisma.generalMeeting.findFirst({
     where: {
@@ -1548,7 +1611,8 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
         include: {
           lots: {
             include: {
-              owner: true
+              owner: true,
+              ownerProfiles: { select: LOT_OWNER_PROFILE_SELECT_FOR_VOTERS }
             }
           }
         }
@@ -1584,11 +1648,29 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
     return meeting;
   }
 
-  // Decompte en tantiemes recalcule a la lecture (tantiemes contre/abstention,
-  // total de reference) : seules les colonnes `votes*` et `sharesFor` existent en base.
-  const lots: MajorityLot[] = meeting.syndicate?.lots ?? [];
+  // Ecart recette (lot syndic-ecarts, T2) : le votant d'un lot est son
+  // proprietaire A LA DATE DE L'AG (`scheduledAt`), pas le proprietaire
+  // actuel — voir `lib/syndics/meeting-voters.ts`. Les lots transformes
+  // (cle du coproprietaire a la date) alimentent le decompte en tantiemes
+  // (article 26 notamment), tandis que `voters` (expose sur chaque lot) est
+  // la liste nommee, pour l'affichage et le compte-rendu.
+  const rawLots = meeting.syndicate?.lots ?? [];
+  const profilesByLotId = new Map<string, LotOwnerProfileForVoters[]>(
+    rawLots.map(lot => [lot.id, normalizeOwnerProfilesForVoters(lot.ownerProfiles ?? [])])
+  );
+  const lots: MajorityLot[] = toMajorityLotsAt(rawLots, profilesByLotId, meeting.scheduledAt);
+  const lotsWithVoters = rawLots.map(lot => {
+    // Retire du champ expose (jamais `portalAccessToken`) : remplace par `voters` ci-dessous.
+    const { ownerProfiles: _ownerProfiles, ...lotFields } = lot;
+    return {
+      ...lotFields,
+      voters: votersAt(lot, profilesByLotId.get(lot.id) ?? [], meeting.scheduledAt)
+    };
+  });
+
   return {
     ...meeting,
+    syndicate: meeting.syndicate ? { ...meeting.syndicate, lots: lotsWithVoters } : meeting.syndicate,
     attendance: computeMeetingAttendance(
       lots,
       meeting.resolutions.flatMap(resolution => resolution.votes)
@@ -1615,7 +1697,7 @@ async function findMeetingForTenant(
         tenantId
       }
     },
-    select: { id: true, status: true, startTime: true, endTime: true }
+    select: { id: true, status: true, startTime: true, endTime: true, scheduledAt: true }
   });
 
   if (!meeting) {
@@ -1629,11 +1711,33 @@ async function findMeetingForTenant(
  * Recalcule les compteurs et le resultat de chaque resolution de l'assemblee,
  * puis le quorum (tantiemes des lots ayant vote / tantiemes totaux).
  */
-async function recomputeMeetingResultsTx(tx: PrismaTransactionClient, syndicateId: string, meetingId: string) {
-  const lots = await tx.syndicateLot.findMany({
+async function recomputeMeetingResultsTx(
+  tx: PrismaTransactionClient,
+  syndicateId: string,
+  meetingId: string,
+  scheduledAt: Date
+) {
+  // Ecart recette (lot syndic-ecarts, T2) : le resultat stocke doit suivre la
+  // meme regle que la lecture (`getMeetingByTenant`) — le votant d'un lot est
+  // son proprietaire a la date de l'AG (`scheduledAt`), pas le proprietaire
+  // actuel. La date est fournie par l'appelant (deja lue via
+  // `findMeetingForTenant` ou equivalent) pour eviter une lecture Prisma
+  // redondante dans la transaction.
+  const rawLots = await tx.syndicateLot.findMany({
     where: { syndicateId },
-    select: { id: true, generalShares: true, coownerId: true, ownerContactId: true }
+    select: {
+      id: true,
+      generalShares: true,
+      coownerId: true,
+      ownerContactId: true,
+      owner: { select: MEETING_CONTACT_SELECT },
+      ownerProfiles: { select: LOT_OWNER_PROFILE_SELECT_FOR_VOTERS }
+    }
   });
+  const profilesByLotId = new Map<string, LotOwnerProfileForVoters[]>(
+    rawLots.map(lot => [lot.id, normalizeOwnerProfilesForVoters(lot.ownerProfiles ?? [])])
+  );
+  const lots: MajorityLot[] = toMajorityLotsAt(rawLots, profilesByLotId, scheduledAt);
   const resolutions = await tx.gMResolution.findMany({
     where: { meetingId },
     select: { id: true, majorityRule: true, votes: { select: { lotId: true, vote: true } } }
@@ -1750,7 +1854,7 @@ export async function updateMeetingByTenant(
       }
       // A la cloture, les resultats sont recalcules une derniere fois puis figes.
       if (data.status === 'COMPLETED') {
-        await recomputeMeetingResultsTx(tx, syndicateId, meetingId);
+        await recomputeMeetingResultsTx(tx, syndicateId, meetingId, existing.scheduledAt);
       }
     }
 
@@ -1893,7 +1997,7 @@ export async function castVoteAndRecomputeResolutionCounters(
         }
       },
       include: {
-        meeting: { select: { id: true, status: true } }
+        meeting: { select: { id: true, status: true, scheduledAt: true } }
       }
     });
 
@@ -1938,7 +2042,7 @@ export async function castVoteAndRecomputeResolutionCounters(
 
     // Resultat recalcule a chaque vote, en tantiemes, selon la regle de la
     // resolution (voir meeting-majority.ts) ; quorum recalcule sur l'assemblee.
-    await recomputeMeetingResultsTx(tx, syndicateId, resolution.meeting.id);
+    await recomputeMeetingResultsTx(tx, syndicateId, resolution.meeting.id, resolution.meeting.scheduledAt);
 
     return resolution.meeting.id;
   });
@@ -3836,6 +3940,31 @@ export async function createBudgetBySyndicate(
   });
 }
 
+/**
+ * Anomalie de recette N.8-2 : la clôture d'un budget voté n'était pas
+ * atteignable (statuts REVISED/CLOSED presents en base mais aucun controle
+ * de transition ne les autorisait depuis l'API). Transitions autorisees :
+ * DRAFT -> APPROVED, APPROVED <-> REVISED, APPROVED|REVISED -> CLOSED.
+ * CLOSED est terminal (aucun retour arriere depuis cette route).
+ */
+const BUDGET_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['APPROVED'],
+  APPROVED: ['REVISED', 'CLOSED'],
+  REVISED: ['APPROVED', 'CLOSED'],
+  CLOSED: []
+};
+
+function startOfUtcDay(value: Date): Date {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+const BUDGET_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Brouillon',
+  APPROVED: 'Approuvé',
+  REVISED: 'Révisé',
+  CLOSED: 'Clôturé'
+};
+
 export async function updateBudgetBySyndicate(
   tenantId: string,
   syndicateId: string,
@@ -3851,11 +3980,45 @@ export async function updateBudgetBySyndicate(
 
   const budget = await prisma.syndicateBudget.findFirst({
     where: { id: budgetId, syndicateId },
-    select: { id: true }
+    select: { id: true, status: true }
   });
 
   if (!budget) {
     throw notFound('Budget introuvable pour cette copropriete');
+  }
+
+  if (budget.status === 'CLOSED') {
+    throw conflict('Budget clôturé : il ne peut plus être modifié.');
+  }
+
+  if (data.status && data.status !== budget.status) {
+    const allowedTargets = BUDGET_STATUS_TRANSITIONS[budget.status] || [];
+    if (!allowedTargets.includes(data.status)) {
+      throw conflict(
+        `Transition de statut interdite : de ${BUDGET_STATUS_LABELS[budget.status] || budget.status} vers ${
+          BUDGET_STATUS_LABELS[data.status] || data.status
+        }.`
+      );
+    }
+
+    if (data.status === 'CLOSED') {
+      const activeSchedule = await prisma.syndicChargeSchedule.findFirst({
+        // Une programmation arrivée à sa date de fin n'émet plus rien : elle
+        // ne bloque pas la clôture, même si personne ne l'a mise en pause.
+        where: {
+          tenantId,
+          budgetId,
+          active: true,
+          OR: [{ endDate: null }, { endDate: { gte: startOfUtcDay(new Date()) } }]
+        },
+        select: { id: true }
+      });
+      if (activeSchedule) {
+        throw conflict(
+          "Des programmations d'appels actives utilisent ce budget : mettez-les en pause ou terminez-les d'abord."
+        );
+      }
+    }
   }
 
   if (data.approvedByResolutionId) {
@@ -3909,6 +4072,10 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
 
   if (!budget) {
     throw notFound('Budget introuvable pour cette copropriete');
+  }
+
+  if (budget.status === 'CLOSED') {
+    throw conflict('Budget clôturé : il ne peut plus être modifié.');
   }
 
   const lots = await prisma.syndicateLot.findMany({

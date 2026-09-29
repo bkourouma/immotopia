@@ -41,11 +41,11 @@ import {
   defaultMenuMap,
   personaForRoleKey,
   resolveMenuMap,
-  PORTAL_PSEUDO_ROLES
+  getPortalPseudoRoles
 } from '../../navigation/menu-catalog';
 import type { MenuCatalogEntry } from '../../navigation/menu-catalog';
 import type { PersonaId } from '../../navigation/model';
-import { NAVIGATION } from '../../navigation/model';
+import { getNavigation } from '../../navigation/model';
 import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
 import { t } from '../../i18n/t';
 
@@ -132,7 +132,7 @@ export const RolesPermissions: React.FC = () => {
       };
     });
 
-    const portals: ManagedRole[] = PORTAL_PSEUDO_ROLES.map(pseudo => ({
+    const portals: ManagedRole[] = getPortalPseudoRoles().map(pseudo => ({
       key: pseudo.key,
       id: null,
       name: pseudo.name,
@@ -173,7 +173,7 @@ export const RolesPermissions: React.FC = () => {
         setRoles(rolesData);
         setPermissions(permissionsData);
         setMenuAccess(menuAccessData);
-        setSelectedKey(current => current ?? rolesData[0]?.key ?? PORTAL_PSEUDO_ROLES[0].key);
+        setSelectedKey(current => current ?? rolesData[0]?.key ?? getPortalPseudoRoles()[0].key);
       } catch (err: any) {
         if (!cancelled) setError(err.response?.data?.message || t('Erreur lors du chargement des données'));
       } finally {
@@ -341,7 +341,7 @@ export const RolesPermissions: React.FC = () => {
     );
   }
 
-  const personaLabel = selectedRole?.persona ? NAVIGATION[selectedRole.persona].label : null;
+  const personaLabel = selectedRole?.persona ? getNavigation()[selectedRole.persona].label : null;
 
   const renderMenuEntry = (entry: MenuCatalogEntry) => {
     const locked = LOCKED_MENU_KEYS.has(entry.menuKey);

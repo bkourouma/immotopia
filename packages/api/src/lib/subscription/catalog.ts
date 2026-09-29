@@ -8,29 +8,48 @@
  * ensuite editable par le super-admin (D12) : le code metier lit la BASE,
  * jamais cette constante (sauf les tests et le seed).
  *
+ * Exception : les packs Patrimoine (Essentiel, Pro) et leur bloc de biens ne
+ * viennent pas du site mais des decisions de Baba du 28/09 (lot P1) ; ils
+ * sont amorces par la migration 20261001101600_patrimoine_pack_catalogue.
+ *
  * Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
 
-export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER';
-export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS';
+export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
+export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS';
 export type CatalogItemKindCode = 'PACK' | 'EXTENSION' | 'SETUP';
 
-export const MODULE_KEYS: readonly ModuleKeyCode[] = ['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER'];
-export const CAPACITY_KEYS: readonly CapacityKeyCode[] = ['LOTS', 'COPROPRIETES', 'CHANTIERS'];
+export const MODULE_KEYS: readonly ModuleKeyCode[] = [
+  'MODULE_AGENCY',
+  'MODULE_SYNDIC',
+  'MODULE_PROMOTER',
+  'MODULE_PATRIMOINE'
+];
+export const CAPACITY_KEYS: readonly CapacityKeyCode[] = ['LOTS', 'COPROPRIETES', 'CHANTIERS', 'BIENS_DETENUS'];
 
 /** Codes stables des packs et extensions (les lignes SETUP suivent `SETUP_<PACK>`). */
 export const PACK = {
   AGENCE: 'AGENCE',
   SYNDIC: 'SYNDIC',
   PROMOTEUR: 'PROMOTEUR',
-  INTEGRE: 'INTEGRE'
+  INTEGRE: 'INTEGRE',
+  /** Pack Patrimoine (lot P1, 28/09) : biens detenus en propre, sans mandat pour un tiers. */
+  PATRIMOINE_ESSENTIEL: 'PATRIMOINE_ESSENTIEL',
+  PATRIMOINE_PRO: 'PATRIMOINE_PRO'
 } as const;
 
 export const EXTENSION = {
   LOTS_10: 'EXT_LOTS_10',
   COPRO: 'EXT_COPRO',
-  CHANTIER: 'EXT_CHANTIER'
+  CHANTIER: 'EXT_CHANTIER',
+  BIENS_10: 'EXT_BIENS_10'
 } as const;
+
+/** Palier commun aux deux packs Patrimoine : Essentiel et Pro ne se cumulent pas (`rules.tierGroup`). */
+export const PATRIMOINE_TIER_GROUP = 'PATRIMOINE';
+
+/** Packs dont l'unite de comptage est le bien detenu (capacite BIENS_DETENUS). */
+export const PATRIMOINE_PACKS: readonly string[] = [PACK.PATRIMOINE_ESSENTIEL, PACK.PATRIMOINE_PRO];
 
 /** L'annuel paye d'avance = 11 mensualites (12 mois pour 11). */
 export const ANNUAL_MONTHS = 11;
@@ -65,6 +84,12 @@ export interface CatalogRules {
   lotTiers?: Array<{ onlyPacks: string[]; fromLot: number; monthlyPrice: number }>;
   /** L'extension ne se vend qu'avec au moins un de ces packs. */
   requiresAnyOf?: string[];
+  /**
+   * Palier d'une gamme (packs seulement) : deux packs portant le meme
+   * `tierGroup` ne se cumulent pas (Patrimoine Essentiel / Pro) ; on passe de
+   * l'un a l'autre par le changement de pack.
+   */
+  tierGroup?: string;
 }
 
 export interface CatalogItemDef {
@@ -132,7 +157,8 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     code: PACK.INTEGRE,
     kind: 'PACK',
     name: 'Opérateur intégré',
-    description: 'Groupes qui construisent, vendent, louent et gèrent — 3 chantiers, 3 copropriétés et 300 lots distincts',
+    description:
+      'Groupes qui construisent, vendent, louent et gèrent — 3 chantiers, 3 copropriétés et 300 lots distincts',
     monthlyPrice: 249_900,
     setupPrice: 650_000,
     modules: ['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER'],
@@ -143,10 +169,41 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     capacities: { CHANTIERS: 3, COPROPRIETES: 3, LOTS: 300 }
   },
   {
+    code: PACK.PATRIMOINE_ESSENTIEL,
+    kind: 'PACK',
+    name: 'Patrimoine Essentiel',
+    description:
+      'Particuliers et diaspora — 10 biens détenus en propre, loués ou non, gestion locative directe comprise, sans mandat pour un tiers',
+    monthlyPrice: 9_900,
+    setupPrice: 30_000,
+    modules: ['MODULE_PATRIMOINE'],
+    exclusiveGroup: null,
+    rules: { tierGroup: PATRIMOINE_TIER_GROUP },
+    isSellable: true,
+    sortOrder: 50,
+    capacities: { BIENS_DETENUS: 10 }
+  },
+  {
+    code: PACK.PATRIMOINE_PRO,
+    kind: 'PACK',
+    name: 'Patrimoine Pro',
+    description:
+      'Entreprises et institutionnels — 100 biens détenus en propre, loués ou non, gestion locative directe comprise, sans mandat pour un tiers',
+    monthlyPrice: 29_900,
+    setupPrice: 90_000,
+    modules: ['MODULE_PATRIMOINE'],
+    exclusiveGroup: null,
+    rules: { tierGroup: PATRIMOINE_TIER_GROUP },
+    isSellable: true,
+    sortOrder: 60,
+    capacities: { BIENS_DETENUS: 100 }
+  },
+  {
     code: EXTENSION.LOTS_10,
     kind: 'EXTENSION',
     name: 'Bloc de 10 lots',
-    description: '150 FCFA le lot ; 100 FCFA avec Promoteur ou Intégré ; 75 FCFA pour l’Agence seule au-delà du 300e lot',
+    description:
+      '150 FCFA le lot ; 100 FCFA avec Promoteur ou Intégré ; 75 FCFA pour l’Agence seule au-delà du 300e lot',
     monthlyPrice: 1_500,
     setupPrice: 0,
     modules: [],
@@ -191,29 +248,50 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     sortOrder: 130,
     capacities: { CHANTIERS: 1 }
   },
+  {
+    // Vendu avec l'Essentiel seulement : au-dela de ~30 biens, le Pro est
+    // moins cher. Le Pro ne vend pas de bloc ; son depassement est facture
+    // au bien (regle `byHeldPacks`, 2 990 / 10 = 299 FCFA le bien). Au
+    // passage d'Essentiel a Pro, les blocs partent avec l'Essentiel.
+    code: EXTENSION.BIENS_10,
+    kind: 'EXTENSION',
+    name: 'Bloc de 10 biens détenus',
+    description: '990 FCFA le bien avec Patrimoine Essentiel ; le dépassement du Pro est facturé 299 FCFA le bien',
+    monthlyPrice: 9_900,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: {
+      byHeldPacks: [{ anyOf: [PACK.PATRIMOINE_PRO], monthlyPrice: 2_990 }],
+      requiresAnyOf: [PACK.PATRIMOINE_ESSENTIEL]
+    },
+    isSellable: true,
+    sortOrder: 140,
+    capacities: { BIENS_DETENUS: 10 }
+  },
   ...(
     [
       [PACK.AGENCE, 'Agence', 100_000, 210],
       [PACK.SYNDIC, 'Syndic', 150_000, 220],
       [PACK.PROMOTEUR, 'Promoteur', 450_000, 230],
-      [PACK.INTEGRE, 'Opérateur intégré', 650_000, 240]
+      [PACK.INTEGRE, 'Opérateur intégré', 650_000, 240],
+      [PACK.PATRIMOINE_ESSENTIEL, 'Patrimoine Essentiel', 30_000, 250],
+      [PACK.PATRIMOINE_PRO, 'Patrimoine Pro', 90_000, 260]
     ] as const
-  ).map(
-    ([pack, label, price, sortOrder]): CatalogItemDef => ({
-      code: `SETUP_${pack}`,
-      kind: 'SETUP',
-      name: `Mise en route accompagnée — ${label}`,
-      description: 'Frais uniques, facultatifs',
-      monthlyPrice: 0,
-      setupPrice: price,
-      modules: [],
-      exclusiveGroup: null,
-      rules: { requiresAnyOf: [pack] },
-      isSellable: true,
-      sortOrder,
-      capacities: {}
-    })
-  )
+  ).map(([pack, label, price, sortOrder]): CatalogItemDef => ({
+    code: `SETUP_${pack}`,
+    kind: 'SETUP',
+    name: `Mise en route accompagnée — ${label}`,
+    description: 'Frais uniques, facultatifs',
+    monthlyPrice: 0,
+    setupPrice: price,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: [pack] },
+    isSellable: true,
+    sortOrder,
+    capacities: {}
+  }))
 ];
 
 /**
@@ -225,12 +303,15 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
 export function packsForModules(modules: readonly string[]): { packs: string[]; toReview: boolean } {
   const set = new Set(modules);
   if (set.has('MODULE_AGENCY') && set.has('MODULE_SYNDIC') && set.has('MODULE_PROMOTER')) {
+    // L'Integre ne se cumule avec aucun pack : Patrimoine eventuel ignore.
     return { packs: [PACK.INTEGRE], toReview: false };
   }
   const packs: string[] = [];
   if (set.has('MODULE_AGENCY')) packs.push(PACK.AGENCE);
   if (set.has('MODULE_SYNDIC')) packs.push(PACK.SYNDIC);
   if (set.has('MODULE_PROMOTER')) packs.push(PACK.PROMOTEUR);
+  // Module Patrimoine seul demande : le palier d'entree (Essentiel).
+  if (set.has('MODULE_PATRIMOINE')) packs.push(PACK.PATRIMOINE_ESSENTIEL);
   if (packs.length === 0) {
     return { packs: [PACK.AGENCE], toReview: true };
   }

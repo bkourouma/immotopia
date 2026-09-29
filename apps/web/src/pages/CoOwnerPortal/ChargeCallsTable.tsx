@@ -7,6 +7,7 @@ import { DataCard, DataView, MoneyValue } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { downloadCoOwnerChargeCallNotice, type CoOwnerChargeCall } from '../../services/coowner-portal-service';
+import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallStatusTag } from './labels';
 import { isNotFound } from './portal-error';
@@ -39,7 +40,7 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
         return;
       }
       setState('idle');
-      feedback.error(t('Téléchargement impossible.'));
+      feedback.error(await describeDownloadError(error));
     }
   };
 

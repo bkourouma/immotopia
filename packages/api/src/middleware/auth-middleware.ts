@@ -37,7 +37,11 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   const decoded = verifyToken(token);
 
   if (!decoded) {
-    res.status(403).json({ message: t('Jeton invalide ou expiré.') });
+    // 401, et non 403 : un jeton expiré ou illisible est un défaut
+    // d'authentification, pas un défaut de droits. L'intercepteur du client
+    // ne rafraîchit la session que sur un 401 ; en 403, une écriture faite
+    // avec un jeton périmé échouait sans message ni redirection.
+    res.status(401).json({ message: t('Jeton invalide ou expiré.') });
     return;
   }
 

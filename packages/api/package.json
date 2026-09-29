@@ -34,6 +34,7 @@
     "test:twilio-whatsapp": "ts-node scripts/test-twilio-whatsapp.ts",
     "db:assign:tenant-admin": "ts-node prisma/seeds/assign-tenant-admin.ts",
     "db:list:tenant-users": "ts-node prisma/seeds/list-tenant-users.ts",
+    "ops:provision-subscription": "ts-node -T src/scripts/provision-subscription.ts",
     "db:seed:document-templates": "ts-node -T prisma/seeds/document-templates-seed.ts",
     "db:seed:maintenance": "ts-node prisma/seeds/maintenance-seed.ts",
     "db:seed:maintenance-permissions": "ts-node prisma/seeds/maintenance-permissions-seed.ts",

@@ -59,9 +59,37 @@ export function lotOwnerId(lot: MeetingLot): string | null {
   return lot.owner?.id ?? lot.ownerContactId ?? null;
 }
 
-/** Pouvoir donne par le coproprietaire du lot, s'il y en a un. */
+/**
+ * Noms du ou des votants d'un lot à la date de l'AG, joints par « et ». Le
+ * votant d'un lot est son propriétaire à la date de l'AG (pas forcément
+ * l'actuel) ; en indivision, tous les indivisaires sont nommés, le plus gros
+ * détenteur d'abord — `voters` est déjà trié ainsi par l'API. `voters` peut
+ * manquer (ancienne API) ou être vide (aucun votant connu à cette date) :
+ * repli sur `lot.owner`, sinon « Sans propriétaire ».
+ */
+export function voterNames(lot: MeetingLot | undefined): string {
+  const voters = lot?.voters;
+  if (voters && voters.length > 0) {
+    const names = voters.map(voter => contactName({ ...voter, id: voter.contactId } as MeetingContact)).filter(Boolean);
+    if (names.length > 0) return names.join(t(' et '));
+  }
+  return contactName(lot?.owner) !== '-' ? contactName(lot?.owner) : t('Sans propriétaire');
+}
+
+/**
+ * Pouvoir donne par un votant du lot à la date de l'AG, s'il y en a un. Un
+ * lot vendu depuis l'AG garde le pouvoir donné par son ancien propriétaire :
+ * on cherche parmi `voters` (calculés côté API à la date de l'AG), pas
+ * `lot.owner` (le propriétaire actuel). Repli sur l'owner actuel quand
+ * `voters` est absent ou vide (ancienne API, ou aucun votant connu).
+ */
 export function proxyForLot(lot: MeetingLot | undefined, proxies: MeetingProxy[]): MeetingProxy | undefined {
   if (!lot) return undefined;
+  const voters = lot.voters;
+  if (voters && voters.length > 0) {
+    const voterIds = new Set(voters.map(voter => voter.contactId));
+    return proxies.find(proxy => voterIds.has(proxy.grantorContactId));
+  }
   const ownerId = lotOwnerId(lot);
   return ownerId ? proxies.find(proxy => proxy.grantorContactId === ownerId) : undefined;
 }
