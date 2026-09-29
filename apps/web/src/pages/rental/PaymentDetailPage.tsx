@@ -38,13 +38,18 @@ import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStat
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 const { Title, Text } = Typography;
 
 export const PaymentDetailPage: React.FC = () => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const { tenantId, paymentId } = useParams<{ tenantId: string; paymentId: string }>();
   const navigate = useNavigate();
+  // Affecter ou changer le statut d'un paiement exige RENTAL_PAYMENTS_ALLOCATE :
+  // le Comptable, en lecture seule, ne doit pas voir d'action qui répondrait 403.
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutAffecter = permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE');
   const [payment, setPayment] = useState<RentalPayment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +91,28 @@ export const PaymentDetailPage: React.FC = () => {
       setError(errorMessage);
       message.error(errorMessage);
     }
+  };
+
+  /**
+   * Annuler ou déclarer échoué un paiement défait ses affectations aux
+   * échéances et la collecte de dépôt de garantie qui s'y rattache : on
+   * demande confirmation avant de le faire.
+   */
+  const demanderChangementStatut = (newStatus: RentalPaymentStatus) => {
+    if (newStatus === 'CANCELED' || newStatus === 'FAILED') {
+      modal.confirm({
+        title: t('Annuler ce paiement ?'),
+        content: t(
+          'Les affectations aux échéances et la collecte du dépôt de garantie rattachées à ce paiement seront défaites.'
+        ),
+        okText: t('Confirmer'),
+        cancelText: t('Retour'),
+        okButtonProps: { danger: true },
+        onOk: () => handleStatusChange(newStatus)
+      });
+      return;
+    }
+    void handleStatusChange(newStatus);
   };
 
   const getStatusTag = (status: RentalPaymentStatus) => {
@@ -219,7 +246,8 @@ export const PaymentDetailPage: React.FC = () => {
             showSearch
             optionFilterProp="children"
             value={payment.status}
-            onChange={value => handleStatusChange(value as RentalPaymentStatus)}
+            disabled={!peutAffecter}
+            onChange={value => demanderChangementStatut(value as RentalPaymentStatus)}
             style={{ width: 180 }}
           >
             <Select.Option value="PENDING">{t('En attente')}</Select.Option>
@@ -314,7 +342,7 @@ export const PaymentDetailPage: React.FC = () => {
             </Space>
           }
           extra={
-            payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' ? (
+            peutAffecter && payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' ? (
               <Button type="primary" onClick={() => setShowAllocateForm(true)}>
                 {t('Allouer aux échéances')}
               </Button>

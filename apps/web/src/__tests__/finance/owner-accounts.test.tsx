@@ -37,6 +37,13 @@ vi.mock('../../services/owner-accounts-service', () => ({
   voidOwnerPayout: (...a: unknown[]) => voidOwnerPayout(...a)
 }));
 
+// Permissions de la personne connectée : `null` = aucune restriction
+// (administrateur d'agence). Un test les restreint pour le Comptable.
+let permissionsDetenues: Set<string> | null = null;
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues })
+}));
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
@@ -183,6 +190,7 @@ function mountDetail(url = '/tenant/agence-1/finance/owner-accounts/owner-1') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  permissionsDetenues = null;
 });
 
 describe('Comptes propriétaires — liste', () => {
@@ -347,5 +355,29 @@ describe('Compte propriétaire — annulation d’un reversement', () => {
       () => expect(voidOwnerPayout).toHaveBeenCalledWith('agence-1', 'owner-1', 'payout-1', 'Erreur de saisie'),
       { timeout: 8000 }
     );
+  });
+});
+
+describe('Compte propriétaire — annulation réservée à qui peut valider (BUG-2026-09-28-028)', () => {
+  it("n'affiche pas « Annuler » à un Comptable sans FINANCE_DOCUMENTS_VALIDATE", async () => {
+    permissionsDetenues = new Set(['FINANCE_ACCOUNTS_READ', 'FINANCE_DOCUMENTS_CREATE']);
+    getOwnerAccount.mockResolvedValue(detailCompte());
+    mountDetail();
+
+    await screen.findByText('REV-2026-0001', {}, { timeout: 8000 });
+    const ligne = screen.getByText('REV-2026-0001').closest('tr') as HTMLElement;
+
+    expect(within(ligne).queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+  });
+
+  it('affiche « Annuler » à qui détient FINANCE_DOCUMENTS_VALIDATE', async () => {
+    permissionsDetenues = new Set(['FINANCE_DOCUMENTS_VALIDATE']);
+    getOwnerAccount.mockResolvedValue(detailCompte());
+    mountDetail();
+
+    await screen.findByText('REV-2026-0001', {}, { timeout: 8000 });
+    const ligne = screen.getByText('REV-2026-0001').closest('tr') as HTMLElement;
+
+    expect(within(ligne).getByRole('button', { name: 'Annuler' })).toBeInTheDocument();
   });
 });

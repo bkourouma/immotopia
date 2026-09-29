@@ -3,8 +3,10 @@
  * Business logic for tenant portal operations
  */
 
+import { depositCurrentBalance } from './rental-deposit-balance';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { toInstallmentOverview } from '../utils/installment-overview';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -33,11 +35,7 @@ import {
   tenantPortalTicketFilter
 } from '../lib/maintenance/portal-visibility';
 import { NotFoundError } from '../middleware/error-middleware';
-import {
-  PORTAL_RENTAL_DOCUMENT_SELECT,
-  toPortalAttachment,
-  toPortalRentalDocument
-} from '../lib/files/portal-files';
+import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
 
 export class TenantPortalService {
   /**
@@ -150,12 +148,15 @@ export class TenantPortalService {
       const currentBalance = totalDue - totalPaid;
       const overdueInstallmentsCount = dueInstallments.filter(i => i.status === RentalInstallmentStatus.OVERDUE).length;
 
-      // Find next installment (T022) - earliest DUE installment
+      // Find next installment (T022) - la plus ancienne échéance non soldée :
+      // à échoir, partiellement payée ou en retard (BUG-2026-09-28-027).
       const nextInstallmentRecord = await prisma.rentalInstallment.findFirst({
         where: {
           lease_id: leaseId,
           tenant_id: tenantId,
-          status: RentalInstallmentStatus.DUE
+          status: {
+            in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL, RentalInstallmentStatus.OVERDUE]
+          }
         },
         orderBy: {
           due_date: 'asc'
@@ -163,17 +164,7 @@ export class TenantPortalService {
       });
 
       const nextInstallment: InstallmentOverview | null = nextInstallmentRecord
-        ? {
-            id: nextInstallmentRecord.id,
-            period: `${nextInstallmentRecord.period_year}-${String(nextInstallmentRecord.period_month).padStart(2, '0')}`,
-            dueDate: nextInstallmentRecord.due_date,
-            amount:
-              Number(nextInstallmentRecord.amount_rent) +
-              Number(nextInstallmentRecord.amount_service) +
-              Number(nextInstallmentRecord.amount_other_fees) +
-              Number(nextInstallmentRecord.penalty_amount || 0),
-            status: nextInstallmentRecord.status
-          }
+        ? toInstallmentOverview(nextInstallmentRecord)
         : null;
 
       // Get recent payments (T023) - last 5 successful payments
@@ -1396,8 +1387,8 @@ export class TenantPortalService {
       // Get all movements (T077)
       const movements = await listDepositMovements(tenantId, deposit.id);
 
-      // Calculate current held amount (T078)
-      const currentHeldAmount = Number(deposit.held_amount);
+      // Montant détenu (T078) : solde actuel du dépôt, pas `held_amount` (retenues seules).
+      const currentHeldAmount = depositCurrentBalance(deposit);
 
       // Nom du bail : propriétaire - libellé propriété ( immeuble )
       let leaseWithLabel = { ...deposit.lease, lease_label: deposit.lease?.lease_number ?? '' };

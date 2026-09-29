@@ -234,6 +234,12 @@ const mockPrisma: Row = {
     })
   },
 
+  // Aucune collecte de dépôt de garantie dans ces scénarios : un paiement ne sert
+  // ici qu'aux échéances (voir `rental-payment-deposit-exclusivity.test.ts`).
+  rentalDepositMovement: {
+    findMany: jest.fn(async () => [])
+  },
+
   rentalPaymentAllocation: {
     findMany: jest.fn(async ({ where }: Row) =>
       store.allocations.filter(a => matchRow(a, where)).map(hydrateAllocation)

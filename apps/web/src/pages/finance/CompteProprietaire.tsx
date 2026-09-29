@@ -26,6 +26,8 @@ import type { StatusTone } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { writeErrorMessage } from '../../utils/error-handler';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 const { Title, Text } = Typography;
@@ -97,6 +99,12 @@ function bienOuBail(m: OwnerMovement): string {
 export const CompteProprietaire: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, ownerClientId } = useParams<{ tenantId: string; ownerClientId: string }>();
+
+  // Annuler un reversement exige FINANCE_DOCUMENTS_VALIDATE (l'API répond 403
+  // sinon, après saisie du motif). `permissions` nul = aucune restriction
+  // (administrateur d'agence) ou permissions pas encore connues.
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutAnnuler = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
 
   const {
     data,
@@ -175,7 +183,13 @@ export const CompteProprietaire: React.FC = () => {
       setMotifAnnulation('');
       refetch();
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t("L'annulation a échoué."));
+      message.error(
+        writeErrorMessage(
+          err,
+          t("L'annulation a échoué."),
+          t("Vous n'avez pas le droit d'annuler un reversement. Demandez à un responsable de le faire.")
+        )
+      );
     } finally {
       setAnnulationEnCours(false);
     }
@@ -275,7 +289,7 @@ export const CompteProprietaire: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, p) =>
-        p.status === 'VALIDATED' ? (
+        p.status === 'VALIDATED' && peutAnnuler ? (
           <Button
             danger
             size="small"
@@ -389,7 +403,7 @@ export const CompteProprietaire: React.FC = () => {
             }
             fields={[{ label: t('Référence'), value: p.reference ?? '—' }]}
             primaryAction={
-              p.status === 'VALIDATED'
+              p.status === 'VALIDATED' && peutAnnuler
                 ? {
                     label: t('Annuler'),
                     onClick: () => {

@@ -1,7 +1,7 @@
 import { PrismaClient, RoleScope } from '@prisma/client';
 import { seedCRMPermissions } from './crm-permissions-seed';
 import { seedPropertyPermissions } from './property-permissions-seed';
-import { seedRentalPermissions } from './rental-permissions-seed';
+import { seedRentalPermissions, ACCOUNTANT_RENTAL_READ_PERMISSION_KEYS } from './rental-permissions-seed';
 import { seedMaintenancePermissions } from './maintenance-permissions-seed';
 import { seedCommunicationPermissions } from './communication-permissions-seed';
 import { seedFinancePermissions } from './finance-permissions-seed';
@@ -339,6 +339,29 @@ async function seedRBAC() {
   }
   console.log(`  ✓ Assigned ${billingPerms.length} permissions to TENANT_ACCOUNTANT`);
 
+  // Lecture seule de la gestion locative : le comptable consulte baux,
+  // échéances, paiements, pénalités et dépôts pour ses écrans financiers, sans
+  // aucun droit d'écriture (BUG-2026-09-28-022).
+  const accountantRentalPerms = await prisma.permission.findMany({
+    where: { key: { in: ACCOUNTANT_RENTAL_READ_PERMISSION_KEYS } }
+  });
+  for (const perm of accountantRentalPerms) {
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: tenantAccountant.id,
+          permissionId: perm.id
+        }
+      },
+      update: {},
+      create: {
+        roleId: tenantAccountant.id,
+        permissionId: perm.id
+      }
+    });
+  }
+  console.log(`  ✓ Assigned ${accountantRentalPerms.length} read-only rental permissions to TENANT_ACCOUNTANT`);
+
   console.log('\n✅ RBAC seed completed successfully!\n');
   console.log('📋 Summary:');
   console.log(`  • Permissions: ${permissions.length}`);
@@ -347,15 +370,21 @@ async function seedRBAC() {
   console.log('    - TENANT_ADMIN (tenant management)');
   console.log('    - TENANT_MANAGER (limited management)');
   console.log('    - TENANT_AGENT (view only)');
-  console.log('    - TENANT_ACCOUNTANT (billing)');
+  console.log('    - TENANT_ACCOUNTANT (billing + rental read-only)');
   console.log('');
 }
 
-seedRBAC()
-  .catch(e => {
-    console.error('❌ Error seeding RBAC:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Exécuté directement (`npm run db:seed:rbac`) ; importable sans effet de bord
+// pour les tests qui vérifient l'attribution des droits par rôle.
+if (require.main === module) {
+  seedRBAC()
+    .catch(e => {
+      console.error('❌ Error seeding RBAC:', e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
+
+export { seedRBAC };

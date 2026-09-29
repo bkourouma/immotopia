@@ -632,6 +632,7 @@
   "Résolu": "Resolved",
   "Résolus": "Resolved",
   "Reste à payer": "Left to pay",
+  "Reste dû : {{paid}} déjà réglés sur {{total}}": "Balance due: {{paid}} already paid out of {{total}}",
   "Résumé maintenance": "Maintenance summary",
   "Retard des échéances": "Instalment arrears",
   "Retenue à la source": "Withholding tax",

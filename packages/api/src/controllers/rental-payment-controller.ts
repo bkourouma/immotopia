@@ -12,6 +12,7 @@ import { RentalPaymentStatus, RentalPaymentMethod } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { asyncHandler, NotFoundError } from '../middleware/error-middleware';
 import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } from '../lib/payment-gateway/checkout';
+import { t } from '../i18n';
 
 /**
  * Lot 7 : `onlineCheckout` sort en `OnlineCheckoutSummary` (contrat §3.2),
@@ -97,7 +98,7 @@ export async function createPaymentHandler(req: Request, res: Response): Promise
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }
@@ -150,7 +151,7 @@ export async function allocatePaymentHandler(req: Request, res: Response): Promi
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }
@@ -207,7 +208,7 @@ export async function updatePaymentStatusHandler(req: Request, res: Response): P
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }

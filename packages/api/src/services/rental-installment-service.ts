@@ -7,7 +7,7 @@ import {
   RentalLeaseStatus,
   ThirdPartyMovementType
 } from '@prisma/client';
-import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
+import { buildInstallmentForPeriod, type RentChange } from '../lib/finance/installment-builder';
 import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
 import type { FinanceSourceType } from '../lib/finance/types';
@@ -397,6 +397,22 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     throw new Error("Des échéances existent déjà pour ce bail. Supprimez-les d'abord si vous souhaitez les régénérer.");
   }
 
+  // Révisions de loyer déjà enregistrées : une période antérieure au mois
+  // d'effet garde le loyer d'avant (BUG-2026-09-28-023).
+  const rentEvents = await prisma.leaseEvent.findMany({
+    where: { tenantId, leaseId, newRent: { not: null } },
+    select: { effectiveDate: true, previousRent: true, newRent: true, previousCharges: true, newCharges: true },
+    orderBy: { effectiveDate: 'asc' }
+  });
+  const rentChanges: RentChange[] = rentEvents.map(event => ({
+    effectiveYear: event.effectiveDate.getUTCFullYear(),
+    effectiveMonth: event.effectiveDate.getUTCMonth() + 1,
+    previousRent: event.previousRent,
+    newRent: event.newRent,
+    previousCharges: event.previousCharges,
+    newCharges: event.newCharges
+  }));
+
   const startDate = new Date(lease.start_date);
   const endDate = lease.end_date ? new Date(lease.end_date) : null;
 
@@ -447,7 +463,7 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     // toujours dans le cycle de facturation du bail : le cas « non inclus » ne
     // devrait jamais se produire ici, mais on le traite comme une période à
     // ignorer plutôt que de dupliquer le calcul.
-    const built = buildInstallmentForPeriod(lease, periodYear, periodMonth);
+    const built = buildInstallmentForPeriod(lease, periodYear, periodMonth, rentChanges);
 
     if (!built.included) {
       currentPeriodStart = new Date(periodEnd);

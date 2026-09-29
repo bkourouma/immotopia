@@ -632,6 +632,7 @@
   "Résolu": "تمت المعالجة",
   "Résolus": "تمت معالجتها",
   "Reste à payer": "المتبقّي للسداد",
+  "Reste dû : {{paid}} déjà réglés sur {{total}}": "المبلغ المتبقي: تم سداد {{paid}} من أصل {{total}}",
   "Résumé maintenance": "ملخّص الصيانة",
   "Retard des échéances": "تأخّر الأقساط",
   "Retenue à la source": "الاقتطاع من المصدر",

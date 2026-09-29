@@ -8,6 +8,7 @@ import {
   listDepositMovements
 } from '../services/rental-deposit-service';
 import { RentalDepositMovementType } from '@prisma/client';
+import { t } from '../i18n';
 
 const createDepositMovementSchema = z.object({
   type: z.enum(['COLLECT', 'HOLD', 'RELEASE', 'REFUND', 'FORFEIT', 'ADJUSTMENT']),
@@ -56,7 +57,7 @@ export async function getDepositHandler(req: Request, res: Response): Promise<vo
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }
@@ -103,7 +104,7 @@ export async function createDepositHandler(req: Request, res: Response): Promise
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }
@@ -166,7 +167,7 @@ export async function createDepositMovementHandler(req: Request, res: Response):
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }
@@ -197,7 +198,7 @@ export async function listDepositMovementsHandler(req: Request, res: Response): 
     if (error instanceof Error) {
       res.status(400).json({
         success: false,
-        message: error.message
+        message: t(error.message)
       });
       return;
     }

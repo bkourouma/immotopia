@@ -198,6 +198,35 @@ async function totalAffecteTx(tx: PrismaTransactionClient, tenantId: string, pay
 }
 
 /**
+ * Somme des collectes de dépôt de garantie rattachées à un règlement.
+ *
+ * Un règlement ne sert qu'à UNE destination à la fois : ce qui est déposé en
+ * garantie n'est plus disponible pour un loyer, et inversement.
+ */
+export async function totalDeposeTx(tx: PrismaTransactionClient, tenantId: string, paymentId: string): Promise<number> {
+  const collectes = await tx.rentalDepositMovement.findMany({
+    where: { payment_id: paymentId, tenant_id: tenantId, type: 'COLLECT' },
+    select: { amount: true }
+  });
+
+  return roundMoney(collectes.reduce((somme, m) => somme + Number(m.amount), 0));
+}
+
+/** Montant d'un règlement encore libre : montant - affecté aux échéances - déposé en garantie. */
+export async function montantDisponibleTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  payment: { id: string; amount: unknown }
+): Promise<number> {
+  const [affecte, depose] = await Promise.all([
+    totalAffecteTx(tx, tenantId, payment.id),
+    totalDeposeTx(tx, tenantId, payment.id)
+  ]);
+
+  return roundMoney(Number(payment.amount ?? 0) - affecte - depose);
+}
+
+/**
  * Date du règlement d'un paiement saisi à la main.
  *
  * `succeeded_at` est, partout dans l'application, la date où l'argent est
@@ -443,9 +472,8 @@ export async function allocatePaymentTx(
     throw new Error('Paiement introuvable');
   }
 
-  // Check if payment is already fully allocated
-  const allocatedAmount = payment.allocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
-  const remainingAmount = Number(payment.amount) - allocatedAmount;
+  // Check if payment is already fully allocated (échéances + dépôt de garantie)
+  const remainingAmount = await montantDisponibleTx(tx, tenantId, payment);
 
   if (remainingAmount <= 0) {
     throw new Error('Le paiement est déjà entièrement alloué');
@@ -827,6 +855,31 @@ async function reverseInstallmentAllocations(
 }
 
 /**
+ * Défait les collectes de dépôt de garantie rattachées à un règlement annulé.
+ * Le mouvement est supprimé et le cumul collecté du dépôt réduit d'autant,
+ * ce qui rouvre la collecte (un seul mouvement COLLECT par dépôt).
+ */
+async function defaireCollectesDepotTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  paymentId: string
+): Promise<void> {
+  const collectes = await tx.rentalDepositMovement.findMany({
+    where: { payment_id: paymentId, tenant_id: tenantId, type: 'COLLECT' },
+    select: { id: true, deposit_id: true, amount: true }
+  });
+
+  for (const collecte of collectes) {
+    await tx.rentalDepositMovement.delete({ where: { id: collecte.id, tenant_id: tenantId } });
+    await tx.rentalSecurityDeposit.update({
+      where: { id: collecte.deposit_id, tenant_id: tenantId },
+      data: { collected_amount: { decrement: Number(collecte.amount) } }
+    });
+    logger.info(`Payment ${paymentId} annulé : collecte de dépôt ${collecte.id} défaite`);
+  }
+}
+
+/**
  * Corps de `updatePaymentStatus`, utilisable dans une transaction fournie par
  * l'appelant.
  *
@@ -894,6 +947,11 @@ export async function updatePaymentStatusTx(
         }
       });
       const installmentIds = [...new Set(allocations.map(a => a.installment_id))];
+
+      // Un règlement annulé ne garantit plus rien : la collecte de dépôt qui
+      // s'y rattache est défaite (mouvement supprimé, cumul collecté réduit),
+      // sans quoi le dépôt resterait « complet » sans encaissement valide.
+      await defaireCollectesDepotTx(tx, tenantId, paymentId);
 
       if (installmentIds.length > 0) {
         await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId, tenant_id: tenantId } });

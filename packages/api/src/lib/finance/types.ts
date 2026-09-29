@@ -335,7 +335,18 @@ export interface AccountStatementResult {
 export type GetAccountStatement = (
   tenantId: string,
   accountId: string,
-  filters?: { range?: PeriodRange; skip?: number; take?: number }
+  filters?: {
+    range?: PeriodRange;
+    skip?: number;
+    take?: number;
+    /**
+     * Relevé « à la date du jour » (portail locataire) : seuls les mouvements
+     * dont la date est atteinte y figurent, et les soldes sont recalculés dans
+     * l'ordre chronologique (débits - crédits) au lieu de reprendre le
+     * `balanceAfter` stocké, qui suit l'ordre d'écriture.
+     */
+    asOf?: Date;
+  }
 ) => Promise<AccountStatementResult>;
 
 // ---------------------------------------------------------------------------

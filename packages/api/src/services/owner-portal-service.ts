@@ -40,6 +40,7 @@ import {
   PropertyStatus,
   RentalLeaseStatus,
   RentalPaymentStatus,
+  RentalDepositMovementType,
   RentalPaymentMethod,
   RentalInstallmentStatus,
   MaintenanceTicketStatus,
@@ -69,6 +70,8 @@ import {
   exportData as exportDataFunction
 } from '../utils/report-generator';
 import { getDocumentFile } from './document-generation-service';
+import { depositCurrentBalance } from './rental-deposit-balance';
+import { currentLanguage } from '../i18n';
 import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
 import {
   PORTAL_ATTACHMENT_SELECT,
@@ -78,6 +81,22 @@ import {
   toPortalAttachment,
   toPortalRentalDocument
 } from '../lib/files/portal-files';
+
+const INTL_LOCALES = { fr: 'fr-FR', en: 'en-US', ar: 'ar' } as const;
+
+/**
+ * Paiements qui comptent comme REVENU du propriétaire : encaissés, et non
+ * rattachés à la collecte du dépôt de garantie. Le dépôt est une somme
+ * détenue pour le compte du locataire, jamais un revenu (BUG-2026-09-28-030) ;
+ * il se lit dans « montant détenu » des écrans de dépôt.
+ *
+ * Un paiement rattaché à une collecte est écarté en entier : la collecte exige
+ * que le paiement couvre le dépôt, et le cas courant est un paiement dédié.
+ */
+const REVENUE_PAYMENT_WHERE = {
+  status: RentalPaymentStatus.SUCCESS,
+  depositMovements: { none: { type: RentalDepositMovementType.COLLECT } }
+};
 
 /**
  * Statuts qui sortent un bien du portefeuille locatif : ni loue, ni a louer.
@@ -237,7 +256,7 @@ export class OwnerPortalService {
     const currentMonthRevenue = await prisma.rentalPayment.aggregate({
       where: {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         },
@@ -255,7 +274,7 @@ export class OwnerPortalService {
     const lastMonthRevenue = await prisma.rentalPayment.aggregate({
       where: {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         },
@@ -273,7 +292,7 @@ export class OwnerPortalService {
     const currentYearRevenue = await prisma.rentalPayment.aggregate({
       where: {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         },
@@ -291,7 +310,7 @@ export class OwnerPortalService {
     const lastYearRevenue = await prisma.rentalPayment.aggregate({
       where: {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         },
@@ -382,7 +401,7 @@ export class OwnerPortalService {
     const payments = await prisma.rentalPayment.findMany({
       where: {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         }
@@ -686,7 +705,7 @@ export class OwnerPortalService {
       const totalRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: propertyId
           }
@@ -700,7 +719,7 @@ export class OwnerPortalService {
       const currentMonthRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: propertyId
           },
@@ -719,7 +738,7 @@ export class OwnerPortalService {
       const firstPayment = await prisma.rentalPayment.findFirst({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: propertyId
           }
@@ -960,24 +979,21 @@ export class OwnerPortalService {
       });
 
       // T060: Calculate balance (total due, total paid, remaining)
-      const dueInstallments = await prisma.rentalInstallment.findMany({
-        where: {
-          lease_id: leaseId,
-          tenant_id: tenantId,
-          status: {
-            in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE]
-          }
-        }
-      });
-
+      //
+      // Le total dû reprend TOUTES les échéances exigibles du calendrier, y
+      // compris celles déjà soldées (PAID) ou partiellement payées : ne compter
+      // que DUE/OVERDUE donnait « total dû 0 » sur un bail dont le loyer venait
+      // d'être payé, et un reste à payer négatif. Une échéance annulée n'est
+      // pas due ; un brouillon non payé n'est pas encore exigible.
       let totalDue = 0;
-      for (const inst of dueInstallments) {
-        const installmentTotal =
+      for (const inst of installments) {
+        if (inst.status === RentalInstallmentStatus.CANCELED) continue;
+        if (inst.status === RentalInstallmentStatus.DRAFT && Number(inst.amount_paid || 0) <= 0) continue;
+        totalDue +=
           Number(inst.amount_rent) +
           Number(inst.amount_service) +
           Number(inst.amount_other_fees) +
           Number(inst.penalty_amount || 0);
-        totalDue += installmentTotal;
       }
 
       // Tous les reglements encaisses sur ce bail, quel que soit le statut
@@ -1005,7 +1021,7 @@ export class OwnerPortalService {
       });
 
       const totalPaid = Number(allocatedPayments._sum.amount || 0);
-      const remaining = totalDue - totalPaid;
+      const remaining = Math.max(0, totalDue - totalPaid);
 
       const balance: LeaseBalance = {
         totalDue,
@@ -1038,6 +1054,9 @@ export class OwnerPortalService {
         deposit: deposit
           ? ({
               ...deposit,
+              // Montant détenu : solde actuel du dépôt (collecté - remboursé -
+              // confisqué), et non `held_amount` qui ne compte que les retenues.
+              current_balance: depositCurrentBalance(deposit),
               movements: deposit.movements as any
             } as any)
           : (null as any)
@@ -1068,7 +1087,7 @@ export class OwnerPortalService {
 
       const where: any = {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         }
@@ -1149,7 +1168,7 @@ export class OwnerPortalService {
       const currentMonthRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           },
@@ -1165,7 +1184,7 @@ export class OwnerPortalService {
       const lastMonthRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           },
@@ -1181,7 +1200,7 @@ export class OwnerPortalService {
       const currentYearRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           },
@@ -1197,7 +1216,7 @@ export class OwnerPortalService {
       const lastYearRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           },
@@ -1213,7 +1232,7 @@ export class OwnerPortalService {
       const allTimeRevenue = await prisma.rentalPayment.aggregate({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           }
@@ -1225,7 +1244,7 @@ export class OwnerPortalService {
       const firstPayment = await prisma.rentalPayment.findFirst({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           }
@@ -1279,7 +1298,7 @@ export class OwnerPortalService {
 
       const where: any = {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         }
@@ -1354,7 +1373,7 @@ export class OwnerPortalService {
       const payments = await prisma.rentalPayment.findMany({
         where: {
           tenant_id: tenantId,
-          status: RentalPaymentStatus.SUCCESS,
+          ...REVENUE_PAYMENT_WHERE,
           lease: {
             property_id: { in: propertyIds }
           },
@@ -1381,11 +1400,14 @@ export class OwnerPortalService {
         current.paymentCount += 1;
       }
 
+      // Libellé du mois dans la langue de la requête (jamais l'anglais par défaut de date-fns).
+      const monthLabel = new Intl.DateTimeFormat(INTL_LOCALES[currentLanguage()], { month: 'long', year: 'numeric' });
+
       // Ensure all months of the year are included (even with 0 revenue)
       const allMonths = eachMonthOfInterval({ start: yearStart, end: yearEnd });
       const result: RevenueByMonthData[] = allMonths.map(month => {
         const monthKey = format(month, 'yyyy-MM');
-        const monthName = format(month, 'MMMM yyyy');
+        const monthName = monthLabel.format(month);
         const data = revenueByMonth.get(monthKey) || { revenue: 0, paymentCount: 0 };
 
         return {
@@ -1632,7 +1654,7 @@ export class OwnerPortalService {
 
       const where: any = {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease_id: { not: null }, // Only include payments with a lease
         lease: {
           property_id: { in: propertyIds }
@@ -1889,7 +1911,7 @@ export class OwnerPortalService {
           propertyAddress,
           tenantName,
           depositAmount: Number(deposit.target_amount),
-          currentHeldAmount: Number(deposit.held_amount),
+          currentHeldAmount: depositCurrentBalance(deposit),
           status
         };
       });
@@ -2415,7 +2437,7 @@ export class OwnerPortalService {
       // Get revenue data
       const where: any = {
         tenant_id: tenantId,
-        status: RentalPaymentStatus.SUCCESS,
+        ...REVENUE_PAYMENT_WHERE,
         lease: {
           property_id: { in: propertyIds }
         },

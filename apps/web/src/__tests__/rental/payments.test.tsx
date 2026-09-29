@@ -48,6 +48,13 @@ vi.mock('../../components/rental/PaymentDeclarationsList', () => ({
   PaymentDeclarationsList: () => <div>liste des déclarations</div>
 }));
 
+// Permissions de la personne connectée : `null` = aucune restriction
+// (administrateur d'agence) ; un test les restreint pour le Comptable.
+let permissionsDetenues: Set<string> | null = null;
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues })
+}));
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
@@ -107,6 +114,7 @@ function mount(paiements: unknown[], url = '/tenant/agence-1/rental/payments') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  permissionsDetenues = null;
   allocatePayment.mockResolvedValue({ success: true });
 });
 
@@ -145,6 +153,25 @@ describe('Paiements — montant affecté', () => {
   it('propose d’affecter tant qu’il reste quelque chose', async () => {
     mount([paiement({ allocations: [{ id: 'a1', amount: 400_000 }] })]);
     expect(await screen.findByRole('button', { name: 'Affecter' }, { timeout: 8000 })).toBeInTheDocument();
+  });
+});
+
+describe('Paiements — rôle en lecture seule (Comptable)', () => {
+  it("ne propose ni « Nouveau paiement » ni « Affecter » sans droit d'écriture", async () => {
+    permissionsDetenues = new Set(['RENTAL_PAYMENTS_VIEW', 'RENTAL_INSTALLMENTS_VIEW']);
+    mount([paiement()]);
+
+    await screen.findAllByText(/1\s000\s000\sXOF/, {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: /Nouveau paiement/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Affecter' })).not.toBeInTheDocument();
+  });
+
+  it("propose « Nouveau paiement » et « Affecter » avec les droits d'écriture", async () => {
+    permissionsDetenues = new Set(['RENTAL_PAYMENTS_VIEW', 'RENTAL_PAYMENTS_CREATE', 'RENTAL_PAYMENTS_ALLOCATE']);
+    mount([paiement()]);
+
+    expect(await screen.findByRole('button', { name: 'Affecter' }, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Nouveau paiement/ })).toBeInTheDocument();
   });
 });
 

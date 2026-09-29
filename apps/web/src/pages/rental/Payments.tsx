@@ -33,6 +33,7 @@ import {
   FilterSheet,
   formatMoney
 } from '../../components/primitives';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -111,6 +112,11 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isDesktop } = useBreakpoint();
+  // Encaisser et affecter exigent RENTAL_PAYMENTS_CREATE / RENTAL_PAYMENTS_ALLOCATE :
+  // un rôle en lecture seule (Comptable) ne voit pas d'action qui répondrait 403.
+  const { permissions } = useMyMenuAccess(tenantId);
+  const peutEncaisser = permissions === null || permissions.has('RENTAL_PAYMENTS_CREATE');
+  const peutAffecter = permissions === null || permissions.has('RENTAL_PAYMENTS_ALLOCATE');
 
   const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
   const [saisieOuverte, setSaisieOuverte] = useState(false);
@@ -265,7 +271,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}>
             {t('Voir')}
           </Button>
-          {resteAAffecter(p) > 0 && (
+          {peutAffecter && resteAAffecter(p) > 0 && (
             <Button type="primary" onClick={() => setAffectePour(p)}>
               {t('Affecter')}
             </Button>
@@ -331,7 +337,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         isFiltered={Boolean(list.filters.status)}
         onClearFilters={() => list.setFilters({ status: undefined })}
         emptyDescription={t('Aucun paiement enregistré.')}
-        emptyAction={{ label: t('Enregistrer un paiement'), onClick: () => setSaisieOuverte(true) }}
+        emptyAction={
+          peutEncaisser ? { label: t('Enregistrer un paiement'), onClick: () => setSaisieOuverte(true) } : undefined
+        }
         columns={colonnes}
         rowKey={p => p.id}
         aria-label={t('Paiements')}
@@ -371,7 +379,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                   : [])
               ]}
               onOpen={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}
-              primaryAction={reste > 0 ? { label: 'Affecter', onClick: () => setAffectePour(p) } : undefined}
+              primaryAction={
+                peutAffecter && reste > 0 ? { label: 'Affecter', onClick: () => setAffectePour(p) } : undefined
+              }
             />
           );
         }}
@@ -396,11 +406,15 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       <PageHeader
         title={t('Paiements')}
         subtitle={total > 0 ? `${total} paiement${total > 1 ? 's' : ''}` : undefined}
-        primaryAction={{
-          label: t('Nouveau paiement'),
-          icon: <PlusOutlined />,
-          onClick: () => setSaisieOuverte(true)
-        }}
+        primaryAction={
+          peutEncaisser
+            ? {
+                label: t('Nouveau paiement'),
+                icon: <PlusOutlined />,
+                onClick: () => setSaisieOuverte(true)
+              }
+            : undefined
+        }
       />
 
       <Tabs

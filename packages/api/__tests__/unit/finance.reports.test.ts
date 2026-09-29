@@ -535,6 +535,79 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
     });
   });
 
+  describe('getAccountStatement — relevé à la date du jour (BUG-2026-09-28-026)', () => {
+    const AS_OF = new Date('2026-09-28T12:00:00.000Z');
+
+    beforeEach(() => {
+      seedAccount({ id: 'acc-d', tenantClientId: 'client-d', label: 'Aminata Traore', balance: 320000 });
+
+      // Ordre d'insertion : l'échéance d'octobre (future) est écrite AVANT le
+      // règlement, comme lors d'un « Recalculer les statuts » qui crée toutes
+      // les échéances d'un coup. Les balanceAfter stockés suivent l'insertion.
+      seedMovement({
+        id: 'd1',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-09-05T00:00:00.000Z'),
+        createdAt: new Date('2026-09-01T10:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 160000,
+        balanceAfter: 160000,
+        label: 'Loyer de septembre 2026'
+      });
+      seedMovement({
+        id: 'd2',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-10-05T00:00:00.000Z'),
+        createdAt: new Date('2026-09-02T10:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 160000,
+        balanceAfter: 320000,
+        label: "Loyer d'octobre 2026"
+      });
+      seedMovement({
+        id: 'd3',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-09-28T09:00:00.000Z'),
+        createdAt: new Date('2026-09-28T09:00:00.000Z'),
+        type: 'PAYMENT',
+        credit: 150000,
+        balanceAfter: 170000,
+        label: 'Reglement'
+      });
+    });
+
+    it("n'affiche que les mouvements échus et solde chronologiquement", async () => {
+      const statement = await getAccountStatement(TENANT_ID, 'acc-d', { asOf: AS_OF });
+
+      expect(statement.movements.map(m => m.id)).toEqual(['d1', 'd3']);
+      expect(statement.movements.map(m => m.balanceAfter)).toEqual([160000, 10000]);
+      expect(statement.openingBalance).toBe(0);
+      expect(statement.closingBalance).toBe(10000);
+      expect(statement.total).toBe(2);
+    });
+
+    it("l'ouverture d'une période est la somme chronologique des mouvements antérieurs", async () => {
+      const statement = await getAccountStatement(TENANT_ID, 'acc-d', {
+        asOf: AS_OF,
+        range: { from: new Date('2026-09-20T00:00:00.000Z') }
+      });
+
+      expect(statement.movements.map(m => m.id)).toEqual(['d3']);
+      expect(statement.openingBalance).toBe(160000);
+      expect(statement.movements[0].balanceAfter).toBe(10000);
+      expect(statement.closingBalance).toBe(10000);
+    });
+
+    it('la pagination garde les soldes cumulés', async () => {
+      const statement = await getAccountStatement(TENANT_ID, 'acc-d', { asOf: AS_OF, skip: 1, take: 1 });
+
+      expect(statement.movements.map(m => m.id)).toEqual(['d3']);
+      expect(statement.movements[0].balanceAfter).toBe(10000);
+      expect(statement.total).toBe(2);
+      expect(statement.closingBalance).toBe(10000);
+    });
+  });
+
   describe('Vocabulaire (principe P-1) : ni "debit" ni "credit" dans les reponses', () => {
     beforeEach(() => {
       seedLease({

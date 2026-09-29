@@ -368,6 +368,53 @@ async function getBalanceAtOrBefore(tenantId: string, accountId: string, atOrBef
   return last ? roundMoney(toAmountOrZero(last.balanceAfter)) : 0;
 }
 
+/**
+ * Relevé à une date : mouvements échus (`movementDate <= asOf`), soldes
+ * recalculés chronologiquement. Les échéances futures, écrites d'avance au
+ * grand livre, n'y apparaissent pas et ne faussent ni « solde après » ni
+ * la clôture.
+ */
+async function getAccountStatementAsOf(
+  tenantId: string,
+  account: { id: string; label: string; currency: string; kind: unknown },
+  asOf: Date,
+  range: PeriodRange | undefined,
+  skip: number,
+  take: number
+) {
+  const upper = range?.to && range.to.getTime() < asOf.getTime() ? range.to : asOf;
+  const rows = await prisma.thirdPartyMovement.findMany({
+    where: { tenantId, accountId: account.id, movementDate: { lte: upper } },
+    orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }]
+  });
+
+  let running = 0;
+  let openingBalance = 0;
+  const inPeriod: ThirdPartyMovementRecord[] = [];
+
+  for (const row of rows) {
+    const record = toMovementRecord(row);
+    running = roundMoney(running + (record.amountBilled ?? 0) - (record.amountSettled ?? 0));
+
+    if (range?.from && row.movementDate.getTime() < range.from.getTime()) {
+      openingBalance = running;
+      continue;
+    }
+    inPeriod.push({ ...record, balanceAfter: running });
+  }
+
+  return {
+    accountId: account.id,
+    label: account.label,
+    kind: account.kind as string,
+    openingBalance,
+    closingBalance: running,
+    currency: account.currency,
+    movements: inPeriod.slice(skip, skip + take),
+    total: inPeriod.length
+  };
+}
+
 /** Voir `GetAccountStatement` dans `./types.ts`. */
 export const getAccountStatement: GetAccountStatement = async (tenantId, accountId, filters) => {
   const account = await prisma.thirdPartyAccount.findFirst({
@@ -382,6 +429,11 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
   const range = filters?.range;
   const skip = filters?.skip ?? 0;
   const take = filters?.take ?? 50;
+
+  if (filters?.asOf) {
+    return getAccountStatementAsOf(tenantId, account, filters.asOf, range, skip, take);
+  }
+
   const movementDateFilter = buildMovementDateFilter(range);
   const movementWhere = {
     tenantId,

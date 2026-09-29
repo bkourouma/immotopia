@@ -392,7 +392,9 @@ export async function handleTenantPortalFinanceStatement(req: Request, res: Resp
     const statement = await getAccountStatement(tenantId, account.id, {
       range: range.from || range.to ? range : undefined,
       skip: pagination.skip,
-      take: pagination.take
+      take: pagination.take,
+      // Le locataire ne voit que ce qui est échu à ce jour (BUG-2026-09-28-026).
+      asOf: new Date()
     });
 
     res.status(200).json({

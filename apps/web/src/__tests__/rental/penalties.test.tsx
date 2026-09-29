@@ -92,7 +92,14 @@ describe('Pénalités — montant retenu', () => {
     // `adjusted_amount || amount` retomberait sur 132 500 : l'écran réclamerait
     // une somme que l'agence a annulée. Seul `??` distingue « pas d'ajustement »
     // de « ajusté à zéro ».
-    mount([penalite({ adjusted_amount: 0, adjustment_reason: 'Annulée, erreur de date de valeur' })]);
+    mount([
+      penalite({
+        amount: 0,
+        calculated_amount: 132_500,
+        adjusted_amount: 0,
+        adjustment_reason: 'Annulée, erreur de date de valeur'
+      })
+    ]);
 
     const cellules = await screen.findAllByText(/XOF/, {}, { timeout: 8000 });
     // `MoneyValue` sépare le nombre de la devise par une espace insécable :

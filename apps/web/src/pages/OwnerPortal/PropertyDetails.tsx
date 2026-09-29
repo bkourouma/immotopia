@@ -157,6 +157,18 @@ const transactionModeLabels: Record<string, string> = {
 
 const translateTransactionMode = (value: string) => transactionModeLabels[value] || value;
 
+/** Libellé français d'un statut de bail (jamais le code brut à l'écran). */
+const leaseStatusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    ACTIVE: t('Actif'),
+    ENDED: t('Terminé'),
+    SUSPENDED: t('Suspendu'),
+    CANCELED: t('Annulé'),
+    DRAFT: t('Brouillon')
+  };
+  return labels[status] || status;
+};
+
 export default function PropertyDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -287,7 +299,7 @@ export default function PropertyDetails() {
                 </Descriptions.Item>
                 <Descriptions.Item label={t('Statut')}>
                   <Tag color={data.currentLease.status === 'ACTIVE' ? 'success' : 'default'}>
-                    {data.currentLease.status}
+                    {leaseStatusLabel(data.currentLease.status)}
                   </Tag>
                 </Descriptions.Item>
               </Descriptions>

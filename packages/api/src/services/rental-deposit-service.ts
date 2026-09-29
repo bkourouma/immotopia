@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { RentalDepositMovementType } from '@prisma/client';
 import { assertTreasuryAccountUsableTx, type PaymentMethodLike } from '../lib/treasury/accounts';
+import { montantDisponibleTx } from './rental-payment-service';
 
 /**
  * Create security deposit for a lease
@@ -21,7 +22,7 @@ export async function createDeposit(tenantId: string, leaseId: string, actorUser
   });
 
   if (!lease) {
-    throw new Error('Lease not found');
+    throw new Error('Bail introuvable');
   }
 
   // Check if deposit already exists
@@ -32,7 +33,7 @@ export async function createDeposit(tenantId: string, leaseId: string, actorUser
   });
 
   if (existingDeposit) {
-    throw new Error('Security deposit already exists for this lease');
+    throw new Error('Un dépôt de garantie existe déjà pour ce bail');
   }
 
   // Create deposit
@@ -103,7 +104,7 @@ export async function getDeposit(tenantId: string, leaseId: string, actorUserId?
   });
 
   if (!lease) {
-    throw new Error('Lease not found');
+    throw new Error('Bail introuvable');
   }
 
   let deposit = await prisma.rentalSecurityDeposit.findUnique({
@@ -254,7 +255,7 @@ export async function createDepositMovement(
   });
 
   if (!deposit) {
-    throw new Error('Security deposit not found');
+    throw new Error('Dépôt de garantie introuvable');
   }
 
   // Validate that the referenced payment and installment, when provided,
@@ -264,7 +265,7 @@ export async function createDepositMovement(
       where: { id: paymentId, tenant_id: tenantId }
     });
     if (!payment) {
-      throw new Error('Payment not found');
+      throw new Error('Paiement introuvable');
     }
   }
 
@@ -273,7 +274,7 @@ export async function createDepositMovement(
       where: { id: installmentId, tenant_id: tenantId }
     });
     if (!installment) {
-      throw new Error('Installment not found');
+      throw new Error('Échéance introuvable');
     }
   }
 
@@ -287,21 +288,21 @@ export async function createDepositMovement(
     });
 
     if (existingCollectMovements.length > 0) {
-      throw new Error('Security deposit can only be collected once (single payment requirement)');
+      throw new Error("Le dépôt de garantie ne peut être collecté qu'une seule fois");
     }
 
     if (Number(amount) !== Number(deposit.target_amount)) {
-      throw new Error(`Collection amount (${amount}) must equal target amount (${deposit.target_amount})`);
+      throw new Error('Le montant collecté doit être égal au dépôt de garantie attendu');
     }
 
     if (!paymentId) {
-      throw new Error('Payment ID is required for deposit collection');
+      throw new Error('Un paiement est requis pour collecter le dépôt de garantie');
     }
   }
 
   // Validate amount
   if (amount <= 0) {
-    throw new Error('Movement amount must be positive');
+    throw new Error('Le montant du mouvement doit être positif');
   }
 
   // Validate movement types that reduce balance
@@ -309,7 +310,7 @@ export async function createDepositMovement(
     const availableAmount =
       Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
     if (amount > availableAmount) {
-      throw new Error(`Insufficient deposit balance. Available: ${availableAmount}, Requested: ${amount}`);
+      throw new Error('Le solde du dépôt de garantie est insuffisant pour ce mouvement');
     }
   }
 
@@ -342,6 +343,28 @@ export async function createDepositMovement(
   // compte finalement invalide ne doit rien laisser derriere lui.
   const movement = await prisma.$transaction(async tx => {
     await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
+
+    // Un paiement ne sert qu'à une destination à la fois : la collecte ne peut
+    // s'appuyer que sur un règlement encaissé, du même bail, et dont le
+    // montant n'est ni déjà affecté à des loyers ni déjà déposé en garantie.
+    if (type === RentalDepositMovementType.COLLECT && paymentId) {
+      const payment = await tx.rentalPayment.findFirst({ where: { id: paymentId, tenant_id: tenantId } });
+      if (!payment) {
+        throw new Error('Paiement introuvable');
+      }
+      if (payment.status !== 'SUCCESS') {
+        throw new Error('Seul un paiement encaissé peut servir à collecter le dépôt de garantie');
+      }
+      if (payment.lease_id && payment.lease_id !== deposit.lease_id) {
+        throw new Error("Ce paiement n'appartient pas au bail de ce dépôt de garantie");
+      }
+      const disponible = await montantDisponibleTx(tx, tenantId, payment);
+      if (disponible < Number(amount)) {
+        throw new Error(
+          "Ce paiement n'est plus assez disponible : il est déjà affecté à un loyer ou à un dépôt de garantie"
+        );
+      }
+    }
 
     const created = await tx.rentalDepositMovement.create({
       data: {
@@ -550,7 +573,7 @@ export async function listDepositMovements(tenantId: string, depositId: string) 
   });
 
   if (!deposit) {
-    throw new Error('Security deposit not found');
+    throw new Error('Dépôt de garantie introuvable');
   }
 
   const movements = await prisma.rentalDepositMovement.findMany({

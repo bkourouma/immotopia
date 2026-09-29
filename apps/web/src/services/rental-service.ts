@@ -613,8 +613,11 @@ export interface RentalPenalty {
   currency: string;
   days_late: number;
   calculated_at: string;
+  /** Montant calculé d'origine d'une pénalité ajustée (`amount` est alors le montant retenu). */
+  calculated_amount?: number | null;
   adjusted_amount?: number | null;
   adjustment_reason?: string | null;
+  is_manual_override?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1052,5 +1055,8 @@ export async function downloadPenaltyJustification(
     `/tenants/${tenantId}/rental/penalties/${encodeURIComponent(penaltyId)}/justification`,
     { responseType: 'blob' }
   );
-  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }
