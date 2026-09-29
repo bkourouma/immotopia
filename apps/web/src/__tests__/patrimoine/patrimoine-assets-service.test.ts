@@ -11,6 +11,7 @@ import {
   listAssets,
   listDebts,
   listLinkedPropertyIds,
+  suggestAssetValuation,
   upsertAssetHolding
 } from '../../services/patrimoine-assets-service';
 
@@ -43,6 +44,14 @@ describe('patrimoine-assets-service — chemins du contrat', () => {
     expect(await listLinkedPropertyIds('t1')).toEqual(['p1', 'p2']);
     expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE`);
     expect(api.get).toHaveBeenCalledWith(`${base}/assets?assetClass=REAL_ESTATE&status=ARCHIVED`);
+  });
+
+  it('demande une suggestion de valeur par POST, sans rien créer côté client', async () => {
+    api.post.mockResolvedValueOnce({ data: { data: { ok: false, missing: ['usefulLifeYears'] } } });
+    expect(await suggestAssetValuation('t1', 'a1')).toEqual({ ok: false, missing: ['usefulLifeYears'] });
+    expect(api.post).toHaveBeenCalledWith(`${base}/assets/a1/valuations/suggest`, {});
+    await suggestAssetValuation('t1', 'a1', '2026-09-29');
+    expect(api.post).toHaveBeenLastCalledWith(`${base}/assets/a1/valuations/suggest`, { asOf: '2026-09-29' });
   });
 
   it('crée, cède et archive un actif', async () => {

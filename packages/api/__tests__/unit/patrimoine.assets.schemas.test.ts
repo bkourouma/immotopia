@@ -8,7 +8,9 @@ import {
   createDebtSchema,
   disposeAssetSchema,
   setAssetHoldingSchema,
+  suggestValuationSchema,
   updateAssetSchema,
+  updateAssetValuationSchema,
   updateDebtSchema,
   validateAssetDetails,
   ASSET_DETAILS_MAX_BYTES,
@@ -153,5 +155,46 @@ describe('dates', () => {
     expect(setAssetHoldingSchema.safeParse({ sharePercent: 10, effectiveFrom: 5 }).success).toBe(false);
     expect(setAssetHoldingSchema.safeParse({ sharePercent: 10, effectiveFrom: null }).success).toBe(true);
     expect(fieldsOf(updateAssetSchema.safeParse({ acquisitionDate: 12 }))).toEqual(['acquisitionDate']);
+  });
+});
+
+describe('valorisations (lot 2)', () => {
+  const valuation = { valuatedAt: '2026-01-01', estimatedValue: 10 };
+
+  it('accepte les 11 méthodes et refuse une méthode inconnue', () => {
+    const methods = [
+      'MANUAL',
+      'MARKET_ESTIMATE',
+      'EXPERT_APPRAISAL',
+      'DEPRECIATION_LINEAR',
+      'DEPRECIATION_DECLINING',
+      'EQUITY_SHARE',
+      'UNIT_COST',
+      'BALANCE',
+      'ACCRUED_SAVINGS',
+      'DISCOUNTED_CLAIM',
+      'UNIT_VALUE'
+    ];
+    for (const method of methods) {
+      expect(createAssetValuationSchema.safeParse({ ...valuation, method }).success).toBe(true);
+    }
+    expect(createAssetValuationSchema.safeParse({ ...valuation, method: 'MAGIC' }).success).toBe(false);
+  });
+
+  it('refuse reliability et reliabilityReasons dans le corps (création et modification)', () => {
+    for (const extra of [{ reliability: 'HIGH' }, { reliabilityReasons: ['METHOD_EXPERT'] }]) {
+      expect(createAssetValuationSchema.safeParse({ ...valuation, ...extra }).success).toBe(false);
+      expect(updateAssetValuationSchema.safeParse({ estimatedValue: 1, ...extra }).success).toBe(false);
+      expect(createAssetSchema.safeParse({ ...asset, initialValuation: { ...valuation, ...extra } }).success).toBe(
+        false
+      );
+    }
+  });
+
+  it('suggestion : asOf facultatif au format AAAA-MM-JJ, champs inconnus refusés', () => {
+    expect(suggestValuationSchema.safeParse({}).success).toBe(true);
+    expect(suggestValuationSchema.safeParse({ asOf: '2026-06-30' }).success).toBe(true);
+    expect(suggestValuationSchema.safeParse({ asOf: 'hier' }).success).toBe(false);
+    expect(suggestValuationSchema.safeParse({ asOf: '2026-06-30', amount: 1 }).success).toBe(false);
   });
 });

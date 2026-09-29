@@ -13,7 +13,8 @@ import {
   listDebtsQuerySchema,
   setAssetHoldingSchema,
   netWorthQuerySchema,
-  netWorthHistoryQuerySchema
+  netWorthHistoryQuerySchema,
+  suggestValuationSchema
 } from '../lib/patrimoine/asset-schemas';
 import {
   createAsset,
@@ -26,6 +27,7 @@ import {
   createAssetValuation,
   updateAssetValuation,
   deleteAssetValuation,
+  suggestAssetValuation,
   listDebts,
   createDebt,
   updateDebt,
@@ -114,6 +116,11 @@ export const updateAssetValuationHandler = asyncHandler(async (req: Request, res
 export const deleteAssetValuationHandler = asyncHandler(async (req: Request, res: Response) => {
   await deleteAssetValuation(requireTenantId(req), idParam(req, 'assetId'), idParam(req, 'valuationId'), actor(req));
   res.status(204).send();
+});
+
+export const suggestAssetValuationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const body = suggestValuationSchema.parse(req.body ?? {});
+  res.json({ data: await suggestAssetValuation(requireTenantId(req), idParam(req, 'assetId'), body) });
 });
 
 export const listDebtsHandler = asyncHandler(async (req: Request, res: Response) => {

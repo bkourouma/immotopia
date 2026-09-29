@@ -10,13 +10,25 @@ import {
   computeNetWorth,
   computeNetWorthHistory,
   currentValueAt,
+  isStale,
   toXof
 } from '../lib/patrimoine/assets';
-import type { AssetClassKey, NetWorthAssetInput, NetWorthLoanInput, NetWorthResult } from '../lib/patrimoine/assets';
+import type {
+  AssetClassKey,
+  NetWorthAssetInput,
+  NetWorthLoanInput,
+  NetWorthResult,
+  Reliability,
+  ReliabilityReason,
+  ValuationMethodKey
+} from '../lib/patrimoine/assets';
 import { assetScopeData, assetScopeWhere } from '../lib/patrimoine/asset-scope';
 import { validateAssetDetails } from '../lib/patrimoine/asset-schemas';
 import { assertAssetQuota, assertValuationQuota, LIST_ASSETS_HARD_LIMIT } from './patrimoine-assets/limits';
 import { auditPatrimoine, changedFields, PATRIMOINE_ASSET_AUDIT as AUDIT } from './patrimoine-assets/audit';
+import { computeStoredReliability, effectiveReliability } from './patrimoine-assets/reliability-view';
+import { buildSuggestion } from './patrimoine-assets/valuation-suggest';
+import type { SuggestResponse } from './patrimoine-assets/valuation-suggest';
 import type {
   createAssetSchema,
   updateAssetSchema,
@@ -79,7 +91,8 @@ const VALUATION_SELECT = {
   currency: true,
   method: true,
   source: true,
-  notes: true
+  notes: true,
+  reliability: true
 } satisfies Prisma.AssetValuationSelect;
 
 type ValuationRow = Prisma.AssetValuationGetPayload<{ select: typeof VALUATION_SELECT }>;
@@ -109,9 +122,12 @@ export interface AssetValuationDto {
   valuatedAt: string;
   estimatedValue: number;
   currency: string;
-  method: 'MANUAL' | 'MARKET_ESTIMATE' | 'EXPERT_APPRAISAL';
+  method: ValuationMethodKey;
   source: string | null;
   notes: string | null;
+  /** Fiabilité effective à la date du jour ; nulle pour une ligne antérieure au lot 2. */
+  reliability: Reliability | null;
+  reliabilityReasons: ReliabilityReason[];
 }
 
 export interface AssetDto {
@@ -129,7 +145,15 @@ export interface AssetDto {
   property: { id: string; internalReference: string; title: string | null } | null;
   details: Record<string, unknown>;
   notes: string | null;
-  currentValue: { amount: number; currency: string; valuatedAt: string; valueXof: number | null } | null;
+  currentValue: {
+    amount: number;
+    currency: string;
+    valuatedAt: string;
+    valueXof: number | null;
+    reliability: Reliability | null;
+  } | null;
+  /** Valeur périmée selon le seuil de la classe (vrai sans valorisation). */
+  stale: boolean;
   outstandingDebtXof: number;
   createdAt: string;
   updatedAt: string;
@@ -162,6 +186,7 @@ export interface AssetHoldingDto {
 
 interface AssetFigures {
   currentValue: AssetDto['currentValue'];
+  stale: boolean;
   outstandingDebtXof: number;
 }
 
@@ -186,13 +211,15 @@ function toAssetDto(row: AssetRow, figures: AssetFigures): AssetDto {
     details: (row.details ?? {}) as Record<string, unknown>,
     notes: row.notes,
     currentValue: figures.currentValue,
+    stale: figures.stale,
     outstandingDebtXof: figures.outstandingDebtXof,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt)
   };
 }
 
-function toValuationDto(row: ValuationRow, assetId: string): AssetValuationDto {
+function toValuationDto(row: ValuationRow, asset: Pick<AssetRow, 'id' | 'assetClass' | 'details'>): AssetValuationDto {
+  const assetId = asset.id;
   return {
     id: row.id,
     assetId,
@@ -201,7 +228,8 @@ function toValuationDto(row: ValuationRow, assetId: string): AssetValuationDto {
     currency: row.currency,
     method: row.method,
     source: row.source,
-    notes: row.notes
+    notes: row.notes,
+    ...effectiveReliability(asset, row)
   };
 }
 
@@ -275,16 +303,15 @@ async function loadActiveLoansByKey(tenantId: string, assets: AssetRow[]) {
 
 function figuresOf(asset: AssetRow, valuations: ValuationRow[], loans: LoanRow[]): AssetFigures {
   const rate = asset.exchangeRateToXof === null ? null : num(asset.exchangeRateToXof);
-  const latest = currentValueAt(
-    {
-      valuations: valuations.map(v => ({
-        valuatedAt: v.valuatedAt,
-        estimatedValue: num(v.estimatedValue),
-        currency: v.currency
-      }))
-    },
-    new Date()
-  );
+  const now = new Date();
+  const inputs = valuations.map(v => ({
+    valuatedAt: v.valuatedAt,
+    estimatedValue: num(v.estimatedValue),
+    currency: v.currency,
+    row: v
+  }));
+  // `currentValueAt` renvoie l'un des éléments passés : le cast retrouve la ligne d'origine.
+  const latest = currentValueAt({ valuations: inputs }, now) as (typeof inputs)[number] | null;
   const valueXof = latest ? toXof(latest.estimatedValue, latest.currency, rate) : null;
   const debt = loans.reduce((sum, loan) => {
     const converted = toXof(num(loan.remainingCapital), loan.currency, rate);
@@ -296,9 +323,11 @@ function figuresOf(asset: AssetRow, valuations: ValuationRow[], loans: LoanRow[]
           amount: latest.estimatedValue,
           currency: latest.currency,
           valuatedAt: iso(latest.valuatedAt),
-          valueXof: valueXof === null ? null : roundMoneyXof(valueXof)
+          valueXof: valueXof === null ? null : roundMoneyXof(valueXof),
+          reliability: effectiveReliability(asset, latest.row, now).reliability
         }
       : null,
+    stale: isStale(asset.assetClass, latest ? latest.valuatedAt : null, now),
     outstandingDebtXof: debt
   };
 }
@@ -410,7 +439,15 @@ export async function createAsset(tenantId: string, input: CreateAssetInput, act
           currency: asset.currency,
           method: input.initialValuation.method,
           source: input.initialValuation.source ?? null,
-          notes: input.initialValuation.notes ?? null
+          notes: input.initialValuation.notes ?? null,
+          ...computeStoredReliability(
+            { assetClass: asset.assetClass, details },
+            {
+              method: input.initialValuation.method,
+              valuatedAt: input.initialValuation.valuatedAt,
+              source: input.initialValuation.source ?? null
+            }
+          )
         }
       });
     }
@@ -549,7 +586,7 @@ export async function listAssetValuations(tenantId: string, assetId: string): Pr
     select: VALUATION_SELECT,
     orderBy: [{ valuatedAt: 'desc' }, { createdAt: 'desc' }]
   });
-  return rows.map(row => toValuationDto(row, asset.id));
+  return rows.map(row => toValuationDto(row, asset));
 }
 
 export async function createAssetValuation(
@@ -563,6 +600,12 @@ export async function createAssetValuation(
   await assertValuationQuota(tenantId, asset);
   const currency = input.currency ?? asset.currency;
   assertLineCurrency(asset, currency);
+  const method = input.method ?? 'MANUAL';
+  const reliability = computeStoredReliability(asset, {
+    method,
+    valuatedAt: input.valuatedAt,
+    source: input.source ?? null
+  });
   const row = await prisma.assetValuation.create({
     data: {
       tenantId,
@@ -570,9 +613,10 @@ export async function createAssetValuation(
       valuatedAt: input.valuatedAt,
       estimatedValue: input.estimatedValue,
       currency,
-      method: input.method ?? 'MANUAL',
+      method,
       source: input.source ?? null,
-      notes: input.notes ?? null
+      notes: input.notes ?? null,
+      ...reliability
     },
     select: VALUATION_SELECT
   });
@@ -584,13 +628,13 @@ export async function createAssetValuation(
     entityId: row.id,
     payload: { assetId: asset.id }
   });
-  return toValuationDto(row, asset.id);
+  return toValuationDto(row, asset);
 }
 
 async function findValuationOrThrow(tenantId: string, asset: AssetRow, valuationId: string) {
   const row = await prisma.assetValuation.findFirst({
     where: { id: valuationId, tenantId, ...assetScopeWhere(asset) },
-    select: { id: true }
+    select: { id: true, valuatedAt: true, method: true, source: true }
   });
   if (!row) throw new NotFoundError(NOT_FOUND_VALUATION);
   return row;
@@ -605,8 +649,14 @@ export async function updateAssetValuation(
 ): Promise<AssetValuationDto> {
   const asset = await findAssetOrThrow(tenantId, assetId);
   assertNotArchived(asset);
-  await findValuationOrThrow(tenantId, asset, valuationId);
+  const existing = await findValuationOrThrow(tenantId, asset, valuationId);
   if (input.currency !== undefined) assertLineCurrency(asset, input.currency);
+  // Fiabilité recalculée sur la ligne fusionnée avec le PATCH ; le corps ne peut jamais la fixer (schéma strict).
+  const reliability = computeStoredReliability(asset, {
+    method: input.method ?? existing.method,
+    valuatedAt: input.valuatedAt ?? existing.valuatedAt,
+    source: input.source !== undefined ? input.source : existing.source
+  });
   const row = await prisma.assetValuation.update({
     where: { id: valuationId, tenantId },
     data: {
@@ -615,7 +665,8 @@ export async function updateAssetValuation(
       ...(input.currency !== undefined ? { currency: input.currency } : {}),
       ...(input.method !== undefined ? { method: input.method } : {}),
       ...(input.source !== undefined ? { source: input.source } : {}),
-      ...(input.notes !== undefined ? { notes: input.notes } : {})
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...reliability
     },
     select: VALUATION_SELECT
   });
@@ -627,7 +678,7 @@ export async function updateAssetValuation(
     entityId: valuationId,
     payload: { assetId: asset.id, changedFields: changedFields(input) }
   });
-  return toValuationDto(row, asset.id);
+  return toValuationDto(row, asset);
 }
 
 export async function deleteAssetValuation(
@@ -648,6 +699,47 @@ export async function deleteAssetValuation(
     entityId: valuationId,
     payload: { assetId: asset.id }
   });
+}
+
+/**
+ * Suggestion de valeur (lot 2) : lecture seule, rien n'est écrit ni audité. La
+ * dernière valorisation vient des lignes de l'actif (celles du bien pour un
+ * actif immobilier lié) ; le statut juridique n'intervient pas.
+ */
+export async function suggestAssetValuation(
+  tenantId: string,
+  assetId: string,
+  query: { asOf?: string }
+): Promise<SuggestResponse> {
+  const asset = await findAssetOrThrow(tenantId, assetId);
+  const asOf = query.asOf ? parseDay(query.asOf, 'asOf') : new Date();
+  const rows = await prisma.assetValuation.findMany({
+    where: { tenantId, ...assetScopeWhere(asset) },
+    select: VALUATION_SELECT,
+    orderBy: [{ valuatedAt: 'asc' }, { createdAt: 'asc' }]
+  });
+  const last = currentValueAt(
+    {
+      valuations: rows.map(v => ({
+        valuatedAt: v.valuatedAt,
+        estimatedValue: num(v.estimatedValue),
+        currency: v.currency
+      }))
+    },
+    asOf
+  );
+  return buildSuggestion(
+    {
+      assetClass: asset.assetClass,
+      currency: asset.currency,
+      exchangeRateToXof: asset.exchangeRateToXof === null ? null : num(asset.exchangeRateToXof),
+      details: asset.details,
+      acquisitionCost: asset.acquisitionCost === null ? null : num(asset.acquisitionCost),
+      acquisitionDate: asset.acquisitionDate
+    },
+    last,
+    asOf
+  );
 }
 
 // ---------------------------------------------------------------- Dettes
@@ -1005,7 +1097,8 @@ const NET_WORTH_ASSET_SELECT = {
   currency: true,
   exchangeRateToXof: true,
   disposedAt: true,
-  propertyId: true
+  propertyId: true,
+  details: true
 } satisfies Prisma.AssetSelect;
 
 type NetWorthAssetRow = Prisma.AssetGetPayload<{ select: typeof NET_WORTH_ASSET_SELECT }>;
@@ -1027,7 +1120,10 @@ const NET_WORTH_VALUATION_SELECT = {
   propertyId: true,
   valuatedAt: true,
   estimatedValue: true,
-  currency: true
+  currency: true,
+  method: true,
+  source: true,
+  reliability: true
 } satisfies Prisma.AssetValuationSelect;
 
 type NetWorthValuationRow = Prisma.AssetValuationGetPayload<{ select: typeof NET_WORTH_VALUATION_SELECT }>;
@@ -1063,7 +1159,8 @@ async function loadNetWorthLoans(tenantId: string, assets: NetWorthAssetRow[]): 
   });
 }
 
-async function loadNetWorthData(tenantId: string): Promise<NetWorthData> {
+/** `reliabilityAt` : date à laquelle l'ancienneté des valorisations est jugée (fiabilité effective). */
+async function loadNetWorthData(tenantId: string, reliabilityAt: Date): Promise<NetWorthData> {
   const rows = await prisma.asset.findMany({ where: { tenantId }, select: NET_WORTH_ASSET_SELECT });
   const [valuations, loans] = await Promise.all([
     loadNetWorthValuations(tenantId, rows),
@@ -1080,7 +1177,8 @@ async function loadNetWorthData(tenantId: string): Promise<NetWorthData> {
     valuations: (valuations.get(scopeKey(asset)) ?? []).map(v => ({
       valuatedAt: v.valuatedAt,
       estimatedValue: num(v.estimatedValue),
-      currency: v.currency
+      currency: v.currency,
+      reliability: effectiveReliability(asset, v, reliabilityAt).reliability
     }))
   }));
   return { assets, loans };
@@ -1091,7 +1189,7 @@ const endOfDay = (day: Date): Date => new Date(day.getTime() + END_OF_DAY_MS);
 
 export async function getNetWorth(tenantId: string, query: { asOf?: string }): Promise<NetWorthResult> {
   const day = query.asOf ? parseDay(query.asOf, 'asOf') : todayUtc();
-  const { assets, loans } = await loadNetWorthData(tenantId);
+  const { assets, loans } = await loadNetWorthData(tenantId, endOfDay(day));
   return { ...computeNetWorth(assets, loans, endOfDay(day)), asOf: day };
 }
 
@@ -1109,7 +1207,7 @@ export async function getNetWorthHistory(
   const to = query.to ? parseDay(query.to, 'to') : todayUtc();
   const from = query.from ? parseDay(query.from, 'from') : null;
   const dates = buildHistoryDates(from, to);
-  const { assets, loans } = await loadNetWorthData(tenantId);
+  const { assets, loans } = await loadNetWorthData(tenantId, new Date());
   return computeNetWorthHistory(assets, loans, dates.map(endOfDay)).map((point, index) => ({
     date: isoDay(dates[index]),
     totalAssets: point.totalAssets,

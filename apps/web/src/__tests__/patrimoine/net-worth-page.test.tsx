@@ -51,6 +51,7 @@ const VIDE = {
   netWorth: 0,
   byClass: [],
   assets: [],
+  lowReliabilityShare: 0,
   excluded: [],
   excludedLoans: []
 };
@@ -66,7 +67,10 @@ const REMPLI = {
     { assetClass: 'REAL_ESTATE', value: 80_000_000, count: 1, share: 0.9259 },
     { assetClass: 'VEHICLE_EQUIPMENT', value: 6_000_000, count: 1, share: 0.0694 }
   ],
-  assets: [{ id: 'a1', valueXof: 80_000_000, valuatedAt: '2026-09-01T00:00:00.000Z' }],
+  assets: [
+    { id: 'a1', valueXof: 80_000_000, valuatedAt: '2026-09-01T00:00:00.000Z', reliability: 'HIGH', stale: false }
+  ],
+  lowReliabilityShare: 12.5,
   excluded: [{ assetId: 'a9', reason: 'NO_VALUATION' }],
   excludedLoans: []
 };
@@ -115,6 +119,23 @@ describe('<NetWorthPage>', () => {
     expect(screen.getByText(/92,6/)).toBeInTheDocument();
     expect(await screen.findByText('Stock de riz')).toBeInTheDocument();
     expect(screen.getByText(/Sans valeur/)).toBeInTheDocument();
+  });
+
+  it('signale la part de valeur peu fiable avec un lien vers les actifs, seulement si elle est positive', async () => {
+    getNetWorth.mockResolvedValue(REMPLI);
+    const { unmount } = monter();
+
+    expect(await screen.findByText(/12,5 % de la valeur repose sur des valeurs peu fiables/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir les actifs' })).toHaveAttribute(
+      'href',
+      '/tenant/agence-1/patrimoine/actifs'
+    );
+    unmount();
+
+    getNetWorth.mockResolvedValue({ ...REMPLI, lowReliabilityShare: 0 });
+    monter();
+    expect(await screen.findByText('Total des actifs')).toBeInTheDocument();
+    expect(screen.queryByText(/valeurs peu fiables/)).not.toBeInTheDocument();
   });
 
   it('ne signale pas un actif archivé ou cédé volontairement', async () => {

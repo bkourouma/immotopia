@@ -20,6 +20,7 @@ import {
   listAssetsHandler,
   listDebtsHandler,
   setAssetHoldingHandler,
+  suggestAssetValuationHandler,
   updateAssetHandler,
   updateAssetValuationHandler,
   updateDebtHandler
@@ -61,6 +62,8 @@ router.patch(`${BASE}/assets/:assetId`, ...write, updateAssetHandler);
 router.post(`${BASE}/assets/:assetId/dispose`, ...write, disposeAssetHandler);
 router.post(`${BASE}/assets/:assetId/archive`, ...write, archiveAssetHandler);
 router.get(`${BASE}/assets/:assetId/valuations`, ...read, listAssetValuationsHandler);
+// Suggestion : lecture seule (aucune écriture), donc garde PROPERTIES_VIEW. Chemin statique avant `:valuationId`.
+router.post(`${BASE}/assets/:assetId/valuations/suggest`, ...read, suggestAssetValuationHandler);
 router.post(`${BASE}/assets/:assetId/valuations`, ...write, createAssetValuationHandler);
 router.patch(`${BASE}/assets/:assetId/valuations/:valuationId`, ...write, updateAssetValuationHandler);
 router.delete(`${BASE}/assets/:assetId/valuations/:valuationId`, ...write, deleteAssetValuationHandler);

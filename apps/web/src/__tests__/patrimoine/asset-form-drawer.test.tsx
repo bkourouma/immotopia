@@ -8,6 +8,7 @@ import {
   assetClassFields,
   assetClassLabel,
   buildAssetDetails,
+  detailKeyLabel,
   validateAssetDetails
 } from '../../components/patrimoine/actifs/asset-classes';
 
@@ -128,11 +129,85 @@ describe('description des champs par classe', () => {
       unit: 'sacs',
       unitCost: 15000
     });
-    expect(assetClassFields('REAL_ESTATE')).toEqual([]);
+    expect(assetClassFields('REAL_ESTATE').map(spec => spec.name)).toEqual(['legalStatus']);
+  });
+});
+
+describe('champs du lot 2', () => {
+  it('refuse une durée d’utilité hors 1..50 et un multiple nul, sans rendre les champs obligatoires', () => {
+    const base = { kind: 'Pick-up' };
+    expect(validateAssetDetails('VEHICLE_EQUIPMENT', base)).toEqual({});
+    expect(validateAssetDetails('VEHICLE_EQUIPMENT', { ...base, usefulLifeYears: 51 })).toHaveProperty(
+      'usefulLifeYears'
+    );
+    expect(validateAssetDetails('VEHICLE_EQUIPMENT', { ...base, residualValuePercent: 101 })).toHaveProperty(
+      'residualValuePercent'
+    );
+    const equity = { companyName: 'X', legalForm: 'SARL', country: 'CI', ownershipPercent: 50 };
+    expect(validateAssetDetails('BUSINESS_EQUITY', { ...equity, earningsMultiple: 0 })).toHaveProperty(
+      'earningsMultiple'
+    );
+    expect(validateAssetDetails('BUSINESS_EQUITY', { ...equity, earningsMultiple: 100 })).toEqual({});
+  });
+
+  it('n’envoie aucun champ vide (pas de null) pour les champs du lot 2', () => {
+    expect(
+      buildAssetDetails('VEHICLE_EQUIPMENT', { kind: 'Pick-up', usefulLifeYears: '5', residualValuePercent: null })
+    ).toEqual({
+      kind: 'Pick-up',
+      usefulLifeYears: 5
+    });
+    expect(buildAssetDetails('REAL_ESTATE', { legalStatus: 'TITRE_FONCIER' })).toEqual({
+      legalStatus: 'TITRE_FONCIER'
+    });
+    expect(buildAssetDetails('REAL_ESTATE', { legalStatus: undefined })).toEqual({});
+  });
+
+  it('libelle les clés de détail connues et laisse les inconnues telles quelles', () => {
+    expect(detailKeyLabel('usefulLifeYears')).toBe("Durée d'utilité");
+    expect(detailKeyLabel('details.companyValue')).toBe("Valeur de l'entreprise");
+    expect(detailKeyLabel('cléInconnue')).toBe('cléInconnue');
   });
 });
 
 describe('<AssetFormDrawer>', () => {
+  it('propose la durée d’utilité pour un véhicule et envoie un nombre', async () => {
+    const user = userEvent.setup();
+    createAsset.mockResolvedValue({ id: 'a1' });
+    monter();
+
+    await choisirClasse(user, 'Véhicules et équipements');
+    await user.type(await screen.findByLabelText("Nom de l'actif"), 'Hilux');
+    await user.type(screen.getByLabelText('Type'), 'Pick-up');
+    await user.type(screen.getByLabelText("Durée d'utilité"), '5');
+    await user.click(screen.getByRole('button', { name: "Créer l'actif" }));
+
+    await waitFor(() =>
+      expect(createAsset).toHaveBeenCalledWith(
+        'agence-1',
+        expect.objectContaining({ details: { kind: 'Pick-up', usefulLifeYears: 5 } })
+      )
+    );
+  });
+
+  it('avertit qu’un statut juridique fragile plafonne la fiabilité, mais pas un titre foncier', async () => {
+    const user = userEvent.setup();
+    monter();
+
+    await choisirClasse(user, 'Immobilier');
+    await user.click(await screen.findByLabelText('Statut juridique'));
+    await user.click(await screen.findByTitle('Titre foncier'));
+    expect(
+      screen.queryByText('Statut juridique fragile : la fiabilité de la valeur est plafonnée.')
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Statut juridique'));
+    await user.click(await screen.findByTitle("Lettre d'attribution"));
+    expect(
+      await screen.findByText('Statut juridique fragile : la fiabilité de la valeur est plafonnée.')
+    ).toBeInTheDocument();
+  });
+
   it('génère les champs de la classe choisie', async () => {
     const user = userEvent.setup();
     monter();

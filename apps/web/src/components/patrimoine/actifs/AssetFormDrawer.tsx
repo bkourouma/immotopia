@@ -107,28 +107,43 @@ function DetailInput({ spec, ...props }: { spec: AssetFieldSpec } & Record<strin
   return <InputNumber {...props} style={{ width: '100%' }} precision={spec.type === 'integer' ? 0 : undefined} />;
 }
 
+function ClassField({ spec }: { spec: AssetFieldSpec }) {
+  const form = Form.useFormInstance();
+  const value = Form.useWatch(['details', spec.name], form);
+  const warning = spec.warning?.(value) ?? null;
+  return (
+    <Form.Item
+      name={['details', spec.name]}
+      label={spec.label}
+      extra={
+        spec.help || warning ? (
+          <>
+            {spec.help}
+            {warning && <Alert type="warning" showIcon title={warning} style={{ marginTop: 'var(--space-1)' }} />}
+          </>
+        ) : undefined
+      }
+      required={spec.required}
+      validateFirst
+      rules={[
+        {
+          validator: (_rule, fieldValue) => {
+            const message = validateAssetField(spec, fieldValue);
+            return message ? Promise.reject(new Error(message)) : Promise.resolve();
+          }
+        }
+      ]}
+    >
+      <DetailInput spec={spec} />
+    </Form.Item>
+  );
+}
+
 function ClassFields({ assetClass }: { assetClass: AssetClass }) {
   return (
     <>
       {assetClassFields(assetClass).map(spec => (
-        <Form.Item
-          key={spec.name}
-          name={['details', spec.name]}
-          label={spec.label}
-          extra={spec.help}
-          required={spec.required}
-          validateFirst
-          rules={[
-            {
-              validator: (_rule, value) => {
-                const message = validateAssetField(spec, value);
-                return message ? Promise.reject(new Error(message)) : Promise.resolve();
-              }
-            }
-          ]}
-        >
-          <DetailInput spec={spec} />
-        </Form.Item>
+        <ClassField key={spec.name} spec={spec} />
       ))}
     </>
   );

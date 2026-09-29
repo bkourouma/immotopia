@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSET_CLASSES, parseAssetDetails, type AssetDetails } from './assets';
+import { ASSET_CLASSES, parseAssetDetails, type AssetDetails, type ValuationMethodKey } from './assets';
 import { ValidationError } from '../../middleware/error-middleware';
 
 /**
@@ -14,7 +14,20 @@ const CURRENCY = z
   .trim()
   .regex(/^[A-Za-z]{3}$/, 'Devise ISO à trois lettres attendue')
   .transform(value => value.toUpperCase());
-const VALUATION_METHODS = ['MANUAL', 'MARKET_ESTIMATE', 'EXPERT_APPRAISAL'] as const;
+/** Les 11 méthodes de l'enum Prisma `ValuationMethod` (lot 2) ; `satisfies` garde la liste alignée sur le domaine. */
+export const VALUATION_METHODS = [
+  'MANUAL',
+  'MARKET_ESTIMATE',
+  'EXPERT_APPRAISAL',
+  'DEPRECIATION_LINEAR',
+  'DEPRECIATION_DECLINING',
+  'EQUITY_SHARE',
+  'UNIT_COST',
+  'BALANCE',
+  'ACCRUED_SAVINGS',
+  'DISCOUNTED_CLAIM',
+  'UNIT_VALUE'
+] as const satisfies readonly ValuationMethodKey[];
 const LOAN_STATUSES = ['ACTIVE', 'CLOSED', 'DEFAULTED'] as const;
 const ASSET_STATUSES = ['ACTIVE', 'DISPOSED', 'ARCHIVED'] as const;
 
@@ -178,6 +191,9 @@ export const setAssetHoldingSchema = z
   .strict();
 
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date AAAA-MM-JJ attendue');
+
+/** Suggestion de valeur (lot 2) : `asOf` facultatif, défaut aujourd'hui. */
+export const suggestValuationSchema = z.object({ asOf: isoDay.optional() }).strict();
 
 export const netWorthQuerySchema = z.object({ asOf: isoDay.optional() }).strict();
 

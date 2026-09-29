@@ -929,3 +929,235 @@ describe('journal d’audit', () => {
     expect(mockAudit).not.toHaveBeenCalled();
   });
 });
+
+describe('fiabilité et suggestion (lot 2)', () => {
+  const NOW = new Date('2026-06-30T12:00:00.000Z');
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('création : la fiabilité est calculée par le serveur et stockée (EXPERT récent = HIGH)', async () => {
+    seedAsset({ id: 'a-biz', assetClass: 'BUSINESS_EQUITY' });
+    const dto = await service.createAssetValuation(TENANT_A, 'a-biz', {
+      valuatedAt: iso('2026-06-01'),
+      estimatedValue: 1000,
+      method: 'EXPERT_APPRAISAL'
+    });
+    expect(dto).toMatchObject({
+      reliability: 'HIGH',
+      reliabilityReasons: ['METHOD_EXPERT'],
+      method: 'EXPERT_APPRAISAL'
+    });
+    expect(store.assetValuation[0]).toMatchObject({ reliability: 'HIGH', reliabilityReasons: ['METHOD_EXPERT'] });
+  });
+
+  it('création : manuel sans source = LOW, avec source = MEDIUM', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    const base = { valuatedAt: iso('2026-06-20'), estimatedValue: 10 };
+    expect(await service.createAssetValuation(TENANT_A, 'a-cash', base)).toMatchObject({
+      reliability: 'LOW',
+      reliabilityReasons: ['METHOD_MANUAL_NO_SOURCE']
+    });
+    expect(await service.createAssetValuation(TENANT_A, 'a-cash', { ...base, source: 'Relevé' })).toMatchObject({
+      reliability: 'MEDIUM',
+      reliabilityReasons: ['METHOD_MANUAL_WITH_SOURCE']
+    });
+  });
+
+  it('la valorisation initiale d’un actif reçoit aussi sa fiabilité', async () => {
+    await service.createAsset(TENANT_A, {
+      name: 'Compte',
+      assetClass: 'CASH',
+      details: cashDetails,
+      initialValuation: { valuatedAt: iso('2026-06-20'), estimatedValue: 5, method: 'BALANCE' }
+    });
+    expect(store.assetValuation[0]).toMatchObject({ reliability: 'HIGH', reliabilityReasons: ['METHOD_BALANCE'] });
+  });
+
+  it('modification : la fiabilité est recalculée sur la ligne fusionnée (source retirée -> LOW)', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    seedValuation({
+      id: 'v1',
+      assetId: 'a-cash',
+      estimatedValue: 10,
+      valuatedAt: iso('2026-06-20'),
+      source: 'Relevé',
+      reliability: 'MEDIUM',
+      reliabilityReasons: ['METHOD_MANUAL_WITH_SOURCE']
+    });
+    const dto = await service.updateAssetValuation(TENANT_A, 'a-cash', 'v1', { source: null });
+    expect(dto).toMatchObject({ reliability: 'LOW', reliabilityReasons: ['METHOD_MANUAL_NO_SOURCE'] });
+    expect(store.assetValuation[0]).toMatchObject({ reliability: 'LOW' });
+  });
+
+  it('lecture : l’ancienneté est recalculée à la date du jour (EXPERT de 8 mois sur du cash = MEDIUM, stale)', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    seedValuation({
+      id: 'v1',
+      assetId: 'a-cash',
+      estimatedValue: 10,
+      valuatedAt: iso('2025-10-01'),
+      method: 'EXPERT_APPRAISAL',
+      reliability: 'HIGH',
+      reliabilityReasons: ['METHOD_EXPERT']
+    });
+    const [line] = await service.listAssetValuations(TENANT_A, 'a-cash');
+    expect(line.reliability).toBe('LOW');
+    expect(line.reliabilityReasons).toEqual(['METHOD_EXPERT', 'STALE_TWO_LEVELS']);
+    const asset = await service.getAsset(TENANT_A, 'a-cash');
+    expect(asset.stale).toBe(true);
+    expect(asset.currentValue?.reliability).toBe('LOW');
+  });
+
+  it('lecture : une valeur récente n’est pas périmée', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    seedValuation({
+      assetId: 'a-cash',
+      estimatedValue: 10,
+      valuatedAt: iso('2026-06-01'),
+      method: 'BALANCE',
+      reliability: 'HIGH'
+    });
+    const asset = await service.getAsset(TENANT_A, 'a-cash');
+    expect(asset.stale).toBe(false);
+    expect(asset.currentValue?.reliability).toBe('HIGH');
+  });
+
+  it('lecture : un actif sans valorisation est périmé, sans fiabilité', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    expect(await service.getAsset(TENANT_A, 'a-cash')).toMatchObject({ stale: true, currentValue: null });
+  });
+
+  it('lecture : une ligne antérieure au lot 2 (fiabilité nulle) reste inconnue', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    seedValuation({ assetId: 'a-cash', estimatedValue: 10, valuatedAt: iso('2026-06-20'), reliability: null });
+    const [line] = await service.listAssetValuations(TENANT_A, 'a-cash');
+    expect(line).toMatchObject({ reliability: null, reliabilityReasons: ['METHOD_MANUAL_NO_SOURCE'] });
+    expect((await service.getAsset(TENANT_A, 'a-cash')).currentValue?.reliability).toBeNull();
+  });
+
+  it('lecture : le statut juridique COURANT de l’actif plafonne la fiabilité, sans recalcul stocké', async () => {
+    seedProperty('prop-1', TENANT_A);
+    seedAsset({
+      id: 'a-re',
+      assetClass: 'REAL_ESTATE',
+      propertyId: 'prop-1',
+      details: { legalStatus: 'TITRE_FONCIER' }
+    });
+    seedValuation({
+      propertyId: 'prop-1',
+      estimatedValue: 100,
+      valuatedAt: iso('2026-06-01'),
+      method: 'EXPERT_APPRAISAL',
+      reliability: 'HIGH',
+      reliabilityReasons: ['METHOD_EXPERT']
+    });
+    expect((await service.getAsset(TENANT_A, 'a-re')).currentValue?.reliability).toBe('HIGH');
+    await service.updateAsset(TENANT_A, 'a-re', { details: { legalStatus: 'ATTESTATION_COUTUMIERE' } });
+    expect(store.assetValuation[0].reliability).toBe('HIGH');
+    const [line] = await service.listAssetValuations(TENANT_A, 'a-re');
+    expect(line).toMatchObject({ reliability: 'LOW' });
+    expect(line.reliabilityReasons).toContain('LEGAL_STATUS_FRAGILE');
+  });
+
+  it('audit : création et modification de valorisation ne portent aucun montant ni fiabilité', async () => {
+    seedAsset({ id: 'a-cash', assetClass: 'CASH' });
+    await service.createAssetValuation(TENANT_A, 'a-cash', { valuatedAt: iso('2026-06-20'), estimatedValue: 777 });
+    const payload = JSON.stringify(mockAudit.mock.calls[0][0].payload);
+    expect(payload).not.toMatch(/777|reliability/);
+  });
+
+  describe('valeur nette', () => {
+    it('lowReliabilityShare : une valeur LOW (25) et une HIGH (75) donnent 25', async () => {
+      seedAsset({ id: 'a-low', assetClass: 'CASH' });
+      seedAsset({ id: 'a-high', assetClass: 'CASH' });
+      seedValuation({ assetId: 'a-low', estimatedValue: 250, valuatedAt: iso('2026-06-20'), reliability: 'LOW' });
+      seedValuation({
+        assetId: 'a-high',
+        estimatedValue: 750,
+        valuatedAt: iso('2026-06-20'),
+        method: 'BALANCE',
+        reliability: 'HIGH'
+      });
+      const result = await service.getNetWorth(TENANT_A, { asOf: '2026-06-30' });
+      expect(result.lowReliabilityShare).toBe(25);
+      expect(result.assets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'a-low', reliability: 'LOW', stale: false }),
+          expect.objectContaining({ id: 'a-high', reliability: 'HIGH', stale: false })
+        ])
+      );
+    });
+
+    it('une valorisation sans fiabilité stockée compte comme peu fiable', async () => {
+      seedAsset({ id: 'a-old', assetClass: 'CASH' });
+      seedValuation({ assetId: 'a-old', estimatedValue: 100, valuatedAt: iso('2026-06-20'), reliability: null });
+      const result = await service.getNetWorth(TENANT_A, { asOf: '2026-06-30' });
+      expect(result.lowReliabilityShare).toBe(100);
+      expect(result.assets[0].reliability).toBeNull();
+    });
+  });
+
+  describe('suggestAssetValuation', () => {
+    it('véhicule : montant, devise de l’actif, méthode et hypothèses ; aucune écriture ni audit', async () => {
+      seedAsset({
+        id: 'a-car',
+        assetClass: 'VEHICLE_EQUIPMENT',
+        acquisitionCost: 10000000,
+        acquisitionDate: iso('2024-06-30'),
+        details: { usefulLifeYears: 5, residualValuePercent: 0, depreciationMethod: 'LINEAR' }
+      });
+      const result = await service.suggestAssetValuation(TENANT_A, 'a-car', { asOf: '2026-06-30' });
+      expect(result).toMatchObject({ ok: true, currency: 'XOF', method: 'DEPRECIATION_LINEAR' });
+      expect(result.ok && result.amount).toBeGreaterThan(5900000);
+      expect(result.ok && result.amount).toBeLessThan(6100000);
+      expect(result.ok && result.assumptions).toEqual(expect.arrayContaining([{ key: 'usefulLifeYears', value: 5 }]));
+      expect(store.assetValuation).toHaveLength(0);
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it('attributs manquants : ok false avec les clés (réponse métier, pas une erreur)', async () => {
+      seedAsset({ id: 'a-car', assetClass: 'VEHICLE_EQUIPMENT', details: {} });
+      const result = await service.suggestAssetValuation(TENANT_A, 'a-car', {});
+      expect(result).toEqual({
+        ok: false,
+        missing: ['acquisitionCost', 'acquisitionDate', 'usefulLifeYears']
+      });
+    });
+
+    it('épargne : part de la dernière valorisation ; immobilier lié : lignes du bien, ok false sans hypothèses', async () => {
+      seedAsset({
+        id: 'a-sav',
+        assetClass: 'SAVINGS_INVESTMENT',
+        details: { expectedRatePercent: 10 }
+      });
+      seedValuation({ assetId: 'a-sav', estimatedValue: 1000, valuatedAt: iso('2025-06-30') });
+      const sav = await service.suggestAssetValuation(TENANT_A, 'a-sav', { asOf: '2026-06-30' });
+      expect(sav).toMatchObject({ ok: true, method: 'ACCRUED_SAVINGS' });
+      expect(sav.ok && sav.amount).toBeGreaterThanOrEqual(1099);
+      expect(sav.ok && sav.amount).toBeLessThanOrEqual(1101);
+
+      seedProperty('prop-1', TENANT_A);
+      seedAsset({ id: 'a-re', assetClass: 'REAL_ESTATE', propertyId: 'prop-1', details: { legalStatus: 'AUTRE' } });
+      seedValuation({ propertyId: 'prop-1', estimatedValue: 5, valuatedAt: iso('2026-01-01') });
+      const re = await service.suggestAssetValuation(TENANT_A, 'a-re', {});
+      expect(re).toEqual({ ok: false, missing: [] });
+    });
+
+    it('actif d’une autre agence ou inexistant : 404', async () => {
+      seedAsset({ id: 'a-b', assetClass: 'CASH', tenantId: TENANT_B });
+      await expect(service.suggestAssetValuation(TENANT_A, 'a-b', {})).rejects.toMatchObject({ statusCode: 404 });
+      await expect(service.suggestAssetValuation(TENANT_A, 'nope', {})).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('date inexistante : erreur de validation', async () => {
+      seedAsset({ id: 'a-car', assetClass: 'VEHICLE_EQUIPMENT' });
+      await expect(service.suggestAssetValuation(TENANT_A, 'a-car', { asOf: '2026-02-30' })).rejects.toMatchObject({
+        name: 'ValidationError'
+      });
+    });
+  });
+});

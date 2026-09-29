@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Tabs, Tag } from 'antd';
+import { Tabs, Tag } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAsset } from '../../services/patrimoine-assets-service';
 import { useAuth } from '../../hooks/useAuth';
@@ -12,7 +12,8 @@ import { AssetInfoTab } from '../../components/patrimoine/actifs/AssetInfoTab';
 import { AssetValuationsTab } from '../../components/patrimoine/actifs/AssetValuationsTab';
 import { DebtsPanel } from '../../components/patrimoine/actifs/DebtsPanel';
 import { assetClassLabel, assetStatusLabel } from '../../components/patrimoine/actifs/asset-classes';
-import { formatAmount, formatDay, isValuationStale } from '../../components/patrimoine/actifs/asset-format';
+import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
+import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
 import { t } from '../../i18n/t';
 
 /**
@@ -54,7 +55,11 @@ export const AssetDetailPage: React.FC = () => {
   const current = asset.currentValue;
 
   const items = [
-    { key: 'valuations', label: t('Valeurs'), children: <AssetValuationsTab tenantId={agence} asset={asset} /> },
+    {
+      key: 'valuations',
+      label: t('Valeurs'),
+      children: <AssetValuationsTab tenantId={agence} asset={asset} onCompleteInfo={() => setEditOpen(true)} />
+    },
     { key: 'debts', label: t('Dettes'), children: <DebtsPanel tenantId={agence} assetId={asset.id} /> },
     ...(isRealEstate
       ? []
@@ -97,14 +102,11 @@ export const AssetDetailPage: React.FC = () => {
         {current && (
           <span style={{ marginInlineStart: 8 }}>{t('au {{date}}', { date: formatDay(current.valuatedAt) })}</span>
         )}
-        {current && isValuationStale(current.valuatedAt) && (
-          <Alert
-            type="warning"
-            showIcon
-            banner
-            style={{ marginTop: 'var(--space-2)' }}
-            title={t('valeur de plus de 12 mois')}
-          />
+        {current && (
+          <span style={{ marginInlineStart: 8, display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+            <ReliabilityBadge reliability={current.reliability} />
+            {asset.stale && <StaleTag />}
+          </span>
         )}
         {isRealEstate && (
           <p style={{ marginTop: 'var(--space-2)' }}>

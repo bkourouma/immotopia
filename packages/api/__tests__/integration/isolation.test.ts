@@ -660,6 +660,49 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(await prisma.assetValuation.count({ where: { assetId: assetOfB } })).toBe(1);
     });
 
+    it("A demande la suggestion de valeur de l'actif de B -> 404, rien n'est écrit", async () => {
+      const before = await prisma.assetValuation.count({ where: { tenantId: tenantB.id } });
+      const res = await request(app)
+        .post(`${P(tenantA.id)}/assets/${assetOfB}/valuations/suggest`)
+        .set(authed(adminA))
+        .send({});
+      expect(res.status).toBe(404);
+      expect(await prisma.assetValuation.count({ where: { tenantId: tenantB.id } })).toBe(before);
+    });
+
+    it('fiabilité : un corps portant reliability est refusé, sinon elle est calculée et renvoyée à la lecture', async () => {
+      const own = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({ name: 'ActifA-fiabilité', assetClass: 'CASH', details: { institution: 'Banque A', cashKind: 'BANK' } });
+      expect(own.status).toBe(201);
+      const path = `${P(tenantA.id)}/assets/${own.body.data.id}/valuations`;
+      const today = new Date().toISOString().slice(0, 10);
+
+      const forged = await request(app)
+        .post(path)
+        .set(authed(adminA))
+        .send({ valuatedAt: today, estimatedValue: 100, reliability: 'HIGH' });
+      expect(forged.status).toBe(400);
+      expect(await prisma.assetValuation.count({ where: { assetId: own.body.data.id } })).toBe(0);
+
+      const created = await request(app)
+        .post(path)
+        .set(authed(adminA))
+        .send({ valuatedAt: today, estimatedValue: 100, method: 'BALANCE' });
+      expect(created.status).toBe(201);
+      expect(created.body.data).toMatchObject({ reliability: 'HIGH', reliabilityReasons: ['METHOD_BALANCE'] });
+      const stored = await prisma.assetValuation.findUnique({ where: { id: created.body.data.id } });
+      expect(stored).toMatchObject({ reliability: 'HIGH', reliabilityReasons: ['METHOD_BALANCE'] });
+
+      const read = await request(app).get(path).set(authed(adminA));
+      expect(read.body.data[0]).toMatchObject({ reliability: 'HIGH' });
+      const asset = await request(app)
+        .get(`${P(tenantA.id)}/assets/${own.body.data.id}`)
+        .set(authed(adminA));
+      expect(asset.body.data).toMatchObject({ stale: false, currentValue: { reliability: 'HIGH' } });
+    });
+
     it("A cède ou archive l'actif de B -> 404, statut de B inchangé", async () => {
       const dispose = await request(app)
         .post(`${P(tenantA.id)}/assets/${assetOfB}/dispose`)

@@ -1,5 +1,8 @@
 # Contrat API — patrimoine multi-actifs (lot 1)
 
+> Voir aussi `specs/024-patrimoine-valorisation-par-classe/contracts/api.md` (lot 2) : méthodes de valorisation
+> étendues, fiabilité, suggestion de valeur, `lowReliabilityShare` et champs `stale`/`reliability`.
+
 Préfixe : `/api`. Toutes les routes sont sous `/tenants/:tenantId/patrimoine/...`, derrière
 `authenticate`, `requireTenantAccess`, `enforcePropertyTenantIsolation` (comme
 `routes/patrimoine-routes.ts`). Lecture : `requireAnyPropertyPermission(['PROPERTIES_VIEW'])`.

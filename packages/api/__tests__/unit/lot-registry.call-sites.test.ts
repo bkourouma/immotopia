@@ -40,31 +40,51 @@ const CALL_SITES: Array<[file: string, fn: string, expected: RegExp, transaction
   ['lib/lease-lifecycle/service.ts', 'terminateLease', /syncLotActivationsTx\(\s*tx,/, true],
   // Coproprietes : creation (capacite), statut, suppression, lots.
   ['lib/syndics/queries.ts', 'createSyndicateWithDefaults', /assertCapacityTx\(tx, tenantId, 'COPROPRIETES'\)/, true],
-  ['lib/syndics/queries.ts', 'updateSyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, \{ syndicateIds/, true],
-  ['lib/syndics/queries.ts', 'deleteEmptySyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, scope/, true],
-  ['lib/syndics/queries.ts', 'createSyndicateLot', /syncLotActivationsTx\(tx, tenantId, \{ syndicateLotIds/, true],
+  [
+    'lib/syndics/queries.ts',
+    'updateSyndicateByTenant',
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*syndicateIds/,
+    true
+  ],
+  ['lib/syndics/queries.ts', 'deleteEmptySyndicateByTenant', /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*scope/, true],
+  [
+    'lib/syndics/queries.ts',
+    'createSyndicateLot',
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*syndicateLotIds/,
+    true
+  ],
   [
     'lib/syndics/queries.ts',
     'importLotsFromPropertiesBySyndicate',
-    /syncLotActivationsTx\(tx, tenantId, \{ syndicateLotIds/,
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*syndicateLotIds/,
     true
   ],
-  ['lib/syndics/queries.ts', 'updateSyndicateLotByTenant', /syncLotActivationsTx\(tx, tenantId, \{/, true],
+  ['lib/syndics/queries.ts', 'updateSyndicateLotByTenant', /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{/, true],
   // Chantiers : creation (capacite), lots, cloture, reouverture, bascule.
   ['lib/finance/sites.ts', 'createConstructionSite', /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)/, true],
-  ['lib/finance/site-closing.ts', 'createSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds/, false],
-  ['lib/finance/site-closing.ts', 'deleteSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds/, false],
-  ['lib/finance/site-closing.ts', 'closeSiteTx', /syncLotActivationsTx\(tx, tenantId, \{ siteIds/, false],
+  [
+    'lib/finance/site-closing.ts',
+    'createSiteLotTx',
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*siteLotIds/,
+    false
+  ],
+  [
+    'lib/finance/site-closing.ts',
+    'deleteSiteLotTx',
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*siteLotIds/,
+    false
+  ],
+  ['lib/finance/site-closing.ts', 'closeSiteTx', /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*siteIds/, false],
   [
     'lib/finance/site-closing.ts',
     'reopenSiteTx',
-    /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)[\s\S]*syncLotActivationsTx\(tx, tenantId, \{ siteIds/,
+    /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)[\s\S]*syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*siteIds/,
     false
   ],
   [
     'lib/finance/site-closing.ts',
     'capitalizeSiteLotTx',
-    /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds: \[lotId\], propertyIds/,
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{\s*siteLotIds:\s*\[lotId\],\s*propertyIds/,
     false
   ]
 ];

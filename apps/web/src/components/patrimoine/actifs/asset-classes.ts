@@ -1,4 +1,11 @@
-import type { AssetClass, AssetStatus, NetWorthExclusionReason } from '../../../services/patrimoine-assets-service';
+import type {
+  AssetClass,
+  AssetStatus,
+  NetWorthExclusionReason,
+  Reliability,
+  ReliabilityReason,
+  ValuationMethod
+} from '../../../services/patrimoine-assets-service';
 import { t } from '../../../i18n/t';
 
 /**
@@ -93,6 +100,99 @@ export function exclusionReasonLabel(reason: NetWorthExclusionReason | string): 
   }
 }
 
+// --- Valorisation par classe et fiabilité (lot 2) ---------------------------
+
+export const VALUATION_METHODS: readonly ValuationMethod[] = [
+  'MANUAL',
+  'MARKET_ESTIMATE',
+  'EXPERT_APPRAISAL',
+  'DEPRECIATION_LINEAR',
+  'DEPRECIATION_DECLINING',
+  'EQUITY_SHARE',
+  'UNIT_COST',
+  'BALANCE',
+  'ACCRUED_SAVINGS',
+  'DISCOUNTED_CLAIM',
+  'UNIT_VALUE'
+];
+
+export function valuationMethodName(method: ValuationMethod | string): string {
+  switch (method) {
+    case 'MANUAL':
+      return t('Manuelle');
+    case 'MARKET_ESTIMATE':
+      return t('Estimation de marché');
+    case 'EXPERT_APPRAISAL':
+      return t('Expertise');
+    case 'DEPRECIATION_LINEAR':
+      return t('Amortissement linéaire');
+    case 'DEPRECIATION_DECLINING':
+      return t('Amortissement dégressif');
+    case 'EQUITY_SHARE':
+      return t("Quote-part de l'entreprise");
+    case 'UNIT_COST':
+      return t('Quantité × coût unitaire');
+    case 'BALANCE':
+      return t('Solde');
+    case 'ACCRUED_SAVINGS':
+      return t('Épargne capitalisée');
+    case 'DISCOUNTED_CLAIM':
+      return t('Créance décotée');
+    case 'UNIT_VALUE':
+      return t('Quantité × valeur unitaire');
+    default:
+      return String(method);
+  }
+}
+
+export function reliabilityLabel(level: Reliability | null | undefined): string {
+  if (level === 'HIGH') return t('Élevée');
+  if (level === 'MEDIUM') return t('Moyenne');
+  return t('Faible');
+}
+
+export function reliabilityReasonLabel(reason: ReliabilityReason | string): string {
+  switch (reason) {
+    case 'METHOD_EXPERT':
+      return t('Expertise');
+    case 'METHOD_BALANCE':
+      return t('Solde saisi');
+    case 'METHOD_COMPUTED':
+      return t("Calculée à partir des caractéristiques de l'actif");
+    case 'METHOD_MANUAL_WITH_SOURCE':
+      return t('Saisie manuelle, source indiquée');
+    case 'METHOD_MANUAL_NO_SOURCE':
+      return t('Saisie manuelle, sans source');
+    case 'STALE_ONE_LEVEL':
+      return t('Valeur ancienne');
+    case 'STALE_TWO_LEVELS':
+      return t('Valeur très ancienne');
+    case 'LEGAL_STATUS_FRAGILE':
+      return t('Statut juridique fragile');
+    case 'LEGAL_STATUS_UNKNOWN':
+      return t('Statut juridique non renseigné');
+    default:
+      return String(reason);
+  }
+}
+
+/** Statuts juridiques qui plafonnent la fiabilité à « faible » (règle du serveur). */
+export const FRAGILE_LEGAL_STATUSES: readonly string[] = ['LETTRE_ATTRIBUTION', 'ATTESTATION_COUTUMIERE'];
+
+const legalStatusOptions = () => [
+  { value: 'TITRE_FONCIER', label: t('Titre foncier') },
+  { value: 'ACD', label: t('Arrêté de concession définitive (ACD)') },
+  { value: 'CERTIFICAT_PROPRIETE', label: t('Certificat de propriété ou de détention') },
+  { value: 'LETTRE_ATTRIBUTION', label: t("Lettre d'attribution") },
+  { value: 'ATTESTATION_COUTUMIERE', label: t('Attestation villageoise ou coutumière') },
+  { value: 'AUTRE', label: t('Autre') }
+];
+
+const depreciationMethodOptions = () => [
+  { value: 'LINEAR', label: t('Linéaire') },
+  { value: 'DECLINING', label: t('Dégressif') }
+];
+
 // --- Champs propres à chaque classe ---------------------------------------
 
 export type AssetFieldType = 'text' | 'number' | 'integer' | 'percent' | 'select' | 'date';
@@ -111,6 +211,10 @@ export interface AssetFieldSpec {
   patternMessage?: string;
   maxLength?: number;
   help?: string;
+  /** Borne basse exclue (ex. un multiple strictement positif). */
+  exclusiveMin?: boolean;
+  /** Avertissement (non bloquant) selon la valeur saisie. */
+  warning?: (value: unknown) => string | null;
 }
 
 const MIN_VEHICLE_YEAR = 1950;
@@ -153,14 +257,27 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
         },
         { name: 'country', label: t('Pays'), type: 'text', required: true },
         { name: 'ownershipPercent', label: t('Pourcentage détenu'), type: 'percent', required: true, min: 0, max: 100 },
-        { name: 'sector', label: t("Secteur d'activité"), type: 'text', required: false }
+        { name: 'sector', label: t("Secteur d'activité"), type: 'text', required: false },
+        { name: 'companyValue', label: t("Valeur de l'entreprise"), type: 'number', required: false, min: 0 },
+        { name: 'netIncome', label: t('Résultat net'), type: 'number', required: false, min: 0 },
+        {
+          name: 'earningsMultiple',
+          label: t('Multiple de résultat'),
+          type: 'number',
+          required: false,
+          min: 0,
+          max: 100,
+          exclusiveMin: true,
+          help: t("Sans valeur de l'entreprise, la valeur se calcule avec le résultat net et ce multiple.")
+        }
       ];
     case 'INVENTORY':
       return [
         { name: 'designation', label: t('Désignation'), type: 'text', required: true },
         { name: 'quantity', label: t('Quantité'), type: 'number', required: true, min: 0 },
         { name: 'unit', label: t('Unité'), type: 'text', required: true },
-        { name: 'unitCost', label: t('Coût unitaire'), type: 'number', required: true, min: 0 }
+        { name: 'unitCost', label: t('Coût unitaire'), type: 'number', required: true, min: 0 },
+        { name: 'writeDownPercent', label: t('Décote (%)'), type: 'percent', required: false, min: 0, max: 100 }
       ];
     case 'VEHICLE_EQUIPMENT':
       return [
@@ -175,7 +292,39 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
           min: MIN_VEHICLE_YEAR,
           max: new Date().getFullYear() + 1
         },
-        { name: 'registration', label: t('Immatriculation ou numéro de série'), type: 'text', required: false }
+        { name: 'registration', label: t('Immatriculation ou numéro de série'), type: 'text', required: false },
+        {
+          name: 'usefulLifeYears',
+          label: t("Durée d'utilité"),
+          type: 'integer',
+          required: false,
+          min: 1,
+          max: 50,
+          help: t('En années.')
+        },
+        {
+          name: 'residualValuePercent',
+          label: t('Valeur résiduelle (%)'),
+          type: 'percent',
+          required: false,
+          min: 0,
+          max: 100
+        },
+        {
+          name: 'depreciationMethod',
+          label: t("Méthode d'amortissement"),
+          type: 'select',
+          required: false,
+          options: depreciationMethodOptions()
+        },
+        {
+          name: 'decliningRatePercent',
+          label: t('Taux dégressif (%)'),
+          type: 'percent',
+          required: false,
+          min: 0,
+          max: 100
+        }
       ];
     case 'CASH':
       return [
@@ -203,11 +352,21 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
           required: false,
           min: 0,
           max: 100
-        }
+        },
+        { name: 'principal', label: t('Capital'), type: 'number', required: false, min: 0 }
       ];
     case 'RECEIVABLE':
       return [
         { name: 'debtor', label: t('Débiteur'), type: 'text', required: true },
+        { name: 'principal', label: t('Capital'), type: 'number', required: false, min: 0 },
+        {
+          name: 'collectibilityPercent',
+          label: t('Recouvrabilité (%)'),
+          type: 'percent',
+          required: false,
+          min: 0,
+          max: 100
+        },
         { name: 'dueDate', label: t('Échéance'), type: 'date', required: false },
         { name: 'ratePercent', label: t('Taux (%)'), type: 'percent', required: false, min: 0, max: 100 }
       ];
@@ -222,7 +381,8 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
         },
         { name: 'crop', label: t('Culture ou espèce'), type: 'text', required: false },
         { name: 'areaHectares', label: t('Surface (hectares)'), type: 'number', required: false, min: 0 },
-        { name: 'headcount', label: t('Effectif'), type: 'integer', required: false, min: 0 }
+        { name: 'headcount', label: t('Effectif'), type: 'integer', required: false, min: 0 },
+        { name: 'unitValue', label: t('Valeur unitaire'), type: 'number', required: false, min: 0 }
       ];
     case 'MOVABLE':
       return [
@@ -232,9 +392,39 @@ export function assetClassFields(assetClass: AssetClass): AssetFieldSpec[] {
     case 'OTHER':
       return [{ name: 'label', label: t('Libellé'), type: 'text', required: true }];
     case 'REAL_ESTATE':
+      return [
+        {
+          name: 'legalStatus',
+          label: t('Statut juridique'),
+          type: 'select',
+          required: false,
+          options: legalStatusOptions(),
+          warning: value =>
+            typeof value === 'string' && FRAGILE_LEGAL_STATUSES.includes(value)
+              ? t('Statut juridique fragile : la fiabilité de la valeur est plafonnée.')
+              : null
+        }
+      ];
     default:
       return [];
   }
+}
+
+const EXTRA_KEY_LABELS = (): Record<string, string> => ({
+  acquisitionCost: t("Coût d'acquisition"),
+  acquisitionDate: t("Date d'acquisition"),
+  balance: t('Solde'),
+  elapsedYears: t('Années écoulées')
+});
+
+/** Libellé français d'une clé de détail (champ manquant ou hypothèse) ; clé inconnue renvoyée telle quelle. */
+export function detailKeyLabel(rawKey: string): string {
+  const key = rawKey.replace(/^details\./, '');
+  for (const assetClass of ASSET_CLASS_KEYS) {
+    const spec = assetClassFields(assetClass).find(field => field.name === key);
+    if (spec) return spec.label;
+  }
+  return EXTRA_KEY_LABELS()[key] ?? key;
 }
 
 function isEmpty(value: unknown): boolean {
@@ -248,7 +438,7 @@ export function validateAssetField(spec: AssetFieldSpec, value: unknown): string
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return t('Saisissez un nombre valide');
     if (spec.type === 'integer' && !Number.isInteger(numeric)) return t('Saisissez un nombre entier');
-    if (spec.min !== undefined && numeric < spec.min) {
+    if (spec.min !== undefined && (numeric < spec.min || (spec.exclusiveMin && numeric === spec.min))) {
       return spec.type === 'percent'
         ? t('La valeur doit être comprise entre 0 et 100')
         : t('La valeur est trop petite');

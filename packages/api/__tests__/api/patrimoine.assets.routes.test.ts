@@ -45,6 +45,7 @@ const mockService = {
   createAssetValuation: jest.fn(async () => ({})),
   updateAssetValuation: jest.fn(async () => ({})),
   deleteAssetValuation: jest.fn(async () => undefined),
+  suggestAssetValuation: jest.fn(async () => ({ ok: false, missing: ['usefulLifeYears'] })),
   listDebts: jest.fn(async () => []),
   createDebt: jest.fn(async () => ({})),
   updateDebt: jest.fn(async () => ({})),
@@ -236,6 +237,42 @@ describe('contrat des réponses', () => {
         expect.arrayContaining([{ field: expect.any(String), message: expect.any(String) }])
       );
     }
+    expect(mockService.createAssetValuation).not.toHaveBeenCalled();
+  });
+});
+
+describe('suggestion de valeur (lot 2)', () => {
+  const path = `${BASE}/assets/${ASSET}/valuations/suggest`;
+
+  it('lecture seule : PROPERTIES_VIEW suffit, sans permission -> 403', async () => {
+    expect((await request(app).post(path).set('x-perms', '').send({})).status).toBe(403);
+    expect(mockService.suggestAssetValuation).not.toHaveBeenCalled();
+    const ok = await request(app).post(path).set('x-perms', READ).send({});
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ data: { ok: false, missing: ['usefulLifeYears'] } });
+    expect(mockService.suggestAssetValuation).toHaveBeenCalledWith(TENANT, ASSET, {});
+  });
+
+  it('transmet asOf ; corps inconnu ou date mal formée -> 400 ; corps absent accepté', async () => {
+    await request(app).post(path).set('x-perms', READ).send({ asOf: '2026-06-30' });
+    expect(mockService.suggestAssetValuation).toHaveBeenCalledWith(TENANT, ASSET, { asOf: '2026-06-30' });
+    mockService.suggestAssetValuation.mockClear();
+    expect((await request(app).post(path).set('x-perms', READ).send({ amount: 5 })).status).toBe(400);
+    expect((await request(app).post(path).set('x-perms', READ).send({ asOf: 'demain' })).status).toBe(400);
+    expect((await request(app).post(path).set('x-perms', READ)).status).toBe(200);
+  });
+
+  it('actif d’une autre agence : la NotFoundError du service devient 404', async () => {
+    mockService.suggestAssetValuation.mockRejectedValueOnce(new NotFoundError('Actif introuvable.'));
+    expect((await request(app).post(path).set('x-perms', READ).send({})).status).toBe(404);
+  });
+
+  it('une valorisation ne peut pas fixer sa fiabilité : 400, service jamais appelé', async () => {
+    const res = await request(app)
+      .post(`${BASE}/assets/${ASSET}/valuations`)
+      .set('x-perms', WRITE)
+      .send({ valuatedAt: '2026-01-01', estimatedValue: 1, reliability: 'HIGH' });
+    expect(res.status).toBe(400);
     expect(mockService.createAssetValuation).not.toHaveBeenCalled();
   });
 });

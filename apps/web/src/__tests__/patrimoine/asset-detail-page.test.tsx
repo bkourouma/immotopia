@@ -22,9 +22,12 @@ vi.mock('../../services/patrimoine-assets-service', () => ({
       currency: 'XOF',
       method: 'EXPERT_APPRAISAL',
       source: 'Cabinet Kouassi',
-      notes: null
+      notes: null,
+      reliability: 'HIGH',
+      reliabilityReasons: ['METHOD_EXPERT']
     }
   ]),
+  suggestAssetValuation: vi.fn(),
   createAssetValuation: vi.fn(),
   updateAssetValuation: vi.fn(),
   deleteAssetValuation: vi.fn(),
@@ -65,7 +68,14 @@ function actif(overrides: Record<string, unknown> = {}) {
     property: null,
     details: { kind: 'Pick-up', brand: 'Toyota' },
     notes: null,
-    currentValue: { amount: 6_000_000, currency: 'XOF', valuatedAt: '2026-06-01T00:00:00.000Z', valueXof: 6_000_000 },
+    currentValue: {
+      amount: 6_000_000,
+      currency: 'XOF',
+      valuatedAt: '2026-06-01T00:00:00.000Z',
+      valueXof: 6_000_000,
+      reliability: 'HIGH'
+    },
+    stale: false,
     outstandingDebtXof: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

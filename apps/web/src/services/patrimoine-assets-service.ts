@@ -20,7 +20,43 @@ export type AssetClass =
   | 'OTHER';
 
 export type AssetStatus = 'ACTIVE' | 'DISPOSED' | 'ARCHIVED';
-export type AssetValuationMethod = 'MANUAL' | 'MARKET_ESTIMATE' | 'EXPERT_APPRAISAL';
+export type ValuationMethod =
+  | 'MANUAL'
+  | 'MARKET_ESTIMATE'
+  | 'EXPERT_APPRAISAL'
+  | 'DEPRECIATION_LINEAR'
+  | 'DEPRECIATION_DECLINING'
+  | 'EQUITY_SHARE'
+  | 'UNIT_COST'
+  | 'BALANCE'
+  | 'ACCRUED_SAVINGS'
+  | 'DISCOUNTED_CLAIM'
+  | 'UNIT_VALUE';
+export type AssetValuationMethod = ValuationMethod;
+
+export type Reliability = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** Clés stables des raisons de fiabilité, calculées par le serveur et traduites côté web. */
+export type ReliabilityReason =
+  | 'METHOD_EXPERT'
+  | 'METHOD_BALANCE'
+  | 'METHOD_COMPUTED'
+  | 'METHOD_MANUAL_WITH_SOURCE'
+  | 'METHOD_MANUAL_NO_SOURCE'
+  | 'STALE_ONE_LEVEL'
+  | 'STALE_TWO_LEVELS'
+  | 'LEGAL_STATUS_FRAGILE'
+  | 'LEGAL_STATUS_UNKNOWN';
+
+export type SuggestResponse =
+  | {
+      ok: true;
+      amount: number;
+      currency: string;
+      method: ValuationMethod;
+      assumptions: { key: string; value: string | number }[];
+    }
+  | { ok: false; missing: string[] };
 export type DebtStatus = 'ACTIVE' | 'CLOSED' | 'DEFAULTED';
 
 export interface AssetValuationDto {
@@ -32,6 +68,9 @@ export interface AssetValuationDto {
   method: AssetValuationMethod;
   source: string | null;
   notes: string | null;
+  /** `null` : valorisation antérieure au lot 2, traitée comme faible. */
+  reliability: Reliability | null;
+  reliabilityReasons: ReliabilityReason[];
 }
 
 export interface AssetDto {
@@ -49,7 +88,15 @@ export interface AssetDto {
   property: { id: string; internalReference: string; title: string | null } | null;
   details: Record<string, unknown>;
   notes: string | null;
-  currentValue: { amount: number; currency: string; valuatedAt: string; valueXof: number | null } | null;
+  currentValue: {
+    amount: number;
+    currency: string;
+    valuatedAt: string;
+    valueXof: number | null;
+    reliability: Reliability | null;
+  } | null;
+  /** Valeur périmée selon le seuil de la classe (calculé par le serveur). */
+  stale: boolean;
   outstandingDebtXof: number;
   createdAt: string;
   updatedAt: string;
@@ -89,7 +136,9 @@ export interface NetWorthResult {
   totalDebts: number;
   netWorth: number;
   byClass: { assetClass: AssetClass; value: number; count: number; share: number }[];
-  assets: { id: string; valueXof: number; valuatedAt: string }[];
+  assets: { id: string; valueXof: number; valuatedAt: string; reliability: Reliability | null; stale: boolean }[];
+  /** Part (0..100) de la valeur totale reposant sur une fiabilité faible ou inconnue. */
+  lowReliabilityShare: number;
   excluded: { assetId: string; reason: NetWorthExclusionReason }[];
   excludedLoans: { loanId: string; reason: 'MISSING_EXCHANGE_RATE' }[];
 }
@@ -245,6 +294,19 @@ export async function createAssetValuation(
   const response = await apiClient.post<Envelope<AssetValuationDto>>(
     `${base(tenantId)}/assets/${assetId}/valuations`,
     payload
+  );
+  return response.data.data;
+}
+
+/** Calcule une valeur d'après les caractéristiques de l'actif, sans rien enregistrer. */
+export async function suggestAssetValuation(
+  tenantId: string,
+  assetId: string,
+  asOf?: string
+): Promise<SuggestResponse> {
+  const response = await apiClient.post<Envelope<SuggestResponse>>(
+    `${base(tenantId)}/assets/${assetId}/valuations/suggest`,
+    asOf ? { asOf } : {}
   );
   return response.data.data;
 }

@@ -1,23 +1,40 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Select, Space, Table, Tag } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Descriptions,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag
+} from 'antd';
+import { CalculatorOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   createAssetValuation,
   deleteAssetValuation,
   listAssetValuations,
+  suggestAssetValuation,
   updateAssetValuation,
   type AssetDto,
   type AssetValuationDto,
-  type AssetValuationInput
+  type AssetValuationInput,
+  type SuggestResponse
 } from '../../../services/patrimoine-assets-service';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { ConfirmAction, StateBlock } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatAmount, formatDay, serverFieldErrors, todayIso } from './asset-format';
-import { valuationMethodLabel } from '../patrimoine-labels';
+import { detailKeyLabel, VALUATION_METHODS, valuationMethodName } from './asset-classes';
+import { ReliabilityBadge } from './ReliabilityBadge';
 
 interface ValuationFormValues {
   valuatedAt: string;
@@ -28,16 +45,17 @@ interface ValuationFormValues {
   notes?: string;
 }
 
-const METHODS = ['MANUAL', 'MARKET_ESTIMATE', 'EXPERT_APPRAISAL'] as const;
 const FORM_FIELDS = ['valuatedAt', 'estimatedValue', 'currency', 'method', 'source', 'notes'];
 
 const ValuationFormModal: React.FC<{
   open: boolean;
   asset: AssetDto;
   valuation: AssetValuationDto | null;
+  /** Montant et méthode proposés (suggestion modifiée par l'utilisateur) ; jamais enregistrés sans validation. */
+  prefill?: Partial<ValuationFormValues> | null;
   onClose: () => void;
   onSubmit: (payload: AssetValuationInput) => Promise<void>;
-}> = ({ open, asset, valuation, onClose, onSubmit }) => {
+}> = ({ open, asset, valuation, prefill, onClose, onSubmit }) => {
   const [form] = Form.useForm<ValuationFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -56,9 +74,9 @@ const ValuationFormModal: React.FC<{
             source: valuation.source ?? undefined,
             notes: valuation.notes ?? undefined
           }
-        : { valuatedAt: todayIso(), currency: asset.currency, method: 'MANUAL' }
+        : { valuatedAt: todayIso(), currency: asset.currency, method: 'MANUAL', ...prefill }
     );
-  }, [open, valuation, asset.currency, form]);
+  }, [open, valuation, prefill, asset.currency, form]);
 
   const handleOk = async () => {
     setErrorMessage(null);
@@ -132,7 +150,7 @@ const ValuationFormModal: React.FC<{
           <Select options={['XOF', 'EUR', 'USD'].map(value => ({ value, label: value }))} />
         </Form.Item>
         <Form.Item name="method" label={t('Méthode')} rules={[{ required: true }]}>
-          <Select options={METHODS.map(value => ({ value, label: valuationMethodLabel(value) }))} />
+          <Select options={VALUATION_METHODS.map(value => ({ value, label: valuationMethodName(value) }))} />
         </Form.Item>
         <Form.Item name="source" label={t('Source')}>
           <Input maxLength={160} />
@@ -142,6 +160,99 @@ const ValuationFormModal: React.FC<{
         </Form.Item>
       </Form>
     </Modal>
+  );
+};
+
+const PERCENT_KEY = /Percent$/;
+const MONEY_KEYS = ['companyValue', 'netIncome', 'unitCost', 'principal', 'unitValue'];
+
+function assumptionValue(key: string, value: string | number, currency: string): string {
+  if (typeof value === 'number') {
+    if (PERCENT_KEY.test(key)) return `${value} %`;
+    if (MONEY_KEYS.includes(key)) return formatAmount(value, currency);
+  }
+  return String(value);
+}
+
+/** Résultat d'une suggestion : valeur, méthode, hypothèses ; ou champs à compléter. Rien n'est enregistré ici. */
+const SuggestionResult: React.FC<{
+  asset: AssetDto;
+  result: SuggestResponse;
+  onSave: (result: Extract<SuggestResponse, { ok: true }>) => Promise<void>;
+  onEdit: (result: Extract<SuggestResponse, { ok: true }>) => void;
+  onCompleteInfo?: () => void;
+  onDismiss: () => void;
+}> = ({ asset, result, onSave, onEdit, onCompleteInfo, onDismiss }) => {
+  const wrapperStyle = { marginBottom: 'var(--space-4)' };
+  if (result.ok) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        closable={{ onClose: onDismiss }}
+        style={wrapperStyle}
+        title={t('Valeur calculée : {{montant}}', { montant: formatAmount(result.amount, result.currency) })}
+        description={
+          <div>
+            <Descriptions column={1} size="small" style={{ marginTop: 'var(--space-2)' }}>
+              <Descriptions.Item label={t('Méthode')}>{valuationMethodName(result.method)}</Descriptions.Item>
+              {(result.assumptions ?? []).map(item => (
+                <Descriptions.Item key={item.key} label={detailKeyLabel(item.key)}>
+                  {assumptionValue(item.key, item.value, asset.currency)}
+                </Descriptions.Item>
+              ))}
+            </Descriptions>
+            <Space wrap>
+              <ConfirmAction
+                title={t('Enregistrer cette valeur de {{montant}} ?', {
+                  montant: formatAmount(result.amount, result.currency)
+                })}
+                description={t("Une valeur datée d'aujourd'hui sera ajoutée à l'historique.")}
+                okText={t('Enregistrer')}
+                onConfirm={() => onSave(result)}
+              >
+                <Button type="primary">{t('Enregistrer cette valeur')}</Button>
+              </ConfirmAction>
+              <Button onClick={() => onEdit(result)}>{t('Modifier')}</Button>
+            </Space>
+          </div>
+        }
+      />
+    );
+  }
+  const only = result.missing.length === 1 ? result.missing[0] : null;
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      closable={{ onClose: onDismiss }}
+      style={wrapperStyle}
+      title={
+        result.missing.length === 0
+          ? t('Cette classe se valorise par saisie manuelle ou expertise.')
+          : t('Il manque des informations pour calculer une valeur')
+      }
+      description={
+        result.missing.length === 0 ? undefined : (
+          <div>
+            <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+              {result.missing.map(key => (
+                <li key={key}>{detailKeyLabel(key)}</li>
+              ))}
+            </ul>
+            {only === 'balance' ? (
+              <p style={{ margin: 0 }}>{t('Un solde se saisit directement : ajoutez une valeur.')}</p>
+            ) : (
+              onCompleteInfo && (
+                <Button type="link" style={{ paddingInline: 0 }} onClick={onCompleteInfo}>
+                  {t("Compléter les informations de l'actif")}
+                </Button>
+              )
+            )}
+          </div>
+        )
+      }
+    />
   );
 };
 
@@ -178,11 +289,19 @@ const ValuationCurve: React.FC<{ valuations: AssetValuationDto[] }> = ({ valuati
 };
 
 /** Onglet « Valeurs » : historique des valorisations avec ajout, modification, suppression et courbe. */
-export const AssetValuationsTab: React.FC<{ tenantId: string; asset: AssetDto }> = ({ tenantId, asset }) => {
+export const AssetValuationsTab: React.FC<{
+  tenantId: string;
+  asset: AssetDto;
+  /** Ouvre l'édition de l'actif (champs manquants à une suggestion). */
+  onCompleteInfo?: () => void;
+}> = ({ tenantId, asset, onCompleteInfo }) => {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AssetValuationDto | null>(null);
+  const [prefill, setPrefill] = useState<Partial<ValuationFormValues> | null>(null);
+  const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
 
   const valuationsQuery = useQuery({
     queryKey: queryKey('patrimoine-asset-valuations', tenantId, { assetId: asset.id }),
@@ -221,20 +340,68 @@ export const AssetValuationsTab: React.FC<{ tenantId: string; asset: AssetDto }>
     }
   };
 
-  const openForm = (valuation: AssetValuationDto | null) => {
+  const openForm = (valuation: AssetValuationDto | null, proposed: Partial<ValuationFormValues> | null = null) => {
     setEditing(valuation);
+    setPrefill(proposed);
     setModalOpen(true);
+  };
+
+  const handleSuggest = async () => {
+    setSuggesting(true);
+    setSuggestion(null);
+    try {
+      setSuggestion(await suggestAssetValuation(tenantId, asset.id));
+    } catch (error) {
+      message.error(apiErrorMessage(error, t('Impossible de calculer une valeur.')));
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  /** Enregistrement explicite (après confirmation) : montant et méthode de la suggestion, date du jour. */
+  const handleSaveSuggestion = async (result: Extract<SuggestResponse, { ok: true }>) => {
+    try {
+      await createAssetValuation(tenantId, asset.id, {
+        valuatedAt: todayIso(),
+        estimatedValue: result.amount,
+        currency: result.currency,
+        method: result.method
+      });
+      message.success(t('Valeur ajoutée.'));
+      setSuggestion(null);
+      await refresh();
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("Impossible d'enregistrer cette valeur.")));
+    }
   };
 
   return (
     <Card
       title={t('Historique des valeurs')}
       extra={
-        <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
-          {t('Ajouter une valeur')}
-        </Button>
+        <Space wrap>
+          <Button icon={<CalculatorOutlined />} loading={suggesting} onClick={handleSuggest}>
+            {t('Calculer une valeur')}
+          </Button>
+          <Button icon={<PlusOutlined />} onClick={() => openForm(null)}>
+            {t('Ajouter une valeur')}
+          </Button>
+        </Space>
       }
     >
+      {suggestion && (
+        <SuggestionResult
+          asset={asset}
+          result={suggestion}
+          onSave={handleSaveSuggestion}
+          onEdit={result => {
+            setSuggestion(null);
+            openForm(null, { estimatedValue: result.amount, currency: result.currency, method: result.method });
+          }}
+          onCompleteInfo={onCompleteInfo}
+          onDismiss={() => setSuggestion(null)}
+        />
+      )}
       {valuationsQuery.error ? (
         <StateBlock
           variant="error"
@@ -266,7 +433,14 @@ export const AssetValuationsTab: React.FC<{ tenantId: string; asset: AssetDto }>
               {
                 title: t('Méthode'),
                 dataIndex: 'method',
-                render: (value: AssetValuationDto['method']) => <Tag>{valuationMethodLabel(value)}</Tag>
+                render: (value: AssetValuationDto['method']) => <Tag>{valuationMethodName(value)}</Tag>
+              },
+              {
+                title: t('Fiabilité'),
+                key: 'reliability',
+                render: (_: unknown, row) => (
+                  <ReliabilityBadge reliability={row.reliability} reasons={row.reliabilityReasons} />
+                )
               },
               { title: t('Source'), dataIndex: 'source', render: (value: string | null) => value || '—' },
               {
@@ -289,9 +463,11 @@ export const AssetValuationsTab: React.FC<{ tenantId: string; asset: AssetDto }>
         open={modalOpen}
         asset={asset}
         valuation={editing}
+        prefill={prefill}
         onClose={() => {
           setModalOpen(false);
           setEditing(null);
+          setPrefill(null);
         }}
         onSubmit={handleSubmit}
       />

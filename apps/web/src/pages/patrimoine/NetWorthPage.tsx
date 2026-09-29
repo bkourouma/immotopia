@@ -18,6 +18,7 @@ import { ClassBreakdownCard, NetWorthHistoryCard } from '../../components/patrim
 import { DebtsPanel } from '../../components/patrimoine/actifs/DebtsPanel';
 import { exclusionReasonLabel } from '../../components/patrimoine/actifs/asset-classes';
 import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
+import { activeLocale } from '../../i18n/format';
 import {
   anomalousExclusions,
   isNetWorthEmpty,
@@ -162,6 +163,16 @@ export const NetWorthPage: React.FC = () => {
               />
             </Col>
           </Row>
+          {data.lowReliabilityShare > 0 && (
+            <p style={{ marginBottom: 'var(--space-4)' }}>
+              {t('{{part}} % de la valeur repose sur des valeurs peu fiables', {
+                part: new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: 2 }).format(
+                  data.lowReliabilityShare
+                )
+              })}{' '}
+              <Link to={`/tenant/${agence}/patrimoine/actifs`}>{t('Voir les actifs')}</Link>
+            </p>
+          )}
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={12}>
               <ClassBreakdownCard result={data} />

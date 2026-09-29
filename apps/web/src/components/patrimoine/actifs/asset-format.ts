@@ -1,9 +1,6 @@
 import { activeLocale } from '../../../i18n/format';
 import { apiErrorMessage } from '../patrimoine-labels';
 
-/** Ancienneté (en mois) au-delà de laquelle une valeur est signalée comme ancienne. */
-export const STALE_VALUATION_MONTHS = 12;
-
 /** Montant dans la devise donnée (XOF par défaut), mis en forme par `Intl` dans la langue courante. */
 export function formatAmount(value: number | null | undefined, currency = 'XOF'): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
@@ -32,16 +29,6 @@ export function formatDay(value: string | null | undefined): string {
 
 export function formatShare(share: number): string {
   return new Intl.NumberFormat(activeLocale(), { style: 'percent', maximumFractionDigits: 1 }).format(share);
-}
-
-/** Vrai si la valorisation a plus de 12 mois à la date `now`. */
-export function isValuationStale(valuatedAt: string | null | undefined, now: Date = new Date()): boolean {
-  if (!valuatedAt) return false;
-  const date = new Date(valuatedAt);
-  if (Number.isNaN(date.getTime())) return false;
-  const limit = new Date(now);
-  limit.setMonth(limit.getMonth() - STALE_VALUATION_MONTHS);
-  return date < limit;
 }
 
 export function todayIso(): string {

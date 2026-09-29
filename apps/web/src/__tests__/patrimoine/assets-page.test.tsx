@@ -6,9 +6,9 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AssetsPage } from '../../pages/patrimoine/AssetsPage';
-import { formatDay, isValuationStale } from '../../components/patrimoine/actifs/asset-format';
+import { formatDay } from '../../components/patrimoine/actifs/asset-format';
 
-/** `<AssetsPage>` — liste des actifs, filtre par classe, ancienneté de la valeur. */
+/** `<AssetsPage>` — liste des actifs, filtre par classe, pastille de valeur périmée et fiabilité. */
 
 const listAssets = vi.fn();
 
@@ -47,7 +47,14 @@ function actif(overrides: Record<string, unknown> = {}) {
     property: null,
     details: {},
     notes: null,
-    currentValue: { amount: 6_000_000, currency: 'XOF', valuatedAt: '2020-01-15T00:00:00.000Z', valueXof: 6_000_000 },
+    currentValue: {
+      amount: 6_000_000,
+      currency: 'XOF',
+      valuatedAt: '2020-01-15T00:00:00.000Z',
+      valueXof: 6_000_000,
+      reliability: 'LOW'
+    },
+    stale: true,
     outstandingDebtXof: 0,
     createdAt: '2020-01-01T00:00:00.000Z',
     updatedAt: '2020-01-01T00:00:00.000Z',
@@ -72,7 +79,7 @@ function monter() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listAssets.mockResolvedValue([actif(), actif({ id: 'a2', name: 'Compte Wave', currentValue: null })]);
+  listAssets.mockResolvedValue([actif(), actif({ id: 'a2', name: 'Compte Wave', currentValue: null, stale: false })]);
 });
 
 describe('<AssetsPage>', () => {
@@ -81,7 +88,8 @@ describe('<AssetsPage>', () => {
 
     expect(await screen.findByText('Toyota Hilux')).toBeInTheDocument();
     expect(screen.getByText('Compte Wave')).toBeInTheDocument();
-    expect(screen.getByText('valeur de plus de 12 mois')).toBeInTheDocument();
+    expect(screen.getByText('Valeur périmée')).toBeInTheDocument();
+    expect(screen.getByText('Faible')).toBeInTheDocument();
     expect(screen.getByText('Sans valeur')).toBeInTheDocument();
     expect(listAssets).toHaveBeenCalledWith('agence-1', {
       assetClass: undefined,
@@ -114,10 +122,23 @@ describe('<AssetsPage>', () => {
     expect(await screen.findByText('Commencez par ajouter votre premier actif')).toBeInTheDocument();
   });
 
-  it('signale une valeur de plus de 12 mois', () => {
-    const now = new Date('2026-09-29T00:00:00Z');
-    expect(isValuationStale('2025-08-01T00:00:00Z', now)).toBe(true);
-    expect(isValuationStale('2026-03-01T00:00:00Z', now)).toBe(false);
+  it('ne signale pas comme périmée une valeur que le serveur ne juge pas périmée', async () => {
+    listAssets.mockResolvedValue([
+      actif({
+        stale: false,
+        currentValue: {
+          amount: 1_000_000,
+          currency: 'XOF',
+          valuatedAt: '2020-01-15T00:00:00.000Z',
+          valueXof: 1_000_000,
+          reliability: 'HIGH'
+        }
+      })
+    ]);
+    monter();
+
+    expect(await screen.findByText('Élevée')).toBeInTheDocument();
+    expect(screen.queryByText('Valeur périmée')).not.toBeInTheDocument();
   });
 
   it('affiche le jour UTC d’une date à minuit UTC, quel que soit le fuseau', () => {

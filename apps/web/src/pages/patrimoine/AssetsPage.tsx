@@ -14,7 +14,8 @@ import {
   assetStatusLabel,
   assetStatusOptions
 } from '../../components/patrimoine/actifs/asset-classes';
-import { formatAmount, formatDay, isValuationStale } from '../../components/patrimoine/actifs/asset-format';
+import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
+import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -137,7 +138,11 @@ export const AssetsPage: React.FC = () => {
               align: 'end',
               render: (_: unknown, asset) =>
                 asset.currentValue ? (
-                  <span>{formatAmount(asset.currentValue.amount, asset.currentValue.currency)}</span>
+                  <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>
+                    <span>{formatAmount(asset.currentValue.amount, asset.currentValue.currency)}</span>
+                    <ReliabilityBadge reliability={asset.currentValue.reliability} />
+                    {asset.stale && <StaleTag />}
+                  </Space>
                 ) : (
                   <Text type="secondary">{t('Sans valeur')}</Text>
                 )
@@ -146,18 +151,7 @@ export const AssetsPage: React.FC = () => {
               title: t('Date de valorisation'),
               key: 'valuatedAt',
               render: (_: unknown, asset) =>
-                asset.currentValue ? (
-                  <span>
-                    {formatDay(asset.currentValue.valuatedAt)}
-                    {isValuationStale(asset.currentValue.valuatedAt) && (
-                      <Text type="warning" style={{ display: 'block', fontSize: 'var(--font-size-sm)' }}>
-                        {t('valeur de plus de 12 mois')}
-                      </Text>
-                    )}
-                  </span>
-                ) : (
-                  '—'
-                )
+                asset.currentValue ? <span>{formatDay(asset.currentValue.valuatedAt)}</span> : '—'
             },
             {
               title: t('Dette restante'),
