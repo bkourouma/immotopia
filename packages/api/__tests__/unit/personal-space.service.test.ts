@@ -28,6 +28,12 @@ jest.mock('../../src/services/tenant-provisioning-service', () => ({
   createTenantCoreTx: (...a: unknown[]) => mockCore(...a)
 }));
 
+const mockGrantOwner = jest.fn(async () => undefined);
+jest.mock('../../src/lib/patrimoine/personal-permissions', () => ({
+  ensurePersonalSpaceOwnerRole: jest.fn(async () => 'role-owner'),
+  grantPersonalSpaceOwnerRole: (...a: unknown[]) => mockGrantOwner(...(a as []))
+}));
+
 const mockAudit = jest.fn();
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (e: unknown) => mockAudit(e) }));
 
@@ -86,6 +92,9 @@ describe('createPersonalSpace', () => {
     expect(mockTx.userRole.create).toHaveBeenCalledWith({
       data: { userId: 'user-1', roleId: 'role-admin', tenantId: 'tenant-new' }
     });
+    // PATRIMOINE_PERSONAL_* : role dedie ajoute au proprietaire, dans la meme transaction.
+    expect(mockGrantOwner).toHaveBeenCalledTimes(1);
+    expect(mockGrantOwner).toHaveBeenCalledWith(mockTx, 'role-owner', 'user-1', 'tenant-new');
 
     expect(mockAudit).toHaveBeenCalledTimes(1);
     const audit = mockAudit.mock.calls[0][0];

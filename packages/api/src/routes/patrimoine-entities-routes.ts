@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { requirePatrimoinePersonalEdit, requirePatrimoinePersonalView } from '../middleware/patrimoine-rbac-middleware';
 import {
   listHoldingEntitiesHandler,
   createHoldingEntityHandler,
@@ -41,35 +42,35 @@ router.get(
   `${BASE}/entities`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_VIEW'),
+  requirePatrimoinePersonalView,
   listHoldingEntitiesHandler
 );
 router.post(
   `${BASE}/entities`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePatrimoinePersonalEdit,
   createHoldingEntityHandler
 );
 router.get(
   `${BASE}/entities/:entityId`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_VIEW'),
+  requirePatrimoinePersonalView,
   getHoldingEntityHandler
 );
 router.patch(
   `${BASE}/entities/:entityId`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePatrimoinePersonalEdit,
   updateHoldingEntityHandler
 );
 router.delete(
   `${BASE}/entities/:entityId`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePatrimoinePersonalEdit,
   deleteHoldingEntityHandler
 );
 
@@ -77,21 +78,21 @@ router.post(
   `${BASE}/entities/:entityId/holdings`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePatrimoinePersonalEdit,
   createEntityHoldingHandler
 );
 router.patch(
   `${BASE}/entities/:entityId/holdings/:holdingId`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePatrimoinePersonalEdit,
   updateEntityHoldingHandler
 );
 router.delete(
   `${BASE}/entities/:entityId/holdings/:holdingId`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePatrimoinePersonalEdit,
   deleteEntityHoldingHandler
 );
 
@@ -99,14 +100,14 @@ router.get(
   `${BASE}/entities/:entityId/consolidation`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_VIEW'),
+  requirePatrimoinePersonalView,
   getEntityConsolidationHandler
 );
 router.get(
   `${BASE}/entities/:entityId/tax-estimate`,
   authenticate,
   requireTenantAccess,
-  requirePropertyPermission('PROPERTIES_VIEW'),
+  requirePatrimoinePersonalView,
   getEntityTaxEstimateHandler
 );
 

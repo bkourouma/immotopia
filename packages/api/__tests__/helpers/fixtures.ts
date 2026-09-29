@@ -16,6 +16,10 @@ import { randomUUID } from 'crypto';
 import { MembershipStatus, RoleScope, TenantStatus, PropertyOwnershipType, PropertyType } from '@prisma/client';
 import { prisma } from '../../src/utils/database';
 import { generateAccessToken } from '../../src/utils/jwt-utils';
+import {
+  ensurePersonalSpaceOwnerRole,
+  grantPersonalSpaceOwnerRole
+} from '../../src/lib/patrimoine/personal-permissions';
 
 /**
  * Permissions accordees au role TENANT_ADMIN de test. Limitee aux ressources
@@ -184,6 +188,16 @@ export async function createTenantAdminUser(tenant: TestTenant, emailPrefix: str
   const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
 
   return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
+}
+
+/**
+ * Donne a `user` le role PERSONAL_SPACE_OWNER (PATRIMOINE_PERSONAL_VIEW / _EDIT) sur `tenant`.
+ * Le role TENANT_ADMIN de test ne les porte PAS (comme en production) : les
+ * tests qui exercent les routes de donnees personnelles du patrimoine l'appellent.
+ */
+export async function grantPersonalPatrimoineRole(user: { id: string }, tenant: { id: string }): Promise<void> {
+  const roleId = await ensurePersonalSpaceOwnerRole(prisma);
+  await grantPersonalSpaceOwnerRole(prisma, roleId, user.id, tenant.id);
 }
 
 export async function suspendTenant(tenantId: string): Promise<void> {

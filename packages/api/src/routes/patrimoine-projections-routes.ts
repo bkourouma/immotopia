@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { patrimoineProjectionRateLimiter } from '../middleware/rate-limit-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
-import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { requirePatrimoinePersonalEdit, requirePatrimoinePersonalView } from '../middleware/patrimoine-rbac-middleware';
 import {
   createScenarioHandler,
   deleteScenarioHandler,
@@ -22,31 +22,21 @@ import {
  * couverts par la règle `{ prefix: '/patrimoine', feature: 'PATRIMOINE' }` de
  * `lib/subscription/route-features.ts`. Gardes posées route par route. La
  * projection et l'exécution d'un scénario sont en lecture seule malgré le POST :
- * garde `PROPERTIES_VIEW`. Ordre : chemins statiques avant `:scenarioId`.
+ * garde `PATRIMOINE_PERSONAL_VIEW`. Ordre : chemins statiques avant `:scenarioId`.
  */
 const router = Router();
 const BASE = '/tenants/:tenantId/patrimoine';
 
-const read = [
-  authenticate,
-  requireTenantAccess,
-  enforcePropertyTenantIsolation,
-  requireAnyPropertyPermission(['PROPERTIES_VIEW'])
-];
+const read = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation, requirePatrimoinePersonalView];
 /** Calcul coûteux : limiteur posé après l'authentification et l'accès à l'agence, avant les gardes lourdes. */
 const compute = [
   authenticate,
   requireTenantAccess,
   patrimoineProjectionRateLimiter,
   enforcePropertyTenantIsolation,
-  requireAnyPropertyPermission(['PROPERTIES_VIEW'])
+  requirePatrimoinePersonalView
 ];
-const write = [
-  authenticate,
-  requireTenantAccess,
-  enforcePropertyTenantIsolation,
-  requirePropertyPermission('PROPERTIES_EDIT')
-];
+const write = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation, requirePatrimoinePersonalEdit];
 
 router.post(`${BASE}/projections`, ...compute, projectionHandler);
 router.get(`${BASE}/scenarios`, ...read, listScenariosHandler);

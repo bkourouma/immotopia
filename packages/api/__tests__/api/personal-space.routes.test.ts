@@ -29,14 +29,16 @@ jest.mock('../../src/middleware/tenant-isolation-middleware', () => ({
     next();
   }
 }));
-jest.mock('../../src/middleware/property-rbac-middleware', () => ({
-  requirePropertyPermission: () => (_req: any, _res: any, next: any) => next(),
-  requireAnyPropertyPermission: (keys: string[]) => (req: any, res: any, next: any) =>
-    String(req.headers['x-perms'] ?? '')
-      .split(',')
-      .some(k => keys.includes(k))
-      ? next()
-      : res.status(403).json({ message: 'Refusé' })
+// Garde réelle remplacée par une lecture de l'en-tête x-perms (le calcul des permissions est testé ailleurs).
+const guard = (key: string) => (req: any, res: any, next: any) =>
+  String(req.headers['x-perms'] ?? '')
+    .split(',')
+    .includes(key)
+    ? next()
+    : res.status(403).json({ message: 'Refusé' });
+jest.mock('../../src/middleware/patrimoine-rbac-middleware', () => ({
+  requirePatrimoinePersonalView: guard('PATRIMOINE_PERSONAL_VIEW'),
+  requirePatrimoinePersonalEdit: guard('PATRIMOINE_PERSONAL_EDIT')
 }));
 
 const mockCreate = jest.fn();
@@ -166,9 +168,11 @@ describe('POST /api/personal-space', () => {
 describe('GET /api/tenants/:tenantId/patrimoine/usage', () => {
   const USAGE = { plan: 'FREE', limit: 10, used: 3, canAdd: true, upgrade: null };
 
-  it('lecture PROPERTIES_VIEW : { data } du service, pour le tenant du contexte', async () => {
+  it('lecture PATRIMOINE_PERSONAL_VIEW : { data } du service, pour le tenant du contexte', async () => {
     mockUsage.mockResolvedValue(USAGE);
-    const res = await request(app).get('/api/tenants/tenant-1/patrimoine/usage').set('x-perms', 'PROPERTIES_VIEW');
+    const res = await request(app)
+      .get('/api/tenants/tenant-1/patrimoine/usage')
+      .set('x-perms', 'PATRIMOINE_PERSONAL_VIEW');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ data: USAGE });
     expect(mockUsage).toHaveBeenCalledWith('tenant-1');
@@ -180,9 +184,19 @@ describe('GET /api/tenants/:tenantId/patrimoine/usage', () => {
     expect(mockUsage).not.toHaveBeenCalled();
   });
 
+  it("PROPERTIES_VIEW seul (rôle d'agence) -> 403", async () => {
+    const res = await request(app)
+      .get('/api/tenants/tenant-1/patrimoine/usage')
+      .set('x-perms', 'PROPERTIES_VIEW,PROPERTIES_EDIT');
+    expect(res.status).toBe(403);
+    expect(mockUsage).not.toHaveBeenCalled();
+  });
+
   it('la route statique passe avant les routes paramétrées', async () => {
     mockUsage.mockResolvedValue(USAGE);
-    const res = await request(app).get('/api/tenants/tenant-1/patrimoine/usage').set('x-perms', 'PROPERTIES_VIEW');
+    const res = await request(app)
+      .get('/api/tenants/tenant-1/patrimoine/usage')
+      .set('x-perms', 'PATRIMOINE_PERSONAL_VIEW');
     expect(res.body.data).not.toBe('asset-route');
   });
 });
