@@ -1,6 +1,11 @@
 import { PrismaClient, UserRole } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
+import { assertNotProduction } from './assert-not-production';
+
+// Garde en tête : avant toute requête base (seed de développement, jamais en production).
+assertNotProduction('seed-users.ts');
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -55,11 +60,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error(e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-

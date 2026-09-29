@@ -10,6 +10,11 @@ import {
 } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
+import { assertNotProduction } from './assert-not-production';
+
+// Garde en tête : avant toute requête base (seed de développement, jamais en production).
+assertNotProduction('seed-crm-data.ts');
+
 const prisma = new PrismaClient();
 
 // Helper function to generate random date within last N days
@@ -29,37 +34,165 @@ function randomFutureDate(daysAhead: number): Date {
 // Ivorian and West African names for realistic data
 const firstNames = [
   // Ivorian names
-  'Kouamé', 'Kouassi', 'Kouadio', 'Affoué', 'Akissi', 'Aya', 'Amara', 'Aminata',
-  'Yao', 'Yapi', 'N\'Guessan', 'Assa', 'Assi', 'Bamba', 'Béatrice', 'Clément',
-  'Djédjé', 'Élise', 'François', 'Gisèle', 'Henri', 'Innocent', 'Jean', 'Joséphine',
-  'Koffi', 'Martine', 'N\'Goran', 'Patrice', 'Pierre', 'Sandrine', 'Sylvain', 'Thérèse',
+  'Kouamé',
+  'Kouassi',
+  'Kouadio',
+  'Affoué',
+  'Akissi',
+  'Aya',
+  'Amara',
+  'Aminata',
+  'Yao',
+  'Yapi',
+  "N'Guessan",
+  'Assa',
+  'Assi',
+  'Bamba',
+  'Béatrice',
+  'Clément',
+  'Djédjé',
+  'Élise',
+  'François',
+  'Gisèle',
+  'Henri',
+  'Innocent',
+  'Jean',
+  'Joséphine',
+  'Koffi',
+  'Martine',
+  "N'Goran",
+  'Patrice',
+  'Pierre',
+  'Sandrine',
+  'Sylvain',
+  'Thérèse',
   // Common West African names
-  'Amadou', 'Fatima', 'Moussa', 'Mariam', 'Ibrahim', 'Aissata', 'Ousmane', 'Kadiatou',
-  'Boubacar', 'Hawa', 'Sékou', 'Modibo', 'Fanta', 'Lassana', 'Kadija', 'Mamadou',
-  'Ramata', 'Sidiki', 'Bakary', 'Daouda', 'Rokia', 'Youssouf', 'Sira', 'Hamidou',
-  'Maimouna', 'Djibril', 'Nene', 'Seydou', 'Nana', 'Alassane', 'Binta', 'Tidiane',
-  'Hadja', 'Cheick', 'Djeneba', 'Ibrahima', 'Kadi', 'Mahamadou', 'Oumou', 'Salif'
+  'Amadou',
+  'Fatima',
+  'Moussa',
+  'Mariam',
+  'Ibrahim',
+  'Aissata',
+  'Ousmane',
+  'Kadiatou',
+  'Boubacar',
+  'Hawa',
+  'Sékou',
+  'Modibo',
+  'Fanta',
+  'Lassana',
+  'Kadija',
+  'Mamadou',
+  'Ramata',
+  'Sidiki',
+  'Bakary',
+  'Daouda',
+  'Rokia',
+  'Youssouf',
+  'Sira',
+  'Hamidou',
+  'Maimouna',
+  'Djibril',
+  'Nene',
+  'Seydou',
+  'Nana',
+  'Alassane',
+  'Binta',
+  'Tidiane',
+  'Hadja',
+  'Cheick',
+  'Djeneba',
+  'Ibrahima',
+  'Kadi',
+  'Mahamadou',
+  'Oumou',
+  'Salif'
 ];
 
 const lastNames = [
   // Ivorian names
-  'Kouamé', 'Kouassi', 'Kouadio', 'Diabaté', 'Ouattara', 'Bédié', 'Gbagbo', 'Blé',
-  'Sangaré', 'Coulibaly', 'Yapi', 'N\'Guessan', 'Amani', 'Koné', 'Traoré', 'Diarra',
-  'Diallo', 'Keita', 'Camara', 'Touré', 'Dembélé', 'Sissoko', 'Ba', 'Diawara',
-  'Doumbia', 'Sidibé', 'Doucouré', 'Samaké', 'Togola', 'Fofana', 'Kanté', 'Konaté',
-  'Ballo', 'Konaré', 'Béré', 'Haidara', 'Kaba', 'Magassa', 'Niakaté', 'Soumahoro',
-  'Sanogo', 'Bambara', 'Maiga', 'Bagayogo', 'Yao', 'Amani', 'Blé', 'Bamba'
+  'Kouamé',
+  'Kouassi',
+  'Kouadio',
+  'Diabaté',
+  'Ouattara',
+  'Bédié',
+  'Gbagbo',
+  'Blé',
+  'Sangaré',
+  'Coulibaly',
+  'Yapi',
+  "N'Guessan",
+  'Amani',
+  'Koné',
+  'Traoré',
+  'Diarra',
+  'Diallo',
+  'Keita',
+  'Camara',
+  'Touré',
+  'Dembélé',
+  'Sissoko',
+  'Ba',
+  'Diawara',
+  'Doumbia',
+  'Sidibé',
+  'Doucouré',
+  'Samaké',
+  'Togola',
+  'Fofana',
+  'Kanté',
+  'Konaté',
+  'Ballo',
+  'Konaré',
+  'Béré',
+  'Haidara',
+  'Kaba',
+  'Magassa',
+  'Niakaté',
+  'Soumahoro',
+  'Sanogo',
+  'Bambara',
+  'Maiga',
+  'Bagayogo',
+  'Yao',
+  'Amani',
+  'Blé',
+  'Bamba'
 ];
 
 const locations = [
-  'Cocody', 'Marcory', 'Yopougon', 'Plateau', 'Adjamé', 'Attécoubé',
-  'Abobo', 'Treichville', 'Koumassi', 'Port-Bouët', 'Anyama', 'Bingerville',
-  'Abengourou', 'Bouaké', 'Daloa', 'Korhogo', 'Man', 'San-Pédro'
+  'Cocody',
+  'Marcory',
+  'Yopougon',
+  'Plateau',
+  'Adjamé',
+  'Attécoubé',
+  'Abobo',
+  'Treichville',
+  'Koumassi',
+  'Port-Bouët',
+  'Anyama',
+  'Bingerville',
+  'Abengourou',
+  'Bouaké',
+  'Daloa',
+  'Korhogo',
+  'Man',
+  'San-Pédro'
 ];
 
 const emailDomains = [
-  'gmail.com', 'yahoo.fr', 'outlook.com', 'hotmail.com', 'live.fr',
-  'orange.ci', 'mtn.ci', 'moov.ci', 'protonmail.com', 'icloud.com'
+  'gmail.com',
+  'yahoo.fr',
+  'outlook.com',
+  'hotmail.com',
+  'live.fr',
+  'orange.ci',
+  'mtn.ci',
+  'moov.ci',
+  'protonmail.com',
+  'icloud.com'
 ];
 
 const sources = ['website', 'referral', 'walk-in', 'social', 'call', 'email', 'partner'];
@@ -112,11 +245,11 @@ async function main() {
   const tenantAdminRole = await prisma.role.findUnique({ where: { key: 'TENANT_ADMIN' } });
   const tenantManagerRole = await prisma.role.findUnique({ where: { key: 'TENANT_MANAGER' } });
   const tenantAgentRole = await prisma.role.findUnique({ where: { key: 'TENANT_AGENT' } });
-  
+
   if (!tenantAdminRole || !tenantManagerRole || !tenantAgentRole) {
     throw new Error('Tenant roles not found. Please run RBAC seed first.');
   }
-  
+
   const roleKeys = [
     'TENANT_ADMIN',
     'TENANT_MANAGER',
@@ -134,14 +267,14 @@ async function main() {
     { first: 'Akissi', last: 'Coulibaly' },
     { first: 'Yao', last: 'Ouattara' },
     { first: 'Aminata', last: 'Traoré' },
-    { first: 'Koffi', last: 'N\'Guessan' }
+    { first: 'Koffi', last: "N'Guessan" }
   ];
 
   const members = [];
   for (let i = 0; i < 7; i++) {
     const name = collaboratorNames[i];
     const email = `collab${i + 1}.${name.first.toLowerCase()}.${name.last.toLowerCase()}@agence-mali.com`;
-    
+
     // Use upsert to handle existing users
     const user = await prisma.user.upsert({
       where: { email },
@@ -189,14 +322,14 @@ async function main() {
 
     // Assign role
     const roleKey = roleKeys[i];
-    const role = roleKey === 'TENANT_ADMIN' ? tenantAdminRole : 
-                 roleKey === 'TENANT_MANAGER' ? tenantManagerRole : tenantAgentRole;
-    
+    const role =
+      roleKey === 'TENANT_ADMIN' ? tenantAdminRole : roleKey === 'TENANT_MANAGER' ? tenantManagerRole : tenantAgentRole;
+
     // Remove existing tenant roles for this user
     await prisma.userRole.deleteMany({
       where: { userId: user.id, tenantId: tenant.id }
     });
-    
+
     // Assign new role
     await prisma.userRole.create({
       data: {
@@ -217,7 +350,7 @@ async function main() {
   // ==========================================
   console.log('\n📇 Creating 105 contacts (24 clients, 81 leads)...');
   const contacts = [];
-  
+
   // Create 24 clients (ACTIVE_CLIENT)
   for (let i = 0; i < 24; i++) {
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
@@ -251,7 +384,7 @@ async function main() {
       CrmContactRoleType.COPROPRIETAIRE
     ];
     const roleType = roleTypes[Math.floor(Math.random() * roleTypes.length)];
-    
+
     await prisma.crmContactRole.create({
       data: {
         tenantId: tenant.id,
@@ -320,14 +453,17 @@ async function main() {
       const dealType = Math.random() > 0.5 ? CrmDealType.ACHAT : CrmDealType.LOCATION;
       const assignedTo = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
       const location = locations[Math.floor(Math.random() * locations.length)];
-      
+
       // Budget ranges in FCFA
-      const budgetMin = dealType === CrmDealType.ACHAT 
-        ? Math.floor(Math.random() * 50000000) + 10000000 // 10M - 60M
-        : Math.floor(Math.random() * 50000) + 50000; // 50K - 100K/month
-      const budgetMax = budgetMin + (dealType === CrmDealType.ACHAT 
-        ? Math.floor(Math.random() * 20000000) + 5000000 // +5M - 25M
-        : Math.floor(Math.random() * 50000) + 50000); // +50K - 100K
+      const budgetMin =
+        dealType === CrmDealType.ACHAT
+          ? Math.floor(Math.random() * 50000000) + 10000000 // 10M - 60M
+          : Math.floor(Math.random() * 50000) + 50000; // 50K - 100K/month
+      const budgetMax =
+        budgetMin +
+        (dealType === CrmDealType.ACHAT
+          ? Math.floor(Math.random() * 20000000) + 5000000 // +5M - 25M
+          : Math.floor(Math.random() * 50000) + 50000); // +50K - 100K
 
       const deal = await prisma.crmDeal.create({
         data: {
@@ -346,12 +482,11 @@ async function main() {
           expectedValue: dealType === CrmDealType.ACHAT ? budgetMax : budgetMax * 12,
           probability: Math.floor(Math.random() * 40) + 40, // 40-80%
           assignedToUserId: assignedTo.id,
-          closedAt: stage === CrmDealStage.WON || stage === CrmDealStage.LOST
-            ? randomDate(30)
-            : null,
-          closedReason: stage === CrmDealStage.LOST
-            ? ['Budget insuffisant', 'Zone non disponible', 'Client a trouvé ailleurs'][Math.floor(Math.random() * 3)]
-            : null,
+          closedAt: stage === CrmDealStage.WON || stage === CrmDealStage.LOST ? randomDate(30) : null,
+          closedReason:
+            stage === CrmDealStage.LOST
+              ? ['Budget insuffisant', 'Zone non disponible', 'Client a trouvé ailleurs'][Math.floor(Math.random() * 3)]
+              : null,
           createdAt: randomDate(90)
         }
       });
@@ -393,10 +528,13 @@ async function main() {
     const deal = Math.random() > 0.3 ? deals[Math.floor(Math.random() * deals.length)] : null;
     const activityType = activityTypes[Math.floor(Math.random() * activityTypes.length)];
     const createdBy = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
-    const direction = activityType === CrmActivityType.NOTE || activityType === CrmActivityType.TASK
-      ? CrmActivityDirection.INTERNAL
-      : (Math.random() > 0.5 ? CrmActivityDirection.OUT : CrmActivityDirection.IN);
-    
+    const direction =
+      activityType === CrmActivityType.NOTE || activityType === CrmActivityType.TASK
+        ? CrmActivityDirection.INTERNAL
+        : Math.random() > 0.5
+          ? CrmActivityDirection.OUT
+          : CrmActivityDirection.IN;
+
     const subject = activitySubjects[Math.floor(Math.random() * activitySubjects.length)];
     const content = activityContents[Math.floor(Math.random() * activityContents.length)];
 
@@ -419,7 +557,6 @@ async function main() {
   }
   console.log('  ✓ Created 150 activities');
 
-
   // ==========================================
   // Summary
   // ==========================================
@@ -434,11 +571,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Error seeding CRM data:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-

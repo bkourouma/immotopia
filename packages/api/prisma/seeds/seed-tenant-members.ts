@@ -1,6 +1,11 @@
 import { PrismaClient, MembershipStatus, GlobalRole } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
+import { assertNotProduction } from './assert-not-production';
+
+// Garde en tête : avant toute requête base (seed de développement, jamais en production).
+assertNotProduction('seed-tenant-members.ts');
+
 const prisma = new PrismaClient();
 
 // Tenant cible : argument CLI (id ou slug), sinon SEED_TENANT_SLUG, sinon le slug
@@ -18,7 +23,7 @@ async function main() {
 
   if (!tenant) {
     console.error(`❌ Tenant "${TENANT_REF}" introuvable (ni par slug, ni par id) !`);
-    console.log('💡 Lancez d\'abord le seed principal: ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed');
+    console.log("💡 Lancez d'abord le seed principal: ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed");
     console.log('💡 Ou ciblez un autre tenant: npx ts-node prisma/seeds/seed-tenant-members.ts <slug|id>');
     process.exit(1);
   }
@@ -172,15 +177,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Error seeding members:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-
-
-
-
-
