@@ -1,3 +1,4 @@
+import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { Request, Response } from 'express';
 import { prisma } from '../utils/database';
 import { RoleScope } from '@prisma/client';
@@ -24,6 +25,10 @@ export async function listRolesHandler(req: Request, res: Response): Promise<voi
     const where: any = {};
     if (scope) {
       where.scope = scope;
+    }
+    // Rôles réservés : visibles du seul super-admin.
+    if (req.user?.globalRole !== 'SUPER_ADMIN') {
+      where.key = { notIn: RESERVED_ROLE_KEYS };
     }
 
     let roles;
@@ -310,7 +315,7 @@ export async function getMyMenuAccessHandler(req: Request, res: Response): Promi
     if (queryTenantId) {
       const hasAccess = await userHasTenantAccess(req.user.userId, queryTenantId, req.user.globalRole);
       if (!hasAccess) {
-        res.status(403).json({ success: false, message: "Accès refusé à cette agence." });
+        res.status(403).json({ success: false, message: 'Accès refusé à cette agence.' });
         return;
       }
     }

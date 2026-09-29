@@ -270,10 +270,17 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
   });
 
   it('protège les données personnelles du patrimoine par PATRIMOINE_PERSONAL_VIEW / _EDIT, route par route', () => {
-    const personal = routes.filter(r =>
-      /^\/api\/tenants\/:tenantId\/patrimoine\/(usage|net-worth|assets|debts|entities|projections|scenarios)(\/|$)/.test(
-        r.path
-      )
+    // Refus par défaut : toute route /patrimoine/** doit porter la permission dédiée, sauf liste blanche EXPLICITE
+    // de chemins restés sous PROPERTIES_* (immobilier ou référentiel). Une route nouvelle tombe donc dans le refus.
+    const PROPERTIES_ALLOWLIST = [
+      /^\/api\/tenants\/:tenantId\/patrimoine\/(overview|performance|export|settings)$/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/work-programs(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/properties\/:propertyId(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/tax-parameters$/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/statements(\/|$)/
+    ];
+    const personal = routes.filter(
+      r => r.path.startsWith('/api/tenants/:tenantId/patrimoine/') && !PROPERTIES_ALLOWLIST.some(re => re.test(r.path))
     );
     // 38 routes : actifs, valorisations, parts, dettes, valeur nette, entités, projections, scénarios, compteur.
     expect(personal.length).toBeGreaterThanOrEqual(38);

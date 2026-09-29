@@ -15,6 +15,9 @@ export const PATRIMOINE_PERSONAL_VIEW = 'PATRIMOINE_PERSONAL_VIEW';
 export const PATRIMOINE_PERSONAL_EDIT = 'PATRIMOINE_PERSONAL_EDIT';
 export const PERSONAL_SPACE_OWNER_ROLE_KEY = 'PERSONAL_SPACE_OWNER';
 
+/** Rôles jamais attribuables par une agence (invitation, changement de rôles, catalogue) : réservés au système et au super-admin. */
+export const RESERVED_ROLE_KEYS: string[] = [PERSONAL_SPACE_OWNER_ROLE_KEY];
+
 export const PERSONAL_PERMISSIONS = [
   { key: PATRIMOINE_PERSONAL_VIEW, description: 'View personal (non-real-estate) patrimoine data' },
   { key: PATRIMOINE_PERSONAL_EDIT, description: 'Edit personal (non-real-estate) patrimoine data' }

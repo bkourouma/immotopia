@@ -1,3 +1,4 @@
+import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { MembershipStatus } from '@prisma/client';
@@ -231,7 +232,8 @@ export async function updateMemberRoles(
   const roles = await prisma.role.findMany({
     where: {
       id: { in: data.roleIds },
-      scope: 'TENANT'
+      scope: 'TENANT',
+      key: { notIn: RESERVED_ROLE_KEYS }
     }
   });
 
@@ -243,7 +245,9 @@ export async function updateMemberRoles(
   await prisma.userRole.deleteMany({
     where: {
       userId,
-      tenantId
+      tenantId,
+      // Le rôle réservé d'un particulier survit à une réécriture des rôles.
+      role: { key: { notIn: RESERVED_ROLE_KEYS } }
     }
   });
 
