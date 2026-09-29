@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { NewsletterSubscriberStatus } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { emailService } from './email-service';
 import { resolveRecipients } from './newsletter-campaign.service';
@@ -62,8 +63,8 @@ export async function listSubscribers(
   listId: string,
   options: { status?: string; page?: number; limit?: number }
 ) {
-  const where: { listId: string; tenantId: string; status?: string } = { listId, tenantId };
-  if (options.status) where.status = options.status as 'PENDING_CONFIRMATION' | 'ACTIVE' | 'UNSUBSCRIBED';
+  const where: { listId: string; tenantId: string; status?: NewsletterSubscriberStatus } = { listId, tenantId };
+  if (options.status) where.status = options.status as NewsletterSubscriberStatus;
 
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(100, Math.max(1, options.limit ?? 50));
@@ -298,6 +299,21 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
     }
     if (existing.status === 'UNSUBSCRIBED') {
       // Ré-inscription : on met à jour au lieu de créer
+      if (!list.doubleOptIn) {
+        await prisma.newsletterSubscriber.update({
+          where: { id: existing.id },
+          data: {
+            status: 'ACTIVE',
+            confirmationToken: null,
+            confirmationTokenExpiresAt: null,
+            subscribedAt: new Date(),
+            confirmedAt: new Date(),
+            unsubscribedAt: null,
+            name: input.name?.trim() || existing.name
+          }
+        });
+        return { success: true, message: 'Votre inscription est confirmée.' };
+      }
       const token = generateConfirmationToken();
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + CONFIRMATION_TOKEN_EXPIRY_DAYS);
@@ -316,6 +332,22 @@ export async function subscribePublic(input: SubscribePublicInput): Promise<Subs
       await sendConfirmationEmail(email, token, input.name);
       return { success: true, message: 'Un email de confirmation vous a été envoyé.', pendingConfirmation: true };
     }
+  }
+
+  // Liste sans double opt-in : l'abonné est actif tout de suite, sans e-mail.
+  if (!list.doubleOptIn) {
+    const now = new Date();
+    await prisma.newsletterSubscriber.create({
+      data: {
+        tenantId: list.tenantId,
+        listId: list.id,
+        email,
+        name: input.name?.trim() || null,
+        status: 'ACTIVE',
+        confirmedAt: now
+      }
+    });
+    return { success: true, message: 'Votre inscription est confirmée.' };
   }
 
   const token = generateConfirmationToken();
@@ -361,13 +393,16 @@ export async function confirmSubscription(token: string) {
   });
   if (!sub) return { success: false, alreadyActive: false };
   if (sub.status === 'ACTIVE') return { success: true, alreadyActive: true };
+  // Un abonné désabonné depuis l'envoi du lien ne doit pas être réactivé par lui.
+  if (sub.status !== 'PENDING_CONFIRMATION') return { success: false, alreadyActive: false };
   if (sub.confirmationTokenExpiresAt && sub.confirmationTokenExpiresAt < new Date()) {
     return { success: false, alreadyActive: false };
   }
 
   await prisma.newsletterSubscriber.update({
     where: { id: sub.id },
-    data: { status: 'ACTIVE', confirmedAt: new Date(), confirmationToken: null }
+    // Le jeton est conservé : un second clic sur le même lien répond « déjà inscrit ».
+    data: { status: 'ACTIVE', confirmedAt: new Date() }
   });
   return { success: true, alreadyActive: false };
 }

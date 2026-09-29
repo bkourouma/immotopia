@@ -5,9 +5,10 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import { newsletterService, type NewsletterTemplate } from '../../services/newsletter.service';
 import { useConfirmAction } from '../../components/primitives';
+import { newsletterErrorMessage } from '../../components/newsletter/newsletter-error';
 import { t } from '../../i18n/t';
 
-const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
+const TEMPLATE_VARIABLES = '{{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
 
 export function NewsletterTemplatesPage() {
   const { message } = App.useApp();
@@ -28,7 +29,7 @@ export function NewsletterTemplatesPage() {
       const data = await newsletterService.listTemplates(tenantId);
       setTemplates(data);
     } catch (e) {
-      message.error((e as Error).message || t('Erreur lors du chargement'));
+      message.error(newsletterErrorMessage(e, t('Erreur lors du chargement')));
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export function NewsletterTemplatesPage() {
       setModalOpen(false);
       loadTemplates();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -87,8 +88,8 @@ export function NewsletterTemplatesPage() {
           message.success(t('Template supprimé'));
           loadTemplates();
         } catch (e) {
-          message.error((e as Error).message || 'Erreur');
-          throw e;
+          // Pas de `throw` : la boîte de confirmation se ferme, le toast explique le refus.
+          message.error(newsletterErrorMessage(e, t('Erreur')));
         }
       }
     });
@@ -140,7 +141,9 @@ export function NewsletterTemplatesPage() {
             columns={columns}
             dataSource={templates}
             rowKey="id"
-            locale={{ emptyText: 'Aucun template. Créez-en un pour réutiliser une structure HTML dans vos campagnes.' }}
+            locale={{
+              emptyText: t('Aucun template. Créez-en un pour réutiliser une structure HTML dans vos campagnes.')
+            }}
           />
         </Card>
       </div>
@@ -161,7 +164,7 @@ export function NewsletterTemplatesPage() {
           <Form.Item
             name="html"
             label="HTML"
-            extra={HELP_TEXT}
+            extra={t('Variables disponibles : {{variables}}', { variables: TEMPLATE_VARIABLES })}
             rules={[{ required: true, message: t('Contenu requis') }]}
           >
             <HtmlCodeEditor minHeight={200} />

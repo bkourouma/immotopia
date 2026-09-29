@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Card, Table, Button, Modal, Tag, Space, Spin, Select, DatePicker, Typography } from 'antd';
+import { App, Card, Table, Button, Modal, Tag, Space, Select, DatePicker, Typography, Drawer } from 'antd';
 import {
   PlusOutlined,
   SendOutlined,
   EditOutlined,
   EyeOutlined,
   CalendarOutlined,
-  StopOutlined
+  StopOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { CampaignForm } from '../../components/newsletter/CampaignForm';
@@ -15,9 +16,12 @@ import {
   newsletterService,
   type NewsletterList,
   type NewsletterTemplate,
-  type NewsletterCampaign
+  type NewsletterCampaign,
+  type NewsletterCampaignRecipient,
+  type NewsletterPagination
 } from '../../services/newsletter.service';
 import { useConfirmAction } from '../../components/primitives';
+import { newsletterErrorMessage } from '../../components/newsletter/newsletter-error';
 import { t } from '../../i18n/t';
 
 const statusColors: Record<string, string> = {
@@ -30,7 +34,7 @@ const statusColors: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = {
-  DRAFT: 'Brouillon',
+  DRAFT: t('Brouillon'),
   SCHEDULED: t('Planifiée'),
   SENDING: t('En cours'),
   SENT: t('Envoyée'),
@@ -56,6 +60,15 @@ export function NewsletterCampaignsPage() {
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [scheduleDate, setScheduleDate] = useState<dayjs.Dayjs | null>(null);
   const [saving, setSaving] = useState(false);
+  const [recipientsCampaign, setRecipientsCampaign] = useState<NewsletterCampaign | null>(null);
+  const [recipients, setRecipients] = useState<NewsletterCampaignRecipient[]>([]);
+  const [recipientsPagination, setRecipientsPagination] = useState<NewsletterPagination>({
+    total: 0,
+    page: 1,
+    limit: 50,
+    totalPages: 0
+  });
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
 
   const loadCampaigns = useCallback(
     async (page = 1, limit = 20, status?: string) => {
@@ -66,7 +79,7 @@ export function NewsletterCampaignsPage() {
         setCampaigns(data.campaigns);
         setPagination(data.pagination);
       } catch (e) {
-        message.error((e as Error).message || t('Erreur lors du chargement'));
+        message.error(newsletterErrorMessage(e, t('Erreur lors du chargement')));
       } finally {
         setLoading(false);
       }
@@ -84,7 +97,7 @@ export function NewsletterCampaignsPage() {
       setLists(listsData);
       setTemplates(templatesData);
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     }
   }, [tenantId, message]);
 
@@ -107,7 +120,7 @@ export function NewsletterCampaignsPage() {
       setCreateModalOpen(false);
       loadCampaigns();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -132,7 +145,7 @@ export function NewsletterCampaignsPage() {
       setSelectedCampaign(null);
       loadCampaigns();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -148,12 +161,28 @@ export function NewsletterCampaignsPage() {
       okText: t('Envoyer'),
       onConfirm: async () => {
         try {
-          await newsletterService.sendCampaign(tenantId, campaign.id);
-          message.success(t('Campagne envoyée'));
+          const sent = await newsletterService.sendCampaign(tenantId, campaign.id);
+          if (sent?.status === 'SENT') {
+            if ((sent.failedCount ?? 0) > 0) {
+              message.warning(
+                t('Campagne envoyée, mais {{failed}} destinataire(s) en échec. Consultez les destinataires.', {
+                  failed: sent.failedCount ?? 0
+                })
+              );
+            } else {
+              message.success(t('Campagne envoyée'));
+            }
+          } else {
+            message.error(
+              t(
+                "La campagne n'a pas pu être envoyée : aucun message n'est parti. Consultez les destinataires pour le détail."
+              )
+            );
+          }
           loadCampaigns();
         } catch (e) {
-          message.error((e as Error).message || 'Erreur');
-          throw e;
+          // Pas de `throw` : la boîte de confirmation se ferme, le toast explique le refus.
+          message.error(newsletterErrorMessage(e, t("La campagne n'a pas pu être envoyée.")));
         }
       }
     });
@@ -170,7 +199,7 @@ export function NewsletterCampaignsPage() {
       setScheduleDate(null);
       loadCampaigns();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -189,8 +218,7 @@ export function NewsletterCampaignsPage() {
           message.success(t('Campagne annulée'));
           loadCampaigns();
         } catch (e) {
-          message.error((e as Error).message || 'Erreur');
-          throw e;
+          message.error(newsletterErrorMessage(e, t('Erreur')));
         }
       }
     });
@@ -203,9 +231,58 @@ export function NewsletterCampaignsPage() {
       setPreview(p);
       setPreviewModalOpen(true);
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     }
   };
+
+  const loadRecipients = async (campaign: NewsletterCampaign, page = 1, limit = 50) => {
+    if (!tenantId) return;
+    setRecipientsLoading(true);
+    try {
+      const data = await newsletterService.getCampaignRecipients(tenantId, campaign.id, { page, limit });
+      setRecipients(data.recipients);
+      setRecipientsPagination(data.pagination);
+    } catch (e) {
+      message.error(newsletterErrorMessage(e, t('Erreur lors du chargement')));
+    } finally {
+      setRecipientsLoading(false);
+    }
+  };
+
+  const openRecipients = (campaign: NewsletterCampaign) => {
+    setRecipientsCampaign(campaign);
+    setRecipients([]);
+    loadRecipients(campaign);
+  };
+
+  const recipientColumns = [
+    { title: t('E-mail'), dataIndex: 'email', key: 'email' },
+    {
+      title: t('Statut'),
+      dataIndex: 'status',
+      key: 'status',
+      render: (s: string) =>
+        s === 'SENT' ? <Tag color="success">{t('Envoyé')}</Tag> : <Tag color="error">{t('Échec')}</Tag>
+    },
+    {
+      title: t('Envoyé le'),
+      dataIndex: 'sentAt',
+      key: 'sentAt',
+      render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '—')
+    },
+    {
+      title: t('Ouvert le'),
+      dataIndex: 'openedAt',
+      key: 'openedAt',
+      render: (v: string | null) => (v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '—')
+    },
+    {
+      title: t('Motif'),
+      dataIndex: 'failureReason',
+      key: 'failureReason',
+      render: (v: string | null) => v || '—'
+    }
+  ];
 
   const columns = [
     {
@@ -228,12 +305,14 @@ export function NewsletterCampaignsPage() {
       title: t('Statistiques'),
       key: 'stats',
       render: (_: unknown, r: NewsletterCampaign) =>
-        r.status === 'SENT' || r.status === 'SENDING' ? (
+        r.status === 'SENT' || r.status === 'SENDING' || r.status === 'FAILED' ? (
           <Space wrap size="middle">
             <span title={t('Mails envoyés')}>
               {t('Envoyés:')} {r.sentCount ?? 0}
             </span>
-            <span title={t('Mails ouverts')}>Ouverts: {r.openCount ?? 0}</span>
+            <span title={t('Mails ouverts')}>
+              {t('Ouverts :')} {r.openCount ?? 0}
+            </span>
             {(r.failedCount ?? 0) > 0 && (
               <span style={{ color: '#ff4d4f' }} title={t('Retournés / email invalide')}>
                 {t('Retournés:')} {r.failedCount}
@@ -308,6 +387,11 @@ export function NewsletterCampaignsPage() {
               {t('Annuler')}
             </Button>
           )}
+          {(record.status === 'SENT' || record.status === 'FAILED' || record.status === 'SENDING') && (
+            <Button type="link" size="small" icon={<TeamOutlined />} onClick={() => openRecipients(record)}>
+              {t('Destinataires')}
+            </Button>
+          )}
         </Space>
       )
     }
@@ -331,9 +415,11 @@ export function NewsletterCampaignsPage() {
           style={{ width: 200, marginBottom: 16 }}
           onChange={v => loadCampaigns(1, pagination.limit, v ?? undefined)}
           options={[
-            { value: 'DRAFT', label: 'Brouillons' },
+            { value: 'DRAFT', label: t('Brouillons') },
             { value: 'SCHEDULED', label: t('Planifiées') },
-            { value: 'SENT', label: t('Envoyées') }
+            { value: 'SENT', label: t('Envoyées') },
+            { value: 'FAILED', label: t('En échec') },
+            { value: 'CANCELLED', label: t('Annulées') }
           ]}
         />
 
@@ -409,7 +495,7 @@ export function NewsletterCampaignsPage() {
         {preview && (
           <div>
             <p>
-              <strong>Sujet:</strong> {preview.subject}
+              <strong>{t('Sujet :')}</strong> {preview.subject}
             </p>
             {/*
               Campaign HTML is authored by users in the template editor, so it is
@@ -426,6 +512,36 @@ export function NewsletterCampaignsPage() {
           </div>
         )}
       </Modal>
+
+      <Drawer
+        title={
+          recipientsCampaign
+            ? t('Destinataires — {{subject}}', { subject: recipientsCampaign.subject })
+            : t('Destinataires')
+        }
+        open={!!recipientsCampaign}
+        onClose={() => {
+          setRecipientsCampaign(null);
+          setRecipients([]);
+        }}
+        size="large"
+        destroyOnHidden
+      >
+        <Table
+          scroll={{ x: 'max-content' }}
+          loading={recipientsLoading}
+          columns={recipientColumns}
+          dataSource={recipients}
+          rowKey="id"
+          locale={{ emptyText: t('Aucun envoi enregistré pour cette campagne.') }}
+          pagination={{
+            current: recipientsPagination.page,
+            pageSize: recipientsPagination.limit,
+            total: recipientsPagination.total,
+            onChange: (page, limit) => recipientsCampaign && loadRecipients(recipientsCampaign, page, limit ?? 50)
+          }}
+        />
+      </Drawer>
 
       <Modal
         title={t("Planifier l'envoi")}

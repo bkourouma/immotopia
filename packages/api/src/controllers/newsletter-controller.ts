@@ -155,7 +155,7 @@ export async function listCampaignsHandler(req: Request, res: Response) {
 
 export async function createCampaignHandler(req: Request, res: Response) {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.userId;
     const campaign = await campaignService.createCampaign(getTenantId(req), req.body, userId);
     res.status(201).json(campaign);
   } catch (e) {

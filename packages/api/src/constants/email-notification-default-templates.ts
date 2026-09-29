@@ -262,31 +262,31 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Vous trouverez en pièce jointe la quittance n° {{number}}.</p>`
   },
   GENERAL_MEETING_CONVOCATION: {
-    subject: 'Convocation a l assemblee generale du {{meetingDate}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Convocation Assemblee Generale</h1>
+    subject: 'Convocation à l’assemblée générale du {{meetingDate}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Convocation à l’assemblée générale</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">Vous etes convoque a l'Assemblee Generale de la copropriete <strong>{{syndicateName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">Vous êtes convoqué à l'assemblée générale de la copropriété <strong>{{syndicateName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date : {{meetingDate}}. Heure : {{meetingTime}}. Lieu : {{meetingLocation}}.</p>`
   },
   GENERAL_MEETING_MINUTES: {
-    subject: 'Proces-verbal de l assemblee generale du {{meetingDate}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Proces-verbal disponible</h1>
+    subject: 'Procès-verbal de l’assemblée générale du {{meetingDate}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Procès-verbal disponible</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">Le proces-verbal de l'Assemblee Generale de la copropriete <strong>{{syndicateName}}</strong> est disponible.</p>
-<p style="margin:20px 0 0 0; padding:14px; background:#ecfeff; border-radius:8px;"><a href="{{minutesUrl}}" style="color:#0f766e; font-weight:600;">Consulter le proces-verbal</a></p>`
+<p style="margin:0 0 20px 0;">Le procès-verbal de l'assemblée générale de la copropriété <strong>{{syndicateName}}</strong> est disponible.</p>
+<p style="margin:20px 0 0 0; padding:14px; background:#ecfeff; border-radius:8px;"><a href="{{minutesUrl}}" style="color:#0f766e; font-weight:600;">Consulter le procès-verbal</a></p>`
   },
   CONTRACT_RENEWAL_ALERT: {
     subject: 'Alerte renouvellement contrat - {{contractNature}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#7c2d12;">Contrat arrivant a echeance</h1>
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#7c2d12;">Contrat arrivant à échéance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{managerName}},</p>
-<p style="margin:0 0 20px 0;">Le contrat <strong>{{contractNature}}</strong> du prestataire {{providerName}} pour la copropriete {{syndicateName}} arrive prochainement a echeance.</p>
+<p style="margin:0 0 20px 0;">Le contrat <strong>{{contractNature}}</strong> du prestataire {{providerName}} pour la copropriété {{syndicateName}} arrive prochainement à échéance.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date de fin : {{contractEndDate}}.</p>`
   },
   COMMON_AREA_INCIDENT: {
     subject: 'Nouvel incident partie commune - {{assetName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Incident partie commune</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{managerName}},</p>
-<p style="margin:0 0 20px 0;">Un incident a ete declare sur la partie commune ou l'equipement <strong>{{assetName}}</strong> de la copropriete {{syndicateName}}.</p>
+<p style="margin:0 0 20px 0;">Un incident a été déclaré sur la partie commune ou l'équipement <strong>{{assetName}}</strong> de la copropriété {{syndicateName}}.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Description : {{incidentDescription}}</p>`
   },
   OWNER_STATEMENT_SENT: {
@@ -300,10 +300,10 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">{{statementLines}}</p>`
   },
   LOAN_MATURITY_ALERT: {
-    subject: 'Alerte fin de pret - {{propertyReference}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Fin de pret proche</h1>
+    subject: 'Alerte fin de prêt - {{propertyReference}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Fin de prêt proche</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
-<p style="margin:0 0 20px 0;">Le pret du bien <strong>{{propertyReference}}</strong> arrive a echeance le {{loanEndDate}}.</p>`
+<p style="margin:0 0 20px 0;">Le prêt du bien <strong>{{propertyReference}}</strong> arrive à échéance le {{loanEndDate}}.</p>`
   },
   DOCUMENT_EXPIRY_ALERT: {
     subject: 'Document patrimoine expirant - {{documentTitle}}',
@@ -313,10 +313,10 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Bien: {{propertyReference}}</p>`
   },
   WORK_PROGRAM_REMINDER: {
-    subject: 'Rappel travaux planifies - {{propertyReference}}',
+    subject: 'Rappel travaux planifiés - {{propertyReference}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Rappel programme de travaux</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
-<p style="margin:0 0 20px 0;">Le programme <strong>{{workProgramTitle}}</strong> du bien {{propertyReference}} est planifie le {{plannedDate}}.</p>`
+<p style="margin:0 0 20px 0;">Le programme <strong>{{workProgramTitle}}</strong> du bien {{propertyReference}} est planifié le {{plannedDate}}.</p>`
   },
   INVITATION: {
     subject: 'Invitation - {{agencyName}}',

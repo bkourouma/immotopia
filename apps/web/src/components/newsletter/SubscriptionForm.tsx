@@ -26,6 +26,8 @@ export function SubscriptionForm({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState(true);
+  const [doneMessage, setDoneMessage] = useState('');
 
   if (!listToken && !listId) {
     return (
@@ -45,6 +47,9 @@ export function SubscriptionForm({
         name: values.name || undefined
       });
       if (data?.success) {
+        // Liste sans double opt-in : l'inscription est déjà active, pas d'e-mail à attendre.
+        setPendingConfirmation(data.pendingConfirmation !== false);
+        setDoneMessage(data.message || '');
         setDone(true);
         message.success(data.message || t('Inscription effectuée. Vérifiez votre email pour confirmer.'));
         form.resetFields();
@@ -63,7 +68,9 @@ export function SubscriptionForm({
     return (
       <div style={{ padding: 16, background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
         <p style={{ margin: 0, color: '#52c41a' }}>
-          {t('✓ Un email de confirmation vous a été envoyé. Cliquez sur le lien pour valider votre inscription.')}
+          {pendingConfirmation
+            ? t('✓ Un email de confirmation vous a été envoyé. Cliquez sur le lien pour valider votre inscription.')
+            : `✓ ${doneMessage || t('Votre inscription est confirmée.')}`}
         </p>
       </div>
     );

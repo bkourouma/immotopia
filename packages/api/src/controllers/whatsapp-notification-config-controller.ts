@@ -13,6 +13,15 @@ import {
 import { WHATSAPP_NOTIFICATION_KEYS, type WhatsappNotificationKey } from '../constants/whatsapp-notification-keys';
 import { sendGroupInviteToEligibleContacts } from '../services/whatsapp-group-automation-service';
 import { sendManualGroupBroadcast } from '../services/whatsapp-group-broadcast-service';
+import { AppError } from '../middleware/error-middleware';
+
+/**
+ * Message montré à l'utilisateur quand aucun fournisseur WhatsApp n'est actif.
+ * Il ne cite ni variable d'environnement ni fournisseur : la consigne
+ * technique (`getProviderSetupHint`) va dans les journaux.
+ */
+const WHATSAPP_NOT_CONFIGURED_MESSAGE =
+  "L'envoi WhatsApp n'est pas configuré pour cette agence. Contactez l'administrateur de la plateforme pour l'activer.";
 
 /**
  * GET /tenants/:tenantId/whatsapp-notifications
@@ -110,13 +119,23 @@ export async function sendGroupInviteToAllHandler(req: Request, res: Response): 
       res.status(400).json({ success: false, message: 'tenantId requis' });
       return;
     }
+    if (!configureWhatsAppProvider()) {
+      // Sans fournisseur, la boucle d'envoi compterait un échec par contact.
+      logger.warn('WhatsApp group invite bulk send refused: provider not configured', {
+        hint: getProviderSetupHint()
+      });
+      res
+        .status(400)
+        .json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: WHATSAPP_NOT_CONFIGURED_MESSAGE });
+      return;
+    }
     const limitRaw = Number(req.body?.limit);
     const limit = Number.isFinite(limitRaw) ? limitRaw : 300;
     const force = parseBoolean(req.body?.force, false);
     const result = await sendGroupInviteToEligibleContacts(tenantId, limit, { force });
     res.json({
       success: true,
-      message: 'Envoi des invitations WhatsApp termine',
+      message: 'Envoi des invitations WhatsApp terminé.',
       data: result
     });
   } catch (error: unknown) {
@@ -124,7 +143,7 @@ export async function sendGroupInviteToAllHandler(req: Request, res: Response): 
     logger.error('Group invite bulk send failed', { error: err.message });
     res.status(500).json({
       success: false,
-      message: err.message || "Erreur lors de l'envoi en masse"
+      message: err.message || "Erreur lors de l'envoi en masse."
     });
   }
 }
@@ -152,7 +171,7 @@ export async function sendGroupBroadcastHandler(req: Request, res: Response): Pr
 
     res.json({
       success: true,
-      message: 'Message groupe WhatsApp envoye',
+      message: 'Message groupe WhatsApp envoyé.',
       data: {
         provider: result.provider,
         target: result.target,
@@ -163,14 +182,14 @@ export async function sendGroupBroadcastHandler(req: Request, res: Response): Pr
     });
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    const status = isGroupBroadcastClientError(err.message) ? 400 : 500;
+    const status = err instanceof AppError ? err.statusCode : err.message.startsWith('Provider HTTP ') ? 400 : 500;
 
     logger.error('WhatsApp group broadcast failed', {
       error: err.message
     });
     res.status(status).json({
       success: false,
-      message: err.message || "Erreur lors de l'envoi du message groupe"
+      message: err.message || "Erreur lors de l'envoi du message groupe."
     });
   }
 }
@@ -212,17 +231,6 @@ function parseBoolean(value: unknown, defaultValue = false): boolean {
   return defaultValue;
 }
 
-function isGroupBroadcastClientError(message: string): boolean {
-  const value = message.toLowerCase();
-  return (
-    value.includes('requis') ||
-    value.includes('invalide') ||
-    value.includes('max') ||
-    value.includes('non configure') ||
-    value.includes('provider http')
-  );
-}
-
 /**
  * POST /tenants/:tenantId/whatsapp-notifications/test-send
  * Send a raw WhatsApp test message to a number.
@@ -238,23 +246,23 @@ export async function testSendHandler(req: Request, res: Response): Promise<void
       return;
     }
     if (!toRaw) {
-      res.status(400).json({ success: false, message: 'Numero requis' });
+      res.status(400).json({ success: false, message: 'Numéro requis.' });
       return;
     }
     if (!messageRaw) {
-      res.status(400).json({ success: false, message: 'Message requis' });
+      res.status(400).json({ success: false, message: 'Message requis.' });
       return;
     }
     if (messageRaw.length > 1500) {
-      res.status(400).json({ success: false, message: 'Message trop long (max 1500 caracteres)' });
+      res.status(400).json({ success: false, message: 'Message trop long (1 500 caractères au maximum).' });
       return;
     }
 
     if (!configureWhatsAppProvider()) {
-      res.status(400).json({
-        success: false,
-        message: `Provider WhatsApp non configure. ${getProviderSetupHint()}`
-      });
+      logger.warn('WhatsApp test send refused: provider not configured', { hint: getProviderSetupHint() });
+      res
+        .status(400)
+        .json({ success: false, code: 'WHATSAPP_NOT_CONFIGURED', message: WHATSAPP_NOT_CONFIGURED_MESSAGE });
       return;
     }
 
@@ -271,17 +279,17 @@ export async function testSendHandler(req: Request, res: Response): Promise<void
 
     res.json({
       success: true,
-      message: `Message WhatsApp envoye${provider ? ` via ${provider}` : ''}`,
+      message: `Message WhatsApp envoyé${provider ? ` via ${provider}` : ''}.`,
       data: { to, messageId: result.messageId ?? null, provider: provider ?? null }
     });
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    const status = err.message.startsWith('Provider HTTP ') || err.message.includes('not configured') ? 400 : 500;
+    const status = err.message.startsWith('Provider HTTP ') ? 400 : 500;
 
     logger.error('WhatsApp test send failed', { error: err.message });
     res.status(status).json({
       success: false,
-      message: err.message || "Erreur lors de l'envoi WhatsApp"
+      message: err.message || "Erreur lors de l'envoi WhatsApp."
     });
   }
 }

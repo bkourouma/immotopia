@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, Result, Spin } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
@@ -10,13 +10,18 @@ export function ConfirmPage() {
   const token = searchParams.get('token');
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState<string>('');
+  // React.StrictMode rejoue l'effet en développement, et un lien rechargé le
+  // rejoue aussi : sans garde, le second appel (déjà confirmé) écrasait le succès.
+  const confirmedToken = useRef<string | null>(null);
 
   useEffect(() => {
+    if (token && confirmedToken.current === token) return;
     if (!token) {
       setStatus('error');
       setMessage(t('Lien de confirmation invalide.'));
       return;
     }
+    confirmedToken.current = token;
     (async () => {
       try {
         const { data } = await apiClient.get('/newsletter/confirm', { params: { token } });

@@ -110,7 +110,7 @@ export function WhatsAppGroupMessagePage() {
     }
     const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!allowedMimeTypes.includes(file.type)) {
-      message.error(t('Format non supporte. Utilisez JPEG ou PNG'));
+      message.error(t('Format non supporté. Utilisez JPEG ou PNG'));
       event.target.value = '';
       return;
     }
@@ -143,9 +143,9 @@ export function WhatsAppGroupMessagePage() {
       };
       const result = await whatsappNotificationConfigService.sendGroupBroadcast(tenantId, payload);
       const providerLabel = result.provider || 'WhatsApp';
-      const fallbackNote = result.usedFallbackTextOnly ? ' (image non envoyee, texte envoye)' : '';
+      const fallbackNote = result.usedFallbackTextOnly ? t(' (image non envoyée, texte envoyé)') : '';
       message.success(
-        t('Message envoye via {{providerLabel}}{{fallbackNote}}', {
+        t('Message envoyé via {{providerLabel}}{{fallbackNote}}', {
           providerLabel: providerLabel,
           fallbackNote: fallbackNote
         })
@@ -181,7 +181,7 @@ export function WhatsAppGroupMessagePage() {
           </Title>
         </Space>
         <Text type="secondary">
-          {t('Envoyez un message spontane au groupe configure dans')} <code>WHATSAPP_GROUP_BROADCAST_TO</code>.
+          {t('Envoyez un message spontané au groupe WhatsApp configuré pour la plateforme.')}
         </Text>
         <Alert
           showIcon
@@ -189,7 +189,7 @@ export function WhatsAppGroupMessagePage() {
           style={{ marginTop: 12 }}
           message={t('Format WhatsApp')}
           description={t(
-            'Utilisez les boutons: ils inserent le format WhatsApp (*gras*, _italique_, ~barre~, `code`). Evitez d inclure les espaces a l interieur des symboles.'
+            'Utilisez les boutons : ils insèrent le format WhatsApp (*gras*, _italique_, ~barre~, `code`). Évitez d’inclure des espaces à l’intérieur des symboles.'
           )}
         />
 
@@ -248,8 +248,8 @@ export function WhatsAppGroupMessagePage() {
         />
 
         <div style={{ marginTop: 8 }}>
-          <Tag color="default">{composerText.length} caracteres</Tag>
-          {selectedImage ? <Tag color="green">Image: {selectedImage.name}</Tag> : null}
+          <Tag color="default">{t('{{length}} caractères', { length: composerText.length })}</Tag>
+          {selectedImage ? <Tag color="green">{t('Image : {{name}}', { name: selectedImage.name })}</Tag> : null}
         </div>
 
         {selectedImage && previewUrl && (
@@ -258,7 +258,7 @@ export function WhatsAppGroupMessagePage() {
               <Col xs={24} md={14}>
                 <img
                   src={previewUrl}
-                  alt={t('Apercu')}
+                  alt={t('Aperçu')}
                   style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 8 }}
                 />
               </Col>
@@ -267,10 +267,10 @@ export function WhatsAppGroupMessagePage() {
                   {t('Image jointe')}
                 </Text>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-                  {t('Cette image sera envoyee avec votre message comme legende.')}
+                  {t('Cette image sera envoyée avec votre message comme légende.')}
                 </Text>
                 <Button icon={<DeleteOutlined />} onClick={clearImage}>
-                  {t('Retirer l image')}
+                  {t('Retirer l’image')}
                 </Button>
               </Col>
             </Row>
@@ -280,7 +280,7 @@ export function WhatsAppGroupMessagePage() {
         <Divider />
 
         <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
-          <Text type="secondary">{t('Le message part vers votre destination groupe configuree sur WaSender.')}</Text>
+          <Text type="secondary">{t('Le message part vers le groupe WhatsApp configuré pour la plateforme.')}</Text>
           <Button
             type="primary"
             icon={<SendOutlined />}

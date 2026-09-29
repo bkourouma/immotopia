@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger';
+import { BadRequestError } from '../middleware/error-middleware';
 import { getProjectRoot } from '../utils/project-root';
 import {
   configureWhatsAppProvider,
@@ -44,7 +45,7 @@ function getApiBaseUrl(): string {
 function getGroupBroadcastTarget(): string {
   const target = process.env.WHATSAPP_GROUP_BROADCAST_TO?.trim();
   if (!target) {
-    throw new Error('WHATSAPP_GROUP_BROADCAST_TO non configure');
+    throw new BadRequestError("L'envoi groupé WhatsApp n'est pas configuré pour cette agence.");
   }
   return target;
 }
@@ -57,7 +58,7 @@ function normalizeMessage(raw: string): string {
 
 function validateImageFile(file: Express.Multer.File): void {
   if (!ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype || '')) {
-    throw new Error('Type image invalide. Formats acceptes: JPEG, PNG');
+    throw new BadRequestError('Type d’image invalide. Formats acceptés : JPEG, PNG.');
   }
 }
 
@@ -95,20 +96,22 @@ export async function sendManualGroupBroadcast(
   const hasImage = Boolean(input.imageFile);
 
   if (!message && !hasImage) {
-    throw new Error('Le message ou une image est requis');
+    throw new BadRequestError('Le message ou une image est requis.');
   }
   if (message.length > 4000) {
-    throw new Error('Message trop long (max 4000 caracteres)');
+    throw new BadRequestError('Message trop long (4 000 caractères au maximum).');
   }
 
   const target = getGroupBroadcastTarget();
 
+  const notConfigured =
+    "L'envoi WhatsApp n'est pas configuré pour cette agence. Contactez l'administrateur de la plateforme pour l'activer.";
   if (!configureWhatsAppProvider()) {
-    throw new Error('Provider WhatsApp non configure');
+    throw new BadRequestError(notConfigured);
   }
   const provider = getConfiguredWhatsAppProvider();
   if (!provider) {
-    throw new Error('Provider WhatsApp non configure');
+    throw new BadRequestError(notConfigured);
   }
 
   let relativeMediaUrl: string | null = null;

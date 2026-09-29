@@ -18,8 +18,7 @@ interface CampaignFormProps {
 }
 
 const UNSUBSCRIBE_PLACEHOLDER = '{{lien_desinscription}}';
-const HELP_VARS =
-  'Variables disponibles : {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}} (obligatoire). Le contenu sera aussi relaye sur WhatsApp (version texte) quand un numero avec consentement existe.';
+const CAMPAIGN_VARIABLES = '{{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
 
 export function CampaignForm({ lists, templates, campaign, loading, saving, onSubmit, onPreview }: CampaignFormProps) {
   const [form] = Form.useForm();
@@ -60,7 +59,10 @@ export function CampaignForm({ lists, templates, campaign, loading, saving, onSu
           type="warning"
           showIcon
           message={translate('Le lien de désinscription est obligatoire')}
-          description="Ajoutez la variable {{lien_desinscription}} dans le corps du message (par ex. dans un lien « Se désabonner »)."
+          description={translate(
+            'Ajoutez la variable {{variable}} dans le corps du message (par ex. dans un lien « Se désabonner »).',
+            { variable: UNSUBSCRIBE_PLACEHOLDER }
+          )}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -98,7 +100,10 @@ export function CampaignForm({ lists, templates, campaign, loading, saving, onSu
       <Form.Item
         name="bodyHtml"
         label={translate('Corps du message (HTML)')}
-        extra={HELP_VARS}
+        extra={translate(
+          'Variables disponibles : {{variables}} ({{lien_desinscription}} est obligatoire). Le contenu sera aussi relayé sur WhatsApp (version texte) quand un numéro avec consentement existe.',
+          { variables: CAMPAIGN_VARIABLES, lien_desinscription: UNSUBSCRIBE_PLACEHOLDER }
+        )}
         rules={[
           { required: true, message: translate('Saisissez le contenu') },
           {

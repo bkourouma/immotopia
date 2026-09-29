@@ -1,13 +1,15 @@
 import crypto from 'crypto';
 import DOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
+import type { NewsletterCampaignStatus } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { BadRequestError } from '../middleware/error-middleware';
 import { emailService } from './email-service';
 import { configureWhatsAppProvider, getConfiguredWhatsAppProvider, sendText } from './providers/whatsapp.provider';
 
 const window = new JSDOM('').window;
-const purify = DOMPurify(window as unknown as Window);
+const purify = DOMPurify(window as unknown as Parameters<typeof DOMPurify>[0]);
 
 /**
  * NewsletterCampaignService - Création, envoi, planification des campagnes
@@ -49,6 +51,17 @@ export function sanitizeHtml(html: string): string {
 
 function replaceVariables(text: string, vars: Record<string, string>): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
+}
+
+/**
+ * Insère le corps de la campagne dans le modèle. Seule {{contenu}} est
+ * remplacée ici : les autres variables du modèle ({{prenom}},
+ * {{lien_desinscription}}…) doivent survivre jusqu'à la personnalisation par
+ * destinataire (ou par l'aperçu), sinon elles seraient vidées.
+ */
+export function composeCampaignHtml(templateHtml: string | null | undefined, bodyHtml: string): string {
+  if (!templateHtml) return bodyHtml;
+  return templateHtml.split('{{contenu}}').join(bodyHtml);
 }
 
 function getDefaultCountryCode(): string {
@@ -301,10 +314,7 @@ export async function getPreviewHtml(tenantId: string, campaignId: string): Prom
   });
   if (!campaign) throw new Error('Campagne non trouvée.');
 
-  let html = campaign.bodyHtml;
-  if (campaign.template) {
-    html = replaceVariables(campaign.template.html, { contenu: campaign.bodyHtml });
-  }
+  const html = composeCampaignHtml(campaign.template?.html, campaign.bodyHtml);
 
   const vars = {
     prenom: 'Prénom',
@@ -327,11 +337,17 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
   if (campaign.status !== 'DRAFT' && campaign.status !== 'SCHEDULED') {
     throw new Error('Cette campagne ne peut pas être envoyée.');
   }
-  if (!validateHasUnsubscribeLink(campaign.bodyHtml)) {
-    throw new Error('Le corps de la campagne doit contenir la variable {{lien_desinscription}}.');
+  const composedHtml = composeCampaignHtml(campaign.template?.html, campaign.bodyHtml);
+  if (!validateHasUnsubscribeLink(composedHtml)) {
+    throw new BadRequestError('Le corps de la campagne doit contenir la variable {{lien_desinscription}}.');
   }
 
   const recipients = await resolveRecipients(tenantId, campaign.listId);
+  if (recipients.length === 0) {
+    throw new BadRequestError(
+      "La liste ne contient aucun abonné actif : la campagne n'a pas été envoyée. Ajoutez des abonnés puis réessayez."
+    );
+  }
   const baseUrl = getBaseUrl();
   const apiBaseUrl = getApiBaseUrl();
   const whatsappFeatureEnabled = isNewsletterWhatsappEnabled();
@@ -344,10 +360,7 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
     );
   }
 
-  let bodyHtml = campaign.bodyHtml;
-  if (campaign.template) {
-    bodyHtml = replaceVariables(campaign.template.html, { contenu: campaign.bodyHtml });
-  }
+  const bodyHtml = composedHtml;
 
   await prisma.newsletterCampaign.update({
     where: { id: campaignId, tenantId },
@@ -495,8 +508,8 @@ export async function cancelCampaign(tenantId: string, campaignId: string) {
 }
 
 export async function listCampaigns(tenantId: string, options: { status?: string; page?: number; limit?: number }) {
-  const where: { tenantId: string; status?: string } = { tenantId };
-  if (options.status) where.status = options.status as any;
+  const where: { tenantId: string; status?: NewsletterCampaignStatus } = { tenantId };
+  if (options.status) where.status = options.status as NewsletterCampaignStatus;
 
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(100, Math.max(1, options.limit ?? 20));
@@ -575,7 +588,10 @@ export async function getCampaignRecipients(
   const [recipients, total] = await Promise.all([
     prisma.newsletterCampaignRecipient.findMany({
       where: { campaignId, tenantId },
-      orderBy: { sentAt: 'desc' },
+      // Jamais les jetons de désinscription ni d'ouverture : ils sont propres
+      // au destinataire et ne regardent pas l'agence.
+      select: { id: true, email: true, status: true, sentAt: true, openedAt: true, failureReason: true },
+      orderBy: [{ sentAt: { sort: 'desc', nulls: 'last' } }, { email: 'asc' }],
       skip,
       take: limit
     }),

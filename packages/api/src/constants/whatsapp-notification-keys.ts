@@ -123,13 +123,13 @@ export const WHATSAPP_NOTIFICATION_META: Record<WhatsappNotificationKey, Whatsap
     key: 'CRM_CONTACT_GROUP_INVITE',
     label: 'Invitation groupe WhatsApp (contact CRM)',
     description:
-      'Envoye automatiquement au contact CRM (avec consentement WhatsApp) pour rejoindre le groupe WhatsApp de diffusion des nouvelles proprietes.',
+      'Envoyé automatiquement au contact CRM (avec consentement WhatsApp) pour rejoindre le groupe WhatsApp de diffusion des nouvelles propriétés.',
     recipientLabel: 'Contact CRM'
   },
   PROPERTY_PUBLISHED_GROUP_BROADCAST: {
     key: 'PROPERTY_PUBLISHED_GROUP_BROADCAST',
-    label: 'Annonce bien publie (groupe WhatsApp)',
-    description: 'Publie automatiquement une annonce dans le groupe WhatsApp quand un bien est publie.',
+    label: 'Annonce bien publié (groupe WhatsApp)',
+    description: 'Publie automatiquement une annonce dans le groupe WhatsApp quand un bien est publié.',
     recipientLabel: 'Groupe WhatsApp'
   },
   PORTAL_ACCOUNT_CREATED: {
@@ -141,9 +141,9 @@ export const WHATSAPP_NOTIFICATION_META: Record<WhatsappNotificationKey, Whatsap
   },
   OWNER_STATEMENT_SENT: {
     key: 'OWNER_STATEMENT_SENT',
-    label: 'Releve de gerance envoye (WhatsApp)',
-    description: 'Envoi WhatsApp du releve de gerance au proprietaire quand un numero est renseigne.',
-    recipientLabel: 'Proprietaire'
+    label: 'Relevé de gérance envoyé (WhatsApp)',
+    description: 'Envoi WhatsApp du relevé de gérance au propriétaire quand un numéro est renseigné.',
+    recipientLabel: 'Propriétaire'
   },
   CHARGE_CALL_ISSUED: {
     key: 'CHARGE_CALL_ISSUED',

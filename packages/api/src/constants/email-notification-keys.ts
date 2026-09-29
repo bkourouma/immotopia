@@ -266,26 +266,26 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
   },
   OWNER_STATEMENT_SENT: {
     key: 'OWNER_STATEMENT_SENT',
-    label: 'Releve de gerance envoye',
-    description: 'Notification d envoi d un releve de gerance au proprietaire.',
-    recipientLabel: 'Proprietaire'
+    label: 'Relevé de gérance envoyé',
+    description: 'Notification d’envoi d’un relevé de gérance au propriétaire.',
+    recipientLabel: 'Propriétaire'
   },
   LOAN_MATURITY_ALERT: {
     key: 'LOAN_MATURITY_ALERT',
-    label: 'Alerte fin de pret',
-    description: 'Alerte de pret immobilier arrivant a son terme.',
+    label: 'Alerte fin de prêt',
+    description: 'Alerte de prêt immobilier arrivant à son terme.',
     recipientLabel: 'Agence / Gestionnaire'
   },
   DOCUMENT_EXPIRY_ALERT: {
     key: 'DOCUMENT_EXPIRY_ALERT',
     label: 'Alerte expiration document patrimoine',
     description: 'Alerte document patrimoine expirant prochainement.',
-    recipientLabel: 'Proprietaire / Gestionnaire'
+    recipientLabel: 'Propriétaire / Gestionnaire'
   },
   WORK_PROGRAM_REMINDER: {
     key: 'WORK_PROGRAM_REMINDER',
     label: 'Rappel programme de travaux',
-    description: 'Rappel sur un programme de travaux planifie.',
+    description: 'Rappel sur un programme de travaux planifié.',
     recipientLabel: 'Gestionnaire'
   },
   INVITATION: {

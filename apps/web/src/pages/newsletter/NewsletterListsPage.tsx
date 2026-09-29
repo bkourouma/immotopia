@@ -9,6 +9,7 @@ import { ImportCsvModal } from '../../components/newsletter/ImportCsvModal';
 import { SubscriptionForm } from '../../components/newsletter/SubscriptionForm';
 import { AdvancedContactSearch } from '../../components/crm/AdvancedContactSearch';
 import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
+import { newsletterErrorMessage } from '../../components/newsletter/newsletter-error';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t } from '../../i18n/t';
 
@@ -29,6 +30,8 @@ export function NewsletterListsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [listToDelete, setListToDelete] = useState<NewsletterList | null>(null);
   const [advancedSearchModalOpen, setAdvancedSearchModalOpen] = useState(false);
+  const [addSubscriberModalOpen, setAddSubscriberModalOpen] = useState(false);
+  const [addSubscriberForm] = Form.useForm<{ email: string; name?: string }>();
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -40,7 +43,7 @@ export function NewsletterListsPage() {
       const data = await newsletterService.listLists(tenantId);
       setLists(data);
     } catch (e) {
-      message.error((e as Error).message || t('Erreur lors du chargement'));
+      message.error(newsletterErrorMessage(e, t('Erreur lors du chargement')));
     } finally {
       setLoading(false);
     }
@@ -55,7 +58,7 @@ export function NewsletterListsPage() {
         setSubscribers(data.subscribers);
         setPagination(data.pagination);
       } catch (e) {
-        message.error((e as Error).message || t('Erreur lors du chargement'));
+        message.error(newsletterErrorMessage(e, t('Erreur lors du chargement')));
       } finally {
         setSubLoading(false);
       }
@@ -85,7 +88,7 @@ export function NewsletterListsPage() {
       form.resetFields();
       loadLists();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -105,7 +108,7 @@ export function NewsletterListsPage() {
         setSelectedList(prev => (prev ? { ...prev, ...values } : null));
       }
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -122,7 +125,7 @@ export function NewsletterListsPage() {
       if (selectedList?.id === listToDelete.id) setSelectedList(null);
       loadLists();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     } finally {
       setSaving(false);
     }
@@ -136,7 +139,27 @@ export function NewsletterListsPage() {
       loadSubscribers(pagination.page, pagination.limit);
       loadLists();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
+    }
+  };
+
+  const handleAddSubscriber = async (values: { email: string; name?: string }) => {
+    if (!tenantId || !selectedList) return;
+    setSaving(true);
+    try {
+      await newsletterService.addSubscriber(tenantId, selectedList.id, {
+        email: values.email.trim(),
+        name: values.name?.trim() || undefined
+      });
+      message.success(t('Abonné ajouté'));
+      setAddSubscriberModalOpen(false);
+      addSubscriberForm.resetFields();
+      loadSubscribers(1, pagination.limit);
+      loadLists();
+    } catch (e) {
+      message.error(newsletterErrorMessage(e, t("Erreur lors de l'ajout")));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -157,7 +180,7 @@ export function NewsletterListsPage() {
       URL.revokeObjectURL(url);
       message.success(t('Export terminé'));
     } catch (e) {
-      message.error((e as Error).message || 'Erreur');
+      message.error(newsletterErrorMessage(e, t('Erreur')));
     }
   };
 
@@ -179,7 +202,7 @@ export function NewsletterListsPage() {
       loadSubscribers(1, pagination.limit);
       loadLists();
     } catch (e) {
-      message.error((e as Error).message || t("Erreur lors de l'ajout"));
+      message.error(newsletterErrorMessage(e, t("Erreur lors de l'ajout")));
     }
   };
 
@@ -232,7 +255,10 @@ export function NewsletterListsPage() {
               {canEditList ? (
                 <>
                   <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Button type="primary" icon={<UserAddOutlined />} onClick={() => setAdvancedSearchModalOpen(true)}>
+                    <Button type="primary" icon={<UserAddOutlined />} onClick={() => setAddSubscriberModalOpen(true)}>
+                      {t('Ajouter un abonné')}
+                    </Button>
+                    <Button icon={<UserAddOutlined />} onClick={() => setAdvancedSearchModalOpen(true)}>
                       {t('Ajouter des contacts (recherche CRM)')}
                     </Button>
                   </div>
@@ -375,6 +401,38 @@ export function NewsletterListsPage() {
       </Modal>
 
       <ImportCsvModal open={importModalOpen} onClose={() => setImportModalOpen(false)} onImport={handleImport} />
+
+      <Modal
+        title={t('Ajouter un abonné')}
+        open={addSubscriberModalOpen}
+        onCancel={() => setAddSubscriberModalOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={addSubscriberForm} layout="vertical" onFinish={handleAddSubscriber}>
+          <Form.Item
+            name="email"
+            label={t('Adresse e-mail')}
+            rules={[
+              { required: true, message: t('Email requis') },
+              { type: 'email', message: t('Email invalide') }
+            ]}
+          >
+            <Input type="email" placeholder="prenom.nom@exemple.com" />
+          </Form.Item>
+          <Form.Item name="name" label={t('Nom (facultatif)')}>
+            <Input placeholder={t('Ex : Awa Traoré')} />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={saving}>
+                {t('Ajouter')}
+              </Button>
+              <Button onClick={() => setAddSubscriberModalOpen(false)}>{t('Annuler')}</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title={t('Recherche avancée de contacts CRM')}

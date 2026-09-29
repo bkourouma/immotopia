@@ -14,15 +14,18 @@ import {
   Typography,
   Tooltip,
   Collapse,
-  Alert
+  Alert,
+  Modal
 } from 'antd';
-import { EditOutlined, MessageOutlined } from '@ant-design/icons';
+import { EditOutlined, MessageOutlined, SendOutlined, TeamOutlined } from '@ant-design/icons';
 import {
   whatsappNotificationConfigService,
   type WhatsappNotificationConfigItem,
   type UpdateWhatsappNotificationPayload
 } from '../../services/whatsapp-notification-config-service';
 import { WHATSAPP_VARIABLES_BY_KEY, getVariablePlaceholder } from '../../constants/whatsapp-notification-variables';
+import { useConfirmAction } from '../../components/primitives';
+import { writeErrorMessage } from '../../utils/error-handler';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -30,6 +33,7 @@ const { TextArea } = Input;
 
 export function WhatsAppNotificationsPage() {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<WhatsappNotificationConfigItem[]>([]);
@@ -37,6 +41,9 @@ export function WhatsAppNotificationsPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+  const [testForm] = Form.useForm<{ to: string; message: string }>();
 
   const load = async () => {
     if (!tenantId) return;
@@ -77,7 +84,7 @@ export function WhatsAppNotificationsPage() {
       message.success(enabled ? t('Notification activée') : t('Notification désactivée'));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur');
+      message.error(err.response?.data?.message || t('Erreur'));
     }
   };
 
@@ -114,6 +121,53 @@ export function WhatsAppNotificationsPage() {
       const err = e as { response?: { data?: { message?: string } } };
       message.error(err.response?.data?.message || 'Erreur');
     }
+  };
+
+  const actionError = (e: unknown, fallback: string) =>
+    writeErrorMessage(e, fallback, t("Vous n'avez pas les droits nécessaires pour cette action."));
+
+  const handleTestSend = async (values: { to: string; message: string }) => {
+    if (!tenantId) return;
+    setTestSending(true);
+    try {
+      await whatsappNotificationConfigService.sendTest(tenantId, {
+        to: values.to.trim(),
+        message: values.message.trim()
+      });
+      message.success(t('Message d’essai envoyé.'));
+      setTestModalOpen(false);
+      testForm.resetFields();
+    } catch (e: unknown) {
+      message.error(actionError(e, t("Échec de l'envoi du message d'essai.")));
+    } finally {
+      setTestSending(false);
+    }
+  };
+
+  const handleGroupInviteAll = () => {
+    if (!tenantId) return;
+    confirmAction({
+      title: t("Envoyer l'invitation au groupe WhatsApp ?"),
+      description: t(
+        "L'invitation va être envoyée à tous les contacts CRM qui ont donné leur consentement WhatsApp et dont le numéro est renseigné (300 contacts au maximum par envoi). Ceux qui l'ont déjà reçue sont ignorés. Cette action envoie de vrais messages."
+      ),
+      okText: t('Envoyer'),
+      onConfirm: async () => {
+        try {
+          const result = await whatsappNotificationConfigService.sendGroupInviteToAll(tenantId);
+          message.success(
+            t('{{sent}} invitation(s) envoyée(s), {{skipped}} ignorée(s), {{failed}} en échec.', {
+              sent: result.sent,
+              skipped: result.skipped,
+              failed: result.failed
+            })
+          );
+        } catch (e: unknown) {
+          // Pas de `throw` : la confirmation se ferme, le toast explique le refus.
+          message.error(actionError(e, t("Échec de l'envoi des invitations.")));
+        }
+      }
+    });
   };
 
   const insertVariable = (variableName: string) => {
@@ -307,6 +361,52 @@ export function WhatsAppNotificationsPage() {
           )}
         </div>
       </Card>
+
+      <Card title={t('Envois WhatsApp')} style={{ marginBottom: 24 }}>
+        <Space wrap>
+          <Button icon={<SendOutlined />} onClick={() => setTestModalOpen(true)}>
+            {t("Tester l'envoi")}
+          </Button>
+          <Button icon={<TeamOutlined />} onClick={handleGroupInviteAll}>
+            {t("Envoyer l'invitation au groupe à tous les contacts")}
+          </Button>
+        </Space>
+        <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+          {t(
+            "Le test envoie un message libre au numéro saisi. L'invitation au groupe part vers tous les contacts CRM avec consentement WhatsApp."
+          )}
+        </Text>
+      </Card>
+
+      <Modal
+        title={t("Tester l'envoi WhatsApp")}
+        open={testModalOpen}
+        onCancel={() => setTestModalOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={testForm} layout="vertical" onFinish={handleTestSend}>
+          <Form.Item
+            name="to"
+            label={t('Numéro WhatsApp')}
+            rules={[{ required: true, message: t('Numéro requis') }]}
+            extra={t('Avec l’indicatif du pays, par exemple +2250700000000.')}
+          >
+            <Input placeholder="+2250700000000" />
+          </Form.Item>
+          <Form.Item name="message" label={t('Message')} rules={[{ required: true, message: t('Message requis') }]}>
+            <TextArea rows={3} maxLength={1500} showCount />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={testSending}>
+                {t("Envoyer l'essai")}
+              </Button>
+              <Button onClick={() => setTestModalOpen(false)}>{t('Annuler')}</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Card title={t('Liste des notifications WhatsApp')}>
         <Spin spinning={loading}>
