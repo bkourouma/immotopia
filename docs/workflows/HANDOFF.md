@@ -38,90 +38,42 @@ Pièges et décisions :
 
 ---
 
-## Branche `fix/copilot-audit` — 2026-09-29
+## Pilote — fusion des PR ImmoCopilot #55 et #56 — 2026-09-29
 
-**État :** prêt à relire
-**Dernier commit :** voir `git log -1` (changements non commités au moment de la rédaction)
-
-Fait :
-
-- Usage unique du jeton de proposition atomique : `findFirst` + `create` de la
-  ligne `AI_PROPOSAL_REDEEMED` sous `pg_advisory_xact_lock(hashtext(...))`
-  (`lib/ai/advisory-lock.ts`, `proposal-token.ts`), valable entre instances.
-- Idempotence des quittances sous verrou par paiement (`withExclusiveSection` :
-  file locale + transaction gardienne, délais 10 s / 120 s).
-- Plafond par agence sur `POST /ai/chat` : `AI_TENANT_MINUTE_LIMIT` (100) et
-  `AI_TENANT_DAILY_LIMIT` (3000), en plus des limites par utilisateur.
-- Audit `AI_CHAT_TURN` : entité = `requestId` généré côté serveur.
-- Garde « bail vu » dans `propose_rental_document` (`NOT_POSSIBLE` /
-  `lease_not_seen`).
-- `AI_PROVIDER=fake` refusé sauf `NODE_ENV` brut explicitement `development` ou
-  `test` ; avertissement au démarrage.
-- `propose_rental_document` et `POST /ai/actions/execute` exigent
-  `RENTAL_DOCUMENTS_GENERATE` ET `RENTAL_DOCUMENTS_VIEW`.
-- Logs de `generateDocument` et du contrôleur de génération : plus de
-  téléphones ni de `filePath` en clair (booléens `hasX`).
-- Docs et wiki à jour : SECURITY.md §12, RUNBOOK (variables, règle `fake`,
-  rejeu du test de concurrence), PLAN_IMMOCOPILOT, spec 022, ADR-004, classeur
-  des fonctionnalités (lignes assistant : chat, proposition, confirmation) et
-  miroir régénéré (`wiki:check` vert).
-
-Reste à faire :
-
-- Limiteurs de débit en mémoire, par instance : pas de plafond partagé entre
-  instances d'API.
-- Le test d'intégration des quittances remplace `generateDocument` par un
-  double : il prouve l'exclusion mutuelle, pas le rendu DOCX.
-- Conversations non persistées ; phase 2 (avis d'échéance, relances…).
-
-Pièges et décisions :
-
-- Le test de concurrence (`__tests__/integration/ai-concurrency.test.ts`) exige
-  `DATABASE_URL` = `DATABASE_URL_TEST` = `TEST_DATABASE_URL` (base dédiée,
-  `npx prisma migrate deploy` avant) ; sinon il est ignoré sans échec. Commande
-  dans le RUNBOOK, section « Assistant IA ».
-- `npm run i18n:extract -w @immotopia/api` déplace en `*.orphans.json` les deux
-  clés « Le pack Patrimoine… » d'`error-middleware` (passées par `t(variable)`) :
-  les restaurer à la main.
-- Aucun verrou de schéma : pas de migration, les verrous sont consultatifs.
-
-## Branche `fix/copilot-baux` — 2026-09-29
-
-**État :** prêt à relire
-**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
+**État :** #55 et #56 fusionnées dans `main` (CI 6/6 verte avant chaque fusion) ; #52 (Patrimoine lot 1) laissée à sa session
+**Dernier commit :** voir `git log -1` sur `main`
 
 Fait :
 
-- Contrats de bail (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : `document-context-builder.ts`
-  fournit maintenant les 27 et 33 champs des modèles `contrat_bail_habitation.docx` et
-  `contrat_bail_commercial.docx`, en gardant toutes les clés existantes. Le commercial ne
-  délègue plus à l'habitation : il a ses champs propres. Chargement de la fiche CRM du
-  locataire et du bailleur (`details.crmContactId`) pour adresse, pièce d'identité,
-  société, RCCM, représentant, activité. Une donnée absente s'écrit « — ».
-- Vérifié de bout en bout sur une base locale : contrats habitation et commercial
-  générés (données complètes, puis minimum), `.docx` relus, aucun `{{…}}` restant.
+- #55 (contrats de bail : champs des modèles DOCX) puis #56 (durcissements de l'audit
+  ImmoCopilot : jeton et quittance atomiques, plafond par agence, garde « bail vu »,
+  permissions GENERATE + VIEW, faux fournisseur refusé hors développement) fusionnées.
+  #56 avait un conflit sur HANDOFF.md (sections des PR voisines) : les deux sections
+  gardées, `main` fusionné dans la branche, CI relancée avant fusion.
 
 Reste à faire :
 
-- **Un seul contrat par bail** (préexistant) : le numéro de document d'un contrat est
-  le numéro du bail (`document-generation-service.ts`), et l'index unique
-  `(tenant_id, document_number)` refuse un second contrat sur le même bail (P2002).
-- Préavis (`PREAVIS_PRENEUR`) : constantes choisies faute de colonne (3 mois habitation,
-  6 mois commercial : `DEFAULT_NOTICE_HABITATION` / `_COMMERCIAL`) : à faire valider par le
-  métier. `PAS_DE_PORTE` vaut toujours « — » (aucune donnée dans le schéma).
-- Les modèles écrivent « FCFA » en dur : un bail dans une autre devise afficherait le
-  bon chiffre avec la mauvaise unité. Le modèle dit « par jour de retard » alors que le
-  service de pénalités applique un montant unique : texte du modèle à revoir.
+- #52 `claude/lucid-bell-0pzfvc` (Patrimoine lot 1, brouillon, 192 fichiers) : la
+  session « Élargir périmètre gestion patrimoine » corrige encore (web + API, non
+  commité au dernier relevé) ; recette navigateur, concurrence sur les parts et rendu
+  RTL non vérifiés. Ne pas fusionner avant.
+- Session « Cloud - ImmoCopilot IA assistant » : bloquée sur une demande de permission
+  (`send_later`) que seul l'utilisateur peut trancher.
+- Baux : un seul contrat par bail (numéro de document = numéro du bail, index unique
+  `(tenant_id, document_number)`, P2002) — correctif dans `document-generation-service.ts` ;
+  préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
+  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir.
+- ImmoCopilot : limiteurs de débit en mémoire par instance ; `connection_limit` à
+  dimensionner ; après un échec de section exclusive le jeton est consommé (fail-closed) ;
+  saturation réelle du pool non testée.
 
 Pièges et décisions :
 
-- Les modèles posent eux-mêmes « FCFA » et « m² » : loyer, charges, dépôt et surface sont
-  fournis sans unité. `TAUX_PENALITE` vaut « 2 % » (stocké en pourcentage) ou un montant
-  fixe avec devise.
-- Sans fiche CRM liée, adresse, pièce d'identité, RCCM, représentant et activité valent « — ».
-- Un sous-agent lancé avec l'option d'isolation automatique travaille dans son propre
-  worktree (`.claude/worktrees/agent-*`) et non dans celui indiqué au prompt : ne pas
-  cumuler les deux.
+- HANDOFF.md est réécrit par presque chaque PR au même endroit : en cas de conflit,
+  repartir de la version de `main` et y replacer sa propre section (une reprise en bloc
+  du côté « ours » recopie les sections déjà fusionnées).
+- Un `sed` de résolution de conflit peut laisser un intitulé en double : relire
+  `grep -n '^## Branche'` avant de pousser.
 
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
