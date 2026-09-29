@@ -14,6 +14,8 @@ import {
 } from '../../../services/patrimoine-assets-service';
 import { listProperties } from '../../../services/property-service';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
+import { UpgradeLinkButton } from '../AssetUsageBanner';
+import { PERSONAL_SPACE_ERROR, readApiError } from '../../../services/personal-space-service';
 import { t } from '../../../i18n/t';
 import {
   assetClassFields,
@@ -353,6 +355,8 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
   const [form] = Form.useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Palier gratuit atteint (409 FREE_TIER_LIMIT) : message dédié, saisie conservée.
+  const [tierLimit, setTierLimit] = useState<{ limit?: number; used?: number } | null>(null);
   const assetClass = Form.useWatch('assetClass', form) ?? asset?.assetClass ?? 'OTHER';
   const editing = Boolean(asset);
   // Le serveur refuse (409) de changer la devise d'un actif qui a déjà des
@@ -363,11 +367,21 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
   useEffect(() => {
     if (!open) return;
     setErrorMessage(null);
+    setTierLimit(null);
     form.resetFields();
     form.setFieldsValue(initialValues(asset));
   }, [open, asset, form]);
 
   const reportServerError = (error: unknown) => {
+    const apiError = readApiError(error);
+    if (apiError.status === 409 && apiError.code === PERSONAL_SPACE_ERROR.FREE_TIER_LIMIT) {
+      setTierLimit({
+        limit: typeof apiError.data?.limit === 'number' ? apiError.data.limit : undefined,
+        used: typeof apiError.data?.used === 'number' ? apiError.data.used : undefined
+      });
+      setErrorMessage(null);
+      return;
+    }
     const issues = serverFieldErrors(error);
     const matched = issues.filter(issue => knownPath(issue.path, form.getFieldValue('assetClass')));
     if (matched.length > 0) {
@@ -386,6 +400,7 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
 
   const handleSubmit = async () => {
     setErrorMessage(null);
+    setTierLimit(null);
     let values: FormValues;
     try {
       values = await form.validateFields();
@@ -423,6 +438,27 @@ export const AssetFormDrawer: React.FC<AssetFormDrawerProps> = ({
         </Space>
       }
     >
+      {tierLimit && (
+        <Alert
+          type="warning"
+          showIcon
+          role="alert"
+          style={{ marginBottom: 'var(--space-3)' }}
+          title={
+            tierLimit.limit !== undefined
+              ? t('Limite du palier gratuit atteinte : {{limit}} actifs.', { limit: tierLimit.limit })
+              : t('Limite du palier gratuit atteinte.')
+          }
+          description={
+            <>
+              {t('Passez au palier payant pour ajouter cet actif. Ce que vous avez saisi est conservé.')}
+              <div style={{ marginTop: 'var(--space-2)' }}>
+                <UpgradeLinkButton tenantId={tenantId} />
+              </div>
+            </>
+          }
+        />
+      )}
       {errorMessage && <Alert type="error" showIcon title={errorMessage} style={{ marginBottom: 'var(--space-3)' }} />}
       <Form form={form} layout="vertical" initialValues={initialValues(asset)}>
         <Form.Item name="assetClass" label={t("Classe d'actif")} rules={[{ required: true }]}>

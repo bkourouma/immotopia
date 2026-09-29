@@ -4,6 +4,8 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  /** Type de l'espace, renvoyé par le serveur (`PARTICULIER` : espace personnel en libre-service). */
+  type?: 'AGENCY' | 'OPERATOR' | 'PARTICULIER';
   legalName?: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
   contactEmail?: string;
@@ -65,7 +67,7 @@ export interface ProvisionTenantPayload {
   items?: ProvisionTenantItem[];
   planKey?: TenantPlanKey;
   billingCycle?: TenantBillingCycle;
-  type?: 'AGENCY' | 'OPERATOR';
+  type?: 'AGENCY' | 'OPERATOR' | 'PARTICULIER';
   modules?: TenantModuleKey[];
   legalName?: string;
   contactEmail?: string;

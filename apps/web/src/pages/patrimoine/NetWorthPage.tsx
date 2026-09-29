@@ -24,6 +24,8 @@ import {
   isNetWorthEmpty,
   monthsAgoIso
 } from '../../components/patrimoine/actifs/net-worth-helpers';
+import { AssetUsageBanner } from '../../components/patrimoine/AssetUsageBanner';
+import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { t } from '../../i18n/t';
 
 const HISTORY_MONTHS = 12;
@@ -123,6 +125,8 @@ export const NetWorthPage: React.FC = () => {
         primaryAction={{ label: t('Ajouter un actif'), icon: <PlusOutlined />, onClick: openDrawer }}
       />
 
+      <AssetUsageBanner tenantId={agence} />
+
       {netWorth.error ? (
         <StateBlock
           variant="error"
@@ -204,6 +208,7 @@ export const NetWorthPage: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ['patrimoine-net-worth'] });
           queryClient.invalidateQueries({ queryKey: ['patrimoine-net-worth-history'] });
           queryClient.invalidateQueries({ queryKey: ['patrimoine-assets'] });
+          queryClient.invalidateQueries({ queryKey: [ASSET_USAGE_QUERY_KEY] });
           navigate(`/tenant/${agence}/patrimoine/actifs/${asset.id}`);
         }}
       />

@@ -16,6 +16,8 @@ import {
 } from '../../components/patrimoine/actifs/asset-classes';
 import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
 import { ReliabilityBadge, StaleTag } from '../../components/patrimoine/actifs/ReliabilityBadge';
+import { AssetUsageBanner } from '../../components/patrimoine/AssetUsageBanner';
+import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -94,6 +96,8 @@ export const AssetsPage: React.FC = () => {
           </Space>
         }
       />
+
+      <AssetUsageBanner tenantId={agence} />
 
       {assetsQuery.error ? (
         <StateBlock
@@ -174,6 +178,7 @@ export const AssetsPage: React.FC = () => {
         onSaved={asset => {
           queryClient.invalidateQueries({ queryKey: ['patrimoine-assets'] });
           queryClient.invalidateQueries({ queryKey: ['patrimoine-net-worth'] });
+          queryClient.invalidateQueries({ queryKey: [ASSET_USAGE_QUERY_KEY] });
           navigate(`/tenant/${agence}/patrimoine/actifs/${asset.id}`);
         }}
       />

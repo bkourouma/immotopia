@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantSubscriptionSettings } from '../../pages/tenant/TenantSubscriptionSettings';
 
 /**
@@ -39,6 +40,18 @@ vi.mock('../../services/platform-billing-service', () => ({
   startInvoiceCheckout: (...a: unknown[]) => startInvoiceCheckout(...a),
   getInvoiceCheckout: (...a: unknown[]) => getInvoiceCheckout(...a)
 }));
+
+// Carte du palier personnel : pour une agence, l'usage renvoie `AGENCY` et la carte disparaît.
+vi.mock('../../services/personal-space-service', async () => {
+  const actual = await vi.importActual<typeof import('../../services/personal-space-service')>(
+    '../../services/personal-space-service'
+  );
+  return {
+    ...actual,
+    getAssetUsage: vi.fn().mockResolvedValue({ plan: 'AGENCY', limit: null, used: 0, canAdd: true, upgrade: null }),
+    getTenantIdentity: vi.fn().mockResolvedValue({ type: 'AGENCY', contactPhone: null })
+  };
+});
 
 const ENTITLEMENTS = {
   tenantId: 'tenant-1',
@@ -95,14 +108,17 @@ const INVOICE = {
 };
 
 function mount(url = '/tenant/tenant-1/settings/abonnement') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AntApp>
-      <MemoryRouter initialEntries={[url]}>
-        <Routes>
-          <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
-        </Routes>
-      </MemoryRouter>
-    </AntApp>
+    <QueryClientProvider client={queryClient}>
+      <AntApp>
+        <MemoryRouter initialEntries={[url]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
 }
 
@@ -110,7 +126,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   getOwnEntitlements.mockReset();
   listOwnExtensionRequests.mockResolvedValue([]);
-  listOwnPlatformInvoices.mockResolvedValue({ invoices: [INVOICE], pagination: { page: 1, limit: 50, total: 1, totalPages: 1 } });
+  listOwnPlatformInvoices.mockResolvedValue({
+    invoices: [INVOICE],
+    pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+  });
   getPaymentAvailability.mockResolvedValue({ available: true, mode: 'SIMULATOR' });
 });
 
@@ -188,7 +207,9 @@ describe('<TenantSubscriptionSettings> — formule', () => {
 describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () => {
   it('liste les factures et ouvre le paiement en ligne sur une facture en retard, même en lecture seule', async () => {
     getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, phase: 'READ_ONLY', readOnly: true });
-    startInvoiceCheckout.mockResolvedValue({ checkoutUrl: 'http://localhost:8001/api/payment-gateway/simulator/IMP-abc' });
+    startInvoiceCheckout.mockResolvedValue({
+      checkoutUrl: 'http://localhost:8001/api/payment-gateway/simulator/IMP-abc'
+    });
     const assign = vi.fn();
     const original = window.location;
     Object.defineProperty(window, 'location', { configurable: true, value: { ...original, assign } });
@@ -201,7 +222,9 @@ describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () =>
       fireEvent.click(screen.getByRole('button', { name: /Payer en ligne/ }));
 
       await waitFor(() => expect(startInvoiceCheckout).toHaveBeenCalledWith('tenant-1', 'inv-1'));
-      await waitFor(() => expect(assign).toHaveBeenCalledWith('http://localhost:8001/api/payment-gateway/simulator/IMP-abc'));
+      await waitFor(() =>
+        expect(assign).toHaveBeenCalledWith('http://localhost:8001/api/payment-gateway/simulator/IMP-abc')
+      );
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: original });
     }
@@ -210,7 +233,10 @@ describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () =>
   it('propose de reprendre un paiement déjà en cours (409)', async () => {
     getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
     startInvoiceCheckout.mockRejectedValue({
-      response: { status: 409, data: { message: 'déjà en cours', data: { codePaiement: 'IMP-x', checkoutUrl: 'http://pay/IMP-x' } } }
+      response: {
+        status: 409,
+        data: { message: 'déjà en cours', data: { codePaiement: 'IMP-x', checkoutUrl: 'http://pay/IMP-x' } }
+      }
     });
     mount();
 

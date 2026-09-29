@@ -315,3 +315,27 @@ describe('<AssetFormDrawer>', () => {
     expect(await screen.findByText('Source refusée par le serveur')).toBeInTheDocument();
   });
 });
+
+describe('<AssetFormDrawer> — palier gratuit atteint', () => {
+  it('affiche un message clair avec le lien de montée de palier, sans perdre la saisie', async () => {
+    const user = userEvent.setup();
+    createAsset.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { code: 'FREE_TIER_LIMIT', message: 'Limite atteinte.', data: { limit: 10, used: 10 } }
+      }
+    });
+    monter();
+
+    await user.type(screen.getByLabelText("Nom de l'actif"), 'Terrain de Bingerville');
+    await user.type(await screen.findByLabelText('Libellé'), 'Terrain nu');
+    await user.click(screen.getByRole('button', { name: "Créer l'actif" }));
+
+    expect(await screen.findByText('Limite du palier gratuit atteinte : 10 actifs.')).toBeInTheDocument();
+    expect(screen.getByText(/Ce que vous avez saisi est conservé/)).toBeInTheDocument();
+    const lien = screen.getByRole('link', { name: 'Passer au palier payant' });
+    expect(lien).toHaveAttribute('href', '/tenant/agence-1/settings/abonnement');
+    // La saisie n'est pas perdue et le tiroir reste ouvert.
+    expect(screen.getByLabelText("Nom de l'actif")).toHaveValue('Terrain de Bingerville');
+  });
+});

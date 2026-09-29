@@ -28,6 +28,9 @@ import {
   type ExtensionRequest
 } from '../../services/subscription-extras-service';
 import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
+import { PersonalTierCard } from '../../components/personal-space/PersonalTierCard';
+import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
+import { useQueryClient } from '@tanstack/react-query';
 import { StatusTag } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -38,7 +41,8 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   LOTS: t('Lots'),
   COPROPRIETES: t('Copropriétés'),
   CHANTIERS: t('Chantiers'),
-  BIENS_DETENUS: t('Biens détenus')
+  BIENS_DETENUS: t('Biens détenus'),
+  ACTIFS: t('Actifs')
 };
 
 const PHASE_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
@@ -106,6 +110,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
   const [requests, setRequests] = useState<ExtensionRequest[]>([]);
   const [sending, setSending] = useState(false);
   const [requestForm] = Form.useForm<RequestValues>();
@@ -225,6 +230,8 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Descriptions>
       </Card>
 
+      {tenantId && <PersonalTierCard tenantId={tenantId} />}
+
       <Card title={t('Consommation')}>
         <Space size="large" wrap style={{ width: '100%' }}>
           {(Object.keys(entitlements.capacities) as CapacityKeyCode[]).map(key => {
@@ -266,7 +273,16 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Space>
       </Card>
 
-      {tenantId && <TenantInvoicesSection tenantId={tenantId} onPaid={() => loadEntitlements(true)} />}
+      {tenantId && (
+        <TenantInvoicesSection
+          tenantId={tenantId}
+          onPaid={() => {
+            loadEntitlements(true);
+            // Montée de palier confirmée : l'usage et le plafond ont changé.
+            queryClient.invalidateQueries({ queryKey: [ASSET_USAGE_QUERY_KEY] });
+          }}
+        />
+      )}
 
       <Card title={t('Demander une extension')}>
         <Paragraph type="secondary">

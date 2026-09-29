@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { StateBlock } from './StateBlock';
+import { Button } from 'antd';
+import { CreatePersonalSpaceForm } from '../personal-space/CreatePersonalSpaceForm';
 import { useAuth } from '../../hooks/useAuth';
 import { t } from '../../i18n/t';
 
@@ -19,8 +20,9 @@ import { t } from '../../i18n/t';
  * toujours « Aucune agence sélectionnée ».
  *
  * Lui servir une coquille applicative avec un menu d'une ligne est une impasse
- * déguisée. Cet écran dit ce qui se passe et ce qu'il faut faire, sans
- * sidebar, sans barre d'onglets et sans action flottante.
+ * déguisée. Cet écran (lot 4C, specs/026-particuliers-libre-service) lui
+ * propose de créer son espace personnel, sans sidebar, sans barre d'onglets et
+ * sans action flottante ; l'invitation d'une agence reste possible.
  */
 export const AccountNotLinked: React.FC = () => {
   const navigate = useNavigate();
@@ -48,25 +50,25 @@ export const AccountNotLinked: React.FC = () => {
       }}
     >
       <div ref={anchor} tabIndex={-1} style={{ outline: 'none', maxWidth: 520, width: '100%' }}>
-        <StateBlock
-          variant="empty"
-          title={t('Votre compte n’est rattaché à aucune agence')}
-          description={
-            <>
-              {t('Le compte')} <strong>{user?.email}</strong>{' '}
-              {t(
-                'est bien créé, mais il n’est encore relié ni à une agence, ni à un bail, ni à un bien. Il n’y a donc rien à consulter pour l’instant.'
-              )}
-              <br />
-              <br />
-              {t(
-                'Si vous attendez une invitation, elle vous parviendra par courriel. Sinon, rapprochez-vous de l’agence qui gère votre dossier : c’est elle qui déclenche le rattachement.'
-              )}
-            </>
-          }
-          actions={[{ label: t('Se déconnecter'), onClick: handleLogout }]}
-          detail={t('Réf. ACCOUNT-UNLINKED')}
-        />
+        <h1 style={{ fontSize: 'var(--font-size-h2)', marginBottom: 'var(--space-2)' }}>{t('Créer mon espace')}</h1>
+        <p style={{ marginBottom: 'var(--space-4)' }}>
+          {t('Le compte')} <strong>{user?.email}</strong>{' '}
+          {t(
+            'n’est relié à aucune agence. Créez votre espace personnel gratuit pour suivre la valeur nette de votre patrimoine, vos biens et vos baux.'
+          )}
+        </p>
+        <CreatePersonalSpaceForm />
+        <p style={{ marginTop: 'var(--space-4)', color: 'var(--text-secondary)' }}>
+          {t(
+            'Si vous attendez une invitation d’une agence, elle vous parviendra par courriel : inutile de créer un espace.'
+          )}
+        </p>
+        <Button type="link" onClick={handleLogout} style={{ paddingInline: 0 }}>
+          {t('Se déconnecter')}
+        </Button>
+        <p style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-secondary)' }}>
+          {t('Réf. ACCOUNT-UNLINKED')}
+        </p>
       </div>
     </div>
   );

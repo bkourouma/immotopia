@@ -13,7 +13,7 @@ import apiClient from '../utils/api-client';
  * - docs/architecture/PLAN-ABONNEMENTS.md
  */
 
-export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS';
+export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS';
 export type CatalogItemKindCode = 'PACK' | 'EXTENSION' | 'SETUP';
 export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
 export type SubscriptionItemStatus = 'SCHEDULED' | 'ACTIVE' | 'ENDED';
