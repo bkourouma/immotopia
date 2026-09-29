@@ -40,7 +40,7 @@ Pièges et décisions :
 
 ## Branche `claude/lucid-bell-0pzfvc` — 2026-09-29
 
-**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lots 1 à 3 livrés, lot 4 spécifié mais pas codé
+**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lots 1 à 4 livrés (API et web), lots 5 et 6 pas commencés
 **Dernier commit :** voir `git log -1` de la branche
 
 Fait :
@@ -56,7 +56,17 @@ Fait :
   achat, emprunt, remboursement anticipé, épargne mensuelle), scénarios enregistrés (100 par agence,
   audités), page « Projections ».
 - Relectures qualité et sécurité des lots 1, 2 et 3 : corrections faites (aucun bloquant restant).
-- Wiki des fonctionnalités à jour (737 lignes au lot 3).
+- Lot 4 (`specs/026-…`, espace particulier en libre-service) : type de tenant `PARTICULIER`, packs
+  `PARTICULIER_GRATUIT` (10 actifs) et `PARTICULIER_PLUS` (prix et plafond provisoires), capacité `ACTIFS` ;
+  `POST /api/personal-space` (idempotent, un seul espace par personne, e-mail vérifié exigé) ; garde
+  `FREE_TIER_LIMIT` à la création d'actif et de bien (verrou consultatif, indépendante de
+  `SUBSCRIPTION_ENFORCEMENT`) ; `GET patrimoine/usage` ; montée de palier `POST subscription/upgrade`
+  (facture, paiement PaySecureHub, changement de pack seulement au règlement réconcilié) ; anti-abus
+  d'inscription (limiteur par IP en base, réponse neutre) ; garde de liste blanche de routes pour un
+  espace `PARTICULIER` (`lib/subscription/particulier-routes.ts`, 403 `PERSONAL_SPACE_ROUTE_FORBIDDEN`) ;
+  web : « Créer mon espace », navigation réduite décidée par `tenant.type`, bandeau d'usage, carte de
+  montée de palier. Relectures qualité et sécurité faites, corrections appliquées.
+- Wiki des fonctionnalités à jour (742 lignes au lot 4).
 - Décisions du 2026-09-29 : validation fiscale utilisateur personnelle (« indicatif, non vérifié par
   ImmoTopia ») ; palier gratuit du particulier = 10 actifs de tout type, gratuit durable, blocage à
   l'ajout au-delà, garde dédiée sans toucher `SUBSCRIPTION_ENFORCEMENT` global ; palier payant
@@ -65,22 +75,20 @@ Fait :
 
 Reste à faire :
 
-- Lot 4 (particuliers en libre-service, palier gratuit, mobile money) : étude de faisabilité faite
-  (aucune inscription libre-service avec création d'espace n'existe ; aucun pack gratuit durable ;
-  quotas en simple avertissement tant que `SUBSCRIPTION_ENFORCEMENT=warn`). Découpage L1 à L8 dans le
-  rapport d'étude ; spec à écrire avant de coder.
 - Lot 5 (exports PDF et Excel de la situation patrimoniale) et lot 6 (collecte des paramètres
   fiscaux par IA, validation personnelle) : pas commencés.
 - Recette navigateur de bout en bout : jamais faite (les écrans sont testés par des tests
-  automatiques seulement).
+  automatiques seulement) ; le paiement mobile money réel n'est pas testable sans identifiants
+  PaySecureHub de production (simulateur seulement).
 - Décisions métier ouvertes : prix exact du palier particulier ; liste des statuts juridiques
   fonciers à faire valider par un juriste local ; hypothèses de croissance et d'inflation par défaut
   des projections ; responsabilité juridique d'un calcul fondé sur un paramètre fiscal validé par
-  l'utilisateur ; conservation des données d'un espace gratuit inactif ; durée d'essai.
+  l'utilisateur ; conservation et suppression des données d'un espace gratuit, conditions d'utilisation
+  et protection des données par pays ; durée d'essai ; captcha à l'inscription.
 
 Pièges et décisions :
 
-- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 314 octets) :
+- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 253 octets après le lot 4) :
   chaque `React.lazy` ou fichier partagé entre chunks ajouté coûte des octets sur la carte des
   dépendances du chunk d'entrée, et la marge bouge de ±20 octets avec les hashes. Les écrans du
   patrimoine sont montés sur la route `/tenant/:tenantId/patrimoine/*` (`PatrimoineHome`), pas sur des
@@ -108,6 +116,20 @@ Pièges et décisions :
   regex doivent tolérer les retours à la ligne.
 - `npm run i18n:extract` touche des fichiers hors périmètre (`CopilotRoot.tsx`, clé vide dans
   `common.json`, ordre dans `portal.json`) : les remettre à l'identique.
+- Lot 4 : un `TENANT_ADMIN` d'espace `PARTICULIER` atteignait les routes d'agence tant que
+  `SUBSCRIPTION_ENFORCEMENT=warn` ; le garde de type (`particulier-routes.ts`, monté avec
+  `subscriptionRouteGuard`) refuse par défaut toute route hors liste blanche : une nouvelle route utile à
+  un particulier doit y être ajoutée (test `particulier-routes`). `requireTenantAccess` lit maintenant
+  `status` et `type` du tenant (`utils/tenant-access.ts`) et `my-memberships` renvoie `tenant.type`.
+- Lot 4 : le compteur d'actifs = actifs non archivés + biens non archivés sans actif lié ; un actif lié à
+  un bien déjà compté ne change pas le compteur. `isFreeSubscription` ne vaut que pour les packs
+  Particulier à prix nul : une agence à prix nul est facturée comme avant.
+- Lot 4 : `db:seed:catalog` sans `--missing-only` écrase le prix et le plafond ajustés par le produit
+  (RUNBOOK). `ensurePropertyAsset` ne consulte le plafond que pour un bien archivé.
+- Tests d'intégration (base réelle) : `npm run test:isolation -w @immotopia/api` avec
+  `DATABASE_URL_TEST` ; `signup-guard.integration` échoue si `DATABASE_URL_TEST` est posé sans
+  `TEST_DATABASE_URL` hors de ce lanceur ; ils sont ignorés en CI. Sous charge (agents en parallèle) des
+  workers jest sont tués (SIGKILL, mémoire) : relancer la suite seule avant de conclure à une régression.
 - Le test `copilot-root` (Ctrl+J) est instable sous charge en CI (course entre le rendu du bouton et le
   raccourci) : une relance suffit ; il n'est pas lié au patrimoine.
 
