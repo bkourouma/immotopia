@@ -253,7 +253,7 @@ function toDebtDto(row: LoanRow, assetId: string | null): DebtDto {
 // ---------------------------------------------------------------- Chiffres d'un lot d'actifs (sans N+1)
 
 /** Clé de regroupement des lignes : le bien pour un actif immobilier lié, l'actif sinon. */
-function scopeKey(asset: { id: string; propertyId: string | null }): string {
+export function scopeKey(asset: { id: string; propertyId: string | null }): string {
   return asset.propertyId ? `p:${asset.propertyId}` : `a:${asset.id}`;
 }
 
@@ -1147,7 +1147,7 @@ export function buildHistoryDates(from: Date | null, to: Date): Date[] {
 }
 
 /** Colonnes strictement nécessaires au calcul de valeur nette (pas de jointure, pas de `details`/`notes`). */
-const NET_WORTH_ASSET_SELECT = {
+export const NET_WORTH_ASSET_SELECT = {
   id: true,
   name: true,
   assetClass: true,
@@ -1162,7 +1162,7 @@ const NET_WORTH_ASSET_SELECT = {
 type NetWorthAssetRow = Prisma.AssetGetPayload<{ select: typeof NET_WORTH_ASSET_SELECT }>;
 
 /** Valorisations des actifs non archivés (un actif archivé est exclu du calcul), en une requête, triées. */
-async function loadNetWorthValuations(tenantId: string, assets: NetWorthAssetRow[]) {
+export async function loadNetWorthValuations(tenantId: string, assets: NetWorthAssetRow[]) {
   const filters = scopeFilters(assets.filter(a => a.status !== 'ARCHIVED'));
   if (filters.length === 0) return new Map<string, NetWorthValuationRow[]>();
   const rows = await prisma.assetValuation.findMany({

@@ -160,6 +160,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'patrimoine-overview': ['PROPERTIES_VIEW'],
   'patrimoine-net-worth': ['PROPERTIES_VIEW'],
   'patrimoine-assets': ['PROPERTIES_VIEW'],
+  'patrimoine-projections': ['PROPERTIES_VIEW'],
   'patrimoine-performance': ['PROPERTIES_VIEW'],
   'patrimoine-work-programs': ['PROPERTIES_VIEW'],
   'patrimoine-statements': ['PROPERTIES_VIEW'],

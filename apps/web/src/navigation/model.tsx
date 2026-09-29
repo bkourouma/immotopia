@@ -434,6 +434,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
             },
             { key: 'patrimoine-assets', label: t('Mes actifs'), href: '/tenant/:tenantId/patrimoine/actifs' },
             {
+              key: 'patrimoine-projections',
+              label: t('Projections'),
+              href: '/tenant/:tenantId/patrimoine/projections'
+            },
+            {
               key: 'patrimoine-performance',
               label: t('Performance'),
               href: '/tenant/:tenantId/patrimoine/performance'

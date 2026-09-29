@@ -900,4 +900,213 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(await prisma.asset.count({ where: { id, name: 'A archiver' } })).toBe(1);
     });
   });
+  /**
+   * Projections et scénarios (lot 3) : la projection lit le patrimoine de
+   * l'agence appelante seulement, et un identifiant d'une autre agence (actif,
+   * dette, scénario) reçoit EXACTEMENT la réponse d'un identifiant inexistant.
+   */
+  describe('Patrimoine — projections et scénarios, étanchéité entre agences', () => {
+    const P = (tenantId: string) => `/api/tenants/${tenantId}/patrimoine`;
+    const MISSING = '99999999-9999-4999-8999-999999999999';
+    let assetOfB: string;
+    let debtOfB: string;
+    let scenarioOfB: string;
+
+    /** Réponse comparable : statut et corps (le corps ne doit rien révéler de l'autre agence). */
+    const shape = (res: request.Response) => ({ status: res.status, body: res.body });
+
+    beforeEach(async () => {
+      assetOfB = (
+        await prisma.asset.create({
+          data: { tenantId: tenantB.id, name: 'ActifB-proj', assetClass: 'REAL_ESTATE', details: {} }
+        })
+      ).id;
+      await prisma.assetValuation.create({
+        data: { tenantId: tenantB.id, assetId: assetOfB, valuatedAt: new Date('2026-01-01'), estimatedValue: 7000000 }
+      });
+      debtOfB = (
+        await prisma.propertyLoan.create({
+          data: {
+            tenantId: tenantB.id,
+            assetId: assetOfB,
+            lender: 'Banque B proj',
+            capitalAmount: 500000,
+            remainingCapital: 400000,
+            interestRate: 5,
+            monthlyPayment: 10000,
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2030-01-01')
+          }
+        })
+      ).id;
+      await prisma.patrimonyScenario.deleteMany({ where: { tenantId: { in: [tenantA.id, tenantB.id] } } });
+      scenarioOfB = (
+        await prisma.patrimonyScenario.create({
+          data: {
+            tenantId: tenantB.id,
+            name: 'Plan secret de B',
+            horizonYears: 10,
+            baseScenario: 'CENTRAL',
+            operations: [{ type: 'SELL_ASSET', year: 1, assetId: assetOfB }]
+          }
+        })
+      ).id;
+    });
+
+    it("A lit, modifie, supprime et exécute le scénario de B -> même réponse qu'un scénario inexistant, B intact", async () => {
+      const path = (id: string) => `${P(tenantA.id)}/scenarios/${id}`;
+      const attempts: Array<(id: string) => Promise<request.Response>> = [
+        id => request(app).get(path(id)).set(authed(adminA)),
+        id => request(app).patch(path(id)).set(authed(adminA)).send({ name: 'Volé' }),
+        id => request(app).delete(path(id)).set(authed(adminA)),
+        id =>
+          request(app)
+            .post(`${path(id)}/run`)
+            .set(authed(adminA))
+            .send({})
+      ];
+      for (const attempt of attempts) {
+        const foreign = await attempt(scenarioOfB);
+        const missing = await attempt(MISSING);
+        expect(foreign.status).toBe(404);
+        expect(shape(foreign)).toEqual(shape(missing));
+      }
+      const row = await prisma.patrimonyScenario.findUnique({ where: { id: scenarioOfB } });
+      expect(row).toMatchObject({ tenantId: tenantB.id, name: 'Plan secret de B' });
+    });
+
+    it('les scénarios de A et de B sont disjoints ; le même nom est permis dans chaque agence', async () => {
+      const own = await request(app)
+        .post(`${P(tenantA.id)}/scenarios`)
+        .set(authed(adminA))
+        .send({ name: 'Plan secret de B', horizonYears: 5, baseScenario: 'PRUDENT' });
+      expect(own.status).toBe(201);
+      expect(Object.keys(own.body.data)).not.toContain('tenantId');
+      expect(Object.keys(own.body.data)).not.toContain('createdByUserId');
+      expect(Object.keys(own.body.data)).not.toContain('schemaVersion');
+
+      const listA = await request(app)
+        .get(`${P(tenantA.id)}/scenarios`)
+        .set(authed(adminA));
+      expect(listA.status).toBe(200);
+      expect(listA.body.data.map((s: any) => s.id)).toEqual([own.body.data.id]);
+      const listB = await request(app)
+        .get(`${P(tenantB.id)}/scenarios`)
+        .set(authed(adminB));
+      expect(listB.body.data.map((s: any) => s.id)).toEqual([scenarioOfB]);
+
+      const duplicate = await request(app)
+        .post(`${P(tenantA.id)}/scenarios`)
+        .set(authed(adminA))
+        .send({ name: 'Plan secret de B', horizonYears: 5, baseScenario: 'PRUDENT' });
+      expect(duplicate.status).toBe(409);
+      const badId = await request(app)
+        .get(`${P(tenantA.id)}/scenarios/pas-un-uuid`)
+        .set(authed(adminA));
+      expect(badId.status).toBe(400);
+    });
+
+    it("une projection de A avec l'actif ou la dette de B -> même réponse qu'un identifiant inexistant", async () => {
+      const project = (operations: unknown[]) =>
+        request(app)
+          .post(`${P(tenantA.id)}/projections`)
+          .set(authed(adminA))
+          .send({ horizonYears: 5, baseScenario: 'CENTRAL', operations });
+      const foreignAsset = await project([{ type: 'SELL_ASSET', year: 1, assetId: assetOfB }]);
+      const missingAsset = await project([{ type: 'SELL_ASSET', year: 1, assetId: MISSING }]);
+      expect(foreignAsset.status).toBe(422);
+      expect(shape(foreignAsset)).toEqual(shape(missingAsset));
+      expect(foreignAsset.body.errors[0].field).toBe('operations.0.assetId');
+
+      const foreignDebt = await project([{ type: 'PREPAY_LOAN', year: 1, loanId: debtOfB, amount: 1 }]);
+      const missingDebt = await project([{ type: 'PREPAY_LOAN', year: 1, loanId: MISSING, amount: 1 }]);
+      expect(foreignDebt.status).toBe(422);
+      expect(shape(foreignDebt)).toEqual(shape(missingDebt));
+    });
+
+    it("la projection de A ne compte ni les actifs ni les dettes de B, et n'écrit rien", async () => {
+      const own = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({
+          name: 'ActifA-proj',
+          assetClass: 'CASH',
+          details: { institution: 'Banque A', cashKind: 'BANK' },
+          initialValuation: { valuatedAt: '2026-01-01', estimatedValue: 250000 }
+        });
+      expect(own.status).toBe(201);
+      const before = {
+        assets: await prisma.asset.count(),
+        valuations: await prisma.assetValuation.count(),
+        loans: await prisma.propertyLoan.count(),
+        scenarios: await prisma.patrimonyScenario.count()
+      };
+
+      const res = await request(app)
+        .post(`${P(tenantA.id)}/projections`)
+        .set(authed(adminA))
+        .send({
+          horizonYears: 3,
+          baseScenario: 'CENTRAL',
+          compareScenarios: true,
+          operations: [{ type: 'MONTHLY_SAVING', fromYear: 1, amount: 1000 }]
+        });
+      expect(res.status).toBe(200);
+      // L'agence A porte déjà d'autres actifs (cas précédents) : le départ égale sa propre valeur nette.
+      const netWorthA = await request(app)
+        .get(`${P(tenantA.id)}/net-worth`)
+        .set(authed(adminA));
+      expect(netWorthA.status).toBe(200);
+      expect(res.body.data.base.points[0]).toMatchObject({
+        assets: netWorthA.body.data.totalAssets,
+        debts: netWorthA.body.data.totalDebts,
+        netWorth: netWorthA.body.data.netWorth
+      });
+      expect(netWorthA.body.data.totalAssets).toBeGreaterThanOrEqual(250000);
+      expect(netWorthA.body.data.assets.map((x: any) => x.id)).not.toContain(assetOfB);
+      expect(res.body.data.simulated.points).toHaveLength(4);
+      expect(Object.keys(res.body.data.byScenario).sort()).toEqual(['CENTRAL', 'OPTIMISTIC', 'PRUDENT']);
+      expect(JSON.stringify(res.body)).not.toContain(assetOfB);
+
+      expect({
+        assets: await prisma.asset.count(),
+        valuations: await prisma.assetValuation.count(),
+        loans: await prisma.propertyLoan.count(),
+        scenarios: await prisma.patrimonyScenario.count()
+      }).toEqual(before);
+    });
+
+    it("un scénario de A qui cite l'actif de B ou un actif inexistant : mêmes avertissements à l'exécution, rien de B ne fuit", async () => {
+      const create = (name: string, assetId: string) =>
+        request(app)
+          .post(`${P(tenantA.id)}/scenarios`)
+          .set(authed(adminA))
+          .send({
+            name,
+            horizonYears: 5,
+            baseScenario: 'CENTRAL',
+            operations: [{ type: 'SELL_ASSET', year: 1, assetId }]
+          });
+      const withForeign = await create('Cite B', assetOfB);
+      const withMissing = await create('Cite rien', MISSING);
+      expect(withForeign.status).toBe(201);
+      expect(withMissing.status).toBe(201);
+
+      const runForeign = await request(app)
+        .post(`${P(tenantA.id)}/scenarios/${withForeign.body.data.id}/run`)
+        .set(authed(adminA))
+        .send({});
+      const runMissing = await request(app)
+        .post(`${P(tenantA.id)}/scenarios/${withMissing.body.data.id}/run`)
+        .set(authed(adminA))
+        .send({});
+      expect(runForeign.status).toBe(200);
+      expect(runForeign.body.data.simulated.warnings).toContainEqual({
+        code: 'OPERATION_NOT_APPLICABLE',
+        index: 0,
+        reason: 'ASSET_NOT_FOUND'
+      });
+      expect(runForeign.body.data).toEqual(runMissing.body.data);
+    });
+  });
 });
