@@ -1,6 +1,6 @@
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { InvitationStatus, MembershipStatus } from '@prisma/client';
+import { GlobalRole, InvitationStatus, MembershipStatus } from '@prisma/client';
 import { emailService } from './email-service';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
 import { logAuditEvent, AuditActionKey } from './audit-service';
@@ -337,16 +337,32 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
  * active : seul cas ou le jeton d'invitation SEUL peut fixer un mot de passe
  * sur un compte existant (le jeton en clair ne prouve pas l'identite de son
  * porteur, donc toute autre situation exige la session du compte).
- * Conditions cumulatives : aucune session ouverte, e-mail non verifie, aucune
+ *
+ * Protections effectives : `emailVerified` faux (les chemins de connexion
+ * l'exigent ou le forcent, voir auth-service.ts / passport.ts : c'est le
+ * couplage a maintenir), aucun refresh token jamais emis pour ce compte, aucune
  * adhesion ACTIVE ailleurs, adhesion PENDING_INVITE dans l'agence de
- * l'invitation posee par le meme acteur que l'invitation, et cet acteur est
- * super-admin de la plateforme.
+ * l'invitation posee par le meme acteur, cet acteur etant super-admin actif.
+ * `lastLoginAt` n'est PAS alimente aujourd'hui : le tester est inoffensif
+ * mais ne protege rien tant qu'il n'est pas ecrit a la connexion.
+ * Defense en profondeur : compte USER simple, sans Google, actif.
  */
 async function isNeverActivatedProvisionedAdmin(
-  user: { id: string; emailVerified: boolean; lastLoginAt: Date | null },
+  user: {
+    id: string;
+    emailVerified: boolean;
+    lastLoginAt: Date | null;
+    globalRole: GlobalRole;
+    googleId: string | null;
+    isActive: boolean;
+  },
   invitation: { tenantId: string; invitedBy: string | null }
 ): Promise<boolean> {
   if (user.emailVerified || user.lastLoginAt || !invitation.invitedBy) return false;
+  if (user.globalRole !== GlobalRole.USER || user.googleId || user.isActive === false) return false;
+
+  const issuedTokens = await prisma.refreshToken.count({ where: { userId: user.id } });
+  if (issuedTokens > 0) return false;
 
   const activeMembership = await prisma.membership.findFirst({
     where: { userId: user.id, status: MembershipStatus.ACTIVE },
@@ -419,7 +435,16 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
   // acceptInvitation en recreait un second, doublon, sous la casse du jeton.
   let user = await prisma.user.findFirst({
     where: { email: { equals: invitation.email, mode: 'insensitive' } },
-    select: { id: true, email: true, fullName: true, emailVerified: true, lastLoginAt: true }
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      emailVerified: true,
+      lastLoginAt: true,
+      globalRole: true,
+      googleId: true,
+      isActive: true
+    }
   });
 
   const isNewUser = !user;
@@ -503,7 +528,16 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
         emailVerified: true, // Trust invitation email
         isActive: true
       },
-      select: { id: true, email: true, fullName: true, emailVerified: true, lastLoginAt: true }
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        emailVerified: true,
+        lastLoginAt: true,
+        globalRole: true,
+        googleId: true,
+        isActive: true
+      }
     });
   }
 
@@ -515,7 +549,9 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     // Reservation atomique de l'invitation : une seule acceptation gagne, la
     // seconde (course) echoue proprement avant d'ecrire quoi que ce soit.
     const claimed = await tx.invitation.updateMany({
-      where: { id: invitation.id, status: InvitationStatus.PENDING },
+      // tokenHash + expiresAt : un resend (nouveau jeton) ou une expiration
+      // pendant le hachage du mot de passe ne laissent pas passer l'ancien jeton.
+      where: { id: invitation.id, status: InvitationStatus.PENDING, tokenHash, expiresAt: { gt: new Date() } },
       data: {
         status: InvitationStatus.ACCEPTED,
         acceptedBy: activatedUser.id,
@@ -530,7 +566,7 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
       // Garde rejouee dans l'ecriture : le compte ne doit toujours jamais
       // avoir ete active ni verifie au moment precis de l'ecriture.
       const written = await tx.user.updateMany({
-        where: { id: activatedUser.id, emailVerified: false, lastLoginAt: null },
+        where: { id: activatedUser.id, emailVerified: false, lastLoginAt: null, isActive: true },
         data: {
           passwordHash: provisionedPasswordHash,
           fullName: data.fullName ?? activatedUser.fullName,
@@ -610,7 +646,8 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     entityId: membership.id,
     payload: {
       email: invitation.email,
-      isNewUser
+      isNewUser,
+      passwordSetByInvitation: activatesProvisionedAdmin
     }
   });
 

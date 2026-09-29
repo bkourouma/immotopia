@@ -77,7 +77,11 @@ export const acceptInvitationHandler = asyncHandler(async (req: Request, res: Re
     success: true,
     message: 'Invitation acceptée avec succès.',
     data: {
-      membership: result.membership,
+      membership: {
+        id: result.membership.id,
+        status: result.membership.status,
+        tenantId: result.membership.tenantId
+      },
       user: result.user
     }
   });

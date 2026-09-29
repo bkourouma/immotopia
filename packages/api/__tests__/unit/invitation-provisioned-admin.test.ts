@@ -14,6 +14,11 @@ const PLAIN_TOKEN = 'jeton-admin-provisionne';
 const TOKEN_HASH = crypto.createHash('sha256').update(PLAIN_TOKEN).digest('hex');
 
 const mockPrisma = createFakePrisma();
+// Le faux Prisma partage ne connait pas `refreshToken` : mini-modele local.
+const refreshTokens: Array<{ id: string; userId: string; token: string }> = [];
+(mockPrisma as any).refreshToken = {
+  count: jest.fn(async (args: any) => refreshTokens.filter(r => r.userId === args?.where?.userId).length)
+};
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
@@ -107,6 +112,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   mockPrisma.reset();
+  refreshTokens.length = 0;
   for (const id of [TENANT_A, TENANT_B]) {
     mockPrisma.tenant.rows.push({ id, name: `Agence ${id}`, status: 'ACTIVE' });
   }
@@ -201,18 +207,44 @@ describe('acceptInvitation — administrateur provisionne par le super-admin', (
 });
 
 describe('acceptInvitation — non-regression securite (INVITATION_REQUIRES_LOGIN)', () => {
-  it('compte actif ayant deja ouvert une session', async () => {
-    seedUser({ emailVerified: true, lastLoginAt: new Date() });
+  it("compte dont l'e-mail est verifie (emailVerified vrai)", async () => {
+    seedUser({ emailVerified: true });
     seedMembership();
     seedInvitation();
     await expectRequiresLogin();
   });
 
-  it('compte ayant deja ouvert une session mais e-mail non verifie', async () => {
-    seedUser({ lastLoginAt: new Date() });
+  it('compte ayant deja recu un refresh token (session ouverte un jour)', async () => {
+    seedUser();
+    seedMembership();
+    seedInvitation();
+    refreshTokens.push({ id: 'rt-1', userId: 'admin-1', token: 't' });
+    await expectRequiresLogin();
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['super-admin', { globalRole: 'SUPER_ADMIN' }],
+    ['compte Google', { googleId: 'google-123' }],
+    ['compte desactive', { isActive: false }]
+  ])('defense en profondeur : %s', async (_label, overrides) => {
+    seedUser(overrides);
     seedMembership();
     seedInvitation();
     await expectRequiresLogin();
+  });
+
+  it("jeton remplace pendant l'operation (resend) : la reservation refuse l'ancien jeton", async () => {
+    seedProvisioned();
+    const inv = mockPrisma.invitation.rows[0];
+    const realUpdateMany = mockPrisma.invitation.updateMany.getMockImplementation()!;
+    mockPrisma.invitation.updateMany.mockImplementationOnce(async (args: any) => {
+      inv.tokenHash = 'nouveau-hash';
+      return realUpdateMany(args);
+    });
+    await expect(acceptInvitation({ token: PLAIN_TOKEN, password: NEW_PASSWORD, fullName: 'A' })).rejects.toMatchObject(
+      { statusCode: 409 }
+    );
+    expect(mockPrisma.user.rows.find((r: any) => r.id === 'admin-1')!.passwordHash).toBe(originalHash);
   });
 
   it('compte non verifie inscrit librement (aucune adhesion creee par un super-admin)', async () => {
