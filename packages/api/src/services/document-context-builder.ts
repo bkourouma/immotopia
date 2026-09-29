@@ -2,12 +2,21 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { DocumentType } from '@prisma/client';
 import {
+  DEFAULT_NOTICE_HABITATION,
+  DEFAULT_NOTICE_COMMERCIAL,
   NON_RENSEIGNE,
   breakdownPayment,
+  formatSurface,
+  identityDocumentLabel,
+  joinPresent,
+  leaseDurationLabel,
+  legalFormLabel,
   monthLabel,
   orDash,
   paymentMethodLabel,
+  penaltyRateLabel,
   periodRangeLabel,
+  propertyEquipmentLabel,
   propertyTypeLabel
 } from './document-context-helpers';
 
@@ -86,9 +95,7 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
         clientType,
         clientId: client.id,
         hasCrmContactId: !!details?.crmContactId,
-        crmContactId: details?.crmContactId,
-        hasPhoneInDetails: !!(details?.phone || details?.telephone || details?.mobile),
-        phoneInDetails: details?.phone || details?.telephone || details?.mobile
+        hasPhoneInDetails: !!(details?.phone || details?.telephone || details?.mobile)
       });
 
       // If we have a crmContactId, fetch the contact
@@ -116,30 +123,24 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
           if (contact) {
             logger.info('getPhoneFromClient: CRM contact found', {
               clientType,
-              crmContactId: contact.id,
-              phonePrimary: contact.phonePrimary,
-              phoneSecondary: contact.phoneSecondary,
-              whatsappNumber: contact.whatsappNumber
+              crmContactId: contact.id
             });
 
             if (contact.phonePrimary) {
               logger.info('getPhoneFromClient: Returning phonePrimary from CRM contact', {
-                clientType,
-                phone: contact.phonePrimary
+                clientType
               });
               return contact.phonePrimary;
             }
             if (contact.phoneSecondary) {
               logger.info('getPhoneFromClient: Returning phoneSecondary from CRM contact', {
-                clientType,
-                phone: contact.phoneSecondary
+                clientType
               });
               return contact.phoneSecondary;
             }
             if (contact.whatsappNumber) {
               logger.info('getPhoneFromClient: Returning whatsappNumber from CRM contact', {
-                clientType,
-                phone: contact.whatsappNumber
+                clientType
               });
               return contact.whatsappNumber;
             }
@@ -177,13 +178,11 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
       const phoneFromDetails = details?.phone || details?.telephone || details?.mobile || '';
       if (phoneFromDetails) {
         logger.info('getPhoneFromClient: Returning phone from details', {
-          clientType,
-          phone: phoneFromDetails
+          clientType
         });
       } else {
         logger.warn('getPhoneFromClient: No phone found in details', {
-          clientType,
-          detailsKeys: Object.keys(details || {})
+          clientType
         });
       }
       return phoneFromDetails;
@@ -255,11 +254,170 @@ function issuePlace(agency: any): string {
   return orDash(agency?.city || agency?.address);
 }
 
+const CRM_CONTACT_SELECT = {
+  id: true,
+  contactType: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  identityDocumentType: true,
+  identityDocumentNumber: true,
+  legalName: true,
+  legalForm: true,
+  rccm: true,
+  representativeName: true,
+  representativeRole: true,
+  phonePrimary: true,
+  phoneSecondary: true,
+  whatsappNumber: true,
+  address: true,
+  district: true,
+  city: true,
+  sectorOfActivity: true
+} as const;
+
+/** Details d'un client (JSON ou chaine JSON), objet vide si illisible. */
+function parseClientDetails(client: any): Record<string, any> {
+  const raw = client?.details;
+  if (!raw) return {};
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Fiche CRM (identite, adresse, societe) rattachee a un client par `details.crmContactId`, sinon `null`. */
+async function loadCrmContact(client: any, tenantId: string): Promise<any | null> {
+  const crmContactId = parseClientDetails(client).crmContactId;
+  if (!crmContactId) return null;
+  try {
+    return await prisma.crmContact.findFirst({
+      where: { id: crmContactId, tenantId },
+      select: CRM_CONTACT_SELECT
+    });
+  } catch (error) {
+    logger.warn('loadCrmContact: contact illisible', {
+      crmContactId,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    return null;
+  }
+}
+
+/** Premier telephone de la fiche CRM (principal, secondaire, WhatsApp). */
+function contactPhone(contact: any): string {
+  return contact?.phonePrimary || contact?.phoneSecondary || contact?.whatsappNumber || '';
+}
+
+/** Nom de la partie : raison sociale d'une societe, sinon nom du compte, sinon prenom et nom de la fiche. */
+function partyName(user: any, contact: any): string {
+  if (contact?.contactType === 'COMPANY' && contact.legalName) return contact.legalName;
+  const contactName = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim();
+  return user?.fullName || contactName || contact?.legalName || '';
+}
+
+/** Forme juridique : celle de la fiche, « Personne physique » pour un particulier, sinon « — ». */
+function partyLegalForm(contact: any): string {
+  if (contact?.legalForm) return legalFormLabel(contact.legalForm);
+  return contact?.contactType === 'PERSON' ? 'Personne physique' : NON_RENSEIGNE;
+}
+
+/** « Nom (Fonction) » du representant legal de la fiche, sinon « — ». */
+function partyRepresentative(contact: any): string {
+  const name = (contact?.representativeName || '').trim();
+  if (!name) return NON_RENSEIGNE;
+  const role = (contact?.representativeRole || '').trim();
+  return role ? `${name} (${role})` : name;
+}
+
+/** Champs communs aux deux baux pour le preneur : identite, coordonnees, adresse. */
+async function buildRenterFields(lease: any, tenantId: string, contact: any): Promise<Record<string, string>> {
+  const renter = lease.primaryRenter;
+  const details = parseClientDetails(renter);
+  const phone = contactPhone(contact) || (await getPhoneFromClient(renter, tenantId, 'LOCATAIRE'));
+  return {
+    LOCATAIRE_NOM: orDash(partyName(renter?.user, contact)),
+    LOCATAIRE_EMAIL: orDash(renter?.user?.email || contact?.email),
+    LOCATAIRE_TELEPHONE: orDash(phone),
+    LOCATAIRE_ADRESSE: joinPresent([contact?.address || details.address, contact?.district, contact?.city]),
+    LOCATAIRE_PIECE_ID: identityDocumentLabel(contact?.identityDocumentType, contact?.identityDocumentNumber)
+  };
+}
+
 /**
- * Build context for LEASE_HABITATION document
+ * Adresse du bailleur : celle de son proprietaire (fiche CRM du client bailleur)
+ * quand il est connu ; sans proprietaire connu, l'agence gestionnaire figure
+ * comme bailleur (voir `buildLandlordContext`), avec son adresse.
  */
-export async function buildLeaseHabitationContext(tenantId: string, leaseId: string): Promise<Record<string, any>> {
-  logger.info('buildLeaseHabitationContext: Starting', { tenantId, leaseId });
+function landlordAddress(lease: any, ownerContact: any): string {
+  const ownerUser = lease.ownerClient?.user || lease.property?.owner || null;
+  if (ownerUser?.fullName || ownerUser?.email) {
+    const details = parseClientDetails(lease.ownerClient);
+    return joinPresent([ownerContact?.address || details.address, ownerContact?.district, ownerContact?.city]);
+  }
+  return orDash(lease.tenant?.address || lease.tenant?.city);
+}
+
+/** Champs du bien communs aux deux baux. */
+function buildPropertyFields(property: any): Record<string, string> {
+  return {
+    DESCRIPTION_BIEN: orDash(property?.description || property?.title),
+    SUPERFICIE: formatSurface(property?.surfaceArea ?? property?.surfaceUseful),
+    EQUIPEMENTS: propertyEquipmentLabel(property)
+  };
+}
+
+/** Conditions financieres et durees du bail, telles que les modeles les lisent (« FCFA » est pose par le modele). */
+function buildLeaseTermsFields(lease: any): Record<string, string> {
+  return {
+    DATE_DEBUT_BAIL: orDash(formatDate(lease.start_date)),
+    DATE_FIN_BAIL: orDash(formatDate(lease.end_date)),
+    DUREE_BAIL: leaseDurationLabel(lease.start_date, lease.end_date),
+    // Sans devise : les modeles ecrivent « {{LOYER_MENSUEL}} FCFA ».
+    LOYER_MENSUEL: formatNumber(lease.rent_amount),
+    CHARGES_MENSUELLES: formatNumber(lease.service_charge_amount),
+    DEPOT_GARANTIE: formatNumber(lease.security_deposit_amount),
+    JOUR_ECHEANCE: orDash(lease.due_day_of_month),
+    DELAI_GRACE: String(lease.penalty_grace_days ?? 0),
+    TAUX_PENALITE: penaltyRateLabel(
+      lease.penalty_mode,
+      lease.penalty_rate,
+      formatAmount(lease.penalty_fixed_amount, lease.currency)
+    ),
+    CLAUSES_PARTICULIERES: orDash(lease.notes)
+  };
+}
+
+/** Champs propres au bail commercial : activite, forme juridique, RCCM, representants, charges, pas-de-porte. */
+function buildCommercialFields(lease: any, renterContact: any, ownerContact: any): Record<string, string> {
+  return {
+    ACTIVITE_COMMERCIALE: orDash(renterContact?.sectorOfActivity),
+    LOCATAIRE_FORME_JURIDIQUE: partyLegalForm(renterContact),
+    LOCATAIRE_RCCM: orDash(renterContact?.rccm),
+    LOCATAIRE_REPRESENTANT: partyRepresentative(renterContact),
+    BAILLEUR_FORME_JURIDIQUE: partyLegalForm(ownerContact),
+    BAILLEUR_REPRESENTANT: partyRepresentative(ownerContact),
+    DETAIL_CHARGES:
+      Number(lease.service_charge_amount) > 0 ? 'les charges de service convenues au bail' : NON_RENSEIGNE,
+    // Aucun champ « droit d'entree » sur le bail : a completer a la main.
+    PAS_DE_PORTE: NON_RENSEIGNE,
+    PREAVIS_PRENEUR: DEFAULT_NOTICE_COMMERCIAL
+  };
+}
+
+type LeaseKind = 'HABITATION' | 'COMMERCIAL';
+
+/**
+ * Build context for a lease contract (LEASE_HABITATION or LEASE_COMMERCIAL).
+ *
+ * Les cles historiques (`BAIL_*`, `BIEN_*`, `AGENCE_*`...) sont conservees pour
+ * les modeles d'agence personnalises ; les cles des modeles DOCX du depot
+ * (`contrat_bail_habitation.docx`, `contrat_bail_commercial.docx`) s'y ajoutent.
+ */
+async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: string): Promise<Record<string, any>> {
+  logger.info('buildLeaseContext: Starting', { kind, tenantId, leaseId });
 
   const lease = await prisma.rentalLease.findFirst({
     where: {
@@ -269,7 +427,7 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
     include: {
       property: {
         include: {
-          tenant: true
+          owner: { select: { id: true, email: true, fullName: true } }
         }
       },
       primaryRenter: {
@@ -320,6 +478,9 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
     return mapping[freq.toUpperCase()] || freq;
   };
 
+  const renterContact = await loadCrmContact(lease.primaryRenter, tenantId);
+  const ownerContact = await loadCrmContact(lease.ownerClient, tenantId);
+
   const context: Record<string, any> = {
     // Tenant (Agency) info
     AGENCE_NOM: lease.tenant.name || '',
@@ -345,39 +506,36 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
     BAIL_FREQUENCE: formatBillingFrequency(lease.billing_frequency),
     BAIL_JOUR_ECHEANCE: lease.due_day_of_month?.toString() || '',
 
-    // Renter info
-    LOCATAIRE_NOM: lease.primaryRenter?.user?.fullName || '',
-    LOCATAIRE_EMAIL: lease.primaryRenter?.user?.email || '',
-    LOCATAIRE_TELEPHONE: (await getPhoneFromClient(lease.primaryRenter, tenantId, 'LOCATAIRE')) || '',
-
-    // Owner info
-    BAILLEUR_NOM: lease.ownerClient?.user?.fullName || '',
-    BAILLEUR_EMAIL: lease.ownerClient?.user?.email || '',
-    BAILLEUR_TELEPHONE: (await getPhoneFromClient(lease.ownerClient, tenantId, 'BAILLEUR')) || '',
-
     // Dates
     DATE_GENERATION: formatDate(new Date()),
-    DATE_SIGNATURE: formatDate(lease.start_date)
+
+    // Champs des modeles DOCX du depot : preneur, bailleur (bien, type, adresse),
+    // bien, conditions du bail. Ils reprennent les cles ci-dessus quand elles
+    // existent (LOCATAIRE_*, BAILLEUR_*, DATE_SIGNATURE) avec « — » pour une
+    // donnee absente : le moteur remplace tout champ vide par `{{NOM}}`.
+    ...(await buildRenterFields(lease, tenantId, renterContact)),
+    ...(await buildCommonDocumentFields(lease, tenantId)),
+    BAILLEUR_ADRESSE: landlordAddress(lease, ownerContact),
+    ...buildPropertyFields(lease.property),
+    ...buildLeaseTermsFields(lease),
+    PREAVIS_PRENEUR: DEFAULT_NOTICE_HABITATION,
+    LIEU_SIGNATURE: issuePlace(lease.tenant),
+    // Date de signature : creation du bail, a defaut aujourd'hui.
+    DATE_SIGNATURE: formatDate(lease.created_at || new Date()),
+    ...(kind === 'COMMERCIAL' ? buildCommercialFields(lease, renterContact, ownerContact) : {})
   };
 
-  logger.info('buildLeaseHabitationContext: Context built', {
+  logger.info('buildLeaseContext: Context built', {
+    kind,
     leaseId: lease.id,
     tenantId: lease.tenant_id,
     tenantName: lease.tenant.name,
-    tenantAddress: lease.tenant.address,
     tenantCity: lease.tenant.city,
-    tenantContactPhone: lease.tenant.contactPhone,
-    tenantContactEmail: lease.tenant.contactEmail,
     hasLOCATAIRE_TELEPHONE: !!context.LOCATAIRE_TELEPHONE,
-    LOCATAIRE_TELEPHONE: context.LOCATAIRE_TELEPHONE,
     hasBAILLEUR_TELEPHONE: !!context.BAILLEUR_TELEPHONE,
-    BAILLEUR_TELEPHONE: context.BAILLEUR_TELEPHONE,
     hasAGENCE_ADRESSE: !!context.AGENCE_ADRESSE,
-    AGENCE_ADRESSE: context.AGENCE_ADRESSE,
     hasAGENCE_TELEPHONE: !!context.AGENCE_TELEPHONE,
-    AGENCE_TELEPHONE: context.AGENCE_TELEPHONE,
-    hasAGENCE_EMAIL: !!context.AGENCE_EMAIL,
-    AGENCE_EMAIL: context.AGENCE_EMAIL
+    hasAGENCE_EMAIL: !!context.AGENCE_EMAIL
   });
 
   // Add co-renters if any
@@ -392,11 +550,19 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
 }
 
 /**
- * Build context for LEASE_COMMERCIAL document
+ * Build context for LEASE_HABITATION document
+ */
+export async function buildLeaseHabitationContext(tenantId: string, leaseId: string): Promise<Record<string, any>> {
+  return buildLeaseContext('HABITATION', tenantId, leaseId);
+}
+
+/**
+ * Build context for LEASE_COMMERCIAL document : les champs du bail d'habitation,
+ * plus ceux du modele commercial (activite, RCCM, forme juridique, representants,
+ * detail des charges, pas-de-porte, preavis commercial).
  */
 export async function buildLeaseCommercialContext(tenantId: string, leaseId: string): Promise<Record<string, any>> {
-  // Similar to habitation but with commercial-specific fields
-  return buildLeaseHabitationContext(tenantId, leaseId);
+  return buildLeaseContext('COMMERCIAL', tenantId, leaseId);
 }
 
 /**

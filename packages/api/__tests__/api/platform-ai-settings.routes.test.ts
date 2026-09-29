@@ -14,7 +14,7 @@ const mockEnv: Record<string, unknown> = {
   ANTHROPIC_API_KEY: 'sk-ant-SUPER-SECRET-VALUE',
   OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1'
 };
-jest.mock('../../src/config/env', () => ({ env: mockEnv, isProduction: false }));
+jest.mock('../../src/config/env', () => ({ env: mockEnv, isProduction: false, fakeProviderAllowed: () => true }));
 
 jest.mock('../../src/middleware/auth-middleware', () => ({
   authenticate: (req: any, res: any, next: any) => {

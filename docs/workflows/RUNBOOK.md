@@ -217,6 +217,28 @@ Isolation multi-tenant de bout en bout :
 npm run test:isolation -w @immotopia/api
 ```
 
+Rejouer la suite dans un environnement neuf (sans `.env`, tout en variables
+d'environnement) :
+
+```bash
+# Base vierge dédiée (PostgreSQL 16 ; « immo » = super-utilisateur local)
+PGPASSWORD=immo_local_pw psql -h localhost -U immo -d postgres \
+  -c 'CREATE DATABASE immotopia_isolation'
+
+export DATABASE_URL_TEST="postgresql://immo:immo_local_pw@localhost:5432/immotopia_isolation"
+export JWT_SECRET="$(openssl rand -hex 48)"   # sans lui, l'API ne démarre pas
+npm run test:isolation -w @immotopia/api
+```
+
+Le runner recopie `DATABASE_URL_TEST` dans `DATABASE_URL`, applique lui-même
+`prisma migrate deploy` ; aucun seed n'est nécessaire (les fixtures créent le
+rôle `TENANT_ADMIN` et ses permissions). **Un succès se lit dans « Tests: 43
+passed, 43 total »** (suite `api-app`), jamais dans le seul code de sortie : sans
+base, le script sort en succès et la suite s'ignore. Jest signale « did not exit
+one second after the test run » (file d'audit ouverte) : sans effet sur le
+résultat. Les données de test des baux restent en base (pas de cascade
+`rental_*` dans le nettoyage) : la base est jetable.
+
 i18n (voir aussi [docs/architecture/i18n.md](../architecture/i18n.md)) :
 
 ```bash
@@ -229,6 +251,12 @@ Retoucher un texte français casse sa traduction existante ;
 `i18n:extract` déplace alors la traduction devenue orpheline dans un
 `*.orphans.json` au lieu de la perdre silencieusement — la reporter à la
 main sur la nouvelle clé.
+
+**Piège connu (API).** `npm run i18n:extract -w @immotopia/api` déplace en
+`*.orphans.json` les deux clés « Le pack Patrimoine… » de
+`middleware/error-middleware.ts` : elles passent par `t(variable)`, que
+l'extracteur ne voit pas. Après l'extraction, les restaurer à la main dans
+les catalogues (`en.json`, `ar.json`) et vider l'orphelin correspondant.
 
 ## Worktrees git (`.claude/worktrees/*`)
 
@@ -337,27 +365,33 @@ l'exécution aussi. Appliquer la migration `20261004090000_platform_ai_settings`
 Variables du backend (validées par `packages/api/src/config/env.ts`,
 documentées dans `packages/api/env.example`) :
 
-| Variable                  | Défaut                         | Rôle                                                                                                                                                   |
-| ------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AI_PROVIDER`             | `disabled`                     | `disabled`, `fake` (déterministe, refusé en production), `anthropic` ou `openrouter`.                                                                  |
-| `ANTHROPIC_API_KEY`       | aucune                         | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`.                                                      |
-| `OPENROUTER_API_KEY`      | aucune                         | Exigée si `AI_PROVIDER=openrouter`. Mêmes règles que la clé Anthropic (jamais par défaut ni `VITE_*`).                                                 |
-| `OPENROUTER_BASE_URL`     | `https://openrouter.ai/api/v1` | Point d'entrée OpenAI-compatible d'OpenRouter.                                                                                                         |
-| `AI_MODEL`                | `claude-opus-5-5`              | Modèle : `claude-opus-5-5` pour `anthropic` ; identifiant OpenRouter `fournisseur/modele` (ex. `anthropic/claude-sonnet-4.5`) exigé pour `openrouter`. |
-| `AI_EFFORT`               | `low`                          | Effort de raisonnement (`anthropic` seulement) : `low`, `medium` ou `high`.                                                                            |
-| `AI_MAX_OUTPUT_TOKENS`    | `16000`                        | Plafond de tokens de sortie par tour (1024 à 64000).                                                                                                   |
-| `AI_MAX_TOOL_ROUNDS`      | `4`                            | Tours d'outils maximum par requête de chat (1 à 8).                                                                                                    |
-| `AI_REQUEST_TIMEOUT_MS`   | `60000`                        | Délai maximal d'un appel au fournisseur.                                                                                                               |
-| `AI_PROPOSAL_TTL_SECONDS` | `300`                          | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.                                                                    |
-| `AI_REFUSAL_FALLBACK`     | `on`                           | Repli serveur en cas de refus (`anthropic` seulement) ; `off` le coupe.                                                                                |
+| Variable                  | Défaut                         | Rôle                                                                                                                                                                                  |
+| ------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_PROVIDER`             | `disabled`                     | `disabled`, `fake` (déterministe, dev et test seulement, voir ci-dessous), `anthropic` ou `openrouter`. Simple valeur par défaut : le réglage du super-admin en base est prioritaire. |
+| `ANTHROPIC_API_KEY`       | aucune                         | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`.                                                                                     |
+| `OPENROUTER_API_KEY`      | aucune                         | Exigée si `AI_PROVIDER=openrouter`. Mêmes règles que la clé Anthropic (jamais par défaut ni `VITE_*`).                                                                                |
+| `OPENROUTER_BASE_URL`     | `https://openrouter.ai/api/v1` | Point d'entrée OpenAI-compatible d'OpenRouter.                                                                                                                                        |
+| `AI_MODEL`                | `claude-opus-5-5`              | Modèle par défaut : `claude-opus-5-5` pour `anthropic` ; identifiant OpenRouter `fournisseur/modele` (ex. `anthropic/claude-sonnet-4.5`) exigé pour `openrouter`.                     |
+| `AI_EFFORT`               | `low`                          | Effort de raisonnement (`anthropic` seulement) : `low`, `medium` ou `high`.                                                                                                           |
+| `AI_MAX_OUTPUT_TOKENS`    | `16000`                        | Plafond de tokens de sortie par tour (1024 à 64000).                                                                                                                                  |
+| `AI_MAX_TOOL_ROUNDS`      | `4`                            | Tours d'outils maximum par requête de chat (1 à 8).                                                                                                                                   |
+| `AI_REQUEST_TIMEOUT_MS`   | `60000`                        | Délai maximal d'un appel au fournisseur.                                                                                                                                              |
+| `AI_PROPOSAL_TTL_SECONDS` | `300`                          | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.                                                                                                   |
+| `AI_REFUSAL_FALLBACK`     | `on`                           | Repli serveur en cas de refus (`anthropic` seulement) ; `off` le coupe.                                                                                                               |
+| `AI_TENANT_MINUTE_LIMIT`  | `100`                          | Plafond de `POST /ai/chat` par minute et PAR AGENCE, tous collaborateurs confondus (1 à 100000).                                                                                      |
+| `AI_TENANT_DAILY_LIMIT`   | `3000`                         | Plafond de `POST /ai/chat` par jour et PAR AGENCE (1 à 1000000).                                                                                                                      |
 
-Sans ces réglages, le serveur ne démarre pas dans quatre cas : `openrouter` sans
-`OPENROUTER_API_KEY` ou avec un `AI_MODEL` sans `/` ; `anthropic` sans
-`ANTHROPIC_API_KEY`, et `fake` avec `NODE_ENV=production`. Faire tourner
+Le serveur ne démarre pas dans trois cas : `anthropic` sans `ANTHROPIC_API_KEY`,
+`openrouter` sans `OPENROUTER_API_KEY` ou avec un `AI_MODEL` sans `/`, et `fake` dès que la variable **brute** `NODE_ENV` n'est pas explicitement
+`development` ou `test` (absente, `production`, `staging`… : refus, alors que
+`NODE_ENV` absent vaut `development` partout ailleurs). Avec `fake`, un
+avertissement est écrit au démarrage. Les plafonds par agence s'ajoutent aux
+limites par utilisateur (20 par minute, 300 par jour). Faire tourner
 `JWT_SECRET` invalide les propositions en cours (5 minutes au plus).
 
 **Activer en démonstration.** Poser `AI_PROVIDER=fake` dans la ligne de commande
-de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), jamais
+de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), avec
+`NODE_ENV=development` explicite, jamais
 dans un `.env` commité, puis relancer l'API. Le faux fournisseur répond par
 règles sur mots-clés (biens et commune, « quittance » avec un numéro de bail
 `L-…` et une période, « documents »), sans réseau ni clé. La quittance exige un
@@ -370,7 +404,27 @@ téléchargement de document.
 décision juridique sur le transfert de données personnelles au fournisseur (voir
 SECURITY.md). Le module et l'abonnement suivent `SUBSCRIPTION_ENFORCEMENT` : en
 `enforce`, les outils `RENTAL` exigent le module Location. L'API doit tourner en
-**une seule instance** (usage unique des jetons et limiteurs en mémoire).
+**la confirmation est atomique entre instances** (usage unique des jetons et
+idempotence des quittances sous verrous consultatifs PostgreSQL), mais les
+**limiteurs de débit restent en mémoire, par instance** : avec N instances, les
+plafonds effectifs sont multipliés par N.
+
+**Rejouer le test de concurrence** (usage unique et quittances, deux
+connexions simultanées sur une vraie base). Il exige une base PostgreSQL
+DÉDIÉE et `DATABASE_URL`, `DATABASE_URL_TEST` et `TEST_DATABASE_URL`
+**identiques** ; sinon il s'ignore sans échouer. Depuis `packages/api`, migrations
+appliquées d'abord :
+
+```bash
+npx prisma migrate deploy   # avec DATABASE_URL pointant sur la base jetable
+DATABASE_URL_TEST="postgresql://…/base" TEST_DATABASE_URL="postgresql://…/base" \
+  DATABASE_URL="postgresql://…/base" JWT_SECRET="$(openssl rand -hex 48)" \
+  npx jest --selectProjects api --runTestsByPath __tests__/integration/ai-concurrency.test.ts
+```
+
+Ne jamais écrire d'identifiants réels dans un fichier commité ; `JWT_SECRET` est
+généré à la volée. Le test remplace `generateDocument` par un double : il prouve
+l'exclusion mutuelle, pas le rendu DOCX.
 
 **Proxy et flux SSE.** `POST /ai/chat` répond en `text/event-stream` et envoie
 `Cache-Control: no-cache, no-transform` et `X-Accel-Buffering: no`. Le proxy ne
@@ -389,7 +443,12 @@ coupe en milieu de réponse.
   `PROPERTIES_VIEW` ni `RENTAL_*` pour cet utilisateur (ou module absent en
   `enforce`). Le bouton est masqué pour le super-admin et les portails.
 - 429 `RATE_LIMITED` : 20 messages par minute et 300 par jour, 10 confirmations
-  par minute, par utilisateur et par agence.
+  par minute, par utilisateur et par agence ; en plus, `AI_TENANT_MINUTE_LIMIT`
+  et `AI_TENANT_DAILY_LIMIT` pour toute l'agence (message « … par votre agence »).
+- Serveur qui refuse de démarrer sur `AI_PROVIDER` : `fake` sans `NODE_ENV`
+  explicite `development` ou `test`.
+- Confirmation refusée (403, « Vous n'avez plus la permission… ») : il faut
+  `RENTAL_DOCUMENTS_GENERATE` **et** `RENTAL_DOCUMENTS_VIEW`.
 - `PROPOSAL_EXPIRED` (410) : la proposition a plus de `AI_PROPOSAL_TTL_SECONDS` ;
   la redemander. `PROPOSAL_ALREADY_USED` (409) : déjà confirmée.
 

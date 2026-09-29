@@ -282,6 +282,13 @@ export interface CopilotToolContext {
   requestId: string;
   conversationId: string;
   signal: AbortSignal;
+  /**
+   * Baux « vus » pendant CETTE requête de chat : renvoyés par `search_leases`,
+   * `list_lease_documents`, ou l'entité de l'écran vérifié. `propose_rental_document`
+   * refuse un bail absent de cet ensemble (défense contre l'injection de prompt).
+   * Mutable, propre à la requête.
+   */
+  seenLeaseIds: Set<string>;
 }
 
 export interface CopilotToolOutcome {
@@ -295,6 +302,8 @@ export interface CopilotToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   inputSchema: S;
   jsonSchema: Record<string, unknown>;
   requiredPermission: string;
+  /** Permissions supplémentaires, toutes exigées (ex. voir le document généré pour le télécharger). */
+  additionalPermissions?: readonly string[];
   feature: 'CORE' | 'RENTAL';
   kind: 'read' | 'proposal';
   execute(input: z.infer<S>, ctx: CopilotToolContext): Promise<CopilotToolOutcome>;

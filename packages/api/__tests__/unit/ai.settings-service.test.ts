@@ -7,9 +7,7 @@ const mockEnv: Record<string, unknown> = {};
 let mockIsProd = false;
 jest.mock('../../src/config/env', () => ({
   env: mockEnv,
-  get isProduction() {
-    return mockIsProd;
-  }
+  fakeProviderAllowed: () => !mockIsProd
 }));
 
 const mockPrisma = {

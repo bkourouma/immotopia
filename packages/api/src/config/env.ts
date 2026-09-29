@@ -22,6 +22,16 @@ const PLACEHOLDER_SECRETS = new Set([
 
 const MIN_SECRET_LENGTH = 32;
 
+/**
+ * Le faux fournisseur d'ImmoCopilot (`AI_PROVIDER=fake`) répond sans clé ni
+ * contrôle : réservé aux postes de développement et aux tests. NODE_ENV vaut
+ * 'development' quand il est absent ; c'est donc la variable BRUTE qui est
+ * examinée : un déploiement qui oublie NODE_ENV ne peut pas activer `fake`.
+ */
+export function fakeProviderAllowed(rawNodeEnv: string | undefined): boolean {
+  return rawNodeEnv === 'development' || rawNodeEnv === 'test';
+}
+
 const secretSchema = z
   .string({ required_error: 'variable requise' })
   .min(MIN_SECRET_LENGTH, `doit faire au moins ${MIN_SECRET_LENGTH} caractères`)
@@ -140,7 +150,11 @@ const envSchema = z
     AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(8).default(4),
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     AI_PROPOSAL_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
-    AI_REFUSAL_FALLBACK: z.enum(['on', 'off']).default('on')
+    AI_REFUSAL_FALLBACK: z.enum(['on', 'off']).default('on'),
+    // Plafonds PAR AGENCE (tous collaborateurs confondus) sur POST /ai/chat, en
+    // plus des limites par utilisateur (rate-limit-middleware.ts).
+    AI_TENANT_MINUTE_LIMIT: z.coerce.number().int().min(1).max(100000).default(100),
+    AI_TENANT_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000000).default(3000)
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
@@ -170,11 +184,14 @@ const envSchema = z
         });
       }
     }
-    if (value.AI_PROVIDER === 'fake' && value.NODE_ENV === 'production') {
+    // Liste blanche : `fake` n'est accepté que pour NODE_ENV=development ou test,
+    // jamais quand NODE_ENV est absent d'un déploiement (qui vaut alors 'development'
+    // par défaut) ni pour une valeur intermédiaire ('staging', 'production'...).
+    if (value.AI_PROVIDER === 'fake' && !fakeProviderAllowed(process.env.NODE_ENV)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['AI_PROVIDER'],
-        message: "le faux fournisseur 'fake' est interdit en production"
+        message: "le faux fournisseur 'fake' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
       });
     }
   });
@@ -204,6 +221,13 @@ function loadEnv(): Env {
   }
 
   const env = parsed.data;
+
+  if (env.AI_PROVIDER === 'fake') {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '⚠️  AI_PROVIDER=fake : ImmoCopilot répond avec le faux fournisseur déterministe (développement et recette uniquement).'
+    );
+  }
 
   if (env.NODE_ENV === 'production') {
     if (env.FRONTEND_URL.startsWith('http://localhost')) {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { env, isProduction } from '../config/env';
+import { env, fakeProviderAllowed } from '../config/env';
 import { t } from '../i18n';
 import { ValidationError } from '../middleware/error-middleware';
 import { AuditActionKey } from '../types/audit-types';
@@ -130,7 +130,7 @@ export function listAiProviders(): AiProviderAvailability[] {
   const missingKey = t('Clé API absente du serveur.');
   return [
     { id: 'disabled', label: t('Désactivé'), available: true },
-    isProduction
+    !fakeProviderAllowed(process.env.NODE_ENV)
       ? { id: 'fake', label: t('Faux fournisseur (tests)'), available: false, reason: t('Interdit en production.') }
       : { id: 'fake', label: t('Faux fournisseur (tests)'), available: true },
     keys.anthropic
@@ -152,7 +152,7 @@ export function isProviderUsable(config: Pick<AiSettingsInput, 'provider' | 'mod
     case 'disabled':
       return false;
     case 'fake':
-      return !isProduction;
+      return fakeProviderAllowed(process.env.NODE_ENV);
     case 'anthropic':
       return Boolean(env.ANTHROPIC_API_KEY);
     case 'openrouter':
@@ -204,7 +204,7 @@ function assertSettingsAllowed(input: AiSettingsInput): void {
   if (input.provider === 'anthropic' && !keys.anthropic) {
     errors.push({ field: 'provider', message: t("La clé Anthropic n'est pas configurée sur le serveur.") });
   }
-  if (input.provider === 'fake' && isProduction) {
+  if (input.provider === 'fake' && !fakeProviderAllowed(process.env.NODE_ENV)) {
     errors.push({ field: 'provider', message: t('Le faux fournisseur est interdit en production.') });
   }
   if (errors.length > 0) throw new ValidationError(t('Réglage IA invalide.'), errors);

@@ -2,9 +2,9 @@ import { createHmac, hkdfSync, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/error-middleware';
-import { prisma } from '../../utils/database';
 import { AuditActionKey } from '../../types/audit-types';
 import { t } from '../../i18n';
+import { withTransactionalAdvisoryLock } from './advisory-lock';
 import type { GenerateRentalDocumentArgs, ProposalClaims } from './contracts';
 
 /**
@@ -197,10 +197,14 @@ export function resetProposalUsageForTests(): void {
 }
 
 /**
- * Réclame le jeton : table mémoire (réservation synchrone, donc sûre contre un
- * double clic simultané) puis ligne `AuditLog` `AI_PROPOSAL_REDEEMED` lue
- * (`findFirst`) et écrite (`create`) de façon synchrone — elle survit à un
- * redémarrage, contrairement à la table.
+ * Réclame le jeton. Deux remparts :
+ * 1. table mémoire (réservation synchrone : double clic simultané dans ce
+ *    processus, sans aller-retour base) ;
+ * 2. ligne `AuditLog` `AI_PROPOSAL_REDEEMED`, lue (`findFirst`) puis écrite
+ *    (`create`) sous un verrou consultatif PostgreSQL transactionnel propre au
+ *    jeton (`lib/ai/advisory-lock.ts`) : deux instances d'API, ou un
+ *    redémarrage entre deux requêtes, ne peuvent pas toutes deux voir « absent »
+ *    puis écrire. Aucune contrainte d'unicité ni colonne n'est nécessaire.
  *
  * @throws ProposalError `PROPOSAL_ALREADY_USED` (409) si déjà réclamé. Une panne
  *         de base libère la réservation puis remonte l'erreur.
@@ -212,22 +216,24 @@ export async function redeemProposal(claims: ProposalClaims): Promise<void> {
   usedProposals.set(claims.jti, claims.exp + USED_RETENTION_SECONDS);
 
   try {
-    const previous = await prisma.auditLog.findFirst({
-      where: { tenantId: claims.tid, actionKey: AuditActionKey.AI_PROPOSAL_REDEEMED, entityId: claims.jti },
-      select: { id: true }
-    });
-    if (previous) throw new ProposalError('PROPOSAL_ALREADY_USED', 'ALREADY_USED', claims.jti);
+    await withTransactionalAdvisoryLock(`ai-proposal:${claims.tid}:${claims.jti}`, async tx => {
+      const previous = await tx.auditLog.findFirst({
+        where: { tenantId: claims.tid, actionKey: AuditActionKey.AI_PROPOSAL_REDEEMED, entityId: claims.jti },
+        select: { id: true }
+      });
+      if (previous) throw new ProposalError('PROPOSAL_ALREADY_USED', 'ALREADY_USED', claims.jti);
 
-    await prisma.auditLog.create({
-      data: {
-        actorUserId: claims.sub,
-        tenantId: claims.tid,
-        actionKey: AuditActionKey.AI_PROPOSAL_REDEEMED,
-        entityType: 'AI_PROPOSAL',
-        entityId: claims.jti,
-        payload: { act: claims.act, docType: claims.args.docType, leaseId: claims.args.leaseId }
-      },
-      select: { id: true }
+      await tx.auditLog.create({
+        data: {
+          actorUserId: claims.sub,
+          tenantId: claims.tid,
+          actionKey: AuditActionKey.AI_PROPOSAL_REDEEMED,
+          entityType: 'AI_PROPOSAL',
+          entityId: claims.jti,
+          payload: { act: claims.act, docType: claims.args.docType, leaseId: claims.args.leaseId }
+        },
+        select: { id: true }
+      });
     });
   } catch (error) {
     if (!(error instanceof ProposalError)) usedProposals.delete(claims.jti);
