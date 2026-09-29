@@ -99,4 +99,15 @@ describe('listProperties — isolation tenant du OR (garde Prisma)', () => {
     // tenantId (mandat) ou null (proprietaire seul) : jamais l'agence d'un tiers.
     expect(mentionsTenant(clientBranch, 'tenantId')).toBe(true);
   });
+
+  it('excludePublicListings retire la branche PUBLIC et garde TENANT et CLIENT bornés à l’agence', async () => {
+    await listProperties(TENANT_ID, null, { excludePublicListings: true });
+
+    const where = findManyMock.mock.calls[0][0].where;
+    expect(where.OR.some((branch: any) => branch.ownershipType === 'PUBLIC')).toBe(false);
+    expect(where.OR.map((branch: any) => branch.ownershipType).sort()).toEqual(['CLIENT', 'TENANT']);
+    expect(mentionsTenant(where, 'tenantId')).toBe(true);
+    // Le total est compté avec le même filtre que la page.
+    expect(countMock.mock.calls[0][0].where).toEqual(where);
+  });
 });

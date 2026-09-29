@@ -44,7 +44,10 @@ const OUTSIDE_SUBSCRIPTION: Array<{ prefix: string; exact?: boolean; reason: str
   { prefix: '/api/newsletter', reason: 'Newsletter publique (inscription, desinscription).' },
   { prefix: '/api/property-templates', reason: 'Referentiel commun de gabarits.' },
   { prefix: '/api/tenants', exact: true, reason: "Vitrine d'agences." },
-  ...NON_TENANT_SEGMENTS.map(segment => ({ prefix: `/api/tenants/${segment}`, reason: 'Hors agence (tenant-routes.ts).' }))
+  ...NON_TENANT_SEGMENTS.map(segment => ({
+    prefix: `/api/tenants/${segment}`,
+    reason: 'Hors agence (tenant-routes.ts).'
+  }))
 ];
 
 /** Regles sans route aujourd'hui, posees d'avance a dessein. */
@@ -84,9 +87,7 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
   });
 
   it('aucune autre route ne sort des familles hors abonnement', () => {
-    const stray = routes
-      .filter(r => !tenantRoutes.includes(r) && !outside(r.path))
-      .map(r => `${r.method} ${r.path}`);
+    const stray = routes.filter(r => !tenantRoutes.includes(r) && !outside(r.path)).map(r => `${r.method} ${r.path}`);
     expect(stray).toEqual([]);
   });
 
@@ -128,10 +129,20 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     expect(classifyTenantRoute('/')).toBe('CORE');
   });
 
-  it("distingue lecture et ecriture (export et recherche = lecture)", () => {
+  it("classe l'assistant ImmoCopilot : statut et chat = socle, confirmation = location", () => {
+    expect(classifyTenantRoute('/ai/status')).toBe('CORE');
+    expect(classifyTenantRoute('/ai/chat')).toBe('CORE');
+    expect(classifyTenantRoute('/ai/actions/execute')).toBe('RENTAL');
+  });
+
+  it('distingue lecture et ecriture (export et recherche = lecture)', () => {
     expect(isWriteRequest('GET', '/finance/cash-vouchers/abc.pdf')).toBe(false);
     expect(isWriteRequest('POST', '/properties/search')).toBe(false);
     expect(isWriteRequest('POST', '/properties')).toBe(true);
+    // Le chat de l'assistant est un POST de lecture ; la confirmation est bien une ecriture.
+    expect(isWriteRequest('POST', '/ai/chat')).toBe(false);
+    expect(isWriteRequest('POST', '/ai/actions/execute')).toBe(true);
+    expect(isWriteRequest('GET', '/ai/status')).toBe(false);
     expect(isWriteRequest('DELETE', '/syndics/abc')).toBe(true);
   });
 });

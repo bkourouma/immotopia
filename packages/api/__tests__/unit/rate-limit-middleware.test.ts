@@ -84,3 +84,43 @@ describe('loginRateLimiter', () => {
     expect(cinquiemeEchec.status).toBe(400);
   });
 });
+
+describe('limiteurs ImmoCopilot — message traduit', () => {
+  /** La langue de la requête vient de l'en-tête `x-lang` (le vrai middleware lit Accept-Language). */
+  function appIa(name: 'aiChatRateLimiter' | 'aiActionRateLimiter') {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const limiters = require('../../src/middleware/rate-limit-middleware');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { runWithLanguage } = require('../../src/i18n');
+    const app = express();
+    app.post(
+      '/ia',
+      (req, res, next) =>
+        runWithLanguage(req.header('x-lang') === 'en' ? 'en' : 'fr', () => limiters[name](req, res, next)),
+      (_req, res) => res.json({ ok: true })
+    );
+    return app;
+  }
+
+  it.each([
+    ['aiChatRateLimiter', 20, /assistant/],
+    ['aiActionRateLimiter', 10, /confirmations/]
+  ] as const)('%s : 429 RATE_LIMITED, message en français puis en anglais', async (name, max, fragment) => {
+    const app = appIa(name);
+    for (let i = 0; i < max; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await request(app).post('/ia');
+      expect(ok.status).toBe(200);
+    }
+    const fr = await request(app).post('/ia');
+    expect(fr.status).toBe(429);
+    expect(fr.body).toMatchObject({ success: false, code: 'RATE_LIMITED' });
+    expect(fr.body.message).toMatch(/Réessayez/);
+    expect(fr.body.message).toMatch(fragment);
+
+    const en = await request(app).post('/ia').set('x-lang', 'en');
+    expect(en.status).toBe(429);
+    expect(en.body.message).toMatch(/Try again/);
+    expect(en.body.message).not.toMatch(/Réessayez/);
+  });
+});

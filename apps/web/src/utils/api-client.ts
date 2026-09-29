@@ -136,7 +136,7 @@ export function refreshSession(): Promise<void> {
 }
 
 /** Send the user to login, preserving where they were headed. */
-function redirectToLogin(): void {
+export function redirectToLogin(): void {
   if (window.location.pathname.includes('/login')) {
     return;
   }

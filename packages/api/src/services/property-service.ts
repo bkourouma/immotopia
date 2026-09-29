@@ -639,6 +639,12 @@ export async function listProperties(
     maxRooms?: number;
     minBedrooms?: number;
     maxBedrooms?: number;
+    /**
+     * Avec un `tenantId` : exclut les biens PUBLIC publies d'autres agences
+     * (annonces independantes) et ne garde que les biens de l'agence
+     * (propres ou sous mandat). Sans effet sans `tenantId`.
+     */
+    excludePublicListings?: boolean;
     page?: number;
     limit?: number;
   }
@@ -662,7 +668,9 @@ export async function listProperties(
   if (tenantId) {
     where.OR = [
       { ownershipType: PropertyOwnershipType.TENANT, tenantId },
-      { ownershipType: PropertyOwnershipType.PUBLIC, isPublished: true, tenantId: null },
+      ...(filters?.excludePublicListings
+        ? []
+        : [{ ownershipType: PropertyOwnershipType.PUBLIC, isPublished: true, tenantId: null }]),
       {
         ownershipType: PropertyOwnershipType.CLIENT,
         OR: [{ tenantId }, { tenantId: null }],

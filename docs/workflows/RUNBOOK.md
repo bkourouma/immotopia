@@ -310,6 +310,71 @@ Options de `provision` : `--items CODE[:QTE],…` (codes du catalogue),
 (`MONTHLY` par défaut, `ANNUAL`). En local, depuis la racine du dépôt :
 `npm run ops:provision-subscription -w @immotopia/api -- <action> …`.
 
+## Assistant IA (ImmoCopilot)
+
+Assistant conversationnel des collaborateurs d'agence (bouton « Assistant »,
+Ctrl/Cmd+J). **Désactivé par défaut** : sans variable `AI_*`, l'application
+démarre et fonctionne normalement, le bouton n'apparaît pas et
+`POST /api/tenants/:tenantId/ai/chat` répond 503 `AI_DISABLED`. Décision :
+[ADR-004](../architecture/adr/ADR-004-assistant-ia-immocopilot.md) ; modèle de
+menace : [SECURITY.md](../governance/SECURITY.md) (section « Assistant IA »).
+
+Variables du backend (validées par `packages/api/src/config/env.ts`,
+documentées dans `packages/api/env.example`) :
+
+| Variable                  | Défaut            | Rôle                                                                                              |
+| ------------------------- | ----------------- | ------------------------------------------------------------------------------------------------- |
+| `AI_PROVIDER`             | `disabled`        | `disabled`, `fake` (déterministe, refusé en production) ou `anthropic`.                           |
+| `ANTHROPIC_API_KEY`       | aucune            | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`. |
+| `AI_MODEL`                | `claude-opus-5-5` | Modèle du fournisseur `anthropic`.                                                                |
+| `AI_EFFORT`               | `low`             | Effort de raisonnement : `low`, `medium` ou `high`.                                               |
+| `AI_MAX_OUTPUT_TOKENS`    | `16000`           | Plafond de tokens de sortie par tour (1024 à 64000).                                              |
+| `AI_MAX_TOOL_ROUNDS`      | `4`               | Tours d'outils maximum par requête de chat (1 à 8).                                               |
+| `AI_REQUEST_TIMEOUT_MS`   | `60000`           | Délai maximal d'un appel au fournisseur.                                                          |
+| `AI_PROPOSAL_TTL_SECONDS` | `300`             | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.               |
+| `AI_REFUSAL_FALLBACK`     | `on`              | Repli serveur en cas de refus du modèle ; `off` le coupe.                                         |
+
+Sans ces réglages, le serveur ne démarre pas dans deux cas : `anthropic` sans
+`ANTHROPIC_API_KEY`, et `fake` avec `NODE_ENV=production`. Faire tourner
+`JWT_SECRET` invalide les propositions en cours (5 minutes au plus).
+
+**Activer en démonstration.** Poser `AI_PROVIDER=fake` dans la ligne de commande
+de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), jamais
+dans un `.env` commité, puis relancer l'API. Le faux fournisseur répond par
+règles sur mots-clés (biens et commune, « quittance » avec un numéro de bail
+`L-…` et une période, « documents »), sans réseau ni clé. La quittance exige un
+paiement encaissé pour la période et un modèle `RENT_RECEIPT` actif ; le relevé
+un modèle `RENT_STATEMENT` (le seed ne sème que la quittance). `TENANT_AGENT` n'a
+aucune permission `RENTAL_*` par défaut : il ne voit ni proposition ni
+téléchargement de document.
+
+**Activer en production (`anthropic`).** Avant de poser la clé, obtenir la
+décision juridique sur le transfert de données personnelles au fournisseur (voir
+SECURITY.md). Le module et l'abonnement suivent `SUBSCRIPTION_ENFORCEMENT` : en
+`enforce`, les outils `RENTAL` exigent le module Location. L'API doit tourner en
+**une seule instance** (usage unique des jetons et limiteurs en mémoire).
+
+**Proxy et flux SSE.** `POST /ai/chat` répond en `text/event-stream` et envoie
+`Cache-Control: no-cache, no-transform` et `X-Accel-Buffering: no`. Le proxy ne
+doit ni mettre la réponse en tampon (`proxy_buffering off` sur cette route, ou
+respecter l'en-tête `X-Accel-Buffering`) ni la compresser, et son délai de
+lecture doit dépasser le plus long silence du flux : `proxy_read_timeout` d'au
+moins 120 s (valeur actuelle de `infra/nginx/*.conf`, à conserver ; l'API envoie
+un commentaire `: ping` toutes les 15 s). Symptôme d'un tampon : le texte
+n'arrive qu'à la fin, d'un bloc. Symptôme d'un délai trop court : le flux se
+coupe en milieu de réponse.
+
+**Dépannage rapide.**
+
+- Bouton absent : `GET /api/tenants/:tenantId/ai/status` doit répondre
+  `enabled: true`. `NOT_CONFIGURED` = `AI_PROVIDER=disabled` ; `NO_TOOLS` = ni
+  `PROPERTIES_VIEW` ni `RENTAL_*` pour cet utilisateur (ou module absent en
+  `enforce`). Le bouton est masqué pour le super-admin et les portails.
+- 429 `RATE_LIMITED` : 20 messages par minute et 300 par jour, 10 confirmations
+  par minute, par utilisateur et par agence.
+- `PROPOSAL_EXPIRED` (410) : la proposition a plus de `AI_PROPOSAL_TTL_SECONDS` ;
+  la redemander. `PROPOSAL_ALREADY_USED` (409) : déjà confirmée.
+
 ## Dépannage
 
 ### CORS / mauvais port

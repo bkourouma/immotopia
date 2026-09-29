@@ -72,6 +72,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/users', feature: 'CORE' },
   { prefix: '/dashboard', feature: 'CORE' },
   { prefix: '/documents', feature: 'CORE' },
+  { prefix: '/ai', feature: 'CORE', note: 'Assistant ImmoCopilot : statut et chat (lecture seule, aucune écriture).' },
   { prefix: '/maintenance', feature: 'CORE' },
   { prefix: '/email-notifications', feature: 'CORE' },
   { prefix: '/whatsapp-notifications', feature: 'CORE' },
@@ -119,6 +120,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
 
   // ------------------------------------------------------------ gestion locative
   { prefix: '/rental', feature: 'RENTAL', note: 'Baux, echeances, paiements, penalites, etats des lieux.' },
+  {
+    prefix: '/ai/actions',
+    feature: 'RENTAL',
+    note: "Confirmation d'une quittance ou d'un relevé proposé par l'assistant (génère un document de location)."
+  },
   { prefix: '/owner-statements', feature: 'RENTAL' },
   { prefix: '/owner-accounts', feature: 'RENTAL' },
   { prefix: '/settings/finance/owners', feature: 'RENTAL', note: 'Honoraires de gestion par mandant.' },
@@ -180,7 +186,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
  * permises a un module en lecture seule (D11 : lecture et export).
  * Chemins relatifs, meme syntaxe que la table.
  */
-export const READ_LIKE_POSTS: readonly string[] = ['/properties/search'];
+export const READ_LIKE_POSTS: readonly string[] = ['/properties/search', '/ai/chat'];
 
 /**
  * Premiers segments sous `/api/tenants/` qui ne sont PAS un identifiant
