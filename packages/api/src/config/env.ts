@@ -119,11 +119,40 @@ const envSchema = z
     // Abonnements par packs (lib/subscription, docs/architecture/PLAN-ABONNEMENTS.md).
     // `off` : droits calcules mais jamais appliques ; `warn` : modules,
     // lecture seule et quotas journalises sans bloquer ; `enforce` : appliques.
-    SUBSCRIPTION_ENFORCEMENT: z.enum(['off', 'warn', 'enforce']).default('warn')
+    SUBSCRIPTION_ENFORCEMENT: z.enum(['off', 'warn', 'enforce']).default('warn'),
+
+    // ImmoCopilot (lib/ai, docs/architecture/PLAN_IMMOCOPILOT.md).
+    // `disabled` : l'assistant est coupe et l'application marche sans cle.
+    // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`.
+    AI_PROVIDER: z.enum(['disabled', 'fake', 'anthropic']).default('disabled'),
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    AI_MODEL: z.string().min(1).default('claude-opus-5-5'),
+    AI_EFFORT: z.enum(['low', 'medium', 'high']).default('low'),
+    AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1024).max(64000).default(16000),
+    AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(8).default(4),
+    AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+    AI_PROPOSAL_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+    AI_REFUSAL_FALLBACK: z.enum(['on', 'off']).default('on')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
-  .passthrough();
+  .passthrough()
+  .superRefine((value, ctx) => {
+    if (value.AI_PROVIDER === 'anthropic' && !value.ANTHROPIC_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ANTHROPIC_API_KEY'],
+        message: 'variable requise quand AI_PROVIDER=anthropic'
+      });
+    }
+    if (value.AI_PROVIDER === 'fake' && value.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AI_PROVIDER'],
+        message: "le faux fournisseur 'fake' est interdit en production"
+      });
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
