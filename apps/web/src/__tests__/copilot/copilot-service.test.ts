@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../utils/api-client', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn() }
+}));
+vi.mock('../../utils/event-stream', () => ({
   postEventStream: vi.fn()
 }));
 
-import apiClient, { postEventStream } from '../../utils/api-client';
+import apiClient from '../../utils/api-client';
+import { postEventStream } from '../../utils/event-stream';
 import copilotService from '../../services/copilot-service';
 
 const mockedGet = vi.mocked(apiClient.get);

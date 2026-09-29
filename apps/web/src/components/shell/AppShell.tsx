@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { App as AntApp, Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,6 +25,9 @@ import { TenantSuspendedBanner } from '../TenantSuspendedBanner';
 import { t } from '../../i18n/t';
 import apiClient from '../../utils/api-client';
 import { installSubscriptionDenialInterceptor } from '../../utils/subscription-denial-notice';
+
+// Assistant ImmoCopilot : chargé à part, hors du bundle d'entrée.
+const CopilotRoot = lazy(() => import('../copilot/CopilotRoot'));
 
 /**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
@@ -289,6 +292,17 @@ export const AppShell: React.FC = () => {
             boxShadow: 'var(--shadow-lg)'
           }}
         />
+      )}
+
+      {persona === 'collaborateur' && navContext.tenantId && (
+        <Suspense fallback={null}>
+          <CopilotRoot
+            tenantId={navContext.tenantId}
+            hasTabs={showTabs}
+            hasAction={Boolean(action)}
+            isDesktop={isDesktop}
+          />
+        </Suspense>
       )}
 
       {showTabs && nav && (

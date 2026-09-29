@@ -1,4 +1,5 @@
-import apiClient, { postEventStream } from '../utils/api-client';
+import apiClient from '../utils/api-client';
+import { postEventStream } from '../utils/event-stream';
 import type { ActionExecutedPayload, ChatRequest, CopilotSseEvent, CopilotStatus } from '../types/copilot';
 
 const DISABLED_STATUS: CopilotStatus = {

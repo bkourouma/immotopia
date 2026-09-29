@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AxiosAdapter } from 'axios';
-import apiClient, { postEventStream } from '../../utils/api-client';
+import apiClient from '../../utils/api-client';
+import { postEventStream } from '../../utils/event-stream';
 import { TENANT_SUSPENDED_EVENT } from '../../utils/tenant-events';
 import { createSseParser, parseSseStream, type RawSseEvent } from '../../utils/sse-parser';
 
