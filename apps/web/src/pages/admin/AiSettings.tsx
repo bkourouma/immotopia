@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Radio,
+  Select,
   Skeleton,
   Space,
   Switch,
@@ -52,6 +53,9 @@ function providerLabel(id: AiProviderId, fallback: string): string {
       return fallback;
   }
 }
+
+/** Modèles Anthropic proposés ; la saisie libre reste possible pour un identifiant plus récent. */
+const ANTHROPIC_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'];
 
 /** Ordre d'affichage fixe, quel que soit l'ordre renvoyé par l'API. */
 const PROVIDER_ORDER: AiProviderId[] = ['disabled', 'openrouter', 'anthropic', 'fake'];
@@ -127,10 +131,16 @@ export const AiSettingsPage: React.FC = () => {
     );
   }, [settings, draft]);
 
-  const modelOptions = useMemo(
-    () => (models ?? []).map(m => ({ value: m.id, label: m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id })),
-    [models]
-  );
+  const modelOptions = useMemo(() => {
+    const options = (models ?? [])
+      .map(m => ({ value: m.id, label: m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    // Le modèle déjà enregistré reste sélectionnable même s'il a quitté le catalogue.
+    const current = draft?.model.trim();
+    if (current && current.includes('/') && !options.some(o => o.value === current))
+      options.unshift({ value: current, label: current });
+    return options;
+  }, [models, draft?.model]);
 
   const patch = (changes: Partial<Draft>) => {
     setDraft(current => (current ? { ...current, ...changes } : current));
@@ -209,7 +219,12 @@ export const AiSettingsPage: React.FC = () => {
       <Card title={t('Fournisseur')}>
         <Radio.Group
           value={draft.provider}
-          onChange={e => patch({ provider: e.target.value as AiProviderId })}
+          onChange={e => {
+            const next = e.target.value as AiProviderId;
+            // Un modèle sans « / » (ex. celui d'Anthropic) n'existe pas chez OpenRouter : on le vide.
+            const invalid = next === 'openrouter' && !draft.model.includes('/');
+            patch(invalid ? { provider: next, model: '' } : { provider: next });
+          }}
           style={{ width: '100%' }}
         >
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -236,32 +251,42 @@ export const AiSettingsPage: React.FC = () => {
         <Card title={t('Modèle')}>
           {draft.provider === 'openrouter' ? (
             <Space direction="vertical" style={{ width: '100%' }}>
-              <AutoComplete
-                aria-label={t('Modèle')}
-                style={{ width: '100%' }}
-                value={draft.model}
-                options={modelOptions}
-                onChange={value => patch({ model: value })}
-                placeholder={t('Rechercher un modèle ou saisir son identifiant')}
-                filterOption={(input, option) =>
-                  String(option?.value ?? '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase()) ||
-                  String(option?.label ?? '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              />
-              {modelsLoading ? <Text type="secondary">{t('Chargement des modèles…')}</Text> : null}
               {modelsUnavailable && !modelsLoading ? (
-                <Text type="warning">{t('Liste indisponible, saisissez l’identifiant à la main')}</Text>
-              ) : null}
+                <>
+                  <AutoComplete
+                    aria-label={t('Modèle')}
+                    style={{ width: '100%' }}
+                    value={draft.model}
+                    onChange={value => patch({ model: value })}
+                    placeholder={t('Identifiant du modèle (fournisseur/modèle)')}
+                  />
+                  <Text type="warning">{t('Liste indisponible, saisissez l’identifiant à la main')}</Text>
+                </>
+              ) : (
+                <Select
+                  aria-label={t('Modèle')}
+                  style={{ width: '100%' }}
+                  showSearch
+                  loading={modelsLoading}
+                  value={draft.model || undefined}
+                  options={modelOptions}
+                  onChange={value => patch({ model: value })}
+                  placeholder={t('Choisir un modèle')}
+                  notFoundContent={modelsLoading ? t('Chargement des modèles…') : t('Aucun modèle trouvé')}
+                  filterOption={(input, option) =>
+                    String(option?.label ?? '')
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                />
+              )}
             </Space>
           ) : (
             <AutoComplete
               aria-label={t('Modèle')}
               style={{ width: '100%' }}
               value={draft.model}
+              options={ANTHROPIC_MODELS.map(id => ({ value: id, label: id }))}
               onChange={value => patch({ model: value })}
               placeholder="claude-opus-5-5"
             />

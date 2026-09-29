@@ -33,6 +33,14 @@ const SETTINGS = {
   source: 'database'
 };
 
+/** Ouvre la liste déroulante du modèle et choisit l'option dont le texte contient `label`. */
+async function pickModel(label: string) {
+  const combo = await screen.findByRole('combobox', { name: 'Modèle' });
+  fireEvent.mouseDown(combo);
+  const option = await screen.findByText(label, { selector: '.ant-select-item-option-content' });
+  fireEvent.click(option);
+}
+
 function mount() {
   return render(
     <AntApp>
@@ -46,7 +54,10 @@ describe('AiSettingsPage', () => {
     vi.clearAllMocks();
     getAiSettings.mockResolvedValue(SETTINGS);
     listAiModels.mockResolvedValue({
-      models: [{ id: 'openai/gpt-4o', name: 'GPT-4o', contextLength: 128000 }],
+      models: [
+        { id: 'openai/gpt-4o', name: 'GPT-4o', contextLength: 128000 },
+        { id: 'mistralai/mistral-large', name: 'Mistral Large', contextLength: 32000 }
+      ],
       unavailable: false
     });
   });
@@ -70,8 +81,7 @@ describe('AiSettingsPage', () => {
   it('envoie le bon corps au PUT', async () => {
     updateAiSettings.mockResolvedValue({ ...SETTINGS, model: 'mistralai/mistral-large' });
     mount();
-    const input = await screen.findByRole('combobox', { name: 'Modèle' });
-    fireEvent.change(input, { target: { value: 'mistralai/mistral-large' } });
+    await pickModel('Mistral Large (mistralai/mistral-large)');
     const save = screen.getByRole('button', { name: /Enregistrer/ });
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(save);
@@ -105,8 +115,7 @@ describe('AiSettingsPage', () => {
   it('affiche l’erreur de l’API à l’enregistrement', async () => {
     updateAiSettings.mockRejectedValue(new Error('Modèle refusé'));
     mount();
-    const input = await screen.findByRole('combobox', { name: 'Modèle' });
-    fireEvent.change(input, { target: { value: 'x/y' } });
+    await pickModel('Mistral Large (mistralai/mistral-large)');
     const save = screen.getByRole('button', { name: /Enregistrer/ });
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(save);
