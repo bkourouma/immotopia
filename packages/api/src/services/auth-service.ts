@@ -19,6 +19,16 @@ const AUTH_ENTITY = 'User';
 export const REGISTRATION_ACCEPTED_MESSAGE =
   'Si cette adresse est valide, un e-mail de vérification vient de vous être envoyé.';
 
+/** Réponse unique d'un échec de connexion tant que le mot de passe n'est pas correct. */
+const INVALID_CREDENTIALS_MESSAGE = 'Email ou mot de passe incorrect.';
+
+/**
+ * Hash bcrypt (coût 12, comme `hashPassword`) d'une valeur aléatoire jetée :
+ * sert à faire dépenser à un e-mail inconnu le même temps qu'un e-mail connu.
+ * Aucun mot de passe réel n'y correspond.
+ */
+const DUMMY_PASSWORD_HASH = '$2b$12$wSyf5Hb.FEdQ5gWclTtBFezr9YiKXw0o1AejiRc15kyM9uvsEkef.';
+
 /** Vrai quand une erreur Prisma est une violation de contrainte d'unicité (P2002). */
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
@@ -88,6 +98,13 @@ export async function registerUser(data: RegisterRequest): Promise<void> {
   });
 
   if (existingUser) {
+    // Pré-détournement : un compte jamais vérifié appartient à la DERNIÈRE personne qui a prouvé
+    // vouloir cette adresse. Son mot de passe et son nom remplacent ceux d'une inscription
+    // antérieure (éventuellement d'un tiers), et toute session ouverte avec eux est révoquée,
+    // AVANT de ré-émettre le lien de vérification. La réponse reste identique.
+    if (!existingUser.emailVerified) {
+      await takeOverUnverifiedAccount(existingUser.id, passwordHash, data.fullName);
+    }
     await notifyExistingAccount(existingUser);
     return;
   }
@@ -117,6 +134,24 @@ export async function registerUser(data: RegisterRequest): Promise<void> {
   await sendQuietly(user.id, 'verification email', () =>
     emailService.sendVerificationEmail(data.email, verificationToken)
   );
+}
+
+/** Remplace identifiants et nom d'un compte NON vérifié par ceux de la dernière inscription et révoque ses sessions. */
+async function takeOverUnverifiedAccount(
+  userId: string,
+  passwordHash: string,
+  fullName: string | undefined
+): Promise<void> {
+  await prisma.$transaction(async tx => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { passwordHash, ...(fullName !== undefined ? { fullName } : {}) }
+    });
+    await tx.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true, revokedAt: new Date() }
+    });
+  });
 }
 
 /** E-mail sobre à une adresse déjà inscrite et vérifiée : ni lien de vérification ni création de compte. */
@@ -251,10 +286,29 @@ export async function loginUser(data: LoginRequest) {
     where: { email: data.email }
   });
 
-  if (!user) {
-    throw new Error('Email ou mot de passe incorrect.');
+  // Le mot de passe est vérifié AVANT de révéler quoi que ce soit de l'état du compte : e-mail
+  // inconnu, compte OAuth sans mot de passe, mot de passe faux répondent pareil, et un `comparePassword`
+  // factice égalise le temps de réponse quand il n'y a rien à comparer.
+  const isPasswordValid = user?.passwordHash
+    ? await comparePassword(data.password, user.passwordHash)
+    : await comparePassword(data.password, DUMMY_PASSWORD_HASH).then(() => false);
+
+  if (!user || !isPasswordValid) {
+    if (user) {
+      logger.warn('Failed login attempt', { userId: user.id });
+      logAuditEvent({
+        actorUserId: user.id,
+        tenantId: null,
+        actionKey: AuditActionKey.AUTH_LOGIN_FAILED,
+        entityType: AUTH_ENTITY,
+        entityId: user.id,
+        payload: { reason: 'invalid_password' }
+      });
+    }
+    throw new Error(INVALID_CREDENTIALS_MESSAGE);
   }
 
+  // Mot de passe valide : l'état du compte peut maintenant être dit à son titulaire.
   // Check if account is active
   if (!user.isActive) {
     throw new Error("Votre compte a été désactivé. Contactez l'administrateur.");
@@ -265,9 +319,9 @@ export async function loginUser(data: LoginRequest) {
     if (isEmailDeliveryConfigured()) {
       try {
         await resendVerificationEmail(user.email);
-        logger.info('Verification email auto-resent on login attempt', { userId: user.id, email: user.email });
+        logger.info('Verification email auto-resent on login attempt', { userId: user.id });
       } catch (error) {
-        logger.error('Failed to resend verification email on login', { userId: user.id, email: user.email, error });
+        logger.error('Failed to resend verification email on login', { userId: user.id, error });
       }
       throw new Error('Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.');
     }
@@ -287,27 +341,6 @@ export async function loginUser(data: LoginRequest) {
     logger.warn('Email verification skipped at login: mailer is not configured', {
       userId: user.id
     });
-  }
-
-  // Verify password
-  // Note: user.passwordHash can be null for OAuth users
-  if (!user.passwordHash) {
-    throw new Error('Veuillez vous connecter avec votre compte Google.');
-  }
-
-  const isPasswordValid = await comparePassword(data.password, user.passwordHash);
-
-  if (!isPasswordValid) {
-    logger.warn('Failed login attempt', { userId: user.id, email: user.email });
-    logAuditEvent({
-      actorUserId: user.id,
-      tenantId: null,
-      actionKey: AuditActionKey.AUTH_LOGIN_FAILED,
-      entityType: AUTH_ENTITY,
-      entityId: user.id,
-      payload: { reason: 'invalid_password' }
-    });
-    throw new Error('Email ou mot de passe incorrect.');
   }
 
   // Generate tokens
@@ -338,7 +371,7 @@ export async function loginUser(data: LoginRequest) {
     globalRole: user.globalRole
   });
 
-  logger.info('User logged in', { userId: user.id, email: user.email, role: user.globalRole });
+  logger.info('User logged in', { userId: user.id, role: user.globalRole });
   logAuditEvent({
     actorUserId: user.id,
     tenantId: null,

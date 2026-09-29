@@ -29,7 +29,15 @@ import { ensureRentalAccountsTx } from '../lib/owner-account/accounts';
 import { DEFAULT_FINANCE_SETTINGS } from '../lib/settings/finance-settings';
 import { ProvisionTenantRequest, ProvisionTenantResult } from '../types/tenant-types';
 import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
-import { PACK, TRIAL_DAYS, addBillingPeriod, packModules, packsForModules } from '../lib/subscription';
+import {
+  PACK,
+  PARTICULIER_PACKS,
+  TRIAL_DAYS,
+  addBillingPeriod,
+  packModules,
+  packsForModules
+} from '../lib/subscription';
+import { ValidationError } from '../middleware/error-middleware';
 import {
   linkExtensionsToPacksTx,
   loadCatalogByCodes,
@@ -255,6 +263,24 @@ export async function createTenantCoreTx(
   return { tenant, modules, subscription, itemsSummary, tenantAdminRoleId: tenantAdminRole.id, now };
 }
 
+/**
+ * Coherence type d'espace / packs (creation super-admin) : un espace PARTICULIER
+ * n'accepte que des packs Particulier, et une agence ou un operateur n'en
+ * accepte aucun (sinon un espace aurait un menu et des droits incoherents, ou
+ * une agence l'abonnement gratuit d'un particulier). Erreur typee 422.
+ */
+export function assertTenantTypeMatchesPacks(type: TenantType, requested: readonly RequestedItem[]): void {
+  const particulierOnly = type === TenantType.PARTICULIER;
+  const offending = requested.filter(item => PARTICULIER_PACKS.includes(item.code) !== particulierOnly);
+  if (offending.length === 0) return;
+  throw new ValidationError(
+    particulierOnly
+      ? 'Un espace personnel n’accepte que des packs Particulier.'
+      : 'Les packs Particulier sont réservés aux espaces personnels.',
+    [{ field: 'items', message: offending.map(item => item.code).join(', ') }]
+  );
+}
+
 /** La partie ECRITURE, tout-ou-rien : tout ce que F1.1 a F1.7 decrit, sauf l'envoi d'e-mail (F1.8) et l'idempotence (F1.9). */
 async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: string): Promise<ProvisioningOutcome> {
   return prisma.$transaction(async tx => {
@@ -279,6 +305,8 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
           : packsForModules(legacyModules).packs.map(code => ({ code, quantity: 1 }));
       planKey = (input.planKey ?? 'PRO') as SubscriptionPlan;
     }
+
+    assertTenantTypeMatchesPacks(type, requested);
 
     // 1 a 5. Tenant, modules, abonnement d'essai, parametres financiers, socle.
     const core = await createTenantCoreTx(tx, {

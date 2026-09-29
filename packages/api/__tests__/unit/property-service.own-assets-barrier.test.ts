@@ -59,6 +59,14 @@ jest.mock('../../src/services/lot-registry-service', () => ({
   syncLotActivationsTx: jest.fn().mockResolvedValue(undefined)
 }));
 
+// Palier gratuit (lot 4) : la garde lit les droits d'abonnement en base ; hors sujet ici
+// (voir property-service.free-tier.test.ts et personal-space.*.test.ts).
+jest.mock('../../src/services/personal-space/free-tier', () => ({
+  getAssetCapacityLimit: jest.fn(async () => null),
+  lockTenantAssets: jest.fn(async () => undefined),
+  assertFreeTierCapacityTx: jest.fn(async () => undefined)
+}));
+
 import { createProperty } from '../../src/services/property-service';
 import { OwnAssetsOnlyError } from '../../src/middleware/error-middleware';
 

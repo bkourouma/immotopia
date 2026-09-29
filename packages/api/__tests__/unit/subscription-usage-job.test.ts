@@ -296,6 +296,27 @@ describe('espace particulier : palier gratuit, capacite ACTIFS', () => {
     expect(mockState.snapshots.find(s => s.capacityKey === 'ACTIFS')).toMatchObject({ used: 10, limit: 10 });
   });
 
+  it('alerte ACTIFS d’un particulier : « passez au palier payant » (gratuit) ou archivage (Plus), jamais « ajoutez une extension »', async () => {
+    mockState.tenantType = 'PARTICULIER';
+    seedSubscription({});
+    mockState.entitlements.quotaPolicy = 'BLOCK';
+    mockState.entitlements.packs = ['PARTICULIER_GRATUIT'];
+    mockState.entitlements.capacities = capacities({ used: 0, limit: 0 }, undefined, { used: 10, limit: 10 });
+    await evaluateQuotaAlerts(T, new Date('2026-09-16T10:00:00Z'));
+    const free = emailService.sendEmail.mock.calls.map(c => c[0].text).join('\n');
+    expect(free).toMatch(/palier payant/);
+    expect(free).not.toMatch(/extension/);
+
+    emailService.sendEmail.mockClear();
+    mockState.alerts.length = 0;
+    mockState.entitlements.packs = ['PARTICULIER_PLUS'];
+    mockState.entitlements.capacities = capacities({ used: 0, limit: 0 }, undefined, { used: 100, limit: 100 });
+    await evaluateQuotaAlerts(T, new Date('2026-09-16T10:00:00Z'));
+    const plus = emailService.sendEmail.mock.calls.map(c => c[0].text).join('\n');
+    expect(plus).toMatch(/Archivez/);
+    expect(plus).not.toMatch(/extension|palier payant/);
+  });
+
   it('une agence avec ACTIFS plafonne continue de prevenir le super-admin (comportement inchange)', async () => {
     seedSubscription({});
     mockState.entitlements.capacities = capacities({ used: 85, limit: 100 });

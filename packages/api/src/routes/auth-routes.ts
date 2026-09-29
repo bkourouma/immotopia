@@ -43,7 +43,8 @@ import { logger } from '../utils/logger';
 const router = Router();
 
 // Register and Login
-router.post('/register', registrationRateLimiter, validate(registerSchema), asyncHandler(register));
+// Le limiteur passe APRÈS la validation : une requête invalide ne consomme pas le quota d'inscription.
+router.post('/register', validate(registerSchema), registrationRateLimiter, asyncHandler(register));
 router.post('/login', loginRateLimiter, validate(loginSchema), login);
 
 // Email Verification

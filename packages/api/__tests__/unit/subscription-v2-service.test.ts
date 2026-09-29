@@ -164,11 +164,11 @@ const fake: Row = {
   // Registre des lots : aucun bien dans ce faux client, seulement le pack Patrimoine
   // et le reclassement declenche (reconcileHeldPropertiesIfChangedTx). Les listes vides
   // suffisent : computeQualifyingUnits() rend [] et reconcileLotActivationsTx n'ecrit rien.
-  property: { findMany: jest.fn(async () => []) },
+  property: { findMany: jest.fn(async () => []), count: jest.fn(async () => 0) },
   syndicateLot: { findMany: jest.fn(async () => []) },
   siteLot: { findMany: jest.fn(async () => []) },
   lotActivation: { findMany: jest.fn(async () => []) },
-  // Capacite ACTIFS (lot 4A) : nombre d'actifs non archives.
+  // Capacite ACTIFS (lot 4A) : actifs non archives + biens non archives sans actif lie.
   asset: { count: jest.fn(async () => 0) },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
@@ -599,12 +599,19 @@ describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', ()
 });
 
 describe('capacite ACTIFS (lot 4A, packs Particulier)', () => {
-  it('countActiveAssets compte les actifs NON archives du tenant, sans jointure', async () => {
+  it('countActiveAssets : actifs NON archives + biens NON archives SANS actif lie, chacun filtre par tenantId', async () => {
     const count = fake.asset.count as jest.Mock;
+    const properties = fake.property.count as jest.Mock;
     count.mockClear();
+    properties.mockClear();
     count.mockResolvedValueOnce(7);
-    expect(await countActiveAssets(fake as any, T)).toBe(7);
+    properties.mockResolvedValueOnce(2);
+    // Un actif lie a un bien compte UNE fois : le bien porteur d'un actif est exclu du second comptage.
+    expect(await countActiveAssets(fake as any, T)).toBe(9);
     expect(count).toHaveBeenCalledWith({ where: { tenantId: T, status: { not: 'ARCHIVED' } } });
+    expect(properties).toHaveBeenCalledWith({
+      where: { tenantId: T, status: { not: 'ARCHIVED' }, asset: { is: null } }
+    });
   });
 
   it('getUsage renvoie ACTIFS a cote des autres capacites, BIENS_DETENUS inchange', async () => {

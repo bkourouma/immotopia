@@ -649,4 +649,65 @@ describe('espace PARTICULIER (lot 4A) : coeur transactionnel reutilisable', () =
     expect(particulier.result.modules).toEqual(['MODULE_PATRIMOINE']);
     expect(particulier.result.subscription.items.map(i => i.code)).toEqual(['PARTICULIER_GRATUIT']);
   });
+
+  it('cohérence type / packs : un PARTICULIER refuse un pack d’agence, une agence refuse un pack Particulier (422, rien créé)', async () => {
+    await expect(
+      provisionTenant(
+        { ...baseInput, name: 'Faux particulier', type: 'PARTICULIER', items: [{ code: 'AGENCE', quantity: 1 }] },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422, code: 'VALIDATION_ERROR' });
+    await expect(
+      provisionTenant(
+        {
+          ...baseInput,
+          name: 'Fausse agence',
+          adminEmail: 'fa@example.com',
+          type: 'AGENCY',
+          items: [{ code: 'PARTICULIER_GRATUIT', quantity: 1 }]
+        },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422 });
+    await expect(
+      provisionTenant(
+        {
+          ...baseInput,
+          name: 'Faux operateur',
+          adminEmail: 'fo@example.com',
+          type: 'OPERATOR',
+          items: [{ code: 'PARTICULIER_PLUS', quantity: 1 }]
+        },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422 });
+    // Ancien format : un PARTICULIER avec des modules (donc des packs d'agence) est refuse aussi.
+    await expect(
+      provisionTenant(
+        {
+          ...baseInput,
+          name: 'Modules',
+          adminEmail: 'm@example.com',
+          type: 'PARTICULIER',
+          modules: ['MODULE_PATRIMOINE']
+        },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(store.tenants).toHaveLength(0);
+  });
+
+  it('cohérence type / packs : les combinaisons valides passent', async () => {
+    const ok = await provisionTenant(
+      {
+        ...baseInput,
+        name: 'Vrai particulier',
+        adminEmail: 'vp@example.com',
+        type: 'PARTICULIER',
+        items: [{ code: 'PARTICULIER_PLUS', quantity: 1 }]
+      },
+      'super-admin-1'
+    );
+    expect(ok.result.subscription.items.map(i => i.code)).toEqual(['PARTICULIER_PLUS']);
+  });
 });

@@ -56,13 +56,18 @@ function assertSignupAvailable(): void {
   }
 }
 
-/** Espace personnel deja administre par l'utilisateur (identifiant du tenant), sinon null. */
+/**
+ * Espace personnel deja administre par l'utilisateur (identifiant du tenant),
+ * sinon null. Seule une appartenance ACTIVE, avec le role TENANT_ADMIN sur ce
+ * tenant, compte : une appartenance revoquee ou suspendue, ou un simple
+ * invite d'un espace, ne bloque pas la creation de SON espace.
+ */
 async function findOwnPersonalSpaceTenantId(
   tx: Pick<typeof prisma, 'membership' | 'userRole'>,
   userId: string
 ): Promise<string | null> {
   const memberships = await tx.membership.findMany({
-    where: { userId, tenant: { type: TenantType.PARTICULIER } },
+    where: { userId, status: MembershipStatus.ACTIVE, tenant: { type: TenantType.PARTICULIER } },
     select: { tenantId: true },
     orderBy: { createdAt: 'asc' }
   });

@@ -177,19 +177,19 @@ tourner si `NODE_ENV=production`, quelle que soit la valeur de
 Autres seeds utiles, à lancer séparément selon le besoin (liste tirée de
 `packages/api/package.json`, non exhaustive dans ce document) :
 
-| Script                                                   | Rôle                                                                                                 |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `db:seed:rbac`                                           | Rôles et permissions — **à lancer avant le seed principal** d'après `docs/setup/getting-started.md`. |
-| `db:seed:geographic`                                     | Référentiel pays/régions/communes.                                                                   |
-| `db:seed:super-admin`                                    | Compte super-admin plateforme.                                                                       |
-| `db:seed:catalog`                                        | Catalogue des offres d'abonnement par packs.                                                         |
-| `db:seed:property-templates`                             | Gabarits de biens par type.                                                                          |
-| `db:seed:document-templates`                             | Gabarits de documents (baux, quittances...).                                                         |
-| `db:seed:maintenance`, `db:seed:maintenance-permissions` | Données et permissions du module maintenance.                                                        |
-| `db:seed:communication-permissions`                      | Permissions du module communication.                                                                 |
-| `db:seed:tenant-members`                                 | Membres de démonstration par agence.                                                                 |
-| `db:seed:syndic-demo`                                    | Jeu de données de démonstration syndic/copropriété.                                                  |
-| `db:seed:crm`, `db:seed:comprehensive`                   | Données CRM de démonstration, jeu de données complet.                                                |
+| Script                                                   | Rôle                                                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `db:seed:rbac`                                           | Rôles et permissions — **à lancer avant le seed principal** d'après `docs/setup/getting-started.md`.     |
+| `db:seed:geographic`                                     | Référentiel pays/régions/communes.                                                                       |
+| `db:seed:super-admin`                                    | Compte super-admin plateforme.                                                                           |
+| `db:seed:catalog`                                        | Catalogue des offres d'abonnement par packs. **Sans `--missing-only`, écrase prix et plafonds ajustés.** |
+| `db:seed:property-templates`                             | Gabarits de biens par type.                                                                              |
+| `db:seed:document-templates`                             | Gabarits de documents (baux, quittances...).                                                             |
+| `db:seed:maintenance`, `db:seed:maintenance-permissions` | Données et permissions du module maintenance.                                                            |
+| `db:seed:communication-permissions`                      | Permissions du module communication.                                                                     |
+| `db:seed:tenant-members`                                 | Membres de démonstration par agence.                                                                     |
+| `db:seed:syndic-demo`                                    | Jeu de données de démonstration syndic/copropriété.                                                      |
+| `db:seed:crm`, `db:seed:comprehensive`                   | Données CRM de démonstration, jeu de données complet.                                                    |
 
 ## Commandes quotidiennes
 
@@ -374,6 +374,35 @@ coupe en milieu de réponse.
   par minute, par utilisateur et par agence.
 - `PROPOSAL_EXPIRED` (410) : la proposition a plus de `AI_PROPOSAL_TTL_SECONDS` ;
   la redemander. `PROPOSAL_ALREADY_USED` (409) : déjà confirmée.
+
+### Catalogue d'abonnement : `--missing-only` après un ajustement produit
+
+`npm run db:seed:catalog` **sans** `--missing-only` réaligne le catalogue sur
+la grille codée dans `catalog.ts` et **écrase** les prix et plafonds que le
+produit a ajustés depuis (par exemple le prix de `PARTICULIER_PLUS` ou le
+plafond d'`ACTIFS`). Après tout ajustement de prix ou de plafond, ne lancer que
+`npm run db:seed:catalog -- --missing-only`, qui crée les offres absentes sans
+toucher aux autres. Les lignes de la migration `20261004220100` ne sont pas
+modifiables une fois appliquée : elles amorcent les valeurs provisoires du lot 4.
+
+### Inscription libre : limiteur par IP et `trust proxy`
+
+Le limiteur d'inscription (`services/signup-guard-service.ts`, 3 par heure et
+par IP, état dans la table `signup_attempts`) lit l'adresse dans `req.ip`, donc
+dépend de `app.set('trust proxy', 1)` dans `app.ts` : **un seul** proxy de
+confiance devant l'API. À vérifier à chaque déploiement :
+
+- Topologie : si deux proxys se suivent (CDN puis répartiteur), `req.ip` vaut
+  l'adresse du premier proxy et TOUS les visiteurs partagent un compteur ;
+  ajuster `trust proxy` au nombre réel de sauts, jamais à `true`.
+- Adresses partagées : des visiteurs derrière une même IP (CGNAT des
+  opérateurs mobiles, agence, cybercafé) partagent aussi un compteur ; les
+  IPv6 sont regroupées par préfixe /64.
+- Panne de base : le limiteur laisse passer (fail-open, avertissement dans les
+  journaux) ; une panne de PostgreSQL ne bloque pas les inscriptions mais les
+  laisse sans plafond.
+- La purge des lignes de plus de 24 h tourne au plus une fois par minute et par
+  processus.
 
 ## Dépannage
 

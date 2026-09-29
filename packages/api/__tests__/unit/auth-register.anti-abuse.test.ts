@@ -14,7 +14,7 @@ import request from 'supertest';
 const mockPrisma = {
   user: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
   emailVerificationToken: { updateMany: jest.fn(), create: jest.fn() },
-  refreshToken: { create: jest.fn() },
+  refreshToken: { create: jest.fn(), updateMany: jest.fn() },
   $transaction: jest.fn()
 };
 const mockEmail = { sendVerificationEmail: jest.fn(), sendEmail: jest.fn() };
@@ -105,6 +105,37 @@ describe('POST register : réponse non révélatrice', () => {
     expect(mockPrisma.user.create).not.toHaveBeenCalled();
     expect(mockPrisma.emailVerificationToken.updateMany).toHaveBeenCalled();
     expect(mockEmail.sendVerificationEmail).toHaveBeenCalledWith(BODY.email, expect.any(String));
+  });
+
+  it('adresse existante NON vérifiée : mot de passe et nom remplacés, sessions révoquées, AVANT le nouveau lien (pré-détournement)', async () => {
+    const order: string[] = [];
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', email: BODY.email, emailVerified: false });
+    mockPrisma.user.update.mockImplementation(async () => void order.push('update'));
+    mockPrisma.refreshToken.updateMany.mockImplementation(async () => void order.push('revoke'));
+    mockPrisma.emailVerificationToken.create.mockImplementation(async () => void order.push('token'));
+    const res = await request(app()).post('/register').send(BODY);
+    expect(res.status).toBe(201);
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'u1' },
+      data: { passwordHash: 'hash', fullName: BODY.fullName }
+    });
+    expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', revoked: false },
+      data: { revoked: true, revokedAt: expect.any(Date) }
+    });
+    expect(order.slice(0, 2)).toEqual(['update', 'revoke']);
+    expect(order).toContain('token');
+    expect(order.indexOf('token')).toBeGreaterThan(order.indexOf('revoke'));
+    mockPrisma.user.update.mockReset();
+    mockPrisma.refreshToken.updateMany.mockReset();
+    mockPrisma.emailVerificationToken.create.mockReset();
+  });
+
+  it('adresse existante VÉRIFIÉE : ni mot de passe remplacé ni session révoquée', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'u2', email: BODY.email, emailVerified: true });
+    await request(app()).post('/register').send(BODY);
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(mockPrisma.refreshToken.updateMany).not.toHaveBeenCalled();
   });
 
   it('adresse existante vérifiée : e-mail « Vous avez déjà un compte », aucun lien de vérification', async () => {
@@ -201,5 +232,72 @@ describe('vérification réelle d’e-mail', () => {
     const res = await loginUser({ email: BODY.email, password: 'Abcdef1!' });
     expect(res.accessToken).toBe('access');
     expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('login : le mot de passe d’abord, aucun état de compte révélé avant', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { comparePassword } = require('../../src/utils/password-utils');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { logger } = require('../../src/utils/logger');
+  const account = {
+    id: 'u1',
+    email: 'secret@example.com',
+    isActive: true,
+    emailVerified: true,
+    passwordHash: 'h',
+    globalRole: 'USER'
+  };
+  const UNIFORM = 'Email ou mot de passe incorrect.';
+  const attempt = (data = { email: account.email, password: 'Abcdef1!' }) => loginUser(data);
+
+  it('e-mail inconnu : message uniforme ET comparePassword factice (temps égalisé)', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+    comparePassword.mockClear();
+    await expect(attempt()).rejects.toThrow(UNIFORM);
+    expect(comparePassword).toHaveBeenCalledTimes(1);
+    expect(comparePassword.mock.calls[0][1]).toMatch(/^\$2[aby]\$12\$/);
+  });
+
+  it.each([
+    ['compte désactivé', { ...account, isActive: false }],
+    ['compte non vérifié', { ...account, emailVerified: false }],
+    ['compte OAuth sans mot de passe', { ...account, passwordHash: null }],
+    ['compte ordinaire', account]
+  ])('%s + mauvais mot de passe : message uniforme, rien d’autre n’est dit ni envoyé', async (_n, user) => {
+    mockPrisma.user.findUnique.mockResolvedValue(user);
+    comparePassword.mockResolvedValueOnce(false);
+    comparePassword.mockClear();
+    mockEmail.sendVerificationEmail.mockClear();
+    await expect(attempt()).rejects.toThrow(UNIFORM);
+    // Une comparaison a toujours lieu (réelle ou factice).
+    expect(comparePassword).toHaveBeenCalledTimes(1);
+    expect(mockEmail.sendVerificationEmail).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('mot de passe valide : le compte désactivé l’apprend', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ ...account, isActive: false });
+    await expect(attempt()).rejects.toThrow(/désactivé/);
+  });
+
+  it('mot de passe valide : le compte non vérifié reçoit le message de vérification et un nouveau lien', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ ...account, emailVerified: false });
+    await expect(attempt()).rejects.toThrow(/vérifier votre adresse email/);
+  });
+
+  it('n’écrit jamais l’e-mail en clair dans les journaux de connexion', async () => {
+    const spies = (['info', 'warn', 'error'] as const).map(level =>
+      jest.spyOn(logger, level).mockImplementation(() => logger)
+    );
+    mockPrisma.user.findUnique.mockResolvedValue(account);
+    comparePassword.mockResolvedValueOnce(false);
+    await attempt().catch(() => undefined);
+    mockPrisma.user.findUnique.mockResolvedValue(account);
+    await attempt();
+    const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+    expect(logged).not.toContain(account.email);
+    expect(logged).toContain(account.id);
+    spies.forEach(spy => spy.mockRestore());
   });
 });

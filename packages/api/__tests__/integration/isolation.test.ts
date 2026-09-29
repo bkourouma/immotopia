@@ -1543,6 +1543,60 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
     expect(roles).toEqual([{ tenantId: spaceId }]);
   });
 
+  it('garde de type (mode warn) : un TENANT_ADMIN particulier reçoit 403 sur les routes d’agence, 200 sur son patrimoine ; l’agence n’est pas touchée', async () => {
+    const user = await verifiedUser();
+    const { body } = await createSpaceFor(user);
+    const tenantId: string = body.data.tenantId;
+    const base = `/api/tenants/${tenantId}`;
+
+    const forbidden: Array<['get' | 'post', string]> = [
+      ['get', '/newsletter/campaigns'],
+      ['get', '/crm/deals'],
+      ['post', '/users/invite'],
+      ['get', '/invitations'],
+      ['get', '/finance/accounting/journal'],
+      ['get', '/finance/sites'],
+      ['get', '/syndics'],
+      ['get', '/whatsapp-notifications'],
+      ['get', '/settings/payment-gateway'],
+      ['get', '/ai/status']
+    ];
+    for (const [method, path] of forbidden) {
+      // eslint-disable-next-line no-await-in-loop -- une requête à la fois, lisible en cas d'échec.
+      const res = await request(app)[method](`${base}${path}`).set(user.headers).send({});
+      expect({ path, status: res.status, code: res.body.code }).toEqual({
+        path,
+        status: 403,
+        code: 'PERSONAL_SPACE_ROUTE_FORBIDDEN'
+      });
+    }
+
+    for (const path of [
+      '/patrimoine/usage',
+      '/patrimoine/assets',
+      '/subscription/payment-availability',
+      '/entitlements',
+      ''
+    ]) {
+      // eslint-disable-next-line no-await-in-loop -- idem.
+      const res = await request(app).get(`${base}${path}`).set(user.headers);
+      expect({ path, status: res.status }).toEqual({ path, status: 200 });
+    }
+
+    // Non-régression : une agence passe le même garde de type (jamais ce code de refus).
+    const agency = await createTestTenant('Agence-Type');
+    tenantIds.push(agency.id);
+    const agencyAdmin = await createTenantAdminUser(agency, 'admin-type');
+    userIds.push(agencyAdmin.id);
+    for (const path of ['/newsletter/campaigns', '/crm/deals', '/invitations']) {
+      // eslint-disable-next-line no-await-in-loop -- idem.
+      const res = await request(app)
+        .get(`/api/tenants/${agency.id}${path}`)
+        .set({ Authorization: agencyAdmin.authHeader });
+      expect({ path, code: res.body.code }).not.toEqual({ path, code: 'PERSONAL_SPACE_ROUTE_FORBIDDEN' });
+    }
+  });
+
   it('6 POST concurrents du même utilisateur -> un 201, cinq 409, un seul tenant', async () => {
     const user = await verifiedUser();
     const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => createSpaceFor(user, `Course ${i}`)));

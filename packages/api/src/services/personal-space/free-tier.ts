@@ -28,8 +28,10 @@ export class FreeTierLimitError extends AppError {
 
 /**
  * Plafond d'actifs du pack en vigueur, ou `null` si le pack ne porte pas ACTIFS.
- * `fresh` force le recalcul des droits (cache de 30 s sinon) : a utiliser a
- * l'ecriture, pour qu'un changement de pack soit vu tout de suite.
+ * Lit les droits par le cache normal (30 s, invalide par toute ecriture
+ * d'abonnement de CE processus) : aucun cout pour une agence, dont les droits
+ * sont deja lus a chaque requete par le garde d'abonnement. `fresh` force le
+ * recalcul ; il ne sert qu'a confirmer un refus (voir `assertFreeTierCapacityTx`).
  */
 export async function getAssetCapacityLimit(
   tenantId: string,
@@ -40,26 +42,61 @@ export async function getAssetCapacityLimit(
   return actifs.included > 0 ? actifs.limit : null;
 }
 
-/** Serialise les creations d'actifs d'un tenant (verrou tenu jusqu'a la fin de la transaction). */
+/** Serialise les creations d'actifs et de biens d'un tenant (verrou tenu jusqu'a la fin de la transaction). */
 export async function lockTenantAssets(tx: PrismaTransactionClient, tenantId: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
 }
 
-/** A appeler SOUS `lockTenantAssets` : compte dans la transaction et refuse si `used >= limit`. */
+/**
+ * Client de comptage : le client global, un client de transaction ou un
+ * client etendu. Un client de TRANSACTION (pas de `$transaction`, mais un
+ * `$executeRaw`) recoit le verrou consultatif ; le client global n'en recoit
+ * pas (un verrou de transaction rendu aussitot ne protegerait rien).
+ */
+export interface AssetCountClient {
+  asset: { count(args: never): PromiseLike<number> };
+  property: { count(args: never): PromiseLike<number> };
+}
+
+function isTransactionClient(client: unknown): client is PrismaTransactionClient {
+  const candidate = client as { $executeRaw?: unknown; $transaction?: unknown };
+  return typeof candidate.$executeRaw === 'function' && typeof candidate.$transaction !== 'function';
+}
+
+/**
+ * A appeler SOUS `lockTenantAssets` : compte dans la transaction et refuse si
+ * `used >= limit`. Le plafond vient du cache des droits ; un refus est
+ * confirme par une lecture fraiche, pour qu'une montee de palier faite par un
+ * autre processus ne soit jamais refusee a tort (le chemin nominal reste
+ * sans surcout).
+ */
 export async function assertFreeTierCapacityTx(
   tx: PrismaTransactionClient,
   tenantId: string,
   limit: number
 ): Promise<void> {
   const used = await countActiveAssets(tx, tenantId);
-  if (used >= limit) throw new FreeTierLimitError({ limit, used });
+  if (used < limit) return;
+  const fresh = await getAssetCapacityLimit(tenantId, { fresh: true });
+  if (fresh === null || used < fresh) return;
+  throw new FreeTierLimitError({ limit: fresh, used });
 }
 
-/** Vrai quand le pack porte ACTIFS et que le plafond est atteint (sans verrou : lecture indicative). */
-export async function isFreeTierLimitReached(tenantId: string): Promise<boolean> {
+/**
+ * Vrai quand le pack porte ACTIFS et que le plafond est atteint. Compte avec
+ * `client` ; sous un client de transaction, prend le verrou du tenant d'abord
+ * (comptage et creation qui suit sont alors atomiques). Avec le client global
+ * la lecture est indicative : la seule tolerance restante est qu'une creation
+ * concurrente sans verrou puisse depasser le plafond de quelques unites.
+ */
+export async function isFreeTierLimitReached(
+  tenantId: string,
+  client: AssetCountClient = prisma as unknown as AssetCountClient
+): Promise<boolean> {
   const limit = await getAssetCapacityLimit(tenantId);
   if (limit === null) return false;
-  return (await countActiveAssets(prisma, tenantId)) >= limit;
+  if (isTransactionClient(client)) await lockTenantAssets(client, tenantId);
+  return (await countActiveAssets(client as unknown as typeof prisma, tenantId)) >= limit;
 }
 
 export type AssetPlan = 'FREE' | 'PAID' | 'AGENCY';

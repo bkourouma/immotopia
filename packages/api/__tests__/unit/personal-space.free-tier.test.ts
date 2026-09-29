@@ -63,11 +63,25 @@ describe('assertFreeTierCapacityTx', () => {
   });
 
   it('refuse à used >= limit : 409 FREE_TIER_LIMIT avec { limit, used }', async () => {
+    mockGetEntitlements.mockResolvedValue(FREE);
     mockCount.mockResolvedValue(10);
     const error = await assertFreeTierCapacityTx(tx, 't1', 10).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(FreeTierLimitError);
     expect(error).toMatchObject({ statusCode: 409, code: 'FREE_TIER_LIMIT', data: { limit: 10, used: 10 } });
     expect((error as Error).message).toMatch(/palier payant/);
+  });
+
+  it('un refus est confirmé à neuf : un plafond relevé par un autre processus (montée de palier) ne refuse pas à tort', async () => {
+    mockGetEntitlements.mockResolvedValue(PLUS);
+    mockCount.mockResolvedValue(10);
+    await expect(assertFreeTierCapacityTx(tx, 't1', 10)).resolves.toBeUndefined();
+    expect(mockGetEntitlements).toHaveBeenCalledWith('t1', { fresh: true });
+  });
+
+  it('sous le plafond, aucune lecture fraîche (chemin nominal sans surcoût)', async () => {
+    mockCount.mockResolvedValue(3);
+    await assertFreeTierCapacityTx(tx, 't1', 10);
+    expect(mockGetEntitlements).not.toHaveBeenCalled();
   });
 
   it('compte dans la transaction fournie', async () => {
@@ -98,6 +112,39 @@ describe('isFreeTierLimitReached', () => {
     mockGetEntitlements.mockResolvedValue(AGENCY);
     mockCount.mockResolvedValue(9999);
     await expect(isFreeTierLimitReached('t1')).resolves.toBe(false);
+  });
+});
+
+describe('isFreeTierLimitReached avec le client reçu', () => {
+  it('sous un client de transaction : verrou du tenant PUIS comptage avec ce client', async () => {
+    mockGetEntitlements.mockResolvedValue(FREE);
+    const order: string[] = [];
+    const executeRaw = jest.fn(async () => void order.push('lock'));
+    mockCount.mockImplementation(async () => {
+      order.push('count');
+      return 4;
+    });
+    const tx = { $executeRaw: executeRaw };
+    await expect(isFreeTierLimitReached('t1', tx as never)).resolves.toBe(false);
+    expect(order).toEqual(['lock', 'count']);
+    expect(mockCount).toHaveBeenCalledWith(tx, 't1');
+  });
+
+  it('avec le client global (a un $transaction) : pas de verrou, comptage avec ce client', async () => {
+    mockGetEntitlements.mockResolvedValue(FREE);
+    mockCount.mockResolvedValue(10);
+    const executeRaw = jest.fn();
+    const global = { $executeRaw: executeRaw, $transaction: jest.fn() };
+    await expect(isFreeTierLimitReached('t1', global as never)).resolves.toBe(true);
+    expect(executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('agence : ni verrou ni comptage', async () => {
+    mockGetEntitlements.mockResolvedValue(AGENCY);
+    const executeRaw = jest.fn();
+    await expect(isFreeTierLimitReached('t1', { $executeRaw: executeRaw } as never)).resolves.toBe(false);
+    expect(executeRaw).not.toHaveBeenCalled();
+    expect(mockCount).not.toHaveBeenCalled();
   });
 });
 

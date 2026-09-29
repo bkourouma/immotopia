@@ -10,6 +10,7 @@ import { prisma } from '../../src/utils/database';
 import {
   assertSignupAllowed,
   hashSignupIp,
+  resetSignupPurgeThrottle,
   SIGNUP_MAX_PER_WINDOW,
   SIGNUP_RETENTION_MS,
   SIGNUP_WINDOW_MS
@@ -26,6 +27,7 @@ suite('signup guard (PostgreSQL)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRaw`DELETE FROM "signup_attempts"`;
+    resetSignupPurgeThrottle();
   });
 
   afterAll(async () => {
@@ -68,12 +70,35 @@ suite('signup guard (PostgreSQL)', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('purge les lignes de plus de 24 h dans la même requête', async () => {
+  it('purge les lignes de plus de 24 h, au plus une fois par minute et par processus', async () => {
     const t0 = new Date('2026-10-04T10:00:00.000Z');
     await assertSignupAllowed(IP, t0);
-    await assertSignupAllowed(OTHER_IP, new Date(t0.getTime() + SIGNUP_RETENTION_MS + 60 * 1000));
+    const later = new Date(t0.getTime() + SIGNUP_RETENTION_MS + 60 * 1000);
+    await assertSignupAllowed(OTHER_IP, later);
     const rows = await prisma.$queryRaw<Array<{ ip_hash: string }>>`SELECT "ip_hash" FROM "signup_attempts"`;
     expect(rows.map(r => r.ip_hash)).toEqual([hashSignupIp(OTHER_IP)]);
+
+    // Moins d'une minute plus tard, pas de nouvelle purge : une ligne périmée insérée à la main survit.
+    const stale = new Date(later.getTime() - SIGNUP_RETENTION_MS - 1000);
+    await prisma.$executeRaw`INSERT INTO "signup_attempts" ("ip_hash", "created_at") VALUES (${'stale'}, ${stale}::timestamp)`;
+    await assertSignupAllowed(OTHER_IP, new Date(later.getTime() + 10 * 1000));
+    const [{ n }] = await prisma.$queryRaw<Array<{ n: number }>>`
+      SELECT COUNT(*)::int AS n FROM "signup_attempts" WHERE "ip_hash" = 'stale'`;
+    expect(n).toBe(1);
+    // Une minute après la dernière purge, elle est balayée.
+    await assertSignupAllowed(OTHER_IP, new Date(later.getTime() + 2 * 60 * 1000));
+    const [{ m }] = await prisma.$queryRaw<Array<{ m: number }>>`
+      SELECT COUNT(*)::int AS m FROM "signup_attempts" WHERE "ip_hash" = 'stale'`;
+    expect(m).toBe(0);
+  });
+
+  it('IPv6 : les adresses d’un même préfixe /64 partagent un compteur, un autre /64 non', async () => {
+    const base = '2001:db8:aaaa:bbbb';
+    await assertSignupAllowed(`${base}::1`);
+    await assertSignupAllowed(`${base}:1:2:3:4`);
+    await assertSignupAllowed(`${base}:ffff:ffff:ffff:ffff`);
+    await expect(assertSignupAllowed(`${base}::99`)).rejects.toMatchObject({ code: 'SIGNUP_RATE_LIMITED' });
+    await expect(assertSignupAllowed('2001:db8:aaaa:cccc::1')).resolves.toBeUndefined();
   });
 
   it('ne stocke ni ne journalise l’IP en clair', async () => {

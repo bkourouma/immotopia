@@ -31,7 +31,7 @@ const NOT_AN_UPGRADE: UpgradeApplication = { applied: false, target: null };
 /**
  * Si `invoice` est une facture d'upgrade que l'on vient de regler, fait
  * passer l'abonnement de `PARTICULIER_GRATUIT` a la cible : element gratuit
- * termine, element payant au prix du catalogue de cet instant, abonnement
+ * termine, element payant au prix FIGE de la ligne d'upgrade de la facture, abonnement
  * `ACTIVE` en cycle mensuel dont la periode demarre a `now` (date du
  * paiement) et dont le premier mois est deja facture (`billedThrough`).
  * Sans effet pour toute autre facture.
@@ -44,10 +44,11 @@ export async function applyUpgradeForInvoiceTx(
 
   const packLines = await tx.invoiceLine.findMany({
     where: { invoiceId, tenantId, kind: 'PACK' },
-    select: { id: true, metadata: true }
+    select: { id: true, metadata: true, unitPrice: true }
   });
-  const target = packLines.map(l => readUpgradeTarget(l.metadata)).find((t): t is UpgradeTarget => t !== null) ?? null;
-  if (!target) return NOT_AN_UPGRADE;
+  const upgradeLine = packLines.find(l => readUpgradeTarget(l.metadata) !== null);
+  const target = upgradeLine ? readUpgradeTarget(upgradeLine.metadata) : null;
+  if (!upgradeLine || !target) return NOT_AN_UPGRADE;
 
   const invoice = await tx.invoice.findFirst({
     where: { id: invoiceId, tenantId, kind: 'PLATFORM' },
@@ -62,9 +63,11 @@ export async function applyUpgradeForInvoiceTx(
     invoice.subscriptionId !== subscription.id ||
     subscription.status !== SubscriptionStatus.ACTIVE
   ) {
-    logger.warn('applyUpgradeForInvoiceTx: abonnement non éligible, changement de pack non appliqué', {
+    // Argent encaissé sans changement de palier : à traiter par le support (erreur, pas avertissement).
+    logger.error('applyUpgradeForInvoiceTx: abonnement non éligible, changement de pack non appliqué', {
       tenantId,
-      invoiceId
+      invoiceId,
+      target
     });
     return { applied: false, target, reason: 'NOT_ELIGIBLE' };
   }
@@ -83,13 +86,19 @@ export async function applyUpgradeForInvoiceTx(
     include: { catalogItem: { select: { code: true } } }
   });
   if (packItems.some(i => i.catalogItem.code === target)) {
+    logger.error('applyUpgradeForInvoiceTx: abonnement déjà sur le palier cible, facture encaissée sans effet', {
+      tenantId,
+      invoiceId,
+      target
+    });
     return { applied: false, target, reason: 'ALREADY_ON_TARGET' };
   }
   const free = packItems.filter(i => i.catalogItem.code === UPGRADE_SOURCE_PACK);
   if (free.length === 0 || packItems.length !== free.length) {
-    logger.warn("applyUpgradeForInvoiceTx: le pack gratuit n'est pas le seul pack, changement non appliqué", {
+    logger.error("applyUpgradeForInvoiceTx: le pack gratuit n'est pas le seul pack, changement non appliqué", {
       tenantId,
-      invoiceId
+      invoiceId,
+      target
     });
     return { applied: false, target, reason: 'NOT_ELIGIBLE' };
   }
@@ -115,7 +124,9 @@ export async function applyUpgradeForInvoiceTx(
       tenantId,
       catalogItemId: catalog.id,
       quantity: 1,
-      unitMonthlyPrice: catalog.monthlyPrice,
+      // Prix FIGÉ sur celui de la facture réglée (ligne d'upgrade), jamais celui du
+      // catalogue à l'instant du règlement : le client paie ce qu'on lui a facturé.
+      unitMonthlyPrice: upgradeLine.unitPrice,
       status: SubscriptionItemStatus.ACTIVE,
       startsAt: now,
       replacesItemId: free[0].id,

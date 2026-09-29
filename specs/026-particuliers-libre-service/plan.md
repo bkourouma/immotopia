@@ -67,8 +67,14 @@
   l'interface le redirige.
 - Garde du palier gratuit : à la création d'un actif, si le pack du tenant porte la capacité `ACTIFS`,
   refus `409` code `FREE_TIER_LIMIT` (`data: { limit, used }`) quand `used >= limit`, quel que soit le
-  mode global ; sinon comportement du lot 1 inchangé. `ensurePropertyAsset` ne crée pas l'actif quand la
-  limite est atteinte (la valorisation du bien reste enregistrée).
+  mode global ; sinon comportement du lot 1 inchangé. Le compteur `used` = actifs non archivés + biens non
+  archivés sans actif lié (un actif lié à un bien compte une fois) ; la création d'un bien est soumise à la
+  même garde, sous le même verrou consultatif. `ensurePropertyAsset` ne refuse que pour un bien archivé
+  (non compté) ; la valorisation du bien reste enregistrée.
+- Garde de type d'espace (`lib/subscription/particulier-routes.ts`, monté avec le garde d'abonnement) : un
+  tenant `PARTICULIER` n'atteint que la liste blanche (patrimoine, biens, location, abonnement, droits) ;
+  toute autre route d'agence répond 403 `PERSONAL_SPACE_ROUTE_FORBIDDEN`, quel que soit
+  `SUBSCRIPTION_ENFORCEMENT`.
 - `GET /api/tenants/:tenantId/patrimoine/usage` (lecture `PROPERTIES_VIEW`) →
   `{ data: { plan: 'FREE' | 'PAID' | 'AGENCY', limit: number | null, used: number, canAdd: boolean } }`.
 
@@ -150,7 +156,7 @@ Lecture `PROPERTIES_VIEW`. Réponse :
 { data: {
     plan: 'FREE' | 'PAID' | 'AGENCY';   // FREE = pack Particulier gratuit, PAID = Particulier plus, AGENCY = autres
     limit: number | null;                // capacité ACTIFS du pack, null si le pack n'en porte pas
-    used: number;                        // actifs non archivés du tenant
+    used: number;                        // actifs non archivés + biens non archivés sans actif lié
     canAdd: boolean;                     // limit === null || used < limit
     upgrade: { target: 'PARTICULIER_PLUS'; priceMonthly: number; currency: 'XOF'; limit: number } | null;
                                          // proposé seulement pour plan === 'FREE'
@@ -162,8 +168,9 @@ Lecture `PROPERTIES_VIEW`. Réponse :
 À la création d'un actif (`createAsset` du service d'actifs), si le pack actif du tenant porte la capacité
 `ACTIFS` et que `used >= limit` : `409` code `FREE_TIER_LIMIT`, `data: { limit, used }`, message en
 français invitant à passer au palier payant ; quel que soit `SUBSCRIPTION_ENFORCEMENT`. Aucun changement
-pour les tenants dont le pack ne porte pas `ACTIFS` (plafond de 500 du lot 1 conservé). `ensurePropertyAsset`
-ne crée pas l'actif quand la limite est atteinte (la valorisation du bien reste enregistrée).
+pour les tenants dont le pack ne porte pas `ACTIFS` (plafond de 500 du lot 1 conservé). Un bien sans actif
+lié est compté (jamais le bien ET l'actif) ; `POST .../properties` porte la même garde. `ensurePropertyAsset`
+ne crée pas l'actif d'un bien archivé quand la limite est atteinte (la valorisation reste enregistrée).
 
 ### `POST /api/tenants/:tenantId/subscription/upgrade` (4D)
 

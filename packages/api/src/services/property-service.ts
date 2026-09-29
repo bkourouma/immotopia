@@ -1,3 +1,4 @@
+import { assertFreeTierCapacityTx, getAssetCapacityLimit, lockTenantAssets } from './personal-space/free-tier';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
@@ -154,6 +155,11 @@ export async function createProperty(
     throw new BadRequestError(`Property validation failed: ${validation.errors.join(', ')}`);
   }
 
+  // Palier gratuit (lot 4) : un bien sans actif lié compte dans le plafond d'ACTIFS. Plafond lu par le
+  // cache des droits (aucun surcoût pour une agence : `null`) ; comptage et création sous verrou.
+  const capacityLimit =
+    tenantId && data.ownershipType === PropertyOwnershipType.TENANT ? await getAssetCapacityLimit(tenantId) : null;
+
   // Retry logic for handling unique constraint violations (reference collisions)
   const MAX_RETRIES = 5;
   let retries = 0;
@@ -167,6 +173,10 @@ export async function createProperty(
       // Create property — et, dans la meme transaction, son entree au registre
       // des lots de l'abonnement (D1 ; QuotaExceededError en BLOCK annule tout).
       property = await prisma.$transaction(async tx => {
+        if (tenantId && capacityLimit !== null) {
+          await lockTenantAssets(tx, tenantId);
+          await assertFreeTierCapacityTx(tx, tenantId, capacityLimit);
+        }
         const created = await tx.property.create({
           data: {
             internalReference,

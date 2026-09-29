@@ -32,20 +32,27 @@ La seule source de prix est la grille du site
 route 0, 10 actifs) et `PARTICULIER_PLUS` (**2 900 FCFA HT/mois, provisoire**,
 mise en route 0, 100 actifs) ouvrent le module Patrimoine (fonctionnalités
 `CORE`, `RENTAL`, `PATRIMOINE`) et portent `rules.tierGroup = PARTICULIER` : ils ne
-se cumulent pas. Leur capacité est `ACTIFS` (actifs `Asset` non archivés), sans
+se cumulent pas. Leur capacité est `ACTIFS` (actifs `Asset` non archivés, plus les biens non archivés sans actif lié : un actif lié à un bien compte une fois), sans
 extension ni dépassement facturé : le plafond est une garde (lot 4B), pas un
 tarif. Prix et plafonds se modifient dans le catalogue (`updateCatalogItem`),
-sans migration. Un abonnement dont tous les éléments vivants ont un prix
-(mensuel et de mise en route) nul (`isFreeSubscription`) n'émet **aucune**
+sans migration. Un abonnement dont tous les éléments vivants sont des packs
+Particulier à prix (mensuel et de mise en route) nul (`isFreeSubscription` ; une
+agence à prix nul reste facturée comme avant) n'émet **aucune**
 facture périodique ni de dépassement, se renouvelle d'office à l'échéance sans
 facture, n'a pas de rappel de fin d'essai, et ses alertes de seuil ne partent
 qu'à l'utilisateur (jamais au super-administrateur pour un tenant `PARTICULIER`).
-Les packs Particulier n'ont pas de ligne `SETUP_*`.
+Les packs Particulier n'ont pas de ligne `SETUP_*`. Un espace `PARTICULIER` n'atteint
+que la liste blanche `lib/subscription/particulier-routes.ts` (403
+`PERSONAL_SPACE_ROUTE_FORBIDDEN` ailleurs), quel que soit `SUBSCRIPTION_ENFORCEMENT`.
 
 Les variantes de prix vivent dans `catalog_items.rules` (`CatalogRules` :
 `byHeldPacks`, `lotTiers`, `requiresAnyOf`). Le catalogue est amorcé par la
 migration et réaligné par `npm run db:seed:catalog` (`--missing-only` pour ne
-pas écraser une modification du super-admin). **Le prix est figé** dans
+pas écraser une modification du super-admin). **Sans `--missing-only`, le seed
+ÉCRASE les prix et plafonds ajustés** (packs Particulier compris) : après un
+ajustement produit, ne lancer que `--missing-only`. La migration
+`20261004220100`, déjà appliquée, n'est pas modifiable : elle amorce des
+valeurs provisoires que seul le catalogue en base fait évoluer. **Le prix est figé** dans
 `SubscriptionItem.unitMonthlyPrice` à la souscription : modifier le catalogue
 ne change aucun abonnement en cours.
 

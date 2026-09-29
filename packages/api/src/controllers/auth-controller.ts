@@ -14,7 +14,7 @@ import {
 } from '../services/auth-service';
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
 import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookies';
-import { isLanguage } from '../i18n';
+import { isLanguage, t } from '../i18n';
 import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 
 /**
@@ -31,7 +31,7 @@ export async function register(req: Request, res: Response): Promise<void> {
   await registerUser(data);
 
   // Même réponse que l'adresse existe déjà ou non : aucun compte n'est révélé.
-  res.status(201).json({ success: true, message: REGISTRATION_ACCEPTED_MESSAGE });
+  res.status(201).json({ success: true, message: t(REGISTRATION_ACCEPTED_MESSAGE) });
 }
 
 /**

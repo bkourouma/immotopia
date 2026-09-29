@@ -27,7 +27,7 @@ const PHONE_MIN_DIGITS = 8;
 const PHONE_MAX_DIGITS = 15;
 
 /** `+225 07 12 34 56 78` -> `+2250712345678` (espaces, points, tirets et parentheses tolerés). */
-function normalizePhone(raw: string): string {
+export function normalizeUemoaPhone(raw: string): string {
   return raw.trim().replace(/[\s.\-()]/g, '');
 }
 
@@ -51,7 +51,7 @@ export const createPersonalSpaceSchema = z
     phone: z
       .string()
       .max(40)
-      .transform(normalizePhone)
+      .transform(normalizeUemoaPhone)
       .refine(isValidUemoaPhone, 'Numéro de téléphone invalide (format international, ex. +2250712345678).')
       .optional()
   })

@@ -228,12 +228,19 @@ const usageProviders: Record<CapacityKeyCode, UsageProvider> = {
 };
 
 /**
- * Actifs de patrimoine (`Asset`) non archives du tenant (capacite ACTIFS,
- * packs Particulier). Comptage direct filtre par `tenantId`, sans jointure ;
+ * Actifs de patrimoine du tenant (capacite ACTIFS, packs Particulier) : les
+ * actifs (`Asset`) non archives PLUS les biens non archives qui n'ont aucun
+ * actif lie. Un actif immobilier lie a un bien compte une fois — jamais le
+ * bien ET l'actif — et un bien sans actif (cree avant sa premiere valorisation)
+ * compte deja. Deux comptages directs, filtres par `tenantId`, sans jointure ;
  * `DISPOSED` (vendu, cede) reste compte, seul `ARCHIVED` libere une place.
  */
 export async function countActiveAssets(db: Db, tenantId: string): Promise<number> {
-  return db.asset.count({ where: { tenantId, status: { not: 'ARCHIVED' } } });
+  const [assets, propertiesWithoutAsset] = await Promise.all([
+    db.asset.count({ where: { tenantId, status: { not: 'ARCHIVED' } } }),
+    db.property.count({ where: { tenantId, status: { not: 'ARCHIVED' }, asset: { is: null } } })
+  ]);
+  return assets + propertiesWithoutAsset;
 }
 
 export function registerUsageProvider(capacityKey: CapacityKeyCode, provider: UsageProvider): void {

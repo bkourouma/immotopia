@@ -173,6 +173,11 @@ export interface SettleResult {
   subscription: 'NONE' | 'RENEWED' | 'UPGRADED';
   /** Cible du palier appliquee (facture d'upgrade seulement), pour l'audit apres commit. */
   upgradeApplied?: UpgradeTarget;
+  /**
+   * Facture d'upgrade ENCAISSEE mais palier NON applique (abonnement non
+   * eligible, deja sur la cible...) : argent recu sans effet, a traiter.
+   */
+  upgradeNotApplied?: { target: UpgradeTarget; reason: 'ALREADY_ON_TARGET' | 'NOT_ELIGIBLE' };
 }
 
 /**
@@ -239,7 +244,12 @@ export async function settlePlatformInvoiceTx(tx: PrismaTransactionClient, input
   if (upgrade.target !== null) {
     return upgrade.applied
       ? { created: true, payment, subscription: 'UPGRADED', upgradeApplied: upgrade.target }
-      : { created: true, payment, subscription: 'NONE' };
+      : {
+          created: true,
+          payment,
+          subscription: 'NONE',
+          upgradeNotApplied: { target: upgrade.target, reason: upgrade.reason ?? 'NOT_ELIGIBLE' }
+        };
   }
   const subscription = await applyPaymentToSubscriptionTx(tx, tenantId, invoice, now);
   return { created: true, payment, subscription };
@@ -326,6 +336,27 @@ function auditSettlement(
       ...extra
     }
   });
+  if (result.upgradeNotApplied) {
+    // Identifiants et raison seulement : jamais de montant ni de nom.
+    logger.error('Facture d’upgrade encaissée sans changement de palier : à traiter par le support', {
+      tenantId,
+      invoiceId,
+      reason: result.upgradeNotApplied.reason
+    });
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: UPGRADE_AUDIT.NOT_APPLIED,
+      entityType: 'Invoice',
+      entityId: invoiceId,
+      payload: {
+        invoiceId,
+        to: result.upgradeNotApplied.target,
+        reason: result.upgradeNotApplied.reason,
+        source: extra.source ?? null
+      }
+    });
+  }
   if (result.upgradeApplied) {
     logAuditEvent({
       actorUserId,
@@ -698,6 +729,12 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
               reviewReason: 'Facture déjà réglée par un autre paiement : double encaissement à vérifier.'
             }
           });
+        } else if (already && checkout.status === 'REVIEW') {
+          // Rejeu d'un paiement deja regle et mis en revue : la revue n'est pas effacee.
+          await tx.platformPaymentCheckout.update({
+            where: { id: checkout.id, tenantId: checkout.tenantId },
+            data: { status: 'REVIEW', reviewReason: checkout.reviewReason }
+          });
         } else if (!already) {
           const invoice = await tx.invoice.findFirst({
             where: { id: checkout.invoiceId, tenantId },
@@ -714,6 +751,16 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
               checkoutId: checkout.id,
               actorUserId: checkout.createdByUserId
             });
+            if (settledResult.upgradeNotApplied) {
+              // Encaissé sans changement de palier : le paiement est en revue (statut REVIEW existant).
+              await tx.platformPaymentCheckout.update({
+                where: { id: checkout.id, tenantId: checkout.tenantId },
+                data: {
+                  status: 'REVIEW',
+                  reviewReason: `Montée de palier non appliquée (${settledResult.upgradeNotApplied.reason}) : paiement encaissé, à traiter.`
+                }
+              });
+            }
           } else {
             await tx.platformPaymentCheckout.update({
               where: { id: checkout.id, tenantId: checkout.tenantId },

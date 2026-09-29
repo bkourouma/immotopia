@@ -205,13 +205,11 @@ function segmentMatches(pattern: string, actual: string): boolean {
   return pattern === actual;
 }
 
-interface CompiledRule {
-  rule: RouteFeatureRule;
-  segments: string[];
-  score: number;
-}
+type CompiledRule = ReturnType<typeof compile<RouteFeatureRule>>;
 
-function compile(rule: RouteFeatureRule): CompiledRule {
+function compile<T extends { prefix: string; exact?: boolean }>(
+  rule: T
+): { rule: T; segments: string[]; score: number } {
   const segments = splitPath(rule.prefix);
   const literals = segments.filter(s => !s.startsWith(':')).length;
   return { rule, segments, score: segments.length * 100 + literals };
@@ -223,6 +221,25 @@ const READ_LIKE = READ_LIKE_POSTS.map(p => splitPath(p));
 function matches(compiled: { segments: string[] }, actual: string[], exact: boolean): boolean {
   if (exact ? actual.length !== compiled.segments.length : actual.length < compiled.segments.length) return false;
   return compiled.segments.every((pattern, i) => segmentMatches(pattern, actual[i]));
+}
+
+/**
+ * Regle la plus specifique d'une table `{ prefix, exact? }` pour un chemin
+ * relatif (memes regles de correspondance que la table des fonctionnalites).
+ * Sert aussi a la liste blanche des espaces PARTICULIER.
+ */
+export function findBestRule<T extends { prefix: string; exact?: boolean }>(
+  rules: readonly T[],
+  relativePath: string
+): T | undefined {
+  const actual = splitPath(relativePath);
+  let best: { rule: T; score: number } | undefined;
+  for (const rule of rules) {
+    const compiled = compile(rule);
+    if (!matches(compiled, actual, Boolean(rule.exact))) continue;
+    if (!best || compiled.score > best.score) best = { rule, score: compiled.score };
+  }
+  return best?.rule;
 }
 
 /** Regle applicable a un chemin relatif, ou `undefined` si la route n'est pas classee. */

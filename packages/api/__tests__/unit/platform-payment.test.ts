@@ -39,6 +39,9 @@ const store = {
   lots: [] as Row[],
   syndicates: [] as Row[],
   sites: [] as Row[],
+  // Capacité ACTIFS du résumé super-admin : aucun actif ni bien dans ce faux magasin.
+  assets: [] as Row[],
+  properties: [] as Row[],
   seq: 0
 };
 
@@ -163,6 +166,8 @@ const mockPrisma: Row = {
   lotActivation: delegate(() => store.lots, 'lot'),
   syndicate: delegate(() => store.syndicates, 'synd'),
   constructionSite: delegate(() => store.sites, 'site'),
+  asset: delegate(() => store.assets, 'asset'),
+  property: delegate(() => store.properties, 'prop'),
   $queryRaw: jest.fn(async () => []),
   $transaction: jest.fn(async (arg: unknown) => {
     if (typeof arg === 'function') return (arg as (tx: Row) => Promise<unknown>)(mockPrisma);
@@ -721,12 +726,36 @@ describe("Reglement d'une facture d'upgrade (lot 4D) : crochet dans la porte uni
     expect(applyUpgrade).toHaveBeenCalledTimes(1);
   });
 
-  it("crochet non applicable (abonnement inéligible) : règlement enregistré, période non touchée, pas d'audit APPLIED", async () => {
+  it("crochet non applicable (abonnement inéligible) : règlement enregistré, paiement en REVIEW, audit NOT_APPLIED sans montant, pas d'audit APPLIED", async () => {
     applyUpgrade.mockResolvedValueOnce({ applied: false, target: 'PARTICULIER_PLUS', reason: 'NOT_ELIGIBLE' });
     const { row } = await payThroughSimulator('SUCCESS');
-    expect(row.status).toBe('SUCCESS');
+    // Argent encaissé sans changement de palier : revue (statut REVIEW existant), jamais un succès silencieux.
+    expect(row.status).toBe('REVIEW');
+    expect(row.reviewReason).toMatch(/NOT_ELIGIBLE/);
     expect(store.payments).toHaveLength(1);
+    expect(store.invoices[0].status).toBe('PAID');
     expect(applyDue).not.toHaveBeenCalled();
     expect(logAuditEvent.mock.calls.some(c => c[0].actionKey === 'SUBSCRIPTION_UPGRADE_APPLIED')).toBe(false);
+    const notApplied = logAuditEvent.mock.calls
+      .map(c => c[0])
+      .find(e => e.actionKey === 'SUBSCRIPTION_UPGRADE_NOT_APPLIED');
+    expect(notApplied).toMatchObject({ tenantId: TENANT_A, entityId: 'inv-a' });
+    expect(notApplied.payload).toMatchObject({ invoiceId: 'inv-a', to: 'PARTICULIER_PLUS', reason: 'NOT_ELIGIBLE' });
+    expect(JSON.stringify(notApplied.payload)).not.toMatch(/0102|amount|phone|name/i);
+  });
+
+  it('constat manuel encaissé sans changement de palier : audit NOT_APPLIED aussi', async () => {
+    applyUpgrade.mockResolvedValueOnce({ applied: false, target: 'PARTICULIER_PLUS', reason: 'ALREADY_ON_TARGET' });
+    const result = await recordManualPayment(
+      TENANT_A,
+      'inv-a',
+      { method: 'CASH', paidAt: new Date('2026-09-02') },
+      'admin-1'
+    );
+    expect(result.subscription).toBe('NONE');
+    const notApplied = logAuditEvent.mock.calls
+      .map(c => c[0])
+      .find(e => e.actionKey === 'SUBSCRIPTION_UPGRADE_NOT_APPLIED');
+    expect(notApplied.payload).toMatchObject({ reason: 'ALREADY_ON_TARGET', source: 'MANUAL' });
   });
 });

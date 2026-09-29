@@ -658,6 +658,7 @@ describe('abonnement gratuit : aucune facture periodique', () => {
     status: 'ACTIVE',
     unitMonthlyPrice: 0,
     unitSetupPrice: 0,
+    catalogItem: { code: 'PARTICULIER_GRATUIT' },
     ...over
   });
 
@@ -700,6 +701,45 @@ describe('abonnement gratuit : aucune facture periodique', () => {
     mockDb.subItems = [item()];
     mockPreview.mockResolvedValue(freePreview(END, NEXT_END));
     expect(await generateInvoiceForPeriod(TENANT, { at: END, automatic: true })).toBeNull();
+    expect(mockDb.invoices).toHaveLength(0);
+  });
+
+  it('agence a prix nul : PAS gratuite, facturee comme avant (periode et depassement)', async () => {
+    // Pack Agence a 0 FCFA (remise de 100 %) : seuls les packs PARTICULIER sont gratuits.
+    mockDb.subItems = [item({ id: 'item-agence', catalogItem: { code: 'AGENCE_ESSENTIEL' } })];
+    expect(await isFreeSubscription(mockFake as any, 'sub-1')).toBe(false);
+    // Un pack Particulier melange a un element d'agence a prix nul : pas gratuit non plus.
+    mockDb.subItems = [item(), item({ id: 'item-ext', catalogItem: { code: 'EXT_LOTS' } })];
+    expect(await isFreeSubscription(mockFake as any, 'sub-1')).toBe(false);
+
+    mockDb.invoices.push({
+      id: 'old',
+      tenantId: TENANT,
+      kind: 'PLATFORM',
+      billingNature: 'PERIOD',
+      status: 'PAID',
+      periodStart: START
+    });
+    mockDb.subItems = [item({ id: 'item-agence', catalogItem: { code: 'AGENCE_ESSENTIEL' } })];
+    mockPreview.mockResolvedValue(periodPreview({ overage: 5 }));
+    const outcome = await runPlatformBillingStep('sub-1', new Date(END.getTime() + 2 * 60 * 60 * 1000));
+    expect(outcome.periodInvoice).toBe('CREATED');
+    const invoice = mockDb.invoices.find(i => i.id !== 'old')!;
+    expect(mockDb.lines.filter(l => l.invoiceId === invoice.id && l.kind === 'OVERAGE').map(l => l.amount)).toEqual([
+      750
+    ]);
+    // L'emission automatique n'est pas court-circuitee non plus.
+    mockDb.invoices.length = 0;
+    mockPreview.mockResolvedValue(periodPreview());
+    expect(await generateInvoiceForPeriod(TENANT, { at: END, automatic: true })).not.toBeNull();
+  });
+
+  it('particulier gratuit : aucune facture (periode automatique et etape de facturation)', async () => {
+    mockDb.subItems = [item()];
+    mockPreview.mockResolvedValue(freePreview(END, NEXT_END));
+    expect(await generateInvoiceForPeriod(TENANT, { at: END, automatic: true })).toBeNull();
+    const outcome = await runPlatformBillingStep('sub-1', new Date(END.getTime() + 2 * 60 * 60 * 1000));
+    expect(outcome).toEqual({ periodInvoice: 'NONE', overageInvoices: 0, overdue: 0 });
     expect(mockDb.invoices).toHaveLength(0);
   });
 

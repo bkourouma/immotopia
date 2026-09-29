@@ -213,7 +213,7 @@ describe('startSubscriptionUpgrade', () => {
 
 describe('applyUpgradeForInvoiceTx', () => {
   const input = { tenantId: TENANT, invoiceId: 'inv-up', actorUserId: USER, now: NOW };
-  const marker = { id: 'l1', metadata: buildUpgradeLineMetadata('PARTICULIER_PLUS') };
+  const marker = { id: 'l1', metadata: buildUpgradeLineMetadata('PARTICULIER_PLUS'), unitPrice: 2900 };
 
   beforeEach(() => {
     mockPrisma.invoiceLine.findMany.mockResolvedValue([marker]);
@@ -224,7 +224,8 @@ describe('applyUpgradeForInvoiceTx', () => {
       { id: 'item-free', catalogItem: { code: 'PARTICULIER_GRATUIT' } }
     ]);
     mockPrisma.subscriptionItem.create.mockResolvedValue({ id: 'item-plus' });
-    catalog.mockResolvedValue({ id: 'cat-plus', monthlyPrice: 2900 });
+    // Le catalogue a bougé depuis la facture : le prix figé est celui de la LIGNE, pas celui-ci.
+    catalog.mockResolvedValue({ id: 'cat-plus', monthlyPrice: 3500 });
   });
 
   it("facture ordinaire (sans marqueur) : aucun effet, aucune lecture de l'abonnement", async () => {
@@ -234,7 +235,7 @@ describe('applyUpgradeForInvoiceTx', () => {
     expect(mockPrisma.subscriptionItem.create).not.toHaveBeenCalled();
   });
 
-  it("passe du gratuit au payant : élément gratuit terminé, payant au prix du catalogue, période d'un mois depuis le paiement", async () => {
+  it("passe du gratuit au payant : élément gratuit terminé, payant au prix FIGÉ de la ligne de facture (pas du catalogue), période d'un mois depuis le paiement", async () => {
     const result = await applyUpgradeForInvoiceTx(mockPrisma as never, input);
     expect(result).toMatchObject({ applied: true, target: 'PARTICULIER_PLUS' });
     expect(mockPrisma.subscriptionItem.update).toHaveBeenCalledWith({

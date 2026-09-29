@@ -390,30 +390,39 @@ function assertLineCurrency(asset: Pick<AssetRow, 'currency'>, currency: string,
 
 // ---------------------------------------------------------------- Actifs
 
-async function assertNewAssetProperty(tenantId: string, input: CreateAssetInput): Promise<void> {
+/**
+ * Valide le rattachement à un bien. Rend vrai quand le bien rattaché était déjà
+ * compté par le compteur d'usage (bien non archivé sans actif) : lui créer
+ * son actif ne change pas le compteur, donc n'est pas soumis au plafond.
+ */
+async function assertNewAssetProperty(tenantId: string, input: CreateAssetInput): Promise<boolean> {
   const isRealEstate = input.assetClass === 'REAL_ESTATE';
   if (!isRealEstate) {
     if (input.propertyId) throw fieldError('propertyId', 'Seul un actif immobilier peut être rattaché à un bien.');
-    return;
+    return false;
   }
   if (!input.propertyId) throw fieldError('propertyId', 'Un actif immobilier doit être rattaché à un bien.');
-  await getPropertyForTenant(input.propertyId, tenantId);
+  const property = await getPropertyForTenant(input.propertyId, tenantId);
   const linked = await prisma.asset.findFirst({
     where: { tenantId, propertyId: input.propertyId },
     select: { id: true }
   });
   if (linked) throw new ConflictError('Ce bien est déjà rattaché à un actif.');
+  return property.status !== 'ARCHIVED';
 }
 
 export async function createAsset(tenantId: string, input: CreateAssetInput, actorUserId?: string): Promise<AssetDto> {
   const details = validateAssetDetails(input.assetClass, input.details);
   const money = resolveCurrency(input.currency, input.exchangeRateToXof);
-  await assertNewAssetProperty(tenantId, input);
+  const propertyAlreadyCounted = await assertNewAssetProperty(tenantId, input);
   await assertBelongsToTenant(prisma, 'holdingEntity', input.holdingEntityId, tenantId, { message: NOT_FOUND_ENTITY });
   await assertAssetQuota(tenantId);
-  // Palier gratuit (lot 4B) : plafond du pack quand il porte la capacité ACTIFS,
+  // Palier gratuit (lot 4) : plafond du pack quand il porte la capacité ACTIFS,
   // quel que soit le mode global. Comptage et création sous verrou par tenant.
-  const capacityLimit = await getAssetCapacityLimit(tenantId, { fresh: true });
+  // Lecture par le cache des droits (aucun surcoût pour une agence) ; un refus
+  // est confirmé à neuf dans `assertFreeTierCapacityTx`. Un actif immobilier lié à un bien
+  // déjà compté ne change pas le compteur : pas de garde.
+  const capacityLimit = propertyAlreadyCounted ? null : await getAssetCapacityLimit(tenantId);
 
   const created = await prisma.$transaction(async tx => {
     if (capacityLimit !== null) {

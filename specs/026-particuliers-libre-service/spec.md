@@ -60,10 +60,9 @@ au palier payant ; il peut toujours consulter, modifier, archiver ses actifs et 
 4. **Given** 10 actifs, **When** il modifie, archive, valorise ou projette, **Then** tout reste possible.
 5. **Given** un actif immobilier lié à un bien, **When** le compteur est calculé, **Then** il compte pour un
    seul actif (jamais le bien et l'actif).
-6. **Given** un actif immobilier qui serait créé automatiquement à la première valorisation d'un
-   bien (lot 1) alors que la limite est atteinte, **When** la valorisation est saisie, **Then** elle reste
-   enregistrée, l'actif n'est pas créé, et la limite est rappelée par le bandeau d'usage et à la prochaine
-   création d'actif.
+6. **Given** un actif immobilier créé automatiquement à la première valorisation d'un bien (lot 1), **When**
+   la valorisation est saisie, **Then** elle reste enregistrée et l'actif est créé sans changer le compteur
+   (le bien sans actif était déjà compté) ; seul un bien archivé, non compté, n'obtient pas d'actif à la limite.
 7. **Given** une agence existante (pack Agence, Syndic, Promoteur ou Patrimoine), **When** elle crée des
    actifs, **Then** sa limite reste celle du lot 1 (500), inchangée.
 
@@ -100,8 +99,9 @@ s'il loue. Il ne voit ni copropriété, ni chantiers, ni ventes, ni gestion de m
    présents, **même quand** `SUBSCRIPTION_ENFORCEMENT` vaut `warn`.
 2. **Given** un espace particulier, **When** il ouvre son tableau de bord, **Then** il voit son patrimoine
    (valeur nette) et non des indicateurs d'agence vides.
-3. **Given** un espace particulier, **When** il appelle une route d'un module qu'il n'a pas (Syndic,
-   Chantiers), **Then** c'est refusé.
+3. **Given** un espace particulier, **When** il appelle une route d'agence (CRM, Syndic, Chantiers, finance,
+   invitations, newsletter, notifications, passerelle de paiement), **Then** c'est refusé (403), quel que
+   soit `SUBSCRIPTION_ENFORCEMENT` : liste blanche par type d'espace, refus par défaut.
 
 ---
 
@@ -146,7 +146,8 @@ L'inscription libre ne doit pas permettre de créer des milliers d'espaces jetab
   de la limite du palier gratuit, quel que soit `SUBSCRIPTION_ENFORCEMENT`, uniquement pour les espaces
   dont le pack porte cette capacité ; les autres espaces gardent le plafond du lot 1.
 - **FR-005**: Le compteur MUST compter les actifs non archivés une fois chacun, y compris les actifs
-  immobiliers créés automatiquement.
+  immobiliers créés automatiquement, PLUS les biens non archivés sans actif lié (un actif immobilier lié à
+  un bien compte une fois, jamais le bien ET l'actif) ; la création d'un bien est soumise à la même garde.
 - **FR-006**: Un pack payant particulier MUST exister (prix et plafond provisoires, modifiables dans le
   catalogue) ; le passage gratuit vers payant MUST relever la limite dès la confirmation du paiement.
 - **FR-007**: Le passage au palier payant MUST créer une facture puis un paiement PaySecureHub depuis une

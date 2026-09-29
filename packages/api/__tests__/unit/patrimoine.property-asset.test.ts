@@ -177,12 +177,23 @@ describe('storedPropertyReliability', () => {
 describe('ensurePropertyAsset — palier gratuit (lot 4B)', () => {
   const limitReached = isFreeTierLimitReached as jest.Mock;
 
-  it('plafond atteint : ne crée pas l’actif et retourne null sans erreur', async () => {
+  it('bien ARCHIVÉ (non compté) et plafond atteint : ne crée pas l’actif, retourne null sans erreur, avec le client reçu', async () => {
     limitReached.mockResolvedValueOnce(true);
-    const { client, mocks, assets } = makeClient([PROP]);
+    const { client, mocks, assets } = makeClient([{ ...PROP, status: 'ARCHIVED' }]);
     await expect(ensurePropertyAsset(client, 'tenant-a', 'prop-1')).resolves.toBeNull();
+    expect(limitReached).toHaveBeenCalledWith('tenant-a', client);
     expect(mocks.asset.upsert).not.toHaveBeenCalled();
     expect(assets).toHaveLength(0);
+  });
+
+  it('bien non archivé (déjà compté comme bien sans actif) : l’actif est créé sans consulter le plafond', async () => {
+    limitReached.mockClear();
+    limitReached.mockResolvedValue(true);
+    const { client, assets } = makeClient([{ ...PROP, status: 'AVAILABLE' }]);
+    await expect(ensurePropertyAsset(client, 'tenant-a', 'prop-1')).resolves.toMatchObject({ id: 'asset-1' });
+    expect(limitReached).not.toHaveBeenCalled();
+    expect(assets).toHaveLength(1);
+    limitReached.mockResolvedValue(false);
   });
 
   it('plafond atteint mais actif déjà lié au bien : il est retrouvé (jamais recréé)', async () => {

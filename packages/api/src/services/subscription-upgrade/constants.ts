@@ -20,7 +20,8 @@ export const UPGRADE_SOURCE_PACK = PACK.PARTICULIER_GRATUIT;
 /** Cles d'audit (l'entree d'audit accepte toute chaine ; aucun telephone ni montant nominatif dans le payload). */
 export const UPGRADE_AUDIT = {
   STARTED: 'SUBSCRIPTION_UPGRADE_STARTED',
-  APPLIED: 'SUBSCRIPTION_UPGRADE_APPLIED'
+  APPLIED: 'SUBSCRIPTION_UPGRADE_APPLIED',
+  NOT_APPLIED: 'SUBSCRIPTION_UPGRADE_NOT_APPLIED'
 } as const;
 
 /** Codes d'erreur du contrat. */

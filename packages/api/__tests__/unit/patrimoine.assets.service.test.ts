@@ -1406,7 +1406,8 @@ describe('palier gratuit (lot 4B)', () => {
 
   it('pack sans capacité ACTIFS (agence) : ni verrou ni garde, comportement du lot 1', async () => {
     await service.createAsset(TENANT_A, input);
-    expect(limitMock).toHaveBeenCalledWith(TENANT_A, { fresh: true });
+    // Lecture par le cache des droits : aucun surcoût `fresh` pour une agence.
+    expect(limitMock).toHaveBeenCalledWith(TENANT_A);
     expect(lockMock).not.toHaveBeenCalled();
     expect(assertMock).not.toHaveBeenCalled();
   });

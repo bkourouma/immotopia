@@ -32,7 +32,7 @@ import { runWithTenantContext } from '../utils/tenant-context';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { logAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
-import { ChargeLine, PLATFORM_TAX_RATE_PERCENT, addBillingPeriod } from '../lib/subscription';
+import { ChargeLine, PARTICULIER_PACKS, PLATFORM_TAX_RATE_PERCENT, addBillingPeriod } from '../lib/subscription';
 import {
   DRAFT_NUMBER_PREFIX,
   PlatformCustomerInfo,
@@ -577,20 +577,32 @@ function isUniqueViolation(error: unknown): boolean {
 
 /**
  * Vrai quand TOUS les elements vivants de l'abonnement (ACTIVE, ou
- * SCHEDULED a venir) ont un prix mensuel ET de mise en route nuls — par
- * exemple le seul pack Particulier Gratuit. Un abonnement gratuit ne genere
- * AUCUNE facture periodique (sinon une facture a zero, payee d'office, serait
- * emise a chaque periode) et ne se renouvelle pas par facture : voir
- * `processBillingBoundary` (subscription-usage-job). Un abonnement sans
- * element n'est pas « gratuit » : il reste un cas anormal a traiter.
+ * SCHEDULED a venir) sont des packs PARTICULIER (`PARTICULIER_PACKS`) ET ont un
+ * prix mensuel ET de mise en route nuls — par exemple le seul pack
+ * Particulier Gratuit. Un abonnement gratuit ne genere AUCUNE facture
+ * periodique (sinon une facture a zero, payee d'office, serait emise a chaque
+ * periode) et ne se renouvelle pas par facture : voir `processBillingBoundary`
+ * (subscription-usage-job).
+ *
+ * Une AGENCE a prix nul (remise de 100 %, accord commercial, pack a zero) n'est
+ * PAS gratuite : elle reste facturee comme avant, depassement compris. Un
+ * abonnement sans element n'est pas « gratuit » non plus : cas anormal.
  * Les prix lus sont ceux figes dans SubscriptionItem (D12).
  */
 export async function isFreeSubscription(db: Db, subscriptionId: string): Promise<boolean> {
   const items = await db.subscriptionItem.findMany({
     where: { subscriptionId, status: { in: ['ACTIVE', 'SCHEDULED'] } },
-    select: { unitMonthlyPrice: true, unitSetupPrice: true }
+    select: { unitMonthlyPrice: true, unitSetupPrice: true, catalogItem: { select: { code: true } } }
   });
-  return items.length > 0 && items.every(i => toNumber(i.unitMonthlyPrice) === 0 && toNumber(i.unitSetupPrice) === 0);
+  return (
+    items.length > 0 &&
+    items.every(
+      i =>
+        PARTICULIER_PACKS.includes(i.catalogItem?.code ?? '') &&
+        toNumber(i.unitMonthlyPrice) === 0 &&
+        toNumber(i.unitSetupPrice) === 0
+    )
+  );
 }
 
 // =============================================================== emission

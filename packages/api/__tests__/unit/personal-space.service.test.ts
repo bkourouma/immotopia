@@ -151,6 +151,26 @@ describe('createPersonalSpace', () => {
     await expect(createPersonalSpace('user-1', INPUT)).resolves.toMatchObject({ replay: false });
   });
 
+  it('l’unicité ne regarde que les appartenances ACTIVES et le rôle TENANT_ADMIN sur ce tenant', async () => {
+    mockTx.membership.findMany.mockResolvedValue([{ tenantId: 'tenant-old' }]);
+    mockTx.userRole.findFirst.mockResolvedValue(null);
+    await createPersonalSpace('user-1', INPUT);
+    expect(mockTx.membership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user-1', status: 'ACTIVE', tenant: { type: 'PARTICULIER' } })
+      })
+    );
+    expect(mockTx.userRole.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'user-1',
+          tenantId: { in: ['tenant-old'] },
+          role: { key: 'TENANT_ADMIN' }
+        })
+      })
+    );
+  });
+
   describe('idempotence (Idempotency-Key)', () => {
     it('même clé, même utilisateur : rejoue la même réponse sans rien recréer', async () => {
       const first = await createPersonalSpace('user-1', INPUT, 'key-1');

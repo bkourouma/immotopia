@@ -27,18 +27,10 @@ export interface StartUpgradeResult {
 }
 
 /**
- * `tenantId` vient de l'URL verifiee par `requireTenantAccess`, jamais du corps.
- * Ordre des refus : cible hors liste, tenant non particulier ou pack non
- * gratuit (403), deja sur la cible (409), telephone absent (422), paiements
- * indisponibles (503), paiement deja en cours (409 avec reprise).
+ * Conditions de la montée de palier, dans l'ordre : espace personnel, abonnement ACTIF sur le seul palier
+ * gratuit, cible pas déjà en place, téléphone renseigné. Ne modifie rien.
  */
-export async function startSubscriptionUpgrade(
-  tenantId: string,
-  target: UpgradeTarget,
-  actorUserId: string
-): Promise<StartUpgradeResult> {
-  if (!isUpgradeTarget(target)) throw new ForbiddenError('Palier cible non proposé.');
-
+async function assertUpgradeEligible(tenantId: string, target: UpgradeTarget): Promise<{ subscriptionId: string }> {
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { type: true, contactPhone: true }
@@ -78,6 +70,24 @@ export async function startSubscriptionUpgrade(
     ]);
   }
 
+  return { subscriptionId: subscription.id };
+}
+
+/**
+ * `tenantId` vient de l'URL verifiee par `requireTenantAccess`, jamais du corps.
+ * Ordre des refus : cible hors liste, tenant non particulier ou pack non
+ * gratuit (403), deja sur la cible (409), telephone absent (422), paiements
+ * indisponibles (503), paiement deja en cours (409 avec reprise).
+ */
+export async function startSubscriptionUpgrade(
+  tenantId: string,
+  target: UpgradeTarget,
+  actorUserId: string
+): Promise<StartUpgradeResult> {
+  if (!isUpgradeTarget(target)) throw new ForbiddenError('Palier cible non proposé.');
+
+  const { subscriptionId } = await assertUpgradeEligible(tenantId, target);
+
   if (!getPlatformPaymentAvailability().available) {
     throw new AppError(
       "Le paiement en ligne n'est pas disponible pour le moment.",
@@ -90,7 +100,7 @@ export async function startSubscriptionUpgrade(
   if (!catalog.isSellable) throw new ConflictError("Ce palier n'est plus commercialisé.");
   const { invoice } = await prisma.$transaction(tx =>
     generateUpgradeInvoiceTx(tx, tenantId, {
-      subscriptionId: subscription.id,
+      subscriptionId,
       target,
       catalogItemId: catalog.id,
       packName: catalog.name,

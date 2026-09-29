@@ -39,7 +39,7 @@ import { t } from '../i18n';
 import { frontendUrl } from '../config/env';
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
-import { addBillingPeriod, CAPACITY_KEYS, CapacityKeyCode } from '../lib/subscription';
+import { addBillingPeriod, CAPACITY_KEYS, CapacityKeyCode, PACK, PARTICULIER_PACKS } from '../lib/subscription';
 import { isFreeSubscription, runPlatformBillingStep } from '../services/platform-invoice-service';
 import {
   applyDueItemTransitionsTx,
@@ -396,10 +396,13 @@ export async function evaluateQuotaAlerts(tenantId: string, now: Date = new Date
           threshold >= 100
             ? t('Capacité de votre abonnement atteinte ({{label}})', { label })
             : t('Capacité de votre abonnement utilisée à {{threshold}} % ({{label}})', { threshold, label }),
-        text: t(
-          'Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.',
-          { used, limit, label, policy: policyNote, url: subscriptionUrl(tenantId) }
-        ),
+        text: alertText(key, entitlements.packs, {
+          used,
+          limit,
+          label,
+          policy: policyNote,
+          url: subscriptionUrl(tenantId)
+        }),
         adminSubject: `[ImmoTopia] ${name} — ${key} ${threshold} %`,
         adminText: `${name} (${tenantId}) : ${used} / ${limit} ${CAPACITY_LABELS[key]} (seuil ${threshold} %, politique ${entitlements.quotaPolicy}).`
       });
@@ -408,6 +411,34 @@ export async function evaluateQuotaAlerts(tenantId: string, now: Date = new Date
     }
   }
   return raised;
+}
+
+/**
+ * Corps de l'alerte de seuil. Un particulier n'a pas d'extension a ajouter : sur le palier gratuit on
+ * l'invite a passer au palier payant, sur le palier payant a archiver ; les autres capacites gardent
+ * le texte historique (« Ajoutez une extension »).
+ */
+function alertText(
+  key: CapacityKeyCode,
+  packs: readonly string[] | undefined,
+  vars: { used: number; limit: number; label: string; policy: string; url: string }
+): string {
+  if (key === 'ACTIFS' && packs?.includes(PACK.PARTICULIER_GRATUIT)) {
+    return t(
+      'Vous utilisez {{used}} {{label}} sur {{limit}} inclus dans votre formule gratuite. {{policy}} Passez au palier payant depuis {{url}}.',
+      vars
+    );
+  }
+  if (key === 'ACTIFS' && packs?.some(pack => PARTICULIER_PACKS.includes(pack))) {
+    return t(
+      'Vous utilisez {{used}} {{label}} sur {{limit}} inclus dans votre formule. {{policy}} Archivez les actifs dont vous n’avez plus besoin ou contactez-nous depuis {{url}}.',
+      vars
+    );
+  }
+  return t(
+    'Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.',
+    vars
+  );
 }
 
 /** Alertes de seuil d'une agence, les plus recentes d'abord (surface in-app). */
