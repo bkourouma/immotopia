@@ -87,16 +87,21 @@ Cinq écarts changent la conception :
 3. **Validation humaine.** Jeton HMAC-SHA256, clé dérivée par HKDF de
    `JWT_SECRET`, durée 300 s, lié à userId, tenantId, action et arguments
    résolus par le serveur ; usage unique (table mémoire + ligne `AuditLog`
-   synchrone vérifiée avant usage) ; idempotence métier (quittance FINAL déjà
+   synchrone, vérifiée puis écrite sous un verrou consultatif PostgreSQL
+   transactionnel : atomique entre instances d'API) ; idempotence métier (quittance FINAL déjà
    existante renvoyée au lieu d'être regénérée). Confirmation par
    `POST /ai/actions/execute`, qui rejoue auth, tenant, collaborateur et
-   `RENTAL_DOCUMENTS_GENERATE`, puis revalide l'appartenance de chaque id.
+   `RENTAL_DOCUMENTS_GENERATE` et `RENTAL_DOCUMENTS_VIEW` (le téléchargement
+   exige VIEW), puis revalide l'appartenance de chaque id ; l'idempotence des
+   quittances est sérialisée par paiement (même verrou consultatif).
 4. **Sécurité.**
    - Pas de nouveau modèle Prisma (conversation non persistée ; usage unique
      via `AuditLog`) : `schema-tenant-coverage` intact.
    - Assistant **refusé au super-admin** en MVP.
    - Limites : chat 20/min et 300/jour, exécution 10/min, par utilisateur et
-     par agence. Messages : 20 max, 4 000 caractères chacun, 24 000 au total.
+     par agence ; plus un plafond PAR AGENCE, tous collaborateurs confondus
+     (`AI_TENANT_MINUTE_LIMIT` 100/min, `AI_TENANT_DAILY_LIMIT` 3000/jour).
+     Messages : 20 max, 4 000 caractères chacun, 24 000 au total.
      4 tours d'outils et 8 appels d'outils max par requête.
    - Sorties d'outils projetées : jamais d'e-mail, téléphone, `file_path`,
      `mm_phone`, notes, propriétaire.
@@ -711,9 +716,9 @@ Scénarios (ports 3300/8800) :
   locataires, montants) : assistant désactivé par défaut ; l'activation en
   production relève d'une décision juridique et contractuelle (accord de
   traitement). Minimisation documentée dans SECURITY.md.
-- Table d'usage unique en mémoire et limiteurs supposent **une seule instance
-  d'API** ; la ligne `AuditLog` couvre un redémarrage, pas des instances
-  parallèles.
+- L'usage unique des jetons et l'idempotence des quittances sont atomiques
+  entre instances (verrous consultatifs PostgreSQL) ; les **limiteurs de débit
+  restent en mémoire, par instance**.
 - Le cache des permissions dure 5 min : une révocation peut mettre 5 min à
   s'appliquer.
 - Le correctif RBAC retire génération et téléchargement à `TENANT_AGENT`

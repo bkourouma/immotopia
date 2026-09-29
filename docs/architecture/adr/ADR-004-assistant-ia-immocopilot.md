@@ -55,13 +55,15 @@ contenu injecté dans les données, peut piloter.
    modèle** ; l'orchestrateur n'importe ni l'exécuteur ni le générateur.
 4. **Écriture par confirmation humaine.** `POST /ai/actions/execute` est la seule
    porte de génération : elle rejoue authentification, agence, collaborateur et
-   `RENTAL_DOCUMENTS_GENERATE`, vérifie un **jeton de proposition** (HMAC-SHA256,
+   `RENTAL_DOCUMENTS_GENERATE` et `RENTAL_DOCUMENTS_VIEW`, vérifie un **jeton de proposition** (HMAC-SHA256,
    clé dérivée par HKDF de `JWT_SECRET`, 300 s, lié à l'utilisateur, à l'agence, à
    l'action et aux arguments résolus par le serveur, usage unique), revalide
    l'appartenance de chaque identifiant, puis appelle
    `document-generation-service.generateDocument`. L'usage unique repose sur une
-   table mémoire et sur une ligne `AuditLog` synchrone : **aucun nouveau modèle
-   Prisma**.
+   table mémoire et sur une ligne `AuditLog` lue puis écrite sous un verrou
+   consultatif PostgreSQL transactionnel (atomique entre instances), et
+   l'idempotence des quittances sur un verrou par paiement : **aucun nouveau
+   modèle Prisma**.
 5. **Une permission par outil**, clés réelles, plus `requireTenantCollaborator` et
    un refus explicite du **super-admin** (MVP). En mode `enforce`, les modules de
    l'abonnement filtrent aussi les outils (`/ai` en `CORE`, `/ai/actions` en
@@ -80,7 +82,9 @@ contenu injecté dans les données, peut piloter.
    connexion. Côté web, `fetch` en flux avec `credentials: 'include'`
    (`utils/event-stream.ts`), rendu Markdown maison sans HTML.
 9. **Limites** : 20 messages par requête, chat 20 par minute et 300 par jour,
-   exécution 10 par minute (par utilisateur et par agence), 4 tours et 8 appels
+   exécution 10 par minute (par utilisateur et par agence), plafond par agence sur
+   le chat (`AI_TENANT_MINUTE_LIMIT` 100 par minute, `AI_TENANT_DAILY_LIMIT` 3000
+   par jour), 4 tours et 8 appels
    d'outils par requête.
 10. **Périmètre MVP** : quittance (depuis un paiement encaissé) et relevé de
     compte, en DOCX. Avis d'échéance, relances, PDF, e-mail, persistance des
@@ -109,9 +113,9 @@ contenu injecté dans les données, peut piloter.
 - Les données décrites à la décision 7 quittent l'infrastructure quand `anthropic` est
   actif (noms de locataires, montants) : décision juridique préalable, et
   information des agences.
-- L'usage unique du jeton et les limiteurs de débit sont en mémoire : ils
-  supposent **une seule instance d'API** ; la ligne d'audit couvre un
-  redémarrage, pas des instances parallèles.
+- L'usage unique du jeton et l'idempotence des quittances sont atomiques entre
+  instances (verrous consultatifs) ; les limiteurs de débit restent en mémoire,
+  **par instance** (plafonds effectifs multipliés par le nombre d'instances).
 - Le cache de permissions dure 5 minutes : une révocation peut mettre ce temps à
   s'appliquer.
 - La clé de proposition dérive de `JWT_SECRET` : la faire tourner invalide les
@@ -134,7 +138,7 @@ contenu injecté dans les données, peut piloter.
   supprime ce chemin.
 - **Jeton de proposition tenu en base** (nouveau modèle Prisma) — plus robuste
   face à plusieurs instances, mais ajoute un modèle à couvrir par l'inventaire
-  tenant et une migration, pour un MVP mono-instance ; la ligne `AuditLog`
+  tenant et une migration, pour un MVP ; la ligne `AuditLog`, lue puis écrite sous verrou consultatif,
   suffit à l'usage unique.
 - **`EventSource` pour le flux** — ne fait pas de POST et ne porte pas le corps
   du chat ; `fetch` en flux avec `credentials: 'include'` réutilise le cookie

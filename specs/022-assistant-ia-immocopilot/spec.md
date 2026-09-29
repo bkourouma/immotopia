@@ -87,13 +87,13 @@ section « Assistant IA ».
    statut).
 3. **Permission par outil.**
 
-   | Outil                     | Permission                  | Module   |
-   | ------------------------- | --------------------------- | -------- |
-   | `search_properties`       | `PROPERTIES_VIEW`           | `CORE`   |
-   | `search_leases`           | `RENTAL_LEASES_VIEW`        | `RENTAL` |
-   | `list_lease_documents`    | `RENTAL_DOCUMENTS_VIEW`     | `RENTAL` |
-   | `list_property_documents` | `PROPERTIES_VIEW`           | `CORE`   |
-   | `propose_rental_document` | `RENTAL_DOCUMENTS_GENERATE` | `RENTAL` |
+   | Outil                     | Permission                                             | Module   |
+   | ------------------------- | ------------------------------------------------------ | -------- |
+   | `search_properties`       | `PROPERTIES_VIEW`                                      | `CORE`   |
+   | `search_leases`           | `RENTAL_LEASES_VIEW`                                   | `RENTAL` |
+   | `list_lease_documents`    | `RENTAL_DOCUMENTS_VIEW`                                | `RENTAL` |
+   | `list_property_documents` | `PROPERTIES_VIEW`                                      | `CORE`   |
+   | `propose_rental_document` | `RENTAL_DOCUMENTS_GENERATE` et `RENTAL_DOCUMENTS_VIEW` | `RENTAL` |
 
    Le téléchargement passe par la route existante `GET
 /tenants/:tenantId/documents/:id/download` (`RENTAL_DOCUMENTS_VIEW`).
@@ -104,21 +104,27 @@ section « Assistant IA ».
 5. **Validation humaine.** Le chat n'écrit jamais. `propose_rental_document`
    renvoie une carte de proposition et un **jeton signé** (HMAC-SHA256, HKDF de
    `JWT_SECRET`, 300 s, lié à l'utilisateur, à l'agence, à l'action et aux
-   arguments résolus par le serveur, usage unique). La génération n'existe que
+   arguments résolus par le serveur, usage unique et atomique entre instances :
+   verrou consultatif PostgreSQL autour de la ligne d'audit). Elle n'est signée
+   que pour un bail vu dans la requête (`search_leases`, `list_lease_documents`
+   ou écran vérifié), sinon `NOT_POSSIBLE` / `lease_not_seen`. La génération n'existe que
    par `POST /ai/actions/execute`, qui rejoue authentification, agence,
-   collaborateur et `RENTAL_DOCUMENTS_GENERATE`, puis revalide l'appartenance de
+   collaborateur, `RENTAL_DOCUMENTS_GENERATE` et `RENTAL_DOCUMENTS_VIEW`, puis revalide l'appartenance de
    chaque identifiant. Une quittance FINAL déjà émise est renvoyée
-   (`alreadyExisted: true`) au lieu d'être regénérée.
+   (`alreadyExisted: true`) au lieu d'être regénérée ; la vérification et la
+   génération forment une section critique par paiement (verrou consultatif).
 6. **Minimisation.** Sorties d'outils projetées et plafonnées (10 éléments,
    8 Ko) : jamais d'e-mail, de téléphone, de chemin de fichier, de notes ni de
    propriétaire. Le jeton ne va pas au modèle. Les résultats d'outils et le
    contexte d'écran sont des données, pas des instructions.
 7. **Limites.** 20 messages par requête (4 000 caractères chacun, 24 000 au
    total) ; chat 20 par minute et 300 par jour, exécution 10 par minute, par
-   utilisateur et par agence ; `AI_MAX_TOOL_ROUNDS` tours (4) et 8 appels
-   d'outils par requête.
+   utilisateur et par agence, plus un plafond par agence sur le chat
+   (`AI_TENANT_MINUTE_LIMIT` 100 par minute, `AI_TENANT_DAILY_LIMIT` 3000 par
+   jour) ; limiteurs en mémoire, par instance ; `AI_MAX_TOOL_ROUNDS` tours (4)
+   et 8 appels d'outils par requête.
 8. **Traçabilité.** `AuditLog` via `logAuditEvent` : `AI_CHAT_TURN` (sans le
-   texte), `AI_TOOL_CALLED`, `AI_TOOL_DENIED`, `AI_PROPOSAL_ISSUED`,
+   texte, entité = `requestId` généré par le serveur), `AI_TOOL_CALLED`, `AI_TOOL_DENIED`, `AI_PROPOSAL_ISSUED`,
    `AI_PROPOSAL_REDEEMED` (écrit de façon synchrone, il garantit l'usage
    unique), `AI_ACTION_EXECUTED`, `AI_ACTION_REJECTED`.
 
@@ -132,7 +138,7 @@ Base : `/api/tenants/:tenantId/ai`. Types et schémas Zod :
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
 | `GET /status`           | Activé ou non, fournisseur, outils permis à l'utilisateur, limites. Répond même désactivé (`enabled: false`, `NOT_CONFIGURED`) | 200 JSON                                                 |
 | `POST /chat`            | Conversation en flux ; corps `{ conversationId?, messages[1..20], context? }`, `.strict()`                                     | `text/event-stream` ; erreurs avant le flux en JSON typé |
-| `POST /actions/execute` | Confirmation ; corps `{ proposalToken }`. Exige `RENTAL_DOCUMENTS_GENERATE`                                                    | 201 `{ success, data: ActionExecutedPayload }`           |
+| `POST /actions/execute` | Confirmation ; corps `{ proposalToken }`. Exige `RENTAL_DOCUMENTS_GENERATE` et `RENTAL_DOCUMENTS_VIEW`                         | 201 `{ success, data: ActionExecutedPayload }`           |
 
 Événements SSE (`event: <type>` puis `data: <JSON>`, commentaire `: ping`
 toutes les 15 s) : `meta`, `text_delta`, `tool_status`, `property_results`,
@@ -156,8 +162,9 @@ Variables `AI_*` de `packages/api/src/config/env.ts`, documentées dans
 défaut, `fake`, `anthropic`), `ANTHROPIC_API_KEY` (exigée pour `anthropic`),
 `AI_MODEL` (`claude-opus-5-5`), `AI_EFFORT` (`low`), `AI_MAX_OUTPUT_TOKENS`
 (16000), `AI_MAX_TOOL_ROUNDS` (4), `AI_REQUEST_TIMEOUT_MS` (60000),
-`AI_PROPOSAL_TTL_SECONDS` (300), `AI_REFUSAL_FALLBACK` (`on`). `fake` est refusé
-en production. Aucune variable `VITE_*`.
+`AI_PROPOSAL_TTL_SECONDS` (300), `AI_REFUSAL_FALLBACK` (`on`),
+`AI_TENANT_MINUTE_LIMIT` (100), `AI_TENANT_DAILY_LIMIT` (3000). `fake` n'est
+accepté que si `NODE_ENV` vaut explicitement `development` ou `test`. Aucune variable `VITE_*`.
 
 ## 7. Expérience utilisateur (`apps/web`)
 

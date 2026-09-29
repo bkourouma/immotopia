@@ -255,7 +255,10 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(route!.middlewares).toContain(authenticate);
     }
     const execute = routes.find(r => r.method === 'POST' && r.path === '/api/tenants/:tenantId/ai/actions/execute');
-    expect(execute!.middlewares.some(mw => (mw as any)?.permissionKey === 'RENTAL_DOCUMENTS_GENERATE')).toBe(true);
+    const executeKeys = execute!.middlewares.map(mw => (mw as any)?.permissionKey);
+    // GENERATE pour produire, VIEW pour télécharger la carte de résultat : les deux sont exigées.
+    expect(executeKeys).toContain('RENTAL_DOCUMENTS_GENERATE');
+    expect(executeKeys).toContain('RENTAL_DOCUMENTS_VIEW');
     expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(3);
   });
 

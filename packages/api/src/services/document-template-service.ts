@@ -1,6 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { badRequest, notFound } from '../lib/errors';
+import { BadRequestError } from '../middleware/error-middleware';
 import { logAuditEvent } from './audit-service';
 import { DocumentTemplateStatus, DocumentType } from '@prisma/client';
 import * as fs from 'fs/promises';
@@ -41,7 +42,7 @@ export async function extractPlaceholders(filePath: string): Promise<string[]> {
     // Extract placeholders from the main document XML
     const docXml = zip.files['word/document.xml'];
     if (!docXml) {
-      logger.warn('word/document.xml not found in DOCX file', { filePath });
+      logger.warn('word/document.xml not found in DOCX file', { filename: path.basename(filePath) });
       return [];
     }
 
@@ -80,7 +81,7 @@ export async function extractPlaceholders(filePath: string): Promise<string[]> {
     logger.error('Error extracting placeholders', {
       error: error.message || error,
       stack: error.stack,
-      filePath
+      filename: path.basename(filePath)
     });
     throw new Error(`Failed to extract placeholders from template: ${error.message || 'Unknown error'}`);
   }
@@ -158,7 +159,7 @@ export async function uploadTemplate(
     // Log error but don't fail the upload - templates might not have placeholders
     logger.warn('Could not extract placeholders from template', {
       error: error.message,
-      filePath: storagePath
+      filename: storedFilename
     });
     // Continue with empty placeholders array - user can still use the template
   }
@@ -590,7 +591,7 @@ export async function resolveTemplate(tenantId: string | null, docType: Document
             ? 'relevé de compte'
             : docType;
 
-  throw new Error(
+  throw new BadRequestError(
     `Aucun template disponible pour le type de document "${docTypeName}". ` +
       `Veuillez d'abord uploader un template DOCX via l'interface de gestion des templates ` +
       `(POST /api/tenants/:tenantId/documents/templates/upload)`

@@ -213,6 +213,14 @@ describe('FakeProvider', () => {
       });
       expect(text).toContain('aucun modèle');
     });
+
+    it('explique un bail non identifié (lease_not_seen)', async () => {
+      const { text } = await converse('relevé 2026-01', {
+        ...lease,
+        propose_rental_document: { status: 'NOT_POSSIBLE', reason: 'lease_not_seen' }
+      });
+      expect(text).toContain('pas été identifié');
+    });
   });
 
   describe('baux', () => {

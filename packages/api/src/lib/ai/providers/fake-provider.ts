@@ -206,6 +206,7 @@ function proposalFailureText(data: unknown, periodLabel: string): string | null 
     });
   }
   const reasons: Record<string, string> = {
+    lease_not_seen: t("ce bail n'a pas été identifié dans la conversation"),
     NO_PAYMENT: t('aucun paiement encaissé pour cette période'),
     NO_INSTALLMENT: t("le bail n'a pas d'échéance pour cette période"),
     NO_TEMPLATE: t("aucun modèle de document n'est disponible pour l'agence"),

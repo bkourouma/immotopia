@@ -11,6 +11,8 @@ import { signProposal } from '../proposal-token';
 import { assertToolPermission, isoDay, loadLeaseSummary, outcome } from './tool-utils';
 
 const PERMISSION = 'RENTAL_DOCUMENTS_GENERATE';
+/** Le téléchargement de la carte exige aussi la lecture : sans elle, la proposition mènerait à un 403. */
+const VIEW_PERMISSION = 'RENTAL_DOCUMENTS_VIEW';
 /** Durée maximale d'un relevé, en mois. */
 export const MAX_STATEMENT_MONTHS = 12;
 
@@ -30,7 +32,13 @@ const inputSchema = z
 type Input = z.infer<typeof inputSchema>;
 
 type NotPossibleReason =
-  'NO_PAYMENT' | 'NO_INSTALLMENT' | 'NO_TEMPLATE' | 'MISSING_PERIOD' | 'INVALID_PERIOD' | 'PERIOD_TOO_LONG';
+  | 'lease_not_seen'
+  | 'NO_PAYMENT'
+  | 'NO_INSTALLMENT'
+  | 'NO_TEMPLATE'
+  | 'MISSING_PERIOD'
+  | 'INVALID_PERIOD'
+  | 'PERIOD_TOO_LONG';
 
 const notPossible = (reason: NotPossibleReason, hint: string) => outcome({ status: 'NOT_POSSIBLE', reason, hint });
 
@@ -230,10 +238,21 @@ export const proposeRentalDocumentTool: CopilotToolDefinition<typeof inputSchema
     }
   },
   requiredPermission: PERMISSION,
+  additionalPermissions: [VIEW_PERMISSION],
   feature: 'RENTAL',
   kind: 'proposal',
   async execute(input, ctx) {
     assertToolPermission(ctx, PERMISSION);
+    assertToolPermission(ctx, VIEW_PERMISSION);
+    // Garde anti-injection : un titre de bien ou un nom de locataire piégé, lu dans un résultat
+    // d'outil, ne doit pas faire proposer un document pour un AUTRE bail. Seuls comptent les baux
+    // réellement présentés dans cette requête (résultats d'outils ou écran vérifié).
+    if (!ctx.seenLeaseIds.has(input.leaseId)) {
+      return notPossible(
+        'lease_not_seen',
+        "Ce bail n'a pas été identifié dans cette conversation : appelle d'abord search_leases (ou list_lease_documents) pour le retrouver, puis réessaie avec l'identifiant renvoyé."
+      );
+    }
     return input.docType === 'RENT_RECEIPT' ? proposeReceipt(input, ctx) : proposeStatement(input, ctx);
   }
 };

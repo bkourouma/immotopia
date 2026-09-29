@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import rateLimit from 'express-rate-limit';
+import { env } from '../config/env';
 import { t } from '../i18n';
 
 /**
@@ -197,7 +198,7 @@ export const coOwnerChargeNoticeRateLimiter = rateLimit({
  * IP ne se partagent pas le leur.
  */
 function userTenantKey(req: Request): string {
-  const tenantId = req.params?.tenantId || req.tenantContext?.tenantId || 'aucune-agence';
+  const tenantId = req.tenantContext?.tenantId || 'aucune-agence';
   return `${req.user?.userId ?? 'anonyme'}:${tenantId}`;
 }
 
@@ -260,8 +261,9 @@ export const chargeCallNoticeRateLimiter = rateLimit({
 /**
  * ImmoCopilot : chaque tour de chat appelle un fournisseur LLM payant.
  * 20 par minute et, en plus, 300 par jour, par utilisateur ET par agence
- * (posés après `authenticate` et `requireTenantAccess`). Le budget suppose une
- * seule instance d'API (compteurs en mémoire).
+ * (posés après `authenticate` et `requireTenantAccess`). Compteurs en mémoire
+ * PAR instance d'API : avec N instances, le plafond effectif est N × la valeur
+ * configurée.
  */
 export const aiChatRateLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -287,6 +289,49 @@ export const aiChatDailyLimiter = rateLimit({
       success: false,
       code: 'RATE_LIMITED',
       message: t("Limite quotidienne de l'assistant atteinte. Réessayez demain.")
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * ImmoCopilot : plafond PAR AGENCE, en complément des limites par utilisateur
+ * (sinon une agence de N collaborateurs consommerait N × 300 appels par jour).
+ * Clé = agence seule ; plafonds `AI_TENANT_MINUTE_LIMIT` et
+ * `AI_TENANT_DAILY_LIMIT` (`config/env.ts`). Posés APRÈS les limiteurs par
+ * utilisateur, pour qu'un utilisateur déjà bloqué ne consomme pas le budget
+ * commun. Compteurs en mémoire PAR instance d'API : avec N instances, le plafond
+ * effectif est N × la valeur configurée.
+ */
+function tenantKey(req: Request): string {
+  return req.tenantContext?.tenantId || 'aucune-agence';
+}
+
+export const aiTenantChatRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: () => env.AI_TENANT_MINUTE_LIMIT,
+  keyGenerator: tenantKey,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t("Trop de messages envoyés à l'assistant par votre agence. Réessayez dans une minute.")
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const aiTenantDailyLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: () => env.AI_TENANT_DAILY_LIMIT,
+  keyGenerator: tenantKey,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t("Limite quotidienne de l'assistant atteinte pour votre agence. Réessayez demain.")
     });
   },
   standardHeaders: true,

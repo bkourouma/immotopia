@@ -123,7 +123,8 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       tools,
       messages: body.messages,
       pageContext,
-      // La valeur cliente n'est qu'un écho pour l'interface ; l'audit la préfixe par l'utilisateur.
+      // La valeur cliente n'est qu'un écho pour l'interface (événement `meta`) : l'audit
+      // utilise le `requestId` généré ci-dessous, jamais cette valeur.
       conversationId: body.conversationId ?? randomUUID(),
       requestId: randomUUID(),
       signal: stream.signal,
@@ -136,7 +137,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
 
 /**
  * POST /ai/actions/execute — confirmation humaine d'une proposition.
- * Rejoue auth, agence, collaborateur et RENTAL_DOCUMENTS_GENERATE (routes),
+ * Rejoue auth, agence, collaborateur, RENTAL_DOCUMENTS_GENERATE et RENTAL_DOCUMENTS_VIEW (routes),
  * puis le jeton signé, à usage unique. `userId` et `tenantId` viennent de la
  * requête authentifiée, jamais du corps. Toujours 201 : une quittance déjà
  * existante est renvoyée avec `alreadyExisted: true`.
