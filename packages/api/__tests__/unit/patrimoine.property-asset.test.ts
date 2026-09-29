@@ -3,7 +3,16 @@
  * étanchéité entre agences, course sur P2002. Prisma est remplacé par un
  * magasin en mémoire.
  */
+// Palier gratuit (lot 4B) : la garde lit les droits d'abonnement en base ; hors sujet ici (voir personal-space.*.test.ts).
+jest.mock('../../src/services/personal-space/free-tier', () => ({
+  getAssetCapacityLimit: jest.fn(async () => null),
+  isFreeTierLimitReached: jest.fn(async () => false),
+  lockTenantAssets: jest.fn(async () => undefined),
+  assertFreeTierCapacityTx: jest.fn(async () => undefined)
+}));
+
 import { Prisma } from '@prisma/client';
+import { isFreeTierLimitReached } from '../../src/services/personal-space/free-tier';
 import {
   ensurePropertyAsset,
   storedPropertyReliability,
@@ -162,5 +171,24 @@ describe('storedPropertyReliability', () => {
       reliability: 'MEDIUM',
       reliabilityReasons: ['METHOD_EXPERT', 'LEGAL_STATUS_UNKNOWN']
     });
+  });
+});
+
+describe('ensurePropertyAsset — palier gratuit (lot 4B)', () => {
+  const limitReached = isFreeTierLimitReached as jest.Mock;
+
+  it('plafond atteint : ne crée pas l’actif et retourne null sans erreur', async () => {
+    limitReached.mockResolvedValueOnce(true);
+    const { client, mocks, assets } = makeClient([PROP]);
+    await expect(ensurePropertyAsset(client, 'tenant-a', 'prop-1')).resolves.toBeNull();
+    expect(mocks.asset.upsert).not.toHaveBeenCalled();
+    expect(assets).toHaveLength(0);
+  });
+
+  it('plafond atteint mais actif déjà lié au bien : il est retrouvé (jamais recréé)', async () => {
+    limitReached.mockResolvedValue(true);
+    const { client } = makeClient([PROP], [{ id: 'asset-9', propertyId: 'prop-1', tenantId: 'tenant-a' }]);
+    await expect(ensurePropertyAsset(client, 'tenant-a', 'prop-1')).resolves.toMatchObject({ id: 'asset-9' });
+    limitReached.mockResolvedValue(false);
   });
 });

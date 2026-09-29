@@ -90,6 +90,10 @@ Migration `20261004160000_patrimoine_multi_actifs`. Détail :
   `PARTICULIER_GRATUIT` (0 FCFA, 10 actifs) et `PARTICULIER_PLUS` (2 900 FCFA HT/mois, 100 actifs ; prix et
   plafonds provisoires, modifiables via `updateCatalogItem` sans migration), `tierGroup = PARTICULIER`. Aucune
   table ni colonne nouvelle.
+- Lot 4B (spec 026), aucune table : l'unicité « un espace personnel par utilisateur » et le plafond d'actifs du
+  palier gratuit tiennent sous concurrence par verrou consultatif de transaction
+  (`pg_advisory_xact_lock(hashtext(userId))` à la création d'espace, `hashtext(tenantId)` à la création d'actif),
+  pas par contrainte d'unicité.
 - Données : un `Asset` `REAL_ESTATE` est créé par bien portant des données
   patrimoniales ou détenu en propre (activation `HELD_PROPERTY` ouverte) ; les
   biens sans tenant sont ignorés ; aucune ligne existante n'est réécrite.

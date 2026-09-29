@@ -46,6 +46,12 @@ import {
 } from '../lib/subscription/platform-invoice';
 import { buildPlatformInvoicePdf, formatFcfa } from '../lib/subscription/platform-invoice-pdf';
 import { loadExistingCatalogByCodes, previewNextInvoice } from './subscription-v2-service';
+import {
+  UPGRADE_LINE_SOURCE,
+  UpgradeTarget,
+  buildUpgradeLineMetadata,
+  isUpgradeTarget
+} from './subscription-upgrade/constants';
 
 type Db = PrismaTransactionClient | typeof prisma;
 type InvoiceNature = 'PERIOD' | 'OVERAGE';
@@ -435,6 +441,132 @@ export async function generateInvoiceForPeriodTx(
     });
   }
   return { invoice: await loadInvoice(tx, tenantId, invoice.id), created: true };
+}
+
+// =============================================================== facture d'upgrade (espace particulier, lot 4D)
+
+export interface UpgradeInvoiceInput {
+  subscriptionId: string;
+  target: UpgradeTarget;
+  catalogItemId: string;
+  packName: string;
+  /** Prix mensuel HT du pack cible lu dans le catalogue a cet instant. */
+  monthlyPrice: number;
+  now?: Date;
+}
+
+/**
+ * Facture PLATFORM du premier mois du pack cible d'une montee de palier
+ * (Particulier gratuit -> payant), EMISE. N'altere NI la periode NI les
+ * elements de l'abonnement : le changement de pack n'a lieu qu'au reglement
+ * (`applyUpgradeForInvoiceTx`). Une seule ligne PACK (le pack Particulier n'a
+ * aucune mise en route) marquee `metadata.source = SUBSCRIPTION_UPGRADE`.
+ *
+ * IDEMPOTENTE : une facture d'upgrade encore due pour la meme cible est
+ * renvoyee telle quelle (`created: false`) tant que son montant correspond au
+ * catalogue ; si le prix a change depuis, elle est annulee et remplacee.
+ */
+export async function generateUpgradeInvoiceTx(tx: Db, tenantId: string, input: UpgradeInvoiceInput) {
+  if (!isUpgradeTarget(input.target)) throw new BadRequestError('Palier cible invalide.');
+  if (!(input.monthlyPrice > 0)) throw new BadRequestError("Ce palier n'a rien à régler.");
+  const now = input.now ?? new Date();
+  await lockTenantBillingTx(tx, tenantId);
+
+  const line: ChargeLine & { catalogItemId?: string | null; metadata?: Record<string, unknown> } = {
+    kind: 'PACK',
+    label: input.packName,
+    code: input.target,
+    quantity: 1,
+    unitPrice: input.monthlyPrice,
+    amount: input.monthlyPrice,
+    periodStart: now,
+    periodEnd: addBillingPeriod(now, 'MONTHLY')
+  };
+  const totals = assembleInvoice([line]);
+
+  const dueStatuses: InvoiceStatus[] = [InvoiceStatus.ISSUED, InvoiceStatus.OVERDUE];
+  const existing = await tx.invoice.findFirst({
+    where: {
+      tenantId,
+      kind: PLATFORM,
+      billingNature: 'PERIOD',
+      subscriptionId: input.subscriptionId,
+      status: { in: dueStatuses },
+      lines: {
+        some: {
+          tenantId,
+          kind: InvoiceLineKind.PACK,
+          AND: [
+            { metadata: { path: ['source'], equals: UPGRADE_LINE_SOURCE } },
+            { metadata: { path: ['upgradeTo'], equals: input.target } }
+          ]
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, amountTotal: true }
+  });
+  if (existing) {
+    if (toNumber(existing.amountTotal) === totals.amountTotal) {
+      return { invoice: await loadInvoice(tx, tenantId, existing.id), created: false };
+    }
+    await tx.invoice.update({
+      where: { id: existing.id, tenantId },
+      data: {
+        status: InvoiceStatus.CANCELED,
+        canceledAt: now,
+        cancelReason: 'Prix du palier modifié : facture remplacée.'
+      }
+    });
+  }
+
+  const invoice = await tx.invoice.create({
+    data: {
+      tenantId,
+      subscriptionId: input.subscriptionId,
+      invoiceNumber: `${DRAFT_NUMBER_PREFIX}${randomUUID()}`,
+      issueDate: now,
+      dueDate: addDays(now, env.PLATFORM_INVOICE_DUE_DAYS),
+      currency: 'FCFA',
+      kind: PLATFORM,
+      billingNature: 'PERIOD',
+      status: InvoiceStatus.DRAFT,
+      periodStart: line.periodStart,
+      periodEnd: line.periodEnd,
+      amountExclTax: totals.amountExclTax,
+      taxAmount: totals.taxAmount,
+      taxRate: totals.taxRate,
+      amountTotal: totals.amountTotal
+    }
+  });
+  let sortOrder = 0;
+  for (const l of totals.lines) {
+    sortOrder += 10;
+    const isPack = l.kind === 'PACK';
+    // eslint-disable-next-line no-await-in-loop -- deux lignes au plus (pack, TVA).
+    await tx.invoiceLine.create({
+      data: {
+        tenantId,
+        invoiceId: invoice.id,
+        kind: l.kind as InvoiceLineKind,
+        label: l.label,
+        catalogItemId: isPack ? input.catalogItemId : null,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+        periodStart: l.periodStart ?? null,
+        periodEnd: l.periodEnd ?? null,
+        sortOrder,
+        metadata: {
+          source: 'GENERATED',
+          code: l.code ?? null,
+          ...(isPack ? buildUpgradeLineMetadata(input.target) : {})
+        } as Prisma.InputJsonValue
+      }
+    });
+  }
+  const issued = await issuePlatformInvoiceTx(tx, tenantId, invoice.id, now);
+  return { invoice: issued.invoice, created: true };
 }
 
 function isUniqueViolation(error: unknown): boolean {

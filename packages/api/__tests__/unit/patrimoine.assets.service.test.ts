@@ -111,11 +111,21 @@ prismaMock.$queryRaw = jest.fn(async (_strings: TemplateStringsArray, ...values:
   store.asset.filter(a => a.id === values[0] && a.tenantId === values[1]).map(a => ({ id: a.id, status: a.status }))
 );
 
+// Palier gratuit (lot 4B) : la garde lit les droits d'abonnement en base ; hors sujet ici (voir personal-space.*.test.ts).
+jest.mock('../../src/services/personal-space/free-tier', () => ({
+  getAssetCapacityLimit: jest.fn(async () => null),
+  isFreeTierLimitReached: jest.fn(async () => false),
+  lockTenantAssets: jest.fn(async () => undefined),
+  assertFreeTierCapacityTx: jest.fn(async () => undefined)
+}));
+
 jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
 const mockAudit = jest.fn();
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (entry: unknown) => mockAudit(entry) }));
 
 import * as service from '../../src/services/patrimoine-assets-service';
+import { AppError } from '../../src/middleware/error-middleware';
+import * as freeTier from '../../src/services/personal-space/free-tier';
 
 const iso = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
@@ -1379,5 +1389,54 @@ describe('suggestion : refus motivés (lot 2, relecture)', () => {
       amount: 1234.56,
       currency: 'EUR'
     });
+  });
+});
+
+describe('palier gratuit (lot 4B)', () => {
+  const limitMock = freeTier.getAssetCapacityLimit as jest.Mock;
+  const lockMock = freeTier.lockTenantAssets as jest.Mock;
+  const assertMock = freeTier.assertFreeTierCapacityTx as jest.Mock;
+  const input = { name: 'Nouveau', assetClass: 'OTHER' as const, details: { label: 'x' } };
+
+  beforeEach(() => {
+    limitMock.mockClear();
+    lockMock.mockClear();
+    assertMock.mockClear();
+  });
+
+  it('pack sans capacité ACTIFS (agence) : ni verrou ni garde, comportement du lot 1', async () => {
+    await service.createAsset(TENANT_A, input);
+    expect(limitMock).toHaveBeenCalledWith(TENANT_A, { fresh: true });
+    expect(lockMock).not.toHaveBeenCalled();
+    expect(assertMock).not.toHaveBeenCalled();
+  });
+
+  it('pack avec ACTIFS : verrou puis contrôle DANS la transaction, avant l’écriture', async () => {
+    limitMock.mockResolvedValueOnce(10);
+    const order: string[] = [];
+    lockMock.mockImplementationOnce(async () => void order.push('lock'));
+    assertMock.mockImplementationOnce(async () => void order.push('assert'));
+    const created = prismaMock.asset.create;
+    created.mockImplementationOnce(async (args: Row) => {
+      order.push('create');
+      return created.getMockImplementation()?.(args);
+    });
+    await service.createAsset(TENANT_A, input);
+    expect(order).toEqual(['lock', 'assert', 'create']);
+    expect(lockMock).toHaveBeenCalledWith(prismaMock, TENANT_A);
+    expect(assertMock).toHaveBeenCalledWith(prismaMock, TENANT_A, 10);
+  });
+
+  it('plafond atteint : FREE_TIER_LIMIT remonte et aucun actif n’est créé', async () => {
+    limitMock.mockResolvedValueOnce(10);
+    assertMock.mockRejectedValueOnce(
+      new AppError('Limite atteinte.', 409, 'FREE_TIER_LIMIT', undefined, { limit: 10, used: 10 })
+    );
+    await expect(service.createAsset(TENANT_A, input)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'FREE_TIER_LIMIT',
+      data: { limit: 10, used: 10 }
+    });
+    expect(store.asset).toHaveLength(0);
   });
 });

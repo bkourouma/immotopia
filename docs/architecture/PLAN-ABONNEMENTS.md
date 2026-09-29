@@ -231,6 +231,22 @@ Passage complet chaque jour à 02:30 UTC, alertes seules chaque heure à :15.
   paiement supplémentaire (ou la tâche planifiée à la prochaine échéance)
   avance la période suivante.
 
+### 6 sexies. Montée de palier de l'espace particulier (lot 4D, spec 026)
+
+`POST /api/tenants/:tenantId/subscription/upgrade` (`TENANT_SETTINGS_EDIT`, exemptée de la lecture
+seule par le préfixe `/subscription`) émet une facture `PLATFORM` du premier mois du pack cible
+(`generateUpgradeInvoiceTx`, `platform-invoice-service.ts` : prix du catalogue, TVA 18 %, une seule ligne
+PACK marquée `metadata.source = SUBSCRIPTION_UPGRADE` — `InvoiceLine.metadata`, aucune colonne ajoutée),
+puis démarre le paiement par `startInvoiceCheckout` (reprise 15 min : `409 PAYMENT_IN_PROGRESS`). Elle ne
+change NI la période NI les éléments de l'abonnement gratuit. Le changement n'a lieu qu'au règlement :
+`settlePlatformInvoiceTx` appelle `applyUpgradeForInvoiceTx` (`services/subscription-upgrade/`) dans la même
+transaction, sous le verrou de la facture puis celui de l'abonnement ; l'élément gratuit passe `ENDED`
+(`endReason = UPGRADE`), l'élément payant démarre au prix du catalogue, l'abonnement reste `ACTIVE` en
+cycle mensuel avec une période qui repart du paiement (premier mois déjà facturé : `billedThrough`), et les
+droits (cache de 30 s) sont invalidés après validation. Rejeu, `FAILED`, `CANCELED`, expiré, `REVIEW` ou
+montant divergent : aucun changement de pack. Hors périmètre : prélèvement récurrent, rétrogradation,
+prorata, remboursement.
+
 ### 6 quinquies. Lecture seule manuelle (vague 3, lot C — Baba, 25/09, D15)
 
 Indépendante de la lecture seule d'impayé (`resolveSubscriptionPhase`,

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { computeStoredReliability } from './assets/stored-reliability';
+import { isFreeTierLimitReached } from '../../services/personal-space/free-tier';
 import type { Reliability, ReliabilityReason, ValuationMethodKey } from './assets';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,7 +29,8 @@ export interface PropertyAssetClient {
  * - Idempotente : upsert par `propertyId` (unique) et `tenantId` ; sur course (P2002),
  *   l'actif du concurrent est relu, jamais de doublon ni d'échec.
  * - No-op silencieux (retourne `null`) si le bien est sans agence ou
- *   n'appartient pas à `tenantId`.
+ *   n'appartient pas à `tenantId`, ou si le plafond d'actifs du palier
+ *   gratuit est atteint.
  * - Ne touche à aucune ligne existante : valorisations, prêts et parts d'un
  *   actif immobilier restent sur `propertyId`.
  */
@@ -46,6 +48,8 @@ export async function ensurePropertyAsset(
 
   const existing = await client.asset.findUnique({ where: { propertyId, tenantId }, select: { id: true } });
   if (existing) return existing;
+  // Palier gratuit (lot 4B) : plafond atteint, on ne crée pas l'actif (la valorisation du bien reste enregistrée).
+  if (await isFreeTierLimitReached(tenantId)) return null;
 
   try {
     return await client.asset.upsert({

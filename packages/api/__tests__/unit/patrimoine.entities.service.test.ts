@@ -238,6 +238,14 @@ const mockPrisma: Row = {
   })
 };
 
+// Palier gratuit (lot 4B) : la garde lit les droits d'abonnement en base ; hors sujet ici (voir personal-space.*.test.ts).
+jest.mock('../../src/services/personal-space/free-tier', () => ({
+  getAssetCapacityLimit: jest.fn(async () => null),
+  isFreeTierLimitReached: jest.fn(async () => false),
+  lockTenantAssets: jest.fn(async () => undefined),
+  assertFreeTierCapacityTx: jest.fn(async () => undefined)
+}));
+
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 import {

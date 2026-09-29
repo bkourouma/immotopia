@@ -66,6 +66,7 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   RefreshToken: 'Jeton de session (securite), rattache a un compte et non a une agence.',
   PasswordResetToken: 'Jeton de reinitialisation de mot de passe (securite).',
   EmailVerificationToken: "Jeton de verification d'adresse e-mail (securite).",
+  SignupAttempt: "Tentative d'inscription (limiteur anti-abus par empreinte d'IP, sans agence).",
   // Catalogues et referentiels globaux de la plateforme, sans donnee d'agence.
   Role: 'Catalogue de roles de la plateforme (sans agence).',
   Permission: 'Catalogue de permissions de la plateforme.',

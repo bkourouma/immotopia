@@ -214,6 +214,13 @@ jest.mock('../../src/services/subscription-v2-service', () => ({
 
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
 
+// Crochet d'application de la montee de palier (lot 4D) : par defaut « pas une
+// facture d'upgrade » ; ses regles propres sont testees dans
+// subscription-upgrade.test.ts.
+jest.mock('../../src/services/subscription-upgrade/apply-upgrade', () => ({
+  applyUpgradeForInvoiceTx: jest.fn(async () => ({ applied: false, target: null }))
+}));
+
 const sendEmail = jest.fn(async () => undefined);
 jest.mock('../../src/services/email-service', () => ({
   emailService: { sendEmail: (...args: unknown[]) => sendEmail(...(args as [])) }
@@ -238,9 +245,12 @@ import { isPlatformCodePaiement } from '../../src/lib/payment-gateway/codes';
 import { AppError, NotFoundError } from '../../src/middleware/error-middleware';
 import * as v2 from '../../src/services/subscription-v2-service';
 import * as audit from '../../src/services/audit-service';
+import * as upgradeHook from '../../src/services/subscription-upgrade/apply-upgrade';
 
 const applyDue = v2.applyDueItemTransitionsTx as jest.Mock;
 const logAuditEvent = audit.logAuditEvent as jest.Mock;
+const applyUpgrade = upgradeHook.applyUpgradeForInvoiceTx as jest.Mock;
+const invalidateEntitlements = v2.invalidateEntitlements as jest.Mock;
 
 const PERIOD_END = new Date('2026-09-01T00:00:00.000Z');
 const NEXT_END = new Date('2026-10-01T00:00:00.000Z');
@@ -310,6 +320,8 @@ function reset() {
   store.sites = [];
   store.seq = 0;
   applyDue.mockClear();
+  applyUpgrade.mockClear();
+  invalidateEntitlements.mockClear();
   logAuditEvent.mockClear();
   sendEmail.mockClear();
 }
@@ -642,3 +654,79 @@ describe('Routes manquantes de la vague 2', () => {
 
 // AppError importé pour typer les rejets 409/502 en lecture.
 void AppError;
+
+describe("Reglement d'une facture d'upgrade (lot 4D) : crochet dans la porte unique", () => {
+  it('succès : le crochet est appelé une fois, dans la transaction ; pas de renouvellement de période ; droits invalidés ; audit APPLIED sans montant ni téléphone', async () => {
+    applyUpgrade.mockResolvedValueOnce({ applied: true, target: 'PARTICULIER_PLUS' });
+    const { checkout, row } = await payThroughSimulator('SUCCESS');
+    expect(row.status).toBe('SUCCESS');
+    expect(applyUpgrade).toHaveBeenCalledTimes(1);
+    expect(applyUpgrade).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tenantId: TENANT_A, invoiceId: 'inv-a', actorUserId: 'user-a' })
+    );
+    expect(store.invoices[0].status).toBe('PAID');
+    // Le renouvellement de période ne s'applique pas : la période repart du paiement (crochet).
+    expect(applyDue).not.toHaveBeenCalled();
+    expect(store.subscriptions[0].status).toBe('PAST_DUE');
+    expect(invalidateEntitlements).toHaveBeenCalledWith(TENANT_A);
+    const applied = logAuditEvent.mock.calls.map(c => c[0]).find(e => e.actionKey === 'SUBSCRIPTION_UPGRADE_APPLIED');
+    expect(applied).toMatchObject({ tenantId: TENANT_A, entityId: 'inv-a' });
+    expect(applied.payload).toMatchObject({ invoiceId: 'inv-a', to: 'PARTICULIER_PLUS' });
+    expect(JSON.stringify(applied.payload)).not.toMatch(/0102|amount|phone/i);
+    expect(checkout.id).toBeDefined();
+  });
+
+  it('IPN rejouée : un seul règlement, un seul appel du crochet, un seul audit APPLIED', async () => {
+    applyUpgrade.mockResolvedValue({ applied: true, target: 'PARTICULIER_PLUS' });
+    try {
+      const { checkout } = await payThroughSimulator('SUCCESS');
+      await reconcilePlatformCheckoutPublic(checkout.codePaiement);
+      await reconcilePlatformCheckoutPublic(checkout.codePaiement);
+    } finally {
+      applyUpgrade.mockResolvedValue({ applied: false, target: null });
+    }
+    expect(store.payments).toHaveLength(1);
+    expect(applyUpgrade).toHaveBeenCalledTimes(1);
+    expect(logAuditEvent.mock.calls.filter(c => c[0].actionKey === 'SUBSCRIPTION_UPGRADE_APPLIED')).toHaveLength(1);
+  });
+
+  it("paiement échoué, annulé ou montant divergent : le crochet n'est jamais appelé", async () => {
+    await payThroughSimulator('FAILED');
+    await payThroughSimulator('CANCELED');
+    const checkout = store.checkouts[0];
+    await applyPlatformProviderStatus(store.checkouts.find(c => c.id === checkout.id) as any, {
+      rawState: 'SUCCESSFUL',
+      mappedState: 'SUCCESS',
+      transactionId: 'T9',
+      amount: 100,
+      fees: 0,
+      serviceName: 'Wave',
+      error: null,
+      raw: {}
+    }).catch(() => undefined);
+    expect(applyUpgrade).not.toHaveBeenCalled();
+    expect(store.invoices[0].status).toBe('ISSUED');
+  });
+
+  it("constat manuel du super-admin sur une facture d'upgrade : même porte, mêmes effets", async () => {
+    applyUpgrade.mockResolvedValueOnce({ applied: true, target: 'PARTICULIER_PLUS' });
+    const result = await recordManualPayment(
+      TENANT_A,
+      'inv-a',
+      { method: 'CASH', paidAt: new Date('2026-09-02') },
+      'admin-1'
+    );
+    expect(result.subscription).toBe('UPGRADED');
+    expect(applyUpgrade).toHaveBeenCalledTimes(1);
+  });
+
+  it("crochet non applicable (abonnement inéligible) : règlement enregistré, période non touchée, pas d'audit APPLIED", async () => {
+    applyUpgrade.mockResolvedValueOnce({ applied: false, target: 'PARTICULIER_PLUS', reason: 'NOT_ELIGIBLE' });
+    const { row } = await payThroughSimulator('SUCCESS');
+    expect(row.status).toBe('SUCCESS');
+    expect(store.payments).toHaveLength(1);
+    expect(applyDue).not.toHaveBeenCalled();
+    expect(logAuditEvent.mock.calls.some(c => c[0].actionKey === 'SUBSCRIPTION_UPGRADE_APPLIED')).toBe(false);
+  });
+});

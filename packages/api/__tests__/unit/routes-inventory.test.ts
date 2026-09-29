@@ -150,6 +150,13 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
       "Menus coupes pour l'utilisateur COURANT, resolus depuis req.user (le jeton), pas depuis un tenantId de l'URL."
   },
   {
+    method: 'POST',
+    test: exact('/api/personal-space'),
+    reason:
+      "Creation de l'espace personnel (lot 4B) : l'appelant n'appartient encore a aucun tenant. Authentifie ; " +
+      "l'identifiant vient du jeton (req.user), jamais du corps, et un seul espace par utilisateur (verrou consultatif)."
+  },
+  {
     method: 'GET',
     test: exact('/api/tenants/my-memberships'),
     reason: "Liste des agences de l'utilisateur courant, resolue depuis req.user."

@@ -25,6 +25,7 @@ import type {
 import { assetScopeData, assetScopeWhere } from '../lib/patrimoine/asset-scope';
 import { EXPERT_SOURCE_MESSAGE, validateAssetDetails } from '../lib/patrimoine/asset-schemas';
 import { assertAssetQuota, assertValuationQuota, LIST_ASSETS_HARD_LIMIT } from './patrimoine-assets/limits';
+import { assertFreeTierCapacityTx, getAssetCapacityLimit, lockTenantAssets } from './personal-space/free-tier';
 import { auditPatrimoine, changedFields, PATRIMOINE_ASSET_AUDIT as AUDIT } from './patrimoine-assets/audit';
 import { computeStoredReliability, effectiveReliability } from './patrimoine-assets/reliability-view';
 import { buildSuggestion, verifiedMethod } from './patrimoine-assets/valuation-suggest';
@@ -410,8 +411,15 @@ export async function createAsset(tenantId: string, input: CreateAssetInput, act
   await assertNewAssetProperty(tenantId, input);
   await assertBelongsToTenant(prisma, 'holdingEntity', input.holdingEntityId, tenantId, { message: NOT_FOUND_ENTITY });
   await assertAssetQuota(tenantId);
+  // Palier gratuit (lot 4B) : plafond du pack quand il porte la capacité ACTIFS,
+  // quel que soit le mode global. Comptage et création sous verrou par tenant.
+  const capacityLimit = await getAssetCapacityLimit(tenantId, { fresh: true });
 
   const created = await prisma.$transaction(async tx => {
+    if (capacityLimit !== null) {
+      await lockTenantAssets(tx, tenantId);
+      await assertFreeTierCapacityTx(tx, tenantId, capacityLimit);
+    }
     const asset = await tx.asset.create({
       data: {
         tenantId,

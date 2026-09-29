@@ -30,7 +30,10 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   'CRM_DEALS_CREATE',
   'PROPERTIES_VIEW',
   'PROPERTIES_EDIT',
-  'MAINTENANCE_ADMIN'
+  'MAINTENANCE_ADMIN',
+  // Espace particulier : montee de palier (lot 4D).
+  'TENANT_SETTINGS_VIEW',
+  'TENANT_SETTINGS_EDIT'
 ] as const;
 
 let tenantAdminRoleId: string | null = null;
@@ -90,6 +93,54 @@ export async function createTestTenant(namePrefix: string): Promise<TestTenant> 
       slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
       type: 'AGENCY',
       status: TenantStatus.ACTIVE
+    }
+  });
+  return { id: tenant.id, slug: tenant.slug };
+}
+
+/**
+ * Espace PARTICULIER ACTIF sur le palier gratuit (lot 4) : abonnement ACTIVE
+ * mensuel, quota BLOCK, un element PARTICULIER_GRATUIT (le catalogue vient des
+ * migrations). `phone: null` : aucun telephone (refus PHONE_REQUIRED).
+ */
+export async function createParticulierTenant(
+  namePrefix: string,
+  options: { phone?: string | null } = {}
+): Promise<TestTenant> {
+  const suffix = randomUUID().slice(0, 8);
+  const now = new Date();
+  const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const catalog = await prisma.catalogItem.findUniqueOrThrow({ where: { code: 'PARTICULIER_GRATUIT' } });
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `${namePrefix} ${suffix}`,
+      slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
+      type: 'PARTICULIER',
+      status: TenantStatus.ACTIVE,
+      contactPhone: options.phone === undefined ? '+2250102030405' : options.phone
+    }
+  });
+  const subscription = await prisma.subscription.create({
+    data: {
+      tenantId: tenant.id,
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+      startAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd: end,
+      nextBillingAt: end,
+      quotaPolicy: 'BLOCK'
+    }
+  });
+  await prisma.subscriptionItem.create({
+    data: {
+      subscriptionId: subscription.id,
+      tenantId: tenant.id,
+      catalogItemId: catalog.id,
+      quantity: 1,
+      unitMonthlyPrice: 0,
+      status: 'ACTIVE',
+      startsAt: now
     }
   });
   return { id: tenant.id, slug: tenant.slug };
@@ -163,7 +214,11 @@ export async function createPropertyDirect(tenantId: string, label: string): Pro
 }
 
 /** Cree un ticket de maintenance minimal, directement, pour l'agence donnee (necessite un bien). */
-export async function createMaintenanceTicketDirect(tenantId: string, propertyId: string, label: string): Promise<string> {
+export async function createMaintenanceTicketDirect(
+  tenantId: string,
+  propertyId: string,
+  label: string
+): Promise<string> {
   const ticket = await prisma.maintenanceTicket.create({
     data: {
       tenant_id: tenantId,

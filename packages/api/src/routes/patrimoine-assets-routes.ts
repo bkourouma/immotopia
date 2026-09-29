@@ -25,6 +25,7 @@ import {
   updateAssetValuationHandler,
   updateDebtHandler
 } from '../controllers/patrimoine-assets-controller';
+import { getPatrimoineUsageHandler } from '../controllers/personal-space-controller';
 
 /**
  * Patrimoine multi-actifs (lot 1, spec 023). Contrat :
@@ -53,6 +54,8 @@ const write = [
   requirePropertyPermission('PROPERTIES_EDIT')
 ];
 
+// Compteur d'actifs du palier (lot 4B) : chemin statique, avant toute route paramétrée.
+router.get(`${BASE}/usage`, ...read, getPatrimoineUsageHandler);
 router.get(`${BASE}/net-worth`, ...read, getNetWorthHandler);
 router.get(`${BASE}/net-worth/history`, ...read, getNetWorthHistoryHandler);
 router.get(`${BASE}/assets`, ...read, listAssetsHandler);

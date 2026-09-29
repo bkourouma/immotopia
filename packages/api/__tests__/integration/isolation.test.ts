@@ -27,12 +27,19 @@ import request from 'supertest';
 import app from '../../src/app';
 import { prisma } from '../../src/utils/database';
 import { signProposal } from '../../src/lib/ai/proposal-token';
+import { generateAccessToken } from '../../src/utils/jwt-utils';
+import { getEntitlements } from '../../src/services/subscription-v2-service';
+import {
+  applyPlatformProviderStatus,
+  reconcilePlatformCheckoutPublic
+} from '../../src/services/platform-payment-service';
 import {
   ensureTenantAdminRole,
   createTestTenant,
   createTenantAdminUser,
   suspendTenant,
   createContactDirect,
+  createParticulierTenant,
   createPropertyDirect,
   createMaintenanceTicketDirect,
   cleanupTenants,
@@ -1172,5 +1179,375 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(statuses).toEqual([201, 201, 201, 201, 409, 409, 409, 409]);
       expect(await prisma.patrimonyScenario.count({ where: { tenantId: tenantA.id } })).toBe(100);
     });
+  });
+
+  describe('Espace particulier — montée de palier payante (lot 4D, simulateur PaySecureHub)', () => {
+    const upgradeUrl = (tenantId: string) => `/api/tenants/${tenantId}/subscription/upgrade`;
+
+    async function particulier(prefix: string, options: { phone?: string | null } = {}) {
+      const tenant = await createParticulierTenant(prefix, options);
+      createdTenantIds.push(tenant.id);
+      const admin = await createTenantAdminUser(tenant, `${prefix.toLowerCase()}-admin`);
+      return { tenant, admin };
+    }
+
+    const startUpgrade = (tenantId: string, user: TestUser, body: unknown = { target: 'PARTICULIER_PLUS' }) =>
+      request(app)
+        .post(upgradeUrl(tenantId))
+        .set(authed(user))
+        .send(body as object);
+
+    const simulate = (code: string, outcome: 'success' | 'failed' | 'canceled') =>
+      request(app).post(`/api/payment-gateway/simulator/${code}/${outcome}`);
+
+    const activePacks = async (tenantId: string) =>
+      (
+        await prisma.subscriptionItem.findMany({
+          where: { tenantId, status: 'ACTIVE', catalogItem: { kind: 'PACK' } },
+          select: { unitMonthlyPrice: true, catalogItem: { select: { code: true } } }
+        })
+      ).map(i => i.catalogItem.code);
+
+    const actifsLimit = async (tenantId: string) => (await getEntitlements(tenantId)).capacities.ACTIFS.limit;
+
+    it('parcours complet : facture du premier mois, paiement simulé réussi, pack PLUS et plafond 100 visible aussitôt', async () => {
+      const { tenant, admin } = await particulier('Part-parcours');
+      expect(await actifsLimit(tenant.id)).toBe(10); // réchauffe le cache des droits (30 s)
+
+      const res = await startUpgrade(tenant.id, admin);
+      expect(res.status).toBe(201);
+      const { invoiceId, checkoutUrl, code } = res.body.data;
+      expect(checkoutUrl).toContain(`/api/payment-gateway/simulator/${code}`);
+
+      // Facture : 2 900 HT + TVA 18 % = 3 422, entiers, une seule ligne de pack (aucune mise en route).
+      const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: { lines: true } });
+      expect(invoice.status).toBe('ISSUED');
+      expect(Number(invoice.amountExclTax)).toBe(2900);
+      expect(Number(invoice.taxAmount)).toBe(522);
+      expect(Number(invoice.amountTotal)).toBe(3422);
+      expect(invoice.lines.filter(l => l.kind === 'PACK')).toHaveLength(1);
+      expect(invoice.lines.filter(l => l.kind === 'SETUP')).toHaveLength(0);
+
+      // Aucun changement de droits avant la confirmation.
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+      expect(await actifsLimit(tenant.id)).toBe(10);
+      const periodBefore = await prisma.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+
+      const paid = await simulate(code, 'success');
+      expect(paid.status).toBe(303);
+
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_PLUS']);
+      // Le cache de 30 s a été invalidé : le plafond de 100 est lu tout de suite.
+      expect(await actifsLimit(tenant.id)).toBe(100);
+      const sub = await prisma.subscription.findUniqueOrThrow({
+        where: { tenantId: tenant.id },
+        include: { items: { include: { catalogItem: true }, orderBy: { createdAt: 'asc' } } }
+      });
+      expect(sub.status).toBe('ACTIVE');
+      expect(sub.billingCycle).toBe('MONTHLY');
+      expect(sub.quotaPolicy).toBe('BLOCK');
+      expect(sub.currentPeriodStart.getTime()).toBeGreaterThan(periodBefore.currentPeriodStart.getTime());
+      expect(sub.currentPeriodEnd.getTime()).toBeGreaterThan(sub.currentPeriodStart.getTime());
+      expect(sub.nextBillingAt?.getTime()).toBe(sub.currentPeriodEnd.getTime());
+      const free = sub.items.find(i => i.catalogItem.code === 'PARTICULIER_GRATUIT');
+      const plus = sub.items.find(i => i.catalogItem.code === 'PARTICULIER_PLUS');
+      expect(free?.status).toBe('ENDED');
+      expect(free?.endReason).toBe('UPGRADE');
+      expect(Number(plus?.unitMonthlyPrice)).toBe(2900);
+      expect(plus?.billedThrough?.getTime()).toBe(sub.currentPeriodEnd.getTime());
+      const settled = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+      expect(settled.status).toBe('PAID');
+      expect(settled.periodStart?.getTime()).toBe(sub.currentPeriodStart.getTime());
+
+      // Déjà sur la cible : 409 ALREADY_ON_TARGET.
+      const again = await startUpgrade(tenant.id, admin);
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe('ALREADY_ON_TARGET');
+    });
+
+    it('notification rejouée et réconciliations répétées : un seul changement, un seul règlement', async () => {
+      const { tenant, admin } = await particulier('Part-rejeu');
+      const { invoiceId, code } = (await startUpgrade(tenant.id, admin)).body.data;
+      await simulate(code, 'success');
+      await simulate(code, 'success');
+      await reconcilePlatformCheckoutPublic(code);
+      await reconcilePlatformCheckoutPublic(code);
+      const poll = await request(app)
+        .get(`/api/tenants/${tenant.id}/subscription/checkouts/${code}`)
+        .set(authed(admin));
+      expect(poll.status).toBe(200);
+      expect(poll.body.data.status).toBe('SUCCESS');
+
+      expect(await prisma.platformInvoicePayment.count({ where: { invoiceId } })).toBe(1);
+      expect(await prisma.subscriptionItem.count({ where: { tenantId: tenant.id } })).toBe(2);
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_PLUS']);
+    });
+
+    it('paiement annulé ou échoué : reste gratuit ; réessai possible sur la même facture', async () => {
+      const { tenant, admin } = await particulier('Part-annule');
+      const first = (await startUpgrade(tenant.id, admin)).body.data;
+      await simulate(first.code, 'canceled');
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+      expect(await actifsLimit(tenant.id)).toBe(10);
+
+      const second = await startUpgrade(tenant.id, admin);
+      expect(second.status).toBe(201);
+      expect(second.body.data.invoiceId).toBe(first.invoiceId);
+      expect(second.body.data.code).not.toBe(first.code);
+      await simulate(second.body.data.code, 'failed');
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+      expect(await prisma.platformInvoicePayment.count({ where: { tenantId: tenant.id } })).toBe(0);
+
+      const third = await startUpgrade(tenant.id, admin);
+      expect(third.status).toBe(201);
+      await simulate(third.body.data.code, 'success');
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_PLUS']);
+      // Une seule facture d'upgrade pour les trois essais.
+      expect(await prisma.invoice.count({ where: { tenantId: tenant.id, kind: 'PLATFORM' } })).toBe(1);
+    });
+
+    it('paiement expiré ou en REVIEW : aucun droit ne change', async () => {
+      const { tenant, admin } = await particulier('Part-expire');
+      const { code } = (await startUpgrade(tenant.id, admin)).body.data;
+      await prisma.platformPaymentCheckout.update({
+        where: { codePaiement: code },
+        data: { status: 'EXPIRED', simulatedOutcome: 'SUCCESS' }
+      });
+      await reconcilePlatformCheckoutPublic(code);
+      expect((await prisma.platformPaymentCheckout.findUniqueOrThrow({ where: { codePaiement: code } })).status).toBe(
+        'EXPIRED'
+      );
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+    });
+
+    it('montant divergent : checkout en REVIEW, aucun changement de pack', async () => {
+      const { tenant, admin } = await particulier('Part-diverge');
+      const { code, invoiceId } = (await startUpgrade(tenant.id, admin)).body.data;
+      const row = await prisma.platformPaymentCheckout.findUniqueOrThrow({ where: { codePaiement: code } });
+      const result = await applyPlatformProviderStatus(row, {
+        rawState: 'SUCCESSFUL',
+        mappedState: 'SUCCESS',
+        transactionId: 'T-DIVERGE',
+        amount: 100,
+        fees: 0,
+        serviceName: 'Wave',
+        error: null,
+        raw: {}
+      });
+      expect(result.status).toBe('REVIEW');
+      expect(await activePacks(tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+      expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } })).status).toBe('ISSUED');
+      expect(await actifsLimit(tenant.id)).toBe(10);
+    });
+
+    it('refus : agence 403, téléphone absent 422 (rien créé), paiement en cours 409 avec reprise, corps strict 400', async () => {
+      // Tenant de type agence.
+      const agency = await startUpgrade(tenantA.id, adminA);
+      expect(agency.status).toBe(403);
+      expect(await prisma.invoice.count({ where: { tenantId: tenantA.id, lines: { some: { kind: 'PACK' } } } })).toBe(
+        0
+      );
+
+      // Téléphone absent.
+      const noPhone = await particulier('Part-sans-tel', { phone: null });
+      const phone = await startUpgrade(noPhone.tenant.id, noPhone.admin);
+      expect(phone.status).toBe(422);
+      expect(phone.body.code).toBe('PHONE_REQUIRED');
+      expect(await prisma.invoice.count({ where: { tenantId: noPhone.tenant.id } })).toBe(0);
+      expect(await prisma.platformPaymentCheckout.count({ where: { tenantId: noPhone.tenant.id } })).toBe(0);
+
+      // Paiement en cours (moins de 15 minutes).
+      const { tenant, admin } = await particulier('Part-en-cours');
+      const first = (await startUpgrade(tenant.id, admin)).body.data;
+      const busy = await startUpgrade(tenant.id, admin);
+      expect(busy.status).toBe(409);
+      expect(busy.body.code).toBe('PAYMENT_IN_PROGRESS');
+      expect(busy.body.data.codePaiement).toBe(first.code);
+      expect(busy.body.data.checkoutUrl).toBe(first.checkoutUrl);
+
+      // Corps strict et cible en liste blanche.
+      expect((await startUpgrade(tenant.id, admin, { target: 'AGENCE' })).status).toBe(400);
+      expect((await startUpgrade(tenant.id, admin, { target: 'PARTICULIER_GRATUIT' })).status).toBe(400);
+      expect((await startUpgrade(tenant.id, admin, { target: 'PARTICULIER_PLUS', tenantId: tenantA.id })).status).toBe(
+        400
+      );
+      expect((await startUpgrade(tenant.id, admin, {})).status).toBe(400);
+      // Sans session.
+      expect((await request(app).post(upgradeUrl(tenant.id)).send({ target: 'PARTICULIER_PLUS' })).status).toBe(401);
+    });
+
+    it("étanchéité : un espace ne voit ni ne paie l'upgrade d'un autre (même réponse qu'un objet inexistant)", async () => {
+      const a = await particulier('Part-iso-a');
+      const b = await particulier('Part-iso-b');
+      const ofB = (await startUpgrade(b.tenant.id, b.admin)).body.data;
+
+      // A tente d'agir sur B via l'URL de B : refusé.
+      const onB = await startUpgrade(b.tenant.id, a.admin);
+      expect(onB.status).toBe(403);
+      expect(await prisma.platformPaymentCheckout.count({ where: { tenantId: b.tenant.id } })).toBe(1);
+
+      // A tente de payer la facture de B, ou de suivre son paiement, via SES URL.
+      const payForeign = await request(app)
+        .post(`/api/tenants/${a.tenant.id}/subscription/invoices/${ofB.invoiceId}/checkout`)
+        .set(authed(a.admin));
+      const payMissing = await request(app)
+        .post(`/api/tenants/${a.tenant.id}/subscription/invoices/${randomUUID()}/checkout`)
+        .set(authed(a.admin));
+      expect(payForeign.status).toBe(404);
+      expect(payForeign.body).toEqual(payMissing.body);
+
+      const pollForeign = await request(app)
+        .get(`/api/tenants/${a.tenant.id}/subscription/checkouts/${ofB.code}`)
+        .set(authed(a.admin));
+      const pollMissing = await request(app)
+        .get(`/api/tenants/${a.tenant.id}/subscription/checkouts/IMP-INEXISTANT`)
+        .set(authed(a.admin));
+      expect(pollForeign.status).toBe(404);
+      expect(pollForeign.body).toEqual(pollMissing.body);
+      expect(JSON.stringify(pollForeign.body)).not.toContain(ofB.invoiceId);
+
+      // Rien n'a bougé chez A ni chez B.
+      expect(await activePacks(a.tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+      expect(await activePacks(b.tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+    });
+  });
+});
+
+maybeDescribe('Espace particulier — création en libre-service et compteur d’usage (lot 4B)', () => {
+  jest.setTimeout(60000);
+
+  const tenantIds: string[] = [];
+  const userIds: string[] = [];
+
+  async function verifiedUser(emailVerified = true): Promise<{ id: string; headers: { Authorization: string } }> {
+    const user = await prisma.user.create({
+      data: {
+        email: `ps-http-${randomUUID().slice(0, 8)}@isolation-test.local`,
+        passwordHash: null,
+        fullName: 'Particulier (test isolation)',
+        globalRole: 'USER',
+        emailVerified,
+        isActive: true
+      }
+    });
+    userIds.push(user.id);
+    const token = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
+    return { id: user.id, headers: { Authorization: `Bearer ${token}` } };
+  }
+
+  async function createSpaceFor(user: { headers: { Authorization: string } }, displayName = 'Mon espace') {
+    const res = await request(app).post('/api/personal-space').set(user.headers).send({ displayName, country: 'CI' });
+    if (res.status === 201) tenantIds.push(res.body.data.tenantId);
+    return res;
+  }
+
+  beforeAll(async () => {
+    await ensureTenantAdminRole();
+  });
+
+  afterAll(async () => {
+    await cleanupTenants(tenantIds);
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.$disconnect();
+  });
+
+  it('POST /api/personal-space : sans jeton -> 401 ; corps avec userId -> 400 ; e-mail non vérifié -> 403', async () => {
+    const anonymous = await request(app).post('/api/personal-space').send({ displayName: 'X', country: 'CI' });
+    expect(anonymous.status).toBe(401);
+
+    const user = await verifiedUser();
+    const forged = await request(app)
+      .post('/api/personal-space')
+      .set(user.headers)
+      .send({ displayName: 'X', country: 'CI', userId: randomUUID() });
+    expect(forged.status).toBe(400);
+    expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(0);
+
+    const unverified = await verifiedUser(false);
+    const blocked = await createSpaceFor(unverified);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.code).toBe('EMAIL_NOT_VERIFIED');
+  });
+
+  it('crée l’espace (201), le rend utilisable (usage FREE 0/10) et refuse un second espace (409 + tenantId)', async () => {
+    const user = await verifiedUser();
+    const created = await createSpaceFor(user, '<img src=x onerror=alert(1)>');
+    expect(created.status).toBe(201);
+    expect(Object.keys(created.body.data).sort()).toEqual(['name', 'slug', 'tenantId']);
+    expect(created.body.data.name).toBe('<img src=x onerror=alert(1)>');
+    expect(created.headers['content-type']).toMatch(/application\/json/);
+    const tenantId: string = created.body.data.tenantId;
+
+    const again = await createSpaceFor(user, 'Autre');
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('PERSONAL_SPACE_EXISTS');
+    expect(again.body.data).toEqual({ tenantId });
+
+    const usage = await request(app).get(`/api/tenants/${tenantId}/patrimoine/usage`).set(user.headers);
+    expect(usage.status).toBe(200);
+    expect(usage.body.data).toMatchObject({
+      plan: 'FREE',
+      limit: 10,
+      used: 0,
+      canAdd: true,
+      upgrade: { target: 'PARTICULIER_PLUS', currency: 'XOF', limit: 100 }
+    });
+    expect(typeof usage.body.data.upgrade.priceMonthly).toBe('number');
+  });
+
+  it('le 11e actif créé par l’API est refusé en 409 FREE_TIER_LIMIT { limit, used } ; usage : canAdd faux', async () => {
+    const user = await verifiedUser();
+    const { body } = await createSpaceFor(user);
+    const tenantId: string = body.data.tenantId;
+    const post = () =>
+      request(app)
+        .post(`/api/tenants/${tenantId}/patrimoine/assets`)
+        .set(user.headers)
+        .send({ name: 'Actif', assetClass: 'OTHER', details: { label: 'Divers' } });
+    for (let i = 0; i < 10; i += 1) expect((await post()).status).toBe(201);
+
+    const refused = await post();
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('FREE_TIER_LIMIT');
+    expect(refused.body.data).toEqual({ limit: 10, used: 10 });
+
+    const usage = await request(app).get(`/api/tenants/${tenantId}/patrimoine/usage`).set(user.headers);
+    expect(usage.body.data).toMatchObject({ used: 10, canAdd: false });
+  });
+
+  it('étanchéité : un particulier et une agence ne lisent pas l’usage l’un de l’autre, l’usage d’agence est AGENCY', async () => {
+    const agency = await createTestTenant('Agence-Usage');
+    tenantIds.push(agency.id);
+    const agencyAdmin = await createTenantAdminUser(agency, 'admin-usage');
+    userIds.push(agencyAdmin.id);
+    const user = await verifiedUser();
+    const { body } = await createSpaceFor(user);
+    const spaceId: string = body.data.tenantId;
+
+    const own = await request(app)
+      .get(`/api/tenants/${agency.id}/patrimoine/usage`)
+      .set({ Authorization: agencyAdmin.authHeader });
+    expect(own.status).toBe(200);
+    expect(own.body.data).toMatchObject({ plan: 'AGENCY', limit: null, canAdd: true, upgrade: null });
+
+    const particulierOnAgency = await request(app).get(`/api/tenants/${agency.id}/patrimoine/usage`).set(user.headers);
+    expect(particulierOnAgency.status).toBe(403);
+    const agencyOnParticulier = await request(app)
+      .get(`/api/tenants/${spaceId}/patrimoine/usage`)
+      .set({ Authorization: agencyAdmin.authHeader });
+    expect(agencyOnParticulier.status).toBe(403);
+    expect(JSON.stringify(agencyOnParticulier.body)).not.toContain(spaceId);
+
+    // Le particulier n'a aucun droit sur l'agence : ses rôles ne portent que son espace.
+    const roles = await prisma.userRole.findMany({ where: { userId: user.id }, select: { tenantId: true } });
+    expect(roles).toEqual([{ tenantId: spaceId }]);
+  });
+
+  it('6 POST concurrents du même utilisateur -> un 201, cinq 409, un seul tenant', async () => {
+    const user = await verifiedUser();
+    const responses = await Promise.all(Array.from({ length: 6 }, (_, i) => createSpaceFor(user, `Course ${i}`)));
+    const statuses = responses.map(r => r.status).sort();
+    expect(statuses).toEqual([201, 409, 409, 409, 409, 409]);
+    expect(await prisma.membership.count({ where: { userId: user.id } })).toBe(1);
   });
 });

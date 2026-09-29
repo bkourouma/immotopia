@@ -55,6 +55,7 @@ import coOwnerPortalRoutes from './routes/coowner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import patrimoineAssetsRoutes from './routes/patrimoine-assets-routes';
+import personalSpaceRoutes from './routes/personal-space-routes';
 import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
@@ -206,6 +207,7 @@ app.use('/api/auth', authRoutes);
 // so it has to be mounted before them or the whole back-office answers 400.
 app.use('/api/admin', adminRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
 // tout routeur qui sert /api/tenants/:tenantId/... ; les webhooks, l'IPN,
