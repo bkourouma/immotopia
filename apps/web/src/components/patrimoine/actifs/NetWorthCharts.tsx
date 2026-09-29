@@ -1,18 +1,6 @@
 import React from 'react';
 import { Card, Progress, Table } from 'antd';
-import {
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { NetWorthHistoryPoint, NetWorthResult } from '../../../services/patrimoine-assets-service';
 import { t } from '../../../i18n/t';
 import { activeLocale } from '../../../i18n/format';
@@ -20,30 +8,37 @@ import { ASSET_CLASS_COLORS, assetClassLabel } from './asset-classes';
 import { formatAmount, formatShare } from './asset-format';
 import { computeClassBreakdown, type ClassBreakdownRow } from './net-worth-helpers';
 
-/** Répartition par classe : graphique en anneau et liste avec la part de chaque classe. */
+/**
+ * Répartition par classe : barre empilée et liste avec la part de chaque classe.
+ *
+ * La barre est du HTML et du CSS, pas un graphique recharts : un anneau tirait
+ * trois fichiers de plus dans la carte des dépendances du chunk d'entrée, dont
+ * le budget est mesuré par `npm run measure:entry` (REFONTE_UI_UX.md §8.1).
+ */
 export const ClassBreakdownCard: React.FC<{ result: NetWorthResult }> = ({ result }) => {
   const rows = computeClassBreakdown(result);
   return (
     <Card title={t('Répartition par classe')}>
+      <div
+        role="img"
+        aria-label={t('Répartition par classe')}
+        style={{
+          display: 'flex',
+          height: 14,
+          borderRadius: 7,
+          overflow: 'hidden',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        {rows.map(row => (
+          <div
+            key={row.assetClass}
+            title={`${assetClassLabel(row.assetClass)} — ${formatShare(row.share)}`}
+            style={{ flex: row.value, background: ASSET_CLASS_COLORS[row.assetClass] }}
+          />
+        ))}
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'center' }}>
-        <div style={{ width: 220, height: 220, flex: '0 0 auto' }} aria-hidden="true">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={rows}
-                dataKey="value"
-                nameKey="assetClass"
-                innerRadius={55}
-                outerRadius={95}
-                isAnimationActive={false}
-              >
-                {rows.map(row => (
-                  <Cell key={row.assetClass} fill={ASSET_CLASS_COLORS[row.assetClass]} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
         <Table<ClassBreakdownRow>
           style={{ flex: '1 1 320px', minWidth: 0 }}
           size="small"

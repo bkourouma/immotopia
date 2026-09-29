@@ -68,9 +68,9 @@ const PropertyVisitsCalendar = lazy(() =>
     default: m.PropertyVisitsCalendar
   }))
 );
-const PatrimoineOverviewPage = lazy(() =>
+const PatrimoineHome = lazy(() =>
   import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/PatrimoineOverviewPage').then(m => ({
-    default: m.PatrimoineOverviewPage
+    default: m.PatrimoineHome
   }))
 );
 const PatrimoinePerformancePage = lazy(() =>
@@ -107,22 +107,6 @@ const HoldingEntityDetailPage = lazy(() =>
 const TaxParametersPage = lazy(() =>
   import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/tax/TaxParametersPage').then(m => ({
     default: m.TaxParametersPage
-  }))
-);
-// Patrimoine multi-actifs (lot 1) : valeur nette, actifs et fiche d'actif.
-const NetWorthPage = lazy(() =>
-  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/NetWorthPage').then(m => ({
-    default: m.NetWorthPage
-  }))
-);
-const AssetsPage = lazy(() =>
-  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/AssetsPage').then(m => ({
-    default: m.AssetsPage
-  }))
-);
-const AssetDetailPage = lazy(() =>
-  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/AssetDetailPage').then(m => ({
-    default: m.AssetDetailPage
   }))
 );
 // Module financier — regroupe dans un seul morceau : les quatre ecrans se
@@ -887,7 +871,7 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/properties/:id/edit" element={<PropertyEdit />} />
                           <Route path="/tenant/:tenantId/properties/:id" element={<PropertyDetail />} />
-                          <Route path="/tenant/:tenantId/patrimoine" element={<PatrimoineOverviewPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/*" element={<PatrimoineHome />} />
                           <Route
                             path="/tenant/:tenantId/patrimoine/performance"
                             element={<PatrimoinePerformancePage />}
@@ -904,9 +888,6 @@ function App() {
                             element={<HoldingEntityDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
-                          <Route path="/tenant/:tenantId/patrimoine/valeur-nette" element={<NetWorthPage />} />
-                          <Route path="/tenant/:tenantId/patrimoine/actifs" element={<AssetsPage />} />
-                          <Route path="/tenant/:tenantId/patrimoine/actifs/:assetId" element={<AssetDetailPage />} />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne

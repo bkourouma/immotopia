@@ -58,7 +58,13 @@ export const AssetDetailPage: React.FC = () => {
     { key: 'debts', label: t('Dettes'), children: <DebtsPanel tenantId={agence} assetId={asset.id} /> },
     ...(isRealEstate
       ? []
-      : [{ key: 'holdings', label: t('Détenteurs'), children: <AssetHoldingsTab tenantId={agence} asset={asset} /> }]),
+      : [
+          {
+            key: 'holdings',
+            label: t('Détenteurs'),
+            children: <AssetHoldingsTab tenantId={agence} asset={asset} />
+          }
+        ]),
     {
       key: 'info',
       label: t('Informations'),

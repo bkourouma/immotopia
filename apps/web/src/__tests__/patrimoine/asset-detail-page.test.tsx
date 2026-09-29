@@ -12,6 +12,7 @@ const getAsset = vi.fn();
 
 vi.mock('../../services/patrimoine-assets-service', () => ({
   getAsset: (...a: unknown[]) => getAsset(...a),
+  listHoldingEntityOptions: vi.fn().mockResolvedValue([]),
   listAssetValuations: vi.fn().mockResolvedValue([
     {
       id: 'v1',
@@ -40,7 +41,6 @@ vi.mock('../../services/patrimoine-assets-service', () => ({
   updateAsset: vi.fn()
 }));
 
-vi.mock('../../services/patrimoine-entities-service', () => ({ listHoldingEntities: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../services/property-service', () => ({
   listProperties: vi.fn().mockResolvedValue({ properties: [], pagination: {} })
 }));

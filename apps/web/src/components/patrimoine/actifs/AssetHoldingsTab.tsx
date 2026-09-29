@@ -5,11 +5,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteAssetHolding,
   listAssetHoldings,
+  listHoldingEntityOptions,
   upsertAssetHolding,
   type AssetDto,
   type HoldingDto
 } from '../../../services/patrimoine-assets-service';
-import { listHoldingEntities } from '../../../services/patrimoine-entities-service';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { ConfirmAction, StateBlock } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
@@ -35,7 +35,7 @@ const HoldingFormModal: React.FC<{
 
   const entities = useQuery({
     queryKey: queryKey('holding-entities', tenantId, {}),
-    queryFn: () => listHoldingEntities(tenantId),
+    queryFn: () => listHoldingEntityOptions(tenantId),
     enabled: open,
     staleTime: STALE_TIME.reference
   });

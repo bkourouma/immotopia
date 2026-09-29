@@ -314,3 +314,15 @@ export async function getNetWorthHistory(
   );
   return response.data.data;
 }
+
+/**
+ * Entités détentrices proposées dans le sélecteur d'un actif (id et nom).
+ * Route des entités déjà existante ; la fonction vit ici plutôt que dans
+ * `patrimoine-entities-service` pour ne pas rendre ce service partagé entre
+ * plusieurs écrans : Vite en ferait un fichier de plus dans la carte des
+ * dépendances du chunk d'entrée (`npm run measure:entry`, REFONTE_UI_UX.md §8.1).
+ */
+export async function listHoldingEntityOptions(tenantId: string): Promise<{ id: string; name: string }[]> {
+  const response = await apiClient.get<Envelope<{ id: string; name: string }[]>>(`${base(tenantId)}/entities`);
+  return response.data.data;
+}
