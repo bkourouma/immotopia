@@ -798,7 +798,7 @@ export async function suggestAssetValuation(
   query: { asOf?: string }
 ): Promise<SuggestResponse> {
   const asset = await findAssetOrThrow(tenantId, assetId);
-  const asOf = query.asOf ? parseDay(query.asOf, 'asOf') : new Date();
+  const asOf = query.asOf ? parseDay(query.asOf, 'asOf') : todayUtc();
   const rows = await prisma.assetValuation.findMany({
     where: { tenantId, ...assetScopeWhere(asset) },
     select: VALUATION_SELECT,

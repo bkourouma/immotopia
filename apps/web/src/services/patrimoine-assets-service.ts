@@ -57,6 +57,8 @@ export type SuggestResponse =
       currency: string;
       method: ValuationMethod;
       assumptions: { key: string; value: string | number }[];
+      /** Jour (AAAA-MM-JJ, UTC) du calcul : date à enregistrer avec la valeur. */
+      valueDate?: string;
     }
   | {
       ok: false;
