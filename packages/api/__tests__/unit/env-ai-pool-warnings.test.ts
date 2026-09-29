@@ -3,6 +3,9 @@
  * les limiteurs par instance. Jamais bloquants : le démarrage n'échoue pas.
  * Même technique que env-ai-provider.test.ts (rechargement isolé du module).
  */
+// Module (et non script global) : évite « Cannot redeclare block-scoped variable » avec env-ai-provider.test.ts.
+export {};
+
 jest.mock('dotenv/config', () => ({}));
 
 const BASE_ENV: Record<string, string> = {
