@@ -38,6 +38,37 @@ Pièges et décisions :
 
 ---
 
+## Branche `claude/lucid-bell-0pzfvc` — 2026-09-29
+
+**État :** prêt à relire (documentation seule, aucun code)
+**Dernier commit :** voir `git log -1` de la branche
+
+Fait :
+
+- ADR-005 `patrimoine-multi-actifs` (statut Proposé) et spec
+  `specs/023-patrimoine-multi-actifs/` (`spec.md`, `data-model.md`, `plan.md`,
+  `tasks.md`) : `Asset` comme racine du patrimoine, 10 classes d'actifs, valeur
+  nette consolidée, marché UEMOA (XOF, OHADA). Le détail n'est écrit que pour le
+  lot 1 ; les lots 2 à 6 sont listés.
+
+Reste à faire :
+
+- Faire relire l'ADR, puis implémenter le lot 1 par territoires A à F (voir
+  `plan.md`) ; chaque lot suivant a besoin de sa propre spec.
+- Trancher : tarification particulier (palier gratuit ?), portée des validations
+  fiscales d'un utilisateur (usage personnel, promotion globale par un admin
+  plateforme), paiement mobile money par PaySecureHub.
+
+Pièges et décisions :
+
+- Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le
+  résultat non validé (`tax/engine.ts`, `allValidated`) : la collecte par IA du
+  lot 6 s'appuie dessus, sans recherche web ni écriture existantes (ADR-004).
+- `TaxParameter` est global, sans `tenantId` : une validation utilisateur exige
+  une portée par tenant, à décider dans l'ADR du lot 6.
+- L'inventaire des fichiers touchés par le lot 1 est dans `plan.md` ; le
+  reconfirmer avec `grep` avant de modifier.
+
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
 **État :** prêt à relire (documentation seule)

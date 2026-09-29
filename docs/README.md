@@ -25,6 +25,7 @@
 - [Décisions d'architecture (ADR)](architecture/adr/ADR-000-template.md)
 - [ADR-001 — contrôle des frontières de paquets](architecture/adr/ADR-001-controle-frontieres-paquets.md)
 - [ADR-002 — Repomix et Lefthook](architecture/adr/ADR-002-repomix-lefthook.md)
+- [ADR-005 — patrimoine multi-actifs](architecture/adr/ADR-005-patrimoine-multi-actifs.md)
 - [Standards de code](governance/CODING_STANDARDS.md) et
   [sécurité — modèle de menace](governance/SECURITY.md)
 - [Contexte IA avec Repomix](../repomix.config.json) — génération locale via `npm run repomix`
