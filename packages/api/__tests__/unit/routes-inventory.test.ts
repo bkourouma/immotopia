@@ -30,6 +30,7 @@ installMountPathRecorder();
 import app from '../../src/app';
 import { requireTenantAccess, requireTenantCollaborator } from '../../src/middleware/tenant-middleware';
 import { authenticate } from '../../src/middleware/auth-middleware';
+import { requireSuperAdmin } from '../../src/middleware/super-admin-middleware';
 import { requireTenantPortalAccess } from '../../src/middleware/tenant-portal-access';
 import { requireOwnerPortalAccess } from '../../src/middleware/owner-portal-access';
 import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
@@ -257,6 +258,21 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     const execute = routes.find(r => r.method === 'POST' && r.path === '/api/tenants/:tenantId/ai/actions/execute');
     expect(execute!.middlewares.some(mw => (mw as any)?.permissionKey === 'RENTAL_DOCUMENTS_GENERATE')).toBe(true);
     expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(3);
+  });
+
+  it('declare les 3 routes du reglage IA de la plateforme avec permission PLATFORM et super-admin', () => {
+    const expected: Array<[string, string, string]> = [
+      ['GET', '/api/platform/ai-settings', 'PLATFORM_TENANTS_VIEW'],
+      ['PUT', '/api/platform/ai-settings', 'PLATFORM_TENANTS_EDIT'],
+      ['GET', '/api/platform/ai-settings/models', 'PLATFORM_TENANTS_VIEW']
+    ];
+    for (const [method, path, permission] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasPlatformPermission(route!)).toBe(permission);
+      expect(route!.middlewares).toContain(requireSuperAdmin);
+    }
+    expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(3);
   });
 
   it('chaque route hors liste blanche porte une garde d’agence ou une permission plateforme', () => {

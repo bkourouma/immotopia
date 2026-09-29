@@ -1,7 +1,15 @@
 import { env } from '../../../config/env';
 import { t } from '../../../i18n';
 import { logger } from '../../../utils/logger';
-import type { LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, LlmTurnResult } from '../contracts';
+import { getEffectiveAiConfig } from '../../../services/ai-settings-service';
+import type {
+  LlmBlock,
+  LlmMessage,
+  LlmProvider,
+  LlmToolSpec,
+  LlmTurnResult,
+  ProviderRuntimeConfig
+} from '../contracts';
 import { LlmProviderError, createAbortError, isAbortError } from './anthropic-provider';
 
 /**
@@ -231,23 +239,25 @@ export type OpenRouterFetch = (url: string, init: RequestInit) => Promise<Respon
 export interface OpenRouterProviderOptions {
   /** Injection pour les tests ; par défaut le `fetch` global. */
   fetch?: OpenRouterFetch;
+  /** Injection pour les tests ; par défaut la configuration effective (base, sinon env). */
+  getConfig?: () => Promise<ProviderRuntimeConfig>;
 }
 
 export class OpenRouterProvider implements LlmProvider {
   readonly id = 'openrouter' as const;
   private readonly fetchImpl: OpenRouterFetch;
+  private readonly getConfig: () => Promise<ProviderRuntimeConfig>;
 
   constructor(options: OpenRouterProviderOptions = {}) {
     this.fetchImpl = options.fetch ?? ((url, init) => fetch(url, init));
+    this.getConfig = options.getConfig ?? getEffectiveAiConfig;
   }
 
-  private buildRequest(req: {
-    system: string;
-    messages: LlmMessage[];
-    tools: LlmToolSpec[];
-    maxOutputTokens: number;
-  }): { url: string; headers: Record<string, string>; body: string } {
-    // Clé passée explicitement depuis `env` ; `env.ts` refuse déjà le démarrage sans elle.
+  private buildRequest(
+    req: { system: string; messages: LlmMessage[]; tools: LlmToolSpec[]; maxOutputTokens: number },
+    model: string
+  ): { url: string; headers: Record<string, string>; body: string } {
+    // Clé passée explicitement depuis `env` (jamais en base) ; absente : erreur propre, sans planter.
     const apiKey = env.OPENROUTER_API_KEY;
     if (!apiKey) {
       logger.error('ImmoCopilot : OPENROUTER_API_KEY absente');
@@ -256,7 +266,7 @@ export class OpenRouterProvider implements LlmProvider {
       });
     }
     const payload = {
-      model: env.AI_MODEL,
+      model,
       max_tokens: req.maxOutputTokens,
       stream: true,
       messages: toOpenAiMessages(req.system, req.messages),
@@ -290,7 +300,10 @@ export class OpenRouterProvider implements LlmProvider {
   ): Promise<LlmTurnResult> {
     if (signal.aborted) throw createAbortError();
 
-    const request = this.buildRequest(req);
+    // Modèle relu à chaque tour : un changement d'admin s'applique à chaud.
+    const config = await this.getConfig();
+    if (signal.aborted) throw createAbortError(); // coupé pendant la lecture de la configuration
+    const request = this.buildRequest(req, config.model);
 
     // Abandon relié au signal de l'appelant et au délai global.
     const controller = new AbortController();

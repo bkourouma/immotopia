@@ -252,6 +252,17 @@ Plan de réalisation : [PLAN_IMMOCOPILOT.md](../architecture/PLAN_IMMOCOPILOT.md
 `ANTHROPIC_API_KEY`, `openrouter` exige `OPENROUTER_API_KEY` et un identifiant de
 modèle OpenRouter (`AI_MODEL`), sans valeur par défaut pour les clés.
 
+**Réglage par le super-admin ; clés en environnement.** Fournisseur, modèle,
+effort et repli se choisissent dans l'administration de la plateforme
+(`/api/platform/ai-settings`, table `platform_ai_settings`, prioritaire sur
+`AI_*` qui servent de défauts). Routes gardées par `requirePermission('PLATFORM_TENANTS_*')`
+et `requireSuperAdmin` (rôle relu en base). Les clés API (`OPENROUTER_API_KEY`,
+`ANTHROPIC_API_KEY`) ne sont **jamais** stockées en base ni renvoyées : la
+réponse n'indique que leur présence. Chaque modification est auditée
+(`AI_SETTINGS_UPDATED`, sans secret). La règle « `fake` interdit en production »
+vaut aussi à l'exécution, et un fournisseur sans clé désactive l'assistant
+plutôt que de planter.
+
 **Transfert de données personnelles : décision juridique.** Avec
 `AI_PROVIDER=anthropic` ou `openrouter` (qui relaie en plus vers le fournisseur du
 modèle choisi, second sous-traitant à couvrir), le texte saisi et les résultats d'outils quittent

@@ -319,6 +319,21 @@ démarre et fonctionne normalement, le bouton n'apparaît pas et
 [ADR-004](../architecture/adr/ADR-004-assistant-ia-immocopilot.md) ; modèle de
 menace : [SECURITY.md](../governance/SECURITY.md) (section « Assistant IA »).
 
+**Réglage en administration (prioritaire).** Le super-admin choisit fournisseur,
+modèle, effort et repli dans l'administration de la plateforme
+(`GET|PUT /api/platform/ai-settings`, catalogue OpenRouter :
+`GET /api/platform/ai-settings/models`). La ligne `platform_ai_settings`, si elle
+existe, l'emporte sur `AI_PROVIDER`, `AI_MODEL`, `AI_EFFORT` et
+`AI_REFUSAL_FALLBACK`, qui ne sont plus que des **valeurs par défaut** (sans
+ligne, le comportement est celui de l'environnement). Le changement s'applique
+sans redémarrage (cache de 30 s, invalidé à chaque mise à jour, par instance de
+l'API). Les **clés API restent exclusivement dans `.env`** : jamais en base,
+jamais dans une réponse d'API (seule leur présence est indiquée). Si le réglage
+désigne un fournisseur dont la clé manque, l'assistant répond `enabled: false` /
+503 `AI_DISABLED` sans planter ; `fake` reste refusé en production à
+l'exécution aussi. Appliquer la migration `20261004090000_platform_ai_settings`
+(`prisma migrate deploy`).
+
 Variables du backend (validées par `packages/api/src/config/env.ts`,
 documentées dans `packages/api/env.example`) :
 

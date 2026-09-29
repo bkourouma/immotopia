@@ -76,7 +76,7 @@ async function resolveAvailableTools(
 /** GET /ai/status — ce que l'interface peut proposer à cet utilisateur. Répond aussi quand l'assistant est désactivé. */
 export const getStatusHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, userId } = requireContext(req);
-  const provider = getLlmProvider();
+  const provider = await getLlmProvider();
   const limits = { maxMessages: COPILOT_MAX_MESSAGES, maxMessageChars: COPILOT_MAX_MESSAGE_CHARS };
 
   let status: CopilotStatus;
@@ -102,7 +102,7 @@ export const getStatusHandler = asyncHandler(async (req: Request, res: Response)
  */
 export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, userId } = requireContext(req);
-  const provider = getLlmProvider();
+  const provider = await getLlmProvider();
   if (!provider) throw new AiDisabledError();
 
   const body = chatRequestSchema.parse(req.body ?? {});

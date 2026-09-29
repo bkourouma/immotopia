@@ -122,6 +122,9 @@ const envSchema = z
     SUBSCRIPTION_ENFORCEMENT: z.enum(['off', 'warn', 'enforce']).default('warn'),
 
     // ImmoCopilot (lib/ai, docs/architecture/PLAN_IMMOCOPILOT.md).
+    // AI_PROVIDER / AI_MODEL / AI_EFFORT / AI_REFUSAL_FALLBACK sont des VALEURS PAR
+    // DEFAUT : le reglage du super-admin en base (services/ai-settings-service.ts)
+    // est prioritaire. Les cles API restent ici, jamais en base.
     // `disabled` : l'assistant est coupe et l'application marche sans cle.
     // Aucun secret par defaut : ANTHROPIC_API_KEY est exigee si `anthropic`,
     // OPENROUTER_API_KEY si `openrouter`.

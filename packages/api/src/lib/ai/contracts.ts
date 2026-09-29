@@ -252,6 +252,13 @@ export interface LlmTurnResult {
   toolCalls: Array<{ id: string; name: string; input: unknown }>;
 }
 
+/** Réglages relus à chaque tour depuis la configuration effective (voir `services/ai-settings-service.ts`). */
+export interface ProviderRuntimeConfig {
+  model: string;
+  effort: 'low' | 'medium' | 'high';
+  refusalFallback: boolean;
+}
+
 export interface LlmProvider {
   readonly id: 'fake' | 'anthropic' | 'openrouter';
   runTurn(

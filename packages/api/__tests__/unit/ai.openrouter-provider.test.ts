@@ -23,6 +23,9 @@ import type { LlmMessage, LlmToolSpec } from '../../src/lib/ai/contracts';
 
 const mutableEnv = env as unknown as Record<string, unknown>;
 
+// Configuration effective injectée (le service lirait sinon la base) : reflète l'env simulé.
+const getConfig = async () => ({ model: env.AI_MODEL, effort: 'low' as const, refusalFallback: true });
+
 const tools: LlmToolSpec[] = [
   { name: 'search_properties', description: 'Cherche des biens', inputSchema: { type: 'object', properties: {} } }
 ];
@@ -49,7 +52,7 @@ function run(
   signal: AbortSignal = new AbortController().signal,
   onDelta: (d: string) => void = () => undefined
 ) {
-  return new OpenRouterProvider({ fetch: fetchMock }).runTurn(req, onDelta, signal);
+  return new OpenRouterProvider({ fetch: fetchMock, getConfig }).runTurn(req, onDelta, signal);
 }
 
 describe('OpenRouterProvider', () => {
