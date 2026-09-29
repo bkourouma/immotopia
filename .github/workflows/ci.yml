@@ -166,3 +166,21 @@ jobs:
 
       # Les tokens du §3.2 doivent rester conformes AA.
       - run: npm run a11y:contrast
+
+  # Les scripts et le compose de `infra/` ne sont exercés par aucun autre job :
+  # une faute de syntaxe ou une variable de compose oubliée ne se verrait qu'au
+  # déploiement, sur un serveur partagé. Le script contrôle la syntaxe des
+  # scripts shell et rend le compose des deux environnements (staging et
+  # production). Docker est préinstallé sur ubuntu-latest ; le script échoue
+  # s'il est absent, sans jamais passer en silence.
+  infra:
+    name: Infra — scripts et compose
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scripts et compose des deux environnements
+        run: bash infra/scripts/check-infra.sh

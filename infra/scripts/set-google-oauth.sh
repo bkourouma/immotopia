@@ -1,31 +1,62 @@
 #!/usr/bin/env bash
 #
-# Renseigne les identifiants OAuth Google dans le fichier de secrets de
-# production, sans editeur et sans jamais afficher le secret.
+# Renseigne les identifiants OAuth Google dans le fichier de secrets d'une pile
+# (staging ou production), sans editeur et sans jamais afficher le secret.
 #
 #   ssh -t -p 2222 deployer@147.93.44.169 \
-#       '/home/deployer/immotopia-saas/infra/scripts/set-google-oauth.sh'
+#       '/home/deployer/immotopia-saas/infra/scripts/set-google-oauth.sh staging'
 #
 # Le -t est indispensable : le script pose des questions, il lui faut un
 # terminal.
 #
+# L'environnement est obligatoire (jamais de valeur par defaut). Il determine
+# l'origine et l'URI de redirection a declarer dans la console Google, et le
+# fichier modifie (par defaut celui de infra/environments/<env>.conf).
+#
 # Les deux valeurs viennent de la console Google Cloud :
 #   API et services > Identifiants > Creer des identifiants
 #   > ID client OAuth > Application Web
+# Un client OAuth par environnement : ne pas reutiliser celui du staging en
+# production.
 #
 # Le script sauvegarde le fichier avant de le modifier, coupe les espaces
 # parasites autour des valeurs collees, et n'ecrit rien si une reponse est vide.
 
 set -Eeuo pipefail
 
-ENV_FILE="${1:-/home/deployer/immotopia-saas.env}"
-PUBLIC_ORIGIN="https://app.immotopia.cloud"
+usage() {
+  echo "Usage : $0 <staging|prod> [fichier]" >&2
+  exit 2
+}
+
+# Liste blanche, verifiee AVANT de sourcer : l'argument sert a fabriquer un chemin.
+ENV_NAME="${1:-}"
+case "$ENV_NAME" in
+  staging|prod) ;;
+  *) echo "Environnement absent ou inconnu : '${ENV_NAME}'." >&2; usage ;;
+esac
+[[ $# -le 2 ]] || usage
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Les reglages viennent de infra/environments/<env>.conf, JAMAIS de l'environnement
+# de l'appelant : un STACK_NAME ou un WEB_PORT oublie dans le shell viserait la
+# mauvaise pile. IMMOTOPIA_ALLOW_OVERRIDE=1 rouvre ce remplacement (essais
+# locaux uniquement ; deploy.sh le refuse pour la production).
+if [[ "${IMMOTOPIA_ALLOW_OVERRIDE:-}" != "1" ]]; then
+  unset STACK_NAME IMMOTOPIA_ENV_FILE PUBLIC_ORIGIN WEB_PORT PG_PORT VITE_SHOW_DEMO_ACCOUNTS BACKUP_DIR BACKUP_KEEP_DAYS
+fi
+# shellcheck disable=SC1090
+source "$REPO_ROOT/infra/environments/${ENV_NAME}.conf"
+
+ENV_FILE="${2:-$IMMOTOPIA_ENV_FILE}"
 REDIRECT_URI="$PUBLIC_ORIGIN/api/auth/google/callback"
 
 [[ -f "$ENV_FILE" ]] || { echo "$ENV_FILE introuvable." >&2; exit 1; }
 [[ -t 0 ]] || { echo "Ce script a besoin d un terminal : ajoute -t a ta commande ssh." >&2; exit 1; }
 
 cat <<RAPPEL
+
+Environnement $ENV_NAME (pile $STACK_NAME), fichier $ENV_FILE.
 
 Avant de continuer, verifie dans la console Google Cloud que le client OAUTH
 declare EXACTEMENT ces deux valeurs :
@@ -66,7 +97,12 @@ chmod 600 "$BACKUP"
 # Reecriture ligne a ligne plutot que sed : les valeurs ne traversent jamais
 # une expression reguliere, donc aucun caractere ne peut casser la substitution.
 umask 077
-TMP="$(mktemp)"
+# Fichier temporaire dans le MEME repertoire que le fichier de secrets : le mv
+# final est ainsi atomique (meme systeme de fichiers), et le secret n'est jamais
+# ecrit dans /tmp. mktemp le cree en mode 600.
+TMP="$(mktemp "${ENV_FILE}.XXXXXX")"
+chmod 600 "$TMP"
+trap 'rm -f "$TMP"' EXIT
 seen_id=0
 seen_secret=0
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -95,4 +131,4 @@ echo "GOOGLE_CALLBACK_URL est volontairement laissee de cote : l'API la deduit"
 echo "de BACKEND_URL et obtient $REDIRECT_URI."
 echo
 echo "Applique maintenant la configuration :"
-echo "  cd /home/deployer/immotopia-saas && ./infra/scripts/deploy.sh --no-build"
+echo "  cd /home/deployer/immotopia-saas && ./infra/scripts/deploy.sh $ENV_NAME --no-build"
