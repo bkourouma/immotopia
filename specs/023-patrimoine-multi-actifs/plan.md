@@ -34,17 +34,18 @@ Ce périmètre est un point de départ : l'implémentation le reconfirme avec
 
 ## Approche technique
 
-1. **Schéma** : enums, `Asset`, adaptation des cinq modèles liés, migration
-   Prisma avec rattachement des données existantes (voir `data-model.md`).
+1. **Schéma** : enums, `Asset`, `assetId` facultatif sur valorisations, prêts, documents et
+   parts détenues, migration additive (voir `data-model.md`).
 2. **Domaine pur** (`lib/patrimoine/assets/`) : schémas zod par classe, calcul de
    la valeur courante et de la valeur nette, évolution dans le temps. Fonctions
    pures, testées sans base.
 3. **Service et routes** : CRUD `assets`, valorisations par actif, dettes, valeur
    nette (`GET /tenants/:tenantId/patrimoine/net-worth`). Erreurs typées,
    `asyncHandler`, gardes `assertBelongsToTenant`.
-4. **Adaptation des existants** : chaque fichier de l'inventaire lit ses données
-   par l'actif ; les moteurs de rendement et de fiscalité reçoivent les mêmes
-   entrées qu'avant.
+4. **Adaptation des existants** : les lignes immobilières restent sur `propertyId`, donc
+   les moteurs de rendement et de fiscalité reçoivent les mêmes entrées qu'avant ; les
+   fichiers de l'inventaire qui lisent valorisations, prêts et parts détenues deviennent
+   tolérants à un `propertyId` nul.
 5. **Frontend** : tableau de bord « Mon patrimoine » (valeur nette, répartition,
    courbe), liste et fiche d'actif à onglets (valeurs, dettes, dépenses,
    documents), formulaire d'actif dynamique selon la classe. Pages en

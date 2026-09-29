@@ -7,11 +7,11 @@ Un territoire par agent ; ne pas commiter pendant qu'un agent écrit.
 ## A — Schéma et migration
 
 - [ ] A1 Ajouter `AssetClass`, `AssetStatus`, `ValuationReliability` et le modèle `Asset`
-- [ ] A2 Adapter `AssetValuation` (`assetId`, `source`, `reliability`)
-- [ ] A3 Renommer `PropertyLoan` en `AssetLoan` (`assetId` facultatif)
-- [ ] A4 Adapter `PropertyExpense`, `WorkProgram`, `PatrimonyDocument`
-- [ ] A5 Renommer `PropertyHolding` en `AssetHolding`
-- [ ] A6 Migration des données : un `Asset` `REAL_ESTATE` par bien portant des données
+- [ ] A2 `AssetValuation` : `assetId` facultatif, `propertyId` facultatif, `source`, `reliability`, contrainte XOR
+- [ ] A3 `PropertyLoan` : `assetId` facultatif, `propertyId` facultatif, contrainte « au plus un »
+- [ ] A4 `PatrimonyDocument` : `assetId` facultatif
+- [ ] A5 `PropertyHolding` : `assetId` facultatif, `propertyId` facultatif, contrainte XOR, unicité `(assetId, entityId)`
+- [ ] A6 Migration des données : un `Asset` `REAL_ESTATE` par bien portant des données (aucune ligne existante réécrite)
 - [ ] A7 Mettre à jour `schema-tenant-coverage` et `docs/architecture/DATA_MODELS.md`
 
 ## B — Domaine pur (`lib/patrimoine/assets/`)
@@ -25,17 +25,19 @@ Un territoire par agent ; ne pas commiter pendant qu'un agent écrit.
 ## C — Service et API
 
 - [ ] C1 CRUD des actifs (création, liste, détail, modification, archivage)
-- [ ] C2 Valorisations par actif ; dettes, dépenses, documents, parts par actif
+- [ ] C2 Valorisations, dettes, documents et parts par actif via `asset-scope` (dépenses et travaux hors lot 1)
 - [ ] C3 `GET /tenants/:tenantId/patrimoine/net-worth` et évolution
 - [ ] C4 Gardes d'appartenance, erreurs typées, `asyncHandler`
 - [ ] C5 `routes-inventory` et tests d'isolation entre tenants
 
 ## D — Adaptation de l'immobilier existant
 
-- [ ] D1 `lib/patrimoine/queries.ts`, `tax/service.ts`, `entities/*`
-- [ ] D2 `export/*`, `notifications.ts`, `owner-portal-view.ts`
-- [ ] D3 `owner-account/sync.ts`, `dashboard-service.ts`, `finance/site-closing.ts`
-- [ ] D4 Tests de non-régression : rendement, fiscalité, relevés, portail (SC-003)
+- [ ] D1 Rendre les lecteurs de valorisations, prêts et parts détenues tolérants à `propertyId` nul :
+      `lib/patrimoine/queries.ts`, `tax/service.ts`, `entities/*`, `export/*`, `notifications.ts`,
+      `owner-portal-view.ts`, `owner-account/sync.ts`, `dashboard-service.ts`
+- [ ] D2 Vérifier que les flux de trésorerie et de chantier (`finance/cost-allocation`,
+      `site-closing`) restent inchangés (ils ne lisent que dépenses et travaux)
+- [ ] D3 Tests de non-régression : rendement, fiscalité, relevés, portail (SC-003)
 
 ## E — Frontend
 

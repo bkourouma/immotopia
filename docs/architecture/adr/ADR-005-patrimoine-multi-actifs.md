@@ -2,7 +2,7 @@
 
 ## Statut
 
-Proposé
+Accepté (2026-09-29, décisions du propriétaire du produit)
 
 ## Date
 
@@ -66,10 +66,17 @@ Faits qui contraignent la décision :
    valeur de l'entreprise, quantité × coût unitaire, amortissement linéaire ou
    dégressif, solde, capital + intérêts) ; l'utilisateur confirme ou saisit la
    sienne. L'interface affiche toujours méthode, date et fiabilité.
-5. **Généralisation des entités liées.** `PropertyLoan`, `PropertyExpense`,
-   `WorkProgram`, `PatrimonyDocument` et `PropertyHolding` se rattachent à
-   `assetId`. Un prêt peut ne pas être adossé (`assetId` nul) : la valeur nette
-   soustrait aussi les dettes personnelles.
+5. **Généralisation progressive des entités liées** (précisée le 2026-09-29, avant
+   implémentation). `AssetValuation`, `PropertyLoan` et `PropertyHolding` reçoivent
+   un `assetId` facultatif, et leur `propertyId` devient facultatif ; `PatrimonyDocument`
+   reçoit `assetId`. Les lignes d'un actif immobilier **restent rattachées au bien**
+   (les moteurs de rendement, fiscalité, relevés et portail ne changent pas) ; celles
+   d'un autre actif portent `assetId`. Un accès unique (`asset-scope`) choisit la
+   bonne clé. Une contrainte de base interdit qu'une ligne pointe à la fois sur un
+   bien et sur un actif. Un prêt sans bien ni actif est une dette personnelle.
+   `PropertyExpense` et `WorkProgram` restent rattachés au bien : ils alimentent la
+   trésorerie et la comptabilité (`cost-allocation`, `site-closing`) ; leur extension
+   aux autres classes est un lot ultérieur.
 6. **Valeur nette consolidée** : actifs (dernière valeur de chaque actif) moins
    dettes, en XOF, avec répartition par classe et évolution dans le temps. Un
    actif sans valeur n'est pas compté et est signalé.
@@ -90,15 +97,17 @@ Faits qui contraignent la décision :
    ligne sans source est rejetée). Le modèle ne calcule jamais un impôt : il ne
    fournit que des paramètres, que le moteur existant applique. Seul le nom du pays
    et l'année quittent l'infrastructure : aucune donnée personnelle. L'utilisateur
-   relit chaque paramètre avec sa source et le valide pour **son usage** ; la
-   promotion en paramètre global `VALIDE` reste réservée à un administrateur
-   plateforme. Un résultat fondé sur un paramètre non promu est affiché « indicatif,
-   non vérifié par ImmoTopia ». Il faudra donc un statut ou une portée par tenant
-   pour les validations personnelles : c'est l'objet du lot dédié et de son ADR.
+   relit chaque paramètre avec sa source et le valide pour **son usage** ; **sa
+   validation reste personnelle** (décision du 2026-09-29). La promotion en
+   paramètre global `VALIDE` reste réservée à un administrateur plateforme. Un
+   résultat fondé sur un paramètre non promu est affiché « **indicatif, non
+   vérifié par ImmoTopia** ». Il faudra donc une portée par tenant pour les
+   validations personnelles : c'est l'objet du lot dédié et de son ADR.
 10. **Onboarding particulier** : un tenant de type particulier (nouvelle valeur de
-    `TenantType`, à trancher au lot 4) avec inscription en libre-service, palier
-    gratuit ou très bas limité en nombre d'actifs, paiement par mobile money si
-    PaySecureHub le permet. Hors lot 1.
+    `TenantType`, à trancher au lot 4) avec inscription en libre-service, **palier
+    gratuit** limité en nombre d'actifs (seuil fixé au lot 4), paiement des
+    paliers payants par mobile money via PaySecureHub (confirmé possible par le
+    propriétaire du produit). Hors lot 1.
 11. **Découpage en lots** : 1 socle (`Asset`, classes, valorisation manuelle,
     valeur nette, migration) ; 2 méthodes de valorisation par classe ; 3
     projections et simulations ; 4 onboarding et tarification particulier ; 5
@@ -110,8 +119,8 @@ Faits qui contraignent la décision :
   qui ont de l'immobilier géré par une agence.
 - L'immobilier garde ses moteurs (rendement, fiscalité CI/ML, portail
   propriétaire) : le socle les alimente, il ne les remplace pas.
-- Aucune compatibilité arrière à porter : la migration est une refonte propre, et
-  les jeux de démonstration sont régénérés.
+- Migration additive : aucune ligne existante n'est réécrite, seuls des actifs
+  immobiliers sont créés pour les biens qui portent des données patrimoniales.
 - La fiabilité affichée protège la crédibilité des chiffres : une estimation
   n'est pas présentée comme un fait.
 - La collecte fiscale par IA n'envoie aucune donnée personnelle et réutilise le
@@ -119,10 +128,14 @@ Faits qui contraignent la décision :
 
 ## Conséquences négatives
 
-- Refonte large : les tables, routes, gardes d'isolation, exports PDF et Excel,
-  traductions (fr, en, ar) et le wiki des fonctionnalités sont tous touchés ;
-  chaque nouveau modèle passe `schema-tenant-coverage`, chaque nouvelle route
-  `routes-inventory`.
+- Chantier large : nouvelles routes, gardes d'isolation, traductions (fr, en, ar) et
+  wiki des fonctionnalités ; chaque nouveau modèle passe `schema-tenant-coverage`,
+  chaque nouvelle route `routes-inventory`.
+- La double clé (`propertyId` ou `assetId`) impose de traiter le cas « bien absent »
+  dans le code qui lit valorisations, prêts et parts détenues (consolidation par
+  entité, exports) et d'ajouter une contrainte de base pour éviter les lignes
+  ambiguës.
+- Dépenses et travaux des classes non immobilières : hors lot 1.
 - Le rendement et les projections par bien deviennent un cas particulier de
   `REAL_ESTATE` ; le portail propriétaire et les relevés de gérance doivent
   continuer de passer par les données du bien.
@@ -143,6 +156,10 @@ Faits qui contraignent la décision :
 - **Un module séparé « fortune » à côté de Patrimoine** — dupliquerait les
   valorisations, prêts, documents et entités détentrices déjà en place, avec deux
   valeurs nettes qui divergeraient.
+- **Remplacer `propertyId` par `assetId` partout dès le lot 1** — obligerait à
+  réécrire les flux de trésorerie et de comptabilité rattachés aux dépenses et aux
+  travaux, avec un risque de régression élevé et aucun bénéfice pour les classes
+  non immobilières au lot 1 ; le rattachement facultatif à double clé suffit.
 - **Une table par classe d'actif** — dix modèles à couvrir par l'inventaire tenant
   et autant de routes, pour des attributs qui changent souvent ; `Asset` avec
   `details` validé par classe suffit.

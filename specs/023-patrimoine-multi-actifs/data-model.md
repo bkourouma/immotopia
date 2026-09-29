@@ -6,9 +6,11 @@
 
 ## Overview
 
-`Asset` devient la racine du patrimoine d'un tenant. Les entités patrimoniales
-existantes (valorisations, prêts, dépenses, travaux, documents, parts détenues)
-passent de `propertyId` à `assetId`. `Property` reste le référentiel de la fiche
+`Asset` devient la racine du patrimoine d'un tenant. Les valorisations, prêts,
+documents et parts détenues reçoivent un `assetId` facultatif à côté de leur
+`propertyId` (ADR-005, décision 5) : un actif immobilier garde ses lignes rattachées
+au bien, un autre actif porte les siennes par `assetId`. Dépenses et travaux restent
+rattachés au bien. `Property` reste le référentiel de la fiche
 immobilière ; `OwnerStatement` et `OwnerStatementItem` (relevés de gérance) restent
 rattachés au bien : ils relèvent de la gestion pour compte de tiers, pas du
 patrimoine propre.
@@ -56,8 +58,8 @@ s'enrichit au lot 2 (`DEPRECIATION`, `EQUITY_SHARE`, `UNIT_COST`, `BALANCE`,
   `acquisitionDate`, `disposedAt`, `holdingEntityId?`, `propertyId?` (unique),
   `details Json`, `detailsVersion Int`, `notes`, `createdByUserId`, dates.
 - Relations : N:1 `Tenant` ; 1:1 facultatif `Property` ; N:1 facultatif
-  `HoldingEntity` ; 1:N `AssetValuation`, `AssetLoan`, `PropertyExpense`,
-  `WorkProgram`, `PatrimonyDocument`, `AssetHolding`.
+  `HoldingEntity` ; 1:N `AssetValuation`, `PropertyLoan`,
+  `PatrimonyDocument`, `PropertyHolding` (par `assetId`, actifs non immobiliers).
 - Règles :
   - `propertyId` renseigné seulement si `assetClass = REAL_ESTATE` ; le bien
     appartient au même tenant (`assertBelongsToTenant`) ;
@@ -68,7 +70,9 @@ s'enrichit au lot 2 (`DEPRECIATION`, `EQUITY_SHARE`, `UNIT_COST`, `BALANCE`,
 
 ### AssetValuation (modifié)
 
-- `propertyId` est remplacé par `assetId`.
+- Ajout de `assetId` (facultatif, FK `Asset`, `onDelete: Cascade`) ; `propertyId` devient
+  facultatif.
+- Contrainte SQL : **exactement un** de `property_id` et `asset_id` est renseigné.
 - Champs conservés : `valuatedAt`, `estimatedValue`, `currency`, `acquisitionCost`,
   `acquisitionDate`, `method`, `notes`.
 - Champs ajoutés : `source String?`, `reliability ValuationReliability?` (rempli au
@@ -76,20 +80,35 @@ s'enrichit au lot 2 (`DEPRECIATION`, `EQUITY_SHARE`, `UNIT_COST`, `BALANCE`,
 - Règle : `estimatedValue > 0`.
 - Index : `(tenantId, assetId, valuatedAt)`.
 
-### AssetLoan (renommé depuis `PropertyLoan`)
+### PropertyLoan (modifié, nom conservé)
 
-- `propertyId` est remplacé par `assetId` **facultatif** : une dette personnelle
-  n'est pas adossée.
-- Autres champs et règles inchangés (`lender`, `capitalAmount`,
-  `remainingCapital`, `interestRate`, `monthlyPayment`, dates, `status`).
+- Ajout de `assetId` (facultatif, FK `Asset`) ; `propertyId` devient facultatif.
+- Contrainte SQL : au plus un de `property_id` et `asset_id` est renseigné ; aucun des
+  deux = dette personnelle non adossée.
+- Autres champs et règles inchangés.
 
-### PropertyExpense, WorkProgram, PatrimonyDocument, PropertyHolding
+### PropertyHolding (modifié, nom conservé)
 
-- `propertyId` est remplacé par `assetId` (obligatoire pour la dépense, le programme
-  de travaux et la part détenue ; facultatif pour le document, qui garde
-  `ownerContactId`).
-- `PropertyHolding` est renommé `AssetHolding` ; unicité `(assetId, entityId)`.
-- Aucun autre champ ne change.
+- Ajout de `assetId` (facultatif, FK `Asset`) ; `propertyId` devient facultatif.
+- Contrainte SQL : exactement un des deux est renseigné.
+- Unicité : `(propertyId, entityId)` existante, plus `(assetId, entityId)`.
+
+### PatrimonyDocument (modifié)
+
+- Ajout de `assetId` (facultatif, FK `Asset`) ; `propertyId` et `ownerContactId` restent
+  facultatifs. Au moins un des trois est requis au niveau service.
+
+### PropertyExpense, WorkProgram (inchangés)
+
+Restent rattachés au bien : ils alimentent la trésorerie et la comptabilité. Extension aux
+autres classes : lot ultérieur.
+
+### Accès unique par actif (`asset-scope`)
+
+Fonction du domaine qui, pour un `Asset`, renvoie le filtre de lecture des lignes
+patrimoniales : `{ propertyId: asset.propertyId }` si l'actif est immobilier et lié à un
+bien, sinon `{ assetId: asset.id }`. L'écriture applique la même règle. Aucun code hors de ce
+module ne doit choisir la clé à la main.
 
 ### HoldingEntity (inchangé)
 
@@ -122,7 +141,7 @@ chiffres).
 valeur courante d'un actif = dernière AssetValuation à la date de calcul,
   convertie en XOF (estimatedValue × exchangeRateToXof si la devise diffère)
 actifs      = somme des valeurs courantes des Asset ACTIVE (ou DISPOSED après la date)
-dettes      = somme des remainingCapital des AssetLoan ACTIVE, convertis en XOF
+dettes      = somme des remainingCapital des PropertyLoan ACTIVE (adossés ou non), en XOF
 valeur nette = actifs - dettes
 ```
 
@@ -131,16 +150,16 @@ calcul et listé dans `excluded[]`.
 
 ## Migration
 
-- Schéma : nouvelles tables et colonnes, puis renommages et remplacement de
-  `propertyId` par `assetId` dans une migration Prisma.
-- Données : pour chaque `Property` portant au moins une valorisation, un prêt, une
-  dépense, un programme de travaux, un document ou une part détenue, création d'un
-  `Asset` `REAL_ESTATE` (`name` = référence interne du bien, `propertyId`, devise
-  XOF) puis rattachement des lignes existantes.
-- Création à la volée : à l'avenir, mettre un bien « au patrimoine » crée son
-  actif (à confirmer au plan : point d'entrée exact).
-- Vérification : les comptes de lignes avant et après sont égaux, et les
-  résultats de rendement et de fiscalité du jeu de démonstration sont identiques.
+- Schéma : enums, table `assets`, colonnes `asset_id` et assouplissement de `property_id`,
+  contraintes SQL. Migration additive, aucune ligne existante réécrite.
+- Données : pour chaque `Property` portant au moins une valorisation, un prêt, une part
+  détenue ou un document patrimonial, ou comptée dans `BIENS_DETENUS`, création d'un
+  `Asset` `REAL_ESTATE` (`name` = référence interne du bien, `propertyId`, devise XOF). Les
+  lignes existantes restent sur leur `propertyId`.
+- Création à la volée : mettre un bien au patrimoine crée son actif (point d'entrée
+  exact à confirmer à l'implémentation).
+- Vérification : un actif par bien concerné, aucun doublon, aucune ligne existante modifiée,
+  résultats de rendement et de fiscalité inchangés.
 
 ## Invariants transverses
 

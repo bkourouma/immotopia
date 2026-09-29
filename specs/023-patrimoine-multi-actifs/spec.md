@@ -88,10 +88,11 @@ de valeur d'un actif et du patrimoine dans le temps.
 
 ---
 
-### User Story 4 - Rattacher dettes, dépenses, documents et détenteurs (Priority: P2)
+### User Story 4 - Rattacher dettes, documents et détenteurs (Priority: P2)
 
-Un particulier veut lier un prêt, une dépense, un document ou une entité
-détentrice (SCI, société, lui-même) à un actif quelconque.
+Un particulier veut lier un prêt, un document ou une entité détentrice (SCI,
+société, lui-même) à un actif quelconque. Les dépenses et travaux d'un actif non
+immobilier viendront dans un lot ultérieur.
 
 **Acceptance Scenarios**:
 
@@ -170,8 +171,9 @@ la fiscalité, les relevés de gérance et le portail propriétaire tels qu'avan
   nette, répartition par classe et actifs sans valeur.
 - **FR-007**: Le système MUST fournir l'évolution de la valeur nette dans le
   temps à partir des valorisations datées.
-- **FR-008**: Prêts, dépenses, travaux, documents et parts détenues MUST se
-  rattacher à un `Asset` ; un prêt MAY ne pas être adossé.
+- **FR-008**: Valorisations, prêts, documents et parts détenues MUST pouvoir se
+  rattacher à un `Asset` non immobilier ; un prêt MAY ne pas être adossé. Dépenses et
+  travaux restent rattachés au bien au lot 1.
 - **FR-009**: Toute opération sur un actif MUST vérifier son appartenance au
   tenant actif ; tout identifiant reçu (`propertyId`, entité détentrice, actif)
   MUST être vérifié par `assertBelongsToTenant`.
@@ -194,8 +196,8 @@ la fiscalité, les relevés de gérance et le portail propriétaire tels qu'avan
 - **Asset**: actif du patrimoine d'un tenant, avec classe, valeur courante
   dérivée, attributs propres à la classe.
 - **AssetValuation**: point d'historique de valeur d'un actif.
-- **AssetLoan**: dette, adossée ou non à un actif.
-- **AssetHolding**: part d'un actif détenue par une entité détentrice.
+- **PropertyLoan**: dette, adossée à un bien, à un actif, ou personnelle.
+- **PropertyHolding**: part d'un bien ou d'un actif détenue par une entité détentrice.
 - **HoldingEntity**: existant (SCI, holding, société, personne).
 
 ## Assumptions & Dependencies
