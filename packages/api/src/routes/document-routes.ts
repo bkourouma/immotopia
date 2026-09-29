@@ -2,6 +2,12 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
+import { requireAnyPermission } from '../middleware/rbac-middleware';
+import {
+  requireDocumentsView,
+  requireDocumentsGenerate,
+  requireDocumentsEdit
+} from '../middleware/rental-rbac-middleware';
 import multer from 'multer';
 import { BadRequestError } from '../middleware/error-middleware';
 import {
@@ -25,7 +31,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024 // 10 MB
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (
       file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
       file.originalname.toLowerCase().endsWith('.docx')
@@ -47,15 +53,26 @@ router.use(enforceTenantIsolation);
 
 // Template routes
 // All routes are tenant-scoped: /tenants/:tenantId/documents/*
-router.post('/:tenantId/documents/templates/upload', upload.single('file'), uploadTemplateHandler);
-router.get('/:tenantId/documents/templates', listTemplatesHandler);
-router.patch('/:tenantId/documents/templates/:id', updateTemplateHandler);
-router.post('/:tenantId/documents/templates/:id/set-default', setDefaultTemplateHandler);
-router.delete('/:tenantId/documents/templates/:id', deleteTemplateHandler);
+// Droits du module Location : lecture ou génération pour lister les modèles
+// (le formulaire de génération en a besoin), édition pour les gérer.
+router.post(
+  '/:tenantId/documents/templates/upload',
+  requireDocumentsEdit,
+  upload.single('file'),
+  uploadTemplateHandler
+);
+router.get(
+  '/:tenantId/documents/templates',
+  requireAnyPermission(['RENTAL_DOCUMENTS_VIEW', 'RENTAL_DOCUMENTS_GENERATE']),
+  listTemplatesHandler
+);
+router.patch('/:tenantId/documents/templates/:id', requireDocumentsEdit, updateTemplateHandler);
+router.post('/:tenantId/documents/templates/:id/set-default', requireDocumentsEdit, setDefaultTemplateHandler);
+router.delete('/:tenantId/documents/templates/:id', requireDocumentsEdit, deleteTemplateHandler);
 
 // Document generation routes
-router.post('/:tenantId/documents/generate', generateDocumentHandler);
-router.post('/:tenantId/documents/:id/regenerate', regenerateDocumentHandler);
-router.get('/:tenantId/documents/:id/download', downloadDocumentHandler);
+router.post('/:tenantId/documents/generate', requireDocumentsGenerate, generateDocumentHandler);
+router.post('/:tenantId/documents/:id/regenerate', requireDocumentsGenerate, regenerateDocumentHandler);
+router.get('/:tenantId/documents/:id/download', requireDocumentsView, downloadDocumentHandler);
 
 export default router;
