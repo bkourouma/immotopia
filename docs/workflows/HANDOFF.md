@@ -89,6 +89,44 @@ Pièges et décisions :
   proposée de nouveau (idempotence) : changer de période pour rejouer.
 - `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
 
+## Branche `fix/copilot-baux` — 2026-09-29
+
+**État :** prêt à relire
+**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
+
+Fait :
+
+- Contrats de bail (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : `document-context-builder.ts`
+  fournit maintenant les 27 et 33 champs des modèles `contrat_bail_habitation.docx` et
+  `contrat_bail_commercial.docx`, en gardant toutes les clés existantes. Le commercial ne
+  délègue plus à l'habitation : il a ses champs propres. Chargement de la fiche CRM du
+  locataire et du bailleur (`details.crmContactId`) pour adresse, pièce d'identité,
+  société, RCCM, représentant, activité. Une donnée absente s'écrit « — ».
+- Vérifié de bout en bout sur une base locale : contrats habitation et commercial
+  générés (données complètes, puis minimum), `.docx` relus, aucun `{{…}}` restant.
+
+Reste à faire :
+
+- **Un seul contrat par bail** (préexistant) : le numéro de document d'un contrat est
+  le numéro du bail (`document-generation-service.ts`), et l'index unique
+  `(tenant_id, document_number)` refuse un second contrat sur le même bail (P2002).
+- Préavis (`PREAVIS_PRENEUR`) : constantes choisies faute de colonne (3 mois habitation,
+  6 mois commercial : `DEFAULT_NOTICE_HABITATION` / `_COMMERCIAL`) : à faire valider par le
+  métier. `PAS_DE_PORTE` vaut toujours « — » (aucune donnée dans le schéma).
+- Les modèles écrivent « FCFA » en dur : un bail dans une autre devise afficherait le
+  bon chiffre avec la mauvaise unité. Le modèle dit « par jour de retard » alors que le
+  service de pénalités applique un montant unique : texte du modèle à revoir.
+
+Pièges et décisions :
+
+- Les modèles posent eux-mêmes « FCFA » et « m² » : loyer, charges, dépôt et surface sont
+  fournis sans unité. `TAUX_PENALITE` vaut « 2 % » (stocké en pourcentage) ou un montant
+  fixe avec devise.
+- Sans fiche CRM liée, adresse, pièce d'identité, RCCM, représentant et activité valent « — ».
+- Un sous-agent lancé avec l'option d'isolation automatique travaille dans son propre
+  worktree (`.claude/worktrees/agent-*`) et non dans celui indiqué au prompt : ne pas
+  cumuler les deux.
+
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
 **État :** prêt à relire (documentation seule)
