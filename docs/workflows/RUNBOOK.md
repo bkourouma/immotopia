@@ -232,12 +232,11 @@ npm run test:isolation -w @immotopia/api
 
 Le runner recopie `DATABASE_URL_TEST` dans `DATABASE_URL`, applique lui-même
 `prisma migrate deploy` ; aucun seed n'est nécessaire (les fixtures créent le
-rôle `TENANT_ADMIN` et ses permissions). **Un succès se lit dans « Tests: 43
-passed, 43 total »** (suite `api-app`), jamais dans le seul code de sortie : sans
+rôle `TENANT_ADMIN` et ses permissions). **Un succès se lit dans « Tests: 46
+passed, 46 total »** (suite `api-app`), jamais dans le seul code de sortie : sans
 base, le script sort en succès et la suite s'ignore. Jest signale « did not exit
 one second after the test run » (file d'audit ouverte) : sans effet sur le
-résultat. Les données de test des baux restent en base (pas de cascade
-`rental_*` dans le nettoyage) : la base est jetable.
+résultat. Le nettoyage de fin de suite supprime aussi les données `rental_*` des agences de test (le schéma n'a pas de cascade) et échoue bruyamment si une suppression échoue : la base reste propre d'un passage à l'autre.
 
 i18n (voir aussi [docs/architecture/i18n.md](../architecture/i18n.md)) :
 

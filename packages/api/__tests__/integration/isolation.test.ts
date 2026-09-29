@@ -23,7 +23,10 @@
 
 import '../helpers/app-shims';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs/promises';
+import PizZip from 'pizzip';
 import request from 'supertest';
+import { DocumentType } from '@prisma/client';
 import app from '../../src/app';
 import { prisma } from '../../src/utils/database';
 import { signProposal } from '../../src/lib/ai/proposal-token';
@@ -38,6 +41,9 @@ import {
   createRentalFixtureDirect,
   RentalFixture,
   cleanupTenants,
+  ensureGlobalDocumentTemplates,
+  removeSeededGlobalTemplates,
+  SeededGlobalTemplates,
   TestTenant,
   TestUser
 } from '../helpers/fixtures';
@@ -116,6 +122,8 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   let adminA: TestUser;
   let adminB: TestUser;
   const createdTenantIds: string[] = [];
+  // Modeles DOCX globaux semes par le bloc « generation DOCX reelle » (retires en fin de suite).
+  let seededTemplates: SeededGlobalTemplates | undefined;
 
   beforeAll(async () => {
     tenantA = await createTestTenant('Agence-A');
@@ -126,8 +134,20 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
   });
 
   afterAll(async () => {
-    await cleanupTenants(createdTenantIds);
-    await prisma.$disconnect();
+    try {
+      // Fichiers produits par la generation reelle (hors base) : a supprimer avec les lignes.
+      const generated = await prisma.rentalDocument.findMany({
+        where: { tenant_id: { in: createdTenantIds }, file_path: { not: null } },
+        select: { file_path: true }
+      });
+      await Promise.all(generated.map(row => fs.rm(row.file_path as string, { force: true })));
+      // Un echec de nettoyage remonte (il fait echouer la suite) : jamais silencieux.
+      await cleanupTenants(createdTenantIds);
+      // Apres les agences : leurs documents generes referencent le modele.
+      if (seededTemplates) await removeSeededGlobalTemplates(seededTemplates);
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   function authed(user: TestUser) {
@@ -484,6 +504,155 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       }).token;
       const execute = await executeOn(tenantB.id, outsider, token);
       expect(execute.status).toBe(403);
+    });
+  });
+
+  describe('ImmoCopilot — cas passant : generation DOCX reelle apres confirmation', () => {
+    let rentalA: RentalFixture;
+    let rentalB: RentalFixture;
+    const executeOn = (tenantId: string, user: TestUser, proposalToken: string) =>
+      request(app).post(`/api/tenants/${tenantId}/ai/actions/execute`).set(authed(user)).send({ proposalToken });
+
+    const download = (tenantId: string, user: TestUser, documentId: string) =>
+      request(app)
+        .get(`/api/tenants/${tenantId}/documents/${documentId}/download`)
+        .set(authed(user))
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+    /** Texte brut de word/document.xml : prouve que le fichier est un .docx (ZIP) lisible. */
+    function docxText(buffer: Buffer): string {
+      const entry = new PizZip(buffer).file('word/document.xml');
+      expect(entry).not.toBeNull();
+      return entry!.asText().replace(/<[^>]+>/g, '');
+    }
+
+    beforeAll(async () => {
+      seededTemplates = await ensureGlobalDocumentTemplates([DocumentType.RENT_STATEMENT, DocumentType.RENT_RECEIPT]);
+      rentalA = await createRentalFixtureDirect(tenantA.id, adminA.id, 'A-DOCX');
+      rentalB = await createRentalFixtureDirect(tenantB.id, adminB.id, 'B-DOCX');
+    });
+
+    it('releve de compte : bail reel de A -> proposition -> execution -> document genere, telechargeable, .docx valide', async () => {
+      const token = signProposal({
+        userId: adminA.id,
+        tenantId: tenantA.id,
+        args: { docType: 'RENT_STATEMENT', leaseId: rentalA.leaseId, startDate: '2026-01-01', endDate: '2026-03-31' }
+      }).token;
+
+      const res = await executeOn(tenantA.id, adminA, token);
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      const payload = res.body.data;
+      expect(payload.alreadyExisted).toBe(false);
+      expect(payload.document.type).toBe('STATEMENT');
+      expect(payload.document.filename).toMatch(/\.docx$/);
+      expect(payload.document.downloadPath).toBe(`/tenants/${tenantA.id}/documents/${payload.document.id}/download`);
+
+      const row = await prisma.rentalDocument.findFirst({ where: { id: payload.document.id } });
+      expect(row).not.toBeNull();
+      expect(row!.tenant_id).toBe(tenantA.id);
+      expect(row!.lease_id).toBe(rentalA.leaseId);
+      expect(row!.file_path).toBeTruthy();
+      await expect(fs.stat(row!.file_path as string)).resolves.toBeTruthy();
+
+      const file = await download(tenantA.id, adminA, payload.document.id);
+      expect(file.status).toBe(200);
+      expect(file.headers['content-type']).toContain('wordprocessingml.document');
+      const buffer = file.body as Buffer;
+      expect(buffer.subarray(0, 2).toString('latin1')).toBe('PK');
+      const text = docxText(buffer);
+      expect(text.length).toBeGreaterThan(0);
+      expect(text).not.toContain('{{');
+      expect(text).not.toContain(rentalB.leaseNumber);
+      expect(text).not.toContain(rentalB.renterName);
+    });
+
+    it("le document genere pour A n'est servi ni via l'URL de B (404), ni a un membre de B via l'URL de A (403)", async () => {
+      const doc = await prisma.rentalDocument.findFirst({
+        where: { tenant_id: tenantA.id, lease_id: rentalA.leaseId, file_path: { not: null } },
+        select: { id: true }
+      });
+      expect(doc).not.toBeNull();
+
+      const viaB = await download(tenantB.id, adminB, doc!.id);
+      expect(viaB.status).toBe(404);
+      const viaA = await download(tenantA.id, adminB, doc!.id);
+      expect(viaA.status).toBe(403);
+    });
+
+    it('quittance : paiement reel de A -> execution -> .docx valide ; un second jeton pour le meme paiement renvoie la meme quittance', async () => {
+      // Un paiement sans quittance (celui de la fixture en a deja une) : echeance, paiement, affectation.
+      const installment = await prisma.rentalInstallment.create({
+        data: {
+          tenant_id: tenantA.id,
+          lease_id: rentalA.leaseId,
+          period_year: 2026,
+          period_month: 2,
+          due_date: new Date('2026-02-05T00:00:00.000Z'),
+          status: 'PAID',
+          currency: 'XOF',
+          amount_rent: 100000,
+          amount_paid: 100000
+        }
+      });
+      const payment = await prisma.rentalPayment.create({
+        data: {
+          tenant_id: tenantA.id,
+          lease_id: rentalA.leaseId,
+          method: 'CASH',
+          status: 'SUCCESS',
+          currency: 'XOF',
+          amount: 100000,
+          idempotency_key: `idem-docx-${randomUUID()}`
+        }
+      });
+      await prisma.rentalPaymentAllocation.create({
+        data: {
+          tenant_id: tenantA.id,
+          payment_id: payment.id,
+          installment_id: installment.id,
+          amount: 100000,
+          currency: 'XOF'
+        }
+      });
+      const mint = () =>
+        signProposal({
+          userId: adminA.id,
+          tenantId: tenantA.id,
+          args: {
+            docType: 'RENT_RECEIPT',
+            leaseId: rentalA.leaseId,
+            paymentId: payment.id,
+            installmentId: installment.id
+          }
+        }).token;
+
+      const first = await executeOn(tenantA.id, adminA, mint());
+      expect(first.status).toBe(201);
+      expect(first.body.data.alreadyExisted).toBe(false);
+      expect(first.body.data.document.type).toBe('RENT_RECEIPT');
+
+      const file = await download(tenantA.id, adminA, first.body.data.document.id);
+      expect(file.status).toBe(200);
+      const buffer = file.body as Buffer;
+      expect(buffer.subarray(0, 2).toString('latin1')).toBe('PK');
+      expect(docxText(buffer).length).toBeGreaterThan(0);
+
+      const second = await executeOn(tenantA.id, adminA, mint());
+      expect(second.status).toBe(201);
+      expect(second.body.data.alreadyExisted).toBe(true);
+      expect(second.body.data.document.id).toBe(first.body.data.document.id);
+      expect(
+        await prisma.rentalDocument.count({
+          where: { tenant_id: tenantA.id, type: 'RENT_RECEIPT', status: 'FINAL', payment_id: payment.id }
+        })
+      ).toBe(1);
     });
   });
 
