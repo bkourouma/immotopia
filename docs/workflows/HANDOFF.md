@@ -40,7 +40,7 @@ Pièges et décisions :
 
 ## Pilote — exécution du plan de reprise du 2026-09-29 — 2026-09-29
 
-**État :** 13 PR ouvertes, aucune fusionnée (une fusion demande l'accord explicite de l'utilisateur) ; lot 6 non commencé
+**État :** 14 PR ouvertes (#62 à #74 et #76), aucune fusionnée (une fusion demande l'accord explicite de l'utilisateur) ; lot 6 non commencé
 **Branche :** `docs/handoff-reprise-2026-09-29` (cette passation, PR vers `main`) — dernier commit : voir `git log -1`
 
 Les sections des branches déjà fusionnées dans `main` (PR #40 à #48, ImmoCopilot #49 à #57) ont été retirées : l'historique est dans `git log`. Le plan d'origine est `docs/workflows/HANDOFF_PLAN_2026-09-29.md` (PR #60, pas encore fusionnée).
@@ -53,6 +53,7 @@ Vers `main`, indépendantes. Un classeur `.xlsx` binaire et son miroir sont touc
 - #63 baux : numérotation `-A2` des contrats suivants (verrou consultatif), devise du bail (`{{DEVISE}}`), texte de pénalité, `RECU_NUMERO`. **Remplace la #59 (à fermer).**
 - #64 ImmoCopilot : avertissements (limiteurs par instance, `connection_limit`), test de saturation du pool.
 - #65 spec `027-syndic-cloture-exercice` (spécification seule) ; #66 plan de mise en production (plan seul).
+- #76 spec `028-ia-credits` (spécification seule) : facturation des crédits IA d'ImmoCopilot (10 requêtes gratuites par mois, packs, dépassement plafonné en opt-in, recharges) ; 16 décisions « par défaut, à valider », 23 questions ouvertes ; les prix ne se figent qu'après deux semaines de mesure du lot A ; dépend de l'ordre de fusion de #61 (OpenRouter) et de #52.
 - #68 web : inscription libre (`confirmPassword`), fil d'Ariane admin, accents, devise du portail.
 - #71 Syndic : tantièmes spéciaux et « propriétaire depuis » des lots enregistrés (décision à valider : un parking sans saisie n'a plus de tantièmes spéciaux).
 - #72 Syndic : programmation modifiable, échec d'envoi d'une relance signalé (pénalité BUG-H : constat seulement).
