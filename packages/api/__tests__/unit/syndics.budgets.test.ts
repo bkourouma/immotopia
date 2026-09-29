@@ -111,6 +111,43 @@ describe('Syndics budget queries - US4', () => {
     expect(allocations).toHaveLength(2);
   });
 
+  it('repartit un appel « ascenseur » par tantièmes spéciaux : 250 000 par lot A, 0 ailleurs (scénario F.5)', async () => {
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({
+      id: 'budget-2',
+      lines: [{ id: 'line-1', category: 'Travaux', amountForecast: 1000000, distributionKey: 'SPECIAL_SHARES' }]
+    });
+    // Lots du scénario 1.5 : tantièmes spéciaux saisis sur les seuls lots A.
+    mockPrisma.syndicateLot.findMany.mockResolvedValue([
+      { id: 'A101', lotNumber: 'A101', generalShares: 150, specialShares: 250 },
+      { id: 'A102', lotNumber: 'A102', generalShares: 150, specialShares: 250 },
+      { id: 'A201', lotNumber: 'A201', generalShares: 150, specialShares: 250 },
+      { id: 'A202', lotNumber: 'A202', generalShares: 150, specialShares: 250 },
+      { id: 'B01', lotNumber: 'B01', generalShares: 200, specialShares: null },
+      { id: 'B02', lotNumber: 'B02', generalShares: 100, specialShares: null },
+      { id: 'P01', lotNumber: 'P01', generalShares: 50, specialShares: null },
+      { id: 'P02', lotNumber: 'P02', generalShares: 50, specialShares: null }
+    ]);
+    mockPrisma.budgetAllocation.findMany.mockResolvedValue([]);
+
+    await recomputeBudgetAllocationsByBudget('tenant-1', 'syndic-1', 'budget-2');
+
+    const rows = mockTx.budgetAllocation.createMany.mock.calls[0][0].data as Array<{
+      lotId: string;
+      totalAllocated: number;
+    }>;
+    const byLot = Object.fromEntries(rows.map(r => [r.lotId, r.totalAllocated]));
+    expect(byLot).toEqual({
+      A101: 250000,
+      A102: 250000,
+      A201: 250000,
+      A202: 250000,
+      B01: 0,
+      B02: 0,
+      P01: 0,
+      P02: 0
+    });
+  });
+
   it('creates standalone charge call batch', async () => {
     mockPrisma.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1', label: 'Batch Mars' });
     const batch = await createChargeCallBatchBySyndicate('tenant-1', 'syndic-1', {

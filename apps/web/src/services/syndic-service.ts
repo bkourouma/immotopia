@@ -172,8 +172,9 @@ export async function createSyndicateLot(
     lotNumber: data.lotNumber,
     lotType: data.lotType,
     tantiemes: data.generalShares,
-    // v2 backend derives special shares from isParkingIncluded/tantiemes.
-    isParkingIncluded: data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0
+    // Tantièmes spéciaux saisis, enregistrés tels quels ; vide = aucun.
+    specialShares: data.specialShares ?? null,
+    ownerSince: data.ownerSince || undefined
   };
 
   const response = await apiClient.post<{ success: boolean; data: SyndicateLot }>(
@@ -195,8 +196,9 @@ export async function updateSyndicateLot(
     lotNumber: data.lotNumber,
     lotType: data.lotType,
     tantiemes: data.generalShares,
-    isParkingIncluded:
-      data.lotType !== undefined ? data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0 : undefined
+    // `null` efface les tantièmes spéciaux ; `undefined` les laisse inchangés.
+    specialShares: data.specialShares,
+    ownerSince: data.ownerSince
   };
 
   const response = await apiClient.patch<{ success: boolean; data: SyndicateLot }>(
