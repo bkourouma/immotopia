@@ -5,6 +5,17 @@ import { t } from '../../i18n/t';
 /** `null`/absent affichés en tiret — jamais un zéro ou un vide inventé. */
 export const DASH = '—';
 
+/**
+ * Devise à passer à `formatMoney` (le formateur commun des montants).
+ *
+ * L'API renvoie le code ISO « XOF », que `formatMoney` recopiait tel quel : le
+ * portail disait « 45 000 000 XOF » là où tout le reste de l'application dit
+ * « FCFA ». Pour le franc CFA on ne transmet donc rien, et `formatMoney` écrit
+ * sa devise par défaut ; une autre devise reste inchangée.
+ */
+export const deviseAffichee = (code: string | null | undefined): string | undefined =>
+  !code || code === 'XOF' ? undefined : code;
+
 export const formatPercent = (value: number | null | undefined): string =>
   value === null || value === undefined ? DASH : `${value.toFixed(2)} %`;
 

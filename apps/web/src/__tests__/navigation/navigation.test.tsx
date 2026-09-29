@@ -398,6 +398,22 @@ describe('fil d’Ariane', () => {
     expect(buildCrumbs('/admin/tenants').map(c => c.label)).toEqual(['Administration', 'Agences']);
   });
 
+  // Recette du 29/09/2026 : « Administration » menait à /admin, route qui
+  // n'existe pas (« Cette page n'existe pas · HTTP-404 · /admin »).
+  it('mène « Administration » à une page qui existe, jamais à /admin', () => {
+    const agences = buildCrumbs('/admin/tenants');
+    expect(agences[0]).toEqual({ label: 'Administration', to: '/admin/tenants' });
+    // La page courante n'est pas un lien.
+    expect(agences[1]).toEqual({ label: 'Agences', to: undefined });
+
+    const statistiques = buildCrumbs('/admin/statistics');
+    expect(statistiques[0].to).toBe('/admin/tenants');
+
+    // Plus profond : « Administration » et « Agences » restent des liens valides.
+    const fiche = buildCrumbs(`/admin/tenants/${TENANT}/edit`);
+    expect(fiche.map(c => c.to)).toEqual(['/admin/tenants', '/admin/tenants', undefined]);
+  });
+
   it('dit « Encaisser » là où l’onglet dit « Encaisser »', () => {
     const labels = buildCrumbs(`/tenant/${TENANT}/rental/installments`).map(c => c.label);
     expect(labels).toContain('Encaisser');

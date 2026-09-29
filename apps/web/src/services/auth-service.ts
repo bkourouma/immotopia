@@ -4,11 +4,17 @@ import type { Language } from '../i18n/config';
 
 /**
  * Register a new user
+ *
+ * `confirmPassword` part avec le reste : `registerSchema` (API) l'exige et
+ * compare les deux mots de passe. Il n'était pas transmis, si bien que toute
+ * inscription libre était refusée par un 422 « confirmPassword : Ce champ est
+ * obligatoire » alors que le formulaire demandait bien la confirmation.
  */
 export async function register(data: RegisterData): Promise<void> {
   const response = await apiClient.post('/auth/register', {
     email: data.email,
     password: data.password,
+    confirmPassword: data.confirmPassword,
     fullName: data.fullName
   });
   return response.data;

@@ -15,6 +15,7 @@ import {
 import { StateBlock, formatMoney } from '../../components/primitives';
 import {
   DASH,
+  deviseAffichee,
   documentTypeLabel,
   formatPercent,
   loanStatusTag,
@@ -138,7 +139,7 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Valeur estimée'),
       key: 'estimatedValue',
-      render: (_: unknown, record) => formatMoney(record.estimatedValue, { currency: record.currency })
+      render: (_: unknown, record) => formatMoney(record.estimatedValue, { currency: deviseAffichee(record.currency) })
     },
     { title: t('Méthode'), dataIndex: 'method', key: 'method', render: valuationMethodLabel }
   ];
@@ -148,18 +149,19 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Capital emprunté'),
       key: 'capitalAmount',
-      render: (_: unknown, record) => formatMoney(record.capitalAmount, { currency: record.currency })
+      render: (_: unknown, record) => formatMoney(record.capitalAmount, { currency: deviseAffichee(record.currency) })
     },
     {
       title: t('Capital restant dû'),
       key: 'remainingCapital',
-      render: (_: unknown, record) => formatMoney(record.remainingCapital, { currency: record.currency })
+      render: (_: unknown, record) =>
+        formatMoney(record.remainingCapital, { currency: deviseAffichee(record.currency) })
     },
     { title: t('Taux'), key: 'interestRate', render: (_: unknown, record) => formatPercent(record.interestRate) },
     {
       title: t('Mensualité'),
       key: 'monthlyPayment',
-      render: (_: unknown, record) => formatMoney(record.monthlyPayment, { currency: record.currency })
+      render: (_: unknown, record) => formatMoney(record.monthlyPayment, { currency: deviseAffichee(record.currency) })
     },
     { title: t('Début'), dataIndex: 'startDate', key: 'startDate', render: formatDate },
     { title: t('Fin'), dataIndex: 'endDate', key: 'endDate', render: formatDate },
@@ -177,13 +179,15 @@ export default function PatrimoinePropertyDetails() {
       render: (_: unknown, record) =>
         record.estimatedCost === null
           ? t('Non renseigné')
-          : formatMoney(record.estimatedCost, { currency: record.currency })
+          : formatMoney(record.estimatedCost, { currency: deviseAffichee(record.currency) })
     },
     {
       title: t('Coût réel'),
       key: 'actualCost',
       render: (_: unknown, record) =>
-        record.actualCost === null ? t('Non renseigné') : formatMoney(record.actualCost, { currency: record.currency })
+        record.actualCost === null
+          ? t('Non renseigné')
+          : formatMoney(record.actualCost, { currency: deviseAffichee(record.currency) })
     }
   ];
 
@@ -212,18 +216,18 @@ export default function PatrimoinePropertyDetails() {
           {valuation ? (
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label={t('Valeur estimée')}>
-                {formatMoney(valuation.estimatedValue, { currency: valuation.currency })}
+                {formatMoney(valuation.estimatedValue, { currency: deviseAffichee(valuation.currency) })}
               </Descriptions.Item>
               <Descriptions.Item label={t('Valorisée le')}>{formatDate(valuation.valuatedAt)}</Descriptions.Item>
               <Descriptions.Item label={t("Prix d'acquisition")}>
                 {valuation.acquisitionCost === null
                   ? t('Non renseigné')
-                  : formatMoney(valuation.acquisitionCost, { currency: valuation.currency })}
+                  : formatMoney(valuation.acquisitionCost, { currency: deviseAffichee(valuation.currency) })}
               </Descriptions.Item>
               <Descriptions.Item label={t('Plus-value latente')}>
                 {latentCapitalGain === undefined || latentCapitalGain === null
                   ? t('Non renseigné')
-                  : formatMoney(latentCapitalGain, { currency: valuation.currency })}
+                  : formatMoney(latentCapitalGain, { currency: deviseAffichee(valuation.currency) })}
               </Descriptions.Item>
             </Descriptions>
           ) : (
@@ -260,15 +264,12 @@ export default function PatrimoinePropertyDetails() {
               </Col>
             )}
             <Col xs={24} sm={12} md={6}>
-              <Statistic
-                title={t('Loyer annuel')}
-                value={yieldData ? formatMoney(yieldData.annualRent, { currency: 'XOF' }) : DASH}
-              />
+              <Statistic title={t('Loyer annuel')} value={yieldData ? formatMoney(yieldData.annualRent) : DASH} />
             </Col>
             <Col xs={24} sm={12} md={6}>
               <Statistic
                 title={t('Charges annuelles')}
-                value={yieldData ? formatMoney(yieldData.annualExpenses, { currency: 'XOF' }) : DASH}
+                value={yieldData ? formatMoney(yieldData.annualExpenses) : DASH}
               />
             </Col>
           </Row>

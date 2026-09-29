@@ -124,6 +124,19 @@ describe('Détail du patrimoine — emprunts masqués', () => {
   });
 });
 
+describe('Détail du patrimoine — devise', () => {
+  it('écrit « FCFA » comme le reste de l’application, jamais le code « XOF »', async () => {
+    getPropertyDetails.mockResolvedValue(details());
+
+    const { container } = mount();
+
+    expect(await screen.findByText('Banque Atlantique', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getAllByText(/45\s000\s000\sFCFA/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/12\s000\s000\sFCFA/).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/XOF/);
+  });
+});
+
 describe('Détail du patrimoine — téléchargement de document', () => {
   it('appelle le service avec le downloadPath du document', async () => {
     getPropertyDetails.mockResolvedValue(details());

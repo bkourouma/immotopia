@@ -97,7 +97,7 @@ export const AcceptInvitePage: React.FC = () => {
       if (err?.response?.data?.code === 'INVITATION_REQUIRES_LOGIN') {
         setRequiresLogin(true);
       } else {
-        setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez reessayer.'));
+        setGeneralError(err?.response?.data?.message || t('Une erreur est survenue. Veuillez réessayer.'));
       }
       console.error('Accept invite error:', err);
     } finally {
@@ -124,7 +124,7 @@ export const AcceptInvitePage: React.FC = () => {
             status="info"
             title={t('Connectez-vous pour accepter')}
             subTitle={t(
-              'Un compte existe deja avec cette adresse e-mail. Connectez-vous avec ce compte pour accepter cette invitation.'
+              'Un compte existe déjà avec cette adresse e-mail. Connectez-vous avec ce compte pour accepter cette invitation.'
             )}
             extra={
               <Button type="primary" onClick={() => navigate(loginRedirectUrl)}>
@@ -153,11 +153,11 @@ export const AcceptInvitePage: React.FC = () => {
           <Result
             status="success"
             icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-            title={t('Invitation acceptee')}
-            subTitle={t('Votre compte est pret. Redirection vers la connexion...')}
+            title={t('Invitation acceptée')}
+            subTitle={t('Votre compte est prêt. Redirection vers la connexion...')}
             extra={
               <Button type="primary" onClick={() => navigate('/login?invite=accepted')}>
-                {t('Aller a la connexion')}
+                {t('Aller à la connexion')}
               </Button>
             }
           />
@@ -188,8 +188,8 @@ export const AcceptInvitePage: React.FC = () => {
       >
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
           {isAuthenticated
-            ? t('Vous etes connecte : confirmez pour rejoindre cette equipe.')
-            : t('Creez votre mot de passe pour rejoindre votre equipe.')}
+            ? t('Vous êtes connecté : confirmez pour rejoindre cette équipe.')
+            : t('Créez votre mot de passe pour rejoindre votre équipe.')}
         </Text>
 
         <Form<AcceptInviteFormValues>
@@ -227,13 +227,13 @@ export const AcceptInvitePage: React.FC = () => {
                 label={t('Mot de passe')}
                 rules={[
                   { required: true, message: t('Le mot de passe est requis.') },
-                  { min: 8, message: t('Minimum 8 caracteres.') },
+                  { min: 8, message: t('Minimum 8 caractères.') },
                   { pattern: /[A-Z]/, message: t('Ajoutez au moins une majuscule.') },
                   { pattern: /[a-z]/, message: t('Ajoutez au moins une minuscule.') },
                   { pattern: /[0-9]/, message: t('Ajoutez au moins un chiffre.') },
                   {
                     pattern: /[^A-Za-z0-9]/,
-                    message: t('Ajoutez au moins un caractere special.')
+                    message: t('Ajoutez au moins un caractère spécial.')
                   }
                 ]}
               >
@@ -295,7 +295,7 @@ export const AcceptInvitePage: React.FC = () => {
 
           <div style={{ textAlign: 'center' }}>
             <Link to="/login">
-              <ArrowLeftOutlined /> {t('Retour a la connexion')}
+              <ArrowLeftOutlined /> {t('Retour à la connexion')}
             </Link>
           </div>
         </Form>

@@ -1167,6 +1167,8 @@ function App() {
                             </ProtectedRoute>
                           }
                         >
+                          {/* `/admin` seul n'a pas d'écran : on ouvre la liste des agences. */}
+                          <Route path="/admin" element={<Navigate to="/admin/tenants" replace />} />
                           <Route path="/admin/tenants" element={<TenantsList />} />
                           <Route path="/admin/tenants/new" element={<TenantCreate />} />
                           <Route path="/admin/tenants/:tenantId" element={<TenantDetail />} />
