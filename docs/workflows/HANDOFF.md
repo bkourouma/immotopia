@@ -40,54 +40,127 @@ Pièges et décisions :
 
 ## Branche `claude/lucid-bell-0pzfvc` — 2026-09-29
 
-**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lot 1 livré, corrections de relecture en cours
+**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lots 1 à 3 livrés, lot 4 spécifié mais pas codé
 **Dernier commit :** voir `git log -1` de la branche
 
 Fait :
 
-- ADR-005 `patrimoine-multi-actifs` (Accepté) et specs `specs/023-patrimoine-multi-actifs/` (lot 1)
-  et `specs/024-patrimoine-valorisation-par-classe/` (lot 2, spec seulement). Marché UEMOA, XOF.
-- Lot 1 (socle) : `Asset` (10 classes), valorisations, dettes (adossées ou personnelles), parts
-  détenues, valeur nette et historique mensuel, écrans « Valeur nette » et « Mes actifs ».
-  Double clé : les lignes d'un actif immobilier restent sur `propertyId` (moteurs de rendement,
-  fiscalité, relevés, portail inchangés), celles des autres actifs sur `assetId` ; le choix passe
-  uniquement par `lib/patrimoine/asset-scope.ts`. Dépenses et travaux restent liés au bien.
-- Vérifié : jest patrimoine, portail, inventaires (569 tests), isolation entre agences sur vraie
-  base (45 tests), vitest patrimoine et navigation (192 tests), `tsc` API à 71 erreurs
-  préexistantes, `tsc` web à 0, `check:architecture`. Wiki des fonctionnalités à jour (716 lignes).
-- Décisions du 2026-09-29 : validation fiscale utilisateur personnelle (« indicatif, non vérifié
-  par ImmoTopia »), palier gratuit pour le particulier, mobile money possible via PaySecureHub.
+- ADR-005 `patrimoine-multi-actifs` (Accepté). Marché UEMOA, XOF, cadre OHADA.
+- Lot 1 (socle, `specs/023-…`) : `Asset` (10 classes), valorisations, dettes (adossées ou
+  personnelles), parts détenues, valeur nette et historique, écrans « Valeur nette » et « Mes actifs ».
+  Double clé : les lignes d'un actif immobilier restent sur `propertyId`, celles des autres actifs sur
+  `assetId` (`lib/patrimoine/asset-scope.ts`). Dépenses et travaux restent liés au bien.
+- Lot 2 (`specs/024-…`) : suggestion de valeur par classe (sans écriture), fiabilité calculée par le
+  serveur, statut juridique des biens, valeur périmée par classe, part de valeur peu fiable.
+- Lot 3 (`specs/025-…`) : projections sur 1 à 30 ans, trois scénarios, simulations sur copie (vente,
+  achat, emprunt, remboursement anticipé, épargne mensuelle), scénarios enregistrés (100 par agence,
+  audités), page « Projections ».
+- Relectures qualité et sécurité des lots 1, 2 et 3 : corrections faites (aucun bloquant restant).
+- Wiki des fonctionnalités à jour (737 lignes au lot 3).
+- Décisions du 2026-09-29 : validation fiscale utilisateur personnelle (« indicatif, non vérifié par
+  ImmoTopia ») ; palier gratuit du particulier = 10 actifs de tout type, gratuit durable, blocage à
+  l'ajout au-delà, garde dédiée sans toucher `SUBSCRIPTION_ENFORCEMENT` global ; palier payant
+  particulier = nouveau pack moins cher (prix provisoire à ajuster par le produit) ; mobile money
+  possible via PaySecureHub.
 
 Reste à faire :
 
-- Corrections de relecture en cours (durcissement du service, cycle de vie du bien et de son
-  actif, écrans) ; voir la PR.
-- Lot 2 : implémenter la valorisation par classe et la fiabilité (`plan.md` du lot 2).
-- Lots 3 à 6 : projections et simulations, tenant particulier et inscription libre, exports,
-  collecte fiscale par IA (chacun demande sa spec avant implémentation).
-- Décisions métier ouvertes : seuil du palier gratuit ; liste des statuts juridiques fonciers à
-  faire valider par un juriste local ; responsabilité juridique d'un calcul fondé sur un
-  paramètre fiscal validé par l'utilisateur ; permission dédiée pour les données personnelles
-  du particulier (lot 4).
+- Lot 4 (particuliers en libre-service, palier gratuit, mobile money) : étude de faisabilité faite
+  (aucune inscription libre-service avec création d'espace n'existe ; aucun pack gratuit durable ;
+  quotas en simple avertissement tant que `SUBSCRIPTION_ENFORCEMENT=warn`). Découpage L1 à L8 dans le
+  rapport d'étude ; spec à écrire avant de coder.
+- Lot 5 (exports PDF et Excel de la situation patrimoniale) et lot 6 (collecte des paramètres
+  fiscaux par IA, validation personnelle) : pas commencés.
+- Recette navigateur de bout en bout : jamais faite (les écrans sont testés par des tests
+  automatiques seulement).
+- Décisions métier ouvertes : prix exact du palier particulier ; liste des statuts juridiques
+  fonciers à faire valider par un juriste local ; hypothèses de croissance et d'inflation par défaut
+  des projections ; responsabilité juridique d'un calcul fondé sur un paramètre fiscal validé par
+  l'utilisateur ; conservation des données d'un espace gratuit inactif ; durée d'essai.
 
 Pièges et décisions :
 
-- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 0 à 66 octets) :
+- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 314 octets) :
   chaque `React.lazy` ou fichier partagé entre chunks ajouté coûte des octets sur la carte des
-  dépendances du chunk d'entrée. Les écrans d'actifs sont montés sur la route
-  `/tenant/:tenantId/patrimoine/*` (`PatrimoineHome`), pas sur trois `React.lazy` dans `App.tsx`,
-  et la répartition par classe est une barre CSS, pas un graphique recharts. Toujours remesurer
-  avant de pousser un changement web.
+  dépendances du chunk d'entrée, et la marge bouge de ±20 octets avec les hashes. Les écrans du
+  patrimoine sont montés sur la route `/tenant/:tenantId/patrimoine/*` (`PatrimoineHome`), pas sur des
+  `React.lazy` de `App.tsx` ; pas de graphique recharts de plus. Une économie réelle a été faite :
+  `antd/es/locale/fr_FR` (ESM) au lieu de `antd/locale/fr_FR` (CommonJS). Toujours remesurer avant de
+  pousser un changement web. Le chunk d'entrée embarque aussi tout le moteur de formulaires d'Ant
+  Design via `ConfigProvider` (`antd/es/form/context`) : gisement d'économie préexistant, non traité.
+- Les mensualités de dettes ne sont pas prélevées sur la trésorerie dans les projections (pas de
+  modèle de revenus) : la valeur nette augmente du capital remboursé ; l'écran le dit.
 - Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le résultat non validé
   (`tax/engine.ts`, `allValidated`) ; `TaxParameter` est global, sans `tenantId` : la validation
   personnelle du lot 6 exige une portée par tenant.
-- Écrire un `.env` dans le dépôt est bloqué par une règle de refus : la base locale jetable se
-  configure par variables d'environnement (PostgreSQL 16, bases `immotopia` et
-  `immotopia_isolation_test`).
-- Jest : mettre le chemin du fichier de test AVANT `--selectProjects`, et `--forceExit` ;
-  `routes-inventory` et `route-features` sont dans le projet `api-app`.
+- Supprimer un bien supprime aussi ses prêts, valorisations et parts (cascade préexistante) ; une dette
+  immobilière disparaît donc avec le bien : refuser la suppression d'un bien portant un prêt actif est
+  une décision produit non prise.
+- `docs/documentation payhubsecure.docx` est suivi par git alors que `docs/integrations/paysecurehub.md`
+  dit le fichier conservé hors du dépôt (il contient des coordonnées d'une personne réelle) : à signaler
+  au propriétaire du dépôt.
+- Écrire un `.env` dans le dépôt est bloqué par une règle de refus : la base locale jetable se configure
+  par variables d'environnement (PostgreSQL 16, bases `immotopia` et `immotopia_isolation_test`).
+- Jest : chemin du fichier de test AVANT `--selectProjects`, et `--forceExit` ; ne jamais écrire
+  `--forceExit` dans une commande qui contient `git` (un hook la prend pour `--force`) ;
+  `routes-inventory` et `route-features` sont dans le projet `api-app`. Un test lit le code source avec
+  des expressions régulières (`lot-registry.call-sites`) : le hook de commit reformate les fichiers, les
+  regex doivent tolérer les retours à la ligne.
 - `npm run i18n:extract` touche des fichiers hors périmètre (`CopilotRoot.tsx`, clé vide dans
   `common.json`, ordre dans `portal.json`) : les remettre à l'identique.
+- Le test `copilot-root` (Ctrl+J) est instable sous charge en CI (course entre le rendu du bouton et le
+  raccourci) : une relance suffit ; il n'est pas lié au patrimoine.
+
+## Branche `fix/copilot-fake-numero-bail` — 2026-09-29
+
+**État :** prêt à relire
+**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
+
+Fait :
+
+- Recette d'ImmoCopilot jouée (PR #49 fusionnée) sur une base PostgreSQL 16 locale
+  jetable, API avec `AI_PROVIDER=fake`, Chromium piloté par `playwright-core`
+  (installé hors dépôt). Les 12 scénarios du plan §6 passent : bouton et
+  raccourcis, biens, quittance (proposition, confirmation, `.docx` téléchargé),
+  double clic (un seul document), jeton expiré (410), `TENANT_AGENT` (2 outils,
+  génération et téléchargement 403), propriétaire/locataire/super-admin refusés,
+  assistant désactivé (503, pas de bouton), arabe (RTL, tiroir à gauche), 375 px,
+  injection sans document créé, fermeture en plein flux sans erreur. Jeton de
+  l'agence A sur l'agence B : `PROPOSAL_INVALID` sur vraie base. Relevé de compte
+  (`RENT_STATEMENT`) généré aussi.
+- Correctifs : le faux fournisseur ne reconnaissait que `L-102` alors que les
+  baux se numérotent `BAIL-AAAA-NNNN` (il prenait le premier bail actif) ; montants
+  des cartes formatés avec la locale active.
+- Quittance et relevé : champs des modèles DOCX désormais tous fournis (PR #53
+  fusionnée) ; le rendu laissait `{{…}}` parce que les noms de champs des modèles
+  et du constructeur de contexte divergeaient. Ventilation d'un paiement : loyer,
+  puis charges, puis pénalités ; une donnée absente s'écrit « — ».
+
+Reste à faire :
+
+- **Baux** (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : même défaut que la quittance
+  (environ 20 champs du modèle d'habitation non fournis par
+  `document-context-builder.ts`, le commercial délègue à l'habitation) : `{{…}}` en
+  clair dans les contrats. Non traité.
+- `RECU_NUMERO` de la quittance est le numéro de paiement ; le numéro définitif
+  `RCU-…` est attribué après le rendu.
+- `test:isolation` (base dédiée) toujours non joué avec la suite.
+- Mineurs d'audit de la PR #49 toujours ouverts.
+
+Pièges et décisions :
+
+- Le cloud n'a pas de `.env` : tout passe par variables d'environnement en ligne
+  de commande (`DATABASE_URL`, `JWT_SECRET` généré, `AI_PROVIDER=fake`, ports
+  8001/3000). Base : `pg_ctlcluster 16 main start` puis utilisateur et base créés
+  à la main ; `db:seed:rbac`, `geographic`, `catalog`, `db:seed`, `rbac` de
+  nouveau, `document-templates` (exige `JWT_SECRET`), `tenant-members`. Le seed
+  `seed-demo-locative.ts` cible une agence du dump de démo : sur une base neuve,
+  créer soi-même biens, contacts et baux via les services.
+- Le modèle `RENT_STATEMENT` est bien semé par `db:seed:document-templates`
+  (4 modèles globaux).
+- Une quittance déjà générée pour la période est présentée au lieu d'être
+  proposée de nouveau (idempotence) : changer de période pour rejouer.
+- `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
 
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 

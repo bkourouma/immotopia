@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Tag, Typography } from 'antd';
 import { t } from '../../i18n/t';
-import { leaseStatusLabel } from './copilot-labels';
+import { formatCopilotAmount, leaseStatusLabel } from './copilot-labels';
 import type { LeaseCardItem } from '../../types/copilot';
 
 export interface LeaseResultCardProps {
@@ -26,7 +26,7 @@ export function LeaseResultCard({ item, tenantId }: LeaseResultCardProps): React
         </div>
       ) : null}
       <Typography.Text>
-        {t('Loyer {{amount}} {{currency}}', { amount: item.rentAmount, currency: item.currency })}
+        {t('Loyer {{amount}} {{currency}}', { amount: formatCopilotAmount(item.rentAmount), currency: item.currency })}
         {' · '}
         {t('depuis le {{date}}', { date: item.startDate.slice(0, 10) })}
       </Typography.Text>

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Descriptions, Space } from 'antd';
 import { t } from '../../i18n/t';
 import type { ActionExecutedPayload, ActionProposal, CopilotProposalState } from '../../types/copilot';
 import { DocumentDownloadCard } from './DocumentDownloadCard';
+import { formatCopilotAmount } from './copilot-labels';
 
 export interface ActionProposalCardProps {
   proposal: ActionProposal;
@@ -76,7 +77,9 @@ export function ActionProposalCard({
         {summary.renterName ? <Descriptions.Item label={t('Locataire')}>{summary.renterName}</Descriptions.Item> : null}
         <Descriptions.Item label={t('Période')}>{summary.periodLabel}</Descriptions.Item>
         {summary.amount ? (
-          <Descriptions.Item label={t('Montant')}>{`${summary.amount} ${summary.currency}`}</Descriptions.Item>
+          <Descriptions.Item
+            label={t('Montant')}
+          >{`${formatCopilotAmount(summary.amount)} ${summary.currency}`}</Descriptions.Item>
         ) : null}
       </Descriptions>
       <div aria-live="polite" data-testid="copilot-proposal-status" style={{ marginBlockStart: 8 }}>

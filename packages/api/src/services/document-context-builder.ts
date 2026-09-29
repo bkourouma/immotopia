@@ -1,6 +1,18 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { DocumentType } from '@prisma/client';
+import {
+  NON_RENSEIGNE,
+  breakdownPayment,
+  monthLabel,
+  orDash,
+  paymentMethodLabel,
+  periodRangeLabel,
+  propertyTypeLabel
+} from './document-context-helpers';
+
+/** Montant Prisma (`Decimal`), nombre ou chaine. */
+type AmountInput = number | string | null | undefined | { toString(): string };
 
 /**
  * Format date to DD/MM/YYYY
@@ -18,9 +30,9 @@ function formatDate(date: Date | null | undefined): string {
  * Nombre entier, separateur de milliers francais. Sans unite : c'est le modele
  * qui pose la sienne (une surface s'ecrit en m2, pas en francs).
  */
-function formatNumber(value: number | string | null | undefined): string {
+function formatNumber(value: AmountInput): string {
   if (value === null || value === undefined) return '0';
-  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const num = typeof value === 'number' ? value : parseFloat(value.toString());
   if (isNaN(num)) return '0';
   return Math.round(num).toLocaleString('fr-FR');
 }
@@ -43,7 +55,7 @@ function currencyLabel(currency: string | null | undefined): string {
  * Sans la devise, un contrat porte « Le loyer est fixe a 120 000 » — une somme
  * sans unite, qu'un bailleur ne peut pas signer en l'etat.
  */
-function formatAmount(amount: number | string | null | undefined, currency?: string | null): string {
+function formatAmount(amount: AmountInput, currency?: string | null): string {
   return `${formatNumber(amount)} ${currencyLabel(currency)}`;
 }
 
@@ -191,6 +203,56 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
   }
 
   return '';
+}
+
+/**
+ * Bailleur d'un bail pour les quittances et releves.
+ *
+ * Ordre : client proprietaire du bail (`ownerClient`, comme dans les contrats),
+ * puis proprietaire du bien (`property.owner`). Sans proprietaire connu, c'est
+ * l'agence gestionnaire qui figure. Un proprietaire connu mais sans telephone ou
+ * e-mail affiche « — » plutot que les coordonnees de l'agence, pour ne pas les
+ * presenter comme siennes.
+ */
+async function buildLandlordContext(
+  lease: any,
+  tenantId: string
+): Promise<{ BAILLEUR_NOM: string; BAILLEUR_EMAIL: string; BAILLEUR_TELEPHONE: string }> {
+  const ownerUser = lease?.ownerClient?.user || lease?.property?.owner || null;
+  const ownerName = ownerUser?.fullName || '';
+
+  if (ownerName || ownerUser?.email) {
+    const phone = lease?.ownerClient ? await getPhoneFromClient(lease.ownerClient, tenantId, 'BAILLEUR') : '';
+    return {
+      BAILLEUR_NOM: orDash(ownerName || ownerUser?.email),
+      BAILLEUR_EMAIL: orDash(ownerUser?.email),
+      BAILLEUR_TELEPHONE: orDash(phone)
+    };
+  }
+
+  return {
+    BAILLEUR_NOM: orDash(lease?.tenant?.name),
+    BAILLEUR_EMAIL: orDash(lease?.tenant?.contactEmail),
+    BAILLEUR_TELEPHONE: orDash(lease?.tenant?.contactPhone)
+  };
+}
+
+/**
+ * Champs communs a la quittance et au releve dans les modeles DOCX du depot
+ * (`Reçu_Loyer.docx`, `Releve_Compte.docx`), en plus des cles historiques.
+ */
+async function buildCommonDocumentFields(lease: any, tenantId: string): Promise<Record<string, string>> {
+  return {
+    ADRESSE_BIEN: orDash(lease?.property?.address),
+    TYPE_BIEN: propertyTypeLabel(lease?.property?.propertyType),
+    BAIL_REFERENCE: orDash(lease?.lease_number),
+    ...(await buildLandlordContext(lease, tenantId))
+  };
+}
+
+/** Lieu d'emission : ville de l'agence, a defaut son adresse. */
+function issuePlace(agency: any): string {
+  return orDash(agency?.city || agency?.address);
 }
 
 /**
@@ -353,8 +415,19 @@ export async function buildRentReceiptContext(
     include: {
       lease: {
         include: {
-          property: true,
+          property: {
+            include: {
+              owner: { select: { id: true, email: true, fullName: true } }
+            }
+          },
           primaryRenter: {
+            include: {
+              user: {
+                select: { id: true, email: true, fullName: true }
+              }
+            }
+          },
+          ownerClient: {
             include: {
               user: {
                 select: { id: true, email: true, fullName: true }
@@ -408,6 +481,43 @@ export async function buildRentReceiptContext(
     });
   }
 
+  // Ventilation du paiement sur l'echeance (voir breakdownPayment) :
+  // - avec `installmentId`, seule la part affectee a cette echeance ;
+  // - sinon, tout le paiement : ses affectations, plus la part non affectee
+  //   (avance), ajoutee au loyer.
+  // MONTANT_TOTAL est la somme des trois montants ventiles ; il vaut le montant
+  // paye, sauf quittance restreinte a une echeance d'un paiement qui en couvre
+  // plusieurs (PAIEMENT_MONTANT reste alors le montant global du paiement).
+  const allocations = payment.allocations || [];
+  const dueOf = (inst: any) => ({
+    rent: Number(inst.amount_rent),
+    charges: Number(inst.amount_service) + Number(inst.amount_other_fees),
+    penalties: Number(inst.penalty_amount || 0)
+  });
+  const paidAmount = Number(payment.amount);
+  const targeted = installmentId ? allocations.filter(a => a.installment_id === installmentId) : allocations;
+
+  let breakdown;
+  let coveredInstallments: any[];
+  if (targeted.length > 0) {
+    const allocated = targeted.reduce((sum, a) => sum + Number(a.amount), 0);
+    breakdown = breakdownPayment(
+      targeted.map(a => ({ due: dueOf(a.installment), allocated: Number(a.amount) })),
+      installmentId ? 0 : paidAmount - allocated
+    );
+    coveredInstallments = targeted.map(a => a.installment);
+  } else if (installment) {
+    breakdown = breakdownPayment([{ due: dueOf(installment), allocated: paidAmount }]);
+    coveredInstallments = [installment];
+  } else {
+    breakdown = breakdownPayment([], paidAmount);
+    coveredInstallments = [];
+  }
+
+  const paymentNumber = payment.id.substring(0, 8).toUpperCase();
+  const agency = payment.lease?.tenant;
+  const landlordAndProperty = await buildCommonDocumentFields(payment.lease, tenantId);
+
   const context: Record<string, any> = {
     // Tenant (Agency) info
     AGENCE_NOM: payment.lease?.tenant.name || '',
@@ -426,21 +536,40 @@ export async function buildRentReceiptContext(
     // Renter info
     LOCATAIRE_NOM: payment.renterClient?.user?.fullName || payment.lease?.primaryRenter?.user?.fullName || '',
     LOCATAIRE_EMAIL: payment.renterClient?.user?.email || payment.lease?.primaryRenter?.user?.email || '',
-    LOCATAIRE_TELEPHONE:
-      (await getPhoneFromClient(payment.renterClient || payment.lease?.primaryRenter, tenantId, 'LOCATAIRE')) || '',
+    LOCATAIRE_TELEPHONE: orDash(
+      await getPhoneFromClient(payment.renterClient || payment.lease?.primaryRenter, tenantId, 'LOCATAIRE')
+    ),
 
     // Payment info
     PAIEMENT_MONTANT: formatAmount(payment.amount, payment.currency),
     PAIEMENT_METHODE: payment.method || '',
     PAIEMENT_DATE: formatDate(payment.succeeded_at || payment.initiated_at),
-    PAIEMENT_NUMERO: payment.id.substring(0, 8).toUpperCase(),
+    PAIEMENT_NUMERO: paymentNumber,
 
     // Period info
     PERIODE_MOIS: installment ? `${installment.period_month}/${installment.period_year}` : '',
     PERIODE_ANNEE: installment?.period_year?.toString() || '',
 
     // Dates
-    DATE_GENERATION: formatDate(new Date())
+    DATE_GENERATION: formatDate(new Date()),
+
+    // Champs du modele DOCX `Reçu_Loyer.docx`. RECU_NUMERO est la reference du
+    // paiement : le numero definitif de quittance (RCU-...) n'est attribue
+    // qu'apres le rendu.
+    ...landlordAndProperty,
+    RECU_NUMERO: paymentNumber,
+    DATE_EMISSION: formatDate(new Date()),
+    LIEU_EMISSION: issuePlace(agency),
+    PERIODE_LOYER: periodRangeLabel(
+      coveredInstallments.map(inst => ({ month: inst.period_month, year: inst.period_year }))
+    ),
+    MONTANT_LOYER: formatNumber(breakdown.rent),
+    MONTANT_CHARGES: formatNumber(breakdown.charges),
+    MONTANT_PENALITES: formatNumber(breakdown.penalties),
+    MONTANT_TOTAL: formatNumber(breakdown.total),
+    MODE_PAIEMENT: paymentMethodLabel(payment.method),
+    REFERENCE_PAIEMENT: orDash(payment.psp_reference || payment.psp_transaction_id || paymentNumber),
+    DATE_PAIEMENT: orDash(formatDate(payment.succeeded_at || payment.initiated_at))
   };
 
   return context;
@@ -461,8 +590,19 @@ export async function buildRentStatementContext(
       tenant_id: tenantId
     },
     include: {
-      property: true,
+      property: {
+        include: {
+          owner: { select: { id: true, email: true, fullName: true } }
+        }
+      },
       primaryRenter: {
+        include: {
+          user: {
+            select: { id: true, email: true, fullName: true }
+          }
+        }
+      },
+      ownerClient: {
         include: {
           user: {
             select: { id: true, email: true, fullName: true }
@@ -499,16 +639,96 @@ export async function buildRentStatementContext(
   // Calculate totals
   let totalDue = 0;
   let totalPaid = 0;
+  let totalRent = 0;
+  let totalCharges = 0;
+  let totalPenalties = 0;
   const installments = lease.installments || [];
 
+  const dueOf = (inst: { amount_rent: any; amount_service: any; amount_other_fees: any; penalty_amount: any }) =>
+    Number(inst.amount_rent) +
+    Number(inst.amount_service) +
+    Number(inst.amount_other_fees) +
+    Number(inst.penalty_amount || 0);
+
   installments.forEach(inst => {
-    totalDue +=
-      Number(inst.amount_rent) +
-      Number(inst.amount_service) +
-      Number(inst.amount_other_fees) +
-      Number(inst.penalty_amount || 0);
+    totalDue += dueOf(inst);
     totalPaid += Number(inst.amount_paid);
+    totalRent += Number(inst.amount_rent);
+    totalCharges += Number(inst.amount_service) + Number(inst.amount_other_fees);
+    totalPenalties += Number(inst.penalty_amount || 0);
   });
+
+  // Solde initial : reste du sur les echeances anterieures a la periode, avec
+  // les memes regles que les totaux (toutes les echeances, tous statuts).
+  const previousInstallments = await prisma.rentalInstallment.findMany({
+    where: {
+      lease_id: lease.id,
+      tenant_id: tenantId,
+      due_date: { lt: startDate }
+    },
+    select: {
+      amount_rent: true,
+      amount_service: true,
+      amount_other_fees: true,
+      penalty_amount: true,
+      amount_paid: true
+    }
+  });
+  const openingBalance = previousInstallments.reduce((sum, inst) => sum + dueOf(inst) - Number(inst.amount_paid), 0);
+  const closingBalance = openingBalance + totalDue - totalPaid;
+
+  // Lignes d'operations du modele (3 lignes) : une echeance par ligne (debit =
+  // du, credit = paye, solde cumule depuis le solde initial). Au-dela de trois
+  // echeances, la 3e ligne regroupe toutes les suivantes : aucun montant ne se
+  // perd, et son solde est le solde final.
+  const OPERATION_LINES = 3;
+  const currency = lease.currency;
+  const groupedFrom = installments.length > OPERATION_LINES ? OPERATION_LINES - 1 : installments.length;
+  const operationRows = installments.slice(0, groupedFrom).map(inst => ({
+    date: formatDate(inst.due_date),
+    label: `Échéance ${monthLabel(inst.period_month, inst.period_year)}`,
+    debit: dueOf(inst),
+    credit: Number(inst.amount_paid)
+  }));
+  if (installments.length > groupedFrom) {
+    const rest = installments.slice(groupedFrom);
+    const first = rest[0];
+    const last = rest[rest.length - 1];
+    operationRows.push({
+      date:
+        rest.length > 1 ? `${formatDate(first.due_date)} - ${formatDate(last.due_date)}` : formatDate(first.due_date),
+      label:
+        rest.length > 1
+          ? `Échéances ${monthLabel(first.period_month, first.period_year)} à ${monthLabel(last.period_month, last.period_year)}`
+          : `Échéance ${monthLabel(first.period_month, first.period_year)}`,
+      debit: rest.reduce((sum, inst) => sum + dueOf(inst), 0),
+      credit: rest.reduce((sum, inst) => sum + Number(inst.amount_paid), 0)
+    });
+  }
+
+  const operationFields: Record<string, string> = {};
+  let runningBalance = openingBalance;
+  for (let n = 1; n <= OPERATION_LINES; n++) {
+    const row = operationRows[n - 1];
+    if (row) runningBalance += row.debit - row.credit;
+    operationFields[`OP_DATE_${n}`] = row ? orDash(row.date) : NON_RENSEIGNE;
+    operationFields[`OP_LIBELLE_${n}`] = row ? row.label : NON_RENSEIGNE;
+    operationFields[`OP_DEBIT_${n}`] = row ? formatAmount(row.debit, currency) : NON_RENSEIGNE;
+    operationFields[`OP_CREDIT_${n}`] = row ? formatAmount(row.credit, currency) : NON_RENSEIGNE;
+    operationFields[`OP_SOLDE_${n}`] = row ? formatAmount(runningBalance, currency) : NON_RENSEIGNE;
+  }
+
+  const observations: string[] = [];
+  if (installments.length === 0) {
+    observations.push('Aucune échéance sur la période.');
+  } else if (installments.length > OPERATION_LINES) {
+    observations.push(
+      `Les ${installments.length - groupedFrom} dernières échéances de la période sont regroupées sur la dernière ligne.`
+    );
+  }
+
+  const statementMonth = `${startDate.getFullYear()}${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+  const commonFields = await buildCommonDocumentFields(lease, tenantId);
 
   const context: Record<string, any> = {
     // Tenant (Agency) info
@@ -528,7 +748,7 @@ export async function buildRentStatementContext(
     // Renter info
     LOCATAIRE_NOM: lease.primaryRenter?.user?.fullName || '',
     LOCATAIRE_EMAIL: lease.primaryRenter?.user?.email || '',
-    LOCATAIRE_TELEPHONE: (await getPhoneFromClient(lease.primaryRenter, tenantId, 'LOCATAIRE')) || '',
+    LOCATAIRE_TELEPHONE: orDash(await getPhoneFromClient(lease.primaryRenter, tenantId, 'LOCATAIRE')),
 
     // Period info
     PERIODE_DEBUT: formatDate(startDate),
@@ -555,7 +775,21 @@ export async function buildRentStatementContext(
     })),
 
     // Dates
-    DATE_GENERATION: formatDate(new Date())
+    DATE_GENERATION: formatDate(new Date()),
+
+    // Champs du modele DOCX `Releve_Compte.docx`
+    ...commonFields,
+    ...operationFields,
+    RELEVE_REFERENCE: `RLV-${lease.lease_number || lease.id.substring(0, 8).toUpperCase()}-${statementMonth}`,
+    DATE_EDITION: formatDate(new Date()),
+    LIEU_EDITION: issuePlace(lease.tenant),
+    SOLDE_INITIAL: formatAmount(openingBalance, currency),
+    TOTAL_LOYERS: formatAmount(totalRent, currency),
+    TOTAL_CHARGES: formatAmount(totalCharges, currency),
+    TOTAL_PENALITES: formatAmount(totalPenalties, currency),
+    TOTAL_PAIEMENTS: formatAmount(totalPaid, currency),
+    SOLDE_FINAL: formatAmount(closingBalance, currency),
+    OBSERVATIONS: observations.length > 0 ? observations.join(' ') : NON_RENSEIGNE
   };
 
   return context;

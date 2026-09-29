@@ -1,3 +1,4 @@
+import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
 /**
@@ -47,4 +48,11 @@ export function leaseStatusLabel(value: string): string {
     CANCELED: t('Annulé')
   };
   return labels[value] ?? value;
+}
+
+/** Montant reçu du serveur sous forme de chaîne : séparateurs de milliers selon la langue active. */
+export function formatCopilotAmount(amount: string | number | null): string {
+  if (amount === null || amount === '') return '';
+  const n = Number(amount);
+  return Number.isFinite(n) ? n.toLocaleString(activeLocale()) : String(amount);
 }
