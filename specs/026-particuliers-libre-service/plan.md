@@ -119,3 +119,63 @@
 | Factures à zéro en boucle         | Aucun `Invoice` périodique pour un abonnement à prix nul                                     |
 | Budget d'entrée web               | Aucune nouvelle dépendance ni `React.lazy` ; mesure avant et après                           |
 | Inscription abusive               | Limiteur persistant, message non révélateur, e-mail réellement vérifié                       |
+
+## Contrats API des sous-lots 4B et 4D (font foi pour l'API et pour le web)
+
+Erreurs de validation : `errors: [{ field, message }]` (ZodError 400, ValidationError 422), comme les
+lots précédents. Montants en FCFA entiers.
+
+### `POST /api/personal-space` (4B)
+
+Authentifié (`authenticate`), hors `/tenants/:tenantId`, aucun middleware de tenant. Corps `.strict()` :
+`{ displayName: string (1..120), country: 'CI'|'SN'|'BF'|'ML'|'NE'|'TG'|'BJ'|'GW', phone?: string }`
+(`phone` : format international UEMOA `+225…`, `+221…`, etc., 8 à 15 chiffres, refusé sinon).
+En-tête facultatif `Idempotency-Key`.
+
+- `201 { data: { tenantId, slug, name } }`.
+- `409` code `PERSONAL_SPACE_EXISTS`, `data: { tenantId }` : l'utilisateur a déjà un espace personnel
+  (créé ou concurrent). La garde tient sous concurrence (verrou consultatif par utilisateur).
+- `403` code `EMAIL_NOT_VERIFIED` : e-mail non vérifié. `503` code `SIGNUP_UNAVAILABLE` : production sans
+  serveur d'e-mails (comme l'inscription).
+- Crée en une transaction (réutilise `createTenantCoreTx`) : tenant `PARTICULIER` (`name` =
+  `displayName`, `country`, `contactPhone`, `contactEmail` = e-mail de l'utilisateur), module Patrimoine,
+  abonnement `ACTIVE` du pack `PARTICULIER_GRATUIT` avec `quotaPolicy = BLOCK`, `Membership` `ACTIVE`,
+  rôle `TENANT_ADMIN`, audit `PERSONAL_SPACE_CREATED` (identifiants, jamais le nom ni le téléphone).
+
+### `GET /api/tenants/:tenantId/patrimoine/usage` (4B)
+
+Lecture `PROPERTIES_VIEW`. Réponse :
+
+```ts
+{ data: {
+    plan: 'FREE' | 'PAID' | 'AGENCY';   // FREE = pack Particulier gratuit, PAID = Particulier plus, AGENCY = autres
+    limit: number | null;                // capacité ACTIFS du pack, null si le pack n'en porte pas
+    used: number;                        // actifs non archivés du tenant
+    canAdd: boolean;                     // limit === null || used < limit
+    upgrade: { target: 'PARTICULIER_PLUS'; priceMonthly: number; currency: 'XOF'; limit: number } | null;
+                                         // proposé seulement pour plan === 'FREE'
+} }
+```
+
+### Garde du palier gratuit (4B)
+
+À la création d'un actif (`createAsset` du service d'actifs), si le pack actif du tenant porte la capacité
+`ACTIFS` et que `used >= limit` : `409` code `FREE_TIER_LIMIT`, `data: { limit, used }`, message en
+français invitant à passer au palier payant ; quel que soit `SUBSCRIPTION_ENFORCEMENT`. Aucun changement
+pour les tenants dont le pack ne porte pas `ACTIFS` (plafond de 500 du lot 1 conservé). `ensurePropertyAsset`
+ne crée pas l'actif quand la limite est atteinte (la valorisation du bien reste enregistrée).
+
+### `POST /api/tenants/:tenantId/subscription/upgrade` (4D)
+
+Permission `TENANT_SETTINGS_EDIT`, exemptée de la lecture seule, tenant de type `PARTICULIER` sur
+`PARTICULIER_GRATUIT` uniquement. Corps `.strict()` : `{ target: 'PARTICULIER_PLUS' }`.
+
+- `201 { data: { invoiceId, checkoutUrl, code } }` : crée la facture du premier mois du pack cible (TVA
+  comprise, montants entiers) et démarre le paiement PaySecureHub (`startInvoiceCheckout`).
+- **Aucun changement de droits avant la confirmation du paiement** : à la réconciliation serveur d'un
+  paiement `SUCCESS` de cette facture, l'abonnement passe à `PARTICULIER_PLUS` (idempotent, verrou), le
+  plafond passe à celui du pack. Un paiement annulé, échoué ou expiré laisse l'espace gratuit.
+- Erreurs : `409` code `ALREADY_ON_TARGET` ; `409` code `PAYMENT_IN_PROGRESS` avec les données de reprise
+  existantes du paiement en cours ; `422` code `PHONE_REQUIRED` si `contactPhone` du tenant est vide ;
+  `403` pour un tenant non particulier ; `503` si les paiements sont indisponibles
+  (`getPlatformPaymentAvailability`).
