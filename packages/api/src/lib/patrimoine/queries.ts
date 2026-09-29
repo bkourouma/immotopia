@@ -725,11 +725,14 @@ export async function getPatrimoineOverview(tenantId: string) {
       where: { tenantId, status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
       select: { id: true }
     }),
+    // Vue immobilière : seules les lignes rattachées à un bien comptent. Une
+    // valorisation ou un prêt portant `assetId` (actif non immobilier) ou sans
+    // bien (dette personnelle) relève de la valeur nette, pas de cette synthèse.
     prisma.assetValuation.findMany({
-      where: { tenantId },
+      where: { tenantId, propertyId: { not: null } },
       orderBy: [{ propertyId: 'asc' }, { valuatedAt: 'desc' }]
     }),
-    prisma.propertyLoan.findMany({ where: { tenantId, status: 'ACTIVE' } }),
+    prisma.propertyLoan.findMany({ where: { tenantId, status: 'ACTIVE', propertyId: { not: null } } }),
     prisma.propertyExpense.findMany({
       where: {
         tenantId,
@@ -744,6 +747,7 @@ export async function getPatrimoineOverview(tenantId: string) {
 
   const latestByProperty = new Map<string, number>();
   for (const valuation of valuations) {
+    if (valuation.propertyId === null) continue;
     if (!latestByProperty.has(valuation.propertyId)) {
       latestByProperty.set(valuation.propertyId, Number(valuation.estimatedValue));
     }

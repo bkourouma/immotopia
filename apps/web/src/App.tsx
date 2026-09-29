@@ -109,6 +109,22 @@ const TaxParametersPage = lazy(() =>
     default: m.TaxParametersPage
   }))
 );
+// Patrimoine multi-actifs (lot 1) : valeur nette, actifs et fiche d'actif.
+const NetWorthPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/NetWorthPage').then(m => ({
+    default: m.NetWorthPage
+  }))
+);
+const AssetsPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/AssetsPage').then(m => ({
+    default: m.AssetsPage
+  }))
+);
+const AssetDetailPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/AssetDetailPage').then(m => ({
+    default: m.AssetDetailPage
+  }))
+);
 // Module financier — regroupe dans un seul morceau : les quatre ecrans se
 // consultent a la suite (une balance, puis le releve qu'elle ouvre), et les
 // separer ferait payer un aller-retour reseau a chaque clic.
@@ -888,6 +904,9 @@ function App() {
                             element={<HoldingEntityDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/valeur-nette" element={<NetWorthPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/actifs" element={<AssetsPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/actifs/:assetId" element={<AssetDetailPage />} />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne

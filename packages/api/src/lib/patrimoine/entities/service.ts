@@ -71,7 +71,7 @@ function toSummary(
     include: {
       parentEntity: { select: { id: true; name: true } };
       contact: { select: { id: true; firstName: true; lastName: true; legalName: true; email: true } };
-      _count: { select: { holdings: true } };
+      _count: { select: { holdings: { where: { propertyId: { not: null } } } } };
     };
   }>
 ): HoldingEntitySummary {
@@ -94,7 +94,9 @@ function toSummary(
 const ENTITY_LIST_INCLUDE = {
   parentEntity: { select: { id: true, name: true } },
   contact: { select: { id: true, firstName: true, lastName: true, legalName: true, email: true } },
-  _count: { select: { holdings: true } }
+  // Rattachements à un bien uniquement : une part d'un actif non immobilier
+  // (assetId) n'est pas un « bien » de l'entité (lot 1).
+  _count: { select: { holdings: { where: { propertyId: { not: null } } } } }
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -125,7 +127,7 @@ function toDetail(
     include: {
       parentEntity: { select: { id: true; name: true } };
       contact: { select: { id: true; firstName: true; lastName: true; legalName: true; email: true } };
-      _count: { select: { holdings: true } };
+      _count: { select: { holdings: { where: { propertyId: { not: null } } } } };
       children: { select: { id: true; name: true; legalForm: true } };
       holdings: {
         include: {
@@ -136,21 +138,29 @@ function toDetail(
   }>,
   totalShareByProperty: Map<string, number>
 ): HoldingEntityDetail {
-  const holdings: EntityHolding[] = entity.holdings.map(holding => ({
-    id: holding.id,
-    propertyId: holding.propertyId,
-    sharePercent: Number(holding.sharePercent),
-    effectiveFrom: holding.effectiveFrom ? holding.effectiveFrom.toISOString().slice(0, 10) : null,
-    notes: holding.notes,
-    property: {
-      id: holding.property.id,
-      title: holding.property.title,
-      internalReference: holding.property.internalReference,
-      propertyType: holding.property.propertyType,
-      status: holding.property.status
-    },
-    propertyTotalSharePercent: totalShareByProperty.get(holding.propertyId) ?? Number(holding.sharePercent)
-  }));
+  // Part d'un actif non immobilier : hors consolidation immobilière, lot 1
+  // (déjà écartée par la requête ; le garde de type est un filet).
+  const holdings: EntityHolding[] = entity.holdings.flatMap(holding => {
+    if (holding.propertyId === null || holding.property === null) return [];
+    const { property, propertyId } = holding;
+    return [
+      {
+        id: holding.id,
+        propertyId,
+        sharePercent: Number(holding.sharePercent),
+        effectiveFrom: holding.effectiveFrom ? holding.effectiveFrom.toISOString().slice(0, 10) : null,
+        notes: holding.notes,
+        property: {
+          id: property.id,
+          title: property.title,
+          internalReference: property.internalReference,
+          propertyType: property.propertyType,
+          status: property.status
+        },
+        propertyTotalSharePercent: totalShareByProperty.get(propertyId) ?? Number(holding.sharePercent)
+      }
+    ];
+  });
 
   // `fiscalOwnerKind` partage l'enum Prisma `TaxOwnerKind` (CI/ML compris,
   // avec `ANY`) avec `TaxParameter`, mais sur `HoldingEntity` ce champ n'est
@@ -170,7 +180,9 @@ function toDetail(
 const ENTITY_DETAIL_INCLUDE = {
   ...ENTITY_LIST_INCLUDE,
   children: { select: { id: true, name: true, legalForm: true } },
+  // Part d'un actif non immobilier : hors consolidation immobilière, lot 1.
   holdings: {
+    where: { propertyId: { not: null } },
     include: {
       property: { select: { id: true, title: true, internalReference: true, propertyType: true, status: true } }
     }
@@ -184,7 +196,11 @@ async function totalShareByPropertyOf(propertyIds: string[]): Promise<Map<string
     where: { propertyId: { in: propertyIds } },
     _sum: { sharePercent: true }
   });
-  return new Map(rows.map(row => [row.propertyId, Number(row._sum.sharePercent ?? 0)]));
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    if (row.propertyId !== null) totals.set(row.propertyId, Number(row._sum.sharePercent ?? 0));
+  }
+  return totals;
 }
 
 export async function getHoldingEntityById(tenantId: string, entityId: string): Promise<HoldingEntityDetail> {
@@ -194,7 +210,9 @@ export async function getHoldingEntityById(tenantId: string, entityId: string): 
   });
   if (!entity) throw new NotFoundError(NOT_FOUND_ENTITY);
 
-  const totalShareByProperty = await totalShareByPropertyOf(entity.holdings.map(h => h.propertyId));
+  const totalShareByProperty = await totalShareByPropertyOf(
+    entity.holdings.flatMap(h => (h.propertyId !== null ? [h.propertyId] : []))
+  );
   return toDetail(entity, totalShareByProperty);
 }
 
@@ -358,10 +376,11 @@ export async function createEntityHolding(
     }
   });
 
+  if (!holding.property) throw new NotFoundError('Bien introuvable.');
   const totalShareByProperty = await totalShareByPropertyOf([data.propertyId]);
   return {
     id: holding.id,
-    propertyId: holding.propertyId,
+    propertyId: data.propertyId,
     sharePercent: Number(holding.sharePercent),
     effectiveFrom: holding.effectiveFrom ? holding.effectiveFrom.toISOString().slice(0, 10) : null,
     notes: holding.notes,
@@ -371,11 +390,13 @@ export async function createEntityHolding(
 }
 
 async function findEntityHoldingOrThrow(tenantId: string, entityId: string, holdingId: string) {
+  // Seules les parts d'un bien passent par ces routes ; une part d'actif non
+  // immobilier (assetId) répond « introuvable » (territoire du lot actifs).
   const holding = await prisma.propertyHolding.findFirst({
-    where: { id: holdingId, tenantId, entityId }
+    where: { id: holdingId, tenantId, entityId, propertyId: { not: null } }
   });
-  if (!holding) throw new NotFoundError(NOT_FOUND_HOLDING);
-  return holding;
+  if (!holding || holding.propertyId === null) throw new NotFoundError(NOT_FOUND_HOLDING);
+  return { ...holding, propertyId: holding.propertyId };
 }
 
 export async function updateEntityHolding(
@@ -406,15 +427,16 @@ export async function updateEntityHolding(
     }
   });
 
-  const totalShareByProperty = await totalShareByPropertyOf([updated.propertyId]);
+  if (!updated.property) throw new NotFoundError('Bien introuvable.');
+  const totalShareByProperty = await totalShareByPropertyOf([existing.propertyId]);
   return {
     id: updated.id,
-    propertyId: updated.propertyId,
+    propertyId: existing.propertyId,
     sharePercent: Number(updated.sharePercent),
     effectiveFrom: updated.effectiveFrom ? updated.effectiveFrom.toISOString().slice(0, 10) : null,
     notes: updated.notes,
     property: updated.property,
-    propertyTotalSharePercent: totalShareByProperty.get(updated.propertyId) ?? Number(updated.sharePercent)
+    propertyTotalSharePercent: totalShareByProperty.get(existing.propertyId) ?? Number(updated.sharePercent)
   };
 }
 

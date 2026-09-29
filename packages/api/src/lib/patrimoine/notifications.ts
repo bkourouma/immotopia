@@ -568,7 +568,9 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
   }
 
   const loans = await prisma.propertyLoan.findMany({
-    where: { tenantId, status: LoanStatus.ACTIVE, endDate: { gte: now, lte: maxDate } },
+    // Alerte immobilière : un prêt d'actif non immobilier ou une dette personnelle
+    // (propertyId nul) n'entre pas dans ce périmètre (lot 1).
+    where: { tenantId, status: LoanStatus.ACTIVE, propertyId: { not: null }, endDate: { gte: now, lte: maxDate } },
     select: { id: true, endDate: true, property: { select: { internalReference: true } } }
   });
 

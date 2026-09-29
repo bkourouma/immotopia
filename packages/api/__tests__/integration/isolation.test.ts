@@ -280,6 +280,32 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         expect(row).not.toBeNull();
         expect(row!.notes).toBeNull();
       }
+    },
+    {
+      // Patrimoine multi-actifs (lot 1). Pas de DELETE d'actif : la route n'existe pas (404 dans tous les cas).
+      name: 'Actif (patrimoine multi-actifs)',
+      createDirect: tenantId =>
+        prisma.asset
+          .create({
+            data: {
+              tenantId,
+              name: 'ActifB',
+              assetClass: 'CASH',
+              details: { institution: 'Banque B', cashKind: 'BANK' }
+            }
+          })
+          .then(asset => asset.id),
+      itemPath: (tenantId, id) => `/api/tenants/${tenantId}/patrimoine/assets/${id}`,
+      listPath: tenantId => `/api/tenants/${tenantId}/patrimoine/assets`,
+      updateMethod: 'patch',
+      updateBody: { name: 'Modifie par A — ne doit jamais arriver' },
+      listItems: body => body.data ?? [],
+      assertIntact: async id => {
+        const row = await prisma.asset.findUnique({ where: { id } });
+        expect(row).not.toBeNull();
+        expect(row!.name).toBe('ActifB');
+        expect(row!.status).toBe('ACTIVE');
+      }
     }
   ];
 
@@ -534,6 +560,232 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         .set(authed(adminB));
       expect(file.status).toBe(200);
       expect(file.headers['content-type']).toBe('application/pdf');
+    });
+  });
+
+  /**
+   * Patrimoine multi-actifs : écritures, références croisées et valeur nette
+   * entre deux agences. L'agence A ne lit, n'écrit ni ne compte rien de B.
+   */
+  describe('Patrimoine multi-actifs — étanchéité entre agences', () => {
+    const P = (tenantId: string) => `/api/tenants/${tenantId}/patrimoine`;
+    let assetOfB: string;
+    let propertyOfB: string;
+    let entityOfB: string;
+    let debtOfB: string;
+    let valuationOfB: string;
+
+    beforeEach(async () => {
+      const asset = await prisma.asset.create({
+        data: {
+          tenantId: tenantB.id,
+          name: 'ActifB',
+          assetClass: 'BUSINESS_EQUITY',
+          details: { companyName: 'SARL B', legalForm: 'SARL', country: 'CI', ownershipPercent: 50 }
+        }
+      });
+      assetOfB = asset.id;
+      propertyOfB = await createPropertyDirect(tenantB.id, 'BienPatrimoineB');
+      entityOfB = (
+        await prisma.holdingEntity.create({
+          data: { tenantId: tenantB.id, name: `EntiteB-${randomUUID()}`, legalForm: 'SCI', country: 'CI' }
+        })
+      ).id;
+      valuationOfB = (
+        await prisma.assetValuation.create({
+          data: { tenantId: tenantB.id, assetId: assetOfB, valuatedAt: new Date('2026-01-01'), estimatedValue: 1000000 }
+        })
+      ).id;
+      debtOfB = (
+        await prisma.propertyLoan.create({
+          data: {
+            tenantId: tenantB.id,
+            assetId: assetOfB,
+            lender: 'Banque B',
+            capitalAmount: 500000,
+            remainingCapital: 400000,
+            interestRate: 5,
+            monthlyPayment: 10000,
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2030-01-01')
+          }
+        })
+      ).id;
+    });
+
+    const debtBody = (extra: Record<string, unknown> = {}) => ({
+      lender: 'Banque A',
+      capitalAmount: 100,
+      remainingCapital: 80,
+      interestRate: 5,
+      monthlyPayment: 2,
+      startDate: '2025-01-01',
+      endDate: '2030-01-01',
+      ...extra
+    });
+
+    it('A crée un actif immobilier sur un bien de B -> 404, aucun actif créé', async () => {
+      const res = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({ name: 'Volé', assetClass: 'REAL_ESTATE', propertyId: propertyOfB, details: {} });
+      expect(res.status).toBe(404);
+      expect(await prisma.asset.count({ where: { propertyId: propertyOfB } })).toBe(0);
+    });
+
+    it('A crée un actif rattaché à une entité de B -> 404, aucun actif créé', async () => {
+      const res = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({
+          name: 'Cpt',
+          assetClass: 'CASH',
+          holdingEntityId: entityOfB,
+          details: { institution: 'Banque', cashKind: 'BANK' }
+        });
+      expect(res.status).toBe(404);
+      expect(await prisma.asset.count({ where: { tenantId: tenantA.id, name: 'Cpt' } })).toBe(0);
+    });
+
+    it("A lit, crée et supprime des valorisations sur l'actif de B -> 404, données de B intactes", async () => {
+      const path = `${P(tenantA.id)}/assets/${assetOfB}/valuations`;
+      expect((await request(app).get(path).set(authed(adminA))).status).toBe(404);
+      const post = await request(app)
+        .post(path)
+        .set(authed(adminA))
+        .send({ valuatedAt: '2026-02-01', estimatedValue: 5 });
+      expect(post.status).toBe(404);
+      const del = await request(app).delete(`${path}/${valuationOfB}`).set(authed(adminA));
+      expect(del.status).toBe(404);
+      expect(await prisma.assetValuation.count({ where: { assetId: assetOfB } })).toBe(1);
+    });
+
+    it("A cède ou archive l'actif de B -> 404, statut de B inchangé", async () => {
+      const dispose = await request(app)
+        .post(`${P(tenantA.id)}/assets/${assetOfB}/dispose`)
+        .set(authed(adminA))
+        .send({ disposedAt: '2026-03-01' });
+      expect(dispose.status).toBe(404);
+      const archive = await request(app)
+        .post(`${P(tenantA.id)}/assets/${assetOfB}/archive`)
+        .set(authed(adminA));
+      expect(archive.status).toBe(404);
+      const row = await prisma.asset.findUnique({ where: { id: assetOfB } });
+      expect(row!.status).toBe('ACTIVE');
+      expect(row!.disposedAt).toBeNull();
+    });
+
+    it("A pose une dette sur l'actif de B -> 404 ; PATCH/DELETE de la dette de B -> 404, dette intacte", async () => {
+      const create = await request(app)
+        .post(`${P(tenantA.id)}/debts`)
+        .set(authed(adminA))
+        .send(debtBody({ assetId: assetOfB }));
+      expect(create.status).toBe(404);
+      const patch = await request(app)
+        .patch(`${P(tenantA.id)}/debts/${debtOfB}`)
+        .set(authed(adminA))
+        .send({ remainingCapital: 1 });
+      expect(patch.status).toBe(404);
+      const del = await request(app)
+        .delete(`${P(tenantA.id)}/debts/${debtOfB}`)
+        .set(authed(adminA));
+      expect(del.status).toBe(404);
+      const row = await prisma.propertyLoan.findUnique({ where: { id: debtOfB } });
+      expect(Number(row!.remainingCapital)).toBe(400000);
+      expect(await prisma.propertyLoan.count({ where: { lender: 'Banque A' } })).toBe(0);
+    });
+
+    it("la liste des dettes de A ne contient pas celle de B ; filtrer sur l'actif de B -> 404", async () => {
+      const list = await request(app)
+        .get(`${P(tenantA.id)}/debts`)
+        .set(authed(adminA));
+      expect(list.status).toBe(200);
+      expect(list.body.data.map((d: any) => d.id)).not.toContain(debtOfB);
+      const filtered = await request(app)
+        .get(`${P(tenantA.id)}/debts?assetId=${assetOfB}`)
+        .set(authed(adminA));
+      expect(filtered.status).toBe(404);
+    });
+
+    it("A pose une part sur l'actif de B, ou avec une entité de B -> 404, aucune part créée", async () => {
+      const onAssetOfB = await request(app)
+        .put(`${P(tenantA.id)}/assets/${assetOfB}/holdings/${entityOfB}`)
+        .set(authed(adminA))
+        .send({ sharePercent: 50 });
+      expect(onAssetOfB.status).toBe(404);
+
+      const own = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({ name: 'ActifA-parts', assetClass: 'OTHER', details: { label: 'Objet' } });
+      expect(own.status).toBe(201);
+      const withEntityOfB = await request(app)
+        .put(`${P(tenantA.id)}/assets/${own.body.data.id}/holdings/${entityOfB}`)
+        .set(authed(adminA))
+        .send({ sharePercent: 50 });
+      expect(withEntityOfB.status).toBe(404);
+      expect(await prisma.propertyHolding.count({ where: { entityId: entityOfB } })).toBe(0);
+    });
+
+    it('la valeur nette de A ne compte ni les actifs ni les dettes de B', async () => {
+      const own = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({
+          name: 'ActifA-valeur',
+          assetClass: 'CASH',
+          details: { institution: 'Banque A', cashKind: 'BANK' },
+          initialValuation: { valuatedAt: '2026-01-01', estimatedValue: 250000 }
+        });
+      expect(own.status).toBe(201);
+
+      const a = await request(app)
+        .get(`${P(tenantA.id)}/net-worth?asOf=2026-06-30`)
+        .set(authed(adminA));
+      expect(a.status).toBe(200);
+      expect(a.body.data.totalAssets).toBe(250000);
+      expect(a.body.data.totalDebts).toBe(0);
+      expect(a.body.data.assets.map((x: any) => x.id)).not.toContain(assetOfB);
+
+      const b = await request(app)
+        .get(`${P(tenantB.id)}/net-worth?asOf=2026-06-30`)
+        .set(authed(adminB));
+      // beforeEach recrée un actif (1 000 000) et une dette (400 000) de B à chaque cas.
+      const copiesOfB = await prisma.asset.count({ where: { tenantId: tenantB.id, assetClass: 'BUSINESS_EQUITY' } });
+      expect(b.body.data.totalAssets).toBe(copiesOfB * 1000000);
+      expect(b.body.data.totalDebts).toBe(copiesOfB * 400000);
+      expect(b.body.data.netWorth).toBe(copiesOfB * 600000);
+
+      const history = await request(app)
+        .get(`${P(tenantA.id)}/net-worth/history?from=2026-05-30&to=2026-06-30`)
+        .set(authed(adminA));
+      expect(history.status).toBe(200);
+      expect(history.body.data.at(-1).totalAssets).toBe(250000);
+    });
+
+    it("un actif immobilier de A partage les valorisations du bien : la route de l'actif écrit sur le bien", async () => {
+      const propertyOfA = await createPropertyDirect(tenantA.id, 'BienPatrimoineA');
+      const created = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({
+          name: 'Immeuble A',
+          assetClass: 'REAL_ESTATE',
+          propertyId: propertyOfA,
+          details: {},
+          initialValuation: { valuatedAt: '2026-01-01', estimatedValue: 9000000 }
+        });
+      expect(created.status).toBe(201);
+      const rows = await prisma.assetValuation.findMany({ where: { tenantId: tenantA.id, propertyId: propertyOfA } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].assetId).toBeNull();
+      expect(created.body.data.currentValue.amount).toBe(9000000);
+
+      const twice = await request(app)
+        .post(`${P(tenantA.id)}/assets`)
+        .set(authed(adminA))
+        .send({ name: 'Doublon', assetClass: 'REAL_ESTATE', propertyId: propertyOfA, details: {} });
+      expect(twice.status).toBe(409);
     });
   });
 });

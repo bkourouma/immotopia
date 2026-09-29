@@ -560,3 +560,93 @@ describe('Réglage agence — GET|PUT /tenants/:tenantId/settings/owner-portal',
     expect(mockPrisma.ownerPortalSettings.upsert).not.toHaveBeenCalled();
   });
 });
+
+describe("Lot 1 multi-actifs — une ligne d'actif non immobilier n'apparaît jamais au portail", () => {
+  const ASSET_ID = id(91);
+  const ASSET_LOAN = id(92);
+  const PERSONAL_LOAN = id(93);
+  const ASSET_VALUATION = id(94);
+
+  beforeEach(() => {
+    // Valeur plus récente et prêts énormes, rattachés à un actif ou à personne :
+    // ils fausseraient tout total ou toute liste qui les laisserait passer.
+    mockPrisma.assetValuation.rows.push({
+      id: ASSET_VALUATION,
+      tenantId: TENANT_A,
+      propertyId: null,
+      assetId: ASSET_ID,
+      valuatedAt: new Date('2026-07-01'),
+      estimatedValue: 999000000,
+      acquisitionCost: 1,
+      method: 'MANUAL',
+      currency: 'XOF'
+    });
+    mockPrisma.propertyLoan.rows.push(
+      {
+        id: ASSET_LOAN,
+        tenantId: TENANT_A,
+        propertyId: null,
+        assetId: ASSET_ID,
+        lender: 'Prêteur secret actif',
+        capitalAmount: 888000000,
+        remainingCapital: 888000000,
+        interestRate: 5,
+        monthlyPayment: 1,
+        currency: 'XOF',
+        startDate: new Date('2025-01-01'),
+        endDate: new Date('2035-01-01'),
+        status: 'ACTIVE'
+      },
+      {
+        id: PERSONAL_LOAN,
+        tenantId: TENANT_A,
+        propertyId: null,
+        assetId: null,
+        lender: 'Prêteur secret personnel',
+        capitalAmount: 777000000,
+        remainingCapital: 777000000,
+        interestRate: 5,
+        monthlyPayment: 1,
+        currency: 'XOF',
+        startDate: new Date('2025-01-01'),
+        endDate: new Date('2035-01-01'),
+        status: 'ACTIVE'
+      }
+    );
+  });
+
+  it('la liste ne compte ni la valeur, ni le prêt, ni la dette personnelle', async () => {
+    const res = await request(app).get('/api/portal/owner/patrimoine').set('x-test-user', USER_OUMAR);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.summary.totalEstimatedValue).toBe(10000000);
+    expect(res.body.data.summary.totalRemainingLoanCapital).toBe(1000000);
+    expect(res.body.data.properties[0].valuation.estimatedValue).toBe(10000000);
+    expect(res.body.data.properties[0].loanSummary).toEqual({ count: 1, remainingCapital: 1000000 });
+    const raw = JSON.stringify(res.body);
+    for (const leaked of [ASSET_ID, ASSET_LOAN, PERSONAL_LOAN, ASSET_VALUATION, 'Prêteur secret']) {
+      expect(raw).not.toContain(leaked);
+    }
+  });
+
+  it("la fiche d'un bien ne liste que ses valorisations et prêts", async () => {
+    const res = await request(app).get(`/api/portal/owner/patrimoine/properties/${P1}`).set('x-test-user', USER_OUMAR);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.valuations.map((v: any) => v.id)).toEqual([VALUATION_1]);
+    expect(res.body.data.valuation.estimatedValue).toBe(10000000);
+    expect(res.body.data.loans.map((l: any) => l.id)).toEqual([LOAN_1]);
+    const raw = JSON.stringify(res.body);
+    for (const leaked of [ASSET_ID, ASSET_LOAN, PERSONAL_LOAN, ASSET_VALUATION, 'Prêteur secret']) {
+      expect(raw).not.toContain(leaked);
+    }
+  });
+
+  it("l'identifiant d'un actif n'ouvre aucune fiche : 404, comme un bien inexistant", async () => {
+    const res = await request(app)
+      .get(`/api/portal/owner/patrimoine/properties/${ASSET_ID}`)
+      .set('x-test-user', USER_OUMAR);
+
+    expect(res.status).toBe(404);
+  });
+});
