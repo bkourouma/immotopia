@@ -172,3 +172,21 @@ Un actif d'épargne dont `details.expectedRatePercent` existe utilise ce taux da
 un véhicule dont les `details` fournissent durée d'utilité et méthode d'amortissement suit cet
 amortissement (linéaire : annuité constante depuis la dernière valeur, plancher = valeur résiduelle ;
 dégressif : taux constant, même plancher) ; sans ces détails, sa valeur est constante.
+
+## Précisions ajoutées après relecture
+
+- **Références vérifiées à l'enregistrement.** `POST` et `PATCH` d'un scénario vérifient que chaque `assetId` et
+  `loanId` d'opération appartient à l'agence (même erreur qu'un identifiant inexistant : 422 avec
+  `operations.<index>.assetId|loanId`). À l'exécution (`run`), une référence disparue devient
+  `OPERATION_NOT_APPLICABLE` (tolérance), jamais une erreur.
+- **`PATCH` d'opérations seules** : les années sont contrôlées contre l'horizon enregistré (422 sinon).
+- **Vente** : un compte de trésorerie (`CASH`) ne se vend pas (422 `operations.<i>.assetId`, message dédié) ;
+  un actif sans valeur est refusé avec un message distinct de « n'est plus actif ».
+- **Amortissement d'un véhicule** : le service dérive `details.annuityXof = (coût d'acquisition − résiduelle) /
+durée d'utilité` et `details.residualValueXof = coût d'acquisition × résiduelle %` comme le lot 2 ; la valeur
+  suit `valeur courante − annuité × t`, plancher = résiduelle.
+- **Limiteur** : `POST /projections` et `POST /scenarios/:id/run` sont limités par utilisateur et par agence
+  (429 au-delà de 30 appels par minute).
+- **Plafonds de chargement** : au plus 2 000 dettes actives chargées par calcul ; seuls les actifs actifs et
+  ceux cités par une opération sont chargés.
+- **Messages de validation** en français pour les bornes courantes (horizon, montants, taux, nom).
