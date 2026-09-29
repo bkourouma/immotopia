@@ -25,6 +25,7 @@ import propertyPublicRoutes from './routes/property-public-routes';
 import geographicRoutes from './routes/geographic-routes';
 import rentalRoutes from './routes/rental-routes';
 import documentRoutes from './routes/document-routes';
+import aiRoutes from './routes/ai-routes';
 import financeRoutes from './routes/finance-routes';
 import financeSuppliersRoutes from './routes/finance-suppliers-routes';
 import financeSitesRoutes from './routes/finance-sites-routes';
@@ -214,6 +215,7 @@ app.use('/api/tenants', crmRoutes); // CRM routes are tenant-scoped
 app.use('/api/tenants/:tenantId/crm/contacts-search', contactSearchRoutes);
 app.use('/api/tenants', rentalRoutes); // Rental routes are tenant-scoped
 app.use('/api/tenants', documentRoutes); // Document routes are tenant-scoped
+app.use('/api/tenants/:tenantId/ai', aiRoutes); // Assistant ImmoCopilot (SSE, confirmation de proposition)
 app.use('/api', financeRoutes); // Finance : balances, releves, campagnes de facturation
 app.use('/api', financeSuppliersRoutes); // Finance lot 2 : fournisseurs, factures, reglements
 // ORDRE DE MONTAGE : le pilotage passe AVANT les chantiers du lot 2.

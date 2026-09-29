@@ -22,10 +22,13 @@
  */
 
 import '../helpers/app-shims';
+import { randomUUID } from 'crypto';
 import request from 'supertest';
 import app from '../../src/app';
 import { prisma } from '../../src/utils/database';
+import { signProposal } from '../../src/lib/ai/proposal-token';
 import {
+  ensureTenantAdminRole,
   createTestTenant,
   createTenantAdminUser,
   suspendTenant,
@@ -51,6 +54,14 @@ import {
  * seul `__tests__/helpers/run-isolation-tests.js` garantit (il propage la
  * meme valeur aux deux variables avant de lancer Jest).
  */
+// ImmoCopilot est desactive par defaut (AI_PROVIDER=disabled -> 503 avant toute
+// verification). Ces tests ciblent les gardes qui suivent : on force donc le
+// faux fournisseur, sans toucher a l'environnement.
+jest.mock('../../src/lib/ai/providers', () => {
+  const actual = jest.requireActual('../../src/lib/ai/providers');
+  return { ...actual, getLlmProvider: () => new actual.FakeProvider() };
+});
+
 const DATABASE_URL_TEST = process.env.DATABASE_URL_TEST;
 const HAS_TEST_DATABASE = Boolean(DATABASE_URL_TEST) && process.env.DATABASE_URL === DATABASE_URL_TEST;
 const maybeDescribe = HAS_TEST_DATABASE ? describe : describe.skip;
@@ -141,6 +152,75 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       const after = await prisma.crmDeal.count({ where: { contactId: contactOfB } });
       expect(after).toBe(0);
+    });
+  });
+
+  describe('ImmoCopilot — jeton de proposition et agences (assistant IA)', () => {
+    const statementArgs = {
+      docType: 'RENT_STATEMENT' as const,
+      leaseId: randomUUID(),
+      startDate: '2026-01-01',
+      endDate: '2026-03-31'
+    };
+
+    beforeAll(async () => {
+      // Le role de test n'a pas la permission de generation : on la lui donne ici,
+      // pour que la verification du jeton (et non la permission) soit ce qui refuse.
+      const roleId = await ensureTenantAdminRole();
+      const permission = await prisma.permission.upsert({
+        where: { key: 'RENTAL_DOCUMENTS_GENERATE' },
+        update: {},
+        create: { key: 'RENTAL_DOCUMENTS_GENERATE', description: 'Permission de test : generation de documents' }
+      });
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId, permissionId: permission.id } },
+        update: {},
+        create: { roleId, permissionId: permission.id }
+      });
+    });
+
+    it("un jeton signe pour l'agence A, presente sur /tenants/<B>, est refuse : PROPOSAL_INVALID", async () => {
+      const token = signProposal({ userId: adminB.id, tenantId: tenantA.id, args: statementArgs }).token;
+
+      const res = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/actions/execute`)
+        .set(authed(adminB))
+        .send({ proposalToken: token });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('PROPOSAL_INVALID');
+      expect(await prisma.rentalDocument.count({ where: { tenant_id: { in: [tenantA.id, tenantB.id] } } })).toBe(0);
+    });
+
+    it("le jeton d'un administrateur de A, presente par celui de B sur B : PROPOSAL_INVALID", async () => {
+      const token = signProposal({ userId: adminA.id, tenantId: tenantB.id, args: statementArgs }).token;
+
+      const res = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/actions/execute`)
+        .set(authed(adminB))
+        .send({ proposalToken: token });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('PROPOSAL_INVALID');
+    });
+
+    it("un administrateur de A n'atteint ni le chat ni l'execution sur l'agence B -> 403", async () => {
+      const token = signProposal({ userId: adminA.id, tenantId: tenantA.id, args: statementArgs }).token;
+
+      const execute = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/actions/execute`)
+        .set(authed(adminA))
+        .send({ proposalToken: token });
+      expect(execute.status).toBe(403);
+
+      const chat = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/chat`)
+        .set(authed(adminA))
+        .send({ messages: [{ role: 'user', content: 'Bonjour' }] });
+      expect(chat.status).toBe(403);
+
+      const status = await request(app).get(`/api/tenants/${tenantB.id}/ai/status`).set(authed(adminA));
+      expect(status.status).toBe(403);
     });
   });
 

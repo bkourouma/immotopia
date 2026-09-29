@@ -28,7 +28,8 @@ import { collectRoutes, installMountPathRecorder, DiscoveredRoute } from '../hel
 installMountPathRecorder();
 
 import app from '../../src/app';
-import { requireTenantAccess } from '../../src/middleware/tenant-middleware';
+import { requireTenantAccess, requireTenantCollaborator } from '../../src/middleware/tenant-middleware';
+import { authenticate } from '../../src/middleware/auth-middleware';
 import { requireTenantPortalAccess } from '../../src/middleware/tenant-portal-access';
 import { requireOwnerPortalAccess } from '../../src/middleware/owner-portal-access';
 import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
@@ -237,6 +238,25 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       if (guard === 'TENANT') expect(hasTenantOrPortalGuard(route!)).toBe(true);
       else expect(hasPlatformPermission(route!)).toBe(guard);
     }
+  });
+
+  it('declare les 3 routes de l’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
+    const expected: Array<[string, string]> = [
+      ['GET', '/api/tenants/:tenantId/ai/status'],
+      ['POST', '/api/tenants/:tenantId/ai/chat'],
+      ['POST', '/api/tenants/:tenantId/ai/actions/execute']
+    ];
+    for (const [method, path] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      // Un client de portail est refuse : la garde de collaborateur doit suivre celle de l'agence.
+      expect(route!.middlewares).toContain(requireTenantCollaborator);
+      expect(route!.middlewares).toContain(authenticate);
+    }
+    const execute = routes.find(r => r.method === 'POST' && r.path === '/api/tenants/:tenantId/ai/actions/execute');
+    expect(execute!.middlewares.some(mw => (mw as any)?.permissionKey === 'RENTAL_DOCUMENTS_GENERATE')).toBe(true);
+    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(3);
   });
 
   it('chaque route hors liste blanche porte une garde d’agence ou une permission plateforme', () => {
