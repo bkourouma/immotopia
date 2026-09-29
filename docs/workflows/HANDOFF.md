@@ -133,56 +133,42 @@ Pièges et décisions :
 - Le test `copilot-root` (Ctrl+J) est instable sous charge en CI (course entre le rendu du bouton et le
   raccourci) : une relance suffit ; il n'est pas lié au patrimoine.
 
-## Branche `fix/copilot-fake-numero-bail` — 2026-09-29
+## Pilote — fusion des PR ImmoCopilot #55 et #56 — 2026-09-29
 
-**État :** prêt à relire
-**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
+**État :** #55 et #56 fusionnées dans `main` (CI 6/6 verte avant chaque fusion) ; #52 (Patrimoine lot 1) laissée à sa session
+**Dernier commit :** voir `git log -1` sur `main`
 
 Fait :
 
-- Recette d'ImmoCopilot jouée (PR #49 fusionnée) sur une base PostgreSQL 16 locale
-  jetable, API avec `AI_PROVIDER=fake`, Chromium piloté par `playwright-core`
-  (installé hors dépôt). Les 12 scénarios du plan §6 passent : bouton et
-  raccourcis, biens, quittance (proposition, confirmation, `.docx` téléchargé),
-  double clic (un seul document), jeton expiré (410), `TENANT_AGENT` (2 outils,
-  génération et téléchargement 403), propriétaire/locataire/super-admin refusés,
-  assistant désactivé (503, pas de bouton), arabe (RTL, tiroir à gauche), 375 px,
-  injection sans document créé, fermeture en plein flux sans erreur. Jeton de
-  l'agence A sur l'agence B : `PROPOSAL_INVALID` sur vraie base. Relevé de compte
-  (`RENT_STATEMENT`) généré aussi.
-- Correctifs : le faux fournisseur ne reconnaissait que `L-102` alors que les
-  baux se numérotent `BAIL-AAAA-NNNN` (il prenait le premier bail actif) ; montants
-  des cartes formatés avec la locale active.
-- Quittance et relevé : champs des modèles DOCX désormais tous fournis (PR #53
-  fusionnée) ; le rendu laissait `{{…}}` parce que les noms de champs des modèles
-  et du constructeur de contexte divergeaient. Ventilation d'un paiement : loyer,
-  puis charges, puis pénalités ; une donnée absente s'écrit « — ».
+- #55 (contrats de bail : champs des modèles DOCX) puis #56 (durcissements de l'audit
+  ImmoCopilot : jeton et quittance atomiques, plafond par agence, garde « bail vu »,
+  permissions GENERATE + VIEW, faux fournisseur refusé hors développement) fusionnées.
+  #56 avait un conflit sur HANDOFF.md (sections des PR voisines) : les deux sections
+  gardées, `main` fusionné dans la branche, CI relancée avant fusion.
 
 Reste à faire :
 
-- **Baux** (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : même défaut que la quittance
-  (environ 20 champs du modèle d'habitation non fournis par
-  `document-context-builder.ts`, le commercial délègue à l'habitation) : `{{…}}` en
-  clair dans les contrats. Non traité.
-- `RECU_NUMERO` de la quittance est le numéro de paiement ; le numéro définitif
-  `RCU-…` est attribué après le rendu.
-- `test:isolation` (base dédiée) toujours non joué avec la suite.
-- Mineurs d'audit de la PR #49 toujours ouverts.
+- #52 `claude/lucid-bell-0pzfvc` (Patrimoine lot 1, brouillon, 192 fichiers) : la
+  session « Élargir périmètre gestion patrimoine » corrige encore (web + API, non
+  commité au dernier relevé) ; recette navigateur, concurrence sur les parts et rendu
+  RTL non vérifiés. Ne pas fusionner avant.
+- Session « Cloud - ImmoCopilot IA assistant » : bloquée sur une demande de permission
+  (`send_later`) que seul l'utilisateur peut trancher.
+- Baux : un seul contrat par bail (numéro de document = numéro du bail, index unique
+  `(tenant_id, document_number)`, P2002) — correctif dans `document-generation-service.ts` ;
+  préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
+  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir.
+- ImmoCopilot : limiteurs de débit en mémoire par instance ; `connection_limit` à
+  dimensionner ; après un échec de section exclusive le jeton est consommé (fail-closed) ;
+  saturation réelle du pool non testée.
 
 Pièges et décisions :
 
-- Le cloud n'a pas de `.env` : tout passe par variables d'environnement en ligne
-  de commande (`DATABASE_URL`, `JWT_SECRET` généré, `AI_PROVIDER=fake`, ports
-  8001/3000). Base : `pg_ctlcluster 16 main start` puis utilisateur et base créés
-  à la main ; `db:seed:rbac`, `geographic`, `catalog`, `db:seed`, `rbac` de
-  nouveau, `document-templates` (exige `JWT_SECRET`), `tenant-members`. Le seed
-  `seed-demo-locative.ts` cible une agence du dump de démo : sur une base neuve,
-  créer soi-même biens, contacts et baux via les services.
-- Le modèle `RENT_STATEMENT` est bien semé par `db:seed:document-templates`
-  (4 modèles globaux).
-- Une quittance déjà générée pour la période est présentée au lieu d'être
-  proposée de nouveau (idempotence) : changer de période pour rejouer.
-- `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
+- HANDOFF.md est réécrit par presque chaque PR au même endroit : en cas de conflit,
+  repartir de la version de `main` et y replacer sa propre section (une reprise en bloc
+  du côté « ours » recopie les sections déjà fusionnées).
+- Un `sed` de résolution de conflit peut laisser un intitulé en double : relire
+  `grep -n '^## Branche'` avant de pousser.
 
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 

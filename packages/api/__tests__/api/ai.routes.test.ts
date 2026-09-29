@@ -71,12 +71,15 @@ jest.mock('../../src/services/permission-service', () => ({
   hasAllPermissions: jest.fn()
 }));
 
-const mockPrisma = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockPrisma: Record<string, any> = {
   rentalLease: { findFirst: jest.fn() },
   rentalInstallment: { findFirst: jest.fn() },
   rentalPaymentAllocation: { findMany: jest.fn() },
   rentalDocument: { findFirst: jest.fn() },
-  auditLog: { findFirst: jest.fn(), create: jest.fn() }
+  auditLog: { findFirst: jest.fn(), create: jest.fn() },
+  $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(mockPrisma)),
+  $executeRaw: jest.fn(async () => 0)
 };
 const mockListProperties = jest.fn();
 const mockGenerateDocument = jest.fn();
@@ -104,6 +107,7 @@ import { errorHandler } from '../../src/middleware/error-middleware';
 import { openSseStream } from '../../src/lib/ai/sse';
 import { resetProposalUsageForTests, signProposal } from '../../src/lib/ai/proposal-token';
 import aiRoutes from '../../src/routes/ai-routes';
+import { env } from '../../src/config/env';
 
 const TENANT_A = 'tenant-a';
 const TENANT_B = 'tenant-b';
@@ -385,6 +389,41 @@ describe('POST /ai/chat', () => {
     expect(denied.payload.reason).toBe('UNKNOWN_TOOL');
   });
 
+  it('plafonne aussi le chat PAR AGENCE : des collaborateurs différents se partagent le budget de l’agence', async () => {
+    const original = env.AI_TENANT_MINUTE_LIMIT;
+    env.AI_TENANT_MINUTE_LIMIT = 3;
+    try {
+      const statuses: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        currentUser = `user-agence-${i}`; // un utilisateur neuf à chaque appel : sa limite personnelle est intacte
+        statuses.push((await post(`${base('tenant-plafond')}/chat`, { messages: [] })).status);
+      }
+      expect(statuses).toEqual([400, 400, 400, 429, 429]);
+      // Une autre agence garde son propre budget.
+      currentUser = 'user-autre-agence';
+      expect((await post(`${base('tenant-autre')}/chat`, { messages: [] })).status).toBe(400);
+      const blocked = await post(`${base('tenant-plafond')}/chat`, { messages: [] });
+      expect(blocked.body.code).toBe('RATE_LIMITED');
+    } finally {
+      env.AI_TENANT_MINUTE_LIMIT = original;
+    }
+  });
+
+  it('plafond quotidien par agence : AI_TENANT_DAILY_LIMIT', async () => {
+    const original = env.AI_TENANT_DAILY_LIMIT;
+    env.AI_TENANT_DAILY_LIMIT = 2;
+    try {
+      const statuses: number[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        currentUser = `user-jour-${i}`;
+        statuses.push((await post(`${base('tenant-jour')}/chat`, { messages: [] })).status);
+      }
+      expect(statuses).toEqual([400, 400, 429]);
+    } finally {
+      env.AI_TENANT_DAILY_LIMIT = original;
+    }
+  });
+
   it('limite le débit du chat à 20 par minute et par utilisateur', async () => {
     const statuses: number[] = [];
     for (let i = 0; i < 21; i += 1) statuses.push((await post(`${base()}/chat`, { messages: [] })).status);
@@ -437,6 +476,16 @@ describe('POST /ai/actions/execute', () => {
     expect(mockHasPermission).toHaveBeenCalledWith(currentUser, 'RENTAL_DOCUMENTS_GENERATE', TENANT_A);
     expect(mockGenerateDocument).not.toHaveBeenCalled();
     expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('GENERATE sans VIEW : 403 sur la route, rien n’est généré', async () => {
+    mockHasPermission.mockImplementation(
+      async (_u: string, permission: string) => permission === 'RENTAL_DOCUMENTS_GENERATE'
+    );
+    const res = await post(`${base()}/actions/execute`, { proposalToken: statement(currentUser, TENANT_A) });
+    expect(res.status).toBe(403);
+    expect(mockHasPermission).toHaveBeenCalledWith(currentUser, 'RENTAL_DOCUMENTS_VIEW', TENANT_A);
+    expect(mockGenerateDocument).not.toHaveBeenCalled();
   });
 
   it.each([

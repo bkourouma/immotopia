@@ -34,7 +34,6 @@ import {
   reconcilePlatformCheckoutPublic
 } from '../../src/services/platform-payment-service';
 import {
-  ensureTenantAdminRole,
   createTestTenant,
   createTenantAdminUser,
   suspendTenant,
@@ -42,6 +41,9 @@ import {
   createParticulierTenant,
   createPropertyDirect,
   createMaintenanceTicketDirect,
+  createOutsiderUser,
+  createRentalFixtureDirect,
+  RentalFixture,
   cleanupTenants,
   TestTenant,
   TestUser
@@ -64,9 +66,27 @@ import {
 // ImmoCopilot est desactive par defaut (AI_PROVIDER=disabled -> 503 avant toute
 // verification). Ces tests ciblent les gardes qui suivent : on force donc le
 // faux fournisseur, sans toucher a l'environnement.
+//
+// Le faux fournisseur est enveloppe : `mockProviderRequests` garde chaque requete
+// qu'il recoit (ce que le « modele » verrait vraiment), et `mockFakeScript`
+// permet de lui faire emettre des appels d'outils precis.
+const mockProviderRequests: Array<{ messages: unknown }> = [];
+let mockFakeScript: Array<{ text?: string; toolCalls?: Array<{ name: string; input: unknown }> }> | undefined;
 jest.mock('../../src/lib/ai/providers', () => {
   const actual = jest.requireActual('../../src/lib/ai/providers');
-  return { ...actual, getLlmProvider: () => new actual.FakeProvider() };
+  return {
+    ...actual,
+    getLlmProvider: () => {
+      const fake = new actual.FakeProvider(mockFakeScript);
+      return {
+        id: fake.id,
+        runTurn: (req: { messages: unknown }, ...rest: unknown[]) => {
+          mockProviderRequests.push(req);
+          return fake.runTurn(req, ...rest);
+        }
+      };
+    }
+  };
 });
 
 const DATABASE_URL_TEST = process.env.DATABASE_URL_TEST;
@@ -170,22 +190,6 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       endDate: '2026-03-31'
     };
 
-    beforeAll(async () => {
-      // Le role de test n'a pas la permission de generation : on la lui donne ici,
-      // pour que la verification du jeton (et non la permission) soit ce qui refuse.
-      const roleId = await ensureTenantAdminRole();
-      const permission = await prisma.permission.upsert({
-        where: { key: 'RENTAL_DOCUMENTS_GENERATE' },
-        update: {},
-        create: { key: 'RENTAL_DOCUMENTS_GENERATE', description: 'Permission de test : generation de documents' }
-      });
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId, permissionId: permission.id } },
-        update: {},
-        create: { roleId, permissionId: permission.id }
-      });
-    });
-
     it("un jeton signe pour l'agence A, presente sur /tenants/<B>, est refuse : PROPOSAL_INVALID", async () => {
       const token = signProposal({ userId: adminB.id, tenantId: tenantA.id, args: statementArgs }).token;
 
@@ -228,6 +232,265 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       const status = await request(app).get(`/api/tenants/${tenantB.id}/ai/status`).set(authed(adminA));
       expect(status.status).toBe(403);
+    });
+  });
+
+  describe('ImmoCopilot — cas de bout en bout : aucune donnee de A n atteint B', () => {
+    let adminA2: TestUser;
+    let outsider: TestUser;
+    let rentalA: RentalFixture;
+    let rentalB: RentalFixture;
+
+    const executeOn = (tenantId: string, user: TestUser, proposalToken: string) =>
+      request(app).post(`/api/tenants/${tenantId}/ai/actions/execute`).set(authed(user)).send({ proposalToken });
+
+    const rentalDocumentCount = () =>
+      prisma.rentalDocument.count({ where: { tenant_id: { in: [tenantA.id, tenantB.id] } } });
+
+    /** Aucune trace de A dans un texte (corps de reponse, flux SSE, requete au modele). */
+    const expectNoTraceOfA = (text: string) => {
+      for (const secret of [
+        rentalA.leaseId,
+        rentalA.leaseNumber,
+        rentalA.renterName,
+        rentalA.propertyId,
+        rentalA.propertyReference,
+        rentalA.documentId,
+        rentalA.paymentId,
+        rentalA.installmentId
+      ]) {
+        expect(text).not.toContain(secret);
+      }
+    };
+
+    beforeAll(async () => {
+      adminA2 = await createTenantAdminUser(tenantA, 'admin-a2');
+      outsider = await createOutsiderUser('sans-agence');
+      rentalA = await createRentalFixtureDirect(tenantA.id, adminA.id, 'A');
+      rentalB = await createRentalFixtureDirect(tenantB.id, adminB.id, 'B');
+    });
+
+    beforeEach(() => {
+      mockProviderRequests.length = 0;
+      mockFakeScript = undefined;
+    });
+
+    afterAll(() => {
+      mockFakeScript = undefined;
+    });
+
+    it('temoin : un jeton valide de B sur B passe la verification (404 bail inconnu, pas PROPOSAL_INVALID), puis est a usage unique', async () => {
+      const token = signProposal({
+        userId: adminB.id,
+        tenantId: tenantB.id,
+        args: { docType: 'RENT_STATEMENT', leaseId: randomUUID(), startDate: '2026-01-01', endDate: '2026-03-31' }
+      }).token;
+
+      const first = await executeOn(tenantB.id, adminB, token);
+      expect(first.status).toBe(404);
+      expect(first.body.code).not.toBe('PROPOSAL_INVALID');
+
+      const replay = await executeOn(tenantB.id, adminB, token);
+      expect(replay.status).toBe(409);
+      expect(replay.body.code).toBe('PROPOSAL_ALREADY_USED');
+    });
+
+    it("le jeton d'un utilisateur de A, presente par un autre utilisateur de la MEME agence A : PROPOSAL_INVALID", async () => {
+      const token = signProposal({
+        userId: adminA.id,
+        tenantId: tenantA.id,
+        args: { docType: 'RENT_STATEMENT', leaseId: rentalA.leaseId, startDate: '2026-01-01', endDate: '2026-03-31' }
+      }).token;
+      const before = await rentalDocumentCount();
+
+      const res = await executeOn(tenantA.id, adminA2, token);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('PROPOSAL_INVALID');
+      expect(await rentalDocumentCount()).toBe(before);
+    });
+
+    it("un bail de A dans les arguments d'un jeton VALIDE de B -> 404, aucun document cree, aucune donnee de A dans la reponse", async () => {
+      const token = signProposal({
+        userId: adminB.id,
+        tenantId: tenantB.id,
+        args: { docType: 'RENT_STATEMENT', leaseId: rentalA.leaseId, startDate: '2026-01-01', endDate: '2026-03-31' }
+      }).token;
+      const before = await rentalDocumentCount();
+
+      const res = await executeOn(tenantB.id, adminB, token);
+
+      expect(res.status).toBe(404);
+      expect(await rentalDocumentCount()).toBe(before);
+      expectNoTraceOfA(JSON.stringify(res.body) + res.text);
+    });
+
+    it('une quittance : bail, paiement ou echeance de A dans un jeton valide de B -> 404, rien de genere', async () => {
+      const before = await rentalDocumentCount();
+      const cases = [
+        // Tout vient de A.
+        { leaseId: rentalA.leaseId, paymentId: rentalA.paymentId, installmentId: rentalA.installmentId },
+        // Bail de B, mais paiement et echeance de A.
+        { leaseId: rentalB.leaseId, paymentId: rentalA.paymentId, installmentId: rentalA.installmentId },
+        // Bail et paiement de B, echeance de A.
+        { leaseId: rentalB.leaseId, paymentId: rentalB.paymentId, installmentId: rentalA.installmentId }
+      ];
+      for (const ids of cases) {
+        const token = signProposal({
+          userId: adminB.id,
+          tenantId: tenantB.id,
+          args: { docType: 'RENT_RECEIPT', ...ids }
+        }).token;
+        const res = await executeOn(tenantB.id, adminB, token);
+        expect(res.status).toBe(404);
+        expectNoTraceOfA(JSON.stringify(res.body) + res.text);
+      }
+      expect(await rentalDocumentCount()).toBe(before);
+    });
+
+    it("un jeton de B ne s'execute pas sur l'URL de A par un membre de B : 403 (agence, pas jeton)", async () => {
+      const token = signProposal({
+        userId: adminB.id,
+        tenantId: tenantA.id,
+        args: { docType: 'RENT_STATEMENT', leaseId: rentalA.leaseId, startDate: '2026-01-01', endDate: '2026-03-31' }
+      }).token;
+      const before = await rentalDocumentCount();
+
+      const res = await executeOn(tenantA.id, adminB, token);
+
+      expect(res.status).toBe(403);
+      expect(await rentalDocumentCount()).toBe(before);
+    });
+
+    it("telechargement : le document de A n'est pas servi via l'URL de B (404), ni via l'URL de A a un membre de B (403)", async () => {
+      const viaB = await request(app)
+        .get(`/api/tenants/${tenantB.id}/documents/${rentalA.documentId}/download`)
+        .set(authed(adminB));
+      expect(viaB.status).toBe(404);
+      expect(viaB.body.message).toBe('Document not found');
+
+      const viaA = await request(app)
+        .get(`/api/tenants/${tenantA.id}/documents/${rentalA.documentId}/download`)
+        .set(authed(adminB));
+      expect(viaA.status).toBe(403);
+
+      // Temoin : le document de B est bien retrouve dans B (404 « fichier » absent, pas « document » inconnu).
+      const own = await request(app)
+        .get(`/api/tenants/${tenantB.id}/documents/${rentalB.documentId}/download`)
+        .set(authed(adminB));
+      expect(own.status).toBe(404);
+      expect(own.body.message).toBe('Document file not found');
+    });
+
+    it("chat : le contexte d'ecran visant un bail ou un bien de A, depuis B, n'atteint jamais le modele ni le flux", async () => {
+      const contexts = [
+        { activeEntityType: 'LEASE', activeEntityId: rentalA.leaseId },
+        { activeEntityType: 'PROPERTY', activeEntityId: rentalA.propertyId },
+        // Chemin annoncant l'agence A avec une entite de B : ignore en bloc.
+        {
+          currentPath: `/tenants/${tenantA.id}/rental/leases/x`,
+          activeEntityType: 'LEASE',
+          activeEntityId: rentalB.leaseId
+        }
+      ] as const;
+
+      for (const context of contexts) {
+        mockProviderRequests.length = 0;
+        const res = await request(app)
+          .post(`/api/tenants/${tenantB.id}/ai/chat`)
+          .set(authed(adminB))
+          .send({ messages: [{ role: 'user', content: 'Resume ce dossier' }], context });
+
+        expect(res.status).toBe(200);
+        expect(mockProviderRequests.length).toBeGreaterThan(0);
+        const seenByModel = JSON.stringify(mockProviderRequests);
+        expectNoTraceOfA(res.text + seenByModel);
+        expect(seenByModel).not.toContain(rentalB.leaseId);
+        expect(seenByModel).not.toContain('"entity_id"');
+      }
+    });
+
+    it("chat : temoin, le contexte d'ecran d'un bail de SA propre agence est bien transmis (le test ci-dessus discrimine)", async () => {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/chat`)
+        .set(authed(adminB))
+        .send({
+          messages: [{ role: 'user', content: 'Resume ce dossier' }],
+          context: { activeEntityType: 'LEASE', activeEntityId: rentalB.leaseId }
+        });
+
+      expect(res.status).toBe(200);
+      const seenByModel = JSON.stringify(mockProviderRequests);
+      expect(seenByModel).toContain(rentalB.leaseId);
+      expect(seenByModel).toContain('entity_id');
+    });
+
+    it('chat : chercher un bail ou un locataire de A depuis B ne renvoie rien de A', async () => {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/chat`)
+        .set(authed(adminB))
+        .send({ messages: [{ role: 'user', content: `Cherche le bail du locataire ${rentalA.renterName}` }] });
+
+      expect(res.status).toBe(200);
+      const leaked = res.text + JSON.stringify(mockProviderRequests);
+      for (const secret of [rentalA.leaseId, rentalA.leaseNumber, rentalA.propertyId, rentalA.propertyReference]) {
+        expect(leaked).not.toContain(secret);
+      }
+    });
+
+    it('chat : un outil appele avec le bail de A (arguments choisis par le modele) echoue sans rien reveler', async () => {
+      mockFakeScript = [
+        { toolCalls: [{ name: 'list_lease_documents', input: { leaseId: rentalA.leaseId } }] },
+        { text: 'Termine.' }
+      ];
+
+      const res = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/chat`)
+        .set(authed(adminB))
+        .send({ messages: [{ role: 'user', content: 'Liste les documents' }] });
+
+      expect(res.status).toBe(200);
+      // Le resultat d'outil (renvoye au modele) est une erreur, sans document ni numero de A.
+      const toolResults = JSON.stringify(mockProviderRequests.slice(1));
+      expect(toolResults).toContain('tool_result');
+      expect(toolResults).not.toContain(rentalA.documentId);
+      expect(toolResults).not.toContain('DOC-A-');
+      expect(toolResults).not.toContain(rentalA.leaseNumber);
+      expect(toolResults).not.toContain(rentalA.renterName);
+      expect(res.text).not.toContain(rentalA.documentId);
+      expect(res.text).not.toContain(rentalA.leaseNumber);
+    });
+
+    it('statut : un membre de B voit l assistant de B ; un utilisateur sans agence, un membre de A sur B et un anonyme sont refuses', async () => {
+      const own = await request(app).get(`/api/tenants/${tenantB.id}/ai/status`).set(authed(adminB));
+      expect(own.status).toBe(200);
+      expect(own.body.data.enabled).toBe(true);
+      expectNoTraceOfA(own.text);
+
+      const cross = await request(app).get(`/api/tenants/${tenantB.id}/ai/status`).set(authed(adminA));
+      expect(cross.status).toBe(403);
+
+      const stranger = await request(app).get(`/api/tenants/${tenantB.id}/ai/status`).set(authed(outsider));
+      expect(stranger.status).toBe(403);
+
+      const anonymous = await request(app).get(`/api/tenants/${tenantB.id}/ai/status`);
+      expect(anonymous.status).toBe(401);
+    });
+
+    it("un utilisateur sans agence n'atteint ni le chat ni l'execution : 403", async () => {
+      const chat = await request(app)
+        .post(`/api/tenants/${tenantB.id}/ai/chat`)
+        .set(authed(outsider))
+        .send({ messages: [{ role: 'user', content: 'Bonjour' }] });
+      expect(chat.status).toBe(403);
+
+      const token = signProposal({
+        userId: outsider.id,
+        tenantId: tenantB.id,
+        args: { docType: 'RENT_STATEMENT', leaseId: rentalB.leaseId, startDate: '2026-01-01', endDate: '2026-03-31' }
+      }).token;
+      const execute = await executeOn(tenantB.id, outsider, token);
+      expect(execute.status).toBe(403);
     });
   });
 

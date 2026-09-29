@@ -301,10 +301,68 @@ describe('orchestrateur — outils interdits et entrées invalides', () => {
     expect(JSON.parse((block as { content: string }).content).error).toBe('INVALID_INPUT');
   });
 
-  it('un leaseId d’une autre agence ne produit aucune proposition', async () => {
-    mockPrisma.rentalLease.findFirst.mockResolvedValue(null); // findFirst({ id, tenant_id }) ne le voit pas
+  it('un bail jamais présenté dans la requête ne produit aucune proposition (lease_not_seen)', async () => {
     const harness = start(
       scripted([
+        {
+          toolCalls: [
+            {
+              name: 'propose_rental_document',
+              input: { docType: 'RENT_RECEIPT', leaseId: LEASE_ID, period: '2026-03' }
+            }
+          ]
+        },
+        { text: 'Je dois d’abord retrouver le bail.' }
+      ])
+    );
+    await harness.result;
+
+    expect(harness.events.some(e => e.type === 'action_proposal')).toBe(false);
+    expect(auditOf('AI_PROPOSAL_ISSUED')).toHaveLength(0);
+    expect(mockPrisma.rentalLease.findFirst).not.toHaveBeenCalled();
+    const block = harness.requests[1][2].content[0] as { content: string };
+    expect(JSON.parse(block.content)).toMatchObject({ status: 'NOT_POSSIBLE', reason: 'lease_not_seen' });
+  });
+
+  it('un bail présenté par l’écran vérifié peut être proposé', async () => {
+    mockPrisma.rentalLease.findFirst.mockResolvedValue(null);
+    const harness = start(
+      scripted([
+        {
+          toolCalls: [
+            {
+              name: 'propose_rental_document',
+              input: { docType: 'RENT_RECEIPT', leaseId: LEASE_ID, period: '2026-03' }
+            }
+          ]
+        },
+        { text: 'ok' }
+      ]),
+      { pageContext: { entityType: 'LEASE', entityId: LEASE_ID, reference: 'L-00012' } }
+    );
+    await harness.result;
+    // Le garde « vu » est franchi : on atteint la revalidation du bail en base.
+    expect(mockPrisma.rentalLease.findFirst).toHaveBeenCalled();
+  });
+
+  it('un leaseId d’une autre agence ne produit aucune proposition', async () => {
+    mockPrisma.rentalLease.findFirst.mockResolvedValue(null); // findFirst({ id, tenant_id }) ne le voit pas
+    mockListLeases.mockResolvedValue({
+      data: [
+        {
+          id: LEASE_ID,
+          lease_number: 'L-00012',
+          status: 'ACTIVE',
+          currency: 'FCFA',
+          rent_amount: 1,
+          start_date: '2026-01-01'
+        }
+      ],
+      pagination: { totalPages: 1 }
+    });
+    const harness = start(
+      scripted([
+        { toolCalls: [{ name: 'search_leases', input: {} }] },
         {
           toolCalls: [
             {
@@ -323,7 +381,7 @@ describe('orchestrateur — outils interdits et entrées invalides', () => {
     );
     expect(harness.events.some(e => e.type === 'action_proposal')).toBe(false);
     expect(auditOf('AI_PROPOSAL_ISSUED')).toHaveLength(0);
-    const block = harness.requests[1][2].content[0] as { content: string; isError?: boolean };
+    const block = harness.requests[2][4].content[0] as { content: string; isError?: boolean };
     expect(block.isError).toBe(true);
     expect(JSON.parse(block.content).error).toBe('NOT_FOUND');
     expect(harness.events).toContainEqual({ type: 'tool_status', tool: 'propose_rental_document', status: 'failed' });
@@ -540,7 +598,9 @@ describe('orchestrateur — audit et conversationId client', () => {
     await harness.result;
     const turn = auditOf('AI_CHAT_TURN')[0];
     expect(turn.entityId).not.toBe(forged);
-    expect(turn.entityId).toBe(`${USER}:${forged}`);
+    // L'identifiant d'audit est celui de la requête, généré par le serveur.
+    expect(turn.entityId).toBe('req-1');
+    expect(JSON.stringify(turn)).not.toContain(forged);
   });
 });
 

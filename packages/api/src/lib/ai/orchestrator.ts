@@ -119,7 +119,9 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     permissions: input.permissions,
     requestId: input.requestId,
     conversationId: input.conversationId,
-    signal
+    signal,
+    // Bail de l'écran vérifié côté serveur : seule source de confiance hors résultats d'outils.
+    seenLeaseIds: new Set(input.pageContext?.entityType === 'LEASE' ? [input.pageContext.entityId] : [])
   };
 
   let rounds = 0;
@@ -210,8 +212,9 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     tenantId,
     actionKey: AuditActionKey.AI_CHAT_TURN,
     entityType: 'AI_CONVERSATION',
-    // Préfixé par l'utilisateur : l'identifiant vient du client, il ne sert jamais seul de clé d'audit.
-    entityId: `${userId}:${input.conversationId}`,
+    // Identifiant généré par le serveur pour cette requête : le conversationId du client
+    // n'est qu'un écho pour l'interface et ne sert jamais de clé d'audit.
+    entityId: input.requestId,
     payload: {
       requestId: input.requestId,
       provider: provider.id,

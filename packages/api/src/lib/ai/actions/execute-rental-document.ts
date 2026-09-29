@@ -8,10 +8,16 @@ import { logger } from '../../../utils/logger';
 import { AuditActionKey } from '../../../types/audit-types';
 import { t } from '../../../i18n';
 import type { ActionExecutedPayload, ProposalClaims } from '../contracts';
+import { withExclusiveSection } from '../advisory-lock';
 import { ProposalError, redeemProposal, verifyProposal } from '../proposal-token';
 import { loadLeaseSummary } from '../tools/tool-utils';
 
 const PERMISSION = 'RENTAL_DOCUMENTS_GENERATE';
+/** Le téléchargement du document produit exige aussi la lecture. */
+const VIEW_PERMISSION = 'RENTAL_DOCUMENTS_VIEW';
+/** Attente d'une connexion, puis durée maximale (attente du verrou + génération) de la section « quittance ». */
+const RECEIPT_LOCK_MAX_WAIT_MS = 10_000;
+const RECEIPT_LOCK_TIMEOUT_MS = 120_000;
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export interface ExecuteRentalDocumentInput {
@@ -98,27 +104,38 @@ async function run(claims: ProposalClaims): Promise<{ doc: GeneratedDocumentRow;
 
   if (args.docType === 'RENT_RECEIPT') {
     await revalidateReceipt(claims, args);
-    // Idempotence : une quittance FINAL existe déjà pour ce paiement.
-    const existing = await prisma.rentalDocument.findFirst({
-      where: {
-        tenant_id: tenantId,
-        type: RentalDocumentType.RENT_RECEIPT,
-        status: RentalDocumentStatus.FINAL,
-        payment_id: args.paymentId
-      },
-      select: { id: true, document_number: true, type: true, mime_type: true }
-    });
-    if (existing) return { doc: existing, alreadyExisted: true };
+    // Idempotence atomique : « une quittance FINAL existe-t-elle ? puis générer »
+    // est une section critique par paiement. Deux jetons distincts pour le même
+    // paiement, même sur deux instances, se suivent : le second voit la
+    // quittance du premier (commitée par generateDocument avant la libération
+    // du verrou) et la renvoie. `generateDocument` emprunte ses propres
+    // connexions ; le verrou est tenu par une transaction gardienne à part.
+    return withExclusiveSection(
+      `ai-receipt:${tenantId}:${args.paymentId}`,
+      async () => {
+        const existing = await prisma.rentalDocument.findFirst({
+          where: {
+            tenant_id: tenantId,
+            type: RentalDocumentType.RENT_RECEIPT,
+            status: RentalDocumentStatus.FINAL,
+            payment_id: args.paymentId
+          },
+          select: { id: true, document_number: true, type: true, mime_type: true }
+        });
+        if (existing) return { doc: existing, alreadyExisted: true };
 
-    const doc = await generateDocument(
-      tenantId,
-      DocumentType.RENT_RECEIPT,
-      args.paymentId,
-      undefined,
-      { installmentId: args.installmentId },
-      claims.sub
+        const doc = await generateDocument(
+          tenantId,
+          DocumentType.RENT_RECEIPT,
+          args.paymentId,
+          undefined,
+          { installmentId: args.installmentId },
+          claims.sub
+        );
+        return { doc: doc as unknown as GeneratedDocumentRow, alreadyExisted: false };
+      },
+      { maxWaitMs: RECEIPT_LOCK_MAX_WAIT_MS, timeoutMs: RECEIPT_LOCK_TIMEOUT_MS }
     );
-    return { doc: doc as unknown as GeneratedDocumentRow, alreadyExisted: false };
   }
 
   await loadLeaseSummary(tenantId, args.leaseId);
@@ -158,7 +175,10 @@ export async function executeRentalDocument(input: ExecuteRentalDocumentInput): 
     throw error;
   }
 
-  if (!(await hasPermission(input.userId, PERMISSION, input.tenantId))) {
+  const allowed =
+    (await hasPermission(input.userId, PERMISSION, input.tenantId)) &&
+    (await hasPermission(input.userId, VIEW_PERMISSION, input.tenantId));
+  if (!allowed) {
     reject(input, claims.jti, 'PERMISSION_REVOKED');
     throw new ForbiddenError(t("Vous n'avez plus la permission de générer ce document."));
   }

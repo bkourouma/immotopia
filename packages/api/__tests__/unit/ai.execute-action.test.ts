@@ -5,13 +5,19 @@
  */
 const callOrder: string[] = [];
 
-const mockPrisma = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockPrisma: Record<string, any> = {
   rentalLease: { findFirst: jest.fn() },
   rentalPayment: { findFirst: jest.fn() },
   rentalInstallment: { findFirst: jest.fn() },
   rentalPaymentAllocation: { findFirst: jest.fn() },
   rentalDocument: { findFirst: jest.fn() },
-  auditLog: { findFirst: jest.fn(), create: jest.fn() }
+  auditLog: { findFirst: jest.fn(), create: jest.fn() },
+  $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(mockPrisma)),
+  $executeRaw: jest.fn(async (...args: unknown[]) => {
+    callOrder.push(`lock:${String(args[1])}`);
+    return 0;
+  })
 };
 const mockGenerateDocument = jest.fn();
 const mockHasPermission = jest.fn();
@@ -122,8 +128,17 @@ describe('exécution d’une quittance confirmée', () => {
     const { token, claims } = issue(RECEIPT);
     const result = await run(token);
 
-    expect(callOrder).toEqual(['hasPermission', 'redeem', 'revalidate', 'generateDocument']);
+    expect(callOrder).toEqual([
+      'hasPermission',
+      'hasPermission',
+      `lock:ai-proposal:${TENANT}:${claims.jti}`,
+      'redeem',
+      'revalidate',
+      `lock:ai-receipt:${TENANT}:${PAYMENT_ID}`,
+      'generateDocument'
+    ]);
     expect(mockHasPermission).toHaveBeenCalledWith(USER, 'RENTAL_DOCUMENTS_GENERATE', TENANT);
+    expect(mockHasPermission).toHaveBeenCalledWith(USER, 'RENTAL_DOCUMENTS_VIEW', TENANT);
     expect(mockGenerateDocument).toHaveBeenCalledWith(
       TENANT,
       'RENT_RECEIPT',
@@ -179,6 +194,20 @@ describe('exécution d’une quittance confirmée', () => {
     expect(mockGenerateDocument).toHaveBeenCalledTimes(1);
   });
 
+  it('deux jetons distincts pour le même paiement, en parallèle : une seule génération', async () => {
+    let created = false;
+    mockPrisma.rentalDocument.findFirst.mockImplementation(async () => (created ? generated : null));
+    mockGenerateDocument.mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      created = true;
+      return generated;
+    });
+    const results = await Promise.all([run(issue(RECEIPT).token), run(issue(RECEIPT).token)]);
+
+    expect(mockGenerateDocument).toHaveBeenCalledTimes(1);
+    expect(results.map(r => r.payload.alreadyExisted).sort()).toEqual([false, true]);
+  });
+
   it('quittance FINAL déjà existante : renvoyée sans appeler generateDocument (200)', async () => {
     mockPrisma.rentalDocument.findFirst.mockResolvedValue({
       id: 'doc-old',
@@ -214,6 +243,17 @@ describe('vérifications avant exécution', () => {
   it('permission retirée entre la proposition et la confirmation : 403, rien réclamé ni généré', async () => {
     const { token } = issue(RECEIPT);
     mockHasPermission.mockResolvedValue(false);
+    await expect(run(token)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
+    expect(mockGenerateDocument).not.toHaveBeenCalled();
+    expect(rejectedReasons()).toEqual(['PERMISSION_REVOKED']);
+  });
+
+  it('GENERATE sans VIEW : 403, rien réclamé ni généré (la carte mènerait à un téléchargement refusé)', async () => {
+    const { token } = issue(RECEIPT);
+    mockHasPermission.mockImplementation(
+      async (_u: string, permission: string) => permission === 'RENTAL_DOCUMENTS_GENERATE'
+    );
     await expect(run(token)).rejects.toBeInstanceOf(ForbiddenError);
     expect(mockPrisma.auditLog.create).not.toHaveBeenCalled();
     expect(mockGenerateDocument).not.toHaveBeenCalled();

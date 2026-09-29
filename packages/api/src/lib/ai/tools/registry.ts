@@ -31,7 +31,12 @@ export function toolsForUser(
 ): CopilotToolDefinition[] {
   const owned = perms instanceof Set ? perms : new Set<string>(perms as Iterable<string>);
   const features = entitlements ? new Set<ToolFeature>(entitlements as Iterable<ToolFeature>) : null;
-  return ALL_TOOLS.filter(tool => owned.has(tool.requiredPermission) && (!features || features.has(tool.feature)));
+  return ALL_TOOLS.filter(
+    tool =>
+      owned.has(tool.requiredPermission) &&
+      (tool.additionalPermissions ?? []).every(permission => owned.has(permission)) &&
+      (!features || features.has(tool.feature))
+  );
 }
 
 export function findTool(tools: readonly CopilotToolDefinition[], name: string): CopilotToolDefinition | undefined {

@@ -87,6 +87,8 @@ export const searchLeasesTool: CopilotToolDefinition<typeof inputSchema> = {
       startDate: isoDay(lease.start_date) ?? ''
     }));
 
+    for (const item of items) ctx.seenLeaseIds.add(item.id);
+
     return outcome({ count: items.length, items }, { type: 'lease_results', items });
   }
 };
