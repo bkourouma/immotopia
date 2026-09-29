@@ -89,6 +89,44 @@ Pièges et décisions :
   proposée de nouveau (idempotence) : changer de période pour rejouer.
 - `pkill -f ts-node-dev` tue aussi le shell qui le contient : tuer par PID.
 
+## Branche `fix/copilot-isolation` — 2026-09-29
+
+**État :** prêt à relire
+**Dernier commit :** voir `git log -1` (PR vers `main`, jamais fusionnée sans « oui » explicite)
+
+Fait :
+
+- `npm run test:isolation` joué pour de vrai sur une base PostgreSQL 16 dédiée :
+  **43 tests sur 43 verts, 0 ignoré** (les 31 auparavant ignorés, dont les 3 cas
+  ImmoCopilot, plus 12 ajoutés). Aucun défaut d'isolation dans le code de
+  production.
+- Nouveaux cas : témoin positif du jeton (valide de B sur B, 404 puis 409 au
+  rejeu), jeton d'un autre utilisateur de la même agence, bail de A dans un jeton
+  de B, quittance avec bail/paiement/échéance croisés (3 combinaisons), document
+  de A téléchargé via l'URL de B, contexte d'écran de `POST /ai/chat` visant A
+  depuis B (rien de A n'atteint le modèle), `GET /ai/status` (membre, autre
+  agence, sans agence, anonyme), outil forcé sur le bail de A. Fixtures :
+  `createOutsiderUser`, `createRentalFixtureDirect`.
+- Commandes de rejeu : `docs/workflows/RUNBOOK.md` (section « Isolation multi-tenant
+  de bout en bout »).
+
+Reste à faire :
+
+- Le cas passant de `POST /ai/actions/execute` ne couvre pas la génération DOCX
+  réussie (il faut un modèle de document) : vérification et 404 seulement.
+- `cleanupTenants` échoue en silence dès qu'un bail existe (pas de cascade sur les
+  tables `rental_*`) : données de test laissées en base jetable.
+- Pas de test mutant sur le code de production (les témoins positifs en tiennent
+  lieu).
+
+Pièges et décisions :
+
+- `getUserPermissions` met les droits en cache 5 minutes par utilisateur : les
+  permissions d'un rôle de test doivent être accordées **à la création du rôle**,
+  pas dans un `beforeAll` tardif (cause des 2 échecs du premier passage).
+- Le fichier reste seul dans `APP_LEVEL_TESTS` (projet `api-app`, sans vérification
+  de types) : d'où l'extension de `isolation.test.ts` plutôt qu'un fichier voisin.
+
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
 **État :** prêt à relire (documentation seule)

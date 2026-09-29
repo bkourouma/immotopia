@@ -30,7 +30,13 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   'CRM_DEALS_CREATE',
   'PROPERTIES_VIEW',
   'PROPERTIES_EDIT',
-  'MAINTENANCE_ADMIN'
+  'MAINTENANCE_ADMIN',
+  // ImmoCopilot : lecture des baux/documents, generation. Accordees des la
+  // creation du role : `getUserPermissions` met les droits en cache 5 minutes
+  // par utilisateur, un octroi tardif ne serait pas vu.
+  'RENTAL_LEASES_VIEW',
+  'RENTAL_DOCUMENTS_VIEW',
+  'RENTAL_DOCUMENTS_GENERATE'
 ] as const;
 
 let tenantAdminRoleId: string | null = null;
@@ -163,7 +169,11 @@ export async function createPropertyDirect(tenantId: string, label: string): Pro
 }
 
 /** Cree un ticket de maintenance minimal, directement, pour l'agence donnee (necessite un bien). */
-export async function createMaintenanceTicketDirect(tenantId: string, propertyId: string, label: string): Promise<string> {
+export async function createMaintenanceTicketDirect(
+  tenantId: string,
+  propertyId: string,
+  label: string
+): Promise<string> {
   const ticket = await prisma.maintenanceTicket.create({
     data: {
       tenant_id: tenantId,
@@ -175,6 +185,141 @@ export async function createMaintenanceTicketDirect(tenantId: string, propertyId
     }
   });
   return ticket.id;
+}
+
+/** Utilisateur sans aucune appartenance a une agence (ni role), avec un jeton d'acces valide. */
+export async function createOutsiderUser(emailPrefix: string): Promise<TestUser> {
+  const email = `${emailPrefix}-${randomUUID().slice(0, 8)}@isolation-test.local`;
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: null,
+      fullName: `${emailPrefix} (test isolation)`,
+      globalRole: 'USER',
+      emailVerified: true,
+      isActive: true
+    }
+  });
+  const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
+  return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
+}
+
+export interface RentalFixture {
+  propertyId: string;
+  propertyReference: string;
+  leaseId: string;
+  leaseNumber: string;
+  renterName: string;
+  installmentId: string;
+  paymentId: string;
+  documentId: string;
+}
+
+/**
+ * Cree, directement en base, un bail complet pour l'agence donnee : bien,
+ * locataire (utilisateur + client), bail, echeance payee, paiement encaisse,
+ * affectation et un document de location SANS fichier sur disque.
+ */
+export async function createRentalFixtureDirect(
+  tenantId: string,
+  createdByUserId: string,
+  label: string
+): Promise<RentalFixture> {
+  const suffix = randomUUID().slice(0, 8);
+  const property = await prisma.property.create({
+    data: {
+      tenantId,
+      internalReference: `REF-${label}-${suffix}`,
+      propertyType: PropertyType.APPARTEMENT,
+      ownershipType: PropertyOwnershipType.TENANT,
+      title: `Bien secret ${label} ${suffix}`,
+      description: `Bien de test (${label})`,
+      address: '1 rue du Test'
+    }
+  });
+  const renterName = `Locataire Secret ${label} ${suffix}`;
+  const renterUser = await prisma.user.create({
+    data: {
+      email: `renter-${label.toLowerCase()}-${suffix}@isolation-test.local`,
+      passwordHash: null,
+      fullName: renterName,
+      globalRole: 'USER',
+      emailVerified: true,
+      isActive: true
+    }
+  });
+  const client = await prisma.tenantClient.create({
+    data: { userId: renterUser.id, tenantId, clientType: 'RENTER' }
+  });
+  const leaseNumber = `BAIL-${label}-${suffix}`;
+  const lease = await prisma.rentalLease.create({
+    data: {
+      tenant_id: tenantId,
+      property_id: property.id,
+      primary_renter_client_id: client.id,
+      lease_number: leaseNumber,
+      status: 'ACTIVE',
+      start_date: new Date('2026-01-01T00:00:00.000Z'),
+      rent_amount: 100000,
+      currency: 'XOF',
+      created_by_user_id: createdByUserId
+    }
+  });
+  const installment = await prisma.rentalInstallment.create({
+    data: {
+      tenant_id: tenantId,
+      lease_id: lease.id,
+      period_year: 2026,
+      period_month: 1,
+      due_date: new Date('2026-01-05T00:00:00.000Z'),
+      status: 'PAID',
+      currency: 'XOF',
+      amount_rent: 100000,
+      amount_paid: 100000
+    }
+  });
+  const payment = await prisma.rentalPayment.create({
+    data: {
+      tenant_id: tenantId,
+      lease_id: lease.id,
+      method: 'CASH',
+      status: 'SUCCESS',
+      currency: 'XOF',
+      amount: 100000,
+      idempotency_key: `idem-${label}-${suffix}`
+    }
+  });
+  await prisma.rentalPaymentAllocation.create({
+    data: {
+      tenant_id: tenantId,
+      payment_id: payment.id,
+      installment_id: installment.id,
+      amount: 100000,
+      currency: 'XOF'
+    }
+  });
+  const document = await prisma.rentalDocument.create({
+    data: {
+      tenant_id: tenantId,
+      type: 'RENT_RECEIPT',
+      status: 'FINAL',
+      lease_id: lease.id,
+      installment_id: installment.id,
+      payment_id: payment.id,
+      document_number: `DOC-${label}-${suffix}`,
+      created_by_user_id: createdByUserId
+    }
+  });
+  return {
+    propertyId: property.id,
+    propertyReference: property.internalReference,
+    leaseId: lease.id,
+    leaseNumber,
+    renterName,
+    installmentId: installment.id,
+    paymentId: payment.id,
+    documentId: document.id
+  };
 }
 
 /** Nettoyage best-effort : supprime les agences de test et tout ce qui en depend en cascade. */
