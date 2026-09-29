@@ -58,15 +58,19 @@ Fait :
 - Correctifs : le faux fournisseur ne reconnaissait que `L-102` alors que les
   baux se numérotent `BAIL-AAAA-NNNN` (il prenait le premier bail actif) ; montants
   des cartes formatés avec la locale active.
+- Quittance et relevé : champs des modèles DOCX désormais tous fournis (PR #53
+  fusionnée) ; le rendu laissait `{{…}}` parce que les noms de champs des modèles
+  et du constructeur de contexte divergeaient. Ventilation d'un paiement : loyer,
+  puis charges, puis pénalités ; une donnée absente s'écrit « — ».
 
 Reste à faire :
 
-- **Quittance : champs non remplis** (préexistant, hors assistant) : le modèle
-  `RENT_RECEIPT` seedé attend `RECU_NUMERO`, `DATE_EMISSION`, `PERIODE_LOYER`,
-  `MONTANT_LOYER`, `MONTANT_TOTAL`, `BAILLEUR_*`… alors que
-  `document-context-builder.ts` fournit `PAIEMENT_MONTANT`, `PERIODE_MOIS`,
-  `PAIEMENT_DATE`… : le rendu (`nullGetter` de `docx-renderer.ts`) laisse `{{…}}`
-  en clair. À aligner (contexte ou modèle).
+- **Baux** (`LEASE_HABITATION`, `LEASE_COMMERCIAL`) : même défaut que la quittance
+  (environ 20 champs du modèle d'habitation non fournis par
+  `document-context-builder.ts`, le commercial délègue à l'habitation) : `{{…}}` en
+  clair dans les contrats. Non traité.
+- `RECU_NUMERO` de la quittance est le numéro de paiement ; le numéro définitif
+  `RCU-…` est attribué après le rendu.
 - `test:isolation` (base dédiée) toujours non joué avec la suite.
 - Mineurs d'audit de la PR #49 toujours ouverts.
 
