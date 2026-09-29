@@ -39,7 +39,6 @@ Pièges et décisions :
 ---
 
 ## Branche `fix/copilot-audit` — 2026-09-29
-## Branche `fix/copilot-audit` — 2026-09-29
 
 **État :** prêt à relire
 **Dernier commit :** voir `git log -1` (changements non commités au moment de la rédaction)
