@@ -77,7 +77,8 @@ vi.mock('antd', async () => {
     },
     message: {
       success: vi.fn(),
-      error: vi.fn()
+      error: vi.fn(),
+      warning: vi.fn()
     }
   };
   const appApi = {
@@ -212,5 +213,21 @@ describe('Syndics recovery page', () => {
     await waitFor(() => {
       expect(mockApiClient.post).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/relances/batch', {});
     });
+  });
+
+  it("avertit (et ne parle pas de succès) quand l'envoi d'une relance groupée a échoué", async () => {
+    mockApiClient.post.mockResolvedValue({
+      data: {
+        success: true,
+        data: { processedCalls: 1, remindersCreated: 1, createdReminderIds: ['r-1'], notificationsFailed: 1 }
+      }
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Lancer les relances groupées'));
+
+    const { message } = (await import('antd')) as any;
+    await waitFor(() => expect(message.warning).toHaveBeenCalled());
+    expect(message.success).not.toHaveBeenCalled();
   });
 });

@@ -566,6 +566,8 @@ export interface ReminderBatchResult {
   processedCalls: number;
   remindersCreated: number;
   createdReminderIds: string[];
+  /** Relances enregistrées dont l'envoi a échoué (statut Échec). */
+  notificationsFailed?: number;
 }
 
 export interface LatePaymentPenalty {
@@ -1443,7 +1445,8 @@ export interface CreateChargeScheduleRequest {
   active?: boolean;
 }
 
-export type UpdateChargeScheduleRequest = Partial<CreateChargeScheduleRequest>;
+/** Sans `active` : pause et reprise ont leurs routes (`/pause`, `/reprise`). */
+export type UpdateChargeScheduleRequest = Partial<Omit<CreateChargeScheduleRequest, 'active'>>;
 
 export interface ChargeScheduleRunResult {
   status: ChargeScheduleRunStatus;

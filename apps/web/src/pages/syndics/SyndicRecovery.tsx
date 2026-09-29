@@ -146,11 +146,21 @@ export const SyndicRecovery: React.FC = () => {
     setSubmitting(true);
     try {
       const result = await runReminderBatch(effectiveTenantId, syndicId);
-      message.success(
-        t('Relances groupées envoyées : {{remindersCreated}} relance(s) créée(s)', {
-          remindersCreated: result.remindersCreated
-        })
-      );
+      const failed = result.notificationsFailed ?? 0;
+      if (failed > 0) {
+        message.warning(
+          t('Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué', {
+            remindersCreated: result.remindersCreated,
+            failed
+          })
+        );
+      } else {
+        message.success(
+          t('Relances groupées envoyées : {{remindersCreated}} relance(s) créée(s)', {
+            remindersCreated: result.remindersCreated
+          })
+        );
+      }
       await loadData();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Envoi des relances groupées impossible'));
@@ -164,12 +174,16 @@ export const SyndicRecovery: React.FC = () => {
     const values = await manualForm.validateFields();
     setSubmitting(true);
     try {
-      await createManualReminder(effectiveTenantId, syndicId, values.chargeCallId, {
+      const reminder = await createManualReminder(effectiveTenantId, syndicId, values.chargeCallId, {
         reminderLevel: values.reminderLevel,
         channel: values.channel,
         status: 'SENT'
       });
-      message.success(t('Relance créée'));
+      if (reminder.notificationFailed) {
+        message.warning(t('Relance enregistrée, envoi échoué'));
+      } else {
+        message.success(t('Relance créée'));
+      }
       setManualOpen(false);
       manualForm.resetFields();
       await loadData();

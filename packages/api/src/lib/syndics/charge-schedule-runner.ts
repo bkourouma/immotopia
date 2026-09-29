@@ -352,7 +352,13 @@ export async function notifyUncoveredCalls(
       if (!reason) {
         sent += 1;
       } else if (reason === 'SEND_FAILED' && result.skipDetail) {
-        byReason[reason].push(`${call.lotNumber} (${result.skipDetail})`);
+        // Le motif technique du serveur mail (ex. « 554 … ») va aux journaux, pas
+        // à l'utilisateur : les notes affichées disent seulement « échec de l'envoi ».
+        logger.warn('Scheduled charge call notice send failed', {
+          chargeCallId: call.id,
+          detail: result.skipDetail
+        });
+        byReason[reason].push(call.lotNumber);
       } else {
         byReason[reason].push(call.lotNumber);
       }

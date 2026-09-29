@@ -424,6 +424,25 @@ describe('SyndicChargeSchedules — onglet Programmation (lot S4)', () => {
     await waitFor(() => expect(resumeChargeSchedule).toHaveBeenCalledWith('tenant-1', 'syndic-1', 'sched-1'));
   });
 
+  it("modifie une programmation sans envoyer la clé `active` (refusée par l'API stricte)", async () => {
+    listChargeSchedules.mockResolvedValue([SCHEDULE_MONTHLY]);
+    previewChargeSchedule.mockResolvedValue({ scheduleId: 'sched-1', active: true, periods: [] });
+    updateChargeSchedule.mockResolvedValue(SCHEDULE_MONTHLY);
+    mount();
+
+    fireEvent.click(await screen.findByText('Ouvrir'));
+    const labelInput = await screen.findByLabelText('Libellé');
+    fireEvent.change(labelInput, { target: { value: 'Charges renommées' } });
+    fireEvent.click(screen.getByText('Enregistrer'));
+
+    await waitFor(() => expect(updateChargeSchedule).toHaveBeenCalled());
+    const payload = updateChargeSchedule.mock.calls[0][3] as Record<string, unknown>;
+    expect(payload).toMatchObject({ label: 'Charges renommées' });
+    expect(payload).not.toHaveProperty('active');
+    expect(pauseChargeSchedule).not.toHaveBeenCalled();
+    expect(resumeChargeSchedule).not.toHaveBeenCalled();
+  });
+
   it('supprimer une programmation déjà émise la désactive au lieu de la supprimer', async () => {
     listChargeSchedules
       .mockResolvedValueOnce([SCHEDULE_MONTHLY])

@@ -140,7 +140,8 @@ import {
   renameSyndicateFundSchema,
   adjustSyndicateFundBalanceSchema
 } from '../lib/syndics/schemas';
-import { notifyChargeCall, notifyChargeCallReminder, notifyMeetingConvocation } from '../lib/syndics/notifications';
+import { notifyChargeCall, notifyMeetingConvocation } from '../lib/syndics/notifications';
+import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
 import { badRequest, notFound } from '../lib/errors';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
@@ -1293,19 +1294,13 @@ export const createManualReminderHandler = asyncHandler(async (req: Request, res
 
   const parsed = createManualReminderSchema.parse(req.body ?? {});
   const reminder = await createManualReminderForChargeCall(tenantId, syndicateId, chargeCallId, parsed);
-  try {
-    await notifyChargeCallReminder(reminder.id);
-  } catch (notifyError) {
-    logger.warn('Manual reminder created but notification failed', {
-      reminderId: reminder.id,
-      chargeId: chargeCallId,
-      notifyError
-    });
-  }
+  // Un échec d'envoi n'annule pas la relance : elle passe à FAILED et la réponse le dit.
+  const { notificationFailed } = await deliverReminderNotification(reminder.id, tenantId);
 
   res.status(201).json({
     success: true,
-    data: reminder
+    data: notificationFailed ? { ...reminder, status: 'FAILED' } : reminder,
+    notificationFailed
   });
 });
 
@@ -1325,21 +1320,15 @@ export const runReminderBatchHandler = asyncHandler(async (req: Request, res: Re
     remindersCreated: result.remindersCreated,
     actorUserId: req.user?.userId
   });
+  let notificationsFailed = 0;
   for (const reminderId of result.createdReminderIds) {
-    try {
-      await notifyChargeCallReminder(reminderId);
-    } catch (notifyError) {
-      logger.warn('Batch reminder created but notification failed', {
-        reminderId,
-        syndicId: syndicateId,
-        notifyError
-      });
-    }
+    const { notificationFailed } = await deliverReminderNotification(reminderId, tenantId);
+    if (notificationFailed) notificationsFailed += 1;
   }
 
   res.json({
     success: true,
-    data: result
+    data: { ...result, notificationsFailed }
   });
 });
 

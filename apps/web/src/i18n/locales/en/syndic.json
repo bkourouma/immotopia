@@ -1086,5 +1086,7 @@
   "Vote enregistré": "Vote recorded",
   "Vote impossible": "The vote failed",
   "Votes (lots) :": "Votes (units):",
-  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "You can mix BUILDING, villa, office, retail unit, and so on."
+  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "You can mix BUILDING, villa, office, retail unit, and so on.",
+  "Relance enregistrée, envoi échoué": "Reminder saved, sending failed",
+  "Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué": "Reminders saved: {{remindersCreated}} created, {{failed}} of them could not be sent"
 }
