@@ -38,6 +38,35 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/immocopilot` — 2026-09-29
+
+**État :** en cours — plan validé, aucun code écrit
+**Dernier commit :** voir `git log -1` sur la branche (worktree `.claude/worktrees/immocopilot` en local ; session déplacée dans le cloud)
+
+Fait :
+
+- PRD et spec 022 commités ; plan d'implémentation Opus vérifié contre le
+  code : `docs/architecture/PLAN_IMMOCOPILOT.md` (table PRD vs réalité, décisions,
+  contrats figés, lots A–G avec territoires disjoints, commandes, recette).
+
+Reste à faire :
+
+- Exécuter les lots dans l'ordre du plan §9 (A+B, puis C/D/F1/F2 en parallèle,
+  puis E, F3, G), sous-agents **Sonnet** ; relecture `code-reviewer` +
+  `security-auditor` ; wiki xlsx + `wiki:export` ; recette démo avec
+  `AI_PROVIDER=fake` ; PR vers `main`.
+
+Pièges et décisions :
+
+- Le PRD est faux sur les permissions, les enums, le générateur (quittance =
+  paiement, DOCX, pas d'avis d'échéance) et l'authentification (cookie, pas de
+  Bearer) : suivre le plan, pas le PRD.
+- Assistant désactivé par défaut (`AI_PROVIDER=disabled`) ; jamais d'exécution
+  d'écriture par le LLM, seulement par `POST /ai/actions/execute` avec jeton.
+- Un cloud n'a ni `.env` ni base locale : `test:isolation` et la recette
+  navigateur demandent `DATABASE_URL_TEST` / `demo:sync` ; ne pas les déclarer
+  vérifiés sans les avoir joués.
+
 ## Branche `docs/scenario-syndic-exercice-complet` — 2026-09-28
 
 **État :** prêt à relire (documentation seule)
