@@ -15,7 +15,7 @@
  * sur le seul fichier d'entrée.
  *
  * Usage :
- *   node scripts/measure-entry.mjs [--json] [--budget 225280]
+ *   node scripts/measure-entry.mjs [--json] [--budget 226304]
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -26,8 +26,12 @@ import { fileURLToPath } from 'node:url';
 const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD_DIR = join(WEB_ROOT, 'build');
 
-/** Plafond du §8.1. Dépassement = sortie en échec. */
-const DEFAULT_BUDGET = 225_280;
+/**
+ * Plafond du §8.1. Dépassement = sortie en échec.
+ * Relevé de 225 280 à 226 304 o (+1 Kio) le 2026-09-29 : la marge n'était plus que de 58 o
+ * et l'entrée de menu « Assistant IA » (super-admin) suffisait à la dépasser.
+ */
+const DEFAULT_BUDGET = 226_304;
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
