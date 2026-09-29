@@ -38,6 +38,49 @@ Pièges et décisions :
 
 ---
 
+## Branche `test/recette-operateur-integre` — 2026-09-29
+
+**État :** en cours (recette interrompue par une limite d'usage) — pas encore de PR
+**Dernier commit :** voir `git log -1` sur la branche
+
+Fait :
+
+- Scénario complet du pack « Opérateur intégré » : `docs/recette/operateur-integre/`
+  (README + 9 parties B à J, 138 étapes, ~550 sous-fonctionnalités du wiki).
+- Instance de recette isolée (sans `.env`, sans e-mail/SMS/paiement réel) : PostgreSQL jetable
+  port 55433 (base `immotopia_oi`, cluster dans le scratchpad de la session), API 8811, web 3311,
+  récepteur SMTP 2599 (boîte `scratchpad/mails/INDEX.md`). Lanceurs `api-oi`, `web-oi`, `smtp-oi`
+  dans `.claude/launch.json` du checkout principal (non commité, chemins du scratchpad).
+- Parties jouées : 01 (B.1–B.15), 02 (C.1–C.13), 03 (D.1–D.15), 04 (E.1–E.21), 05 (F.1–F.16).
+- Fiches du bus `BUG-2026-09-28-001` à `-030` : corrigées, « prêt au retest » (invitations,
+  lastLoginAt, écrans super-admin, menus par permission, refus de droits, biens, propriétaires et
+  mandats, CRM, visites, baux, échéances, honoraires, dépôt, relevés, portails, droits du
+  comptable). `BUG-011` corrigé par une autre branche (`63a68506`, cherry-pick ici).
+
+Reste à faire :
+
+- Corriger les fiches `BUG-2026-09-29-001` à `-006` (finance : règlements fournisseur non listés
+  et sortis de la caisse 5711 quel que soit le mode, aucun contrôle de solde de trésorerie
+  (caisse à -216 000), opérateur Mobile Money en saisie libre, balances/relevé agence faux,
+  actions de validation visibles sans droit).
+- Retest navigateur de tout ce qui est « prêt au retest » (aucun retest fait) ; jouer les parties
+  06 à 09 ; rejouer C.7/C.8 (mandat, indivision) et D.9–D.14 (ventes) ; F.15/F.16 après la partie 07.
+- Reporter `CORRECTIONS-A-REPORTER.md` dans les fichiers du scénario.
+- Avant la PR : `code-reviewer` + `security-auditor` (menus par permission, `sync-owners`, mandat de
+  gestion et `tenantId` du bien, RBAC), classeur `docs/fonctionnalites/` + `npm run wiki:export`,
+  relecture des traductions arabes ajoutées, `db:seed:rbac` en base existante (droits du Comptable).
+- Décision métier à confirmer : Comptable en lecture seule sur le locatif (BUG-022).
+
+Pièges et décisions :
+
+- Machine mise en veille des heures : relancer PostgreSQL
+  (`pg_ctl -D <scratchpad>/pg-oi -o "-p 55433" start`), puis `api-oi`, `web-oi`, `smtp-oi`.
+- `i18n:extract` et `i18n-migrate --only` peuvent vider des catalogues : les catalogues « M » sans
+  ligne changée sont un artefact CRLF, ne pas les commiter.
+- La PR #41 (invitations) est fusionnée dans `main` mais absente de cette branche :
+  `resendInvitation` y est réorganisé, prévoir un conflit en fusionnant `main`.
+- Testeur navigateur (panneau masqué) : `form_input` et clics par ref.
+
 ## Branche `fix/patrimoine-suite-p0` — 2026-09-28
 
 **État :** prêt à relire — PR #40 vers `main`
