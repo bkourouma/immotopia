@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
-import { prisma } from '../utils/database';
 import {
   createTicket,
   getTenantTickets,
@@ -10,21 +9,18 @@ import {
   updateTenantTicket,
   getAllTickets,
   updateTicket,
-  getPropertyMaintenanceHistory
+  getPropertyMaintenanceHistory,
+  listActiveLeasesForProperty
 } from '../services/maintenance-ticket-service';
-import { addComment, addManagerComment } from '../services/maintenance-comment-service';
+import { addRequesterComment, addManagerComment } from '../services/maintenance-comment-service';
+import { UnauthorizedError, asyncHandler } from '../middleware/error-middleware';
 import {
   createTicketSchema,
   createCommentSchema,
   updateTicketSchema,
   updateTenantTicketSchema
 } from '../types/maintenance-types';
-import {
-  MaintenanceTicketCommentAuthorType,
-  MaintenanceTicketStatus,
-  MaintenanceTicketPriority,
-  MaintenanceTicketCategory
-} from '@prisma/client';
+import { MaintenanceTicketStatus, MaintenanceTicketPriority, MaintenanceTicketCategory } from '@prisma/client';
 
 /**
  * Repond directement quand l'erreur porte deja son statut HTTP.
@@ -36,7 +32,10 @@ import {
  * elles-memes leur statut ; c'est cette reponse-la qui prime.
  */
 function repondreErreurPortee(res: Response, error: unknown): boolean {
-  const statut = Number((error as { status?: unknown })?.status);
+  // `status` : erreurs de `lib/errors` ; `statusCode` : classes typées de
+  // `middleware/error-middleware` (AppError).
+  const porteur = error as { status?: unknown; statusCode?: unknown };
+  const statut = Number(porteur?.status ?? porteur?.statusCode);
   if (!Number.isInteger(statut) || statut < 400 || statut >= 600) {
     return false;
   }
@@ -47,6 +46,31 @@ function repondreErreurPortee(res: Response, error: unknown): boolean {
   });
   return true;
 }
+
+/**
+ * Utilisateur authentifié des routes « mes demandes ».
+ *
+ * C'est lui, et lui seul, qui délimite ce qu'un collaborateur voit et
+ * modifie sur ces routes : jamais un `tenantContactId` ou un identifiant
+ * d'utilisateur reçu dans la requête.
+ */
+function requesterUserIdOf(req: Request): string {
+  const userId = req.user?.userId;
+  if (!userId) {
+    throw new UnauthorizedError();
+  }
+  return userId;
+}
+
+/**
+ * Baux actifs d'un bien (choix du bail à la création d'un ticket).
+ * GET /tenants/:tenantId/maintenance/tenant/properties/:propertyId/active-leases
+ */
+export const listActiveLeasesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const data = await listActiveLeasesForProperty(tenantId, req.params.propertyId);
+  res.status(200).json({ success: true, data });
+});
 
 /**
  * Create a new maintenance ticket
@@ -110,7 +134,7 @@ export async function createTicketHandler(req: Request, res: Response): Promise<
 export async function listTenantTicketsHandler(req: Request, res: Response): Promise<void> {
   try {
     const tenantId = getTenantIdFromRequest(req);
-    const actorContactId = req.query.tenantContactId as string | undefined;
+    const requesterUserId = requesterUserIdOf(req);
 
     const filters: any = {};
     if (req.query.status) {
@@ -119,9 +143,6 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
     if (req.query.propertyId) {
       filters.propertyId = req.query.propertyId as string;
     }
-    if (actorContactId) {
-      filters.tenantContactId = actorContactId;
-    }
     if (req.query.leaseId) {
       filters.leaseId = req.query.leaseId as string;
     }
@@ -129,7 +150,7 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
 
-    const result = await getTenantTickets(tenantId, filters, { page, limit });
+    const result = await getTenantTickets(tenantId, requesterUserId, filters, { page, limit });
 
     // Transform tickets from snake_case to camelCase
     const transformedTickets = result.tickets.map(transformTicketFields);
@@ -278,9 +299,8 @@ export async function getTenantTicketHandler(req: Request, res: Response): Promi
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { ticketId } = req.params;
-    const actorContactId = req.query.tenantContactId as string | undefined;
 
-    const ticket = await getTicketById(tenantId, ticketId, actorContactId);
+    const ticket = await getTicketById(tenantId, ticketId, requesterUserIdOf(req));
     const transformedTicket = transformTicket(ticket);
 
     res.status(200).json({
@@ -319,12 +339,11 @@ export async function cancelTicketHandler(req: Request, res: Response): Promise<
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { ticketId } = req.params;
-    const actorUserId = req.user?.userId;
-    const actorContactId = req.body.tenantContactId || (req.query.tenantContactId as string | undefined);
+    const requesterUserId = requesterUserIdOf(req);
 
     // If only status: CANCELED is provided, handle as cancellation
     if (req.body.status === 'CANCELED' && Object.keys(req.body).length === 1 + (req.body.tenantContactId ? 1 : 0)) {
-      const ticket = await cancelTicket(tenantId, ticketId, actorContactId, actorUserId);
+      const ticket = await cancelTicket(tenantId, ticketId, requesterUserId);
 
       res.status(200).json({
         success: true,
@@ -343,7 +362,7 @@ export async function cancelTicketHandler(req: Request, res: Response): Promise<
     // Validate request body
     const validatedData = updateTenantTicketSchema.parse(updateData);
 
-    const ticket = await updateTenantTicket(tenantId, ticketId, validatedData, actorContactId, actorUserId);
+    const ticket = await updateTenantTicket(tenantId, ticketId, validatedData, requesterUserId);
 
     res.status(200).json({
       success: true,
@@ -395,13 +414,12 @@ export async function updateTenantTicketHandler(req: Request, res: Response): Pr
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { ticketId } = req.params;
-    const actorUserId = req.user?.userId;
-    const actorContactId = req.body.tenantContactId || (req.query.tenantContactId as string | undefined);
+    const requesterUserId = requesterUserIdOf(req);
 
     // Validate request body
     const validatedData = updateTenantTicketSchema.parse(req.body);
 
-    const ticket = await updateTenantTicket(tenantId, ticketId, validatedData, actorContactId, actorUserId);
+    const ticket = await updateTenantTicket(tenantId, ticketId, validatedData, requesterUserId);
 
     res.status(200).json({
       success: true,
@@ -450,10 +468,9 @@ export async function deleteTicketHandler(req: Request, res: Response): Promise<
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { ticketId } = req.params;
-    const actorUserId = req.user?.userId;
-    const actorContactId = req.body.tenantContactId || (req.query.tenantContactId as string | undefined);
+    const requesterUserId = requesterUserIdOf(req);
 
-    await deleteTicket(tenantId, ticketId, actorContactId, actorUserId);
+    await deleteTicket(tenantId, ticketId, requesterUserId);
 
     res.status(200).json({
       success: true,
@@ -502,59 +519,15 @@ export async function addCommentHandler(req: Request, res: Response): Promise<vo
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { ticketId } = req.params;
-    const actorUserId = req.user?.userId;
-    let actorContactId = req.body.tenantContactId || (req.query.tenantContactId as string | undefined);
-
-    // If tenantContactId not provided, try to get it from the ticket or user
-    if (!actorContactId) {
-      // Get ticket directly from Prisma to access tenant_contact_id
-      const ticket = await prisma.maintenanceTicket.findFirst({
-        where: {
-          id: ticketId,
-          tenant_id: tenantId
-        },
-        select: {
-          tenant_contact_id: true
-        }
-      });
-
-      if (ticket?.tenant_contact_id) {
-        actorContactId = ticket.tenant_contact_id;
-      } else if (actorUserId) {
-        // If ticket doesn't have tenant_contact_id, try to find contact by user email
-        const user = await prisma.user.findUnique({
-          where: { id: actorUserId },
-          select: { email: true }
-        });
-
-        if (user?.email) {
-          const contact = await prisma.crmContact.findFirst({
-            where: {
-              tenantId: tenantId,
-              email: user.email
-            },
-            select: { id: true }
-          });
-
-          if (contact) {
-            actorContactId = contact.id;
-          }
-        }
-      }
-    }
+    const requesterUserId = requesterUserIdOf(req);
 
     // Validate request body
     const validatedData = createCommentSchema.parse(req.body);
 
-    // For tenant comments, use TENANT author type
-    const comment = await addComment(
-      tenantId,
-      ticketId,
-      validatedData,
-      MaintenanceTicketCommentAuthorType.TENANT,
-      undefined, // No user for tenant comments
-      actorContactId
-    );
+    // Le demandeur commente SA demande : l'auteur est l'utilisateur connecté
+    // (un collaborateur d'agence n'a pas de fiche contact), jamais un
+    // identifiant du corps de la requête.
+    const comment = await addRequesterComment(tenantId, ticketId, validatedData, requesterUserId);
 
     res.status(201).json({
       success: true,

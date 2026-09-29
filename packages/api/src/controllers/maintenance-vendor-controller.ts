@@ -10,6 +10,7 @@ import {
   getActiveVendors
 } from '../services/maintenance-vendor-service';
 import { createVendorSchema, updateVendorSchema } from '../types/maintenance-types';
+import { ConflictError } from '../middleware/error-middleware';
 
 /**
  * Transform vendor from Prisma format (snake_case) to frontend format (camelCase)
@@ -59,7 +60,7 @@ export async function createVendorHandler(req: Request, res: Response): Promise<
   } catch (error) {
     console.error('Error creating vendor:', error);
     if (error instanceof Error) {
-      if (error.message.includes('existe déjà')) {
+      if (error instanceof ConflictError) {
         res.status(409).json({
           success: false,
           error: 'Conflict',
@@ -194,7 +195,7 @@ export async function updateVendorHandler(req: Request, res: Response): Promise<
         });
         return;
       }
-      if (error.message.includes('existe déjà')) {
+      if (error instanceof ConflictError) {
         res.status(409).json({
           success: false,
           error: 'Conflict',

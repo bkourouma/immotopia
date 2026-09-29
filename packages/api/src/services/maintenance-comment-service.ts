@@ -38,8 +38,11 @@ export async function addComment(
     throw new Error('Un utilisateur est requis pour les commentaires de type MANAGER');
   }
 
-  if (authorType === MaintenanceTicketCommentAuthorType.TENANT && !authorContactId) {
-    throw new Error('Un contact est requis pour les commentaires de type TENANT');
+  // Un commentaire côté « demandeur » est signé par une fiche contact (portail
+  // locataire) ou par l'utilisateur connecté (collaborateur d'agence qui suit
+  // sa propre demande, sans fiche contact).
+  if (authorType === MaintenanceTicketCommentAuthorType.TENANT && !authorContactId && !authorUserId) {
+    throw new Error("Impossible d'identifier l'auteur du commentaire");
   }
 
   // Le contact auteur (venant du corps de la requête ou de la résolution du
@@ -144,6 +147,29 @@ export async function getTicketComments(tenantId: string, ticketId: string) {
   });
 
   return comments;
+}
+
+/**
+ * Commentaire du demandeur sur SA demande (routes « mes demandes »).
+ *
+ * L'auteur est l'utilisateur authentifié, jamais un identifiant du corps de la
+ * requête ; le ticket doit avoir été déclaré par lui, sinon « introuvable »
+ * (même réponse qu'un ticket d'une autre agence).
+ */
+export async function addRequesterComment(
+  tenantId: string,
+  ticketId: string,
+  data: CreateCommentRequest,
+  requesterUserId: string
+) {
+  const own = await prisma.maintenanceTicket.findFirst({
+    where: { id: ticketId, tenant_id: tenantId, created_by_user_id: requesterUserId },
+    select: { id: true }
+  });
+  if (!own) {
+    throw new Error('Ticket introuvable');
+  }
+  return addComment(tenantId, ticketId, data, MaintenanceTicketCommentAuthorType.TENANT, requesterUserId, undefined);
 }
 
 /**

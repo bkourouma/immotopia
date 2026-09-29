@@ -9,6 +9,7 @@ import {
 import { requireAnyPermission } from '../middleware/rbac-middleware';
 import {
   createTicketHandler,
+  listActiveLeasesHandler,
   listTenantTicketsHandler,
   getTenantTicketHandler,
   cancelTicketHandler,
@@ -66,7 +67,12 @@ tenantRouter.use(requireTenantAccess);
 tenantRouter.use(enforceTenantIsolation);
 tenantRouter.use(requireMaintenanceTenantPermission);
 
-// Ticket routes
+// Baux actifs d'un bien : choix du bail à la création d'un ticket, sans exiger
+// de permission locative (un Agent n'a que MAINTENANCE_TENANT).
+tenantRouter.get('/properties/:propertyId/active-leases', listActiveLeasesHandler);
+
+// Ticket routes — « mes demandes » : le serveur ne montre et ne modifie que les
+// tickets déclarés par l'utilisateur authentifié (voir maintenance-ticket-service).
 tenantRouter.get('/tickets', listTenantTicketsHandler);
 tenantRouter.post('/tickets', createTicketHandler);
 tenantRouter.get('/tickets/:ticketId', getTenantTicketHandler);

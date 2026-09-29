@@ -8,6 +8,7 @@ import {
   getMaintenanceAttachmentFileForTenantPortal
 } from '../lib/maintenance/attachment-files';
 import { sendPrivateFile } from '../lib/files/private-files';
+import { hasPermission } from '../services/permission-service';
 
 /**
  * Upload attachment for a ticket
@@ -29,7 +30,8 @@ export async function uploadAttachmentHandler(req: Request, res: Response): Prom
       return;
     }
 
-    const attachment = await uploadAttachment(tenantId, ticketId, req.file, actorUserId, actorContactId);
+    // Route « mes demandes » : on ne dépose que sur SA demande.
+    const attachment = await uploadAttachment(tenantId, ticketId, req.file, actorUserId, actorContactId, actorUserId);
 
     res.status(201).json({
       success: true,
@@ -77,7 +79,18 @@ export async function uploadAttachmentHandler(req: Request, res: Response): Prom
  */
 export const downloadAttachmentHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = getTenantIdFromRequest(req);
-  const file = await getMaintenanceAttachmentFileForTenant(tenantId, req.params.attachmentId);
+  const userId = req.user?.userId;
+  if (!userId) {
+    throw new ForbiddenError();
+  }
+  // La route admet MAINTENANCE_ADMIN ou MAINTENANCE_TENANT : sans la gestion,
+  // seules les pièces de SES propres demandes sortent.
+  const isManager = await hasPermission(userId, 'MAINTENANCE_ADMIN', tenantId);
+  const file = await getMaintenanceAttachmentFileForTenant(
+    tenantId,
+    req.params.attachmentId,
+    isManager ? undefined : userId
+  );
   sendPrivateFile(res, file);
 });
 

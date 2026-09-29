@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Typography, Space, Tag, Button, Popconfirm } from 'antd';
+import { Card, Typography, Space, Tag, Button } from 'antd';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Ticket, MaintenanceTicketStatus } from '../../types/maintenance-types';
 import { TicketStatusBadge } from './TicketStatusBadge';
@@ -50,6 +50,9 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
     }
   };
 
+  // Une seule confirmation : c'est l'écran qui porte `onDelete` (TicketList) qui
+  // la demande, avec le détail de ce qui disparaît. Le bouton ne double pas
+  // cette question d'une bulle (BUG-2026-09-29-009).
   const handleDelete = (e?: React.MouseEvent) => {
     if (e) {
       e.stopPropagation();
@@ -73,28 +76,16 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
                 </Button>
               ) : null,
               canDelete && onDelete ? (
-                <Popconfirm
+                <Button
                   key="delete"
-                  title={t('Supprimer définitivement le ticket')}
-                  description={t(
-                    'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible.'
-                  )}
-                  onConfirm={handleDelete}
-                  onCancel={e => e?.stopPropagation()}
-                  okText={t('Oui, supprimer')}
-                  cancelText={t('Non')}
-                  okButtonProps={{ danger: true }}
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={handleDelete}
+                  style={{ width: '100%' }}
                 >
-                  <Button
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={e => e.stopPropagation()}
-                    style={{ width: '100%' }}
-                  >
-                    {t('Supprimer')}
-                  </Button>
-                </Popconfirm>
+                  {t('Supprimer')}
+                </Button>
               ) : null
             ].filter(Boolean)
           : undefined

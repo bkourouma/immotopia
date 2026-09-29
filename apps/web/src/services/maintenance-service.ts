@@ -25,6 +25,13 @@ export type {
   TicketResponse
 } from '../types/maintenance-types';
 
+/** Bail actif proposé à la création d'un ticket. */
+export interface ActiveLease {
+  id: string;
+  leaseNumber: string;
+  startDate: string;
+}
+
 /**
  * Tenant maintenance service
  * All functions require tenantId as a parameter
@@ -33,14 +40,10 @@ export const tenantMaintenanceService = {
   /**
    * List tickets for tenant
    */
-  async listTickets(
-    tenantId: string,
-    filters?: TicketFilters
-  ): Promise<TicketListResponse> {
+  async listTickets(tenantId: string, filters?: TicketFilters): Promise<TicketListResponse> {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.propertyId) params.append('propertyId', filters.propertyId);
-    if (filters?.tenantContactId) params.append('tenantContactId', filters.tenantContactId);
     if (filters?.leaseId) params.append('leaseId', filters.leaseId);
     if (filters?.page) params.append('page', filters.page.toString());
     if (filters?.limit) params.append('limit', filters.limit.toString());
@@ -52,31 +55,31 @@ export const tenantMaintenanceService = {
   },
 
   /**
+   * Baux actifs d'un bien, sous la permission maintenance : l'écran « Nouveau
+   * ticket » n'a pas à exiger `RENTAL_LEASES_VIEW` (un Agent ne l'a pas).
+   */
+  async listActiveLeases(tenantId: string, propertyId: string): Promise<ActiveLease[]> {
+    const response = await apiClient.get<{ success: boolean; data: ActiveLease[] }>(
+      `/tenants/${tenantId}/maintenance/tenant/properties/${propertyId}/active-leases`
+    );
+    return response.data.data;
+  },
+
+  /**
    * Create a new ticket
    */
-  async createTicket(
-    tenantId: string,
-    data: CreateTicketRequest,
-    tenantContactId?: string
-  ): Promise<TicketResponse> {
-    const response = await apiClient.post<TicketResponse>(
-      `/tenants/${tenantId}/maintenance/tenant/tickets`,
-      {
-        ...data,
-        tenantContactId
-      }
-    );
+  async createTicket(tenantId: string, data: CreateTicketRequest, tenantContactId?: string): Promise<TicketResponse> {
+    const response = await apiClient.post<TicketResponse>(`/tenants/${tenantId}/maintenance/tenant/tickets`, {
+      ...data,
+      tenantContactId
+    });
     return response.data;
   },
 
   /**
    * Get ticket by ID with full details
    */
-  async getTicket(
-    tenantId: string,
-    ticketId: string,
-    tenantContactId?: string
-  ): Promise<TicketResponse> {
+  async getTicket(tenantId: string, ticketId: string, tenantContactId?: string): Promise<TicketResponse> {
     const params = new URLSearchParams();
     if (tenantContactId) params.append('tenantContactId', tenantContactId);
 
@@ -115,11 +118,7 @@ export const tenantMaintenanceService = {
   /**
    * Cancel a ticket
    */
-  async cancelTicket(
-    tenantId: string,
-    ticketId: string,
-    tenantContactId?: string
-  ): Promise<TicketResponse> {
+  async cancelTicket(tenantId: string, ticketId: string, tenantContactId?: string): Promise<TicketResponse> {
     const response = await apiClient.patch<TicketResponse>(
       `/tenants/${tenantId}/maintenance/tenant/tickets/${ticketId}`,
       {
@@ -161,7 +160,7 @@ export const tenantMaintenanceService = {
     if (tenantContactId) {
       body.tenantContactId = tenantContactId;
     }
-    
+
     const response = await apiClient.post<{ success: boolean; data: Comment }>(
       `/tenants/${tenantId}/maintenance/tenant/tickets/${ticketId}/comments`,
       body
@@ -238,9 +237,7 @@ export const managerMaintenanceService = {
    * Get ticket by ID with full details (manager view)
    */
   async getTicket(tenantId: string, ticketId: string): Promise<TicketResponse> {
-    const response = await apiClient.get<TicketResponse>(
-      `/tenants/${tenantId}/maintenance/admin/tickets/${ticketId}`
-    );
+    const response = await apiClient.get<TicketResponse>(`/tenants/${tenantId}/maintenance/admin/tickets/${ticketId}`);
     return response.data;
   },
 
@@ -268,11 +265,7 @@ export const managerMaintenanceService = {
   /**
    * Add a manager comment to a ticket
    */
-  async addComment(
-    tenantId: string,
-    ticketId: string,
-    content: string
-  ): Promise<{ success: boolean; data: Comment }> {
+  async addComment(tenantId: string, ticketId: string, content: string): Promise<{ success: boolean; data: Comment }> {
     const response = await apiClient.post<{ success: boolean; data: Comment }>(
       `/tenants/${tenantId}/maintenance/admin/tickets/${ticketId}/comments`,
       { content }

@@ -11,6 +11,8 @@ import * as fs from 'fs/promises';
  * @param file - Uploaded file (from multer)
  * @param actorUserId - User uploading (optional)
  * @param actorContactId - Contact uploading (optional)
+ * @param requesterUserId - Routes « mes demandes » : le ticket doit avoir été
+ *   déclaré par cet utilisateur (sinon « introuvable »)
  * @returns Created attachment record
  */
 export async function uploadAttachment(
@@ -18,13 +20,15 @@ export async function uploadAttachment(
   ticketId: string,
   file: Express.Multer.File,
   actorUserId?: string,
-  actorContactId?: string
+  actorContactId?: string,
+  requesterUserId?: string
 ) {
   // Verify ticket exists and belongs to tenant
   const ticket = await prisma.maintenanceTicket.findFirst({
     where: {
       id: ticketId,
-      tenant_id: tenantId
+      tenant_id: tenantId,
+      ...(requesterUserId ? { created_by_user_id: requesterUserId } : {})
     }
   });
 

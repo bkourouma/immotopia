@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { validateStatusTransition } from '../utils/maintenance-validators';
 import { badRequest } from '../lib/errors';
+import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { sendTicketCreatedNotification, sendStatusChangeNotification } from './maintenance-notification-service';
 
 async function ensureMaintenanceVendorMirrorFromServiceProvider(tenantId: string, vendorId: string) {
@@ -150,6 +151,36 @@ async function validateActiveLease(
 }
 
 /**
+ * Baux actifs d'un bien de l'agence, pour l'écran « Nouveau ticket ».
+ *
+ * L'écran lisait `GET …/rental/leases`, réservé à `RENTAL_LEASES_VIEW` : un
+ * Agent (qui n'a que `MAINTENANCE_TENANT` et `PROPERTIES_VIEW`) recevait un
+ * 403 et l'écran concluait à tort « pas de bail actif ». Cette lecture, sous la
+ * permission maintenance, ne renvoie que ce qu'il faut pour choisir le bail
+ * (numéro, date de début), sans locataire ni montant. Un bien d'une autre
+ * agence répond « introuvable ».
+ */
+export async function listActiveLeasesForProperty(tenantId: string, propertyId: string) {
+  await getPropertyForTenant(propertyId, tenantId);
+
+  const leases = await prisma.rentalLease.findMany({
+    where: {
+      tenant_id: tenantId,
+      property_id: propertyId,
+      status: RentalLeaseStatus.ACTIVE
+    },
+    select: { id: true, lease_number: true, start_date: true },
+    orderBy: { start_date: 'desc' }
+  });
+
+  return leases.map(lease => ({
+    id: lease.id,
+    leaseNumber: lease.lease_number,
+    startDate: lease.start_date
+  }));
+}
+
+/**
  * Create a new maintenance ticket
  * @param tenantId - Tenant ID (required for isolation)
  * @param data - Ticket creation data
@@ -178,7 +209,7 @@ export async function createTicket(
   }
 
   // Validate active lease for property
-  await validateActiveLease(tenantId, data.propertyId, actorContactId, data.leaseId);
+  const activeLease = await validateActiveLease(tenantId, data.propertyId, actorContactId, data.leaseId);
 
   // Ticket and its first history entry are one unit of work: a failure between
   // the two used to leave a ticket with no status history.
@@ -187,7 +218,8 @@ export async function createTicket(
       data: {
         tenant_id: tenantId,
         property_id: data.propertyId,
-        lease_id: data.leaseId || null,
+        // Le bail retrouvé par le serveur quand l'écran n'en désigne aucun.
+        lease_id: activeLease.id,
         tenant_contact_id: actorContactId || null,
         created_by_user_id: actorUserId || null,
         created_by_contact_id: actorContactId || null,
@@ -276,18 +308,26 @@ export async function createTicket(
 }
 
 /**
- * Get tickets for a tenant (filtered by contact/lease)
+ * « Mes demandes » : les tickets déclarés par `requesterUserId`.
+ *
+ * Le demandeur vient de la session, jamais de la requête : la liste ne se
+ * restreignait qu'à un `tenantContactId` fourni par le client ; absent, tout
+ * collaborateur ayant `MAINTENANCE_TENANT` voyait tous les tickets de
+ * l'agence, ceux des locataires compris. Le traitement des tickets de
+ * l'agence relève des routes `admin`.
+ *
  * @param tenantId - Tenant ID
- * @param filters - Filter options (status, propertyId, tenantContactId, leaseId)
+ * @param requesterUserId - Utilisateur authentifié (obligatoire)
+ * @param filters - Filter options (status, propertyId, leaseId)
  * @param pagination - Pagination options (page, limit)
  * @returns List of tickets
  */
 export async function getTenantTickets(
   tenantId: string,
+  requesterUserId: string,
   filters?: {
     status?: MaintenanceTicketStatus;
     propertyId?: string;
-    tenantContactId?: string;
     leaseId?: string;
   },
   pagination?: {
@@ -300,7 +340,8 @@ export async function getTenantTickets(
   const skip = (page - 1) * limit;
 
   const where: any = {
-    tenant_id: tenantId
+    tenant_id: tenantId,
+    created_by_user_id: requesterUserId
   };
 
   if (filters?.status) {
@@ -309,10 +350,6 @@ export async function getTenantTickets(
 
   if (filters?.propertyId) {
     where.property_id = filters.propertyId;
-  }
-
-  if (filters?.tenantContactId) {
-    where.tenant_contact_id = filters.tenantContactId;
   }
 
   if (filters?.leaseId) {
@@ -362,16 +399,18 @@ export async function getTenantTickets(
  * Get ticket by ID with full details
  * @param tenantId - Tenant ID
  * @param ticketId - Ticket ID
- * @param tenantContactId - Tenant contact ID (for access validation)
+ * @param requesterUserId - Si fourni (routes « mes demandes »), le ticket doit
+ *   avoir été déclaré par cet utilisateur, sinon « introuvable » (comme un
+ *   ticket d'une autre agence). Absent : routes de gestion et portails, qui
+ *   contrôlent leur périmètre ailleurs.
  * @returns Ticket with attachments, comments, and status history
  */
-export async function getTicketById(tenantId: string, ticketId: string, tenantContactId?: string) {
+export async function getTicketById(tenantId: string, ticketId: string, requesterUserId?: string) {
   const ticket = await prisma.maintenanceTicket.findFirst({
     where: {
       id: ticketId,
       tenant_id: tenantId,
-      // If tenantContactId provided, ensure ticket belongs to this contact
-      ...(tenantContactId ? { tenant_contact_id: tenantContactId } : {})
+      ...(requesterUserId ? { created_by_user_id: requesterUserId } : {})
     },
     include: {
       property: {
@@ -467,18 +506,17 @@ export async function getTicketById(tenantId: string, ticketId: string, tenantCo
  * Cancel a ticket
  * @param tenantId - Tenant ID
  * @param ticketId - Ticket ID
- * @param tenantContactId - Tenant contact ID (for ownership validation)
- * @param actorUserId - User canceling (optional)
+ * @param requesterUserId - Utilisateur authentifié : seul le déclarant annule
  * @returns Updated ticket
  */
-export async function cancelTicket(tenantId: string, ticketId: string, tenantContactId?: string, actorUserId?: string) {
+export async function cancelTicket(tenantId: string, ticketId: string, requesterUserId: string) {
+  const actorUserId = requesterUserId;
   // Get existing ticket
   const existingTicket = await prisma.maintenanceTicket.findFirst({
     where: {
       id: ticketId,
       tenant_id: tenantId,
-      // If tenantContactId provided, ensure ticket belongs to this contact
-      ...(tenantContactId ? { tenant_contact_id: tenantContactId } : {})
+      created_by_user_id: requesterUserId
     }
   });
 
@@ -556,22 +594,15 @@ export async function cancelTicket(tenantId: string, ticketId: string, tenantCon
  * Only allowed if ticket status is DECLARED or CANCELED
  * @param tenantId - Tenant ID
  * @param ticketId - Ticket ID
- * @param tenantContactId - Tenant contact ID (for ownership validation)
- * @param actorUserId - User deleting (optional)
+ * @param requesterUserId - Utilisateur authentifié : seul le déclarant supprime
  */
-export async function deleteTicket(
-  tenantId: string,
-  ticketId: string,
-  tenantContactId?: string,
-  _actorUserId?: string
-): Promise<void> {
+export async function deleteTicket(tenantId: string, ticketId: string, requesterUserId: string): Promise<void> {
   // Get existing ticket
   const existingTicket = await prisma.maintenanceTicket.findFirst({
     where: {
       id: ticketId,
       tenant_id: tenantId,
-      // If tenantContactId provided, ensure ticket belongs to this contact
-      ...(tenantContactId ? { tenant_contact_id: tenantContactId } : {})
+      created_by_user_id: requesterUserId
     },
     include: {
       attachments: true
@@ -670,24 +701,22 @@ export async function deleteTicket(
  * @param tenantId - Tenant ID
  * @param ticketId - Ticket ID
  * @param data - Update data
- * @param tenantContactId - Tenant contact ID (optional, for validation)
- * @param actorUserId - User updating (optional)
+ * @param requesterUserId - Utilisateur authentifié : seul le déclarant modifie
  * @returns Updated ticket
  */
 export async function updateTenantTicket(
   tenantId: string,
   ticketId: string,
   data: UpdateTenantTicketRequest,
-  tenantContactId?: string,
-  actorUserId?: string
+  requesterUserId: string
 ) {
+  const actorUserId = requesterUserId;
   // Get existing ticket
   const existingTicket = await prisma.maintenanceTicket.findFirst({
     where: {
       id: ticketId,
       tenant_id: tenantId,
-      // If tenantContactId provided, ensure ticket belongs to this contact
-      ...(tenantContactId ? { tenant_contact_id: tenantContactId } : {})
+      created_by_user_id: requesterUserId
     }
   });
 
@@ -1141,7 +1170,7 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
         }
       });
       if (!membership) {
-        throw new Error("Utilisateur introuvable ou non membre actif de cette agence");
+        throw new Error('Utilisateur introuvable ou non membre actif de cette agence');
       }
     }
     updateData.assigned_to_user_id = data.assignedToUserId || null;

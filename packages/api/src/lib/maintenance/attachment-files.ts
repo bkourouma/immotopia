@@ -82,15 +82,25 @@ async function findAttachment(tenantId: string, attachmentId: string) {
 
 /**
  * Gestion : une pièce jointe de l'agence. Le droit sur le module est vérifié
- * par la route (`requireTenantAccess` + permission maintenance) : tout ticket
- * de l'agence est alors consultable par l'écran de gestion.
+ * par la route (`requireTenantAccess` + permission maintenance). Avec
+ * `requesterUserId` (appelant sans `MAINTENANCE_ADMIN`), la pièce doit
+ * appartenir à un ticket qu'il a lui-même déclaré.
  */
 export async function getMaintenanceAttachmentFileForTenant(
   tenantId: string,
-  attachmentId: string
+  attachmentId: string,
+  requesterUserId?: string
 ): Promise<MaintenanceAttachmentFile> {
   const attachment = await findAttachment(tenantId, attachmentId);
   if (!attachment) throw new NotFoundError(NOT_FOUND);
+  // Sans droit de gestion : seule une pièce d'un ticket déclaré par l'appelant.
+  if (requesterUserId) {
+    const own = await prisma.maintenanceTicket.findFirst({
+      where: { id: attachment.ticket_id, tenant_id: tenantId, created_by_user_id: requesterUserId },
+      select: { id: true }
+    });
+    if (!own) throw new NotFoundError(NOT_FOUND);
+  }
   return readMaintenanceAttachmentFile(attachment);
 }
 

@@ -71,9 +71,8 @@ export const TicketDetail: React.FC = () => {
 
     setSubmittingComment(true);
     try {
-      // Use tenantContactId from ticket if available, otherwise undefined
-      // The backend will try to get it from user context if not provided
-      await tenantMaintenanceService.addComment(effectiveTenantId, ticketId, commentContent, ticket?.tenantContactId);
+      // L'auteur est l'utilisateur connecté : le serveur le lit dans la session.
+      await tenantMaintenanceService.addComment(effectiveTenantId, ticketId, commentContent);
       setCommentContent('');
       message.success(t('Commentaire ajouté'));
       await loadTicket(); // Reload to get updated comments

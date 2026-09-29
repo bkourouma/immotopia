@@ -3,14 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Form, Input, Select, Button, Space, Typography, Spin } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { FileUploader } from '../../../components/maintenance/FileUploader';
-import { tenantMaintenanceService } from '../../../services/maintenance-service';
+import { tenantMaintenanceService, ActiveLease } from '../../../services/maintenance-service';
 import {
   CreateTicketRequest,
   MaintenanceTicketCategory,
   MaintenanceTicketPriority
 } from '../../../types/maintenance-types';
 import { listProperties, Property } from '../../../services/property-service';
-import { listLeases, RentalLease, RentalLeaseStatus } from '../../../services/rental-service';
 import { useAuth } from '../../../hooks/useAuth';
 import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
 import { t } from '../../../i18n/t';
@@ -30,7 +29,10 @@ export const CreateTicket: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [leases, setLeases] = useState<RentalLease[]>([]);
+  const [leases, setLeases] = useState<ActiveLease[]>([]);
+  // Vrai quand la lecture des baux a échoué : on ne conclut alors PAS « pas de
+  // bail actif », c'est le serveur qui tranche à la création.
+  const [leasesLookupFailed, setLeasesLookupFailed] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | undefined>(undefined);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
@@ -53,7 +55,11 @@ export const CreateTicket: React.FC = () => {
     if (!effectiveTenantId) return;
 
     try {
-      const response = await listProperties(effectiveTenantId, { status: 'RENTED' });
+      // Tous les biens auxquels l'utilisateur a accès (PROPERTIES_VIEW), pas
+      // seulement ceux marqués « loué » : le statut d'un bien ne reflète pas
+      // toujours son bail. Le serveur refuse la création s'il n'y a pas de bail
+      // actif ; l'écran le signale dès le choix du bien.
+      const response = await listProperties(effectiveTenantId, { limit: 200 });
       setProperties(response.properties);
     } catch (error) {
       console.error('Error loading properties:', error);
@@ -63,12 +69,11 @@ export const CreateTicket: React.FC = () => {
   const loadLeases = async () => {
     if (!effectiveTenantId || !selectedPropertyId) return;
 
+    setLeasesLookupFailed(false);
     try {
-      const response = await listLeases(effectiveTenantId, {
-        propertyId: selectedPropertyId,
-        status: RentalLeaseStatus.ACTIVE
-      });
-      const activeLeases = response.data || [];
+      // Route maintenance (et non la liste des baux, réservée aux droits
+      // locatifs : un Agent y recevait un 403, lu à tort comme « pas de bail »).
+      const activeLeases = await tenantMaintenanceService.listActiveLeases(effectiveTenantId, selectedPropertyId);
       setLeases(activeLeases);
 
       // Auto-select lease if there's only one
@@ -80,6 +85,7 @@ export const CreateTicket: React.FC = () => {
     } catch (error) {
       console.error('Error loading leases:', error);
       setLeases([]);
+      setLeasesLookupFailed(true);
     }
   };
 
@@ -93,7 +99,7 @@ export const CreateTicket: React.FC = () => {
     }
 
     // Check if there are active leases for the selected property
-    if (leases.length === 0 && selectedPropertyId === values.propertyId) {
+    if (leases.length === 0 && !leasesLookupFailed && selectedPropertyId === values.propertyId) {
       message.error(
         t("Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.")
       );
@@ -254,14 +260,14 @@ export const CreateTicket: React.FC = () => {
                   >
                     {leases.map(lease => (
                       <Option key={lease.id} value={lease.id}>
-                        {lease.lease_number} - {lease.start_date.split('T')[0]}
+                        {lease.leaseNumber} - {lease.startDate.split('T')[0]}
                       </Option>
                     ))}
                   </Select>
                 </Form.Item>
               )}
 
-              {selectedPropertyId && leases.length === 0 && (
+              {selectedPropertyId && leases.length === 0 && !leasesLookupFailed && (
                 <Form.Item>
                   <div
                     style={{

@@ -2,6 +2,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { CreateVendorRequest, UpdateVendorRequest } from '../types/maintenance-types';
+import { ConflictError } from '../middleware/error-middleware';
 
 type ProviderRecord = {
   id: string;
@@ -106,7 +107,7 @@ export async function createVendor(tenantId: string, data: CreateVendorRequest, 
     }
   });
   if (existing) {
-    throw new Error(`Un prestataire avec le nom "${trimmedName}" existe deja dans ce tenant`);
+    throw new ConflictError(`Un prestataire nommé « ${trimmedName} » existe déjà dans votre agence.`);
   }
 
   const provider = await prisma.serviceProvider.create({
@@ -255,7 +256,7 @@ export async function updateVendor(
       }
     });
     if (duplicate) {
-      throw new Error(`Un prestataire avec le nom "${data.name}" existe deja dans ce tenant`);
+      throw new ConflictError(`Un prestataire nommé « ${data.name.trim()} » existe déjà dans votre agence.`);
     }
   }
 
