@@ -30,6 +30,26 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
   `immotopia-saas`) : `deploy.sh` (construction, migrations, tests de fumée,
   empreinte des conteneurs voisins), le vhost et le certificat de
   `app.immotopia.cloud`.
+- **Éprouvé sur le serveur le 2026-09-30, sur le commit `23de8301`** (chaque
+  action avec l'accord du propriétaire) :
+  - clonage du dépôt public dans `/home/deployer/immotopia-saas` (ancien dossier
+    conservé en `immotopia-saas.copie-avant-git`) ; `backup.sh staging` (base
+    1,2 Mo, documents 271 Mo) et `restore-check.sh` (209 tables, 84 lignes de
+    migrations restaurées, conteneur et volume supprimés) ;
+  - `deploy.sh staging` complet (tous les contrôles, dont `stat -c`, `ss` et
+    `flock`, la construction, une migration appliquée, les tests de fumée locaux
+    et HTTPS, 42 conteneurs voisins inchangés) ;
+  - `make-env.sh prod` ; vhost et certificat de `clients.immotopia.cloud`
+    (échéance 2026-12-29, renouvellement automatique) ; `deploy.sh prod` complet :
+    garde-fous (arbre propre, commit dans `origin/main`, secrets distincts du
+    staging, simulateur interdit, ports libres), construction, migrations depuis
+    une base vierge jusqu'à 81, tests de fumée locaux et HTTPS ;
+  - `bootstrap.sh prod --dry-run` (base migrée et vide, plan attendu) ;
+  - en-têtes de sécurité observés en HTTPS sur les deux domaines (un seul jeu par
+    réponse), `X-Robots-Tag: noindex` sur le staging seulement, page de connexion
+    de la production sans compte de démonstration ;
+  - sauvegarde nocturne de la production planifiée dans la crontab de `deployer`
+    et sa commande exacte exécutée à la main (dump et documents en mode 600).
 - **Vérifié par la CI, sans serveur** : `infra/scripts/check-infra.sh` (job
   `infra` de `.github/workflows/ci.yml`, qui ne reçoit que le droit
   `contents: read`) contrôle la syntaxe des scripts, le refus d'un environnement
@@ -82,24 +102,16 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     connexion. Les gardes `NODE_ENV=production` des six seeds de développement :
     exécutées avec un `DATABASE_URL` invalide, sortie en code 1 avant toute
     connexion.
-- **Non éprouvé** : tout ce qui se joue sur le serveur lui-même.
-  - La production : `make-env.sh prod` et `deploy.sh prod`. Ses garde-fous
-    (arbre sale, git inutilisable, HEAD hors d'`origin/main`, secrets identiques
-    au staging, simulateur de paiement, sauvegarde de moins de 24 h) n'ont été
-    exercés que sur une copie tronquée du script avec de faux fichiers ; un
-    déploiement complet de la production n'a jamais tourné.
-  - Le vhost et le certificat de `clients.immotopia.cloud`, et les en-têtes de
-    sécurité observés derrière le nginx de l'hôte et en HTTPS.
-  - La saisie interactive de `bootstrap.sh` (aucun terminal en local) : les deux
-    saisies de l'e-mail et du mot de passe sans écho, le récapitulatif `[o/N]`.
-  - Les contrôles propres à Linux : `stat -c` (mode 600, simulé en local car NTFS
-    ne le conserve pas), `ss` (ports) et `flock` (verrou), absents ou simulés en
-    local.
-  - Le cron, la copie hors serveur (rclone), la restauration réelle, le retour
-    arrière par étiquette d'image, le fichier temporaire de `set-google-oauth.sh`,
-    et les gardes des seeds de développement dans l'image `migrate` de la pile.
-    Le premier passage sur le serveur sert donc aussi de test : lire chaque
-    résultat avant de passer à l'étape suivante.
+- **Non éprouvé** (à la date de rédaction) :
+  - la saisie interactive de `bootstrap.sh` (aucun terminal en local ni pour un
+    agent : deux saisies de l'e-mail et du mot de passe sans écho, récapitulatif
+    `[o/N]`) ; la création du premier super-admin sur la production ;
+  - la copie hors serveur (rclone), la restauration réelle d'une sauvegarde, le
+    retour arrière par étiquette d'image, le fichier temporaire de
+    `set-google-oauth.sh`, la connexion Google et le paiement en mode `LIVE` ;
+  - les gardes `NODE_ENV=production` des seeds de développement dans l'image
+    `migrate` de la pile.
+    Lire chaque résultat avant de passer à l'étape suivante.
 
 ## Règle d'or
 
@@ -523,7 +535,10 @@ Il contrôle, dans l'ordre :
     informatif : il échoue tant que le vhost et le certificat manquent.
 11. **Voisins, après** : aucun conteneur voisin n'a bougé (comparaison du nom, de
     l'identifiant complet et de la date de démarrage de chaque conteneur qui n'est
-    pas de la pile : un conteneur recréé ou redémarré est signalé). Le journal
+    pas de la pile : un conteneur recréé ou redémarré est signalé). Une alerte peut venir du déploiement d'une AUTRE
+    application de l'hôte, pendant la durée du build (constaté le 2026-09-30 avec les
+    conteneurs `ecoledigitale-*`, recréés par leur propre déploiement) : lire le
+    `diff` affiché avant de conclure à un problème. Le journal
     `/home/deployer/deploy-history-immotopia-prod.log` reçoit une ligne (date,
     environnement, commit, utilisateur).
 

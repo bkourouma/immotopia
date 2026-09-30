@@ -52,8 +52,8 @@ Pièges et décisions :
 
 ## Pilote — environnements staging et production (PR #77 fusionnée) — 2026-09-30
 
-**État :** PR #77 fusionnée dans `main` (`23de8301`, CI verte, le lot 4/4 des tests web avait échoué une fois sur un test du copilote instable, réussi à la relance) ; **aucun déploiement fait** ; étape 0 du guide faite sur le serveur en lecture seule
-**Dernier commit :** `23de8301` (fusion de #77)
+**État :** PR #77 fusionnée dans `main` (`23de8301`). **Sur le serveur (accord donné, 2026-09-30) :** dossier cloné, staging redéployé, pile de production `immotopia-prod` en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée, **vide : amorçage du super-admin en attente**), sauvegarde nocturne planifiée. La production n'est pas utilisée pour l'instant.
+**Dernier commit :** `23de8301` (fusion de #77) ; serveur au même commit
 
 Fait :
 
@@ -94,15 +94,20 @@ Fait :
 
 Reste à faire (chaque action serveur exige un « oui » explicite) :
 
-- **Prochaine action (chaque commande avec un « oui » explicite) :** sur le serveur,
-  renommer `/home/deployer/immotopia-saas` en `immotopia-saas.copie-avant-git` puis
-  cloner le dépôt public à sa place (DEPLOIEMENT.md, étape 0) ; ensuite étapes 0 bis
-  à 9. Session à part, indépendante : correctif de l'écriture sous `/app/assets`
-  (baux et quittances DOCX), à livrer avant de promettre ces documents.
-- Étape 0 faite en lecture seule le 2026-09-30 : DNS, ports 3020/5437 libres et
-  disque (61 Go libres) OK ; **`/home/deployer/immotopia-saas` n'est pas un dépôt git**
-  (copie de fichiers avec `.deployed-revision`) : le cloner (dépôt public, HTTPS
-  anonyme) après la fusion de #77, procédure dans DEPLOIEMENT.md, étape 0.
+- **À faire par le propriétaire (saisie que l'agent n'a pas le droit de faire) :**
+  `ssh -t -p 2222 deployer@147.93.44.169` puis
+  `cd /home/deployer/immotopia-saas && ./infra/scripts/bootstrap.sh prod` : e-mail,
+  nom et mot de passe du premier SUPER_ADMIN (12 caractères minimum, sans `<`, `>`
+  ni `=`). Ensuite : se connecter sur https://clients.immotopia.cloud, créer la
+  première agence.
+- **Reste, avec des informations du propriétaire :** `PLATFORM_ISSUER_RCCM`,
+  `_TAX_ID`, `_ADDRESS`, `_PHONE` (factures d'abonnement) ; bloc e-mail (sans lui,
+  aucune invitation ni réinitialisation de mot de passe ne part) ; identifiants
+  Google (`set-google-oauth.sh prod`, URI de redirection chez Google ; le bouton
+  Google s'affiche déjà sans configuration) ; PaySecureHub en `LIVE` ; remote rclone
+  pour la copie hors serveur (`BACKUP_RCLONE_REMOTE` dans la crontab) ; **copie de
+  `/home/deployer/immotopia-prod.env` hors serveur** (`PAYMENT_SECRETS_KEY` : sa perte
+  rend illisibles les clés de paiement des agences).
 - Première mise en service de la production : DEPLOIEMENT.md, étapes 0 à 9 (DNS,
   ports 3020/5437 libres, `make-env.sh prod`, vhost + certbot, `deploy.sh prod`,
   `bootstrap.sh prod`, Google OAuth, sauvegardes hors serveur). Aucune donnée réelle
