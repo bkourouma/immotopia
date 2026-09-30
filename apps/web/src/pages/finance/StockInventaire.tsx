@@ -928,7 +928,7 @@ export const StockInventaire: React.FC = () => {
                 { label: t('Ce que le système disait'), value: formatQuantity(l.expectedQuantity, l.itemUnit) },
                 { label: t('Compté'), value: formatQuantity(l.countedQuantity, l.itemUnit) },
                 {
-                  label: 'Motif',
+                  label: t('Motif'),
                   value: l.reason ?? (estEnEcart(l) ? t('Motif à justifier') : t('Aucun écart à justifier'))
                 }
               ]}
@@ -1119,7 +1119,7 @@ export const StockInventaire: React.FC = () => {
             status={<StatusTag status={c.status} />}
             highlight={<MoneyValue value={c.varianceValue} signed />}
             fields={[
-              { label: 'Lignes', value: String(c.lines.length) },
+              { label: t('Lignes'), value: String(c.lines.length) },
               { label: t('Lignes en écart'), value: String(c.varianceCount) },
               { label: t('Ouvert par'), value: c.createdByLabel }
             ]}

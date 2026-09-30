@@ -207,7 +207,7 @@ export const Fournisseurs: React.FC = () => {
             }
             fields={[
               {
-                label: 'Contact',
+                label: t('Contact'),
                 value: [f.contactName, f.contactPhone, f.contactEmail].filter(Boolean).join(' · ') || '—'
               }
             ]}
@@ -242,7 +242,7 @@ export const Fournisseurs: React.FC = () => {
             // sera obligatoire pour les factures de ce fournisseur.
             extra={t('Décide si le rattachement à un chantier sera obligatoire pour ses factures.')}
           >
-            <Select showSearch optionFilterProp="label" options={OPTIONS_NATURE} placeholder="Choisir…" />
+            <Select showSearch optionFilterProp="label" options={OPTIONS_NATURE} placeholder={t('Choisir…')} />
           </Form.Item>
           <Form.Item name="contactName" label={t('Contact')}>
             <Input placeholder={t('Nom du contact')} />

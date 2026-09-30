@@ -22,12 +22,13 @@ import { PaymentForm } from '../../components/rental/PaymentForm';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux, deviseAffichee } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
   StatusTag,
   MoneyValue,
+  formatMoney,
   DataView,
   DataCard,
   FilterSheet,
@@ -242,8 +243,12 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     });
   };
 
-  /** Encaissement du reste dû, en espèces, à la date du jour. */
-  const handleQuickPayment = async (echeance: RentalInstallment) => {
+  /**
+   * Encaissement du reste dû, en espèces, à la date du jour — après
+   * confirmation : un clic isolé ne doit pas écrire un paiement (montant,
+   * locataire, mode et échéance sont rappelés avant l'enregistrement).
+   */
+  const handleQuickPayment = (echeance: RentalInstallment) => {
     if (!tenantId) return;
     const reste = resteAPayer(echeance);
     if (reste <= 0) {
@@ -251,6 +256,30 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       return;
     }
 
+    confirmAction({
+      title: t('Encaisser {{montant}} en espèces ?', {
+        montant: formatMoney(reste, { currency: deviseAffichee(echeance.currency) })
+      }),
+      description: (
+        <div>
+          <div>
+            {t('Locataire')} : {nomDeLaPersonne(echeance.lease?.primaryRenter?.user)}
+          </div>
+          <div>
+            {t('Échéance')} : {periode(echeance)} — {echeance.lease?.lease_number ?? ''}
+          </div>
+          <div>
+            {t('Mode de paiement')} : {t('Espèces')}
+          </div>
+        </div>
+      ),
+      okText: t("Confirmer l'encaissement"),
+      onConfirm: () => executeQuickPayment(echeance, reste)
+    });
+  };
+
+  const executeQuickPayment = async (echeance: RentalInstallment, reste: number) => {
+    if (!tenantId) return;
     setEnCours(echeance.id);
     try {
       const paiement = await createPayment(tenantId, {
@@ -379,7 +408,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               {t('Encaisser')}
             </Button>
             <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setFormulairePour(e)}>
-              Paiement…
+              {t('Paiement…')}
             </Button>
           </Space>
         );
@@ -545,7 +574,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                 solde
                   ? undefined
                   : {
-                      label: 'Encaisser',
+                      label: t('Encaisser'),
                       icon: <ThunderboltOutlined />,
                       loading: enCours === e.id,
                       onClick: () => handleQuickPayment(e)

@@ -138,7 +138,7 @@ describe('Paiements — montant affecté', () => {
     ]);
 
     // 1 000 000 − (300 000 + 200 000) = 500 000.
-    const restes = await screen.findAllByText(/500\s000\sXOF/, {}, { timeout: 8000 });
+    const restes = await screen.findAllByText(/500\s000\sFCFA/, {}, { timeout: 8000 });
     expect(restes.length).toBeGreaterThan(0);
   });
 
@@ -252,5 +252,28 @@ describe('Paiements — date du règlement', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ paidAt: dayjs().format('YYYY-MM-DD') });
+  });
+});
+
+describe('Paiements — locataire et devise (BUG-046)', () => {
+  it('nomme le locataire du bail quand le paiement n’en porte pas, et écrit FCFA pour « CFA »', async () => {
+    mount([
+      paiement({
+        status: 'SUCCESS',
+        amount: 300_000,
+        currency: 'CFA',
+        renter_client_id: null,
+        renterClient: null,
+        lease: {
+          id: 'bail-1',
+          lease_number: 'BAIL-2026-0001',
+          primaryRenter: { id: 'cli-1', user: { fullName: 'Yao N’Dri' } }
+        }
+      })
+    ]);
+
+    expect(await screen.findByText('Yao N’Dri', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect((await screen.findAllByText(/300\s000\sFCFA/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\sCFA$/)).not.toBeInTheDocument();
   });
 });

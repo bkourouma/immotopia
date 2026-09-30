@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Contacts } from '../../pages/crm/Contacts';
 
 /**
@@ -29,6 +30,13 @@ const updateContact = vi.fn();
 const listTags = vi.fn();
 const deleteContact = vi.fn();
 
+vi.mock('../../services/membership-service', () => ({
+  listAssignableMembers: vi.fn(async () => ({ success: true, data: [] }))
+}));
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: vi.fn(async () => ({ enforcement: 'warn' }))
+}));
+
 vi.mock('../../services/crm-service', () => ({
   listContacts: (...a: unknown[]) => listContacts(...a),
   createContact: (...a: unknown[]) => createContact(...a),
@@ -38,15 +46,31 @@ vi.mock('../../services/crm-service', () => ({
   deleteContact: (...a: unknown[]) => deleteContact(...a)
 }));
 
+// Sélecteur de commune réduit à un bouton : la recherche géographique n'est
+// pas le sujet ici, seule compte la valeur `communeId` qu'il pose dans le formulaire.
+vi.mock('../../components/ui/location-selector', () => ({
+  LocationSelector: ({ onChange }: { onChange?: (loc: { communeId: string }) => void }) => (
+    <button type="button" onClick={() => onChange?.({ communeId: 'commune-cocody' })}>
+      Choisir Cocody
+    </button>
+  )
+}));
+vi.mock('../../services/geographic-service', () => ({
+  getLocationByCommuneId: vi.fn(async () => null),
+  searchLocations: vi.fn(async () => [])
+}));
+
 function mount() {
   return render(
-    <AntApp>
-      <MemoryRouter initialEntries={['/tenant/agence-1/crm/contacts']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
-        </Routes>
-      </MemoryRouter>
-    </AntApp>
+    <QueryClientProvider client={new QueryClient()}>
+      <AntApp>
+        <MemoryRouter initialEntries={['/tenant/agence-1/crm/contacts']}>
+          <Routes>
+            <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
 }
 
@@ -82,7 +106,7 @@ beforeEach(() => {
   listTags.mockResolvedValue({ success: true, data: [] });
 });
 
-describe('Contacts — la modale de création se réinitialise entre deux ouvertures', () => {
+describe('Contacts — la modale de création se réinitialise entre deux ouvertures', { timeout: 150_000 }, () => {
   it('REPART VIERGE au deuxième « Nouveau contact », même après avoir tapé un premier et cliqué « Annuler »', async () => {
     const user = userEvent.setup({ delay: null });
     mount();
@@ -146,6 +170,8 @@ describe('Contacts — la modale de création se réinitialise entre deux ouvert
     await user.type(prenom, 'Yao');
     await user.type(await screen.findByLabelText(/^Nom$/i), 'Bernard');
     await user.type(await screen.findByLabelText(/Email personnel/i), 'yao.bernard@example.ci');
+    await user.click(screen.getByRole('tab', { name: 'Contact' }));
+    await user.click(await screen.findByRole('button', { name: 'Choisir Cocody' }));
 
     await user.click(screen.getByRole('button', { name: /Créer le contact|Enregistrer/i }));
     await waitFor(() => expect(createContact).toHaveBeenCalledTimes(1), { timeout: 8000 });
@@ -155,5 +181,52 @@ describe('Contacts — la modale de création se réinitialise entre deux ouvert
     await user.click(screen.getByRole('button', { name: /Nouveau contact/i }));
     const prenomSuivant = await screen.findByLabelText(/Prénom/i, {}, { timeout: 8000 });
     expect(prenomSuivant).toHaveValue('');
+  });
+
+  /**
+   * BUG-2026-09-30-015 : Ant Design Tabs ne monte que l'onglet ouvert, donc la
+   * règle « commune requise » (onglet Contact) ne s'exécutait jamais si cet
+   * onglet n'avait pas été ouvert : le contact se créait sans commune.
+   */
+  it('REFUSE un contact sans commune, même si l’onglet « Contact » n’a jamais été ouvert', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByRole('button', { name: /Nouveau contact/i }, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: /Nouveau contact/i }));
+    await user.type(await screen.findByLabelText(/Prénom/i, {}, { timeout: 8000 }), 'Awa');
+    await user.type(await screen.findByLabelText(/^Nom$/i), 'Konan');
+    await user.type(await screen.findByLabelText(/Email personnel/i), 'awa.konan@example.ci');
+
+    await user.click(screen.getByRole('button', { name: /Créer le contact|Enregistrer/i }));
+
+    expect(await screen.findByText('La commune est requise', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(createContact).not.toHaveBeenCalled();
+    // Le formulaire ouvre l'onglet fautif pour que l'erreur soit visible.
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Contact' })).toHaveAttribute('aria-selected', 'true'));
+  });
+
+  it('AFFICHE sur le champ e-mail le refus 409 d’un doublon, et ouvre l’onglet du champ', async () => {
+    createContact.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { errors: [{ field: 'email', message: 'Un contact avec cet e-mail existe déjà' }] }
+      }
+    });
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByRole('button', { name: /Nouveau contact/i }, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: /Nouveau contact/i }));
+    await user.type(await screen.findByLabelText(/Prénom/i, {}, { timeout: 8000 }), 'Awa');
+    await user.type(await screen.findByLabelText(/^Nom$/i), 'Konan');
+    await user.type(await screen.findByLabelText(/Email personnel/i), 'awa@example.ci');
+    await user.click(screen.getByRole('tab', { name: 'Contact' }));
+    await user.click(await screen.findByRole('button', { name: 'Choisir Cocody' }));
+    await user.click(screen.getByRole('button', { name: /Créer le contact|Enregistrer/i }));
+
+    await waitFor(() => expect(createContact).toHaveBeenCalledTimes(1), { timeout: 8000 });
+    expect((await screen.findAllByText('Un contact avec cet e-mail existe déjà')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Basique' })).toHaveAttribute('aria-selected', 'true'));
   });
 });

@@ -560,7 +560,7 @@ export const FileDeValidation: React.FC = () => {
             })}
             highlight={<MoneyValue value={doc.amount} />}
             primaryAction={{
-              label: 'Valider',
+              label: t('Valider'),
               loading: enCours === cle(doc),
               onClick: () => demanderValidation(doc)
             }}

@@ -19,7 +19,7 @@ interface CampaignFormProps {
 
 const UNSUBSCRIBE_PLACEHOLDER = '{{lien_desinscription}}';
 const HELP_VARS =
-  'Variables disponibles : {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}} (obligatoire). Le contenu sera aussi relaye sur WhatsApp (version texte) quand un numero avec consentement existe.';
+  'Variables disponibles : {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}} (obligatoire). Le contenu sera aussi relayé sur WhatsApp (version texte) quand un numéro avec consentement existe.';
 
 export function CampaignForm({ lists, templates, campaign, loading, saving, onSubmit, onPreview }: CampaignFormProps) {
   const [form] = Form.useForm();

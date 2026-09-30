@@ -1,3 +1,6 @@
+import { dealTypeLabel, dealStageLabel } from '../../utils/crm-labels';
+import { formatMoney } from '../primitives';
+import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -53,6 +56,7 @@ import { TagManager } from './TagManager';
 import { AddDealDialog } from './AddDealDialog';
 import { ActivityForm } from './ActivityForm';
 import { t } from '../../i18n/t';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -66,6 +70,8 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
   const { message } = App.useApp();
 
   const navigate = useNavigate();
+  // Affaires et activités relèvent de la fonctionnalité CRM, pas du socle.
+  const { has: possede } = useAgencyFeatures(tenantId);
   const [contact, setContact] = useState<CrmContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,16 +180,8 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
   };
 
   const getDealStageLabel = (stage: string): string => {
-    const labels: Record<string, string> = {
-      NEW: 'Nouveau',
-      QUALIFIED: t('Qualifié'),
-      APPOINTMENT: 'Rendez-vous',
-      VISIT: 'Visite',
-      NEGOTIATION: t('Négociation'),
-      WON: t('Gagné'),
-      LOST: 'Perdu'
-    };
-    return labels[stage] || stage;
+    if (stage === 'APPOINTMENT') return t('Rendez-vous');
+    return dealStageLabel(stage);
   };
 
   if (loading) {
@@ -222,10 +220,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
     );
   }
 
-  const displayName =
-    contact.firstName || contact.lastName
-      ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
-      : contact.email || t('Contact sans nom');
+  const displayName = contactDisplayName(contact);
 
   const hasActiveRoles = contact.roles && contact.roles.some((r: any) => r.active);
   const canConvert = contact.status === 'LEAD' || (contact.status === 'ACTIVE_CLIENT' && !hasActiveRoles);
@@ -452,77 +447,79 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
         </Col>
 
         {/* Deals - Column 2 */}
-        <Col xs={24} lg={12}>
-          <Card
-            title={
-              <Space>
-                <ProjectOutlined />
-                {t('Affaires')} {contact.deals && contact.deals.length > 0 && `(${contact.deals.length})`}
-              </Space>
-            }
-            extra={
-              <Button type="link" icon={<PlusOutlined />} onClick={() => setShowDealDialog(true)}>
-                {t('Ajouter')}
-              </Button>
-            }
-          >
-            {contact.deals && contact.deals.length > 0 ? (
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                {contact.deals.map((deal: any) => (
-                  <Card
-                    key={deal.id}
-                    size="small"
-                    hoverable
-                    onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
-                    style={{ border: '1px solid #f0f0f0', cursor: 'pointer' }}
-                  >
-                    <div className="it-toolbar">
-                      <Space>
-                        <Text strong>{deal.type}</Text>
-                        <Text type="secondary">- {getDealStageLabel(deal.stage)}</Text>
-                      </Space>
-                      {deal.budgetMax && (
-                        <Text strong>{deal.budgetMax.toLocaleString(activeLocale(), { style: 'decimal' })} FCFA</Text>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </Space>
-            ) : (
-              <Empty description={t('Aucune affaire associée')} image={false} style={{ padding: '24px 0' }}>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowDealDialog(true)}>
-                  {t('Créer')}
+        {possede('CRM') && (
+          <Col xs={24} lg={12}>
+            <Card
+              title={
+                <Space>
+                  <ProjectOutlined />
+                  {t('Affaires')} {contact.deals && contact.deals.length > 0 && `(${contact.deals.length})`}
+                </Space>
+              }
+              extra={
+                <Button type="link" icon={<PlusOutlined />} onClick={() => setShowDealDialog(true)}>
+                  {t('Ajouter')}
                 </Button>
-              </Empty>
-            )}
-          </Card>
-        </Col>
+              }
+            >
+              {contact.deals && contact.deals.length > 0 ? (
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  {contact.deals.map((deal: any) => (
+                    <Card
+                      key={deal.id}
+                      size="small"
+                      hoverable
+                      onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
+                      style={{ border: '1px solid #f0f0f0', cursor: 'pointer' }}
+                    >
+                      <div className="it-toolbar">
+                        <Space>
+                          <Text strong>{dealTypeLabel(deal.type)}</Text>
+                          <Text type="secondary">- {getDealStageLabel(deal.stage)}</Text>
+                        </Space>
+                        {deal.budgetMax && <Text strong>{formatMoney(deal.budgetMax)}</Text>}
+                      </div>
+                    </Card>
+                  ))}
+                </Space>
+              ) : (
+                <Empty description={t('Aucune affaire associée')} image={false} style={{ padding: '24px 0' }}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowDealDialog(true)}>
+                    {t('Créer')}
+                  </Button>
+                </Empty>
+              )}
+            </Card>
+          </Col>
+        )}
       </Row>
 
       {/* Activities Timeline - Full Width */}
-      <Card
-        title={
-          <Space>
-            <ThunderboltOutlined />
-            {t('Chronologie des activités')}
-          </Space>
-        }
-        extra={
-          <Button type="link" icon={<PlusOutlined />} onClick={() => setShowActivityForm(true)}>
-            {t('Ajouter')}
-          </Button>
-        }
-      >
-        {contact.recentActivities && contact.recentActivities.length > 0 ? (
-          <ActivityTimeline activities={contact.recentActivities} tenantId={tenantId} contactId={contactId} />
-        ) : (
-          <Empty description={t('Aucune activité récente')} image={false} style={{ padding: '24px 0' }}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowActivityForm(true)}>
-              {t('Créer')}
+      {possede('CRM') && (
+        <Card
+          title={
+            <Space>
+              <ThunderboltOutlined />
+              {t('Chronologie des activités')}
+            </Space>
+          }
+          extra={
+            <Button type="link" icon={<PlusOutlined />} onClick={() => setShowActivityForm(true)}>
+              {t('Ajouter')}
             </Button>
-          </Empty>
-        )}
-      </Card>
+          }
+        >
+          {contact.recentActivities && contact.recentActivities.length > 0 ? (
+            <ActivityTimeline activities={contact.recentActivities} tenantId={tenantId} contactId={contactId} />
+          ) : (
+            <Empty description={t('Aucune activité récente')} image={false} style={{ padding: '24px 0' }}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowActivityForm(true)}>
+                {t('Créer')}
+              </Button>
+            </Empty>
+          )}
+        </Card>
+      )}
 
       {/* Tag Manager Modal */}
       {showTagManager && contact && (

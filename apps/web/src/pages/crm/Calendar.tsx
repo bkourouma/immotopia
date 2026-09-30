@@ -250,8 +250,8 @@ export const CalendarPage: React.FC = () => {
                 />
               }
               fields={[
-                ...(evenement.dealLabel ? [{ label: 'Affaire', value: evenement.dealLabel }] : []),
-                ...(evenement.location ? [{ label: 'Lieu', value: evenement.location }] : [])
+                ...(evenement.dealLabel ? [{ label: t('Affaire'), value: evenement.dealLabel }] : []),
+                ...(evenement.location ? [{ label: t('Lieu'), value: evenement.location }] : [])
               ]}
               onOpen={() => setEvenementSelectionne(evenement)}
             />
@@ -386,9 +386,9 @@ export const CalendarPage: React.FC = () => {
           typeLabel: t("Type d'événement"),
           contactNameLabel: t('Nom du client'),
           typeOptions: [
-            { value: 'RDV', label: 'Rendez-vous' },
-            { value: 'VISITE', label: 'Visite' },
-            { value: 'FOLLOWUP', label: 'Relance' }
+            { value: 'RDV', label: t('Rendez-vous') },
+            { value: 'VISITE', label: t('Visite') },
+            { value: 'FOLLOWUP', label: t('Relance') }
           ]
         }}
         filters={filtresAvances}

@@ -246,7 +246,13 @@ export const Leases: React.FC = () => {
     <>
       <PageHeader
         title={t('Baux')}
-        subtitle={total > 0 ? `${total} ${total > 1 ? 'baux' : 'bail'} en gestion` : t('Gestion locative')}
+        subtitle={
+          total > 0
+            ? total > 1
+              ? t('{{count}} baux en gestion', { count: total })
+              : t('{{count}} bail en gestion', { count: total })
+            : t('Gestion locative')
+        }
         primaryAction={{
           label: t('Nouveau bail'),
           icon: <PlusOutlined />,

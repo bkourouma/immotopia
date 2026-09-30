@@ -5,6 +5,7 @@ import { getMonthlyTracking } from '../../services/syndic-lot-payment-service';
 import { MonthlyTracking, MonthlyTrackingStatus } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -29,10 +30,22 @@ const MONTH_LABELS = [
  * l'information, la couleur seule ne suffit jamais (accessibilité).
  */
 const STATUS_CONFIG: Record<MonthlyTrackingStatus, { color: string; textColor: string; label: string }> = {
-  PAID: { color: 'var(--color-success-bg, #e6f7e9)', textColor: 'var(--color-success-text, #237a3f)', label: t('Réglé') },
-  PARTIAL: { color: 'var(--color-warning-bg, #fff3e0)', textColor: 'var(--color-warning-text, #ad6800)', label: t('Partiel') },
+  PAID: {
+    color: 'var(--color-success-bg, #e6f7e9)',
+    textColor: 'var(--color-success-text, #237a3f)',
+    label: t('Réglé')
+  },
+  PARTIAL: {
+    color: 'var(--color-warning-bg, #fff3e0)',
+    textColor: 'var(--color-warning-text, #ad6800)',
+    label: t('Partiel')
+  },
   DUE: { color: 'var(--color-info-bg, #e6f0ff)', textColor: 'var(--color-info-text, #1d4ed8)', label: t('Dû') },
-  OVERDUE: { color: 'var(--color-error-bg, #fde8e8)', textColor: 'var(--color-error-text, #c0202c)', label: t('En retard') },
+  OVERDUE: {
+    color: 'var(--color-error-bg, #fde8e8)',
+    textColor: 'var(--color-error-text, #c0202c)',
+    label: t('En retard')
+  },
   NONE: { color: 'transparent', textColor: 'var(--text-secondary, #999)', label: t('—') }
 };
 
@@ -138,8 +151,8 @@ export const SyndicMonthlyTracking: React.FC = () => {
                       const config = STATUS_CONFIG[cell.status];
                       const tooltip = t('{{label}} — dû {{due}}, réglé {{paid}}', {
                         label: config.label,
-                        due: formatMoney(cell.due, { currency }),
-                        paid: formatMoney(cell.paid, { currency })
+                        due: formatMoney(cell.due, { currency: displayCurrency(currency) ?? undefined }),
+                        paid: formatMoney(cell.paid, { currency: displayCurrency(currency) ?? undefined })
                       });
                       return (
                         <td key={cell.month} style={{ padding: 4, textAlign: 'center' }}>
@@ -164,7 +177,7 @@ export const SyndicMonthlyTracking: React.FC = () => {
                       );
                     })}
                     <td style={{ padding: 8, textAlign: 'end', whiteSpace: 'nowrap' }}>
-                      <MoneyValue value={row.advance} currency={currency} />
+                      <MoneyValue value={row.advance} currency={displayCurrency(currency)} />
                     </td>
                   </tr>
                 ))}

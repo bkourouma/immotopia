@@ -127,7 +127,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data, currency, href }) 
                     color: SERIES.encaisse
                   },
                   {
-                    label: 'Attendu',
+                    label: t('Attendu'),
                     value: formatMoney(payload[0]?.payload?.attendu, { currency }),
                     color: SERIES.attendu
                   }
@@ -139,7 +139,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data, currency, href }) 
         <Area
           type="monotone"
           dataKey="encaisse"
-          name="Encaissé"
+          name={t('Encaissé')}
           stroke={SERIES.encaisse}
           strokeWidth={2}
           fill="url(#gradient-encaisse)"
@@ -148,7 +148,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data, currency, href }) 
         <Line
           type="monotone"
           dataKey="attendu"
-          name="Attendu"
+          name={t('Attendu')}
           stroke={SERIES.attendu}
           strokeWidth={2}
           dot={false}
@@ -304,11 +304,11 @@ export const BarBreakdown: React.FC<BarBreakdownProps> = ({
               <InfoBulle
                 titre={bucket.label}
                 lignes={[
-                  { label: 'Nombre', value: String(bucket.count), color: payload[0].color },
+                  { label: t('Nombre'), value: String(bucket.count), color: payload[0].color },
                   ...(bucket.amount !== undefined
                     ? [
                         {
-                          label: 'Montant',
+                          label: t('Montant'),
                           value: formatMoney(bucket.amount, { currency: currency ?? 'FCFA' }),
                           color: payload[0].color
                         }

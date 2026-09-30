@@ -480,6 +480,14 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                         {owner.user.fullName || owner.user.email}
                       </Select.Option>
                     ))}
+                    {/* Propriétaire déjà enregistré mais absent de la liste des clients
+                        (compte créé depuis un contact CRM) : sans cette option, le champ
+                        afficherait son identifiant brut. */}
+                    {property?.ownerUserId && !owners.some(owner => owner.userId === property.ownerUserId) && (
+                      <Select.Option key={property.ownerUserId} value={property.ownerUserId}>
+                        {property.owner?.fullName || property.owner?.email || t('Propriétaire sélectionné')}
+                      </Select.Option>
+                    )}
                   </Select>
                 </Form.Item>
               );

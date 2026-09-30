@@ -43,6 +43,8 @@ import { getTemplate, createProperty, updateProperty } from '../../services/prop
 import { GeographicLocation } from '../../services/geographic-service';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
+import { contactDisplayName } from '../../utils/contact-display';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { t } from '../../i18n/t';
 import { isQuotaExceededResponse } from '../../utils/subscription-denial-notice';
@@ -155,8 +157,7 @@ function aDesCaracteristiquesGenerales(type: PropertyType): boolean {
  * jeu actuel — le type en autorise.
  */
 function nomProprietaire(owner: CrmContact): string {
-  const nom = `${owner.firstName || ''} ${owner.lastName || ''}`.trim();
-  return owner.legalName?.trim() || nom || owner.email || t('Contact sans nom');
+  return contactDisplayName(owner);
 }
 
 interface PropertyFormWizardProps {
@@ -171,6 +172,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
   const { tenantMembership } = useAuth();
   const { isDesktop } = useBreakpoint();
+  // Compte « détenu en propre » : pas de propriétaire tiers, le bien reste à l'agence.
+  const ownAssetsOnly = useOwnAssetsOnly(tenantId, !property);
   const [currentStep, setCurrentStep] = useState(0);
   // Etape la plus avancee atteinte : borne ce sur quoi le rail est cliquable.
   // Sans elle, un clic sur la sixieme pastille depuis la premiere etape ne
@@ -228,6 +231,21 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // « Propriétaire : l'agence / un client ». Un client choisi fait un bien
+  // CLIENT (mandat de gestion à créer depuis la fiche) ; « l'agence », ou un
+  // compte « détenu en propre » (choix masqué, rien n'est envoyé), garde un
+  // bien d'agence.
+  const [detenteur, setDetenteur] = useState<'AGENCE' | 'CLIENT'>(
+    property && property.ownershipType !== PropertyOwnershipType.TENANT ? 'CLIENT' : 'AGENCE'
+  );
+  const clientChoisi = detenteur === 'CLIENT' && !ownAssetsOnly;
+  const proprietaireChoisi = clientChoisi ? formData.ownerUserId : '';
+  const typeDeDetention = clientChoisi
+    ? PropertyOwnershipType.CLIENT
+    : formData.ownershipType === PropertyOwnershipType.CLIENT
+      ? PropertyOwnershipType.TENANT
+      : formData.ownershipType;
 
   useEffect(() => {
     loadOwners();
@@ -332,10 +350,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
    * soit l'appelant.
    */
   const construireCorpsBien = (pourCreation: boolean): CreatePropertyRequest | UpdatePropertyRequest => ({
-    ...(pourCreation ? { propertyType: formData.propertyType, ownershipType: formData.ownershipType } : {}),
-    ownerUserId:
-      formData.ownerUserId && !String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
-    ownerEmail: formData.ownerUserId && String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
+    ...(pourCreation ? { propertyType: formData.propertyType, ownershipType: typeDeDetention } : {}),
+    ownerUserId: proprietaireChoisi && !String(proprietaireChoisi).includes('@') ? proprietaireChoisi : undefined,
+    ownerEmail: proprietaireChoisi && String(proprietaireChoisi).includes('@') ? proprietaireChoisi : undefined,
     title: formData.title.trim(),
     description: formData.description.trim(),
     address: formData.address.trim() || undefined,
@@ -421,10 +438,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         if (!formData.title.trim()) {
           newErrors.title = t('Le titre est requis');
         }
-        if (
-          formData.ownershipType !== PropertyOwnershipType.TENANT &&
-          (!formData.ownerUserId || !String(formData.ownerUserId).trim())
-        ) {
+        if (clientChoisi && (!formData.ownerUserId || !String(formData.ownerUserId).trim())) {
           newErrors.ownerUserId = t('Le propriétaire est requis');
         }
         break;
@@ -745,7 +759,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
     const charge = aCreer.map(appartement => ({
       propertyType: PropertyType.APPARTEMENT,
-      ownershipType: formData.ownershipType,
+      ownershipType: typeDeDetention,
       title: appartement.titre.trim(),
       address: formData.address.trim() || undefined,
       locationZone: formData.locationZone.trim() || undefined,
@@ -851,35 +865,54 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
           </div>
 
           <div>
-            <Text strong>
-              {t('Propriétaire')}{' '}
-              {formData.ownershipType !== PropertyOwnershipType.TENANT && <Text type="danger">*</Text>}
-            </Text>
-            <Select
-              showSearch
-              optionFilterProp="children"
-              style={{ width: '100%' }}
-              value={formData.ownerUserId || undefined}
-              onChange={value => handleChange('ownerUserId', value || '')}
-              placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
-              allowClear
-              loading={loadingOwners}
-              status={errors.ownerUserId ? 'error' : ''}
-            >
-              {owners.map(owner => (
-                <Select.Option key={owner.id} value={owner.email}>
-                  {nomProprietaire(owner)}
-                </Select.Option>
-              ))}
-            </Select>
+            {!ownAssetsOnly && (
+              <>
+                <Text strong>{t('Propriétaire')}</Text>
+                <div>
+                  <Radio.Group
+                    value={detenteur}
+                    onChange={e => {
+                      setDetenteur(e.target.value);
+                      if (e.target.value === 'AGENCE') handleChange('ownerUserId', '');
+                    }}
+                  >
+                    <Radio value="AGENCE">{t("L'agence")}</Radio>
+                    <Radio value="CLIENT">{t('Un client')}</Radio>
+                  </Radio.Group>
+                </div>
+              </>
+            )}
+            {clientChoisi && (
+              <Select
+                showSearch
+                optionFilterProp="children"
+                style={{ width: '100%' }}
+                value={formData.ownerUserId || undefined}
+                onChange={value => handleChange('ownerUserId', value || '')}
+                placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
+                allowClear
+                loading={loadingOwners}
+                status={errors.ownerUserId ? 'error' : ''}
+              >
+                {owners.map(owner => (
+                  <Select.Option key={owner.id} value={owner.email}>
+                    {nomProprietaire(owner)}
+                  </Select.Option>
+                ))}
+              </Select>
+            )}
             {errors.ownerUserId && (
               <Text type="danger" style={{ fontSize: 12 }}>
                 {errors.ownerUserId}
               </Text>
             )}
-            {formData.ownershipType === PropertyOwnershipType.TENANT && (
+            {typeDeDetention === PropertyOwnershipType.TENANT ? (
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
                 {t("Ce bien appartient à l'agence : il n'a pas de propriétaire distinct.")}
+              </Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                {t('Bien de client : un mandat de gestion se crée depuis la fiche du bien.')}
               </Text>
             )}
           </div>
@@ -1501,8 +1534,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         return !!(
           formData.propertyType &&
           formData.title.trim() &&
-          (formData.ownershipType === PropertyOwnershipType.TENANT ||
-            (formData.ownerUserId && String(formData.ownerUserId).trim()))
+          (!clientChoisi || (formData.ownerUserId && String(formData.ownerUserId).trim()))
         );
       case 'localisation':
         return !!formData.location;

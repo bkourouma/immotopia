@@ -1,3 +1,4 @@
+import { contactDisplayName, contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect, useRef } from 'react';
 import { Input } from '../ui/input';
 import { User, X, Loader2 } from 'lucide-react';
@@ -42,7 +43,7 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
       const contact = contacts.find(c => c.id === value);
       if (contact) {
         setSelectedContact(contact);
-        setSearchQuery(`${contact.firstName} ${contact.lastName}${contact.email ? ` (${contact.email})` : ''}`);
+        setSearchQuery(contactDisplayNameWithEmail(contact));
       }
     } else if (!value) {
       setSelectedContact(null);
@@ -112,7 +113,7 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
 
   const handleSelect = (contact: Contact) => {
     setSelectedContact(contact);
-    setSearchQuery(`${contact.firstName} ${contact.lastName}${contact.email ? ` (${contact.email})` : ''}`);
+    setSearchQuery(contactDisplayNameWithEmail(contact));
     setIsOpen(false);
     onChange(contact.id);
   };
@@ -178,9 +179,7 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-gray-400" />
                 <div className="flex-1">
-                  <div className="font-medium text-gray-900">
-                    {contact.firstName} {contact.lastName}
-                  </div>
+                  <div className="font-medium text-gray-900">{contactDisplayName(contact)}</div>
                   {contact.email && <div className="text-sm text-gray-500">{contact.email}</div>}
                   {contact.phone && <div className="text-xs text-gray-400">{contact.phone}</div>}
                 </div>

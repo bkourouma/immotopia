@@ -9,6 +9,9 @@ import type { CopilotStatus } from '../../types/copilot';
 // il reste hors du bundle d'entrée.
 const CopilotDrawer = lazy(() => import('./CopilotDrawer'));
 
+/** Valeur ARIA, pas un texte affiché : ne se traduit pas. */
+const COPILOT_KEYSHORTCUTS = 'Control+J Meta+J';
+
 export interface CopilotRootProps {
   tenantId: string;
   /** Vrai quand la barre d'onglets basse est affichée (mobile et tablette). */
@@ -87,7 +90,7 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
           size="large"
           icon={<RobotOutlined />}
           aria-label={t("Ouvrir l'assistant")}
-          aria-keyshortcuts="Control+J Meta+J"
+          aria-keyshortcuts={COPILOT_KEYSHORTCUTS}
           title={t('Assistant (Ctrl+J)')}
           onClick={openDrawer}
           style={{

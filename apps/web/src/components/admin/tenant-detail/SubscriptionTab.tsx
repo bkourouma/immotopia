@@ -48,6 +48,7 @@ import {
 } from '../../../services/subscription-extras-service';
 import { StatusTag, MoneyValue, useConfirmAction } from '../../primitives';
 import { ReasonPromptModal } from '../ReasonPromptModal';
+import { isExtensionAllowed } from '../../../utils/extension-rules';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
@@ -90,13 +91,18 @@ const PATRIMOINE_TIER_TARGET: Record<
   PATRIMOINE_PRO: 'PATRIMOINE_ESSENTIEL'
 };
 
-const PHASE_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+// Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue
+// active à ce moment-là (« Essai » restait en français après passage à l'anglais).
+const phaseLabels = (): Record<
+  string,
+  { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
+> => ({
   NONE: { label: t('Aucun abonnement'), tone: 'neutral' },
   TRIAL: { label: t('Essai'), tone: 'info' },
   ACTIVE: { label: t('Actif'), tone: 'success' },
   GRACE: { label: t('Grâce'), tone: 'warning' },
   READ_ONLY: { label: t('Lecture seule'), tone: 'danger' }
-};
+});
 
 const QUOTA_POLICY_OPTIONS: Array<{ value: QuotaPolicyCode; label: string }> = [
   { value: 'BLOCK', label: t('Bloquer le dépassement') },
@@ -187,6 +193,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ open, onClose, catalog, hel
         .filter(c => c.isSellable)
         .filter(c => (c.kind === 'PACK' ? !heldPacks.includes(c.code) : true))
         .filter(c => !(c.kind === 'PACK' && c.rules?.tierGroup && heldTierGroups.has(c.rules.tierGroup)))
+        // Une extension n'est vendable qu'avec l'un des packs de `rules.requiresAnyOf`.
+        .filter(c => c.kind === 'PACK' || isExtensionAllowed(c.rules?.requiresAnyOf, heldPacks))
         .map(c => ({ value: c.code, label: `${c.name} (${ITEM_KIND_LABEL[c.kind] ?? c.kind})` })),
     [catalog, heldPacks, heldTierGroups]
   );
@@ -611,7 +619,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
   const { subscription, items, overrides, entitlements } = overview;
   const heldPacks = entitlements.packs;
-  const phaseInfo = PHASE_LABEL[entitlements.phase] ?? PHASE_LABEL.NONE;
+  const phaseInfo = phaseLabels()[entitlements.phase] ?? phaseLabels().NONE;
 
   const itemColumns: ColumnsType<SubscriptionItemDTO> = [
     {

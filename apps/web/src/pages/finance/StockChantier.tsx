@@ -608,7 +608,7 @@ export const StockChantier: React.FC = () => {
               { label: t('Entré depuis une facture'), value: quantite(ligne.receivedQuantity, ligne.itemUnit) },
               { label: t("Venu d'un autre lieu"), value: quantite(ligne.transferredInQuantity, ligne.itemUnit) },
               { label: t('Consommé'), value: quantite(ligne.issuedQuantity, ligne.itemUnit) },
-              { label: 'Restant', value: quantite(ligne.remainingQuantity, ligne.itemUnit) }
+              { label: t('Restant'), value: quantite(ligne.remainingQuantity, ligne.itemUnit) }
             ]}
           />
         )}

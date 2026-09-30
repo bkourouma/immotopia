@@ -2,6 +2,13 @@ import type { Event as RBCEvent } from 'react-big-calendar';
 import type { CalendarEvent, CalendarEventType } from '../../services/crm-service';
 
 import { activeLocale } from '../../i18n/format';
+import {
+  calendarBadgeLabel,
+  calendarEventTypeLabel,
+  dealLabelFromApi,
+  nextActionTypeLabel,
+  visitStatusLabel
+} from '../../utils/crm-labels';
 /**
  * Modèle d'événement partagé entre la liste agenda et la grille.
  *
@@ -34,6 +41,19 @@ export interface EvenementAgenda extends RBCEvent {
 }
 
 /**
+ * Titre affiché. L'API compose le titre d'une relance avec le code brut de la
+ * prochaine action (`Tâche: FOLLOW_UP_CALL - Yao`) : on y remplace ce code par
+ * son libellé traduit. Tout autre titre (visite, texte libre) reste tel quel.
+ */
+export function titreLisible(event: CalendarEvent): string {
+  const code = event.nextActionType;
+  if (event.eventType === 'FOLLOWUP' && code && event.title.includes(code)) {
+    return event.title.replace(code, nextActionTypeLabel(code));
+  }
+  return event.title;
+}
+
+/**
  * Convertit un événement de l'API, en écartant ceux dont la date est illisible.
  *
  * Une date invalide produit un `Date` NaN, que `react-big-calendar` place
@@ -49,7 +69,7 @@ export function versEvenementAgenda(event: CalendarEvent): EvenementAgenda | nul
   return {
     eventId: event.eventId,
     eventType: event.eventType,
-    title: event.title,
+    title: titreLisible(event),
     start: debut,
     // Une relance est ponctuelle : sans fin valide, elle dure l'instant de son
     // début.
@@ -57,11 +77,13 @@ export function versEvenementAgenda(event: CalendarEvent): EvenementAgenda | nul
     contactId: event.contactId,
     contactName: event.contactName,
     dealId: event.dealId,
-    dealLabel: event.dealLabel,
+    dealLabel: dealLabelFromApi(event.dealLabel),
     status: event.status,
-    badges: event.badges,
+    badges: (event.badges ?? []).map(calendarBadgeLabel),
     canEdit: event.canEdit,
     canDrag: event.canDrag,
+    // Le code brut reste dans `nextActionType` (données) ; l'écran passe par
+    // `nextActionTypeLabel`.
     nextActionType: event.nextActionType,
     location: event.location,
     assignedToUserId: event.assignedToUserId,
@@ -133,15 +155,15 @@ export function lignesExport(evenements: EvenementAgenda[]): Record<string, stri
     valeur && !Number.isNaN(valeur.getTime()) ? valeur.toLocaleString(activeLocale()) : '';
 
   return evenements.map(e => ({
-    Type: e.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
+    Type: calendarEventTypeLabel(e.eventType),
     Titre: e.title,
     Contact: e.contactName,
     Affaire: e.dealLabel || '',
     'Date début': dateHeure(e.start),
     'Date fin': dateHeure(e.end),
-    "Type d'action": e.nextActionType || '',
+    "Type d'action": nextActionTypeLabel(e.nextActionType),
     Lieu: e.location || '',
-    Statut: e.status || '',
+    Statut: e.status ? visitStatusLabel(e.status) : '',
     Badges: e.badges.join(', ')
   }));
 }

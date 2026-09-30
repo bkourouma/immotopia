@@ -5,18 +5,21 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import {
   useDisabledMenuKeys,
-  useFeatureAccess,
+  CORE_ONLY_ACCESS,
+  useFeatureAccessState,
   useFilteredNavigation,
   useOwnAssetsOnly
 } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { getNavigation } from '../../navigation/model';
+import { featureForAgencyPath, isAgencyPathNotIncluded } from '../../navigation/route-features';
 import { withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
 import { AccountNotLinked } from '../primitives/AccountNotLinked';
+import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
 import { SkeletonDetail } from '../primitives/Skeleton';
 import { AppHeader } from './AppHeader';
 import { AppNavigation } from './AppNavigation';
@@ -134,7 +137,10 @@ export const AppShell: React.FC = () => {
    */
   const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
-  const featureAccess = useFeatureAccess(navContext.tenantId, persona === 'collaborateur');
+  const { access: featureAccess, loading: featureAccessLoading } = useFeatureAccessState(
+    navContext.tenantId,
+    persona === 'collaborateur'
+  );
   // Barrière « détenu en propre » (pack Patrimoine seul, lot P1) : masque les
   // entrées de gestion pour un tiers (mandat, relevés et comptes propriétaires).
   const ownAssetsOnly = useOwnAssetsOnly(navContext.tenantId, persona === 'collaborateur');
@@ -171,7 +177,24 @@ export const AppShell: React.FC = () => {
     [disabledMenuKeys, ownerPatrimoineEnabled]
   );
 
-  const nav = useFilteredNavigation(personaNav, effectiveDisabledMenuKeys, featureAccess, ownAssetsOnly);
+  // Adresse tapée à la main d'un module hors abonnement : l'écran de refus
+  // REMPLACE celui du module (mêmes droits que le menu ; nul tant que les
+  // droits se lisent, en cas d'échec de lecture, pour un super-admin et hors
+  // des routes d'agence : jamais de blocage à tort).
+  const moduleNotIncluded = isAgencyPathNotIncluded(location.pathname, featureAccess);
+  // Écran d'un module qui PEUT être hors abonnement : son montage attend la
+  // réponse des droits, sinon un module non souscrit monterait (et lancerait
+  // ses appels API, refusés en 403) avant de céder la place à l'écran de refus.
+  // Le socle (contacts, biens, tableau de bord…) monte aussitôt.
+  const awaitingModuleAccess = featureAccessLoading && featureForAgencyPath(location.pathname) !== null;
+
+  const nav = useFilteredNavigation(
+    personaNav,
+    effectiveDisabledMenuKeys,
+    // Pendant la lecture des droits : socle seul, pas de menu complet qui clignote.
+    featureAccessLoading ? CORE_ONLY_ACCESS : featureAccess,
+    ownAssetsOnly
+  );
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
   // SUBSCRIPTION_READ_ONLY, 409 QUOTA_EXCEEDED) traduits en message clair, sur
@@ -266,7 +289,15 @@ export const AppShell: React.FC = () => {
           {/* Le squelette remplace le `Spin` plein écran : la coquille est
               déjà peinte, seul le contenu manque (§5.6). */}
           <Suspense fallback={<SkeletonDetail aria-label={t("Chargement de l'écran")} />}>
-            <Outlet />
+            {awaitingModuleAccess ? (
+              <SkeletonDetail aria-label={t("Chargement de l'écran")} />
+            ) : moduleNotIncluded ? (
+              <ModuleNotIncluded
+                settingsPath={navContext.tenantId ? `/tenant/${navContext.tenantId}/settings/abonnement` : undefined}
+              />
+            ) : (
+              <Outlet />
+            )}
           </Suspense>
         </Layout.Content>
       </Layout>

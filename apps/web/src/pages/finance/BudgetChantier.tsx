@@ -662,7 +662,7 @@ export const BudgetChantier: React.FC = () => {
                 primaryAction={
                   a.status === 'DRAFT'
                     ? {
-                        label: 'Valider',
+                        label: t('Valider'),
                         onClick: () =>
                           confirmerAction({
                             title: t("Valider l'avenant du {{value}} ?", { value: dateCourte(a.amendmentDate) }),

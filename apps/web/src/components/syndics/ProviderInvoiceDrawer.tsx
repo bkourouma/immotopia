@@ -42,6 +42,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels, providerPayme
 import { saveBlob } from '../../utils/save-blob';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -283,7 +284,7 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       dataIndex: 'amount',
       key: 'amount',
       align: 'end',
-      render: (_: number, row) => <MoneyValue value={row.amount} currency={invoice?.currency} />
+      render: (_: number, row) => <MoneyValue value={row.amount} currency={displayCurrency(invoice?.currency)} />
     },
     {
       title: t('Mode'),
@@ -358,19 +359,19 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
               {invoice.dueDate ? dayjs(invoice.dueDate).format(dateFormat('short')) : t('Sans échéance')}
             </Descriptions.Item>
             <Descriptions.Item label={t('Montant HT')}>
-              <MoneyValue value={invoice.amountHT} currency={invoice.currency} />
+              <MoneyValue value={invoice.amountHT} currency={displayCurrency(invoice.currency)} />
             </Descriptions.Item>
             <Descriptions.Item label={t('TVA')}>
-              <MoneyValue value={invoice.vatAmount} currency={invoice.currency} />
+              <MoneyValue value={invoice.vatAmount} currency={displayCurrency(invoice.currency)} />
             </Descriptions.Item>
             <Descriptions.Item label={t('Montant TTC')}>
-              <MoneyValue value={invoice.amountTTC} currency={invoice.currency} />
+              <MoneyValue value={invoice.amountTTC} currency={displayCurrency(invoice.currency)} />
             </Descriptions.Item>
             <Descriptions.Item label={t('Payé')}>
-              <MoneyValue value={invoice.amountPaid} currency={invoice.currency} />
+              <MoneyValue value={invoice.amountPaid} currency={displayCurrency(invoice.currency)} />
             </Descriptions.Item>
             <Descriptions.Item label={t('Reste dû')}>
-              <MoneyValue value={invoice.amountDue} currency={invoice.currency} />
+              <MoneyValue value={invoice.amountDue} currency={displayCurrency(invoice.currency)} />
             </Descriptions.Item>
             {invoice.status === 'CANCELLED' && (
               <Descriptions.Item label={t("Motif d'annulation")}>{invoice.cancelReason}</Descriptions.Item>

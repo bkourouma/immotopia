@@ -14,6 +14,8 @@ import {
 import { ConfirmAction, formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from './FeeTermsFields';
+import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
+import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -69,6 +71,7 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
   const [owners, setOwners] = useState<OwnerFeeTerms[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notIncluded, setNotIncluded] = useState(false);
   const [editing, setEditing] = useState<OwnerFeeTerms | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -79,6 +82,10 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
       const data = await listOwnerFeeTerms(tenantId);
       setOwners(data);
     } catch (e: any) {
+      if (isModuleNotIncludedError(e)) {
+        setNotIncluded(true);
+        return;
+      }
       setError(e?.response?.data?.message || t('Erreur lors du chargement des propriétaires'));
     } finally {
       setLoading(false);
@@ -193,6 +200,14 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
       )
     }
   ];
+
+  if (notIncluded) {
+    return (
+      <Card title={t('Conditions par propriétaire')}>
+        <ModuleNotIncluded />
+      </Card>
+    );
+  }
 
   return (
     <Card title={t('Conditions par propriétaire')}>

@@ -20,6 +20,13 @@ vi.mock('../../services/syndic-service', () => ({
   listSyndicates: vi.fn().mockResolvedValue([{ id: 's1', name: 'Résidence Les Palmiers' }])
 }));
 
+// Droits d'abonnement : contrôle non appliqué, tous les onglets sont visibles.
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: vi
+    .fn()
+    .mockResolvedValue({ moduleAccess: {}, readOnly: false, phase: 'ACTIVE', enforcement: 'off' })
+}));
+
 const mockListSyndicates = listSyndicates as unknown as ReturnType<typeof vi.fn>;
 
 const TENANT = 't1';
@@ -37,7 +44,7 @@ function renderFinance(family: FinanceWorkspaceFamily, path: string) {
 }
 
 describe('FinanceWorkspaceLayout', () => {
-  it('situe l’écran : module, famille, puis l’écran réel', () => {
+  it('situe l’écran : module, famille, puis l’écran réel', async () => {
     renderFinance('suivi-chantiers', `/tenant/${TENANT}/finance/chantiers`);
 
     expect(screen.getByText('Finance')).toBeInTheDocument();
@@ -45,11 +52,12 @@ describe('FinanceWorkspaceLayout', () => {
     expect(screen.getByText('Écran rendu')).toBeInTheDocument();
   });
 
-  it('ordonne les onglets selon le flux, en liens vers les routes existantes de l’agence', () => {
+  it('ordonne les onglets selon le flux, en liens vers les routes existantes de l’agence', async () => {
     renderFinance('suivi-chantiers', `/tenant/${TENANT}/finance/chantiers`);
 
-    const tablist = screen.getByRole('tablist', { name: 'Suivi des chantiers' });
+    const tablist = await screen.findByRole('tablist', { name: 'Suivi des chantiers' });
     expect(tablist).toBeInTheDocument();
+    await screen.findAllByRole('tab');
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map(tab => tab.textContent)).toEqual(['Chantiers', 'Tableau de bord', 'Baux de terrain']);
     expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
@@ -59,21 +67,21 @@ describe('FinanceWorkspaceLayout', () => {
     ]);
   });
 
-  it('garde l’onglet de la liste actif sur ses fiches de détail', () => {
+  it('garde l’onglet de la liste actif sur ses fiches de détail', async () => {
     renderFinance('suivi-chantiers', `/tenant/${TENANT}/finance/chantiers/42/budget`);
-    expect(screen.getByRole('tab', { name: 'Chantiers' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tab', { name: 'Chantiers' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('distingue deux onglets dont l’un prolonge l’autre', () => {
+  it('distingue deux onglets dont l’un prolonge l’autre', async () => {
     renderFinance('gestion-stock', `/tenant/${TENANT}/finance/stock/inventaire`);
-    expect(screen.getByRole('tab', { name: 'Stock' })).toHaveAttribute('aria-selected', 'false');
-    expect(screen.getByRole('tab', { name: 'Inventaire' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tab', { name: 'Stock' })).toHaveAttribute('aria-selected', 'false');
+    expect(await screen.findByRole('tab', { name: 'Inventaire' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('rattache les factures d’un fournisseur à l’onglet Fournisseurs', () => {
+  it('rattache les factures d’un fournisseur à l’onglet Fournisseurs', async () => {
     renderFinance('fournisseurs-commandes', `/tenant/${TENANT}/finance/factures-fournisseurs?fournisseur=f1`);
-    expect(screen.getByRole('tab', { name: 'Fournisseurs' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Balance fournisseurs' })).toHaveAttribute('aria-selected', 'false');
+    expect(await screen.findByRole('tab', { name: 'Fournisseurs' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tab', { name: 'Balance fournisseurs' })).toHaveAttribute('aria-selected', 'false');
   });
 });
 

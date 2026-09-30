@@ -123,10 +123,41 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   const handleGenerate = async (donnees: GenerateDocumentRequest) => {
     if (!tenantId) return;
     // Les erreurs remontent au formulaire, qui les affiche lui-même.
-    await generateDocument(tenantId, donnees);
+    try {
+      await generateDocument(tenantId, donnees);
+    } catch (err: any) {
+      // 409 : un contrat existe déjà pour ce bail. On propose de le régénérer.
+      const existant = err?.response?.status === 409 ? err.response.data?.data?.existingDocumentId : undefined;
+      if (existant) {
+        setFormulaireOuvert(false);
+        proposerRegeneration(existant);
+        return;
+      }
+      throw err;
+    }
     setFormulaireOuvert(false);
     await rafraichir();
     message.success(t('Document généré.'));
+  };
+
+  const proposerRegeneration = (documentId: string) => {
+    if (!tenantId) return;
+    confirmAction({
+      title: t('Un contrat existe déjà pour ce bail'),
+      description: t(
+        'Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.'
+      ),
+      okText: t('Régénérer'),
+      onConfirm: async () => {
+        try {
+          await regenerateDocument(tenantId, documentId);
+          await rafraichir();
+          message.success(t('Document régénéré.'));
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || t('La régénération a échoué.'));
+        }
+      }
+    });
   };
 
   const handleRegenerate = (doc: RentalDocument) => {
@@ -307,7 +338,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
             subtitle={doc.title || TYPE_LABELS[doc.type] || doc.type}
             status={<StatusTag status={doc.status} />}
             fields={[
-              { label: 'Type', value: TYPE_LABELS[doc.type] || doc.type },
+              { label: t('Type'), value: TYPE_LABELS[doc.type] || doc.type },
               { label: t('Émis le'), value: dateCourte(doc.issued_at) }
             ]}
             primaryAction={{

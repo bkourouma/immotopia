@@ -1,9 +1,12 @@
+import { formatMoney } from '../primitives';
+import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Select, Button, DatePicker, Row, Col, Space, Alert } from 'antd';
 import dayjs from 'dayjs';
 import { CreateCrmActivityRequest, CrmActivityType, CrmActivityDirection } from '../../types/crm-types';
 import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
 import { t } from '../../i18n/t';
+import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -159,7 +162,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
       // contactId is required - it should be validated by now
       const finalContactId = formData.contactId || contactId;
       if (!finalContactId) {
-        throw new Error(t('Contact ID is required'));
+        throw new Error(t('Le contact est obligatoire'));
       }
 
       const submitData: CreateCrmActivityRequest = {
@@ -261,7 +264,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               help={errors.contactId}
             >
               {loadingContacts ? (
-                <Input placeholder="Chargement..." disabled />
+                <Input placeholder={t('Chargement...')} disabled />
               ) : (
                 <Select
                   value={formData.contactId}
@@ -275,7 +278,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
                   optionLabelProp="label"
                 >
                   {contacts.map(contact => {
-                    const label = `${contact.firstName} ${contact.lastName} ${contact.email ? `(${contact.email})` : ''}`;
+                    const label = contactDisplayNameWithEmail(contact);
                     return (
                       <Select.Option key={contact.id} value={contact.id} label={label}>
                         {label}
@@ -290,11 +293,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           <Col xs={24} md={12}>
             <Form.Item label={t('Contact')} required>
               <Input
-                value={
-                  selectedContact
-                    ? `${selectedContact.firstName} ${selectedContact.lastName}${selectedContact.email ? ` (${selectedContact.email})` : ''}`
-                    : 'Chargement...'
-                }
+                value={selectedContact ? contactDisplayNameWithEmail(selectedContact) : t('Chargement...')}
                 disabled
               />
             </Form.Item>
@@ -309,7 +308,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               help={errors.dealId || (!formData.contactId && !contactId ? t("Sélectionnez d'abord un contact") : '')}
             >
               {loadingDeals ? (
-                <Input placeholder="Chargement..." disabled />
+                <Input placeholder={t('Chargement...')} disabled />
               ) : (
                 <Select
                   showSearch
@@ -326,21 +325,10 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
                     </Select.Option>
                   ) : (
                     deals.map(deal => {
-                      const typeLabel = deal.type === 'ACHAT' ? t('Achat') : t('Location');
-                      const stageLabels: Record<string, string> = {
-                        NEW: t('Nouveau'),
-                        QUALIFIED: t('Qualifié'),
-                        VISIT: t('Visite'),
-                        NEGOTIATION: t('Négociation'),
-                        WON: t('Gagné'),
-                        LOST: t('Perdu')
-                      };
-                      const budget = deal.budgetMax
-                        ? ` - ${new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(deal.budgetMax)}`
-                        : '';
+                      const budget = deal.budgetMax ? ` - ${formatMoney(deal.budgetMax)}` : '';
                       return (
                         <Select.Option key={deal.id} value={deal.id}>
-                          {typeLabel} - {stageLabels[deal.stage] || deal.stage}
+                          {dealTypeLabel(deal.type)} - {dealStageLabel(deal.stage)}
                           {budget}
                         </Select.Option>
                       );
@@ -356,22 +344,10 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               <Input
                 value={
                   selectedDeal
-                    ? `${selectedDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${(() => {
-                        const stageLabels: Record<string, string> = {
-                          NEW: 'Nouveau',
-                          QUALIFIED: t('Qualifié'),
-                          VISIT: 'Visite',
-                          NEGOTIATION: t('Négociation'),
-                          WON: t('Gagné'),
-                          LOST: 'Perdu'
-                        };
-                        return stageLabels[selectedDeal.stage] || selectedDeal.stage;
-                      })()}${
-                        selectedDeal.budgetMax
-                          ? ` - ${new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(selectedDeal.budgetMax)}`
-                          : ''
+                    ? `${dealTypeLabel(selectedDeal.type)} - ${dealStageLabel(selectedDeal.stage)}${
+                        selectedDeal.budgetMax ? ` - ${formatMoney(selectedDeal.budgetMax)}` : ''
                       }`
-                    : 'Chargement...'
+                    : t('Chargement...')
                 }
                 disabled
               />

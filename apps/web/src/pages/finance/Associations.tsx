@@ -180,7 +180,7 @@ export const Associations: React.FC = () => {
             fields={[
               { label: t('Total des quotes-parts'), value: pourcentage(a.totalSharePercent) },
               { label: t("Part de l'agence"), value: pourcentage(a.companySharePercent) },
-              { label: 'Biens', value: libelleBiens(a) }
+              { label: t('Biens'), value: libelleBiens(a) }
             ]}
             onOpen={() => ouvrirFiche(a)}
           />

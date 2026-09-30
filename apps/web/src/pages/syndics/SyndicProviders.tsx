@@ -140,6 +140,10 @@ export const SyndicProviders: React.FC = () => {
         contractForm.setFieldsValue({ providerId: provider.id });
       }
     } catch (err: any) {
+      // Doublon de nom (409) : le message explicite est reporté sous le champ fautif.
+      const fieldErrors: Array<{ field: string; message: string }> | undefined = err.response?.data?.errors;
+      const nameError = fieldErrors?.find(fieldErr => fieldErr.field === 'name');
+      if (nameError) providerForm.setFields([{ name: 'name', errors: [nameError.message] }]);
       message.error(err.response?.data?.error || t('Enregistrement du prestataire impossible'));
     } finally {
       setSubmittingProvider(false);

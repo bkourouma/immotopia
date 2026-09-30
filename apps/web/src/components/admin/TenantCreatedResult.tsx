@@ -108,11 +108,18 @@ export const TenantCreatedResult: React.FC<TenantCreatedResultProps> = ({
         type="success"
         showIcon
         icon={<CheckCircleFilled />}
-        message={t('Agence créée')}
-        description={t('{{name}} ({{slug}}) est prête à l’usage.', {
-          name: result.tenant.name,
-          slug: result.tenant.slug
-        })}
+        message={result.alreadyExisted ? t('Agence déjà créée') : t('Agence créée')}
+        description={
+          result.alreadyExisted
+            ? t("{{name}} ({{slug}}) existe déjà : rien n'a été recréé et l'invitation précédente reste valide.", {
+                name: result.tenant.name,
+                slug: result.tenant.slug
+              })
+            : t('{{name}} ({{slug}}) est prête à l’usage.', {
+                name: result.tenant.name,
+                slug: result.tenant.slug
+              })
+        }
       />
 
       <div>
@@ -158,14 +165,22 @@ export const TenantCreatedResult: React.FC<TenantCreatedResultProps> = ({
         <Title level={5} style={{ marginTop: 0 }}>
           {t("Lien d'invitation")}
         </Title>
-        <Space.Compact style={{ width: '100%' }}>
-          <Input readOnly value={result.invitation.acceptUrl} />
-          <Button icon={<CopyOutlined />} onClick={handleCopy}>
-            {t('Copier')}
-          </Button>
-        </Space.Compact>
+        {result.invitation.acceptUrl ? (
+          <Space.Compact style={{ width: '100%' }}>
+            <Input readOnly value={result.invitation.acceptUrl} />
+            <Button icon={<CopyOutlined />} onClick={handleCopy}>
+              {t('Copier')}
+            </Button>
+          </Space.Compact>
+        ) : (
+          <Text type="secondary" style={{ display: 'block' }}>
+            {t(
+              "Le lien d'invitation déjà transmis reste valide. Renvoyez l'invitation pour en obtenir un nouveau (l'ancien lien cessera alors de fonctionner)."
+            )}
+          </Text>
+        )}
 
-        {result.emailSent ? (
+        {result.alreadyExisted && !result.invitation.acceptUrl ? null : result.emailSent ? (
           <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
             {t("E-mail d'invitation envoyé.")}
           </Text>

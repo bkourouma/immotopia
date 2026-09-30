@@ -35,6 +35,8 @@ export interface QuotaExceededDetail {
   used: number;
   limit: number;
   requested: number;
+  /** Faux quand le pack ne vend aucune extension pour cette capacité (le serveur le dit). */
+  extensible?: boolean;
 }
 
 export function isQuotaExceededDetail(data: unknown): data is QuotaExceededDetail {
@@ -107,10 +109,16 @@ export function quotaExceededDenialText(
 ): { title: string; description: string; settingsPath: string | null } {
   return {
     title: t('Capacité de votre abonnement atteinte'),
-    description: t(
-      'Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Demandez une extension de capacité.',
-      { limit: detail.limit, capacite: capacityLabel(detail.capacityKey), used: detail.used }
-    ),
+    description:
+      detail.extensible === false
+        ? t(
+            'Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Aucune extension n’est vendue avec votre pack : choisissez la facturation du dépassement, changez de pack ou contactez-nous.',
+            { limit: detail.limit, capacite: capacityLabel(detail.capacityKey), used: detail.used }
+          )
+        : t(
+            'Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Demandez une extension de capacité.',
+            { limit: detail.limit, capacite: capacityLabel(detail.capacityKey), used: detail.used }
+          ),
     settingsPath: tenantId ? `/tenant/${tenantId}/settings/abonnement` : null
   };
 }

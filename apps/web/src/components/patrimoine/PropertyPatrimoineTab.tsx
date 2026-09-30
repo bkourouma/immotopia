@@ -56,6 +56,7 @@ import { ExpenseTracker } from './ExpenseTracker';
 import { LoanWidget } from './LoanWidget';
 import { ValuationHistory } from './ValuationHistory';
 import { YieldCalculator, type YieldAssumptionsInput } from './YieldCalculator';
+import { readYieldAssumptions, writeYieldAssumptions } from './yield-assumptions-storage';
 import { YieldProjectionChart } from './YieldProjectionChart';
 import { WorkProgramTimeline } from './WorkProgramTimeline';
 import {
@@ -157,6 +158,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const [loading, setLoading] = useState(true);
   const [sectionErrors, setSectionErrors] = useState<SectionErrors>({});
   const [yieldLoading, setYieldLoading] = useState(false);
+  const [yieldAssumptions, setYieldAssumptions] = useState<YieldAssumptionsInput | undefined>(() =>
+    readYieldAssumptions(tenantId, propertyId)
+  );
   const [submitting, setSubmitting] = useState(false);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
@@ -193,13 +197,17 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    const savedAssumptions = readYieldAssumptions(tenantId, propertyId);
+    setYieldAssumptions(savedAssumptions);
     const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes] = await Promise.allSettled([
       listValuations(tenantId, propertyId),
       listExpenses(tenantId, propertyId),
       listLoans(tenantId, propertyId),
       listWorkPrograms(tenantId, propertyId),
       listPropertyDocuments(tenantId, propertyId),
-      getPropertyYield(tenantId, propertyId)
+      savedAssumptions
+        ? getPropertyYield(tenantId, propertyId, savedAssumptions)
+        : getPropertyYield(tenantId, propertyId)
     ]);
 
     const erreurs: SectionErrors = {};
@@ -243,6 +251,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       const data = await getPropertyYield(tenantId, propertyId, assumptions);
       setYieldData(data);
+      setYieldAssumptions(assumptions);
+      writeYieldAssumptions(tenantId, propertyId, assumptions);
       setSectionErrors(prev => ({ ...prev, yieldData: undefined }));
     } catch (e) {
       message.error(apiErrorMessage(e, t('Échec du recalcul du rendement')));
@@ -833,7 +843,12 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           {sectionErrors.yieldData ? (
             <Alert type="error" showIcon message={sectionErrors.yieldData} />
           ) : (
-            <YieldCalculator data={yieldData} loading={yieldLoading} onRecalculate={handleRecalculateYield} />
+            <YieldCalculator
+              data={yieldData}
+              loading={yieldLoading}
+              assumptions={yieldAssumptions}
+              onRecalculate={handleRecalculateYield}
+            />
           )}
         </Col>
         <Col xs={24}>

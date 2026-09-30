@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -128,6 +128,49 @@ beforeEach(() => {
   allocatePayment.mockResolvedValue({ success: true });
 });
 
+/** « Encaisser » ouvre une confirmation : on la valide pour enregistrer le paiement. */
+async function confirmerEncaissement(user: ReturnType<typeof userEvent.setup>) {
+  const boutons = await screen.findAllByRole('button', { name: /Confirmer l'encaissement/ }, { timeout: 8000 });
+  await user.click(boutons[boutons.length - 1]);
+}
+
+describe('Échéances — confirmation avant encaissement', () => {
+  it('demande confirmation (montant, locataire, mode) et n’écrit rien avant', async () => {
+    const user = userEvent.setup({ delay: null });
+    listInstallments.mockResolvedValue({
+      success: true,
+      data: [
+        echeance({
+          lease: {
+            id: 'bail-1',
+            lease_number: 'BAIL-2026-0001',
+            primaryRenter: { id: 'cli-1', user: { fullName: 'Yao N’Dri' } }
+          }
+        })
+      ],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+    mountGlobal();
+
+    await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
+
+    const dialogue = within(await screen.findByRole('dialog', {}, { timeout: 8000 }));
+    expect(dialogue.getByText(/Yao N’Dri/)).toBeInTheDocument();
+    expect(dialogue.getByText(/Espèces/)).toBeInTheDocument();
+    expect(dialogue.getAllByText(contenu => contenu.replace(/\D/g, '') === '1457500').length).toBeGreaterThan(0);
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+
+  it('n’enregistre rien quand on annule', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
+    await user.click(await screen.findByRole('button', { name: /Annuler/ }, { timeout: 8000 }));
+
+    expect(createPayment).not.toHaveBeenCalled();
+  });
+});
+
 describe('Échéances — idempotence de l’encaissement', () => {
   it('réutilise la MÊME clé quand un encaissement est retenté', async () => {
     // Le test le plus important du fichier. L'ancienne version concaténait
@@ -141,6 +184,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
     const bouton = await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 });
 
     await user.click(bouton);
+    await confirmerEncaissement(user);
     await waitFor(() => expect(createPayment).toHaveBeenCalledTimes(1));
 
     // Attendre que le bouton redevienne actionnable. Pendant l'appel, il porte
@@ -149,6 +193,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
     await waitFor(() => expect(bouton).not.toBeDisabled());
 
     await user.click(bouton);
+    await confirmerEncaissement(user);
     await waitFor(() => expect(createPayment).toHaveBeenCalledTimes(2));
 
     const premiere = createPayment.mock.calls[0][1].idempotencyKey;
@@ -162,6 +207,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
     const user = userEvent.setup({ delay: null });
     mount();
     await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
+    await confirmerEncaissement(user);
 
     await waitFor(() => expect(createPayment).toHaveBeenCalled());
     expect(createPayment.mock.calls[0][1]).toMatchObject({ amount: 1_457_500, method: 'CASH', currency: 'XOF' });
@@ -171,6 +217,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
     const user = userEvent.setup({ delay: null });
     mount();
     await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
+    await confirmerEncaissement(user);
 
     await waitFor(() => expect(allocatePayment).toHaveBeenCalled());
     expect(allocatePayment.mock.calls[0][2]).toEqual({ installmentIds: ['ech-1'] });

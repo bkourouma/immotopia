@@ -7,6 +7,8 @@ import {
   listAgentCommissionShares,
   updateAgentCommissionShare
 } from '../../services/agency-finance-settings-service';
+import { ModuleNotIncluded } from '../primitives/ModuleNotIncluded';
+import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -27,6 +29,7 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
   const [agents, setAgents] = useState<AgentCommissionShare[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notIncluded, setNotIncluded] = useState(false);
   // Brouillon local par collaborateur, distinct de la valeur enregistrée :
   // permet de taper sans enregistrer à chaque frappe, et sans perdre la saisie
   // si `load()` est rappelé entre-temps.
@@ -41,6 +44,10 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
       setAgents(data);
       setDrafts(Object.fromEntries(data.map(agent => [agent.userId, agent.sharePercent])));
     } catch (e: any) {
+      if (isModuleNotIncludedError(e)) {
+        setNotIncluded(true);
+        return;
+      }
       setError(e?.response?.data?.message || t('Erreur lors du chargement des collaborateurs'));
     } finally {
       setLoading(false);
@@ -111,6 +118,14 @@ export const AgentCommissionCard: React.FC<AgentCommissionCardProps> = ({ tenant
       )
     }
   ];
+
+  if (notIncluded) {
+    return (
+      <Card title={t('Commission des collaborateurs')}>
+        <ModuleNotIncluded />
+      </Card>
+    );
+  }
 
   return (
     <Card title={t('Commission des collaborateurs')}>

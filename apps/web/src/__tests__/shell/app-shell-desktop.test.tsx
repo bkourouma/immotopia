@@ -7,6 +7,12 @@ import type { AuthContextType } from '../../types/auth-types';
 // `useLanguage` leve, et c'est voulu — un provider oublie doit se voir.
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 
+// Lecture des droits d'abonnement : échec immédiat (menu non restreint). Sans
+// ce mock, l'appel réseau met du temps à échouer et le menu reste au socle.
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: () => Promise.reject(new Error('hors ligne'))
+}));
+
 /**
  * Palier desktop (≥ 992 px).
  *
@@ -76,11 +82,12 @@ function renderShell(path: string) {
 }
 
 describe('AppShell — palier desktop', () => {
-  it('rend la sidebar et non la barre d’onglets', () => {
+  it('rend la sidebar et non la barre d’onglets', async () => {
     renderShell(`/tenant/${TENANT}/rental/leases`);
     expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).not.toBeInTheDocument();
-    // La sidebar porte le menu : « Encaisser » y figure comme destination.
-    expect(screen.getAllByText('Encaisser').length).toBeGreaterThan(0);
+    // La sidebar porte le menu : « Encaisser » y figure comme destination
+    // (une fois les droits lus : le menu n'affiche que le socle avant).
+    expect((await screen.findAllByText('Encaisser')).length).toBeGreaterThan(0);
   });
 
   it('rend le fil d’Ariane complet, et non un simple retour', () => {

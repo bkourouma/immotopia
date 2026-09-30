@@ -26,6 +26,21 @@ interface PersonneNommable {
 }
 
 /**
+ * Devise affichée d'un paiement : le franc CFA s'écrit « FCFA » partout, quelle
+ * que soit la façon dont la ligne l'a enregistré (« CFA », « XOF », « F CFA »).
+ */
+export function deviseAffichee(devise?: string | null): string {
+  const code = (devise ?? '').replace(/s/g, '').toUpperCase();
+  return !code || code === 'CFA' || code === 'XOF' || code === 'FCFA' ? 'FCFA' : (devise as string);
+}
+
+/** Code ISO pour `Intl.NumberFormat` : le franc CFA d'Afrique de l'Ouest est XOF. */
+export function codeDeviseIntl(devise?: string | null): string {
+  const affichee = deviseAffichee(devise);
+  return affichee === 'FCFA' ? 'XOF' : affichee;
+}
+
+/**
  * Nom d'un bien.
  *
  * L'e-mail sert de repli pour une personne, pas pour un bien : un bien sans

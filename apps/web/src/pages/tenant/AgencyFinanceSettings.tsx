@@ -28,8 +28,10 @@ import {
 import { formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { FeeTermsFields } from '../../components/settings/FeeTermsFields';
+import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { OwnerFeeTermsCard } from '../../components/settings/OwnerFeeTermsCard';
 import { AgentCommissionCard } from '../../components/settings/AgentCommissionCard';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { PaymentGatewaySettingsCard } from '../../components/settings/PaymentGatewaySettingsCard';
 import { t } from '../../i18n/t';
 
@@ -62,6 +64,11 @@ export const AgencyFinanceSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sections de gestion locative : masquées quand l'abonnement ne comprend pas RENTAL.
+  const features = useAgencyFeatures(tenantId);
+  // Pack Patrimoine seul : ni honoraires par propriétaire ni commissions de négociateurs.
+  const ownAssetsOnly = useOwnAssetsOnly(tenantId, true);
+  const rental = features.has('RENTAL');
 
   // Construite au rendu, pas au chargement du module : `t()` doit lire la
   // langue choisie par l'utilisateur.
@@ -109,12 +116,15 @@ export const AgencyFinanceSettings: React.FC = () => {
     if (!tenantId) return;
     setSaving(true);
     try {
+      // Les champs de gestion locative masqués ne sont pas dans `values` : on
+      // repart des valeurs chargées pour ne pas les remettre à zéro (PUT complet).
+      const merged = { ...(settings ? toFormValues(settings) : {}), ...values } as FormValues;
       const saved = await updateAgencyFinanceSettings(tenantId, {
-        ...values,
-        managementFeeRate: values.managementFeeRate ?? null,
-        managementFeeFixedAmount: values.managementFeeFixedAmount ?? null,
-        vatRate: values.vatRate ?? 0,
-        withholdingStartsOn: values.withholdingStartsOn ? values.withholdingStartsOn.format('YYYY-MM-DD') : null
+        ...merged,
+        managementFeeRate: merged.managementFeeRate ?? null,
+        managementFeeFixedAmount: merged.managementFeeFixedAmount ?? null,
+        vatRate: merged.vatRate ?? 0,
+        withholdingStartsOn: merged.withholdingStartsOn ? merged.withholdingStartsOn.format('YYYY-MM-DD') : null
       });
       setSettings(saved);
       form.setFieldsValue(toFormValues(saved));
@@ -126,7 +136,7 @@ export const AgencyFinanceSettings: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (loading || !features.ready) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', minHeight: 300, alignItems: 'center' }}>
         <Spin size="large" />
@@ -172,11 +182,13 @@ export const AgencyFinanceSettings: React.FC = () => {
           {t('Paramètres financiers')}
         </Title>
         <Text type="secondary">
-          {t('Fiscalité, honoraires de gestion et comptes comptables utilisés par les relevés de gérance.')}
+          {rental
+            ? t('Fiscalité, honoraires de gestion et comptes comptables utilisés par les relevés de gérance.')
+            : t('Fiscalité et comptes comptables de la caisse.')}
         </Text>
       </div>
 
-      {settings?.isDefault ? (
+      {settings?.isDefault && rental ? (
         <Alert
           type="warning"
           showIcon
@@ -217,67 +229,78 @@ export const AgencyFinanceSettings: React.FC = () => {
           </Row>
         </Card>
 
-        <Card title={t('Honoraires de gestion')} style={{ marginBottom: 16 }}>
-          <FeeTermsFields />
-          {exampleFee !== null ? (
-            <Alert
-              type="info"
-              showIcon
-              message={
-                isFixedFeeMode
-                  ? t('Exemple sur une échéance de loyer de {{amount}}, entièrement payée', {
-                      amount: formatMoney(EXAMPLE_RENT)
-                    })
-                  : t('Exemple sur un loyer encaissé de {{amount}}', {
-                      amount: formatMoney(EXAMPLE_RENT)
-                    })
-              }
-              description={
-                <Paragraph style={{ margin: 0 }}>
-                  {t('Honoraires : {{fee}}', { fee: formatMoney(exampleFee) })}
-                  {vatRegistered ? ` · ${t('TVA : {{vat}}', { vat: formatMoney(exampleVat) })}` : ''}
-                  {' · '}
-                  <strong>
-                    {t('Net au propriétaire : {{net}}', { net: formatMoney(EXAMPLE_RENT - exampleFee - exampleVat) })}
-                  </strong>
-                </Paragraph>
-              }
-            />
-          ) : null}
-        </Card>
+        {rental ? (
+          <Card title={t('Honoraires de gestion')} style={{ marginBottom: 16 }}>
+            <FeeTermsFields />
+            {exampleFee !== null ? (
+              <Alert
+                type="info"
+                showIcon
+                message={
+                  isFixedFeeMode
+                    ? t('Exemple sur une échéance de loyer de {{amount}}, entièrement payée', {
+                        amount: formatMoney(EXAMPLE_RENT)
+                      })
+                    : t('Exemple sur un loyer encaissé de {{amount}}', {
+                        amount: formatMoney(EXAMPLE_RENT)
+                      })
+                }
+                description={
+                  <Paragraph style={{ margin: 0 }}>
+                    {t('Honoraires : {{fee}}', { fee: formatMoney(exampleFee) })}
+                    {vatRegistered ? ` · ${t('TVA : {{vat}}', { vat: formatMoney(exampleVat) })}` : ''}
+                    {' · '}
+                    <strong>
+                      {t('Net au propriétaire : {{net}}', { net: formatMoney(EXAMPLE_RENT - exampleFee - exampleVat) })}
+                    </strong>
+                  </Paragraph>
+                }
+              />
+            ) : null}
+          </Card>
+        ) : null}
 
-        <Card title={t('Comptes comptables de la gestion locative')} style={{ marginBottom: 16 }}>
-          <Paragraph type="secondary">
-            {t(
-              'Numérotation SYSCOHADA. À faire valider par votre comptable : ces comptes recevront les écritures du compte propriétaire.'
-            )}
-          </Paragraph>
+        <Card
+          title={rental ? t('Comptes comptables de la gestion locative') : t('Comptes comptables de la caisse')}
+          style={{ marginBottom: 16 }}
+        >
+          {rental ? (
+            <Paragraph type="secondary">
+              {t(
+                'Numérotation SYSCOHADA. À faire valider par votre comptable : ces comptes recevront les écritures du compte propriétaire.'
+              )}
+            </Paragraph>
+          ) : null}
           <Row gutter={16}>
-            <Col xs={24} md={8}>
-              <Form.Item
-                label={t('Fonds des propriétaires')}
-                name="ownerFundsAccountNumber"
-                rules={[ACCOUNT_RULE]}
-                extra={t('Compte de tiers « Mandants », avec un auxiliaire par propriétaire. Défaut : 4731.')}
-              >
-                <Input inputMode="numeric" placeholder={t('À fixer avec votre comptable')} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item
-                label={t('Honoraires de gestion')}
-                name="managementFeeAccountNumber"
-                rules={[ACCOUNT_RULE]}
-                extra={t('Compte de produit « Honoraires de gestion locative ». Défaut : 70611.')}
-              >
-                <Input inputMode="numeric" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item label={t('TVA collectée')} name="vatCollectedAccountNumber" rules={[ACCOUNT_RULE]}>
-                <Input inputMode="numeric" />
-              </Form.Item>
-            </Col>
+            {rental ? (
+              <>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    label={t('Fonds des propriétaires')}
+                    name="ownerFundsAccountNumber"
+                    rules={[ACCOUNT_RULE]}
+                    extra={t('Compte de tiers « Mandants », avec un auxiliaire par propriétaire. Défaut : 4731.')}
+                  >
+                    <Input inputMode="numeric" placeholder={t('À fixer avec votre comptable')} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    label={t('Honoraires de gestion')}
+                    name="managementFeeAccountNumber"
+                    rules={[ACCOUNT_RULE]}
+                    extra={t('Compte de produit « Honoraires de gestion locative ». Défaut : 70611.')}
+                  >
+                    <Input inputMode="numeric" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item label={t('TVA collectée')} name="vatCollectedAccountNumber" rules={[ACCOUNT_RULE]}>
+                    <Input inputMode="numeric" />
+                  </Form.Item>
+                </Col>
+              </>
+            ) : null}
             <Col xs={24} md={8}>
               <Form.Item
                 label={t('Écart de caisse — manquant')}
@@ -301,97 +324,101 @@ export const AgencyFinanceSettings: React.FC = () => {
           </Row>
         </Card>
 
-        <Card title={t('Pénalités de retard')} style={{ marginBottom: 16 }}>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={t('Bénéficiaire des pénalités')}
-                name="penaltyBeneficiary"
-                rules={[{ required: true, message: t('Le bénéficiaire des pénalités est requis') }]}
-              >
-                <Radio.Group>
-                  <Radio.Button value="OWNER">{t('Le propriétaire')}</Radio.Button>
-                  <Radio.Button value="AGENCY">{t("L'agence")}</Radio.Button>
-                </Radio.Group>
-              </Form.Item>
-            </Col>
-            {penaltyBeneficiary === 'AGENCY' ? (
-              <Col xs={24} md={12}>
-                <Form.Item
-                  label={t('Compte de produit des pénalités')}
-                  name="penaltyIncomeAccountNumber"
-                  rules={[
-                    ACCOUNT_RULE,
-                    { required: true, message: t('Le compte de produit des pénalités est requis') }
-                  ]}
-                >
-                  <Input inputMode="numeric" />
-                </Form.Item>
-              </Col>
-            ) : null}
-          </Row>
-        </Card>
+        {rental ? (
+          <>
+            <Card title={t('Pénalités de retard')} style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    label={t('Bénéficiaire des pénalités')}
+                    name="penaltyBeneficiary"
+                    rules={[{ required: true, message: t('Le bénéficiaire des pénalités est requis') }]}
+                  >
+                    <Radio.Group>
+                      <Radio.Button value="OWNER">{t('Le propriétaire')}</Radio.Button>
+                      <Radio.Button value="AGENCY">{t("L'agence")}</Radio.Button>
+                    </Radio.Group>
+                  </Form.Item>
+                </Col>
+                {penaltyBeneficiary === 'AGENCY' ? (
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label={t('Compte de produit des pénalités')}
+                      name="penaltyIncomeAccountNumber"
+                      rules={[
+                        ACCOUNT_RULE,
+                        { required: true, message: t('Le compte de produit des pénalités est requis') }
+                      ]}
+                    >
+                      <Input inputMode="numeric" />
+                    </Form.Item>
+                  </Col>
+                ) : null}
+              </Row>
+            </Card>
 
-        <Card title={t('Retenue à la source sur loyers')} style={{ marginBottom: 16 }}>
-          <Form.Item
-            label={t('Appliquer une retenue à la source sur les loyers')}
-            name="withholdingEnabled"
-            valuePropName="checked"
-          >
-            <Switch
-              onChange={checked => {
-                // Date de départ proposée à aujourd'hui : jamais rétroactive par défaut.
-                if (checked && !form.getFieldValue('withholdingStartsOn')) {
-                  form.setFieldValue('withholdingStartsOn', dayjs().startOf('day'));
-                }
-              }}
-            />
-          </Form.Item>
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message={t(
-              'À activer seulement après confirmation du cabinet : statut fiscal de chaque propriétaire, assiette et échéances'
-            )}
-          />
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
+            <Card title={t('Retenue à la source sur loyers')} style={{ marginBottom: 16 }}>
               <Form.Item
-                label={t('Appliquer aux encaissements à partir du')}
-                name="withholdingStartsOn"
-                extra={t("La retenue n'est jamais appliquée aux loyers déjà encaissés avant cette date.")}
-                rules={[
-                  {
-                    required: !!withholdingEnabled,
-                    message: t("Indiquez à partir de quelle date la retenue s'applique")
-                  }
-                ]}
+                label={t('Appliquer une retenue à la source sur les loyers')}
+                name="withholdingEnabled"
+                valuePropName="checked"
               >
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabled={!withholdingEnabled} />
+                <Switch
+                  onChange={checked => {
+                    // Date de départ proposée à aujourd'hui : jamais rétroactive par défaut.
+                    if (checked && !form.getFieldValue('withholdingStartsOn')) {
+                      form.setFieldValue('withholdingStartsOn', dayjs().startOf('day'));
+                    }
+                  }}
+                />
               </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label={t('Taux — personne physique (%)')} name="withholdingRateIndividual">
-                <InputNumber min={0} max={100} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={6}>
-              <Form.Item label={t('Taux — personne morale (%)')} name="withholdingRateCompany">
-                <InputNumber min={0} max={100} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
-              <Form.Item
-                label={t('Compte de retenue à la source')}
-                name="withholdingAccountNumber"
-                rules={[ACCOUNT_RULE]}
-              >
-                <Input inputMode="numeric" placeholder="4478" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message={t(
+                  'À activer seulement après confirmation du cabinet : statut fiscal de chaque propriétaire, assiette et échéances'
+                )}
+              />
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    label={t('Appliquer aux encaissements à partir du')}
+                    name="withholdingStartsOn"
+                    extra={t("La retenue n'est jamais appliquée aux loyers déjà encaissés avant cette date.")}
+                    rules={[
+                      {
+                        required: !!withholdingEnabled,
+                        message: t("Indiquez à partir de quelle date la retenue s'applique")
+                      }
+                    ]}
+                  >
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabled={!withholdingEnabled} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={6}>
+                  <Form.Item label={t('Taux — personne physique (%)')} name="withholdingRateIndividual">
+                    <InputNumber min={0} max={100} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={6}>
+                  <Form.Item label={t('Taux — personne morale (%)')} name="withholdingRateCompany">
+                    <InputNumber min={0} max={100} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    label={t('Compte de retenue à la source')}
+                    name="withholdingAccountNumber"
+                    rules={[ACCOUNT_RULE]}
+                  >
+                    <Input inputMode="numeric" placeholder="4478" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Card>
+          </>
+        ) : null}
 
         <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
           {t('Enregistrer')}
@@ -401,8 +428,8 @@ export const AgencyFinanceSettings: React.FC = () => {
       {/* Cartes indépendantes du formulaire ci-dessus : chacune gère son propre
           formulaire de modale, ce qu'un <form> HTML imbriqué n'autoriserait pas. */}
       {tenantId ? <PaymentGatewaySettingsCard tenantId={tenantId} /> : null}
-      {tenantId ? <OwnerFeeTermsCard tenantId={tenantId} /> : null}
-      {tenantId ? <AgentCommissionCard tenantId={tenantId} /> : null}
+      {tenantId && rental && !ownAssetsOnly ? <OwnerFeeTermsCard tenantId={tenantId} /> : null}
+      {tenantId && rental && !ownAssetsOnly ? <AgentCommissionCard tenantId={tenantId} /> : null}
     </Space>
   );
 };

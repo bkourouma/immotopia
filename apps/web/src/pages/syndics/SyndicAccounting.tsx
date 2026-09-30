@@ -281,14 +281,14 @@ export const SyndicAccounting: React.FC = () => {
                 columns={[
                   { title: t('Numéro'), dataIndex: 'accountNumber' },
                   { title: t('Intitulé'), dataIndex: 'accountName' },
-                  { title: 'Classe', dataIndex: 'accountClass' },
+                  { title: t('Classe'), dataIndex: 'accountClass' },
                   {
-                    title: 'Type',
+                    title: t('Type'),
                     dataIndex: 'accountType',
                     render: (value: ChartOfAccount['accountType']) => accountTypeLabels[value] || value
                   },
                   {
-                    title: 'Actif',
+                    title: t('Actif'),
                     render: (_, account) =>
                       account.isActive ? <Tag color="green">OUI</Tag> : <Tag color="red">NON</Tag>
                   }
@@ -303,10 +303,10 @@ export const SyndicAccounting: React.FC = () => {
                 dataSource={journals}
                 pagination={{ pageSize: 10 }}
                 columns={[
-                  { title: 'Code', dataIndex: 'code' },
+                  { title: t('Code'), dataIndex: 'code' },
                   { title: t('Libellé'), dataIndex: 'label' },
-                  { title: 'Type', dataIndex: 'journalType' },
-                  { title: 'Exercice', dataIndex: 'fiscalYear' },
+                  { title: t('Type'), dataIndex: 'journalType' },
+                  { title: t('Exercice'), dataIndex: 'fiscalYear' },
                   {
                     title: t('Créé le'),
                     dataIndex: 'createdAt',
@@ -324,23 +324,23 @@ export const SyndicAccounting: React.FC = () => {
                 pagination={{ pageSize: 10 }}
                 columns={[
                   {
-                    title: 'Date',
+                    title: t('Date'),
                     dataIndex: 'entryDate',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   { title: t('Référence'), dataIndex: 'reference' },
-                  { title: 'Description', dataIndex: 'description' },
+                  { title: t('Description'), dataIndex: 'description' },
                   {
-                    title: 'Journal',
+                    title: t('Journal'),
                     render: (_, entry) => entry.journal?.code || entry.journalId
                   },
                   {
-                    title: 'Statut',
+                    title: t('Statut'),
                     render: (_, entry) =>
                       entry.isLocked ? <Tag color="green">{t('VERROUILLÉE')}</Tag> : <Tag color="orange">OUVERTE</Tag>
                   },
                   {
-                    title: 'Action',
+                    title: t('Action'),
                     render: (_, entry) =>
                       entry.isLocked ? (
                         <Tag>{t('Verrouillée')}</Tag>
@@ -368,7 +368,7 @@ export const SyndicAccounting: React.FC = () => {
                     dataSource={trialBalance.items}
                     pagination={{ pageSize: 8 }}
                     columns={[
-                      { title: 'Compte', render: (_, item) => `${item.accountNumber} - ${item.accountName}` },
+                      { title: t('Compte'), render: (_, item) => `${item.accountNumber} - ${item.accountName}` },
                       {
                         title: t('Débit'),
                         dataIndex: 'totalDebit',
@@ -382,7 +382,7 @@ export const SyndicAccounting: React.FC = () => {
                         render: (value: number) => <MoneyValue value={value} />
                       },
                       {
-                        title: 'Solde',
+                        title: t('Solde'),
                         dataIndex: 'balance',
                         align: 'end',
                         render: (value: number) => <MoneyValue value={value} />
@@ -399,8 +399,8 @@ export const SyndicAccounting: React.FC = () => {
                     dataSource={ledger}
                     pagination={{ pageSize: 8 }}
                     columns={[
-                      { title: 'Date', render: (_, line) => dayjs(line.entry?.entryDate).format('DD/MM/YYYY') },
-                      { title: 'Compte', render: (_, line) => line.account?.accountNumber || '-' },
+                      { title: t('Date'), render: (_, line) => dayjs(line.entry?.entryDate).format('DD/MM/YYYY') },
+                      { title: t('Compte'), render: (_, line) => line.account?.accountNumber || '-' },
                       { title: t('Référence'), render: (_, line) => line.entry?.reference || '-' },
                       {
                         title: t('Débit'),

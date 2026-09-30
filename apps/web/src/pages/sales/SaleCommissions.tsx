@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Table, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -43,6 +43,102 @@ interface PaymentFormValues {
   reference?: string;
 }
 
+const MOYENS_PAIEMENT = Object.entries(SALE_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }));
+
+/**
+ * Fenêtre d'encaissement. Composant à part : son `useForm` naît avec le
+ * `<Form>` qu'il pilote (jamais d'instance non connectée, jamais de
+ * `resetFields` sur un formulaire démonté), et la valeur du moyen de paiement
+ * est lue par un `shouldUpdate` local plutôt que par un `useWatch` posé dans
+ * la page (BUG-2026-09-30-065).
+ */
+const CommissionPaymentModal: React.FC<{
+  tenantId: string;
+  commission: SaleCommissionDto;
+  onClose: () => void;
+  onPaid: (commission: SaleCommissionDto) => void;
+}> = ({ tenantId, commission, onClose, onPaid }) => {
+  const { message } = App.useApp();
+  const [form] = Form.useForm<PaymentFormValues>();
+  const [paying, setPaying] = useState(false);
+  // Valeurs initiales figées à l'ouverture : un objet neuf à chaque rendu
+  // réinitialiserait le formulaire.
+  const initialValues = useMemo(
+    () => ({ paidAt: dayjs(), paymentMethod: 'CASH' as TreasuryPaymentMethod, amount: commission.remainingAmount }),
+    [commission.remainingAmount]
+  );
+
+  const encaisser = async (values: PaymentFormValues) => {
+    setPaying(true);
+    try {
+      const input: CreateSaleCommissionPaymentInput = {
+        amount: values.amount,
+        paidAt: values.paidAt.format('YYYY-MM-DD'),
+        paymentMethod: values.paymentMethod as CreateSaleCommissionPaymentInput['paymentMethod'],
+        treasuryAccountId: values.treasuryAccountId,
+        reference: values.reference?.trim() || null
+      };
+      const payment = await createSaleCommissionPayment(tenantId, commission.id, input);
+      message.success(t('Règlement {{number}} enregistré.', { number: payment.number }));
+      onPaid(commission);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t("L'encaissement a échoué."));
+      setPaying(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={t('Encaisser — {{number}}', { number: commission.number })}
+      open
+      onCancel={onClose}
+      onOk={() => form.submit()}
+      confirmLoading={paying}
+      okText={t('Encaisser')}
+      cancelText={t('Annuler')}
+    >
+      <Form<PaymentFormValues>
+        form={form}
+        layout="vertical"
+        initialValues={initialValues}
+        onFinish={encaisser}
+        onFinishFailed={onAntFormValidationFailed(form)}
+      >
+        <Form.Item
+          label={t('Montant')}
+          name="amount"
+          rules={[
+            { required: true, message: t('Le montant est requis') },
+            { type: 'number', min: 0.01, message: t('Le montant doit être supérieur à 0') }
+          ]}
+        >
+          <InputNumber style={{ width: '100%' }} min={0.01} {...montantSaisiProps} />
+        </Form.Item>
+        <Form.Item label={t('Date du règlement')} name="paidAt" rules={[{ required: true }]}>
+          <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+        </Form.Item>
+        <Form.Item label={t('Moyen de paiement')} name="paymentMethod" rules={[{ required: true }]}>
+          <Select showSearch optionFilterProp="label" options={MOYENS_PAIEMENT} />
+        </Form.Item>
+        <Form.Item noStyle shouldUpdate={(avant, apres) => avant.paymentMethod !== apres.paymentMethod}>
+          {({ getFieldValue }) => (
+            <Form.Item
+              label={t('Compte de trésorerie')}
+              name="treasuryAccountId"
+              rules={[{ required: true, message: t('Le compte de trésorerie est requis') }]}
+            >
+              <TreasuryAccountSelector tenantId={tenantId} paymentMethod={getFieldValue('paymentMethod')} />
+            </Form.Item>
+          )}
+        </Form.Item>
+        <Form.Item label={t('Référence')} name="reference">
+          <Input />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+};
+
 /**
  * Commissions de vente — lot 9 (PRD §5.5).
  *
@@ -80,38 +176,12 @@ export const SaleCommissions: React.FC = () => {
   });
 
   // --- Encaissement ------------------------------------------------------------
-  const [payForm] = Form.useForm<PaymentFormValues>();
   const [payCommission, setPayCommission] = useState<SaleCommissionDto | null>(null);
-  const [paying, setPaying] = useState(false);
-  const paymentMethod = Form.useWatch('paymentMethod', payForm);
 
-  const ouvrirEncaissement = (commission: SaleCommissionDto) => {
-    payForm.resetFields();
-    payForm.setFieldsValue({ paidAt: dayjs(), paymentMethod: 'CASH', amount: commission.remainingAmount });
-    setPayCommission(commission);
-  };
-
-  const encaisser = async (values: PaymentFormValues) => {
-    if (!tenantId || !payCommission) return;
-    setPaying(true);
-    try {
-      const input: CreateSaleCommissionPaymentInput = {
-        amount: values.amount,
-        paidAt: values.paidAt.format('YYYY-MM-DD'),
-        paymentMethod: values.paymentMethod as CreateSaleCommissionPaymentInput['paymentMethod'],
-        treasuryAccountId: values.treasuryAccountId,
-        reference: values.reference?.trim() || null
-      };
-      const payment = await createSaleCommissionPayment(tenantId, payCommission.id, input);
-      message.success(t('Règlement {{number}} enregistré.', { number: payment.number }));
-      setPayCommission(null);
-      refetch();
-      if (expandedId === payCommission.id) refetchDetail();
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || t("L'encaissement a échoué."));
-    } finally {
-      setPaying(false);
-    }
+  const apresEncaissement = (commission: SaleCommissionDto) => {
+    setPayCommission(null);
+    refetch();
+    if (expandedId === commission.id) refetchDetail();
   };
 
   // --- Annulation d'un règlement -------------------------------------------
@@ -172,7 +242,7 @@ export const SaleCommissions: React.FC = () => {
       align: 'end',
       render: (_, c) =>
         c.status !== 'CANCELLED' && c.remainingAmount > 0 ? (
-          <Button size="small" type="primary" onClick={() => ouvrirEncaissement(c)}>
+          <Button size="small" type="primary" onClick={() => setPayCommission(c)}>
             {t('Encaisser')}
           </Button>
         ) : null
@@ -291,54 +361,14 @@ export const SaleCommissions: React.FC = () => {
       )}
 
       {/* Encaissement */}
-      <Modal
-        title={payCommission ? t('Encaisser — {{number}}', { number: payCommission.number }) : ''}
-        open={Boolean(payCommission)}
-        onCancel={() => setPayCommission(null)}
-        onOk={() => payForm.submit()}
-        confirmLoading={paying}
-        okText={t('Encaisser')}
-        cancelText={t('Annuler')}
-        destroyOnClose
-      >
-        <Form<PaymentFormValues>
-          form={payForm}
-          layout="vertical"
-          onFinish={encaisser}
-          onFinishFailed={onAntFormValidationFailed(payForm)}
-        >
-          <Form.Item
-            label={t('Montant')}
-            name="amount"
-            rules={[
-              { required: true, message: t('Le montant est requis') },
-              { type: 'number', min: 0.01, message: t('Le montant doit être supérieur à 0') }
-            ]}
-          >
-            <InputNumber style={{ width: '100%' }} min={0.01} {...montantSaisiProps} />
-          </Form.Item>
-          <Form.Item label={t('Date du règlement')} name="paidAt" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
-          <Form.Item label={t('Moyen de paiement')} name="paymentMethod" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={Object.entries(SALE_PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))}
-            />
-          </Form.Item>
-          <Form.Item
-            label={t('Compte de trésorerie')}
-            name="treasuryAccountId"
-            rules={[{ required: true, message: t('Le compte de trésorerie est requis') }]}
-          >
-            <TreasuryAccountSelector tenantId={tenantId} paymentMethod={paymentMethod} />
-          </Form.Item>
-          <Form.Item label={t('Référence')} name="reference">
-            <Input />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {payCommission && (
+        <CommissionPaymentModal
+          tenantId={tenantId}
+          commission={payCommission}
+          onClose={() => setPayCommission(null)}
+          onPaid={apresEncaissement}
+        />
+      )}
 
       {/* Annulation d'un règlement */}
       <Modal

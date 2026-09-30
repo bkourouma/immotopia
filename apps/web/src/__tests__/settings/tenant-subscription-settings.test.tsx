@@ -110,7 +110,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   getOwnEntitlements.mockReset();
   listOwnExtensionRequests.mockResolvedValue([]);
-  listOwnPlatformInvoices.mockResolvedValue({ invoices: [INVOICE], pagination: { page: 1, limit: 50, total: 1, totalPages: 1 } });
+  listOwnPlatformInvoices.mockResolvedValue({
+    invoices: [INVOICE],
+    pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+  });
   getPaymentAvailability.mockResolvedValue({ available: true, mode: 'SIMULATOR' });
 });
 
@@ -162,6 +165,18 @@ describe('<TenantSubscriptionSettings> — formule', () => {
     expect(await screen.findByRole('table', { name: 'Mes demandes' })).toBeInTheDocument();
   });
 
+  it('ne propose que les extensions vendables avec les packs détenus', async () => {
+    getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, packs: ['PATRIMOINE_PRO'] });
+    const user = userEvent.setup();
+    mount();
+
+    await screen.findByText('Formule');
+    await user.click(screen.getByLabelText('Offre souhaitée'));
+    expect(screen.queryByText('Bloc de 10 biens détenus')).not.toBeInTheDocument();
+    expect(screen.queryByText('Copropriété supplémentaire')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chantier supplémentaire')).not.toBeInTheDocument();
+  });
+
   it("indique l'absence d'abonnement", async () => {
     getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, phase: 'NONE' });
     mount();
@@ -188,7 +203,9 @@ describe('<TenantSubscriptionSettings> — formule', () => {
 describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () => {
   it('liste les factures et ouvre le paiement en ligne sur une facture en retard, même en lecture seule', async () => {
     getOwnEntitlements.mockResolvedValue({ ...ENTITLEMENTS, phase: 'READ_ONLY', readOnly: true });
-    startInvoiceCheckout.mockResolvedValue({ checkoutUrl: 'http://localhost:8001/api/payment-gateway/simulator/IMP-abc' });
+    startInvoiceCheckout.mockResolvedValue({
+      checkoutUrl: 'http://localhost:8001/api/payment-gateway/simulator/IMP-abc'
+    });
     const assign = vi.fn();
     const original = window.location;
     Object.defineProperty(window, 'location', { configurable: true, value: { ...original, assign } });
@@ -201,7 +218,9 @@ describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () =>
       fireEvent.click(screen.getByRole('button', { name: /Payer en ligne/ }));
 
       await waitFor(() => expect(startInvoiceCheckout).toHaveBeenCalledWith('tenant-1', 'inv-1'));
-      await waitFor(() => expect(assign).toHaveBeenCalledWith('http://localhost:8001/api/payment-gateway/simulator/IMP-abc'));
+      await waitFor(() =>
+        expect(assign).toHaveBeenCalledWith('http://localhost:8001/api/payment-gateway/simulator/IMP-abc')
+      );
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: original });
     }
@@ -210,7 +229,10 @@ describe('<TenantSubscriptionSettings> — factures et paiement en ligne', () =>
   it('propose de reprendre un paiement déjà en cours (409)', async () => {
     getOwnEntitlements.mockResolvedValue(ENTITLEMENTS);
     startInvoiceCheckout.mockRejectedValue({
-      response: { status: 409, data: { message: 'déjà en cours', data: { codePaiement: 'IMP-x', checkoutUrl: 'http://pay/IMP-x' } } }
+      response: {
+        status: 409,
+        data: { message: 'déjà en cours', data: { codePaiement: 'IMP-x', checkoutUrl: 'http://pay/IMP-x' } }
+      }
     });
     mount();
 

@@ -29,10 +29,11 @@ import {
   CreateCrmActivityRequest,
   ActivityFilters
 } from '../../services/crm-service';
-import { listMembers, Member } from '../../services/membership-service';
+import { listAssignableMembers, Member } from '../../services/membership-service';
 import { CrmActivityType } from '../../types/crm-types';
 import dayjs, { Dayjs } from 'dayjs';
 import { t } from '../../i18n/t';
+import { activityTypeLabel } from '../../utils/crm-labels';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -122,7 +123,7 @@ export const Activities: React.FC = () => {
   const loadMembers = async () => {
     if (!tenantId) return;
     try {
-      const response = await listMembers(tenantId, { limit: 100 });
+      const response = await listAssignableMembers(tenantId);
       if (response.success) {
         setMembers(response.data.members);
       }
@@ -165,17 +166,6 @@ export const Activities: React.FC = () => {
     });
     setShowAdvancedFilters(false);
     message.info(t('Filtres réinitialisés'));
-  };
-
-  const typeLabels: Record<string, string> = {
-    CALL: 'Appel',
-    EMAIL: 'Email',
-    SMS: 'SMS',
-    WHATSAPP: 'WhatsApp',
-    VISIT: 'Visite',
-    MEETING: t('Réunion'),
-    NOTE: 'Note',
-    TASK: t('Tâche')
   };
 
   const activityTypes = ['CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'MEETING', 'NOTE', 'TASK'];
@@ -233,7 +223,7 @@ export const Activities: React.FC = () => {
                     type={filters.type === type ? 'primary' : 'default'}
                     onClick={() => handleTypeFilter(type)}
                   >
-                    {typeLabels[type] || type}
+                    {activityTypeLabel(type)}
                   </Button>
                 ))}
               </Space>
@@ -379,7 +369,9 @@ export const Activities: React.FC = () => {
                   total={pagination.total}
                   pageSize={pagination.limit}
                   showSizeChanger={false}
-                  showTotal={(total, range) => t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total })}
+                  showTotal={(total, range) =>
+                    t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total })
+                  }
                   onChange={page => setFilters({ ...filters, page })}
                 />
               </Col>

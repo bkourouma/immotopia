@@ -711,10 +711,10 @@ export const StockReferentiel: React.FC = () => {
             status={<StatusTag status={a.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             fields={[
               { label: t('Unité'), value: a.unit },
-              { label: 'Famille', value: a.category ?? t('Non renseignée') },
+              { label: t('Famille'), value: a.category ?? t('Non renseignée') },
               { label: t('Poste proposé à la sortie'), value: a.defaultCostCategoryLabel ?? t('Aucun poste proposé') }
             ]}
-            primaryAction={{ label: 'Corriger', onClick: () => ouvrirCorrectionArticle(a) }}
+            primaryAction={{ label: t('Corriger'), onClick: () => ouvrirCorrectionArticle(a) }}
             // Aucune suppression ici non plus : la seule action secondaire est
             // la bascule d'activité.
             secondaryActions={[
@@ -804,7 +804,7 @@ export const StockReferentiel: React.FC = () => {
             aria-label={l.label}
             subtitle={STOCK_LOCATION_KIND_LABELS[l.kind]}
             status={<StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} />}
-            fields={[{ label: 'Chantier', value: l.siteLabel ?? '—' }]}
+            fields={[{ label: t('Chantier'), value: l.siteLabel ?? '—' }]}
             primaryAction={{ label: t('Corriger le libellé'), onClick: () => ouvrirCorrectionLieu(l) }}
             secondaryActions={[
               l.isActive
@@ -940,7 +940,7 @@ export const StockReferentiel: React.FC = () => {
       <Tabs
         defaultActiveKey="articles"
         items={[
-          { key: 'articles', label: 'Articles', children: ongletArticles },
+          { key: 'articles', label: t('Articles'), children: ongletArticles },
           { key: 'lieux', label: t('Lieux de stockage'), children: ongletLieux },
           { key: 'methode', label: t('Méthode de valorisation'), children: ongletMethode }
         ]}

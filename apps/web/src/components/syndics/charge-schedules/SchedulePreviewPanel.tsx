@@ -4,6 +4,7 @@ import { MoneyValue } from '../../primitives';
 import { ChargeScheduleFrequency, ChargeSchedulePreview } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
 import { formatDay } from './chargeScheduleLabels';
+import { displayCurrency } from '../../../utils/syndic-currency';
 
 const { Text } = Typography;
 
@@ -34,7 +35,7 @@ export const SchedulePreviewPanel: React.FC<{
               {period.error ? (
                 <Text type="danger">{period.error}</Text>
               ) : (
-                <MoneyValue value={period.totalAmount ?? 0} currency={period.currency || currency} />
+                <MoneyValue value={period.totalAmount ?? 0} currency={displayCurrency(period.currency || currency)} />
               )}
             </Descriptions.Item>
           </Descriptions>
@@ -51,7 +52,9 @@ export const SchedulePreviewPanel: React.FC<{
                   title: t('Montant'),
                   dataIndex: 'amount',
                   align: 'end',
-                  render: (value: number) => <MoneyValue value={value} currency={period.currency || currency} />
+                  render: (value: number) => (
+                    <MoneyValue value={value} currency={displayCurrency(period.currency || currency)} />
+                  )
                 }
               ]}
             />

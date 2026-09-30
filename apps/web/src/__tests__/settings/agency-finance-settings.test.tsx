@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AgencyFinanceSettings } from '../../pages/tenant/AgencyFinanceSettings';
 
 /**
@@ -22,6 +23,11 @@ const updateOwnerFeeTerms = vi.fn();
 const deleteOwnerFeeTerms = vi.fn();
 const listAgentCommissionShares = vi.fn();
 const updateAgentCommissionShare = vi.fn();
+const getMenuEntitlements = vi.fn();
+
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: (...a: unknown[]) => getMenuEntitlements(...a)
+}));
 
 vi.mock('../../services/agency-finance-settings-service', () => ({
   getAgencyFinanceSettings: (...a: unknown[]) => getAgencyFinanceSettings(...a),
@@ -94,19 +100,23 @@ const AGENTS = [
 ];
 
 function mount() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
-    <AntApp>
-      <MemoryRouter initialEntries={['/tenant/tenant-1/settings/finance']}>
-        <Routes>
-          <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
-        </Routes>
-      </MemoryRouter>
-    </AntApp>
+    <QueryClientProvider client={queryClient}>
+      <AntApp>
+        <MemoryRouter initialEntries={['/tenant/tenant-1/settings/finance']}>
+          <Routes>
+            <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getMenuEntitlements.mockResolvedValue({ enforcement: 'off', moduleAccess: {}, readOnly: false, phase: 'ACTIVE' });
   getAgencyFinanceSettings.mockResolvedValue(AGENCY_SETTINGS);
   listOwnerFeeTerms.mockResolvedValue(OWNERS);
   listAgentCommissionShares.mockResolvedValue(AGENTS);
@@ -211,5 +221,70 @@ describe('AgencyFinanceSettings — Lot 2, honoraires de gestion', () => {
 
     await waitFor(() => expect(updateAgentCommissionShare).toHaveBeenCalledWith('tenant-1', 'agent-1', 25));
     expect(await screen.findByText('Part de Boubacar Sy enregistrée')).toBeTruthy();
+  });
+});
+
+describe("AgencyFinanceSettings — selon les fonctionnalités de l'abonnement", () => {
+  it('sans RENTAL : les sections de gestion locative sont masquées, la fiscalité et la caisse restent', async () => {
+    getMenuEntitlements.mockResolvedValue({
+      enforcement: 'enforce',
+      moduleAccess: {
+        MODULE_SYNDIC: 'FULL',
+        MODULE_AGENCY: 'NONE',
+        MODULE_PROMOTER: 'NONE',
+        MODULE_PATRIMOINE: 'NONE'
+      },
+      readOnly: false,
+      phase: 'ACTIVE'
+    });
+    mount();
+
+    expect(await screen.findByText('Fiscalité')).toBeTruthy();
+    expect(screen.getByText('Comptes comptables de la caisse')).toBeTruthy();
+    expect(screen.getByLabelText('Écart de caisse — manquant')).toBeTruthy();
+    for (const titre of [
+      'Honoraires de gestion',
+      'Comptes comptables de la gestion locative',
+      'Pénalités de retard',
+      'Retenue à la source sur loyers',
+      'Conditions par propriétaire',
+      'Commission des collaborateurs'
+    ]) {
+      expect(screen.queryByText(titre)).toBeNull();
+    }
+    // Aucun appel refusé n'est même tenté.
+    expect(listOwnerFeeTerms).not.toHaveBeenCalled();
+    expect(listAgentCommissionShares).not.toHaveBeenCalled();
+  });
+
+  it('avec RENTAL : les sections de gestion locative sont présentes', async () => {
+    getMenuEntitlements.mockResolvedValue({
+      enforcement: 'enforce',
+      moduleAccess: {
+        MODULE_AGENCY: 'FULL',
+        MODULE_SYNDIC: 'NONE',
+        MODULE_PROMOTER: 'NONE',
+        MODULE_PATRIMOINE: 'NONE'
+      },
+      readOnly: false,
+      phase: 'ACTIVE'
+    });
+    mount();
+
+    expect(await screen.findByText('Comptes comptables de la gestion locative')).toBeTruthy();
+    expect(screen.getByText('Pénalités de retard')).toBeTruthy();
+    expect(screen.getByText('Retenue à la source sur loyers')).toBeTruthy();
+    expect(await screen.findByText('Conditions par propriétaire')).toBeTruthy();
+    expect(await screen.findByText('Commission des collaborateurs')).toBeTruthy();
+  });
+
+  it('un 403 MODULE_NOT_INCLUDED n’est jamais rendu comme « Aucune donnée »', async () => {
+    const refus = { response: { status: 403, data: { code: 'MODULE_NOT_INCLUDED' } } };
+    listOwnerFeeTerms.mockRejectedValue(refus);
+    listAgentCommissionShares.mockRejectedValue(refus);
+    mount();
+
+    expect(await screen.findAllByText('Fonction non comprise dans votre abonnement')).toHaveLength(2);
+    expect(screen.queryByText('Aucune donnée')).toBeNull();
   });
 });

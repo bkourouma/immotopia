@@ -128,7 +128,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                     [
                       {
                         key: 'price',
-                        label: 'Prix',
+                        label: t('Prix'),
                         children: formatPrice(
                           match.property.price,
                           match.property.currency,
@@ -138,21 +138,21 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                       match.property.surfaceArea
                         ? {
                             key: 'surface',
-                            label: 'Surface',
+                            label: t('Surface'),
                             children: `${match.property.surfaceArea} m²`
                           }
                         : null,
                       match.property.rooms
                         ? {
                             key: 'rooms',
-                            label: 'Pieces',
+                            label: t('Pièces'),
                             children: match.property.rooms
                           }
                         : null,
                       match.property.locationZone
                         ? {
                             key: 'zone',
-                            label: 'Zone',
+                            label: t('Zone'),
                             children: match.property.locationZone
                           }
                         : null

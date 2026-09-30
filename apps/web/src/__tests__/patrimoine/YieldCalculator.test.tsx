@@ -32,8 +32,8 @@ describe('YieldCalculator — rendement sans prix d’acquisition', () => {
     // Les indicateurs qui n'en dépendent pas restent affichés normalement
     // (`<Statistic>` sépare partie entière et décimale en deux `<span>`, et
     // la valeur se répète dans la carte « Rendement projeté »).
-    expect(screen.getAllByText('.20').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('.10').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('5,20 %').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('4,10 %').length).toBeGreaterThanOrEqual(1);
   });
 
   it('affiche les valeurs quand le prix d’acquisition est connu', () => {
@@ -50,6 +50,6 @@ describe('YieldCalculator — rendement sans prix d’acquisition', () => {
     );
 
     expect(screen.queryByText("Renseignez le prix d'acquisition dans une valorisation")).not.toBeInTheDocument();
-    expect(screen.getAllByText('.50').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('3,50 %').length).toBeGreaterThanOrEqual(1);
   });
 });

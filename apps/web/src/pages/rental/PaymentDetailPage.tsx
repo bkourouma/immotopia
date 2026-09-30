@@ -36,6 +36,7 @@ import {
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { t } from '../../i18n/t';
+import { nomDeLaPersonne, codeDeviseIntl } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -121,7 +122,7 @@ export const PaymentDetailPage: React.FC = () => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
+      currency: codeDeviseIntl(currency)
     }).format(amount);
   };
 
@@ -240,6 +241,9 @@ export const PaymentDetailPage: React.FC = () => {
               }
             >
               <Descriptions column={1} bordered>
+                <Descriptions.Item label={t('Locataire')}>
+                  {nomDeLaPersonne(payment.renterClient?.user ?? payment.lease?.primaryRenter?.user)}
+                </Descriptions.Item>
                 <Descriptions.Item label={t('Montant')}>
                   <Text strong>{formatCurrency(payment.amount, payment.currency)}</Text>
                 </Descriptions.Item>
