@@ -97,8 +97,9 @@ Reste à faire (chaque action serveur exige un « oui » explicite) :
 - **À faire par le propriétaire :** se connecter sur https://clients.immotopia.cloud
   avec le super-admin et créer la première agence (le test de connexion n'a pas été fait
   par l'agent : il n'a pas le mot de passe).
-- **Reste, avec des informations du propriétaire :** `PLATFORM_ISSUER_RCCM`,
-  `_TAX_ID`, `_ADDRESS`, `_PHONE` (factures d'abonnement) ; bloc e-mail (sans lui,
+- **Reste, avec des informations du propriétaire :** `PLATFORM_ISSUER_ADDRESS` et
+  `_PHONE` (factures d'abonnement ; RCCM `CI-ABJ-2014-B-20956` et compte contribuable
+  `1438224 S` posés le 2026-09-30, API recréée) ; bloc e-mail (sans lui,
   aucune invitation ni réinitialisation de mot de passe ne part) ; identifiants
   Google (`set-google-oauth.sh prod`, URI de redirection chez Google ; le bouton
   Google s'affiche déjà sans configuration) ; PaySecureHub en `LIVE` ; remote rclone
