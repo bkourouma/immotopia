@@ -263,6 +263,29 @@ docker system df
 Aucun seuil n'a été mesuré. Noter l'espace libre avant et après le premier
 build de la production.
 
+**Le dossier du serveur n'est pas encore un dépôt git (constaté le 2026-09-30, par
+lecture seule).** `/home/deployer/immotopia-saas` est une copie de fichiers du poste
+de travail, sans `.git`, avec un marqueur `.deployed-revision`. `deploy.sh prod`
+exige un git utilisable, un arbre propre et un HEAD dans `origin/main` : il refuse
+donc de tourner tel quel. Le dépôt GitHub est **public** : le serveur le clone en
+HTTPS, sans clé ni jeton, et git y est installé (2.43.0). Procédure proposée,
+**à faire seulement après la fusion de la pull request qui introduit ces scripts**
+(sinon le clone ne contient pas `infra/environments/`), chaque commande avec le
+« oui » du propriétaire :
+
+```bash
+cd /home/deployer
+mv immotopia-saas immotopia-saas.copie-avant-git   # copie de secours, intacte
+git clone https://github.com/bkourouma/immotopia.git immotopia-saas
+cd immotopia-saas && git log -1 --oneline && git status -sb
+```
+
+Les conteneurs du staging ne dépendent pas de ce dossier (images déjà construites,
+fichier de secrets et volumes nommés hors de lui) : ils continuent de tourner
+pendant l'opération. Le prochain `deploy.sh staging` reconstruira depuis le nouveau
+dossier. **Non éprouvé.** Les fichiers d'environnement (`/home/deployer/*.env`) ne
+sont pas dans ce dossier et ne bougent pas.
+
 **Checkout à jour, arbre propre, commit dans `origin/main`.**
 
 ```bash

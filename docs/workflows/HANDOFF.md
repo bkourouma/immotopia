@@ -94,6 +94,10 @@ Fait :
 
 Reste à faire (chaque action serveur exige un « oui » explicite) :
 
+- Étape 0 faite en lecture seule le 2026-09-30 : DNS, ports 3020/5437 libres et
+  disque (61 Go libres) OK ; **`/home/deployer/immotopia-saas` n'est pas un dépôt git**
+  (copie de fichiers avec `.deployed-revision`) : le cloner (dépôt public, HTTPS
+  anonyme) après la fusion de #77, procédure dans DEPLOIEMENT.md, étape 0.
 - Première mise en service de la production : DEPLOIEMENT.md, étapes 0 à 9 (DNS,
   ports 3020/5437 libres, `make-env.sh prod`, vhost + certbot, `deploy.sh prod`,
   `bootstrap.sh prod`, Google OAuth, sauvegardes hors serveur). Aucune donnée réelle
