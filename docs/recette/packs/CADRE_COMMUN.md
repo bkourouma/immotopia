@@ -32,12 +32,14 @@ aussi avoir un essai de 30 jours, 7 jours de grâce, puis lecture seule.
 
 | Pack                   | Web                             | API (santé : `/health`)         | Base                      |
 | ---------------------- | ------------------------------- | ------------------------------- | ------------------------- |
-| `AGENCE`               | http://agence.localhost:3301    | http://agence.localhost:8801    | `immotopia_rec_agence`    |
+| `AGENCE`               | http://agence.localhost:3311    | http://agence.localhost:8801    | `immotopia_rec_agence`    |
 | `SYNDIC`               | http://syndic.localhost:3302    | http://syndic.localhost:8802    | `immotopia_rec_syndic`    |
 | `PROMOTEUR`            | http://promoteur.localhost:3303 | http://promoteur.localhost:8803 | `immotopia_rec_promoteur` |
 | `INTEGRE`              | http://integre.localhost:3304   | http://integre.localhost:8804   | `immotopia_rec_integre`   |
 | `PATRIMOINE_ESSENTIEL` | http://patess.localhost:3305    | http://patess.localhost:8805    | `immotopia_rec_patess`    |
 | `PATRIMOINE_PRO`       | http://patpro.localhost:3306    | http://patpro.localhost:8806    | `immotopia_rec_patpro`    |
+
+Le port web de l'instance AGENCE est 3311 et non 3301 : le port 3301 est pris par un conteneur Docker voisin sur ce poste (constaté le 2026-09-30, anomalie 092).
 
 Chaque instance a un hôte différent **exprès** : les cookies d'authentification
 sont propres à l'hôte, donc plusieurs agents peuvent être connectés en même temps

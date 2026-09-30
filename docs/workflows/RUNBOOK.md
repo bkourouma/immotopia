@@ -155,6 +155,8 @@ npm run prisma:generate -w @immotopia/api
 npm run prisma:migrate -w @immotopia/api
 ```
 
+Déploiement des droits Syndic (BUG-096) : la migration de données `20261006130000_syndic_permissions` crée SYNDIC_* et OWNER_STATEMENTS__, les donne à TENANT_ADMIN et TENANT_MANAGER (et aux rôles personnalisés qui avaient PROPERTIES__) et retire USERS_VIEW à TENANT_AGENT ; un simple `prisma migrate deploy` suffit, le script `packages/api/scripts/backfill-syndic-permissions.ts` reste un contrôle idempotent. Le retrait de USERS_VIEW à TENANT_AGENT vaut pour TOUTES les agences d'un coup (rôles globaux). PLATFORM_SUPER_ADMIN reçoit aussi ces droits (migration `20261006140000_syndic_permissions_super_admin`). Les droits sont en cache 5 minutes : redémarrer l'API après le déploiement.
+
 ### Seed
 
 `packages/api/package.json` expose de nombreux scripts `db:seed*`. Le plus
