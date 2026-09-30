@@ -404,7 +404,12 @@ vérifier avec `ls -l` après).
   `deploy.sh prod --no-build` recrée l'API. Le script protège le mot de passe par des
   apostrophes : Docker Compose interpole `$` dans un fichier d'environnement (un mot
   de passe `ab$cd` deviendrait `ab`) ; un mot de passe contenant une apostrophe est
-  refusé. Vérifier ensuite l'authentification sans envoyer de message : la commande
+  refusé. Options : `--password-only` (ne demande que le mot de passe ; serveur,
+  port, utilisateur et expéditeur sont repris du fichier) et `--visible` (une seule
+  saisie, affichée : utile quand le collage dans un champ masqué échoue ; fermer
+  l'onglet du terminal ensuite). Ne jamais passer le mot de passe en argument de la
+  commande : il resterait dans l'historique du shell et dans la liste des processus.
+  Vérifier ensuite l'authentification sans envoyer de message : la commande
   `docker exec immotopia-prod-api node -e "...verify()..."` est affichée par le
   script. **Activer l'e-mail active aussi l'exigence de vérification de l'adresse à
   la connexion** (`isEmailDeliveryConfigured`). Le staging n'utilise jamais la boîte

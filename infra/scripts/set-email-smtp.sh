@@ -7,6 +7,10 @@
 #       'cd /home/deployer/immotopia-saas && ./infra/scripts/set-email-smtp.sh prod'
 #
 # Le -t est indispensable : le script pose des questions, il lui faut un terminal.
+#
+# Options :
+#   --password-only  ne demande que le mot de passe (le reste vient du fichier)
+#   --visible        une seule saisie, affichee a l'ecran (pas de confirmation)
 # Le mot de passe est demande deux fois, sans echo, n'est jamais passe en argument
 # et n'apparait ni dans l'historique du shell ni dans un journal.
 #
@@ -25,7 +29,10 @@
 set -Eeuo pipefail
 
 usage() {
-  echo "Usage : $0 <staging|prod> [fichier]" >&2
+  echo "Usage : $0 <staging|prod> [--password-only] [--visible] [fichier]" >&2
+  echo "  --password-only : ne demande que le mot de passe (serveur, port, utilisateur et" >&2
+  echo "                    expediteur sont repris du fichier de secrets)" >&2
+  echo "  --visible       : une seule saisie, AFFICHEE a l'ecran (pas de confirmation)" >&2
   exit 2
 }
 
@@ -35,7 +42,18 @@ case "$ENV_NAME" in
   staging|prod) ;;
   *) echo "Environnement absent ou inconnu : '${ENV_NAME}'." >&2; usage ;;
 esac
-[[ $# -le 2 ]] || usage
+shift
+PASSWORD_ONLY=0
+VISIBLE=0
+FILE_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    --password-only) PASSWORD_ONLY=1 ;;
+    --visible) VISIBLE=1 ;;
+    -*) echo "Option inconnue : $arg" >&2; usage ;;
+    *) [[ -z "$FILE_ARG" ]] || usage; FILE_ARG="$arg" ;;
+  esac
+done
 
 # Racine du depot : a cote du script (depot), sinon depot git du repertoire courant
 # (script copie hors du depot pour un usage ponctuel).
@@ -58,7 +76,7 @@ fi
 # shellcheck disable=SC1090
 source "$REPO_ROOT/infra/environments/${ENV_NAME}.conf"
 
-ENV_FILE="${2:-$IMMOTOPIA_ENV_FILE}"
+ENV_FILE="${FILE_ARG:-$IMMOTOPIA_ENV_FILE}"
 
 # Derniere occurrence d'une cle (Docker Compose applique la derniere), guillemets retires.
 envval() {
@@ -105,9 +123,6 @@ if [[ "$ENV_NAME" == "staging" ]]; then
   read -r -p "Continuer avec un compte de bac a sable ? [o/N] " ok
   [[ "$ok" == "o" || "$ok" == "O" ]] || { echo "Abandon, rien n a ete modifie."; exit 1; }
 fi
-echo
-echo "Entree = garder la valeur proposee entre crochets."
-
 ask() { # $1 = libelle, $2 = valeur par defaut ; ecrit la reponse dans $REPLY
   local def="$2" answer
   if [[ -n "$def" ]]; then read -r -p "$1 [$def] : " answer; else read -r -p "$1 : " answer; fi
@@ -115,21 +130,41 @@ ask() { # $1 = libelle, $2 = valeur par defaut ; ecrit la reponse dans $REPLY
   REPLY="$answer"
 }
 
-ask "Serveur SMTP" "$(envval EMAIL_SMTP_HOST | grep . || echo smtp.hostinger.com)"; HOST="$REPLY"
-ask "Port (465 = TLS)" "$(envval EMAIL_SMTP_PORT | grep . || echo 465)"; PORT="$REPLY"
-ask "Utilisateur (adresse e-mail complete)" "$(envval EMAIL_SMTP_USER)"; USER_="$REPLY"
-ask "Adresse expeditrice (From)" "$(envval EMAIL_FROM | grep . || printf '%s' "$USER_")"; FROM="$REPLY"
+if (( PASSWORD_ONLY )); then
+  HOST="$(envval EMAIL_SMTP_HOST)"; PORT="$(envval EMAIL_SMTP_PORT)"
+  USER_="$(envval EMAIL_SMTP_USER)"; FROM="$(envval EMAIL_FROM)"
+  [[ -n "$HOST" && -n "$PORT" && -n "$USER_" && -n "$FROM" ]]     || { echo "Serveur, port, utilisateur ou expediteur absent du fichier : lancer d'abord le script sans --password-only. Rien n a ete modifie." >&2; exit 1; }
+  echo
+  echo "Valeurs gardees : $HOST:$PORT, utilisateur $USER_, expediteur $FROM."
+else
+  echo
+  echo "Entree = garder la valeur proposee entre crochets."
+  ask "Serveur SMTP" "$(envval EMAIL_SMTP_HOST | grep . || echo smtp.hostinger.com)"; HOST="$REPLY"
+  ask "Port (465 = TLS)" "$(envval EMAIL_SMTP_PORT | grep . || echo 465)"; PORT="$REPLY"
+  ask "Utilisateur (adresse e-mail complete)" "$(envval EMAIL_SMTP_USER)"; USER_="$REPLY"
+  ask "Adresse expeditrice (From)" "$(envval EMAIL_FROM | grep . || printf '%s' "$USER_")"; FROM="$REPLY"
+fi
 
 [[ -n "$HOST" && -n "$USER_" && -n "$FROM" ]] || { echo "Valeur vide : rien n a ete modifie." >&2; exit 1; }
 [[ "$PORT" =~ ^[0-9]{1,5}$ ]] || { echo "Port invalide : rien n a ete modifie." >&2; exit 1; }
 [[ "$USER_" == *@*.* && "$FROM" == *@*.* ]] || { echo "Adresse e-mail invalide : rien n a ete modifie." >&2; exit 1; }
 
-# -s : la frappe reste invisible, le mot de passe ne s'affiche pas a l'ecran.
-read -r -s -p "Mot de passe SMTP (sans echo) : " PASS; echo
-read -r -s -p "Confirmer le mot de passe     : " PASS2; echo
-[[ -n "$PASS" ]] || { echo "Mot de passe vide : rien n a ete modifie." >&2; exit 1; }
-[[ "$PASS" == "$PASS2" ]] || { echo "Les deux saisies different : rien n a ete modifie." >&2; exit 1; }
-unset PASS2
+if (( VISIBLE )); then
+  # Une seule saisie, affichee : on voit ce qu'on tape (utile si le collage dans un
+  # champ masque echoue). Fermer l'onglet du terminal ensuite : le mot de passe reste
+  # dans son historique d'affichage.
+  read -r -p "Mot de passe SMTP (VISIBLE a l'ecran, une seule saisie) : " PASS
+  PASS="${PASS%$''}"
+  [[ -n "$PASS" ]] || { echo "Mot de passe vide : rien n a ete modifie." >&2; exit 1; }
+else
+  # -s : la frappe reste invisible, le mot de passe ne s'affiche pas a l'ecran.
+  read -r -s -p "Mot de passe SMTP (sans echo) : " PASS; echo
+  read -r -s -p "Confirmer le mot de passe     : " PASS2; echo
+  [[ -n "$PASS" ]] || { echo "Mot de passe vide : rien n a ete modifie." >&2; exit 1; }
+  [[ "$PASS" == "$PASS2" ]] || { echo "Les deux saisies different : rien n a ete modifie." >&2; exit 1; }
+  unset PASS2
+fi
+PASS_LEN="${#PASS}"
 # Une apostrophe ne peut pas etre protegee dans une valeur entre apostrophes, et un
 # retour a la ligne casserait le fichier.
 case "$PASS" in
@@ -167,7 +202,7 @@ echo "  EMAIL_SERVICE_TYPE : smtp"
 echo "  EMAIL_SMTP_HOST    : $HOST   EMAIL_SMTP_PORT : $PORT"
 echo "  EMAIL_SMTP_USER    : $USER_"
 echo "  EMAIL_FROM         : $FROM"
-echo "  EMAIL_SMTP_PASS    : renseigne (non affiche)"
+echo "  EMAIL_SMTP_PASS    : renseigne (${PASS_LEN} caracteres, non reaffiche)"
 echo
 echo "Applique maintenant la configuration :"
 echo "  cd /home/deployer/immotopia-saas && ./infra/scripts/deploy.sh $ENV_NAME --no-build"
