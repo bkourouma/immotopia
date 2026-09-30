@@ -52,7 +52,7 @@ Pièges et décisions :
 
 ## Pilote — environnements staging et production (PR #77 fusionnée) — 2026-09-30
 
-**État :** PR #77 fusionnée dans `main` (`23de8301`). **Sur le serveur (accord donné, 2026-09-30) :** dossier cloné, staging redéployé, pile de production `immotopia-prod` en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée, **vide : amorçage du super-admin en attente**), sauvegarde nocturne planifiée. La production n'est pas utilisée pour l'instant.
+**État :** PR #77 fusionnée dans `main` (`23de8301`). **Sur le serveur (accord donné, 2026-09-30) :** dossier cloné, staging redéployé, pile de production `immotopia-prod` en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée : RBAC, gabarits, **premier super-admin créé par le propriétaire**), sauvegarde nocturne planifiée et éprouvée après amorçage. La production n'est pas utilisée pour l'instant.
 **Dernier commit :** `23de8301` (fusion de #77) ; serveur au même commit
 
 Fait :
@@ -94,12 +94,9 @@ Fait :
 
 Reste à faire (chaque action serveur exige un « oui » explicite) :
 
-- **À faire par le propriétaire (saisie que l'agent n'a pas le droit de faire) :**
-  `ssh -t -p 2222 deployer@147.93.44.169` puis
-  `cd /home/deployer/immotopia-saas && ./infra/scripts/bootstrap.sh prod` : e-mail,
-  nom et mot de passe du premier SUPER_ADMIN (12 caractères minimum, sans `<`, `>`
-  ni `=`). Ensuite : se connecter sur https://clients.immotopia.cloud, créer la
-  première agence.
+- **À faire par le propriétaire :** se connecter sur https://clients.immotopia.cloud
+  avec le super-admin et créer la première agence (le test de connexion n'a pas été fait
+  par l'agent : il n'a pas le mot de passe).
 - **Reste, avec des informations du propriétaire :** `PLATFORM_ISSUER_RCCM`,
   `_TAX_ID`, `_ADDRESS`, `_PHONE` (factures d'abonnement) ; bloc e-mail (sans lui,
   aucune invitation ni réinitialisation de mot de passe ne part) ; identifiants

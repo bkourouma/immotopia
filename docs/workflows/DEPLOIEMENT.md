@@ -44,7 +44,12 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     garde-fous (arbre propre, commit dans `origin/main`, secrets distincts du
     staging, simulateur interdit, ports libres), construction, migrations depuis
     une base vierge jusqu'à 81, tests de fumée locaux et HTTPS ;
-  - `bootstrap.sh prod --dry-run` (base migrée et vide, plan attendu) ;
+  - `bootstrap.sh prod --dry-run` (base migrée et vide, plan attendu), puis
+    l'amorçage réel, **saisi au terminal par le propriétaire** (premier
+    SUPER_ADMIN) : état vérifié ensuite par le même `--dry-run` (65 permissions,
+    5 rôles clés, 12 gabarits de biens, 1 SUPER_ADMIN, `RBAC déjà posé`) ; journaux
+    de l'API sans erreur ; sauvegarde faite après l'amorçage et sa restauration de
+    contrôle (209 tables, 81 migrations, aucune orpheline) ;
   - en-têtes de sécurité observés en HTTPS sur les deux domaines (un seul jeu par
     réponse), `X-Robots-Tag: noindex` sur le staging seulement, page de connexion
     de la production sans compte de démonstration ;
@@ -103,9 +108,6 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     exécutées avec un `DATABASE_URL` invalide, sortie en code 1 avant toute
     connexion.
 - **Non éprouvé** (à la date de rédaction) :
-  - la saisie interactive de `bootstrap.sh` (aucun terminal en local ni pour un
-    agent : deux saisies de l'e-mail et du mot de passe sans écho, récapitulatif
-    `[o/N]`) ; la création du premier super-admin sur la production ;
   - la copie hors serveur (rclone), la restauration réelle d'une sauvegarde, le
     retour arrière par étiquette d'image, le fichier temporaire de
     `set-google-oauth.sh`, la connexion Google et le paiement en mode `LIVE` ;
