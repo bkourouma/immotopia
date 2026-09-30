@@ -206,15 +206,16 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 
 ### Scripts
 
-| Script                                        | Rôle                                                                                                                                                         |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `make-env.sh <staging\|prod> [fichier]`       | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                  |
-| `deploy.sh <staging\|prod> [--no-build]`      | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou). |
-| `bootstrap.sh <staging\|prod> [--dry-run]`    | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                     |
-| `set-google-oauth.sh <staging\|prod> [fich.]` | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                               |
-| `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                              |
-| `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                |
-| `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).           |
+| Script                                        | Rôle                                                                                                                                                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make-env.sh <staging\|prod> [fichier]`       | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                 |
+| `deploy.sh <staging\|prod> [--no-build]`      | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                |
+| `bootstrap.sh <staging\|prod> [--dry-run]`    | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                    |
+| `set-google-oauth.sh <staging\|prod> [fich.]` | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                              |
+| `set-email-smtp.sh <staging\|prod> [fich.]`   | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets. |
+| `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
+| `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
+| `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
 « Modes des scripts »).
@@ -411,7 +412,22 @@ vérifier avec `ls -l` après).
   `packages/api/env.example`) avec des identifiants **dédiés à la production**.
   Brancher les intégrations une par une et vérifier chaque envoi. `deploy.sh prod`
   avertit, sans bloquer, si une clé d'intégration est identique à celle du
-  staging (voir l'étape 4).
+  staging (voir l'étape 4). Pour le SMTP : `./infra/scripts/set-email-smtp.sh prod`
+  (dans une session `ssh -t`) demande le serveur, le port, l'utilisateur,
+  l'expéditeur et le mot de passe (deux saisies, sans écho) ; puis
+  `deploy.sh prod --no-build` recrée l'API. Le script protège le mot de passe par des
+  apostrophes : Docker Compose interpole `$` dans un fichier d'environnement (un mot
+  de passe `ab$cd` deviendrait `ab`) ; un mot de passe contenant une apostrophe est
+  refusé. Options : `--password-only` (ne demande que le mot de passe ; serveur,
+  port, utilisateur et expéditeur sont repris du fichier) et `--visible` (une seule
+  saisie, affichée : utile quand le collage dans un champ masqué échoue ; fermer
+  l'onglet du terminal ensuite). Ne jamais passer le mot de passe en argument de la
+  commande : il resterait dans l'historique du shell et dans la liste des processus.
+  Vérifier ensuite l'authentification sans envoyer de message : la commande
+  `docker exec immotopia-prod-api node -e "...verify()..."` est affichée par le
+  script. **Activer l'e-mail active aussi l'exigence de vérification de l'adresse à
+  la connexion** (`isEmailDeliveryConfigured`). Le staging n'utilise jamais la boîte
+  de la production : un bac à sable.
 - **WhatsApp** (`WHATSAPP_*`, `WASENDER_*`, `TWILIO_*`) : mêmes règles. **SMS** :
   `infra/.env.example` ne porte aucune variable SMS à ce jour ; à documenter
   avec le lot SMS.
