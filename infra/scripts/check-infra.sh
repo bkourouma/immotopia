@@ -29,7 +29,7 @@ for script in infra/scripts/*.sh; do
 done
 
 # --- 2. Arguments d'environnement obligatoires ------------------------------
-for script in deploy make-env set-google-oauth set-email-smtp backup bootstrap; do
+for script in deploy make-env set-google-oauth set-email-smtp backup bootstrap pull-backups; do
   for arg in "" "dev" "production"; do
     rc=0
     bash "infra/scripts/$script.sh" $arg >/dev/null 2>&1 || rc=$?
