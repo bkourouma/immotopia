@@ -17,7 +17,7 @@ const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.Reac
   DUPLEX_TRIPLEX: { label: 'Duplex/Triplex', icon: <Building className="h-5 w-5" /> },
   CHAMBRE_COLOCATION: { label: t('Chambre (Colocation)'), icon: <Box className="h-5 w-5" /> },
   BUREAU: { label: t('Bureau'), icon: <Building2 className="h-5 w-5" /> },
-  BOUTIQUE_COMMERCIAL: { label: 'Boutique/Commercial', icon: <Store className="h-5 w-5" /> },
+  BOUTIQUE_COMMERCIAL: { label: t('Boutique / Commercial'), icon: <Store className="h-5 w-5" /> },
   ENTREPOT_INDUSTRIEL: { label: t('Entrepôt/Industriel'), icon: <Factory className="h-5 w-5" /> },
   TERRAIN: { label: t('Terrain'), icon: <MapPin className="h-5 w-5" /> },
   IMMEUBLE: { label: t('Immeuble'), icon: <Building className="h-5 w-5" /> },
@@ -34,11 +34,7 @@ const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.Reac
  * bien ouvert — sinon, ouvrir une fiche existante en modification effacerait
  * son type au premier enregistrement.
  */
-const TYPES_MASQUES: PropertyType[] = [
-  'CHAMBRE_COLOCATION',
-  'BOUTIQUE_COMMERCIAL',
-  'LOT_PROGRAMME_NEUF'
-] as PropertyType[];
+const TYPES_MASQUES: PropertyType[] = ['CHAMBRE_COLOCATION', 'LOT_PROGRAMME_NEUF'] as PropertyType[];
 
 export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
   selectedType,

@@ -294,6 +294,12 @@ export interface SiteClosureBlocker {
   message: string;
   /** Combien de pièces sont concernées. */
   count: number;
+  /** Références des pièces bloquantes, quand la nature de pièce en porte une. */
+  references?: string[];
+  /** Identifiants des pièces bloquantes (pour un lien vers chacune). */
+  documentIds?: string[];
+  /** Nature des pièces bloquantes (ex. `SUPPLIER_INVOICE`). */
+  documentType?: string;
 }
 
 export type GetSiteClosureBlockers = (tenantId: string, siteId: string) => Promise<SiteClosureBlocker[]>;

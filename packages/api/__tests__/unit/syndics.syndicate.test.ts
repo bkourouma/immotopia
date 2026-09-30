@@ -19,6 +19,8 @@ jest.mock('@prisma/client', () => {
       delete: jest.fn()
     },
     syndicateLot: {
+      // Unicite du numero de lot (BUG-025) : aucun doublon par defaut.
+      findFirst: jest.fn(async () => null),
       create: jest.fn(),
       // `syncSyndicateLotCount` recompte les lots puis met a jour le syndicat
       // depuis le commit 3b568c5 ; le mock ne l'avait pas suivi.

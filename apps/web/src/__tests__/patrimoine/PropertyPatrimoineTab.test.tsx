@@ -215,6 +215,27 @@ describe('PropertyPatrimoineTab — chargement et rendement', () => {
     });
   });
 
+  it('conserve les hypothèses de projection après rechargement (BUG-033)', async () => {
+    mockLoadAll();
+    const premier = mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'recalc-yield' }));
+    await waitFor(() => expect(patrimoineService.getPropertyYield).toHaveBeenCalledTimes(2));
+    premier.unmount();
+
+    // « Rechargement » : nouveau montage, le chargement initial reprend les hypothèses.
+    vi.mocked(patrimoineService.getPropertyYield).mockClear();
+    mount();
+    await waitFor(() => {
+      expect(patrimoineService.getPropertyYield).toHaveBeenCalledWith('tenant-1', 'property-1', {
+        years: 5,
+        valueGrowthRate: 0.03,
+        rentGrowthRate: 0.02,
+        expenseGrowthRate: 0.02,
+        vacancyRate: 0.04
+      });
+    });
+  });
+
   it("isole l'échec d'une section : le rendement en erreur n'empêche pas d'afficher les documents", async () => {
     vi.mocked(patrimoineService.listValuations).mockResolvedValue([baseValuation] as never);
     vi.mocked(patrimoineService.listExpenses).mockResolvedValue([baseExpense] as never);

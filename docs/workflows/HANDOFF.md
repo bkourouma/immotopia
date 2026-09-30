@@ -18,6 +18,27 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `fix/recette-packs-e2e` — 2026-09-30
+
+**État :** terminé côté code, PR ouverte (voir la PR ; fusion à l'utilisateur). Recette de bout en bout des 6 packs (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO) : un testeur par pack, ~100 anomalies consignées, ~30 correcteurs en parallèle. Rapport : `docs/recette/packs/RAPPORT_FINAL.md` ; index des anomalies : `docs/recette/packs/ANOMALIES.md` ; scénarios et journaux : `docs/recette/packs/SCENARIO_PACK_*.md`.
+
+**Commits :** `fix(api)` (999559c1), `fix(web)` (278839dc), puis la documentation (recette, wiki, RUNBOOK, HANDOFF). Vérifié : typecheck web 0 erreur, API 44 erreurs (dette antérieure, base ~48), lint 0 erreur, `check:architecture` et `wiki:check` verts, Jest API (4038+ tests) et Vitest web (179 fichiers, 1704 tests) verts après correction des tests.
+
+**À savoir au déploiement :**
+
+- Migrations `20261005090000` à `20261006150000` (dont permissions Syndic `…130000`/`…140000`) à appliquer AVANT ou AVEC le déploiement du code ; le cache des permissions vit 5 min.
+- Scripts de rattrapage (`packages/api/scripts/backfill-*.ts`) : simulation par défaut, `--apply` pour écrire, `--allow-production` en production. Jamais lancés hors bases `immotopia_rec_*`.
+- Décisions métier à valider : consolidation/export patrimoine limités aux biens détenus en propre ; comptes 165/758 pour le dépôt de garantie, 411/7083 en gestion directe, 450 sans écriture d'émission d'appel ; libellé juridique de la clause de pénalité.
+- Limiteur du renvoi de convocation : en mémoire, par processus.
+
+**Reste ouvert (voir ANOMALIES.md) :** 074 (modèles de contrat de vente Promoteur) et 091 (modèles de documents Syndic), restes de traduction 067/093/097/098/100, 095 (libellé du verrou manuel), plus les anomalies « prêt au retest » jamais rejouées (008, 016, 030, 034, 058, 060, 089, 099). Les `t()` évalués à l'import de modules (~90 fichiers) ne suivent pas un changement de langue à chaud. Anciennes anomalies du bus 09-28/09-29 corrigées seulement sur la branche non fusionnée `origin/test/recette-operateur-integre`.
+
+**Environnement de recette (hors dépôt) :** worktree `.claude/worktrees/recette-packs` (npm ci propre, sans jonctions ; ne pas le supprimer avec `--force`), 6 bases `immotopia_rec_*` (clonées de `immotopia_rec_tpl`), serveurs arrêtés. Lanceurs dans le scratchpad de la session (`rec/rec-all.cjs`, `rec-db.cjs`, `snapshot-sync.cjs`). Les bases les plus anciennes n'ont pas les migrations `…140000`/`…150000` (`rec-db.cjs migrate-all`). Ports : AGENCE web 3311 (3301 = Docker OphtaClinic).
+
+**Pièges :** `.claude/launch.json` (entrées `rec-*`) et `docs/Compte-rendu-entretien-module-syndic.md`, `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx` (racine), `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md` ne sont PAS commités (travail étranger à cette branche). `preview_start` limité à 5 serveurs ; le navigateur intégré refuse les pages servies par adresse IP (utiliser `*.localhost`). `i18n:extract` API met à la poubelle les clés à variable (`t(variable)`) en `*.orphans.json` : les remettre. Un test API chargeant `config/env.ts` relit le `.env` local : mocker `dotenv/config`.
+
+---
+
 ## Branche `feat/copilot-openrouter` — 2026-09-29
 
 **Fait :** fournisseur LLM `openrouter` (fetch + SSE, API OpenAI-compatible) ; réglage de la plateforme en base (`PlatformAiSettings`, migration `20261004090000`) prioritaire sur les variables `AI_*` ; écran super-admin `/admin/ai-settings` (fournisseur, modèle avec recherche dans le catalogue OpenRouter, effort/repli pour Anthropic) ; routes `/api/platform/ai-settings[/models]` ; wiki mis à jour (3 lignes).

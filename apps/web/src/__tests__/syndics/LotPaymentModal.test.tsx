@@ -21,7 +21,7 @@ const createChargeCall = vi.fn();
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
-  listChargeCalls: (...args: unknown[]) => listChargeCalls(...args),
+  listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
   createChargeCall: (...args: unknown[]) => createChargeCall(...args)
 }));
 
@@ -164,7 +164,10 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
         updatedAt: ''
       }
     ]);
-    listChargeCalls.mockResolvedValue([baseCharge]);
+    listChargeCalls.mockResolvedValue({
+      items: [baseCharge],
+      summary: { totalCount: 1, totalAmount: 100000, pendingCount: 1, overdueCount: 0 }
+    });
     listOpenLotCharges.mockResolvedValue([olderOpenCall, targetOpenCall]);
     getLotAdvance.mockResolvedValue({ advance: 0, currency: 'XOF' });
   });
@@ -408,6 +411,6 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
 
     await waitFor(() => expect(listChargeCalls.mock.calls.length).toBeGreaterThan(callsBeforeClose));
     // BUG-003 : avance formatée comme les autres montants, avec la devise.
-    expect(await screen.findByText('Paiement enregistré : 1 appel(s) soldé(s), avance de 0 XOF')).toBeTruthy();
+    expect(await screen.findByText('Paiement enregistré : 1 appel(s) soldé(s), avance de 0 FCFA')).toBeTruthy();
   });
 });

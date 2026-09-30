@@ -25,6 +25,7 @@ import {
   MaintenanceTicketPriority,
   MaintenanceTicketCategory
 } from '@prisma/client';
+import { parsePagination } from '../utils/pagination-helper';
 
 /**
  * Repond directement quand l'erreur porte deja son statut HTTP.
@@ -36,7 +37,8 @@ import {
  * elles-memes leur statut ; c'est cette reponse-la qui prime.
  */
 function repondreErreurPortee(res: Response, error: unknown): boolean {
-  const statut = Number((error as { status?: unknown })?.status);
+  const porteur = error as { status?: unknown; statusCode?: unknown };
+  const statut = Number(porteur?.status ?? porteur?.statusCode);
   if (!Number.isInteger(statut) || statut < 400 || statut >= 600) {
     return false;
   }
@@ -66,7 +68,9 @@ export async function createTicketHandler(req: Request, res: Response): Promise<
     // Validate request body
     const validatedData = createTicketSchema.parse(req.body);
 
-    const ticket = await createTicket(tenantId, validatedData, actorUserId, actorContactId);
+    const ticket = await createTicket(tenantId, validatedData, actorUserId, actorContactId, {
+      requireActiveLease: Boolean(actorContactId)
+    });
 
     res.status(201).json({
       success: true,
@@ -126,8 +130,7 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
       filters.leaseId = req.query.leaseId as string;
     }
 
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 });
 
     const result = await getTenantTickets(tenantId, filters, { page, limit });
 
@@ -619,8 +622,7 @@ export async function listAllTicketsHandler(req: Request, res: Response): Promis
       filters.dateTo = new Date(req.query.dateTo as string);
     }
 
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 });
 
     const result = await getAllTickets(tenantId, filters, { page, limit });
 

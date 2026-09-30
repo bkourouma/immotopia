@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import multer from 'multer';
 import { logger } from '../utils/logger';
-import { isProduction } from '../config/env';
 import { t } from '../i18n';
 // Effet de bord : bascule le message par défaut de Zod en français (voir
 // `lib/zod-error-map.ts`). Importé ici — le point d'entrée le plus
@@ -117,8 +116,8 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message = 'Cette ressource existe déjà.') {
-    super(message, 409, ErrorCode.CONFLICT);
+  constructor(message = 'Cette ressource existe déjà.', errors?: Array<{ field: string; message: string }>) {
+    super(message, 409, ErrorCode.CONFLICT, errors);
   }
 }
 
@@ -173,12 +172,21 @@ export class SubscriptionReadOnlyError extends AppError {
 }
 
 /** Operation de gestion pour un tiers refusee par la barriere « detenu en propre » (pack Patrimoine seul). */
-export type ThirdPartyAction = 'MANDATE' | 'THIRD_PARTY_OWNER';
+export type ThirdPartyAction =
+  'MANDATE' | 'THIRD_PARTY_OWNER' | 'OWNER_STATEMENT' | 'OWNER_ACCOUNT' | 'OWNER_FEE_TERMS' | 'AGENT_COMMISSION';
 
 const OWN_ASSETS_ONLY_MESSAGES: Record<ThirdPartyAction, string> = {
   MANDATE: 'Le pack Patrimoine couvre les biens détenus en propre : la création d’un mandat exige le pack Agence.',
   THIRD_PARTY_OWNER:
-    'Le pack Patrimoine couvre les biens détenus en propre : rattacher un propriétaire tiers exige le pack Agence.'
+    'Le pack Patrimoine couvre les biens détenus en propre : rattacher un propriétaire tiers exige le pack Agence.',
+  OWNER_STATEMENT:
+    'Le pack Patrimoine couvre les biens détenus en propre : les relevés de gérance pour un propriétaire tiers exigent le pack Agence.',
+  OWNER_ACCOUNT:
+    'Le pack Patrimoine couvre les biens détenus en propre : les comptes et reversements de propriétaires tiers exigent le pack Agence.',
+  OWNER_FEE_TERMS:
+    'Le pack Patrimoine couvre les biens détenus en propre : les honoraires de gestion par propriétaire exigent le pack Agence.',
+  AGENT_COMMISSION:
+    'Le pack Patrimoine couvre les biens détenus en propre : les commissions de négociateurs sur mandat exigent le pack Agence.'
 };
 
 /**
@@ -195,7 +203,7 @@ export class OwnAssetsOnlyError extends AppError {
 /** Capacite depassee sous la politique BLOCK (D4, 409). */
 export class QuotaExceededError extends AppError {
   constructor(
-    detail: { capacityKey: string; limit: number; used: number; requested: number },
+    detail: { capacityKey: string; limit: number; used: number; requested: number; extensible?: boolean },
     message = 'La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer.'
   ) {
     super(message, 409, ErrorCode.QUOTA_EXCEEDED, undefined, detail);
@@ -285,7 +293,11 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
       status: carriedStatus,
       body: {
         success: false,
-        message: anyErr?.message || 'Une erreur est survenue.',
+        // Un statut 5xx porte par une erreur non typee ne livre pas son message.
+        message:
+          carriedStatus >= 500
+            ? 'Une erreur est survenue. Veuillez réessayer plus tard.'
+            : anyErr?.message || 'Une erreur est survenue.',
         ...(anyErr?.code ? { code: String(anyErr.code) } : {})
       }
     };
@@ -340,10 +352,10 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
     status: 500,
     body: {
       success: false,
-      // Internal messages (Prisma, stack traces) must not reach clients in prod.
-      message: isProduction
-        ? 'Une erreur est survenue. Veuillez réessayer plus tard.'
-        : (err as Error)?.message || 'Une erreur est survenue.',
+      // Une erreur non typee ne sort JAMAIS avec son message (chemin disque,
+      // nom de table, requete, pile) : ni en production ni en developpement.
+      // Le detail complet reste dans les journaux (voir `errorHandler`).
+      message: 'Une erreur est survenue. Veuillez réessayer plus tard.',
       code: ErrorCode.INTERNAL
     }
   };

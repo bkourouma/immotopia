@@ -6,6 +6,8 @@
  *   (jamais `ChargePayment.chargeCallId`, garde pour compatibilite) ;
  * - `ChargePayment.unallocatedAmount` est la part du paiement non encore
  *   affectee : la somme sur le lot est son AVANCE ;
+ * - la comptabilite de la copropriete recoit UNE ecriture par paiement (banque
+ *   ou caisse / coproprietaires, `charge-collection-accounting.ts`) ;
  * - le grand livre du lot recoit UN credit PAYMENT par paiement (montant
  *   total), au moment ou l'argent arrive. Imputer une avance n'est pas un
  *   mouvement d'argent : aucune ecriture de grand livre ;
@@ -27,12 +29,14 @@ import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { NotFoundError, ValidationError } from '../../middleware/error-middleware';
+import { t } from '../../i18n';
 import { appendOwnerAccountTransactionTx } from '../finance/ledger';
 import { deriveChargeCallStatus, type ChargeCallStatusValue } from './finance-utils';
 import { ensureOwnerAccountForLotTx } from './owner-account-tx';
 import { formatIsoDay } from './period';
 import { issueReceiptsForPaymentTx, toDocumentRefs, type IssuedChargeDocument } from './charge-receipts';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
+import { postChargePaymentEntryTx } from './charge-collection-accounting';
 import { creditFundsForAllocationsTx, type FundCreditItem } from './fund-credits';
 import {
   fromCents,
@@ -327,8 +331,8 @@ export async function applyLotAdvanceTx(tx: PrismaTransactionClient, lotId: stri
 
 function assertPositiveAmount(amountCents: number) {
   if (amountCents <= 0) {
-    throw new ValidationError('Le montant du paiement doit etre strictement positif.', [
-      { field: 'amount', message: 'Montant strictement positif attendu.' }
+    throw new ValidationError(t('Le montant du paiement doit être strictement positif.'), [
+      { field: 'amount', message: t('Montant strictement positif attendu.') }
     ]);
   }
 }
@@ -338,7 +342,7 @@ function assertSelectedCallsOfLot(calls: CallBalance[], selected?: string[] | nu
   if (!selected || selected.length === 0) return;
   const ids = new Set(calls.map(call => call.id));
   if (selected.some(id => !ids.has(id))) {
-    throw new NotFoundError('Appel de charges introuvable pour ce lot.');
+    throw new NotFoundError(t('Appel de charges introuvable pour ce lot.'));
   }
 }
 
@@ -405,6 +409,18 @@ export async function recordLotPaymentTx(tx: PrismaTransactionClient, input: Lot
   }
   await writeCallStatusesTx(tx, calls, touched);
   await creditLedgerTx(tx, input, payment.id, amountCents);
+  // Comptabilite de la copropriete : banque (ou caisse) / coproprietaires,
+  // une ecriture par paiement, dans la meme transaction (BUG-086).
+  await postChargePaymentEntryTx(tx, {
+    tenantId: input.tenantId,
+    syndicateId: input.syndicateId,
+    lotId: input.lotId,
+    paymentId: payment.id,
+    amount: fromCents(amountCents),
+    paidAt: input.paidAt,
+    method: input.method ?? null,
+    reference: input.reference ?? null
+  });
 
   const application = await applyLotAdvanceTx(tx, input.lotId);
   // Fonds : une seule vague de verrous, apres le verrou du lot, pour le
@@ -553,7 +569,7 @@ function buildResult(args: {
 export async function assertSyndicateOfTenant(client: Client, tenantId: string, syndicateId: string) {
   const syndicate = await client.syndicate.findFirst({ where: { id: syndicateId, tenantId }, select: { id: true } });
   if (!syndicate) {
-    throw new NotFoundError('Copropriete introuvable ou inaccessible.');
+    throw new NotFoundError(t('Copropriété introuvable ou inaccessible.'));
   }
 }
 
@@ -564,7 +580,7 @@ export async function assertLotOfSyndicate(client: Client, tenantId: string, syn
     select: { id: true }
   });
   if (!lot) {
-    throw new NotFoundError('Lot introuvable ou inaccessible pour cette copropriete.');
+    throw new NotFoundError(t('Lot introuvable ou inaccessible pour cette copropriété.'));
   }
 }
 

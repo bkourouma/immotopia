@@ -32,6 +32,9 @@ const CALL_SITES: Array<[file: string, fn: string, expected: RegExp, transaction
   ['services/property-service.ts', 'deleteProperty', /syncLotActivationsTx\(\s*tx,/, true],
   ['services/property-status-service.ts', 'updatePropertyStatus', /syncLotActivationsTx\(\s*tx,/, true],
   ['lib/sales/property-status.ts', 'setPropertyStatusTx', /syncLotActivationsTx\(\s*tx,/, false],
+  // Mandats de gestion : creation, resiliation (BUG-2026-09-30-029).
+  ['services/property-mandate-service.ts', 'createMandate', /syncLotActivationsTx\(\s*tx,/, true],
+  ['services/property-mandate-service.ts', 'revokeMandate', /syncLotActivationsTx\(\s*tx,/, true],
   // Baux : creation (ACTIVE), changement de statut, renouvellement, resiliation.
   ['services/rental-lease-service.ts', 'createLease', /syncLotActivationsTx\(\s*tx,/, true],
   ['services/rental-lease-service.ts', 'updateLeaseStatus', /syncLotActivationsTx\(\s*tx,/, true],

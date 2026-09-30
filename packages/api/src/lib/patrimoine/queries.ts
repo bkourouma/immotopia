@@ -1,4 +1,5 @@
 import { Prisma, PropertyStatus, StatementStatus, WorkProgramStatus } from '@prisma/client';
+import { activeMandateWhere } from '../owner-portal-scope';
 import { badRequest, conflict, notFound } from '../errors';
 import { prisma } from '../../utils/database';
 import { annualizeRent, remainingLoanMonths, type LoanSchedule, type YieldInput } from './yield';
@@ -6,8 +7,10 @@ import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
 import { materializeManagementFees } from '../rental-fees/materialize';
 import { ownerSharesByProperty } from '../ownership/service';
+import { VALUATION_ORDER_BY, compareValuationsDesc } from './valuation-order';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
+import { syncDirectExpenseEntryTx } from '../finance/rental-direct-ledger';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -46,10 +49,28 @@ function toWorkProgramContract<T extends { site?: { id: string; name: string } |
   return { ...rest, constructionSite: site ? { id: site.id, name: site.name } : null };
 }
 
-export async function ensureTenantProperty(tenantId: string, propertyId: string) {
-  const property = await prisma.property.findFirst({
+export async function ensureTenantProperty(
+  tenantId: string,
+  propertyId: string,
+  options: { allowMandated?: boolean } = {}
+) {
+  let property = await prisma.property.findFirst({
     where: { id: propertyId, tenantId }
   });
+
+  // Bien CLIENT (`tenantId` nul) géré par l'agence : rattaché par un mandat
+  // actif (portail propriétaire, BUG-057).
+  if (!property && options.allowMandated) {
+    const mandate = await prisma.propertyMandate.findFirst({
+      where: { ...activeMandateWhere(tenantId), propertyId },
+      select: { id: true }
+    });
+    if (mandate) {
+      property = await prisma.property.findFirst({
+        where: { id: propertyId, OR: [{ tenantId }, { tenantId: null }] }
+      });
+    }
+  }
 
   if (!property) {
     throw notFound('Bien introuvable ou inaccessible pour ce tenant');
@@ -70,7 +91,7 @@ export async function listPropertyValuations(tenantId: string, propertyId: strin
   return prisma.assetValuation.findMany({
     where: { tenantId, propertyId },
     include: { property: true },
-    orderBy: { valuatedAt: 'desc' }
+    orderBy: VALUATION_ORDER_BY
   });
 }
 
@@ -207,7 +228,7 @@ export async function createPropertyExpense(
   return prisma.$transaction(async tx => {
     await assertTreasuryAccountUsableTx(tx, tenantId, data.treasuryAccountId, paymentMethod);
 
-    return tx.propertyExpense.create({
+    const created = await tx.propertyExpense.create({
       data: {
         tenantId,
         propertyId,
@@ -226,6 +247,12 @@ export async function createPropertyExpense(
       },
       include: { property: true }
     });
+
+    // Bien détenu en propre : la dépense est une charge, écrite au journal
+    // dans la même transaction (jamais de dépense sans écriture).
+    await syncDirectExpenseEntryTx(tx, tenantId, created.id);
+
+    return created;
   });
 }
 
@@ -285,7 +312,7 @@ export async function updatePropertyExpense(
   return prisma.$transaction(async tx => {
     await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, methodForValidation ?? 'CASH');
 
-    return tx.propertyExpense.update({
+    const updated = await tx.propertyExpense.update({
       where: { id: expenseId, tenantId },
       data: {
         category: data.category,
@@ -303,6 +330,11 @@ export async function updatePropertyExpense(
       },
       include: { property: true }
     });
+
+    // Montant, catégorie, date ou compte modifiés : l'écriture est contre-passée puis réécrite.
+    await syncDirectExpenseEntryTx(tx, tenantId, expenseId);
+
+    return updated;
   });
 }
 
@@ -312,7 +344,11 @@ export async function deletePropertyExpense(tenantId: string, propertyId: string
     where: { id: expenseId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Depense introuvable');
-  await prisma.propertyExpense.delete({ where: { id: expenseId, tenantId } });
+  await prisma.$transaction(async tx => {
+    await tx.propertyExpense.delete({ where: { id: expenseId, tenantId } });
+    // Dépense supprimée : son écriture éventuelle est contre-passée.
+    await syncDirectExpenseEntryTx(tx, tenantId, expenseId);
+  });
 }
 
 export async function listPropertyLoans(tenantId: string, propertyId: string) {
@@ -722,12 +758,14 @@ export async function getPatrimoineOverview(tenantId: string) {
 
   const [occupancyProperties, valuations, activeLoans, expensesThisYear, activeLeases] = await Promise.all([
     prisma.property.findMany({
-      where: { tenantId, status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
+      // Biens DÉTENUS par l'agence : un bien CLIENT saisi par l'assistant porte aussi
+      // `tenantId`, mais n'est pas son patrimoine (spec 015 : valeur, dette, loyers).
+      where: { tenantId, ownershipType: 'TENANT', status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
       select: { id: true }
     }),
     prisma.assetValuation.findMany({
       where: { tenantId },
-      orderBy: [{ propertyId: 'asc' }, { valuatedAt: 'desc' }]
+      orderBy: [{ propertyId: 'asc' }, ...VALUATION_ORDER_BY]
     }),
     prisma.propertyLoan.findMany({ where: { tenantId, status: 'ACTIVE' } }),
     prisma.propertyExpense.findMany({
@@ -778,15 +816,15 @@ export async function getPatrimoineOverview(tenantId: string) {
  * cout d'acquisition renseigne (l'ancien calcul perdait alors le cout connu
  * d'une valorisation anterieure).
  */
-function latestAcquisitionCost(valuations: Array<{ valuatedAt: Date; acquisitionCost: Prisma.Decimal | null }>) {
-  const withCost = valuations
-    .filter(v => v.acquisitionCost !== null)
-    .sort((a, b) => b.valuatedAt.getTime() - a.valuatedAt.getTime());
+export function latestAcquisitionCost(
+  valuations: Array<{ id: string; valuatedAt: Date; createdAt: Date; acquisitionCost: Prisma.Decimal | null }>
+) {
+  const withCost = valuations.filter(v => v.acquisitionCost !== null).sort(compareValuationsDesc);
   return withCost.length > 0 ? Number(withCost[0].acquisitionCost) : 0;
 }
 
 export async function buildPropertyYieldInput(tenantId: string, propertyId: string): Promise<YieldInput> {
-  await ensureTenantProperty(tenantId, propertyId);
+  await ensureTenantProperty(tenantId, propertyId, { allowMandated: true });
 
   const now = new Date();
   const twelveMonthsAgo = new Date(now);
@@ -801,11 +839,11 @@ export async function buildPropertyYieldInput(tenantId: string, propertyId: stri
     }),
     prisma.assetValuation.findMany({
       where: { tenantId, propertyId },
-      select: { valuatedAt: true, acquisitionCost: true }
+      select: { id: true, valuatedAt: true, createdAt: true, acquisitionCost: true }
     }),
     prisma.assetValuation.findFirst({
       where: { tenantId, propertyId },
-      orderBy: { valuatedAt: 'desc' }
+      orderBy: VALUATION_ORDER_BY
     }),
     prisma.propertyExpense.findMany({ where: { tenantId, propertyId } }),
     prisma.propertyLoan.findMany({ where: { tenantId, propertyId, status: 'ACTIVE' } })

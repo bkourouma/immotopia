@@ -159,3 +159,47 @@ describe('loanPaymentsForYear — un pret termine cesse de peser sur la projecti
     expect(loanPaymentsForYear(input, 2)).toBe(0);
   });
 });
+
+describe('projectedYieldAtHorizon — invariant brut ≥ net ≥ net-net (BUG-2026-09-30-070)', () => {
+  const studio: YieldInput = {
+    annualRent: 2_400_000,
+    currentValue: 25_000_000,
+    costBasis: 18_500_000,
+    annualExpenses: 130_000,
+    annualLoanPayments: 1_800_000,
+    loans: [{ monthlyPayment: 150_000, remainingMonths: 76 }]
+  };
+  const defaults = { valueGrowthRate: 0.03, rentGrowthRate: 0.02, expenseGrowthRate: 0.025, vacancyRate: 0.05 };
+
+  it('cas du rapport : le net-net projeté à 10 ans ne dépasse ni le net ni le brut', () => {
+    const s = projectedYieldAtHorizon(studio, 10, defaults);
+    expect(s.grossYield).toBeCloseTo(8.27, 1);
+    expect(s.netYield).toBeCloseTo(7.78, 1);
+    // Crédit soldé avant l'année 10 : net-net = net (même base), et non 14,12 %.
+    expect(s.netNetYield).toBeCloseTo(7.78, 1);
+    expect(s.netNetYield as number).toBeLessThanOrEqual(s.netYield + 1e-9);
+  });
+
+  it('propriété : brut ≥ net ≥ net-net pour des jeux d’hypothèses variés', () => {
+    const rates = [-0.3, 0, 0.03, 0.2];
+    for (const years of [1, 5, 10, 30]) {
+      for (const vg of rates) {
+        for (const rg of rates) {
+          for (const vac of [0, 0.05, 0.5]) {
+            for (const loans of [undefined, studio.loans]) {
+              const s = projectedYieldAtHorizon({ ...studio, loans }, years, {
+                valueGrowthRate: vg,
+                rentGrowthRate: rg,
+                expenseGrowthRate: 0.025,
+                vacancyRate: vac
+              });
+              expect(s.grossYield).toBeGreaterThanOrEqual(s.netYield - 1e-9);
+              // Un net négatif (perte) n'est pas comparable : bases différentes, l'ordre peut s'inverser.
+              if (s.netYield >= 0) expect(s.netYield).toBeGreaterThanOrEqual((s.netNetYield as number) - 1e-9);
+            }
+          }
+        }
+      }
+    }
+  });
+});

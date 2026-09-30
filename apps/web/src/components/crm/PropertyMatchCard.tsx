@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { PropertyMatch, CrmDealPropertyStatus } from '../../types/crm-types';
 import { Home, MapPin, DollarSign, Ruler } from 'lucide-react';
 import { t } from '../../i18n/t';
+import { dealPropertyStatusLabel } from '../../utils/crm-labels';
 
 interface PropertyMatchCardProps {
   match: PropertyMatch;
@@ -34,7 +35,7 @@ export const PropertyMatchCard: React.FC<PropertyMatchCardProps> = ({
         <div className="flex items-center gap-2">
           <Home className="h-5 w-5 text-gray-600" />
           <span className="font-medium text-gray-900">
-            {t('Property')} {match.propertyId}
+            {t('Bien')} {match.propertyId}
           </span>
         </div>
         {match.matchScore !== null && match.matchScore !== undefined && (
@@ -48,25 +49,25 @@ export const PropertyMatchCard: React.FC<PropertyMatchCardProps> = ({
         <div className="mb-3 space-y-1 text-sm">
           {explanation.budgetFit !== undefined && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Budget:</span>
+              <span className="text-gray-600">{t('Budget :')}</span>
               <span className="font-medium">{explanation.budgetFit}/30</span>
             </div>
           )}
           {explanation.zoneFit !== undefined && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Zone:</span>
+              <span className="text-gray-600">{t('Zone :')}</span>
               <span className="font-medium">{explanation.zoneFit}/25</span>
             </div>
           )}
           {explanation.sizeFit !== undefined && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Size:</span>
+              <span className="text-gray-600">{t('Surface :')}</span>
               <span className="font-medium">{explanation.sizeFit}/25</span>
             </div>
           )}
           {explanation.extrasFit !== undefined && (
             <div className="flex justify-between">
-              <span className="text-gray-600">Extras:</span>
+              <span className="text-gray-600">{t('Extras :')}</span>
               <span className="font-medium">{explanation.extrasFit}/20</span>
             </div>
           )}
@@ -79,7 +80,7 @@ export const PropertyMatchCard: React.FC<PropertyMatchCardProps> = ({
       <div className="flex gap-2 mt-4">
         {!isInShortlist && onAddToShortlist && (
           <Button size="sm" onClick={onAddToShortlist}>
-            {t('Add to Shortlist')}
+            {t('Ajouter à la sélection')}
           </Button>
         )}
         {isInShortlist && onStatusChange && (
@@ -88,11 +89,11 @@ export const PropertyMatchCard: React.FC<PropertyMatchCardProps> = ({
             onChange={e => onStatusChange(e.target.value as CrmDealPropertyStatus)}
             className="text-xs border rounded px-2 py-1"
           >
-            <option value="SHORTLISTED">{t('Shortlisted')}</option>
-            <option value="PROPOSED">{t('Proposed')}</option>
-            <option value="VISITED">{t('Visited')}</option>
-            <option value="SELECTED">{t('Selected')}</option>
-            <option value="REJECTED">{t('Rejected')}</option>
+            <option value="SHORTLISTED">{dealPropertyStatusLabel('SHORTLISTED')}</option>
+            <option value="PROPOSED">{dealPropertyStatusLabel('PROPOSED')}</option>
+            <option value="VISITED">{dealPropertyStatusLabel('VISITED')}</option>
+            <option value="SELECTED">{dealPropertyStatusLabel('SELECTED')}</option>
+            <option value="REJECTED">{dealPropertyStatusLabel('REJECTED')}</option>
           </select>
         )}
       </div>

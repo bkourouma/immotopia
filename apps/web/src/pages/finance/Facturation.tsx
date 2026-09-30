@@ -20,6 +20,8 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
+import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -285,7 +287,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
               <DataCard
                 title={ligne.leaseLabel}
                 aria-label={t('Bail {{leaseLabel}} exclu', { leaseLabel: ligne.leaseLabel })}
-                fields={[{ label: 'Motif', value: libelleMotif(ligne.reason) }]}
+                fields={[{ label: t('Motif'), value: libelleMotif(ligne.reason) }]}
               />
             )}
           />
@@ -321,6 +323,8 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
 export const Facturation: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
+  // Locatif : sans gestion locative (RENTAL), ni campagne ni balance de locataires (BUG-051).
+  const features = useAgencyFeatures(tenantId);
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
@@ -409,6 +413,10 @@ export const Facturation: React.FC = () => {
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
+  }
+
+  if (features.ready && !features.has('RENTAL')) {
+    return <ModuleNotIncluded />;
   }
 
   const titreConfirmation = campagneExistante

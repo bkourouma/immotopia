@@ -14,6 +14,7 @@ import { listContacts } from '../../../services/crm-service';
 import { listProperties } from '../../../services/property-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
+import { useOwnAssetsOnly } from '../../../hooks/useMenuAccess';
 import { t } from '../../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -41,6 +42,7 @@ export const OwnerStatementsPage: React.FC = () => {
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+  const ownAssetsOnly = useOwnAssetsOnly(effectiveTenantId, true);
 
   const [loading, setLoading] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
@@ -132,6 +134,19 @@ export const OwnerStatementsPage: React.FC = () => {
   const legacyCount = statements.filter(
     statement => isLegacyStatement(statement) && statement.status !== 'PAID'
   ).length;
+
+  if (ownAssetsOnly) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message={t('Relevés de gérance non inclus')}
+        description={t(
+          'Les relevés de gérance concernent des biens de propriétaires tiers : ils ne font pas partie du pack Patrimoine.'
+        )}
+      />
+    );
+  }
 
   return (
     <>

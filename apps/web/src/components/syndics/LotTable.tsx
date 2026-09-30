@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { Button, Space, Table, Tag, Typography } from 'antd';
+import { Button, Popconfirm, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SyndicateLot } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
@@ -28,6 +28,8 @@ interface LotTableProps {
   ownerLabelById?: Record<string, string>;
   ownerLabelByEmail?: Record<string, string>;
   onEdit?: (lot: SyndicateLot) => void;
+  /** Suppression (avec confirmation) ; l'écran gère le refus 409 et propose de désactiver. */
+  onDelete?: (lot: SyndicateLot) => void;
   onViewAccount?: (lot: SyndicateLot) => void;
   onAssignTenant?: (lot: SyndicateLot) => void;
 }
@@ -40,6 +42,7 @@ export const LotTable: React.FC<LotTableProps> = ({
   ownerLabelById,
   ownerLabelByEmail,
   onEdit,
+  onDelete,
   onViewAccount,
   onAssignTenant
 }) => {
@@ -49,7 +52,12 @@ export const LotTable: React.FC<LotTableProps> = ({
       dataIndex: 'lotNumber',
       key: 'lotNumber',
       width: 160,
-      render: (value: string) => <Text strong>{value}</Text>
+      render: (value: string, lot: SyndicateLot) => (
+        <Space size={6}>
+          <Text strong>{value}</Text>
+          {lot.generalShares === 0 ? <Tag>{t('Inactif')}</Tag> : null}
+        </Space>
+      )
     },
     {
       title: t('Type'),
@@ -81,6 +89,10 @@ export const LotTable: React.FC<LotTableProps> = ({
       width: 250,
       ellipsis: true,
       render: (_value: string | null | undefined, lot: SyndicateLot) => {
+        // Propriétaires calculés par l'API à partir des profils actuels du lot (indivision : « Nom 1 (50 %), Nom 2 (50 %) »).
+        if (lot.ownersLabel) {
+          return lot.ownersLabel;
+        }
         const coowner = lot.coowner;
         if (coowner) {
           const fullName = coowner.fullName?.trim();
@@ -158,7 +170,7 @@ export const LotTable: React.FC<LotTableProps> = ({
         return lot.propertyId;
       }
     },
-    ...(onEdit || onViewAccount || onAssignTenant
+    ...(onEdit || onDelete || onViewAccount || onAssignTenant
       ? [
           {
             title: t('Actions'),
@@ -180,6 +192,19 @@ export const LotTable: React.FC<LotTableProps> = ({
                   <Button size="small" onClick={() => onAssignTenant(lot)}>
                     {t('Locataire')}
                   </Button>
+                ) : null}
+                {onDelete ? (
+                  <Popconfirm
+                    title={t('Supprimer ce lot ?')}
+                    description={t('Action définitive. Impossible si le lot a des appels, paiements ou reçus.')}
+                    okText={t('Supprimer')}
+                    cancelText={t('Annuler')}
+                    onConfirm={() => onDelete(lot)}
+                  >
+                    <Button size="small" danger>
+                      {t('Supprimer')}
+                    </Button>
+                  </Popconfirm>
                 ) : null}
               </Space>
             )

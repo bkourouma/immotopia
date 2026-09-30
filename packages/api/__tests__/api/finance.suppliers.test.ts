@@ -54,6 +54,12 @@ jest.mock('../../src/lib/finance/suppliers', () => ({
 
 const voidDocumentTx = jest.fn();
 
+// Droits d'abonnement : par défaut indisponibles (comportement inchangé).
+const getEntitlements = jest.fn();
+jest.mock('../../src/services/subscription-v2-service', () => ({
+  getEntitlements: (...args: any[]) => getEntitlements(...args)
+}));
+
 jest.mock('../../src/lib/finance/accounting', () => ({
   voidDocumentTx: (...args: any[]) => voidDocumentTx(...args)
 }));
@@ -524,6 +530,63 @@ describe('POST /tenants/:tenantId/finance/suppliers/:supplierId/invoices', () =>
         allocations: []
       })
     );
+  });
+
+  describe('exigence de chantier selon le pack (BUG-079)', () => {
+    const post = () =>
+      request(app)
+        .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`)
+        .send({ invoiceDate: '2026-09-30', reference: 'FQ-1', amount: 236_000 });
+    const acces = (promoteur: boolean, enforcement = 'enforce') => ({
+      enforcement,
+      readOnly: false,
+      moduleAccess: {
+        MODULE_PROMOTER: promoteur ? 'FULL' : 'NONE',
+        MODULE_AGENCY: 'FULL',
+        MODULE_SYNDIC: 'FULL',
+        MODULE_PATRIMOINE: 'FULL'
+      }
+    });
+
+    it.each(['AGENCE', 'SYNDIC', 'PATRIMOINE'])('pack %s (sans CONSTRUCTION) : chantier non exigé', async () => {
+      createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+      getEntitlements.mockResolvedValue(acces(false));
+      expect((await post()).status).toBe(201);
+      expect(createSupplierInvoiceTx).toHaveBeenLastCalledWith(
+        expect.anything(),
+        TENANT_A,
+        expect.objectContaining({ siteRequired: false })
+      );
+    });
+
+    it('pack PROMOTEUR : chantier exigé', async () => {
+      createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+      getEntitlements.mockResolvedValue(acces(true));
+      await post();
+      expect(createSupplierInvoiceTx).toHaveBeenLastCalledWith(
+        expect.anything(),
+        TENANT_A,
+        expect.objectContaining({ siteRequired: true })
+      );
+    });
+
+    it('mode warn ou droits indisponibles : comportement inchangé (chantier exigé)', async () => {
+      createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+      getEntitlements.mockResolvedValue(acces(false, 'warn'));
+      await post();
+      expect(createSupplierInvoiceTx).toHaveBeenLastCalledWith(
+        expect.anything(),
+        TENANT_A,
+        expect.objectContaining({ siteRequired: true })
+      );
+      getEntitlements.mockRejectedValue(new Error('indisponible'));
+      await post();
+      expect(createSupplierInvoiceTx).toHaveBeenLastCalledWith(
+        expect.anything(),
+        TENANT_A,
+        expect.objectContaining({ siteRequired: true })
+      );
+    });
   });
 
   it('combine le siteId de la requête à chaque imputation transmise au domaine', async () => {

@@ -501,8 +501,12 @@ export const SaleMandateDetail: React.FC = () => {
           >
             <BuyerContactSelect tenantId={tenantId} />
           </Form.Item>
-          <Form.Item label={t("Affaire CRM d'origine")} name="dealId">
-            <DealSelect tenantId={tenantId} />
+          <Form.Item noStyle shouldUpdate={(avant, apres) => avant.buyerContactId !== apres.buyerContactId}>
+            {({ getFieldValue }) => (
+              <Form.Item label={t("Affaire CRM d'origine")} name="dealId">
+                <DealSelect tenantId={tenantId} buyerContactId={getFieldValue('buyerContactId')} />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item
             label={t('Montant')}

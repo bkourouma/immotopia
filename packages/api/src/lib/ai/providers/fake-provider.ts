@@ -220,6 +220,28 @@ function proposalFailureText(data: unknown, periodLabel: string): string | null 
     : t('Je ne peux pas proposer ce document pour le moment.');
 }
 
+/** Capacités annoncées : uniquement celles des outils réellement offerts par le serveur. */
+function capabilitiesText(offered: ReadonlySet<string> | null): string {
+  const has = (name: string) => offered === null || offered.has(name);
+  if (
+    has('search_properties') &&
+    has('search_leases') &&
+    has('list_lease_documents') &&
+    has('propose_rental_document')
+  ) {
+    return t(
+      'Je peux rechercher des biens, retrouver des baux, lister des documents et proposer une quittance de loyer.'
+    );
+  }
+  const parts: string[] = [];
+  if (has('search_properties')) parts.push(t('rechercher des biens'));
+  if (has('search_leases')) parts.push(t('retrouver des baux'));
+  if (has('list_lease_documents') || has('list_property_documents')) parts.push(t('lister des documents'));
+  if (has('propose_rental_document')) parts.push(t('proposer une quittance de loyer'));
+  if (parts.length === 0) return t("Aucune capacité n'est disponible avec votre abonnement.");
+  return t('Je peux {{capabilities}}.', { capabilities: parts.join(', ') });
+}
+
 export class FakeProvider implements LlmProvider {
   readonly id = 'fake' as const;
 
@@ -236,7 +258,9 @@ export class FakeProvider implements LlmProvider {
     if (signal.aborted) throw createAbortError();
 
     const { question, round, results } = this.analyse(req.messages);
-    const step = this.script ? (this.script[round] ?? {}) : this.decide(question, round, results);
+    const step = this.script
+      ? (this.script[round] ?? {})
+      : this.decide(question, round, results, req.tools.length > 0 ? new Set(req.tools.map(tool => tool.name)) : null);
 
     const blocks: LlmBlock[] = [];
     if (step.text) {
@@ -296,7 +320,12 @@ export class FakeProvider implements LlmProvider {
     return { question, round, results };
   }
 
-  private decide(question: string, round: number, results: ToolResult[]): FakeStep {
+  private decide(
+    question: string,
+    round: number,
+    results: ToolResult[],
+    offered: ReadonlySet<string> | null
+  ): FakeStep {
     const normalized = normalize(question);
     const leaseNumber = /\b(?:BAIL-\d{4}-\d+|L-\d+)\b/i.exec(question)?.[0].toUpperCase() ?? null;
     const call = (name: CopilotToolName, input: unknown): FakeStep => ({ toolCalls: [{ name, input }] });
@@ -304,6 +333,16 @@ export class FakeProvider implements LlmProvider {
     const leaseSearch = (): FakeStep =>
       call('search_leases', leaseNumber ? { leaseNumber } : renterName ? { renterName } : { status: 'ACTIVE' });
 
+    const denial = results.find(
+      result => result.isError && (result.data as { error?: unknown } | null)?.error === 'MODULE_NOT_INCLUDED'
+    );
+    if (denial) {
+      const message = (denial.data as { message?: unknown }).message;
+      return {
+        text:
+          typeof message === 'string' ? message : t("Cette fonctionnalité n'est pas comprise dans votre abonnement.")
+      };
+    }
     if (results.some(result => result.isError)) {
       return { text: t("Je n'ai pas pu terminer cette recherche : un outil a renvoyé une erreur.") };
     }
@@ -398,10 +437,6 @@ export class FakeProvider implements LlmProvider {
       return { text: t("J'ai trouvé {{count}} bien(s) correspondant à votre recherche.", { count }) };
     }
 
-    return {
-      text: t(
-        'Je peux rechercher des biens, retrouver des baux, lister des documents et proposer une quittance de loyer.'
-      )
-    };
+    return { text: capabilitiesText(offered) };
   }
 }

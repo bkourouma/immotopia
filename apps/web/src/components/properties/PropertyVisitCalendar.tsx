@@ -1,3 +1,4 @@
+import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { Card, Tag, Space, Typography, Empty, Spin, Divider } from 'antd';
 import {
@@ -203,9 +204,7 @@ export const PropertyVisitCalendar: React.FC<PropertyVisitCalendarProps> = ({
                       {visit.contact && (
                         <Space size="small">
                           <UserOutlined style={{ color: '#8c8c8c' }} />
-                          <Text type="secondary">
-                            {visit.contact.firstName} {visit.contact.lastName}
-                          </Text>
+                          <Text type="secondary">{contactDisplayName(visit.contact)}</Text>
                         </Space>
                       )}
                       {visit.deal && (

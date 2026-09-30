@@ -13,6 +13,7 @@ import {
   runStatusConfig
 } from './chargeScheduleLabels';
 import { ChargeScheduleRunNotices } from '../ChargeScheduleRunNotices';
+import { displayCurrency } from '../../../utils/syndic-currency';
 
 const { Text } = Typography;
 
@@ -48,7 +49,7 @@ export const ScheduleTable: React.FC<{
           <Space direction="vertical" size={0}>
             <Text>{amountSourceLabels.FIXED}</Text>
             <Text type="secondary">
-              <MoneyValue value={schedule.fixedAmount ?? 0} currency={schedule.currency} />
+              <MoneyValue value={schedule.fixedAmount ?? 0} currency={displayCurrency(schedule.currency)} />
             </Text>
           </Space>
         ) : (

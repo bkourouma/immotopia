@@ -761,7 +761,7 @@ export const Tacheron: React.FC = () => {
                   primaryAction={
                     s.status === 'DRAFT'
                       ? {
-                          label: 'Valider',
+                          label: t('Valider'),
                           onClick: () =>
                             confirmerAction({
                               title: t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) }),
@@ -898,7 +898,7 @@ export const Tacheron: React.FC = () => {
             primaryAction={
               r.status === 'DRAFT'
                 ? {
-                    label: 'Valider',
+                    label: t('Valider'),
                     onClick: () =>
                       confirmerAction({
                         title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),

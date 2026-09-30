@@ -21,6 +21,8 @@ import {
   StatCard
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
+import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 
 /**
  * Balance clients — récit 1 du lot 1 (specs/016-finance-operationnelle/spec.md).
@@ -54,6 +56,8 @@ const { RangePicker } = DatePicker;
 
 export const BalanceClients: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
+  // Locatif : sans gestion locative (RENTAL), ni campagne ni balance de locataires (BUG-051).
+  const features = useAgencyFeatures(tenantId);
   const navigate = useNavigate();
   const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
 
@@ -127,6 +131,10 @@ export const BalanceClients: React.FC = () => {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
+  if (features.ready && !features.has('RENTAL')) {
+    return <ModuleNotIncluded />;
+  }
+
   const colonnes: ColumnsType<ClientsBalanceLine> = [
     { title: t('Locataire'), key: 'locataire', render: (_, l) => l.label },
     {
@@ -169,7 +177,7 @@ export const BalanceClients: React.FC = () => {
       <PageHeader
         title={t('Balance clients')}
         subtitle={lignes.length > 0 ? `${lignes.length} locataire${lignes.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Exporter', icon: <DownloadOutlined />, onClick: handleExport }}
+        primaryAction={{ label: t('Exporter'), icon: <DownloadOutlined />, onClick: handleExport }}
       />
 
       <FilterSheet

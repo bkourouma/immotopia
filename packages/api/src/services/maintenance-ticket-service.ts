@@ -9,7 +9,8 @@ import {
   RentalLeaseStatus
 } from '@prisma/client';
 import { validateStatusTransition } from '../utils/maintenance-validators';
-import { badRequest } from '../lib/errors';
+import { badRequest, notFound } from '../lib/errors';
+import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { sendTicketCreatedNotification, sendStatusChangeNotification } from './maintenance-notification-service';
 
 async function ensureMaintenanceVendorMirrorFromServiceProvider(tenantId: string, vendorId: string) {
@@ -57,6 +58,9 @@ async function ensureMaintenanceVendorMirrorFromServiceProvider(tenantId: string
  * @param leaseId - Lease ID (optional, if provided will validate this specific lease)
  * @returns Active lease if found, throws error if not
  */
+const MESSAGE_BAIL_REQUIS =
+  'Bail actif introuvable pour cette propriété. Une demande de locataire doit porter sur un bien sous bail actif.';
+
 async function validateActiveLease(
   tenantId: string,
   propertyId: string,
@@ -75,9 +79,7 @@ async function validateActiveLease(
     });
 
     if (!lease) {
-      throw new Error(
-        'Bail actif introuvable pour cette propriété. Vous devez avoir un bail actif pour créer un ticket de maintenance.'
-      );
+      throw badRequest(MESSAGE_BAIL_REQUIS);
     }
 
     return { id: lease.id, status: lease.status };
@@ -96,9 +98,7 @@ async function validateActiveLease(
   });
 
   if (!lease) {
-    throw new Error(
-      'Bail actif introuvable pour cette propriété. Vous devez avoir un bail actif pour créer un ticket de maintenance.'
-    );
+    throw badRequest(MESSAGE_BAIL_REQUIS);
   }
 
   // If tenantContactId is provided, verify the contact is linked to this lease
@@ -133,7 +133,7 @@ async function validateActiveLease(
       include: {
         renterClient: {
           include: {
-            user: true
+            user: { select: { fullName: true } }
           }
         }
       }
@@ -161,7 +161,8 @@ export async function createTicket(
   tenantId: string,
   data: CreateTicketRequest,
   actorUserId?: string,
-  actorContactId?: string
+  actorContactId?: string,
+  options: { requireActiveLease?: boolean } = {}
 ) {
   // Le contact déclarant (venant du corps de la requête) doit appartenir à
   // cette agence : même erreur qu'un identifiant inexistant.
@@ -173,12 +174,28 @@ export async function createTicket(
       }
     });
     if (!contact) {
-      throw new Error('Contact introuvable');
+      throw notFound('Contact introuvable');
     }
   }
 
-  // Validate active lease for property
-  await validateActiveLease(tenantId, data.propertyId, actorContactId, data.leaseId);
+  // Le bien doit appartenir à l'agence, avec ou sans bail (même erreur qu'un
+  // bien inexistant pour un bien d'une autre agence).
+  await getPropertyForTenant(data.propertyId, tenantId);
+
+  // La maintenance est du socle CORE : un agent de l'agence déclare un incident
+  // sur un bien (en vente, en programme, détenu…) sans bail. Le bail n'est
+  // exigé que pour une demande de locataire (contact déclarant ou client du
+  // portail) ; s'il en existe un d'actif, un ticket d'agence s'y rattache.
+  let leaseId: string | null = null;
+  if (options.requireActiveLease || data.leaseId) {
+    leaseId = (await validateActiveLease(tenantId, data.propertyId, actorContactId, data.leaseId)).id;
+  } else {
+    const activeLease = await prisma.rentalLease.findFirst({
+      where: { tenant_id: tenantId, property_id: data.propertyId, status: RentalLeaseStatus.ACTIVE },
+      orderBy: { start_date: 'desc' }
+    });
+    leaseId = activeLease?.id ?? null;
+  }
 
   // Ticket and its first history entry are one unit of work: a failure between
   // the two used to leave a ticket with no status history.
@@ -187,7 +204,7 @@ export async function createTicket(
       data: {
         tenant_id: tenantId,
         property_id: data.propertyId,
-        lease_id: data.leaseId || null,
+        lease_id: leaseId,
         tenant_contact_id: actorContactId || null,
         created_by_user_id: actorUserId || null,
         created_by_contact_id: actorContactId || null,
@@ -1141,7 +1158,7 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
         }
       });
       if (!membership) {
-        throw new Error("Utilisateur introuvable ou non membre actif de cette agence");
+        throw new Error('Utilisateur introuvable ou non membre actif de cette agence');
       }
     }
     updateData.assigned_to_user_id = data.assignedToUserId || null;

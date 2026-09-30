@@ -11,6 +11,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { t } from '../../i18n/t';
+import { codeDeviseIntl } from '../../lib/rental-labels';
 
 import { activeLocale } from '../../i18n/format';
 interface AllocatePaymentFormProps {
@@ -128,7 +129,7 @@ export const AllocatePaymentForm: React.FC<AllocatePaymentFormProps> = ({
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
+      currency: codeDeviseIntl(currency)
     }).format(amount);
   };
 

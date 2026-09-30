@@ -1,22 +1,24 @@
 import { PrismaClient, DocumentType, DocumentTemplateStatus } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { uploadTemplate } from '../../src/services/document-template-service';
+import { createHash } from 'crypto';
+import { uploadTemplate, extractPlaceholders } from '../../src/services/document-template-service';
+import { decideTemplateRefresh, PREVIOUS_SHIPPED_HASHES } from '../../src/services/document-template-refresh';
 
 const prisma = new PrismaClient();
 
 /**
  * Seed default document templates
- * 
+ *
  * This script creates global default templates for all document types.
  * Template files should be placed in: assets/modeles_documents/default/
- * 
+ *
  * Expected files:
  * - LEASE_HABITATION.docx
  * - LEASE_COMMERCIAL.docx
  * - RENT_RECEIPT.docx
  * - RENT_STATEMENT.docx
- * 
+ *
  * If template files don't exist, the script will skip creating templates for those types
  * and provide instructions.
  */
@@ -98,8 +100,12 @@ async function seedDocumentTemplates() {
     console.log('   ℹ️  Created system user for seeding\n');
   }
 
+  // `--force` : remplace aussi un modele global d'empreinte inconnue (jamais un modele d'agence).
+  const force = process.argv.includes('--force');
+
   let createdCount = 0;
   let skippedCount = 0;
+  let refreshedCount = 0;
 
   for (const docTypeConfig of docTypes) {
     const candidates = [path.join(templatesDir, docTypeConfig.filename)];
@@ -136,14 +142,52 @@ async function seedDocumentTemplates() {
         }
       });
 
-      if (existing) {
-        console.log(`   ⏭️  Skipping ${docTypeConfig.type}: Default template already exists`);
+      // Read file
+      const fileBuffer = await fs.readFile(filePath);
+
+      const shippedHash = createHash('sha256').update(fileBuffer).digest('hex');
+      const previousHashes = [
+        ...(PREVIOUS_SHIPPED_HASHES[docTypeConfig.legacyFilename ?? ''] ?? []),
+        ...(PREVIOUS_SHIPPED_HASHES[docTypeConfig.filename] ?? [])
+      ];
+      const decision = decideTemplateRefresh(existing, shippedHash, previousHashes, force);
+
+      if (decision === 'UP_TO_DATE' || decision === 'KEEP_CUSTOM') {
+        console.log(
+          decision === 'UP_TO_DATE'
+            ? `   ⏭️  Skipping ${docTypeConfig.type}: Default template already up to date`
+            : `   ⏭️  Skipping ${docTypeConfig.type}: Default template customised, left untouched`
+        );
         skippedCount++;
         continue;
       }
 
-      // Read file
-      const fileBuffer = await fs.readFile(filePath);
+      if (decision === 'REFRESH' && existing) {
+        // Nouvelle copie du fichier livre ; l'ancienne reste sur disque (les documents deja generes ne la lisent pas).
+        const storedFilename = `${docTypeConfig.type}_${Date.now()}.docx`;
+        const storagePath = path.join(templatesDir, storedFilename);
+        await fs.writeFile(storagePath, fileBuffer);
+        let placeholders: string[] = [];
+        try {
+          placeholders = await extractPlaceholders(storagePath);
+        } catch {
+          // un modele sans champ reste utilisable
+        }
+        await prisma.documentTemplate.update({
+          where: { id: existing.id },
+          data: {
+            stored_filename: storedFilename,
+            storage_path: storagePath,
+            file_size: fileBuffer.length,
+            file_hash_sha256: shippedHash,
+            placeholders,
+            version: { increment: 1 }
+          }
+        });
+        console.log(`   🔄 Rafraîchi le modèle par défaut ${docTypeConfig.type} (version livrée mise à jour)`);
+        refreshedCount++;
+        continue;
+      }
 
       // Upload template using the service
       await uploadTemplate(
@@ -196,6 +240,7 @@ async function seedDocumentTemplates() {
 
   console.log('\n📊 Summary:');
   console.log(`   • Templates created: ${createdCount}`);
+  console.log(`   • Templates refreshed: ${refreshedCount}`);
   console.log(`   • Templates skipped: ${skippedCount}`);
 
   if (skippedCount > 0) {
@@ -217,7 +262,7 @@ async function seedDocumentTemplates() {
 // Run if called directly
 if (require.main === module) {
   seedDocumentTemplates()
-    .catch((e) => {
+    .catch(e => {
       console.error('❌ Error seeding document templates:', e);
       process.exit(1);
     })

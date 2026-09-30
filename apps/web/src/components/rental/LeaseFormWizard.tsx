@@ -1,3 +1,4 @@
+import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
@@ -12,6 +13,7 @@ import { PropertyType, PropertyTransactionMode, PropertyStatus } from '../../typ
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { StepRail } from '../primitives/StepRail';
+import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -58,6 +60,8 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   });
 
   const [form] = Form.useForm();
+  // Compte « détenu en propre » (pack Patrimoine seul) : pas de propriétaire tiers.
+  const ownAssetsOnly = useOwnAssetsOnly(tenantId, !lease);
   const [properties, setProperties] = useState<Property[]>([]);
   const [clients, setClients] = useState<CrmContact[]>([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -96,8 +100,9 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       clientsCount: clients.length
     });
 
-    // Only auto-select if we're creating a new lease (not editing)
-    if (lease || !formData.propertyId) {
+    // Only auto-select if we're creating a new lease (not editing) ; jamais pour
+    // un compte « détenu en propre » (aucun propriétaire tiers possible).
+    if (lease || !formData.propertyId || ownAssetsOnly) {
       console.log('[LeaseFormWizard] Skipping auto-select:', {
         reason: lease ? 'editing existing lease' : 'no property selected'
       });
@@ -169,102 +174,14 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         const normalizedOwnerEmail = ownerEmail.toLowerCase().trim();
         console.log('[LeaseFormWizard] Searching for contact with email:', normalizedOwnerEmail);
 
-        const normalizeAccents = (s: string) =>
-          (s || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .trim();
-
-        // First, try exact email match (primary and secondary)
-        let ownerContact = clients.find(client => {
+        // Rapprochement par e-mail EXACT uniquement (principal ou secondaire). Jamais
+        // par nom ni par domaine : un rapprochement approximatif remplissait en
+        // silence un tiers qui, pour un pack Patrimoine, faisait refuser le bail.
+        const ownerContact = clients.find(client => {
           const primary = (client.email || '').toLowerCase().trim();
           const secondary = (client.emailSecondary || '').toLowerCase().trim();
           return primary === normalizedOwnerEmail || secondary === normalizedOwnerEmail;
         });
-
-        // If no exact match, try same domain + same local part (handles casing/encoding edge cases)
-        if (!ownerContact && normalizedOwnerEmail.includes('@')) {
-          const [ownerLocal, ownerDomain] = normalizedOwnerEmail.split('@');
-          ownerContact = clients.find(client => {
-            const primary = (client.email || '').toLowerCase().trim();
-            const secondary = (client.emailSecondary || '').toLowerCase().trim();
-            for (const email of [primary, secondary]) {
-              if (!email) continue;
-              const [local, domain] = email.split('@');
-              if (domain === ownerDomain && (local === ownerLocal || local?.toLowerCase() === ownerLocal)) {
-                return true;
-              }
-            }
-            return false;
-          });
-        }
-
-        // If no exact match, try to find by owner name if available (with accent-insensitive match)
-        if (!ownerContact && selectedProperty?.owner?.fullName) {
-          const ownerFullName = selectedProperty.owner.fullName;
-          const cleanedOwnerName = ownerFullName
-            .replace(/\s*\([^)]*\)\s*/g, '')
-            .toLowerCase()
-            .trim();
-          const normalizedOwnerName = normalizeAccents(cleanedOwnerName);
-
-          console.log('[LeaseFormWizard] No exact email match, trying to find by owner name:', {
-            original: ownerFullName,
-            cleaned: cleanedOwnerName,
-            normalized: normalizedOwnerName
-          });
-
-          ownerContact = clients.find(client => {
-            const clientFullName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
-            const normalizedClientName = normalizeAccents(clientFullName);
-            if (normalizedClientName === normalizedOwnerName) return true;
-            const ownerParts = normalizedOwnerName.split(/\s+/).filter(p => p.length > 0);
-            const clientParts = normalizedClientName.split(/\s+/).filter(p => p.length > 0);
-            if (ownerParts.length >= 2 && clientParts.length >= 2) {
-              const ownerFirst = ownerParts[0];
-              const ownerLast = ownerParts[ownerParts.length - 1];
-              const clientFirst = clientParts[0];
-              const clientLast = clientParts[clientParts.length - 1];
-              return (
-                (ownerFirst === clientFirst && ownerLast === clientLast) ||
-                (ownerFirst === clientLast && ownerLast === clientFirst)
-              );
-            }
-            return false;
-          });
-
-          if (ownerContact) {
-            console.log('[LeaseFormWizard] Found contact by name match:', {
-              contactId: ownerContact.id,
-              contactName: `${ownerContact.firstName} ${ownerContact.lastName}`,
-              contactEmail: ownerContact.email,
-              propertyOwnerEmail: ownerEmail
-            });
-          }
-        }
-
-        // If still no match, try by same domain + owner name parts in contact name/email
-        if (!ownerContact && ownerEmail && selectedProperty?.owner?.fullName) {
-          const emailDomain = normalizedOwnerEmail.split('@')[1];
-          const ownerNameParts = normalizeAccents(selectedProperty.owner.fullName)
-            .split(/\s+/)
-            .filter(p => p.length > 1);
-          ownerContact = clients.find(client => {
-            const primary = (client.email || '').toLowerCase();
-            const secondary = (client.emailSecondary || '').toLowerCase();
-            const hasSameDomain = primary.includes(`@${emailDomain}`) || secondary.includes(`@${emailDomain}`);
-            if (!hasSameDomain) return false;
-            const clientName = normalizeAccents(`${client.firstName} ${client.lastName}`);
-            return ownerNameParts.some(part => part.length > 1 && clientName.includes(part));
-          });
-          if (ownerContact) {
-            console.log('[LeaseFormWizard] Found contact by same domain + name parts:', {
-              contactId: ownerContact.id,
-              contactEmail: ownerContact.email
-            });
-          }
-        }
 
         if (ownerContact) {
           // Only auto-select if no owner is currently selected, or if the current owner doesn't match
@@ -316,7 +233,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     };
 
     autoSelectOwner();
-  }, [formData.propertyId, properties, clients, lease, tenantId]);
+  }, [formData.propertyId, properties, clients, lease, tenantId, ownAssetsOnly]);
 
   // Helper functions for number formatting
   const formatNumber = (value: string | number | undefined): string => {
@@ -479,7 +396,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
               propertyId: formData.propertyId,
               // Send contact IDs - backend will auto-create TenantClient if needed
               primaryRenterContactId: formData.primaryRenterClientId,
-              ownerContactId: formData.ownerClientId || undefined,
+              ownerContactId: ownAssetsOnly ? undefined : formData.ownerClientId || undefined,
               startDate: startDateIso,
               endDate: convertDateToISO(formData.endDate),
               moveInDate: convertDateToISO(formData.moveInDate),
@@ -713,32 +630,34 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           >
             {clients.map(client => (
               <Select.Option key={client.id} value={client.id}>
-                {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
+                {contactDisplayNameWithEmail(client)}
               </Select.Option>
             ))}
           </Select>
         </Form.Item>
       </Col>
 
-      <Col xs={24} md={12}>
-        <Form.Item label={t('Propriétaire')}>
-          <Select
-            showSearch
-            optionFilterProp="children"
-            value={formData.ownerClientId || undefined}
-            onChange={value => handleChange('ownerClientId', value || '')}
-            disabled={!!lease || loadingData}
-            placeholder={t('Sélectionner un propriétaire (optionnel)')}
-            allowClear
-          >
-            {clients.map(client => (
-              <Select.Option key={client.id} value={client.id}>
-                {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
-              </Select.Option>
-            ))}
-          </Select>
-        </Form.Item>
-      </Col>
+      {!ownAssetsOnly && (
+        <Col xs={24} md={12}>
+          <Form.Item label={t('Propriétaire')}>
+            <Select
+              showSearch
+              optionFilterProp="children"
+              value={formData.ownerClientId || undefined}
+              onChange={value => handleChange('ownerClientId', value || '')}
+              disabled={!!lease || loadingData}
+              placeholder={t('Sélectionner un propriétaire (optionnel)')}
+              allowClear
+            >
+              {clients.map(client => (
+                <Select.Option key={client.id} value={client.id}>
+                  {contactDisplayNameWithEmail(client)}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Col>
+      )}
     </Row>
   );
 

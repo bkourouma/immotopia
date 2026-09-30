@@ -238,12 +238,12 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                 }}
                 columns={[
                   {
-                    title: 'Date',
+                    title: t('Date'),
                     key: 'created_at',
                     render: (_, record) => formatDate(record.created_at)
                   },
                   {
-                    title: 'Type',
+                    title: t('Type'),
                     key: 'type',
                     render: (_, record) => (
                       <Space>
@@ -253,7 +253,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                     )
                   },
                   {
-                    title: 'Montant',
+                    title: t('Montant'),
                     key: 'amount',
                     render: (_, record) => {
                       const isPositive = record.type === 'COLLECT' || record.type === 'ADJUSTMENT';
@@ -266,7 +266,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                     }
                   },
                   {
-                    title: 'Note',
+                    title: t('Note'),
                     key: 'note',
                     render: (_, record) => record.note || '-'
                   }

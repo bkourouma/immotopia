@@ -1,6 +1,8 @@
 import { prisma } from '../utils/database';
 import { PropertyMatch } from '../types/crm-types';
 import { CrmDealPropertyStatus, PropertyStatus } from '@prisma/client';
+import { t } from '../i18n';
+import { NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Calculate match score for a property against deal criteria
@@ -168,7 +170,7 @@ export async function matchPropertiesForDeal(
   });
 
   if (!deal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   // Get available properties for tenant
@@ -249,7 +251,7 @@ export async function addPropertyToShortlist(
   });
 
   if (!deal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   // Verify property exists
@@ -261,7 +263,7 @@ export async function addPropertyToShortlist(
   });
 
   if (!property) {
-    throw new Error('Property not found');
+    throw new NotFoundError(t('Bien introuvable'));
   }
 
   // The owner contact, if supplied, is a reference received in the request
@@ -271,7 +273,7 @@ export async function addPropertyToShortlist(
       where: { id: sourceOwnerContactId, tenantId }
     });
     if (!owner) {
-      throw new Error('Owner contact not found');
+      throw new NotFoundError(t('Contact propriétaire introuvable'));
     }
   }
 
@@ -338,7 +340,7 @@ export async function updatePropertyMatchStatus(
   });
 
   if (!dealProperty) {
-    throw new Error('Property match not found');
+    throw new NotFoundError(t('Correspondance de bien introuvable'));
   }
 
   return prisma.crmDealProperty.update({
@@ -363,7 +365,7 @@ export async function getDealPropertyMatches(tenantId: string, dealId: string) {
   });
 
   if (!deal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   return prisma.crmDealProperty.findMany({

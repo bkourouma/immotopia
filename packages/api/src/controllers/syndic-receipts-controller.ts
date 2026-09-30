@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { t } from '../i18n';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
 import { sendPrivateFile } from '../lib/files/private-files';
@@ -26,9 +27,9 @@ function tenantIdOf(req: Request): string {
 }
 
 const syndicIdOf = (req: Request) =>
-  assertUuidOrNotFound(req.params.syndicId, 'Copropriete introuvable ou inaccessible.');
+  assertUuidOrNotFound(req.params.syndicId, t('Copropriété introuvable ou inaccessible.'));
 const lotIdOf = (req: Request) =>
-  assertUuidOrNotFound(req.params.lotId, 'Lot introuvable ou inaccessible pour cette copropriete.');
+  assertUuidOrNotFound(req.params.lotId, t('Lot introuvable ou inaccessible pour cette copropriété.'));
 const receiptIdOf = (req: Request) => assertUuidOrNotFound(req.params.receiptId, 'Document introuvable.');
 
 export const listSyndicateReceiptsHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -25,8 +25,8 @@ import {
  *
  * Routeur distinct de `syndic-routes.ts`, meme prefixe (classe SYNDIC dans
  * lib/subscription/route-features.ts) et memes gardes : session, acces a
- * l'agence, contexte d'agence, puis permission de lecture (PROPERTIES_VIEW)
- * ou d'edition (PROPERTIES_EDIT), comme les routes prestataires et fonds.
+ * l'agence, contexte d'agence, puis permission de lecture (SYNDIC_VIEW)
+ * ou d'edition (SYNDIC_EDIT), comme les routes prestataires et fonds.
  *
  * Les gardes sont posees ROUTE PAR ROUTE et non par `router.use` : monte sur
  * `/api`, un `router.use(requireTenantAccess)` s'appliquerait a toute requete
@@ -50,13 +50,13 @@ const read: RequestHandler[] = [
   authenticate,
   requireTenantAccess,
   enforcePropertyTenantIsolation,
-  requireAnyPropertyPermission(['PROPERTIES_VIEW'])
+  requireAnyPropertyPermission(['SYNDIC_VIEW'])
 ];
 const write: RequestHandler[] = [
   authenticate,
   requireTenantAccess,
   enforcePropertyTenantIsolation,
-  requirePropertyPermission('PROPERTIES_EDIT')
+  requirePropertyPermission('SYNDIC_EDIT')
 ];
 
 router.get(`${BASE}/factures-prestataires`, ...read, listProviderInvoicesHandler);

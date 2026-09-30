@@ -1,6 +1,6 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { getCurrentTenantId } from '../utils/tenant-context';
-import { t, type Language } from '../i18n';
+import { currentLanguage, isLanguage, t, type Language } from '../i18n';
 
 interface EmailOptions {
   to: string;
@@ -152,7 +152,7 @@ export class EmailService {
     // Lot H : l'e-mail part au nom de l'agence (adresse From inchangee, celle
     // de la plateforme — seuls le nom affiche et le Reply-To changent) quand
     // une agence est identifiable, explicitement ou via le contexte ambiant.
-    const effectiveTenantId = options.asPlatform ? undefined : options.tenantId ?? getCurrentTenantId();
+    const effectiveTenantId = options.asPlatform ? undefined : (options.tenantId ?? getCurrentTenantId());
     const identity = await getAgencySenderIdentity(effectiveTenantId);
     // "via ImmoTopia" : la delivrabilite (SPF/DKIM sur le domaine plateforme)
     // exige de garder l'adresse From de la plateforme, donc afficher le nom de
@@ -182,30 +182,41 @@ export class EmailService {
     }
   }
 
-  async sendVerificationEmail(to: string, token: string): Promise<void> {
+  /**
+   * Langue d'un e-mail : preference du compte destinataire, sinon langue de la
+   * requete en cours (`Accept-Language`), sinon francais.
+   */
+  private resolveLanguage(preferred?: string | null): Language {
+    return isLanguage(preferred) ? preferred : currentLanguage();
+  }
+
+  async sendVerificationEmail(
+    to: string,
+    token: string,
+    options?: { userName?: string; language?: string | null }
+  ): Promise<void> {
+    const { getEmailVerificationTemplate } = await import('../utils/email-templates');
+    const language = this.resolveLanguage(options?.language);
     const link = `${getBaseUrl()}/verify-email?token=${token}`;
     await this.sendEmail({
       to,
-      subject: 'Verify your email',
-      html: `
-        <h1>Welcome to Immobillier</h1>
-        <p>Please click the link below to verify your email address:</p>
-        <a href="${link}">${link}</a>
-      `
+      subject: t('Vérification de votre adresse email - ImmoTopia', undefined, language),
+      html: getEmailVerificationTemplate(link, options?.userName || to, language)
     });
   }
 
-  async sendPasswordResetEmail(to: string, token: string): Promise<void> {
+  async sendPasswordResetEmail(
+    to: string,
+    token: string,
+    options?: { userName?: string; language?: string | null }
+  ): Promise<void> {
+    const { getPasswordResetTemplate } = await import('../utils/email-templates');
+    const language = this.resolveLanguage(options?.language);
     const link = `${getBaseUrl()}/reset-password?token=${token}`;
     await this.sendEmail({
       to,
-      subject: 'Reset your password',
-      html: `
-        <h1>Password Reset</h1>
-        <p>You requested a password reset. Click the link below to set a new password:</p>
-        <a href="${link}">${link}</a>
-        <p>If you didn't request this, please ignore this email.</p>
-      `
+      subject: t('Réinitialisation de votre mot de passe - ImmoTopia', undefined, language),
+      html: getPasswordResetTemplate(link, options?.userName || to, language)
     });
   }
 

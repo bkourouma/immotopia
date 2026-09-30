@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { t } from '../i18n';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
 import { sendPrivateFile } from '../lib/files/private-files';
@@ -37,7 +38,7 @@ function tenantIdOf(req: Request): string {
 }
 
 const syndicIdOf = (req: Request) =>
-  assertUuidOrNotFound(req.params.syndicId, 'Copropriete introuvable ou inaccessible.');
+  assertUuidOrNotFound(req.params.syndicId, t('Copropriété introuvable ou inaccessible.'));
 const scheduleIdOf = (req: Request) => assertUuidOrNotFound(req.params.scheduleId, 'Programmation introuvable.');
 const chargeIdOf = (req: Request) => assertUuidOrNotFound(req.params.chargeId, 'Appel de charges introuvable.');
 const runIdOf = (req: Request) => assertUuidOrNotFound(req.params.runId, 'Exécution introuvable.');

@@ -6,6 +6,8 @@ import { AuditActionKey } from '../types/audit-types';
 import { PropertyStatus, PropertyOwnershipType, PropertyAvailability } from '@prisma/client';
 import { getPropertyById } from './property-service';
 import { syncLotActivationsTx } from './lot-registry-service';
+import { t } from '../i18n';
+import { NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Valid status transitions
@@ -108,7 +110,7 @@ export async function updatePropertyStatus(
   const property = await getPropertyById(propertyId, tenantId, userId);
 
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Check permission (simplified - in production, use RBAC service)
@@ -141,10 +143,15 @@ export async function updatePropertyStatus(
       data: updateData
     });
     if (lotTenantId) {
-      await syncLotActivationsTx(tx, lotTenantId, { propertyIds: [propertyId] }, {
-        actorUserId: actorUserId ?? userId ?? null,
-        reason: `PROPERTY_${newStatus}`
-      });
+      await syncLotActivationsTx(
+        tx,
+        lotTenantId,
+        { propertyIds: [propertyId] },
+        {
+          actorUserId: actorUserId ?? userId ?? null,
+          reason: `PROPERTY_${newStatus}`
+        }
+      );
     }
     return row;
   });
@@ -242,7 +249,7 @@ export async function recordStatusHistory(
 export async function getStatusHistory(propertyId: string, tenantId: string, limit: number = 50) {
   const property = await getPropertyById(propertyId, tenantId);
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   const history = await prisma.propertyStatusHistory.findMany({

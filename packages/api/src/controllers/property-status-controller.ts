@@ -1,4 +1,5 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
+import { AppError } from '../middleware/error-middleware';
 import { logger } from '../utils/logger';
 import { updatePropertyStatus, getStatusHistory } from '../services/property-status-service';
 import { PropertyStatus } from '@prisma/client';
@@ -6,7 +7,7 @@ import { PropertyStatus } from '@prisma/client';
 /**
  * Update property status handler
  */
-export async function updateStatusHandler(req: Request, res: Response): Promise<void> {
+export async function updateStatusHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const propertyId = req.params.id;
     const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -31,6 +32,11 @@ export async function updateStatusHandler(req: Request, res: Response): Promise<
       data: property
     });
   } catch (error: any) {
+    // Erreur typee (quota 409 QUOTA_EXCEEDED, 404...) : errorHandler la rend avec son code et son detail.
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
     logger.error('Error updating property status', { error, propertyId: req.params.id });
     res.status(400).json({
       success: false,

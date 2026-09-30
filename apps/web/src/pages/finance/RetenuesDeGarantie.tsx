@@ -645,8 +645,8 @@ export const RetenuesDeGarantie: React.FC = () => {
             highlight={<MoneyValue value={r.amount} />}
             fields={[
               { label: t('Montant de la pièce'), value: <MoneyValue value={r.baseAmount} /> },
-              { label: 'Taux', value: pourcentage(r.ratePercent) },
-              { label: 'Chantier', value: r.siteLabel ?? t('Hors chantier') },
+              { label: t('Taux'), value: pourcentage(r.ratePercent) },
+              { label: t('Chantier'), value: r.siteLabel ?? t('Hors chantier') },
               { label: t('Libération prévue'), value: date(r.plannedReleaseDate) }
             ]}
           />

@@ -483,7 +483,7 @@ export const Caisse: React.FC = () => {
     <>
       <PageHeader
         title={t('Caisse')}
-        breadcrumbs={[{ label: 'Finance', to: `/tenant/${tenantId}/finance/comptabilite` }, { label: t('Caisse') }]}
+        breadcrumbs={[{ label: t('Finance'), to: `/tenant/${tenantId}/finance/comptabilite` }, { label: t('Caisse') }]}
       />
 
       <div role="tablist" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>

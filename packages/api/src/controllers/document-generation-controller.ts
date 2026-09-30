@@ -1,12 +1,19 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { generateDocument, regenerateDocument, getDocumentFile } from '../services/document-generation-service';
+import {
+  generateDocument,
+  regenerateDocument,
+  getDocumentFile,
+  resolveLeaseDocumentType
+} from '../services/document-generation-service';
+import { toRentalDocumentDto } from '../services/rental-document-service';
 import { DocumentType } from '@prisma/client';
-import { AppError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 
 const generateDocumentSchema = z.object({
-  docType: z.enum(['LEASE_HABITATION', 'LEASE_COMMERCIAL', 'RENT_RECEIPT', 'RENT_STATEMENT']),
+  // `LEASE_CONTRACT` : contrat de bail dont le modele (habitation ou commercial) suit le type du bien.
+  docType: z.enum(['LEASE_CONTRACT', 'LEASE_HABITATION', 'LEASE_COMMERCIAL', 'RENT_RECEIPT', 'RENT_STATEMENT']),
   sourceKey: z.string().uuid(), // leaseId or paymentId
   templateId: z.string().uuid().optional(),
   installmentId: z.string().uuid().optional(),
@@ -49,9 +56,14 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
       additionalParams.endDate = new Date(validatedData.endDate);
     }
 
+    const docType =
+      validatedData.docType === 'LEASE_CONTRACT'
+        ? await resolveLeaseDocumentType(tenantId, validatedData.sourceKey)
+        : (validatedData.docType as DocumentType);
+
     const document = await generateDocument(
       tenantId,
-      validatedData.docType as DocumentType,
+      docType,
       validatedData.sourceKey,
       validatedData.templateId,
       Object.keys(additionalParams).length > 0 ? additionalParams : undefined,
@@ -60,7 +72,7 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
 
     res.status(201).json({
       success: true,
-      data: document,
+      data: toRentalDocumentDto(document),
       message: `Document ${document.document_number} généré avec succès`
     });
   } catch (error) {
@@ -88,7 +100,9 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
 
       res.status(error.statusCode).json({
         success: false,
-        message: error.message
+        message: error.message,
+        // 409 : identifiant du contrat existant, a regenerer.
+        ...(error.statusCode === 409 && error.data ? { data: error.data } : {})
       });
       return;
     }
@@ -105,44 +119,27 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
  * Regenerate a document
  * POST /api/v1/documents/:id/regenerate
  */
-export async function regenerateDocumentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.tenantContext?.tenantId;
-    const { id } = req.params;
-    const actorUserId = req.user?.userId;
+export const regenerateDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantContext?.tenantId;
+  const { id } = req.params;
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId || !tenantId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    const { templateId } = req.body;
-
-    const document = await regenerateDocument(tenantId, id, templateId, actorUserId);
-
-    res.json({
-      success: true,
-      data: document,
-      message: `Document régénéré avec succès (révision ${document.revision})`
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la régénération du document'
-    });
+  if (!actorUserId || !tenantId) {
+    throw new UnauthorizedError('Non authentifié');
   }
-}
+
+  const { templateId } = req.body;
+
+  // Une erreur non typee (ENOENT/EACCES citant un chemin absolu) part vers
+  // `errorHandler`, qui renvoie un message generique et journalise le detail.
+  const document = await regenerateDocument(tenantId, id, templateId, actorUserId);
+
+  res.json({
+    success: true,
+    data: toRentalDocumentDto(document),
+    message: t('Document régénéré avec succès (révision {{revision}})', { revision: document.revision })
+  });
+});
 
 /**
  * Download document file

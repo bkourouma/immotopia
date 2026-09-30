@@ -16,30 +16,18 @@ import { updatePropertyStatus } from './property-status-service';
 import { syncLotActivationsTx } from './lot-registry-service';
 import { getTenantById } from './tenant-service';
 import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
+import { t } from '../i18n';
+import { generateLeaseNumber, isLeaseNumberCollision } from './rental-lease-number';
+import { toRentalDocumentDto } from './rental-document-service';
 
 /**
- * Generate a unique lease number in format BAIL-YYYY-XXXX
- * @param tenantId - Tenant ID
- * @returns Generated lease number
+ * Les documents d'un bail sortent via `toRentalDocumentDto` : jamais de chemin
+ * disque ni de cle de stockage dans une reponse d'API.
  */
-async function generateLeaseNumber(tenantId: string): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = 'BAIL';
-
-  // Count existing leases for this tenant in this year
-  const count = await prisma.rentalLease.count({
-    where: {
-      tenant_id: tenantId,
-      lease_number: {
-        startsWith: `${prefix}-${year}-`
-      }
-    }
-  });
-
-  // Generate sequential number (1-indexed, zero-padded to 4 digits)
-  const sequenceNumber = (count + 1).toString().padStart(4, '0');
-
-  return `${prefix}-${year}-${sequenceNumber}`;
+function withPublicDocuments<T>(lease: T): T {
+  const documents = (lease as { documents?: Array<Record<string, unknown>> } | null)?.documents;
+  if (!lease || !Array.isArray(documents)) return lease;
+  return { ...lease, documents: documents.map(toRentalDocumentDto) } as T;
 }
 
 /**
@@ -102,22 +90,24 @@ export async function createLease(
     });
 
     if (existingLease) {
-      throw new BadRequestError(`A lease with number ${leaseNumber} already exists in this tenant`);
+      throw new BadRequestError(
+        t('Un bail portant le numéro {{number}} existe déjà dans cette agence', { number: leaseNumber })
+      );
     }
   }
 
   // Validate required fields
   if (!data.propertyId || !data.startDate) {
-    throw new BadRequestError('Property ID and start date are required');
+    throw new BadRequestError(t('Le bien et la date de début sont requis'));
   }
 
   if (!data.primaryRenterClientId && !data.primaryRenterContactId) {
-    throw new BadRequestError('Either primaryRenterClientId or primaryRenterContactId is required');
+    throw new BadRequestError(t('Le locataire principal (client ou contact) est requis'));
   }
 
   // Validate dates
   if (data.endDate && data.endDate <= data.startDate) {
-    throw new BadRequestError('End date must be after start date');
+    throw new BadRequestError(t('La date de fin doit être postérieure à la date de début'));
   }
 
   // Validate property exists and belongs to tenant (fetch early for transactionModes check)
@@ -129,7 +119,7 @@ export async function createLease(
   });
 
   if (!property) {
-    throw new BadRequestError(`Property not found or does not belong to this tenant`);
+    throw new BadRequestError(t("Bien introuvable ou n'appartenant pas à cette agence"));
   }
 
   // For sale-only properties, financial fields are optional (use defaults)
@@ -145,43 +135,11 @@ export async function createLease(
 
   if (!isSaleOnly) {
     if (data.dueDayOfMonth == null || data.dueDayOfMonth < 1 || data.dueDayOfMonth > 31) {
-      throw new BadRequestError('Due day of month must be between 1 and 31');
+      throw new BadRequestError(t("Le jour d'échéance doit être compris entre 1 et 31"));
     }
     if (data.rentAmount == null || data.rentAmount <= 0) {
       throw new BadRequestError('Le montant du loyer doit être supérieur à 0');
     }
-  }
-
-  // Get or create primary renter client
-  let primaryRenterClientId: string;
-  let primaryRenterResult: { isNewUser: boolean; passwordResetToken?: string; user: any } | null = null;
-
-  if (data.primaryRenterClientId) {
-    // Validate existing client
-    const primaryRenter = await prisma.tenantClient.findFirst({
-      where: {
-        id: data.primaryRenterClientId,
-        tenantId: tenantId
-      }
-    });
-
-    if (!primaryRenter) {
-      throw new BadRequestError(`Primary renter client not found or does not belong to this tenant`);
-    }
-
-    primaryRenterClientId = data.primaryRenterClientId;
-  } else if (data.primaryRenterContactId) {
-    // Auto-create client from contact
-    const { getOrCreateTenantClientFromContact } = await import('./tenant-service');
-    const result = await getOrCreateTenantClientFromContact(tenantId, data.primaryRenterContactId, 'RENTER');
-    primaryRenterClientId = result.tenantClient.id;
-    primaryRenterResult = {
-      isNewUser: result.isNewUser,
-      passwordResetToken: result.passwordResetToken,
-      user: result.user
-    };
-  } else {
-    throw new BadRequestError('Either primaryRenterClientId or primaryRenterContactId is required');
   }
 
   // Validate CRM deal belongs to this tenant, if provided.
@@ -194,101 +152,146 @@ export async function createLease(
     });
 
     if (!deal) {
-      throw new BadRequestError('CRM deal not found or does not belong to this tenant');
+      throw new BadRequestError(t("Affaire CRM introuvable ou n'appartenant pas à cette agence"));
     }
   }
 
   // Barriere « detenu en propre » (pack Patrimoine) : un bailleur tiers sur
-  // ce bail. AVANT toute ecriture, y compris la creation d'un TenantClient
-  // depuis `ownerContactId` juste en dessous.
+  // ce bail. AVANT toute ecriture — la creation des clients/comptes du
+  // locataire et du bailleur n'a lieu qu'en transaction, plus bas.
   if (data.ownerClientId || data.ownerContactId) {
     await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
   }
 
-  // Get or create owner client (if provided)
-  let ownerClientId: string | null = null;
-  let ownerResult: { isNewUser: boolean; passwordResetToken?: string; user: any } | null = null;
-
-  if (data.ownerClientId) {
-    // Validate existing client
-    const ownerClient = await prisma.tenantClient.findFirst({
-      where: {
-        id: data.ownerClientId,
-        tenantId: tenantId
-      }
+  // Controles de refus sans ecriture : appartenance a l'agence du locataire
+  // et du bailleur designes par leur client.
+  if (data.primaryRenterClientId) {
+    const primaryRenter = await prisma.tenantClient.findFirst({
+      where: { id: data.primaryRenterClientId, tenantId: tenantId },
+      select: { id: true }
     });
-
-    if (!ownerClient) {
-      throw new BadRequestError(`Owner client not found or does not belong to this tenant`);
+    if (!primaryRenter) {
+      throw new BadRequestError(t("Locataire principal introuvable ou n'appartenant pas à cette agence"));
     }
-
-    ownerClientId = data.ownerClientId;
-  } else if (data.ownerContactId) {
-    // Auto-create client from contact
-    const { getOrCreateTenantClientFromContact } = await import('./tenant-service');
-    const result = await getOrCreateTenantClientFromContact(tenantId, data.ownerContactId, 'OWNER');
-    ownerClientId = result.tenantClient.id;
-    ownerResult = {
-      isNewUser: result.isNewUser,
-      passwordResetToken: result.passwordResetToken,
-      user: result.user
-    };
+  }
+  if (data.ownerClientId) {
+    const ownerClient = await prisma.tenantClient.findFirst({
+      where: { id: data.ownerClientId, tenantId: tenantId },
+      select: { id: true }
+    });
+    if (!ownerClient) {
+      throw new BadRequestError(t("Propriétaire introuvable ou n'appartenant pas à cette agence"));
+    }
   }
 
   // Create lease — un bail ACTIVE fait compter le logement (D1) : entree au
   // registre des lots dans la meme transaction.
-  const lease = await prisma.$transaction(async tx => {
-    const createdLease = await tx.rentalLease.create({
-      data: {
-        tenant_id: tenantId,
-        property_id: data.propertyId,
-        primary_renter_client_id: primaryRenterClientId,
-        owner_client_id: ownerClientId,
-        crm_deal_id: data.crmDealId || null,
-        lease_number: leaseNumber,
-        status: RentalLeaseStatus.ACTIVE,
-        start_date: data.startDate,
-        end_date: data.endDate || null,
-        move_in_date: data.moveInDate || null,
-        move_out_date: data.moveOutDate || null,
-        billing_frequency: billingFrequency,
-        due_day_of_month: dueDayOfMonth,
-        currency: data.currency || 'FCFA',
-        rent_amount: rentAmount,
-        service_charge_amount: data.serviceChargeAmount || 0,
-        security_deposit_amount: data.securityDepositAmount || 0,
-        penalty_grace_days: data.penaltyGraceDays || 0,
-        penalty_mode: data.penaltyMode || 'PERCENT_OF_BALANCE',
-        penalty_rate: data.penaltyRate || 0,
-        penalty_fixed_amount: data.penaltyFixedAmount || 0,
-        penalty_cap_amount: data.penaltyCapAmount || null,
-        notes: data.notes || null,
-        terms_json: (data.termsJson || null) as any,
-        created_by_user_id: actorUserId
+  type NewAccount = { isNewUser: boolean; passwordResetToken?: string; user: any };
+  const autoNumbered = !data.leaseNumber;
+  const createInTransaction = () =>
+    prisma.$transaction(
+      async tx => {
+        // Clients et comptes crees dans la meme transaction que le bail : un echec
+        // en cours de route ne laisse ni client ni utilisateur.
+        const { getOrCreateTenantClientFromContact } = await import('./tenant-service');
+        let primaryRenterClientId: string;
+        let primaryRenterResult: NewAccount | null = null;
+        let ownerClientId: string | null = null;
+        let ownerResult: NewAccount | null = null;
+        if (data.primaryRenterClientId) {
+          primaryRenterClientId = data.primaryRenterClientId;
+        } else if (data.primaryRenterContactId) {
+          const result = await getOrCreateTenantClientFromContact(tenantId, data.primaryRenterContactId, 'RENTER', {
+            db: tx
+          });
+          primaryRenterClientId = result.tenantClient.id;
+          primaryRenterResult = {
+            isNewUser: result.isNewUser,
+            passwordResetToken: result.passwordResetToken,
+            user: result.user
+          };
+        } else {
+          throw new BadRequestError(t('Le locataire principal (client ou contact) est requis'));
+        }
+        if (data.ownerClientId) {
+          ownerClientId = data.ownerClientId;
+        } else if (data.ownerContactId) {
+          const result = await getOrCreateTenantClientFromContact(tenantId, data.ownerContactId, 'OWNER', { db: tx });
+          ownerClientId = result.tenantClient.id;
+          ownerResult = {
+            isNewUser: result.isNewUser,
+            passwordResetToken: result.passwordResetToken,
+            user: result.user
+          };
+        }
+        const createdLease = await tx.rentalLease.create({
+          data: {
+            tenant_id: tenantId,
+            property_id: data.propertyId,
+            primary_renter_client_id: primaryRenterClientId,
+            owner_client_id: ownerClientId,
+            crm_deal_id: data.crmDealId || null,
+            lease_number: leaseNumber as string,
+            status: RentalLeaseStatus.ACTIVE,
+            start_date: data.startDate,
+            end_date: data.endDate || null,
+            move_in_date: data.moveInDate || null,
+            move_out_date: data.moveOutDate || null,
+            billing_frequency: billingFrequency,
+            due_day_of_month: dueDayOfMonth,
+            currency: data.currency || 'FCFA',
+            rent_amount: rentAmount,
+            service_charge_amount: data.serviceChargeAmount || 0,
+            security_deposit_amount: data.securityDepositAmount || 0,
+            penalty_grace_days: data.penaltyGraceDays || 0,
+            penalty_mode: data.penaltyMode || 'PERCENT_OF_BALANCE',
+            penalty_rate: data.penaltyRate || 0,
+            penalty_fixed_amount: data.penaltyFixedAmount || 0,
+            penalty_cap_amount: data.penaltyCapAmount || null,
+            notes: data.notes || null,
+            terms_json: (data.termsJson || null) as any,
+            created_by_user_id: actorUserId
+          },
+          include: {
+            property: {
+              select: {
+                id: true,
+                internalReference: true,
+                address: true
+              }
+            },
+            primaryRenter: {
+              select: {
+                id: true,
+                userId: true,
+                clientType: true
+              }
+            },
+            coRenters: true,
+            deposit: true,
+            documents: true
+          }
+        });
+        await syncLotActivationsTx(tx, tenantId, { propertyIds: [data.propertyId] }, { actorUserId });
+        return { lease: createdLease, primaryRenterClientId, primaryRenterResult, ownerClientId, ownerResult };
       },
-      include: {
-        property: {
-          select: {
-            id: true,
-            internalReference: true,
-            address: true
-          }
-        },
-        primaryRenter: {
-          select: {
-            id: true,
-            userId: true,
-            clientType: true
-          }
-        },
-        coRenters: true,
-        deposit: true,
-        documents: true
-      }
-    });
-    await syncLotActivationsTx(tx, tenantId, { propertyIds: [data.propertyId] }, { actorUserId });
-    return createdLease;
-  });
+      { timeout: 15000, maxWait: 10000 }
+    );
+
+  // Numéro automatique : deux créations simultanées peuvent viser le même
+  // numéro. La transaction perdante est annulée en entier (P2002 sur le numéro) :
+  // on recalcule le numéro et on réessaie, au plus deux fois.
+  let created!: Awaited<ReturnType<typeof createInTransaction>>;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      created = await createInTransaction();
+      break;
+    } catch (error) {
+      if (!autoNumbered || attempt >= 2 || !isLeaseNumberCollision(error)) throw error;
+      leaseNumber = await generateLeaseNumber(tenantId);
+    }
+  }
+  const { lease, primaryRenterClientId, primaryRenterResult, ownerClientId, ownerResult } = created;
 
   logger.info('Rental lease created', {
     leaseId: lease.id,
@@ -660,7 +663,7 @@ export async function createLease(
     });
   }
 
-  return lease as unknown as LeaseDetail;
+  return withPublicDocuments(lease) as unknown as LeaseDetail;
 }
 
 /**
@@ -814,7 +817,7 @@ export async function getLeaseById(tenantId: string, leaseId: string): Promise<L
     }
   }
 
-  return lease as LeaseDetail | null;
+  return withPublicDocuments(lease) as LeaseDetail | null;
 }
 
 /**
@@ -934,12 +937,12 @@ export async function updateLease(
   });
 
   if (!existingLease) {
-    throw new BadRequestError('Lease not found');
+    throw new BadRequestError(t('Bail introuvable'));
   }
 
   // Validate dates if provided
   if (data.endDate && existingLease.start_date && data.endDate <= existingLease.start_date) {
-    throw new BadRequestError('End date must be after start date');
+    throw new BadRequestError(t('La date de fin doit être postérieure à la date de début'));
   }
 
   // Update lease
@@ -994,7 +997,7 @@ export async function updateLease(
     payload: data as unknown as Record<string, unknown>
   });
 
-  return lease as unknown as LeaseDetail;
+  return withPublicDocuments(lease) as unknown as LeaseDetail;
 }
 
 /**
@@ -1020,7 +1023,7 @@ export async function updateLeaseStatus(
   });
 
   if (!existingLease) {
-    throw new BadRequestError('Lease not found');
+    throw new BadRequestError(t('Bail introuvable'));
   }
 
   // Validate status transition
@@ -1034,7 +1037,9 @@ export async function updateLeaseStatus(
 
   const allowedStatuses = validTransitions[existingLease.status];
   if (!allowedStatuses.includes(newStatus)) {
-    throw new BadRequestError(`Invalid status transition from ${existingLease.status} to ${newStatus}`);
+    throw new BadRequestError(
+      t('Changement de statut invalide : de {{from}} à {{to}}', { from: existingLease.status, to: newStatus })
+    );
   }
 
   // Update status — activation ou fin du bail : decompte du logement (D1)
@@ -1132,7 +1137,7 @@ export async function updateLeaseStatus(
     }
   });
 
-  return lease as unknown as LeaseDetail;
+  return withPublicDocuments(lease) as unknown as LeaseDetail;
 }
 
 /**
@@ -1158,7 +1163,7 @@ export async function addCoRenter(
   });
 
   if (!lease) {
-    throw new BadRequestError('Lease not found');
+    throw new BadRequestError(t('Bail introuvable'));
   }
 
   // Validate co-renter client exists and belongs to this tenant (same error
@@ -1171,7 +1176,7 @@ export async function addCoRenter(
   });
 
   if (!renterClient) {
-    throw new BadRequestError('Co-renter client not found or does not belong to this tenant');
+    throw new BadRequestError(t("Colocataire introuvable ou n'appartenant pas à cette agence"));
   }
 
   // Check if co-renter already exists
@@ -1184,7 +1189,7 @@ export async function addCoRenter(
   });
 
   if (existingCoRenter) {
-    throw new BadRequestError('Co-renter already added to this lease');
+    throw new BadRequestError(t('Ce colocataire est déjà ajouté à ce bail'));
   }
 
   // Add co-renter
@@ -1240,7 +1245,7 @@ export async function removeCoRenter(
   });
 
   if (!lease) {
-    throw new BadRequestError('Lease not found');
+    throw new BadRequestError(t('Bail introuvable'));
   }
 
   // Remove co-renter
@@ -1287,7 +1292,7 @@ export async function listCoRenters(tenantId: string, leaseId: string) {
   });
 
   if (!lease) {
-    throw new BadRequestError('Lease not found');
+    throw new BadRequestError(t('Bail introuvable'));
   }
 
   const coRenters = await prisma.rentalLeaseCoRenter.findMany({

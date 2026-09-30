@@ -250,7 +250,7 @@ export const Chantiers: React.FC = () => {
             status={<StatusTag status={c.status} label={SITE_STATUS_LABELS[c.status]} />}
             highlight={<MoneyValue value={c.actualCost} />}
             fields={[
-              { label: 'Responsable', value: c.managerLabel ?? '—' },
+              { label: t('Responsable'), value: c.managerLabel ?? '—' },
               { label: t('Début'), value: dateCourte(c.startDate) }
             ]}
             onOpen={() => ouvrirDetail(c)}

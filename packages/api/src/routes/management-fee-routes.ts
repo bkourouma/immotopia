@@ -24,18 +24,30 @@ import {
  * Gardes posés avec leur chemin, jamais en `router.use` nu : ce routeur est
  * monté sur `/api` tout entier.
  */
+import { requireThirdPartyAllowed } from '../services/own-assets-barrier-service';
+
 const router = Router();
 
 const guard = (permission: string) => [authenticate, requireTenantAccess, requirePermission(permission)];
+// Barriere « detenu en propre » : honoraires par proprietaire et commissions de
+// negociateurs n'existent qu'avec la gestion pour un tiers.
+const feeGuard = (permission: string, action: 'OWNER_FEE_TERMS' | 'AGENT_COMMISSION') => [
+  ...guard(permission),
+  requireThirdPartyAllowed(action)
+];
 
 const OWNERS = '/tenants/:tenantId/settings/finance/owners';
-router.get(OWNERS, ...guard('TENANT_SETTINGS_VIEW'), listOwnerFeeTermsHandler);
-router.put(`${OWNERS}/:ownerClientId`, ...guard('TENANT_SETTINGS_EDIT'), setOwnerFeeTermsHandler);
-router.delete(`${OWNERS}/:ownerClientId`, ...guard('TENANT_SETTINGS_EDIT'), clearOwnerFeeTermsHandler);
+router.get(OWNERS, ...feeGuard('TENANT_SETTINGS_VIEW', 'OWNER_FEE_TERMS'), listOwnerFeeTermsHandler);
+router.put(`${OWNERS}/:ownerClientId`, ...feeGuard('TENANT_SETTINGS_EDIT', 'OWNER_FEE_TERMS'), setOwnerFeeTermsHandler);
+router.delete(
+  `${OWNERS}/:ownerClientId`,
+  ...feeGuard('TENANT_SETTINGS_EDIT', 'OWNER_FEE_TERMS'),
+  clearOwnerFeeTermsHandler
+);
 
 const AGENTS = '/tenants/:tenantId/settings/finance/agents';
-router.get(AGENTS, ...guard('TENANT_SETTINGS_VIEW'), listAgentCommissionRatesHandler);
-router.put(`${AGENTS}/:userId`, ...guard('TENANT_SETTINGS_EDIT'), setAgentCommissionRateHandler);
+router.get(AGENTS, ...feeGuard('TENANT_SETTINGS_VIEW', 'AGENT_COMMISSION'), listAgentCommissionRatesHandler);
+router.put(`${AGENTS}/:userId`, ...feeGuard('TENANT_SETTINGS_EDIT', 'AGENT_COMMISSION'), setAgentCommissionRateHandler);
 
 const LEASE_TERMS = '/tenants/:tenantId/rental/leases/:leaseId/management-terms';
 router.get(LEASE_TERMS, ...guard('RENTAL_LEASES_VIEW'), getLeaseManagementTermsHandler);

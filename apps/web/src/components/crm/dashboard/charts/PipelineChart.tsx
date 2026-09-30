@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/card';
 import { PipelineSummary, PipelineStageData } from '../../../../types/crmDashboard';
 import { CrmDealStage } from '../../../../types/crm-types';
 import { t } from '../../../../i18n/t';
+import { dealStageLabel } from '../../../../utils/crm-labels';
 
 import { activeLocale } from '../../../../i18n/format';
 interface PipelineChartProps {
@@ -21,19 +22,10 @@ const STAGE_COLORS: Record<CrmDealStage, string> = {
   LOST: '#94a3b8'
 };
 
-const STAGE_LABELS: Record<CrmDealStage, string> = {
-  NEW: 'Nouveau',
-  QUALIFIED: t('Qualifié'),
-  VISIT: 'Visite',
-  NEGOTIATION: t('Négociation'),
-  WON: t('Gagné'),
-  LOST: 'Perdu'
-};
-
 export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick }) => {
   const chartData = data.stages.map(stage => ({
     ...stage,
-    label: STAGE_LABELS[stage.stage] || stage.stage
+    label: dealStageLabel(stage.stage)
   }));
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -41,11 +33,15 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
       const data: PipelineStageData = payload[0].payload;
       return (
         <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
-          <p className="font-semibold">{STAGE_LABELS[data.stage] || data.stage}</p>
-          <p className="text-sm text-slate-600">Nombre: {data.count}</p>
-          <p className="text-sm text-slate-600">Valeur: {data.value.toLocaleString(activeLocale())} FCFA</p>
+          <p className="font-semibold">{dealStageLabel(data.stage)}</p>
           <p className="text-sm text-slate-600">
-            {t('Âge moyen:')} {data.avgAgeDays.toFixed(0)} jours
+            {t('Nombre :')} {data.count}
+          </p>
+          <p className="text-sm text-slate-600">
+            {t('Valeur :')} {data.value.toLocaleString(activeLocale())} FCFA
+          </p>
+          <p className="text-sm text-slate-600">
+            {t('Âge moyen:')} {data.avgAgeDays.toFixed(0)} {t('jours')}
           </p>
         </div>
       );
@@ -67,7 +63,7 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
             <Legend />
             <Bar
               dataKey="count"
-              name="Nombre d'affaires"
+              name={t("Nombre d'affaires")}
               radius={[8, 8, 0, 0]}
               cursor={onStageClick ? 'pointer' : 'default'}
               onClick={(data: any, index: number, e: any) => {

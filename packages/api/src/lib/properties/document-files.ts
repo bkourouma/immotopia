@@ -27,12 +27,20 @@ const NOT_FOUND = 'Document introuvable.';
 export async function getPropertyDocumentFileForTenant(
   tenantId: string,
   propertyId: string,
-  documentId: string
+  documentId: string,
+  /**
+   * `managedByMandate` : l'appelant (portail propriétaire) a déjà vérifié que
+   * le bien est dans son périmètre ; un bien CLIENT sous mandat porte un
+   * `tenantId` nul, on accepte donc ce cas en plus de l'agence.
+   */
+  options: { managedByMandate?: boolean } = {}
 ): Promise<PrivateFile> {
   // Le bien d'abord, par l'agence (property-tenant-guard) : `PropertyDocument.tenantId`
   // est nullable sur les anciennes lignes, le bien, lui, porte toujours son agence.
   const property = await prisma.property.findFirst({
-    where: { id: propertyId, tenantId },
+    where: options.managedByMandate
+      ? { id: propertyId, OR: [{ tenantId }, { tenantId: null }] }
+      : { id: propertyId, tenantId },
     select: { id: true }
   });
   if (!property) throw new NotFoundError(NOT_FOUND);

@@ -15,6 +15,7 @@ import {
   StarFilled
 } from '@ant-design/icons';
 import apiClient from '../../utils/api-client';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { ConfirmAction, DataCard, DataView, StatusTag, useConfirmAction } from '../../components/primitives';
 import { t as translate } from '../../i18n/t';
 
@@ -69,6 +70,8 @@ export function DocumentTemplates() {
   const { message } = App.useApp();
 
   const { tenantId } = useParams<{ tenantId: string }>();
+  // Les quatre types de modèles (baux, reçus, relevés) relèvent de la gestion locative.
+  const rentalIncluded = useAgencyFeatures(tenantId).has('RENTAL');
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -373,6 +376,17 @@ export function DocumentTemplates() {
           </Col>
         </Row>
 
+        {!rentalIncluded ? (
+          <Alert
+            type="info"
+            showIcon
+            message={translate('Ces modèles servent à la gestion locative')}
+            description={translate(
+              "Les modèles de baux, de reçus de loyer et de relevés ne sont utilisés que par la gestion locative, qui n'est pas comprise dans votre abonnement."
+            )}
+          />
+        ) : null}
+
         {/* Help Section */}
         <Card>
           <Alert
@@ -488,13 +502,13 @@ export function DocumentTemplates() {
                 ) : undefined
               }
               fields={[
-                { label: 'Type', value: libelleType(template.doc_type) },
+                { label: translate('Type'), value: libelleType(template.doc_type) },
                 {
                   // Le compte, et non les étiquettes : sur 375 px, trois
                   // `<Tag>` alignés à droite d'un libellé repassent à la ligne
                   // et cassent la paire libellé/valeur. Le tableau, lui, garde
                   // les étiquettes — il a la largeur pour.
-                  label: 'Variables',
+                  label: translate('Variables'),
                   value: (template.placeholders || []).length
                     ? `${template.placeholders.length} variable${template.placeholders.length > 1 ? 's' : ''}`
                     : 'Aucune'

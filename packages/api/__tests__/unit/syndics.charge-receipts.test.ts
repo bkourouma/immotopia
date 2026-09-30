@@ -431,7 +431,7 @@ describe('livraison apres commit : PDF prive et e-mail', () => {
     expect(receiptMail.to).toBe('awa@example.test');
     expect(receiptMail.tenantId).toBe(TENANT_A);
     expect(receiptMail.attachments).toHaveLength(1);
-    expect(receiptMail.attachments[0].filename).toBe(`Recu R-${YEAR}-000001.pdf`);
+    expect(receiptMail.attachments[0].filename).toBe(`Reçu R-${YEAR}-000001.pdf`);
     expect(receiptMail.attachments[0].content.subarray(0, 5).toString()).toBe('%PDF-');
     expect(mockEmailConfig.mock.calls.map(([, key]) => key).sort()).toEqual([
       'CHARGE_CALL_SETTLED',

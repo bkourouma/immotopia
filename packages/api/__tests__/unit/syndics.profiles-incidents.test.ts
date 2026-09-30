@@ -1,52 +1,56 @@
 jest.mock('@prisma/client', () => {
   const prisma = {
     syndicate: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     syndicateLot: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     lotOwnerProfile: {
       findMany: jest.fn(),
       create: jest.fn(),
       findFirst: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn()
     },
     lotTenantProfile: {
       findMany: jest.fn(),
       create: jest.fn(),
       findFirst: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn()
     },
     syndicateIncident: {
       findMany: jest.fn(),
       create: jest.fn(),
       findFirst: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn()
     },
     budgetLineItem: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     maintenanceContract: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     incidentCostImputation: {
-      create: jest.fn(),
+      create: jest.fn()
     },
     crmContact: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     commonAreaAsset: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
     serviceProvider: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn()
     },
+    $executeRaw: jest.fn(),
+    $transaction: jest.fn()
   };
+  // Le profil proprietaire s'ecrit sous verrou de lot : la transaction rejoue le meme client.
+  prisma.$transaction.mockImplementation(async (callback: any) => callback(prisma));
 
   return {
     PrismaClient: jest.fn(() => prisma),
-    __mockPrisma: prisma,
+    __mockPrisma: prisma
   };
 });
 
@@ -57,7 +61,7 @@ import {
   createLotTenantProfileBySyndicate,
   listLotOwnerProfilesBySyndicate,
   listLotTenantProfilesBySyndicate,
-  updateIncidentBySyndicate,
+  updateIncidentBySyndicate
 } from '../../src/lib/syndics/queries';
 
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
@@ -84,13 +88,14 @@ describe('Syndics profiles/incidents queries - US5', () => {
   });
 
   it('creates owner profile with portal access token', async () => {
+    mockPrisma.lotOwnerProfile.findMany.mockResolvedValue([]);
     mockPrisma.lotOwnerProfile.create.mockResolvedValue({ id: 'owner-profile-1', portalAccessEnabled: true });
     const profile = await createLotOwnerProfileBySyndicate('tenant-1', 'syndic-1', {
       lotId: 'lot-1',
       contactId: 'contact-1',
       ownershipPercentage: 100,
       ownedSince: new Date('2026-01-01T00:00:00.000Z'),
-      portalAccessEnabled: true,
+      portalAccessEnabled: true
     });
     expect(profile.id).toBe('owner-profile-1');
     expect(mockPrisma.lotOwnerProfile.create).toHaveBeenCalled();
@@ -107,12 +112,12 @@ describe('Syndics profiles/incidents queries - US5', () => {
       incidentType: 'LEAK',
       description: 'Fuite',
       urgency: 'HIGH',
-      reportedAt: new Date('2026-03-06T00:00:00.000Z'),
+      reportedAt: new Date('2026-03-06T00:00:00.000Z')
     });
     expect(created.id).toBe('incident-1');
 
     const updated = await updateIncidentBySyndicate('tenant-1', 'syndic-1', 'incident-1', {
-      status: 'IN_PROGRESS',
+      status: 'IN_PROGRESS'
     });
     expect(updated.status).toBe('IN_PROGRESS');
   });
@@ -126,14 +131,14 @@ describe('Syndics profiles/incidents queries - US5', () => {
       imputationType: 'SYNDICATE_BUDGET',
       amount: 15000,
       budgetLineId: 'line-1',
-      notes: 'A imputer au budget maintenance',
+      notes: 'A imputer au budget maintenance'
     });
     expect(imputation.id).toBe('imp-1');
   });
 
   // C3 : un profil proprietaire/locataire de lot ne doit jamais pouvoir
   // pointer vers un contact CRM d'une autre agence.
-  it('refuse de creer un profil proprietaire avec un contact d\'une autre agence', async () => {
+  it("refuse de creer un profil proprietaire avec un contact d'une autre agence", async () => {
     mockPrisma.crmContact.findFirst.mockResolvedValue(null);
 
     await expect(
@@ -141,20 +146,20 @@ describe('Syndics profiles/incidents queries - US5', () => {
         lotId: 'lot-1',
         contactId: 'contact-autre-agence',
         ownershipPercentage: 100,
-        ownedSince: new Date('2026-01-01T00:00:00.000Z'),
+        ownedSince: new Date('2026-01-01T00:00:00.000Z')
       })
     ).rejects.toThrow();
     expect(mockPrisma.lotOwnerProfile.create).not.toHaveBeenCalled();
   });
 
-  it('refuse de creer un profil locataire avec un contact d\'une autre agence', async () => {
+  it("refuse de creer un profil locataire avec un contact d'une autre agence", async () => {
     mockPrisma.crmContact.findFirst.mockResolvedValue(null);
 
     await expect(
       createLotTenantProfileBySyndicate('tenant-1', 'syndic-1', {
         lotId: 'lot-1',
         contactId: 'contact-autre-agence',
-        tenantSince: new Date('2026-01-01T00:00:00.000Z'),
+        tenantSince: new Date('2026-01-01T00:00:00.000Z')
       })
     ).rejects.toThrow();
     expect(mockPrisma.lotTenantProfile.create).not.toHaveBeenCalled();
@@ -172,7 +177,7 @@ describe('Syndics profiles/incidents queries - US5', () => {
         incidentType: 'LEAK',
         description: 'Fuite',
         urgency: 'HIGH',
-        reportedAt: new Date('2026-03-06T00:00:00.000Z'),
+        reportedAt: new Date('2026-03-06T00:00:00.000Z')
       })
     ).rejects.toThrow();
     expect(mockPrisma.syndicateIncident.create).not.toHaveBeenCalled();
@@ -184,10 +189,9 @@ describe('Syndics profiles/incidents queries - US5', () => {
 
     await expect(
       updateIncidentBySyndicate('tenant-1', 'syndic-1', 'incident-1', {
-        providerId: 'provider-autre-agence',
+        providerId: 'provider-autre-agence'
       })
     ).rejects.toThrow();
     expect(mockPrisma.syndicateIncident.update).not.toHaveBeenCalled();
   });
 });
-

@@ -19,6 +19,7 @@ import {
 } from '../../middleware/error-middleware';
 import { logger } from '../../utils/logger';
 import type { CapacityKeyCode, ModuleKeyCode } from './catalog';
+import { isCapacityExtensible } from './pricing';
 import { evaluateQuota, QuotaEvaluation, TenantEntitlements } from './entitlements';
 
 function refuse(
@@ -85,6 +86,9 @@ export function assertThirdPartyManagementAllowed(
  * unites (D4). Renvoie l'evaluation : `BILL` signifie « autorise, le
  * depassement sera facture » ; `BLOCK` leve QuotaExceededError (enforce).
  */
+const NOT_EXTENSIBLE_MESSAGE =
+  "La capacité de votre abonnement est atteinte : aucune extension n'est vendue avec votre pack. Choisissez la facturation du dépassement, changez de pack ou contactez-nous.";
+
 export function checkQuota(
   entitlements: TenantEntitlements,
   capacityKey: CapacityKeyCode,
@@ -93,12 +97,12 @@ export function checkQuota(
   const capacity = entitlements.capacities[capacityKey];
   const evaluation = evaluateQuota(capacity, increment, entitlements.quotaPolicy, entitlements.enforcement);
   if (evaluation.decision === 'BLOCK') {
-    throw new QuotaExceededError({
-      capacityKey,
-      limit: capacity.limit,
-      used: capacity.used,
-      requested: increment
-    });
+    // Ne conseille une extension que si le pack en vend une pour cette capacite.
+    const extensible = isCapacityExtensible(capacityKey, entitlements.packs);
+    throw new QuotaExceededError(
+      { capacityKey, limit: capacity.limit, used: capacity.used, requested: increment, extensible },
+      extensible ? undefined : NOT_EXTENSIBLE_MESSAGE
+    );
   }
   if (evaluation.decision === 'WARN' || evaluation.decision === 'BILL') {
     logger.warn('Subscription quota exceeded', {

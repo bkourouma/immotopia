@@ -287,7 +287,7 @@ describe('SyndicCharges page', () => {
     expect(await screen.findByText(/Charges de Residence Test/)).toBeTruthy();
     await waitFor(() => {
       expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/charges', {
-        params: { status: undefined, period: undefined }
+        params: { status: undefined, period: undefined, page: 1, limit: 100 }
       });
     });
     expect(await screen.findByText(/2026-Q2/)).toBeTruthy();

@@ -4,6 +4,7 @@ import { CapacityKey, ModuleKey, QuotaPolicy } from '@prisma/client';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import {
   addSubscriptionItem,
+  assertPackComposition,
   changePack,
   clearModuleOverride,
   clearSubscriptionManualReadOnly,
@@ -108,6 +109,14 @@ const quoteSchema = z.object({
 export const quoteHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = parse(quoteSchema, req.body);
   const catalog = await listCatalog({ includeUnsellable: true });
+  // Memes regles de composition que la creation d'agence et l'ajout d'un pack.
+  const requested = input.packs.map(code => {
+    const entry = catalog.find(c => c.code === code && c.kind === 'PACK');
+    if (!entry) throw new NotFoundError(`Pack inconnu : ${code}`);
+    if (!entry.isSellable) throw new BadRequestError(`Offre non commercialisée : ${code}.`);
+    return entry;
+  });
+  assertPackComposition(requested);
   let estimate;
   try {
     estimate = estimateMonthly(input, catalog);

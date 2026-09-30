@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
+import { useAgencyFeatures } from '../hooks/useAgencyFeatures';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { queryKey, STALE_TIME } from '../lib/query-keys';
 import { resolvePersona } from '../navigation/resolve';
@@ -92,6 +93,14 @@ export const Dashboard: React.FC = () => {
 
   const tableau = data?.data;
 
+  // Un bloc qui dépend d'une fonctionnalité non souscrite est masqué (le menu
+  // suit la même règle) : ni tuile « — », ni carte dont le lien mène à un écran refusé.
+  const features = useAgencyFeatures(tenantId);
+  const rentalOk = features.ready && features.has('RENTAL');
+  const crmOk = features.ready && features.has('CRM');
+  const syndicOk = features.ready && features.has('SYNDIC');
+  const patrimoineOk = features.ready && features.has('PATRIMOINE');
+
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       navigate('/login');
@@ -137,7 +146,7 @@ export const Dashboard: React.FC = () => {
 
   const base = tenantId ? `/tenant/${tenantId}` : '';
   const devise = tableau?.monthlyRevenue?.currency ?? 'FCFA';
-  const chargement = Boolean(tenantId) && isPending;
+  const chargement = Boolean(tenantId) && (isPending || !features.ready);
 
   /**
    * Les cartes de graphique, déclarées une fois et rendues deux fois.
@@ -160,7 +169,7 @@ export const Dashboard: React.FC = () => {
 
     const liste: Array<{ cle: string; groupe: string; span: number; noeud: React.ReactNode }> = [];
 
-    if (tableau.revenueSeries && tableau.revenueSeries.length > 0) {
+    if (rentalOk && tableau.revenueSeries && tableau.revenueSeries.length > 0) {
       const encaisse = tableau.revenueSeries.reduce((somme, point) => somme + point.encaisse, 0);
       const attendu = tableau.revenueSeries.reduce((somme, point) => somme + point.attendu, 0);
 
@@ -195,7 +204,7 @@ export const Dashboard: React.FC = () => {
       });
     }
 
-    const echeances = tableau.rental?.installmentsByStatus ?? null;
+    const echeances = rentalOk ? (tableau.rental?.installmentsByStatus ?? null) : null;
     if (echeances && echeances.length > 0) {
       liste.push({
         cle: 'echeances',
@@ -205,7 +214,7 @@ export const Dashboard: React.FC = () => {
           <ChartCard
             title={t('Échéances par statut')}
             subtitle={t('Longueur de barre : le reste à encaisser')}
-            link={{ label: 'Encaisser', to: `${base}/rental/installments` }}
+            link={{ label: t('Encaisser'), to: `${base}/rental/installments` }}
             empty={echeances.every(bucket => bucket.count === 0)}
           >
             <BarBreakdown
@@ -221,7 +230,7 @@ export const Dashboard: React.FC = () => {
       });
     }
 
-    const moyens = tableau.rental?.paymentsByMethod ?? null;
+    const moyens = rentalOk ? (tableau.rental?.paymentsByMethod ?? null) : null;
     if (moyens && moyens.length > 0) {
       const encaisseParMoyen = moyens.reduce((somme, bucket) => somme + (bucket.amount ?? 0), 0);
       liste.push({
@@ -286,7 +295,7 @@ export const Dashboard: React.FC = () => {
               slices={parts}
               colorOf={(_, index) => categoricalColor(index)}
               total={tableau.properties.total}
-              totalLabel={tableau.properties.total > 1 ? 'biens' : 'bien'}
+              totalLabel={tableau.properties.total > 1 ? t('biens') : t('bien')}
             />
           </ChartCard>
         )
@@ -312,7 +321,7 @@ export const Dashboard: React.FC = () => {
       });
     }
 
-    if (tableau.pipeline && tableau.pipeline.length > 0) {
+    if (crmOk && tableau.pipeline && tableau.pipeline.length > 0) {
       const affaires = totalDe(tableau.pipeline);
       // Les affaires perdues sortent de l'entonnoir : elles en sont la fuite,
       // pas une étape. Laissées dedans, leur barre — souvent la plus longue —
@@ -419,7 +428,7 @@ export const Dashboard: React.FC = () => {
       });
     }
 
-    if (tableau.syndic && tableau.syndic.syndicates > 0) {
+    if (syndicOk && tableau.syndic && tableau.syndic.syndicates > 0) {
       liste.push({
         cle: 'syndic',
         groupe: 'Exploitation',
@@ -456,7 +465,7 @@ export const Dashboard: React.FC = () => {
       });
     }
 
-    if (tableau.patrimoine && totalDe(tableau.patrimoine.workProgramsByStatus) > 0) {
+    if (patrimoineOk && tableau.patrimoine && totalDe(tableau.patrimoine.workProgramsByStatus) > 0) {
       liste.push({
         cle: 'travaux',
         groupe: 'Exploitation',
@@ -484,7 +493,7 @@ export const Dashboard: React.FC = () => {
     }
 
     return liste;
-  }, [tableau, base, devise]);
+  }, [tableau, base, devise, rentalOk, crmOk, syndicOk, patrimoineOk]);
 
   if (isLoading || isLoadingMembership) {
     return (
@@ -523,7 +532,7 @@ export const Dashboard: React.FC = () => {
    * Chacune mène à la liste qui la produit : une tuile qui intrigue sans mener
    * nulle part est exactement ce que la refonte retire de cet écran.
    */
-  const tuiles = [
+  const tuilesLocatives = [
     {
       cle: 'impayes',
       label: t('Impayés'),
@@ -556,7 +565,7 @@ export const Dashboard: React.FC = () => {
         ? evolution === null
           ? // Le mois précédent était vide : une variation en pourcentage n'y
             // aurait aucun sens, l'attendu du mois dit davantage.
-            `objectif du mois : ${compactAmount(revenus.expected)}`
+            t('objectif du mois : {{montant}}', { montant: compactAmount(revenus.expected) })
           : t('{{value}}{{evolution}} % vs mois précédent', { value: evolution >= 0 ? '+' : '', evolution: evolution })
         : t('Module non accessible'),
       icon: <RiseOutlined />,
@@ -566,7 +575,10 @@ export const Dashboard: React.FC = () => {
       // du mois est celui qui coûte ou rapporte le plus à l'agence, donc
       // celui que le regard doit trouver en premier.
       highlight: true
-    },
+    }
+  ];
+
+  const tuilesSocle = [
     {
       cle: 'biens',
       label: t('Biens'),
@@ -587,17 +599,21 @@ export const Dashboard: React.FC = () => {
       icon: <HomeOutlined />,
       tone: 'neutral' as const,
       to: tableau?.properties ? `${base}/properties` : undefined,
-      highlight: false
+      // Sans gestion locative, le chiffre à trouver en premier est le parc.
+      highlight: !rentalOk
     },
     {
       cle: 'contacts',
       label: t('Contacts'),
       value: valeurOuTiret(tableau?.clients?.total),
-      hint: tableau?.transactions
-        ? `${tableau.transactions.total} transaction${tableau.transactions.total > 1 ? 's' : ''} suivie${
-            tableau.transactions.total > 1 ? 's' : ''
-          }`
-        : t('Module non accessible'),
+      hint:
+        crmOk && tableau?.transactions
+          ? `${tableau.transactions.total} transaction${tableau.transactions.total > 1 ? 's' : ''} suivie${
+              tableau.transactions.total > 1 ? 's' : ''
+            }`
+          : tableau?.clients
+            ? undefined
+            : t('Module non accessible'),
       icon: <TeamOutlined />,
       tone: 'neutral' as const,
       to: tableau?.clients ? `${base}/crm/contacts` : undefined,
@@ -623,6 +639,8 @@ export const Dashboard: React.FC = () => {
     }
   ];
 
+  const tuiles = [...(rentalOk ? tuilesLocatives : []), ...tuilesSocle];
+
   const tresorerie = cartes.find(carte => carte.cle === 'tresorerie');
   const autresCartes = cartes.filter(carte => carte.cle !== 'tresorerie');
   const groupes = ['Finances', 'Parc', 'Commercial', 'Exploitation'].filter(groupe =>
@@ -631,10 +649,14 @@ export const Dashboard: React.FC = () => {
 
   const fileDeTravail = (
     <WorkQueue
-      tasks={tableau?.workQueue ?? []}
+      tasks={(tableau?.workQueue ?? []).filter(
+        tache => rentalOk || (tache.kind !== 'OVERDUE_INSTALLMENT' && tache.kind !== 'PENDING_DECLARATION')
+      )}
       loading={chargement}
       link={
-        tableau?.rental?.installmentsByStatus ? { label: t('Tout voir'), to: `${base}/rental/installments` } : undefined
+        rentalOk && tableau?.rental?.installmentsByStatus
+          ? { label: t('Tout voir'), to: `${base}/rental/installments` }
+          : undefined
       }
     />
   );
@@ -676,7 +698,7 @@ export const Dashboard: React.FC = () => {
                 <StatCard
                   label={tuile.label}
                   value={chargement ? '…' : tuile.value}
-                  hint={tuile.hint}
+                  hint={chargement ? undefined : tuile.hint}
                   icon={tuile.icon}
                   tone={tuile.tone}
                   highlight={tuile.highlight}
@@ -739,7 +761,12 @@ export const Dashboard: React.FC = () => {
           )}
 
           <div style={{ marginTop: 'var(--space-4)' }}>
-            <ActivityFeed activities={tableau?.recentActivity ?? []} loading={chargement} />
+            <ActivityFeed
+              activities={(tableau?.recentActivity ?? []).filter(
+                activite => rentalOk || activite.type !== 'PAYMENT_SUCCEEDED'
+              )}
+              loading={chargement}
+            />
           </div>
         </>
       )}

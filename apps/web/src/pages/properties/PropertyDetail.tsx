@@ -16,7 +16,7 @@ import {
   Tabs,
   Badge
 } from 'antd';
-import type { DescriptionsProps, TabsProps } from 'antd';
+import type { DescriptionsProps, MenuProps, TabsProps } from 'antd';
 import {
   EditOutlined,
   FileTextOutlined,
@@ -29,12 +29,16 @@ import {
   MailOutlined,
   BankOutlined,
   ProfileOutlined,
-  ApartmentOutlined
+  ApartmentOutlined,
+  FolderOpenOutlined,
+  SolutionOutlined
 } from '@ant-design/icons';
 import { Property, PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import { getProperty } from '../../services/property-service';
 import apiClient from '../../utils/api-client';
 import { useAuth } from '../../hooks/useAuth';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
+import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { PropertyVisitScheduler } from '../../components/properties/PropertyVisitScheduler';
 import { PropertyMaintenanceTab } from '../../components/properties/PropertyMaintenanceTab';
 import { PropertyApartments } from '../../components/properties/PropertyApartments';
@@ -43,6 +47,8 @@ import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatri
 import { PropertyHoldingTaxSection } from '../../components/patrimoine/entities/PropertyHoldingTaxSection';
 import { PropertyOwnershipCard } from '../../components/properties/PropertyOwnershipCard';
 import { PropertySaleCard } from '../../components/properties/PropertySaleCard';
+import { PropertyDocumentsTab } from '../../components/properties/PropertyDocumentsTab';
+import { PropertyMandatesTab } from '../../components/properties/PropertyMandatesTab';
 import { API_URL } from '../../config/api';
 import { PageHeader, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -208,6 +214,10 @@ export const PropertyDetail: React.FC = () => {
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+  // Une fonctionnalité non souscrite n'est ni appelée (403) ni proposée.
+  const { has: possede } = useAgencyFeatures(effectiveTenantId);
+  // Pack « détenu en propre » : pas d'indivision avec un tiers (l'API la refuse).
+  const ownAssetsOnly = useOwnAssetsOnly(effectiveTenantId, true);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [property, setProperty] = useState<Property | null>(null);
@@ -415,9 +425,9 @@ export const PropertyDetail: React.FC = () => {
         <Descriptions column={colonnes} size="small" bordered items={informations} />
       </Card>
 
-      <PropertyOwnershipCard tenantId={effectiveTenantId} propertyId={id!} />
+      {!ownAssetsOnly && <PropertyOwnershipCard tenantId={effectiveTenantId} propertyId={id!} />}
 
-      <PropertySaleCard tenantId={effectiveTenantId} propertyId={id!} />
+      {possede('SALES') && <PropertySaleCard tenantId={effectiveTenantId} propertyId={id!} />}
 
       <Card
         title={
@@ -543,35 +553,71 @@ export const PropertyDetail: React.FC = () => {
       ),
       children: <PropertyMaintenanceTab propertyId={id!} tenantId={effectiveTenantId} />
     },
+    // Documents du bien (titre foncier, diagnostics…) : socle, tous les packs.
     {
-      key: 'patrimoine',
+      key: 'documents',
       label: (
         <Space size="small">
-          <BankOutlined aria-hidden="true" />
-          {t('Patrimoine')}
+          <FolderOpenOutlined aria-hidden="true" />
+          {t('Documents')}
         </Space>
       ),
-      children: (
-        <>
-          <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
-          <PropertyHoldingTaxSection tenantId={effectiveTenantId} propertyId={id!} />
-        </>
-      )
+      children: <PropertyDocumentsTab tenantId={effectiveTenantId} propertyId={id!} />
     },
-    {
-      key: 'visites',
-      label: (
-        <Space size="small">
-          <CalendarOutlined aria-hidden="true" />
-          {t('Visites')}
-        </Space>
-      ),
-      children: (
-        <Card title={t('Planifier une visite')}>
-          <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
-        </Card>
-      )
-    }
+    // Mandat de gestion : bien de client, hors compte « détenu en propre ».
+    (property.ownershipType === 'CLIENT' || property.ownershipType === 'TENANT') && !ownAssetsOnly
+      ? {
+          key: 'mandat',
+          label: (
+            <Space size="small">
+              <SolutionOutlined aria-hidden="true" />
+              {t('Mandat de gestion')}
+            </Space>
+          ),
+          children: (
+            <PropertyMandatesTab
+              tenantId={effectiveTenantId}
+              propertyId={id!}
+              ownerName={proprietaireAffiche(property)}
+              ownershipType={property.ownershipType}
+              onOwnershipChanged={() => void loadProperty()}
+            />
+          )
+        }
+      : null,
+    possede('PATRIMOINE')
+      ? {
+          key: 'patrimoine',
+          label: (
+            <Space size="small">
+              <BankOutlined aria-hidden="true" />
+              {t('Patrimoine')}
+            </Space>
+          ),
+          children: (
+            <>
+              <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
+              <PropertyHoldingTaxSection tenantId={effectiveTenantId} propertyId={id!} />
+            </>
+          )
+        }
+      : null,
+    possede('CRM')
+      ? {
+          key: 'visites',
+          label: (
+            <Space size="small">
+              <CalendarOutlined aria-hidden="true" />
+              {t('Visites')}
+            </Space>
+          ),
+          children: (
+            <Card title={t('Planifier une visite')}>
+              <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
+            </Card>
+          )
+        }
+      : null
   ].filter(Boolean) as TabsProps['items'];
 
   /**
@@ -604,7 +650,7 @@ export const PropertyDetail: React.FC = () => {
       <PageHeader
         title={property.title}
         breadcrumbs={[
-          { label: 'Biens', to: `/tenant/${effectiveTenantId}/properties` },
+          { label: t('Biens'), to: `/tenant/${effectiveTenantId}/properties` },
           { label: property.internalReference || property.title }
         ]}
         subtitle={
@@ -618,24 +664,26 @@ export const PropertyDetail: React.FC = () => {
           </Space>
         }
         primaryAction={{
-          label: 'Modifier',
+          label: t('Modifier'),
           icon: <EditOutlined />,
           onClick: () => navigate(`/tenant/${effectiveTenantId}/properties/${id}/edit`)
         }}
-        secondaryActions={[
-          {
-            key: 'bail',
-            label: t('Générer un contrat de bail'),
-            icon: <FileTextOutlined />,
-            onClick: () => navigate(`/tenant/${effectiveTenantId}/rental/leases/new`, { state: { propertyId: id } })
-          },
-          {
-            key: 'newsletter',
-            label: t('Créer une campagne newsletter'),
-            icon: <MailOutlined />,
-            onClick: () => setNewsletterModalOpen(true)
-          }
-        ]}
+        secondaryActions={
+          [
+            possede('RENTAL') && {
+              key: 'bail',
+              label: t('Générer un contrat de bail'),
+              icon: <FileTextOutlined />,
+              onClick: () => navigate(`/tenant/${effectiveTenantId}/rental/leases/new`, { state: { propertyId: id } })
+            },
+            possede('CRM') && {
+              key: 'newsletter',
+              label: t('Créer une campagne newsletter'),
+              icon: <MailOutlined />,
+              onClick: () => setNewsletterModalOpen(true)
+            }
+          ].filter(Boolean) as MenuProps['items']
+        }
       />
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>

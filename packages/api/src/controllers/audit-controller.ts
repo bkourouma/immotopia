@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getAuditLogs, enrichAuditLogsWithResourceLabels } from '../services/audit-service';
 import { AuditLogFilters } from '../types/audit-types';
+import { parsePagination } from '../utils/pagination-helper';
 
 /**
  * Get audit logs with filtering
@@ -21,8 +22,7 @@ export async function getAuditLogsHandler(req: Request, res: Response): Promise<
       actorUserId: (req.query.actorUserId as string) || (req.query.userId as string) || undefined,
       startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
       endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 50
+      ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 50 })
     };
 
     const result = await getAuditLogs(filters);

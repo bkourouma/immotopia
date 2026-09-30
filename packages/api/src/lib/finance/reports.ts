@@ -147,12 +147,26 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
   const movementDateFilter = buildMovementDateFilter(filters?.range);
   const accountIds = tenantAccounts.map(account => account.id);
 
+  const asOf = filters?.asOf ?? new Date();
+  const upTo = movementDateFilter?.lte && movementDateFilter.lte < asOf ? movementDateFilter.lte : asOf;
+
+  // Solde À DATE : Σ débits − Σ crédits des mouvements déjà exigibles. Même
+  // fonction que le relevé (`balanceUpTo`) : un loyer futur n'y figure pas.
+  const soldes = await prisma.thirdPartyMovement.groupBy({
+    by: ['accountId'],
+    where: { tenantId, accountId: { in: accountIds }, movementDate: { lte: asOf } },
+    _sum: { debit: true, credit: true }
+  });
+  const soldeParCompte = new Map(
+    soldes.map(g => [g.accountId, roundMoney(toAmountOrZero(g._sum.debit) - toAmountOrZero(g._sum.credit))])
+  );
+
   const grouped = await prisma.thirdPartyMovement.groupBy({
     by: ['accountId'],
     where: {
       tenantId,
       accountId: { in: accountIds },
-      ...(movementDateFilter ? { movementDate: movementDateFilter } : {}),
+      movementDate: { ...(movementDateFilter?.gte ? { gte: movementDateFilter.gte } : {}), lte: upTo },
       ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
     },
     _sum: { debit: true, credit: true }
@@ -178,7 +192,7 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
       propertyLabels: propertyLabelsByClient.get(tenantClientId) ?? [],
       totalBilled: roundMoney(toAmountOrZero(group._sum.debit)),
       totalSettled: roundMoney(toAmountOrZero(group._sum.credit)),
-      balance: roundMoney(toAmountOrZero(account.balance)),
+      balance: soldeParCompte.get(account.id) ?? 0,
       currency: account.currency
     };
   });
@@ -334,38 +348,21 @@ function toMovementRecord(movement: {
 }
 
 /**
- * Solde juste avant `before` (mouvement strictement antérieur). Sans borne,
- * la période part de la genèse du compte : rien ne la précède, l'ouverture
- * est nulle — jamais le solde courant (défaut §6.1 bis n°3, volontairement
- * non reproduit).
+ * Solde d'un compte à une date : Σ débits − Σ crédits des mouvements datés
+ * strictement avant (`strict`) ou au plus tard (`upTo`) la borne. Calculé dans
+ * l'ordre CHRONOLOGIQUE, jamais d'après `balanceAfter` (figé à l'ordre
+ * d'écriture, faux dès qu'un mouvement est daté dans le futur).
  */
-async function getBalanceStrictlyBefore(tenantId: string, accountId: string, before?: Date): Promise<number> {
-  if (!before) {
-    return 0;
-  }
-  const last = await prisma.thirdPartyMovement.findFirst({
-    where: { tenantId, accountId, movementDate: { lt: before } },
-    orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }],
-    select: { balanceAfter: true }
+export async function balanceUpTo(
+  tenantId: string,
+  accountId: string,
+  bound: { lt?: Date; lte?: Date }
+): Promise<number> {
+  const sums = await prisma.thirdPartyMovement.aggregate({
+    where: { tenantId, accountId, movementDate: bound },
+    _sum: { debit: true, credit: true }
   });
-  return last ? roundMoney(toAmountOrZero(last.balanceAfter)) : 0;
-}
-
-/**
- * Solde au plus tard à `atOrBefore` (mouvement inclus). Sans borne, c'est le
- * dernier mouvement du compte, donc son solde courant.
- */
-async function getBalanceAtOrBefore(tenantId: string, accountId: string, atOrBefore?: Date): Promise<number> {
-  const last = await prisma.thirdPartyMovement.findFirst({
-    where: {
-      tenantId,
-      accountId,
-      ...(atOrBefore ? { movementDate: { lte: atOrBefore } } : {})
-    },
-    orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }],
-    select: { balanceAfter: true }
-  });
-  return last ? roundMoney(toAmountOrZero(last.balanceAfter)) : 0;
+  return roundMoney(toAmountOrZero(sums._sum.debit) - toAmountOrZero(sums._sum.credit));
 }
 
 /** Voir `GetAccountStatement` dans `./types.ts`. */
@@ -382,7 +379,9 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
   const range = filters?.range;
   const skip = filters?.skip ?? 0;
   const take = filters?.take ?? 50;
-  const movementDateFilter = buildMovementDateFilter(range);
+  const asOf = filters?.asOf ?? new Date();
+  const upTo = range?.to && range.to < asOf ? range.to : asOf;
+  const movementDateFilter = { ...(range?.from ? { gte: range.from } : {}), lte: upTo };
   const movementWhere = {
     tenantId,
     accountId,
@@ -397,9 +396,25 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
       take
     }),
     prisma.thirdPartyMovement.count({ where: movementWhere }),
-    getBalanceStrictlyBefore(tenantId, accountId, range?.from),
-    getBalanceAtOrBefore(tenantId, accountId, range?.to)
+    range?.from ? balanceUpTo(tenantId, accountId, { lt: range.from }) : Promise.resolve(0),
+    balanceUpTo(tenantId, accountId, { lte: upTo })
   ]);
+
+  // Solde courant recalculé dans l'ordre d'affichage, à partir de l'ouverture.
+  let running = openingBalance;
+  if (skip > 0) {
+    const before = await prisma.thirdPartyMovement.findMany({
+      where: movementWhere,
+      orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }],
+      take: skip,
+      select: { debit: true, credit: true }
+    });
+    for (const m of before) running = roundMoney(running + toAmountOrZero(m.debit) - toAmountOrZero(m.credit));
+  }
+  const withBalance = movements.map(m => {
+    running = roundMoney(running + toAmountOrZero(m.debit) - toAmountOrZero(m.credit));
+    return { ...m, balanceAfter: running };
+  });
 
   return {
     accountId: account.id,
@@ -408,7 +423,7 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
     openingBalance,
     closingBalance,
     currency: account.currency,
-    movements: movements.map(toMovementRecord),
+    movements: withBalance.map(toMovementRecord),
     total
   };
 };

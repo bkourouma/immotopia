@@ -1,16 +1,10 @@
 import { CrmDealType } from '../types/crm-types';
-import { t } from '../i18n/t';
+import { dealTypeLabel } from './crm-labels';
 
 /**
- * Get the French label for a deal type
+ * Libellé français d'un type d'affaire (délègue au module central
+ * `crm-labels`).
  */
 export function getDealTypeLabel(type: CrmDealType | string): string {
-  const labels: Record<string, string> = {
-    ACHAT: 'Achat',
-    LOCATION: 'Location',
-    VENTE: 'Vente',
-    GESTION: t('Gestion de biens'),
-    MANDAT: 'Mandat'
-  };
-  return labels[type] || type;
+  return dealTypeLabel(type);
 }

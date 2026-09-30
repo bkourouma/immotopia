@@ -70,6 +70,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/clients', feature: 'CORE' },
   { prefix: '/invitations', feature: 'CORE' },
   { prefix: '/users', feature: 'CORE' },
+  { prefix: '/members', feature: 'CORE', note: 'Membres assignables (liste minimale pour les listes deroulantes).' },
   { prefix: '/dashboard', feature: 'CORE' },
   { prefix: '/documents', feature: 'CORE' },
   { prefix: '/ai', feature: 'CORE', note: 'Assistant ImmoCopilot : statut et chat (lecture seule, aucune écriture).' },

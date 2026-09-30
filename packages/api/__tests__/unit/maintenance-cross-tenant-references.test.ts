@@ -20,6 +20,7 @@ const store = {
   contacts: [] as Row[],
   memberships: [] as Row[],
   leases: [] as Row[],
+  properties: [] as Row[],
   seq: 0
 };
 
@@ -34,8 +35,7 @@ const TENANT_B = 'tenant-b';
 const mockPrisma: Row = {
   maintenanceTicket: {
     findFirst: jest.fn(
-      async ({ where }: Row) =>
-        store.tickets.find(t => t.id === where.id && t.tenant_id === where.tenant_id) ?? null
+      async ({ where }: Row) => store.tickets.find(t => t.id === where.id && t.tenant_id === where.tenant_id) ?? null
     ),
     create: jest.fn(async ({ data }: Row) => {
       const created = { id: nextId('ticket'), status: 'DECLARED', ...data };
@@ -89,6 +89,13 @@ const mockPrisma: Row = {
         store.memberships.find(
           m => m.tenantId === where.tenantId && m.userId === where.userId && m.status === where.status
         ) ?? null
+    )
+  },
+
+  property: {
+    findFirst: jest.fn(
+      async ({ where }: Row) =>
+        store.properties.find(pr => pr.id === where.id && pr.tenantId === where.tenantId) ?? null
     )
   },
 
@@ -177,6 +184,10 @@ beforeEach(() => {
   store.contacts = [];
   store.memberships = [];
   store.leases = [];
+  store.properties = [
+    { id: 'property-1', tenantId: TENANT_A, status: 'FOR_SALE' },
+    { id: 'property-b', tenantId: TENANT_B, status: 'FOR_SALE' }
+  ];
   store.seq = 0;
   jest.clearAllMocks();
 });
@@ -231,9 +242,9 @@ describe('maintenance-ticket-service — updateTicket : assignedToUserId doit ê
     const ticket = seedTicket();
     seedMembership({ tenantId: TENANT_B, userId: 'user-2' });
 
-    await expect(
-      updateTicket(TENANT_A, ticket.id, { assignedToUserId: 'user-2' } as any, 'actor-1')
-    ).rejects.toThrow('Utilisateur introuvable ou non membre actif de cette agence');
+    await expect(updateTicket(TENANT_A, ticket.id, { assignedToUserId: 'user-2' } as any, 'actor-1')).rejects.toThrow(
+      'Utilisateur introuvable ou non membre actif de cette agence'
+    );
 
     expect(store.tickets.find(t => t.id === ticket.id)?.assigned_to_user_id).toBeNull();
   });
@@ -248,7 +259,7 @@ describe('maintenance-ticket-service — updateTicket : assignedToUserId doit ê
   });
 });
 
-describe("maintenance-comment-service — addComment : le contact auteur doit appartenir à cette agence", () => {
+describe('maintenance-comment-service — addComment : le contact auteur doit appartenir à cette agence', () => {
   it("refuse un authorContactId d'une AUTRE agence", async () => {
     const ticket = seedTicket();
     const foreignContact = seedContact({ tenantId: TENANT_B });
@@ -300,5 +311,59 @@ describe('maintenance-attachment-service — uploadAttachment : le contact qui d
     ).rejects.toThrow('Contact introuvable');
 
     expect(store.attachments).toHaveLength(0);
+  });
+});
+
+describe('maintenance-ticket-service — createTicket : un ticket sans bail (BUG-083)', () => {
+  const donnees = {
+    propertyId: 'property-1',
+    title: 'Fuite en parties communes',
+    category: 'PLUMBING',
+    priority: 'HIGH',
+    description: 'Fuite sous la colonne montante'
+  } as any;
+
+  it("accepte un ticket d'agence sur un bien sans aucun bail (bien en vente)", async () => {
+    const ticket = await createTicket(TENANT_A, donnees, 'user-1');
+
+    expect(ticket.lease_id).toBeNull();
+    expect(ticket.tenant_id).toBe(TENANT_A);
+    expect(ticket.created_by_user_id).toBe('user-1');
+    expect(store.tickets).toHaveLength(1);
+    expect(store.ticketStatusHistory).toHaveLength(1);
+  });
+
+  it("rattache le bail actif s'il existe, sans l'exiger", async () => {
+    const lease = seedLease();
+
+    const ticket = await createTicket(TENANT_A, donnees, 'user-1');
+
+    expect(ticket.lease_id).toBe(lease.id);
+  });
+
+  it("refuse un bien d'une AUTRE agence (même erreur qu'un bien inexistant)", async () => {
+    await expect(createTicket(TENANT_A, { ...donnees, propertyId: 'property-b' }, 'user-1')).rejects.toMatchObject({
+      statusCode: 404
+    });
+    await expect(createTicket(TENANT_A, { ...donnees, propertyId: 'nope' }, 'user-1')).rejects.toMatchObject({
+      statusCode: 404
+    });
+    expect(store.tickets).toHaveLength(0);
+  });
+
+  it('exige toujours un bail actif pour une demande de locataire', async () => {
+    const contact = seedContact();
+
+    await expect(
+      createTicket(TENANT_A, donnees, undefined, contact.id, { requireActiveLease: true })
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('Bail actif introuvable')
+    });
+    expect(store.tickets).toHaveLength(0);
+
+    seedLease();
+    const ticket = await createTicket(TENANT_A, donnees, undefined, contact.id, { requireActiveLease: true });
+    expect(ticket.tenant_contact_id).toBe(contact.id);
   });
 });

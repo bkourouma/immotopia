@@ -1,3 +1,4 @@
+import { contactDisplayName } from '../../utils/contact-display';
 import React from 'react';
 import { Table, Tag, Typography } from 'antd';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
@@ -48,7 +49,7 @@ export function ContactSearchResults({
     {
       title: translate('Nom'),
       key: 'name',
-      render: (_: unknown, r: ContactSearchResultItem) => `${r.firstName} ${r.lastName}`.trim() || '—'
+      render: (_: unknown, r: ContactSearchResultItem) => contactDisplayName(r)
     },
     {
       title: translate('Email'),

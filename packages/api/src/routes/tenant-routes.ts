@@ -20,6 +20,7 @@ import {
 } from '../controllers/invitation-controller';
 import {
   listMembersHandler,
+  listAssignableMembersHandler,
   getMemberHandler,
   updateMemberHandler,
   disableMemberHandler,
@@ -28,7 +29,7 @@ import {
   revokeSessionsHandler
 } from '../controllers/membership-controller';
 import { authenticate } from '../middleware/auth-middleware';
-import { requirePermission } from '../middleware/rbac-middleware';
+import { requirePermission, requireAnyPermission } from '../middleware/rbac-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { getEntitlementsHandler } from '../controllers/subscription-v2-controller';
 import {
@@ -174,6 +175,26 @@ router.delete(
   requireTenantAccess,
   requirePermission('USERS_EDIT'),
   revokeInvitationHandler
+);
+
+// Membres assignables : liste minimale (id, nom, role) pour les listes deroulantes
+// des ecrans CRM, biens, ventes et maintenance. Ouverte a tout collaborateur qui
+// lit l'un de ces modules, SANS USERS_VIEW (la liste complete reste reservee).
+router.get(
+  '/:tenantId/members/assignable',
+  authenticate,
+  requireTenantAccess,
+  requireTenantCollaborator,
+  requireAnyPermission([
+    'CRM_CONTACTS_VIEW',
+    'CRM_DEALS_VIEW',
+    'CRM_ACTIVITIES_VIEW',
+    'CRM_APPOINTMENTS_VIEW',
+    'PROPERTIES_VIEW',
+    'PROPERTIES_VISITS_SCHEDULE',
+    'MAINTENANCE_ADMIN'
+  ]),
+  listAssignableMembersHandler
 );
 
 // Member management routes

@@ -63,7 +63,7 @@ function line(
   const size = opts.size ?? 9;
   const x = MARGIN + (opts.indent ?? 0);
   const maxWidth = PAGE_SIZE[0] - MARGIN - x;
-  w.page.drawText(truncate(text || ' ', font, size, maxWidth), { x, y: w.y, size, font, color: opts.color });
+  w.page.drawText(truncate(nfc(text || ' '), font, size, maxWidth), { x, y: w.y, size, font, color: opts.color });
   w.y -= LINE_HEIGHT;
 }
 
@@ -74,6 +74,8 @@ function sectionTitle(w: Writer, text: string) {
   w.y -= 2;
 }
 
+/** Une saisie au clavier Mac/Windows peut arriver décomposée (« o » + accent) : on recompose. */
+const nfc = (text: string) => text.normalize('NFC');
 const fmt = (value: number, currency: string) => money(value, currency);
 const pct = (value: number | null) => (value === null ? '-' : `${value.toFixed(2)} %`);
 const amountOrDash = (value: number | null, currency: string) => (value === null ? '-' : fmt(value, currency));
@@ -120,22 +122,26 @@ function drawConsolidatedOverview(w: Writer, data: PatrimoineExportData) {
   }
 }
 
+/**
+ * Tableau de performance : une ligne « référence — titre » sur toute la largeur,
+ * puis une ligne de chiffres. Sur une seule ligne, un montant à neuf chiffres
+ * (« 120 000 000,00 XOF ») ne tenait plus dans sa colonne et finissait tronqué.
+ */
 const PERF_COLUMNS = [
-  { x: 0, width: 140 },
-  { x: 140, width: 65 },
-  { x: 205, width: 60 },
-  { x: 265, width: 45 },
-  { x: 310, width: 45 },
-  { x: 355, width: 55 },
-  { x: 410, width: 105 }
+  { x: 0, width: 95 },
+  { x: 95, width: 95 },
+  { x: 190, width: 50 },
+  { x: 240, width: 50 },
+  { x: 290, width: 55 },
+  { x: 345, width: 170 }
 ];
 
-function drawPerformanceRow(w: Writer, cells: string[], opts: { bold?: boolean } = {}) {
+function drawPerformanceCells(w: Writer, cells: string[], opts: { bold?: boolean } = {}) {
   ensureSpace(w, LINE_HEIGHT);
   const font = opts.bold ? w.fonts.bold : w.fonts.regular;
   cells.forEach((cell, index) => {
     const col = PERF_COLUMNS[index];
-    w.page.drawText(truncate(cell, font, 8, col.width - 4), {
+    w.page.drawText(truncate(nfc(cell), font, 8, col.width - 4), {
       x: MARGIN + col.x,
       y: w.y,
       size: 8,
@@ -146,10 +152,9 @@ function drawPerformanceRow(w: Writer, cells: string[], opts: { bold?: boolean }
 }
 
 function drawPerformanceTableHeader(w: Writer) {
-  drawPerformanceRow(
+  drawPerformanceCells(
     w,
     [
-      t('Bien', undefined, w.language),
       t('Valeur', undefined, w.language),
       t('Loyer annuel', undefined, w.language),
       t('Brut', undefined, w.language),
@@ -170,8 +175,10 @@ function drawPerformanceTable(w: Writer, properties: ExportProperty[]) {
   drawPerformanceTableHeader(w);
   for (const property of properties) {
     const currency = property.valuations[0]?.currency ?? 'XOF';
-    drawPerformanceRow(w, [
-      `${property.internalReference} — ${property.title}`,
+    // Le nom et sa ligne de chiffres restent sur la même page.
+    ensureSpace(w, LINE_HEIGHT * 2);
+    line(w, `${property.internalReference} — ${property.title}`, { bold: true, size: 8 });
+    drawPerformanceCells(w, [
       fmt(property.yield.currentValue, currency),
       fmt(property.yield.annualRent, currency),
       pct(property.yield.grossYield),

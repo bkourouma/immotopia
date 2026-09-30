@@ -10,7 +10,7 @@ import { useLanguage } from '../../i18n/useLanguage';
 import type { CopilotStatus } from '../../types/copilot';
 import { CopilotMessageList } from './CopilotMessageList';
 import { getCopilotPageContext } from './copilot-page-context';
-import { getCopilotSuggestions } from './copilot-suggestions';
+import { getCopilotSuggestions, getCopilotWelcome } from './copilot-suggestions';
 
 export interface CopilotDrawerProps {
   tenantId: string;
@@ -89,7 +89,7 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
       >
         {chat.messages.length === 0 && (
           <div>
-            <p>{t('Posez une question sur vos biens, vos baux ou vos documents.')}</p>
+            <p>{getCopilotWelcome(status.tools)}</p>
             <Space wrap>
               {suggestions.map(s => (
                 <Button key={s.id} size="small" onClick={() => submit(s.text)}>

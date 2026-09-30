@@ -35,6 +35,15 @@ jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: jest.fn()
 }));
 
+// La comptabilité de la gestion directe (trésorerie / 411) a sa propre suite :
+// `finance.rental-direct-ledger.test.ts`. Ici seuls les comptes de tiers comptent.
+jest.mock('../../src/lib/finance/rental-direct-ledger', () => ({
+  syncDirectRentPaymentEntryTx: jest.fn(async () => 'none'),
+  syncDirectRenterMovementEntryTx: jest.fn(async () => false),
+  syncDirectExpenseEntryTx: jest.fn(async () => 'none'),
+  directPropertyIdsTx: jest.fn(async () => new Set())
+}));
+
 jest.mock('../../src/services/email-service', () => ({
   emailService: {
     sendPaymentAllocatedToTenant: jest.fn(),
@@ -537,11 +546,11 @@ beforeEach(() => {
 
 describe('Échéance devenue exigible', () => {
   it('facture au compte du locataire le loyer, les charges et les autres frais', async () => {
-    const echeance = seedEcheance({ amount_other_fees: 2500 });
+    const echeance = seedEcheance({ amount_other_fees: 2500, due_date: IL_Y_A_DEUX_MOIS });
 
     await updateInstallmentStatus(TENANT_ID, echeance.id);
 
-    expect(store.installments[0].status).toBe(RentalInstallmentStatus.DUE);
+    expect(store.installments[0].status).toBe(RentalInstallmentStatus.OVERDUE);
     expect(mouvements()).toHaveLength(1);
     expect(mouvements()[0]).toMatchObject({
       type: 'INSTALLMENT',
@@ -557,7 +566,7 @@ describe('Échéance devenue exigible', () => {
   it("exclut `penalty_amount` du montant facturé : c'est un miroir des lignes de pénalité", async () => {
     // Une échéance déjà grevée d'une pénalité de 10 000 : la pénalité porte son
     // propre mouvement, la facturer ici la compterait deux fois.
-    const echeance = seedEcheance({ penalty_amount: 10000 });
+    const echeance = seedEcheance({ penalty_amount: 10000, due_date: IL_Y_A_DEUX_MOIS });
 
     await updateInstallmentStatus(TENANT_ID, echeance.id);
 
@@ -584,7 +593,7 @@ describe('Échéance devenue exigible', () => {
   });
 
   it('ne facture pas deux fois la même échéance, quel que soit le nombre de recalculs', async () => {
-    const echeance = seedEcheance();
+    const echeance = seedEcheance({ due_date: IL_Y_A_DEUX_MOIS });
 
     await updateInstallmentStatus(TENANT_ID, echeance.id);
     store.installments[0].status = RentalInstallmentStatus.DRAFT;
@@ -596,8 +605,8 @@ describe('Échéance devenue exigible', () => {
   });
 
   it('facture chaque échéance du bail lors d’un recalcul de masse', async () => {
-    seedEcheance({ period_month: 2 });
-    seedEcheance({ period_month: 3 });
+    seedEcheance({ period_month: 2, due_date: IL_Y_A_DEUX_MOIS });
+    seedEcheance({ period_month: 3, due_date: IL_Y_A_DEUX_MOIS });
 
     const modifiees = await recalculateInstallmentStatuses(TENANT_ID, LEASE_ID);
 
@@ -607,7 +616,7 @@ describe('Échéance devenue exigible', () => {
   });
 
   it('contrepasse au compte les échéances supprimées, pénalités comprises', async () => {
-    const echeance = seedEcheance();
+    const echeance = seedEcheance({ due_date: IL_Y_A_DEUX_MOIS });
     await updateInstallmentStatus(TENANT_ID, echeance.id);
     store.penalties.push({
       id: 'pen-supprimee',
@@ -672,7 +681,7 @@ describe('Règlement encaissé', () => {
   });
 
   it("affecte l'avance sans encaisser deux fois le même argent", async () => {
-    const echeance = seedEcheance();
+    const echeance = seedEcheance({ due_date: IL_Y_A_DEUX_MOIS });
     await updateInstallmentStatus(TENANT_ID, echeance.id);
 
     const payment = await createPayment(

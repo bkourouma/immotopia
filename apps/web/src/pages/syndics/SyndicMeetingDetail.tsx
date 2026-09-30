@@ -28,6 +28,7 @@ import {
   isMeetingFrozen,
   majorityRuleHint,
   majorityRuleOptions,
+  describeConvocation,
   meetingFrozenReason,
   meetingStatusColors
 } from '../../components/syndics/meeting-governance';
@@ -38,6 +39,7 @@ import {
   deleteMeetingAgendaItem,
   generateMeetingMinutesDocx,
   getMeeting,
+  resendMeetingConvocation,
   updateMeeting,
   updateMeetingAgendaItem,
   updateMeetingStatus
@@ -62,6 +64,7 @@ export const SyndicMeetingDetail: React.FC = () => {
   const navigate = useNavigate();
 
   const [meeting, setMeeting] = useState<GeneralMeeting | null>(null);
+  const [resendingConvocation, setResendingConvocation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState(false);
@@ -230,6 +233,21 @@ export const SyndicMeetingDetail: React.FC = () => {
     }
   };
 
+  const handleResendConvocation = async () => {
+    if (!effectiveTenantId || !syndicId || !meetingId) return;
+    setResendingConvocation(true);
+    try {
+      const result = await resendMeetingConvocation(effectiveTenantId, syndicId, meetingId);
+      const summary = describeConvocation(result);
+      if (summary.type === 'warning') message.warning(summary.text);
+      else message.success(summary.text);
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Renvoi de la convocation impossible'));
+    } finally {
+      setResendingConvocation(false);
+    }
+  };
+
   const handleGenerateMinutes = async () => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
     setGeneratingMinutes(true);
@@ -357,6 +375,11 @@ export const SyndicMeetingDetail: React.FC = () => {
             >
               {t('Générer compte rendu Word')}
             </Button>
+            {meeting.status === 'PLANNED' ? (
+              <Button loading={resendingConvocation} onClick={() => void handleResendConvocation()}>
+                {t('Renvoyer la convocation')}
+              </Button>
+            ) : null}
             {frozen ? null : (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenResolution(true)}>
                 {t('Ajouter une résolution')}

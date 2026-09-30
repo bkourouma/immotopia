@@ -5,6 +5,7 @@ import { seedRentalPermissions } from './rental-permissions-seed';
 import { seedMaintenancePermissions } from './maintenance-permissions-seed';
 import { seedCommunicationPermissions } from './communication-permissions-seed';
 import { seedFinancePermissions } from './finance-permissions-seed';
+import { seedSyndicPermissions } from './syndic-permissions-seed';
 
 const prisma = new PrismaClient();
 
@@ -123,6 +124,7 @@ async function seedRBAC() {
   await seedMaintenancePermissions();
   await seedCommunicationPermissions();
   await seedFinancePermissions();
+  await seedSyndicPermissions();
 
   // Assign all permissions to PLATFORM_SUPER_ADMIN
   console.log('  Assigning permissions to PLATFORM_SUPER_ADMIN...');
@@ -270,7 +272,7 @@ async function seedRBAC() {
   const agentPerms = await prisma.permission.findMany({
     where: {
       key: {
-        in: ['TENANT_SETTINGS_VIEW', 'USERS_VIEW']
+        in: ['TENANT_SETTINGS_VIEW'] // USERS_VIEW retire (BUG-096) : liste des collaborateurs hors perimetre Agent
       }
     }
   });

@@ -25,7 +25,7 @@ import {
   createLotOwnerAccountAdjustment,
   downloadLotOwnerAccountStatement,
   getLotOwnerAccount,
-  listLotOwnerAccountTransactions
+  listLotOwnerAccountTransactionsWithTotal
 } from '../../services/syndic-service';
 import { getLotAdvance } from '../../services/syndic-lot-payment-service';
 import { downloadReceiptFile, listLotReceipts } from '../../services/syndic-receipt-service';
@@ -34,6 +34,7 @@ import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const receiptKindLabel: Record<ReceiptKind, string> = {
   RECEIPT: t('Reçu'),
@@ -107,6 +108,8 @@ export const SyndicOwnerAccount: React.FC = () => {
   const navigate = useNavigate();
   const [account, setAccount] = useState<OwnerAccount | null>(null);
   const [transactions, setTransactions] = useState<OwnerAccountTransaction[]>([]);
+  // Nombre total de transactions, compté par l'API (la liste n'en porte qu'une page).
+  const [transactionsTotal, setTransactionsTotal] = useState(0);
   // Lot S2 : avance du lot, imputée automatiquement sur ses prochains appels.
   const [advance, setAdvance] = useState<number | null>(null);
   // Lot S3 : historique des reçus et quittances de ce lot.
@@ -158,10 +161,11 @@ export const SyndicOwnerAccount: React.FC = () => {
       const accountData = await getLotOwnerAccount(effectiveTenantId, syndicId, lotId);
       setAccount(accountData);
       const [txData, advanceData] = await Promise.all([
-        listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, { page: 1, limit: 100 }),
+        listLotOwnerAccountTransactionsWithTotal(effectiveTenantId, syndicId, lotId, { page: 1, limit: 100 }),
         getLotAdvance(effectiveTenantId, syndicId, lotId)
       ]);
-      setTransactions(txData);
+      setTransactions(txData.items);
+      setTransactionsTotal(txData.totalCount);
       setAdvance(advanceData.advance);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger le compte lot'));
@@ -242,7 +246,7 @@ export const SyndicOwnerAccount: React.FC = () => {
               {t('Retour aux lots')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              {t('Compte du lot')} {account?.lot?.lotNumber || lotId}
+              {t('Compte du lot')} {account?.lot?.lotNumber ?? ''}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
               {t('Suivi du compte individuel et des mouvements.')}
@@ -276,7 +280,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                 />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard label={t('Transactions')} value={transactions.length} />
+                <StatCard label={t('Transactions')} value={transactionsTotal} />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard label={t('Propriétaire')} value={ownerName} />
@@ -299,12 +303,12 @@ export const SyndicOwnerAccount: React.FC = () => {
                 pagination={{ pageSize: 12 }}
                 columns={[
                   {
-                    title: 'Date',
+                    title: t('Date'),
                     dataIndex: 'transactionDate',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   {
-                    title: 'Type',
+                    title: t('Type'),
                     dataIndex: 'type',
                     render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels[value] || value
                   },
@@ -322,7 +326,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                     render: (value: number | string | null) => (value ? <MoneyValue value={value} /> : '-')
                   },
                   {
-                    title: 'Solde',
+                    title: t('Solde'),
                     dataIndex: 'balanceAfter',
                     align: 'end',
                     render: (value: number | string) => {
@@ -363,7 +367,9 @@ export const SyndicOwnerAccount: React.FC = () => {
                   {
                     title: t('Montant'),
                     align: 'end',
-                    render: (_: unknown, row: ReceiptView) => <MoneyValue value={row.amount} currency={row.currency} />
+                    render: (_: unknown, row: ReceiptView) => (
+                      <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
+                    )
                   },
                   {
                     title: t('Actions'),

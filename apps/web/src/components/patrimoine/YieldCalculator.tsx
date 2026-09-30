@@ -1,9 +1,10 @@
 ﻿import React from 'react';
-import { Button, Card, Col, Form, InputNumber, Row, Space, Statistic, Typography } from 'antd';
+import { Alert, Button, Card, Col, Form, InputNumber, Row, Space, Statistic, Typography } from 'antd';
 import type { PropertyYieldData } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 import { formatMoney } from '../primitives';
 import { DEVISE_PATRIMOINE } from './patrimoine-labels';
+import { formatYieldPercent } from './patrimoine-format';
 
 export interface YieldAssumptionsInput {
   years: number;
@@ -56,7 +57,7 @@ const IndicateurAcquisition: React.FC<{
   if (kind === 'money') {
     return <Statistic title={title} value={formatMoney(value, { currency: DEVISE_PATRIMOINE })} loading={loading} />;
   }
-  return <Statistic title={title} value={value} precision={2} suffix="%" loading={loading} />;
+  return <Statistic title={title} value={formatYieldPercent(value)} loading={loading} />;
 };
 
 export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, onRecalculate }) => {
@@ -79,10 +80,10 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
       <Card title={t('Rendement')}>
         <Row gutter={[16, 16]}>
           <Col xs={24} md={6}>
-            <Statistic title={t('Brut')} value={data?.grossYield ?? 0} precision={2} suffix="%" loading={loading} />
+            <Statistic title={t('Brut')} value={formatYieldPercent(data?.grossYield ?? 0)} loading={loading} />
           </Col>
           <Col xs={24} md={6}>
-            <Statistic title={t('Net')} value={data?.netYield ?? 0} precision={2} suffix="%" loading={loading} />
+            <Statistic title={t('Net')} value={formatYieldPercent(data?.netYield ?? 0)} loading={loading} />
           </Col>
           <Col xs={24} md={6}>
             <IndicateurAcquisition
@@ -114,18 +115,14 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
           <Col xs={24} md={6}>
             <Statistic
               title={t('Brut projeté')}
-              value={data?.projectedAtHorizon?.grossYield ?? data?.grossYield ?? 0}
-              precision={2}
-              suffix="%"
+              value={formatYieldPercent(data?.projectedAtHorizon?.grossYield ?? data?.grossYield ?? 0)}
               loading={loading}
             />
           </Col>
           <Col xs={24} md={6}>
             <Statistic
               title={t('Net projeté')}
-              value={data?.projectedAtHorizon?.netYield ?? data?.netYield ?? 0}
-              precision={2}
-              suffix="%"
+              value={formatYieldPercent(data?.projectedAtHorizon?.netYield ?? data?.netYield ?? 0)}
               loading={loading}
             />
           </Col>
@@ -151,6 +148,14 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
       </Card>
 
       <Card title={t('Hypothèses de projection')}>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t(
+            'Hypothèses non enregistrées sur le serveur : elles sont conservées sur cet appareil, pour ce bien.'
+          )}
+        />
         <Form layout="vertical" form={form} onFinish={values => onRecalculate?.(values)}>
           <Row gutter={[16, 8]}>
             <Col xs={24} md={8}>
@@ -160,17 +165,17 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="valueGrowthRate" label={t('Croissance valeur (0.xx)')}>
-                <InputNumber min={0} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={-0.5} max={1} step={0.005} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="rentGrowthRate" label={t('Croissance loyers (0.xx)')}>
-                <InputNumber min={0} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={-0.5} max={1} step={0.005} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="expenseGrowthRate" label={t('Croissance charges (0.xx)')}>
-                <InputNumber min={0} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={-0.5} max={1} step={0.005} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>

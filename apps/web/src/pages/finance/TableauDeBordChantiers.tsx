@@ -282,7 +282,7 @@ export const TableauDeBordChantiers: React.FC = () => {
               ...(r.openAlert
                 ? [
                     {
-                      label: 'Alerte',
+                      label: t('Alerte'),
                       value: t('Seuil de {{thresholdPercent}} % franchi ({{consumedPercent}} %)', {
                         thresholdPercent: r.openAlert.thresholdPercent,
                         consumedPercent: r.openAlert.consumedPercent

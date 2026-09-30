@@ -408,7 +408,7 @@ export const Association: React.FC = () => {
               {
                 key: 'retirer',
                 danger: true,
-                label: 'Retirer',
+                label: t('Retirer'),
                 onClick: () =>
                   confirmerAction({
                     title: t('Retirer « {{partnerName}} » de cette association ?', { partnerName: s.partnerName }),

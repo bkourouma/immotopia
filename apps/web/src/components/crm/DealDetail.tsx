@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
+import { contactDisplayName } from '../../utils/contact-display';
 import { useNavigate } from 'react-router-dom';
 import {
   App,
@@ -34,6 +35,7 @@ import { getDeal, updateDeal, CrmDealDetail, UpdateCrmDealRequest } from '../../
 import { ActivityTimeline } from './ActivityTimeline';
 import { PropertyMatching } from '../properties/PropertyMatching';
 import { t } from '../../i18n/t';
+import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -43,14 +45,11 @@ interface DealDetailProps {
   dealId: string;
 }
 
-const STAGE_OPTIONS: Array<{ value: CrmDealStage; label: string }> = [
-  { value: 'NEW', label: t('Nouveau') },
-  { value: 'QUALIFIED', label: t('Qualifie') },
-  { value: 'VISIT', label: t('Visite') },
-  { value: 'NEGOTIATION', label: t('Negociation') },
-  { value: 'WON', label: t('Gagne') },
-  { value: 'LOST', label: t('Perdu') }
-];
+const STAGE_CODES: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'];
+
+// Construit à l'affichage : `t()` suit la langue courante.
+const stageOptions = (): Array<{ value: CrmDealStage; label: string }> =>
+  STAGE_CODES.map(value => ({ value, label: dealStageLabel(value) }));
 
 const FURNISHING_LABELS: Record<string, string> = {
   MEUBLE: 'Meuble',
@@ -59,7 +58,7 @@ const FURNISHING_LABELS: Record<string, string> = {
 };
 
 function getStageLabel(stage: string): string {
-  return STAGE_OPTIONS.find(s => s.value === stage)?.label || stage;
+  return dealStageLabel(stage);
 }
 
 function getStageColor(stage: string): string {
@@ -75,14 +74,7 @@ function getStageColor(stage: string): string {
 }
 
 function getDealTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    ACHAT: 'Achat',
-    LOCATION: 'Location',
-    VENTE: 'Vente',
-    GESTION: 'Gestion',
-    MANDAT: 'Mandat'
-  };
-  return labels[type] || type;
+  return dealTypeLabel(type);
 }
 
 function getPropertyTypeLabel(type: string): string {
@@ -241,7 +233,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                             {t('Contact')}
                           </Space>
                         ),
-                        children: `${deal.contact.firstName || ''} ${deal.contact.lastName || ''}`.trim() || '—'
+                        children: contactDisplayName(deal.contact)
                       }
                     : null,
                   deal.contact?.email
@@ -326,7 +318,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                 showSearch
                 optionFilterProp="label"
                 value={deal.stage}
-                options={STAGE_OPTIONS}
+                options={stageOptions()}
                 onChange={handleStageChange}
                 loading={updatingStage}
               />

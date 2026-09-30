@@ -418,6 +418,41 @@ describe('Synthese des droits', () => {
     expect(() => assertSubscriptionWritable(build())).not.toThrow();
   });
 
+  it('refus de quota : ne conseille une extension que si le pack en vend une pour cette capacite', () => {
+    const full = (packs: string[], key: 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS') => {
+      const e = build();
+      return {
+        ...e,
+        packs,
+        quotaPolicy: 'BLOCK' as const,
+        capacities: { ...e.capacities, [key]: { ...e.capacities[key], limit: 1, used: 1, remaining: 0, overBy: 0 } }
+      };
+    };
+    const refusal = (packs: string[], key: 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS') => {
+      try {
+        checkQuota(full(packs, key), key, 1);
+      } catch (error) {
+        return error as { message: string; code: string; statusCode: number; details?: any };
+      }
+      throw new Error('refus attendu');
+    };
+    const ext = 'ajoutez une extension';
+    // Pro : aucun bloc de biens -> pas d'extension conseillee.
+    const pro = refusal([PACK.PATRIMOINE_PRO], 'BIENS_DETENUS');
+    expect(pro).toMatchObject({ code: 'QUOTA_EXCEEDED', statusCode: 409 });
+    expect(pro.message).not.toContain(ext);
+    expect(pro.message).toContain('changez de pack');
+    // Essentiel : le bloc de 10 biens existe.
+    expect(refusal([PACK.PATRIMOINE_ESSENTIEL], 'BIENS_DETENUS').message).toContain(ext);
+    // Lots : tout pack sauf Patrimoine ; copropriétés : Syndic/Integre ; chantiers : Promoteur/Integre.
+    expect(refusal([PACK.AGENCE], 'LOTS').message).toContain(ext);
+    expect(refusal([PACK.PATRIMOINE_PRO], 'LOTS').message).not.toContain(ext);
+    expect(refusal([PACK.SYNDIC], 'COPROPRIETES').message).toContain(ext);
+    expect(refusal([PACK.AGENCE], 'COPROPRIETES').message).not.toContain(ext);
+    expect(refusal([PACK.INTEGRE], 'CHANTIERS').message).toContain(ext);
+    expect(refusal([PACK.SYNDIC], 'CHANTIERS').message).not.toContain(ext);
+  });
+
   it('gardes : quota BLOCK -> QUOTA_EXCEEDED (409) ; BILL_OVERAGE autorise et signale', () => {
     const e = build();
     expect(checkQuota(e, 'LOTS', 1).decision).toBe('BILL');

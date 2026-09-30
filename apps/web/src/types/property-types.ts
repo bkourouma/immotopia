@@ -339,7 +339,10 @@ export interface CreatePropertyRequest {
 }
 
 export interface UpdatePropertyRequest {
+  ownershipType?: PropertyOwnershipType;
   ownerUserId?: string;
+  /** Alternative à ownerUserId : l'API trouve ou crée le compte par e-mail. */
+  ownerEmail?: string;
   title?: string;
   description?: string;
   address?: string;

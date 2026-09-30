@@ -5,6 +5,8 @@ import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateActivityRequest, ActivityFilters } from '../types/crm-types';
 import { CrmActivityType } from '@prisma/client';
 import { updateLastInteractionAt } from './crm-contact-service';
+import { t } from '../i18n';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Create a new activity (immutable - no update/delete)
@@ -16,7 +18,7 @@ import { updateLastInteractionAt } from './crm-contact-service';
 export async function createActivity(tenantId: string, data: CreateActivityRequest, actorUserId: string) {
   // Enforce that contactId is required
   if (!data.contactId) {
-    throw new Error('Contact ID is required');
+    throw new BadRequestError(t("L'identifiant du contact est requis"));
   }
 
   // Verify contact exists and belongs to tenant (if provided)
@@ -29,7 +31,7 @@ export async function createActivity(tenantId: string, data: CreateActivityReque
     });
 
     if (!contact) {
-      throw new Error('Contact not found');
+      throw new NotFoundError(t('Contact introuvable'));
     }
   }
 
@@ -43,7 +45,7 @@ export async function createActivity(tenantId: string, data: CreateActivityReque
     });
 
     if (!deal) {
-      throw new Error('Deal not found');
+      throw new NotFoundError(t('Affaire introuvable'));
     }
   }
 
@@ -57,12 +59,12 @@ export async function createActivity(tenantId: string, data: CreateActivityReque
     });
 
     if (!correctionOf) {
-      throw new Error('Activity to correct not found');
+      throw new NotFoundError(t('Activité à corriger introuvable'));
     }
 
     // Correction activities must be of type CORRECTION
     if (data.activityType !== CrmActivityType.CORRECTION) {
-      throw new Error('Correction activities must have activityType CORRECTION');
+      throw new BadRequestError(t('Une activité de correction doit avoir le type CORRECTION'));
     }
   }
 
@@ -333,7 +335,7 @@ export async function rescheduleFollowUp(
   });
 
   if (!existingActivity) {
-    throw new Error('Activity not found');
+    throw new NotFoundError(t('Activité introuvable'));
   }
 
   const updatedActivity = await prisma.crmActivity.update({
@@ -406,7 +408,7 @@ export async function markFollowUpDone(tenantId: string, activityId: string, act
   });
 
   if (!existingActivity) {
-    throw new Error('Activity not found');
+    throw new NotFoundError(t('Activité introuvable'));
   }
 
   const updatedActivity = await prisma.crmActivity.update({

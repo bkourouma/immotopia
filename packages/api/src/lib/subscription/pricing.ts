@@ -19,6 +19,7 @@ import {
   CapacityKeyCode,
   CatalogItemKindCode,
   CatalogRules,
+  DEFAULT_CATALOG,
   EXTENSION,
   PLATFORM_TAX_RATE_PERCENT
 } from './catalog';
@@ -37,6 +38,8 @@ export interface PricingCatalogItem {
   setupPrice: number;
   capacities: Partial<Record<CapacityKeyCode, number>>;
   rules: CatalogRules | null;
+  /** Absent : vendable. */
+  isSellable?: boolean;
 }
 
 /** Une ligne chiffree (facture ou apercu). `amount` est HT, negatif pour DISCOUNT et CREDIT. */
@@ -88,6 +91,26 @@ export function resolveUnitMonthlyPrice(
 export function isExtensionAllowed(item: Pick<PricingCatalogItem, 'rules'>, heldPacks: readonly string[]): boolean {
   const required = item.rules?.requiresAnyOf;
   return !required || required.length === 0 || required.some(code => heldPacks.includes(code));
+}
+
+/**
+ * Une extension de cette capacite est-elle vendable avec ces packs ? Lit le
+ * catalogue par defaut (`requiresAnyOf`) : sert au message de refus de quota,
+ * qui ne doit proposer une extension que si le pack en ouvre une (le Pro
+ * n'en a aucune pour les biens : son depassement se facture au bien).
+ */
+export function isCapacityExtensible(
+  capacityKey: CapacityKeyCode,
+  heldPacks: readonly string[],
+  catalog: readonly PricingCatalogItem[] = DEFAULT_CATALOG
+): boolean {
+  return catalog.some(
+    item =>
+      item.kind === 'EXTENSION' &&
+      (item.capacities[capacityKey] ?? 0) > 0 &&
+      (item.isSellable ?? true) &&
+      isExtensionAllowed(item, heldPacks)
+  );
 }
 
 export interface UnitSegment {

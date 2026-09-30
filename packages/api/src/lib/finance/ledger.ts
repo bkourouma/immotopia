@@ -13,6 +13,7 @@
 
 import type { PrismaTransactionClient } from '../../utils/database';
 import { roundMoney } from './money';
+import { syncDirectRenterMovementEntryTx } from './rental-direct-ledger';
 
 export type OwnerAccountTxClient = PrismaTransactionClient;
 
@@ -23,6 +24,11 @@ export type OwnerAccountTxClient = PrismaTransactionClient;
  */
 export function supportsOwnerAccount(tx: any): tx is OwnerAccountTxClient {
   return Boolean(tx?.ownerAccount && tx?.ownerAccountTransaction && tx?.syndicateLot);
+}
+
+/** Un client de transaction de test peut ne pas exposer le journal : on ne l'appelle alors pas. */
+function supportsDirectJournal(tx: any): boolean {
+  return Boolean(tx?.journalEntry?.findFirst && tx?.rentalLease?.findFirst && tx?.chartOfAccount?.findFirst);
 }
 
 export interface LedgerMovementComputation {
@@ -183,7 +189,7 @@ function toMovementRecord(row: any): ThirdPartyMovementRecord {
 export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx, params) => {
   const account = await tx.thirdPartyAccount.findFirst({
     where: { id: params.accountId, tenantId: params.tenantId },
-    select: { id: true, balance: true }
+    select: { id: true, balance: true, kind: true }
   });
 
   if (!account) {
@@ -238,6 +244,23 @@ export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx,
       where: { id: params.accountId, tenantId: params.tenantId },
       data: { balance: balanceAfter }
     });
+
+    // Gestion locative directe (BUG-2026-09-30-058) : la créance d'un locataire
+    // dont le bail n'a pas de propriétaire mandant est aussi constatée au
+    // journal, dans la même transaction que son mouvement.
+    if (account.kind === 'TENANT' && supportsDirectJournal(tx)) {
+      await syncDirectRenterMovementEntryTx(tx, params.tenantId, {
+        id: movement.id,
+        accountId: params.accountId,
+        type: String(params.type),
+        sourceType: params.sourceType,
+        leaseId: params.leaseId ?? null,
+        debit: movement.debit,
+        credit: movement.credit,
+        movementDate: movement.movementDate,
+        label: params.label
+      });
+    }
 
     return toMovementRecord(movement);
   }

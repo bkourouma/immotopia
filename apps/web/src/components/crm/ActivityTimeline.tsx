@@ -12,6 +12,12 @@ import {
 } from '@ant-design/icons';
 import { CrmActivity } from '../../types/crm-types';
 import { t } from '../../i18n/t';
+import {
+  activityDirectionLabel,
+  activityTypeLabel,
+  dealSummaryLabel,
+  nextActionTypeLabel
+} from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Paragraph } = Typography;
@@ -22,18 +28,6 @@ interface ActivityTimelineProps {
   tenantId?: string;
   contactId?: string;
 }
-
-const TYPE_LABELS: Record<string, string> = {
-  CALL: 'Appel',
-  EMAIL: 'Email',
-  SMS: 'SMS',
-  WHATSAPP: 'WhatsApp',
-  VISIT: 'Visite',
-  MEETING: 'Reunion',
-  NOTE: 'Note',
-  TASK: 'Tache',
-  CORRECTION: 'Correction'
-};
 
 const TYPE_COLORS: Record<string, string> = {
   CALL: 'blue',
@@ -48,7 +42,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 function getTypeLabel(type: string): string {
-  return TYPE_LABELS[type] || type;
+  return activityTypeLabel(type);
 }
 
 function getTypeColor(type: string): string {
@@ -119,7 +113,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
               <Tag color={getTypeColor(activity.activityType)} icon={getTypeIcon(activity.activityType)}>
                 {getTypeLabel(activity.activityType)}
               </Tag>
-              {activity.direction ? <Tag>({activity.direction})</Tag> : null}
+              {activity.direction ? <Tag>{activityDirectionLabel(activity.direction)}</Tag> : null}
               {activity.correctionOfId ? <Tag color="gold">{t('Correction')}</Tag> : null}
               <Text type="secondary">
                 <CalendarOutlined /> {new Date(activity.occurredAt).toLocaleString(activeLocale())}
@@ -131,7 +125,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
 
             {activity.outcome ? (
               <Text type="secondary">
-                <Text strong>Outcome:</Text> {activity.outcome}
+                <Text strong>{t('Résultat :')}</Text> {activity.outcome}
               </Text>
             ) : null}
 
@@ -149,7 +143,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                   }}
                   style={{ padding: 0 }}
                 >
-                  Contact: {activity.contact.firstName} {activity.contact.lastName}
+                  {t('Contact :')} {activity.contact.firstName} {activity.contact.lastName}
                 </Button>
               ) : null}
 
@@ -166,20 +160,20 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                   }}
                   style={{ padding: 0 }}
                 >
-                  Affaire: {activity.deal.type} - {activity.deal.stage}
+                  {t('Affaire :')} {dealSummaryLabel(activity.deal.type, activity.deal.stage)}
                 </Button>
               ) : null}
 
               {activity.createdBy ? (
                 <Text type="secondary">
-                  <UserOutlined /> Par: {activity.createdBy.fullName || activity.createdBy.email}
+                  <UserOutlined /> {t('Par :')} {activity.createdBy.fullName || activity.createdBy.email}
                 </Text>
               ) : null}
             </Space>
 
             {activity.nextActionAt ? (
               <Tag color="processing">
-                {t('Action suivante:')} {activity.nextActionType || t('Follow-up')} le{' '}
+                {t('Action suivante:')} {nextActionTypeLabel(activity.nextActionType) || t('Relance')} {t('le')}{' '}
                 {new Date(activity.nextActionAt).toLocaleDateString(activeLocale())}
               </Tag>
             ) : null}

@@ -25,7 +25,7 @@ import {
   assignChargeCallFund,
   createChargeCall,
   getSyndicate,
-  listChargeCalls,
+  listAllChargeCallsWithSummary,
   listSyndicateFunds,
   listSyndicateLots
 } from '../../services/syndic-service';
@@ -33,6 +33,7 @@ import { downloadChargeCallNotice } from '../../services/syndic-charge-schedule-
 import {
   ChargeCall,
   ChargeCallStatus,
+  ChargeCallSummary,
   CreateChargeCallRequest,
   LotPaymentResult,
   Syndicate,
@@ -42,6 +43,7 @@ import {
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title } = Typography;
 
@@ -77,6 +79,13 @@ export const SyndicCharges: React.FC = () => {
   const [syndicate, setSyndicate] = useState<Syndicate | null>(null);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
   const [charges, setCharges] = useState<ChargeCall[]>([]);
+  // Cartes de synthèse : agrégat calculé par l'API sur tous les appels filtrés.
+  const [summary, setSummary] = useState<ChargeCallSummary>({
+    totalCount: 0,
+    totalAmount: 0,
+    pendingCount: 0,
+    overdueCount: 0
+  });
   const [statusFilter, setStatusFilter] = useState<ChargeCallStatus | undefined>(undefined);
   const [periodFilter, setPeriodFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -176,22 +185,16 @@ export const SyndicCharges: React.FC = () => {
     }
 
     try {
-      const data = await listChargeCalls(effectiveTenantId, syndicId, {
+      const data = await listAllChargeCallsWithSummary(effectiveTenantId, syndicId, {
         status: statusFilter,
         period: periodFilter || undefined
       });
-      setCharges(data);
+      setCharges(data.items);
+      setSummary(data.summary);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger les appels de charges'));
     }
   };
-
-  const summary = useMemo(() => {
-    const total = charges.reduce((sum, charge) => sum + Number(charge.amount), 0);
-    const overdue = charges.filter(charge => charge.status === 'OVERDUE').length;
-    const pending = charges.filter(charge => charge.status === 'PENDING' || charge.status === 'PARTIAL').length;
-    return { total, overdue, pending };
-  }, [charges]);
 
   const lotSelectOptions = useMemo(
     () =>
@@ -283,7 +286,9 @@ export const SyndicCharges: React.FC = () => {
     setPaymentOpen(false);
     const settledCount = result.allocations.filter(item => item.callStatusAfter === 'PAID').length;
     // Même rendu que les montants de l'écran : séparateur de la langue active et devise de la copropriété.
-    const advance = formatMoney(result.lotAdvanceBalance, { currency: result.currency || undefined });
+    const advance = formatMoney(result.lotAdvanceBalance, {
+      currency: displayCurrency(result.currency || undefined) ?? undefined
+    });
     message.success(
       settledCount > 0
         ? t('Paiement enregistré : {{settledCount}} appel(s) soldé(s), avance de {{advance}}', {
@@ -328,16 +333,16 @@ export const SyndicCharges: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <StatCard label={t('Montant appelé')} value={<MoneyValue value={summary.total} />} />
+                <StatCard label={t('Montant appelé')} value={<MoneyValue value={summary.totalAmount} />} />
               </Col>
               <Col xs={24} md={8}>
-                <StatCard label={t('Dossiers en attente')} value={summary.pending} />
+                <StatCard label={t('Dossiers en attente')} value={summary.pendingCount} />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
                   label={t('Dossiers en retard')}
-                  value={summary.overdue}
-                  tone={summary.overdue > 0 ? 'danger' : 'neutral'}
+                  value={summary.overdueCount}
+                  tone={summary.overdueCount > 0 ? 'danger' : 'neutral'}
                 />
               </Col>
             </Row>
@@ -357,7 +362,7 @@ export const SyndicCharges: React.FC = () => {
                 <Input
                   allowClear
                   style={{ minWidth: 220 }}
-                  placeholder={t('Filtrer par periode (ex: 2026-Q1)')}
+                  placeholder={t('Filtrer par période (ex : 2026-T1)')}
                   value={periodFilter}
                   onChange={event => setPeriodFilter(event.target.value)}
                 />

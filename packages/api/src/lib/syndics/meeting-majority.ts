@@ -14,19 +14,36 @@
  * a l'identique par le vote (resultat stocke) et par la lecture (detail).
  */
 
+import { t } from '../../i18n';
+
 export const MAJORITY_RULES = ['ARTICLE_24', 'ARTICLE_25', 'ARTICLE_26', 'UNANIMITE'] as const;
 export type MajorityRule = (typeof MAJORITY_RULES)[number];
 
 /** Regle d'une nouvelle resolution quand rien n'est precise. */
 export const DEFAULT_MAJORITY_RULE: MajorityRule = 'ARTICLE_24';
 
-/** Libelles francais (compte rendu Word, messages). */
+/** Libelles francais (compte rendu Word, messages), sans langue : voir `majorityRuleLabel`. */
 export const MAJORITY_RULE_LABELS: Record<MajorityRule, string> = {
-  ARTICLE_24: 'Article 24 - majorite simple des tantiemes exprimes',
-  ARTICLE_25: 'Article 25 - majorite absolue des tantiemes de tous les lots',
-  ARTICLE_26: 'Article 26 - double majorite (coproprietaires et 2/3 des tantiemes)',
-  UNANIMITE: 'Unanimite de tous les lots'
+  ARTICLE_24: 'Article 24 - majorité simple des tantièmes exprimés',
+  ARTICLE_25: 'Article 25 - majorité absolue des tantièmes de tous les lots',
+  ARTICLE_26: 'Article 26 - double majorité (copropriétaires et 2/3 des tantièmes)',
+  UNANIMITE: 'Unanimité de tous les lots'
 };
+
+/** Libelle de la regle dans la langue de la requete. */
+export function majorityRuleLabel(rule: MajorityRule): string {
+  switch (rule) {
+    case 'ARTICLE_25':
+      return t('Article 25 - majorité absolue des tantièmes de tous les lots');
+    case 'ARTICLE_26':
+      return t('Article 26 - double majorité (copropriétaires et 2/3 des tantièmes)');
+    case 'UNANIMITE':
+      return t('Unanimité de tous les lots');
+    case 'ARTICLE_24':
+    default:
+      return t('Article 24 - majorité simple des tantièmes exprimés');
+  }
+}
 
 export type VoteChoiceValue = 'FOR' | 'AGAINST' | 'ABSTAIN';
 

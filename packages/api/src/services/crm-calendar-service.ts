@@ -150,6 +150,7 @@ export async function getCalendarEvents(tenantId: string, filters: CalendarFilte
       property: {
         OR: [
           { ownershipType: 'TENANT', tenantId },
+          { ownershipType: 'CLIENT', tenantId },
           { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
         ]
       }

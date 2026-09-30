@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Button, Input, Select, DatePicker, Space, Typography, Tag, Row, Col, Spin } from 'antd';
 import { FilterOutlined, ClearOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { listMembers, Member } from '../../services/membership-service';
+import { listAssignableMembers, Member } from '../../services/membership-service';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -67,7 +67,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     if (!tenantId) return;
     setLoadingMembers(true);
     try {
-      const response = await listMembers(tenantId, { status: 'ACTIVE', limit: 100 });
+      const response = await listAssignableMembers(tenantId);
       // Repli explicite sur un tableau vide. `setMembers(response.data.members)`
       // posait `undefined` des que la reponse n'avait pas exactement cette
       // forme, et le `members.map` plus bas faisait alors tomber TOUT l'ecran

@@ -1038,7 +1038,7 @@ export const Stock: React.FC = () => {
             fields={[
               { label: t('Quantité'), value: `${m.isDecrease ? '−' : '+'} ${quantite(m.quantity, m.itemUnit)}` },
               { label: t('Chantier imputé'), value: m.siteLabel ?? t('Aucune imputation') },
-              { label: 'Demandeur', value: m.requestedBy ?? '—' },
+              { label: t('Demandeur'), value: m.requestedBy ?? '—' },
               { label: t('Pièce'), value: m.supplierInvoiceReference ?? '—' }
             ]}
           />

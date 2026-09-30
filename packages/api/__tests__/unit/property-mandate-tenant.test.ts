@@ -52,10 +52,11 @@ describe('getPropertyMandatesHandler — le tenantId du contexte scope la lectur
     };
     const res = mockRes();
 
-    await getPropertyMandatesHandler(req, res);
+    const next = jest.fn();
+    await getPropertyMandatesHandler(req, res, next);
 
     expect(getPropertyMandates).toHaveBeenCalledWith('p1', 'tenant-A');
-    expect(res.status).not.toHaveBeenCalledWith(500);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it("renvoie une erreur quand le service refuse l'acces (bien d'une autre agence)", async () => {
@@ -67,11 +68,11 @@ describe('getPropertyMandatesHandler — le tenantId du contexte scope la lectur
     };
     const res = mockRes();
 
-    await getPropertyMandatesHandler(req, res);
+    const next = jest.fn();
+    await getPropertyMandatesHandler(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ success: false })
-    );
+    // asyncHandler : l'erreur part vers errorHandler, jamais de message brut ici.
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(res.json).not.toHaveBeenCalled();
   });
 });

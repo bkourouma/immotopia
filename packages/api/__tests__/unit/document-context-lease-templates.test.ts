@@ -73,6 +73,7 @@ const HABITATION_FIELDS = [
   'PREAVIS_PRENEUR',
   'SUPERFICIE',
   'TAUX_PENALITE',
+  'CLAUSE_PENALITE',
   'TYPE_BIEN'
 ];
 const COMMERCIAL_ONLY_FIELDS = [
@@ -97,6 +98,7 @@ async function renderModelText(filename: string, context: Record<string, any>): 
   return xml
     .replace(/<\/w:p>/g, '\n')
     .replace(/<[^>]+>/g, '')
+    .replace(/&apos;/g, "'")
     .replace(new RegExp('[\\u202f\\u00a0]', 'g'), ' ');
 }
 
@@ -292,7 +294,8 @@ describe('buildLeaseHabitationContext + contrat_bail_habitation.docx', () => {
     expect(text).toContain('120 000 FCFA');
     expect(text).toContain('240 000 FCFA');
     expect(text).toContain('au-delà de 5 jours');
-    expect(text).toContain('fixées à 2 %');
+    expect(text).toContain('solde impayé');
+    expect(text).not.toContain('par jour de retard');
     expect(text).toContain('Superficie : 45,5 m²');
     expect(text).toContain('Fait à Abidjan, le 20/12/2025');
     expect(text).toContain('Moussa Traoré');
@@ -361,7 +364,7 @@ describe('buildLeaseHabitationContext + contrat_bail_habitation.docx', () => {
 
   it('un bail introuvable leve une erreur', async () => {
     rentalLeaseFindFirst.mockResolvedValue(null);
-    await expect(buildLeaseHabitationContext('agency-1', 'nope')).rejects.toThrow('Lease not found');
+    await expect(buildLeaseHabitationContext('agency-1', 'nope')).rejects.toThrow('Bail introuvable');
   });
 
   it('validateContext : aucun champ critique manquant', async () => {
@@ -431,15 +434,234 @@ describe('buildLeaseCommercialContext + contrat_bail_commercial.docx', () => {
 
   it('propriétaire du bien sans client bailleur : nom, e-mail et adresse de repli lisibles', async () => {
     const lease = bareLease();
+    (lease.property as any).ownershipType = 'CLIENT';
     (lease.property as any).owner = { id: 'u9', email: 'proprio@test.ci', fullName: 'Fatou Diallo' };
     rentalLeaseFindFirst.mockResolvedValue(lease);
 
     const context = await buildLeaseCommercialContext('agency-1', 'lease-3');
-    expect(context.BAILLEUR_NOM).toBe('Fatou Diallo');
+    expect(context.BAILLEUR_NOM).toBe("Fatou Diallo, représenté par l'agence Agence Test (mandataire)");
     expect(context.BAILLEUR_EMAIL).toBe('proprio@test.ci');
     expect(context.BAILLEUR_TELEPHONE).toBe('—');
     expect(context.BAILLEUR_ADRESSE).toBe('—');
     await renderModelText(COMMERCIAL, context);
+  });
+});
+
+describe('bailleur : propriete reelle du bien (BUG-2026-09-30-032)', () => {
+  const entityContact = {
+    ...ownerContact,
+    id: 'contact-entity',
+    tenantId: 'agency-1',
+    email: 'sci@test.ci',
+    phonePrimary: '+225 01 02 03 04',
+    address: 'Riviera, lot 5',
+    city: 'Abidjan',
+    representativeName: 'Ali Bamba',
+    representativeRole: 'Gérant'
+  };
+  const holding = (overrides: Record<string, any> = {}, entityOverrides: Record<string, any> = {}) => ({
+    tenantId: 'agency-1',
+    sharePercent: 100,
+    entity: {
+      tenantId: 'agency-1',
+      isActive: true,
+      name: 'SCI Les Palmiers',
+      legalForm: 'SCI',
+      contact: entityContact,
+      ...entityOverrides
+    },
+    ...overrides
+  });
+  /** Bien cree par un utilisateur de l'agence : `owner` n'est que son createur. */
+  const creator = { id: 'u-creator', email: 'admin@agence.test', fullName: 'Aïcha Créatrice' };
+  const ownedByAgency = (): any => ({
+    ...bareLease(),
+    property: { ...bareLease().property, ownershipType: 'TENANT', owner: creator, holdings: [] },
+    tenant: { ...agency, legalName: 'Agence Test SARL' }
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContacts();
+  });
+
+  it("bien detenu en propre : l'agence est le bailleur, jamais le createur du bien", async () => {
+    rentalLeaseFindFirst.mockResolvedValue(ownedByAgency());
+
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-a');
+    expect(context.BAILLEUR_NOM).toBe('Agence Test SARL');
+    expect(context.BAILLEUR_ADRESSE).toBe('Cocody, rue 12, Abidjan');
+    expect(context.BAILLEUR_TELEPHONE).toBe('+225 27 00 00 00');
+    expect(context.BAILLEUR_EMAIL).toBe('contact@agence.test');
+    expect(JSON.stringify(context)).not.toContain('Aïcha Créatrice');
+    expect(JSON.stringify(context)).not.toContain('admin@agence.test');
+    const text = await renderModelText(HABITATION, context);
+    expect(text).toContain('Agence Test SARL');
+  });
+
+  it('agence sans coordonnees : la generation continue avec « — »', async () => {
+    const lease = ownedByAgency();
+    lease.tenant = { ...lease.tenant, address: null, city: null, contactPhone: null, contactEmail: null };
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseCommercialContext('agency-1', 'lease-b');
+    expect(context.BAILLEUR_NOM).toBe('Agence Test SARL');
+    expect(context.BAILLEUR_ADRESSE).toBe('—');
+    expect(context.BAILLEUR_TELEPHONE).toBe('—');
+    expect(context.BAILLEUR_EMAIL).toBe('—');
+    expect(context.BAILLEUR_REPRESENTANT).toBe('—');
+    await renderModelText(COMMERCIAL, context);
+  });
+
+  it("entite detentrice : denomination, forme juridique, coordonnees et representant de l'entite", async () => {
+    const lease = ownedByAgency();
+    lease.property.holdings = [holding()];
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseCommercialContext('agency-1', 'lease-c');
+    expect(context.BAILLEUR_NOM).toBe('SCI Les Palmiers');
+    expect(context.BAILLEUR_FORME_JURIDIQUE).toBe('SCI');
+    expect(context.BAILLEUR_ADRESSE).toBe('Riviera, lot 5, Abidjan');
+    expect(context.BAILLEUR_TELEPHONE).toBe('+225 01 02 03 04');
+    expect(context.BAILLEUR_EMAIL).toBe('sci@test.ci');
+    expect(context.BAILLEUR_REPRESENTANT).toBe('Ali Bamba (Gérant)');
+    expect(JSON.stringify(context)).not.toContain('Aïcha Créatrice');
+    const text = await renderModelText(COMMERCIAL, context);
+    expect(text).toContain('SCI Les Palmiers');
+  });
+
+  it("entite : la plus forte part l'emporte sur l'entite detentrice minoritaire", async () => {
+    const lease = ownedByAgency();
+    lease.property.holdings = [
+      holding({ sharePercent: 20 }, { name: 'Holding B' }),
+      holding({ sharePercent: 80 }, { name: 'SCI Majoritaire' })
+    ];
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-d');
+    expect(context.BAILLEUR_NOM).toBe('SCI Majoritaire');
+  });
+
+  it('entite prioritaire sur le proprietaire client', async () => {
+    const lease: any = { ...fullLease(), tenant: agency };
+    lease.property = { ...lease.property, holdings: [holding()] };
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-e');
+    expect(context.BAILLEUR_NOM).toBe('SCI Les Palmiers');
+  });
+
+  it('entite sans fiche de contact : denomination seule, « — » ailleurs, sans blocage', async () => {
+    const lease = ownedByAgency();
+    lease.property.holdings = [holding({}, { contact: null, legalForm: 'INDIVIDUAL' })];
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseCommercialContext('agency-1', 'lease-f');
+    expect(context.BAILLEUR_NOM).toBe('SCI Les Palmiers');
+    expect(context.BAILLEUR_FORME_JURIDIQUE).toBe('Personne physique');
+    expect(context.BAILLEUR_ADRESSE).toBe('—');
+    expect(context.BAILLEUR_TELEPHONE).toBe('—');
+    expect(context.BAILLEUR_EMAIL).toBe('—');
+    await renderModelText(COMMERCIAL, context);
+  });
+
+  it("isolation : une entite ou une fiche d'une autre agence n'entre jamais dans le contexte", async () => {
+    const lease = ownedByAgency();
+    lease.property.holdings = [
+      holding({ tenantId: 'other-agency' }, { tenantId: 'other-agency', name: 'SCI Etrangere' }),
+      holding({}, { tenantId: 'other-agency', name: 'SCI Autre' }),
+      holding({}, { name: 'SCI Inactive', isActive: false }),
+      holding({ sharePercent: 10 }, { name: 'SCI Locale', contact: { ...entityContact, tenantId: 'other-agency' } })
+    ];
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseCommercialContext('agency-1', 'lease-g');
+    expect(context.BAILLEUR_NOM).toBe('SCI Locale');
+    // La fiche de contact d'une autre agence est ignoree.
+    expect(context.BAILLEUR_EMAIL).toBe('—');
+    expect(context.BAILLEUR_TELEPHONE).toBe('—');
+    expect(JSON.stringify(context)).not.toMatch(/Etrangere|SCI Autre|SCI Inactive|sci@test\.ci/);
+  });
+
+  it("proprietaire client : ses coordonnees, et l'agence designee comme mandataire", async () => {
+    rentalLeaseFindFirst.mockResolvedValue({
+      ...fullLease(),
+      property: { ...fullLease().property, ownershipType: 'CLIENT', owner: creator, holdings: [] }
+    });
+
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-h');
+    expect(context.BAILLEUR_NOM).toBe("Moussa Traoré, représenté par l'agence Agence Test (mandataire)");
+    expect(context.BAILLEUR_TELEPHONE).toBe('+225 05 44 55 66');
+    expect(context.BAILLEUR_ADRESSE).toBe('Plateau, avenue 8, Abidjan');
+    expect(JSON.stringify(context)).not.toContain('Aïcha Créatrice');
+  });
+
+  it("createur d'un bien TENANT sans autre proprietaire : jamais bailleur", async () => {
+    const lease = ownedByAgency();
+    lease.tenant = { ...agency };
+    rentalLeaseFindFirst.mockResolvedValue(lease);
+
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-i');
+    expect(context.BAILLEUR_NOM).toBe('Agence Test');
+  });
+});
+
+describe('clause de penalite de retard (BUG-2026-09-30-056)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContacts();
+  });
+
+  const cases: Array<[string, Record<string, any>, string]> = [
+    [
+      'PERCENT_OF_BALANCE',
+      { penalty_mode: 'PERCENT_OF_BALANCE', penalty_rate: 2 },
+      "l'application d'une pénalité de 2 % du solde impayé de l'échéance en retard, appliquée une seule fois par échéance"
+    ],
+    [
+      'PERCENT_OF_RENT',
+      { penalty_mode: 'PERCENT_OF_RENT', penalty_rate: 5 },
+      "l'application d'une pénalité de 5 % du loyer de l'échéance en retard, appliquée une seule fois par échéance"
+    ],
+    [
+      'FIXED_AMOUNT avec plafond',
+      { penalty_mode: 'FIXED_AMOUNT', penalty_fixed_amount: 5000, penalty_cap_amount: 20000 },
+      'une pénalité forfaitaire de 5'
+    ],
+    [
+      'taux nul : repli neutre',
+      { penalty_mode: 'PERCENT_OF_BALANCE', penalty_rate: 0 },
+      "l'application de pénalités selon les conditions convenues entre les parties"
+    ],
+    [
+      'forfait nul : repli neutre',
+      { penalty_mode: 'FIXED_AMOUNT', penalty_fixed_amount: 0 },
+      "l'application de pénalités selon les conditions convenues entre les parties"
+    ]
+  ];
+
+  it.each(cases)('%s', async (_name, overrides, expected) => {
+    rentalLeaseFindFirst.mockResolvedValue({ ...fullLease(), ...overrides });
+
+    const habitation = await buildLeaseHabitationContext('agency-1', 'lease-p');
+    expect(habitation.CLAUSE_PENALITE).toContain(expected);
+    const text = await renderModelText(HABITATION, habitation);
+    expect(text).toContain(expected);
+    expect(text).not.toContain('par jour de retard');
+
+    const commercial = await buildLeaseCommercialContext('agency-1', 'lease-p');
+    expect(await renderModelText(COMMERCIAL, commercial)).toContain(expected);
+  });
+
+  it('plafond : la limite figure avec sa devise', async () => {
+    rentalLeaseFindFirst.mockResolvedValue({
+      ...fullLease(),
+      penalty_mode: 'PERCENT_OF_RENT',
+      penalty_rate: 5,
+      penalty_cap_amount: 20000
+    });
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-p');
+    expect(context.CLAUSE_PENALITE).toMatch(/, dans la limite de 20[\s\u00a0\u202f]000 FCFA$/);
   });
 });
 

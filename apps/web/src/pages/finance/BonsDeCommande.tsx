@@ -290,9 +290,9 @@ export const BonsDeCommande: React.FC = () => {
             }
             highlight={<MoneyValue value={b.totalAmount} />}
             fields={[
-              { label: 'Date', value: dateCourte(b.orderDate) },
+              { label: t('Date'), value: dateCourte(b.orderDate) },
               {
-                label: 'Facturation',
+                label: t('Facturation'),
                 value: (
                   <StatusTag
                     status={b.invoicingState}

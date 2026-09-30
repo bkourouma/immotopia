@@ -166,13 +166,13 @@ function MonReleve() {
             scroll={{ x: 800 }}
             columns={[
               {
-                title: 'Date',
+                title: t('Date'),
                 key: 'date',
                 render: (_: unknown, m: ThirdPartyMovementLine) =>
                   new Date(m.movementDate).toLocaleDateString(activeLocale())
               },
               {
-                title: 'Nature',
+                title: t('Nature'),
                 key: 'nature',
                 render: (_: unknown, m: ThirdPartyMovementLine) => natureLabel(m.type)
               },
@@ -974,7 +974,7 @@ export default function TenantPayments() {
                         scroll={{ x: 1000 }}
                         columns={[
                           {
-                            title: 'Date',
+                            title: t('Date'),
                             dataIndex: 'succeededAt',
                             key: 'date',
                             render: (_: string | null, record: any) => {
@@ -1000,7 +1000,7 @@ export default function TenantPayments() {
                             }
                           },
                           {
-                            title: 'Montant',
+                            title: t('Montant'),
                             dataIndex: 'amount',
                             key: 'amount',
                             render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>,
@@ -1019,7 +1019,7 @@ export default function TenantPayments() {
                             render: (ref: string | null) => ref || '-'
                           },
                           {
-                            title: 'Statut',
+                            title: t('Statut'),
                             dataIndex: 'status',
                             key: 'status',
                             render: (status: string, record: any) => {

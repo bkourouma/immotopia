@@ -562,7 +562,7 @@ export const Salarie: React.FC = () => {
                 ? [
                     {
                       key: 'valider',
-                      label: 'Valider',
+                      label: t('Valider'),
                       onClick: () =>
                         confirmerAction({
                           title: t('Valider la note de {{value}} ?', {
@@ -637,7 +637,7 @@ export const Salarie: React.FC = () => {
                 ? [
                     {
                       key: 'valider',
-                      label: 'Valider',
+                      label: t('Valider'),
                       onClick: () =>
                         confirmerAction({
                           title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),

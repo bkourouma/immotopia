@@ -16,8 +16,8 @@ import {
 /**
  * Reçus de paiement et quittances de charges (lot S3).
  *
- * Mêmes permissions que les appels de charges : lecture `PROPERTIES_VIEW`
- * (listes, téléchargement, impression groupée), écriture `PROPERTIES_EDIT`
+ * Mêmes permissions que les appels de charges : lecture `SYNDIC_VIEW`
+ * (listes, téléchargement, impression groupée), écriture `SYNDIC_EDIT`
  * (renvoi par e-mail, rattrapage). Classées SYNDIC par le préfixe `/syndics`
  * de `lib/subscription/route-features.ts`.
  *
@@ -27,8 +27,8 @@ import {
 const router = Router();
 
 const guards: RequestHandler[] = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation];
-const canView = requireAnyPropertyPermission(['PROPERTIES_VIEW']);
-const canEdit = requirePropertyPermission('PROPERTIES_EDIT');
+const canView = requireAnyPropertyPermission(['SYNDIC_VIEW']);
+const canEdit = requirePropertyPermission('SYNDIC_EDIT');
 
 const SYNDIC = '/tenants/:tenantId/syndics/:syndicId';
 

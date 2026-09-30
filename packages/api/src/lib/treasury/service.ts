@@ -594,7 +594,7 @@ export async function createTaxRemittance(
       tx,
       tenantId,
       withholdingAccountNumber,
-      'Autres impots et contributions retenus a la source',
+      'Autres impôts et contributions retenus à la source',
       'LIABILITY'
     );
     const journalFor = journalResolver(tx, tenantId);

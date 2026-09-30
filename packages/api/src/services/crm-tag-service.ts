@@ -1,5 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { t } from '../i18n';
+import { ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Create a tag
@@ -20,7 +22,7 @@ export async function createTag(tenantId: string, name: string, color?: string) 
   });
 
   if (existingTag) {
-    throw new Error(`Tag "${name}" already exists in this tenant`);
+    throw new ConflictError(t('Le tag « {{name}} » existe déjà dans cette agence', { name: name }));
   }
 
   const tag = await prisma.crmTag.create({
@@ -56,7 +58,7 @@ export async function assignTagToContact(tenantId: string, contactId: string, ta
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // Verify tag belongs to tenant
@@ -68,7 +70,7 @@ export async function assignTagToContact(tenantId: string, contactId: string, ta
   });
 
   if (!tag) {
-    throw new Error('Tag not found');
+    throw new NotFoundError(t('Tag introuvable'));
   }
 
   // Check if already assigned
@@ -115,7 +117,7 @@ export async function removeTagFromContact(tenantId: string, contactId: string, 
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   await prisma.crmContactTag.deleteMany({
@@ -148,7 +150,7 @@ export async function getContactTags(tenantId: string, contactId: string) {
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   const contactTags = await prisma.crmContactTag.findMany({

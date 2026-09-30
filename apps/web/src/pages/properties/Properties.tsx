@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { App, Input, Select, Row, Col, Slider, Button } from 'antd';
 import { PlusOutlined, SearchOutlined, HomeOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listProperties, deleteProperty } from '../../services/property-service';
+import { listProperties, deleteProperty, updateStatus } from '../../services/property-service';
+import { blocageSuppression } from './property-delete-error';
 import type { Property } from '../../types/property-types';
 import { useAuth } from '../../hooks/useAuth';
 import { getAllCommunes, GeographicLocation } from '../../services/geographic-service';
@@ -71,7 +72,7 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
  * d'un bien, et l'en retirer afficherait « BOUTIQUE_COMMERCIAL » en clair sur
  * les fiches existantes. Seule l'offre du filtre se réduit.
  */
-const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'BOUTIQUE_COMMERCIAL', 'LOT_PROGRAMME_NEUF'];
+const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'LOT_PROGRAMME_NEUF'];
 
 const TRANSACTION_MODE_LABELS: Record<string, string> = {
   SALE: 'Vente',
@@ -183,13 +184,13 @@ function libellePrix([min, max]: [number, number], sansBorneHaute: boolean): str
   if (min === 0 && sansBorneHaute) return t('Tous les prix');
   if (sansBorneHaute) return t('à partir de {{value}}', { value: montantCompact(min) });
   if (min === 0) return t("jusqu'à {{value}}", { value: montantCompact(max) });
-  return `${montantCompact(min)} à ${montantCompact(max)}`;
+  return t('{{min}} à {{max}}', { min: montantCompact(min), max: montantCompact(max) });
 }
 
 /** Ce que dit le curseur, en toutes lettres à côté de lui. */
 function libelleChambres([min, max]: [number, number]): string {
-  if (min === 0 && max >= CHAMBRES_MAX) return 'Toutes';
-  if (min === max) return `${min} chambre${min > 1 ? 's' : ''}`;
+  if (min === 0 && max >= CHAMBRES_MAX) return t('Toutes');
+  if (min === max) return min > 1 ? t('{{count}} chambres', { count: min }) : t('{{count}} chambre', { count: min });
   const borneHaute = max >= CHAMBRES_MAX ? `${CHAMBRES_MAX}+` : String(max);
   return t('{{min}} à {{borneHaute}} chambres', { min: min, borneHaute: borneHaute });
 }
@@ -406,6 +407,30 @@ export const Properties: React.FC = () => {
           // filtres de cette agence, sans avoir à les énumérer.
           await queryClient.invalidateQueries({ queryKey: ['properties', effectiveTenantId] });
         } catch (err: any) {
+          const blocage = blocageSuppression(err);
+          if (blocage) {
+            // Refus métier : le message liste les blocages ; l'archivage est
+            // l'alternative (le bien sort de la liste active et du quota LOTS).
+            confirm({
+              title: t('Suppression impossible'),
+              description: blocage,
+              okText: t('Archiver ce bien'),
+              onConfirm: async () => {
+                try {
+                  await updateStatus(effectiveTenantId as string, property.id, 'ARCHIVED');
+                  message.success(t('Bien archivé.'));
+                  await queryClient.invalidateQueries({ queryKey: ['properties', effectiveTenantId] });
+                } catch (archiveError: any) {
+                  message.error(
+                    archiveError?.response?.data?.message ||
+                      archiveError?.response?.data?.error ||
+                      t("L'archivage a échoué.")
+                  );
+                }
+              }
+            });
+            return;
+          }
           message.error(err?.response?.data?.error || t('La suppression a échoué.'));
         }
       }
@@ -428,7 +453,13 @@ export const Properties: React.FC = () => {
     <>
       <PageHeader
         title={t('Biens')}
-        subtitle={total > 0 ? `${total} bien${total > 1 ? 's' : ''} au portefeuille` : undefined}
+        subtitle={
+          total > 0
+            ? total > 1
+              ? t('{{count}} biens au portefeuille', { count: total })
+              : t('{{count}} bien au portefeuille', { count: total })
+            : undefined
+        }
         primaryAction={{
           label: t('Ajouter un bien'),
           icon: <PlusOutlined />,
@@ -661,17 +692,17 @@ export const Properties: React.FC = () => {
               )
             }
             fields={[
-              { label: 'Type', value: PROPERTY_TYPE_LABELS[property.propertyType] || property.propertyType },
+              { label: t('Type'), value: PROPERTY_TYPE_LABELS[property.propertyType] || property.propertyType },
               {
-                label: 'Transaction',
+                label: t('Transaction'),
                 value: property.transactionModes?.map(mode => TRANSACTION_MODE_LABELS[mode] || mode).join(', ') || '—'
               },
               {
-                label: 'Surface',
+                label: t('Surface'),
                 value:
                   [
                     property.rooms ? t('{{rooms}} pièces', { rooms: property.rooms }) : null,
-                    property.bedrooms ? `${property.bedrooms} ch.` : null,
+                    property.bedrooms ? t('{{count}} ch.', { count: property.bedrooms }) : null,
                     property.surfaceArea ? `${property.surfaceArea} m²` : null
                   ]
                     .filter(Boolean)
@@ -680,14 +711,14 @@ export const Properties: React.FC = () => {
             ]}
             onOpen={() => navigate(detailPath(property.id))}
             primaryAction={{
-              label: 'Modifier',
+              label: t('Modifier'),
               onClick: () => navigate(`${detailPath(property.id)}/edit`)
             }}
             secondaryActions={[
               { key: 'view', label: t('Voir la fiche'), onClick: () => navigate(detailPath(property.id)) },
               { key: 'newsletter', label: t('Diffuser en newsletter'), onClick: () => setNewsletterProperty(property) },
               { type: 'divider' },
-              { key: 'delete', label: 'Supprimer', danger: true, onClick: () => handleDelete(property) }
+              { key: 'delete', label: t('Supprimer'), danger: true, onClick: () => handleDelete(property) }
             ]}
           />
         )}

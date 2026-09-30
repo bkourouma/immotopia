@@ -17,7 +17,7 @@ import type {
 import { formatContextBlock, type ResolvedPageContext } from './page-context';
 import { isAbortError, LlmProviderError } from './providers';
 import { buildSystemPrompt } from './system-prompt';
-import { ALL_TOOLS, findTool, toLlmToolSpecs } from './tools/registry';
+import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/registry';
 
 /**
  * Orchestrateur du chat ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md,
@@ -47,6 +47,8 @@ export interface RunChatInput {
   permissions: ReadonlySet<string>;
   /** Outils autorisés pour cet utilisateur (`toolsForUser`), jamais plus. */
   tools: readonly CopilotToolDefinition[];
+  /** Fonctionnalités d'outils que l'abonnement de l'agence n'inclut pas (mode `enforce`) : un appel les concernant reçoit un refus MODULE_NOT_INCLUDED. */
+  unavailableFeatures?: ReadonlySet<ToolFeature>;
   /** Conversation déjà validée par `chatRequestSchema`. */
   messages: ChatRequest['messages'];
   /** Contexte d'écran déjà vérifié (page-context.ts), ou null. */
@@ -70,6 +72,13 @@ function errorResult(
   extra?: Record<string, unknown>
 ): ToolResultBlock {
   return { type: 'tool_result', toolUseId, isError: true, content: JSON.stringify({ error, message, ...extra }) };
+}
+
+/** Refus poli, traduit, d'un outil dont le module n'est pas dans l'abonnement. */
+export function moduleNotIncludedMessage(feature: ToolFeature): string {
+  return feature === 'RENTAL'
+    ? t("La gestion locative n'est pas comprise dans votre abonnement.")
+    : t("Cette fonctionnalité n'est pas comprise dans votre abonnement.");
 }
 
 /** Messages de la conversation : rôles alternés, premier message utilisateur (exigence des fournisseurs). */
@@ -110,7 +119,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
   const startedAt = Date.now();
   const maxRounds = env.AI_MAX_TOOL_ROUNDS;
 
-  const system = buildSystemPrompt(currentLanguage());
+  const system = buildSystemPrompt(currentLanguage(), input.tools);
   const messages = toLlmMessages(input.messages, formatContextBlock(input.pageContext, input.now?.()));
   const toolSpecs = toLlmToolSpecs(input.tools);
   const ctx: CopilotToolContext = {
@@ -254,6 +263,12 @@ async function runToolCall(
   // Hors du registre autorisé : refusé, jamais exécuté, audité.
   if (!tool) {
     if (known) emit({ type: 'tool_status', tool: call.name as CopilotToolDefinition['name'], status: 'forbidden' });
+    const definition = known ? ALL_TOOLS.find(candidate => candidate.name === call.name) : undefined;
+    if (definition && input.unavailableFeatures?.has(definition.feature)) {
+      // Module non souscrit (modèle qui hallucine un outil, réponse forgée) : refus poli, jamais exécuté.
+      audit(AuditActionKey.AI_TOOL_DENIED, { reason: 'MODULE_NOT_INCLUDED', feature: definition.feature });
+      return errorResult(call.id, 'MODULE_NOT_INCLUDED', moduleNotIncludedMessage(definition.feature));
+    }
     audit(AuditActionKey.AI_TOOL_DENIED, { reason: known ? 'NOT_PERMITTED' : 'UNKNOWN_TOOL' });
     return errorResult(call.id, 'TOOL_FORBIDDEN', "Cet outil n'est pas disponible.");
   }

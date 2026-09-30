@@ -40,6 +40,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels } from './labe
 import { ProviderInvoiceDrawer } from './ProviderInvoiceDrawer';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -220,19 +221,19 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       title: t('Montant TTC'),
       key: 'amountTTC',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amountTTC} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amountTTC} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Payé'),
       key: 'amountPaid',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amountPaid} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amountPaid} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Reste dû'),
       key: 'amountDue',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amountDue} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amountDue} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Pièce'),
@@ -265,19 +266,19 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       title: t('Total facturé'),
       key: 'totalInvoiced',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.totalInvoiced} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.totalInvoiced} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Total payé'),
       key: 'totalPaid',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.totalPaid} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.totalPaid} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Reste dû'),
       key: 'totalDue',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.totalDue} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.totalDue} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Dont en retard'),
@@ -285,7 +286,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       align: 'end',
       render: (_: unknown, row) => (
         <Text type={row.overdueDue > 0 ? 'danger' : undefined}>
-          <MoneyValue value={row.overdueDue} currency={row.currency} />
+          <MoneyValue value={row.overdueDue} currency={displayCurrency(row.currency)} />
         </Text>
       )
     }
@@ -505,7 +506,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
             />
           </Form.Item>
           <Form.Item label={t('Montant TTC (calculé)')}>
-            <MoneyValue value={createAmountHT + createVatAmount} currency={createCurrency || 'XOF'} />
+            <MoneyValue value={createAmountHT + createVatAmount} currency={displayCurrency(createCurrency || 'XOF')} />
           </Form.Item>
           <Form.Item label={t('Devise')} name="currency">
             <Input onChange={event => setCreateCurrency(event.target.value)} />

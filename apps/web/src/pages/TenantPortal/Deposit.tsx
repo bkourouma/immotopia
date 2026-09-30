@@ -250,7 +250,7 @@ export default function TenantDeposit() {
             scroll={{ x: 'max-content' }}
             columns={[
               {
-                title: 'Date',
+                title: t('Date'),
                 dataIndex: 'createdAt',
                 key: 'date',
                 render: (date: string) => (
@@ -263,13 +263,13 @@ export default function TenantDeposit() {
                   dayjs(a.createdAt).unix() - dayjs(b.createdAt).unix()
               },
               {
-                title: 'Type',
+                title: t('Type'),
                 dataIndex: 'type',
                 key: 'type',
                 render: (type: string) => getMovementTypeLabel(type)
               },
               {
-                title: 'Montant',
+                title: t('Montant'),
                 dataIndex: 'amount',
                 key: 'amount',
                 render: (amount: number, record: DepositMovement) => {
@@ -308,7 +308,7 @@ export default function TenantDeposit() {
                 render: (period: string | null, record: DepositMovement) => record?.installment?.period ?? period ?? '-'
               },
               {
-                title: 'Note',
+                title: t('Note'),
                 dataIndex: 'note',
                 key: 'note',
                 render: (note: string | null) => note || '-'

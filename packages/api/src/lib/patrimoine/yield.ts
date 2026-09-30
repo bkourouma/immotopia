@@ -184,6 +184,17 @@ export function projectYield(input: YieldInput, years: number, assumptions: Proj
   return projections;
 }
 
+/**
+ * Base du net-net projeté = le plus élevé du coût de revient et de la valeur
+ * projetée. Le brut et le net se rapportent à la valeur projetée ; diviser le
+ * net-net par le seul coût de revient (fixe) alors que la valeur a grandi
+ * donnait un net-net supérieur au net (BUG-070 : 14,12 % contre 7,78 %). Avec
+ * cette base, brut ≥ net ≥ net-net à tout horizon (charges et mensualités ≥ 0).
+ */
+function projectedNetNetBase(input: YieldInput, projectedValue: number): number {
+  return Math.max(input.costBasis, projectedValue);
+}
+
 export function projectedYieldAtHorizon(
   input: YieldInput,
   years: number,
@@ -199,7 +210,9 @@ export function projectedYieldAtHorizon(
     year: years,
     grossYield: safePercent(annualRent, value),
     netYield: safePercent(annualRent - annualExpenses, value),
-    netNetYield: known ? safePercent(annualRent - annualExpenses - loanPayments, input.costBasis) : null,
+    netNetYield: known
+      ? safePercent(annualRent - annualExpenses - loanPayments, projectedNetNetBase(input, value))
+      : null,
     latentCapitalGain: known ? value - input.costBasis : null
   };
 }

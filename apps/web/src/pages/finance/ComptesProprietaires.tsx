@@ -8,6 +8,7 @@ import type { OwnerAccountSummary } from '../../services/owner-accounts-service'
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatCard } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
+import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
 
 /**
@@ -38,6 +39,7 @@ function dateCourte(iso: string): string {
 export const ComptesProprietaires: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
+  const ownAssetsOnly = useOwnAssetsOnly(tenantId, true);
 
   const {
     data,
@@ -54,6 +56,18 @@ export const ComptesProprietaires: React.FC = () => {
 
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
+  }
+
+  if (ownAssetsOnly) {
+    return (
+      <StateBlock
+        variant="empty"
+        title={t('Comptes propriétaires non inclus')}
+        description={t(
+          'Les comptes et reversements de propriétaires concernent des biens de tiers : ils ne font pas partie du pack Patrimoine.'
+        )}
+      />
+    );
   }
 
   const comptes = data ?? [];
@@ -111,7 +125,11 @@ export const ComptesProprietaires: React.FC = () => {
     <>
       <PageHeader
         title={t('Comptes propriétaires')}
-        subtitle={comptes.length > 0 ? t('{{length}} propriétaire{{value}}', { length: comptes.length, value: comptes.length > 1 ? 's' : '' }) : undefined}
+        subtitle={
+          comptes.length > 0
+            ? t('{{length}} propriétaire{{value}}', { length: comptes.length, value: comptes.length > 1 ? 's' : '' })
+            : undefined
+        }
       />
 
       {data && (

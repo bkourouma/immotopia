@@ -50,8 +50,8 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
  * Accès aux fonctionnalités d'abonnement de l'agence (vague 2 des
  * abonnements), ou `null` quand le menu ne doit pas en tenir compte.
  *
- * Mêmes garde-fous que les menus coupés : rien n'est masqué avant la réponse,
- * et un échec réseau ne restreint pas. En plus :
+ * Un échec réseau ne restreint pas ; avant la réponse, la coquille ne montre
+ * que le socle (`useFeatureAccessState`, BUG-010). En plus :
  *
  *   - le menu ne suit l'abonnement que si le serveur l'applique
  *     (`SUBSCRIPTION_ENFORCEMENT=enforce`). En `warn`, l'API laisse tout
@@ -62,20 +62,48 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
  * `import()` de plus alourdirait la table de préchargement du chunk d'entrée.
  */
 export function useFeatureAccess(tenantId: string | null | undefined, enabled: boolean): FeatureAccessMap | null {
-  const [access, setAccess] = useState<FeatureAccessMap | null>(null);
+  return useFeatureAccessState(tenantId, enabled).access;
+}
+
+/** Droits du socle seul : ce que le menu montre pendant la lecture des droits. */
+export const CORE_ONLY_ACCESS: FeatureAccessMap = {
+  CORE: 'FULL',
+  CRM: 'NONE',
+  SALES: 'NONE',
+  RENTAL: 'NONE',
+  PATRIMOINE: 'NONE',
+  SYNDIC: 'NONE',
+  CONSTRUCTION: 'NONE'
+};
+
+/**
+ * Comme `useFeatureAccess`, avec l'état de lecture. `loading` est vrai tant
+ * que la réponse de CETTE agence n'est pas arrivée : le menu ne montre alors
+ * que le socle (jamais d'entrée d'un module peut-être non souscrit, BUG-010),
+ * alors que la garde de route, elle, n'attend que `access` (jamais de refus
+ * prononcé sur des droits inconnus). Un échec de lecture met fin à
+ * `loading` avec `access` nul : rien n'est restreint.
+ */
+export function useFeatureAccessState(
+  tenantId: string | null | undefined,
+  enabled: boolean
+): { access: FeatureAccessMap | null; loading: boolean } {
+  const [result, setResult] = useState<{ tenantId: string; access: FeatureAccessMap | null } | null>(null);
 
   useEffect(() => {
-    setAccess(null);
     if (!enabled || !tenantId) return;
     let cancelled = false;
 
     getMenuEntitlements(tenantId)
       .then(entitlements => {
         if (cancelled) return;
-        setAccess(entitlements?.enforcement === 'enforce' ? featureAccessFromModules(entitlements.moduleAccess) : null);
+        setResult({
+          tenantId,
+          access: entitlements?.enforcement === 'enforce' ? featureAccessFromModules(entitlements.moduleAccess) : null
+        });
       })
       .catch(() => {
-        if (!cancelled) setAccess(null);
+        if (!cancelled) setResult({ tenantId, access: null });
       });
 
     return () => {
@@ -83,7 +111,9 @@ export function useFeatureAccess(tenantId: string | null | undefined, enabled: b
     };
   }, [tenantId, enabled]);
 
-  return access;
+  const active = enabled && Boolean(tenantId);
+  const current = active && result?.tenantId === tenantId ? result : null;
+  return { access: current?.access ?? null, loading: active && !current };
 }
 
 /**

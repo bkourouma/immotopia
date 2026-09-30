@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { t } from '../../i18n';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
 import {
@@ -108,7 +109,7 @@ async function loadIssuanceContextTx(
       }
     }
   });
-  if (!syndicate) throw new NotFoundError('Copropriete introuvable ou inaccessible.');
+  if (!syndicate) throw new NotFoundError(t('Copropriété introuvable ou inaccessible.'));
 
   const lot = await tx.syndicateLot.findFirst({
     where: { id: lotId, syndicateId },
@@ -120,7 +121,7 @@ async function loadIssuanceContextTx(
       property: { select: { title: true } }
     }
   });
-  if (!lot) throw new NotFoundError('Lot introuvable ou inaccessible pour cette copropriete.');
+  if (!lot) throw new NotFoundError(t('Lot introuvable ou inaccessible pour cette copropriété.'));
 
   // Émetteur et clés de ses images, figés ensemble (même lecture).
   let issuer: SnapshotIssuer;

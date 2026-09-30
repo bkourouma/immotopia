@@ -84,3 +84,21 @@ export function isJournalEntryBalanced(lines: Array<{ debit?: number | null; cre
   // comparer, sans que cela puisse rattraper un ecart d'un centime.
   return roundMoney(totals.debit) === roundMoney(totals.credit);
 }
+
+/**
+ * Taux mensuel maximal d'une penalite de retard (en %). Plafond de saisie : au-dela,
+ * l'erreur de frappe est bien plus probable qu'une intention (BUG-053).
+ */
+export const MAX_MONTHLY_PENALTY_RATE = 10;
+
+/**
+ * Penalite de retard : le taux est MENSUEL et proratise au nombre de jours de
+ * retard (mois de 30 jours) — reste du × taux % × jours / 30 — puis plafonnee
+ * au reste du : une penalite ne depasse jamais la dette qu'elle sanctionne.
+ * Au moins un jour de retard est compte. Exemple : 300 000 a 10 % pendant
+ * 15 jours = 15 000.
+ */
+export function computeLatePenalty(outstanding: number, monthlyRatePercent: number, daysLate: number): number {
+  const raw = roundMoney((outstanding * monthlyRatePercent * Math.max(daysLate, 1)) / 3000);
+  return Math.min(raw, roundMoney(outstanding));
+}

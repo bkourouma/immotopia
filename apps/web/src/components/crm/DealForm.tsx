@@ -1,3 +1,4 @@
+import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Select, Button, Checkbox, InputNumber, Row, Col, Card, Alert, Space, Typography } from 'antd';
 import { LocationSelector } from '../ui/location-selector';
@@ -360,7 +361,7 @@ export const DealForm: React.FC<DealFormProps> = ({
                       optionLabelProp="label"
                     >
                       {contacts.map(contact => {
-                        const label = `${contact.firstName} ${contact.lastName} ${contact.email ? `(${contact.email})` : ''}`;
+                        const label = contactDisplayNameWithEmail(contact);
                         return (
                           <Select.Option key={contact.id} value={contact.id} label={label}>
                             {label}

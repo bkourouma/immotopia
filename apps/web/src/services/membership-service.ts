@@ -63,12 +63,48 @@ export interface MemberResponse {
 }
 
 // List members (collaborators) for a tenant
-export async function listMembers(
-  tenantId: string,
-  filters?: MembershipFilters
-): Promise<MemberListResponse> {
+export async function listMembers(tenantId: string, filters?: MembershipFilters): Promise<MemberListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/users`, { params: filters });
   return response.data;
+}
+
+/**
+ * Membres ASSIGNABLES (listes deroulantes « assigne a », negociateur…) : route
+ * minimale sans e-mail, ouverte aux roles qui n'ont pas USERS_VIEW. Renvoie la
+ * meme forme que `listMembers` pour les ecrans existants ; `user.email` est vide.
+ */
+export async function listAssignableMembers(tenantId: string): Promise<MemberListResponse> {
+  const response = await apiClient.get(`/tenants/${tenantId}/members/assignable`);
+  const raw: Array<{ userId: string; displayName: string; roles: Array<{ key: string; name: string }> }> =
+    response.data?.data?.members ?? [];
+  const members: Member[] = raw.map(m => ({
+    id: m.userId,
+    userId: m.userId,
+    tenantId,
+    status: 'ACTIVE',
+    createdAt: '',
+    updatedAt: '',
+    user: {
+      id: m.userId,
+      email: '',
+      fullName: m.displayName,
+      avatarUrl: null,
+      isActive: true,
+      emailVerified: true,
+      lastLoginAt: null
+    },
+    roles: (m.roles ?? []).map(r => ({
+      id: r.key,
+      key: r.key,
+      name: r.name,
+      description: null,
+      scope: 'TENANT' as const
+    }))
+  }));
+  return {
+    success: Boolean(response.data?.success),
+    data: { members, pagination: { page: 1, limit: members.length, total: members.length, totalPages: 1 } }
+  };
 }
 
 // Get member by ID
@@ -117,8 +153,3 @@ export async function revokeMemberSessions(
   const response = await apiClient.post(`/tenants/${tenantId}/users/${userId}/revoke-sessions`);
   return response.data;
 }
-
-
-
-
-

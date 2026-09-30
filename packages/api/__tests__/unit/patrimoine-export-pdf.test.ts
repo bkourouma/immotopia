@@ -229,3 +229,45 @@ describe('buildPatrimoinePdf', () => {
     }
   });
 });
+
+describe('buildPatrimoinePdf — texte dessiné (BUG-2026-09-30-034)', () => {
+  async function drawnTexts(data: PatrimoineExportData): Promise<string[]> {
+    const original = PDFPage.prototype.drawText;
+    const texts: string[] = [];
+    const spy = jest.spyOn(PDFPage.prototype, 'drawText').mockImplementation(function (
+      this: PDFPage,
+      text: string,
+      options?: Parameters<typeof original>[1]
+    ) {
+      texts.push(text);
+      return original.call(this, text, options);
+    });
+    try {
+      await buildPatrimoinePdf(TENANT_ID, data);
+    } finally {
+      spy.mockRestore();
+    }
+    return texts;
+  }
+
+  it('garde les accents des saisies, même décomposés (« o » + accent combinant)', async () => {
+    const decomposed = 'Entrepôt Yopougon';
+    const texts = await drawnTexts(buildData({ properties: [buildProperty({ title: decomposed })] }));
+    expect(texts.some(t => t.includes('Entrepôt Yopougon'))).toBe(true);
+    expect(texts.some(t => t.includes('Entrep?t') || t.includes('Entrepo?t'))).toBe(false);
+  });
+
+  it('écrit en entier un montant de 120 000 000 dans le tableau de performance', async () => {
+    const property = buildProperty({
+      internalReference: 'PROP-20260930-8BD8-0009',
+      title: 'Villa Riviera Palmeraie (PRO)'
+    });
+    property.yield.currentValue = 120_000_000;
+    property.yield.annualRent = 5_400_000;
+    const texts = await drawnTexts(buildData({ properties: [property] }));
+    expect(texts).toContain('120 000 000,00 XOF');
+    expect(texts).toContain('5 400 000,00 XOF');
+    expect(texts).toContain('PROP-20260930-8BD8-0009 — Villa Riviera Palmeraie (PRO)');
+    expect(texts.filter(t => t.endsWith('...'))).toEqual([]);
+  });
+});

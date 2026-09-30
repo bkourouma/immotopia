@@ -4,9 +4,14 @@ import {
   generateDocument,
   updateDocumentStatus,
   getDocumentById,
-  listDocuments
+  listDocuments,
+  toRentalDocumentDto
 } from '../services/rental-document-service';
 import { RentalDocumentType, RentalDocumentStatus } from '@prisma/client';
+import { parsePagination } from '../utils/pagination-helper';
+import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 
 const generateDocumentSchema = z.object({
   type: z.enum([
@@ -33,190 +38,115 @@ const updateDocumentStatusSchema = z.object({
  * Generate a document
  * POST /tenants/:tenantId/rental/documents
  */
-export async function generateDocumentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.tenantContext?.tenantId;
-    const actorUserId = req.user?.userId;
+export const generateDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    // Validate request body
-    const validatedData = generateDocumentSchema.parse(req.body);
-
-    const document = await generateDocument(
-      tenantId,
-      validatedData.type as RentalDocumentType,
-      validatedData.leaseId,
-      validatedData.installmentId,
-      validatedData.paymentId,
-      validatedData.title,
-      validatedData.description,
-      actorUserId
-    );
-
-    res.status(201).json({
-      success: true,
-      data: document,
-      message: `Document ${document.document_number} généré avec succès`
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la génération du document'
-    });
+  if (!actorUserId) {
+    throw new UnauthorizedError('Non authentifié');
   }
-}
+
+  const validatedData = generateDocumentSchema.parse(req.body);
+
+  const document = await generateDocument(
+    tenantId,
+    validatedData.type as RentalDocumentType,
+    validatedData.leaseId,
+    validatedData.installmentId,
+    validatedData.paymentId,
+    validatedData.title,
+    validatedData.description,
+    actorUserId
+  );
+
+  res.status(201).json({
+    success: true,
+    data: toRentalDocumentDto(document),
+    message: t('Document {{number}} généré avec succès', { number: document.document_number ?? '' })
+  });
+});
 
 /**
  * Get document by ID
  * GET /tenants/:tenantId/rental/documents/:documentId
  */
-export async function getDocumentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.tenantContext?.tenantId;
-    const { documentId } = req.params;
+export const getDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { documentId } = req.params;
 
-    const document = await getDocumentById(tenantId, documentId);
+  const document = await getDocumentById(tenantId, documentId);
 
-    if (!document) {
-      res.status(404).json({
-        success: false,
-        message: 'Document non trouvé'
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: document
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération du document'
-    });
+  if (!document) {
+    throw new NotFoundError('Document non trouvé');
   }
-}
+
+  res.json({
+    success: true,
+    data: toRentalDocumentDto(document)
+  });
+});
 
 /**
  * List documents
  * GET /tenants/:tenantId/rental/documents
  */
-export async function listDocumentsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.tenantContext?.tenantId;
-    const { type, status, leaseId, installmentId, paymentId } = req.query;
+export const listDocumentsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { type, status, leaseId, installmentId, paymentId } = req.query;
 
-    const filters: any = {};
-    if (type) {
-      filters.type = type as RentalDocumentType;
-    }
-    if (status) {
-      filters.status = status as RentalDocumentStatus;
-    }
-    if (leaseId) {
-      filters.leaseId = leaseId as string;
-    }
-    if (installmentId) {
-      filters.installmentId = installmentId as string;
-    }
-    if (paymentId) {
-      filters.paymentId = paymentId as string;
-    }
-
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-
-    const result = await listDocuments(tenantId, filters, { page, limit });
-
-    res.json({
-      success: true,
-      ...result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des documents'
-    });
+  const filters: any = {};
+  if (type) {
+    filters.type = type as RentalDocumentType;
   }
-}
+  if (status) {
+    filters.status = status as RentalDocumentStatus;
+  }
+  if (leaseId) {
+    filters.leaseId = leaseId as string;
+  }
+  if (installmentId) {
+    filters.installmentId = installmentId as string;
+  }
+  if (paymentId) {
+    filters.paymentId = paymentId as string;
+  }
+
+  // Un 400 de parsePagination reste un 400 (plus converti en 500).
+  const { page, limit } = parsePagination(req.query);
+
+  const result = await listDocuments(tenantId, filters, { page, limit });
+
+  res.json({
+    success: true,
+    ...result,
+    data: result.data.map(toRentalDocumentDto)
+  });
+});
 
 /**
  * Update document status
  * PATCH /tenants/:tenantId/rental/documents/:documentId
  */
-export async function updateDocumentStatusHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.tenantContext?.tenantId;
-    const { documentId } = req.params;
-    const actorUserId = req.user?.userId;
+export const updateDocumentStatusHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { documentId } = req.params;
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    // Validate request body
-    const validatedData = updateDocumentStatusSchema.parse(req.body);
-
-    const document = await updateDocumentStatus(
-      tenantId,
-      documentId,
-      validatedData.status as RentalDocumentStatus,
-      actorUserId
-    );
-
-    res.json({
-      success: true,
-      data: document
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la mise à jour du statut du document'
-    });
+  if (!actorUserId) {
+    throw new UnauthorizedError('Non authentifié');
   }
-}
+
+  const validatedData = updateDocumentStatusSchema.parse(req.body);
+
+  const document = await updateDocumentStatus(
+    tenantId,
+    documentId,
+    validatedData.status as RentalDocumentStatus,
+    actorUserId
+  );
+
+  res.json({
+    success: true,
+    data: toRentalDocumentDto(document)
+  });
+});

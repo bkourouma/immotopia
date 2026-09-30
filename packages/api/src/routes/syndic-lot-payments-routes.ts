@@ -15,7 +15,7 @@ import {
  * Paiements par lot, avance et suivi mensuel des charges (lot S2).
  *
  * Memes permissions que les appels de charges (`syndic-routes.ts`) : lecture
- * `PROPERTIES_VIEW`, paiement `PROPERTIES_EDIT` (l'apercu aussi : il n'a de
+ * `SYNDIC_VIEW`, paiement `SYNDIC_EDIT` (l'apercu aussi : il n'a de
  * sens que pour qui peut enregistrer le paiement). Classees SYNDIC par le
  * prefixe `/syndics` de `lib/subscription/route-features.ts`.
  *
@@ -25,8 +25,8 @@ import {
 const router = Router();
 
 const guards: RequestHandler[] = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation];
-const canView = requireAnyPropertyPermission(['PROPERTIES_VIEW']);
-const canEdit = requirePropertyPermission('PROPERTIES_EDIT');
+const canView = requireAnyPropertyPermission(['SYNDIC_VIEW']);
+const canEdit = requirePropertyPermission('SYNDIC_EDIT');
 
 const LOT = '/tenants/:tenantId/syndics/:syndicId/lots/:lotId';
 

@@ -422,6 +422,8 @@ export interface RentalPayment {
     id: string;
     lease_number: string;
     property?: { id: string; title?: string | null; address?: string | null; internalReference?: string | null } | null;
+    /** Locataire principal du bail : repli d'affichage quand le paiement n'a pas de locataire enregistré. */
+    primaryRenter?: { id: string; user?: { fullName?: string | null; email?: string | null } | null } | null;
   } | null;
   renterClient?: { id: string; user?: { fullName?: string | null; email?: string | null } | null } | null;
   /** Paiement en ligne (Lot 7) : `null` si ce paiement n'a pas été initié depuis le portail. */
@@ -863,7 +865,8 @@ export async function generateDocument(
 
   // Map RentalDocumentType to DocumentType for new API
   const docTypeMap: Record<RentalDocumentType, string> = {
-    LEASE_CONTRACT: 'LEASE_HABITATION', // Default to habitation, can be overridden
+    // L'API choisit le modele (habitation ou commercial) d'apres le type du bien.
+    LEASE_CONTRACT: 'LEASE_CONTRACT',
     LEASE_ADDENDUM: 'LEASE_HABITATION',
     RENT_RECEIPT: 'RENT_RECEIPT',
     RENT_QUITTANCE: 'RENT_RECEIPT',
@@ -875,7 +878,9 @@ export async function generateDocument(
   const docType = docTypeMap[data.type] || 'RENT_RECEIPT';
 
   // Determine sourceKey based on document type
-  const sourceKey = data.leaseId || data.paymentId || '';
+  // Un reçu porte sur un paiement (à défaut, l'API prend le dernier paiement encaissé du bail).
+  const sourceKey =
+    (docType === 'RENT_RECEIPT' ? data.paymentId || data.leaseId : data.leaseId || data.paymentId) || '';
   if (!sourceKey) {
     console.error('❌ [rental-service] generateDocument: Missing sourceKey', { data });
     throw new Error('leaseId or paymentId is required');
@@ -1052,5 +1057,8 @@ export async function downloadPenaltyJustification(
     `/tenants/${tenantId}/rental/penalties/${encodeURIComponent(penaltyId)}/justification`,
     { responseType: 'blob' }
   );
-  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }

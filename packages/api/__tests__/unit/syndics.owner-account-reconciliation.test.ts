@@ -30,7 +30,8 @@ jest.mock('@prisma/client', () => {
       findMany: jest.fn().mockResolvedValue([])
     },
     syndicateLot: {
-      findFirst: jest.fn()
+      findFirst: jest.fn(),
+      findMany: jest.fn()
     },
     crmContact: {
       findFirst: jest.fn().mockResolvedValue(null)
@@ -92,6 +93,7 @@ describe('Ledger du compte de lot — appels de campagne et rapprochement (modul
       currency: 'XOF',
       allocations: [{ lotId: LOT_ID, totalAllocated: 100000 }]
     });
+    mockTx.syndicateLot.findMany.mockResolvedValue([{ id: LOT_ID, generalShares: 100 }]);
     mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
     mockTx.chargeCall.create.mockResolvedValue({ id: 'charge-1', lotId: LOT_ID });
     mockTx.syndicateLot.findFirst.mockResolvedValue({

@@ -43,6 +43,7 @@ import {
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
+import { computeLatePenaltyPreview, MAX_MONTHLY_PENALTY_RATE } from '../../utils/syndic-penalty';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title, Text } = Typography;
@@ -105,6 +106,19 @@ export const SyndicRecovery: React.FC = () => {
     }
     void loadData();
   }, [effectiveTenantId, syndicId]);
+
+  // Aperçu de la pénalité avant validation : même règle que l'API (taux mensuel au prorata des jours).
+  const buildPenaltyPreview = (chargeCallId?: string, rate?: number, daysLate?: number) => {
+    const item = dashboard.items.find(candidate => candidate.chargeCallId === chargeCallId);
+    if (!item || !rate) return null;
+    const days = Math.max(daysLate ?? item.daysLate, 1);
+    return {
+      outstanding: item.outstanding,
+      rate,
+      days,
+      amount: computeLatePenaltyPreview(item.outstanding, rate, days)
+    };
+  };
 
   const chargeOptions = useMemo(
     () =>
@@ -292,7 +306,7 @@ export const SyndicRecovery: React.FC = () => {
               <Col xs={24} md={12}>
                 <StatCard
                   label={t('Lots en retard')}
-                  value={dashboard.totals.overdueCount}
+                  value={dashboard.totals.overdueLotCount ?? dashboard.totals.overdueCount}
                   tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
                 />
               </Col>
@@ -327,7 +341,7 @@ export const SyndicRecovery: React.FC = () => {
                   },
                   { title: t('Jours retard'), dataIndex: 'daysLate' },
                   {
-                    title: 'Montant',
+                    title: t('Montant'),
                     dataIndex: 'amount',
                     align: 'end',
                     render: (value: number) => <MoneyValue value={value} />
@@ -339,7 +353,7 @@ export const SyndicRecovery: React.FC = () => {
                     render: (value: number) => <MoneyValue value={value} />
                   },
                   {
-                    title: 'Reste',
+                    title: t('Reste'),
                     dataIndex: 'outstanding',
                     align: 'end',
                     render: (value: number) => <MoneyValue value={value} />
@@ -355,14 +369,14 @@ export const SyndicRecovery: React.FC = () => {
                 dataSource={reminders}
                 pagination={{ pageSize: 10 }}
                 columns={[
-                  { title: 'Niveau', dataIndex: 'reminderLevel' },
-                  { title: 'Canal', dataIndex: 'channel' },
+                  { title: t('Niveau'), dataIndex: 'reminderLevel' },
+                  { title: t('Canal'), dataIndex: 'channel' },
                   {
-                    title: 'Statut',
+                    title: t('Statut'),
                     dataIndex: 'status',
                     render: (value: ReminderStatus) => <Tag>{reminderStatusLabels[value] ?? value}</Tag>
                   },
-                  { title: 'Lot', render: (_, item) => formatLotLabel(item.lot, item.lotId) },
+                  { title: t('Lot'), render: (_, item) => formatLotLabel(item.lot, item.lotId) },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   {
                     title: t('Envoyé le'),
@@ -380,22 +394,22 @@ export const SyndicRecovery: React.FC = () => {
                 dataSource={penalties}
                 pagination={{ pageSize: 10 }}
                 columns={[
-                  { title: 'Lot', render: (_, item) => formatLotLabel(item.lot, item.lotId) },
+                  { title: t('Lot'), render: (_, item) => formatLotLabel(item.lot, item.lotId) },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   { title: t('Jours retard'), dataIndex: 'daysLate' },
-                  { title: 'Taux', dataIndex: 'penaltyRate', render: (value: number) => `${value}%` },
+                  { title: t('Taux'), dataIndex: 'penaltyRate', render: (value: number) => `${value}%` },
                   {
-                    title: 'Montant',
+                    title: t('Montant'),
                     dataIndex: 'penaltyAmount',
                     align: 'end',
                     render: (value: number) => <MoneyValue value={value} />
                   },
                   {
-                    title: 'Statut',
+                    title: t('Statut'),
                     render: (_, item) => (item.waived ? <Tag color="orange">REMIS</Tag> : <Tag color="red">ACTIF</Tag>)
                   },
                   {
-                    title: 'Action',
+                    title: t('Action'),
                     render: (_, item) =>
                       item.waived ? (
                         <Text type="secondary">-</Text>
@@ -422,9 +436,9 @@ export const SyndicRecovery: React.FC = () => {
                 dataSource={schedules}
                 pagination={{ pageSize: 10 }}
                 columns={[
-                  { title: 'Lot', render: (_, item) => formatLotLabel(item.lot, item.lotId) },
+                  { title: t('Lot'), render: (_, item) => formatLotLabel(item.lot, item.lotId) },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
-                  { title: 'Appel', render: (_, item) => item.chargeCall?.period || '-' },
+                  { title: t('Appel'), render: (_, item) => item.chargeCall?.period || '-' },
                   {
                     title: t('Montant total'),
                     dataIndex: 'totalAmount',
@@ -432,7 +446,7 @@ export const SyndicRecovery: React.FC = () => {
                     render: (value: number | string) => <MoneyValue value={value} />
                   },
                   {
-                    title: 'Accord',
+                    title: t('Accord'),
                     dataIndex: 'agreedAt',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
@@ -443,7 +457,7 @@ export const SyndicRecovery: React.FC = () => {
                         .map(inst => `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${formatMoney(inst.amount)})`)
                         .join(' | ') || '-'
                   },
-                  { title: 'Statut', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> }
+                  { title: t('Statut'), dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> }
                 ]}
               />
             </Card>
@@ -503,11 +517,15 @@ export const SyndicRecovery: React.FC = () => {
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label={t('Taux (%)')}
+                label={t('Taux mensuel (%)')}
                 name="penaltyRate"
+                tooltip={t(
+                  'Taux par mois de retard, appliqué au prorata des jours (mois de 30 jours) sur le reste dû. Maximum {{max}} % par mois.',
+                  { max: MAX_MONTHLY_PENALTY_RATE }
+                )}
                 rules={[{ required: true, message: t('Le taux est obligatoire') }]}
               >
-                <InputNumber min={0.01} max={100} style={{ width: '100%' }} />
+                <InputNumber min={0.01} max={MAX_MONTHLY_PENALTY_RATE} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -516,6 +534,30 @@ export const SyndicRecovery: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const preview = buildPenaltyPreview(
+                getFieldValue('chargeCallId'),
+                getFieldValue('penaltyRate'),
+                getFieldValue('daysLate')
+              );
+              return preview ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t('Pénalité estimée : {{amount}}', { amount: formatMoney(preview.amount) })}
+                  description={t(
+                    '{{outstanding}} (reste dû) × {{rate}} % × {{days}} jours ÷ 30 — plafonnée au reste dû.',
+                    {
+                      outstanding: formatMoney(preview.outstanding),
+                      rate: preview.rate,
+                      days: preview.days
+                    }
+                  )}
+                />
+              ) : null;
+            }}
+          </Form.Item>
         </Form>
       </Modal>
 

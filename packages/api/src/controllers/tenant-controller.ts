@@ -28,6 +28,7 @@ import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { httpUrl } from '../lib/safe-url';
+import { parsePagination } from '../utils/pagination-helper';
 
 /**
  * Register as a client of a tenant
@@ -358,8 +359,7 @@ export async function listTenantsHandler(req: Request, res: Response): Promise<v
       plan: req.query.plan as string,
       module: req.query.module as string,
       search: req.query.search as string,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20
+      ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
     };
 
     const result = await listTenantsService(filters);
