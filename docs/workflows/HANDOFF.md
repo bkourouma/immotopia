@@ -50,10 +50,10 @@ Pièges et décisions :
 
 ---
 
-## Branche `feat/infra-staging-prod` — 2026-09-29
+## Pilote — environnements staging et production (PR #77 fusionnée) — 2026-09-30
 
-**État :** prêt à relire (PR ouverte, base `main`) ; aucun déploiement fait
-**Dernier commit :** voir `git log` de la branche (worktree `.claude/worktrees/env-staging-prod`)
+**État :** PR #77 fusionnée dans `main` (`23de8301`, CI verte, le lot 4/4 des tests web avait échoué une fois sur un test du copilote instable, réussi à la relance) ; **aucun déploiement fait** ; étape 0 du guide faite sur le serveur en lecture seule
+**Dernier commit :** `23de8301` (fusion de #77)
 
 Fait :
 
@@ -94,6 +94,11 @@ Fait :
 
 Reste à faire (chaque action serveur exige un « oui » explicite) :
 
+- **Prochaine action (chaque commande avec un « oui » explicite) :** sur le serveur,
+  renommer `/home/deployer/immotopia-saas` en `immotopia-saas.copie-avant-git` puis
+  cloner le dépôt public à sa place (DEPLOIEMENT.md, étape 0) ; ensuite étapes 0 bis
+  à 9. Session à part, indépendante : correctif de l'écriture sous `/app/assets`
+  (baux et quittances DOCX), à livrer avant de promettre ces documents.
 - Étape 0 faite en lecture seule le 2026-09-30 : DNS, ports 3020/5437 libres et
   disque (61 Go libres) OK ; **`/home/deployer/immotopia-saas` n'est pas un dépôt git**
   (copie de fichiers avec `.deployed-revision`) : le cloner (dépôt public, HTTPS
