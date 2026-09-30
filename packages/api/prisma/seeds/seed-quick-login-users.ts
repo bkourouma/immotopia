@@ -1,6 +1,11 @@
 import { PrismaClient, GlobalRole, MembershipStatus, TenantType, ClientType } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
+import { assertNotProduction } from './assert-not-production';
+
+// Garde en tête : avant toute requête base (seed de développement, jamais en production).
+assertNotProduction('seed-quick-login-users.ts');
+
 const prisma = new PrismaClient();
 
 type QuickUser = {
@@ -40,11 +45,7 @@ async function ensureTenant(name: string, slug: string) {
   });
 }
 
-async function assignMembershipAndRole(
-  userId: string,
-  tenantId: string,
-  roleKey: 'TENANT_ADMIN' | 'TENANT_AGENT'
-) {
+async function assignMembershipAndRole(userId: string, tenantId: string, roleKey: 'TENANT_ADMIN' | 'TENANT_AGENT') {
   await prisma.membership.upsert({
     where: {
       userId_tenantId: { userId, tenantId }
@@ -208,7 +209,7 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('Error while seeding quick-login users:', e);
     process.exit(1);
   })

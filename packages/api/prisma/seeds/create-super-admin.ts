@@ -1,6 +1,11 @@
 import { PrismaClient, GlobalRole } from '@prisma/client';
 import { hashPassword } from '../../src/utils/password-utils';
 
+import { assertNotProduction } from './assert-not-production';
+
+// Garde en tête : mot de passe par défaut et écrasement de compte, jamais en production.
+assertNotProduction('create-super-admin.ts');
+
 const prisma = new PrismaClient();
 
 async function createSuperAdmin() {
@@ -27,7 +32,7 @@ async function createSuperAdmin() {
       fullName,
       globalRole: GlobalRole.SUPER_ADMIN,
       emailVerified: true,
-      isActive: true,
+      isActive: true
     },
     create: {
       email,
@@ -35,13 +40,13 @@ async function createSuperAdmin() {
       fullName,
       globalRole: GlobalRole.SUPER_ADMIN,
       emailVerified: true,
-      isActive: true,
-    },
+      isActive: true
+    }
   });
 
   // Get or create PLATFORM_SUPER_ADMIN role
   const platformSuperAdminRole = await prisma.role.findUnique({
-    where: { key: 'PLATFORM_SUPER_ADMIN' },
+    where: { key: 'PLATFORM_SUPER_ADMIN' }
   });
 
   if (platformSuperAdminRole) {
@@ -51,8 +56,8 @@ async function createSuperAdmin() {
       where: {
         userId: superAdmin.id,
         roleId: platformSuperAdminRole.id,
-        tenantId: null,
-      },
+        tenantId: null
+      }
     });
 
     if (!existingUserRole) {
@@ -60,8 +65,8 @@ async function createSuperAdmin() {
         data: {
           userId: superAdmin.id,
           roleId: platformSuperAdminRole.id,
-          tenantId: null, // Platform roles have null tenantId
-        },
+          tenantId: null // Platform roles have null tenantId
+        }
       });
       console.log('  ✓ Assigned PLATFORM_SUPER_ADMIN role');
     } else {
@@ -87,11 +92,10 @@ async function createSuperAdmin() {
 }
 
 createSuperAdmin()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Error creating SUPER_ADMIN:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-
