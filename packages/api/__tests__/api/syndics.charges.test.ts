@@ -94,6 +94,23 @@ jest.mock('../../src/lib/syndics/queries', () => ({
       });
     }
   ),
+  summarizeChargeCallsBySyndicate: jest.fn(
+    async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string }) => {
+      const rows = Array.from(store.charges.values()).filter(
+        charge =>
+          charge.tenantId === tenantId &&
+          charge.syndicateId === syndicateId &&
+          (!filters?.period || charge.period === filters.period) &&
+          (!filters?.status || charge.status === filters.status)
+      );
+      return {
+        totalCount: rows.length,
+        totalAmount: rows.reduce((sum, charge) => sum + charge.amount, 0),
+        pendingCount: rows.filter(charge => charge.status === 'PENDING' || charge.status === 'PARTIAL').length,
+        overdueCount: rows.filter(charge => charge.status === 'OVERDUE').length
+      };
+    }
+  ),
   createChargeCallAndUpdateStatus: jest.fn(async (tenantId: string, data: any) => {
     const id = nextUuidFromSeq(store.seq++);
     const created: Charge = {
@@ -218,6 +235,35 @@ describe('Syndics charges routes', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.data).toHaveLength(1);
     expect(response.body.data[0].status).toBe('OVERDUE');
+  });
+
+  it('returns a summary computed on all filtered calls, not on the returned page (BUG-047)', async () => {
+    for (const suffix of ['a', 'b']) {
+      store.charges.set(`extra-${suffix}`, {
+        id: `extra-${suffix}`,
+        tenantId: TENANT_ID,
+        syndicateId: SYNDIC_ID,
+        lotId: LOT_ID,
+        period: '2026-Q2',
+        amount: 25000,
+        currency: 'XOF',
+        dueDate: new Date('2026-12-10T00:00:00.000Z').toISOString(),
+        status: 'PENDING',
+        payments: []
+      });
+    }
+    const all = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?limit=1`);
+    expect(all.status).toBe(200);
+    // 3 appels de l'agence (l'appel de l'autre agence n'entre pas), malgre limit=1.
+    expect(all.body.summary.totalCount).toBe(3);
+    expect(all.body.summary.totalAmount).toBe(100000);
+
+    const overdue = await request(app).get(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?status=OVERDUE&limit=1`
+    );
+    expect(overdue.body.summary.totalCount).toBe(1);
+    expect(overdue.body.summary.overdueCount).toBe(1);
+    expect(overdue.body.summary.totalAmount).toBe(overdue.body.data[0].amount);
   });
 
   it('forwards page and limit query params to the service so the full list can be paged through', async () => {

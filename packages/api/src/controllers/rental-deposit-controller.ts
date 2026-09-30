@@ -5,7 +5,8 @@ import {
   createDeposit,
   getDeposit,
   createDepositMovement,
-  listDepositMovements
+  listDepositMovements,
+  computeDepositBalance
 } from '../services/rental-deposit-service';
 import { RentalDepositMovementType } from '@prisma/client';
 
@@ -41,9 +42,7 @@ export async function getDepositHandler(req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Calculate current_balance (collected - refunded - forfeited)
-    const currentBalance =
-      Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
+    const currentBalance = computeDepositBalance(deposit);
 
     res.json({
       success: true,
@@ -88,9 +87,7 @@ export async function createDepositHandler(req: Request, res: Response): Promise
 
     const deposit = await createDeposit(tenantId, leaseId, actorUserId);
 
-    // Calculate current_balance (collected - refunded - forfeited)
-    const currentBalance =
-      Number(deposit.collected_amount) - Number(deposit.refunded_amount) - Number(deposit.forfeited_amount);
+    const currentBalance = computeDepositBalance(deposit);
 
     res.status(201).json({
       success: true,

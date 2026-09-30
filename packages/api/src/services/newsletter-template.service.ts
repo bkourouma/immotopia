@@ -1,4 +1,7 @@
 import { prisma } from '../utils/database';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+import { sanitizeHtml } from '../utils/sanitize-html';
 
 /**
  * NewsletterTemplateService - CRUD des templates newsletter
@@ -14,10 +17,10 @@ export async function createTemplate(tenantId: string, data: CreateTemplateInput
   const existing = await prisma.newsletterTemplate.findUnique({
     where: { tenantId_name: { tenantId, name: data.name } }
   });
-  if (existing) throw new Error('Un template avec ce nom existe déjà.');
+  if (existing) throw new ConflictError(t('Un template avec ce nom existe déjà.'));
 
   return prisma.newsletterTemplate.create({
-    data: { tenantId, name: data.name, html: data.html }
+    data: { tenantId, name: data.name, html: sanitizeHtml(data.html) }
   });
 }
 
@@ -36,32 +39,32 @@ export async function listTemplates(tenantId: string) {
 
 export async function updateTemplate(tenantId: string, templateId: string, data: { name?: string; html?: string }) {
   const tpl = await prisma.newsletterTemplate.findFirst({ where: { id: templateId, tenantId } });
-  if (!tpl) throw new Error('Template non trouvé.');
+  if (!tpl) throw new NotFoundError(t('Template non trouvé.'));
 
   if (data.name && data.name !== tpl.name) {
     const existing = await prisma.newsletterTemplate.findUnique({
       where: { tenantId_name: { tenantId, name: data.name } }
     });
-    if (existing) throw new Error('Un template avec ce nom existe déjà.');
+    if (existing) throw new ConflictError(t('Un template avec ce nom existe déjà.'));
   }
 
   return prisma.newsletterTemplate.update({
     where: { id: templateId, tenantId },
     data: {
       ...(data.name != null && { name: data.name }),
-      ...(data.html != null && { html: data.html })
+      ...(data.html != null && { html: sanitizeHtml(data.html) })
     }
   });
 }
 
 export async function deleteTemplate(tenantId: string, templateId: string) {
   const tpl = await prisma.newsletterTemplate.findFirst({ where: { id: templateId, tenantId } });
-  if (!tpl) throw new Error('Template non trouvé.');
+  if (!tpl) throw new NotFoundError(t('Template non trouvé.'));
 
   const scheduledUse = await prisma.newsletterCampaign.findFirst({
     where: { templateId, status: 'SCHEDULED', tenantId }
   });
-  if (scheduledUse) throw new Error('Ce template est utilisé par une campagne planifiée.');
+  if (scheduledUse) throw new BadRequestError(t('Ce template est utilisé par une campagne planifiée.'));
 
   await prisma.newsletterTemplate.delete({ where: { id: templateId, tenantId } });
   return { success: true };

@@ -9,14 +9,18 @@ import {
 } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
+import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { roundMoney } from '../lib/finance/money';
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import {
   annulerPieceTx,
   compteLocataireDuBailTx,
   compteLocataireTx,
+  inscrireEcheanceFactureeTx,
   libellePeriodeEcheance
 } from './rental-installment-service';
+import { t } from '../i18n';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
 // Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
@@ -216,18 +220,18 @@ export function resolvePaymentDate(paidAt: string | undefined, now: Date = new D
 
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paidAt);
   if (!match) {
-    throw new Error('Date du règlement attendue au format AAAA-MM-JJ');
+    throw new BadRequestError(t('Date du règlement attendue au format AAAA-MM-JJ'));
   }
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
   const date = new Date(Date.UTC(year, month - 1, day, 12));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
-    throw new Error("La date du règlement n'existe pas");
+    throw new BadRequestError(t("La date du règlement n'existe pas"));
   }
 
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const chosen = Date.UTC(year, month - 1, day);
   if (chosen > today) {
-    throw new Error('La date du règlement ne peut pas être dans le futur');
+    throw new BadRequestError(t('La date du règlement ne peut pas être dans le futur'));
   }
   return chosen === today ? now : date;
 }
@@ -303,6 +307,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
     }
 
     // Validate lease exists if provided
+    let locatairePrincipalDuBail: string | null = null;
     if (data.leaseId) {
       const lease = await prisma.rentalLease.findFirst({
         where: {
@@ -312,8 +317,9 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
       });
 
       if (!lease) {
-        throw new Error('Bail introuvable');
+        throw new NotFoundError(t('Bail introuvable'));
       }
+      locatairePrincipalDuBail = lease.primary_renter_client_id ?? null;
     }
 
     // Validate renter client exists and belongs to this tenant, if provided.
@@ -326,7 +332,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
       });
 
       if (!renterClient) {
-        throw new Error('Locataire introuvable');
+        throw new NotFoundError(t('Locataire introuvable'));
       }
     }
 
@@ -340,7 +346,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
       });
 
       if (!invoice) {
-        throw new Error('Facture introuvable');
+        throw new NotFoundError(t('Facture introuvable'));
       }
     }
 
@@ -356,7 +362,9 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
         data: {
           tenant_id: tenantId,
           lease_id: data.leaseId,
-          renter_client_id: data.renterClientId,
+          // Sans locataire explicite, celui du bail : sinon la liste des paiements
+          // n'a personne à afficher (BUG-2026-09-30-046).
+          renter_client_id: data.renterClientId ?? locatairePrincipalDuBail,
           invoice_id: data.invoiceId,
           method: data.method,
           amount: new Decimal(data.amount),
@@ -394,6 +402,10 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
           movementDate: created.succeeded_at ?? created.initiated_at
         });
       }
+
+      // Gestion directe : l'encaissement crédite aussi la trésorerie et le
+      // journal (débit trésorerie / crédit 411), dans la même transaction.
+      await syncDirectRentPaymentEntryTx(tx, tenantId, created.id);
 
       return created;
     });
@@ -440,7 +452,7 @@ export async function allocatePaymentTx(
   });
 
   if (!payment) {
-    throw new Error('Paiement introuvable');
+    throw new NotFoundError(t('Paiement introuvable'));
   }
 
   // Check if payment is already fully allocated
@@ -448,7 +460,7 @@ export async function allocatePaymentTx(
   const remainingAmount = Number(payment.amount) - allocatedAmount;
 
   if (remainingAmount <= 0) {
-    throw new Error('Le paiement est déjà entièrement alloué');
+    throw new ConflictError(t('Le paiement est déjà entièrement alloué'));
   }
 
   // Get installments to allocate to
@@ -456,7 +468,9 @@ export async function allocatePaymentTx(
     where: {
       id: { in: data.installmentIds },
       tenant_id: tenantId,
-      lease_id: payment.lease_id || undefined
+      lease_id: payment.lease_id || undefined,
+      // Une échéance annulée ne reçoit aucune allocation.
+      status: { not: RentalInstallmentStatus.CANCELED }
     },
     orderBy: [
       { due_date: 'asc' } // Prioritize oldest first
@@ -464,7 +478,7 @@ export async function allocatePaymentTx(
   });
 
   if (installments.length === 0) {
-    throw new Error('Aucune échéance trouvée');
+    throw new NotFoundError(t('Aucune échéance trouvée'));
   }
 
   // Calculate allocations
@@ -517,7 +531,7 @@ export async function allocatePaymentTx(
   }
 
   if (allocations.length === 0) {
-    throw new Error('Aucune allocation possible');
+    throw new BadRequestError(t('Aucune allocation possible'));
   }
 
   // Create allocations and update installment statuses
@@ -576,7 +590,7 @@ export async function allocatePaymentTx(
         newStatus = RentalInstallmentStatus.PARTIAL;
       }
 
-      await tx.rentalInstallment.update({
+      const echeanceMiseAJour = await tx.rentalInstallment.update({
         where: { id: installment.id, tenant_id: tenantId },
         data: {
           status: newStatus,
@@ -584,6 +598,12 @@ export async function allocatePaymentTx(
           paid_at: newStatus === RentalInstallmentStatus.PAID ? new Date() : undefined
         }
       });
+
+      // Une échéance qui reçoit un règlement devient exigible : sa créance doit
+      // être au compte du locataire, sans quoi le règlement crédite un compte
+      // qui n'a jamais été débité (BUG-2026-09-30-058). Idempotent : clé
+      // `(RENTAL_INSTALLMENT, id, INSTALLMENT)`.
+      await inscrireEcheanceFactureeTx(tx, tenantId, echeanceMiseAJour);
     }
 
     // Ce qui reste non affecté après cette opération est une avance reçue.
@@ -788,6 +808,9 @@ async function reverseInstallmentAllocations(
   for (const installmentId of installmentIds) {
     const installment = await tx.rentalInstallment.findUnique({ where: { id: installmentId, tenant_id: tenantId } });
     if (!installment) continue;
+    // Une échéance annulée reste annulée : on ne la remet pas « À payer » et on
+    // ne lui réinscrit aucune créance.
+    if (installment.status === RentalInstallmentStatus.CANCELED) continue;
 
     const remaining = await tx.rentalPaymentAllocation.findMany({
       where: { installment_id: installmentId, tenant_id: tenantId },
@@ -815,7 +838,7 @@ async function reverseInstallmentAllocations(
       status = RentalInstallmentStatus.DUE;
     }
 
-    await tx.rentalInstallment.update({
+    const echeanceMiseAJour = await tx.rentalInstallment.update({
       where: { id: installmentId, tenant_id: tenantId },
       data: {
         amount_paid: new Decimal(totalPaid),
@@ -823,6 +846,8 @@ async function reverseInstallmentAllocations(
         paid_at: status === RentalInstallmentStatus.PAID ? installment.paid_at : null
       }
     });
+
+    await inscrireEcheanceFactureeTx(tx, tenantId, echeanceMiseAJour);
   }
 }
 
@@ -851,7 +876,7 @@ export async function updatePaymentStatusTx(
   });
 
   if (!payment) {
-    throw new Error('Paiement introuvable');
+    throw new NotFoundError(t('Paiement introuvable'));
   }
 
   const updateData: any = { status };
@@ -961,7 +986,7 @@ export async function updatePaymentStatusTx(
       }
     }
 
-    return tx.rentalPayment.update({
+    const updated = await tx.rentalPayment.update({
       where: { id: paymentId, tenant_id: tenantId },
       data: updateData,
       include: {
@@ -972,6 +997,11 @@ export async function updatePaymentStatusTx(
         }
       }
     });
+
+    // Encaissé : écriture de trésorerie ; annulé ou échoué : contre-passation.
+    await syncDirectRentPaymentEntryTx(tx, tenantId, paymentId);
+
+    return updated;
   }
 }
 
@@ -1026,10 +1056,15 @@ export async function getPaymentById(tenantId: string, paymentId: string): Promi
         },
         lease: {
           include: {
-            property: true
+            property: true,
+            primaryRenter: {
+              include: { user: { select: { fullName: true, email: true } } }
+            }
           }
         },
-        renterClient: true,
+        renterClient: {
+          include: { user: { select: { fullName: true, email: true } } }
+        },
         // Lot 7 : paiement en ligne éventuellement adossé, mappé en
         // `OnlineCheckoutSummary` par le contrôleur (voir
         // `toOnlineCheckoutSummaryDto`, `lib/payment-gateway/checkout.ts`).
@@ -1104,7 +1139,11 @@ export async function listPayments(
           },
           lease: {
             include: {
-              property: true
+              property: true,
+              // Repli d'affichage pour les paiements sans locataire enregistré.
+              primaryRenter: {
+                include: { user: { select: { fullName: true, email: true } } }
+              }
             }
           },
           // `renterClient: true` ne ramenait que la ligne du client, sans le

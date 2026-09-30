@@ -7,6 +7,7 @@ import {
   getDealPropertyMatches
 } from '../services/crm-matching-service';
 import { UpdatePropertyMatchStatusRequest } from '../types/crm-types';
+import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Match properties for a deal
@@ -26,6 +27,7 @@ export async function matchPropertiesHandler(req: Request, res: Response): Promi
       matches
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -60,6 +62,7 @@ export async function getMatchesHandler(req: Request, res: Response): Promise<vo
       matches
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error && error.message.includes('not found')) {
       res.status(404).json({
         success: false,
@@ -109,6 +112,7 @@ export async function addPropertyToShortlistHandler(req: Request, res: Response)
       data: dealProperty
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -153,6 +157,7 @@ export async function updatePropertyStatusHandler(req: Request, res: Response): 
       data: updated
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({

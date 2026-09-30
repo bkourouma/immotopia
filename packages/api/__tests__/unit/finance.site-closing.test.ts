@@ -153,7 +153,12 @@ const mockPrisma: Row = {
   },
 
   supplierInvoice: {
-    count: jest.fn(async ({ where }: Row) => store.invoices.filter(row => matches(row, where)).length)
+    count: jest.fn(async ({ where }: Row) => store.invoices.filter(row => matches(row, where)).length),
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.invoices
+        .filter(row => matches(row, where))
+        .map(row => ({ id: row.id ?? 'inv', reference: row.reference ?? 'FRS-X' }))
+    )
   },
   cashVoucher: {
     count: jest.fn(async ({ where }: Row) => store.vouchers.filter(row => matches(row, where)).length)
@@ -745,6 +750,19 @@ describe('getSiteClosureBlockers', () => {
     expect(blockers[3].message).toContain("situation d'avancement");
   });
 
+  it('nomme les factures brouillon bloquantes et propose de les annuler (BUG-042)', async () => {
+    const site = seedSite();
+    store.invoices.push({ id: 'inv-1', tenantId: TENANT, siteId: site.id, status: 'DRAFT', reference: 'FRS-INT-001' });
+
+    const [blocker] = await getSiteClosureBlockers(TENANT, site.id);
+
+    expect(blocker.message).toContain('annulez-la');
+    expect(blocker.message).toContain('FRS-INT-001');
+    expect(blocker.references).toEqual(['FRS-INT-001']);
+    expect(blocker.documentIds).toEqual(['inv-1']);
+    expect(blocker.documentType).toBe('SUPPLIER_INVOICE');
+  });
+
   it('lit la situation d’avancement par son CONTRAT, jamais par un siteId qu’elle n’a pas', async () => {
     const site = seedSite();
     const autre = seedSite({ name: 'Lambanyi' });
@@ -1076,7 +1094,6 @@ describe('capitalizeSiteLotTx', () => {
   });
 });
 
-
 describe('registre des lots de l’abonnement (vague 2, lot B)', () => {
   beforeEach(() => {
     mockLotRegistry.syncLotActivationsTx.mockClear();
@@ -1093,20 +1110,35 @@ describe('registre des lots de l’abonnement (vague 2, lot B)', () => {
     const site = seedSite();
     const [lot] = await seedLots(site.id, [{ name: 'Villa A' }]);
     await deleteSiteLotTx(tx, TENANT, lot.id);
-    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(tx, TENANT, { siteLotIds: [lot.id] }, { reason: 'SITE_LOT_DELETED' });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(
+      tx,
+      TENANT,
+      { siteLotIds: [lot.id] },
+      { reason: 'SITE_LOT_DELETED' }
+    );
   });
 
   it('la clôture fait sortir les lots du chantier ; la réouverture contrôle la capacité CHANTIERS puis les recompte', async () => {
     const site = seedSite();
     await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER });
-    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(tx, TENANT, { siteIds: [site.id] }, {
-      actorUserId: USER,
-      reason: 'SITE_CLOSED'
-    });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(
+      tx,
+      TENANT,
+      { siteIds: [site.id] },
+      {
+        actorUserId: USER,
+        reason: 'SITE_CLOSED'
+      }
+    );
 
     await reopenSiteTx(tx, TENANT, site.id);
     expect(mockLotRegistry.assertCapacityTx).toHaveBeenCalledWith(tx, TENANT, 'CHANTIERS');
-    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(tx, TENANT, { siteIds: [site.id] }, { reason: 'SITE_REOPENED' });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(
+      tx,
+      TENANT,
+      { siteIds: [site.id] },
+      { reason: 'SITE_REOPENED' }
+    );
   });
 
   it('une réouverture refusée par le quota (BLOCK) ne rouvre rien', async () => {

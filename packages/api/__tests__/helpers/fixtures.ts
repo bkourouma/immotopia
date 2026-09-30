@@ -30,6 +30,7 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   'CRM_DEALS_CREATE',
   'PROPERTIES_VIEW',
   'PROPERTIES_EDIT',
+  'SYNDIC_VIEW',
   'MAINTENANCE_ADMIN',
   // ImmoCopilot : lecture des baux/documents, generation. Accordees des la
   // creation du role : `getUserPermissions` met les droits en cache 5 minutes

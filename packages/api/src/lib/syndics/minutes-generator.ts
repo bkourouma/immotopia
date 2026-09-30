@@ -3,7 +3,8 @@ import * as path from 'path';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { logger } from '../../utils/logger';
-import { MAJORITY_RULE_LABELS, normalizeMajorityRule } from './meeting-majority';
+import { majorityRuleLabel, normalizeMajorityRule } from './meeting-majority';
+import { t } from '../../i18n';
 import type { DocumentBranding } from '../documents/document-branding';
 
 interface AgendaItemInput {
@@ -31,26 +32,87 @@ interface ResolutionInput {
 
 /** Libelle de la regle ; une saisie libre historique vaut l'article 24. */
 function formatMajorityRule(rule?: string | null): string {
-  return MAJORITY_RULE_LABELS[normalizeMajorityRule(rule)];
+  return majorityRuleLabel(normalizeMajorityRule(rule));
 }
 
 function formatShares(resolution: ResolutionInput): string | null {
   if (!resolution.tally) return null;
   const { sharesFor, sharesAgainst, sharesAbstain, referenceShares } = resolution.tally;
-  return `Tantiemes: Pour ${sharesFor}, Contre ${sharesAgainst}, Abstention ${sharesAbstain} (total de reference ${referenceShares})`;
+  return t('Tantièmes : pour {{pour}}, contre {{contre}}, abstention {{abstention}} (total de référence {{total}})', {
+    pour: sharesFor,
+    contre: sharesAgainst,
+    abstention: sharesAbstain,
+    total: referenceShares
+  });
+}
+
+/** Libellé français du type d'assemblée (jamais le code brut ORDINARY / EXTRAORDINARY). */
+export function formatMeetingType(type?: string | null): string {
+  switch ((type || '').toUpperCase()) {
+    case 'ORDINARY':
+      return t('Ordinaire');
+    case 'EXTRAORDINARY':
+      return t('Extraordinaire');
+    default:
+      return type || t('Non renseigné');
+  }
 }
 
 function formatResolutionResult(result?: string | null): string {
   switch ((result || '').toUpperCase()) {
     case 'APPROVED':
-      return 'APPROUVEE';
+      return t('Approuvée');
     case 'REJECTED':
-      return 'REJETEE';
+      return t('Rejetée');
     case 'PENDING':
-      return 'EN ATTENTE';
+      return t('En attente');
     default:
-      return result || 'EN ATTENTE';
+      return result || t('En attente');
   }
+}
+
+interface ContactLabelInput {
+  firstName?: string | null;
+  lastName?: string | null;
+  legalName?: string | null;
+  email?: string | null;
+}
+
+interface ProxyInput {
+  grantor?: ContactLabelInput | null;
+  representative?: ContactLabelInput | null;
+}
+
+function contactLabel(contact?: ContactLabelInput | null): string {
+  if (!contact) return t('Non renseigné');
+  const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
+  return name || contact.legalName || contact.email || t('Non renseigné');
+}
+
+/** Section « pouvoirs » du procès-verbal : qui est représenté, et par qui. */
+function proxyLines(proxies?: ProxyInput[]): string[] {
+  const lines = [t('POUVOIRS')];
+  if (!proxies || proxies.length === 0) {
+    lines.push(t('- Aucun pouvoir enregistré.'));
+  } else {
+    for (const proxy of proxies) {
+      lines.push(
+        t('- {{grantor}} est représenté(e) par {{representative}}.', {
+          grantor: contactLabel(proxy.grantor),
+          representative: contactLabel(proxy.representative)
+        })
+      );
+    }
+  }
+  lines.push('');
+  return lines;
+}
+
+function proxyContexts(proxies?: ProxyInput[]) {
+  return (proxies || []).map(proxy => ({
+    PROXY_GRANTOR: contactLabel(proxy.grantor),
+    PROXY_REPRESENTATIVE: contactLabel(proxy.representative)
+  }));
 }
 
 interface MeetingInput {
@@ -61,6 +123,7 @@ interface MeetingInput {
   endTime?: Date | string | null;
   location?: string | null;
   quorum?: unknown;
+  proxies?: ProxyInput[];
   agendaItems?: AgendaItemInput[];
   resolutions?: ResolutionInput[];
   syndicate?: { name?: string | null; address?: string | null; tenantId?: string | null } | null;
@@ -73,14 +136,14 @@ function normalizeDiscussions(value: unknown): string[] {
 
 function formatDate(value: Date | string): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Non renseignee';
+  if (Number.isNaN(date.getTime())) return t('Non renseignée');
   return date.toLocaleDateString('fr-FR');
 }
 
 function formatTime(value?: Date | string | null): string {
-  if (!value) return 'Non renseignee';
+  if (!value) return t('Non renseignée');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Non renseignee';
+  if (Number.isNaN(date.getTime())) return t('Non renseignée');
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
@@ -145,7 +208,7 @@ function issuerHeaderLines(branding?: DocumentBranding | null): string[] {
   const lines = [issuer.name];
   if (issuer.legalName && issuer.legalName !== issuer.name) lines.push(issuer.legalName);
   if (issuer.address) lines.push(issuer.address);
-  const contact = [issuer.phone ? `Tel. ${issuer.phone}` : null, issuer.email].filter(Boolean).join(' - ');
+  const contact = [issuer.phone ? `${t('Tél.')} ${issuer.phone}` : null, issuer.email].filter(Boolean).join(' - ');
   if (contact) lines.push(contact);
   const legal = [issuer.rccm ? `RCCM ${issuer.rccm}` : null, issuer.taxId ? `NCC ${issuer.taxId}` : null]
     .filter(Boolean)
@@ -157,28 +220,28 @@ function issuerHeaderLines(branding?: DocumentBranding | null): string[] {
 
 function fallbackMinutes(meeting: MeetingInput, branding?: DocumentBranding | null): string {
   const lines: string[] = [...issuerHeaderLines(branding)];
-  lines.push('COMPTE RENDU D ASSEMBLEE GENERALE');
+  lines.push(t('COMPTE RENDU D’ASSEMBLÉE GÉNÉRALE'));
   lines.push('');
-  lines.push(`Copropriete: ${meeting.syndicate?.name || 'Non renseignee'}`);
-  lines.push(`Adresse: ${meeting.syndicate?.address || 'Non renseignee'}`);
-  lines.push(`Type: ${meeting.type}`);
-  lines.push(`Date: ${formatDate(meeting.scheduledAt)}`);
-  lines.push(`Heure de debut: ${formatTime(meeting.startTime)}`);
-  lines.push(`Heure de fin: ${formatTime(meeting.endTime)}`);
-  lines.push(`Lieu: ${meeting.location || 'Non renseigne'}`);
-  lines.push(`Quorum: ${formatQuorum(meeting.quorum)}`);
+  lines.push(`${t('Copropriété')} : ${meeting.syndicate?.name || t('Non renseignée')}`);
+  lines.push(`${t('Adresse')} : ${meeting.syndicate?.address || t('Non renseignée')}`);
+  lines.push(`${t('Type')} : ${formatMeetingType(meeting.type)}`);
+  lines.push(`${t('Date')} : ${formatDate(meeting.scheduledAt)}`);
+  lines.push(`${t('Heure de début')} : ${formatTime(meeting.startTime)}`);
+  lines.push(`${t('Heure de fin')} : ${formatTime(meeting.endTime)}`);
+  lines.push(`${t('Lieu')} : ${meeting.location || t('Non renseigné')}`);
+  lines.push(`${t('Quorum')} : ${formatQuorum(meeting.quorum)}`);
   lines.push('');
-  lines.push('ORDRE DU JOUR ET DISCUSSIONS');
+  lines.push(t('ORDRE DU JOUR ET DISCUSSIONS'));
 
   const agendaItems = [...(meeting.agendaItems || [])].sort((a, b) => a.orderIndex - b.orderIndex);
   if (agendaItems.length === 0) {
-    lines.push('- Aucun point d ordre du jour renseigne.');
+    lines.push(t('- Aucun point d’ordre du jour renseigné.'));
   } else {
     for (const item of agendaItems) {
       lines.push(`${item.orderIndex}. ${item.title}`);
       const discussions = normalizeDiscussions(item.discussions);
       if (discussions.length === 0) {
-        lines.push('  - Discussion: non renseignee.');
+        lines.push(t('  - Discussion : non renseignée.'));
       } else {
         for (const entry of discussions) {
           lines.push(`  - ${entry}`);
@@ -188,26 +251,31 @@ function fallbackMinutes(meeting: MeetingInput, branding?: DocumentBranding | nu
   }
 
   lines.push('');
-  lines.push('RESOLUTIONS ET RESULTATS');
+  lines.push(t('RÉSOLUTIONS ET RÉSULTATS'));
   if (!meeting.resolutions || meeting.resolutions.length === 0) {
-    lines.push('- Aucune resolution enregistree.');
+    lines.push(t('- Aucune résolution enregistrée.'));
   } else {
     for (const [index, resolution] of meeting.resolutions.entries()) {
       lines.push(`${index + 1}. ${resolution.title}`);
-      if (resolution.description) lines.push(`  - Description: ${resolution.description}`);
-      lines.push(`  - Regle de majorite: ${formatMajorityRule(resolution.majorityRule)}`);
+      if (resolution.description) lines.push(`  - ${t('Description')} : ${resolution.description}`);
+      lines.push(`  - ${t('Règle de majorité')} : ${formatMajorityRule(resolution.majorityRule)}`);
       lines.push(
-        `  - Votes: Pour ${resolution.votesFor || 0}, Contre ${resolution.votesAgainst || 0}, Abstention ${resolution.votesAbstain || 0}`
+        t('  - Votes : pour {{pour}}, contre {{contre}}, abstention {{abstention}}', {
+          pour: resolution.votesFor || 0,
+          contre: resolution.votesAgainst || 0,
+          abstention: resolution.votesAbstain || 0
+        })
       );
       const sharesLine = formatShares(resolution);
       if (sharesLine) lines.push(`  - ${sharesLine}`);
-      lines.push(`  - Resultat: ${formatResolutionResult(resolution.result)}`);
+      lines.push(`  - ${t('Résultat')} : ${formatResolutionResult(resolution.result)}`);
     }
   }
 
   lines.push('');
-  lines.push('SYNTHESE');
-  lines.push('Les echanges ci-dessus constituent le compte rendu de la seance.');
+  lines.push(...proxyLines(meeting.proxies));
+  lines.push(t('SYNTHÈSE'));
+  lines.push(t('Les échanges ci-dessus constituent le compte rendu de la séance.'));
   return lines.join('\n');
 }
 
@@ -221,7 +289,7 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
     const discussions = normalizeDiscussions(item.discussions);
     agendaLines.push(`${item.orderIndex}. ${item.title}`);
     if (discussions.length === 0) {
-      agendaLines.push('  - Discussion: non renseignee.');
+      agendaLines.push(t('  - Discussion : non renseignée.'));
     } else {
       for (const entry of discussions) {
         agendaLines.push(`  - ${entry}`);
@@ -234,25 +302,29 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
       AGENDA_DISCUSSION:
         discussions.length > 0
           ? discussions.map((entry, discussionIndex) => `${discussionIndex + 1}. ${entry}`).join('\n')
-          : 'non renseignee'
+          : t('non renseignée')
     };
   });
 
   const resolutionsContext = resolutions.map((resolution, idx) => {
     resolutionLines.push(`${idx + 1}. ${resolution.title}`);
-    resolutionLines.push(`  - Description: ${resolution.description || 'Non renseignee'}`);
-    resolutionLines.push(`  - Regle de majorite: ${formatMajorityRule(resolution.majorityRule)}`);
+    resolutionLines.push(`  - ${t('Description')} : ${resolution.description || t('Non renseignée')}`);
+    resolutionLines.push(`  - ${t('Règle de majorité')} : ${formatMajorityRule(resolution.majorityRule)}`);
     resolutionLines.push(
-      `  - Votes: Pour ${resolution.votesFor || 0}, Contre ${resolution.votesAgainst || 0}, Abstention ${resolution.votesAbstain || 0}`
+      t('  - Votes : pour {{pour}}, contre {{contre}}, abstention {{abstention}}', {
+        pour: resolution.votesFor || 0,
+        contre: resolution.votesAgainst || 0,
+        abstention: resolution.votesAbstain || 0
+      })
     );
     const sharesLine = formatShares(resolution);
     if (sharesLine) resolutionLines.push(`  - ${sharesLine}`);
-    resolutionLines.push(`  - Resultat: ${formatResolutionResult(resolution.result)}`);
+    resolutionLines.push(`  - ${t('Résultat')} : ${formatResolutionResult(resolution.result)}`);
 
     return {
       RESOLUTION_INDEX: idx + 1,
       RESOLUTION_TITLE: resolution.title,
-      RESOLUTION_DESCRIPTION: resolution.description || 'Non renseignee',
+      RESOLUTION_DESCRIPTION: resolution.description || t('Non renseignée'),
       RESOLUTION_MAJORITY_RULE: formatMajorityRule(resolution.majorityRule),
       RESOLUTION_VOTES_FOR: resolution.votesFor || 0,
       RESOLUTION_VOTES_AGAINST: resolution.votesAgainst || 0,
@@ -262,27 +334,29 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
   });
 
   if (agendaLines.length === 0) {
-    agendaLines.push('- Aucun point d ordre du jour renseigne.');
+    agendaLines.push(t('- Aucun point d’ordre du jour renseigné.'));
   }
   if (resolutionLines.length === 0) {
-    resolutionLines.push('- Aucune resolution enregistree.');
+    resolutionLines.push(t('- Aucune résolution enregistrée.'));
   }
 
   return {
     ...buildIssuerContext(branding),
-    SYNDICATE_NAME: meeting.syndicate?.name || 'Non renseignee',
-    SYNDICATE_ADDRESS: meeting.syndicate?.address || 'Non renseignee',
-    MEETING_TYPE: meeting.type,
+    SYNDICATE_NAME: meeting.syndicate?.name || t('Non renseignée'),
+    SYNDICATE_ADDRESS: meeting.syndicate?.address || t('Non renseignée'),
+    MEETING_TYPE: formatMeetingType(meeting.type),
     MEETING_DATE: formatDate(meeting.scheduledAt),
     MEETING_START_TIME: formatTime(meeting.startTime),
     MEETING_END_TIME: formatTime(meeting.endTime),
-    MEETING_LOCATION: meeting.location || 'Non renseigne',
+    MEETING_LOCATION: meeting.location || t('Non renseigné'),
     MEETING_QUORUM: formatQuorum(meeting.quorum),
     AGENDA_ITEMS: agendaItemsContext,
     AGENDA_ITEMS_WITH_DISCUSSIONS: agendaLines.join('\n'),
     RESOLUTIONS: resolutionsContext,
     RESOLUTIONS_WITH_RESULTS: resolutionLines.join('\n'),
-    FINAL_SUMMARY: 'Les echanges ci-dessus constituent le compte rendu de la seance.'
+    PROXIES: proxyContexts(meeting.proxies),
+    PROXIES_LIST: proxyLines(meeting.proxies).join('\n'),
+    FINAL_SUMMARY: t('Les échanges ci-dessus constituent le compte rendu de la séance.')
   };
 }
 

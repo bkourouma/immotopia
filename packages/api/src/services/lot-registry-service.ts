@@ -119,6 +119,8 @@ export async function computeQualifyingUnits(
 ): Promise<LotUnitRef[]> {
   // Perimetre (appel au fil de l'eau) : seulement les unites touchees, mais
   // TOUS les titres de chacune (un bien peut etre logement ET lot de copropriete).
+  const startOfToday = new Date();
+  startOfToday.setUTCHours(0, 0, 0, 0);
   const propertyScope = scope ? { id: { in: scope.propertyIds } } : {};
   const coproScope = scope
     ? { OR: [{ id: { in: scope.syndicateLotIds } }, { propertyId: { in: scope.propertyIds } }] }
@@ -133,7 +135,13 @@ export async function computeQualifyingUnits(
         OR: [
           { tenantId },
           // Bien CLIENT (tenantId nul) gere par l'agence : mandat actif ou bail de l'agence.
-          { tenantId: null, mandates: { some: { tenantId, isActive: true } } },
+          // Un mandat echu par sa date (endDate passee) ne compte plus, meme sans resiliation.
+          {
+            tenantId: null,
+            mandates: {
+              some: { tenantId, isActive: true, OR: [{ endDate: null }, { endDate: { gte: startOfToday } }] }
+            }
+          },
           { tenantId: null, rentalLeases: { some: { tenant_id: tenantId, status: 'ACTIVE' } } }
         ]
       },
@@ -152,7 +160,9 @@ export async function computeQualifyingUnits(
       where: {
         ...coproScope,
         syndicate: { tenantId, status: { in: [...ACTIVE_SYNDICATE_STATUSES] } },
-        lotType: { in: [...MAIN_COPRO_LOT_TYPES] }
+        lotType: { in: [...MAIN_COPRO_LOT_TYPES] },
+        // Lot sans tantieme = lot desactive : il ne consomme plus la reserve (BUG-078).
+        generalShares: { gt: 0 }
       },
       select: { id: true, propertyId: true }
     }),
@@ -419,7 +429,19 @@ export async function reconcileLotActivations(
   options: { dryRun?: boolean; actorUserId?: string | null } = {}
 ): Promise<ReconcileResult> {
   if (options.dryRun) return reconcileLotActivationsTx(prisma, tenantId, options);
-  return prisma.$transaction(tx => reconcileLotActivationsTx(tx, tenantId, options), { timeout: 60_000 });
+  const result = await prisma.$transaction(
+    async tx => {
+      // Meme verrou d'agence que les ecritures au fil de l'eau : pas de course avec elles.
+      await lockTenantLotsTx(tx, tenantId);
+      return reconcileLotActivationsTx(tx, tenantId, options);
+    },
+    { timeout: 60_000 }
+  );
+  if (result.added.length > 0 || result.removed.length > 0 || result.reclassified > 0) {
+    const { invalidateEntitlements } = await import('./subscription-v2-service');
+    invalidateEntitlements(tenantId);
+  }
+  return result;
 }
 
 // ------------------------------------------------------------------ au fil de l'eau (vague 2)

@@ -2,6 +2,25 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { RentalDocumentType, RentalDocumentStatus } from '@prisma/client';
+import { t } from '../i18n';
+import { NotFoundError } from '../middleware/error-middleware';
+
+/** Champs de stockage internes d'un document : jamais renvoyes a un client. */
+const STORAGE_FIELDS = ['file_url', 'file_key', 'file_path', 'file_hash', 'content_hash', 'template_hash'] as const;
+
+/**
+ * DTO public d'un document locatif genere : sans chemin disque ni cle de
+ * stockage (voir .claude/rules/security.md). Le fichier se telecharge par
+ * `GET /api/tenants/:tenantId/documents/:id/download`, authentifie.
+ */
+export function toRentalDocumentDto<T extends Record<string, any>>(document: T) {
+  const dto: Record<string, any> = { ...document };
+  const downloadable = Boolean(document.file_path) && document.status !== 'VOID';
+  for (const field of STORAGE_FIELDS) delete dto[field];
+  dto.downloadable = downloadable;
+  dto.download_url = downloadable ? `/api/tenants/${document.tenant_id}/documents/${document.id}/download` : null;
+  return dto as Omit<T, (typeof STORAGE_FIELDS)[number]> & { downloadable: boolean; download_url: string | null };
+}
 
 /**
  * Generate document number in format YYYY-NNN (sequential per tenant per year)
@@ -60,7 +79,7 @@ export async function generateDocument(
       }
     });
     if (!lease) {
-      throw new Error('Lease not found');
+      throw new NotFoundError(t('Bail introuvable'));
     }
   }
 
@@ -72,7 +91,7 @@ export async function generateDocument(
       }
     });
     if (!installment) {
-      throw new Error('Installment not found');
+      throw new NotFoundError(t('Échéance introuvable'));
     }
   }
 
@@ -84,7 +103,7 @@ export async function generateDocument(
       }
     });
     if (!payment) {
-      throw new Error('Payment not found');
+      throw new NotFoundError(t('Paiement introuvable'));
     }
   }
 
@@ -184,7 +203,7 @@ export async function updateDocumentStatus(
   });
 
   if (!document) {
-    throw new Error('Document not found');
+    throw new NotFoundError(t('Document introuvable'));
   }
 
   const updatedDocument = await prisma.rentalDocument.update({

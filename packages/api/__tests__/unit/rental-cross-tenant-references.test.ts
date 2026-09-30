@@ -51,16 +51,16 @@ const mockPrisma: Row = {
   },
   tenantClient: {
     findFirst: jest.fn(
-      async ({ where }: Row) => store.tenantClients.find(c => c.id === where.id && c.tenantId === where.tenantId) ?? null
+      async ({ where }: Row) =>
+        store.tenantClients.find(c => c.id === where.id && c.tenantId === where.tenantId) ?? null
     )
   },
   rentalPayment: {
     findFirst: jest.fn(async ({ where }: Row) => {
       if (where.idempotency_key !== undefined) {
         return (
-          store.payments.find(
-            p => p.tenant_id === where.tenant_id && p.idempotency_key === where.idempotency_key
-          ) ?? null
+          store.payments.find(p => p.tenant_id === where.tenant_id && p.idempotency_key === where.idempotency_key) ??
+          null
         );
       }
       return null;
@@ -190,7 +190,7 @@ describe('rental-lease-service — addCoRenter : le locataire ajouté doit appar
     const foreignClient = seedTenantClient({ tenantId: TENANT_B });
 
     await expect(addCoRenter(TENANT_A, lease.id, foreignClient.id, 'actor-1')).rejects.toThrow(
-      'Co-renter client not found or does not belong to this tenant'
+      "Colocataire introuvable ou n'appartenant pas à cette agence"
     );
 
     expect(store.coRenters).toHaveLength(0);
@@ -243,7 +243,7 @@ describe('rental-deposit-service — createDepositMovement : paymentId/installme
 
     await expect(
       createDepositMovement(TENANT_A, deposit.id, 'ADJUSTMENT' as any, 1_000, 'payment-from-tenant-b', undefined)
-    ).rejects.toThrow('Payment not found');
+    ).rejects.toThrow('Paiement introuvable');
 
     expect(store.depositMovements).toHaveLength(0);
   });
@@ -253,7 +253,7 @@ describe('rental-deposit-service — createDepositMovement : paymentId/installme
 
     await expect(
       createDepositMovement(TENANT_A, deposit.id, 'ADJUSTMENT' as any, 1_000, undefined, 'installment-from-tenant-b')
-    ).rejects.toThrow('Installment not found');
+    ).rejects.toThrow('Échéance introuvable');
 
     expect(store.depositMovements).toHaveLength(0);
   });

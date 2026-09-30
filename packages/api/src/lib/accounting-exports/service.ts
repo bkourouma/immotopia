@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { toCsvString } from '../csv';
 import { MandantFundsNature, Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { badRequest } from '../errors';
@@ -347,13 +348,10 @@ export interface Table {
  * Un champ contenant `;`, un guillemet ou un saut de ligne est entre guillemets.
  */
 export function toCsv(table: Table): string {
-  const cell = (value: Cell, index: number) => {
-    let text = typeof value === 'number' ? String(value) : value;
-    if (typeof value === 'number' && table.money.includes(index)) text = text.replace('.', ',');
-    return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  };
-  const lines = [table.headers, ...table.rows].map(row => row.map(cell).join(';'));
-  return '﻿' + lines.join('\r\n') + '\r\n';
+  const money = (value: Cell, index: number): Cell =>
+    typeof value === 'number' && table.money.includes(index) ? String(value).replace('.', ',') : value;
+  const rows = [table.headers, ...table.rows].map(row => row.map(money));
+  return toCsvString(rows, { separator: ';' }) + '\r\n';
 }
 
 export async function toXlsx(tables: Table[]): Promise<Buffer> {

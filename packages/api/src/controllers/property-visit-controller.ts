@@ -1,156 +1,177 @@
 import { Request, Response } from 'express';
-import { logger } from '../utils/logger';
+import { z } from 'zod';
 import {
   scheduleVisit,
   updateVisitStatus,
   getPropertyVisits,
   getCalendarVisits,
-  completeVisit
+  completeVisit,
+  MAX_VISIT_DURATION_MINUTES
 } from '../services/property-visit-service';
 import { PropertyVisitType, PropertyVisitStatus, PropertyVisitGoal } from '@prisma/client';
+import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+
+/** Meme borne que le calendrier CRM (`CALENDAR_MAX_RANGE_DAYS`). */
+const CALENDAR_VISITS_MAX_RANGE_DAYS = 366;
+
+/**
+ * Le corps des requêtes est validé ici, avant toute écriture : une valeur
+ * inconnue (statut, type, objectif) ou une date illisible est refusée par un
+ * ZodError, que le middleware d'erreurs transforme en 400 VALIDATION_ERROR avec
+ * `errors[]` — jamais l'erreur brute de Prisma.
+ * Les schémas sont construits à la demande : `t()` dépend de la langue de la requête.
+ */
+const optionalId = () => z.string().trim().min(1).max(64).nullish();
+const optionalText = (max: number) => z.string().max(max).nullish();
+
+function dateField(message: string) {
+  return z
+    .string({ required_error: message, invalid_type_error: message })
+    .min(1, message)
+    .refine(value => !Number.isNaN(Date.parse(value)), message)
+    .transform(value => new Date(value));
+}
+
+function scheduleVisitSchema() {
+  return z.object({
+    contactId: optionalId(),
+    dealId: optionalId(),
+    visitType: z
+      .nativeEnum(PropertyVisitType, { errorMap: () => ({ message: t('Type de visite invalide') }) })
+      .default(PropertyVisitType.VISIT),
+    goal: z
+      .nativeEnum(PropertyVisitGoal, { errorMap: () => ({ message: t('Objectif de visite invalide') }) })
+      .nullish(),
+    scheduledAt: dateField(t('Date et heure de visite invalides')),
+    duration: z
+      .number({ invalid_type_error: t('Durée de visite invalide') })
+      .int(t('Durée de visite invalide'))
+      .min(1, t('Durée de visite invalide'))
+      .max(MAX_VISIT_DURATION_MINUTES, t('Durée de visite invalide'))
+      .nullish(),
+    location: optionalText(500),
+    assignedToUserId: optionalId(),
+    collaboratorIds: z.array(z.string().trim().min(1).max(64)).max(50).nullish(),
+    notes: optionalText(5000)
+  });
+}
+
+function updateStatusSchema() {
+  return z.object({
+    status: z.nativeEnum(PropertyVisitStatus, {
+      errorMap: () => ({ message: t('Statut de visite invalide') })
+    }),
+    notes: optionalText(5000)
+  });
+}
+
+function completeVisitSchema() {
+  return z.object({ notes: optionalText(5000) });
+}
+
+function calendarQuerySchema() {
+  const invalid = t('Période du calendrier invalide');
+  return z
+    .object({
+      startDate: dateField(invalid).optional(),
+      endDate: dateField(invalid).optional(),
+      assignedToUserId: z.string().trim().max(64).optional()
+    })
+    .refine(q => !q.startDate || !q.endDate || q.startDate <= q.endDate, {
+      message: invalid,
+      path: ['endDate']
+    });
+}
 
 /**
  * Schedule visit handler
  */
-export async function scheduleVisitHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
+export const scheduleVisitHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const body = scheduleVisitSchema().parse(req.body ?? {});
 
-    const visitData = {
-      contactId: req.body.contactId || null,
-      dealId: req.body.dealId || null,
-      visitType: (req.body.visitType as PropertyVisitType) || PropertyVisitType.VISIT,
-      goal: req.body.goal ? (req.body.goal as PropertyVisitGoal) : null,
-      scheduledAt: new Date(req.body.scheduledAt),
-      duration: req.body.duration || null,
-      location: req.body.location || null,
-      assignedToUserId: req.body.assignedToUserId || null,
-      collaboratorIds: req.body.collaboratorIds || [],
-      notes: req.body.notes || null
-    };
+  const visit = await scheduleVisit(
+    propertyId,
+    {
+      contactId: body.contactId || null,
+      dealId: body.dealId || null,
+      visitType: body.visitType,
+      goal: body.goal ?? null,
+      scheduledAt: body.scheduledAt,
+      duration: body.duration ?? null,
+      location: body.location || null,
+      assignedToUserId: body.assignedToUserId || null,
+      collaboratorIds: body.collaboratorIds || [],
+      notes: body.notes || null
+    },
+    tenantId,
+    userId
+  );
 
-    const visit = await scheduleVisit(propertyId, visitData, tenantId, userId);
-
-    res.json({
-      success: true,
-      data: visit
-    });
-  } catch (error: any) {
-    logger.error('Error scheduling visit', { error, propertyId: req.params.id });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to schedule visit'
-    });
-  }
-}
+  res.json({ success: true, data: visit });
+});
 
 /**
  * Update visit status handler
  */
-export async function updateVisitStatusHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const visitId = req.params.visitId;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
-    const status = req.body.status as PropertyVisitStatus;
-    const notes = req.body.notes || null;
+export const updateVisitStatusHandler = asyncHandler(async (req: Request, res: Response) => {
+  const visitId = req.params.visitId;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const { status, notes } = updateStatusSchema().parse(req.body ?? {});
 
-    if (!status) {
-      res.status(400).json({
-        success: false,
-        error: 'Status is required'
-      });
-      return;
-    }
+  const visit = await updateVisitStatus(visitId, status, tenantId, userId, notes || null);
 
-    const visit = await updateVisitStatus(visitId, status, tenantId, userId, notes);
-
-    res.json({
-      success: true,
-      data: visit
-    });
-  } catch (error: any) {
-    logger.error('Error updating visit status', { error, visitId: req.params.visitId });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to update visit status'
-    });
-  }
-}
+  res.json({ success: true, data: visit });
+});
 
 /**
  * Get property visits handler
  */
-export async function getPropertyVisitsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+export const getPropertyVisitsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
 
-    const visits = await getPropertyVisits(propertyId, tenantId);
+  const visits = await getPropertyVisits(propertyId, tenantId);
 
-    res.json({
-      success: true,
-      data: visits
-    });
-  } catch (error: any) {
-    logger.error('Error getting property visits', { error, propertyId: req.params.id });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to get property visits'
-    });
-  }
-}
+  res.json({ success: true, data: visits });
+});
 
 /**
  * Get calendar visits handler
  */
-export async function getCalendarVisitsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const assignedToUserId = req.query.assignedToUserId as string | undefined;
-    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date();
-    const endDate = req.query.endDate
-      ? new Date(req.query.endDate as string)
-      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default: 30 days from now
+export const getCalendarVisitsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const query = calendarQuerySchema().parse({
+    startDate: req.query.startDate || undefined,
+    endDate: req.query.endDate || undefined,
+    assignedToUserId: req.query.assignedToUserId || undefined
+  });
+  const startDate = query.startDate ?? new Date();
+  const endDate = query.endDate ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default: 30 days from now
 
-    const visits = await getCalendarVisits(startDate, endDate, tenantId, assignedToUserId || null);
-
-    res.json({
-      success: true,
-      data: visits
-    });
-  } catch (error: any) {
-    logger.error('Error getting calendar visits', { error });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get calendar visits'
-    });
+  if (endDate.getTime() - startDate.getTime() > CALENDAR_VISITS_MAX_RANGE_DAYS * 24 * 3600 * 1000) {
+    throw new BadRequestError(t('La période demandée est trop longue (maximum 366 jours).'));
   }
-}
+
+  const visits = await getCalendarVisits(startDate, endDate, tenantId, query.assignedToUserId || null);
+
+  res.json({ success: true, data: visits });
+});
 
 /**
  * Complete visit handler
  */
-export async function completeVisitHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const visitId = req.params.visitId;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
-    const notes = req.body.notes || null;
+export const completeVisitHandler = asyncHandler(async (req: Request, res: Response) => {
+  const visitId = req.params.visitId;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const { notes } = completeVisitSchema().parse(req.body ?? {});
 
-    const visit = await completeVisit(visitId, tenantId, userId, notes);
+  const visit = await completeVisit(visitId, tenantId, userId, notes || null);
 
-    res.json({
-      success: true,
-      data: visit
-    });
-  } catch (error: any) {
-    logger.error('Error completing visit', { error, visitId: req.params.visitId });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to complete visit'
-    });
-  }
-}
+  res.json({ success: true, data: visit });
+});

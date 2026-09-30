@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
@@ -21,6 +22,7 @@ import {
   MembershipStatus,
   GlobalRole
 } from '@prisma/client';
+import { t } from '../i18n';
 
 /**
  * Barriere « detenu en propre » (pack Patrimoine) : vrai quand `ownerUserId`
@@ -40,6 +42,97 @@ async function isThirdPartyOwnerUserId(
     select: { id: true }
   });
   return !activeMember;
+}
+
+/**
+ * Nom d'un contact CRM tel qu'il s'affiche : raison sociale pour une
+ * entreprise, sinon « prénom nom ».
+ */
+function nomContactCrm(contact: {
+  contactType: string | null;
+  legalName: string | null;
+  firstName: string;
+  lastName: string;
+}): string | null {
+  const personne = `${contact.firstName} ${contact.lastName}`.trim();
+  const legal = contact.legalName?.trim() || '';
+  const nom = contact.contactType === 'COMPANY' ? legal || personne : personne || legal;
+  return nom || null;
+}
+
+/**
+ * Complète `owner.fullName` quand le compte du propriétaire n'en a pas.
+ *
+ * Le compte est créé à partir de l'e-mail du contact choisi (`ownerEmail`),
+ * sans nom : la fiche affichait l'e-mail. Le nom vient du contact CRM de CETTE
+ * agence portant cet e-mail (lecture seule, filtrée par `tenantId`). Un compte
+ * qui a déjà un nom n'est jamais modifié.
+ */
+async function completerNomsProprietaires(
+  tenantId: string | null | undefined,
+  biens: Array<{ owner?: { email: string; fullName: string | null } | null }>
+): Promise<void> {
+  if (!tenantId) return;
+  const sansNom = biens
+    .map(bien => bien.owner)
+    .filter((owner): owner is { email: string; fullName: string | null } => Boolean(owner && !owner.fullName));
+  if (sansNom.length === 0) return;
+  const contacts = await prisma.crmContact.findMany({
+    where: { tenantId, email: { in: [...new Set(sansNom.map(owner => owner.email))], mode: 'insensitive' } },
+    select: { email: true, contactType: true, legalName: true, firstName: true, lastName: true }
+  });
+  const parEmail = new Map(contacts.map(contact => [contact.email.toLowerCase(), nomContactCrm(contact)]));
+  for (const owner of sansNom) {
+    const nom = parEmail.get(owner.email.toLowerCase());
+    if (nom) owner.fullName = nom;
+  }
+}
+
+/**
+ * Compte du propriétaire désigné par l'e-mail d'un contact : trouvé, ou créé
+ * (nommé d'après le contact CRM de l'agence portant cet e-mail, pour que la
+ * fiche affiche un nom).
+ *
+ * Étanchéité entre agences : un compte existant de la plateforme n'est
+ * rattaché à l'agence que s'il a déjà un `TenantClient` ou un contact CRM
+ * portant cet e-mail DANS CETTE agence. Sinon l'id est renvoyé (l'e-mail est
+ * celui que l'appelant a saisi) mais `nomVisible` vaut faux : l'appelant doit
+ * masquer `fullName`, qui appartient à une autre agence.
+ */
+async function resoudreProprietaireParEmail(
+  tenantId: string | null,
+  emailSaisi: string
+): Promise<{ id: string; nomVisible: boolean }> {
+  const email = emailSaisi.trim().toLowerCase();
+  const existant = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existant) {
+    if (!tenantId) return { id: existant.id, nomVisible: false };
+    const [client, contact] = await Promise.all([
+      prisma.tenantClient.findFirst({ where: { tenantId, userId: existant.id }, select: { id: true } }),
+      prisma.crmContact.findFirst({
+        where: { tenantId, email: { equals: email, mode: 'insensitive' } },
+        select: { id: true }
+      })
+    ]);
+    return { id: existant.id, nomVisible: Boolean(client || contact) };
+  }
+  const contactProprietaire = tenantId
+    ? await prisma.crmContact.findFirst({
+        where: { tenantId, email: { equals: email, mode: 'insensitive' } },
+        select: { contactType: true, legalName: true, firstName: true, lastName: true }
+      })
+    : null;
+  const user = await prisma.user.create({
+    data: {
+      email,
+      fullName: contactProprietaire ? nomContactCrm(contactProprietaire) : null,
+      globalRole: GlobalRole.USER,
+      emailVerified: false,
+      isActive: true
+    }
+  });
+  logger.info('Created user from contact email', { userId: user.id, email });
+  return { id: user.id, nomVisible: true };
 }
 
 /**
@@ -95,7 +188,7 @@ export async function createProperty(
 
   // Validate ownership type matches provided IDs
   if (data.ownershipType === PropertyOwnershipType.TENANT && !tenantId) {
-    throw new BadRequestError('Tenant ID is required for tenant-owned properties');
+    throw new BadRequestError(t("L'agence est requise pour un bien appartenant à une agence"));
   }
 
   // Barriere « detenu en propre » (pack Patrimoine) : AVANT toute ecriture,
@@ -109,29 +202,15 @@ export async function createProperty(
   // If ownerEmail is provided, find or create the User
   // Priority: data.ownerUserId > data.ownerEmail > ownerUserId parameter
   let finalOwnerUserId = data.ownerUserId || ownerUserId;
+  let masquerNomProprietaire = false;
   if (data.ownerEmail && !finalOwnerUserId) {
-    let user = await prisma.user.findUnique({
-      where: { email: data.ownerEmail }
-    });
-
-    if (!user) {
-      // Create a minimal user for the contact
-      user = await prisma.user.create({
-        data: {
-          email: data.ownerEmail,
-          globalRole: GlobalRole.USER,
-          emailVerified: false,
-          isActive: true
-        }
-      });
-      logger.info('Created user from contact email', { userId: user.id, email: data.ownerEmail });
-    }
-
-    finalOwnerUserId = user.id;
+    const resolu = await resoudreProprietaireParEmail(tenantId, data.ownerEmail);
+    finalOwnerUserId = resolu.id;
+    masquerNomProprietaire = !resolu.nomVisible;
   }
 
   if (data.ownershipType === PropertyOwnershipType.PUBLIC && !finalOwnerUserId) {
-    throw new BadRequestError('Owner user ID or email is required for public properties');
+    throw new BadRequestError(t('Le propriétaire (identifiant ou e-mail) est requis pour un bien public'));
   }
 
   // Barriere « detenu en propre » (suite) : `ownerUserId` fourni, different
@@ -151,7 +230,9 @@ export async function createProperty(
   const validation = await validatePropertyData(data.propertyType, validationData);
 
   if (!validation.valid) {
-    throw new BadRequestError(`Property validation failed: ${validation.errors.join(', ')}`);
+    throw new BadRequestError(
+      t('Validation du bien impossible : {{errors}}', { errors: validation.errors.join(', ') })
+    );
   }
 
   // Retry logic for handling unique constraint violations (reference collisions)
@@ -172,7 +253,10 @@ export async function createProperty(
             internalReference,
             propertyType: data.propertyType,
             ownershipType: data.ownershipType,
-            tenantId: data.ownershipType === PropertyOwnershipType.TENANT ? tenantId : null,
+            // TENANT et CLIENT portent l'agence qui les a saisis : sans elle, un bien
+            // CLIENT créé depuis l'assistant serait introuvable (fiche, médias,
+            // documents) tant qu'aucun mandat n'existe. Seul PUBLIC reste sans agence.
+            tenantId: data.ownershipType === PropertyOwnershipType.PUBLIC ? null : tenantId,
             ownerUserId: finalOwnerUserId, // Can be set even for TENANT type if owner is selected in form
             containerParentId: data.containerParentId || null, // For sub-properties (apartments in buildings)
             title: data.title,
@@ -246,7 +330,7 @@ export async function createProperty(
             ownerUserId: finalOwnerUserId
           });
           throw new BadRequestError(
-            'Failed to generate unique property reference after multiple attempts. Please try again.'
+            t('Impossible de générer une référence de bien unique après plusieurs essais. Réessayez.')
           );
         }
       } else {
@@ -257,8 +341,11 @@ export async function createProperty(
   }
 
   if (!property) {
-    throw new BadRequestError('Failed to create property after multiple attempts');
+    throw new BadRequestError(t('Impossible de créer le bien après plusieurs essais'));
   }
+
+  // Compte d'une autre agence adopté par e-mail : son nom ne sort pas.
+  if (masquerNomProprietaire && property.owner) property.owner = { ...property.owner, fullName: null };
 
   logger.info('[PROPERTY_CREATE] Propriété créée', {
     propertyId: property.id,
@@ -301,6 +388,8 @@ export async function createProperty(
       logger.warn('Failed to calculate quality score', { propertyId: property.id, error });
     });
   }
+
+  await completerNomsProprietaires(tenantId, [property]);
 
   return property as PropertyDetail;
 }
@@ -364,6 +453,7 @@ export async function getPropertyById(
         }
       },
       media: {
+        select: PROPERTY_MEDIA_SELECT,
         orderBy: {
           displayOrder: 'asc'
         }
@@ -385,6 +475,7 @@ export async function getPropertyById(
       containerChildren: {
         include: {
           media: {
+            select: PROPERTY_MEDIA_SELECT,
             orderBy: {
               displayOrder: 'asc'
             },
@@ -417,6 +508,7 @@ export async function getPropertyById(
   // Les mandats ne servaient qu'au controle d'acces : ils ne sortent pas.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { mandates: _mandates, ...detail } = property;
+  await completerNomsProprietaires(tenantId, [detail]);
   return detail as PropertyDetail;
 }
 
@@ -441,10 +533,12 @@ export async function updateProperty(
   // `tx.property.update()` plus bas, au lieu d'un 400 clair.
   updatePropertySchema.parse(data);
 
+  // « Confier ce bien à un propriétaire » : l'e-mail du contact choisi désigne
+  // (ou crée) le compte propriétaire, comme à la création.
   // Get existing property
   const existing = await getPropertyById(propertyId, tenantId, userId);
   if (!existing) {
-    throw new NotFoundError('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Validate against template if typeSpecificData is provided
@@ -459,7 +553,9 @@ export async function updateProperty(
     const validation = await validatePropertyData(existing.propertyType, validationData);
 
     if (!validation.valid) {
-      throw new BadRequestError(`Property validation failed: ${validation.errors.join(', ')}`);
+      throw new BadRequestError(
+        t('Validation du bien impossible : {{errors}}', { errors: validation.errors.join(', ') })
+      );
     }
   }
 
@@ -468,12 +564,26 @@ export async function updateProperty(
   // modification hors contexte d'agence (portail proprietaire...) n'y est
   // jamais soumise.
   if (tenantId) {
-    const thirdPartyByOwnershipType = isThirdPartyOwnershipInput({ ownershipType: data.ownershipType });
+    const thirdPartyByOwnershipType = isThirdPartyOwnershipInput({
+      ownershipType: data.ownershipType,
+      ownerEmail: data.ownerEmail
+    });
     const thirdPartyByOwnerUserId =
       data.ownerUserId !== undefined && (await isThirdPartyOwnerUserId(tenantId, data.ownerUserId, actorUserId));
     if (thirdPartyByOwnershipType || thirdPartyByOwnerUserId) {
       await assertThirdPartyAllowedForTenant(tenantId, 'THIRD_PARTY_OWNER');
     }
+  }
+
+  // « Confier ce bien à un propriétaire » : l'e-mail du contact choisi désigne
+  // (ou crée) le compte propriétaire, comme à la création. Résolu seulement
+  // après l'accès au bien et la barrière « détenu en propre » : un bien
+  // introuvable ou refusé ne crée aucun compte.
+  let masquerNomProprietaire = false;
+  if (data.ownerEmail && !data.ownerUserId) {
+    const resolu = await resoudreProprietaireParEmail(tenantId ?? null, data.ownerEmail);
+    data = { ...data, ownerUserId: resolu.id };
+    masquerNomProprietaire = !resolu.nomVisible;
   }
 
   // Build update data object, only including fields that are provided
@@ -609,6 +719,8 @@ export async function updateProperty(
     });
   }
 
+  if (masquerNomProprietaire && updated.owner) updated.owner = { ...updated.owner, fullName: null };
+
   return updated as PropertyDetail;
 }
 
@@ -675,7 +787,10 @@ export async function listProperties(
         ownershipType: PropertyOwnershipType.CLIENT,
         OR: [{ tenantId }, { tenantId: null }],
         mandates: { some: { tenantId, isActive: true } }
-      }
+      },
+      // Bien de client saisi par l'agence, mandat pas encore créé : il reste
+      // dans la liste pour que le mandat puisse être créé depuis sa fiche.
+      { ownershipType: PropertyOwnershipType.CLIENT, tenantId, mandates: { none: { tenantId } } }
     ];
   } else if (userId) {
     // Public properties owned by user or published
@@ -788,6 +903,7 @@ export async function listProperties(
         }
       },
       media: {
+        select: PROPERTY_MEDIA_SELECT,
         where: {
           isPrimary: true
         },
@@ -875,11 +991,11 @@ export async function listProperties(
       // La photo primaire d'abord ; a defaut, la premiere dans l'ordre
       // d'affichage. C'est exactement la regle que le front appliquait.
       orderBy: [{ isPrimary: 'desc' }, { displayOrder: 'asc' }],
-      select: { propertyId: true, fileUrl: true, filePath: true }
+      select: { propertyId: true, fileUrl: true }
     });
     for (const photo of photos) {
       if (thumbnailByPropertyId.has(photo.propertyId)) continue;
-      const url = photo.fileUrl || photo.filePath;
+      const url = photo.fileUrl;
       if (url) thumbnailByPropertyId.set(photo.propertyId, url);
     }
   }
@@ -888,6 +1004,8 @@ export async function listProperties(
     ...p,
     thumbnailUrl: thumbnailByPropertyId.get(p.id) ?? null
   }));
+
+  await completerNomsProprietaires(tenantId, propertiesWithThumbnail as any[]);
 
   return {
     properties: propertiesWithThumbnail as PropertyDetail[],
@@ -944,6 +1062,101 @@ export async function unpublishPropertyWrapper(
  * @param userId - User ID (for ownership validation)
  * @param actorUserId - User deleting the property (for audit)
  */
+/**
+ * Dépendances qui empêchent de supprimer un bien, une phrase par blocage.
+ *
+ * Lecture seule, filtrée par bien (déjà résolu pour l'agence par l'appelant).
+ * Les baux, tickets, mandats et compromis de vente ne sont pas supprimés en
+ * cascade : sans ce contrôle, la clé étrangère levait une erreur interne.
+ * Le bien reste archivable dans tous les cas.
+ */
+export async function listerBlocagesSuppression(
+  propertyId: string
+): Promise<Array<{ field: string; message: string }>> {
+  const blocages: Array<{ field: string; message: string }> = [];
+  const ajouter = (field: string, message: string) => blocages.push({ field, message });
+
+  const baux = await prisma.rentalLease.findMany({
+    where: { property_id: propertyId },
+    select: { id: true, lease_number: true, status: true }
+  });
+  const enCours = baux.filter(b => b.status !== 'ENDED' && b.status !== 'CANCELED');
+  const clos = baux.filter(b => b.status === 'ENDED' || b.status === 'CANCELED');
+  if (enCours.length > 0) {
+    ajouter(
+      'lease',
+      t('Ce bien a un bail actif ou à venir ({{count}} : {{references}}) : résiliez-le avant de le supprimer', {
+        count: enCours.length,
+        references: enCours.map(b => b.lease_number).join(', ')
+      })
+    );
+  }
+  if (clos.length > 0) {
+    ajouter(
+      'leaseHistory',
+      t('Ce bien a un historique de baux ({{count}} : {{references}}) qui doit être conservé', {
+        count: clos.length,
+        references: clos.map(b => b.lease_number).join(', ')
+      })
+    );
+  }
+  if (baux.length > 0) {
+    const impayees = await prisma.rentalInstallment.count({
+      where: { lease_id: { in: baux.map(b => b.id) }, status: { in: ['DUE', 'PARTIAL', 'OVERDUE'] } }
+    });
+    if (impayees > 0) {
+      ajouter('installments', t('Ce bien a {{count}} échéance(s) de loyer impayée(s)', { count: impayees }));
+    }
+  }
+
+  const mandats = await prisma.propertyMandate.count({ where: { propertyId, isActive: true } });
+  if (mandats > 0) {
+    ajouter('mandate', t('Ce bien a un mandat de gestion actif : résiliez-le avant de le supprimer'));
+  }
+
+  const parts = await prisma.propertyOwnershipShare.count({ where: { propertyId } });
+  if (parts > 0) {
+    ajouter(
+      'ownership',
+      t('Ce bien est en indivision ({{count}} propriétaire(s)) : supprimez les parts avant', { count: parts })
+    );
+  }
+
+  const rattaches = await prisma.property.findUnique({
+    where: { id: propertyId },
+    select: { syndicateLots: { select: { id: true } }, siteLot: { select: { id: true } } }
+  });
+  if ((rattaches?.syndicateLots.length ?? 0) > 0 || rattaches?.siteLot) {
+    ajouter('lot', t('Ce bien est rattaché à un lot de copropriété ou de site : détachez-le avant de le supprimer'));
+  }
+
+  const tickets = await prisma.maintenanceTicket.count({ where: { property_id: propertyId } });
+  if (tickets > 0) {
+    ajouter('maintenance', t('Ce bien a {{count}} ticket(s) de maintenance', { count: tickets }));
+  }
+
+  const ventes =
+    (await prisma.saleMandate.count({ where: { propertyId } })) +
+    (await prisma.saleAgreement.count({ where: { propertyId } }));
+  if (ventes > 0) {
+    ajouter('sale', t('Ce bien a des mandats ou compromis de vente ({{count}})', { count: ventes }));
+  }
+
+  const visites = await prisma.propertyVisit.count({
+    where: { propertyId, status: { in: ['SCHEDULED', 'CONFIRMED'] } }
+  });
+  if (visites > 0) {
+    ajouter('visits', t('Ce bien a {{count}} visite(s) planifiée(s)', { count: visites }));
+  }
+
+  const documents = await prisma.propertyDocument.count({ where: { propertyId } });
+  if (documents > 0) {
+    ajouter('documents', t('Ce bien a {{count}} document(s) : supprimez-les avant', { count: documents }));
+  }
+
+  return blocages;
+}
+
 export async function deleteProperty(
   propertyId: string,
   tenantId?: string | null,
@@ -953,7 +1166,7 @@ export async function deleteProperty(
   // Get property with validation
   const property = await getPropertyById(propertyId, tenantId, userId);
   if (!property) {
-    throw new NotFoundError('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Check if property has active deals (through CrmDealProperty)
@@ -971,7 +1184,17 @@ export async function deleteProperty(
   });
 
   if (hasActiveDeals > 0) {
-    throw new ConflictError('Cannot delete property - has active deals');
+    throw new ConflictError(t('Impossible de supprimer ce bien : il a des affaires actives'));
+  }
+
+  const blocages = await listerBlocagesSuppression(propertyId);
+  if (blocages.length > 0) {
+    throw new ConflictError(
+      t('Ce bien ne peut pas être supprimé : {{blocages}}. Archivez-le à la place (statut « Archivé »).', {
+        blocages: blocages.map(b => b.message).join(' ; ')
+      }),
+      blocages
+    );
   }
 
   // Log before deletion for audit
@@ -1001,33 +1224,45 @@ export async function deleteProperty(
   // l'abonnement est ferme dans la meme transaction (l'historique du registre
   // survit : pas de cle etrangere).
   const lotTenantId = tenantId || property.tenantId || null;
-  await prisma.$transaction(async tx => {
-    const related = lotTenantId
-      ? await tx.property.findUnique({
-          where: { id: propertyId },
-          select: {
-            containerParentId: true,
-            syndicateLots: { select: { id: true } },
-            siteLot: { select: { id: true } }
-          }
-        })
-      : null;
-    await tx.property.delete({
-      where: { id: propertyId }
+  try {
+    await prisma.$transaction(async tx => {
+      const related = lotTenantId
+        ? await tx.property.findUnique({
+            where: { id: propertyId },
+            select: {
+              containerParentId: true,
+              syndicateLots: { select: { id: true } },
+              siteLot: { select: { id: true } }
+            }
+          })
+        : null;
+      await tx.property.delete({
+        where: { id: propertyId }
+      });
+      if (lotTenantId) {
+        await syncLotActivationsTx(
+          tx,
+          lotTenantId,
+          {
+            propertyIds: [propertyId, related?.containerParentId],
+            syndicateLotIds: related?.syndicateLots.map(l => l.id) ?? [],
+            siteLotIds: related?.siteLot ? [related.siteLot.id] : []
+          },
+          { actorUserId, reason: 'PROPERTY_DELETED' }
+        );
+      }
     });
-    if (lotTenantId) {
-      await syncLotActivationsTx(
-        tx,
-        lotTenantId,
-        {
-          propertyIds: [propertyId, related?.containerParentId],
-          syndicateLotIds: related?.syndicateLots.map(l => l.id) ?? [],
-          siteLotIds: related?.siteLot ? [related.siteLot.id] : []
-        },
-        { actorUserId, reason: 'PROPERTY_DELETED' }
+  } catch (error: any) {
+    // Dépendance non prévue ci-dessus : clé étrangère -> même refus métier, jamais un 500.
+    if (error?.code === 'P2003') {
+      throw new ConflictError(
+        t(
+          'Ce bien ne peut pas être supprimé : il est référencé par d’autres données. Archivez-le à la place (statut « Archivé »).'
+        )
       );
     }
-  });
+    throw error;
+  }
 
   logger.info('Property deleted successfully', {
     propertyId,
@@ -1170,6 +1405,7 @@ export async function getAccessibleProperties(
         }
       },
       media: {
+        select: PROPERTY_MEDIA_SELECT,
         where: {
           isPrimary: true
         },
@@ -1197,7 +1433,7 @@ export async function getChildProperties(
   // Verify parent property exists and is accessible
   const parent = await getPropertyById(parentPropertyId, tenantId);
   if (!parent) {
-    throw new NotFoundError('Parent property not found or access denied');
+    throw new NotFoundError(t('Bien parent introuvable ou accès refusé'));
   }
 
   // If parent is not a container type (IMMEUBLE), return empty array
@@ -1229,6 +1465,7 @@ export async function getChildProperties(
         }
       },
       media: {
+        select: PROPERTY_MEDIA_SELECT,
         orderBy: {
           displayOrder: 'asc'
         },

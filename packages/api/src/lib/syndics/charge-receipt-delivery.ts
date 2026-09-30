@@ -124,7 +124,7 @@ export function receiptFileUrl(syndicateId: string, receiptId: string): string {
 
 /** Nom de téléchargement : le numéro du document. */
 export function receiptDownloadName(receipt: Pick<StoredReceipt, 'kind' | 'number'>): string {
-  return `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
+  return `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Reçu'} ${receipt.number}.pdf`;
 }
 
 async function writeReceiptFile(receipt: StoredReceipt, buffer: Buffer): Promise<string> {

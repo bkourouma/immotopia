@@ -1,5 +1,6 @@
 import { prisma } from '../../../utils/database';
 import { badRequest } from '../../errors';
+import { VALUATION_ORDER_BY } from '../valuation-order';
 import {
   buildPropertyYieldInput,
   ensureTenantProperty,
@@ -151,7 +152,7 @@ async function buildExportProperty(tenantId: string, property: PropertyIdentity,
     prisma.assetValuation.findMany({
       where: { tenantId, propertyId: property.id },
       select: { valuatedAt: true, estimatedValue: true, currency: true, method: true },
-      orderBy: { valuatedAt: 'desc' }
+      orderBy: VALUATION_ORDER_BY
     }),
     prisma.propertyLoan.findMany({
       where: { tenantId, propertyId: property.id },
@@ -299,7 +300,9 @@ export async function collectAgencyPatrimoineExport(tenantId: string): Promise<P
   const [overview, properties] = await Promise.all([
     getPatrimoineOverview(tenantId),
     prisma.property.findMany({
-      where: { tenantId, status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
+      // Biens DÉTENUS par l'agence : un bien CLIENT saisi par l'assistant porte aussi
+      // `tenantId`, mais n'est pas son patrimoine (spec 015 : valeur, dette, loyers).
+      where: { tenantId, ownershipType: 'TENANT', status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
       select: { id: true, internalReference: true, title: true, propertyType: true, status: true, address: true },
       orderBy: { internalReference: 'asc' }
     })

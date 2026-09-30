@@ -59,6 +59,12 @@ const NOT_FOUND_INVOICE = 'Facture de prestataire introuvable.';
 // Gardes d'appartenance
 // ---------------------------------------------------------------------------
 
+/** Numéro déjà utilisé par ce prestataire (casse ignorée) : 409 avec le champ fautif. */
+function invoiceNumberConflict(): ConflictError {
+  const message = 'Une facture de ce prestataire porte déjà ce numéro pour cette copropriété';
+  return new ConflictError(message, [{ field: 'number', message }]);
+}
+
 async function assertSyndicate(tenantId: string, syndicateId: string) {
   const syndicate = await prisma.syndicate.findFirst({
     where: { id: syndicateId, tenantId },
@@ -447,14 +453,12 @@ export async function createProviderInvoice(
       tenantId,
       syndicateId,
       providerId: input.providerId,
-      number: input.number,
+      number: { equals: input.number, mode: 'insensitive' },
       status: { not: 'CANCELLED' }
     },
     select: { id: true }
   });
-  if (duplicate) {
-    throw new ConflictError('Une facture de ce prestataire porte déjà ce numéro pour cette copropriété');
-  }
+  if (duplicate) throw invoiceNumberConflict();
 
   const totals = computeInvoiceTotals(input);
 
@@ -613,15 +617,13 @@ export async function updateProviderInvoice(
           tenantId,
           syndicateId,
           providerId: invoice.providerId,
-          number: input.number,
+          number: { equals: input.number, mode: 'insensitive' },
           status: { not: 'CANCELLED' },
           id: { not: invoiceId }
         },
         select: { id: true }
       });
-      if (duplicate) {
-        throw new ConflictError('Une facture de ce prestataire porte déjà ce numéro pour cette copropriété');
-      }
+      if (duplicate) throw invoiceNumberConflict();
     }
 
     await tx.syndicProviderInvoice.update({

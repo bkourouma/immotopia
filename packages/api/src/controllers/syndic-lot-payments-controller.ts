@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { t } from '../i18n';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import { assertUuidOrNotFound } from '../lib/documents/mandating-agencies';
 import {
@@ -25,9 +26,9 @@ function tenantIdOf(req: Request): string {
 }
 
 const syndicIdOf = (req: Request) =>
-  assertUuidOrNotFound(req.params.syndicId, 'Copropriete introuvable ou inaccessible.');
+  assertUuidOrNotFound(req.params.syndicId, t('Copropriété introuvable ou inaccessible.'));
 const lotIdOf = (req: Request) =>
-  assertUuidOrNotFound(req.params.lotId, 'Lot introuvable ou inaccessible pour cette copropriete.');
+  assertUuidOrNotFound(req.params.lotId, t('Lot introuvable ou inaccessible pour cette copropriété.'));
 
 function lotPaymentInput(req: Request): LotPaymentInput {
   const body = lotPaymentSchema.parse(req.body ?? {});

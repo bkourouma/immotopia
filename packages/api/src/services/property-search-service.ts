@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { PropertySearchRequest, PropertySearchResponse, PropertyDetail } from '../types/property-types';
 import { PropertyOwnershipType, PropertyStatus } from '@prisma/client';
 import { calculateDistance } from '../utils/geolocation-utils';
@@ -186,6 +187,7 @@ export async function searchProperties(
         }
       },
       media: {
+        select: PROPERTY_MEDIA_SELECT,
         where: {
           isPrimary: true
         },

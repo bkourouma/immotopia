@@ -8,6 +8,7 @@ import { emailService, isEmailDeliveryConfigured } from '../../services/email-se
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
 import { paidFromAllocations } from './charge-allocation';
 import { computeOutstanding } from './finance-utils';
+import { currentOwnerProfilesSorted } from './lot-owner';
 // Même substitution que les reçus S3 : les valeurs injectées dans le HTML
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
@@ -306,7 +307,133 @@ export async function notifyChargeCall(
   };
 }
 
-export async function notifyMeetingConvocation(meetingId: string) {
+export interface ConvocationResult {
+  /** Copropriétaires distincts visés par cet envoi (hors ceux déjà servis lors d'un renvoi). */
+  owners: number;
+  /** Renvoi : copropriétaires déjà servis (e-mail ou WhatsApp livré), non relancés. */
+  alreadyServed?: number;
+  /** Événement e-mail « Convocation Assemblée Générale » activé pour l'agence. */
+  emailEnabled: boolean;
+  emailSent: number;
+  emailFailed: number;
+  /** Copropriétaires sans adresse e-mail (aucun envoi tenté). */
+  emailSkippedNoAddress: number;
+  whatsappSent: number;
+  /** Noms des copropriétaires dont l'e-mail a échoué. */
+  failures: string[];
+  skipped?: 'MEETING_NOT_FOUND' | 'NO_OWNER_CONTACT';
+}
+
+function emptyConvocationResult(): ConvocationResult {
+  return {
+    owners: 0,
+    emailEnabled: false,
+    emailSent: 0,
+    emailFailed: 0,
+    emailSkippedNoAddress: 0,
+    whatsappSent: 0,
+    failures: []
+  };
+}
+
+const CONVOCATION_DELIVERY_ACTION = 'SYNDIC_MEETING_CONVOCATION_DELIVERY';
+
+type ConvocationRecipient = {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  legalName?: string | null;
+  email?: string | null;
+  whatsappNumber?: string | null;
+  phonePrimary?: string | null;
+};
+
+/**
+ * Destinataires d'une convocation : tous les propriétaires ACTUELS des lots
+ * (règle de `lot-owner.ts` : indivision = plusieurs profils), y compris les
+ * co-indivisaires ; à défaut de profil, le propriétaire saisi sur le lot. Les
+ * lots à 0 tantième (désactivés) ne votent pas et ne sont pas convoqués.
+ * Dédoublonnés par contact puis par adresse e-mail.
+ */
+export function collectConvocationRecipients(
+  lots: Array<{
+    generalShares?: number | null;
+    owner?: ConvocationRecipient | null;
+    ownerProfiles?: Array<any> | null;
+  }>,
+  now: Date = new Date()
+): ConvocationRecipient[] {
+  const byContact = new Map<string, ConvocationRecipient>();
+  for (const lot of lots) {
+    if (Number(lot.generalShares ?? 0) <= 0) continue;
+    const current = currentOwnerProfilesSorted(lot.ownerProfiles ?? [], now)
+      .map(profile => profile.contact as ConvocationRecipient | null | undefined)
+      .filter((contact): contact is ConvocationRecipient => Boolean(contact));
+    const recipients = current.length > 0 ? current : lot.owner ? [lot.owner] : [];
+    for (const recipient of recipients) {
+      if (!byContact.has(recipient.id)) byContact.set(recipient.id, recipient);
+    }
+  }
+  const seenEmails = new Set<string>();
+  return [...byContact.values()].filter(recipient => {
+    const email = recipient.email?.trim().toLowerCase();
+    if (!email) return true;
+    if (seenEmails.has(email)) return false;
+    seenEmails.add(email);
+    return true;
+  });
+}
+
+/** Dernier résultat journalisé par contact (SENT / FAILED / NOT_SERVED) pour cette assemblée. */
+async function loadConvocationDeliveries(tenantId: string, meetingId: string): Promise<Map<string, string>> {
+  const statuses = new Map<string, string>();
+  try {
+    const rows = await prisma.auditLog.findMany({
+      where: { tenantId, actionKey: CONVOCATION_DELIVERY_ACTION, entityType: 'GeneralMeeting', entityId: meetingId },
+      orderBy: { createdAt: 'asc' },
+      select: { payload: true }
+    });
+    for (const row of rows) {
+      const payload = row.payload as { contactId?: string; status?: string } | null;
+      if (payload?.contactId && payload.status) statuses.set(payload.contactId, payload.status);
+    }
+  } catch (error) {
+    logger.warn('notifyMeetingConvocation: delivery journal unreadable', {
+      meetingId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+  return statuses;
+}
+
+async function recordConvocationDelivery(tenantId: string, meetingId: string, contactId: string, status: string) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        tenantId,
+        actionKey: CONVOCATION_DELIVERY_ACTION,
+        entityType: 'GeneralMeeting',
+        entityId: meetingId,
+        payload: { contactId, status }
+      }
+    });
+  } catch (error) {
+    logger.warn('notifyMeetingConvocation: delivery not journaled', {
+      meetingId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+/**
+ * Convoque les copropriétaires de l'assemblée. Premier envoi : tous. Renvoi
+ * (un journal existe) : seuls les destinataires en échec ou jamais servis,
+ * sauf `options.all`.
+ */
+export async function notifyMeetingConvocation(
+  meetingId: string,
+  options: { all?: boolean } = {}
+): Promise<ConvocationResult> {
   const eventKeyEmail: EmailNotificationKey = 'GENERAL_MEETING_CONVOCATION';
   const eventKeyWhatsApp: WhatsappNotificationKey = 'GENERAL_MEETING_CONVOCATION';
 
@@ -317,7 +444,8 @@ export async function notifyMeetingConvocation(meetingId: string) {
         include: {
           lots: {
             include: {
-              owner: true
+              owner: true,
+              ownerProfiles: { where: { isActive: true }, include: { contact: true } }
             }
           }
         }
@@ -327,17 +455,20 @@ export async function notifyMeetingConvocation(meetingId: string) {
 
   if (!meeting) {
     logger.warn('notifyMeetingConvocation: meeting not found', { meetingId });
-    return { emailSent: 0, whatsappSent: 0, skipped: 'MEETING_NOT_FOUND' as const };
+    return { ...emptyConvocationResult(), skipped: 'MEETING_NOT_FOUND' as const };
   }
 
-  const owners = meeting.syndicate.lots
-    .map(lot => lot.owner)
-    .filter((owner): owner is NonNullable<typeof owner> => Boolean(owner))
-    .filter((owner, index, all) => all.findIndex(item => item.id === owner.id) === index);
+  const allRecipients = collectConvocationRecipients(meeting.syndicate.lots as any[]);
 
-  if (owners.length === 0) {
-    return { emailSent: 0, whatsappSent: 0, skipped: 'NO_OWNER_CONTACT' as const };
+  if (allRecipients.length === 0) {
+    return { ...emptyConvocationResult(), skipped: 'NO_OWNER_CONTACT' as const };
   }
+
+  const deliveries = options.all
+    ? new Map<string, string>()
+    : await loadConvocationDeliveries(meeting.syndicate.tenantId, meetingId);
+  const owners = allRecipients.filter(recipient => deliveries.get(recipient.id) !== 'SENT');
+  const alreadyServed = allRecipients.length - owners.length;
 
   const meetingDate = new Date(meeting.scheduledAt).toLocaleDateString('fr-FR');
   const meetingTime = new Date(meeting.scheduledAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -346,7 +477,10 @@ export async function notifyMeetingConvocation(meetingId: string) {
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKeyEmail];
 
   let emailSent = 0;
+  let emailFailed = 0;
+  let emailSkippedNoAddress = 0;
   let whatsappSent = 0;
+  const failures: string[] = [];
 
   for (const owner of owners) {
     const ownerName =
@@ -358,14 +492,32 @@ export async function notifyMeetingConvocation(meetingId: string) {
       meetingTime,
       meetingLocation: meeting.location || 'À préciser'
     };
+    let served = false;
+    let failed = false;
 
     if (emailConfig.enabled && owner.email?.trim()) {
-      await emailService.sendEmail({
-        to: owner.email,
-        subject: applyTemplate(emailConfig.subjectOverride || defaults.subject, templateVars),
-        html: applyTemplate(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, true)
-      });
-      emailSent += 1;
+      // Un e-mail en échec ne doit pas empêcher les autres convocations : on
+      // compte l'échec et on continue (le décompte est rendu à l'écran).
+      try {
+        await emailService.sendEmail({
+          to: owner.email,
+          subject: applyTemplate(emailConfig.subjectOverride || defaults.subject, templateVars),
+          html: applyTemplate(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, true)
+        });
+        emailSent += 1;
+        served = true;
+      } catch (error) {
+        emailFailed += 1;
+        failed = true;
+        failures.push(ownerName);
+        logger.warn('notifyMeetingConvocation: email send failed', {
+          meetingId,
+          contactId: owner.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    } else if (emailConfig.enabled) {
+      emailSkippedNoAddress += 1;
     }
 
     const sentWhatsapp = await sendWhatsappNotification({
@@ -376,6 +528,7 @@ export async function notifyMeetingConvocation(meetingId: string) {
     });
     if (sentWhatsapp) {
       whatsappSent += 1;
+      served = true;
     } else {
       const directPhone = getOwnerWhatsappTarget(owner);
       if (directPhone) {
@@ -385,9 +538,14 @@ export async function notifyMeetingConvocation(meetingId: string) {
           variables: templateVars,
           to: directPhone
         });
-        if (sentDirectWhatsapp) whatsappSent += 1;
+        if (sentDirectWhatsapp) {
+          whatsappSent += 1;
+          served = true;
+        }
       }
     }
+
+    await recordConvocationDelivery(tenantId, meetingId, owner.id, served ? 'SENT' : failed ? 'FAILED' : 'NOT_SERVED');
   }
 
   logger.info('notifyMeetingConvocation completed', {
@@ -395,10 +553,20 @@ export async function notifyMeetingConvocation(meetingId: string) {
     tenantId,
     owners: owners.length,
     emailSent,
+    emailFailed,
     whatsappSent
   });
 
-  return { emailSent, whatsappSent };
+  return {
+    owners: owners.length,
+    alreadyServed,
+    emailEnabled: emailConfig.enabled,
+    emailSent,
+    emailFailed,
+    emailSkippedNoAddress,
+    whatsappSent,
+    failures
+  } as ConvocationResult;
 }
 
 export async function notifyChargeCallReminder(reminderId: string) {

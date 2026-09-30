@@ -18,9 +18,17 @@ import {
  * Gardes posés avec leur chemin, jamais en `router.use` nu : ce routeur est
  * monté sur `/api` tout entier.
  */
+import { requireThirdPartyAllowed } from '../services/own-assets-barrier-service';
+
 const router = Router();
 
-const guard = (permission: string) => [authenticate, requireTenantAccess, requirePermission(permission)];
+const guard = (permission: string) => [
+  authenticate,
+  requireTenantAccess,
+  requirePermission(permission),
+  // Barriere « detenu en propre » : comptes et reversements de proprietaires tiers.
+  requireThirdPartyAllowed('OWNER_ACCOUNT')
+];
 const BASE = '/tenants/:tenantId/owner-accounts';
 
 router.get(BASE, ...guard('FINANCE_ACCOUNTS_READ'), listOwnerAccountsHandler);

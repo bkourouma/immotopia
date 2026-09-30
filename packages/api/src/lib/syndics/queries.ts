@@ -1,7 +1,13 @@
 import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
-import { computeOutstanding, deriveChargeCallStatus, isJournalEntryBalanced, roundMoney } from './finance-utils';
+import {
+  computeLatePenalty,
+  computeOutstanding,
+  deriveChargeCallStatus,
+  isJournalEntryBalanced,
+  roundMoney
+} from './finance-utils';
 import {
   computeMeetingAttendance,
   computeResolutionTally,
@@ -9,6 +15,7 @@ import {
   type MajorityLot
 } from './meeting-majority';
 // Ecart recette (lot syndic-ecarts, T2) : votant d'un lot a la date de l'AG.
+import { presentLotOwners, pickPrimaryOwnerProfile, syncLotOwnerFromProfilesTx } from './lot-owner';
 import { toMajorityLotsAt, votersAt, type LotOwnerProfileForVoters } from './meeting-voters';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
@@ -59,7 +66,7 @@ import {
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
 // Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
 import { annualShareForPeriod } from './charge-schedule-periods';
-import { ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
+import { AppError, ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -258,6 +265,18 @@ export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId
             }
           },
           coowner: true,
+          // Proprietaires actuels (indivision) : lus par `presentLotOwners`, jamais exposes tels quels.
+          ownerProfiles: {
+            select: {
+              id: true,
+              contactId: true,
+              ownershipPercentage: true,
+              ownedSince: true,
+              ownedUntil: true,
+              isActive: true,
+              contact: { select: { id: true, firstName: true, lastName: true, legalName: true, email: true } }
+            }
+          },
           tenantAssignments: {
             where: { isActive: true },
             include: {
@@ -386,7 +405,7 @@ export async function updateSyndicateByTenant(
   });
 
   if (!existing) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   if (data.propertyId) {
@@ -461,7 +480,7 @@ export async function deleteEmptySyndicateByTenant(tenantId: string, syndicateId
   });
 
   if (!existing) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents] = await Promise.all([
@@ -501,6 +520,66 @@ export async function deleteEmptySyndicateByTenant(tenantId: string, syndicateId
   return deleted;
 }
 
+const LOT_NUMBER_DUPLICATE_MESSAGE = 'Ce numéro de lot existe déjà dans la copropriété';
+
+/** Normalise un numéro de lot : espaces de bord retirés (la casse est ignorée à la comparaison). */
+function normalizeLotNumber(value: string): string {
+  return value.trim();
+}
+
+function lotNumberConflict(): ConflictError {
+  return new ConflictError(LOT_NUMBER_DUPLICATE_MESSAGE, [
+    { field: 'lotNumber', message: LOT_NUMBER_DUPLICATE_MESSAGE }
+  ]);
+}
+
+/**
+ * BUG-2026-09-30-025 : le numéro de lot est unique dans une copropriété, sans
+ * égard à la casse ni aux espaces de bord (« A1 » = « a1 »). Contrôle fait
+ * AVANT toute écriture dérivée (tantièmes, compte du lot, quota) ; l'index
+ * unique `syndicate_lots_syndicate_lot_number_uniq` garantit la règle en base
+ * face à deux requêtes concurrentes (voir `rethrowLotNumberRace`).
+ */
+async function assertLotNumberAvailable(
+  client: Pick<PrismaTransactionClient, 'syndicateLot'>,
+  syndicateId: string,
+  lotNumber: string,
+  excludeLotId?: string
+): Promise<void> {
+  const duplicate = await client.syndicateLot.findFirst({
+    where: {
+      syndicateId,
+      lotNumber: { equals: normalizeLotNumber(lotNumber), mode: 'insensitive' },
+      ...(excludeLotId ? { id: { not: excludeLotId } } : {})
+    },
+    select: { id: true }
+  });
+  if (duplicate) throw lotNumberConflict();
+}
+
+const PROPERTY_ALREADY_LINKED_MESSAGE = 'Ce bien est déjà rattaché à un lot de copropriété.';
+
+/** P2002 sur l'unicité de `SyndicateLot.propertyId` (et non sur le numéro de lot). */
+function isPropertyLinkViolation(error: unknown): boolean {
+  const target = (error as { meta?: { target?: unknown } } | null)?.meta?.target;
+  const text = Array.isArray(target) ? target.join(',') : typeof target === 'string' ? target : '';
+  return /property_id|propertyId/.test(text);
+}
+
+function propertyLinkConflict(): ConflictError {
+  return new ConflictError(PROPERTY_ALREADY_LINKED_MESSAGE, [
+    { field: 'propertyId', message: PROPERTY_ALREADY_LINKED_MESSAGE }
+  ]);
+}
+
+/** Une course entre deux requêtes est arrêtée par l'index unique : même réponse 409. */
+function rethrowLotNumberRace(error: unknown): never {
+  if ((error as { code?: string } | null)?.code === 'P2002') {
+    throw isPropertyLinkViolation(error) ? propertyLinkConflict() : lotNumberConflict();
+  }
+  throw error;
+}
+
 export async function createSyndicateLot(
   tenantId: string,
   data: {
@@ -521,7 +600,7 @@ export async function createSyndicateLot(
   });
 
   if (!syndicate) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   // Un lot de copropriete (parking, cave...) peut ne pas avoir de bien lie :
@@ -555,30 +634,36 @@ export async function createSyndicateLot(
     }
   }
 
-  return prisma.$transaction(async tx => {
-    if (data.coownerId) {
-      await ensureCrmRoleForContact(tx, tenantId, data.coownerId, 'COOWNER');
-    }
+  const lotNumber = normalizeLotNumber(data.lotNumber);
 
-    const lot = await tx.syndicateLot.create({
-      data: {
-        syndicateId: data.syndicateId,
-        propertyId: data.propertyId ?? null,
-        coownerId: data.coownerId ?? undefined,
-        ownerContactId: data.coownerId ?? undefined,
-        lotNumber: data.lotNumber,
-        lotType: data.lotType,
-        generalShares: Math.round(data.tantiemes),
-        specialShares: data.isParkingIncluded ? Math.round(data.tantiemes) : null
+  return prisma
+    .$transaction(async tx => {
+      await assertLotNumberAvailable(tx, data.syndicateId, lotNumber);
+
+      if (data.coownerId) {
+        await ensureCrmRoleForContact(tx, tenantId, data.coownerId, 'COOWNER');
       }
-    });
 
-    await syncSyndicateLotCount(tx, tenantId, data.syndicateId);
-    // Lot principal d'une copropriete active : compte dans la reserve (D2).
-    await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [lot.id] });
+      const lot = await tx.syndicateLot.create({
+        data: {
+          syndicateId: data.syndicateId,
+          propertyId: data.propertyId ?? null,
+          coownerId: data.coownerId ?? undefined,
+          ownerContactId: data.coownerId ?? undefined,
+          lotNumber,
+          lotType: data.lotType,
+          generalShares: Math.round(data.tantiemes),
+          specialShares: data.isParkingIncluded ? Math.round(data.tantiemes) : null
+        }
+      });
 
-    return lot;
-  });
+      await syncSyndicateLotCount(tx, tenantId, data.syndicateId);
+      // Lot principal d'une copropriete active : compte dans la reserve (D2).
+      await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [lot.id] });
+
+      return lot;
+    })
+    .catch(rethrowLotNumberRace);
 }
 
 function inferLotTypeFromPropertyType(
@@ -805,7 +890,7 @@ export async function importLotsFromPropertiesBySyndicate(
     }
 
     const lotType = inferLotTypeFromPropertyType(property.propertyType);
-    const lotNumber = inferLotNumberFromProperty(property);
+    const lotNumber = normalizeLotNumber(inferLotNumberFromProperty(property));
     const tantiemes = 1;
 
     const ownerContactId = property.owner?.email
@@ -820,6 +905,7 @@ export async function importLotsFromPropertiesBySyndicate(
     let lot: { id: string };
     try {
       lot = await prisma.$transaction(async tx => {
+        await assertLotNumberAvailable(tx, syndicateId, lotNumber);
         if (ownerContactId) {
           await ensureCrmRoleForContact(tx, tenantId, ownerContactId, 'COOWNER');
         }
@@ -843,6 +929,14 @@ export async function importLotsFromPropertiesBySyndicate(
         return createdLot;
       });
     } catch (error) {
+      if ((error as { code?: string } | null)?.code === 'P2002' || error instanceof ConflictError) {
+        // Numéro déjà pris dans la copropriété : le bien est écarté, pas d'échec global.
+        skipped.push({
+          propertyId: property.id,
+          reason: t(isPropertyLinkViolation(error) ? PROPERTY_ALREADY_LINKED_MESSAGE : LOT_NUMBER_DUPLICATE_MESSAGE)
+        });
+        continue;
+      }
       if (!(error instanceof QuotaExceededError)) throw error;
       skipped.push({ propertyId: property.id, reason: t(LOT_QUOTA_REACHED_REASON) });
       continue;
@@ -871,6 +965,28 @@ export async function importLotsFromPropertiesBySyndicate(
   };
 }
 
+/**
+ * Un lot désactivé, supprimé ou dont les tantièmes changent ne doit plus
+ * figurer dans la répartition déjà calculée des budgets non clôturés : sans
+ * cela, le prochain appel budgétaire réutilise l'ancienne répartition (le lot
+ * y est encore appelé et la somme des parts ne vaut plus le budget).
+ */
+async function refreshOpenBudgetAllocations(tenantId: string, syndicateId: string) {
+  const budgets = await prisma.syndicateBudget.findMany({
+    where: { syndicateId, status: { not: 'CLOSED' }, allocations: { some: {} } },
+    select: { id: true }
+  });
+  for (const budget of budgets) {
+    try {
+      await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budget.id);
+    } catch (error) {
+      // Plus aucun lot, budget clôturé entre-temps : rien à répartir.
+      if (!(error instanceof AppError)) throw error;
+      logger.warn('Budget allocations not refreshed after lot change', { tenantId, syndicateId, budgetId: budget.id });
+    }
+  }
+}
+
 export async function updateSyndicateLotByTenant(
   tenantId: string,
   syndicateId: string,
@@ -895,6 +1011,10 @@ export async function updateSyndicateLotByTenant(
     throw notFound('Lot introuvable ou inaccessible');
   }
 
+  if (data.lotNumber !== undefined) {
+    data = { ...data, lotNumber: normalizeLotNumber(data.lotNumber) };
+  }
+
   if (data.coownerId) {
     const contact = await prisma.crmContact.findFirst({
       where: { id: data.coownerId, tenantId },
@@ -905,37 +1025,111 @@ export async function updateSyndicateLotByTenant(
     }
   }
 
-  return prisma.$transaction(async tx => {
-    if (data.coownerId) {
-      await ensureCrmRoleForContact(tx, tenantId, data.coownerId, 'COOWNER');
+  const updated = await prisma
+    .$transaction(async tx => {
+      if (data.lotNumber !== undefined) {
+        await assertLotNumberAvailable(tx, syndicateId, data.lotNumber, lotId);
+      }
+      if (data.coownerId) {
+        await ensureCrmRoleForContact(tx, tenantId, data.coownerId, 'COOWNER');
+      }
+
+      const updatedLot = await tx.syndicateLot.update({
+        where: { id: lotId },
+        data: {
+          ...(Object.prototype.hasOwnProperty.call(data, 'propertyId') ? { propertyId: data.propertyId ?? null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, 'coownerId')
+            ? { coownerId: data.coownerId ?? null, ownerContactId: data.coownerId ?? null }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, 'lotNumber') ? { lotNumber: data.lotNumber } : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, 'lotType') ? { lotType: data.lotType } : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, 'tantiemes')
+            ? { generalShares: data.tantiemes !== undefined ? Math.round(data.tantiemes) : undefined }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, 'isParkingIncluded')
+            ? { specialShares: data.isParkingIncluded ? Math.round(data.tantiemes ?? 0) : null }
+            : {})
+        }
+      });
+      // Type de lot ou bien rattache modifies : le lot entre, sort ou change de cle (D2).
+      // Tantiemes modifies : un lot ramene a 0 sort de la reserve (et y revient s'il retrouve des tantiemes).
+      if (
+        data.lotType !== undefined ||
+        data.tantiemes !== undefined ||
+        Object.prototype.hasOwnProperty.call(data, 'propertyId')
+      ) {
+        await syncLotActivationsTx(tx, tenantId, {
+          syndicateLotIds: [lotId],
+          propertyIds: [existing.propertyId, updatedLot.propertyId]
+        });
+      }
+      return updatedLot;
+    })
+    .catch(rethrowLotNumberRace);
+  if (data.tantiemes !== undefined) {
+    await refreshOpenBudgetAllocations(tenantId, syndicateId);
+  }
+  return updated;
+}
+
+/**
+ * BUG-2026-09-30-078 : suppression d'un lot saisi par erreur. Refusee (409) des
+ * qu'il porte un mouvement — appel de charges, paiement, recu, ecriture, vote,
+ * incident, relance... — car l'historique doit rester intact : on propose alors
+ * de le DESACTIVER (tantiemes a 0 : exclu de la cle de repartition, de la
+ * reserve de lots et des appels futurs, mais conserve). Sans mouvement, le lot
+ * et ses rattachements vides sont supprimes et la place est liberee dans la
+ * jauge LOTS (`syncLotActivationsTx`).
+ */
+export async function deleteSyndicateLotByTenant(tenantId: string, syndicateId: string, lotId: string) {
+  const existing = await prisma.syndicateLot.findFirst({
+    where: { id: lotId, syndicateId, syndicate: { tenantId } },
+    select: { id: true, propertyId: true, lotNumber: true }
+  });
+  if (!existing) {
+    throw notFound('Lot introuvable ou inaccessible');
+  }
+
+  const deleted = await prisma.$transaction(async tx => {
+    await lockLotTx(tx, lotId);
+    const counts = await Promise.all([
+      tx.chargeCall.count({ where: { lotId } }),
+      tx.chargePayment.count({ where: { lotId } }),
+      tx.syndicChargeReceipt.count({ where: { lotId } }),
+      tx.journalEntryLine.count({ where: { lotId } }),
+      tx.gMVote.count({ where: { lotId } }),
+      tx.syndicateIncident.count({ where: { lotId } }),
+      tx.incidentCostImputation.count({ where: { lotId } }),
+      tx.paymentReminder.count({ where: { lotId } }),
+      tx.latePaymentPenalty.count({ where: { lotId } }),
+      tx.paymentSchedule.count({ where: { lotId } }),
+      tx.ownerAccountTransaction.count({ where: { account: { lotId } } })
+    ]);
+    if (counts.some(count => count > 0)) {
+      const message = `Le lot ${existing.lotNumber} a des mouvements (appels de charges, paiements, reçus…) : il ne peut pas être supprimé. Désactivez-le pour l'exclure de la clé de répartition et des appels futurs.`;
+      throw new ConflictError(message, [{ field: 'lotId', message }]);
     }
 
-    const updatedLot = await tx.syndicateLot.update({
-      where: { id: lotId },
-      data: {
-        ...(Object.prototype.hasOwnProperty.call(data, 'propertyId') ? { propertyId: data.propertyId ?? null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(data, 'coownerId')
-          ? { coownerId: data.coownerId ?? null, ownerContactId: data.coownerId ?? null }
-          : {}),
-        ...(Object.prototype.hasOwnProperty.call(data, 'lotNumber') ? { lotNumber: data.lotNumber } : {}),
-        ...(Object.prototype.hasOwnProperty.call(data, 'lotType') ? { lotType: data.lotType } : {}),
-        ...(Object.prototype.hasOwnProperty.call(data, 'tantiemes')
-          ? { generalShares: data.tantiemes ? Math.round(data.tantiemes) : undefined }
-          : {}),
-        ...(Object.prototype.hasOwnProperty.call(data, 'isParkingIncluded')
-          ? { specialShares: data.isParkingIncluded ? Math.round(data.tantiemes ?? 0) : null }
-          : {})
-      }
-    });
-    // Type de lot ou bien rattache modifies : le lot entre, sort ou change de cle (D2).
-    if (data.lotType !== undefined || Object.prototype.hasOwnProperty.call(data, 'propertyId')) {
-      await syncLotActivationsTx(tx, tenantId, {
-        syndicateLotIds: [lotId],
-        propertyIds: [existing.propertyId, updatedLot.propertyId]
-      });
-    }
-    return updatedLot;
+    // Aucun mouvement : les rattachements restants (repartitions de budget,
+    // profils, compte vide du lot) partent avec lui.
+    await tx.budgetAllocation.deleteMany({ where: { lotId } });
+    await tx.lotOwnerProfile.deleteMany({ where: { lotId } });
+    await tx.lotTenantProfile.deleteMany({ where: { lotId } });
+    await tx.lotTenantAssignment.deleteMany({ where: { lotId } });
+    await tx.ownerAccount.deleteMany({ where: { lotId } });
+    await tx.syndicateLot.delete({ where: { id: lotId } });
+
+    await syncSyndicateLotCount(tx, tenantId, syndicateId);
+    await syncLotActivationsTx(
+      tx,
+      tenantId,
+      { syndicateLotIds: [lotId], propertyIds: existing.propertyId ? [existing.propertyId] : [] },
+      { reason: 'LOT_DELETED' }
+    );
+    return { id: lotId };
   });
+  await refreshOpenBudgetAllocations(tenantId, syndicateId);
+  return deleted;
 }
 
 export async function addLotTenantBySyndicate(
@@ -1039,20 +1233,24 @@ export async function deactivateLotTenantAssignmentBySyndicate(
   });
 }
 
-export async function listChargeCallsBySyndicate(
+type ChargeCallListFilters = {
+  period?: string;
+  status?: 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
+  range?: DateRangeInput;
+  pagination?: PaginationInput;
+};
+
+/**
+ * Filtre commun de la liste des appels de charges et de sa synthese : la
+ * synthese (cartes de l'ecran) doit porter sur le MEME ensemble que la liste,
+ * toutes pages confondues, jamais sur la page courante.
+ */
+function buildChargeCallListWhere(
   tenantId: string,
   syndicateId: string,
-  filters?: {
-    period?: string;
-    status?: 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
-    range?: DateRangeInput;
-    pagination?: PaginationInput;
-  }
-) {
-  await assertSyndicateTenantOwnership(tenantId, syndicateId);
-  const pager = buildPagination(filters?.pagination);
-  const now = new Date();
-
+  filters: ChargeCallListFilters | undefined,
+  now: Date
+): Prisma.ChargeCallWhereInput {
   // Le statut OVERDUE n'est jamais stocke (voir deriveChargeCallStatus,
   // finance-utils.ts) : un filtre demandant ce statut doit donc reprendre la
   // meme regle (echeance passee, solde non solde) plutot que de chercher une
@@ -1073,15 +1271,60 @@ export async function listChargeCallsBySyndicate(
   if (Object.keys(statusWhere).length > 0) combinedConditions.push(statusWhere);
   if (Object.keys(rangeWhere).length > 0) combinedConditions.push(rangeWhere);
 
-  const calls = await prisma.chargeCall.findMany({
-    where: {
-      syndicateId,
-      syndicate: {
-        tenantId
-      },
-      ...(filters?.period ? { period: filters.period } : {}),
-      ...(combinedConditions.length > 0 ? { AND: combinedConditions } : {})
+  return {
+    syndicateId,
+    syndicate: {
+      tenantId
     },
+    ...(filters?.period ? { period: filters.period } : {}),
+    ...(combinedConditions.length > 0 ? { AND: combinedConditions } : {})
+  };
+}
+
+/**
+ * Synthese des appels de charges filtres (agregat serveur sur TOUS les appels,
+ * pas sur la page courante) : montant appele, dossiers en attente (en attente
+ * ou partiels, echeance non depassee) et dossiers en retard (non soldes,
+ * echeance passee) — memes definitions que `deriveChargeCallStatus`.
+ */
+export async function summarizeChargeCallsBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  filters?: Omit<ChargeCallListFilters, 'pagination'>
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  const now = new Date();
+  const where = buildChargeCallListWhere(tenantId, syndicateId, filters, now);
+
+  const [totals, pendingCount, overdueCount] = await Promise.all([
+    prisma.chargeCall.aggregate({ where, _sum: { amount: true }, _count: { _all: true } }),
+    prisma.chargeCall.count({
+      where: { AND: [where, { status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { gte: now }, amount: { gt: 0 } }] }
+    }),
+    prisma.chargeCall.count({
+      where: { AND: [where, { status: { not: 'PAID' }, dueDate: { lt: now }, amount: { gt: 0 } }] }
+    })
+  ]);
+
+  return {
+    totalCount: totals._count._all,
+    totalAmount: roundMoney(Number(totals._sum.amount ?? 0)),
+    pendingCount,
+    overdueCount
+  };
+}
+
+export async function listChargeCallsBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  filters?: ChargeCallListFilters
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  const pager = buildPagination(filters?.pagination);
+  const now = new Date();
+
+  const calls = await prisma.chargeCall.findMany({
+    where: buildChargeCallListWhere(tenantId, syndicateId, filters, now),
     include: {
       lot: {
         include: {
@@ -1304,7 +1547,9 @@ export async function createChargeCallAndUpdateStatus(
         await prisma.syndicateLot.findMany({
           where: {
             syndicateId: data.syndicateId,
-            syndicate: { tenantId }
+            syndicate: { tenantId },
+            // Lot sans tantieme (desactive) : pas d'appel futur (BUG-078).
+            generalShares: { gt: 0 }
           },
           select: { id: true }
         })
@@ -1764,61 +2009,6 @@ async function recomputeMeetingResultsTx(
   await tx.generalMeeting.update({
     where: { id: meetingId },
     data: { quorum: attendance.quorumPercent }
-  });
-}
-
-export async function createMeetingWithResolutions(
-  tenantId: string,
-  data: {
-    syndicateId: string;
-    type: string;
-    scheduledAt: Date;
-    startTime?: Date;
-    endTime?: Date;
-    location?: string | null;
-    resolutions: { title: string; description?: string | null; majorityRule?: string | null }[];
-  }
-) {
-  if (data.startTime && data.endTime && data.startTime > data.endTime) {
-    throw unprocessableEntity("L'heure de debut doit etre inferieure a l'heure de fin");
-  }
-
-  const syndicate = await prisma.syndicate.findFirst({
-    where: {
-      id: data.syndicateId,
-      tenantId
-    },
-    select: { id: true }
-  });
-
-  if (!syndicate) {
-    throw notFound('Copropriete introuvable ou inaccessible');
-  }
-
-  return prisma.$transaction(async tx => {
-    const meeting = await tx.generalMeeting.create({
-      data: {
-        syndicateId: data.syndicateId,
-        type: data.type as any,
-        scheduledAt: data.scheduledAt,
-        startTime: data.startTime ?? undefined,
-        endTime: data.endTime ?? undefined,
-        location: data.location ?? undefined
-      }
-    });
-
-    if (data.resolutions.length > 0) {
-      await tx.gMResolution.createMany({
-        data: data.resolutions.map(r => ({
-          meetingId: meeting.id,
-          title: r.title,
-          description: r.description,
-          majorityRule: r.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
-        }))
-      });
-    }
-
-    return getMeetingByTenant(tenantId, data.syndicateId, meeting.id);
   });
 }
 
@@ -2298,19 +2488,50 @@ export async function listServiceProvidersBySyndicate(tenantId: string, syndicat
  * est visible depuis n'importe quelle copropriete de l'agence, comme
  * `listServiceProvidersBySyndicate` (au-dessus) le fait deja pour la lecture.
  */
+function providerNameConflict(name: string): ConflictError {
+  const message = `Un prestataire nommé « ${name} » existe déjà dans votre agence.`;
+  return new ConflictError(message, [{ field: 'name', message }]);
+}
+
+/**
+ * BUG-2026-09-30-059 : le nom d'un prestataire est unique dans l'agence, sans
+ * égard à la casse ni aux espaces de bord — comme pour les prestataires de
+ * maintenance (même table `service_providers`). L'index unique
+ * `service_providers_tenant_name_uniq` tient la règle face à deux requêtes
+ * concurrentes (P2002, même réponse 409).
+ */
+async function assertProviderNameAvailable(tenantId: string, name: string, excludeProviderId?: string) {
+  const duplicate = await prisma.serviceProvider.findFirst({
+    where: {
+      tenantId,
+      name: { equals: name, mode: 'insensitive' },
+      ...(excludeProviderId ? { id: { not: excludeProviderId } } : {})
+    },
+    select: { id: true }
+  });
+  if (duplicate) throw providerNameConflict(name);
+}
+
 export async function createServiceProvider(
   tenantId: string,
   data: { name: string; specialty?: string; email?: string; phone?: string }
 ) {
-  return prisma.serviceProvider.create({
-    data: {
-      tenantId,
-      name: data.name,
-      specialty: data.specialty,
-      email: data.email,
-      phone: data.phone
-    }
-  });
+  const name = data.name.trim();
+  await assertProviderNameAvailable(tenantId, name);
+  try {
+    return await prisma.serviceProvider.create({
+      data: {
+        tenantId,
+        name,
+        specialty: data.specialty,
+        email: data.email,
+        phone: data.phone
+      }
+    });
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === 'P2002') throw providerNameConflict(name);
+    throw error;
+  }
 }
 
 export async function updateServiceProviderByTenant(
@@ -2327,10 +2548,18 @@ export async function updateServiceProviderByTenant(
     throw notFound('Prestataire introuvable ou inaccessible');
   }
 
-  return prisma.serviceProvider.update({
-    where: { id: providerId },
-    data
-  });
+  const name = data.name?.trim();
+  if (name !== undefined) await assertProviderNameAvailable(tenantId, name, providerId);
+
+  try {
+    return await prisma.serviceProvider.update({
+      where: { id: providerId },
+      data: { ...data, ...(name !== undefined ? { name } : {}) }
+    });
+  } catch (error) {
+    if (name !== undefined && (error as { code?: string } | null)?.code === 'P2002') throw providerNameConflict(name);
+    throw error;
+  }
 }
 
 /**
@@ -2383,6 +2612,34 @@ export async function listMaintenanceContractsBySyndicate(
   });
 }
 
+/**
+ * BUG-2026-09-30-059 : un contrat ACTIF du meme prestataire, de la meme nature
+ * (casse et espaces ignores) et de periode qui chevauche celle d'un contrat
+ * existant de la copropriete est un doublon : refus 409 explicite.
+ */
+async function assertNoOverlappingContract(
+  syndicateId: string,
+  contract: { providerId: string; nature: string; startDate: Date; endDate: Date | null }
+) {
+  const nature = contract.nature.trim();
+  const duplicate = await prisma.maintenanceContract.findFirst({
+    where: {
+      syndicateId,
+      providerId: contract.providerId,
+      status: 'ACTIVE',
+      nature: { equals: nature, mode: 'insensitive' },
+      // Chevauchement : l'existant commence avant la fin du nouveau (ou sans fin) et finit apres son debut (ou sans fin).
+      ...(contract.endDate ? { startDate: { lte: contract.endDate } } : {}),
+      OR: [{ endDate: null }, { endDate: { gte: contract.startDate } }]
+    },
+    select: { id: true }
+  });
+  if (duplicate) {
+    const message = `Un contrat « ${nature} » est déjà actif avec ce prestataire sur cette période.`;
+    throw new ConflictError(message, [{ field: 'nature', message }]);
+  }
+}
+
 export async function createMaintenanceContract(
   tenantId: string,
   data: {
@@ -2414,12 +2671,19 @@ export async function createMaintenanceContract(
   ]);
 
   if (!syndicate) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   if (!provider) {
     throw notFound('Prestataire introuvable ou inaccessible');
   }
+
+  await assertNoOverlappingContract(data.syndicateId, {
+    providerId: data.providerId,
+    nature: data.nature,
+    startDate: data.startDate,
+    endDate: data.endDate ?? null
+  });
 
   return prisma.maintenanceContract.create({
     data
@@ -2546,7 +2810,7 @@ export async function createDocumentForSyndicate(
   });
 
   if (!syndicate) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound('Copropriété introuvable ou inaccessible');
   }
 
   return prisma.syndicateDocument.create({
@@ -2604,7 +2868,10 @@ export async function getFinanceSummaryBySyndicate(tenantId: string, syndicateId
     })
   ]);
 
-  const overdueCharges = charges.filter(charge => deriveChargeCallStatus(charge.status, charge.dueDate) === 'OVERDUE');
+  // Un appel de montant nul n'est ni du ni en retard (BUG-050).
+  const overdueCharges = charges.filter(
+    charge => Number(charge.amount) > 0 && deriveChargeCallStatus(charge.status, charge.dueDate) === 'OVERDUE'
+  );
   const totalCalled = roundMoney(charges.reduce((sum: number, charge) => sum + Number(charge.amount), 0));
   // Lot S2 : le regle d'un appel se lit dans ses affectations ; l'avance
   // (paiements non encore affectes) est rapportee a part.
@@ -2632,6 +2899,17 @@ export async function getFinanceSummaryBySyndicate(tenantId: string, syndicateId
   };
 }
 
+/** Proprietaire affiche au recouvrement : celui du lot, sinon le proprietaire principal de ses profils actuels. */
+function overdueOwner(lot: {
+  owner?: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+  ownerProfiles?: Array<Parameters<typeof pickPrimaryOwnerProfile>[0][number] & { contact?: any }>;
+}) {
+  const primary = lot.owner ?? pickPrimaryOwnerProfile(lot.ownerProfiles ?? [])?.contact ?? null;
+  return primary
+    ? { id: primary.id, firstName: primary.firstName, lastName: primary.lastName, email: primary.email }
+    : null;
+}
+
 export async function listOverdueDashboardBySyndicate(tenantId: string, syndicateId: string) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
@@ -2641,12 +2919,26 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
       syndicateId,
       syndicate: { tenantId },
       dueDate: { lt: now },
+      // Un appel de montant nul n'est ni du ni en retard (BUG-050).
+      amount: { gt: 0 },
       status: { in: ['PENDING', 'PARTIAL', 'OVERDUE'] }
     },
     include: {
       lot: {
         include: {
           owner: true,
+          // Proprietaire = profils actuels du lot (meme regle que la liste et le compte, BUG-087).
+          ownerProfiles: {
+            select: {
+              id: true,
+              contactId: true,
+              ownershipPercentage: true,
+              ownedSince: true,
+              ownedUntil: true,
+              isActive: true,
+              contact: { select: { id: true, firstName: true, lastName: true, legalName: true, email: true } }
+            }
+          },
           property: {
             select: {
               id: true,
@@ -2662,10 +2954,12 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
     orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }]
   });
 
-  const items = calls.map(call => {
+  const items = calls.flatMap(call => {
     const paid = paidFromAllocations(call.allocations);
     const amount = Number(call.amount);
     const outstanding = computeOutstanding(amount, paid);
+    // Solde deja couvert (paiement ou avance imputee) : plus rien de du, donc pas de retard.
+    if (outstanding <= 0) return [];
     const lateMs = now.getTime() - call.dueDate.getTime();
     const daysLate = Math.max(0, Math.floor(lateMs / (24 * 60 * 60 * 1000)));
 
@@ -2681,14 +2975,8 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
             internalReference: call.lot.property.internalReference
           }
         : null,
-      owner: call.lot.owner
-        ? {
-            id: call.lot.owner.id,
-            firstName: call.lot.owner.firstName,
-            lastName: call.lot.owner.lastName,
-            email: call.lot.owner.email
-          }
-        : null,
+      owner: overdueOwner(call.lot),
+      ...presentLotOwners(call.lot.ownerProfiles ?? []),
       dueDate: call.dueDate,
       status: deriveChargeCallStatus(call.status, call.dueDate, now),
       amount,
@@ -2702,15 +2990,18 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
     (acc, item) => {
       acc.count += 1;
       acc.outstanding += item.outstanding;
+      acc.lotIds.add(item.lotId);
       return acc;
     },
-    { count: 0, outstanding: 0 }
+    { count: 0, outstanding: 0, lotIds: new Set<string>() }
   );
 
   return {
     items,
     totals: {
       overdueCount: totals.count,
+      // « Lots en retard » : un lot compte une fois, quel que soit le nombre de ses appels impayes.
+      overdueLotCount: totals.lotIds.size,
       overdueAmount: roundMoney(totals.outstanding)
     }
   };
@@ -2796,6 +3087,7 @@ export async function runReminderBatchForSyndicate(tenantId: string, syndicateId
       syndicateId,
       syndicate: { tenantId },
       dueDate: { lt: now },
+      amount: { gt: 0 },
       status: { in: ['PENDING', 'PARTIAL', 'OVERDUE'] }
     },
     include: {
@@ -2916,8 +3208,9 @@ export async function createLatePaymentPenaltyForChargeCall(
   const computedDaysLate = Math.max(0, Math.floor((appliedAt.getTime() - dueDate.getTime()) / (24 * 60 * 60 * 1000)));
   const daysLate = data.daysLate ?? computedDaysLate;
 
-  const computedPenalty = roundMoney((outstanding * data.penaltyRate * Math.max(daysLate, 1)) / 3000);
-  const penaltyAmount = roundMoney(data.penaltyAmount ?? computedPenalty);
+  const computedPenalty = computeLatePenalty(outstanding, data.penaltyRate, daysLate);
+  // Un montant saisi est plafonné au reste dû, comme le calcul (computeLatePenalty).
+  const penaltyAmount = Math.min(roundMoney(data.penaltyAmount ?? computedPenalty), roundMoney(outstanding));
 
   return prisma.$transaction(async tx => {
     const penalty = await tx.latePaymentPenalty.create({
@@ -3277,6 +3570,26 @@ export async function listOwnerAccountTransactionsByLot(
   return applyChronologicalBalances(rows, movements);
 }
 
+/**
+ * Nombre total de transactions du compte d'un lot (meme filtre de periode que
+ * la liste) : la carte « Transactions » ne doit pas compter la seule page
+ * renvoyee par `listOwnerAccountTransactionsByLot`.
+ */
+export async function countOwnerAccountTransactionsByLot(
+  tenantId: string,
+  syndicateId: string,
+  lotId: string,
+  filters?: { range?: DateRangeInput }
+) {
+  const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
+  return prisma.ownerAccountTransaction.count({
+    where: {
+      accountId: account.id,
+      ...buildDateRangeFilter('transactionDate', filters?.range)
+    }
+  });
+}
+
 /** Tous les mouvements d'un compte de lot, réduits à ce qu'exige le calcul du solde cumulé. */
 async function loadOwnerAccountMovements(accountId: string): Promise<RunningBalanceMovement[]> {
   return prisma.ownerAccountTransaction.findMany({
@@ -3577,7 +3890,7 @@ export async function createJournalEntryBySyndicate(
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
   if (!isJournalEntryBalanced(data.lines)) {
-    throw unprocessableEntity('Ecriture non equilibree: total debit doit etre egal au total credit');
+    throw unprocessableEntity('Écriture non équilibrée : le total des débits doit être égal au total des crédits');
   }
 
   const journal = await prisma.accountingJournal.findFirst({
@@ -3680,7 +3993,7 @@ export async function lockJournalEntryBySyndicate(tenantId: string, syndicateId:
   });
 
   if (!entry) {
-    throw notFound('Ecriture comptable introuvable');
+    throw notFound('Écriture comptable introuvable');
   }
 
   if (entry.isLocked) {
@@ -4092,6 +4405,9 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
   if (lots.length === 0) {
     throw unprocessableEntity('Aucun lot disponible pour calculer les allocations budgetaires');
   }
+  // Cle de repartition : un lot sans tantieme (desactive) n'y figure pas ; s'il n'y en a aucun
+  // avec des tantiemes, tous les lots restent (parts egales) — jamais de division par zero (BUG-078).
+  const distributionLots = lots.some(lot => lot.generalShares > 0) ? lots.filter(lot => lot.generalShares > 0) : lots;
 
   const allocationsByLot = new Map<
     string,
@@ -4111,7 +4427,7 @@ export async function recomputeBudgetAllocationsByBudget(tenantId: string, syndi
   for (const line of budget.lines as unknown as BudgetLineDistributionInput[]) {
     const distributed = distributeLineAmount(
       Number(line.amountForecast),
-      lots as LotDistributionInput[],
+      distributionLots as LotDistributionInput[],
       line.distributionKey
     );
     for (const lineAllocation of distributed) {
@@ -4295,7 +4611,11 @@ export async function createChargeCallBatchWithCallsTx(
     }
   });
 
-  const lotsInLockOrder = [...data.lots].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
+  // Un lot dont la quote-part est nulle (ex. sans tantiemes speciaux) n'a rien a payer : ni appel,
+  // ni debit, ni avis, ni relance possible (BUG-050).
+  const lotsInLockOrder = data.lots
+    .filter(lot => roundMoney(lot.amount) > 0)
+    .sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
   const chargeCalls: Array<Awaited<ReturnType<typeof createLotChargeCallTx>>> = [];
   const fundCredits: FundCreditItem[] = [];
   for (const lot of lotsInLockOrder) {
@@ -4380,9 +4700,20 @@ export async function generateChargeCallsFromBudget(
     throw unprocessableEntity('La devise des appels doit être celle du budget');
   }
 
-  const allocations = budget.allocations.length
-    ? budget.allocations
-    : await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budgetId);
+  // Un lot sans tantième (désactivé) n'est jamais appelé (BUG-078) : si la
+  // répartition enregistrée le porte encore, elle est recalculée avant émission.
+  const lotShares = await prisma.syndicateLot.findMany({
+    where: { syndicateId },
+    select: { id: true, generalShares: true }
+  });
+  const hasShares = lotShares.some(lot => lot.generalShares > 0);
+  const activeLotIds = new Set(lotShares.filter(lot => !hasShares || lot.generalShares > 0).map(lot => lot.id));
+  const stale = budget.allocations.some(allocation => !activeLotIds.has(allocation.lotId));
+  const allocations = (
+    budget.allocations.length && !stale
+      ? budget.allocations
+      : await recomputeBudgetAllocationsByBudget(tenantId, syndicateId, budgetId)
+  ).filter(allocation => activeLotIds.has(allocation.lotId));
 
   if (allocations.length === 0) {
     throw unprocessableEntity('Aucune allocation disponible pour generer les appels');
@@ -4480,6 +4811,81 @@ export async function listLotOwnerProfilesBySyndicate(tenantId: string, syndicat
   });
 }
 
+/** Total des parts d'un lot : 100 %, compte en centiemes de pourcent (entiers : aucune derive flottante). */
+const OWNER_SHARE_TOTAL_HUNDREDTHS = 10000;
+
+function toShareHundredths(value: number | string | { toString(): string }): number {
+  return Math.round(Number(value.toString()) * 100);
+}
+
+function formatShareHundredths(hundredths: number): string {
+  return String(Number((hundredths / 100).toFixed(2)));
+}
+
+/** Profil proprietaire qui compte dans le total des parts : actif et non termine. */
+function currentOwnerProfileWhere(now: Date): Prisma.LotOwnerProfileWhereInput {
+  return { isActive: true, ownedSince: { lte: now }, OR: [{ ownedUntil: null }, { ownedUntil: { gt: now } }] };
+}
+
+/**
+ * BUG-2026-09-30-069 : la somme des parts des proprietaires d'un lot ne
+ * depasse jamais 100 % (indivision). `addHundredths` est la part du profil
+ * ecrit, `excludeProfileId` le profil modifie (deja compte dans la base). Le
+ * lot est verrouille par l'appelant : deux ecritures concurrentes ne peuvent
+ * pas depasser ensemble le plafond.
+ */
+async function assertOwnerSharesWithinLimit(
+  tx: PrismaTransactionClient,
+  lotId: string,
+  addHundredths: number,
+  excludeProfileId?: string
+): Promise<void> {
+  const [lot, others] = await Promise.all([
+    tx.syndicateLot.findFirst({ where: { id: lotId }, select: { lotNumber: true } }),
+    tx.lotOwnerProfile.findMany({
+      where: {
+        lotId,
+        ...currentOwnerProfileWhere(new Date()),
+        ...(excludeProfileId ? { id: { not: excludeProfileId } } : {})
+      },
+      select: { ownershipPercentage: true }
+    })
+  ]);
+  const existing = others.reduce((sum, profile) => sum + toShareHundredths(profile.ownershipPercentage), 0);
+  if (existing + addHundredths > OWNER_SHARE_TOTAL_HUNDREDTHS) {
+    const lotLabel = lot?.lotNumber ? `du lot ${lot.lotNumber}` : 'du lot';
+    const message = `Les parts ${lotLabel} dépassent 100 % (${formatShareHundredths(existing)} % déjà attribués, ${formatShareHundredths(addHundredths)} % demandés).`;
+    throw new ConflictError(message, [{ field: 'ownershipPercentage', message }]);
+  }
+}
+
+/**
+ * Lots dont le total des parts actuelles est inferieur a 100 % (agregat serveur
+ * sur tous les profils de la copropriete) : alimente le bandeau
+ * « quotes-parts incomplètes ». Un lot sans aucun profil n'est pas signale.
+ */
+export async function listIncompleteOwnerSharesBySyndicate(tenantId: string, syndicateId: string) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+  const profiles = await prisma.lotOwnerProfile.findMany({
+    where: { lot: { syndicateId, syndicate: { tenantId } }, ...currentOwnerProfileWhere(new Date()) },
+    select: { lotId: true, ownershipPercentage: true, lot: { select: { lotNumber: true } } }
+  });
+  const byLot = new Map<string, { lotNumber: string; hundredths: number }>();
+  for (const profile of profiles) {
+    const entry = byLot.get(profile.lotId) ?? { lotNumber: profile.lot.lotNumber, hundredths: 0 };
+    entry.hundredths += toShareHundredths(profile.ownershipPercentage);
+    byLot.set(profile.lotId, entry);
+  }
+  return [...byLot.entries()]
+    .filter(([, entry]) => entry.hundredths < OWNER_SHARE_TOTAL_HUNDREDTHS)
+    .map(([lotId, entry]) => ({
+      lotId,
+      lotNumber: entry.lotNumber,
+      totalPercentage: entry.hundredths / 100
+    }))
+    .sort((a, b) => a.lotNumber.localeCompare(b.lotNumber));
+}
+
 export async function createLotOwnerProfileBySyndicate(
   tenantId: string,
   syndicateId: string,
@@ -4504,22 +4910,34 @@ export async function createLotOwnerProfileBySyndicate(
   await assertLotOwnershipForSyndicate(tenantId, syndicateId, data.lotId);
   await assertContactBelongsToTenant(tenantId, data.contactId);
 
-  return prisma.lotOwnerProfile.create({
-    data: {
-      lotId: data.lotId,
-      contactId: data.contactId,
-      ownershipPercentage: roundMoney(data.ownershipPercentage),
-      ownedSince: data.ownedSince,
-      ownedUntil: data.ownedUntil ?? undefined,
-      portalAccessEnabled: data.portalAccessEnabled ?? false,
-      portalAccessToken: data.portalAccessEnabled ? randomUUID() : undefined,
-      notificationPrefs: data.notificationPrefs ?? undefined,
-      isActive: data.isActive ?? true
-    },
-    include: {
-      lot: true,
-      contact: true
+  const ownershipPercentage = roundMoney(data.ownershipPercentage);
+  const isCurrent = (data.isActive ?? true) && (!data.ownedUntil || data.ownedUntil > new Date());
+
+  return prisma.$transaction(async tx => {
+    if (isCurrent) {
+      await lockLotTx(tx, data.lotId);
+      await assertOwnerSharesWithinLimit(tx, data.lotId, toShareHundredths(ownershipPercentage));
     }
+    const created = await tx.lotOwnerProfile.create({
+      data: {
+        lotId: data.lotId,
+        contactId: data.contactId,
+        ownershipPercentage,
+        ownedSince: data.ownedSince,
+        ownedUntil: data.ownedUntil ?? undefined,
+        portalAccessEnabled: data.portalAccessEnabled ?? false,
+        portalAccessToken: data.portalAccessEnabled ? randomUUID() : undefined,
+        notificationPrefs: data.notificationPrefs ?? undefined,
+        isActive: data.isActive ?? true
+      },
+      include: {
+        lot: true,
+        contact: true
+      }
+    });
+    // Le proprietaire du lot (compte, recouvrement, liste) suit ses profils actuels (BUG-087).
+    await syncLotOwnerFromProfilesTx(tx, data.lotId);
+    return created;
   });
 }
 
@@ -4542,13 +4960,50 @@ export async function updateLotOwnerProfileBySyndicate(
       id: profileId,
       lot: { syndicateId }
     },
-    select: { id: true, portalAccessToken: true }
+    select: {
+      id: true,
+      lotId: true,
+      portalAccessToken: true,
+      ownershipPercentage: true,
+      ownedUntil: true,
+      isActive: true
+    }
   });
   if (!profile) {
     throw notFound('Profil proprietaire introuvable');
   }
 
-  return prisma.lotOwnerProfile.update({
+  const nextPercentage =
+    data.ownershipPercentage !== undefined ? roundMoney(data.ownershipPercentage) : Number(profile.ownershipPercentage);
+  const nextUntil = data.ownedUntil === undefined ? profile.ownedUntil : data.ownedUntil;
+  const nextActive = data.isActive ?? profile.isActive;
+  const willCount = nextActive && (!nextUntil || nextUntil > new Date());
+
+  return prisma.$transaction(async tx => {
+    if (willCount) {
+      await lockLotTx(tx, profile.lotId);
+      await assertOwnerSharesWithinLimit(tx, profile.lotId, toShareHundredths(nextPercentage), profileId);
+    }
+    const updated = await updateLotOwnerProfileRow(tx, profileId, profile, data);
+    await syncLotOwnerFromProfilesTx(tx, profile.lotId);
+    return updated;
+  });
+}
+
+async function updateLotOwnerProfileRow(
+  tx: PrismaTransactionClient,
+  profileId: string,
+  profile: { portalAccessToken: string | null },
+  data: {
+    ownershipPercentage?: number;
+    ownedSince?: Date;
+    ownedUntil?: Date | null;
+    portalAccessEnabled?: boolean;
+    notificationPrefs?: any;
+    isActive?: boolean;
+  }
+) {
+  return tx.lotOwnerProfile.update({
     where: { id: profileId },
     data: {
       ownershipPercentage: data.ownershipPercentage !== undefined ? roundMoney(data.ownershipPercentage) : undefined,

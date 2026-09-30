@@ -292,6 +292,8 @@ describe('config/env : AI_PROVIDER=openrouter', () => {
   function load(overrides: Record<string, string | undefined>) {
     jest.resetModules();
     jest.unmock('../../src/config/env');
+    // `dotenv/config` relirait le .env local et remplirait la clé supprimée ci-dessous.
+    jest.doMock('dotenv/config', () => ({}));
     process.env = { ...saved, NODE_ENV: 'test', AI_PROVIDER: 'openrouter' } as NodeJS.ProcessEnv;
     for (const [key, value] of Object.entries(overrides)) {
       if (value === undefined) delete process.env[key];

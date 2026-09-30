@@ -4,6 +4,7 @@ import { prisma } from '../../utils/database';
 import { notFound } from '../errors';
 import { postDocumentEntryTx } from '../finance/accounting';
 import { appendThirdPartyMovementTx } from '../finance/ledger';
+import { directPropertyIdsTx } from '../finance/rental-direct-ledger';
 import { roundMoney, roundMoneyXof } from '../finance/money';
 import type { JournalLineInput } from '../finance/types-lot2';
 import { materializeManagementFees } from '../rental-fees/materialize';
@@ -654,7 +655,19 @@ export async function syncOwnerAccount(tenantId: string, ownerClientId: string, 
     }
   }
   const excludedExpenseIds = new Set<string>();
+  // Un bien détenu en propre (gestion directe) n'a pas de mandant : sa dépense
+  // est une charge (`syncDirectExpenseEntryTx`), pas un débit de compte de
+  // propriétaire. Une écriture 4731 déjà passée est contre-passée par l'étape 2.
+  const directPropertyIds = await directPropertyIdsTx(
+    prisma,
+    tenantId,
+    expenses.map(expense => expense.propertyId)
+  );
   for (const expense of expenses) {
+    if (directPropertyIds.has(expense.propertyId)) {
+      excludedExpenseIds.add(expense.id);
+      continue;
+    }
     if (expense.category === 'MANAGEMENT_FEES' && feeMonths.has(`${expense.propertyId}:${monthKey(expense.paidAt)}`)) {
       excludedExpenseIds.add(expense.id);
       continue;

@@ -69,6 +69,7 @@ import {
   exportData as exportDataFunction
 } from '../utils/report-generator';
 import { getDocumentFile } from './document-generation-service';
+import { ownerPortalPropertyWhere } from '../lib/owner-portal-scope';
 import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
 import {
   PORTAL_ATTACHMENT_SELECT,
@@ -192,10 +193,7 @@ export class OwnerPortalService {
     }
 
     const properties = await prisma.property.findMany({
-      where: {
-        id: { in: propertyIds },
-        tenantId: tenantId
-      },
+      where: ownerPortalPropertyWhere(propertyIds, tenantId),
       include: {
         rentalLeases: {
           where: {
@@ -484,10 +482,7 @@ export class OwnerPortalService {
       }
 
       // Build where clause
-      const where: any = {
-        id: { in: propertyIds },
-        tenantId: tenantId
-      };
+      const where: any = ownerPortalPropertyWhere(propertyIds, tenantId);
 
       // Le filtre « Loue » / « Disponible » interroge le bail, pas la colonne
       // `status` : sans cela il contredirait les compteurs juste au-dessus de
@@ -594,7 +589,7 @@ export class OwnerPortalService {
       const property = await prisma.property.findUnique({
         where: {
           id: propertyId,
-          tenantId: tenantId
+          OR: [{ tenantId }, { tenantId: null }]
         },
         // Jamais de `filePath` (chemin disque) ni d'URL de stockage privée
         // dans une réponse de portail : voir lib/files/portal-files.ts.
@@ -1779,7 +1774,7 @@ export class OwnerPortalService {
               property: true,
               primaryRenter: {
                 include: {
-                  user: true
+                  user: { select: { fullName: true } }
                 }
               }
             }
@@ -2532,10 +2527,7 @@ export class OwnerPortalService {
 
       // Get properties
       const properties = await prisma.property.findMany({
-        where: {
-          id: { in: propertyIds },
-          tenantId: tenantId
-        },
+        where: ownerPortalPropertyWhere(propertyIds, tenantId),
         include: {
           rentalLeases: {
             where: {

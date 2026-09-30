@@ -39,6 +39,7 @@ import { setAuthCookies } from '../utils/auth-cookies';
 import { frontendUrl, isProduction } from '../config/env';
 import { isGoogleOAuthEnabled } from '../config/passport';
 import { logger } from '../utils/logger';
+import { recordLastLogin } from '../services/auth-service';
 
 const router = Router();
 
@@ -195,6 +196,8 @@ router.get(
           deviceInfo: req.headers['user-agent'] || 'Google Login'
         }
       });
+
+      await recordLastLogin(user.id);
 
       setAuthCookies(res, accessToken, refreshToken);
 

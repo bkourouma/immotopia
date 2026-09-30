@@ -1,3 +1,7 @@
+// L'ecriture comptable d'encaissement a sa propre suite (syndics.charge-collection-accounting).
+jest.mock('../../src/lib/syndics/charge-collection-accounting', () => ({
+  postChargePaymentEntryTx: jest.fn(async () => 'entry-1')
+}));
 jest.mock('@prisma/client', () => {
   const tx = {
     chargeCall: {

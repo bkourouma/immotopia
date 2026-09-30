@@ -90,6 +90,9 @@ jest.mock('../../src/lib/syndics/queries', () => ({
       { id: 'tx-2', type: 'PAYMENT', label: 'Paiement', debit: null, credit: 10000, balanceAfter: 35000 }
     ];
   }),
+  countOwnerAccountTransactionsByLot: jest.fn(async (_tenantId: string, _syndicId: string, lotId: string) =>
+    lotId === OTHER_LOT_ID ? 0 : 240
+  ),
   createOwnerAccountAdjustmentByLot: jest.fn(async (_tenantId: string, _syndicId: string, lotId: string, data: any) => {
     if (lotId === OTHER_LOT_ID) {
       const err: any = new Error('Compte lot introuvable ou lot sans proprietaire');
@@ -188,6 +191,8 @@ describe('Syndics owner accounts routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data).toHaveLength(2);
+    // Le nombre total vient d'un comptage serveur, pas de la taille de la page (BUG-047).
+    expect(response.body.summary).toEqual({ totalCount: 240 });
   });
 
   it('creates manual account adjustment', async () => {

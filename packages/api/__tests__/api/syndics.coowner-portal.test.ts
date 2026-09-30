@@ -177,7 +177,7 @@ function seed() {
     tenantId: TENANT_A,
     role: {
       scope: 'TENANT',
-      permissions: [{ permission: { key: 'PROPERTIES_VIEW' } }, { permission: { key: 'PROPERTIES_EDIT' } }]
+      permissions: [{ permission: { key: 'SYNDIC_VIEW' } }, { permission: { key: 'SYNDIC_EDIT' } }]
     }
   });
 

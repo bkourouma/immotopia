@@ -63,14 +63,18 @@ async function entitledFeatures(
 async function resolveAvailableTools(
   userId: string,
   tenantId: string
-): Promise<{ permissions: Set<string>; tools: CopilotToolDefinition[] }> {
+): Promise<{ permissions: Set<string>; tools: CopilotToolDefinition[]; unavailableFeatures: Set<ToolFeature> }> {
   const permissions = new Set(await getUserPermissions(userId, tenantId));
   const features = await entitledFeatures(tenantId);
   // Une proposition prépare une écriture : elle exige l'accès en écriture au module.
   const tools = toolsForUser(permissions, features?.read).filter(
     tool => tool.kind !== 'proposal' || !features || features.write.has(tool.feature)
   );
-  return { permissions, tools };
+  // Fonctionnalités sans accès en lecture : un appel forgé reçoit MODULE_NOT_INCLUDED.
+  const unavailableFeatures = new Set<ToolFeature>(
+    features ? TOOL_FEATURES.filter(feature => !features.read.has(feature)) : []
+  );
+  return { permissions, tools, unavailableFeatures };
 }
 
 /** GET /ai/status — ce que l'interface peut proposer à cet utilisateur. Répond aussi quand l'assistant est désactivé. */
@@ -107,7 +111,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
 
   const body = chatRequestSchema.parse(req.body ?? {});
 
-  const { permissions, tools } = await resolveAvailableTools(userId, tenantId);
+  const { permissions, tools, unavailableFeatures } = await resolveAvailableTools(userId, tenantId);
   if (tools.length === 0) {
     throw new ForbiddenError("Aucun outil de l'assistant n'est disponible avec vos droits.");
   }
@@ -121,6 +125,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       userId,
       permissions,
       tools,
+      unavailableFeatures,
       messages: body.messages,
       pageContext,
       // La valeur cliente n'est qu'un écho pour l'interface (événement `meta`) : l'audit

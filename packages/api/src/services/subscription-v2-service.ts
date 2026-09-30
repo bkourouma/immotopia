@@ -352,6 +352,33 @@ export async function getEntitlements(
 // =============================================================== modules
 
 /**
+ * L'agence a-t-elle des donnees dans ce module ? D11 (module retire en lecture
+ * seule avec export) ne vise que ces donnees : un module retire sans aucune
+ * donnee (pack ajoute par erreur puis retire) n'ouvre plus aucun acces. Les
+ * compteurs comptent tous les statuts (une copropriete ou un chantier clos
+ * reste une donnee a exporter).
+ */
+export async function moduleHoldsData(db: Db, tenantId: string, moduleKey: ModuleKey): Promise<boolean> {
+  switch (moduleKey) {
+    case 'MODULE_SYNDIC':
+      return (await db.syndicate.count({ where: { tenantId } })) > 0;
+    case 'MODULE_PROMOTER':
+      return (await db.constructionSite.count({ where: { tenantId } })) > 0;
+    case 'MODULE_PATRIMOINE':
+      return (await db.property.count({ where: { tenantId, ownershipType: 'TENANT' } })) > 0;
+    case 'MODULE_AGENCY': {
+      const [clientProperties, mandates] = await Promise.all([
+        db.property.count({ where: { tenantId, ownershipType: { not: 'TENANT' } } }),
+        db.propertyMandate.count({ where: { tenantId } })
+      ]);
+      return clientProperties + mandates > 0;
+    }
+    default:
+      return true; // module inconnu : la prudence garde l'acces en lecture
+  }
+}
+
+/**
  * Recalcule les TenantModule de source PACK depuis les packs en vigueur,
  * sans toucher aux OVERRIDE encore valides (un OVERRIDE expire redevient
  * PACK). Un module retire garde sa ligne (enabled=false, disabledAt pose) :
@@ -399,6 +426,8 @@ export async function syncTenantModulesTx(
     const wasEnabled = row.enabled;
     if (wasEnabled === want && row.source === 'PACK') continue;
     // eslint-disable-next-line no-await-in-loop -- trois modules au plus.
+    const keepReadOnly = !want && wasEnabled ? await moduleHoldsData(tx, tenantId, moduleKey) : false;
+    // eslint-disable-next-line no-await-in-loop -- trois modules au plus.
     await tx.tenantModule.update({
       where: { tenantId_moduleKey: { tenantId, moduleKey } },
       data: {
@@ -406,7 +435,9 @@ export async function syncTenantModulesTx(
         expiresAt: null,
         enabled: want,
         ...(want && !wasEnabled ? { enabledAt: now, enabledBy: options.actorUserId ?? null } : {}),
-        ...(!want && wasEnabled ? { disabledAt: now } : {})
+        // D11 ne protège que des DONNÉES : sans donnée dans le module retiré,
+        // aucun accès n'est conservé (NONE), même après un ajout retiré aussitôt.
+        ...(!want && wasEnabled ? { disabledAt: keepReadOnly ? now : null } : {})
       }
     });
     if (want && !wasEnabled) enabled.push(moduleKey);
@@ -588,6 +619,17 @@ export interface AddItemInput {
  * qu'il couvre (un element par palier de prix). Un pack incompatible
  * (exclusivite de l'Integre) est refuse : passer par `changePack`.
  */
+/** Refus d'une extension hors pack : dit avec quels packs elle se vend, et que l'exces est facture sinon. */
+async function requiredPackMessage(db: Db, extension: CatalogEntry): Promise<string> {
+  const codes = extension.rules?.requiresAnyOf ?? [];
+  const packs = codes.length
+    ? await db.catalogItem.findMany({ where: { code: { in: codes } }, select: { code: true, name: true } })
+    : [];
+  const names = codes.map(code => packs.find(p => p.code === code)?.name ?? code).join(', ');
+  const isCapacity = Object.keys(extension.capacities).length > 0;
+  return `${extension.name} n'est vendu qu'avec : ${names}.${isCapacity ? " Avec votre pack, l'excédent est facturé selon la grille du pack." : ''}`;
+}
+
 export async function addSubscriptionItem(tenantId: string, input: AddItemInput, actorUserId: string) {
   const quantity = input.quantity ?? 1;
   if (!Number.isInteger(quantity) || quantity < 1)
@@ -622,7 +664,7 @@ export async function addSubscriptionItem(tenantId: string, input: AddItemInput,
         );
       }
     } else if (catalog.kind === CatalogItemKind.EXTENSION && !isExtensionAllowed(catalog, held)) {
-      throw new BadRequestError("Cette extension exige un pack qui n'est pas souscrit.");
+      throw new BadRequestError(await requiredPackMessage(tx, catalog));
     }
 
     // Extension : liee au pack avec lequel elle est achetee (retiree avec lui).
@@ -1579,6 +1621,34 @@ export interface PlannedItem {
 }
 
 /**
+ * Regles de composition des PACKS, partagees par la creation d'agence, la
+ * reprise et le devis super-admin (une seule validation, pas de copie) :
+ * un pack une seule fois, exclusivite de l'Integre, meme palier (`tierGroup`)
+ * non cumulable. Ne verifie ni les codes ni la vente : voir `planInitialItems`.
+ */
+export function assertPackComposition(packs: readonly CatalogEntry[]): void {
+  const check = validateExclusivity(
+    packs.map(p => ({
+      code: p.code,
+      kind: 'PACK' as const,
+      exclusiveGroup: p.exclusiveGroup,
+      tierGroup: p.rules?.tierGroup ?? null
+    }))
+  );
+  if (check.ok) return;
+  if (check.duplicates.length > 0) {
+    throw new BadRequestError(`Un pack se souscrit une seule fois : ${check.duplicates.join(', ')}.`);
+  }
+  const tierClash = check.conflicts.find(([a, b]) => PATRIMOINE_PACKS.includes(a) && PATRIMOINE_PACKS.includes(b));
+  if (tierClash) {
+    throw new BadRequestError('Patrimoine Essentiel et Patrimoine Pro ne se cumulent pas : choisissez l’un des deux.');
+  }
+  throw new BadRequestError(
+    `Combinaison de packs impossible : ${check.conflicts.map(c => c.join(' / ')).join(', ')}. L'Intégré comprend déjà les trois modules.`
+  );
+}
+
+/**
  * Valide et price une composition initiale (provisioning, reprise) : codes
  * connus et commercialises, au moins un pack, un pack au plus une fois,
  * exclusivite de l'Integre, extensions autorisees par les packs. Les blocs de
@@ -1608,25 +1678,7 @@ export function planInitialItems(
   if (packs.length === 0) throw new BadRequestError('Choisissez au moins un pack.');
   const multiple = packs.find(p => p.quantity !== 1);
   if (multiple) throw new BadRequestError(`Un pack se souscrit une seule fois : ${multiple.entry.code}.`);
-  const check = validateExclusivity(
-    packs.map(p => ({
-      code: p.entry.code,
-      kind: 'PACK' as const,
-      exclusiveGroup: p.entry.exclusiveGroup,
-      tierGroup: p.entry.rules?.tierGroup ?? null
-    }))
-  );
-  if (!check.ok) {
-    const tierClash = check.conflicts.find(([a, b]) => PATRIMOINE_PACKS.includes(a) && PATRIMOINE_PACKS.includes(b));
-    if (tierClash) {
-      throw new BadRequestError(
-        'Patrimoine Essentiel et Patrimoine Pro ne se cumulent pas : choisissez l’un des deux.'
-      );
-    }
-    throw new BadRequestError(
-      `Combinaison de packs impossible : ${check.conflicts.map(c => c.join(' / ')).join(', ')}. L'Intégré comprend déjà les trois modules.`
-    );
-  }
+  assertPackComposition(packs.map(p => p.entry));
 
   const held = packs.map(p => p.entry.code);
   const planned: PlannedItem[] = packs.map(p => ({
@@ -1639,7 +1691,9 @@ export function planInitialItems(
   for (const { entry, quantity } of entries) {
     if (entry.kind === CatalogItemKind.PACK) continue;
     if (!isExtensionAllowed(entry, held)) {
-      throw new BadRequestError(`${entry.name} exige un pack qui n'est pas choisi.`);
+      throw new BadRequestError(
+        `${entry.name} n'est vendu qu'avec : ${(entry.rules?.requiresAnyOf ?? []).map(c => catalog.get(c)?.name ?? c).join(', ')}.`
+      );
     }
     if (entry.kind === CatalogItemKind.SETUP) {
       planned.push({ catalog: entry, quantity, unitMonthlyPrice: 0, unitSetupPrice: entry.setupPrice });

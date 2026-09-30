@@ -1,6 +1,7 @@
 import type { PrismaTransactionClient } from '../../utils/database';
 import { ConflictError } from '../../middleware/error-middleware';
 import { unprocessableEntity } from '../errors';
+import { t } from '../../i18n';
 import { isJournalEntryBalanced, roundMoney } from './finance-utils';
 
 /**
@@ -21,10 +22,12 @@ import { isJournalEntryBalanced, roundMoney } from './finance-utils';
  *   401  prestataires (dette constatee a la facture, soldee au paiement) ;
  *   521  banque (sortie de tresorerie au paiement, quel que soit le fonds) ;
  *   624  charges courantes (entretien, reparations, maintenance) ;
- *   6241 travaux sur parties communes (sous-compte du 624).
+ *   6241 travaux sur parties communes (sous-compte du 624) ;
+ *   450  coproprietaires (encaissement des appels de charges, ligne par lot) ;
+ *   571  caisse (encaissement en especes).
  */
 
-export type SyndicAccountNumber = '401' | '521' | '624' | '6241';
+export type SyndicAccountNumber = '401' | '521' | '624' | '6241' | '450' | '571';
 
 interface AccountSeed {
   accountNumber: SyndicAccountNumber;
@@ -34,12 +37,12 @@ interface AccountSeed {
   parent?: SyndicAccountNumber;
 }
 
-export const SYNDIC_PROVIDER_ACCOUNT_SEEDS: AccountSeed[] = [
+export const SYNDIC_ACCOUNT_SEEDS: AccountSeed[] = [
   { accountNumber: '401', accountName: 'Fournisseurs et prestataires', accountClass: 4, accountType: 'LIABILITY' },
   { accountNumber: '521', accountName: 'Banque', accountClass: 5, accountType: 'ASSET' },
   {
     accountNumber: '624',
-    accountName: 'Entretien, reparations et maintenance',
+    accountName: 'Entretien, réparations et maintenance',
     accountClass: 6,
     accountType: 'EXPENSE'
   },
@@ -49,8 +52,17 @@ export const SYNDIC_PROVIDER_ACCOUNT_SEEDS: AccountSeed[] = [
     accountClass: 6,
     accountType: 'EXPENSE',
     parent: '624'
-  }
+  },
+  { accountNumber: '450', accountName: 'Copropriétaires', accountClass: 4, accountType: 'ASSET' },
+  { accountNumber: '571', accountName: 'Caisse', accountClass: 5, accountType: 'ASSET' }
 ];
+
+const PROVIDER_ACCOUNT_NUMBERS: SyndicAccountNumber[] = ['401', '521', '624', '6241'];
+
+/** Comptes des factures de prestataires (sous-ensemble de `SYNDIC_ACCOUNT_SEEDS`). */
+export const SYNDIC_PROVIDER_ACCOUNT_SEEDS: AccountSeed[] = SYNDIC_ACCOUNT_SEEDS.filter(seed =>
+  PROVIDER_ACCOUNT_NUMBERS.includes(seed.accountNumber)
+);
 
 /**
  * Pose, si besoin, les comptes dont les factures de prestataires ont besoin,
@@ -62,11 +74,22 @@ export async function ensureSyndicProviderAccountsTx(
   tenantId: string,
   syndicateId: string
 ): Promise<Map<SyndicAccountNumber, string>> {
+  return ensureSyndicAccountsTx(tx, tenantId, syndicateId, PROVIDER_ACCOUNT_NUMBERS);
+}
+
+/** Meme chose pour la liste de comptes demandee (encaissements : 450, 521, 571). */
+export async function ensureSyndicAccountsTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  syndicateId: string,
+  numbers: SyndicAccountNumber[]
+): Promise<Map<SyndicAccountNumber, string>> {
+  const seeds = SYNDIC_ACCOUNT_SEEDS.filter(seed => numbers.includes(seed.accountNumber));
   const existing = await tx.chartOfAccount.findMany({
     where: {
       tenantId,
       syndicateId,
-      accountNumber: { in: SYNDIC_PROVIDER_ACCOUNT_SEEDS.map(seed => seed.accountNumber) }
+      accountNumber: { in: seeds.map(seed => seed.accountNumber) }
     },
     select: { id: true, accountNumber: true }
   });
@@ -75,7 +98,7 @@ export async function ensureSyndicProviderAccountsTx(
   );
 
   // L'ordre des graines place le parent (624) avant son sous-compte (6241).
-  for (const seed of SYNDIC_PROVIDER_ACCOUNT_SEEDS) {
+  for (const seed of seeds) {
     if (index.has(seed.accountNumber)) continue;
     const created = await tx.chartOfAccount.create({
       data: {
@@ -98,7 +121,8 @@ export async function ensureSyndicProviderAccountsTx(
 
 const JOURNALS = {
   CHARGES: { code: 'ACH', label: 'Achats et prestataires' },
-  BANK: { code: 'BQ', label: 'Banque' }
+  BANK: { code: 'BQ', label: 'Banque' },
+  CASH: { code: 'CAI', label: 'Caisse' }
 } as const;
 
 /** Journal de la copropriete pour l'exercice (annee civile de la piece). */
@@ -149,6 +173,8 @@ export async function assertFiscalYearOpenTx(tx: PrismaTransactionClient, syndic
 
 export interface SyndicEntryLine {
   accountId: string;
+  /** Lot concerne (ligne de coproprietaire) ; conserve par la contre-passation. */
+  lotId?: string | null;
   debit: number;
   credit: number;
   label: string;
@@ -160,7 +186,7 @@ export interface PostSyndicEntryParams {
   entryDate: Date;
   reference: string;
   description: string;
-  sourceType: 'PROVIDER_INVOICE' | 'PROVIDER_PAYMENT';
+  sourceType: 'PROVIDER_INVOICE' | 'PROVIDER_PAYMENT' | 'CHARGE_PAYMENT';
   sourceId: string;
   documentType: string;
   lines: SyndicEntryLine[];
@@ -174,7 +200,7 @@ export function roundEntryLines(lines: SyndicEntryLine[]): SyndicEntryLine[] {
     credit: roundMoney(line.credit)
   }));
   if (rounded.length < 2 || !isJournalEntryBalanced(rounded)) {
-    throw unprocessableEntity('Ecriture non equilibree: total debit doit etre egal au total credit');
+    throw unprocessableEntity(t('Écriture non équilibrée : le total des débits doit être égal au total des crédits'));
   }
   return rounded;
 }
@@ -203,6 +229,7 @@ export async function postSyndicEntryTx(tx: PrismaTransactionClient, params: Pos
     data: lines.map(line => ({
       entryId: entry.id,
       accountId: line.accountId,
+      ...(line.lotId ? { lotId: line.lotId } : {}),
       debit: line.debit,
       credit: line.credit,
       label: line.label
@@ -228,7 +255,7 @@ export async function reverseSyndicEntryTx(
 
   const lines = await tx.journalEntryLine.findMany({
     where: { entryId: original.id },
-    select: { accountId: true, debit: true, credit: true, label: true }
+    select: { accountId: true, lotId: true, debit: true, credit: true, label: true }
   });
 
   const reversalId = await postSyndicEntryTx(tx, {
@@ -242,6 +269,7 @@ export async function reverseSyndicEntryTx(
     documentType: params.documentType,
     lines: lines.map(line => ({
       accountId: line.accountId,
+      lotId: line.lotId,
       debit: Number(line.credit),
       credit: Number(line.debit),
       label: `Annulation - ${line.label}`

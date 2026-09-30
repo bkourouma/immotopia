@@ -280,11 +280,22 @@ const mockPrisma: Row = {
   },
 
   thirdPartyMovement: {
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.movements.filter(m => {
+        if (m.tenantId !== where.tenantId) return false;
+        if (where.accountId?.in && !where.accountId.in.includes(m.accountId)) return false;
+        if (typeof where.sourceType === 'string' && m.sourceType !== where.sourceType) return false;
+        if (where.sourceType?.not !== undefined && m.sourceType === where.sourceType.not) return false;
+        if (where.id?.in && !where.id.in.includes(m.id)) return false;
+        return true;
+      })
+    ),
     groupBy: jest.fn(async ({ where }: Row) => {
       const accountIds: string[] = where.accountId?.in ?? [];
       const rows = store.movements.filter(m => {
         if (!accountIds.includes(m.accountId)) return false;
         if (m.tenantId !== where.tenantId) return false;
+        if (where.sourceType?.not !== undefined && m.sourceType === where.sourceType.not) return false;
         if (where.movementDate) {
           const time = m.movementDate.getTime();
           if (where.movementDate.gte && time < where.movementDate.gte.getTime()) return false;
@@ -878,6 +889,61 @@ describe('validateSupplierPaymentTx', () => {
 // E. Balance fournisseurs
 // ---------------------------------------------------------------------------
 
+describe('createSupplierInvoiceTx — chantier selon abonnement (BUG-079)', () => {
+  const nouvelle = (supplierId: string, siteRequired?: boolean) =>
+    createSupplierInvoiceTx(tx(), TENANT_ID, {
+      supplierId,
+      invoiceDate: new Date('2026-09-30T00:00:00.000Z'),
+      reference: 'FQ-RECETTE-001',
+      lines: [{ label: 'Quincaillerie', amount: 236_000 }],
+      allocations: [],
+      createdByUserId: USER_ID,
+      siteRequired
+    });
+
+  it('exige un chantier par défaut, avec un message accentué', async () => {
+    const supplier = await createSupplier('MATERIALS');
+    await expect(nouvelle(supplier.id)).rejects.toThrow(
+      'Un fournisseur de matériaux exige un rattachement à un chantier'
+    );
+  });
+
+  it('sans CONSTRUCTION (siteRequired=false) : facture de matériaux enregistrée sans chantier', async () => {
+    const supplier = await createSupplier('MATERIALS');
+    const invoice = await nouvelle(supplier.id, false);
+    expect(invoice.amount).toBe(236_000);
+  });
+
+  it('fournisseur mixte : même règle', async () => {
+    const supplier = await createSupplier('MIXED');
+    await expect(nouvelle(supplier.id, true)).rejects.toThrow('chantier');
+    await expect(nouvelle(supplier.id, false)).resolves.toBeTruthy();
+  });
+});
+
+describe('createSupplierInvoiceTx — imputations (BUG-042)', () => {
+  it("refuse des l'enregistrement des imputations dont la somme differe du montant", async () => {
+    const supplier = await createSupplier('MATERIALS');
+    const { siteId, costCategoryId } = await createSiteAndCategory();
+
+    await expect(
+      createSupplierInvoiceTx(tx(), TENANT_ID, {
+        supplierId: supplier.id,
+        invoiceDate: new Date('2026-09-01T00:00:00.000Z'),
+        reference: 'FRS-INT-001',
+        lines: [
+          { label: 'A', amount: 3_000_000 },
+          { label: 'B', amount: 3_000_000 },
+          { label: 'C', amount: 3_000_000 }
+        ],
+        allocations: [{ siteId, costCategoryId, amount: 7_500_000 }],
+        createdByUserId: USER_ID
+      })
+    ).rejects.toThrow(/7500000/);
+    expect(store.invoices).toHaveLength(0);
+  });
+});
+
 describe('getSuppliersBalance', () => {
   it('agrege facture/regle sur la periode, et le solde courant en dehors de la periode', async () => {
     const supplier = await createSupplier('SERVICES');
@@ -923,6 +989,120 @@ describe('getSuppliersBalance', () => {
 
     expect(balance.lines).toHaveLength(1);
     expect(balance.lines[0].totalBilled).toBe(100000);
+  });
+
+  // Reproduit ce que fait `voidDocumentTx` (accounting.ts, mocke ici) : une
+  // contrepassation par mouvement d'origine, sens inverses, `sourceType` VOID.
+  async function annulerMouvements(sourceType: string, sourceIds: string[]) {
+    for (const origine of store.movements.filter(m => m.sourceType === sourceType && sourceIds.includes(m.sourceId))) {
+      await appendThirdPartyMovementTx(tx(), {
+        accountId: origine.accountId,
+        tenantId: TENANT_ID,
+        type: origine.type,
+        billed: origine.credit,
+        settled: origine.debit,
+        label: `Annulation : ${origine.label}`,
+        sourceType: 'VOID',
+        sourceId: origine.id,
+        movementDate: origine.movementDate
+      });
+    }
+  }
+
+  it('une facture de 7 000 000 annulee ne compte ni en facture ni en regle (BUG-041)', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const invoice = await createDraftInvoice(supplier.id, { amount: 7_000_000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, invoice.id, USER_ID);
+    await annulerMouvements('SUPPLIER_INVOICE', [invoice.id]);
+
+    const balance = await getSuppliersBalance(TENANT_ID);
+
+    expect(balance.lines).toHaveLength(1);
+    expect(balance.lines[0].totalBilled).toBe(0);
+    expect(balance.lines[0].totalSettled).toBe(0);
+    expect(balance.lines[0].balance).toBe(0);
+  });
+
+  it('cas Quincaillerie : 6 M factures + 1 M annulee, 8 M decaisses => 6 M / 8 M / -2 M', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const facture4 = await createDraftInvoice(supplier.id, { amount: 6_000_000, allocations: [] });
+    const facture5 = await createDraftInvoice(supplier.id, { amount: 1_000_000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, facture4.id, USER_ID);
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, facture5.id, USER_ID);
+    await annulerMouvements('SUPPLIER_INVOICE', [facture5.id]);
+    const reglement = await createSupplierPaymentTx(tx(), TENANT_ID, {
+      supplierId: supplier.id,
+      paymentDate: new Date('2026-06-10T00:00:00.000Z'),
+      amount: 8_000_000,
+      allocations: [{ invoiceId: facture4.id, amount: 6_000_000 }],
+      createdByUserId: USER_ID
+    });
+    await validateSupplierPaymentTx(tx(), TENANT_ID, reglement.id, USER_ID);
+
+    const balance = await getSuppliersBalance(TENANT_ID);
+
+    expect(balance.lines[0].totalBilled).toBe(6_000_000);
+    expect(balance.lines[0].totalSettled).toBe(8_000_000);
+    expect(balance.lines[0].balance).toBe(-2_000_000);
+    expect(balance.totalBalance).toBe(-2_000_000);
+  });
+
+  it('facture 5 M reglee 2 M puis annulee : le reglement subsiste (acompte), facture 0, regle 2 M, solde -2 M', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const facture = await createDraftInvoice(supplier.id, { amount: 5_000_000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, facture.id, USER_ID);
+    const reglement = await createSupplierPaymentTx(tx(), TENANT_ID, {
+      supplierId: supplier.id,
+      paymentDate: new Date('2026-09-20T00:00:00.000Z'),
+      amount: 2_000_000,
+      allocations: [{ invoiceId: facture.id, amount: 2_000_000 }],
+      createdByUserId: USER_ID
+    });
+    await validateSupplierPaymentTx(tx(), TENANT_ID, reglement.id, USER_ID);
+    // `voidDocumentTx` d'une facture n'inverse que le mouvement de la facture.
+    await annulerMouvements('SUPPLIER_INVOICE', [facture.id]);
+
+    const balance = await getSuppliersBalance(TENANT_ID);
+
+    expect(balance.lines[0].totalBilled).toBe(0);
+    expect(balance.lines[0].totalSettled).toBe(2_000_000);
+    expect(balance.lines[0].balance).toBe(-2_000_000);
+  });
+
+  it('un reglement annule sort du regle et le solde revient a la dette', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const facture = await createDraftInvoice(supplier.id, { amount: 3_000_000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, facture.id, USER_ID);
+    const payment = await createSupplierPaymentTx(tx(), TENANT_ID, {
+      supplierId: supplier.id,
+      paymentDate: new Date('2026-09-20T00:00:00.000Z'),
+      amount: 1_000_000,
+      allocations: [{ invoiceId: facture.id, amount: 1_000_000 }],
+      createdByUserId: USER_ID
+    });
+    await validateSupplierPaymentTx(tx(), TENANT_ID, payment.id, USER_ID);
+    const allocationIds = store.paymentAllocations.map(a => a.id);
+    await annulerMouvements('SUPPLIER_PAYMENT', [payment.id]);
+    await annulerMouvements('SUPPLIER_PAYMENT_ALLOCATION', allocationIds);
+
+    const balance = await getSuppliersBalance(TENANT_ID);
+
+    expect(balance.lines[0].totalBilled).toBe(3_000_000);
+    expect(balance.lines[0].totalSettled).toBe(0);
+    expect(balance.lines[0].balance).toBe(3_000_000);
+  });
+
+  it('un brouillon ne compte pas et un montant FCFA reste entier', async () => {
+    const supplier = await createSupplier('SERVICES');
+    await createDraftInvoice(supplier.id, { amount: 999_999, allocations: [] });
+    const validee = await createDraftInvoice(supplier.id, { amount: 1_000_001, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, validee.id, USER_ID);
+
+    const balance = await getSuppliersBalance(TENANT_ID);
+
+    expect(balance.lines[0].totalBilled).toBe(1_000_001);
+    expect(Number.isInteger(balance.lines[0].totalBilled)).toBe(true);
+    expect(balance.lines[0].balance).toBe(1_000_001);
   });
 
   it('le total de controle est la somme des soldes des lignes', async () => {

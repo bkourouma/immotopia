@@ -1,4 +1,4 @@
-import { prisma } from '../utils/database';
+import { prisma, type PrismaTransactionClient } from '../utils/database';
 import { ClientType, Prisma, TenantStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { UpdateTenantRequest, TenantFilters, TenantStats } from '../types/tenant-types';
@@ -6,10 +6,11 @@ import { revokeTenantSessions } from '../middleware/session-invalidation';
 import { logAuditEvent, AuditActionKey } from './audit-service';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { getUploadsRoot } from '../utils/project-root';
-import { env } from '../config/env';
+import { env, frontendUrl } from '../config/env';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import crypto from 'crypto';
+import { t } from '../i18n';
 
 /**
  * Interface for registering a tenant client
@@ -696,6 +697,21 @@ export async function listActiveTenants() {
 }
 
 /**
+ * Nom d'un contact CRM : raison sociale pour une entreprise, sinon « prénom
+ * nom ». `null` si le contact n'a aucun nom exploitable.
+ */
+function nomAffichageContact(contact: {
+  contactType?: string | null;
+  legalName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): string | null {
+  const personne = `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim();
+  const legal = contact.legalName?.trim() || '';
+  return (contact.contactType === 'COMPANY' ? legal || personne : personne || legal) || null;
+}
+
+/**
  * Get or create a TenantClient from a CRM Contact
  * This function handles the automatic conversion of CRM contacts to tenant clients
  * when creating leases or other client-related records.
@@ -708,7 +724,8 @@ export async function listActiveTenants() {
 export async function getOrCreateTenantClientFromContact(
   tenantId: string,
   contactId: string,
-  clientType: ClientType
+  clientType: ClientType,
+  options: { db?: PrismaTransactionClient } = {}
 ): Promise<{
   tenantClient: Prisma.TenantClientGetPayload<{
     include: {
@@ -731,8 +748,12 @@ export async function getOrCreateTenantClientFromContact(
     avatarUrl: string | null;
   };
 }> {
+  // Avec `options.db` (transaction de l'appelant), tout est ecrit dans cette
+  // transaction et la notification WhatsApp est laissee a l'appelant : un echec
+  // ulterieur n'y laisse ni compte ni client.
+  const db: PrismaTransactionClient = options.db ?? prisma;
   // Get the CRM contact
-  const contact = await prisma.crmContact.findFirst({
+  const contact = await db.crmContact.findFirst({
     where: {
       id: contactId,
       tenantId: tenantId
@@ -740,17 +761,32 @@ export async function getOrCreateTenantClientFromContact(
   });
 
   if (!contact) {
-    throw new Error('Contact not found or does not belong to this tenant');
+    throw new NotFoundError(t("Contact introuvable ou n'appartenant pas à cette agence"));
   }
 
   // Check if contact has an associated user account
   // We'll try to find a user by email
-  let user = await prisma.user.findUnique({
+  let user = await db.user.findUnique({
     where: { email: contact.email }
   });
 
   let isNewUser = false;
   let passwordResetToken: string | undefined;
+
+  // Compte déjà créé sans nom (ex. propriétaire créé depuis l'e-mail d'un
+  // contact à l'enregistrement d'un bien) : il reprend le nom du contact, sinon
+  // les listes affichent « null (e-mail) ». Le nom d'un contact CRM ne s'écrit
+  // que sur un compte déjà client de CETTE agence : le compte est global, le
+  // contact d'une autre agence ne doit pas le renommer.
+  if (user && !user.fullName?.trim()) {
+    const nom = nomAffichageContact(contact);
+    const dejaClient = nom
+      ? await db.tenantClient.findFirst({ where: { tenantId, userId: user.id }, select: { id: true } })
+      : null;
+    if (nom && dejaClient) {
+      user = await db.user.update({ where: { id: user.id }, data: { fullName: nom } });
+    }
+  }
 
   // If no user exists, create one
   if (!user) {
@@ -767,11 +803,11 @@ export async function getOrCreateTenantClientFromContact(
 
     // The account and the token that makes it usable are one unit of work:
     // creating the user without the token left an account nobody could access.
-    user = await prisma.$transaction(async tx => {
+    const createUserWithToken = async (tx: PrismaTransactionClient) => {
       const createdUser = await tx.user.create({
         data: {
           email: contact.email,
-          fullName: `${contact.firstName} ${contact.lastName}`,
+          fullName: nomAffichageContact(contact),
           globalRole: 'USER',
           passwordHash,
           emailVerified: false
@@ -787,7 +823,8 @@ export async function getOrCreateTenantClientFromContact(
       });
 
       return createdUser;
-    });
+    };
+    user = options.db ? await createUserWithToken(options.db) : await prisma.$transaction(createUserWithToken);
 
     logger.info('User account created from CRM contact', {
       userId: user.id,
@@ -803,35 +840,37 @@ export async function getOrCreateTenantClientFromContact(
     });
 
     // Notify user on WhatsApp (if consent + number) with reset-password link
-    try {
-      const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || '').replace(/\/$/, '');
-      const resetUrl = frontendUrl ? `${frontendUrl}/reset-password?token=${resetToken}` : '';
-      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-      const { sendWhatsappNotification } = await import('./whatsapp-notification-send-service');
-      await sendWhatsappNotification({
-        tenantId,
-        notificationKey: 'PORTAL_ACCOUNT_CREATED',
-        variables: {
-          userName:
-            user.fullName?.trim() ||
-            [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() ||
-            contact.email,
-          tenantName: tenant?.name || '',
-          resetUrl
-        },
-        contactId: contact.id
-      });
-    } catch (err) {
-      logger.warn('WhatsApp portal account created notification failed', {
-        tenantId,
-        contactId: contact.id,
-        error: err instanceof Error ? err.message : String(err)
-      });
+    if (!options.db) {
+      try {
+        const baseUrl = (frontendUrl || '').replace(/\/$/, '');
+        const resetUrl = baseUrl ? `${baseUrl}/reset-password?token=${resetToken}` : '';
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+        const { sendWhatsappNotification } = await import('./whatsapp-notification-send-service');
+        await sendWhatsappNotification({
+          tenantId,
+          notificationKey: 'PORTAL_ACCOUNT_CREATED',
+          variables: {
+            userName:
+              user.fullName?.trim() ||
+              [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() ||
+              contact.email,
+            tenantName: tenant?.name || '',
+            resetUrl
+          },
+          contactId: contact.id
+        });
+      } catch (err) {
+        logger.warn('WhatsApp portal account created notification failed', {
+          tenantId,
+          contactId: contact.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
     }
   }
 
   // Check if TenantClient already exists
-  let tenantClient = await prisma.tenantClient.findUnique({
+  let tenantClient = await db.tenantClient.findUnique({
     where: {
       userId_tenantId: {
         userId: user.id,
@@ -854,7 +893,7 @@ export async function getOrCreateTenantClientFromContact(
   if (tenantClient) {
     const currentDetails = (tenantClient.details as any) || {};
     if (!currentDetails.crmContactId) {
-      tenantClient = await prisma.tenantClient.update({
+      tenantClient = await db.tenantClient.update({
         where: {
           id: tenantClient.id
         },
@@ -886,7 +925,7 @@ export async function getOrCreateTenantClientFromContact(
 
   // If TenantClient doesn't exist, create it
   if (!tenantClient) {
-    tenantClient = await prisma.tenantClient.create({
+    tenantClient = await db.tenantClient.create({
       data: {
         userId: user.id,
         tenantId: tenantId,

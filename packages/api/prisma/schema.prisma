@@ -3662,6 +3662,8 @@ model SyndicateLot {
 
   @@index([syndicateId])
   @@index([syndicateId, lotNumber])
+  // Unicite (syndicate_id, lower(btrim(lot_number))) : index sur expression pose en SQL brut,
+  // migration 20261005090000_syndic_lot_number_unique (non exprimable en Prisma).
   @@index([ownerContactId])
   @@map("syndicate_lots")
 }

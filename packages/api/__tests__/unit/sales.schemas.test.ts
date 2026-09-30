@@ -46,6 +46,11 @@ describe('createMandateSchema', () => {
     expect(() => createMandateSchema.parse({ ...baseMandate, endDate: '2026-01-01' })).toThrow();
   });
 
+  it('refuse un taux de commission nul (0 < taux ≤ 20)', () => {
+    expect(() => createMandateSchema.parse({ ...baseMandate, commissionRate: 0 })).toThrow();
+    expect(() => createMandateSchema.parse({ ...baseMandate, commissionRate: 20 })).not.toThrow();
+  });
+
   it('refuse un taux de commission au-delà de 20 %', () => {
     expect(() => createMandateSchema.parse({ ...baseMandate, commissionRate: 25 })).toThrow();
   });

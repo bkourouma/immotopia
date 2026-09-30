@@ -1,5 +1,9 @@
 import { prisma } from '../utils/database';
 import { getUserPermissions } from './permission-service';
+import { getEntitlements } from './subscription-v2-service';
+import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
+import type { Feature } from '../lib/subscription/features';
+import { logger } from '../utils/logger';
 import {
   CrmDealStage,
   MaintenanceTicketPriority,
@@ -248,6 +252,25 @@ function orderBuckets(
 }
 
 /**
+ * Fonctionnalités ouvertes par le pack de l'agence. En mode `enforce`
+ * seulement (`warn` et `off` ne masquent rien, comme les gardes de routes) ;
+ * une panne du calcul des droits laisse tout passer.
+ */
+async function loadFeatureGate(tenantId: string): Promise<(feature: Feature) => boolean> {
+  try {
+    const entitlements = await getEntitlements(tenantId);
+    if (entitlements.enforcement !== 'enforce') return () => true;
+    return feature => evaluateFeatureAccess(entitlements, feature, false).allowed;
+  } catch (error) {
+    logger.error('Dashboard: entitlements unavailable, sections not filtered', {
+      tenantId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return () => true;
+  }
+}
+
+/**
  * Construit les agrégats d'une agence.
  *
  * @param tenantId - Agence concernée
@@ -256,23 +279,31 @@ function orderBuckets(
 export async function getTenantDashboard(tenantId: string, userId: string): Promise<TenantDashboard> {
   // Une seule lecture : `getUserPermissions` est mis en cache par couple
   // (utilisateur, agence), et l'interroger dix fois répéterait le même travail.
-  const permissions = await getUserPermissions(userId, tenantId);
+  const [permissions, hasFeature] = await Promise.all([
+    getUserPermissions(userId, tenantId),
+    loadFeatureGate(tenantId)
+  ]);
   const canViewProperties = permissions.includes('PROPERTIES_VIEW');
   const canViewContacts = permissions.includes('CRM_CONTACTS_VIEW');
-  const canViewPayments = permissions.includes('RENTAL_PAYMENTS_VIEW');
-  const canViewDeals = permissions.includes('CRM_DEALS_VIEW');
-  const canViewLeases = permissions.includes('RENTAL_LEASES_VIEW');
-  const canViewInstallments = permissions.includes('RENTAL_INSTALLMENTS_VIEW');
+  // Une section que le pack ne possède pas n'est ni calculée ni livrée (null) :
+  // location (RENTAL), affaires CRM (CRM), copropriété (SYNDIC), patrimoine
+  // (PATRIMOINE). `hasFeature` vaut toujours vrai hors mode `enforce`.
+  const hasRental = hasFeature('RENTAL');
+  const canViewPayments = hasRental && permissions.includes('RENTAL_PAYMENTS_VIEW');
+  const canViewDeals = hasFeature('CRM') && permissions.includes('CRM_DEALS_VIEW');
+  const canViewLeases = hasRental && permissions.includes('RENTAL_LEASES_VIEW');
+  const canViewInstallments = hasRental && permissions.includes('RENTAL_INSTALLMENTS_VIEW');
   // Le module de maintenance n'expose qu'une permission de gestionnaire, et
   // c'est bien la vue agence que sert ce tableau de bord, pas celle du
   // demandeur (`MAINTENANCE_TENANT`).
   const canViewMaintenance = permissions.includes('MAINTENANCE_ADMIN');
-  // Copropriété et patrimoine n'ont pas de permission propre : leurs routes
-  // sont gardées par `PROPERTIES_VIEW` (`routes/syndic-routes.ts:93`,
-  // `routes/patrimoine-routes.ts:45`). Le tableau de bord applique la même
-  // règle, sans quoi il afficherait un chiffre menant vers un écran interdit.
-  const canViewSyndic = canViewProperties;
-  const canViewPatrimoine = canViewProperties;
+  // Copropriété : permission propre `SYNDIC_VIEW` (`routes/syndic-routes.ts`),
+  // qu'un Agent ne détient pas. Patrimoine : routes gardées par
+  // `PROPERTIES_VIEW` (`routes/patrimoine-routes.ts`). Le tableau de bord
+  // applique la même règle que la route, sans quoi il afficherait un chiffre
+  // menant vers un écran interdit.
+  const canViewSyndic = permissions.includes('SYNDIC_VIEW') && hasFeature('SYNDIC');
+  const canViewPatrimoine = canViewProperties && hasFeature('PATRIMOINE');
 
   const now = new Date();
   const periodStart = startOfCurrentMonth(now);
@@ -302,7 +333,9 @@ export async function getTenantDashboard(tenantId: string, userId: string): Prom
       : null,
     getTransactions(tenantId, { canViewDeals, canViewLeases }),
     canViewPayments ? getRevenueSeries(tenantId, { seriesStart, periodEnd, canViewInstallments }) : null,
-    getRental(tenantId, base, now, { canViewLeases, canViewInstallments, canViewPayments, seriesStart }),
+    hasRental
+      ? getRental(tenantId, base, now, { canViewLeases, canViewInstallments, canViewPayments, seriesStart })
+      : null,
     canViewDeals ? getPipeline(tenantId, base) : null,
     canViewMaintenance ? getMaintenance(tenantId, base) : null,
     canViewSyndic ? getSyndic(tenantId, base) : null,
@@ -529,6 +562,53 @@ function cleDeMois(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}`;
 }
 
+type EcheanceGroup = {
+  status: string;
+  _count: { _all: number };
+  _sum: {
+    amount_rent: unknown;
+    amount_service: unknown;
+    amount_other_fees: unknown;
+    penalty_amount: unknown;
+    amount_paid: unknown;
+  };
+};
+
+/**
+ * Statut EFFECTIF des échéances (`computeInstallmentStatus`) : les Brouillon et
+ * « À payer » échus passent de leur tranche stockée à « En retard », pour que
+ * « Impayés » ne dépende pas de l'exécution du job quotidien.
+ */
+export function reclasserEcheancesEchues(groups: EcheanceGroup[], stale: EcheanceGroup[] | null): EcheanceGroup[] {
+  if (!stale || stale.length === 0) return groups;
+  const cles = ['amount_rent', 'amount_service', 'amount_other_fees', 'penalty_amount', 'amount_paid'] as const;
+  const map = new Map<string, { count: number; sums: Record<string, number> }>();
+  const ajouter = (status: string, group: EcheanceGroup, signe: 1 | -1) => {
+    const entry = map.get(status) ?? { count: 0, sums: Object.fromEntries(cles.map(k => [k, 0])) };
+    entry.count += signe * group._count._all;
+    for (const k of cles) entry.sums[k] += signe * toNumber(group._sum[k]);
+    map.set(status, entry);
+  };
+  for (const g of groups) ajouter(g.status, g, 1);
+  for (const g of stale) {
+    ajouter(g.status, g, -1);
+    ajouter(RentalInstallmentStatus.OVERDUE, g, 1);
+  }
+  return [...map.entries()]
+    .filter(([, e]) => e.count > 0)
+    .map(([status, e]) => ({
+      status,
+      _count: { _all: e.count },
+      _sum: {
+        amount_rent: e.sums.amount_rent,
+        amount_service: e.sums.amount_service,
+        amount_other_fees: e.sums.amount_other_fees,
+        penalty_amount: e.sums.penalty_amount,
+        amount_paid: e.sums.amount_paid
+      }
+    }));
+}
+
 /** Gestion locative : baux, échéances, moyens de paiement, retards. */
 async function getRental(
   tenantId: string,
@@ -546,60 +626,80 @@ async function getRental(
   const hrefBail = (key: string) => `${base}/rental/leases?status=${key}`;
   const hrefEcheance = (key: string) => `${base}/rental/installments?status=${key}`;
 
-  const [leaseGroups, installmentGroups, dueThisWeek, methodGroups, pendingDeclarations] = await Promise.all([
-    canViewLeases
-      ? prisma.rentalLease.groupBy({
-          by: ['status'],
-          where: { tenant_id: tenantId },
-          _count: { _all: true },
-          _sum: { rent_amount: true }
-        })
-      : null,
-    canViewInstallments
-      ? prisma.rentalInstallment.groupBy({
-          by: ['status'],
-          where: { tenant_id: tenantId, status: { not: RentalInstallmentStatus.CANCELED } },
-          _count: { _all: true },
-          _sum: {
-            amount_rent: true,
-            amount_service: true,
-            amount_other_fees: true,
-            penalty_amount: true,
-            amount_paid: true
-          }
-        })
-      : null,
-    canViewInstallments
-      ? prisma.rentalInstallment.aggregate({
-          where: {
-            tenant_id: tenantId,
-            status: { in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL] },
-            due_date: { gte: debutSemaine, lt: finSemaine }
-          },
-          _count: { _all: true },
-          _sum: {
-            amount_rent: true,
-            amount_service: true,
-            amount_other_fees: true,
-            penalty_amount: true,
-            amount_paid: true
-          }
-        })
-      : null,
-    canViewPayments
-      ? prisma.rentalPayment.groupBy({
-          by: ['method'],
-          where: { tenant_id: tenantId, status: RentalPaymentStatus.SUCCESS, succeeded_at: { gte: seriesStart } },
-          _count: { _all: true },
-          _sum: { amount: true }
-        })
-      : null,
-    canViewPayments
-      ? prisma.rentalPaymentDeclaration.count({
-          where: { tenant_id: tenantId, status: PaymentDeclarationStatus.PENDING }
-        })
-      : null
-  ]);
+  const [leaseGroups, installmentGroups, dueThisWeek, methodGroups, pendingDeclarations, staleGroups] =
+    await Promise.all([
+      canViewLeases
+        ? prisma.rentalLease.groupBy({
+            by: ['status'],
+            where: { tenant_id: tenantId },
+            _count: { _all: true },
+            _sum: { rent_amount: true }
+          })
+        : null,
+      canViewInstallments
+        ? prisma.rentalInstallment.groupBy({
+            by: ['status'],
+            where: { tenant_id: tenantId, status: { not: RentalInstallmentStatus.CANCELED } },
+            _count: { _all: true },
+            _sum: {
+              amount_rent: true,
+              amount_service: true,
+              amount_other_fees: true,
+              penalty_amount: true,
+              amount_paid: true
+            }
+          })
+        : null,
+      canViewInstallments
+        ? prisma.rentalInstallment.aggregate({
+            where: {
+              tenant_id: tenantId,
+              status: { in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL] },
+              due_date: { gte: debutSemaine, lt: finSemaine }
+            },
+            _count: { _all: true },
+            _sum: {
+              amount_rent: true,
+              amount_service: true,
+              amount_other_fees: true,
+              penalty_amount: true,
+              amount_paid: true
+            }
+          })
+        : null,
+      canViewPayments
+        ? prisma.rentalPayment.groupBy({
+            by: ['method'],
+            where: { tenant_id: tenantId, status: RentalPaymentStatus.SUCCESS, succeeded_at: { gte: seriesStart } },
+            _count: { _all: true },
+            _sum: { amount: true }
+          })
+        : null,
+      canViewPayments
+        ? prisma.rentalPaymentDeclaration.count({
+            where: { tenant_id: tenantId, status: PaymentDeclarationStatus.PENDING }
+          })
+        : null,
+      // Échues et non basculées : comptées En retard sans attendre le job.
+      canViewInstallments
+        ? prisma.rentalInstallment.groupBy({
+            by: ['status'],
+            where: {
+              tenant_id: tenantId,
+              status: { in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE] },
+              due_date: { lt: debutSemaine }
+            },
+            _count: { _all: true },
+            _sum: {
+              amount_rent: true,
+              amount_service: true,
+              amount_other_fees: true,
+              penalty_amount: true,
+              amount_paid: true
+            }
+          })
+        : null
+    ]);
 
   const leasesByStatus = leaseGroups
     ? orderBuckets(
@@ -618,7 +718,7 @@ async function getRental(
   // montant appelé : c'est le seul des deux sur lequel on agit encore.
   const installmentsByStatus = installmentGroups
     ? orderBuckets(
-        installmentGroups.map(group => ({
+        reclasserEcheancesEchues(installmentGroups, staleGroups).map(group => ({
           key: group.status as string,
           count: group._count._all,
           amount: Math.max(
@@ -828,7 +928,16 @@ async function getWorkQueue(
   const [overdue, declarations, tickets] = await Promise.all([
     access.canViewInstallments
       ? prisma.rentalInstallment.findMany({
-          where: { tenant_id: tenantId, status: RentalInstallmentStatus.OVERDUE },
+          where: {
+            tenant_id: tenantId,
+            OR: [
+              { status: RentalInstallmentStatus.OVERDUE },
+              {
+                status: { in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE] },
+                due_date: { lt: new Date(now.getFullYear(), now.getMonth(), now.getDate()) }
+              }
+            ]
+          },
           select: {
             id: true,
             due_date: true,

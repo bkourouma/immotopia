@@ -5,6 +5,7 @@ import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
 import { assertThirdPartyManagementAllowed } from '../lib/subscription/guards';
 import type { ThirdPartyAction } from '../middleware/error-middleware';
 import { getEntitlements } from './subscription-v2-service';
+import { asyncHandler } from '../middleware/error-middleware';
 
 /**
  * Barriere « detenu en propre » (pack Patrimoine, lot P1, 28/09) : une agence
@@ -50,4 +51,18 @@ export function isThirdPartyOwnershipInput(data: {
   if (data.ownershipType !== undefined && data.ownershipType !== PropertyOwnershipType.TENANT) return true;
   if (data.ownerEmail) return true;
   return false;
+}
+
+/**
+ * Garde de route : refuse l'operation a une agence « detenue en propre » AVANT
+ * tout controleur (donc avant toute ecriture). A poser apres `requireTenantAccess`,
+ * sur les routes de gestion pour un tiers (releves de gerance, comptes
+ * proprietaires, honoraires par mandant).
+ */
+export function requireThirdPartyAllowed(action: ThirdPartyAction) {
+  return asyncHandler(async (req, _res, next) => {
+    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+    if (tenantId) await assertThirdPartyAllowedForTenant(tenantId, action);
+    next();
+  });
 }

@@ -213,6 +213,30 @@ describe('buildRentReceiptContext + Reçu_Loyer.docx', () => {
     const text = await renderModelText('Reçu_Loyer.docx', context);
     expect(text).toContain('Agence Test');
   });
+
+  it("bien detenu en propre : le bailleur est l'agence, pas le createur du bien (BUG-032)", async () => {
+    const june = installment(6, { amount_paid: 50000, status: 'PAID' });
+    const own = payment(50000, [{ installment: june, amount: 50000 }]);
+    own.lease = {
+      ...lease,
+      ownerClient: null as any,
+      property: {
+        ...lease.property,
+        ownershipType: 'TENANT',
+        owner: { id: 'u-creator', email: 'admin@agence.test', fullName: 'Aïcha Créatrice' },
+        holdings: []
+      } as any,
+      tenant: { ...agency, legalName: 'Agence Test SARL' } as any
+    };
+    rentalPaymentFindFirst.mockResolvedValue(own);
+    rentalInstallmentFindFirst.mockResolvedValue(june);
+
+    const context = await buildRentReceiptContext('agency-1', 'pay-1');
+    expect(context.BAILLEUR_NOM).toBe('Agence Test SARL');
+    expect(context.BAILLEUR_TELEPHONE).toBe('+225 27 00 00 00');
+    expect(context.BAILLEUR_EMAIL).toBe('contact@agence.test');
+    expect(JSON.stringify(context)).not.toContain('Aïcha Créatrice');
+  });
 });
 
 describe('buildRentStatementContext + Releve_Compte.docx', () => {

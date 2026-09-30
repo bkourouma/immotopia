@@ -12,40 +12,44 @@ import {
   updateOwnerStatementHandler
 } from '../controllers/owner-statements-controller';
 
+import { requireThirdPartyAllowed } from '../services/own-assets-barrier-service';
+
 const router = Router();
 
 router.use(authenticate);
 router.use(requireTenantAccess);
 router.use(enforcePropertyTenantIsolation);
+// Barriere « detenu en propre » : releves de gerance = gestion pour un tiers.
+router.use('/tenants/:tenantId/owner-statements', requireThirdPartyAllowed('OWNER_STATEMENT'));
 
 router.get(
   '/tenants/:tenantId/owner-statements',
-  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  requireAnyPropertyPermission(['OWNER_STATEMENTS_VIEW']),
   listOwnerStatementsHandler
 );
 router.post(
   '/tenants/:tenantId/owner-statements',
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
   createOwnerStatementHandler
 );
 router.get(
   '/tenants/:tenantId/owner-statements/:statementId',
-  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  requireAnyPropertyPermission(['OWNER_STATEMENTS_VIEW']),
   getOwnerStatementHandler
 );
 router.patch(
   '/tenants/:tenantId/owner-statements/:statementId',
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
   updateOwnerStatementHandler
 );
 router.post(
   '/tenants/:tenantId/owner-statements/:statementId/recompute',
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
   recomputeOwnerStatementHandler
 );
 router.post(
   '/tenants/:tenantId/owner-statements/:statementId/send',
-  requirePropertyPermission('PROPERTIES_EDIT'),
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
   sendOwnerStatementHandler
 );
 

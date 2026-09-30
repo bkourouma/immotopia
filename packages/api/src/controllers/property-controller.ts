@@ -15,6 +15,8 @@ import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middlewar
 import { CreatePropertyRequest, UpdatePropertyRequest } from '../types/property-types';
 import { PropertyType } from '@prisma/client';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
+import { parsePagination } from '../utils/pagination-helper';
 
 /**
  * Create property handler
@@ -76,7 +78,7 @@ export const getPropertyHandler = asyncHandler(async (req: Request, res: Respons
   const property = await getPropertyById(propertyId, tenantId, userId);
 
   if (!property) {
-    throw new NotFoundError('Property not found');
+    throw new NotFoundError(t('Bien introuvable'));
   }
 
   res.json({
@@ -97,6 +99,7 @@ export const updatePropertyHandler = asyncHandler(async (req: Request, res: Resp
   const data: UpdatePropertyRequest = {
     ownershipType: req.body.ownershipType,
     ownerUserId: req.body.ownerUserId,
+    ownerEmail: req.body.ownerEmail,
     title: req.body.title,
     description: req.body.description,
     address: req.body.address,
@@ -160,8 +163,7 @@ export const listPropertiesHandler = asyncHandler(async (req: Request, res: Resp
     maxRooms: num(req.query.maxRooms),
     minBedrooms: num(req.query.minBedrooms),
     maxBedrooms: num(req.query.maxBedrooms),
-    page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
-    limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 20
+    ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
   };
 
   const result = await listProperties(tenantId, userId, filters);
@@ -186,7 +188,7 @@ export const getTemplateHandler = asyncHandler(async (req: Request, res: Respons
   const template = await getTemplateByType(propertyType);
 
   if (!template) {
-    throw new NotFoundError(`Template not found for property type: ${propertyType}`);
+    throw new NotFoundError(t('Aucun modèle trouvé pour le type de bien : {{type}}', { type: propertyType }));
   }
 
   res.json({
@@ -272,7 +274,7 @@ export const getQualityScoreHandler = asyncHandler(async (req: Request, res: Res
   // Verify property access
   const property = await getPropertyById(propertyId, tenantId, userId);
   if (!property) {
-    throw new NotFoundError('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Get latest score or calculate new one
@@ -318,11 +320,11 @@ export const createSubPropertyHandler = asyncHandler(async (req: Request, res: R
   // Verify parent property exists and is IMMEUBLE
   const parent = await getPropertyById(parentPropertyId, tenantId, userId);
   if (!parent) {
-    throw new NotFoundError('Parent property not found or access denied');
+    throw new NotFoundError(t('Bien parent introuvable ou accès refusé'));
   }
 
   if (parent.propertyType !== PropertyType.IMMEUBLE) {
-    throw new BadRequestError('Parent property must be of type IMMEUBLE');
+    throw new BadRequestError(t('Le bien parent doit être de type IMMEUBLE'));
   }
 
   // Inherit location from parent (Pays, Région, Commune) so apartments have same location as building

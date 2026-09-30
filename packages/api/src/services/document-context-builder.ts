@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { amountDueAt } from '../lib/finance/installment-status';
 import { logger } from '../utils/logger';
 import { DocumentType } from '@prisma/client';
 import {
@@ -14,11 +15,14 @@ import {
   monthLabel,
   orDash,
   paymentMethodLabel,
+  penaltyClauseLabel,
   penaltyRateLabel,
   periodRangeLabel,
   propertyEquipmentLabel,
   propertyTypeLabel
 } from './document-context-helpers';
+import { t } from '../i18n';
+import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
 
 /** Montant Prisma (`Decimal`), nombre ou chaine. */
 type AmountInput = number | string | null | undefined | { toString(): string };
@@ -204,35 +208,114 @@ async function getPhoneFromClient(client: any, tenantId?: string, clientType: st
   return '';
 }
 
-/**
- * Bailleur d'un bail pour les quittances et releves.
- *
- * Ordre : client proprietaire du bail (`ownerClient`, comme dans les contrats),
- * puis proprietaire du bien (`property.owner`). Sans proprietaire connu, c'est
- * l'agence gestionnaire qui figure. Un proprietaire connu mais sans telephone ou
- * e-mail affiche « — » plutot que les coordonnees de l'agence, pour ne pas les
- * presenter comme siennes.
- */
-async function buildLandlordContext(
-  lease: any,
-  tenantId: string
-): Promise<{ BAILLEUR_NOM: string; BAILLEUR_EMAIL: string; BAILLEUR_TELEPHONE: string }> {
-  const ownerUser = lease?.ownerClient?.user || lease?.property?.owner || null;
-  const ownerName = ownerUser?.fullName || '';
+/** Bailleur resolu pour un bail : identite et coordonnees, « — » quand une donnee manque. */
+interface Landlord {
+  BAILLEUR_NOM: string;
+  BAILLEUR_EMAIL: string;
+  BAILLEUR_TELEPHONE: string;
+  BAILLEUR_ADRESSE: string;
+  BAILLEUR_FORME_JURIDIQUE: string;
+  BAILLEUR_REPRESENTANT: string;
+}
 
-  if (ownerName || ownerUser?.email) {
-    const phone = lease?.ownerClient ? await getPhoneFromClient(lease.ownerClient, tenantId, 'BAILLEUR') : '';
+/** Entites detentrices du bien, a inclure dans `property.include` (filtrees par agence). */
+function landlordHoldingsInclude(tenantId: string) {
+  return {
+    where: { tenantId },
+    include: {
+      entity: {
+        include: {
+          contact: { select: { ...CRM_CONTACT_SELECT, tenantId: true } }
+        }
+      }
+    }
+  };
+}
+
+/** Entite detentrice principale du bien (plus forte part) : active et de l'agence uniquement. */
+function pickHoldingEntity(property: any, tenantId: string): any | null {
+  const holdings: any[] = (property?.holdings || []).filter(
+    (h: any) => h?.tenantId === tenantId && h?.entity && h.entity.tenantId === tenantId && h.entity.isActive !== false
+  );
+  if (holdings.length === 0) return null;
+  holdings.sort((x, y) => Number(y.sharePercent ?? 0) - Number(x.sharePercent ?? 0));
+  return holdings[0].entity;
+}
+
+/** Forme juridique d'une entite detentrice (« INDIVIDUAL » se lit « Personne physique »). */
+function entityLegalForm(entity: any): string {
+  const labels: Record<string, string> = {
+    SCI: 'SCI',
+    HOLDING: 'Holding',
+    COMPANY: 'Société',
+    INDIVIDUAL: 'Personne physique'
+  };
+  return labels[entity?.legalForm] || NON_RENSEIGNE;
+}
+
+/**
+ * Bailleur d'un bail, selon la propriete reelle du bien. Ordre :
+ *
+ * 1. entite detentrice du bien (SCI, holding, societe, personne physique
+ *    rattachee via `PropertyHolding`) : denomination et coordonnees de sa
+ *    fiche CRM ;
+ * 2. proprietaire client (`lease.ownerClient`, sinon `property.owner` pour un
+ *    bien de type CLIENT) : coordonnees de sa fiche CRM ; l'agence est alors
+ *    designee comme mandataire ;
+ * 3. sinon (bien detenu en propre) l'agence : denomination legale, adresse,
+ *    telephone et e-mail de ses parametres.
+ *
+ * Jamais l'utilisateur qui a saisi le bien (`property.owner` d'un bien
+ * TENANT/PUBLIC n'est que son createur). Une coordonnee absente vaut « — » :
+ * la generation n'est pas bloquee. Seules les donnees de l'agence du bail
+ * entrent dans le contexte (entites et fiches filtrees par `tenantId`).
+ */
+async function resolveLandlord(lease: any, tenantId: string): Promise<Landlord> {
+  const agency = lease?.tenant;
+  const property = lease?.property;
+
+  const entity = pickHoldingEntity(property, tenantId);
+  if (entity) {
+    const contact = entity.contact && entity.contact.tenantId === tenantId ? entity.contact : null;
     return {
-      BAILLEUR_NOM: orDash(ownerName || ownerUser?.email),
-      BAILLEUR_EMAIL: orDash(ownerUser?.email),
-      BAILLEUR_TELEPHONE: orDash(phone)
+      BAILLEUR_NOM: orDash(entity.name),
+      BAILLEUR_EMAIL: orDash(contact?.email),
+      BAILLEUR_TELEPHONE: orDash(contactPhone(contact)),
+      BAILLEUR_ADRESSE: joinPresent([contact?.address, contact?.district, contact?.city]),
+      BAILLEUR_FORME_JURIDIQUE: entityLegalForm(entity),
+      BAILLEUR_REPRESENTANT: partyRepresentative(contact)
     };
   }
 
+  const ownerUser = lease?.ownerClient?.user || (property?.ownershipType === 'CLIENT' ? property?.owner : null) || null;
+  if (lease?.ownerClient || ownerUser) {
+    const contact = await loadCrmContact(lease.ownerClient, tenantId);
+    const details = parseClientDetails(lease.ownerClient);
+    const phone =
+      contactPhone(contact) ||
+      (lease.ownerClient ? await getPhoneFromClient(lease.ownerClient, tenantId, 'BAILLEUR') : '');
+    const name = orDash(partyName(ownerUser, contact) || ownerUser?.email);
+    const agencyName = agency?.legalName || agency?.name;
+    return {
+      // L'agence gere le bien pour le compte du proprietaire : elle figure comme mandataire.
+      BAILLEUR_NOM:
+        agencyName && name !== NON_RENSEIGNE ? `${name}, représenté par l'agence ${agencyName} (mandataire)` : name,
+      BAILLEUR_EMAIL: orDash(ownerUser?.email || contact?.email),
+      BAILLEUR_TELEPHONE: orDash(phone),
+      BAILLEUR_ADRESSE: joinPresent([contact?.address || details.address, contact?.district, contact?.city]),
+      BAILLEUR_FORME_JURIDIQUE: partyLegalForm(contact),
+      BAILLEUR_REPRESENTANT: partyRepresentative(contact)
+    };
+  }
+
+  // Bien detenu en propre : l'agence est le bailleur.
   return {
-    BAILLEUR_NOM: orDash(lease?.tenant?.name),
-    BAILLEUR_EMAIL: orDash(lease?.tenant?.contactEmail),
-    BAILLEUR_TELEPHONE: orDash(lease?.tenant?.contactPhone)
+    BAILLEUR_NOM: orDash(agency?.legalName || agency?.name),
+    BAILLEUR_EMAIL: orDash(agency?.contactEmail),
+    BAILLEUR_TELEPHONE: orDash(agency?.contactPhone),
+    BAILLEUR_ADRESSE: joinPresent([agency?.address, agency?.city]),
+    BAILLEUR_FORME_JURIDIQUE: NON_RENSEIGNE,
+    BAILLEUR_REPRESENTANT: NON_RENSEIGNE
   };
 }
 
@@ -240,12 +323,19 @@ async function buildLandlordContext(
  * Champs communs a la quittance et au releve dans les modeles DOCX du depot
  * (`Reçu_Loyer.docx`, `Releve_Compte.docx`), en plus des cles historiques.
  */
-async function buildCommonDocumentFields(lease: any, tenantId: string): Promise<Record<string, string>> {
+async function buildCommonDocumentFields(
+  lease: any,
+  tenantId: string,
+  landlord?: Landlord
+): Promise<Record<string, string>> {
+  const resolved = landlord ?? (await resolveLandlord(lease, tenantId));
   return {
     ADRESSE_BIEN: orDash(lease?.property?.address),
     TYPE_BIEN: propertyTypeLabel(lease?.property?.propertyType),
     BAIL_REFERENCE: orDash(lease?.lease_number),
-    ...(await buildLandlordContext(lease, tenantId))
+    BAILLEUR_NOM: resolved.BAILLEUR_NOM,
+    BAILLEUR_EMAIL: resolved.BAILLEUR_EMAIL,
+    BAILLEUR_TELEPHONE: resolved.BAILLEUR_TELEPHONE
   };
 }
 
@@ -346,20 +436,6 @@ async function buildRenterFields(lease: any, tenantId: string, contact: any): Pr
   };
 }
 
-/**
- * Adresse du bailleur : celle de son proprietaire (fiche CRM du client bailleur)
- * quand il est connu ; sans proprietaire connu, l'agence gestionnaire figure
- * comme bailleur (voir `buildLandlordContext`), avec son adresse.
- */
-function landlordAddress(lease: any, ownerContact: any): string {
-  const ownerUser = lease.ownerClient?.user || lease.property?.owner || null;
-  if (ownerUser?.fullName || ownerUser?.email) {
-    const details = parseClientDetails(lease.ownerClient);
-    return joinPresent([ownerContact?.address || details.address, ownerContact?.district, ownerContact?.city]);
-  }
-  return orDash(lease.tenant?.address || lease.tenant?.city);
-}
-
 /** Champs du bien communs aux deux baux. */
 function buildPropertyFields(property: any): Record<string, string> {
   return {
@@ -381,6 +457,13 @@ function buildLeaseTermsFields(lease: any): Record<string, string> {
     DEPOT_GARANTIE: formatNumber(lease.security_deposit_amount),
     JOUR_ECHEANCE: orDash(lease.due_day_of_month),
     DELAI_GRACE: String(lease.penalty_grace_days ?? 0),
+    CLAUSE_PENALITE: penaltyClauseLabel(
+      lease.penalty_mode,
+      lease.penalty_rate,
+      lease.penalty_fixed_amount,
+      formatAmount(lease.penalty_fixed_amount, lease.currency),
+      Number(lease.penalty_cap_amount) > 0 ? formatAmount(lease.penalty_cap_amount, lease.currency) : ''
+    ),
     TAUX_PENALITE: penaltyRateLabel(
       lease.penalty_mode,
       lease.penalty_rate,
@@ -391,14 +474,14 @@ function buildLeaseTermsFields(lease: any): Record<string, string> {
 }
 
 /** Champs propres au bail commercial : activite, forme juridique, RCCM, representants, charges, pas-de-porte. */
-function buildCommercialFields(lease: any, renterContact: any, ownerContact: any): Record<string, string> {
+function buildCommercialFields(lease: any, renterContact: any, landlord: Landlord): Record<string, string> {
   return {
     ACTIVITE_COMMERCIALE: orDash(renterContact?.sectorOfActivity),
     LOCATAIRE_FORME_JURIDIQUE: partyLegalForm(renterContact),
     LOCATAIRE_RCCM: orDash(renterContact?.rccm),
     LOCATAIRE_REPRESENTANT: partyRepresentative(renterContact),
-    BAILLEUR_FORME_JURIDIQUE: partyLegalForm(ownerContact),
-    BAILLEUR_REPRESENTANT: partyRepresentative(ownerContact),
+    BAILLEUR_FORME_JURIDIQUE: landlord.BAILLEUR_FORME_JURIDIQUE,
+    BAILLEUR_REPRESENTANT: landlord.BAILLEUR_REPRESENTANT,
     DETAIL_CHARGES:
       Number(lease.service_charge_amount) > 0 ? 'les charges de service convenues au bail' : NON_RENSEIGNE,
     // Aucun champ « droit d'entree » sur le bail : a completer a la main.
@@ -427,7 +510,8 @@ async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: str
     include: {
       property: {
         include: {
-          owner: { select: { id: true, email: true, fullName: true } }
+          owner: { select: { id: true, email: true, fullName: true } },
+          holdings: landlordHoldingsInclude(tenantId)
         }
       },
       primaryRenter: {
@@ -460,7 +544,7 @@ async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: str
   });
 
   if (!lease) {
-    throw new Error('Lease not found');
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Helper function to format billing frequency
@@ -479,7 +563,7 @@ async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: str
   };
 
   const renterContact = await loadCrmContact(lease.primaryRenter, tenantId);
-  const ownerContact = await loadCrmContact(lease.ownerClient, tenantId);
+  const landlord = await resolveLandlord(lease, tenantId);
 
   const context: Record<string, any> = {
     // Tenant (Agency) info
@@ -514,15 +598,15 @@ async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: str
     // existent (LOCATAIRE_*, BAILLEUR_*, DATE_SIGNATURE) avec « — » pour une
     // donnee absente : le moteur remplace tout champ vide par `{{NOM}}`.
     ...(await buildRenterFields(lease, tenantId, renterContact)),
-    ...(await buildCommonDocumentFields(lease, tenantId)),
-    BAILLEUR_ADRESSE: landlordAddress(lease, ownerContact),
+    ...(await buildCommonDocumentFields(lease, tenantId, landlord)),
+    BAILLEUR_ADRESSE: landlord.BAILLEUR_ADRESSE,
     ...buildPropertyFields(lease.property),
     ...buildLeaseTermsFields(lease),
     PREAVIS_PRENEUR: DEFAULT_NOTICE_HABITATION,
     LIEU_SIGNATURE: issuePlace(lease.tenant),
     // Date de signature : creation du bail, a defaut aujourd'hui.
     DATE_SIGNATURE: formatDate(lease.created_at || new Date()),
-    ...(kind === 'COMMERCIAL' ? buildCommercialFields(lease, renterContact, ownerContact) : {})
+    ...(kind === 'COMMERCIAL' ? buildCommercialFields(lease, renterContact, landlord) : {})
   };
 
   logger.info('buildLeaseContext: Context built', {
@@ -583,7 +667,8 @@ export async function buildRentReceiptContext(
         include: {
           property: {
             include: {
-              owner: { select: { id: true, email: true, fullName: true } }
+              owner: { select: { id: true, email: true, fullName: true } },
+              holdings: landlordHoldingsInclude(tenantId)
             }
           },
           primaryRenter: {
@@ -619,7 +704,7 @@ export async function buildRentReceiptContext(
   });
 
   if (!payment) {
-    throw new Error('Payment not found');
+    throw new NotFoundError(t('Paiement introuvable'));
   }
 
   // Get installment if provided or from first allocation
@@ -758,7 +843,8 @@ export async function buildRentStatementContext(
     include: {
       property: {
         include: {
-          owner: { select: { id: true, email: true, fullName: true } }
+          owner: { select: { id: true, email: true, fullName: true } },
+          holdings: landlordHoldingsInclude(tenantId)
         }
       },
       primaryRenter: {
@@ -799,7 +885,7 @@ export async function buildRentStatementContext(
   });
 
   if (!lease) {
-    throw new Error('Lease not found');
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Calculate totals
@@ -810,18 +896,21 @@ export async function buildRentStatementContext(
   let totalPenalties = 0;
   const installments = lease.installments || [];
 
-  const dueOf = (inst: { amount_rent: any; amount_service: any; amount_other_fees: any; penalty_amount: any }) =>
-    Number(inst.amount_rent) +
-    Number(inst.amount_service) +
-    Number(inst.amount_other_fees) +
-    Number(inst.penalty_amount || 0);
+  // Même règle que le grand livre (relevé du portail, compte du locataire,
+  // balance clients) : une échéance n'est DUE au relevé qu'à sa date
+  // d'exigibilité ; ce qui a été réglé d'avance, lui, compte déjà.
+  const maintenant = new Date();
+  const dueOf = (inst: Parameters<typeof amountDueAt>[0]) => amountDueAt(inst, maintenant);
+  const exigible = (inst: { due_date: Date }) => inst.due_date <= maintenant;
 
   installments.forEach(inst => {
     totalDue += dueOf(inst);
     totalPaid += Number(inst.amount_paid);
-    totalRent += Number(inst.amount_rent);
-    totalCharges += Number(inst.amount_service) + Number(inst.amount_other_fees);
-    totalPenalties += Number(inst.penalty_amount || 0);
+    if (exigible(inst)) {
+      totalRent += Number(inst.amount_rent);
+      totalCharges += Number(inst.amount_service) + Number(inst.amount_other_fees);
+      totalPenalties += Number(inst.penalty_amount || 0);
+    }
   });
 
   // Solde initial : reste du sur les echeances anterieures a la periode, avec
@@ -833,6 +922,7 @@ export async function buildRentStatementContext(
       due_date: { lt: startDate }
     },
     select: {
+      due_date: true,
       amount_rent: true,
       amount_service: true,
       amount_other_fees: true,
@@ -986,7 +1076,7 @@ export async function buildDocumentContext(
 
     case DocumentType.RENT_STATEMENT:
       if (!additionalParams?.startDate || !additionalParams?.endDate) {
-        throw new Error('Start date and end date required for RENT_STATEMENT');
+        throw new BadRequestError(t('Les dates de début et de fin sont requises pour le relevé de loyer'));
       }
       return buildRentStatementContext(tenantId, sourceKey, additionalParams.startDate, additionalParams.endDate);
 

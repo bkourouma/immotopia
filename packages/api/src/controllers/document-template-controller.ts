@@ -12,6 +12,17 @@ import { DocumentType, DocumentTemplateStatus } from '@prisma/client';
 import { badRequest } from '../lib/errors';
 
 /**
+ * Un modele ne sort jamais avec son chemin de stockage disque (`storage_path`)
+ * ni le nom de fichier interne : AGENTS.md, fichiers uploades.
+ */
+export function toTemplateDto<T extends { storage_path?: unknown; stored_filename?: unknown }>(
+  template: T
+): Omit<T, 'storage_path' | 'stored_filename'> {
+  const { storage_path: _storagePath, stored_filename: _storedFilename, ...safe } = template;
+  return safe;
+}
+
+/**
  * These routes are all mounted under `/tenants/:tenantId/documents/*` behind
  * `requireTenantAccess`, so `req.tenantContext.tenantId` is always the
  * caller's own, verified agency. There is no legitimate flow where a mutating
@@ -92,7 +103,7 @@ export async function uploadTemplateHandler(req: Request, res: Response, next: N
 
     res.status(201).json({
       success: true,
-      data: template,
+      data: toTemplateDto(template),
       message: 'Template téléchargé avec succès'
     });
   } catch (error) {
@@ -121,7 +132,7 @@ export async function listTemplatesHandler(req: Request, res: Response, next: Ne
 
     res.json({
       success: true,
-      data: templates
+      data: templates.map(toTemplateDto)
     });
   } catch (error) {
     next(error);
@@ -163,7 +174,7 @@ export async function updateTemplateHandler(req: Request, res: Response, next: N
 
     res.json({
       success: true,
-      data: template
+      data: toTemplateDto(template)
     });
   } catch (error) {
     next(error);
@@ -192,7 +203,7 @@ export async function setDefaultTemplateHandler(req: Request, res: Response, nex
 
     res.json({
       success: true,
-      data: template,
+      data: toTemplateDto(template),
       message: 'Template défini par défaut'
     });
   } catch (error) {

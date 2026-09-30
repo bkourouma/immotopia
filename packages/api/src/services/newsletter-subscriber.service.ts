@@ -1,4 +1,7 @@
 import crypto from 'crypto';
+import { toCsvString } from '../lib/csv';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { prisma } from '../utils/database';
 import { emailService } from './email-service';
 import { resolveRecipients } from './newsletter-campaign.service';
@@ -35,16 +38,17 @@ function isValidEmail(email: string): boolean {
 
 export async function addSubscriber(tenantId: string, listId: string, data: { email: string; name?: string }) {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
-  if (list.type !== 'MANUAL') throw new Error("Les listes dérivées ne peuvent pas recevoir d'ajout manuel.");
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
+  if (list.type !== 'MANUAL')
+    throw new BadRequestError(t("Les listes dérivées ne peuvent pas recevoir d'ajout manuel."));
 
   const email = data.email.trim().toLowerCase();
-  if (!isValidEmail(email)) throw new Error('Adresse email invalide.');
+  if (!isValidEmail(email)) throw new BadRequestError(t('Adresse email invalide.'));
 
   const existing = await prisma.newsletterSubscriber.findUnique({
     where: { listId_email: { listId, email } }
   });
-  if (existing) throw new Error('Cet email est déjà inscrit à cette liste.');
+  if (existing) throw new ConflictError(t('Cet email est déjà inscrit à cette liste.'));
 
   return prisma.newsletterSubscriber.create({
     data: {
@@ -94,8 +98,8 @@ export interface ImportResult {
 
 export async function importFromCsv(tenantId: string, listId: string, buffer: Buffer): Promise<ImportResult> {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
-  if (list.type !== 'MANUAL') throw new Error('Les listes dérivées ne peuvent pas être importées.');
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
+  if (list.type !== 'MANUAL') throw new BadRequestError(t('Les listes dérivées ne peuvent pas être importées.'));
 
   const result: ImportResult = { accepted: 0, rejected: 0, duplicateCount: 0, errors: [] };
   const records = parseCsvBuffer(buffer);
@@ -135,7 +139,7 @@ export async function importFromCsv(tenantId: string, listId: string, buffer: Bu
 
 export async function exportToCsv(tenantId: string, listId: string): Promise<string> {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
 
   const headers = ['email', 'name', 'status', 'subscribed_at', 'confirmed_at', 'unsubscribed_at'];
 
@@ -144,24 +148,27 @@ export async function exportToCsv(tenantId: string, listId: string): Promise<str
       where: { listId, tenantId },
       orderBy: { subscribedAt: 'asc' }
     });
-    const rows = subscribers.map(s =>
-      [
-        s.email,
-        s.name ?? '',
-        s.status,
-        s.subscribedAt?.toISOString() ?? '',
-        s.confirmedAt?.toISOString() ?? '',
-        s.unsubscribedAt?.toISOString() ?? ''
-      ].join(',')
-    );
-    return [headers.join(','), ...rows].join('\n');
+    const rows = subscribers.map(s => [
+      s.email,
+      s.name ?? '',
+      s.status,
+      s.subscribedAt?.toISOString() ?? '',
+      s.confirmedAt?.toISOString() ?? '',
+      s.unsubscribedAt?.toISOString() ?? ''
+    ]);
+    return toCsvString([headers, ...rows]);
   }
 
   const recipients = await resolveRecipients(tenantId, listId);
-  const rows = recipients.map(r =>
-    [r.email, [r.prenom, r.nom].filter(Boolean).join(' ').trim() || '', 'DESTINATAIRE', '', '', ''].join(',')
-  );
-  return [headers.join(','), ...rows].join('\n');
+  const rows = recipients.map(r => [
+    r.email,
+    [r.prenom, r.nom].filter(Boolean).join(' ').trim() || '',
+    'DESTINATAIRE',
+    '',
+    '',
+    ''
+  ]);
+  return toCsvString([headers, ...rows]);
 }
 
 /**
@@ -174,8 +181,9 @@ export async function addSubscribersFromContactIds(
   contactIds: string[]
 ): Promise<{ added: number; skipped: number; errors: string[] }> {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
-  if (list.type !== 'MANUAL') throw new Error("Les listes dérivées ne peuvent pas recevoir d'ajout manuel.");
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
+  if (list.type !== 'MANUAL')
+    throw new BadRequestError(t("Les listes dérivées ne peuvent pas recevoir d'ajout manuel."));
 
   const contacts = await prisma.crmContact.findMany({
     where: { id: { in: contactIds }, tenantId },
@@ -225,8 +233,8 @@ export async function removeSubscriber(tenantId: string, subscriberId: string) {
     where: { id: subscriberId, tenantId },
     include: { list: true }
   });
-  if (!sub) throw new Error('Abonné non trouvé.');
-  if (sub.list.type !== 'MANUAL') throw new Error("Impossible de retirer un abonné d'une liste dérivée.");
+  if (!sub) throw new NotFoundError(t('Abonné non trouvé.'));
+  if (sub.list.type !== 'MANUAL') throw new BadRequestError(t("Impossible de retirer un abonné d'une liste dérivée."));
 
   await prisma.newsletterSubscriber.delete({ where: { id: subscriberId, tenantId } });
   return { success: true };

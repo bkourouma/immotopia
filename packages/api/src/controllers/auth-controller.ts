@@ -14,6 +14,7 @@ import {
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
 import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookies';
 import { isLanguage } from '../i18n';
+import { logger } from '../utils/logger';
 import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 
 /**
@@ -76,15 +77,15 @@ export async function resendVerification(req: Request, res: Response): Promise<v
   try {
     const { email } = req.body;
     await resendVerificationEmail(email);
-    res.status(200).json({
-      success: true,
-      message:
-        "Si cette adresse email existe et n'est pas encore vérifiée, un nouvel email de vérification a été envoyé."
-    });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+    // Reponse identique dans tous les cas (pas d'enumeration de comptes) ;
+    // le detail reste dans les journaux.
+    logger.error('Resend verification failed', { error });
   }
+  res.status(200).json({
+    success: true,
+    message: "Si cette adresse email existe et n'est pas encore vérifiée, un nouvel email de vérification a été envoyé."
+  });
 }
 
 /**

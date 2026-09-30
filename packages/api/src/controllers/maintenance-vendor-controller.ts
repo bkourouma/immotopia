@@ -1,4 +1,5 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
+import { AppError } from '../middleware/error-middleware';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import {
   createVendor,
@@ -10,6 +11,8 @@ import {
   getActiveVendors
 } from '../services/maintenance-vendor-service';
 import { createVendorSchema, updateVendorSchema } from '../types/maintenance-types';
+import { parsePagination } from '../utils/pagination-helper';
+import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Transform vendor from Prisma format (snake_case) to frontend format (camelCase)
@@ -33,7 +36,7 @@ function transformVendor(vendor: any) {
  * Create a new maintenance vendor
  * POST /tenants/:tenantId/maintenance/admin/vendors
  */
-export async function createVendorHandler(req: Request, res: Response): Promise<void> {
+export async function createVendorHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = getTenantIdFromRequest(req);
     const actorUserId = req.user?.userId;
@@ -57,6 +60,10 @@ export async function createVendorHandler(req: Request, res: Response): Promise<
       data: transformVendor(vendor)
     });
   } catch (error) {
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
     console.error('Error creating vendor:', error);
     if (error instanceof Error) {
       if (error.message.includes('existe déjà')) {
@@ -100,8 +107,7 @@ export async function listVendorsHandler(req: Request, res: Response): Promise<v
       filters.search = req.query.search as string;
     }
 
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 });
 
     const result = await listVendors(tenantId, filters, { page, limit });
 
@@ -111,6 +117,7 @@ export async function listVendorsHandler(req: Request, res: Response): Promise<v
       pagination: result.pagination
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     console.error('Error listing vendors:', error);
     res.status(500).json({
       success: false,
@@ -159,7 +166,7 @@ export async function getVendorHandler(req: Request, res: Response): Promise<voi
  * Update vendor
  * PATCH /tenants/:tenantId/maintenance/admin/vendors/:vendorId
  */
-export async function updateVendorHandler(req: Request, res: Response): Promise<void> {
+export async function updateVendorHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { vendorId } = req.params;
@@ -184,6 +191,10 @@ export async function updateVendorHandler(req: Request, res: Response): Promise<
       data: transformVendor(vendor)
     });
   } catch (error) {
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
     console.error('Error updating vendor:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {

@@ -14,6 +14,57 @@ import {
   PropertyAvailability
 } from '@prisma/client';
 import { sendPropertyPublishedGroupBroadcast } from './whatsapp-group-automation-service';
+import { t } from '../i18n';
+import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
+
+/**
+ * Colonnes d'un bien visibles par un anonyme (`/public/properties`). Liste
+ * blanche : ni `tenantId`, `ownerUserId`, `partnershipId`, `internalReference`,
+ * ni documents du bien (titre de propriete, diagnostics).
+ */
+export const PUBLIC_PROPERTY_SELECT = {
+  id: true,
+  propertyType: true,
+  title: true,
+  description: true,
+  address: true,
+  locationZone: true,
+  latitude: true,
+  longitude: true,
+  transactionModes: true,
+  price: true,
+  fees: true,
+  currency: true,
+  surfaceArea: true,
+  surfaceUseful: true,
+  surfaceTerrain: true,
+  rooms: true,
+  bedrooms: true,
+  bathrooms: true,
+  furnishingStatus: true,
+  status: true,
+  availability: true,
+  publishedAt: true,
+  qualityScore: true,
+  typeSpecificData: true,
+  createdAt: true,
+  updatedAt: true
+} as const;
+
+/** Media public : sans `tenantId` ni `filePath`. */
+const PUBLIC_MEDIA_SELECT = {
+  id: true,
+  propertyId: true,
+  mediaType: true,
+  fileUrl: true,
+  fileName: true,
+  fileSize: true,
+  mimeType: true,
+  displayOrder: true,
+  isPrimary: true,
+  createdAt: true,
+  updatedAt: true
+} as const;
 
 const WHATSAPP_SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
@@ -145,13 +196,15 @@ export async function publishProperty(
   // Get property with validation
   const property = await getPropertyById(propertyId, tenantId, userId);
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Validate publication requirements
   const validation = await validatePublicationRequirements(propertyId);
   if (!validation.valid) {
-    throw new Error(`Publication requirements not met: ${validation.errors.join(', ')}`);
+    throw new BadRequestError(
+      t('Conditions de publication non remplies : {{errors}}', { errors: validation.errors.join(', ') })
+    );
   }
 
   // Update property
@@ -183,7 +236,14 @@ export async function publishProperty(
   }
 
   if (property.tenantId) {
-    const primaryPhoto = resolvePrimaryPhoto(property.media || []);
+    // Le detail du bien ne porte plus `filePath` (jamais expose au client) : le chemin
+    // disque de la photo, utile a la diffusion WhatsApp, est relu ici en interne.
+    const primaryPhoto = resolvePrimaryPhoto(
+      await prisma.propertyMedia.findMany({
+        where: { propertyId: property.id, tenantId: property.tenantId },
+        orderBy: { displayOrder: 'asc' }
+      })
+    );
     sendPropertyPublishedGroupBroadcast({
       tenantId: property.tenantId,
       propertyId: property.id,
@@ -237,7 +297,7 @@ export async function unpublishProperty(
   // Get property with validation
   const property = await getPropertyById(propertyId, tenantId, userId);
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Update property
@@ -348,8 +408,10 @@ export async function getPublishedProperties(
     skip,
     take: limit,
     orderBy: [{ publishedAt: 'desc' }, { qualityScore: 'desc' }],
-    include: {
+    select: {
+      ...PUBLIC_PROPERTY_SELECT,
       media: {
+        select: PUBLIC_MEDIA_SELECT,
         where: {
           isPrimary: true
         },
@@ -383,15 +445,12 @@ export async function getPublishedProperty(propertyId: string) {
         in: [PropertyStatus.AVAILABLE, PropertyStatus.RESERVED, PropertyStatus.UNDER_OFFER]
       }
     },
-    include: {
+    select: {
+      ...PUBLIC_PROPERTY_SELECT,
       media: {
+        select: PUBLIC_MEDIA_SELECT,
         orderBy: {
           displayOrder: 'asc'
-        }
-      },
-      documents: {
-        where: {
-          isValid: true
         }
       }
     }

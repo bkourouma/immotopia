@@ -755,6 +755,50 @@ describe('generation manuelle depuis le budget (correctif periodsPerYear)', () =
   });
 });
 
+describe('lot desactive apres repartition du budget (M1)', () => {
+  const base = {
+    label: 'Appel',
+    period: '2026-Q4',
+    dueDate: d('2026-10-31'),
+    batchType: 'REGULAR' as const,
+    currency: 'XOF'
+  };
+
+  // Budget de 1 050 000 reparti au prorata des tantiemes 600 / 400 / 50 (parking P1), puis P1 desactive.
+  function distributeThenDeactivateParking() {
+    const budget = mockPrisma.syndicateBudget.rows.find(row => row.id === BUD1)!;
+    budget.totalAmount = 1050000;
+    (budget as any).lines = [
+      { id: 'line-1', category: 'Ascenseur', amountForecast: 1050000, distributionKey: 'GENERAL_SHARES' }
+    ];
+    budget.allocations = [
+      { budgetId: BUD1, lotId: L1, totalAllocated: 600000 },
+      { budgetId: BUD1, lotId: L2, totalAllocated: 400000 },
+      { budgetId: BUD1, lotId: P1, totalAllocated: 50000 }
+    ];
+    mockPrisma.syndicateLot.rows.find(row => row.id === P1)!.generalShares = 0;
+  }
+
+  it('l appel suivant n appelle plus le lot desactive et les parts somment au budget', async () => {
+    distributeThenDeactivateParking();
+    await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, base);
+    const byLot = amountsByLot(calls());
+    expect(byLot[P1]).toBeUndefined();
+    // 1 050 000 x 600 / 1 000 = 630 000 ; x 400 / 1 000 = 420 000.
+    expect(byLot).toEqual({ [L1]: 630000, [L2]: 420000 });
+    expect((Object.values(byLot) as number[]).reduce((sum, value) => sum + value, 0)).toBe(1050000);
+  });
+
+  it('la programmation automatique (apercu puis emission) ignore aussi le lot desactive', async () => {
+    distributeThenDeactivateParking();
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), 'user-1', NOW);
+    const preview = await previewChargeSchedule(TENANT_A, S1, schedule.id, NOW);
+    expect(JSON.stringify(preview)).not.toContain(P1);
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(calls().map(row => row.lotId)).not.toContain(P1);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Suites de l'audit de securite du lot S4
 // ---------------------------------------------------------------------------

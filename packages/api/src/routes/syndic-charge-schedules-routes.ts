@@ -23,8 +23,8 @@ import {
  * Programmations des appels de charges automatiques et avis d'appel PDF
  * (lot S4, besoin 6).
  *
- * Mêmes permissions que les appels de charges : lecture `PROPERTIES_VIEW`,
- * écriture `PROPERTIES_EDIT`. Classées SYNDIC par le préfixe `/syndics` de
+ * Mêmes permissions que les appels de charges : lecture `SYNDIC_VIEW`,
+ * écriture `SYNDIC_EDIT`. Classées SYNDIC par le préfixe `/syndics` de
  * `lib/subscription/route-features.ts`.
  *
  * Gardes posées avec leur chemin, jamais en `router.use` nu : ce routeur est
@@ -33,8 +33,8 @@ import {
 const router = Router();
 
 const guards: RequestHandler[] = [authenticate, requireTenantAccess, enforcePropertyTenantIsolation];
-const canView = requireAnyPropertyPermission(['PROPERTIES_VIEW']);
-const canEdit = requirePropertyPermission('PROPERTIES_EDIT');
+const canView = requireAnyPropertyPermission(['SYNDIC_VIEW']);
+const canEdit = requirePropertyPermission('SYNDIC_EDIT');
 
 const SYNDIC = '/tenants/:tenantId/syndics/:syndicId';
 const SCHEDULE = `${SYNDIC}/programmations/:scheduleId`;

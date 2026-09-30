@@ -45,6 +45,7 @@ jest.mock('../../src/services/subscription-v2-service', () => ({
     }
     return {
       tenantId,
+      packs: [] as string[], // codes des packs détenus : lus par checkQuota (extension vendable ?)
       quotaPolicy: mockEntitlementsConfig.quotaPolicy,
       enforcement: mockEntitlementsConfig.enforcement,
       capacities

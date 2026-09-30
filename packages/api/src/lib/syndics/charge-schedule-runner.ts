@@ -190,20 +190,27 @@ export async function computePeriodPlan(
     budgetId = budget.id;
     currency = budget.currency || currency;
     let allocations = budget.allocations;
-    if (allocations.length === 0) {
+    // Un lot désactivé (0 tantième) qui figure encore dans la répartition enregistrée
+    // rend celle-ci périmée : recalcul à l'émission, jamais d'appel pour ce lot.
+    const hasShares = lots.some(lot => lot.generalShares > 0);
+    const activeLotIds = new Set(lots.filter(lot => !hasShares || lot.generalShares > 0).map(lot => lot.id));
+    const stale = allocations.some(allocation => !activeLotIds.has(allocation.lotId));
+    if (allocations.length === 0 || (stale && options.allowRecompute)) {
       if (!options.allowRecompute) {
         throw new ScheduleRunError("La répartition du budget n'est pas encore calculée : elle le sera à l'émission.");
       }
       allocations = await recomputeBudgetAllocationsByBudget(schedule.tenantId, schedule.syndicateId, budget.id);
     }
     amounts = allocations
-      .filter(allocation => lotNumber.has(allocation.lotId))
+      .filter(allocation => lotNumber.has(allocation.lotId) && activeLotIds.has(allocation.lotId))
       .map(allocation => ({
         lotId: allocation.lotId,
         amount: annualShareForPeriod(Number(allocation.totalAllocated), period.periodsPerYear, period.indexInYear)
       }));
   }
 
+  // Un lot à quote-part nulle n'a rien à payer : ni appel, ni avis (BUG-050).
+  amounts = amounts.filter(item => toCents(item.amount) > 0);
   if (amounts.length === 0) throw new ScheduleRunError('Aucun lot à appeler pour cette copropriété.');
   const planned = amounts.map(item => ({ ...item, lotNumber: lotNumber.get(item.lotId) ?? '' }));
   const totalAmount = fromCents(planned.reduce((sum, item) => sum + toCents(item.amount), 0));

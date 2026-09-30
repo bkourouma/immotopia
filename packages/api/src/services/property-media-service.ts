@@ -4,11 +4,16 @@ import { logAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { PropertyMediaType } from '@prisma/client';
+import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { getPropertyForTenant } from '../utils/property-tenant-guard';
 import { getProjectRoot } from '../utils/project-root';
+import { t } from '../i18n';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+
+export { PROPERTY_MEDIA_SELECT };
 
 /**
  * Upload media file for a property
@@ -39,18 +44,24 @@ export async function uploadMedia(
     if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
       // Check if it's actually a video file
       if (file.mimetype && file.mimetype.startsWith('video/')) {
-        throw new Error('Video file provided but mediaType is PHOTO. Please use mediaType VIDEO for video files.');
+        throw new BadRequestError(
+          t(
+            'Un fichier vidéo a été fourni alors que le type de média est PHOTO. Utilisez le type VIDEO pour les vidéos.'
+          )
+        );
       }
-      throw new Error('Invalid file type for photo. Allowed: JPEG, PNG, WebP');
+      throw new BadRequestError(t('Type de fichier invalide pour une photo. Formats acceptés : JPEG, PNG, WebP'));
     }
   } else if (mediaType === PropertyMediaType.VIDEO) {
     const allowedTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
     if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
       // Check if it's actually an image file
       if (file.mimetype && file.mimetype.startsWith('image/')) {
-        throw new Error('Image file provided but mediaType is VIDEO. Please use mediaType PHOTO for image files.');
+        throw new BadRequestError(
+          t('Une image a été fournie alors que le type de média est VIDEO. Utilisez le type PHOTO pour les images.')
+        );
       }
-      throw new Error('Invalid file type for video. Allowed: MP4, WebM, QuickTime');
+      throw new BadRequestError(t('Type de fichier invalide pour une vidéo. Formats acceptés : MP4, WebM, QuickTime'));
     }
   }
 
@@ -107,7 +118,8 @@ export async function uploadMedia(
       mimeType: file.mimetype,
       displayOrder: finalDisplayOrder,
       isPrimary: isPrimary || false
-    }
+    },
+    select: PROPERTY_MEDIA_SELECT
   });
 
   logger.info('Property media uploaded', {
@@ -199,12 +211,12 @@ export async function setPrimaryMedia(propertyId: string, tenantId: string, medi
   });
 
   if (!media) {
-    throw new Error('Media not found or does not belong to property');
+    throw new NotFoundError(t("Média introuvable ou n'appartenant pas à ce bien"));
   }
 
   // Only photos can be primary
   if (media.mediaType !== PropertyMediaType.PHOTO) {
-    throw new Error('Only photos can be set as primary');
+    throw new BadRequestError(t('Seules les photos peuvent être définies comme photo principale'));
   }
 
   // Unset other primary media
@@ -223,7 +235,8 @@ export async function setPrimaryMedia(propertyId: string, tenantId: string, medi
   // Set this media as primary
   const updated = await prisma.propertyMedia.update({
     where: { id: mediaId, tenantId },
-    data: { isPrimary: true }
+    data: { isPrimary: true },
+    select: PROPERTY_MEDIA_SELECT
   });
 
   logger.info('Primary media set', {
@@ -258,7 +271,7 @@ export async function deleteMedia(propertyId: string, tenantId: string, mediaId:
   });
 
   if (!media) {
-    throw new Error('Media not found or does not belong to property');
+    throw new NotFoundError(t("Média introuvable ou n'appartenant pas à ce bien"));
   }
 
   // Delete file from filesystem
@@ -310,7 +323,8 @@ export async function getPropertyMedia(propertyId: string, tenantId: string) {
 
   const media = await prisma.propertyMedia.findMany({
     where: { propertyId, tenantId },
-    orderBy: { displayOrder: 'asc' }
+    orderBy: { displayOrder: 'asc' },
+    select: PROPERTY_MEDIA_SELECT
   });
 
   return media;

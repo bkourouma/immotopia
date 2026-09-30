@@ -438,16 +438,16 @@ describe('audit de sécurité du lot S1', () => {
       const denied = await request(app).put(url(kind)).set('x-deny', 'TENANT_SETTINGS_EDIT').attach('file', PNG, png);
       expect(denied.status).toBe(403);
       expect((await request(app).delete(url(kind)).set('x-deny', 'TENANT_SETTINGS_EDIT')).status).toBe(403);
-      // PROPERTIES_EDIT ne suffit plus, mais n'est pas exigé non plus.
-      expect((await request(app).put(url(kind)).set('x-deny', 'PROPERTIES_EDIT').attach('file', PNG, png)).status).toBe(
+      // SYNDIC_EDIT ne suffit plus, mais n'est pas exigé non plus.
+      expect((await request(app).put(url(kind)).set('x-deny', 'SYNDIC_EDIT').attach('file', PNG, png)).status).toBe(
         200
       );
     }
-    // Le logo reste en PROPERTIES_EDIT.
+    // Le logo reste en SYNDIC_EDIT (droit du module Syndic).
     expect(
       (await request(app).put(url('logo')).set('x-deny', 'TENANT_SETTINGS_EDIT').attach('file', PNG, png)).status
     ).toBe(200);
-    expect((await request(app).put(url('logo')).set('x-deny', 'PROPERTIES_EDIT').attach('file', PNG, png)).status).toBe(
+    expect((await request(app).put(url('logo')).set('x-deny', 'SYNDIC_EDIT').attach('file', PNG, png)).status).toBe(
       403
     );
   });

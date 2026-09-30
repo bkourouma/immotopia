@@ -708,8 +708,14 @@ async function collectClosureBlockers(
   tenantId: string,
   siteId: string
 ): Promise<SiteClosureBlocker[]> {
-  const [invoices, vouchers, salaryNotes, statements] = await Promise.all([
-    client.supplierInvoice.count({ where: { tenantId, siteId, status: 'DRAFT' } }),
+  const [draftInvoices, vouchers, salaryNotes, statements] = await Promise.all([
+    // Les références sont listées pour que le message nomme les pièces à
+    // traiter (BUG-2026-09-30-042) : un brouillon orphelin doit se retrouver.
+    client.supplierInvoice.findMany({
+      where: { tenantId, siteId, status: 'DRAFT' },
+      select: { id: true, reference: true },
+      orderBy: { reference: 'asc' }
+    }),
     // La pièce de caisse n'a pas de colonne `status` : son brouillon se lit à
     // `validatedAt` nul, exactement comme `cash.ts` le fait pour l'afficher.
     client.cashVoucher.count({ where: { tenantId, siteId, validatedAt: null } }),
@@ -718,11 +724,21 @@ async function collectClosureBlockers(
   ]);
 
   const blockers: SiteClosureBlocker[] = [];
+  const invoices = draftInvoices.length;
 
   if (invoices > 0) {
+    // Une facture en brouillon se valide ou s'ANNULE (l'annulation d'un
+    // brouillon est permise : elle le sort de la clôture sans écriture).
+    const references = (draftInvoices as Array<{ reference: string }>).map(row => row.reference).join(', ');
     blockers.push({
-      message: blockerMessage(invoices, 'facture fournisseur', 'factures fournisseur'),
-      count: invoices
+      message: `${blockerMessage(invoices, 'facture fournisseur', 'factures fournisseur').replace(
+        /supprimez-(la|les)/,
+        'annulez-$1'
+      )} Pièces concernées : ${references}.`,
+      count: invoices,
+      references: (draftInvoices as Array<{ reference: string }>).map(row => row.reference),
+      documentIds: (draftInvoices as Array<{ id: string }>).map(row => row.id),
+      documentType: 'SUPPLIER_INVOICE'
     });
   }
   if (vouchers > 0) {
@@ -802,10 +818,15 @@ export const closeSiteTx: CloseSiteTx = async (tx, tenantId, siteId, params) => 
     throw conflict("Ce chantier vient d'être clôturé par ailleurs");
   }
   // Chantier CLOSED : ses lots de programme sortent de la reserve (D14).
-  await syncLotActivationsTx(tx, tenantId, { siteIds: [siteId] }, {
-    actorUserId: params.closedByUserId,
-    reason: 'SITE_CLOSED'
-  });
+  await syncLotActivationsTx(
+    tx,
+    tenantId,
+    { siteIds: [siteId] },
+    {
+      actorUserId: params.closedByUserId,
+      reason: 'SITE_CLOSED'
+    }
+  );
 
   const closedBy = await tx.user.findFirst({
     where: { id: params.closedByUserId },
@@ -993,9 +1014,14 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
   }
   // Bascule = transfert : PL:<lot> ferme, P:<bien> ouvert s'il compte encore
   // (chantier ouvert, ou bien propose a la location), meme transaction.
-  await syncLotActivationsTx(tx, tenantId, { siteLotIds: [lotId], propertyIds: [property.id] }, {
-    reason: 'TRANSFERRED_TO_PROPERTY'
-  });
+  await syncLotActivationsTx(
+    tx,
+    tenantId,
+    { siteLotIds: [lotId], propertyIds: [property.id] },
+    {
+      reason: 'TRANSFERRED_TO_PROPERTY'
+    }
+  );
 
   const capitalized: CapitalizedLotRecord = {
     lotId: lot.id,

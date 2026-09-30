@@ -298,7 +298,7 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   // precisement d'eviter.
   {
     accountNumber: '476',
-    accountName: "Charges constatees d'avance",
+    accountName: "Charges constatées d'avance",
     accountClass: 4,
     accountType: 'ASSET'
   },
@@ -306,20 +306,20 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   // Lot 4, sous-lot 3 : les salaires. Le 661 recoit la charge, le 422 la
   // dette envers le salarie — un salaire constate n'est pas un salaire paye,
   // et l'un des deux doit pouvoir exister sans l'autre.
-  { accountNumber: '422', accountName: 'Personnel, remunerations dues', accountClass: 4, accountType: 'LIABILITY' },
+  { accountNumber: '422', accountName: 'Personnel, rémunérations dues', accountClass: 4, accountType: 'LIABILITY' },
   { accountNumber: '661', accountName: 'Charges de personnel', accountClass: 6, accountType: 'EXPENSE' },
   // Lot 4, sous-lot 4 : les tacherons. Distinct du 401 des fournisseurs, sans
   // quoi la balance generale melerait deux populations qui ne se lisent pas
   // de la meme façon — un fournisseur facture, un tacheron presente des
   // situations sur un marche.
-  { accountNumber: '402', accountName: 'Tacherons', accountClass: 4, accountType: 'LIABILITY' },
+  { accountNumber: '402', accountName: 'Tâcherons', accountClass: 4, accountType: 'LIABILITY' },
   // Lot 4, sous-lot 5 : les retenues de garantie. Ce qu'on retient reste du,
   // mais n'est plus exigible : le laisser sur le 401 ou le 402 ferait croire a
   // une campagne de reglement qu'il faut le payer maintenant. Un compte
   // distinct est la seule facon de dire « du, mais pas encore ».
   {
     accountNumber: '4047',
-    accountName: 'Fournisseurs et tacherons, retenues de garantie',
+    accountName: 'Fournisseurs et tâcherons, retenues de garantie',
     accountClass: 4,
     accountType: 'LIABILITY'
   },
@@ -329,7 +329,7 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   // devenir une charge (principe P-7).
   {
     accountNumber: '311',
-    accountName: 'Stocks de matieres et fournitures',
+    accountName: 'Stocks de matières et fournitures',
     accountClass: 3,
     accountType: 'ASSET'
   },
@@ -339,7 +339,7 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   // de charge seul ne saurait pas dire le second cas.
   {
     accountNumber: '603',
-    accountName: 'Variations des stocks de biens achetes',
+    accountName: 'Variations des stocks de biens achetés',
     accountClass: 6,
     accountType: 'EXPENSE'
   }
@@ -799,7 +799,33 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
   });
 
   if (dejaAnnulee) {
-    throw conflict("Cette piece a deja ete annulee : ce lot ne modelise pas l'annulation d'une annulation");
+    throw conflict("Cette pièce a déjà été annulée : une annulation ne s'annule pas");
+  }
+
+  // BROUILLON DE FACTURE : jamais valide, donc aucune ecriture a inverser.
+  // Sans cette branche, un brouillon (par exemple mal impute) ne pouvait ni
+  // etre valide, ni annule, ni supprime, et bloquait la cloture de son
+  // chantier a vie (BUG-2026-09-30-042). L'annuler le passe a VOIDED, ecarte
+  // ses imputations et libere le chantier ; aucune ecriture, aucun mouvement de
+  // tiers n'existe pour lui.
+  if (documentType === 'SUPPLIER_INVOICE') {
+    const facture = await tx.supplierInvoice.findFirst({
+      where: { id: documentId, tenantId },
+      select: { id: true, status: true }
+    });
+    // Facture inconnue : on laisse le chemin normal refuser (404 sans ecriture).
+    if (facture?.status === ('DRAFT' as any)) {
+      const annulation = await tx.voidDocument.create({
+        data: { tenantId, documentType: documentType as any, documentId, reason, voidedByUserId },
+        select: { id: true }
+      });
+      await tx.costAllocation.updateMany({
+        where: { tenantId, sourceType: 'SUPPLIER_INVOICE' as any, sourceId: documentId, voidedAt: null },
+        data: { voidedAt: new Date() }
+      });
+      await tx.supplierInvoice.update({ where: { id: documentId, tenantId }, data: { status: 'VOIDED' as any } });
+      return { voidDocumentId: annulation.id, reversingEntryId: null };
+    }
   }
 
   const origine = await tx.journalEntry.findFirst({
@@ -823,7 +849,7 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
   });
 
   if (!origine) {
-    throw notFound("Aucune ecriture n'est rattachee a cette piece pour cette agence");
+    throw notFound("Aucune écriture n'est rattachée à cette pièce pour cette agence");
   }
 
   // Seconde lecture du drapeau (defaut n°2) : une ecriture non verrouillee
