@@ -50,10 +50,10 @@ Pièges et décisions :
 
 ---
 
-## Branche `feat/infra-staging-prod` — 2026-09-29
+## Pilote — environnements staging et production (PR #77 fusionnée) — 2026-09-30
 
-**État :** prêt à relire (PR ouverte, base `main`) ; aucun déploiement fait
-**Dernier commit :** voir `git log` de la branche (worktree `.claude/worktrees/env-staging-prod`)
+**État :** PR #77 fusionnée dans `main` (`23de8301`). **Sur le serveur (accord donné, 2026-09-30) :** dossier cloné, staging redéployé, pile de production `immotopia-prod` en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée : RBAC, gabarits, **premier super-admin créé par le propriétaire**), sauvegarde nocturne planifiée et éprouvée après amorçage. La production n'est pas utilisée pour l'instant.
+**Dernier commit :** `23de8301` (fusion de #77) ; serveur au même commit
 
 Fait :
 
@@ -94,10 +94,18 @@ Fait :
 
 Reste à faire (chaque action serveur exige un « oui » explicite) :
 
-- Étape 0 faite en lecture seule le 2026-09-30 : DNS, ports 3020/5437 libres et
-  disque (61 Go libres) OK ; **`/home/deployer/immotopia-saas` n'est pas un dépôt git**
-  (copie de fichiers avec `.deployed-revision`) : le cloner (dépôt public, HTTPS
-  anonyme) après la fusion de #77, procédure dans DEPLOIEMENT.md, étape 0.
+- **À faire par le propriétaire :** se connecter sur https://clients.immotopia.cloud
+  avec le super-admin et créer la première agence (le test de connexion n'a pas été fait
+  par l'agent : il n'a pas le mot de passe).
+- **Reste, avec des informations du propriétaire :** `PLATFORM_ISSUER_ADDRESS` et
+  `_PHONE` (factures d'abonnement ; RCCM `CI-ABJ-2014-B-20956` et compte contribuable
+  `1438224 S` posés le 2026-09-30, API recréée) ; bloc e-mail (sans lui,
+  aucune invitation ni réinitialisation de mot de passe ne part) ; identifiants
+  Google (`set-google-oauth.sh prod`, URI de redirection chez Google ; le bouton
+  Google s'affiche déjà sans configuration) ; PaySecureHub en `LIVE` ; remote rclone
+  pour la copie hors serveur (`BACKUP_RCLONE_REMOTE` dans la crontab) ; **copie de
+  `/home/deployer/immotopia-prod.env` hors serveur** (`PAYMENT_SECRETS_KEY` : sa perte
+  rend illisibles les clés de paiement des agences).
 - Première mise en service de la production : DEPLOIEMENT.md, étapes 0 à 9 (DNS,
   ports 3020/5437 libres, `make-env.sh prod`, vhost + certbot, `deploy.sh prod`,
   `bootstrap.sh prod`, Google OAuth, sauvegardes hors serveur). Aucune donnée réelle
