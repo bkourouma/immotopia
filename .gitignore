@@ -74,3 +74,7 @@ CLAUDE.local.md
 
 # Canal partagé entre les processus développement et recette
 .agent-bus/
+
+# Copies de sauvegardes et de secrets rapatriees du serveur (infra/scripts/pull-backups.sh).
+# Donnees et secrets EN CLAIR : ne jamais les versionner (le depot est public).
+/backups-serveur/

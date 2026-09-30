@@ -741,6 +741,19 @@ dans [Sauvegarde et restauration](#sauvegarde-et-restauration).
       du fichier, qui compte.
 - [ ] Le fichier de secrets de la production est conservé hors serveur (étape 1).
 
+**Copie hors serveur provisoire, sur le poste de travail.** En attendant un stockage
+distant chiffré (rclone), `./infra/scripts/pull-backups.sh prod [--fresh]`, lancé
+depuis un terminal bash du poste (Git Bash sous Windows), rapatrie par SSH la
+dernière sauvegarde (base et documents) et le fichier de secrets dans
+`backups-serveur/prod/AAAA-MM-JJ-HHMM/` du projet. Ce dossier est **ignoré par git**
+(`.gitignore`, `.dockerignore`) et le script **refuse de tourner** si la destination
+ne l'est pas : le dépôt est public. Chaque fichier est vérifié (somme sha256
+comparée à celle du serveur, `gzip -t`, `tar -tzf`) et les 7 copies les plus
+récentes sont gardées (`--keep N`). Ces copies contiennent toutes les données et
+tous les secrets **en clair** : chiffrer le disque (BitLocker), ne pas les placer
+dans un dossier synchronisé non chiffré. Éprouvé le 2026-09-30 sur la production
+(sauvegarde fraîche, trois fichiers, sommes identiques).
+
 Le cron, dans la crontab de `deployer` :
 
 ```cron
