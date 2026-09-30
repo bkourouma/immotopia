@@ -71,10 +71,10 @@ Pièges et décisions :
 
 ---
 
-## Pilote — environnements staging et production (PR #77 fusionnée) — 2026-09-30
+## Pilote — environnements staging et production (PR #77, #78, #79, #81 fusionnées) — 2026-09-30
 
-**État :** PR #77 fusionnée dans `main` (`23de8301`). **Sur le serveur (accord donné, 2026-09-30) :** dossier cloné, staging redéployé, pile de production `immotopia-prod` en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée : RBAC, gabarits, **premier super-admin créé par le propriétaire**), sauvegarde nocturne planifiée et éprouvée après amorçage. La production n'est pas utilisée pour l'instant.
-**Dernier commit :** `23de8301` (fusion de #77) ; serveur au même commit
+**État :** tout est fusionné dans `main` (`a48559d2`) ; le clone du serveur est au même commit. La pile de production `immotopia-prod` est en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée, premier super-admin créé par le propriétaire, **e-mail SMTP et connexion Google actifs**, RCCM et compte contribuable posés), sauvegarde nocturne planifiée. Le staging est redéployé sur le même commit. La production n'est pas utilisée pour l'instant.
+**Dernier commit :** `a48559d2` (fusion de #81)
 
 Fait :
 
@@ -113,37 +113,41 @@ Fait :
   isolation, `deploy.sh staging --no-build` complet, amorçage, connexion super-admin,
   création d'agence (201), backup + restore-check, en-têtes nginx sur une vraie image.
 
+- Mise en service sur le serveur (accord du propriétaire, 2026-09-30) : clone du dépôt
+  public, staging redéployé (`noindex` posé), `make-env.sh prod`, vhost et certificat
+  `clients` (échéance 2026-12-29), `deploy.sh prod` complet, `bootstrap.sh prod`,
+  cron de sauvegarde (02h15), en-têtes de sécurité vérifiés en HTTPS.
+- Configuration par le propriétaire avec des scripts qui n'affichent jamais un secret :
+  `set-email-smtp.sh prod --password-only --visible` (Hostinger `smtp.hostinger.com:465`,
+  authentification vérifiée : `SMTP OK`, aucun message envoyé) et `set-google-oauth.sh prod`
+  (client OAuth dédié à la production : `/api/auth/google` redirige bien vers Google,
+  journal « Connexion Google activée »).
+- `pull-backups.sh` : copie base, documents et fichier de secrets dans `backups-serveur/`
+  du projet (ignoré par git, refus si la destination ne l'est pas) ; première copie faite.
+
 Reste à faire (chaque action serveur exige un « oui » explicite) :
 
-- **À faire par le propriétaire :** se connecter sur https://clients.immotopia.cloud
-  avec le super-admin et créer la première agence (le test de connexion n'a pas été fait
-  par l'agent : il n'a pas le mot de passe).
-- **Reste, avec des informations du propriétaire :** `PLATFORM_ISSUER_ADDRESS` et
-  `_PHONE` (factures d'abonnement ; RCCM `CI-ABJ-2014-B-20956` et compte contribuable
-  `1438224 S` posés le 2026-09-30, API recréée) ; bloc e-mail (sans lui,
-  aucune invitation ni réinitialisation de mot de passe ne part) ; identifiants
-  Google (`set-google-oauth.sh prod`, URI de redirection chez Google ; le bouton
-  Google s'affiche déjà sans configuration) ; PaySecureHub en `LIVE` ; remote rclone
-  pour la copie hors serveur (`BACKUP_RCLONE_REMOTE` dans la crontab) ; **copie de
-  `/home/deployer/immotopia-prod.env` hors serveur** (`PAYMENT_SECRETS_KEY` : sa perte
-  rend illisibles les clés de paiement des agences).
-- Première mise en service de la production : DEPLOIEMENT.md, étapes 0 à 9 (DNS,
-  ports 3020/5437 libres, `make-env.sh prod`, vhost + certbot, `deploy.sh prod`,
-  `bootstrap.sh prod`, Google OAuth, sauvegardes hors serveur). Aucune donnée réelle
-  avant qu'une copie hors serveur soit programmée et sa restauration éprouvée.
-- Mettre le staging en conformité avec les nouveaux contrôles de `deploy.sh`
-  (DEPLOIEMENT.md, étape 0 bis : doublons de clés, mot de passe Postgres de 24
-  caractères ou plus) et y ajouter `X-Robots-Tag` à la main dans le vhost.
-- Tâche séparée lancée : l'API ne peut pas écrire sous `/app/assets` (baux et
-  quittances DOCX, import de gabarits), ni ne les sauvegarde ; à corriger avant de
-  promettre ces documents à un client.
-- Points ouverts (DEPLOIEMENT.md) : Postgres de la prod publié sur 127.0.0.1 sans
-  usage, images de base non épinglées, rclone sans rotation, `TENANT_GUARD_MODE` et
-  `SUBSCRIPTION_ENFORCEMENT` livrés en `warn`, staging public avec panneau de démo,
-  `seed-demo-*` non gardés, géographie CI et fiscalité `A_VALIDER`.
-- Non éprouvé : tout ce qui se joue sur le serveur (saisie interactive du mot de
-  passe, `stat -c`/`ss`/`flock`, cron, rclone, restauration réelle, retour arrière,
-  déploiement complet de la prod, en-têtes derrière le nginx de l'hôte).
+- **À faire par le propriétaire :** se connecter sur https://clients.immotopia.cloud avec
+  le super-admin et créer la première agence (l'agent n'a pas le mot de passe) ; tester un
+  vrai « Mot de passe oublié » (e-mail réel, regarder les indésirables) et une vraie
+  connexion Google (`redirect_uri_mismatch` ou « application en test » : écran de
+  consentement à publier « En production »).
+- **Informations du propriétaire :** `PLATFORM_ISSUER_ADDRESS` et `_PHONE` (factures
+  d'abonnement) ; PaySecureHub en `LIVE` ; stockage distant chiffré (rclone,
+  `BACKUP_RCLONE_REMOTE` dans la crontab) : **la copie du poste n'est qu'un complément** ;
+  chiffrer le disque du poste.
+- **Nettoyage avec accord :** copies `immotopia-prod.env.bak-*` et `.avant-*` laissées sur le
+  serveur (mode 600, elles contiennent les secrets).
+- Tâches séparées lancées : écriture sous `/app/assets` impossible dans l'image de l'API
+  (baux et quittances DOCX, import de gabarits, absents des sauvegardes) : **ne pas
+  promettre ces documents à un client avant correction** ; test instable
+  `copilot-root.test.tsx` (Ctrl+J / Cmd+J), tombé deux fois en CI sur des PR sans lien avec le front.
+- Points ouverts (DEPLOIEMENT.md) : Postgres de la prod publié sur 127.0.0.1 sans usage,
+  images de base non épinglées, `TENANT_GUARD_MODE` et `SUBSCRIPTION_ENFORCEMENT` livrés en
+  `warn`, staging public avec panneau de démo, `seed-demo-*` non gardés, géographie CI et
+  fiscalité `A_VALIDER`, activation de l'e-mail = vérification d'adresse exigée à la connexion.
+- Non éprouvé : restauration réelle d'une sauvegarde, retour arrière par étiquette d'image,
+  rclone, mode `LIVE` de PaySecureHub, rotation locale de `pull-backups.sh`.
 
 Pièges et décisions :
 
