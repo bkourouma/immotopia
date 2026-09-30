@@ -71,6 +71,97 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/infra-staging-prod` — 2026-09-29
+
+**État :** prêt à relire (PR ouverte, base `main`) ; aucun déploiement fait
+**Dernier commit :** voir `git log` de la branche (worktree `.claude/worktrees/env-staging-prod`)
+
+Fait :
+
+- Décision (ADR-005) : `app.immotopia.cloud` = staging (pile historique
+  `immotopia-saas`, données de test, inchangée), `clients.immotopia.cloud` =
+  production (nouvelle pile `immotopia-prod`, à vide), même serveur. Aucune
+  migration de données.
+- `infra/` paramétré par environnement : `infra/environments/{staging,prod}.conf`,
+  compose sans valeur par défaut (`STACK_NAME`, ports, volumes...),
+  `deploy.sh|make-env.sh|set-google-oauth.sh|backup.sh|bootstrap.sh <staging|prod>`
+  (environnement obligatoire, jamais de défaut, variables héritées du shell
+  ignorées), vhost `clients.immotopia.cloud`, `check-infra.sh` + job CI `infra`.
+- Garde-fous de `deploy.sh prod` : git prouvé (arbre propre, HEAD dans
+  `origin/main`, revérifiés avant build et migration), un seul déploiement à la
+  fois, fichier d'environnement cohérent (clés critiques non dupliquées, dernière
+  occurrence lue comme Compose), secrets distincts du staging, simulateur interdit,
+  sauvegarde de moins de 24 h avant de migrer une base existante.
+- Amorçage d'une base vierge : `bootstrap.sh` lance dans l'image `migrate` le seed
+  RBAC (65 permissions, 5 rôles ; état vide/incomplet/complet), les 12 gabarits de
+  biens et le nouveau `prisma/seeds/create-platform-super-admin.ts` (mot de passe
+  par stdin, création seule, refuse ce que la connexion modifierait). Sans cela :
+  aucun rôle, 403 partout, création d'agence en erreur. Les seeds de développement
+  (`create-super-admin`, `seed-quick-login-users`, `seed-comprehensive-data`,
+  `seed-crm-data`, `seed-tenant-members`, `seed-users`) refusent `NODE_ENV=production`.
+- Sauvegardes : `backup.sh` (dump + documents vérifiés, rotation, rclone optionnel)
+  et `restore-check.sh` (conteneur jetable sans réseau, volume supprimé avec lui).
+- Docs : `docs/workflows/DEPLOIEMENT.md` (procédure pas à pas, éprouvé / non
+  éprouvé), RUNBOOK, SECURITY, ADR-003 (note) et ADR-005, tables d'`AGENTS.md` et
+  `CLAUDE.md`.
+- Audit de sécurité (security-auditor) : 0 bloquant ; les 5 points importants et la
+  plupart des mineurs sont corrigés (mot de passe altéré par la connexion, gardes
+  fail-open, doublons de clés d'environnement, conteneur de restauration, RBAC
+  partiel, en-têtes nginx, garde-fou de démo au build).
+- Éprouvé en local (Docker Desktop, deux piles côte à côte, bases vierges, tout
+  démonté ensuite) sur les scripts finaux : builds, 80 migrations, tests de fumée,
+  isolation, `deploy.sh staging --no-build` complet, amorçage, connexion super-admin,
+  création d'agence (201), backup + restore-check, en-têtes nginx sur une vraie image.
+
+Reste à faire (chaque action serveur exige un « oui » explicite) :
+
+- Étape 0 faite en lecture seule le 2026-09-30 : DNS, ports 3020/5437 libres et
+  disque (61 Go libres) OK ; **`/home/deployer/immotopia-saas` n'est pas un dépôt git**
+  (copie de fichiers avec `.deployed-revision`) : le cloner (dépôt public, HTTPS
+  anonyme) après la fusion de #77, procédure dans DEPLOIEMENT.md, étape 0.
+- Première mise en service de la production : DEPLOIEMENT.md, étapes 0 à 9 (DNS,
+  ports 3020/5437 libres, `make-env.sh prod`, vhost + certbot, `deploy.sh prod`,
+  `bootstrap.sh prod`, Google OAuth, sauvegardes hors serveur). Aucune donnée réelle
+  avant qu'une copie hors serveur soit programmée et sa restauration éprouvée.
+- Mettre le staging en conformité avec les nouveaux contrôles de `deploy.sh`
+  (DEPLOIEMENT.md, étape 0 bis : doublons de clés, mot de passe Postgres de 24
+  caractères ou plus) et y ajouter `X-Robots-Tag` à la main dans le vhost.
+- Tâche séparée lancée : l'API ne peut pas écrire sous `/app/assets` (baux et
+  quittances DOCX, import de gabarits), ni ne les sauvegarde ; à corriger avant de
+  promettre ces documents à un client.
+- Points ouverts (DEPLOIEMENT.md) : Postgres de la prod publié sur 127.0.0.1 sans
+  usage, images de base non épinglées, rclone sans rotation, `TENANT_GUARD_MODE` et
+  `SUBSCRIPTION_ENFORCEMENT` livrés en `warn`, staging public avec panneau de démo,
+  `seed-demo-*` non gardés, géographie CI et fiscalité `A_VALIDER`.
+- Non éprouvé : tout ce qui se joue sur le serveur (saisie interactive du mot de
+  passe, `stat -c`/`ss`/`flock`, cron, rclone, restauration réelle, retour arrière,
+  déploiement complet de la prod, en-têtes derrière le nginx de l'hôte).
+
+Pièges et décisions :
+
+- Un `STACK_NAME` ou un port hérité du shell est ignoré par les scripts
+  (`IMMOTOPIA_ALLOW_OVERRIDE=1` seulement pour des essais locaux, refusé pour la
+  prod dans `deploy.sh` et `bootstrap.sh`).
+- La connexion nettoie le mot de passe avant de comparer (`sanitizeString` : trim,
+  retrait de `<` `>`, `javascript:`, `onxxx=`) : le seed du super-admin refuse ces
+  mots de passe. Le test `bootstrap-admin-input.test.ts` exécute le vrai middleware.
+- Le hook lint-staged reformate les `.ts` indexés : `seed-crm-data.ts` a pris 231
+  lignes de prettier dans le commit des gardes de seeds (sans effet de comportement).
+- Sous Git Bash : `MSYS_NO_PATHCONV=1` (sinon `-w /repo/...` est converti en chemin
+  Windows) ; `chmod 600` sans effet sur NTFS (le contrôle de mode refuse : substitut
+  de `stat` dans un dossier hors dépôt) ; un `BACKUP_DIR` en `C:/...` fait lire `tar`
+  comme un hôte distant : chemins POSIX. Docker Desktop peut s'arrêter en cours de
+  build (relancer l'application).
+- Les builds Docker locaux échouent parfois en `EIDLETIMEOUT`/`ECONNRESET` sur npmjs
+  (réseau) : relancer, les couches sont en cache ; construire les deux images en
+  séquence, pas en parallèle.
+- Une image web est propre à un environnement (`VITE_*` figés au build) : on promeut
+  un commit, jamais une image.
+- L'empreinte des voisins de `deploy.sh` compare nom, identifiant et date de
+  démarrage, pas la durée d'exécution (faux positif corrigé).
+- Wiki des fonctionnalités : non mis à jour, aucune fonctionnalité visible de
+  l'application (outillage d'exploitation seulement).
+
 ## Pilote — fusion des PR ImmoCopilot #55 et #56 — 2026-09-29
 
 **État :** #55 et #56 fusionnées dans `main` (CI 6/6 verte avant chaque fusion) ; #52 (Patrimoine lot 1) laissée à sa session

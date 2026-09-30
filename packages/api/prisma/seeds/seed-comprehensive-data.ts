@@ -34,6 +34,11 @@
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 
+import { assertNotProduction } from './assert-not-production';
+
+// Garde en tête : avant toute requête base (seed de développement, jamais en production).
+assertNotProduction('seed-comprehensive-data.ts');
+
 const prisma = new PrismaClient();
 
 // Helper function to generate random date within last N days

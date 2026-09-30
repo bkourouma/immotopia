@@ -4,3 +4,7 @@
 # Fichiers texte lus par les scripts de déploiement : une fin de ligne CRLF
 # se retrouverait telle quelle dans un nom de migration compare en base.
 infra/scripts/*.txt text eol=lf
+
+# Fichiers d'environnement (staging/prod) sourcés par deploy.sh : un CRLF
+# se retrouverait dans les valeurs (ports, URL, chemins).
+infra/environments/*.conf text eol=lf

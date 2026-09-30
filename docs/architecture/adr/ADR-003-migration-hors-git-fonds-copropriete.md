@@ -10,6 +10,11 @@ Accepté
 
 ## Contexte
 
+> **Note (2026-09-29, [ADR-005](ADR-005-environnements-staging-production.md)) :** la
+> « production » décrite ici est la pile `immotopia-saas`, devenue le **staging**
+> (`app.immotopia.cloud`). La production (`immotopia-prod`, `clients.immotopia.cloud`)
+> est une base neuve : elle n'a pas cette ligne orpheline et n'en tolère aucune.
+
 Le 25/09/2026 (03:49 UTC), la production a reçu une migration qui n'a jamais
 été commitée : `20260927080000_mouvements_fonds_copropriete`. Elle a créé les
 enums `FundMovementDirection` et `FundMovementType`, une table

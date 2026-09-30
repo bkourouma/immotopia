@@ -7,8 +7,11 @@
 #   docker build -f infra/compose/Dockerfile.web .
 #
 # ATTENTION : Vite INLINE les valeurs VITE_* dans le bundle au moment du build.
-# Changer VITE_API_ORIGIN ou VITE_API_URL impose de reconstruire cette image ;
-# aucune variable d'environnement au demarrage du conteneur n'y changera rien.
+# Changer VITE_API_ORIGIN, VITE_API_URL ou VITE_SHOW_DEMO_ACCOUNTS impose de
+# reconstruire cette image ; aucune variable d'environnement au demarrage du
+# conteneur n'y changera rien. Une image est donc propre a UN environnement
+# (staging ou production) : docker-compose.prod.yml passe les valeurs via les
+# ARG, a partir de infra/environments/<env>.conf.
 
 FROM node:20-alpine AS build
 WORKDIR /repo
@@ -41,11 +44,17 @@ COPY apps/web apps/web
 # VITE_API_ORIGIN doit rester ABSOLU : il ne sert pas aux appels REST (c'est
 # VITE_API_URL qui les porte) mais a fabriquer les URL de fichiers dans
 # `fileUrl()`. Laisse vide, il retomberait sur http://localhost:8001 et toutes
-# les images/documents televerses casseraient en production.
-ARG VITE_API_ORIGIN=https://app.immotopia.cloud
+# les images/documents televerses casseraient en ligne.
+#
+# Aucune valeur par defaut : un build lance sans --build-arg VITE_API_ORIGIN
+# echoue volontairement au garde-fou ci-dessous (apps/web/src/config/api.ts
+# retombe alors sur localhost:8001), plutot que de produire une image qui vise
+# la mauvaise origine, par exemple celle du staging depuis la production.
+ARG VITE_API_ORIGIN
 ARG VITE_API_URL=/api
-# Panneau « Comptes par tenant » sur l'écran de connexion de la démo.
-ARG VITE_SHOW_DEMO_ACCOUNTS=true
+# Panneau « Comptes par tenant » sur l'écran de connexion. Masque par defaut :
+# seul le staging l'active (VITE_SHOW_DEMO_ACCOUNTS=true dans staging.conf).
+ARG VITE_SHOW_DEMO_ACCOUNTS=false
 ENV VITE_API_ORIGIN=$VITE_API_ORIGIN
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_SHOW_DEMO_ACCOUNTS=$VITE_SHOW_DEMO_ACCOUNTS
@@ -56,6 +65,18 @@ RUN npm run build -w @immotopia/web
 # les ARG et l'application serait inutilisable en ligne. Mieux vaut echouer ici.
 RUN if grep -rql "localhost:8001" apps/web/build/assets; then \
       echo "ERREUR : localhost:8001 est fige dans le bundle, VITE_API_* n'a pas ete pris en compte." >&2; \
+      exit 1; \
+    fi
+
+# Garde-fou : hors staging (VITE_SHOW_DEMO_ACCOUNTS != true), le bundle ne doit
+# contenir AUCUN identifiant de demonstration. Le panneau est retire par
+# elimination de code mort (apps/web/src/pages/Login.tsx) ; ce controle fait
+# echouer le build si cette elimination cessait de jouer. Les deux valeurs
+# viennent de apps/web/src/dev/dev-accounts.ts : les mettre a jour ici si elles
+# changent.
+RUN if [ "$VITE_SHOW_DEMO_ACCOUNTS" != "true" ] \
+      && grep -rqE 'Admin@123456|DevMick@2003' apps/web/build; then \
+      echo "ERREUR : des identifiants de demonstration sont presents dans le bundle alors que VITE_SHOW_DEMO_ACCOUNTS n'est pas true." >&2; \
       exit 1; \
     fi
 

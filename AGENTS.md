@@ -8,17 +8,18 @@ Ce fichier est la source unique de vérité pour tous les agents (Claude Code,
 Codex, Cursor…). En cas de désaccord avec un autre document, il prime ; le
 détail vit ailleurs et se charge à la demande :
 
-| Sujet                                | Document                               |
-| ------------------------------------ | -------------------------------------- |
-| Reprise du travail en cours          | `docs/workflows/HANDOFF.md`            |
-| Développement multi-agents           | `docs/workflows/DEV_PROCESS.md`        |
-| Démo, anomalies et retests           | `docs/workflows/DEMO_DEBUG_PROCESS.md` |
-| Pilotage par un agent unique         | `docs/workflows/LEAD_PROCESS.md`       |
-| Installation, ports, dépannage       | `docs/workflows/RUNBOOK.md`            |
-| Architecture, modèle de données, ADR | `docs/architecture/`                   |
-| Conventions et modèle de menace      | `docs/governance/`                     |
-| Règles ciblées par chemin            | `.claude/rules/`                       |
-| Inventaire des fonctionnalités       | `docs/fonctionnalites/`                |
+| Sujet                                 | Document                               |
+| ------------------------------------- | -------------------------------------- |
+| Reprise du travail en cours           | `docs/workflows/HANDOFF.md`            |
+| Développement multi-agents            | `docs/workflows/DEV_PROCESS.md`        |
+| Démo, anomalies et retests            | `docs/workflows/DEMO_DEBUG_PROCESS.md` |
+| Pilotage par un agent unique          | `docs/workflows/LEAD_PROCESS.md`       |
+| Installation, ports, dépannage        | `docs/workflows/RUNBOOK.md`            |
+| Déploiement staging/prod, sauvegardes | `docs/workflows/DEPLOIEMENT.md`        |
+| Architecture, modèle de données, ADR  | `docs/architecture/`                   |
+| Conventions et modèle de menace       | `docs/governance/`                     |
+| Règles ciblées par chemin             | `.claude/rules/`                       |
+| Inventaire des fonctionnalités        | `docs/fonctionnalites/`                |
 
 ## Passation de session
 

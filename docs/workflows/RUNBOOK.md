@@ -7,6 +7,12 @@ ce document date d'avant la migration vers Vite et décrit encore le port 5000
 comme alternatif et une convention `REACT_APP_*` obsolète côté frontend ; les
 commandes de ce runbook priment en cas de contradiction.
 
+Ce runbook couvre le poste de développement. Le déploiement sur le serveur
+(staging sur `app.immotopia.cloud`, production sur `clients.immotopia.cloud`),
+les sauvegardes et la restauration sont dans
+[DEPLOIEMENT.md](DEPLOIEMENT.md) ; la décision est dans
+[ADR-005](../architecture/adr/ADR-005-environnements-staging-production.md).
+
 ## Prérequis
 
 - **Node 20** — `.nvmrc` à la racine contient `20`. `engines.node` du
@@ -25,6 +31,11 @@ commandes de ce runbook priment en cas de contradiction.
     expose le port `8001`.
   - Usage courant : `docker compose up -d db` (base seule — le cas le plus
     fréquent, l'API tournant en local avec `npm run dev:api`).
+  - C'est un outil de développement : ne jamais le déployer. Les piles du
+    serveur (staging, production) utilisent
+    `infra/compose/docker-compose.prod.yml`, uniquement par
+    `infra/scripts/deploy.sh <staging|prod>` — voir
+    [DEPLOIEMENT.md](DEPLOIEMENT.md).
 
 ## Installation
 
@@ -75,6 +86,10 @@ de l'API (`middleware/cors-middleware.ts`, piloté par `FRONTEND_URL`/
 `apps/web/.env` change `PORT`, `packages/api/.env` doit changer
 `FRONTEND_URL` (et `CLIENT_URL` s'il est défini) pour pointer sur le même
 port, sous peine d'un blocage CORS silencieux côté navigateur.
+
+Ces ports sont ceux du développement. Sur le serveur, chaque environnement a les
+siens (staging : web 3019, Postgres 5436 ; production : web 3020, Postgres 5437,
+tous liés à `127.0.0.1`) : voir [DEPLOIEMENT.md](DEPLOIEMENT.md).
 
 ### `.claude/launch.json`
 
@@ -325,8 +340,15 @@ Règles :
 - Codes de sortie : `0` succès ou rien à faire, `2` refus, `1` erreur
   inattendue (dont un audit resté non écrit).
 
+Choisir le conteneur de la pile visée : `immotopia-prod-api` (production,
+`clients.immotopia.cloud`) ou `immotopia-saas-api` (staging,
+`app.immotopia.cloud`). Vérifier avec `docker ps` avant d'écrire : les deux
+piles ont chacune leur base : une agence créée sur l'une n'existe pas sur
+l'autre (voir [DEPLOIEMENT.md](DEPLOIEMENT.md)).
+
 ```bash
-C=immotopia-saas-api; T=dist/scripts/provision-subscription.js
+# Production ; pour le staging : C=immotopia-saas-api
+C=immotopia-prod-api; T=dist/scripts/provision-subscription.js
 docker exec $C node $T list --search <texte>            # trouver le slug
 docker exec $C node $T provision --tenant <slug>   --items AGENCE,SYNDIC,EXT_COPRO:2 --setup-waived --dry-run
 docker exec $C node $T provision --tenant <slug>   --items AGENCE,SYNDIC,EXT_COPRO:2 --setup-waived
@@ -518,12 +540,17 @@ voir le commentaire du job `web-tests` dans `.github/workflows/ci.yml` pour
 la mesure ayant motivé ce découpage (23 min et une vingtaine de timeouts sur
 un seul runner à 4 vCPU).
 
-### Migration orpheline en production : comparaison base/dépôt, pas `migrate status`
+### Migration orpheline du staging : comparaison base/dépôt, pas `migrate status`
 
-La production porte une ligne `_prisma_migrations` sans dossier dans le
-dépôt : `20260927080000_mouvements_fonds_copropriete`, appliquée hors dépôt
-le 25/09/2026. Décision, SQL d'origine et nettoyage facultatif :
+La pile `immotopia-saas`, aujourd'hui le **staging** (`app.immotopia.cloud`,
+[ADR-005](../architecture/adr/ADR-005-environnements-staging-production.md)),
+porte une ligne `_prisma_migrations` sans dossier dans le dépôt :
+`20260927080000_mouvements_fonds_copropriete`, appliquée hors dépôt le
+25/09/2026, quand cette pile était la production. Décision, SQL d'origine et
+nettoyage facultatif :
 [ADR-003](../architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md).
+La production (`immotopia-prod`, `clients.immotopia.cloud`) est une base neuve :
+elle n'a pas cette ligne et n'en tolère aucune.
 
 Ce contrôle est **automatique**, dans l'étape « Contrôle des migrations
 inconnues du dépôt » de `deploy.sh`, **avant** `migrate deploy`. Il ne lit
@@ -538,19 +565,26 @@ conteneur `postgres` (aucun secret sur la ligne de commande) :
 - les migrations `_prisma_migrations` terminées et non annulées ;
 - les dossiers de `packages/api/prisma/migrations`.
 
-Une migration appliquée en base sans dossier local est une orpheline. Son
-nom est comparé à la liste versionnée
-[`infra/scripts/migrations-orphelines-connues.txt`](../../infra/scripts/migrations-orphelines-connues.txt)
-(un nom par ligne, commentaires `#`, actuellement
-`20260927080000_mouvements_fonds_copropriete` avec un renvoi vers ADR-003).
-Un nom qui y figure ne bloque pas le déploiement ; un nom absent de cette
-liste fait échouer `deploy.sh` avant toute migration, tout comme une lecture
-de `_prisma_migrations` impossible (postgres injoignable, table absente pour
-une autre raison qu'un tout premier déploiement).
+Une migration appliquée en base sans dossier local est une orpheline. Le
+traitement dépend de l'environnement :
 
-Documenter une nouvelle exception avant de l'ajouter au fichier : y ajouter
-une ligne sans avoir écrit d'ADR (ou complété ADR-003) revient à désactiver
-le contrôle en silence.
+- **Staging** (`deploy.sh staging`) : son nom est comparé à la liste versionnée
+  [`infra/scripts/migrations-orphelines-connues.txt`](../../infra/scripts/migrations-orphelines-connues.txt)
+  (un nom par ligne, commentaires `#`, actuellement
+  `20260927080000_mouvements_fonds_copropriete` avec un renvoi vers ADR-003).
+  Un nom qui y figure ne bloque pas le déploiement ; un nom absent de cette
+  liste fait échouer `deploy.sh` avant toute migration. **Cette liste ne vaut
+  que pour la pile `immotopia-saas`.**
+- **Production** (`deploy.sh prod`) : la liste est **ignorée**, aucune orpheline
+  n'est tolérée ; la moindre fait échouer le script avant toute migration.
+
+Dans les deux cas, une lecture de `_prisma_migrations` impossible (postgres
+injoignable, réponse inattendue de `to_regclass`) fait aussi échouer le script ;
+une table absente est lue comme un tout premier déploiement (rien à comparer).
+
+Documenter une nouvelle exception avant de l'ajouter au fichier (staging
+seulement) : y ajouter une ligne sans avoir écrit d'ADR (ou complété ADR-003)
+revient à désactiver le contrôle en silence.
 
 ### CI — étapes bloquantes (`.github/workflows/ci.yml`)
 
@@ -568,6 +602,7 @@ le contrôle en silence.
 | `web`       | Grep anti-atelier de dev (`src/dev/`) dans le bundle de production | **Oui**  |
 | `web`       | Budget du chunk d'entrée (`npm run measure:entry`)                 | **Oui**  |
 | `web`       | Contraste AA (`npm run a11y:contrast`)                             | **Oui**  |
+| `infra`     | `bash infra/scripts/check-infra.sh` (scripts et compose)           | **Oui**  |
 
 Les étapes non bloquantes le sont **temporairement** (CONTRIBUTING.md) :
 elles doivent devenir bloquantes module par module à mesure que la dette
@@ -576,6 +611,9 @@ optionnelles.
 
 ## Pour aller plus loin
 
+- Déploiement du staging et de la production, sauvegardes, restauration :
+  [DEPLOIEMENT.md](DEPLOIEMENT.md) ; décision :
+  [ADR-005](../architecture/adr/ADR-005-environnements-staging-production.md).
 - Installation détaillée pas à pas :
   [docs/setup/getting-started.md](../setup/getting-started.md).
 - Diagnostic de connexion backend/frontend :
