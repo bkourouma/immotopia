@@ -57,17 +57,17 @@ const CALL_SITES: Array<[file: string, fn: string, expected: RegExp, transaction
   ['lib/finance/sites.ts', 'createConstructionSite', /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)/, true],
   ['lib/finance/site-closing.ts', 'createSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds/, false],
   ['lib/finance/site-closing.ts', 'deleteSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds/, false],
-  ['lib/finance/site-closing.ts', 'closeSiteTx', /syncLotActivationsTx\(tx, tenantId, \{ siteIds/, false],
+  ['lib/finance/site-closing.ts', 'closeSiteTx', /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{ siteIds/, false],
   [
     'lib/finance/site-closing.ts',
     'reopenSiteTx',
-    /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)[\s\S]*syncLotActivationsTx\(tx, tenantId, \{ siteIds/,
+    /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)[\s\S]*syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{ siteIds/,
     false
   ],
   [
     'lib/finance/site-closing.ts',
     'capitalizeSiteLotTx',
-    /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds: \[lotId\], propertyIds/,
+    /syncLotActivationsTx\(\s*tx,\s*tenantId,\s*\{ siteLotIds: \[lotId\], propertyIds/,
     false
   ]
 ];
@@ -77,6 +77,6 @@ describe('registre des lots branche dans chaque operation metier', () => {
     const body = bodyOf(file, fn);
     expect(body).toMatch(expected);
     // Dans la transaction de l'operation : une transaction ouverte ici, ou un `tx` recu.
-    if (transactional) expect(body).toMatch(/\$transaction\(async tx =>/);
+    if (transactional) expect(body).toMatch(/\$transaction\(\s*async tx =>/);
   });
 });
