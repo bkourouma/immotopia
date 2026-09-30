@@ -1,3 +1,4 @@
+import { leadSourceLabels } from '../../utils/crm-labels';
 import React, { useState, useEffect } from 'react';
 import {
   App,
@@ -271,6 +272,11 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
         fieldErrors.forEach(err => {
           form.setFields([{ name: err.field, errors: [err.message] }]);
         });
+        // Ouvre l'onglet du premier champ refusé (ex. e-mail en doublon) puis
+        // lui donne le focus : l'erreur doit être visible sur le champ.
+        const premier = fieldErrors[0].field;
+        if (FIELD_TABS[premier]) setActiveTab(FIELD_TABS[premier]);
+        setTimeout(() => form.scrollToField(premier), 0);
         const invalidFields = fieldErrors.map(err => err.field).join(', ');
         message.error(
           t('Champs invalides : {{invalidFields}}. Verifiez les onglets du formulaire.', {
@@ -339,12 +345,30 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
     form.setFieldsValue({ [field]: cleaned });
   };
 
+  // Onglet portant chaque champ à règle : à l'échec de validation, on ouvre
+  // l'onglet du premier champ fautif. Tous les onglets sont montés
+  // (`forceRender`) pour que la validation les couvre même jamais ouverts.
+  const FIELD_TABS: Record<string, string> = {
+    contactType: 'basic',
+    firstName: 'basic',
+    lastName: 'basic',
+    email: 'basic',
+    legalName: 'identification',
+    communeId: 'contact'
+  };
+  const handleFinishFailed = (info: Parameters<ReturnType<typeof onAntFormValidationFailed>>[0]) => {
+    const first = info.errorFields[0]?.name?.[0];
+    const tab = typeof first === 'string' ? FIELD_TABS[first] : undefined;
+    if (tab) setActiveTab(tab);
+    onAntFormValidationFailed(form)(info);
+  };
+
   return (
     <Form
       form={form}
       layout="vertical"
       onFinish={handleFinish}
-      onFinishFailed={onAntFormValidationFailed(form)}
+      onFinishFailed={handleFinishFailed}
       initialValues={{
         contactType: contact?.contactType || 'PERSON',
         phonePrimaryCountryCode: DEFAULT_COUNTRY_DIAL_CODE,
@@ -360,7 +384,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Tabs activeKey={activeTab} onChange={setActiveTab} type="card">
-          <TabPane tab="Basique" key="basic">
+          <TabPane forceRender tab="Basique" key="basic">
             <Card>
               <Form.Item
                 label={t('Type de contact')}
@@ -469,7 +493,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             </Card>
           </TabPane>
 
-          <TabPane tab={t('Identité')} key="identification">
+          <TabPane forceRender tab={t('Identité')} key="identification">
             <Card>
               <Form.Item
                 noStyle
@@ -597,7 +621,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             </Card>
           </TabPane>
 
-          <TabPane tab="Contact" key="contact">
+          <TabPane forceRender tab="Contact" key="contact">
             <Card>
               <Form.Item label={t('Adresse complète')} name="address">
                 <Input placeholder={t('Adresse complète')} />
@@ -618,8 +642,8 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                 />
               </Form.Item>
 
-              <Form.Item label="Quartier/Zone" name="locationZone">
-                <Input placeholder="Quartier/Zone" />
+              <Form.Item label={t('Quartier/Zone')} name="locationZone">
+                <Input placeholder={t('Quartier/Zone')} />
               </Form.Item>
 
               <Row gutter={16}>
@@ -646,7 +670,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             </Card>
           </TabPane>
 
-          <TabPane tab="Professionnel" key="professional">
+          <TabPane forceRender tab="Professionnel" key="professional">
             <Card>
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
@@ -734,7 +758,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             </Card>
           </TabPane>
 
-          <TabPane tab="CRM" key="crm">
+          <TabPane forceRender tab="CRM" key="crm">
             <Card>
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
@@ -745,14 +769,11 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                 <Col xs={24} sm={12}>
                   <Form.Item label={t('Source du lead')} name="leadSource">
                     <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
-                      <Select.Option value="WEBSITE">{t('Site web')}</Select.Option>
-                      <Select.Option value="SOCIAL_MEDIA">{t('Réseaux sociaux')}</Select.Option>
-                      <Select.Option value="REFERRAL">{t('Parrainage')}</Select.Option>
-                      <Select.Option value="CAMPAIGN">{t('Campagne')}</Select.Option>
-                      <Select.Option value="AGENCY">{t('Agence')}</Select.Option>
-                      <Select.Option value="WALK_IN">{t('Visite spontanée')}</Select.Option>
-                      <Select.Option value="PHONE_CALL">{t('Appel téléphonique')}</Select.Option>
-                      <Select.Option value="OTHER">{t('Autre')}</Select.Option>
+                      {Object.entries(leadSourceLabels()).map(([value, label]) => (
+                        <Select.Option key={value} value={value}>
+                          {label}
+                        </Select.Option>
+                      ))}
                     </Select>
                   </Form.Item>
                 </Col>
@@ -786,7 +807,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             </Card>
           </TabPane>
 
-          <TabPane tab="Consentements" key="consents">
+          <TabPane forceRender tab="Consentements" key="consents">
             <Card>
               <Form.Item label={t('Consentements')}>
                 <Space direction="vertical">

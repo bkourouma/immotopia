@@ -36,6 +36,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { chargeCallStatusConfig } from './ChargeCallTable';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Text } = Typography;
 
@@ -215,7 +216,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       title: t('Reste dû'),
       key: 'outstanding',
       align: 'end',
-      render: (_: unknown, call) => <MoneyValue value={call.outstanding} currency={call.currency} />
+      render: (_: unknown, call) => <MoneyValue value={call.outstanding} currency={displayCurrency(call.currency)} />
     },
     {
       title: t('Statut'),
@@ -231,7 +232,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       title: t('Montant affecté'),
       key: 'amount',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amount} currency={preview?.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amount} currency={displayCurrency(preview?.currency)} />
     },
     {
       title: t('Origine'),
@@ -320,7 +321,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           />
           <Paragraph style={{ marginBottom: 0 }}>
             {t('Avance restante')} :{' '}
-            <MoneyValue value={recordedResult.lotAdvanceBalance} currency={recordedResult.currency} />
+            <MoneyValue value={recordedResult.lotAdvanceBalance} currency={displayCurrency(recordedResult.currency)} />
           </Paragraph>
 
           <div>
@@ -505,7 +506,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
                 locale={{ emptyText: t('Le paiement resterait entièrement en avance') }}
               />
               <Paragraph style={{ marginTop: 8, marginBottom: 0 }}>
-                {t('Avance restante')} : <MoneyValue value={preview.lotAdvanceBalance} currency={preview.currency} />
+                {t('Avance restante')} :{' '}
+                <MoneyValue value={preview.lotAdvanceBalance} currency={displayCurrency(preview.currency)} />
               </Paragraph>
             </>
           ) : (

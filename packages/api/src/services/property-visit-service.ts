@@ -3,8 +3,69 @@ import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
-import { PropertyVisitType, PropertyVisitStatus, PropertyVisitGoal } from '@prisma/client';
+import { MembershipStatus, PropertyVisitType, PropertyVisitStatus, PropertyVisitGoal } from '@prisma/client';
 import { createActivity } from './crm-activity-service';
+import { t } from '../i18n';
+import { NotFoundError, BadRequestError, ForbiddenError, ConflictError } from '../middleware/error-middleware';
+
+/** Durée retenue pour une visite sans durée saisie (le formulaire web n'en propose pas). */
+export const DEFAULT_VISIT_DURATION_MINUTES = 60;
+/** Durée maximale acceptée : borne aussi la fenêtre de recherche des chevauchements. */
+export const MAX_VISIT_DURATION_MINUTES = 480;
+
+/** Statuts qui occupent le créneau : une visite annulée, faite ou absente ne bloque rien. */
+const ACTIVE_VISIT_STATUSES: PropertyVisitStatus[] = [PropertyVisitStatus.SCHEDULED, PropertyVisitStatus.CONFIRMED];
+
+const MINUTE_MS = 60_000;
+
+/**
+ * Refuse (409) si une autre visite ACTIVE du même bien, dans la même agence,
+ * chevauche [début, début + durée]. Des créneaux contigus (fin = début) ne se
+ * chevauchent pas ; un autre bien ou une autre agence n'est jamais concerné.
+ * Le créneau de l'autre visite est renvoyé dans `data.conflict` pour l'écran.
+ */
+export async function assertNoVisitOverlap(params: {
+  propertyId: string;
+  tenantId?: string | null;
+  scheduledAt: Date;
+  duration?: number | null;
+  excludeVisitId?: string;
+}): Promise<void> {
+  const { propertyId, tenantId, scheduledAt, excludeVisitId } = params;
+  const start = scheduledAt.getTime();
+  const end = start + (params.duration || DEFAULT_VISIT_DURATION_MINUTES) * MINUTE_MS;
+
+  const candidates = await prisma.propertyVisit.findMany({
+    where: {
+      propertyId,
+      tenantId: tenantId || null,
+      status: { in: ACTIVE_VISIT_STATUSES },
+      ...(excludeVisitId ? { id: { not: excludeVisitId } } : {}),
+      scheduledAt: {
+        gt: new Date(start - MAX_VISIT_DURATION_MINUTES * MINUTE_MS),
+        lt: new Date(end)
+      }
+    },
+    select: { id: true, scheduledAt: true, duration: true }
+  });
+
+  const clash = candidates.find(v => {
+    const vStart = v.scheduledAt.getTime();
+    const vEnd = vStart + (v.duration || DEFAULT_VISIT_DURATION_MINUTES) * MINUTE_MS;
+    return vStart < end && vEnd > start;
+  });
+
+  if (clash) {
+    const from = clash.scheduledAt;
+    const to = new Date(from.getTime() + (clash.duration || DEFAULT_VISIT_DURATION_MINUTES) * MINUTE_MS);
+    const error = new ConflictError(
+      t('Ce bien a déjà une visite prévue sur ce créneau. Choisissez un autre horaire.'),
+      [{ field: 'scheduledAt', message: t('Créneau déjà occupé pour ce bien') }]
+    );
+    error.data = { conflict: { visitId: clash.id, startsAt: from.toISOString(), endsAt: to.toISOString() } };
+    throw error;
+  }
+}
 
 /**
  * Schedule a property visit
@@ -31,25 +92,39 @@ export async function scheduleVisit(
   tenantId?: string | null,
   actorUserId?: string
 ) {
+  // Without an agency there is nothing to validate against: refuse (never match any property).
+  if (!tenantId) {
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
+  }
+
   // Validate property exists and is accessible
   const property = await prisma.property.findFirst({
     where: {
       id: propertyId,
       OR: [
         { ownershipType: 'TENANT', tenantId },
+        { ownershipType: 'CLIENT', tenantId },
         { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
       ]
     }
   });
 
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Validate scheduledAt is in the future
   if (new Date(data.scheduledAt) <= new Date()) {
-    throw new Error('Visit must be scheduled in the future');
+    throw new BadRequestError(t('La visite doit être planifiée dans le futur'));
   }
+
+  // Refuse a slot already taken by another active visit of the same property
+  await assertNoVisitOverlap({
+    propertyId,
+    tenantId,
+    scheduledAt: new Date(data.scheduledAt),
+    duration: data.duration
+  });
 
   // Validate contact if provided
   if (data.contactId) {
@@ -61,7 +136,7 @@ export async function scheduleVisit(
     });
 
     if (!contact) {
-      throw new Error('Contact not found or access denied');
+      throw new NotFoundError(t('Contact introuvable ou accès refusé'));
     }
   }
 
@@ -75,7 +150,7 @@ export async function scheduleVisit(
     });
 
     if (!deal) {
-      throw new Error('Deal not found or access denied');
+      throw new NotFoundError(t('Affaire introuvable ou accès refusé'));
     }
   }
 
@@ -84,13 +159,15 @@ export async function scheduleVisit(
     // Validate that all collaborator user IDs exist and belong to the tenant
     const tenantMembers = await prisma.membership.findMany({
       where: {
-        tenantId: tenantId || undefined,
-        userId: { in: data.collaboratorIds }
-      }
+        tenantId,
+        userId: { in: data.collaboratorIds },
+        status: MembershipStatus.ACTIVE
+      },
+      select: { userId: true }
     });
 
-    if (tenantMembers.length !== data.collaboratorIds.length) {
-      throw new Error('One or more collaborators not found or access denied');
+    if (new Set(tenantMembers.map(member => member.userId)).size !== new Set(data.collaboratorIds).size) {
+      throw new NotFoundError(t('Un ou plusieurs collaborateurs sont introuvables ou inaccessibles'));
     }
   }
 
@@ -99,13 +176,14 @@ export async function scheduleVisit(
   if (data.assignedToUserId) {
     const assignee = await prisma.membership.findFirst({
       where: {
-        tenantId: tenantId || undefined,
-        userId: data.assignedToUserId
+        tenantId,
+        userId: data.assignedToUserId,
+        status: MembershipStatus.ACTIVE
       }
     });
 
     if (!assignee) {
-      throw new Error('Assignee not found or access denied');
+      throw new NotFoundError(t('Responsable introuvable ou accès refusé'));
     }
   }
 
@@ -206,7 +284,7 @@ export async function scheduleVisit(
         tenantId,
         {
           contactId: data.contactId,
-          dealId: data.dealId || null,
+          dealId: data.dealId || undefined,
           activityType: 'CALL',
           content: `Visite de propriété planifiée: ${property.title || property.address}`,
           occurredAt: new Date(),
@@ -248,7 +326,7 @@ export async function updateVisitStatus(
   });
 
   if (!visit) {
-    throw new Error('Visit not found');
+    throw new NotFoundError(t('Visite introuvable'));
   }
 
   // Validate tenant access
@@ -265,8 +343,19 @@ export async function updateVisitStatus(
         })) !== null);
 
     if (!hasAccess) {
-      throw new Error('Access denied');
+      throw new ForbiddenError(t('Accès refusé'));
     }
+  }
+
+  // Re-activating a canceled/done visit takes its slot back: re-check it.
+  if (!ACTIVE_VISIT_STATUSES.includes(visit.status) && ACTIVE_VISIT_STATUSES.includes(status)) {
+    await assertNoVisitOverlap({
+      propertyId: visit.propertyId,
+      tenantId: visit.tenantId,
+      scheduledAt: visit.scheduledAt,
+      duration: visit.duration,
+      excludeVisitId: visitId
+    });
   }
 
   // Update visit
@@ -340,7 +429,7 @@ export async function getPropertyVisits(propertyId: string, tenantId?: string | 
   // Without an agency, `tenantId: undefined` would drop the filter below and
   // match any property: refuse instead.
   if (!tenantId) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Validate property access
@@ -349,13 +438,14 @@ export async function getPropertyVisits(propertyId: string, tenantId?: string | 
       id: propertyId,
       OR: [
         { ownershipType: 'TENANT', tenantId },
+        { ownershipType: 'CLIENT', tenantId },
         { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
       ]
     }
   });
 
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
   // Get visits — only this agency's. A CLIENT property can be under mandate
@@ -414,6 +504,9 @@ export async function getPropertyVisits(propertyId: string, tenantId?: string | 
  * @param assignedToUserId - Filter by assigned user (optional)
  * @returns Visits organized by date
  */
+/** Nombre maximal de visites renvoyees par le calendrier (periode bornee a 366 jours). */
+export const CALENDAR_VISITS_MAX_ROWS = 2000;
+
 export async function getCalendarVisits(
   startDate: Date,
   endDate: Date,
@@ -488,7 +581,9 @@ export async function getCalendarVisits(
     },
     orderBy: {
       scheduledAt: 'asc'
-    }
+    },
+    // Plafond de lignes : une agence tres active ne peut pas tout charger.
+    take: CALENDAR_VISITS_MAX_ROWS
   });
 
   // Organize by date
@@ -527,7 +622,7 @@ export async function completeVisit(
         tenantId,
         {
           contactId: visit.contactId,
-          dealId: visit.dealId || null,
+          dealId: visit.dealId || undefined,
           activityType: 'VISIT',
           content: `Visite de propriété terminée: ${visit.property.title || visit.property.address}${notes ? `\n\nNotes: ${notes}` : ''}`,
           occurredAt: new Date()

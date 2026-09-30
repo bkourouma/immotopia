@@ -21,7 +21,7 @@ const createChargeCall = vi.fn();
 vi.mock('../../services/syndic-service', () => ({
   getSyndicate: (...args: unknown[]) => getSyndicate(...args),
   listSyndicateLots: (...args: unknown[]) => listSyndicateLots(...args),
-  listChargeCalls: (...args: unknown[]) => listChargeCalls(...args),
+  listAllChargeCallsWithSummary: (...args: unknown[]) => listChargeCalls(...args),
   createChargeCall: (...args: unknown[]) => createChargeCall(...args),
   // Fonds de la copropriete : aucun ici, le champ « Fonds alimente » reste masque.
   listSyndicateFunds: vi.fn(async () => []),
@@ -109,7 +109,10 @@ describe('SyndicCharges — création d’un appel de charges (BUG-008)', () => 
     listSyndicateLots.mockResolvedValue([
       { id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A-01', lotType: 'APARTMENT', generalShares: 100 }
     ]);
-    listChargeCalls.mockResolvedValue([]);
+    listChargeCalls.mockResolvedValue({
+      items: [],
+      summary: { totalCount: 0, totalAmount: 0, pendingCount: 0, overdueCount: 0 }
+    });
   });
 
   it('intercepte le rejet de validation : message sous le champ, aucun appel API', async () => {

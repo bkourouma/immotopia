@@ -13,6 +13,8 @@ import {
   recalculateInstallmentStatuses
 } from '../../services/rental-installment-service';
 import { syncLotActivationsTx } from '../../services/lot-registry-service';
+import { runWithTenantContext } from '../../utils/tenant-context';
+import { effectiveRentAt } from './effective-rent';
 
 /**
  * Vie d'un bail : révision du loyer, renouvellement, avenant, résiliation, et
@@ -217,24 +219,42 @@ async function reprice(
   if (!targets.length) return 0;
 
   const account = await compteLocataireDuBailTx(tx, tenantId, leaseId);
+  // Toutes les révisions du bail (celle-ci comprise, déjà écrite) : chaque
+  // période prend le loyer EFFECTIF à sa date, et non le montant de la seule
+  // révision en cours. Sinon, A (1/12 à 120 000) puis B (1/11 à 115 000) ferait
+  // repasser décembre à 115 000.
+  const revisions = await tx.leaseEvent.findMany({
+    where: { tenantId, leaseId, type: LeaseEventType.REVISION },
+    orderBy: { createdAt: 'asc' },
+    select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+  });
   for (const inst of targets) {
+    const effective = effectiveRentAt(
+      { rent_amount: rent, service_charge_amount: charges },
+      revisions,
+      new Date(Date.UTC(inst.period_year, inst.period_month - 1, 1, 12))
+    );
+    const periodRent = effective.rent;
+    const periodCharges = effective.charges;
     const before = installmentTotal(inst);
     await tx.rentalInstallment.update({
       where: { id: inst.id, tenant_id: tenantId },
-      data: { amount_rent: new Prisma.Decimal(rent), amount_service: new Prisma.Decimal(charges) }
+      data: { amount_rent: new Prisma.Decimal(periodRent), amount_service: new Prisma.Decimal(periodCharges) }
     });
     await tx.rentalInstallmentItem.updateMany({
       where: { installment_id: inst.id, charge_type: 'RENT' },
-      data: { amount: new Prisma.Decimal(rent) }
+      data: { amount: new Prisma.Decimal(periodRent) }
     });
     await tx.rentalInstallmentItem.updateMany({
       where: { installment_id: inst.id, charge_type: 'SERVICE_CHARGE' },
-      data: { amount: new Prisma.Decimal(charges) }
+      data: { amount: new Prisma.Decimal(periodCharges) }
     });
 
     // Un brouillon n'a rien inscrit : rien à ajuster.
     if (inst.status === RentalInstallmentStatus.DRAFT || !account) continue;
-    const diff = roundMoney(rent + charges + Number(inst.amount_other_fees) + Number(inst.penalty_amount) - before);
+    const diff = roundMoney(
+      periodRent + periodCharges + Number(inst.amount_other_fees) + Number(inst.penalty_amount) - before
+    );
     if (diff === 0) continue;
     await appendThirdPartyMovementTx(tx, {
       tenantId,
@@ -279,21 +299,29 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
   }
 
   const newCharges = input.newCharges ?? Number(lease.service_charge_amount);
+  const effectiveDate = new Date(Date.UTC(year, monthNumber - 1, 1, 12));
+  // Une révision a une date d'effet : le loyer du bail ne change que ce jour-là
+  // (`applyDueRevisions`). Avant, la révision est « planifiée » et les
+  // indicateurs gardent l'ancien loyer (BUG-2026-09-30-068).
+  const planned = effectiveDate.getTime() > Date.now();
   const event = await prisma.$transaction(async tx => {
-    await tx.rentalLease.update({
-      where: { id: leaseId, tenant_id: tenantId },
-      data: { rent_amount: new Prisma.Decimal(input.newRent), service_charge_amount: new Prisma.Decimal(newCharges) }
-    });
+    if (!planned) {
+      await tx.rentalLease.update({
+        where: { id: leaseId, tenant_id: tenantId },
+        data: { rent_amount: new Prisma.Decimal(input.newRent), service_charge_amount: new Prisma.Decimal(newCharges) }
+      });
+    }
     const created = await tx.leaseEvent.create({
       data: {
         tenantId,
         leaseId,
         type: LeaseEventType.REVISION,
-        effectiveDate: new Date(Date.UTC(year, monthNumber - 1, 1, 12)),
+        effectiveDate,
         previousRent: lease.rent_amount,
         newRent: new Prisma.Decimal(input.newRent),
         previousCharges: lease.service_charge_amount,
         newCharges: new Prisma.Decimal(newCharges),
+        details: { planned },
         revisionRate:
           input.revisionRate === null || input.revisionRate === undefined
             ? null
@@ -312,7 +340,7 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
     });
     return tx.leaseEvent.update({
       where: { id: created.id, tenantId },
-      data: { details: { installmentsUpdated: updated } }
+      data: { details: { installmentsUpdated: updated, planned } }
     });
   });
   audit(actorUserId, tenantId, leaseId, 'RENTAL_LEASE_RENT_REVISED', input);
@@ -354,6 +382,10 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
   const rent = input.newRent ?? Number(lease.rent_amount);
   const charges = input.newCharges ?? Number(lease.service_charge_amount);
   const priceChanges = rent !== Number(lease.rent_amount) || charges !== Number(lease.service_charge_amount);
+  // Le nouveau loyer vaut à partir de `firstNew` : tant que ce jour n'est pas
+  // venu, le bail garde l'ancien (révision planifiée, voir `reviseRent`).
+  const renewalEffective = new Date(Date.UTC(firstNew.year, firstNew.month - 1, 1, 12));
+  const plannedPrice = priceChanges && renewalEffective.getTime() > Date.now();
 
   const result = await prisma.$transaction(async tx => {
     const updatedLease = await tx.rentalLease.update({
@@ -361,16 +393,22 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
       data: {
         end_date: newEnd,
         status: lease.status === RentalLeaseStatus.ENDED ? RentalLeaseStatus.ACTIVE : undefined,
-        rent_amount: new Prisma.Decimal(rent),
-        service_charge_amount: new Prisma.Decimal(charges)
+        ...(plannedPrice
+          ? {}
+          : { rent_amount: new Prisma.Decimal(rent), service_charge_amount: new Prisma.Decimal(charges) })
       }
     });
     // Un bail termine qui repart redevient ACTIVE : le logement recompte (D1).
     if (lease.status === RentalLeaseStatus.ENDED) {
-      await syncLotActivationsTx(tx, tenantId, { propertyIds: [updatedLease.property_id] }, {
-        actorUserId: actorUserId ?? null,
-        reason: 'LEASE_RENEWED'
-      });
+      await syncLotActivationsTx(
+        tx,
+        tenantId,
+        { propertyIds: [updatedLease.property_id] },
+        {
+          actorUserId: actorUserId ?? null,
+          reason: 'LEASE_RENEWED'
+        }
+      );
     }
 
     // Échéances de la nouvelle période, au loyer en vigueur, sans doublon.
@@ -378,7 +416,11 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
     let cursor = { ...firstNew };
     const last = periodIndex(newEnd.getUTCFullYear(), newEnd.getUTCMonth() + 1);
     while (periodIndex(cursor.year, cursor.month) <= last) {
-      const built = buildInstallmentForPeriod(updatedLease, cursor.year, cursor.month);
+      const built = buildInstallmentForPeriod(
+        { ...updatedLease, rent_amount: new Prisma.Decimal(rent), service_charge_amount: new Prisma.Decimal(charges) },
+        cursor.year,
+        cursor.month
+      );
       if (built.included) {
         const exists = await tx.rentalInstallment.findUnique({
           where: {
@@ -431,7 +473,7 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
             previousCharges: lease.service_charge_amount,
             newCharges: new Prisma.Decimal(charges),
             summary: 'Nouveau loyer au renouvellement',
-            details: { installmentsUpdated: 0 },
+            details: { installmentsUpdated: 0, planned: plannedPrice },
             createdByUserId: actorUserId ?? null
           }
         })
@@ -562,10 +604,15 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
     });
     // Fin de bail effective : le logement ne compte plus s'il n'est plus propose a la location (D1).
     if (endedNow) {
-      await syncLotActivationsTx(tx, tenantId, { propertyIds: [lease.property_id] }, {
-        actorUserId: actorUserId ?? null,
-        reason: 'LEASE_ENDED'
-      });
+      await syncLotActivationsTx(
+        tx,
+        tenantId,
+        { propertyIds: [lease.property_id] },
+        {
+          actorUserId: actorUserId ?? null,
+          reason: 'LEASE_ENDED'
+        }
+      );
     }
 
     return tx.leaseEvent.create({
@@ -662,4 +709,56 @@ export async function getFinalSettlement(tenantId: string, leaseId: string) {
     balanceToRefund: roundMoney(depositHeld - arrears - deductionsTotal),
     exitInspectionStatus: (exit?.status ?? 'NONE') as 'NONE' | 'DRAFT' | 'FINALIZED'
   };
+}
+
+// ---------------------------------------------------------------------------
+// Révisions planifiées
+// ---------------------------------------------------------------------------
+
+export { effectiveRentAt } from './effective-rent';
+
+/**
+ * Applique au bail les révisions dont la date d'effet est arrivée : le loyer
+ * du bail ne change qu'à cette date. Idempotent — une révision appliquée est
+ * marquée (`details.planned = false`) et n'est plus sélectionnée ; les baux
+ * sont traités chacun dans le contexte de leur agence.
+ */
+export async function applyDueRevisions(tenantId?: string, now: Date = new Date()): Promise<{ applied: number }> {
+  const due = await prisma.leaseEvent.findMany({
+    where: {
+      ...(tenantId ? { tenantId } : {}),
+      type: LeaseEventType.REVISION,
+      effectiveDate: { lte: now },
+      newRent: { not: null },
+      details: { path: ['planned'], equals: true }
+    },
+    orderBy: { effectiveDate: 'asc' }
+  });
+
+  let applied = 0;
+  for (const event of due) {
+    await runWithTenantContext({ tenantId: event.tenantId }, async () => {
+      await prisma.$transaction(async tx => {
+        await tx.rentalLease.update({
+          where: { id: event.leaseId, tenant_id: event.tenantId },
+          data: {
+            rent_amount: event.newRent as Prisma.Decimal,
+            ...(event.newCharges !== null ? { service_charge_amount: event.newCharges } : {})
+          }
+        });
+        await tx.leaseEvent.update({
+          where: { id: event.id, tenantId: event.tenantId },
+          data: {
+            details: {
+              ...((event.details as Record<string, unknown> | null) ?? {}),
+              planned: false,
+              appliedAt: now.toISOString()
+            }
+          }
+        });
+      });
+      applied += 1;
+    });
+  }
+  return { applied };
 }

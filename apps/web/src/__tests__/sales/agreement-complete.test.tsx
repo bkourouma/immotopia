@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -135,5 +135,22 @@ describe('Fiche compromis — passage à l’acte', () => {
     await user.click(screen.getByText('Confirmer'));
 
     expect(completeSaleAgreement).toHaveBeenCalledWith('agence-1', 'agreement-1', expect.any(String));
+  });
+});
+
+describe('Fiche compromis — rafraîchissement après signature (BUG-072)', () => {
+  it('propose « Passer à l’acte » et masque « Signer le compromis » sans rechargement', async () => {
+    const brouillon = agreement({ status: 'DRAFT', signedAt: null, pendingConditionsCount: 0, conditions: [] });
+    const signe = agreement({ status: 'SIGNED', signedAt: '2026-09-30', pendingConditionsCount: 0, conditions: [] });
+    getSaleAgreement.mockResolvedValueOnce(brouillon).mockResolvedValue(signe);
+    signSaleAgreement.mockResolvedValue({ ...signe });
+    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
+    mount();
+
+    await user.click(await screen.findByRole('button', { name: 'Signer le compromis' }, { timeout: 8000 }));
+    await user.click(await screen.findByRole('button', { name: 'Signer' }, { timeout: 8000 }));
+
+    expect(await screen.findByRole('button', { name: 'Passer à l’acte' }, { timeout: 8000 })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Signer le compromis' })).not.toBeInTheDocument());
   });
 });

@@ -30,6 +30,31 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
   `immotopia-saas`) : `deploy.sh` (construction, migrations, tests de fumée,
   empreinte des conteneurs voisins), le vhost et le certificat de
   `app.immotopia.cloud`.
+- **Éprouvé sur le serveur le 2026-09-30, sur le commit `23de8301`** (chaque
+  action avec l'accord du propriétaire) :
+  - clonage du dépôt public dans `/home/deployer/immotopia-saas` (ancien dossier
+    conservé en `immotopia-saas.copie-avant-git`) ; `backup.sh staging` (base
+    1,2 Mo, documents 271 Mo) et `restore-check.sh` (209 tables, 84 lignes de
+    migrations restaurées, conteneur et volume supprimés) ;
+  - `deploy.sh staging` complet (tous les contrôles, dont `stat -c`, `ss` et
+    `flock`, la construction, une migration appliquée, les tests de fumée locaux
+    et HTTPS, 42 conteneurs voisins inchangés) ;
+  - `make-env.sh prod` ; vhost et certificat de `clients.immotopia.cloud`
+    (échéance 2026-12-29, renouvellement automatique) ; `deploy.sh prod` complet :
+    garde-fous (arbre propre, commit dans `origin/main`, secrets distincts du
+    staging, simulateur interdit, ports libres), construction, migrations depuis
+    une base vierge jusqu'à 81, tests de fumée locaux et HTTPS ;
+  - `bootstrap.sh prod --dry-run` (base migrée et vide, plan attendu), puis
+    l'amorçage réel, **saisi au terminal par le propriétaire** (premier
+    SUPER_ADMIN) : état vérifié ensuite par le même `--dry-run` (65 permissions,
+    5 rôles clés, 12 gabarits de biens, 1 SUPER_ADMIN, `RBAC déjà posé`) ; journaux
+    de l'API sans erreur ; sauvegarde faite après l'amorçage et sa restauration de
+    contrôle (209 tables, 81 migrations, aucune orpheline) ;
+  - en-têtes de sécurité observés en HTTPS sur les deux domaines (un seul jeu par
+    réponse), `X-Robots-Tag: noindex` sur le staging seulement, page de connexion
+    de la production sans compte de démonstration ;
+  - sauvegarde nocturne de la production planifiée dans la crontab de `deployer`
+    et sa commande exacte exécutée à la main (dump et documents en mode 600).
 - **Vérifié par la CI, sans serveur** : `infra/scripts/check-infra.sh` (job
   `infra` de `.github/workflows/ci.yml`, qui ne reçoit que le droit
   `contents: read`) contrôle la syntaxe des scripts, le refus d'un environnement
@@ -82,24 +107,13 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     connexion. Les gardes `NODE_ENV=production` des six seeds de développement :
     exécutées avec un `DATABASE_URL` invalide, sortie en code 1 avant toute
     connexion.
-- **Non éprouvé** : tout ce qui se joue sur le serveur lui-même.
-  - La production : `make-env.sh prod` et `deploy.sh prod`. Ses garde-fous
-    (arbre sale, git inutilisable, HEAD hors d'`origin/main`, secrets identiques
-    au staging, simulateur de paiement, sauvegarde de moins de 24 h) n'ont été
-    exercés que sur une copie tronquée du script avec de faux fichiers ; un
-    déploiement complet de la production n'a jamais tourné.
-  - Le vhost et le certificat de `clients.immotopia.cloud`, et les en-têtes de
-    sécurité observés derrière le nginx de l'hôte et en HTTPS.
-  - La saisie interactive de `bootstrap.sh` (aucun terminal en local) : les deux
-    saisies de l'e-mail et du mot de passe sans écho, le récapitulatif `[o/N]`.
-  - Les contrôles propres à Linux : `stat -c` (mode 600, simulé en local car NTFS
-    ne le conserve pas), `ss` (ports) et `flock` (verrou), absents ou simulés en
-    local.
-  - Le cron, la copie hors serveur (rclone), la restauration réelle, le retour
-    arrière par étiquette d'image, le fichier temporaire de `set-google-oauth.sh`,
-    et les gardes des seeds de développement dans l'image `migrate` de la pile.
-    Le premier passage sur le serveur sert donc aussi de test : lire chaque
-    résultat avant de passer à l'étape suivante.
+- **Non éprouvé** (à la date de rédaction) :
+  - la copie hors serveur (rclone), la restauration réelle d'une sauvegarde, le
+    retour arrière par étiquette d'image, le fichier temporaire de
+    `set-google-oauth.sh`, la connexion Google et le paiement en mode `LIVE` ;
+  - les gardes `NODE_ENV=production` des seeds de développement dans l'image
+    `migrate` de la pile.
+    Lire chaque résultat avant de passer à l'étape suivante.
 
 ## Règle d'or
 
@@ -192,15 +206,16 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 
 ### Scripts
 
-| Script                                        | Rôle                                                                                                                                                         |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `make-env.sh <staging\|prod> [fichier]`       | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                  |
-| `deploy.sh <staging\|prod> [--no-build]`      | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou). |
-| `bootstrap.sh <staging\|prod> [--dry-run]`    | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                     |
-| `set-google-oauth.sh <staging\|prod> [fich.]` | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                               |
-| `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                              |
-| `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                |
-| `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).           |
+| Script                                        | Rôle                                                                                                                                                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make-env.sh <staging\|prod> [fichier]`       | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                 |
+| `deploy.sh <staging\|prod> [--no-build]`      | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                |
+| `bootstrap.sh <staging\|prod> [--dry-run]`    | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                    |
+| `set-google-oauth.sh <staging\|prod> [fich.]` | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                              |
+| `set-email-smtp.sh <staging\|prod> [fich.]`   | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets. |
+| `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
+| `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
+| `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
 « Modes des scripts »).
@@ -397,7 +412,22 @@ vérifier avec `ls -l` après).
   `packages/api/env.example`) avec des identifiants **dédiés à la production**.
   Brancher les intégrations une par une et vérifier chaque envoi. `deploy.sh prod`
   avertit, sans bloquer, si une clé d'intégration est identique à celle du
-  staging (voir l'étape 4).
+  staging (voir l'étape 4). Pour le SMTP : `./infra/scripts/set-email-smtp.sh prod`
+  (dans une session `ssh -t`) demande le serveur, le port, l'utilisateur,
+  l'expéditeur et le mot de passe (deux saisies, sans écho) ; puis
+  `deploy.sh prod --no-build` recrée l'API. Le script protège le mot de passe par des
+  apostrophes : Docker Compose interpole `$` dans un fichier d'environnement (un mot
+  de passe `ab$cd` deviendrait `ab`) ; un mot de passe contenant une apostrophe est
+  refusé. Options : `--password-only` (ne demande que le mot de passe ; serveur,
+  port, utilisateur et expéditeur sont repris du fichier) et `--visible` (une seule
+  saisie, affichée : utile quand le collage dans un champ masqué échoue ; fermer
+  l'onglet du terminal ensuite). Ne jamais passer le mot de passe en argument de la
+  commande : il resterait dans l'historique du shell et dans la liste des processus.
+  Vérifier ensuite l'authentification sans envoyer de message : la commande
+  `docker exec immotopia-prod-api node -e "...verify()..."` est affichée par le
+  script. **Activer l'e-mail active aussi l'exigence de vérification de l'adresse à
+  la connexion** (`isEmailDeliveryConfigured`). Le staging n'utilise jamais la boîte
+  de la production : un bac à sable.
 - **WhatsApp** (`WHATSAPP_*`, `WASENDER_*`, `TWILIO_*`) : mêmes règles. **SMS** :
   `infra/.env.example` ne porte aucune variable SMS à ce jour ; à documenter
   avec le lot SMS.
@@ -523,7 +553,10 @@ Il contrôle, dans l'ordre :
     informatif : il échoue tant que le vhost et le certificat manquent.
 11. **Voisins, après** : aucun conteneur voisin n'a bougé (comparaison du nom, de
     l'identifiant complet et de la date de démarrage de chaque conteneur qui n'est
-    pas de la pile : un conteneur recréé ou redémarré est signalé). Le journal
+    pas de la pile : un conteneur recréé ou redémarré est signalé). Une alerte peut venir du déploiement d'une AUTRE
+    application de l'hôte, pendant la durée du build (constaté le 2026-09-30 avec les
+    conteneurs `ecoledigitale-*`, recréés par leur propre déploiement) : lire le
+    `diff` affiché avant de conclure à un problème. Le journal
     `/home/deployer/deploy-history-immotopia-prod.log` reçoit une ligne (date,
     environnement, commit, utilisateur).
 

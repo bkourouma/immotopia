@@ -215,6 +215,12 @@ jest.mock('@prisma/client', () => {
     // tombait sur « Cannot read properties of undefined » depuis ce
     // correctif — la doublure decidait ce que la production faisait vraiment.
     supplierInvoice: {
+      findFirst: jest.fn(async (args: Row) => {
+        const found: any = store.supplierInvoices.find(
+          i => i.id === args.where.id && i.tenantId === args.where.tenantId
+        );
+        return found ? { ...found } : null;
+      }),
       update: jest.fn(async (args: Row) => {
         const found: any = store.supplierInvoices.find(i => i.id === args.where.id);
         if (found) {
@@ -849,6 +855,32 @@ describe('voidDocumentTx', () => {
     });
 
     expect(store.supplierInvoices[0].status).toBe('VOIDED');
+  });
+
+  it('ANNULE UN BROUILLON de facture sans ecriture : il passe a VOIDED et libere ses imputations (BUG-042)', async () => {
+    store.supplierInvoices.push({ id: 'brouillon-1', tenantId: TENANT_ID, status: 'DRAFT' });
+    store.costAllocations.push({
+      tenantId: TENANT_ID,
+      sourceType: 'SUPPLIER_INVOICE',
+      sourceId: 'brouillon-1',
+      siteId: 'site-1',
+      amount: 7500000,
+      voidedAt: null
+    });
+
+    const result = await voidDocumentTx(tx, {
+      tenantId: TENANT_ID,
+      documentType: 'SUPPLIER_INVOICE',
+      documentId: 'brouillon-1',
+      reason: 'Imputation erronee',
+      voidedByUserId: 'user-1'
+    });
+
+    expect(result.reversingEntryId).toBeNull();
+    expect(store.supplierInvoices[0].status).toBe('VOIDED');
+    expect(store.costAllocations[0].voidedAt).toBeInstanceOf(Date);
+    expect(store.entries).toHaveLength(0);
+    expect(store.voidDocuments).toHaveLength(1);
   });
 
   it('NE TOUCHE PAS au statut pour une piece de caisse : elle n en stocke pas', async () => {

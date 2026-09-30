@@ -331,7 +331,7 @@ export function NewsletterCampaignsPage() {
           style={{ width: 200, marginBottom: 16 }}
           onChange={v => loadCampaigns(1, pagination.limit, v ?? undefined)}
           options={[
-            { value: 'DRAFT', label: 'Brouillons' },
+            { value: 'DRAFT', label: t('Brouillons') },
             { value: 'SCHEDULED', label: t('Planifiées') },
             { value: 'SENT', label: t('Envoyées') }
           ]}

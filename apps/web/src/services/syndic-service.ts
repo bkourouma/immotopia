@@ -4,6 +4,8 @@ import {
   CreateAgendaItemRequest,
   ChargeCall,
   ChargeCallBatch,
+  ChargeCallSummary,
+  IncompleteOwnerShares,
   ChartOfAccount,
   CreateBudgetRequest,
   CreateIncidentImputationRequest,
@@ -46,6 +48,7 @@ import {
   CreateSyndicateRequest,
   UpdateSyndicateRequest,
   GeneralMeeting,
+  MeetingConvocationResult,
   MeetingProxy,
   MeetingStatus,
   MaintenanceContract,
@@ -206,6 +209,14 @@ export async function updateSyndicateLot(
   return response.data.data;
 }
 
+/**
+ * Supprime un lot sans mouvement. L'API répond 409 (message explicite) s'il a des
+ * appels, paiements ou reçus : il faut alors le désactiver (tantièmes à 0).
+ */
+export async function deleteSyndicateLot(tenantId: string, syndicId: string, lotId: string): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}`);
+}
+
 export async function importSyndicateLotsFromProperties(
   tenantId: string,
   syndicId: string,
@@ -241,6 +252,36 @@ export async function listChargeCalls(
     { params: filters }
   );
   return response.data.data;
+}
+
+/**
+ * Tous les appels de charges filtrés ET la synthèse (montant appelé, dossiers
+ * en attente / en retard) calculée par l'API sur l'ensemble des appels
+ * filtrés : les cartes de l'écran ne se déduisent jamais d'une page.
+ */
+export async function listAllChargeCallsWithSummary(
+  tenantId: string,
+  syndicId: string,
+  filters?: { period?: string; status?: string }
+): Promise<{ items: ChargeCall[]; summary: ChargeCallSummary }> {
+  const limit = 100;
+  let items: ChargeCall[] = [];
+  let summary: ChargeCallSummary | null = null;
+
+  for (let page = 1; page <= 50; page += 1) {
+    const response = await apiClient.get<{ success: boolean; data: ChargeCall[]; summary?: ChargeCallSummary }>(
+      `/tenants/${tenantId}/syndics/${syndicId}/charges`,
+      { params: { ...filters, page, limit } }
+    );
+    items = items.concat(response.data.data);
+    summary = summary ?? response.data.summary ?? null;
+    if (response.data.data.length < limit) break;
+  }
+
+  return {
+    items,
+    summary: summary ?? { totalCount: items.length, totalAmount: 0, pendingCount: 0, overdueCount: 0 }
+  };
 }
 
 /**
@@ -324,6 +365,32 @@ export async function createMeeting(
     data
   );
   return response.data.data;
+}
+
+/** Crée l'assemblée et rend aussi le décompte d'envoi de la convocation. */
+export async function createMeetingWithConvocation(
+  tenantId: string,
+  syndicId: string,
+  data: CreateMeetingRequest
+): Promise<{ meeting: GeneralMeeting; convocation: MeetingConvocationResult | null }> {
+  const response = await apiClient.post<{
+    success: boolean;
+    data: GeneralMeeting;
+    convocation?: MeetingConvocationResult;
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/assemblees`, data);
+  return { meeting: response.data.data, convocation: response.data.convocation ?? null };
+}
+
+/** Renvoie la convocation d'une assemblée planifiée. */
+export async function resendMeetingConvocation(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingConvocationResult> {
+  const response = await apiClient.post<{ success: boolean; convocation: MeetingConvocationResult }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/convocation`
+  );
+  return response.data.convocation;
 }
 
 export async function updateMeeting(
@@ -687,6 +754,27 @@ export async function listLotOwnerAccountTransactions(
   return response.data.data;
 }
 
+/**
+ * Transactions d'un compte de lot (page demandée) et leur nombre TOTAL, compté
+ * par l'API : la carte « Transactions » ne dépend pas de la taille de page.
+ */
+export async function listLotOwnerAccountTransactionsWithTotal(
+  tenantId: string,
+  syndicId: string,
+  lotId: string,
+  query?: ListWithPaginationQuery & { from?: string; to?: string }
+): Promise<{ items: OwnerAccountTransaction[]; totalCount: number }> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: OwnerAccountTransaction[];
+    summary?: { totalCount: number };
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/compte/transactions`, { params: query });
+  return {
+    items: response.data.data,
+    totalCount: response.data.summary?.totalCount ?? response.data.data.length
+  };
+}
+
 export async function createLotOwnerAccountAdjustment(
   tenantId: string,
   syndicId: string,
@@ -920,6 +1008,19 @@ export async function listLotOwnerProfiles(
     { params: query }
   );
   return response.data.data;
+}
+
+/** Profils propriétaires et lots aux parts incomplètes (agrégat serveur, tous les profils de la copropriété). */
+export async function listLotOwnerProfilesWithSummary(
+  tenantId: string,
+  syndicId: string
+): Promise<{ items: LotOwnerProfile[]; incompleteLots: IncompleteOwnerShares[] }> {
+  const response = await apiClient.get<{
+    success: boolean;
+    data: LotOwnerProfile[];
+    summary?: { incompleteLots?: IncompleteOwnerShares[] };
+  }>(`/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires`);
+  return { items: response.data.data, incompleteLots: response.data.summary?.incompleteLots ?? [] };
 }
 
 export async function createLotOwnerProfile(

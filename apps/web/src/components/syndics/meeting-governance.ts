@@ -1,4 +1,11 @@
-import { MajorityRule, MeetingContact, MeetingLot, MeetingProxy, MeetingStatus } from '../../types/syndic-types';
+import {
+  MajorityRule,
+  MeetingContact,
+  MeetingConvocationResult,
+  MeetingLot,
+  MeetingProxy,
+  MeetingStatus
+} from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
 /**
@@ -117,3 +124,44 @@ export const meetingStatusColors: Record<MeetingStatus, string> = {
   COMPLETED: 'green',
   CANCELLED: 'red'
 };
+
+/**
+ * Message de synthèse de l'envoi d'une convocation (création ou renvoi) :
+ * `type` pilote la couleur de l'alerte, `failed` autorise le bouton de renvoi.
+ */
+export function describeConvocation(result: MeetingConvocationResult | null | undefined): {
+  type: 'success' | 'warning' | 'info';
+  text: string;
+  failed: boolean;
+} {
+  if (!result) return { type: 'info', text: t('Convocation non transmise par le serveur.'), failed: false };
+  if (result.error) {
+    return {
+      type: 'warning',
+      text: t("L'envoi de la convocation a échoué : réessayez avec « Renvoyer la convocation »."),
+      failed: true
+    };
+  }
+  if (result.skipped === 'NO_OWNER_CONTACT' || result.owners === 0) {
+    return { type: 'info', text: t('Aucun copropriétaire à convoquer pour cette copropriété.'), failed: false };
+  }
+  if (!result.emailEnabled) {
+    return {
+      type: 'info',
+      text: t(
+        "La notification « Convocation Assemblée Générale » est désactivée : aucun e-mail n'a été envoyé (Communication > Notifications e-mail)."
+      ),
+      failed: false
+    };
+  }
+  const text = t(
+    'Convocation : {{sent}} e-mail(s) envoyé(s), {{failed}} échoué(s), {{noAddress}} sans adresse e-mail.',
+    {
+      sent: result.emailSent,
+      failed: result.emailFailed,
+      noAddress: result.emailSkippedNoAddress
+    }
+  );
+  const failed = result.emailFailed > 0;
+  return { type: failed ? 'warning' : 'success', text, failed };
+}

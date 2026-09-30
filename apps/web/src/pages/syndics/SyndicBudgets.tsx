@@ -387,24 +387,24 @@ export const SyndicBudgets: React.FC = () => {
                 dataSource={budgets}
                 pagination={{ pageSize: 8 }}
                 columns={[
-                  { title: 'Exercice', dataIndex: 'fiscalYear' },
+                  { title: t('Exercice'), dataIndex: 'fiscalYear' },
                   { title: t('Libellé'), dataIndex: 'label' },
                   {
-                    title: 'Montant',
+                    title: t('Montant'),
                     dataIndex: 'totalAmount',
                     align: 'end',
                     render: (value: number | string) => <MoneyValue value={value} />
                   },
-                  { title: 'Allocations', render: (_, budget) => budget.allocations?.length || 0 },
+                  { title: t('Allocations'), render: (_, budget) => budget.allocations?.length || 0 },
                   {
-                    title: 'Statut',
+                    title: t('Statut'),
                     dataIndex: 'status',
                     render: (status: SyndicateBudget['status']) => (
                       <Tag color={budgetStatusColors[status]}>{budgetStatusLabels[status] || status}</Tag>
                     )
                   },
                   {
-                    title: 'Actions',
+                    title: t('Actions'),
                     render: (_, budget) => {
                       const isClosed = budget.status === 'CLOSED';
                       return (
@@ -497,7 +497,7 @@ export const SyndicBudgets: React.FC = () => {
                 locale={{ emptyText: 'Cliquez sur Répartir ou Voir allocations pour afficher le détail.' }}
                 columns={[
                   {
-                    title: 'Lot',
+                    title: t('Lot'),
                     render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
                   },
                   {
@@ -527,7 +527,7 @@ export const SyndicBudgets: React.FC = () => {
                   { title: t('Libellé'), dataIndex: 'label' },
                   { title: t('Période'), dataIndex: 'period' },
                   {
-                    title: 'Type',
+                    title: t('Type'),
                     dataIndex: 'batchType',
                     render: (value: ChargeCallBatch['batchType']) => batchTypeLabels[value] || value
                   },
@@ -537,14 +537,14 @@ export const SyndicBudgets: React.FC = () => {
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   {
-                    title: 'Montant',
+                    title: t('Montant'),
                     dataIndex: 'totalAmount',
                     align: 'end',
                     render: (value: number | string) => <MoneyValue value={value} />
                   },
-                  { title: 'Charges', render: (_, batch) => batch.chargeCalls?.length || 0 },
+                  { title: t('Charges'), render: (_, batch) => batch.chargeCalls?.length || 0 },
                   {
-                    title: 'Statut',
+                    title: t('Statut'),
                     dataIndex: 'status',
                     render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabels[status] || status}</Tag>
                   }
@@ -604,7 +604,7 @@ export const SyndicBudgets: React.FC = () => {
                 { value: 'GENERAL_SHARES', label: t('Tantièmes généraux') },
                 { value: 'SPECIAL_SHARES', label: t('Tantièmes spéciaux') },
                 { value: 'EQUAL', label: t('Répartition égale') },
-                { value: 'MANUAL', label: 'Manuelle' }
+                { value: 'MANUAL', label: t('Manuelle') }
               ]}
             />
           </Form.Item>
@@ -754,7 +754,7 @@ export const SyndicBudgets: React.FC = () => {
               optionFilterProp="label"
               options={[
                 { value: 'REGULAR', label: t('Régulier') },
-                { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
+                { value: 'EXCEPTIONAL', label: t('Exceptionnel') }
               ]}
             />
           </Form.Item>
@@ -825,7 +825,7 @@ export const SyndicBudgets: React.FC = () => {
               optionFilterProp="label"
               options={[
                 { value: 'REGULAR', label: t('Régulier') },
-                { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
+                { value: 'EXCEPTIONAL', label: t('Exceptionnel') }
               ]}
             />
           </Form.Item>

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   listMembers,
+  listAssignableMembers,
   getMemberById,
   updateMemberRoles,
   disableMember,
@@ -10,6 +11,17 @@ import {
   ListMembersFilters
 } from '../services/membership-service';
 import { z } from 'zod';
+import { parsePagination } from '../utils/pagination-helper';
+import { asyncHandler } from '../middleware/error-middleware';
+
+/**
+ * Membres assignables (id, nom d'affichage, roles ; ACTIFS seulement).
+ * GET /api/tenants/:tenantId/members/assignable
+ */
+export const listAssignableMembersHandler = asyncHandler(async (req: Request, res: Response) => {
+  const members = await listAssignableMembers(req.params.tenantId);
+  res.status(200).json({ success: true, data: { members } });
+});
 
 // Validation schemas
 const updateMemberRolesSchema = z.object({
@@ -38,8 +50,7 @@ export async function listMembersHandler(req: Request, res: Response): Promise<v
       search: req.query.search as string,
       status: req.query.status as any,
       roleId: req.query.roleId as string,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20
+      ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
     };
 
     const result = await listMembers(filters);

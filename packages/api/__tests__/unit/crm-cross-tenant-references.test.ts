@@ -269,9 +269,9 @@ describe('crm-matching-service — sourceOwnerContactId reçu du corps doit appa
     const property = seedProperty();
     const foreignOwner = seedContact({ tenantId: TENANT_B, email: 'owner-b@example.com' });
 
-    await expect(
-      addPropertyToShortlist(TENANT_A, deal.id, property.id, 80, {}, foreignOwner.id)
-    ).rejects.toThrow('Owner contact not found');
+    await expect(addPropertyToShortlist(TENANT_A, deal.id, property.id, 80, {}, foreignOwner.id)).rejects.toThrow(
+      'Contact propriétaire introuvable'
+    );
 
     expect(store.dealProperties).toHaveLength(0);
   });
@@ -296,7 +296,7 @@ describe("document-template-service — une agence ne peut jamais activer/modifi
     });
   });
 
-  it("activateTemplate refuse un gabarit appartenant à une AUTRE agence", async () => {
+  it('activateTemplate refuse un gabarit appartenant à une AUTRE agence', async () => {
     const otherAgencyTemplate = seedTemplate({ tenant_id: TENANT_B });
 
     await expect(activateTemplate(TENANT_A, otherAgencyTemplate.id, 'actor-1')).rejects.toMatchObject({

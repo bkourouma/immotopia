@@ -5,6 +5,11 @@ import { PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { t } from '../../i18n/t';
 
+const TYPES_ACCEPTES: Record<string, string[]> = {
+  PHOTO: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+  VIDEO: ['video/mp4', 'video/webm', 'video/quicktime']
+};
+
 interface PropertyMediaUploadProps {
   propertyId: string;
   tenantId: string;
@@ -31,7 +36,7 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
     if (!uploadStatus) {
       return undefined;
     }
-    const timer = setTimeout(() => setUploadStatus(null), 3000);
+    const timer = setTimeout(() => setUploadStatus(null), uploadStatus.success ? 3000 : 10000);
     return () => clearTimeout(timer);
   }, [uploadStatus]);
 
@@ -43,11 +48,24 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
     const fileArray = Array.from(files);
     let successCount = 0;
     let errorCount = 0;
+    const motifs: string[] = [];
 
     try {
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i];
         setUploadProgress({ current: i + 1, total: fileArray.length, fileName: file.name });
+
+        // Contrôle du type avant l'envoi : le refus est immédiat et lisible.
+        const acceptes = TYPES_ACCEPTES[mediaType];
+        if (acceptes && !acceptes.includes(file.type)) {
+          errorCount++;
+          motifs.push(
+            mediaType === PropertyMediaType.PHOTO
+              ? t('Type de fichier non accepté pour une photo. Formats autorisés : JPEG, PNG, WebP.')
+              : t('Type de fichier non accepté pour une vidéo. Formats autorisés : MP4, WebM, QuickTime.')
+          );
+          continue;
+        }
 
         try {
           const formData = new FormData();
@@ -61,10 +79,12 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
           });
           successCount++;
         } catch (error: any) {
-          console.error(`Error uploading ${file.name}:`, error);
+          console.warn(`Error uploading ${file.name}:`, error?.message);
           errorCount++;
+          motifs.push(error?.response?.data?.message || t('Échec du téléchargement. Veuillez réessayer.'));
         }
       }
+      const motif = Array.from(new Set(motifs)).join(' ');
 
       if (successCount > 0 && onUploadComplete) {
         onUploadComplete();
@@ -83,17 +103,18 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
       } else if (successCount > 0) {
         setUploadStatus({
           success: false,
-          message: t('{{successCount}} réussi{{value}}, {{errorCount}} échoué{{value2}}', {
-            successCount: successCount,
-            value: successCount > 1 ? 's' : '',
-            errorCount: errorCount,
-            value2: errorCount > 1 ? 's' : ''
-          })
+          message:
+            t('{{successCount}} réussi{{value}}, {{errorCount}} échoué{{value2}}', {
+              successCount: successCount,
+              value: successCount > 1 ? 's' : '',
+              errorCount: errorCount,
+              value2: errorCount > 1 ? 's' : ''
+            }) + (motif ? ` — ${motif}` : '')
         });
       } else {
         setUploadStatus({
           success: false,
-          message: t('Échec du téléchargement. Veuillez réessayer.')
+          message: motif || t('Échec du téléchargement. Veuillez réessayer.')
         });
       }
     } finally {

@@ -442,6 +442,11 @@ describe('provisionTenant — idempotence (F1.9)', () => {
     expect(second.replay).toBe(true);
     expect(second.result.tenant.id).toBe(first.result.tenant.id);
     expect(store.tenants).toHaveLength(tenantCountAfterFirst); // rien de plus cree
+    // BUG-2026-09-30-008 : le rejeu n'invalide pas le lien deja transmis et se
+    // signale comme tel (l'ecran n'affiche plus « Agence creee »).
+    expect(second.result.alreadyExisted).toBe(true);
+    expect(second.result.invitation.acceptUrl).toBe(first.result.invitation.acceptUrl);
+    expect(sendInviteEmailMock).toHaveBeenCalledTimes(1);
   });
 
   it('une cle differente, ou un autre super-admin, ne rejoue pas : nouvelle agence creee', async () => {
@@ -456,19 +461,18 @@ describe('provisionTenant — idempotence (F1.9)', () => {
     expect(second.result.tenant.id).not.toBe(first.result.tenant.id);
   });
 
-  it('sans cle en commun, un doublon (meme nom + meme e-mail admin + meme super-admin) sous 24h est detecte via le journal d’audit', async () => {
-    // Ni le premier ni le second appel ne portent de cle : la barriere memoire
-    // (indexee par cle) ne joue donc jamais ici, seule la verification en
-    // base (findRecentDuplicateTenantId) peut detecter le doublon.
-    const first = await provisionTenant(baseInput, 'super-admin-1');
-    const second = await provisionTenant(baseInput, 'super-admin-1');
+  it('sans cle en commun, un doublon (meme nom + meme e-mail admin + meme super-admin) sous 24h est refuse sans toucher a l’invitation', async () => {
+    // Ni le premier ni le second appel ne portent de cle : seule la verification
+    // en base (findRecentDuplicate) detecte le doublon. BUG-2026-09-30-008 :
+    // refus explicite (409), le jeton d'invitation d'origine reste valide.
+    await provisionTenant(baseInput, 'super-admin-1');
+    const invitationsBefore = JSON.stringify(store.invitations);
 
-    expect(second.replay).toBe(true);
-    expect(second.result.tenant.id).toBe(first.result.tenant.id);
+    await expect(provisionTenant(baseInput, 'super-admin-1')).rejects.toMatchObject({ statusCode: 409 });
+
     expect(store.tenants).toHaveLength(1);
-    // Le rejeu en base regenere un jeton d'invitation utilisable (le jeton en
-    // clair d'origine n'est jamais persiste) : un nouvel e-mail est tente.
-    expect(sendInviteEmailMock).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(store.invitations)).toBe(invitationsBefore); // jeton inchange
+    expect(sendInviteEmailMock).toHaveBeenCalledTimes(1); // aucun nouvel e-mail
   });
 });
 
@@ -570,11 +574,13 @@ describe('provisionTenant — abonnement par packs (PLAN-ABONNEMENTS.md)', () =>
   it('le rejeu idempotent renvoie aussi les elements souscrits', async () => {
     const first = await provisionTenant(
       { ...baseInput, items: [{ code: 'AGENCE' }, { code: 'SETUP_AGENCE' }] },
-      'super-admin-1'
+      'super-admin-1',
+      'clic-items'
     );
     const replay = await provisionTenant(
       { ...baseInput, items: [{ code: 'AGENCE' }, { code: 'SETUP_AGENCE' }] },
-      'super-admin-1'
+      'super-admin-1',
+      'clic-items'
     );
     expect(replay.replay).toBe(true);
     expect(replay.result.subscription.items).toEqual(first.result.subscription.items);

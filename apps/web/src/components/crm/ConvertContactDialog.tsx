@@ -12,10 +12,10 @@ interface ConvertContactDialogProps {
 }
 
 const roleOptions: { value: CrmContactRoleType; label: string }[] = [
-  { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
-  { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
-  { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
-  { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
+  { value: 'PROPRIETAIRE', label: t('Propriétaire') },
+  { value: 'LOCATAIRE', label: t('Locataire') },
+  { value: 'COPROPRIETAIRE', label: t('Copropriétaire') },
+  { value: 'ACQUEREUR', label: t('Acquéreur') }
 ];
 
 export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
@@ -36,7 +36,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
     e.preventDefault();
 
     if (selectedRoles.length === 0) {
-      setError(t('Please select at least one role'));
+      setError(t('Veuillez sélectionner au moins un rôle'));
       return;
     }
 
@@ -45,7 +45,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
     try {
       await onSubmit(selectedRoles);
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Error converting contact'));
+      setError(err.response?.data?.message || t('Erreur lors de la conversion du contact'));
     } finally {
       setIsSubmitting(false);
     }
@@ -59,12 +59,12 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
             <div className="bg-primary-bg rounded-full p-2">
               <UserCheck className="h-5 w-5 text-primary" />
             </div>
-            <h2 className="text-xl font-semibold">{t('Convert Lead to Client')}</h2>
+            <h2 className="text-xl font-semibold">{t('Convertir le prospect en client')}</h2>
           </div>
 
           <p className="text-gray-600 mb-6">
-            {t('Convert')} <strong>{contactName}</strong>{' '}
-            {t('from a lead to an active client by assigning one or more roles.')}
+            {t('Convertir')} <strong>{contactName}</strong>{' '}
+            {t('de prospect en client actif en lui attribuant un ou plusieurs rôles.')}
           </p>
 
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
@@ -89,10 +89,10 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
 
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting || loading}>
-                {t('Cancel')}
+                {t('Annuler')}
               </Button>
               <Button type="submit" disabled={isSubmitting || loading || selectedRoles.length === 0}>
-                {isSubmitting || loading ? 'Converting...' : t('Convert to Client')}
+                {isSubmitting || loading ? t('Conversion...') : t('Convertir en client')}
               </Button>
             </div>
           </form>

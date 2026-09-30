@@ -7,6 +7,8 @@
  * JSON et listes serialises en JSON.
  */
 
+import { FORMULA_START } from '../../lib/csv';
+
 export const CSV_BOM = '﻿';
 const SEPARATOR = ';';
 
@@ -34,7 +36,6 @@ export function formatValue(value: unknown): string {
  * `＋`, `－`, `＠`), est prefixe d'une apostrophe. Ne touche que les textes :
  * un montant (Decimal, nombre) reste un nombre.
  */
-const FORMULA_START = /^[\t\r]|^\s*[=+\-@＝＋－＠]/;
 
 function neutralizeFormula(text: string, original: unknown): string {
   if (typeof original !== 'string') return text;

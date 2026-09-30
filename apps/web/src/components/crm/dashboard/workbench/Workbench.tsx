@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/card';
+import { Card, CardContent } from '../../../ui/card';
 import { Button } from '../../../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { Clock, Calendar, CheckCircle, X, ExternalLink } from 'lucide-react';
 import type { Workbench as WorkbenchType, WorkbenchItem } from '../../../../types/crmDashboard';
 import dayjs from 'dayjs';
 import { t } from '../../../../i18n/t';
+import { dealLabelFromApi, nextActionTypeLabel } from '../../../../utils/crm-labels';
 
 interface WorkbenchProps {
   data: WorkbenchType;
@@ -55,12 +56,14 @@ const WorkbenchItemRow: React.FC<{
             <Icon className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-slate-900">{item.title}</p>
+            <p className="font-medium text-slate-900">
+              {item.title === 'Action requise' ? t('Action requise') : nextActionTypeLabel(item.title)}
+            </p>
             {item.description && <p className="text-sm text-slate-600 mt-1">{item.description}</p>}
             <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
               <span>{dayjs(item.dueDate).format('DD MMM YYYY HH:mm')}</span>
               {item.contactName && <span>• {item.contactName}</span>}
-              {item.dealLabel && <span>• {item.dealLabel}</span>}
+              {item.dealLabel && <span>• {dealLabelFromApi(item.dealLabel)}</span>}
             </div>
           </div>
         </div>
@@ -115,9 +118,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({ data, onItemClick, onCompl
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{t('Workbench')}</CardTitle>
-      </CardHeader>
+      {/* Pas de titre ici : la carte parente porte déjà « Plan de travail ». */}
       <CardContent>
         <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
           <TabsList className="grid w-full grid-cols-2">

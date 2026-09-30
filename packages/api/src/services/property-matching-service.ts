@@ -1,5 +1,8 @@
 import { prisma } from '../utils/database';
+import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { PropertyStatus, PropertyTransactionMode, CrmDealPropertyStatus } from '@prisma/client';
+import { t } from '../i18n';
+import { NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Match score weights
@@ -49,7 +52,7 @@ export async function matchPropertiesForDeal(
   });
 
   if (!deal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   // Get all available properties for the tenant
@@ -57,6 +60,7 @@ export async function matchPropertiesForDeal(
     where: {
       OR: [
         { ownershipType: 'TENANT', tenantId },
+        { ownershipType: 'CLIENT', tenantId },
         { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
       ],
       status: {
@@ -66,6 +70,7 @@ export async function matchPropertiesForDeal(
     },
     include: {
       media: {
+        select: PROPERTY_MEDIA_SELECT,
         where: { isPrimary: true },
         take: 1
       }
@@ -478,6 +483,7 @@ export async function addToShortlist(
         id: propertyId,
         OR: [
           { ownershipType: 'TENANT', tenantId },
+          { ownershipType: 'CLIENT', tenantId },
           { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
         ]
       },
@@ -485,10 +491,10 @@ export async function addToShortlist(
     })
   ]);
   if (!deal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
   if (sourceOwnerContactId) {
     const contact = await prisma.crmContact.findFirst({
@@ -496,7 +502,7 @@ export async function addToShortlist(
       select: { id: true }
     });
     if (!contact) {
-      throw new Error('Owner contact not found or access denied');
+      throw new NotFoundError(t('Contact propriétaire introuvable ou accès refusé'));
     }
   }
 
@@ -562,7 +568,7 @@ export async function updatePropertyMatchStatus(
   });
 
   if (!dealProperty) {
-    throw new Error('Property not found in deal shortlist');
+    throw new NotFoundError(t("Bien introuvable dans la présélection de l'affaire"));
   }
 
   return prisma.crmDealProperty.update({

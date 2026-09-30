@@ -21,6 +21,8 @@ import {
 } from '@ant-design/icons';
 import type { WorkspaceTabItem } from '../components/navigation/WorkspaceTabs';
 import { t } from '../i18n/t';
+import type { FeatureAccessMap } from './feature-access';
+import { featureForAgencyPath } from './route-features';
 
 /**
  * Espaces à onglets du module Finance — source unique des onglets de
@@ -235,4 +237,23 @@ export function financeWorkspaceTabs(family: FinanceWorkspaceFamily, tenantId: s
     icon: tab.icon,
     activeFor: tab.activeFor?.map(withTenant)
   }));
+}
+
+/**
+ * Retire les onglets d'une fonctionnalité que l'abonnement ne comprend pas
+ * (`NONE`), comme le menu. La fonctionnalité d'un onglet se déduit de son
+ * adresse (`featureForAgencyPath`, la même table que la garde de route) : un
+ * onglet ajouté ci-dessus est classé sans rien déclarer de plus. `access` nul
+ * (droits en lecture, lecture échouée, contrôle non appliqué) : tout reste
+ * visible ; la lecture seule aussi.
+ */
+export function filterWorkspaceTabsByAccess(
+  tabs: WorkspaceTabItem[],
+  access: FeatureAccessMap | null
+): WorkspaceTabItem[] {
+  if (!access) return tabs;
+  return tabs.filter(tab => {
+    const feature = featureForAgencyPath(tab.href);
+    return feature === null || access[feature] !== 'NONE';
+  });
 }

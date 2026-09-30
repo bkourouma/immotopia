@@ -349,7 +349,7 @@ describe('Syndics providers/documents/funds routes', () => {
     const accepted = await request(app).delete(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}`);
     expect(accepted.status).toBe(200);
     expect(accepted.body.success).toBe(true);
-    expect(accepted.body.message).toBe('Copropriete supprimee');
+    expect(accepted.body.message).toBe('Copropriété supprimée');
   });
 
   it('returns documents list', async () => {
@@ -455,19 +455,19 @@ describe('Syndics providers/documents/funds routes', () => {
     );
   });
 
-  it('requires PROPERTIES_EDIT to create a charge call assigned to a fund, not without a fund', async () => {
+  it('requires SYNDIC_EDIT to create a charge call assigned to a fund, not without a fund', async () => {
     mockQueries.createChargeCallAndUpdateStatus.mockResolvedValue({ chargeCalls: [], totalCreated: 0 });
     const body = { lotId: CHARGE_ID, period: '2026-10', amount: 1000, dueDate: '2026-10-15' };
 
     const withFund = await request(app)
       .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`)
-      .set('x-deny', 'PROPERTIES_EDIT')
+      .set('x-deny', 'SYNDIC_EDIT')
       .send({ ...body, fundId: FUND_ID });
     expect(withFund.status).toBe(403);
 
     const withoutFund = await request(app)
       .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`)
-      .set('x-deny', 'PROPERTIES_EDIT')
+      .set('x-deny', 'SYNDIC_EDIT')
       .send(body);
     expect(withoutFund.status).toBe(201);
   });

@@ -35,6 +35,10 @@ export interface SyndicateLot {
   generalShares: number;
   specialShares?: number | null;
   ownerSince?: string | null;
+  /** Propriétaires actuels (profils actifs, indivision incluse), calculés par l'API. */
+  owners?: Array<{ contactId: string; name: string; percentage: number; ownedSince: string }>;
+  /** « Nom » ou « Nom 1 (50 %), Nom 2 (50 %) » ; vide sans profil propriétaire. */
+  ownersLabel?: string;
   tenantAssignments?: Array<{
     id: string;
     tenantId: string;
@@ -110,6 +114,17 @@ export interface ChargePayment {
   method?: string | null;
   reference?: string | null;
   createdAt: string;
+}
+
+/**
+ * Synthèse calculée par l'API sur TOUS les appels filtrés (mêmes filtres que
+ * la liste), pas sur la page renvoyée.
+ */
+export interface ChargeCallSummary {
+  totalCount: number;
+  totalAmount: number;
+  pendingCount: number;
+  overdueCount: number;
 }
 
 export interface ChargeCall {
@@ -351,6 +366,20 @@ export interface MeetingAgendaItem {
   updatedAt: string;
 }
 
+/** Résultat de l'envoi de la convocation d'une assemblée (envoyés / échoués). */
+export interface MeetingConvocationResult {
+  owners: number;
+  emailEnabled: boolean;
+  emailSent: number;
+  emailFailed: number;
+  emailSkippedNoAddress: number;
+  whatsappSent: number;
+  failures: string[];
+  /** Présent si l'envoi a échoué en bloc. */
+  error?: string;
+  skipped?: 'MEETING_NOT_FOUND' | 'NO_OWNER_CONTACT';
+}
+
 export interface GeneralMeeting {
   id: string;
   syndicateId: string;
@@ -534,7 +563,10 @@ export interface OverdueDashboardItem {
 export interface OverdueDashboard {
   items: OverdueDashboardItem[];
   totals: {
+    /** Nombre d'appels impayés en retard. */
     overdueCount: number;
+    /** Nombre de lots distincts en retard (un lot compte une fois). */
+    overdueLotCount?: number;
     overdueAmount: number;
   };
 }
@@ -961,6 +993,13 @@ export interface CoOwnerPortalInvitation {
 export interface CoOwnerPortalRevocation {
   closedLots: number;
   unlinkedAccounts: number;
+}
+
+/** Lot dont les parts de propriétaires actuels totalisent moins de 100 % (calculé par l'API). */
+export interface IncompleteOwnerShares {
+  lotId: string;
+  lotNumber: string;
+  totalPercentage: number;
 }
 
 export interface LotOwnerProfile {

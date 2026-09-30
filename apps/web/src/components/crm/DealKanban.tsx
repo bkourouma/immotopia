@@ -1,8 +1,10 @@
+import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState } from 'react';
 import { CrmDeal, CrmDealDetail, CrmDealStage } from '../../types/crm-types';
 import { Button } from '../ui/button';
 import { Plus } from 'lucide-react';
 import { t } from '../../i18n/t';
+import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
 interface DealKanbanProps {
@@ -15,15 +17,6 @@ interface DealKanbanProps {
 
 // Pipeline stages - excluding WON and LOST from main pipeline
 const pipelineStages: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION'];
-
-const stageLabels: Record<CrmDealStage, string> = {
-  NEW: 'Nouveau',
-  QUALIFIED: t('Qualifié'),
-  VISIT: 'Visite',
-  NEGOTIATION: t('Négociation'),
-  WON: t('Gagné'),
-  LOST: 'Perdu'
-};
 
 // Get contact initials for avatar
 const getInitials = (firstName?: string, lastName?: string): string => {
@@ -146,7 +139,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
             >
               {/* Stage Header */}
               <div className="p-2 border-b border-gray-200 bg-white rounded-t">
-                <h3 className="font-semibold text-gray-900 text-sm">{stageLabels[stage]}</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">{dealStageLabel(stage)}</h3>
                 {onAddDeal && (
                   <Button
                     variant="ghost"
@@ -171,7 +164,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                     const dealDetail = deal as CrmDealDetail;
                     const contact = dealDetail.contact;
                     const contactName = contact
-                      ? `${contact.firstName} ${contact.lastName}`
+                      ? contactDisplayName(contact)
                       : t('Contact ID: {{contactId}}', { contactId: deal.contactId });
                     const initials = contact ? getInitials(contact.firstName, contact.lastName) : '?';
 
@@ -204,7 +197,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                               deal.type === 'ACHAT' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
                             }`}
                           >
-                            {deal.type}
+                            {dealTypeLabel(deal.type)}
                           </span>
                         </div>
 

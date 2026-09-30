@@ -53,6 +53,7 @@ import {
   resolveExpenseAccountsByCostCategoryTx
 } from './accounting';
 import { appendThirdPartyMovementTx } from './ledger';
+import { sumNetMovementsByAccount } from './third-party-totals';
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
 import { isSiteStockEnabledTx } from './stock-rapprochement';
@@ -310,8 +311,8 @@ export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenan
   // FR-010 / besoin B7 : un sac de ciment est toujours achete pour quelque
   // chose. Le rattachement est facultatif pour une prestation.
   const requiresSite = supplier.kind === 'MATERIALS' || supplier.kind === 'MIXED';
-  if (requiresSite && params.allocations.length === 0) {
-    throw badRequest('Un fournisseur de materiaux exige un rattachement a un chantier');
+  if (requiresSite && params.siteRequired !== false && params.allocations.length === 0) {
+    throw badRequest('Un fournisseur de matériaux exige un rattachement à un chantier');
   }
 
   if (params.lines.length === 0) {
@@ -353,6 +354,19 @@ export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenan
     unitPrice: line.unitPrice === null || line.unitPrice === undefined ? null : roundMoneyXof(line.unitPrice)
   }));
   const amount = roundMoneyXof(roundedLines.reduce((sum, line) => sum + line.amount, 0));
+
+  // Le brouillon doit toujours pouvoir etre valide : des imputations dont la
+  // somme differe du montant sont refusees des l'enregistrement, comme le fait
+  // l'ecran de saisie (BUG-2026-09-30-042). Une facture sans imputation
+  // (prestation) reste permise.
+  if (params.allocations.length > 0) {
+    const imputed = roundMoneyXof(params.allocations.reduce((sum, a) => sum + roundMoneyXof(a.amount), 0));
+    if (imputed !== amount) {
+      throw badRequest(
+        `La somme des imputations (${imputed}) ne correspond pas au montant de la facture (${amount}) : corrigez les imputations avant d'enregistrer.`
+      );
+    }
+  }
 
   // Le champ unique `siteId` de la facture n'est qu'un affichage — les
   // imputations, elles, portent chacune leur propre chantier. On y place le
@@ -925,25 +939,23 @@ export const getSuppliersBalance: GetSuppliersBalance = async (tenantId, filters
   const movementDateFilter = buildMovementDateFilter(filters?.range);
   const accountIds = supplierAccounts.map((a: any) => a.id);
 
-  const grouped = await prisma.thirdPartyMovement.groupBy({
-    by: ['accountId'],
-    where: {
-      tenantId,
-      accountId: { in: accountIds },
-      ...(movementDateFilter ? { movementDate: movementDateFilter } : {}),
-      ...(siteFilter
-        ? {
-            OR: [
-              { sourceType: 'SUPPLIER_INVOICE', sourceId: { in: siteFilter.invoiceIds } },
-              { sourceType: 'SUPPLIER_PAYMENT_ALLOCATION', sourceId: { in: siteFilter.allocationIds } }
-            ]
-          }
-        : {})
-    },
-    _sum: { debit: true, credit: true }
+  // Regle unique (`third-party-totals.ts`) : une piece annulee et sa
+  // contrepassation sont ecartees des deux cumuls.
+  const totals = await sumNetMovementsByAccount({
+    tenantId,
+    accountId: { in: accountIds },
+    ...(movementDateFilter ? { movementDate: movementDateFilter } : {}),
+    ...(siteFilter
+      ? {
+          OR: [
+            { sourceType: 'SUPPLIER_INVOICE', sourceId: { in: siteFilter.invoiceIds } },
+            { sourceType: 'SUPPLIER_PAYMENT_ALLOCATION', sourceId: { in: siteFilter.allocationIds } }
+          ]
+        }
+      : {})
   });
 
-  if (grouped.length === 0) {
+  if (totals.size === 0) {
     return { lines: [], totalBalance: 0, currency: DEFAULT_CURRENCY };
   }
 
@@ -954,14 +966,14 @@ export const getSuppliersBalance: GetSuppliersBalance = async (tenantId, filters
   // periode. Sans cette distinction, un fournisseur sans mouvement dans la
   // periode afficherait un solde nul et notre dette envers lui disparaitrait
   // de la balance (meme regle de lecture qu'au lot 1).
-  const lines: SuppliersBalanceLine[] = grouped.map((group: any) => {
-    const account = accountById.get(group.accountId);
+  const lines: SuppliersBalanceLine[] = Array.from(totals.entries()).map(([accountId, sums]) => {
+    const account: any = accountById.get(accountId);
     return {
       accountId: account.id,
       supplierId: account.supplier?.id ?? '',
       label: account.label,
-      totalBilled: roundMoneyXof(toAmountOrZero(group._sum.debit)),
-      totalSettled: roundMoneyXof(toAmountOrZero(group._sum.credit)),
+      totalBilled: sums.billed,
+      totalSettled: sums.settled,
       balance: roundMoneyXof(toAmountOrZero(account.balance)),
       currency: account.currency
     };

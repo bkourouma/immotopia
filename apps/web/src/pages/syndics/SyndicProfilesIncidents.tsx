@@ -27,7 +27,7 @@ import {
   createLotTenantProfile,
   createSyndicIncident,
   inviteCoOwnerToPortal,
-  listLotOwnerProfiles,
+  listLotOwnerProfilesWithSummary,
   listLotTenantProfiles,
   listProvidersContracts,
   listSyndicateLots,
@@ -39,6 +39,7 @@ import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitat
 import { LinkedProviderInvoices } from '../../components/syndics/LinkedProviderInvoices';
 import {
   CoOwnerPortalInvitation,
+  IncompleteOwnerShares,
   LotOwnerProfile,
   LotTenantProfile,
   ServiceProvider,
@@ -151,6 +152,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
   const [ownerProfiles, setOwnerProfiles] = useState<LotOwnerProfile[]>([]);
+  // Lots dont les parts totalisent moins de 100 % : calculé par l'API sur tous les profils.
+  const [incompleteShares, setIncompleteShares] = useState<IncompleteOwnerShares[]>([]);
   const [tenantProfiles, setTenantProfiles] = useState<LotTenantProfile[]>([]);
   const [incidents, setIncidents] = useState<SyndicateIncident[]>([]);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
@@ -215,7 +218,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
     setError(null);
     try {
       const [owners, tenants, incidentsData] = await Promise.all([
-        listLotOwnerProfiles(effectiveTenantId, syndicId),
+        listLotOwnerProfilesWithSummary(effectiveTenantId, syndicId),
         listLotTenantProfiles(effectiveTenantId, syndicId),
         listSyndicIncidents(effectiveTenantId, syndicId)
       ]);
@@ -225,7 +228,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
         listProperties(effectiveTenantId, { page: 1, limit: 1000 }),
         listProvidersContracts(effectiveTenantId, syndicId)
       ]);
-      setOwnerProfiles(owners);
+      setOwnerProfiles(owners.items);
+      setIncompleteShares(owners.incompleteLots);
       setTenantProfiles(tenants);
       setIncidents(incidentsData);
       setLots(lotsData);
@@ -256,6 +260,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
       ownerForm.resetFields();
       await loadData();
     } catch (err: any) {
+      // Parts au-delà de 100 % (409) : le message chiffré est reporté sous le champ fautif.
+      const shareError = (err.response?.data?.errors as Array<{ field: string; message: string }> | undefined)?.find(
+        fieldErr => fieldErr.field === 'ownershipPercentage'
+      );
+      if (shareError) ownerForm.setFields([{ name: 'ownershipPercentage', errors: [shareError.message] }]);
       message.error(err.response?.data?.error || t('Création profil propriétaire impossible'));
     } finally {
       setSubmitting(false);
@@ -489,6 +498,22 @@ export const SyndicProfilesIncidents: React.FC = () => {
         ) : (
           <>
             <Card title={t('Profils propriétaires')}>
+              {incompleteShares.length > 0 ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message={t('Quotes-parts incomplètes')}
+                  description={incompleteShares
+                    .map(item =>
+                      t('Lot {{lot}} : {{percentage}} % attribués', {
+                        lot: item.lotNumber,
+                        percentage: item.totalPercentage
+                      })
+                    )
+                    .join(' ; ')}
+                />
+              ) : null}
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -813,7 +838,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
             />
           </Form.Item>
           <Form.Item label={t('Part de propriete (%)')} name="ownershipPercentage" rules={[{ required: true }]}>
-            <InputNumber min={0.01} max={100} style={{ width: '100%' }} />
+            <InputNumber min={0.01} max={100} step={0.01} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label={t('Date de debut')} name="ownedSince" rules={[{ required: true }]}>
             <Input type="date" />
@@ -919,11 +944,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { value: 'BREAKDOWN', label: 'Panne' },
-                { value: 'LEAK', label: 'Fuite' },
-                { value: 'VANDALISM', label: 'Vandalisme' },
-                { value: 'SAFETY', label: 'Securite' },
-                { value: 'OTHER', label: 'Autre' }
+                { value: 'BREAKDOWN', label: t('Panne') },
+                { value: 'LEAK', label: t('Fuite') },
+                { value: 'VANDALISM', label: t('Vandalisme') },
+                { value: 'SAFETY', label: t('Sécurité') },
+                { value: 'OTHER', label: t('Autre') }
               ]}
             />
           </Form.Item>
@@ -932,10 +957,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { value: 'LOW', label: 'Basse' },
-                { value: 'MEDIUM', label: 'Moyenne' },
-                { value: 'HIGH', label: 'Haute' },
-                { value: 'CRITICAL', label: 'Critique' }
+                { value: 'LOW', label: t('Basse') },
+                { value: 'MEDIUM', label: t('Moyenne') },
+                { value: 'HIGH', label: t('Haute') },
+                { value: 'CRITICAL', label: t('Critique') }
               ]}
             />
           </Form.Item>
@@ -1009,9 +1034,9 @@ export const SyndicProfilesIncidents: React.FC = () => {
               optionFilterProp="label"
               options={[
                 { value: 'SYNDICATE_BUDGET', label: t('Budget syndic') },
-                { value: 'INSURANCE', label: 'Assurance' },
+                { value: 'INSURANCE', label: t('Assurance') },
                 { value: 'LOT_OWNER', label: t('Lot propriétaire') },
-                { value: 'THIRD_PARTY', label: 'Tiers' }
+                { value: 'THIRD_PARTY', label: t('Tiers') }
               ]}
             />
           </Form.Item>

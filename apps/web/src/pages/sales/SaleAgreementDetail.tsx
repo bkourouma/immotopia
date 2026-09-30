@@ -22,7 +22,7 @@ import {
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addSaleCondition,
   cancelSaleAgreement,
@@ -34,8 +34,13 @@ import {
   updateSaleAgreement,
   updateSaleCondition
 } from '../../services/sales-service';
-import type { SaleConditionDto, SaleConditionStatus, SaleMilestoneDto } from '../../services/sales-service';
-import { detailKey, STALE_TIME } from '../../lib/query-keys';
+import type {
+  SaleAgreementDetailDto,
+  SaleConditionDto,
+  SaleConditionStatus,
+  SaleMilestoneDto
+} from '../../services/sales-service';
+import { detailKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { MoneyValue, PageHeader, StateBlock, StatusTag } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { DEPOSIT_HOLDER_LABELS, dateCourte } from './helpers';
@@ -79,6 +84,7 @@ const STEP_INDEX: Record<string, number> = { DRAFT: 0, SIGNED: 1, COMPLETED: 2 }
 export const SaleAgreementDetail: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId, id } = useParams<{ tenantId: string; id: string }>();
+  const queryClient = useQueryClient();
 
   const {
     data: agreement,
@@ -91,6 +97,24 @@ export const SaleAgreementDetail: React.FC = () => {
     enabled: Boolean(tenantId && id),
     staleTime: STALE_TIME.list
   });
+
+  /**
+   * Après une mutation d'état (signature, acte) : le compromis, le mandat, les
+   * offres, les commissions et le tableau de bord des ventes changent tous.
+   * On les invalide, puis on recharge la fiche et on ATTEND le résultat.
+   */
+  const rafraichirApresMutation = async (dto?: Partial<SaleAgreementDetailDto>) => {
+    if (dto)
+      queryClient.setQueryData(
+        detailKey('sale-agreements', tenantId, id ?? ''),
+        (ancien: SaleAgreementDetailDto | undefined) => (ancien ? { ...ancien, ...dto } : ancien)
+      );
+    for (const entite of ['sale-agreements', 'sale-mandates', 'sale-offers', 'sale-commissions', 'sales-pipeline']) {
+      if (entite === 'sale-agreements') continue;
+      void queryClient.invalidateQueries({ queryKey: entityKeyPrefix(entite, tenantId) });
+    }
+    await refetch();
+  };
 
   // --- Édition prix / dépôt / notaire / dates -------------------------------
   const [editForm] = Form.useForm<EditFormValues>();
@@ -137,10 +161,10 @@ export const SaleAgreementDetail: React.FC = () => {
     if (!tenantId || !id) return;
     setSigning(true);
     try {
-      await signSaleAgreement(tenantId, id, signedAt.format('YYYY-MM-DD'));
+      const dto = await signSaleAgreement(tenantId, id, signedAt.format('YYYY-MM-DD'));
       message.success(t('Compromis signé.'));
       setSignOpen(false);
-      refetch();
+      await rafraichirApresMutation(dto);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('La signature a échoué.'));
     } finally {
@@ -157,10 +181,10 @@ export const SaleAgreementDetail: React.FC = () => {
     if (!tenantId || !id) return;
     setCompleting(true);
     try {
-      await completeSaleAgreement(tenantId, id, deedDate.format('YYYY-MM-DD'));
+      const dto = await completeSaleAgreement(tenantId, id, deedDate.format('YYYY-MM-DD'));
       message.success(t('Vente conclue : acte signé.'));
       setCompleteOpen(false);
-      refetch();
+      await rafraichirApresMutation(dto);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('Le passage à l’acte a échoué.'));
     } finally {

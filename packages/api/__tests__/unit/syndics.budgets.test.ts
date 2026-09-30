@@ -167,6 +167,41 @@ describe('Syndics budget queries - US4', () => {
     expect(mockTx.$executeRaw).toHaveBeenCalled();
   });
 
+  it('ne cree aucun appel pour un lot dont la quote-part est nulle (BUG-050)', async () => {
+    mockPrisma.syndicateBudget.findFirst.mockResolvedValue({
+      id: 'budget-1',
+      status: 'APPROVED',
+      totalAmount: 1000000,
+      currency: 'XOF',
+      allocations: [
+        { lotId: 'lot-b01', totalAllocated: 0 },
+        { lotId: 'lot-b02', totalAllocated: 0 },
+        { lotId: 'lot-a01', totalAllocated: 1000000 }
+      ]
+    });
+    mockPrisma.syndicateLot.findMany.mockResolvedValue([
+      { id: 'lot-b01', generalShares: 100 },
+      { id: 'lot-b02', generalShares: 100 },
+      { id: 'lot-a01', generalShares: 100 }
+    ]);
+    mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
+    mockTx.chargeCallBatch.findUnique.mockResolvedValue({ id: 'batch-1', chargeCalls: [] });
+    mockTx.chargeCall.create.mockClear();
+    mockTx.chargeCall.create.mockImplementation(async ({ data }: any) => ({ id: `call-${data.lotId}`, ...data }));
+
+    await generateChargeCallsFromBudget('tenant-1', 'syndic-1', 'budget-1', {
+      label: 'Travaux ascenseur',
+      period: '2026-EXC',
+      dueDate: new Date('2026-03-31T00:00:00.000Z'),
+      batchType: 'EXCEPTIONAL'
+    });
+
+    expect(mockTx.chargeCall.create).toHaveBeenCalledTimes(1);
+    expect(mockTx.chargeCall.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ lotId: 'lot-a01', amount: 1000000 })
+    });
+  });
+
   it('prend les verrous de lot par identifiant croissant, quel que soit l ordre des allocations', async () => {
     mockPrisma.syndicateBudget.findFirst.mockResolvedValue({
       id: 'budget-1',
@@ -178,6 +213,10 @@ describe('Syndics budget queries - US4', () => {
         { lotId: 'lot-a', totalAllocated: 40000 }
       ]
     });
+    mockPrisma.syndicateLot.findMany.mockResolvedValue([
+      { id: 'lot-a', generalShares: 40 },
+      { id: 'lot-b', generalShares: 60 }
+    ]);
     mockTx.chargeCallBatch.create.mockResolvedValue({ id: 'batch-1' });
     mockTx.chargeCallBatch.findUnique.mockResolvedValue({ id: 'batch-1', chargeCalls: [] });
     mockTx.chargeCall.create.mockImplementation(async ({ data }: any) => ({ id: `call-${data.lotId}`, ...data }));

@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import { t } from '../i18n';
+import { BadRequestError } from './error-middleware';
 
 /**
  * Middleware to enforce tenant isolation for CRM operations
@@ -65,7 +67,7 @@ export const enforcePropertyTenantIsolation = (req: Request, res: Response, next
 export function getTenantIdFromRequest(req: Request): string {
   const tenantId = req.tenantContext?.tenantId || req.crmTenantId;
   if (!tenantId) {
-    throw new Error('Tenant ID is required for CRM operations');
+    throw new BadRequestError(t("L'agence est requise pour les opérations CRM"));
   }
   return tenantId;
 }

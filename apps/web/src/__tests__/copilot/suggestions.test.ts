@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getCopilotPageContext } from '../../components/copilot/copilot-page-context';
-import { getCopilotSuggestions } from '../../components/copilot/copilot-suggestions';
+import { getCopilotSuggestions, getCopilotWelcome } from '../../components/copilot/copilot-suggestions';
 import type { CopilotToolName } from '../../types/copilot';
 
 const ALL: CopilotToolName[] = [
@@ -65,5 +65,21 @@ describe('suggestions complètes', () => {
     ]) {
       for (const s of getCopilotSuggestions(path, ALL)) expect(s.text).not.toMatch(/…|\.\.\./);
     }
+  });
+});
+
+describe('getCopilotWelcome', () => {
+  it('cite tout avec tous les outils', () => {
+    expect(getCopilotWelcome(ALL)).toBe('Posez une question sur vos biens, vos baux ou vos documents.');
+  });
+
+  it('ne cite pas les baux sans outil de gestion locative (pack sans RENTAL)', () => {
+    const text = getCopilotWelcome(['search_properties', 'list_property_documents']);
+    expect(text).toBe('Posez une question sur vos biens ou vos documents.');
+    expect(text).not.toMatch(/bail|baux/);
+  });
+
+  it('reste neutre sans outil', () => {
+    expect(getCopilotWelcome([])).not.toMatch(/bien|bail|baux|document/);
   });
 });

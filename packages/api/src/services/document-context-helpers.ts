@@ -243,6 +243,41 @@ export function penaltyRateLabel(
   return `${num.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} %`;
 }
 
+/** Repli neutre de la clause de penalite : parametre absent ou incomplet. */
+export const PENALTY_CLAUSE_FALLBACK = "l'application de pénalités selon les conditions convenues entre les parties";
+
+/**
+ * Clause de penalite de retard telle que le bail l'applique reellement
+ * (`rental-penalty-service`) : une seule fois par echeance en retard, sur le
+ * loyer ou sur le solde impaye, ou a montant forfaitaire ; plafond eventuel.
+ * Le delai de grace est un autre champ du modele (`DELAI_GRACE`).
+ * Formulation a faire valider juridiquement.
+ *
+ * @param fixedAmountText montant forfaitaire deja formate (avec devise).
+ * @param capAmountText plafond deja formate (avec devise), ou vide.
+ */
+export function penaltyClauseLabel(
+  mode: string | null | undefined,
+  rate: number | string | null | undefined,
+  fixedAmount: number | string | null | undefined,
+  fixedAmountText: string,
+  capAmountText = ''
+): string {
+  const percent = Number(rate);
+  const percentText = `${percent.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} %`;
+  let clause: string;
+  if (mode === 'FIXED_AMOUNT' && Number(fixedAmount) > 0) {
+    clause = `l'application d'une pénalité forfaitaire de ${fixedAmountText}, appliquée une seule fois par échéance en retard`;
+  } else if (mode === 'PERCENT_OF_RENT' && percent > 0) {
+    clause = `l'application d'une pénalité de ${percentText} du loyer de l'échéance en retard, appliquée une seule fois par échéance`;
+  } else if (mode === 'PERCENT_OF_BALANCE' && percent > 0) {
+    clause = `l'application d'une pénalité de ${percentText} du solde impayé de l'échéance en retard, appliquée une seule fois par échéance`;
+  } else {
+    return PENALTY_CLAUSE_FALLBACK;
+  }
+  return capAmountText ? `${clause}, dans la limite de ${capAmountText}` : clause;
+}
+
 const FURNISHING_LABELS: Record<string, string> = {
   FURNISHED: 'Meublé',
   UNFURNISHED: 'Non meublé',

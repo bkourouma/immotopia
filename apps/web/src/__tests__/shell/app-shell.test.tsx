@@ -10,6 +10,12 @@ import { getNavigation } from '../../navigation/model';
 // `useLanguage` leve, et c'est voulu — un provider oublie doit se voir.
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 
+// Lecture des droits d'abonnement : échec immédiat (menu non restreint). Sans
+// ce mock, l'appel réseau met du temps à échouer et le menu reste au socle.
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: () => Promise.reject(new Error('hors ligne'))
+}));
+
 /**
  * La coquille est le changement le plus étendu du Lot 1 : elle sert les 100
  * écrans et choisit sa navigation à partir du persona. Ces tests la montent
@@ -90,7 +96,7 @@ function renderShell(auth: AuthContextType, path: string) {
 }
 
 describe('AppShell — montage par persona', () => {
-  it('rend le contenu de la route dans la coquille, pour chaque persona', () => {
+  it('rend le contenu de la route dans la coquille, pour chaque persona', async () => {
     for (const [auth, path] of [
       [collaborateur, `/tenant/${TENANT}/rental/leases`],
       [locataire, '/tenant/lease'],
@@ -98,7 +104,8 @@ describe('AppShell — montage par persona', () => {
       [superAdmin, '/admin/tenants']
     ] as const) {
       const { unmount } = renderShell(auth, path);
-      expect(screen.getByTestId('contenu')).toBeInTheDocument();
+      // L'écran d'un module d'agence attend la lecture des droits (ici : échec, donc rien de restreint).
+      expect(await screen.findByTestId('contenu')).toBeInTheDocument();
       unmount();
     }
   });
@@ -111,8 +118,10 @@ describe('AppShell — montage par persona', () => {
 });
 
 describe('AppShell — barre d’onglets basse', () => {
-  it('donne 5 onglets au collaborateur, dont « Plus »', () => {
+  it('donne 5 onglets au collaborateur, dont « Plus »', async () => {
     renderShell(collaborateur, '/dashboard');
+    // Avant la lecture des droits, la barre ne porte que le socle.
+    await screen.findByText('Encaisser');
     const bar = screen.getByRole('navigation', { name: 'Navigation principale' });
     const boutons = within(bar).getAllByRole('button');
     expect(boutons).toHaveLength(5);
@@ -132,8 +141,9 @@ describe('AppShell — barre d’onglets basse', () => {
     expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).not.toBeInTheDocument();
   });
 
-  it('marque l’onglet actif par aria-current', () => {
+  it('marque l’onglet actif par aria-current', async () => {
     renderShell(collaborateur, `/tenant/${TENANT}/rental/installments`);
+    await screen.findByText('Encaisser');
     const bar = screen.getByRole('navigation', { name: 'Navigation principale' });
     const actif = within(bar).getByText('Encaisser').closest('button');
     expect(actif).toHaveAttribute('aria-current', 'page');

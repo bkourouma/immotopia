@@ -8,6 +8,8 @@ import {
   deleteAllInstallments
 } from '../services/rental-installment-service';
 import { RentalInstallmentStatus } from '@prisma/client';
+import { parsePagination } from '../utils/pagination-helper';
+import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Generate installments for a lease
@@ -83,8 +85,7 @@ export async function listInstallmentsHandler(req: Request, res: Response): Prom
       filters.overdue = true;
     }
 
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const { page, limit } = parsePagination(req.query);
 
     const result = await listInstallments(tenantId, filters, { page, limit });
 
@@ -93,6 +94,7 @@ export async function listInstallmentsHandler(req: Request, res: Response): Prom
       ...result
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération des échéances'

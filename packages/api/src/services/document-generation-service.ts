@@ -1,6 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { AppError, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { logAuditEvent } from './audit-service';
 import { DocumentType, RentalDocumentStatus, RentalDocumentType } from '@prisma/client';
@@ -101,6 +101,97 @@ function getPeriodKey(docType: DocumentType, date?: Date): string {
   }
 }
 
+/** Types de bien dont la location releve du bail commercial. */
+const COMMERCIAL_PROPERTY_TYPES = ['BUREAU', 'BOUTIQUE_COMMERCIAL', 'ENTREPOT_INDUSTRIEL'];
+
+/**
+ * Modele de contrat d'un bail : commercial pour un local professionnel
+ * (bureau, boutique, entrepot), habitation sinon. Le bail est cherche dans
+ * l'agence : un bail d'une autre agence est introuvable.
+ */
+export async function resolveLeaseDocumentType(tenantId: string, leaseId: string): Promise<DocumentType> {
+  const lease = await prisma.rentalLease.findFirst({
+    where: { id: leaseId, tenant_id: tenantId },
+    select: { property: { select: { propertyType: true } } }
+  });
+  if (!lease) {
+    throw new NotFoundError(t('Bail introuvable'));
+  }
+  return COMMERCIAL_PROPERTY_TYPES.includes(String(lease.property?.propertyType))
+    ? DocumentType.LEASE_COMMERCIAL
+    : DocumentType.LEASE_HABITATION;
+}
+
+/**
+ * Paiement a l'origine d'une quittance. `sourceKey` est un paiement ; quand
+ * c'est un bail (bouton « Quittance » du bail), la quittance porte sur le
+ * paiement affecte a `installmentId`, sinon sur le dernier paiement encaisse.
+ */
+export async function resolveReceiptPaymentId(
+  tenantId: string,
+  sourceKey: string,
+  installmentId?: string
+): Promise<string> {
+  const payment = await prisma.rentalPayment.findFirst({
+    where: { id: sourceKey, tenant_id: tenantId },
+    select: { id: true }
+  });
+  if (payment) return payment.id;
+
+  const lease = await prisma.rentalLease.findFirst({
+    where: { id: sourceKey, tenant_id: tenantId },
+    select: { id: true }
+  });
+  if (!lease) {
+    throw new NotFoundError(t('Paiement introuvable'));
+  }
+
+  const paid = await prisma.rentalPayment.findFirst({
+    where: {
+      tenant_id: tenantId,
+      lease_id: lease.id,
+      status: 'SUCCESS',
+      ...(installmentId ? { allocations: { some: { installment_id: installmentId, tenant_id: tenantId } } } : {})
+    },
+    orderBy: [{ succeeded_at: 'desc' }, { initiated_at: 'desc' }],
+    select: { id: true }
+  });
+  if (!paid) {
+    throw new BadRequestError(
+      t('Aucun paiement encaissé pour ce bail : générez la quittance depuis un paiement ou une échéance payée.')
+    );
+  }
+  return paid.id;
+}
+
+/**
+ * Le numero d'un contrat est celui du bail : un seul contrat par bail (index
+ * unique `(tenant_id, document_number)`). Une seconde generation est refusee
+ * en 409 avec l'identifiant du document existant, a regenerer.
+ */
+function existingContractConflict(existingDocumentId: string | null): AppError {
+  return new AppError(
+    t('Un contrat existe déjà pour ce bail : utilisez « Régénérer ».'),
+    409,
+    'CONFLICT',
+    undefined,
+    existingDocumentId ? { existingDocumentId } : undefined
+  );
+}
+
+async function assertNoExistingLeaseContract(tenantId: string, leaseId: string): Promise<void> {
+  const lease = await prisma.rentalLease.findFirst({
+    where: { id: leaseId, tenant_id: tenantId },
+    select: { lease_number: true }
+  });
+  if (!lease?.lease_number) return;
+  const existing = await prisma.rentalDocument.findFirst({
+    where: { tenant_id: tenantId, document_number: lease.lease_number },
+    select: { id: true }
+  });
+  if (existing) throw existingContractConflict(existing.id);
+}
+
 /**
  * Generate a document
  */
@@ -125,6 +216,16 @@ export async function generateDocument(
     templateId,
     actorUserId
   });
+
+  // Une quittance porte sur un paiement : un bail designe son dernier paiement encaisse.
+  if (docType === DocumentType.RENT_RECEIPT) {
+    sourceKey = await resolveReceiptPaymentId(tenantId, sourceKey, additionalParams?.installmentId);
+  }
+
+  // Un contrat existe deja pour ce bail : refus avant tout rendu.
+  if (docType === DocumentType.LEASE_HABITATION || docType === DocumentType.LEASE_COMMERCIAL) {
+    await assertNoExistingLeaseContract(tenantId, sourceKey);
+  }
 
   // 1. Resolve template
   const template = await resolveTemplate(tenantId, docType, templateId);
@@ -160,6 +261,14 @@ export async function generateDocument(
       templateId: template.id,
       warnings: validation.warnings
     });
+  }
+
+  // 3b. Un recu porte le numero du document (RCU-...) : il est attribue avant le
+  // rendu, sans quoi le recu afficherait une reference de paiement.
+  let reservedNumber: string | undefined;
+  if (docType === DocumentType.RENT_RECEIPT) {
+    reservedNumber = await generateDocumentNumber(tenantId, docType, getPeriodKey(docType));
+    context.RECU_NUMERO = reservedNumber;
   }
 
   // 4. Render DOCX
@@ -239,7 +348,7 @@ export async function generateDocument(
   } else {
     // For other document types, generate document number as before
     const periodKey = getPeriodKey(docType);
-    documentNumber = await generateDocumentNumber(tenantId, docType, periodKey);
+    documentNumber = reservedNumber ?? (await generateDocumentNumber(tenantId, docType, periodKey));
   }
 
   // 8. Save file
@@ -263,61 +372,73 @@ export async function generateDocument(
   }
 
   // 10. Create document record
-  const document = await prisma.rentalDocument.create({
-    data: {
-      tenant_id: tenantId,
-      type: rentalDocType,
-      status: RentalDocumentStatus.FINAL,
-      lease_id: leaseId,
-      installment_id: installmentId,
-      payment_id: paymentId,
-      document_number: documentNumber,
-      file_path: filePath,
-      file_hash: fileHash,
-      template_id: template.id,
-      template_hash: templateHash,
-      revision: 1,
-      issued_at: new Date(),
-      created_by_user_id: actorUserId,
-      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    },
-    include: {
-      lease: {
-        select: {
-          id: true,
-          lease_number: true
-        }
+  const document = await prisma.rentalDocument
+    .create({
+      data: {
+        tenant_id: tenantId,
+        type: rentalDocType,
+        status: RentalDocumentStatus.FINAL,
+        lease_id: leaseId,
+        installment_id: installmentId,
+        payment_id: paymentId,
+        document_number: documentNumber,
+        file_path: filePath,
+        file_hash: fileHash,
+        template_id: template.id,
+        template_hash: templateHash,
+        revision: 1,
+        issued_at: new Date(),
+        created_by_user_id: actorUserId,
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       },
-      installment: {
-        select: {
-          id: true,
-          period_year: true,
-          period_month: true
-        }
-      },
-      payment: {
-        select: {
-          id: true,
-          amount: true,
-          method: true
-        }
-      },
-      template: {
-        select: {
-          id: true,
-          name: true,
-          doc_type: true
-        }
-      },
-      createdBy: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
+      include: {
+        lease: {
+          select: {
+            id: true,
+            lease_number: true
+          }
+        },
+        installment: {
+          select: {
+            id: true,
+            period_year: true,
+            period_month: true
+          }
+        },
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            method: true
+          }
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            doc_type: true
+          }
+        },
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
         }
       }
-    }
-  });
+    })
+    .catch(async (error: any) => {
+      // Course : un contrat du meme numero a ete cree entre-temps (index unique).
+      if (error?.code === 'P2002') {
+        const existing = await prisma.rentalDocument.findFirst({
+          where: { tenant_id: tenantId, document_number: documentNumber },
+          select: { id: true }
+        });
+        throw existingContractConflict(existing?.id ?? null);
+      }
+      throw error;
+    });
 
   logger.info('Document generated', {
     documentId: document.id,
@@ -386,6 +507,11 @@ export async function regenerateDocument(
   const validation = validateContext(context, template.placeholders as string[]);
   if (validation.missing.length > 0) {
     throw new BadRequestError(`Champs critiques manquants: ${validation.missing.join(', ')}`);
+  }
+
+  // Un recu regenere garde son numero de document.
+  if (docType === DocumentType.RENT_RECEIPT && existingDoc.document_number) {
+    context.RECU_NUMERO = existingDoc.document_number;
   }
 
   // Render DOCX

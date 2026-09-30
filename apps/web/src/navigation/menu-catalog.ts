@@ -161,13 +161,21 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'patrimoine-overview': ['PROPERTIES_VIEW'],
   'patrimoine-performance': ['PROPERTIES_VIEW'],
   'patrimoine-work-programs': ['PROPERTIES_VIEW'],
-  'patrimoine-statements': ['PROPERTIES_VIEW'],
+  'patrimoine-statements': ['OWNER_STATEMENTS_VIEW'],
   'patrimoine-entities': ['PROPERTIES_VIEW'],
   'patrimoine-tax-parameters': ['PROPERTIES_VIEW'],
   maintenance: ['MAINTENANCE_ADMIN', 'MAINTENANCE_TENANT'],
   'maintenance-agence-tickets': ['MAINTENANCE_ADMIN'],
   'maintenance-mes-demandes': ['MAINTENANCE_TENANT', 'MAINTENANCE_ADMIN'],
   'maintenance-agence-vendors': ['MAINTENANCE_ADMIN'],
+
+  // Syndic (BUG-096) : droits dédiés, plus ceux des biens.
+  syndic: ['SYNDIC_VIEW'],
+  'syndics-list': ['SYNDIC_VIEW'],
+  'syndics-mandating-agencies': ['SYNDIC_VIEW'],
+  'syndics-detail': ['SYNDIC_VIEW'],
+  'syndics-finances': ['SYNDIC_VIEW'],
+  'syndics-assemblees': ['SYNDIC_VIEW'],
 
   // Ventes immobilières (lot 9).
   ventes: ['CRM_DEALS_VIEW', 'FINANCE_ACCOUNTS_READ'],

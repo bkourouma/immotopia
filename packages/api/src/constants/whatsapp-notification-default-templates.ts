@@ -1,53 +1,53 @@
 ﻿/**
- * Messages par defaut (texte seul) pour les notifications WhatsApp.
+ * Messages par défaut (texte seul) pour les notifications WhatsApp.
  * Variables au format {{nom}} (ex: {{ticketTitle}}, {{agencyName}}).
  */
 import type { WhatsappNotificationKey } from './whatsapp-notification-keys';
 
 export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificationKey, string> = {
   MAINTENANCE_TICKET_CREATED_AGENCY:
-    'Nouveau ticket de maintenance : {{ticketTitle}}. Locataire : {{renterName}}. Propriete : {{propertyReference}}. Cree le {{ticketCreatedAt}}. {{agencyName}}.',
+    'Nouveau ticket de maintenance : {{ticketTitle}}. Locataire : {{renterName}}. Propriété : {{propertyReference}}. Créé le {{ticketCreatedAt}}. {{agencyName}}.',
   MAINTENANCE_TICKET_CREATED_TENANT:
-    'Bonjour {{tenantName}}, votre demande de maintenance "{{ticketTitle}}" a bien ete enregistree par {{agencyName}}. Propriete : {{propertyReference}}. Suivez votre ticket dans le portail locataire.',
+    'Bonjour {{tenantName}}, votre demande de maintenance "{{ticketTitle}}" a bien été enregistrée par {{agencyName}}. Propriété : {{propertyReference}}. Suivez votre ticket dans le portail locataire.',
   MAINTENANCE_TICKET_STATUS_CHANGED_TENANT:
-    'Bonjour {{tenantName}}, le statut de votre ticket "{{ticketTitle}}" a ete mis a jour : {{newStatusLabel}}. {{agencyName}}.',
+    'Bonjour {{tenantName}}, le statut de votre ticket "{{ticketTitle}}" a été mis à jour : {{newStatusLabel}}. {{agencyName}}.',
   PAYMENT_APPROVED_TENANT:
-    'Bonjour {{tenantName}}, votre declaration de paiement a ete approuvee par {{agencyName}}. Merci.',
+    'Bonjour {{tenantName}}, votre déclaration de paiement a été approuvée par {{agencyName}}. Merci.',
   PAYMENT_REJECTED_TENANT:
-    'Bonjour {{tenantName}}, votre declaration de paiement a ete rejetee par {{agencyName}}. Contactez l agence pour plus d informations.',
+    'Bonjour {{tenantName}}, votre déclaration de paiement a été rejetée par {{agencyName}}. Contactez l’agence pour plus d’informations.',
   PAYMENT_ALLOCATED_TENANT:
-    'Bonjour {{tenantName}}, votre paiement a ete alloue aux echeances ({{amountAllocated}}). Bail {{leaseLabel}}. {{agencyName}}.',
+    'Bonjour {{tenantName}}, votre paiement a été alloué aux échéances ({{amountAllocated}}). Bail {{leaseLabel}}. {{agencyName}}.',
   INSTALLMENT_DUE_REMINDER:
-    'Bonjour {{tenantName}}, rappel : votre echeance de loyer est prevue le {{dueDate}}. Montant : {{amount}}. {{agencyName}}.',
+    'Bonjour {{tenantName}}, rappel : votre échéance de loyer est prévue le {{dueDate}}. Montant : {{amount}}. {{agencyName}}.',
   INSTALLMENT_OVERDUE:
-    'Bonjour {{tenantName}}, votre echeance du {{dueDate}} n a pas ete reglee. Merci de regulariser au plus tot. {{agencyName}}.',
+    'Bonjour {{tenantName}}, votre échéance du {{dueDate}} n’a pas été réglée. Merci de régulariser au plus tôt. {{agencyName}}.',
   LEASE_ACTIVATED:
     'Bonjour {{tenantName}}, votre bail {{leaseLabel}} a été activé. Période : {{leaseStartDate}} à {{leaseEndDate}}. Loyer : {{rentAmount}}. Connexion : {{loginUrl}}. Mot de passe oublié : {{forgotPasswordUrl}}. {{agencyName}} vous souhaite une bonne installation.',
   LEASE_ENDING_SOON:
-    'Bonjour {{tenantName}}, votre bail se termine bientot ({{endDate}}). Pensez a prendre contact avec {{agencyName}} pour la suite.',
+    'Bonjour {{tenantName}}, votre bail se termine bientôt ({{endDate}}). Pensez à prendre contact avec {{agencyName}} pour la suite.',
   DEPOSIT_MOVEMENT_TENANT:
-    'Bonjour {{tenantName}}, un mouvement sur votre depot de garantie : {{movementTypeLabel}}, {{amount}} {{currency}}. Bail {{leaseLabel}}. {{agencyName}}.',
-  APPOINTMENT_REMINDER: 'Rappel : vous avez un rendez-vous prevu le {{appointmentDate}}. {{agencyName}}.',
+    'Bonjour {{tenantName}}, un mouvement sur votre dépôt de garantie : {{movementTypeLabel}}, {{amount}} {{currency}}. Bail {{leaseLabel}}. {{agencyName}}.',
+  APPOINTMENT_REMINDER: 'Rappel : vous avez un rendez-vous prévu le {{appointmentDate}}. {{agencyName}}.',
   DEAL_STAGE_CHANGED:
-    'Bonjour {{contactName}}, l etape de votre affaire a ete mise a jour : {{stageLabel}}. {{agencyName}}.',
+    'Bonjour {{contactName}}, l’étape de votre affaire a été mise à jour : {{stageLabel}}. {{agencyName}}.',
   CRM_CONTACT_GROUP_INVITE:
-    'Bonjour {{contactName}}, rejoignez notre groupe WhatsApp pour recevoir les nouvelles proprietes disponibles.\nLien d invitation:\n{{inviteLink}}',
+    'Bonjour {{contactName}}, rejoignez notre groupe WhatsApp pour recevoir les nouvelles propriétés disponibles.\nLien d’invitation :\n{{inviteLink}}',
   PROPERTY_PUBLISHED_GROUP_BROADCAST:
     '✨ *NOUVEAU BIEN DISPONIBLE*\n🏠 *{{propertyTitle}}*\n\n🏷️ Type: {{propertyTypeLabel}}\n🔁 Transaction: {{transactionModesLabel}}\n💰 Prix: *{{propertyPrice}}*\n📍 Adresse: {{propertyAddress}}\n🧭 Zone: {{locationZone}}\n\n📌 *Caractéristiques*\n• Surface: {{surfaceAreaLabel}}\n• Pièces: {{roomsLabel}}\n• Chambres: {{bedroomsLabel}}\n• SDB: {{bathroomsLabel}}\n• Ameublement: {{furnishingStatusLabel}}\n• Disponibilité: {{availabilityLabel}}\n\n📝 {{propertySummary}}\n\n👉 Voir l’annonce:\n{{propertyPublicUrl}}\n\n⏱️ Publié le {{publishedAtLabel}}',
   PORTAL_ACCOUNT_CREATED:
-    'Bonjour {{userName}}, votre compte ImmoTopia a ete cree pour {{tenantName}}. Definissez votre mot de passe ici :\n{{resetUrl}}',
+    'Bonjour {{userName}}, votre compte ImmoTopia a été créé pour {{tenantName}}. Définissez votre mot de passe ici :\n{{resetUrl}}',
   OWNER_STATEMENT_SENT:
     'Bonjour {{ownerName}}, votre relevé de gérance pour la période {{period}} est disponible. Loyers encaissés : {{totalRevenue}} {{currency}}, honoraires : {{managementFees}} {{currency}}, TVA : {{managementFeesVat}} {{currency}}, dépenses : {{totalExpenses}} {{currency}}. Net à vous reverser : {{netAmount}} {{currency}}.',
   CHARGE_CALL_ISSUED:
     'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.',
   CHARGE_CALL_REMINDER:
-    'Bonjour {{ownerName}}, rappel pour l appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, rappel pour l’appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.',
   GENERAL_MEETING_CONVOCATION:
-    'Bonjour {{ownerName}}, vous etes convoque a l assemblee generale de la copropriete {{syndicateName}} le {{meetingDate}} a {{meetingTime}}, lieu : {{meetingLocation}}.',
+    'Bonjour {{ownerName}}, vous êtes convoqué(e) à l’assemblée générale de la copropriété {{syndicateName}} le {{meetingDate}} à {{meetingTime}}, lieu : {{meetingLocation}}.',
   GENERAL_MEETING_MINUTES:
-    'Bonjour {{ownerName}}, le proces-verbal de l assemblee generale de la copropriete {{syndicateName}} est disponible ici : {{minutesUrl}}',
+    'Bonjour {{ownerName}}, le procès-verbal de l’assemblée générale de la copropriété {{syndicateName}} est disponible ici : {{minutesUrl}}',
   CONTRACT_RENEWAL_ALERT:
-    'Alerte contrat : le contrat {{contractNature}} du prestataire {{providerName}} pour la copropriete {{syndicateName}} arrive a echeance le {{contractEndDate}}.',
+    'Alerte contrat : le contrat {{contractNature}} du prestataire {{providerName}} pour la copropriété {{syndicateName}} arrive à échéance le {{contractEndDate}}.',
   COMMON_AREA_INCIDENT:
-    'Incident partie commune : {{assetName}} dans la copropriete {{syndicateName}}. Description : {{incidentDescription}}.'
+    'Incident partie commune : {{assetName}} dans la copropriété {{syndicateName}}. Description : {{incidentDescription}}.'
 };

@@ -370,7 +370,7 @@ export const BonDeCommande: React.FC = () => {
   if (modeCreation) {
     return (
       <>
-        <PageHeader title={t('Nouveau bon de commande')} breadcrumbs={[...filAriane, { label: 'Nouveau' }]} />
+        <PageHeader title={t('Nouveau bon de commande')} breadcrumbs={[...filAriane, { label: t('Nouveau') }]} />
         <Card>
           <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
             <div style={{ minWidth: 220 }}>

@@ -110,6 +110,8 @@ export interface ProvisionTenantResult {
     acceptUrl: string;
   };
   emailSent: boolean;
+  /** Rejeu : l'agence existait déjà, l'invitation n'a pas été régénérée (`acceptUrl` vide). */
+  alreadyExisted?: boolean;
 }
 
 export interface ProvisionTenantResponse {

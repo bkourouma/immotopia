@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
 import { httpUrl } from '../safe-url';
+import { MAX_MONTHLY_PENALTY_RATE } from './finance-utils';
 
 const uuidSchema = z.string().uuid();
 
@@ -85,9 +86,10 @@ export const createLotSchema = z.object({
   // lots, que le bien soit renseigne ou non (voir lot-registry-service.ts).
   propertyId: z.string().uuid().optional(),
   coownerId: z.string().uuid().optional(),
-  lotNumber: z.string().min(1, 'Le numero de lot est obligatoire'),
+  lotNumber: z.string().trim().min(1, 'Le numero de lot est obligatoire'),
   lotType: z.enum(['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER']),
-  tantiemes: z.number().positive(),
+  // 0 accepte : un lot sans tantieme est exclu de la cle de repartition (BUG-078).
+  tantiemes: z.number().nonnegative(),
   surface: z.number().positive().optional(),
   floor: z.number().int().optional(),
   isParkingIncluded: z.boolean().optional().default(false)
@@ -101,9 +103,9 @@ export const updateLotSchema = z
   .object({
     propertyId: z.string().uuid().nullable().optional(),
     coownerId: z.string().uuid().nullable().optional(),
-    lotNumber: z.string().min(1, 'Le numero de lot est obligatoire').optional(),
+    lotNumber: z.string().trim().min(1, 'Le numero de lot est obligatoire').optional(),
     lotType: z.enum(['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER']).optional(),
-    tantiemes: z.number().positive().optional(),
+    tantiemes: z.number().nonnegative().optional(),
     surface: z.number().positive().nullable().optional(),
     floor: z.number().int().nullable().optional(),
     isParkingIncluded: z.boolean().optional()
@@ -218,7 +220,7 @@ export const updateAgendaItemSchema = z
   });
 
 export const createServiceProviderSchema = z.object({
-  name: z.string().min(1, 'Le nom du prestataire est obligatoire'),
+  name: z.string().trim().min(1, 'Le nom du prestataire est obligatoire'),
   specialty: z.string().min(1).optional(),
   email: z.string().email("L'email du prestataire doit etre valide").optional(),
   phone: z.string().optional()
@@ -226,7 +228,7 @@ export const createServiceProviderSchema = z.object({
 
 export const updateServiceProviderSchema = z
   .object({
-    name: z.string().min(1, 'Le nom du prestataire est obligatoire').optional(),
+    name: z.string().trim().min(1, 'Le nom du prestataire est obligatoire').optional(),
     specialty: z.string().nullable().optional(),
     email: z.string().email("L'email du prestataire doit etre valide").nullable().optional(),
     phone: z.string().nullable().optional()
@@ -522,7 +524,8 @@ export const createManualReminderSchema = z.object({
 
 export const createPenaltyRequestSchema = z.object({
   daysLate: z.number().int().nonnegative().optional(),
-  penaltyRate: z.number().positive(),
+  // Taux MENSUEL en %, plafonne (BUG-053).
+  penaltyRate: z.number().positive().max(MAX_MONTHLY_PENALTY_RATE),
   penaltyAmount: z.number().positive().optional(),
   appliedAt: z.coerce.date().optional(),
   waived: z.boolean().optional().default(false),

@@ -1,5 +1,8 @@
+import { dealSummaryLabel, dealTypeLabel, dealStageLabel } from '../../utils/crm-labels';
+import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import {
   App,
   Button,
@@ -67,6 +70,7 @@ export const Contacts: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId } = useParams<{ tenantId: string }>();
+  const { has: possede } = useAgencyFeatures(tenantId);
   const navigate = useNavigate();
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,12 +226,12 @@ export const Contacts: React.FC = () => {
 
   const handleExportCSV = () => {
     const exportData = contacts.map(contact => ({
-      Nom: `${contact.firstName} ${contact.lastName}`,
+      Nom: contactDisplayName(contact),
       Email: contact.email,
       Téléphone: contact.phonePrimary || contact.phone || '',
       Statut:
         contact.status === 'LEAD'
-          ? 'Prospect'
+          ? translate('Prospect')
           : contact.status === 'ACTIVE_CLIENT'
             ? translate('Client actif')
             : translate('Archivé'),
@@ -235,9 +239,7 @@ export const Contacts: React.FC = () => {
       'Prochaine action': contact.nextAction
         ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
         : '',
-      'Affaire en cours': contact.activeDeal
-        ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
-        : '',
+      'Affaire en cours': contact.activeDeal ? dealSummaryLabel(contact.activeDeal.type, contact.activeDeal.stage) : '',
       'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
     }));
     exportToCSV(exportData, 'contacts');
@@ -246,12 +248,12 @@ export const Contacts: React.FC = () => {
 
   const handleExportExcel = async () => {
     const exportData = contacts.map(contact => ({
-      Nom: `${contact.firstName} ${contact.lastName}`,
+      Nom: contactDisplayName(contact),
       Email: contact.email,
       Téléphone: contact.phonePrimary || contact.phone || '',
       Statut:
         contact.status === 'LEAD'
-          ? 'Prospect'
+          ? translate('Prospect')
           : contact.status === 'ACTIVE_CLIENT'
             ? translate('Client actif')
             : translate('Archivé'),
@@ -259,20 +261,18 @@ export const Contacts: React.FC = () => {
       'Prochaine action': contact.nextAction
         ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
         : '',
-      'Affaire en cours': contact.activeDeal
-        ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
-        : '',
+      'Affaire en cours': contact.activeDeal ? dealSummaryLabel(contact.activeDeal.type, contact.activeDeal.stage) : '',
       'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
     }));
     await exportToExcel(exportData, 'contacts', 'Contacts');
     message.success(translate('Export Excel réussi'));
   };
 
-  const columns: ColumnsType<CrmContact> = [
+  const toutesColonnes: ColumnsType<CrmContact> = [
     {
       title: translate('Nom'),
       key: 'name',
-      render: (_, record) => <Text strong>{`${record.firstName} ${record.lastName}`}</Text>
+      render: (_, record) => <Text strong>{contactDisplayName(record)}</Text>
     },
     {
       title: translate('Email'),
@@ -310,18 +310,12 @@ export const Contacts: React.FC = () => {
       key: 'activeDeal',
       render: (_, record) => {
         if (!record.activeDeal) return <Text type="secondary">-</Text>;
-        const dealType = record.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location';
-        const stageMap: Record<string, string> = {
-          NEW: 'Nouveau',
-          QUALIFIED: translate('Qualifié'),
-          VISIT: 'Visite',
-          NEGOTIATION: translate('Négociation')
-        };
+        const dealType = dealTypeLabel(record.activeDeal.type);
         return (
           <Space direction="vertical" size={0}>
             <Text>{dealType}</Text>
             <Text type="secondary" style={{ fontSize: '12px' }}>
-              {stageMap[record.activeDeal.stage] || record.activeDeal.stage}
+              {dealStageLabel(record.activeDeal.stage)}
             </Text>
           </Space>
         );
@@ -362,6 +356,9 @@ export const Contacts: React.FC = () => {
       )
     }
   ];
+  const columns = toutesColonnes.filter(
+    col => possede('CRM') || (col.key !== 'nextAction' && col.key !== 'activeDeal')
+  );
 
   const rowSelection = {
     selectedRowKeys: selectedContacts,
@@ -476,7 +473,7 @@ export const Contacts: React.FC = () => {
 
             <div>
               <Text strong style={{ marginInlineEnd: 16 }}>
-                Statut:
+                {translate('Statut :')}
               </Text>
               <Space wrap>
                 <Button type={!filters.status ? 'primary' : 'default'} onClick={() => handleStatusFilter('')}>
@@ -579,20 +576,22 @@ export const Contacts: React.FC = () => {
             <Divider style={{ margin: '12px 0' }} />
 
             {/* Quick Filters */}
-            <Space>
-              <Checkbox
-                checked={hasActiveDealFilter === true}
-                onChange={e => setHasActiveDealFilter(e.target.checked ? true : undefined)}
-              >
-                {translate('Affaire en cours')}
-              </Checkbox>
-              <Checkbox
-                checked={hasUpcomingActivityFilter === true}
-                onChange={e => setHasUpcomingActivityFilter(e.target.checked ? true : undefined)}
-              >
-                {translate('Activité à venir')}
-              </Checkbox>
-            </Space>
+            {possede('CRM') && (
+              <Space>
+                <Checkbox
+                  checked={hasActiveDealFilter === true}
+                  onChange={e => setHasActiveDealFilter(e.target.checked ? true : undefined)}
+                >
+                  {translate('Affaire en cours')}
+                </Checkbox>
+                <Checkbox
+                  checked={hasUpcomingActivityFilter === true}
+                  onChange={e => setHasUpcomingActivityFilter(e.target.checked ? true : undefined)}
+                >
+                  {translate('Activité à venir')}
+                </Checkbox>
+              </Space>
+            )}
 
             <Divider style={{ margin: '12px 0' }} />
 

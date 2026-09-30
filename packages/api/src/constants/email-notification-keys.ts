@@ -65,19 +65,19 @@ export interface EmailNotificationMeta {
 export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotificationMeta> = {
   MAINTENANCE_TICKET_CREATED_AGENCY: {
     key: 'MAINTENANCE_TICKET_CREATED_AGENCY',
-    label: 'Nouveau ticket de maintenance',
+    label: 'Nouveau ticket de maintenance (agence)',
     description: "Envoyé à l'agence lorsqu'un locataire crée un ticket de maintenance.",
     recipientLabel: 'Agence (admins)'
   },
   MAINTENANCE_TICKET_CREATED_TENANT: {
     key: 'MAINTENANCE_TICKET_CREATED_TENANT',
-    label: 'Nouveau ticket de maintenance',
+    label: 'Nouveau ticket de maintenance (locataire)',
     description: 'Accusé de réception envoyé au locataire après création de son ticket.',
     recipientLabel: 'Locataire'
   },
   MAINTENANCE_TICKET_CREATED_OWNER: {
     key: 'MAINTENANCE_TICKET_CREATED_OWNER',
-    label: 'Nouveau ticket de maintenance',
+    label: 'Nouveau ticket de maintenance (propriétaire)',
     description: "Envoyé au propriétaire lorsqu'un ticket est créé sur son bien.",
     recipientLabel: 'Propriétaire'
   },
@@ -266,26 +266,26 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
   },
   OWNER_STATEMENT_SENT: {
     key: 'OWNER_STATEMENT_SENT',
-    label: 'Releve de gerance envoye',
-    description: 'Notification d envoi d un releve de gerance au proprietaire.',
-    recipientLabel: 'Proprietaire'
+    label: 'Relevé de gérance envoyé',
+    description: "Notification d'envoi d'un relevé de gérance au propriétaire.",
+    recipientLabel: 'Propriétaire'
   },
   LOAN_MATURITY_ALERT: {
     key: 'LOAN_MATURITY_ALERT',
-    label: 'Alerte fin de pret',
-    description: 'Alerte de pret immobilier arrivant a son terme.',
+    label: 'Alerte fin de prêt',
+    description: 'Alerte de prêt immobilier arrivant à son terme.',
     recipientLabel: 'Agence / Gestionnaire'
   },
   DOCUMENT_EXPIRY_ALERT: {
     key: 'DOCUMENT_EXPIRY_ALERT',
     label: 'Alerte expiration document patrimoine',
     description: 'Alerte document patrimoine expirant prochainement.',
-    recipientLabel: 'Proprietaire / Gestionnaire'
+    recipientLabel: 'Propriétaire / Gestionnaire'
   },
   WORK_PROGRAM_REMINDER: {
     key: 'WORK_PROGRAM_REMINDER',
     label: 'Rappel programme de travaux',
-    description: 'Rappel sur un programme de travaux planifie.',
+    description: 'Rappel sur un programme de travaux planifié.',
     recipientLabel: 'Gestionnaire'
   },
   INVITATION: {

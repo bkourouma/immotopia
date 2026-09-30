@@ -3,6 +3,7 @@ import { prisma } from '../utils/database';
 import { ClientType, TenantStatus } from '@prisma/client';
 import { t } from '../i18n';
 import { runWithTenantContext } from '../utils/tenant-context';
+import { resolveOwnerPortalPropertyIds } from '../lib/owner-portal-scope';
 
 /** Header a client can send to pick which agency's portal it wants (B3 b). */
 const PORTAL_TENANT_HEADER = 'x-portal-tenant-id';
@@ -94,58 +95,27 @@ export const requireOwnerPortalAccess = async (req: Request, res: Response, next
         return;
       }
       if (selected.tenant.status === TenantStatus.SUSPENDED) {
-        res
-          .status(403)
-          .json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
+        res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
         return;
       }
     } else {
       selected = clients.find(client => client.tenant.status !== TenantStatus.SUSPENDED);
       if (!selected) {
         // Toutes les agences où ce client est propriétaire sont suspendues.
-        res
-          .status(403)
-          .json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
+        res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
         return;
       }
     }
 
     const tenantClient = selected;
 
-    // Resolve all properties owned by this owner, IN THIS AGENCY, through two
-    // methods:
-    // 1. Direct ownership: Property.ownerUserId = TenantClient.userId, scoped
-    //    to the resolved agency (B3 a — was unscoped before this lot).
-    const directOwnedProperties = await prisma.property.findMany({
-      where: {
-        ownerUserId: tenantClient.userId,
-        tenantId: tenantClient.tenantId
-      },
-      select: {
-        id: true
-      }
+    // Périmètre unique du portail (lib/owner-portal-scope.ts) : biens de
+    // l'agence, biens CLIENT sous mandat actif de l'agence, biens loués.
+    const uniquePropertyIds = await resolveOwnerPortalPropertyIds({
+      userId: tenantClient.userId,
+      tenantClientId: tenantClient.id,
+      tenantId: tenantClient.tenantId
     });
-
-    // 2. Lease ownership: Properties where RentalLease.ownerClient = TenantClient.id,
-    //    scoped to the same agency explicitly (the guard needs it named, and
-    //    it documents the invariant even though owner_client_id already
-    //    belongs to a single agency's TenantClient).
-    const leaseOwnedLeases = await prisma.rentalLease.findMany({
-      where: {
-        owner_client_id: tenantClient.id,
-        tenant_id: tenantClient.tenantId
-      },
-      select: {
-        property_id: true
-      },
-      distinct: ['property_id']
-    });
-
-    // Combine property IDs from both sources
-    const propertyIds = [...directOwnedProperties.map(p => p.id), ...leaseOwnedLeases.map(l => l.property_id)];
-
-    // Remove duplicates
-    const uniquePropertyIds = Array.from(new Set(propertyIds));
 
     // Keep the access check resilient on environments where optional owner-portal
     // columns are not present yet. We don't block access for telemetry updates.

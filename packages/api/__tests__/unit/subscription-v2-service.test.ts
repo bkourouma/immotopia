@@ -20,6 +20,9 @@ const catalogByCode = (code: string) => CATALOG.find(c => c.code === code)!;
 let seq = 0;
 const id = (p: string) => `${p}-${++seq}`;
 
+/** Donnees de l'agence dans les modules (D11 : lecture seule seulement s'il y en a). */
+const extraData = { properties: 0, syndicates: 0, sites: 0 };
+
 let db: {
   peaks?: Row[];
   subscriptions: Row[];
@@ -164,7 +167,10 @@ const fake: Row = {
   // Registre des lots : aucun bien dans ce faux client, seulement le pack Patrimoine
   // et le reclassement declenche (reconcileHeldPropertiesIfChangedTx). Les listes vides
   // suffisent : computeQualifyingUnits() rend [] et reconcileLotActivationsTx n'ecrit rien.
-  property: { findMany: jest.fn(async () => []) },
+  property: { findMany: jest.fn(async () => []), count: jest.fn(async () => extraData.properties) },
+  syndicate: { count: jest.fn(async () => extraData.syndicates) },
+  constructionSite: { count: jest.fn(async () => extraData.sites) },
+  propertyMandate: { count: jest.fn(async () => 0) },
   syndicateLot: { findMany: jest.fn(async () => []) },
   siteLot: { findMany: jest.fn(async () => []) },
   lotActivation: { findMany: jest.fn(async () => []) },
@@ -185,6 +191,7 @@ jest.mock('../../src/services/audit-service', () => {
 
 import {
   addSubscriptionItem,
+  assertPackComposition,
   applyDueItemTransitionsTx,
   changePack,
   clearSubscriptionManualReadOnly,
@@ -203,6 +210,7 @@ const PERIOD_END = new Date('2026-10-01T00:00:00Z');
 const ON_16TH = new Date('2026-09-16T10:00:00Z');
 
 function seed(status: 'ACTIVE' | 'TRIALING', packs: string[]) {
+  Object.assign(extraData, { properties: 0, syndicates: 0, sites: 0 });
   db = { subscriptions: [], items: [], modules: [], lines: [], overrides: [] };
   db.subscriptions.push({
     id: 'sub-1',
@@ -301,6 +309,22 @@ describe('addSubscriptionItem (D7 : ajout immediat, prorata)', () => {
   });
 });
 
+describe('addSubscriptionItem : extension hors pack', () => {
+  it('bloc de 10 biens avec le Pro : dit qu’il n’est vendu qu’avec l’Essentiel, pas « pack non souscrit »', async () => {
+    seed('ACTIVE', ['PATRIMOINE_PRO']);
+    const error = await addSubscriptionItem(T, { code: 'EXT_BIENS_10' }, 'admin-1').catch(e => e);
+    expect(error).toMatchObject({ statusCode: 400 });
+    expect(error.message).toContain('Patrimoine Essentiel');
+    expect(error.message).not.toContain("n'est pas souscrit");
+    expect(error.message).toContain('excédent est facturé');
+  });
+
+  it('bloc de 10 biens avec l’Essentiel : accepte', async () => {
+    seed('ACTIVE', ['PATRIMOINE_ESSENTIEL']);
+    await expect(addSubscriptionItem(T, { code: 'EXT_BIENS_10' }, 'admin-1')).resolves.toBeDefined();
+  });
+});
+
 describe('removeSubscriptionItem (D7 : a l’echeance, sans remboursement)', () => {
   it('par defaut : reste actif jusqu’a la fin de periode', async () => {
     seed('ACTIVE', ['AGENCE', 'SYNDIC']);
@@ -312,8 +336,9 @@ describe('removeSubscriptionItem (D7 : a l’echeance, sans remboursement)', () 
     expect(db.modules.find(m => m.moduleKey === 'MODULE_SYNDIC')!.enabled).toBe(true);
   });
 
-  it('immediat : exige une raison, puis termine l’element et retire le module (lecture seule)', async () => {
+  it('immediat : exige une raison, puis termine l’element et retire le module (lecture seule si donnees)', async () => {
     seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    extraData.syndicates = 1;
     const syndic = db.items[1];
     await expect(removeSubscriptionItem(T, syndic.id, { immediate: true }, 'admin-1')).rejects.toMatchObject({
       statusCode: 400
@@ -330,6 +355,12 @@ describe('removeSubscriptionItem (D7 : a l’echeance, sans remboursement)', () 
       enabled: false,
       disabledAt: ON_16TH
     });
+  });
+
+  it('immediat sans aucune donnee : module retire sans acces (NONE)', async () => {
+    seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    await removeSubscriptionItem(T, db.items[1].id, { immediate: true, reason: 'Ajout par erreur' }, 'admin-1');
+    expect(db.modules.find(m => m.moduleKey === 'MODULE_SYNDIC')).toMatchObject({ enabled: false, disabledAt: null });
   });
 
   it('retrait partiel d’extension : le reste repart au meme prix a l’echeance', async () => {
@@ -410,7 +441,44 @@ describe('syncTenantModulesTx', () => {
     const result = await syncTenantModulesTx(fake as any, T);
     expect(result).toEqual({ enabled: [], disabled: ['MODULE_SYNDIC'] });
     expect(db.modules.find(m => m.id === 'o1')).toMatchObject({ enabled: true, source: 'OVERRIDE' });
-    expect(db.modules.find(m => m.id === 'o2')).toMatchObject({ enabled: false, source: 'PACK', disabledAt: ON_16TH });
+    expect(db.modules.find(m => m.id === 'o2')).toMatchObject({ enabled: false, source: 'PACK', disabledAt: null });
+  });
+});
+
+describe('D11 : lecture seule seulement si le module retire porte des donnees', () => {
+  it('module retire sans donnee : aucun acces (disabledAt reste nul)', async () => {
+    seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    const syndic = db.items.find(i => catalogById(i.catalogItemId).code === 'SYNDIC')!;
+    syndic.status = 'ENDED';
+    const result = await syncTenantModulesTx(fake as any, T);
+    expect(result.disabled).toEqual(['MODULE_SYNDIC']);
+    expect(db.modules.find(m => m.moduleKey === 'MODULE_SYNDIC')).toMatchObject({ enabled: false, disabledAt: null });
+  });
+
+  it('module retire avec des coproprietes : lecture seule (disabledAt pose)', async () => {
+    seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    extraData.syndicates = 2;
+    const syndic = db.items.find(i => catalogById(i.catalogItemId).code === 'SYNDIC')!;
+    syndic.status = 'ENDED';
+    await syncTenantModulesTx(fake as any, T);
+    expect(db.modules.find(m => m.moduleKey === 'MODULE_SYNDIC')).toMatchObject({
+      enabled: false,
+      disabledAt: ON_16TH
+    });
+  });
+});
+
+describe('assertPackComposition (devis et creation : meme validation)', () => {
+  it('refuse Patrimoine Essentiel + Pro, un doublon et l’Integre avec un autre pack', () => {
+    const c = (code: string, exclusiveGroup: string | null = null, tierGroup?: string) =>
+      ({ code, kind: 'PACK', exclusiveGroup, rules: tierGroup ? { tierGroup } : {} }) as any;
+    const essentiel = c('PATRIMOINE_ESSENTIEL', null, 'PATRIMOINE');
+    const pro = c('PATRIMOINE_PRO', null, 'PATRIMOINE');
+    const integre = c('INTEGRE', 'INTEGRE');
+    expect(() => assertPackComposition([pro, essentiel])).toThrow(/ne se cumulent pas/);
+    expect(() => assertPackComposition([c('SYNDIC'), c('SYNDIC')])).toThrow(/une seule fois/);
+    expect(() => assertPackComposition([integre, c('AGENCE')])).toThrow(/Combinaison de packs impossible/);
+    expect(() => assertPackComposition([c('AGENCE'), c('SYNDIC')])).not.toThrow();
   });
 });
 

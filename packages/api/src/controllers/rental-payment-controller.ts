@@ -12,6 +12,8 @@ import { RentalPaymentStatus, RentalPaymentMethod } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { asyncHandler, NotFoundError } from '../middleware/error-middleware';
 import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } from '../lib/payment-gateway/checkout';
+import { parsePagination } from '../utils/pagination-helper';
+import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Lot 7 : `onlineCheckout` sort en `OnlineCheckoutSummary` (contrat §3.2),
@@ -279,8 +281,7 @@ export async function listPaymentsHandler(req: Request, res: Response): Promise<
       filters.endDate = new Date(endDate as string);
     }
 
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const { page, limit } = parsePagination(req.query);
 
     const result = await listPayments(tenantId, filters, { page, limit });
 
@@ -290,6 +291,7 @@ export async function listPaymentsHandler(req: Request, res: Response): Promise<
       data: (result.data as any[]).map(withOnlineCheckoutSummary)
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       message: 'Erreur lors de la récupération des paiements'

@@ -48,6 +48,7 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 
@@ -168,6 +169,8 @@ function dateCourte(iso: string): string {
 export const FactureFournisseur: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
+  // Sans CONSTRUCTION (pack sans chantiers), aucun chantier n'est exigé ni proposé (BUG-079).
+  const avecChantiers = useAgencyFeatures(tenantId).has('CONSTRUCTION');
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   // Pendant imperatif de `<ConfirmAction>`, pour la carte mobile de
@@ -267,7 +270,7 @@ export const FactureFournisseur: React.FC = () => {
   const montantImpute = imputations.reduce((somme, a) => somme + (a.amount ?? 0), 0);
   const ecart = montantFacture - montantImpute;
 
-  const rattachementObligatoire = Boolean(fournisseur) && fournisseur?.kind !== 'SERVICES';
+  const rattachementObligatoire = avecChantiers && Boolean(fournisseur) && fournisseur?.kind !== 'SERVICES';
   const rattachementManquant = rattachementObligatoire && imputations.length === 0;
   const imputationsIncompletes = imputations.some(a => !a.siteId || !a.costCategoryId || !(a.amount && a.amount > 0));
   const ecartNonNul = imputations.length > 0 && !imputationsIncompletes && ecart !== 0;
@@ -782,76 +785,82 @@ export const FactureFournisseur: React.FC = () => {
               <StatCard label={t('Montant de la facture')} value={<MoneyValue value={montantFacture} />} />
             </div>
 
-            <Title level={5}>{t('Imputations au chantier')}</Title>
-            {/* Un seul avertissement pour toutes les lignes : chacune choisit
+            {avecChantiers && (
+              <>
+                <Title level={5}>{t('Imputations au chantier')}</Title>
+                {/* Un seul avertissement pour toutes les lignes : chacune choisit
                 son propre chantier, mais la règle est la même partout. Même
                 modèle que la sortie de stock (Stock.tsx). */}
-            <Text
-              type="secondary"
-              style={{ display: 'block', marginBottom: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}
-            >
-              {t("Un chantier clos n'accepte plus d'imputation : la facture y serait refusée.")}
-            </Text>
+                <Text
+                  type="secondary"
+                  style={{ display: 'block', marginBottom: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}
+                >
+                  {t("Un chantier clos n'accepte plus d'imputation : la facture y serait refusée.")}
+                </Text>
 
-            {rattachementManquant && (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 'var(--space-3)' }}
-                message={t('Rattachement à un chantier obligatoire')}
-                description={t(
-                  "{{name}} est un fournisseur de {{value}} : ajoutez au moins une imputation avant d'enregistrer la facture.",
-                  {
-                    name: fournisseur.name,
-                    value: fournisseur.kind === 'MATERIALS' ? 'matériaux' : 'matériaux et prestation'
-                  }
+                {rattachementManquant && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 'var(--space-3)' }}
+                    message={t('Rattachement à un chantier obligatoire')}
+                    description={t(
+                      "{{name}} est un fournisseur de {{value}} : ajoutez au moins une imputation avant d'enregistrer la facture.",
+                      {
+                        name: fournisseur.name,
+                        value: fournisseur.kind === 'MATERIALS' ? 'matériaux' : 'matériaux et prestation'
+                      }
+                    )}
+                  />
                 )}
-              />
-            )}
 
-            <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
-              {imputations.map(imputation => (
-                <Space key={imputation.id} align="start" wrap>
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
-                    aria-label={t('Chantier')}
-                    placeholder={t('Chantier')}
-                    style={{ width: 220 }}
-                    value={imputation.siteId}
-                    onChange={value => modifierImputation(imputation.id, { siteId: value })}
-                    options={optionsChantiers}
-                  />
-                  <Select
-                    aria-label={t('Poste de dépense')}
-                    placeholder={t('Poste')}
-                    style={{ width: 200 }}
-                    value={imputation.costCategoryId}
-                    onChange={value => modifierImputation(imputation.id, { costCategoryId: value })}
-                    showSearch
-                    optionFilterProp="label"
-                    options={optionsPostes}
-                  />
-                  <InputNumber
-                    aria-label={t('Montant imputé')}
-                    placeholder={t('Montant')}
-                    min={0}
-                    style={{ width: 180 }}
-                    value={imputation.amount ?? undefined}
-                    onChange={value => modifierImputation(imputation.id, { amount: (value as number | null) ?? null })}
-                    {...montantSaisiProps}
-                  />
-                  <Button
-                    aria-label={t("Retirer l'imputation")}
-                    icon={<DeleteOutlined />}
-                    onClick={() => retirerImputation(imputation.id)}
-                  />
+                <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
+                  {imputations.map(imputation => (
+                    <Space key={imputation.id} align="start" wrap>
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        aria-label={t('Chantier')}
+                        placeholder={t('Chantier')}
+                        style={{ width: 220 }}
+                        value={imputation.siteId}
+                        onChange={value => modifierImputation(imputation.id, { siteId: value })}
+                        options={optionsChantiers}
+                      />
+                      <Select
+                        aria-label={t('Poste de dépense')}
+                        placeholder={t('Poste')}
+                        style={{ width: 200 }}
+                        value={imputation.costCategoryId}
+                        onChange={value => modifierImputation(imputation.id, { costCategoryId: value })}
+                        showSearch
+                        optionFilterProp="label"
+                        options={optionsPostes}
+                      />
+                      <InputNumber
+                        aria-label={t('Montant imputé')}
+                        placeholder={t('Montant')}
+                        min={0}
+                        style={{ width: 180 }}
+                        value={imputation.amount ?? undefined}
+                        onChange={value =>
+                          modifierImputation(imputation.id, { amount: (value as number | null) ?? null })
+                        }
+                        {...montantSaisiProps}
+                      />
+                      <Button
+                        aria-label={t("Retirer l'imputation")}
+                        icon={<DeleteOutlined />}
+                        onClick={() => retirerImputation(imputation.id)}
+                      />
+                    </Space>
+                  ))}
+                  <Button icon={<PlusOutlined />} onClick={ajouterImputation}>
+                    {t('Ajouter une imputation')}
+                  </Button>
                 </Space>
-              ))}
-              <Button icon={<PlusOutlined />} onClick={ajouterImputation}>
-                {t('Ajouter une imputation')}
-              </Button>
-            </Space>
+              </>
+            )}
 
             {afficherEcart && (
               <div style={{ marginBottom: 'var(--space-4)', maxWidth: 320 }}>
@@ -908,7 +917,7 @@ export const FactureFournisseur: React.FC = () => {
                 primaryAction={
                   f.status === 'DRAFT'
                     ? {
-                        label: 'Valider',
+                        label: t('Valider'),
                         onClick: () =>
                           confirmerAction({
                             title: t('Valider la facture {{reference}} ?', { reference: f.reference }),
@@ -920,7 +929,7 @@ export const FactureFournisseur: React.FC = () => {
                           })
                       }
                     : f.status === 'VALIDATED'
-                      ? { label: 'Annuler', onClick: () => ouvrirAnnulation(f) }
+                      ? { label: t('Annuler'), onClick: () => ouvrirAnnulation(f) }
                       : undefined
                 }
                 secondaryActions={[{ key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerFacture(f) }]}
@@ -1067,7 +1076,7 @@ export const FactureFournisseur: React.FC = () => {
                   onPageChange={() => {}}
                   emptyDescription={t('Aucun règlement enregistré.')}
                   columns={[
-                    { title: 'Date', key: 'date', render: (_, r) => dateCourte(r.paymentDate) },
+                    { title: t('Date'), key: 'date', render: (_, r) => dateCourte(r.paymentDate) },
                     {
                       title: t('Montant réglé'),
                       key: 'montant',
@@ -1075,7 +1084,7 @@ export const FactureFournisseur: React.FC = () => {
                       render: (_, r) => <MoneyValue value={r.amount} />
                     },
                     {
-                      title: 'Affectation',
+                      title: t('Affectation'),
                       key: 'affectation',
                       render: (_, r) => {
                         const risques = r.status === 'DRAFT' ? referencesRisqueesDuReglement(r) : [];
@@ -1098,7 +1107,7 @@ export const FactureFournisseur: React.FC = () => {
                       }
                     },
                     {
-                      title: 'Statut',
+                      title: t('Statut'),
                       key: 'statut',
                       render: (_, r) => (
                         <StatusTag
@@ -1109,7 +1118,7 @@ export const FactureFournisseur: React.FC = () => {
                       )
                     },
                     {
-                      title: 'Actions',
+                      title: t('Actions'),
                       key: 'actions',
                       align: 'end',
                       render: (_, r) => {
@@ -1158,7 +1167,7 @@ export const FactureFournisseur: React.FC = () => {
                       highlight={<MoneyValue value={r.amount} />}
                       fields={[
                         {
-                          label: 'Affectation',
+                          label: t('Affectation'),
                           value:
                             r.allocations.length > 0
                               ? r.allocations.map(a => a.invoiceReference).join(' · ')
@@ -1178,7 +1187,7 @@ export const FactureFournisseur: React.FC = () => {
                       primaryAction={
                         r.status === 'DRAFT'
                           ? {
-                              label: 'Valider',
+                              label: t('Valider'),
                               onClick: () => {
                                 const risques = referencesRisqueesDuReglement(r);
                                 const description =
@@ -1196,7 +1205,7 @@ export const FactureFournisseur: React.FC = () => {
                               }
                             }
                           : r.status === 'VALIDATED'
-                            ? { label: 'Annuler', onClick: () => setCibleAnnulationReglement(r) }
+                            ? { label: t('Annuler'), onClick: () => setCibleAnnulationReglement(r) }
                             : undefined
                       }
                     />

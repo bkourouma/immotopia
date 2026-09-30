@@ -212,6 +212,8 @@ export type BillingExclusionReason =
 export interface BillingRunSummary {
   billed: Array<{ leaseId: string; leaseLabel: string; installmentId: string; amount: number }>;
   excluded: Array<{ leaseId: string; leaseLabel: string; reason: BillingExclusionReason }>;
+  /** Baux dont l'émission d'une échéance Brouillon a échoué : le reste de la campagne a continué. */
+  failed?: Array<{ leaseId: string; leaseLabel: string; message: string }>;
   advancesApplied: Array<{
     tenantClientId: string;
     tenantLabel: string;
@@ -292,7 +294,7 @@ export interface ClientsBalanceResult {
  */
 export type GetClientsBalance = (
   tenantId: string,
-  filters?: { range?: PeriodRange; propertyId?: string }
+  filters?: { range?: PeriodRange; propertyId?: string; asOf?: Date }
 ) => Promise<ClientsBalanceResult>;
 
 export interface ClientsAgingBalanceLine extends ClientsBalanceLine {
@@ -335,7 +337,8 @@ export interface AccountStatementResult {
 export type GetAccountStatement = (
   tenantId: string,
   accountId: string,
-  filters?: { range?: PeriodRange; skip?: number; take?: number }
+  /** `asOf` (défaut : maintenant) : seuls les mouvements datés au plus tard ce jour comptent. */
+  filters?: { range?: PeriodRange; skip?: number; take?: number; asOf?: Date }
 ) => Promise<AccountStatementResult>;
 
 // ---------------------------------------------------------------------------

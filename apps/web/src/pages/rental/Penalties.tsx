@@ -343,11 +343,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
           <div style={{ marginBottom: 'var(--space-2)' }}>
             {t('Justificatif actuel :')} {justificatif(justifiePour)?.fileName || 'fichier'}
           </div>
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => ouvrirJustificatif(justifiePour)}
-          >
+          <Button size="small" icon={<DownloadOutlined />} onClick={() => ouvrirJustificatif(justifiePour)}>
             {t('Ouvrir')}
           </Button>
           <div style={{ marginTop: 'var(--space-2)', color: 'var(--text-secondary)' }}>
@@ -445,12 +441,12 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                 ...(p.adjusted_amount != null
                   ? [
                       { label: t('Montant calculé'), value: <MoneyValue value={p.amount} currency={p.currency} /> },
-                      { label: 'Raison', value: raisonAjustement(p) || '—' }
+                      { label: t('Raison'), value: raisonAjustement(p) || '—' }
                     ]
                   : []),
-                ...(fichier ? [{ label: 'Justificatif', value: fichier.fileName || 'fichier joint' }] : [])
+                ...(fichier ? [{ label: t('Justificatif'), value: fichier.fileName || 'fichier joint' }] : [])
               ]}
-              primaryAction={{ label: 'Ajuster', onClick: () => ouvrirAjustement(p) }}
+              primaryAction={{ label: t('Ajuster'), onClick: () => ouvrirAjustement(p) }}
               secondaryActions={[
                 ...(fichier
                   ? [{ key: 'open', label: t('Ouvrir le justificatif'), onClick: () => ouvrirJustificatif(p) }]

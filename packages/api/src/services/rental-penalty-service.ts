@@ -14,6 +14,8 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { getProjectRoot } from '../utils/project-root';
 import { runWithTenantContext } from '../utils/tenant-context';
+import { t } from '../i18n';
+import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
 // Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
@@ -133,7 +135,7 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
   });
 
   if (!installment) {
-    throw new Error('Installment not found');
+    throw new NotFoundError(t('Échéance introuvable'));
   }
 
   // Get penalty rule (use provided or fetch default)
@@ -159,7 +161,7 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
   graceDate.setDate(graceDate.getDate() + graceDays);
 
   if (today <= graceDate) {
-    throw new Error('Installment is not yet overdue (within grace period)');
+    throw new BadRequestError(t("Cette échéance n'est pas encore en retard (délai de grâce en cours)"));
   }
 
   // Calculate days late
@@ -320,11 +322,13 @@ export async function calculatePenaltiesForOverdueInstallments(tenantId?: string
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Find all overdue installments
+  // Échéances échues et non soldées. Les Brouillon en font partie : une échéance
+  // générée mais jamais émise reste due à sa date (règle `computeInstallmentStatus`).
   const where: any = {
     status: {
-      in: ['DUE', 'PARTIAL', 'OVERDUE']
-    }
+      in: ['DRAFT', 'DUE', 'PARTIAL', 'OVERDUE']
+    },
+    due_date: { lt: today }
   };
 
   if (tenantId) {
@@ -343,6 +347,8 @@ export async function calculatePenaltiesForOverdueInstallments(tenantId?: string
     errors: [] as string[],
     penalties: [] as any[]
   };
+
+  const graceParAgence = new Map<string, number>();
 
   for (const installment of installments) {
     // Lecture transverse ci-dessus ; chaque echeance est traitee dans le
@@ -372,7 +378,15 @@ export async function calculatePenaltiesForOverdueInstallments(tenantId?: string
 
         const dueDate = new Date(installment.due_date);
         dueDate.setHours(0, 0, 0, 0);
-        const graceDays = installment.lease.penalty_grace_days ?? 0;
+        // Même délai de grâce que `calculatePenalty` : bail, sinon règle de l'agence.
+        let graceDays = installment.lease.penalty_grace_days;
+        if (graceDays === null || graceDays === undefined) {
+          if (!graceParAgence.has(installment.tenant_id)) {
+            const regle = await getDefaultPenaltyRule(installment.tenant_id);
+            graceParAgence.set(installment.tenant_id, regle.grace_days ?? 0);
+          }
+          graceDays = graceParAgence.get(installment.tenant_id) ?? 0;
+        }
         const graceDate = new Date(dueDate);
         graceDate.setDate(graceDate.getDate() + graceDays);
 
@@ -429,7 +443,7 @@ export async function updatePenalty(
   });
 
   if (!penalty) {
-    throw new Error('Penalty not found');
+    throw new NotFoundError(t('Pénalité introuvable'));
   }
 
   // Le geste commercial de la gestionnaire et sa trace au compte du locataire
@@ -619,7 +633,7 @@ export async function deletePenalty(tenantId: string, penaltyId: string, actorUs
   });
 
   if (!penalty) {
-    throw new Error('Penalty not found');
+    throw new NotFoundError(t('Pénalité introuvable'));
   }
 
   // La suppression et la remise qu'elle vaut au compte du locataire sont
@@ -724,7 +738,7 @@ export async function uploadPenaltyJustification(
   });
 
   if (!penalty) {
-    throw new Error('Penalty not found');
+    throw new NotFoundError(t('Pénalité introuvable'));
   }
 
   // Validate file type (PDF, images, documents)
@@ -738,7 +752,9 @@ export async function uploadPenaltyJustification(
   ];
 
   if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
-    throw new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`);
+    throw new BadRequestError(
+      t('Type de fichier invalide. Formats acceptés : {{types}}', { types: allowedTypes.join(', ') })
+    );
   }
 
   // Generate file path

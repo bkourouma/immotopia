@@ -7,6 +7,7 @@ import { listFundMovements } from '../../services/syndic-provider-invoice-servic
 import { FundMovement } from '../../types/syndic-types';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Text } = Typography;
 
@@ -84,7 +85,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
       dataIndex: 'amount',
       key: 'amount',
       align: 'end',
-      render: (_: number, row) => <MoneyValue value={row.amount} currency={currency} />
+      render: (_: number, row) => <MoneyValue value={row.amount} currency={displayCurrency(currency)} />
     },
     {
       title: t('Solde après'),
@@ -93,7 +94,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
       align: 'end',
       render: (_: number, row) => (
         <Text type={row.balanceAfter < 0 ? 'danger' : undefined}>
-          <MoneyValue value={row.balanceAfter} currency={currency} />
+          <MoneyValue value={row.balanceAfter} currency={displayCurrency(currency)} />
         </Text>
       )
     },

@@ -669,7 +669,7 @@ describe('GET /quittances/:receiptId/fichier', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toBe('application/pdf');
-    expect(res.headers['content-disposition']).toBe("attachment; filename*=UTF-8''Recu%20R-2026-000001.pdf");
+    expect(res.headers['content-disposition']).toBe("attachment; filename*=UTF-8''Re%C3%A7u%20R-2026-000001.pdf");
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.body.toString()).toBe('%PDF-RECU-AWA');
   });

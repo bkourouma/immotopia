@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { toCsvString } from '../lib/csv';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { getAccountStatement, getClientsAgingBalance, getClientsBalance } from '../lib/finance/reports';
 import { runRentBilling } from '../lib/finance/billing-run';
@@ -84,15 +85,6 @@ export function toAccountStatementResponse(statement: AccountStatementResult, pa
   };
 }
 
-/** Échappe une valeur pour une cellule CSV (RFC 4180 minimal). */
-function csvCell(value: string | number): string {
-  const text = String(value);
-  if (/[",\n;]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
-
 function clientsBalanceToCsv(
   lines: Array<{
     label: string;
@@ -104,12 +96,15 @@ function clientsBalanceToCsv(
   }>
 ): string {
   const header = ['Locataire', 'Biens', 'Facturé', 'Réglé', 'Solde', 'Devise'];
-  const rows = lines.map(line =>
-    [line.label, line.propertyLabels.join(' · '), line.totalBilled, line.totalSettled, line.balance, line.currency]
-      .map(csvCell)
-      .join(',')
-  );
-  return [header.join(','), ...rows].join('\r\n');
+  const rows = lines.map(line => [
+    line.label,
+    line.propertyLabels.join(' · '),
+    line.totalBilled,
+    line.totalSettled,
+    line.balance,
+    line.currency
+  ]);
+  return toCsvString([header, ...rows]);
 }
 
 function toBillingRunResponse(row: {

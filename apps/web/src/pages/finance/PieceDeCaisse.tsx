@@ -314,8 +314,8 @@ export const PieceDeCaisse: React.FC = () => {
       <PageHeader
         title={t('Pièce de caisse')}
         breadcrumbs={[
-          { label: 'Finance', to: `/tenant/${tenantId}/finance/chantiers` },
-          { label: 'Chantiers', to: `/tenant/${tenantId}/finance/chantiers` },
+          { label: t('Finance'), to: `/tenant/${tenantId}/finance/chantiers` },
+          { label: t('Chantiers'), to: `/tenant/${tenantId}/finance/chantiers` },
           { label: t('Pièce de caisse') }
         ]}
       />

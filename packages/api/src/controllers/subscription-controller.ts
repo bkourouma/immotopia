@@ -15,6 +15,7 @@ import {
 import { CreateSubscriptionRequest, UpdateSubscriptionRequest } from '../types/subscription-types';
 import { UpdateInvoiceRequest as UpdateInvoiceRequestType } from '../types/subscription-types';
 import { z } from 'zod';
+import { parsePagination } from '../utils/pagination-helper';
 
 // Validation schemas
 const createSubscriptionSchema = z.object({
@@ -210,8 +211,7 @@ export async function listInvoicesHandler(req: Request, res: Response): Promise<
     const filters = {
       status: req.query.status as any,
       subscriptionId: req.query.subscriptionId as string,
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : 20
+      ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 20 })
     };
 
     const result = await listInvoices(tenantId, filters);

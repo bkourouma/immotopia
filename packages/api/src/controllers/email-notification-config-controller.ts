@@ -5,6 +5,7 @@ import {
   updateEmailNotificationConfig,
   resetEmailNotificationConfig
 } from '../services/email-notification-config-service';
+import { filterNotificationItems } from '../lib/subscription/notification-feature-gate';
 import { EMAIL_NOTIFICATION_KEYS, type EmailNotificationKey } from '../constants/email-notification-keys';
 
 /**
@@ -18,7 +19,7 @@ export async function listHandler(req: Request, res: Response): Promise<void> {
       res.status(400).json({ success: false, message: 'tenantId requis' });
       return;
     }
-    const items = await listEmailNotificationConfigs(tenantId);
+    const items = await filterNotificationItems(tenantId, await listEmailNotificationConfigs(tenantId));
     res.json({ success: true, data: items });
   } catch (error: any) {
     const message = error?.message || 'Erreur lors de la récupération des configurations';

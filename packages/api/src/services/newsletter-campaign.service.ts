@@ -1,13 +1,13 @@
 import crypto from 'crypto';
-import DOMPurify from 'dompurify';
-import { JSDOM } from 'jsdom';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { sanitizeHtml } from '../utils/sanitize-html';
 import { emailService } from './email-service';
 import { configureWhatsAppProvider, getConfiguredWhatsAppProvider, sendText } from './providers/whatsapp.provider';
 
-const window = new JSDOM('').window;
-const purify = DOMPurify(window as unknown as Window);
+export { sanitizeHtml };
 
 /**
  * NewsletterCampaignService - Création, envoi, planification des campagnes
@@ -20,31 +20,6 @@ function getBaseUrl(): string {
 
 function getApiBaseUrl(): string {
   return process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 8001}`;
-}
-
-export function sanitizeHtml(html: string): string {
-  return purify.sanitize(html, {
-    ALLOWED_TAGS: [
-      'p',
-      'br',
-      'strong',
-      'em',
-      'u',
-      'a',
-      'ul',
-      'ol',
-      'li',
-      'h1',
-      'h2',
-      'h3',
-      'div',
-      'span',
-      'table',
-      'tr',
-      'td',
-      'th'
-    ]
-  });
 }
 
 function replaceVariables(text: string, vars: Record<string, string>): string {
@@ -227,13 +202,24 @@ export function validateHasUnsubscribeLink(bodyHtml: string): boolean {
   return /\{\{lien_desinscription\}\}/i.test(bodyHtml);
 }
 
+/** Un modele d'une autre agence ressemble a un modele inexistant : meme 404. */
+async function assertTemplateBelongsToTenant(tenantId: string, templateId?: string | null) {
+  if (!templateId) return;
+  const template = await prisma.newsletterTemplate.findFirst({
+    where: { id: templateId, tenantId },
+    select: { id: true }
+  });
+  if (!template) throw new NotFoundError(t('Template non trouvé.'));
+}
+
 export async function createCampaign(
   tenantId: string,
   data: { listId: string; templateId?: string; subject: string; bodyHtml: string },
   createdById?: string
 ) {
   const list = await prisma.newsletterList.findFirst({ where: { id: data.listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
+  await assertTemplateBelongsToTenant(tenantId, data.templateId);
 
   const bodyHtml = sanitizeHtml(data.bodyHtml);
 
@@ -279,8 +265,9 @@ export async function updateCampaign(
   data: { subject?: string; bodyHtml?: string; templateId?: string }
 ) {
   const c = await prisma.newsletterCampaign.findFirst({ where: { id: campaignId, tenantId } });
-  if (!c) throw new Error('Campagne non trouvée.');
-  if (c.status !== 'DRAFT') throw new Error('Seules les campagnes en brouillon peuvent être modifiées.');
+  if (!c) throw new NotFoundError(t('Campagne non trouvée.'));
+  if (c.status !== 'DRAFT') throw new BadRequestError(t('Seules les campagnes en brouillon peuvent être modifiées.'));
+  await assertTemplateBelongsToTenant(tenantId, data.templateId);
 
   const bodyHtml = data.bodyHtml != null ? sanitizeHtml(data.bodyHtml) : undefined;
 
@@ -299,11 +286,11 @@ export async function getPreviewHtml(tenantId: string, campaignId: string): Prom
     where: { id: campaignId, tenantId },
     include: { template: true }
   });
-  if (!campaign) throw new Error('Campagne non trouvée.');
+  if (!campaign) throw new NotFoundError(t('Campagne non trouvée.'));
 
   let html = campaign.bodyHtml;
   if (campaign.template) {
-    html = replaceVariables(campaign.template.html, { contenu: campaign.bodyHtml });
+    html = replaceVariables(sanitizeHtml(campaign.template.html), { contenu: campaign.bodyHtml });
   }
 
   const vars = {
@@ -323,12 +310,12 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
     where: { id: campaignId, tenantId },
     include: { list: true, template: true }
   });
-  if (!campaign) throw new Error('Campagne non trouvée.');
+  if (!campaign) throw new NotFoundError(t('Campagne non trouvée.'));
   if (campaign.status !== 'DRAFT' && campaign.status !== 'SCHEDULED') {
-    throw new Error('Cette campagne ne peut pas être envoyée.');
+    throw new BadRequestError(t('Cette campagne ne peut pas être envoyée.'));
   }
   if (!validateHasUnsubscribeLink(campaign.bodyHtml)) {
-    throw new Error('Le corps de la campagne doit contenir la variable {{lien_desinscription}}.');
+    throw new BadRequestError(t('Le corps de la campagne doit contenir la variable {{lien_desinscription}}.'));
   }
 
   const recipients = await resolveRecipients(tenantId, campaign.listId);
@@ -346,7 +333,7 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
 
   let bodyHtml = campaign.bodyHtml;
   if (campaign.template) {
-    bodyHtml = replaceVariables(campaign.template.html, { contenu: campaign.bodyHtml });
+    bodyHtml = replaceVariables(sanitizeHtml(campaign.template.html), { contenu: campaign.bodyHtml });
   }
 
   await prisma.newsletterCampaign.update({
@@ -473,9 +460,9 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
 
 export async function scheduleCampaign(tenantId: string, campaignId: string, scheduledAt: Date) {
   const c = await prisma.newsletterCampaign.findFirst({ where: { id: campaignId, tenantId } });
-  if (!c) throw new Error('Campagne non trouvée.');
-  if (c.status !== 'DRAFT') throw new Error('Seules les campagnes en brouillon peuvent être planifiées.');
-  if (scheduledAt <= new Date()) throw new Error("La date d'envoi doit être dans le futur.");
+  if (!c) throw new NotFoundError(t('Campagne non trouvée.'));
+  if (c.status !== 'DRAFT') throw new BadRequestError(t('Seules les campagnes en brouillon peuvent être planifiées.'));
+  if (scheduledAt <= new Date()) throw new BadRequestError(t("La date d'envoi doit être dans le futur."));
 
   return prisma.newsletterCampaign.update({
     where: { id: campaignId, tenantId },
@@ -485,8 +472,8 @@ export async function scheduleCampaign(tenantId: string, campaignId: string, sch
 
 export async function cancelCampaign(tenantId: string, campaignId: string) {
   const c = await prisma.newsletterCampaign.findFirst({ where: { id: campaignId, tenantId } });
-  if (!c) throw new Error('Campagne non trouvée.');
-  if (c.status !== 'SCHEDULED') throw new Error('Seules les campagnes planifiées peuvent être annulées.');
+  if (!c) throw new NotFoundError(t('Campagne non trouvée.'));
+  if (c.status !== 'SCHEDULED') throw new BadRequestError(t('Seules les campagnes planifiées peuvent être annulées.'));
 
   return prisma.newsletterCampaign.update({
     where: { id: campaignId, tenantId },

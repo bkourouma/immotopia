@@ -40,6 +40,13 @@ vi.mock('../../services/dashboard-service', () => ({
   getTenantDashboard: (...args: unknown[]) => getTenantDashboard(...args)
 }));
 
+// Droits d'abonnement : `off` par defaut (rien n'est masque), `enforce` dans les
+// tests de packs.
+const getMenuEntitlements = vi.fn();
+vi.mock('../../services/entitlements-service', () => ({
+  getMenuEntitlements: (...args: unknown[]) => getMenuEntitlements(...args)
+}));
+
 let estDesktop = true;
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({
@@ -224,7 +231,13 @@ function monter(donnees: TenantDashboard = tableau(), session: Partial<AuthConte
 beforeEach(() => {
   estDesktop = true;
   getTenantDashboard.mockReset();
+  getMenuEntitlements.mockReset();
+  getMenuEntitlements.mockResolvedValue({ enforcement: 'off', moduleAccess: {}, readOnly: false, phase: 'ACTIVE' });
 });
+
+function pack(moduleAccess: Record<string, 'FULL' | 'NONE'>) {
+  getMenuEntitlements.mockResolvedValue({ enforcement: 'enforce', moduleAccess, readOnly: false, phase: 'ACTIVE' });
+}
 
 describe('Tableau de bord — les chiffres mènent quelque part', () => {
   it('ouvre les échéances en retard depuis la tuile « Impayés »', async () => {
@@ -382,5 +395,53 @@ describe('Tableau de bord — à qui appartient cet écran', () => {
     monter(tableau(), { tenantClient: locataire, tenantMembership: null });
 
     await waitFor(() => expect(screen.getByTestId('url')).toHaveTextContent('/tenant'));
+  });
+});
+
+describe("Tableau de bord — selon les fonctionnalités de l'abonnement", () => {
+  it('pack Syndic : ni tuile locative, ni carte de trésorerie, ni lien /rental, ni affaires CRM', async () => {
+    pack({ MODULE_SYNDIC: 'FULL', MODULE_AGENCY: 'NONE', MODULE_PROMOTER: 'NONE', MODULE_PATRIMOINE: 'NONE' });
+    monter();
+
+    await screen.findByText('Appels de charges');
+    expect(screen.queryByText('Impayés')).toBeNull();
+    expect(screen.queryByText('À encaisser sous 7 jours')).toBeNull();
+    expect(screen.queryByText('Trésorerie sur 12 mois')).toBeNull();
+    expect(screen.queryByText('Échéances par statut')).toBeNull();
+    expect(screen.queryByText('Entonnoir commercial')).toBeNull();
+    expect(screen.queryByText('Programmes de travaux')).toBeNull();
+    expect(screen.queryByText(/BAIL-2026-0184/)).toBeNull();
+    const liens = screen.getAllByRole('link').map(lien => lien.getAttribute('href') ?? '');
+    expect(liens.filter(href => href.includes('/rental/') || href.includes('/crm/deals'))).toEqual([]);
+  });
+
+  it('pack Agence : les cartes locatives sont là, la carte syndic disparaît', async () => {
+    pack({ MODULE_AGENCY: 'FULL', MODULE_SYNDIC: 'NONE', MODULE_PROMOTER: 'NONE', MODULE_PATRIMOINE: 'NONE' });
+    monter();
+
+    expect(await screen.findByText('Impayés')).toBeTruthy();
+    expect(screen.getByText('Trésorerie sur 12 mois')).toBeTruthy();
+    expect(screen.getByText('Entonnoir commercial')).toBeTruthy();
+    expect(screen.queryByText('Appels de charges')).toBeNull();
+  });
+
+  it('pack Promoteur : pipeline et travaux oui, gestion locative et syndic non', async () => {
+    pack({ MODULE_PROMOTER: 'FULL', MODULE_AGENCY: 'NONE', MODULE_SYNDIC: 'NONE', MODULE_PATRIMOINE: 'NONE' });
+    monter();
+
+    await screen.findByText('Entonnoir commercial');
+    expect(screen.queryByText('Impayés')).toBeNull();
+    expect(screen.queryByText('Échéances par statut')).toBeNull();
+    expect(screen.queryByText('Appels de charges')).toBeNull();
+  });
+
+  it('pack Patrimoine : pas d’entonnoir commercial ni de lien vers les affaires', async () => {
+    pack({ MODULE_PATRIMOINE: 'FULL', MODULE_AGENCY: 'NONE', MODULE_SYNDIC: 'NONE', MODULE_PROMOTER: 'NONE' });
+    monter();
+
+    await screen.findByText('Programmes de travaux');
+    expect(screen.queryByText('Entonnoir commercial')).toBeNull();
+    expect(screen.queryByText('Voir les affaires')).toBeNull();
+    expect(screen.queryByText('Appels de charges')).toBeNull();
   });
 });

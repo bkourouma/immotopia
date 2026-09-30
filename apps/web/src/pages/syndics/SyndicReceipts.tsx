@@ -18,6 +18,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -274,7 +275,7 @@ export const SyndicReceipts: React.FC = () => {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amount} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Émis le'),

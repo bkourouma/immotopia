@@ -10,7 +10,6 @@ import {
   MaintenanceTicketPriority
 } from '../../../types/maintenance-types';
 import { listProperties, Property } from '../../../services/property-service';
-import { listLeases, RentalLease, RentalLeaseStatus } from '../../../services/rental-service';
 import { useAuth } from '../../../hooks/useAuth';
 import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
 import { t } from '../../../i18n/t';
@@ -30,8 +29,6 @@ export const CreateTicket: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [leases, setLeases] = useState<RentalLease[]>([]);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string | undefined>(undefined);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
   useEffect(() => {
@@ -40,63 +37,22 @@ export const CreateTicket: React.FC = () => {
     }
   }, [effectiveTenantId]);
 
-  useEffect(() => {
-    if (effectiveTenantId && selectedPropertyId) {
-      loadLeases();
-    } else {
-      setLeases([]);
-      form.setFieldsValue({ leaseId: undefined });
-    }
-  }, [effectiveTenantId, selectedPropertyId]);
-
   const loadProperties = async () => {
     if (!effectiveTenantId) return;
 
     try {
-      const response = await listProperties(effectiveTenantId, { status: 'RENTED' });
+      const response = await listProperties(effectiveTenantId, { limit: 100 });
       setProperties(response.properties);
     } catch (error) {
       console.error('Error loading properties:', error);
     }
   };
 
-  const loadLeases = async () => {
-    if (!effectiveTenantId || !selectedPropertyId) return;
-
-    try {
-      const response = await listLeases(effectiveTenantId, {
-        propertyId: selectedPropertyId,
-        status: RentalLeaseStatus.ACTIVE
-      });
-      const activeLeases = response.data || [];
-      setLeases(activeLeases);
-
-      // Auto-select lease if there's only one
-      if (activeLeases.length === 1) {
-        form.setFieldsValue({ leaseId: activeLeases[0].id });
-      } else {
-        form.setFieldsValue({ leaseId: undefined });
-      }
-    } catch (error) {
-      console.error('Error loading leases:', error);
-      setLeases([]);
-    }
-  };
-
   const handleSubmit = async (values: any) => {
     if (!effectiveTenantId) return;
 
-    // Validate that property has active lease before submitting
     if (!values.propertyId) {
       message.error(t('Veuillez sélectionner une propriété'));
-      return;
-    }
-
-    // Check if there are active leases for the selected property
-    if (leases.length === 0 && selectedPropertyId === values.propertyId) {
-      message.error(
-        t("Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.")
-      );
       return;
     }
 
@@ -108,8 +64,7 @@ export const CreateTicket: React.FC = () => {
         priority: values.priority,
         description: values.description,
         locationDetails: values.locationDetails,
-        propertyId: values.propertyId,
-        leaseId: values.leaseId || undefined // Send undefined if not provided, backend will find active lease
+        propertyId: values.propertyId
       };
 
       const response = await tenantMaintenanceService.createTicket(effectiveTenantId, ticketData);
@@ -171,16 +126,7 @@ export const CreateTicket: React.FC = () => {
       console.error('Error creating ticket:', error);
       const errorMessage = error.response?.data?.message || t('Erreur lors de la création du ticket');
 
-      // Provide more helpful error message for lease validation
-      if (errorMessage.includes('Bail actif introuvable')) {
-        message.error(
-          t(
-            "Cette propriété n'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance."
-          )
-        );
-      } else {
-        message.error(errorMessage);
-      }
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -211,7 +157,6 @@ export const CreateTicket: React.FC = () => {
               >
                 <Select
                   placeholder={t('Sélectionner une propriété')}
-                  onChange={value => setSelectedPropertyId(value)}
                   showSearch
                   filterOption={(input, option) => {
                     const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
@@ -232,52 +177,6 @@ export const CreateTicket: React.FC = () => {
                   })}
                 </Select>
               </Form.Item>
-
-              {leases.length > 0 && (
-                <Form.Item
-                  name="leaseId"
-                  label={leases.length === 1 ? t('Bail') : t('Bail')}
-                  tooltip={
-                    leases.length === 1
-                      ? t('Le bail actif a été sélectionné automatiquement')
-                      : t('Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété')
-                  }
-                >
-                  <Select
-                    showSearch
-                    optionFilterProp="children"
-                    placeholder={
-                      leases.length === 1 ? t('Bail sélectionné automatiquement') : t('Sélectionner un bail')
-                    }
-                    allowClear={leases.length > 1}
-                    disabled={leases.length === 1}
-                  >
-                    {leases.map(lease => (
-                      <Option key={lease.id} value={lease.id}>
-                        {lease.lease_number} - {lease.start_date.split('T')[0]}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              )}
-
-              {selectedPropertyId && leases.length === 0 && (
-                <Form.Item>
-                  <div
-                    style={{
-                      padding: '12px',
-                      backgroundColor: '#fff7e6',
-                      border: '1px solid #ffd591',
-                      borderRadius: '4px',
-                      color: '#d46b08'
-                    }}
-                  >
-                    {t(
-                      "⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance."
-                    )}
-                  </div>
-                </Form.Item>
-              )}
 
               <Form.Item
                 name="title"

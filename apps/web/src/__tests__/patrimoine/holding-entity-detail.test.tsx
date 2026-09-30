@@ -101,8 +101,8 @@ function consolidation() {
       annualExpenses: 500_000,
       annualLoanPayments: 800_000,
       annualCashFlow: 2_300_000,
-      grossYield: 0.072,
-      netYield: 0.062,
+      grossYield: 7.2,
+      netYield: 6.2,
       netNetYield: null,
       latentCapitalGain: null,
       costBasisIncomplete: true
@@ -120,8 +120,8 @@ function consolidation() {
         annualExpenses: 500_000,
         annualLoanPayments: 800_000,
         annualCashFlow: 2_300_000,
-        grossYield: 0.072,
-        netYield: 0.062
+        grossYield: 7.2,
+        netYield: 6.2
       }
     ]
   };
@@ -214,6 +214,15 @@ describe('<HoldingEntityDetailPage> — quotes-parts et consolidation', () => {
     monter();
 
     expect(await screen.findByText('Coût de revient incomplet')).toBeInTheDocument();
+  });
+
+  it('affiche les rendements tels que renvoyés par l’API (pourcentages, sans ×100)', async () => {
+    monter();
+
+    await screen.findByText('Coût de revient incomplet');
+    expect(screen.getAllByText('7,20 %').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('6,20 %').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/720/)).toBeNull();
   });
 });
 

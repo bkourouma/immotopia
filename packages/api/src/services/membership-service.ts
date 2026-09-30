@@ -470,7 +470,10 @@ export async function resetMemberPassword(
 
   // Send password reset notification email
   try {
-    await emailService.sendPasswordResetEmail(membership.user.email, resetToken);
+    await emailService.sendPasswordResetEmail(membership.user.email, resetToken, {
+      userName: membership.user.fullName ?? undefined,
+      language: membership.user.preferredLanguage
+    });
     logger.info('Password reset link sent', { userId, tenantId });
   } catch (error) {
     logger.error('Failed to send password reset link', { userId, tenantId, error });
@@ -529,4 +532,37 @@ export async function revokeMemberSessions(userId: string, tenantId: string, act
     entityType: 'User',
     entityId: userId
   });
+}
+
+/**
+ * Membres ASSIGNABLES d'une agence : identifiant, nom d'affichage et roles des
+ * collaborateurs ACTIFS, rien d'autre (ni e-mail, ni telephone, ni derniere
+ * connexion). Alimente les listes deroulantes « assigne a », « negociateur »,
+ * « participant » pour des roles qui n'ont pas le droit de lister les
+ * collaborateurs (USERS_VIEW). Filtre par `tenantId` : une autre agence ne
+ * fuit jamais.
+ */
+export async function listAssignableMembers(tenantId: string) {
+  const memberships = await prisma.membership.findMany({
+    where: { tenantId, status: MembershipStatus.ACTIVE, user: { isActive: true } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          userRoles: {
+            where: { tenantId },
+            select: { role: { select: { key: true, name: true } } }
+          }
+        }
+      }
+    }
+  });
+
+  return memberships.map(m => ({
+    userId: m.user.id,
+    displayName: m.user.fullName?.trim() || 'Collaborateur',
+    roles: m.user.userRoles.map(ur => ur.role)
+  }));
 }

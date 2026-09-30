@@ -43,3 +43,17 @@ export function getCopilotSuggestions(pathname: string, tools: readonly CopilotT
 
   return candidates.filter(s => tools.includes(s.requires));
 }
+
+/** Invitation d'accueil : ne cite que les capacités que les outils autorisés couvrent. */
+export function getCopilotWelcome(tools: readonly CopilotToolName[]): string {
+  const subjects: string[] = [];
+  if (tools.includes('search_properties')) subjects.push(t('vos biens'));
+  if (tools.includes('search_leases')) subjects.push(t('vos baux'));
+  if (tools.includes('list_lease_documents') || tools.includes('list_property_documents')) {
+    subjects.push(t('vos documents'));
+  }
+  if (subjects.length === 0) return t('Posez-moi une question.');
+  if (subjects.length === 1) return t('Posez une question sur {{a}}.', { a: subjects[0] });
+  if (subjects.length === 2) return t('Posez une question sur {{a}} ou {{b}}.', { a: subjects[0], b: subjects[1] });
+  return t('Posez une question sur vos biens, vos baux ou vos documents.');
+}

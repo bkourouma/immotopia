@@ -693,8 +693,8 @@ export const ClotureChantier: React.FC = () => {
             }
             {...actionsCarteDuLot(lot)}
             fields={[
-              { label: 'Part', value: pourcentage(lot.sharePercent) },
-              { label: 'Surface', value: surfaceOuTiret(lot.surfaceArea) },
+              { label: t('Part'), value: pourcentage(lot.sharePercent) },
+              { label: t('Surface'), value: surfaceOuTiret(lot.surfaceArea) },
               {
                 label: t('Quote-part saisie'),
                 value: lot.manualSharePercent === null ? '—' : pourcentage(lot.manualSharePercent)

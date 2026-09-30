@@ -29,7 +29,12 @@ function locale(language: Language): string {
  * ils ne doivent pas pouvoir injecter de balises dans l'email.
  */
 function escapeHtml(value: string): string {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -56,17 +61,17 @@ export function getEmailVerificationTemplate(
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; direction: ${dir};">
   <div style="background-color: #f4f4f4; padding: 20px; border-radius: 5px;">
     <h1 style="color: #2c3e50;">${t('Bienvenue sur ImmoTopia !', undefined, language)}</h1>
-    <p>${t('Bonjour {{name}},', { name: userName }, language)}</p>
+    <p>${t('Bonjour {{name}},', { name: escapeHtml(userName) }, language)}</p>
     <p>${t(
       'Merci de vous être inscrit sur notre plateforme. Pour activer votre compte, veuillez vérifier votre adresse email en cliquant sur le lien ci-dessous :',
       undefined,
       language
     )}</p>
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${verificationUrl}" style="background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">${t('Vérifier mon email', undefined, language)}</a>
+      <a href="${escapeHtml(verificationUrl)}" style="background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">${t('Vérifier mon email', undefined, language)}</a>
     </div>
     <p>${t('Ou copiez et collez ce lien dans votre navigateur :', undefined, language)}</p>
-    <p style="word-break: break-all; color: #3498db; direction: ltr;">${verificationUrl}</p>
+    <p style="word-break: break-all; color: #3498db; direction: ltr;">${escapeHtml(verificationUrl)}</p>
     <p><strong>${t('Ce lien expire dans 24 heures.', undefined, language)}</strong></p>
     <p>${t("Si vous n'avez pas créé de compte sur notre plateforme, vous pouvez ignorer cet email.", undefined, language)}</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
@@ -101,17 +106,17 @@ export function getPasswordResetTemplate(
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; direction: ${dir};">
   <div style="background-color: #f4f4f4; padding: 20px; border-radius: 5px;">
     <h1 style="color: #2c3e50;">${t('Réinitialisation de mot de passe', undefined, language)}</h1>
-    <p>${t('Bonjour {{name}},', { name: userName }, language)}</p>
+    <p>${t('Bonjour {{name}},', { name: escapeHtml(userName) }, language)}</p>
     <p>${t(
       'Vous avez demandé à réinitialiser votre mot de passe. Cliquez sur le lien ci-dessous pour créer un nouveau mot de passe :',
       undefined,
       language
     )}</p>
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${resetUrl}" style="background-color: #e74c3c; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">${t('Réinitialiser mon mot de passe', undefined, language)}</a>
+      <a href="${escapeHtml(resetUrl)}" style="background-color: #e74c3c; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">${t('Réinitialiser mon mot de passe', undefined, language)}</a>
     </div>
     <p>${t('Ou copiez et collez ce lien dans votre navigateur :', undefined, language)}</p>
-    <p style="word-break: break-all; color: #e74c3c; direction: ltr;">${resetUrl}</p>
+    <p style="word-break: break-all; color: #e74c3c; direction: ltr;">${escapeHtml(resetUrl)}</p>
     <p><strong>${t('Ce lien expire dans 1 heure.', undefined, language)}</strong></p>
     <p>${t(
       "Si vous n'avez pas demandé de réinitialisation de mot de passe, vous pouvez ignorer cet email. Votre mot de passe restera inchangé.",
@@ -161,7 +166,7 @@ export function getAccountCreationTemplate(
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; direction: ${dir};">
   <div style="background-color: #f4f4f4; padding: 20px; border-radius: 5px;">
     <h1 style="color: #2c3e50;">${t('Votre compte ImmoTopia a été créé', undefined, language)}</h1>
-    <p>${t('Bonjour {{name}},', { name: userName }, language)}</p>
+    <p>${t('Bonjour {{name}},', { name: escapeHtml(userName) }, language)}</p>
     <p>${t(
       'Un compte {{accountType}} a été créé pour vous sur la plateforme ImmoTopia par {{agency}}.',
       { accountType, agency: `<strong>${escapeHtml(tenantName)}</strong>` },
@@ -177,10 +182,10 @@ export function getAccountCreationTemplate(
 
     <p>${t('Pour activer votre compte et définir votre mot de passe, cliquez sur le lien ci-dessous :', undefined, language)}</p>
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${resetUrl}" style="background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">${t('Définir mon mot de passe', undefined, language)}</a>
+      <a href="${escapeHtml(resetUrl)}" style="background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">${t('Définir mon mot de passe', undefined, language)}</a>
     </div>
     <p>${t('Ou copiez et collez ce lien dans votre navigateur :', undefined, language)}</p>
-    <p style="word-break: break-all; color: #3498db; direction: ltr;">${resetUrl}</p>
+    <p style="word-break: break-all; color: #3498db; direction: ltr;">${escapeHtml(resetUrl)}</p>
     <p><strong>${t('Ce lien expire dans 7 jours.', undefined, language)}</strong></p>
 
     <p>${t(
@@ -591,7 +596,7 @@ export function getCoOwnerPortalInvitationTemplate(params: {
   <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 24px 16px; direction: ${dir};">
     <div style="background-color: #ffffff; padding: 32px; border-radius: 8px;">
       <h1 style="color: #2c3e50; font-size: 21px; margin: 0 0 20px;">${t('Votre espace copropriétaire', undefined, language)}</h1>
-      <p style="margin: 0 0 16px;">${t('Bonjour {{name}},', { name: userName }, language)}</p>
+      <p style="margin: 0 0 16px;">${t('Bonjour {{name}},', { name: escapeHtml(userName) }, language)}</p>
       <p style="margin: 0 0 16px;">${t(
         "L'agence {{agency}} vous ouvre un accès en lecture à votre espace copropriétaire : vos lots, le compte de chaque lot, vos appels de charges, les documents et les assemblées générales de votre copropriété.",
         { agency: `<strong>${agency}</strong>` },

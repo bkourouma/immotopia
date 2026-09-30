@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { logger } from '../utils/logger';
+import { z } from 'zod';
+import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import {
   createMandate,
   revokeMandate,
@@ -9,103 +11,85 @@ import {
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import { CreateMandateRequest } from '../types/property-types';
 
+const createMandateBodySchema = z.object({
+  propertyId: z.string().uuid(),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date().optional().nullable(),
+  scope: z.record(z.unknown()).optional().nullable(),
+  notes: z.string().max(5000).optional().nullable()
+});
+
 /**
- * Create mandate handler
+ * Create mandate handler.
+ *
+ * Corps valide avant tout acces base (400 VALIDATION_ERROR traduit) ; les
+ * erreurs typees des services remontent au gestionnaire central, qui ne
+ * renvoie jamais le texte d'une erreur technique.
  */
-export async function createMandateHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
-    const userId = req.user?.userId;
+export const createMandateHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
+  const userId = req.user?.userId;
 
-    const data: CreateMandateRequest = {
-      propertyId: req.body.propertyId,
-      tenantId,
-      startDate: new Date(req.body.startDate),
-      endDate: req.body.endDate ? new Date(req.body.endDate) : undefined,
-      scope: req.body.scope,
-      notes: req.body.notes
-    };
-
-    const mandate = await createMandate(tenantId, data, userId);
-
-    res.status(201).json({
-      success: true,
-      data: mandate
-    });
-  } catch (error: any) {
-    logger.error('Error creating mandate', { error, body: req.body });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to create mandate'
-    });
+  const body = createMandateBodySchema.parse(req.body ?? {});
+  if (req.params.id && body.propertyId !== req.params.id) {
+    throw new BadRequestError(t("Le bien du mandat ne correspond pas à celui de l'adresse"));
   }
-}
+
+  const data: CreateMandateRequest = {
+    propertyId: body.propertyId,
+    tenantId,
+    startDate: body.startDate,
+    endDate: body.endDate ?? undefined,
+    scope: body.scope ?? undefined,
+    notes: body.notes ?? undefined
+  };
+
+  const mandate = await createMandate(tenantId, data, userId);
+
+  res.status(201).json({
+    success: true,
+    data: mandate
+  });
+});
 
 /**
  * Revoke mandate handler
  */
-export async function revokeMandateHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
-    const mandateId = req.params.mandateId;
-    const userId = req.user?.userId;
+export const revokeMandateHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
+  const mandate = await revokeMandate(req.params.mandateId, tenantId, req.user?.userId);
 
-    const mandate = await revokeMandate(mandateId, tenantId, userId);
-
-    res.json({
-      success: true,
-      data: mandate
-    });
-  } catch (error: any) {
-    logger.error('Error revoking mandate', { error, mandateId: req.params.mandateId });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to revoke mandate'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: mandate
+  });
+});
 
 /**
  * Get property mandates handler
  */
-export async function getPropertyMandatesHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.propertyId || req.params.id;
-    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
+export const getPropertyMandatesHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const propertyId = req.params.propertyId || req.params.id;
+  const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
 
-    const mandates = await getPropertyMandates(propertyId, tenantId);
+  const mandates = await getPropertyMandates(propertyId, tenantId);
 
-    res.json({
-      success: true,
-      data: mandates
-    });
-  } catch (error: any) {
-    logger.error('Error getting property mandates', { error, propertyId: req.params.propertyId });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get property mandates'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: mandates
+  });
+});
 
 /**
  * Get tenant mandates handler
  */
-export async function getTenantMandatesHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
+export const getTenantMandatesHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
 
-    const mandates = await getTenantMandates(tenantId);
+  const mandates = await getTenantMandates(tenantId);
 
-    res.json({
-      success: true,
-      data: mandates
-    });
-  } catch (error: any) {
-    logger.error('Error getting tenant mandates', { error, tenantId: req.params.tenantId });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get tenant mandates'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: mandates
+  });
+});

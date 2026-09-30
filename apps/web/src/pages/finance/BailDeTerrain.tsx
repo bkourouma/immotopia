@@ -574,7 +574,7 @@ export const BailDeTerrain: React.FC = () => {
             primaryAction={
               p.status === 'DRAFT'
                 ? {
-                    label: 'Valider',
+                    label: t('Valider'),
                     onClick: () =>
                       confirmerAction({
                         title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
@@ -678,7 +678,7 @@ export const BailDeTerrain: React.FC = () => {
                     label: a.siteLabel,
                     value: <MoneyValue value={a.amount} />
                   }))
-                : [{ label: 'Imputations', value: t('Aucun chantier actif sur ce bail à cette date') }]
+                : [{ label: t('Imputations'), value: t('Aucun chantier actif sur ce bail à cette date') }]
             }
           />
         )}

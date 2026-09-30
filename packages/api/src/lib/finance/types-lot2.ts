@@ -180,7 +180,7 @@ export type VoidDocumentTx = (
     reason: string;
     voidedByUserId: string;
   }
-) => Promise<{ voidDocumentId: string; reversingEntryId: string }>;
+) => Promise<{ voidDocumentId: string; reversingEntryId: string | null }>;
 
 export interface TrialBalanceLine {
   accountId: string;
@@ -292,6 +292,12 @@ export type CreateSupplierInvoiceTx = (
     lines: Array<{ label: string; amount: number; quantity?: number | null; unitPrice?: number | null }>;
     allocations: CostAllocationInput[];
     createdByUserId: string;
+    /**
+     * Un fournisseur de matériaux exige-t-il un chantier ? Vrai par défaut ;
+     * l'appelant passe `false` quand l'agence ne possède pas la fonctionnalité
+     * CONSTRUCTION (abonnement appliqué) : elle n'a alors aucun chantier possible.
+     */
+    siteRequired?: boolean;
   }
 ) => Promise<SupplierInvoiceRecord>;
 

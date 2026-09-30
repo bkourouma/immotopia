@@ -142,4 +142,6 @@ export interface ProvisionTenantResult {
   admin: { userId: string; email: string; fullName: string; existingUser: boolean };
   invitation: { id: string; expiresAt: string; acceptUrl: string };
   emailSent: boolean;
+  /** Vrai pour un rejeu : l'agence existait deja, l'invitation n'a PAS ete regeneree (acceptUrl vide si le lien n'est plus connu). */
+  alreadyExisted?: boolean;
 }

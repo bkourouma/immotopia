@@ -5,6 +5,18 @@ import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
 import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
 import { autoInviteContactToWhatsappGroup } from './whatsapp-group-automation-service';
+import { t } from '../i18n';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
+
+/**
+ * Doublon d'e-mail de contact dans l'agence : message traduit dans la langue
+ * de la requete, et erreur rattachee au champ `email` du formulaire.
+ */
+function duplicateEmailError(email: string): ConflictError {
+  return new ConflictError(t("Un contact avec l'e-mail {{email}} existe déjà dans cette agence", { email }), [
+    { field: 'email', message: t("Un contact avec cet e-mail existe déjà dans l'agence") }
+  ]);
+}
 
 /**
  * Assert that a user is an active member of the tenant before letting a
@@ -34,7 +46,7 @@ export async function assertActiveMember(tenantId: string, userId: string): Prom
 export async function createContact(tenantId: string, data: CreateContactRequest, actorUserId?: string) {
   // Validate required fields
   if (!data.firstName || !data.lastName || !data.email) {
-    throw new Error('First name, last name, and email are required');
+    throw new BadRequestError(t("Le prénom, le nom et l'e-mail sont requis"));
   }
 
   // Check for duplicate email within tenant
@@ -48,7 +60,7 @@ export async function createContact(tenantId: string, data: CreateContactRequest
   });
 
   if (existingContact) {
-    throw new Error(`A contact with email ${data.email} already exists in this tenant`);
+    throw duplicateEmailError(data.email);
   }
 
   // Map phone to phonePrimary for backward compatibility
@@ -544,7 +556,7 @@ export async function updateContact(
   });
 
   if (!existingContact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // Check for duplicate email if email is being updated
@@ -559,7 +571,7 @@ export async function updateContact(
     });
 
     if (duplicateContact) {
-      throw new Error(`A contact with email ${data.email} already exists in this tenant`);
+      throw duplicateEmailError(data.email);
     }
   }
 
@@ -784,7 +796,7 @@ export async function deleteContact(tenantId: string, contactId: string, actorUs
   });
 
   if (!existingContact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // Delete related CRM data with explicit cascades where needed
@@ -878,7 +890,7 @@ export async function convertLeadToClient(tenantId: string, contactId: string, r
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // Allow conversion if contact is LEAD or ACTIVE_CLIENT with no active roles
@@ -887,7 +899,9 @@ export async function convertLeadToClient(tenantId: string, contactId: string, r
     contact.status !== CrmContactStatus.LEAD &&
     !(contact.status === CrmContactStatus.ACTIVE_CLIENT && !hasActiveRoles)
   ) {
-    throw new Error('Contact cannot be converted. It must be a lead or an active client with no active roles.');
+    throw new BadRequestError(
+      t('Ce contact ne peut pas être converti : il doit être un prospect ou un client actif sans rôle actif.')
+    );
   }
 
   // Update contact status to ACTIVE_CLIENT
@@ -959,7 +973,7 @@ export async function addContactRole(tenantId: string, contactId: string, roleTy
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // Create role
@@ -998,7 +1012,7 @@ export async function getContactRoles(tenantId: string, contactId: string) {
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   return prisma.crmContactRole.findMany({
@@ -1037,7 +1051,7 @@ export async function deactivateContactRole(tenantId: string, contactId: string,
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // Verify role exists and belongs to contact
@@ -1050,7 +1064,7 @@ export async function deactivateContactRole(tenantId: string, contactId: string,
   });
 
   if (!role) {
-    throw new Error('Role not found');
+    throw new NotFoundError(t('Rôle introuvable'));
   }
 
   const roleType = role.role;
@@ -1134,7 +1148,7 @@ export async function updateContactRoles(
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // `desiredRoles` comes in as `string[]` from the request; comparing it

@@ -1,6 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
+import { ConflictError } from '../middleware/error-middleware';
 import { CreateVendorRequest, UpdateVendorRequest } from '../types/maintenance-types';
 
 type ProviderRecord = {
@@ -26,6 +27,15 @@ type VendorMirrorRecord = {
   created_at: Date;
   updated_at: Date;
 };
+
+function vendorNameConflict(name: string): ConflictError {
+  const message = `Un prestataire nommé « ${name} » existe déjà dans votre agence.`;
+  return new ConflictError(message, [{ field: 'name', message }]);
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === 'P2002';
+}
 
 function normalizeSpecialties(values?: string[]): string[] {
   if (!values) return [];
@@ -106,18 +116,24 @@ export async function createVendor(tenantId: string, data: CreateVendorRequest, 
     }
   });
   if (existing) {
-    throw new Error(`Un prestataire avec le nom "${trimmedName}" existe deja dans ce tenant`);
+    throw vendorNameConflict(trimmedName);
   }
 
-  const provider = await prisma.serviceProvider.create({
-    data: {
-      tenantId,
-      name: trimmedName,
-      phone: data.phone?.trim() || null,
-      email: data.email?.trim() || null,
-      specialty: specialtyForProvider(data.specialties)
-    }
-  });
+  let provider;
+  try {
+    provider = await prisma.serviceProvider.create({
+      data: {
+        tenantId,
+        name: trimmedName,
+        phone: data.phone?.trim() || null,
+        email: data.email?.trim() || null,
+        specialty: specialtyForProvider(data.specialties)
+      }
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) throw vendorNameConflict(trimmedName);
+    throw error;
+  }
 
   const mirror = await upsertVendorMirrorFromProvider(provider as ProviderRecord, {
     address: data.address?.trim() || null,
@@ -255,7 +271,7 @@ export async function updateVendor(
       }
     });
     if (duplicate) {
-      throw new Error(`Un prestataire avec le nom "${data.name}" existe deja dans ce tenant`);
+      throw vendorNameConflict(data.name.trim());
     }
   }
 
@@ -265,10 +281,18 @@ export async function updateVendor(
   if (data.email !== undefined) providerUpdateData.email = data.email?.trim() || null;
   if (data.specialties !== undefined) providerUpdateData.specialty = specialtyForProvider(data.specialties);
 
-  const provider = (await prisma.serviceProvider.update({
-    where: { id: vendorId, tenantId },
-    data: providerUpdateData
-  })) as ProviderRecord;
+  let provider: ProviderRecord;
+  try {
+    provider = (await prisma.serviceProvider.update({
+      where: { id: vendorId, tenantId },
+      data: providerUpdateData
+    })) as ProviderRecord;
+  } catch (error) {
+    if (isUniqueViolation(error) && typeof providerUpdateData.name === 'string') {
+      throw vendorNameConflict(providerUpdateData.name);
+    }
+    throw error;
+  }
 
   const mirror = await upsertVendorMirrorFromProvider(provider, {
     ...(data.address !== undefined ? { address: data.address?.trim() || null } : {}),

@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/database';
+import { ownerPortalPropertyWhere } from '../owner-portal-scope';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { getOwnerPortalSettings, type OwnerPortalSettingsDto } from '../settings/owner-portal-settings';
@@ -6,6 +7,7 @@ import { ownerSharesByProperty } from '../ownership/service';
 import { buildPropertyYieldInput } from './queries';
 import { grossYield, netYield, netNetYield, latentCapitalGain } from './yield';
 import { PORTAL_PROPERTY_DOCUMENT_SELECT } from '../files/portal-files';
+import { VALUATION_ORDER_BY } from './valuation-order';
 
 /**
  * Vue patrimoine du portail propriétaire (lot P5). Contrat figé dans
@@ -67,7 +69,7 @@ function assertPropertyInScope(propertyId: string, propertyIds: string[]): void 
 async function loadScopedProperties(tenantId: string, propertyIds: string[]) {
   if (!propertyIds.length) return [];
   return prisma.property.findMany({
-    where: { tenantId, id: { in: propertyIds } },
+    where: ownerPortalPropertyWhere(propertyIds, tenantId),
     select: { id: true, title: true, address: true, locationZone: true },
     orderBy: { title: 'asc' }
   });
@@ -80,7 +82,7 @@ async function latestValuationsByProperty(tenantId: string, propertyIds: string[
   const rows = await prisma.assetValuation.findMany({
     where: { tenantId, propertyId: { in: propertyIds } },
     select: { propertyId: true, valuatedAt: true, estimatedValue: true, acquisitionCost: true, currency: true },
-    orderBy: { valuatedAt: 'desc' }
+    orderBy: VALUATION_ORDER_BY
   });
   const byProperty = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
@@ -226,7 +228,7 @@ export async function getOwnerPortalPatrimoineProperty(
   const sections = sectionsFor(settings);
 
   const property = await prisma.property.findFirst({
-    where: { tenantId, id: propertyId },
+    where: ownerPortalPropertyWhere([propertyId], tenantId),
     select: { id: true, title: true, address: true, locationZone: true }
   });
   if (!property) {
@@ -255,7 +257,7 @@ export async function getOwnerPortalPatrimoineProperty(
     const valuations = await prisma.assetValuation.findMany({
       where: { tenantId, propertyId },
       select: { id: true, valuatedAt: true, estimatedValue: true, method: true, currency: true, acquisitionCost: true },
-      orderBy: { valuatedAt: 'desc' }
+      orderBy: VALUATION_ORDER_BY
     });
     const latest = valuations[0];
     data.valuation = latest

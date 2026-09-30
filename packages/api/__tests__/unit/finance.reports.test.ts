@@ -105,6 +105,11 @@ jest.mock('@prisma/client', () => {
           .sort(buildComparator(args.orderBy));
         return rows[0] ?? null;
       }),
+      aggregate: jest.fn(async (args: Row) => {
+        const rows = store.movements.filter(m => matchesMovement(m, args.where ?? {}));
+        const total = (key: string) => rows.reduce((sum, m) => sum + Number(m[key] ?? 0), 0);
+        return { _sum: { debit: rows.length ? total('debit') : null, credit: rows.length ? total('credit') : null } };
+      }),
       count: jest.fn(async (args: Row) => store.movements.filter(m => matchesMovement(m, args.where ?? {})).length)
     },
     rentalLease: {
@@ -295,7 +300,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       expect(lineA.totalBilled).toBe(150000);
       expect(lineA.totalSettled).toBe(60000);
-      expect(lineA.balance).toBe(40000);
+      expect(lineA.balance).toBe(90000); // Σ facturé − Σ réglé à date (plus le solde stocké)
       expect(lineA.propertyLabels).toEqual(['REF-A']);
 
       expect(lineB.totalBilled).toBe(30000);
@@ -304,7 +309,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       // Total de controle : somme des SOLDES (pas des montants factures/regles).
       expect(result.totalBalance).toBe(lineA.balance + lineB.balance);
-      expect(result.totalBalance).toBe(20000);
+      expect(result.totalBalance).toBe(70000);
     });
 
     it('filtre par periode : seuls les mouvements de la fenetre entrent dans les totaux factures/regles', async () => {
@@ -318,8 +323,8 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       expect(line.accountId).toBe('acc-a');
       expect(line.totalBilled).toBe(50000);
       expect(line.totalSettled).toBe(0);
-      // Le solde reste le solde COURANT du compte, pas recalcule sur la periode.
-      expect(line.balance).toBe(40000);
+      // Le solde reste le solde À DATE du compte, pas recalcule sur la periode.
+      expect(line.balance).toBe(90000);
     });
 
     it('filtre par bien : seuls les locataires ayant un bail sur ce bien apparaissent', async () => {

@@ -35,6 +35,7 @@ import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../c
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import { App } from 'antd';
 import { t } from '../../i18n/t';
+import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
 
 import { activeLocale } from '../../i18n/format';
 export const Deals: React.FC = () => {
@@ -179,18 +180,7 @@ export const Deals: React.FC = () => {
     }
   };
 
-  const getStageLabel = (stage: string): string => {
-    const labels: Record<string, string> = {
-      NEW: 'Nouveau',
-      QUALIFIED: t('Qualifié'),
-      APPOINTMENT: 'Rendez-vous',
-      VISIT: 'Visite',
-      NEGOTIATION: t('Négociation'),
-      WON: t('Gagné'),
-      LOST: 'Perdu'
-    };
-    return labels[stage] || stage;
-  };
+  const getStageLabel = (stage: string): string => (stage === 'APPOINTMENT' ? t('Rendez-vous') : dealStageLabel(stage));
 
   const getStageBadge = (stage: string) => {
     // Echelle CATEGORIELLE (voir PropertySearchResults) : palette brute
@@ -234,7 +224,7 @@ export const Deals: React.FC = () => {
                   const dealDetail = deal as CrmDealDetail;
                   const contact = dealDetail.contact;
                   return {
-                    Type: deal.type,
+                    Type: dealTypeLabel(deal.type),
                     Contact: contact
                       ? `${contact.firstName} ${contact.lastName}`
                       : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
@@ -262,7 +252,7 @@ export const Deals: React.FC = () => {
                   const dealDetail = deal as CrmDealDetail;
                   const contact = dealDetail.contact;
                   return {
-                    Type: deal.type,
+                    Type: dealTypeLabel(deal.type),
                     Contact: contact
                       ? `${contact.firstName} ${contact.lastName}`
                       : t('Contact ID: {{contactId}}', { contactId: deal.contactId }),
@@ -416,7 +406,7 @@ export const Deals: React.FC = () => {
               </div>
 
               <div className="flex gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-700 self-center">Stade:</span>
+                <span className="text-xs font-medium text-gray-700 self-center">{t('Stade :')}</span>
                 <Button
                   variant={!filters.stage ? 'default' : 'outline'}
                   size="sm"
@@ -533,7 +523,7 @@ export const Deals: React.FC = () => {
                 {filteredDeals.map(deal => (
                   <tr key={deal.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{deal.type}</div>
+                      <div className="text-sm font-medium text-gray-900">{dealTypeLabel(deal.type)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">

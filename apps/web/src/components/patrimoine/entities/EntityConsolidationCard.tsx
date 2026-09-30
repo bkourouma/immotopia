@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { EntityConsolidation } from '../../../types/patrimoine-entities-types';
 import { StatCard, MoneyValue } from '../../primitives';
 import { t } from '../../../i18n/t';
+import { formatAsOf, formatYieldPercent } from '../patrimoine-format';
 
 const { Text } = Typography;
 
@@ -15,11 +16,6 @@ const { Text } = Typography;
 
 export interface EntityConsolidationCardProps {
   data: EntityConsolidation;
-}
-
-function pourcentage(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return '—';
-  return `${(value * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
 }
 
 export const EntityConsolidationCard: React.FC<EntityConsolidationCardProps> = ({ data }) => {
@@ -70,14 +66,14 @@ export const EntityConsolidationCard: React.FC<EntityConsolidationCardProps> = (
       dataIndex: 'grossYield',
       key: 'grossYield',
       align: 'end',
-      render: (value: number) => pourcentage(value)
+      render: (value: number) => formatYieldPercent(value)
     },
     {
       title: t('Rendement net'),
       dataIndex: 'netYield',
       key: 'netYield',
       align: 'end',
-      render: (value: number) => pourcentage(value)
+      render: (value: number) => formatYieldPercent(value)
     }
   ];
 
@@ -125,16 +121,13 @@ export const EntityConsolidationCard: React.FC<EntityConsolidationCardProps> = (
           />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <StatCard label={t('Rendement brut')} value={pourcentage(totals.grossYield)} />
+          <StatCard label={t('Rendement brut')} value={formatYieldPercent(totals.grossYield)} />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <StatCard label={t('Rendement net')} value={pourcentage(totals.netYield)} />
+          <StatCard label={t('Rendement net')} value={formatYieldPercent(totals.netYield)} />
         </Col>
         <Col xs={24} sm={12} md={6}>
-          <StatCard
-            label={t('Rendement net-net')}
-            value={totals.netNetYield === null ? '—' : pourcentage(totals.netNetYield)}
-          />
+          <StatCard label={t('Rendement net-net')} value={formatYieldPercent(totals.netNetYield)} />
         </Col>
         <Col xs={24} sm={12} md={6}>
           <StatCard
@@ -145,7 +138,7 @@ export const EntityConsolidationCard: React.FC<EntityConsolidationCardProps> = (
       </Row>
 
       <Text type="secondary" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>
-        {t('Situation au {{date}}.', { date: data.asOf })}
+        {t('Situation au {{date}}.', { date: formatAsOf(data.asOf) })}
       </Text>
 
       <Card>

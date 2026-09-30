@@ -70,7 +70,10 @@ export async function registerUser(data: RegisterRequest) {
 
   // Send verification email (don't fail registration if email fails)
   try {
-    await emailService.sendVerificationEmail(data.email, verificationToken);
+    await emailService.sendVerificationEmail(data.email, verificationToken, {
+      userName: data.fullName,
+      language: result.preferredLanguage
+    });
     logger.info('Email verification sent', { userId: result.id, email: data.email });
   } catch (error) {
     logger.error('Failed to send verification email', { userId: result.id, email: data.email, error });
@@ -143,7 +146,8 @@ export async function resendVerificationEmail(email: string) {
   }
 
   if (user.emailVerified) {
-    throw new Error('Cette adresse email est déjà vérifiée.');
+    // Meme reponse que pour une adresse inconnue : pas d'enumeration de comptes.
+    return;
   }
 
   // Invalidate previous tokens
@@ -172,7 +176,16 @@ export async function resendVerificationEmail(email: string) {
   });
 
   // Send verification email
-  await emailService.sendVerificationEmail(user.email, verificationToken);
+  try {
+    await emailService.sendVerificationEmail(user.email, verificationToken, {
+      userName: user.fullName ?? undefined,
+      language: user.preferredLanguage
+    });
+  } catch (error) {
+    // L'echec d'envoi est journalise, jamais expose : la reponse reste identique.
+    logger.error('Verification email resend failed', { userId: user.id, error });
+    return;
+  }
   logger.info('Verification email resent', { userId: user.id, email: user.email });
 }
 
@@ -181,6 +194,23 @@ export async function resendVerificationEmail(email: string) {
  * @param data - Login credentials
  * @returns User and tokens
  */
+/**
+ * Horodate la derniere connexion reussie (User.lastLoginAt).
+ * Meilleur effort : un echec d'ecriture est journalise et ne bloque jamais la
+ * connexion. Jamais appele par le rafraichissement de session.
+ */
+export async function recordLastLogin(userId: string): Promise<void> {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date() },
+      select: { id: true }
+    });
+  } catch (error) {
+    logger.warn('Failed to record lastLoginAt', { userId, error });
+  }
+}
+
 export async function loginUser(data: LoginRequest) {
   // Find user by email
   const user = await prisma.user.findUnique({
@@ -257,9 +287,9 @@ export async function loginUser(data: LoginRequest) {
         deviceInfo: 'Web Browser' // Could be enhanced with user-agent
       }
     });
-
-    // We can update last login here if we add that field back or keep track elsewhere
   });
+
+  await recordLastLogin(user.id);
 
   // Generate access token
   const accessToken = generateAccessToken({
@@ -503,7 +533,10 @@ export async function forgotPassword(data: ForgotPasswordRequest) {
 
   // Send password reset email
   try {
-    await emailService.sendPasswordResetEmail(user.email, resetToken);
+    await emailService.sendPasswordResetEmail(user.email, resetToken, {
+      userName: user.fullName ?? undefined,
+      language: user.preferredLanguage
+    });
   } catch (error) {
     console.error('Failed to send password reset email:', error);
     // Don't throw - user can request again

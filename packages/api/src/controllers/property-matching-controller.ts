@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
 import {
@@ -35,6 +36,7 @@ export async function matchPropertiesHandler(req: Request, res: Response): Promi
           where: { id: match.propertyId },
           include: {
             media: {
+              select: PROPERTY_MEDIA_SELECT,
               where: { isPrimary: true },
               take: 1
             }

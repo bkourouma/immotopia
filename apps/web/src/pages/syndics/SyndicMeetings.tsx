@@ -21,9 +21,14 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
-import { meetingStatusColors } from '../../components/syndics/meeting-governance';
-import { createMeeting, listMeetings, updateMeetingStatus } from '../../services/syndic-service';
-import { GeneralMeeting, MeetingStatus, MeetingType } from '../../types/syndic-types';
+import { describeConvocation, meetingStatusColors } from '../../components/syndics/meeting-governance';
+import {
+  createMeetingWithConvocation,
+  listMeetings,
+  resendMeetingConvocation,
+  updateMeetingStatus
+} from '../../services/syndic-service';
+import { GeneralMeeting, MeetingConvocationResult, MeetingStatus, MeetingType } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
@@ -46,6 +51,10 @@ export const SyndicMeetings: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
+  const [convocation, setConvocation] = useState<{ meetingId: string; result: MeetingConvocationResult | null } | null>(
+    null
+  );
+  const [resending, setResending] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -111,7 +120,7 @@ export const SyndicMeetings: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      await createMeeting(effectiveTenantId, syndicId, {
+      const created = await createMeetingWithConvocation(effectiveTenantId, syndicId, {
         type: values.type,
         scheduledAt: startAt.toISOString(),
         startTime: startAt.toISOString(),
@@ -126,6 +135,7 @@ export const SyndicMeetings: React.FC = () => {
         location: values.location
       });
       message.success(t('Assemblée créée'));
+      setConvocation({ meetingId: created.meeting?.id, result: created.convocation });
       setOpen(false);
       form.resetFields();
       await loadMeetings();
@@ -135,6 +145,21 @@ export const SyndicMeetings: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  const handleResend = async () => {
+    if (!effectiveTenantId || !syndicId || !convocation?.meetingId) return;
+    setResending(true);
+    try {
+      const result = await resendMeetingConvocation(effectiveTenantId, syndicId, convocation.meetingId);
+      setConvocation({ meetingId: convocation.meetingId, result });
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Renvoi de la convocation impossible'));
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const convocationSummary = convocation ? describeConvocation(convocation.result) : null;
 
   return (
     <>
@@ -155,6 +180,23 @@ export const SyndicMeetings: React.FC = () => {
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
+        {convocationSummary ? (
+          <Alert
+            type={convocationSummary.type}
+            showIcon
+            closable
+            onClose={() => setConvocation(null)}
+            message={convocationSummary.text}
+            action={
+              convocationSummary.failed && convocation?.meetingId ? (
+                <Button size="small" loading={resending} onClick={() => void handleResend()}>
+                  {t('Renvoyer la convocation')}
+                </Button>
+              ) : null
+            }
+          />
+        ) : null}
+
         {loading ? (
           <div style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin size="large" />
@@ -167,13 +209,13 @@ export const SyndicMeetings: React.FC = () => {
               dataSource={meetings}
               columns={[
                 {
-                  title: 'Type',
+                  title: t('Type'),
                   dataIndex: 'type',
                   key: 'type',
                   render: (value: MeetingType) => meetingTypeLabels[value]
                 },
                 {
-                  title: 'Date',
+                  title: t('Date'),
                   dataIndex: 'scheduledAt',
                   key: 'scheduledAt',
                   render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
@@ -185,19 +227,19 @@ export const SyndicMeetings: React.FC = () => {
                   render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
                 },
                 {
-                  title: 'Fin',
+                  title: t('Fin'),
                   dataIndex: 'endTime',
                   key: 'endTime',
                   render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
                 },
                 {
-                  title: 'Lieu',
+                  title: t('Lieu'),
                   dataIndex: 'location',
                   key: 'location',
                   render: (value?: string | null) => value || t('Non renseigné')
                 },
                 {
-                  title: 'Statut',
+                  title: t('Statut'),
                   dataIndex: 'status',
                   key: 'status',
                   render: (value: GeneralMeeting['status']) => (
@@ -205,7 +247,7 @@ export const SyndicMeetings: React.FC = () => {
                   )
                 },
                 {
-                  title: 'Actions',
+                  title: t('Actions'),
                   key: 'actions',
                   render: (_: unknown, item: GeneralMeeting) => (
                     <Space wrap>

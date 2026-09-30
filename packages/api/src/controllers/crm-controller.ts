@@ -28,6 +28,8 @@ import {
 import { createDeal, getDealById, listDeals, updateDeal } from '../services/crm-deal-service';
 import { createActivity, listActivities } from '../services/crm-activity-service';
 import { getDashboard } from '../services/crm-dashboard-service';
+import { respondWithAppError } from '../utils/app-error-response';
+import { parsePagination } from '../utils/pagination-helper';
 
 /**
  * Create a new contact
@@ -48,6 +50,7 @@ export async function createContactHandler(req: Request, res: Response): Promise
       data: contact
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     console.error('Error creating contact:', error);
     if (error instanceof Error) {
       if (error.message.includes('already exists')) {
@@ -102,6 +105,7 @@ export async function getContactHandler(req: Request, res: Response): Promise<vo
       data: contact
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
@@ -124,8 +128,7 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
       assignedTo: req.query.assignedTo as string | undefined,
       tag: req.query.tag as string | undefined,
       search: req.query.search as string | undefined,
-      page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
+      ...parsePagination(req.query)
     };
 
     const result = await listContacts(tenantId, filters);
@@ -136,6 +139,7 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
       pagination: result.pagination
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     console.error('Error listing contacts:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({
@@ -167,6 +171,7 @@ export async function updateContactHandler(req: Request, res: Response): Promise
       data: contact
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -210,6 +215,7 @@ export async function deleteContactHandler(req: Request, res: Response): Promise
       message: 'Contact deleted successfully'
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error && error.message.includes('not found')) {
       res.status(404).json({
         success: false,
@@ -242,6 +248,7 @@ export async function getContactTagsHandler(req: Request, res: Response): Promis
       data: tags
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error && error.message.includes('not found')) {
       res.status(404).json({
         success: false,
@@ -284,6 +291,7 @@ export async function assignTagHandler(req: Request, res: Response): Promise<voi
       message: 'Tag assigned successfully'
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error && error.message.includes('not found')) {
       res.status(404).json({
         success: false,
@@ -316,6 +324,7 @@ export async function removeTagHandler(req: Request, res: Response): Promise<voi
       message: 'Tag removed successfully'
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error && error.message.includes('not found')) {
       res.status(404).json({
         success: false,
@@ -347,6 +356,7 @@ export async function listTagsHandler(req: Request, res: Response): Promise<void
       data: tags
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
@@ -380,6 +390,7 @@ export async function createTagHandler(req: Request, res: Response): Promise<voi
       data: tag
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error && error.message.includes('already exists')) {
       res.status(409).json({
         success: false,
@@ -415,6 +426,7 @@ export async function createDealHandler(req: Request, res: Response): Promise<vo
       data: deal
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -466,6 +478,7 @@ export async function getDealHandler(req: Request, res: Response): Promise<void>
       data: deal
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
@@ -487,8 +500,7 @@ export async function listDealsHandler(req: Request, res: Response): Promise<voi
       stage: req.query.stage as string | undefined,
       assignedTo: req.query.assignedTo as string | undefined,
       contactId: req.query.contactId as string | undefined,
-      page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
+      ...parsePagination(req.query)
     };
 
     const result = await listDeals(tenantId, filters);
@@ -499,6 +511,7 @@ export async function listDealsHandler(req: Request, res: Response): Promise<voi
       pagination: result.pagination
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
@@ -527,6 +540,7 @@ export async function updateDealHandler(req: Request, res: Response): Promise<vo
       data: deal
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -580,6 +594,7 @@ export async function createActivityHandler(req: Request, res: Response): Promis
       data: activity
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -621,8 +636,7 @@ export async function listActivitiesHandler(req: Request, res: Response): Promis
       createdBy: req.query.createdBy as string | undefined,
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
-      page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
+      ...parsePagination(req.query)
     };
 
     const result = await listActivities(tenantId, filters);
@@ -633,6 +647,7 @@ export async function listActivitiesHandler(req: Request, res: Response): Promis
       pagination: result.pagination
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
@@ -661,6 +676,7 @@ export async function convertContactHandler(req: Request, res: Response): Promis
       data: contact
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -705,6 +721,7 @@ export async function deactivateRoleHandler(req: Request, res: Response): Promis
       message: 'Role deleted successfully'
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -743,6 +760,7 @@ export async function updateRolesHandler(req: Request, res: Response): Promise<v
       data: contact
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     if (error instanceof Error) {
       if (error.message.includes('not found')) {
         res.status(404).json({
@@ -776,6 +794,7 @@ export async function getDashboardHandler(req: Request, res: Response): Promise<
       data: dashboard
     });
   } catch (error) {
+    if (respondWithAppError(res, error)) return;
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',

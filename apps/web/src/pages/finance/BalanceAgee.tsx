@@ -22,6 +22,8 @@ import {
   StatCard
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
+import { ModuleNotIncluded } from '../../components/primitives/ModuleNotIncluded';
 
 /**
  * Balance âgée — récit 5 du lot 1 (specs/016-finance-operationnelle/spec.md).
@@ -59,6 +61,8 @@ function trierLignes(lignes: ClientsAgingBalanceLine[], sort: Sort | null): Clie
 
 export const BalanceAgee: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
+  // Locatif : sans gestion locative (RENTAL), ni campagne ni balance de locataires (BUG-051).
+  const features = useAgencyFeatures(tenantId);
   const navigate = useNavigate();
   const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
 
@@ -128,6 +132,10 @@ export const BalanceAgee: React.FC = () => {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
+  if (features.ready && !features.has('RENTAL')) {
+    return <ModuleNotIncluded />;
+  }
+
   /** Icône de tri courant pour une colonne de tranche donnée. */
   const sortOrderPour = (champ: ChampTranche): SortOrder | null =>
     list.sort?.field === champ ? (list.sort.order === 'asc' ? 'ascend' : 'descend') : null;
@@ -181,7 +189,7 @@ export const BalanceAgee: React.FC = () => {
       <PageHeader
         title={t('Balance âgée')}
         subtitle={lignes.length > 0 ? `${lignes.length} locataire${lignes.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Exporter', icon: <DownloadOutlined />, onClick: handleExport }}
+        primaryAction={{ label: t('Exporter'), icon: <DownloadOutlined />, onClick: handleExport }}
       />
 
       <FilterSheet

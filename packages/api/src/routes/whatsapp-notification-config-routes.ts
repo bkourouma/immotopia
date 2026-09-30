@@ -4,6 +4,8 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { BadRequestError } from '../middleware/error-middleware';
+import { requireNotificationKeyFeature } from '../lib/subscription/notification-feature-gate';
+import { requireFeature } from '../middleware/subscription-feature-middleware';
 import {
   listHandler,
   updateHandler,
@@ -39,18 +41,22 @@ router.use(enforceTenantIsolation);
 
 router.get('/', listHandler);
 router.post('/test-send', testSendHandler);
-router.post('/group-invite/send-all', sendGroupInviteToAllHandler);
-router.post('/group-broadcast/send', (req, res, next) => {
-  upload.single('image')(req, res, (error: unknown) => {
-    if (error) {
-      const message = error instanceof Error ? error.message : 'Upload image invalide';
-      res.status(400).json({ success: false, message });
-      return;
-    }
-    next();
-  });
-}, sendGroupBroadcastHandler);
-router.patch('/:key', updateHandler);
-router.post('/:key/reset', resetHandler);
+router.post('/group-invite/send-all', requireFeature('CRM'), sendGroupInviteToAllHandler);
+router.post(
+  '/group-broadcast/send',
+  (req, res, next) => {
+    upload.single('image')(req, res, (error: unknown) => {
+      if (error) {
+        const message = error instanceof Error ? error.message : 'Upload image invalide';
+        res.status(400).json({ success: false, message });
+        return;
+      }
+      next();
+    });
+  },
+  sendGroupBroadcastHandler
+);
+router.patch('/:key', requireNotificationKeyFeature, updateHandler);
+router.post('/:key/reset', requireNotificationKeyFeature, resetHandler);
 
 export default router;

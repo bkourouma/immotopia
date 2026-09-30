@@ -95,6 +95,9 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   getTrialBalanceBySyndicate: jest.fn(),
   getGeneralLedgerBySyndicate: jest.fn(),
   listLotOwnerProfilesBySyndicate: jest.fn(async () => Array.from(store.ownerProfiles.values())),
+  listIncompleteOwnerSharesBySyndicate: jest.fn(async () => [
+    { lotId: 'lot-1', lotNumber: 'A-01', totalPercentage: 60 }
+  ]),
   createLotOwnerProfileBySyndicate: jest.fn(async (_tenantId: string, _syndicId: string, data: any) => {
     const created = { id: `owner-${store.ownerProfiles.size + 1}`, ...data };
     store.ownerProfiles.set(created.id, created);
@@ -175,6 +178,10 @@ describe('Syndics profiles/incidents routes', () => {
     const listResponse = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/profils/proprietaires`);
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data).toHaveLength(1);
+    // Bandeau « quotes-parts incomplètes » : agrégat serveur (BUG-069).
+    expect(listResponse.body.summary.incompleteLots).toEqual([
+      { lotId: 'lot-1', lotNumber: 'A-01', totalPercentage: 60 }
+    ]);
   });
 
   it('creates and lists incidents then adds imputation', async () => {

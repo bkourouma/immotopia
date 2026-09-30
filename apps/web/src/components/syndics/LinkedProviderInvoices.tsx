@@ -10,6 +10,7 @@ import { providerInvoiceStatusColors, providerInvoiceStatusLabels } from './labe
 import { ProviderInvoiceDrawer } from './ProviderInvoiceDrawer';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 interface LinkedProviderInvoicesProps {
   tenantId: string;
@@ -76,13 +77,13 @@ export const LinkedProviderInvoices: React.FC<LinkedProviderInvoicesProps> = ({
       title: t('Montant TTC'),
       key: 'amountTTC',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amountTTC} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amountTTC} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Reste dû'),
       key: 'amountDue',
       align: 'end',
-      render: (_: unknown, row) => <MoneyValue value={row.amountDue} currency={row.currency} />
+      render: (_: unknown, row) => <MoneyValue value={row.amountDue} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Statut'),

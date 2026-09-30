@@ -11,6 +11,12 @@ import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
 import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
 import type { FinanceSourceType } from '../lib/finance/types';
+import { computeInstallmentStatus, startOfDay } from '../lib/finance/installment-status';
+import { withEffectiveAmounts } from '../lib/lease-lifecycle/effective-rent';
+import { logAuditEvent } from './audit-service';
+import { runWithTenantContext } from '../utils/tenant-context';
+import { t } from '../i18n';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
 // Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
@@ -378,11 +384,16 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
   });
 
   if (!lease) {
-    throw new Error('Bail non trouvé ou accès refusé');
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
+  const revisions = await prisma.leaseEvent.findMany({
+    where: { tenantId, leaseId, type: 'REVISION', newRent: { not: null } },
+    select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+  });
+
   if (lease.status === RentalLeaseStatus.CANCELED || lease.status === RentalLeaseStatus.ENDED) {
-    throw new Error('Impossible de générer des échéances pour un bail annulé ou terminé');
+    throw new ConflictError(t('Impossible de générer des échéances pour un bail annulé ou terminé'));
   }
 
   // Check if installments already exist
@@ -394,7 +405,9 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
   });
 
   if (existingCount > 0) {
-    throw new Error("Des échéances existent déjà pour ce bail. Supprimez-les d'abord si vous souhaitez les régénérer.");
+    throw new ConflictError(
+      t("Des échéances existent déjà pour ce bail. Supprimez-les d'abord si vous souhaitez les régénérer.")
+    );
   }
 
   const startDate = new Date(lease.start_date);
@@ -414,7 +427,7 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
   const numberOfPeriods = Math.ceil(totalDays / billingPeriodDays);
 
   if (numberOfPeriods <= 0) {
-    throw new Error('La durée du bail est invalide');
+    throw new BadRequestError(t('La durée du bail est invalide'));
   }
 
   // Generate installments using calendar months
@@ -447,7 +460,12 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
     // toujours dans le cycle de facturation du bail : le cas « non inclus » ne
     // devrait jamais se produire ici, mais on le traite comme une période à
     // ignorer plutôt que de dupliquer le calcul.
-    const built = buildInstallmentForPeriod(lease, periodYear, periodMonth);
+    // Loyer effectif à la période : une révision future ne réécrit pas le passé.
+    const built = buildInstallmentForPeriod(
+      withEffectiveAmounts(lease, revisions, new Date(Date.UTC(periodYear, periodMonth - 1, 1, 12))),
+      periodYear,
+      periodMonth
+    );
 
     if (!built.included) {
       currentPeriodStart = new Date(periodEnd);
@@ -540,7 +558,33 @@ export async function listInstallments(
     where.lease = { primary_renter_client_id: filters.renterClientId };
   }
 
-  if (filters?.status) {
+  // Statut EFFECTIF : une échéance Brouillon ou « À payer » dont la date est
+  // passée est en retard, même si le job quotidien ne l'a pas encore basculée.
+  const debutJour = startOfDay(new Date());
+  const echuesNonBasculees = {
+    status: { in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE] },
+    due_date: { lt: debutJour }
+  };
+  // Même règle que `computeInstallmentStatus` : un encaissement partiel prime sur le retard
+  // (une échéance en retard à moitié payée s'affiche « Partiel », pas « En retard »).
+  if (filters?.status === RentalInstallmentStatus.OVERDUE) {
+    where.OR = [{ status: RentalInstallmentStatus.OVERDUE }, echuesNonBasculees];
+    where.amount_paid = { lte: 0 };
+  } else if (filters?.status === RentalInstallmentStatus.DRAFT || filters?.status === RentalInstallmentStatus.DUE) {
+    where.status = filters.status;
+    where.due_date = { gte: debutJour };
+    where.amount_paid = { lte: 0 };
+  } else if (filters?.status === RentalInstallmentStatus.PARTIAL) {
+    where.OR = [
+      { status: RentalInstallmentStatus.PARTIAL },
+      {
+        status: {
+          in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE]
+        },
+        amount_paid: { gt: 0 }
+      }
+    ];
+  } else if (filters?.status) {
     where.status = filters.status;
   }
 
@@ -558,8 +602,14 @@ export async function listInstallments(
     where.due_date = {
       lt: today
     };
+    delete where.OR;
     where.status = {
-      in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE]
+      in: [
+        RentalInstallmentStatus.DRAFT,
+        RentalInstallmentStatus.DUE,
+        RentalInstallmentStatus.PARTIAL,
+        RentalInstallmentStatus.OVERDUE
+      ]
     };
   }
 
@@ -603,8 +653,12 @@ export async function listInstallments(
     prisma.rentalInstallment.count({ where })
   ]);
 
+  const maintenant = new Date();
   return {
-    data: installments,
+    data: installments.map(echeance => ({
+      ...echeance,
+      status: computeInstallmentStatus(echeance, maintenant, { emitDraft: false })
+    })),
     pagination: {
       page,
       limit,
@@ -684,36 +738,8 @@ export async function updateInstallmentStatus(tenantId: string, installmentId: s
     return null;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const dueDate = new Date(installment.due_date);
-  dueDate.setHours(0, 0, 0, 0);
-
-  const totalDue =
-    Number(installment.amount_rent) +
-    Number(installment.amount_service) +
-    Number(installment.amount_other_fees) +
-    Number(installment.penalty_amount);
-  const amountPaid = Number(installment.amount_paid);
-
-  let newStatus: RentalInstallmentStatus = installment.status;
-
-  // Calculate new status based on payment and due date
-  if (amountPaid >= totalDue && totalDue > 0) {
-    newStatus = RentalInstallmentStatus.PAID;
-  } else if (amountPaid > 0 && amountPaid < totalDue) {
-    newStatus = RentalInstallmentStatus.PARTIAL;
-  } else if (dueDate < today) {
-    // Overdue if past due date and not paid
-    newStatus = RentalInstallmentStatus.OVERDUE;
-  } else if (dueDate >= today) {
-    // Due if on or before due date
-    newStatus = RentalInstallmentStatus.DUE;
-  } else {
-    // Default to DRAFT if none of the above
-    newStatus = RentalInstallmentStatus.DRAFT;
-  }
+  // emitDraft:false : une échéance à venir reste Brouillon (aucun débit daté du futur).
+  const newStatus = computeInstallmentStatus(installment, new Date(), { emitDraft: false });
 
   // Update if status changed
   if (newStatus !== installment.status) {
@@ -760,11 +786,8 @@ export async function recalculateInstallmentStatuses(tenantId: string, leaseId: 
   });
 
   if (!lease) {
-    throw new Error('Bail non trouvé ou accès refusé');
+    throw new NotFoundError(t('Bail introuvable'));
   }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   // Get all installments for the lease
   const installments = await prisma.rentalInstallment.findMany({
@@ -780,33 +803,8 @@ export async function recalculateInstallmentStatuses(tenantId: string, leaseId: 
   let updatedCount = 0;
 
   for (const installment of installments) {
-    const dueDate = new Date(installment.due_date);
-    dueDate.setHours(0, 0, 0, 0);
-
-    const totalDue =
-      Number(installment.amount_rent) +
-      Number(installment.amount_service) +
-      Number(installment.amount_other_fees) +
-      Number(installment.penalty_amount);
-    const amountPaid = Number(installment.amount_paid);
-
-    let newStatus: RentalInstallmentStatus = installment.status;
-
-    // Calculate new status based on payment and due date
-    if (amountPaid >= totalDue && totalDue > 0) {
-      newStatus = RentalInstallmentStatus.PAID;
-    } else if (amountPaid > 0 && amountPaid < totalDue) {
-      newStatus = RentalInstallmentStatus.PARTIAL;
-    } else if (dueDate < today) {
-      // Overdue if past due date and not paid
-      newStatus = RentalInstallmentStatus.OVERDUE;
-    } else if (dueDate >= today) {
-      // Due if on or before due date
-      newStatus = RentalInstallmentStatus.DUE;
-    } else {
-      // Default to DRAFT if none of the above
-      newStatus = RentalInstallmentStatus.DRAFT;
-    }
+    // emitDraft:false : une échéance à venir reste Brouillon (aucun débit daté du futur).
+    const newStatus = computeInstallmentStatus(installment, new Date(), { emitDraft: false });
 
     // Update if status changed
     if (newStatus !== installment.status) {
@@ -836,6 +834,75 @@ export async function recalculateInstallmentStatuses(tenantId: string, leaseId: 
 }
 
 /**
+ * Bascule en retard (OVERDUE) les échéances échues et non soldées restées
+ * Brouillon ou « À payer » : aucun paiement n'est là pour le faire à leur place.
+ *
+ * Idempotente : une échéance déjà OVERDUE, PARTIAL ou PAID n'est pas
+ * sélectionnée, et la mise à jour est gardée par le statut lu (un second passage
+ * ou un passage concurrent ne change rien et n'écrit pas d'audit). Chaque
+ * échéance est traitée dans le contexte de SON agence. Le mouvement de créance
+ * passe par la clé d'idempotence du grand livre : aucun doublon.
+ * Ne calcule pas de pénalité : `calculatePenaltiesForOverdueInstallments` s'en
+ * charge (une ligne par échéance, recalculée).
+ */
+export async function markOverdueInstallments(
+  tenantId?: string,
+  now: Date = new Date()
+): Promise<{ updated: number; errors: string[] }> {
+  const candidates = await prisma.rentalInstallment.findMany({
+    where: {
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+      status: { in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE] },
+      due_date: { lt: startOfDay(now) }
+    }
+  });
+
+  const result = { updated: 0, errors: [] as string[] };
+
+  for (const installment of candidates) {
+    await runWithTenantContext({ tenantId: installment.tenant_id }, async () => {
+      try {
+        const newStatus = computeInstallmentStatus(installment, now, { emitDraft: false });
+        if (newStatus === installment.status || newStatus === RentalInstallmentStatus.DRAFT) {
+          return;
+        }
+
+        const changed = await prisma.$transaction(async tx => {
+          const { count } = await tx.rentalInstallment.updateMany({
+            where: { id: installment.id, tenant_id: installment.tenant_id, status: installment.status },
+            data: { status: newStatus }
+          });
+          if (count === 0) {
+            return false;
+          }
+          await inscrireEcheanceFactureeTx(tx, installment.tenant_id, { ...installment, status: newStatus });
+          return true;
+        });
+
+        if (changed) {
+          result.updated++;
+          logAuditEvent({
+            actorUserId: null,
+            tenantId: installment.tenant_id,
+            actionKey: 'RENTAL_INSTALLMENT_MARKED_OVERDUE',
+            entityType: 'RENTAL_INSTALLMENT',
+            entityId: installment.id,
+            payload: { from: installment.status, to: newStatus, job: 'installment-overdue' }
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        result.errors.push(`Installment ${installment.id}: ${message}`);
+        logger.error('Error marking installment overdue', { installmentId: installment.id, error: message });
+      }
+    });
+  }
+
+  logger.info('Overdue installments marked', { tenantId: tenantId || 'all', updated: result.updated });
+  return result;
+}
+
+/**
  * Delete all installments for a lease
  * @param tenantId - Tenant ID
  * @param leaseId - Lease ID
@@ -852,7 +919,7 @@ export async function deleteAllInstallments(tenantId: string, leaseId: string, a
   });
 
   if (!lease) {
-    throw new Error('Bail non trouvé ou accès refusé');
+    throw new NotFoundError(t('Bail introuvable'));
   }
 
   // Check if lease is in a state that allows deletion
@@ -864,8 +931,8 @@ export async function deleteAllInstallments(tenantId: string, leaseId: string, a
     // Allow deletion if lease ended more than 30 days ago
     const daysSinceEnd = Math.floor((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysSinceEnd < 30) {
-      throw new Error(
-        "Impossible de supprimer les échéances d'un bail récemment terminé. Attendez 30 jours après la fin du bail."
+      throw new ConflictError(
+        t("Impossible de supprimer les échéances d'un bail récemment terminé. Attendez 30 jours après la fin du bail.")
       );
     }
   }
@@ -894,8 +961,10 @@ export async function deleteAllInstallments(tenantId: string, leaseId: string, a
   });
 
   if (installmentsWithPayments) {
-    throw new Error(
-      "Impossible de supprimer les échéances : certaines échéances ont des paiements alloués. Supprimez d'abord les paiements."
+    throw new ConflictError(
+      t(
+        "Impossible de supprimer les échéances : certaines échéances ont des paiements alloués. Supprimez d'abord les paiements."
+      )
     );
   }
 

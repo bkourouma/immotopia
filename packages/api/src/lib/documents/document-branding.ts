@@ -141,7 +141,15 @@ export function issuerFromTenant(
     financeSettings?: { taxpayerNumber: NullableText } | null;
   } | null
 ): DocumentIssuer {
-  const address = [tenant?.address, tenant?.city, tenant?.country].map(emptyToNull).filter(Boolean).join(', ');
+  // Ville et pays déjà écrits dans l'adresse saisie ne sont pas répétés.
+  const addressParts: string[] = [];
+  for (const part of [tenant?.address, tenant?.city, tenant?.country].map(emptyToNull)) {
+    if (!part) continue;
+    const already = addressParts.join(', ').toLocaleLowerCase('fr');
+    if (addressParts.length > 0 && already.includes(part.toLocaleLowerCase('fr'))) continue;
+    addressParts.push(part);
+  }
+  const address = addressParts.join(', ');
   return {
     kind: 'AGENCY',
     name: tenant?.name ?? '',

@@ -13,6 +13,7 @@ const tenantClientFindMany = jest.fn();
 const rentalLeaseFindFirst = jest.fn();
 const rentalLeaseFindMany = jest.fn();
 const propertyFindMany = jest.fn();
+const propertyMandateFindMany = jest.fn();
 const executeRaw = jest.fn(async (..._args: any[]) => undefined);
 
 jest.mock('../../src/utils/database', () => ({
@@ -23,6 +24,7 @@ jest.mock('../../src/utils/database', () => ({
       findMany: (...a: any[]) => rentalLeaseFindMany(...a)
     },
     property: { findMany: (...a: any[]) => propertyFindMany(...a) },
+    propertyMandate: { findMany: (...a: any[]) => propertyMandateFindMany(...a) },
     $executeRaw: (strings: TemplateStringsArray, ...values: any[]) => executeRaw(strings, ...values)
   }
 }));
@@ -106,7 +108,7 @@ describe('requireTenantPortalAccess — résolution du TenantClient (B3)', () =>
     expect(lire()).toBe('tenant-old'); // D1 : visible en aval après await.
   });
 
-  it("en-tête X-Portal-Tenant-Id : prend le TenantClient de CETTE agence", async () => {
+  it('en-tête X-Portal-Tenant-Id : prend le TenantClient de CETTE agence', async () => {
     tenantClientFindMany.mockResolvedValue([clientAncien, clientRecent]);
     rentalLeaseFindFirst.mockResolvedValue({ id: 'lease-1' });
 
@@ -134,7 +136,7 @@ describe('requireTenantPortalAccess — résolution du TenantClient (B3)', () =>
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it("en-tête pour une agence suspendue : 403 TENANT_SUSPENDED", async () => {
+  it('en-tête pour une agence suspendue : 403 TENANT_SUSPENDED', async () => {
     tenantClientFindMany.mockResolvedValue([clientSuspendu]);
 
     const req = requeteAvecEnTete('user-1', 'tenant-susp');
@@ -223,9 +225,11 @@ describe('requireOwnerPortalAccess — résolution + filtre des biens par agence
   beforeEach(() => {
     propertyFindMany.mockResolvedValue([]);
     rentalLeaseFindMany.mockResolvedValue([]);
+    // Périmètre unique lib/owner-portal-scope.ts : aucun mandat actif par défaut.
+    propertyMandateFindMany.mockResolvedValue([]);
   });
 
-  it("aucun TenantClient OWNER : 403 (même si le client existe pour un autre clientType)", async () => {
+  it('aucun TenantClient OWNER : 403 (même si le client existe pour un autre clientType)', async () => {
     // tenantClient.findMany est déjà filtré par clientType: OWNER côté
     // middleware — le mock simule la base qui ne renvoie donc rien ici.
     tenantClientFindMany.mockResolvedValue([]);
@@ -243,7 +247,7 @@ describe('requireOwnerPortalAccess — résolution + filtre des biens par agence
     );
   });
 
-  it("sans en-tête : agence la plus ancienne non suspendue, et les biens sont filtrés sur CETTE agence", async () => {
+  it('sans en-tête : agence la plus ancienne non suspendue, et les biens sont filtrés sur CETTE agence', async () => {
     tenantClientFindMany.mockResolvedValue([ownerAncien, ownerRecent]);
     propertyFindMany.mockResolvedValue([{ id: 'prop-1' }]);
     rentalLeaseFindMany.mockResolvedValue([{ property_id: 'prop-2' }]);

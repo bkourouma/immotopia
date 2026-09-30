@@ -29,6 +29,7 @@ import {
 } from '../../services/subscription-extras-service';
 import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { StatusTag } from '../../components/primitives';
+import { EXTENSION_REQUIRED_PACKS, isExtensionAllowed } from '../../utils/extension-rules';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -41,13 +42,18 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   BIENS_DETENUS: t('Biens détenus')
 };
 
-const PHASE_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+// Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue
+// active à ce moment-là (« Essai » restait en français après passage à l'anglais).
+const phaseLabels = (): Record<
+  string,
+  { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
+> => ({
   NONE: { label: t('Aucun abonnement'), tone: 'neutral' },
   TRIAL: { label: t('Essai'), tone: 'info' },
   ACTIVE: { label: t('Actif'), tone: 'success' },
   GRACE: { label: t('Grâce'), tone: 'warning' },
   READ_ONLY: { label: t('Lecture seule'), tone: 'danger' }
-};
+});
 
 const MODULE_LABEL: Record<string, string> = {
   MODULE_AGENCY: t('Agence'),
@@ -109,6 +115,10 @@ export const TenantSubscriptionSettings: React.FC = () => {
   const [requests, setRequests] = useState<ExtensionRequest[]>([]);
   const [sending, setSending] = useState(false);
   const [requestForm] = Form.useForm<RequestValues>();
+  // Seules les extensions vendables avec les packs détenus sont proposées (BUG-061).
+  const extensionOptions = EXTENSION_OPTIONS.filter(option =>
+    isExtensionAllowed(EXTENSION_REQUIRED_PACKS[option.value], entitlements?.packs ?? [])
+  );
 
   const loadEntitlements = useCallback(
     (fresh = false) => {
@@ -173,7 +183,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
     );
   }
 
-  const phaseInfo = PHASE_LABEL[entitlements.phase] ?? PHASE_LABEL.NONE;
+  const phaseInfo = phaseLabels()[entitlements.phase] ?? phaseLabels().NONE;
   const trialDays = entitlements.phase === 'TRIAL' ? daysRemaining(entitlements.trialEndsAt) : null;
 
   return (
@@ -274,7 +284,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Paragraph>
         <Form form={requestForm} layout="vertical" onFinish={handleRequestExtension} style={{ maxWidth: 560 }}>
           <Form.Item label={t('Offre souhaitée')} name="catalogCode">
-            <Select allowClear placeholder={t('Autre demande')} options={EXTENSION_OPTIONS} />
+            <Select allowClear placeholder={t('Autre demande')} options={extensionOptions} />
           </Form.Item>
           <Form.Item label={t('Quantité')} name="quantity">
             <InputNumber<number> min={1} max={1000} style={{ width: '100%' }} />

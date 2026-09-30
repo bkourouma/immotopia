@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { t } from '../i18n';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -8,26 +9,25 @@ import {
   createSyndicateLot,
   importLotsFromPropertiesBySyndicate,
   updateSyndicateLotByTenant,
+  deleteSyndicateLotByTenant,
   addLotTenantBySyndicate,
   deactivateLotTenantAssignmentBySyndicate,
   updateSyndicateByTenant,
   deleteEmptySyndicateByTenant,
   listChargeCallsBySyndicate,
+  summarizeChargeCallsBySyndicate,
+  countOwnerAccountTransactionsByLot,
   getChargeCallByTenant,
   createChargeCallAndUpdateStatus,
   recordChargePaymentWithStatusUpdate,
   listMeetingsBySyndicate,
   getMeetingByTenant,
-  createMeetingWithResolutions,
   updateMeetingByTenant,
   addResolutionToMeeting,
   castVoteAndRecomputeResolutionCounters,
   listMeetingProxiesByTenant,
   createMeetingProxyByTenant,
   deleteMeetingProxyByTenant,
-  addAgendaItemToMeeting,
-  updateAgendaItemByTenant,
-  deleteAgendaItemByTenant,
   listServiceProvidersBySyndicate,
   createServiceProvider,
   updateServiceProviderByTenant,
@@ -73,6 +73,7 @@ import {
   createChargeCallBatchBySyndicate,
   generateChargeCallsFromBudget,
   listLotOwnerProfilesBySyndicate,
+  listIncompleteOwnerSharesBySyndicate,
   createLotOwnerProfileBySyndicate,
   updateLotOwnerProfileBySyndicate,
   listLotTenantProfilesBySyndicate,
@@ -141,10 +142,17 @@ import {
   adjustSyndicateFundBalanceSchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyChargeCallReminder, notifyMeetingConvocation } from '../lib/syndics/notifications';
-import { badRequest, notFound } from '../lib/errors';
+import { badRequest, conflict, notFound } from '../lib/errors';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
+import { presentLotOwners } from '../lib/syndics/lot-owner';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
+import {
+  addAgendaItemGuarded,
+  createMeetingForTenant,
+  deleteAgendaItemGuarded,
+  updateAgendaItemGuarded
+} from '../lib/syndics/meeting-writes';
 import { buildOwnerAccountStatementPdf } from '../lib/syndics/owner-account-statement';
 import { resolveDocumentBranding } from '../lib/documents/document-branding';
 import { toSyndicateResponse } from '../lib/documents/syndicate-branding-view';
@@ -153,6 +161,7 @@ import {
   syndicateDocumentFileUrl,
   syndicateDocumentsDir
 } from '../lib/syndics/document-files';
+import { parsePagination } from '../utils/pagination-helper';
 
 export const listSyndicsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -201,7 +210,7 @@ export const getSyndicHandler = asyncHandler(async (req: Request, res: Response)
   const syndic = await getSyndicateWithLotsAndStats(tenantId, syndicId);
 
   if (!syndic) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
   res.json({
@@ -239,7 +248,7 @@ export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Respon
 
   res.json({
     success: true,
-    message: 'Copropriete supprimee',
+    message: t('Copropriété supprimée'),
     data: toSyndicateResponse(syndic)
   });
 });
@@ -255,12 +264,18 @@ export const listSyndicLotsHandler = asyncHandler(async (req: Request, res: Resp
   const syndic = await getSyndicateWithLotsAndStats(tenantId, syndicId);
 
   if (!syndic) {
-    throw notFound('Copropriete introuvable ou inaccessible');
+    throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
+
+  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`) : indivision incluse.
+  const lots = (syndic.lots || []).map(({ ownerProfiles, ...lot }) => ({
+    ...lot,
+    ...presentLotOwners(ownerProfiles ?? [])
+  }));
 
   res.json({
     success: true,
-    data: syndic.lots || []
+    data: lots
   });
 });
 
@@ -320,6 +335,21 @@ export const updateSyndicLotHandler = asyncHandler(async (req: Request, res: Res
   });
 });
 
+export const deleteSyndicLotHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la suppression du lot');
+  }
+
+  await deleteSyndicateLotByTenant(tenantId, req.params.syndicId, req.params.lotId);
+
+  res.json({
+    success: true,
+    message: 'Lot supprime'
+  });
+});
+
 export const addLotTenantHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
   const syndicateId = req.params.syndicId;
@@ -363,18 +393,26 @@ export const listChargeCallsHandler = asyncHandler(async (req: Request, res: Res
     throw badRequest('TenantId manquant pour la liste des appels de charges');
   }
 
-  const chargeCalls = await listChargeCallsBySyndicate(tenantId, syndicateId, {
-    period: req.query.period as string | undefined,
-    status: req.query.status as 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | undefined,
-    pagination: {
-      page: req.query.page ? Number(req.query.page) : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined
-    }
-  });
+  const period = req.query.period as string | undefined;
+  const status = req.query.status as 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | undefined;
+
+  const [chargeCalls, summary] = await Promise.all([
+    listChargeCallsBySyndicate(tenantId, syndicateId, {
+      period,
+      status,
+      pagination: {
+        ...parsePagination(req.query)
+      }
+    }),
+    // Cartes de l'écran : agrégat sur TOUS les appels filtrés (mêmes filtres
+    // que la liste), jamais sur la page renvoyée.
+    summarizeChargeCallsBySyndicate(tenantId, syndicateId, { period, status })
+  ]);
 
   res.json({
     success: true,
-    data: chargeCalls
+    data: chargeCalls,
+    summary
   });
 });
 
@@ -698,26 +736,114 @@ export const createMeetingHandler = asyncHandler(async (req: Request, res: Respo
     ? req.body.resolutions.map((resolution: any) => createResolutionSchema.omit({ meetingId: true }).parse(resolution))
     : [];
 
-  const meeting = await createMeetingWithResolutions(tenantId, {
+  const meeting = await createMeetingForTenant(tenantId, {
     ...meetingBase,
     resolutions
   });
-  try {
-    if (meeting?.id) {
-      await notifyMeetingConvocation(meeting.id);
-    }
-  } catch (notificationError: any) {
-    logger.warn('Meeting created but convocation notification failed', {
-      meetingId: meeting?.id,
-      error: notificationError?.message || String(notificationError)
-    });
-  }
+
+  // Convocation APRES la validation de la creation : un echec d'envoi ne defait
+  // pas l'assemblee, il est journalise et rendu dans `convocation`.
+  const convocation = await sendMeetingConvocation(meeting.id);
 
   res.status(201).json({
     success: true,
-    data: meeting
+    data: meeting,
+    convocation
   });
 });
+
+/**
+ * Convocation d'une AG : ne leve jamais. Le resultat (envoyes / echoues) est
+ * rendu a l'ecran ; `error` n'est present que si l'envoi a echoue en bloc.
+ */
+async function sendMeetingConvocation(meetingId: string) {
+  try {
+    return await notifyMeetingConvocation(meetingId);
+  } catch (notificationError: any) {
+    logger.warn('Meeting created but convocation notification failed', {
+      meetingId,
+      error: notificationError?.message || String(notificationError)
+    });
+    return {
+      owners: 0,
+      emailEnabled: true,
+      emailSent: 0,
+      emailFailed: 0,
+      emailSkippedNoAddress: 0,
+      whatsappSent: 0,
+      failures: [] as string[],
+      error: 'CONVOCATION_FAILED' as const
+    };
+  }
+}
+
+export const resendMeetingConvocationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le renvoi de la convocation');
+  }
+
+  const meeting = await getMeetingByTenant(tenantId, syndicateId, meetingId);
+  if (!meeting) {
+    throw notFound('Assemblee generale introuvable ou inaccessible');
+  }
+  if (meeting.status !== 'PLANNED') {
+    throw conflict(t('La convocation ne peut être renvoyée que pour une assemblée planifiée'));
+  }
+
+  // Un renvoi par assemblee toutes les 10 minutes : sans cela, un clic repete
+  // (ou un script) ré-envoie un e-mail a chaque copropriétaire a chaque appel.
+  const retryAfter = reserveConvocationResend(tenantId, meetingId);
+  if (retryAfter > 0) {
+    res.set('Retry-After', String(retryAfter));
+    throw conflict(
+      t('La convocation a déjà été renvoyée récemment : réessayez dans {{minutes}} minute(s).', {
+        minutes: Math.ceil(retryAfter / 60)
+      })
+    );
+  }
+
+  const convocation = await sendMeetingConvocation(meetingId);
+  if ('error' in convocation) {
+    // Echec en bloc : rien n'est parti, le renvoi reste immediatement possible.
+    releaseConvocationResend(tenantId, meetingId);
+  }
+
+  res.json({
+    success: true,
+    convocation
+  });
+});
+
+/** Delai minimal entre deux renvois de la convocation d'une meme assemblee. */
+export const CONVOCATION_RESEND_INTERVAL_MS = 10 * 60 * 1000;
+const convocationResendAt = new Map<string, number>();
+
+/** Reserve le creneau d'envoi ; rend 0 si libre, sinon les secondes a attendre. */
+export function reserveConvocationResend(tenantId: string, meetingId: string, now = Date.now()): number {
+  for (const [key, at] of convocationResendAt) {
+    if (now - at >= CONVOCATION_RESEND_INTERVAL_MS) convocationResendAt.delete(key);
+  }
+  const key = `${tenantId}:${meetingId}`;
+  const last = convocationResendAt.get(key);
+  if (last !== undefined && now - last < CONVOCATION_RESEND_INTERVAL_MS) {
+    return Math.ceil((CONVOCATION_RESEND_INTERVAL_MS - (now - last)) / 1000);
+  }
+  convocationResendAt.set(key, now);
+  return 0;
+}
+
+function releaseConvocationResend(tenantId: string, meetingId: string): void {
+  convocationResendAt.delete(`${tenantId}:${meetingId}`);
+}
+
+/** Pour les tests uniquement. */
+export function resetConvocationResendLimiter(): void {
+  convocationResendAt.clear();
+}
 
 export const updateMeetingHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -794,7 +920,7 @@ export const addAgendaItemHandler = asyncHandler(async (req: Request, res: Respo
     meetingId
   });
 
-  const agendaItem = await addAgendaItemToMeeting(tenantId, syndicateId, parsed);
+  const agendaItem = await addAgendaItemGuarded(tenantId, syndicateId, parsed);
 
   res.status(201).json({
     success: true,
@@ -812,7 +938,7 @@ export const updateAgendaItemHandler = asyncHandler(async (req: Request, res: Re
   }
 
   const parsed = updateAgendaItemSchema.parse(req.body);
-  const agendaItem = await updateAgendaItemByTenant(tenantId, syndicateId, agendaItemId, parsed);
+  const agendaItem = await updateAgendaItemGuarded(tenantId, syndicateId, agendaItemId, parsed);
 
   res.json({
     success: true,
@@ -829,7 +955,7 @@ export const deleteAgendaItemHandler = asyncHandler(async (req: Request, res: Re
     throw badRequest('TenantId manquant pour la suppression du point d ordre du jour');
   }
 
-  const deleted = await deleteAgendaItemByTenant(tenantId, syndicateId, agendaItemId);
+  const deleted = await deleteAgendaItemGuarded(tenantId, syndicateId, agendaItemId);
 
   res.json({
     success: true,
@@ -1272,8 +1398,7 @@ export const listRemindersHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   const reminders = await listPaymentRemindersBySyndicate(tenantId, syndicateId, {
-    page: req.query.page ? Number(req.query.page) : undefined,
-    limit: req.query.limit ? Number(req.query.limit) : undefined
+    ...parsePagination(req.query)
   });
 
   res.json({
@@ -1352,8 +1477,7 @@ export const listPenaltiesHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   const penalties = await listLatePaymentPenaltiesBySyndicate(tenantId, syndicateId, {
-    page: req.query.page ? Number(req.query.page) : undefined,
-    limit: req.query.limit ? Number(req.query.limit) : undefined
+    ...parsePagination(req.query)
   });
 
   res.json({
@@ -1441,8 +1565,7 @@ export const listPaymentSchedulesHandler = asyncHandler(async (req: Request, res
   }
 
   const schedules = await listPaymentSchedulesBySyndicate(tenantId, syndicateId, {
-    page: req.query.page ? Number(req.query.page) : undefined,
-    limit: req.query.limit ? Number(req.query.limit) : undefined
+    ...parsePagination(req.query)
   });
 
   res.json({
@@ -1480,17 +1603,20 @@ export const listLotOwnerAccountTransactionsHandler = asyncHandler(async (req: R
   const parsedRange = ownerAccountStatementQuerySchema.safeParse(req.query ?? {});
   const range = parsedRange.success ? parsedRange.data : {};
 
-  const transactions = await listOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, {
-    range,
-    pagination: {
-      page: req.query.page ? Number(req.query.page) : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined
-    }
-  });
+  const [transactions, totalCount] = await Promise.all([
+    listOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, {
+      range,
+      pagination: {
+        ...parsePagination(req.query)
+      }
+    }),
+    countOwnerAccountTransactionsByLot(tenantId, syndicateId, lotId, { range })
+  ]);
 
   res.json({
     success: true,
-    data: transactions
+    data: transactions,
+    summary: { totalCount }
   });
 });
 
@@ -1564,8 +1690,12 @@ export const listLotOwnerProfilesHandler = asyncHandler(async (req: Request, res
     throw badRequest('TenantId manquant pour la liste des profils proprietaires');
   }
   const lotId = typeof req.query.lotId === 'string' ? req.query.lotId : undefined;
-  const profiles = await listLotOwnerProfilesBySyndicate(tenantId, syndicateId, lotId);
-  res.json({ success: true, data: profiles });
+  const [profiles, incompleteLots] = await Promise.all([
+    listLotOwnerProfilesBySyndicate(tenantId, syndicateId, lotId),
+    listIncompleteOwnerSharesBySyndicate(tenantId, syndicateId)
+  ]);
+  // `summary.incompleteLots` : lots dont les parts actuelles totalisent moins de 100 % (bandeau d'avertissement).
+  res.json({ success: true, data: profiles, summary: { incompleteLots } });
 });
 
 export const createLotOwnerProfileHandler = asyncHandler(async (req: Request, res: Response) => {

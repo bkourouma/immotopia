@@ -116,12 +116,12 @@ export const SyndicDocuments: React.FC = () => {
             value={typeFilter}
             onChange={value => setTypeFilter(value)}
             options={[
-              { label: 'Reglement', value: 'REGULATION' },
+              { label: t('Règlement'), value: 'REGULATION' },
               { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },
-              { label: 'Diagnostic', value: 'DIAGNOSTIC' },
-              { label: 'Assurance', value: 'INSURANCE' },
-              { label: 'Budget', value: 'BUDGET' },
-              { label: 'Autre', value: 'OTHER' }
+              { label: t('Diagnostic'), value: 'DIAGNOSTIC' },
+              { label: t('Assurance'), value: 'INSURANCE' },
+              { label: t('Budget'), value: 'BUDGET' },
+              { label: t('Autre'), value: 'OTHER' }
             ]}
           />
         </Card>
@@ -162,12 +162,12 @@ export const SyndicDocuments: React.FC = () => {
               showSearch
               optionFilterProp="label"
               options={[
-                { label: 'Reglement', value: 'REGULATION' },
+                { label: t('Règlement'), value: 'REGULATION' },
                 { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },
-                { label: 'Diagnostic', value: 'DIAGNOSTIC' },
-                { label: 'Assurance', value: 'INSURANCE' },
-                { label: 'Budget', value: 'BUDGET' },
-                { label: 'Autre', value: 'OTHER' }
+                { label: t('Diagnostic'), value: 'DIAGNOSTIC' },
+                { label: t('Assurance'), value: 'INSURANCE' },
+                { label: t('Budget'), value: 'BUDGET' },
+                { label: t('Autre'), value: 'OTHER' }
               ]}
             />
           </Form.Item>

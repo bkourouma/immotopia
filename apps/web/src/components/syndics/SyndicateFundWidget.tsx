@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, Col, Row, Statistic } from 'antd';
+import { displayCurrency } from '../../utils/syndic-currency';
 
 interface FundItem {
   id: string;
@@ -15,13 +16,13 @@ interface SyndicateFundWidgetProps {
 export const SyndicateFundWidget: React.FC<SyndicateFundWidgetProps> = ({ funds }) => {
   return (
     <Row gutter={[16, 16]}>
-      {funds.map((fund) => (
+      {funds.map(fund => (
         <Col key={fund.id} xs={24} md={12} xl={8}>
           <Card>
             <Statistic
               title={fund.name}
               value={Number(fund.balance)}
-              suffix={fund.currency}
+              suffix={displayCurrency(fund.currency) ?? undefined}
               precision={2}
             />
           </Card>

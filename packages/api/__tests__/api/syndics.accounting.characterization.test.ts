@@ -611,7 +611,9 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
         });
 
       expect(response.status).toBe(422);
-      expect(response.body.error).toBe('Ecriture non equilibree: total debit doit etre egal au total credit');
+      expect(response.body.error).toBe(
+        'Écriture non équilibrée : le total des débits doit être égal au total des crédits'
+      );
       expect(store.entries).toHaveLength(0);
       expect(store.lines).toHaveLength(0);
     });
@@ -716,7 +718,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
         });
 
       expect(response.status).toBe(422);
-      expect(response.body.error).toContain('Ecriture non equilibree');
+      expect(response.body.error).toContain('Écriture non équilibrée');
       // Et rien n a ete stocke : le refus precede l ecriture.
       expect(store.entries).toHaveLength(0);
       expect(store.lines).toHaveLength(0);
@@ -806,7 +808,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
         .send({ lock: true });
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toBe('Ecriture comptable introuvable');
+      expect(response.body.error).toBe('Écriture comptable introuvable');
     });
 
     it('IMMUTABILITE : aucune route n expose la modification ni la suppression d une ecriture', async () => {

@@ -5,6 +5,8 @@ import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateDealRequest, UpdateDealRequest, DealFilters, DealDetail } from '../types/crm-types';
 import { CrmDealStage } from '@prisma/client';
 import { assertActiveMember } from './crm-contact-service';
+import { t } from '../i18n';
+import { NotFoundError, ConflictError } from '../middleware/error-middleware';
 
 /**
  * Create a new deal
@@ -23,7 +25,7 @@ export async function createDeal(tenantId: string, data: CreateDealRequest, acto
   });
 
   if (!contact) {
-    throw new Error('Contact not found');
+    throw new NotFoundError(t('Contact introuvable'));
   }
 
   // The assignee must belong to this tenant (reference received in the request body)
@@ -293,12 +295,14 @@ export async function updateDeal(tenantId: string, dealId: string, data: UpdateD
   });
 
   if (!existingDeal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   // Optimistic locking check
   if (data.version !== existingDeal.version) {
-    throw new Error('Deal has been modified by another user. Please refresh and try again.');
+    throw new ConflictError(
+      t('Cette affaire a été modifiée par un autre utilisateur. Actualisez la page et réessayez.')
+    );
   }
 
   // Track changed fields for audit
@@ -448,7 +452,7 @@ export async function updateDealStage(tenantId: string, dealId: string, stage: C
   });
 
   if (!currentDeal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   return updateDeal(
@@ -487,7 +491,7 @@ export async function closeDeal(
   });
 
   if (!currentDeal) {
-    throw new Error('Deal not found');
+    throw new NotFoundError(t('Affaire introuvable'));
   }
 
   return updateDeal(

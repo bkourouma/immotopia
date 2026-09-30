@@ -186,7 +186,7 @@ export const Releve: React.FC = () => {
       <PageHeader
         title={data?.label ?? t('Relevé de compte')}
         breadcrumbs={[
-          { label: 'Finance', to: `/tenant/${tenantId}/finance/balance-clients` },
+          { label: t('Finance'), to: `/tenant/${tenantId}/finance/balance-clients` },
           filDAriane(data?.kind, tenantId as string),
           { label: t('Relevé') }
         ]}
@@ -198,7 +198,7 @@ export const Releve: React.FC = () => {
             </>
           ) : undefined
         }
-        primaryAction={{ label: 'Imprimer', icon: <PrinterOutlined />, onClick: imprimer }}
+        primaryAction={{ label: t('Imprimer'), icon: <PrinterOutlined />, onClick: imprimer }}
       />
 
       <FilterSheet

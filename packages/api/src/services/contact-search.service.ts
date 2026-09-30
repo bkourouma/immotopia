@@ -3,8 +3,10 @@
  * Supports saved searches, suggestions, and CSV export.
  */
 
+import { toCsvString } from '../lib/csv';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
+import { NotFoundError, ForbiddenError, BadRequestError } from '../middleware/error-middleware';
 
 export interface ContactSearchFilters {
   searchQuery?: string;
@@ -497,10 +499,13 @@ export async function saveSearch(
     scope?: 'PERSONAL' | 'TEAM' | 'TENANT';
   }
 ) {
+  if (typeof data?.name !== 'string' || !data.name.trim()) {
+    throw new BadRequestError('Le nom de la recherche est requis');
+  }
   return prisma.savedContactSearch.create({
     data: {
       tenantId,
-      name: data.name,
+      name: data.name.trim(),
       description: data.description ?? null,
       filters: data.filters as unknown as Prisma.InputJsonValue,
       scope: data.scope ?? 'PERSONAL',
@@ -539,9 +544,9 @@ export async function deleteSavedSearch(searchId: string, tenantId: string, user
   const search = await prisma.savedContactSearch.findUnique({
     where: { id: searchId, tenantId }
   });
-  if (!search) throw new Error('Recherche introuvable');
+  if (!search) throw new NotFoundError('Recherche introuvable');
   if (search.createdById !== userId) {
-    throw new Error('Vous ne pouvez supprimer que vos propres recherches');
+    throw new ForbiddenError('Vous ne pouvez supprimer que vos propres recherches');
   }
   return prisma.savedContactSearch.delete({
     where: { id: searchId, tenantId }
@@ -570,31 +575,27 @@ export async function exportSearchResultsCsv(tenantId: string, filters: ContactS
     'Tags',
     'Deals actifs',
     'Rôles'
-  ].join(',');
+  ];
 
-  const rows = result.contacts.map(c =>
-    [
-      c.id,
-      c.firstName,
-      c.lastName,
-      c.email,
-      c.phonePrimary ?? '',
-      c.whatsappNumber ?? '',
-      c.contactType,
-      c.status,
-      c.maturityLevel ?? '',
-      c.score ?? '',
-      c.commune?.name ?? '',
-      c.tags.map(t => t.name).join(';'),
-      c.activeDeals.length,
-      c.roles
-        .filter(r => r.active)
-        .map(r => r.role)
-        .join(';')
-    ]
-      .map(v => `"${String(v).replace(/"/g, '""')}"`)
-      .join(',')
-  );
+  const rows = result.contacts.map(c => [
+    c.id,
+    c.firstName,
+    c.lastName,
+    c.email,
+    c.phonePrimary ?? '',
+    c.whatsappNumber ?? '',
+    c.contactType,
+    c.status,
+    c.maturityLevel ?? '',
+    c.score ?? '',
+    c.commune?.name ?? '',
+    c.tags.map(t => t.name).join(';'),
+    c.activeDeals.length,
+    c.roles
+      .filter(r => r.active)
+      .map(r => r.role)
+      .join(';')
+  ]);
 
-  return [headers, ...rows].join('\n');
+  return toCsvString([headers, ...rows]);
 }

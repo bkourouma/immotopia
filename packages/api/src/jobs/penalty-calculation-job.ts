@@ -1,6 +1,8 @@
 import * as cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { calculatePenaltiesForOverdueInstallments } from '../services/rental-penalty-service';
+import { markOverdueInstallments } from '../services/rental-installment-service';
+import { applyDueRevisions } from '../lib/lease-lifecycle/service';
 
 let penaltyJob: cron.ScheduledTask | null = null;
 
@@ -20,6 +22,9 @@ export function startPenaltyCalculationJob() {
     async () => {
       try {
         logger.info('Starting scheduled penalty calculation job');
+        // D'abord le statut (Brouillon/À payer échus -> En retard), puis les pénalités.
+        await applyDueRevisions();
+        await markOverdueInstallments();
         const results = await calculatePenaltiesForOverdueInstallments();
         logger.info('Penalty calculation job completed', {
           processed: results.processed,
@@ -57,5 +62,6 @@ export function stopPenaltyCalculationJob() {
  */
 export async function triggerPenaltyCalculation(tenantId?: string) {
   logger.info('Manually triggering penalty calculation', { tenantId });
+  await markOverdueInstallments(tenantId);
   return await calculatePenaltiesForOverdueInstallments(tenantId);
 }

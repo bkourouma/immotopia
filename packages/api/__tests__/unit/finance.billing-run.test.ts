@@ -105,6 +105,16 @@ const mockPrisma: Row = {
   },
 
   rentalInstallment: {
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const found = store.installments.find(
+        i =>
+          i.tenant_id === where.tenant_id &&
+          i.lease_id === where.lease_id &&
+          i.period_year === where.period_year &&
+          i.period_month === where.period_month
+      );
+      return found ? { ...found } : null;
+    }),
     create: jest.fn(async ({ data }: Row) => {
       const clash = store.installments.find(
         i => i.lease_id === data.lease_id && i.period_year === data.period_year && i.period_month === data.period_month
@@ -128,7 +138,11 @@ const mockPrisma: Row = {
     findMany: jest.fn(async ({ where }: Row) => {
       const rows = store.payments.filter(
         p =>
-          p.tenant_id === where.tenant_id && p.renter_client_id === where.renter_client_id && p.status === where.status
+          p.tenant_id === where.tenant_id &&
+          p.renter_client_id === where.renter_client_id &&
+          p.status === where.status &&
+          // Un règlement qui porte un dépôt de garantie n'est jamais une avance.
+          !(where.depositMovements?.none && p.is_deposit)
       );
       const sorted = [...rows].sort((a, b) => {
         const da = (a.succeeded_at ?? a.initiated_at).getTime();
@@ -567,5 +581,150 @@ describe('runRentBilling — atomicite', () => {
     expect(store.allocations).toHaveLength(0);
     expect(store.billingRuns).toHaveLength(1);
     expect(store.billingRuns[0].status).toBe(RentBillingRunStatus.FAILED);
+  });
+});
+
+describe('runRentBilling — échéance générée en Brouillon (BUG-028)', () => {
+  function seedGeneree(leaseId: string, status: string, dueDate: Date): Row {
+    const row = {
+      id: nextId('inst'),
+      tenant_id: TENANT_ID,
+      lease_id: leaseId,
+      period_year: 2026,
+      period_month: 9,
+      due_date: dueDate,
+      status,
+      currency: 'FCFA',
+      amount_rent: 100000,
+      amount_service: 5000,
+      amount_other_fees: 0,
+      penalty_amount: 0,
+      amount_paid: 0
+    };
+    store.installments.push(row);
+    return row;
+  }
+
+  it("émet l'échéance Brouillon au lieu de l'exclure : plus de doublon, statut En retard si la date est passée", async () => {
+    const lease = seedLease();
+    const generee = seedGeneree(lease.id, 'DRAFT', new Date(2026, 8, 5));
+
+    const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(store.installments).toHaveLength(1);
+    // Le magasin restaure des copies au rollback de la création avortée : relire.
+    expect(store.installments[0].status).toBe('OVERDUE');
+    expect(result.summary?.excluded).toEqual([]);
+    expect(result.summary?.billed).toEqual([
+      {
+        leaseId: lease.id,
+        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        installmentId: generee.id,
+        amount: 105000
+      }
+    ]);
+    expect(appendThirdPartyMovementTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'INSTALLMENT', billed: 105000, sourceId: generee.id })
+    );
+  });
+
+  it('une échéance Brouillon à venir passe « À payer »', async () => {
+    const lease = seedLease();
+    seedGeneree(lease.id, 'DRAFT', new Date(2999, 0, 5));
+
+    await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(store.installments[0].status).toBe('DUE');
+  });
+
+  it('relancer la campagne : la même échéance, déjà émise, est exclue sans nouvelle écriture', async () => {
+    const lease = seedLease();
+    seedGeneree(lease.id, 'DRAFT', new Date(2026, 8, 5));
+
+    await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+    appendThirdPartyMovementTx.mockClear();
+    const second = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(store.installments).toHaveLength(1);
+    expect(second.summary?.billed).toEqual([]);
+    expect(second.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'INSTALLMENT_ALREADY_EXISTS' }
+    ]);
+    expect(appendThirdPartyMovementTx).not.toHaveBeenCalled();
+  });
+
+  it("une échéance créée par la campagne est émise d'emblée (« À payer »)", async () => {
+    seedLease();
+
+    await runRentBilling(TENANT_ID, { periodYear: 2999, periodMonth: 9 }, ACTOR_ID);
+
+    expect(store.installments[0].status).toBe('DUE');
+  });
+});
+
+describe('runRentBilling — échéance Brouillon émise : avances et isolement par bail', () => {
+  function seedGeneree(leaseId: string, dueDate: Date): Row {
+    const row = {
+      id: nextId('inst'),
+      tenant_id: TENANT_ID,
+      lease_id: leaseId,
+      period_year: 2026,
+      period_month: 9,
+      due_date: dueDate,
+      status: 'DRAFT',
+      currency: 'FCFA',
+      amount_rent: 100000,
+      amount_service: 0,
+      amount_other_fees: 0,
+      penalty_amount: 0,
+      amount_paid: 0
+    };
+    store.installments.push(row);
+    return row;
+  }
+
+  it("l'échéance Brouillon émise reçoit les avances du locataire, comme une échéance créée", async () => {
+    const lease = seedLease();
+    seedGeneree(lease.id, new Date(2026, 8, 5));
+    seedPayment({ renter_client_id: lease.primary_renter_client_id, amount: 100000 });
+
+    const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(result.summary?.advancesApplied).toHaveLength(1);
+    expect(store.allocations).toHaveLength(1);
+    expect(store.installments[0].status).toBe('PAID');
+    expect(Number(store.installments[0].amount_paid)).toBe(100000);
+  });
+
+  it('un échec sur un bail n’interrompt pas la campagne : il est listé, les autres baux sont facturés', async () => {
+    const leaseA = seedLease();
+    const leaseB = seedLease();
+    const generee = seedGeneree(leaseA.id, new Date(2026, 8, 5));
+    seedGeneree(leaseB.id, new Date(2026, 8, 5));
+    appendThirdPartyMovementTx.mockImplementation(async (_tx: any, params: any) => {
+      if (params.sourceId === generee.id) throw new Error('grand livre indisponible');
+      return { id: nextId('mv') };
+    });
+
+    const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(result.summary?.failed).toEqual([
+      { leaseId: leaseA.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', message: 'grand livre indisponible' }
+    ]);
+    expect(result.summary?.billed.map(b => b.leaseId)).toEqual([leaseB.id]);
+    // L'émission du bail en échec est annulée (transaction) : il reste Brouillon.
+    expect(store.installments.find(i => i.lease_id === leaseA.id)!.status).toBe('DRAFT');
+  });
+
+  it("un règlement de dépôt de garantie n'est jamais imputé comme avance", async () => {
+    const lease = seedLease();
+    seedPayment({ renter_client_id: lease.primary_renter_client_id, amount: 500000, is_deposit: true });
+
+    const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
+
+    expect(result.summary?.advancesApplied).toEqual([]);
+    expect(store.allocations).toHaveLength(0);
+    expect(store.installments[0].status).not.toBe('PAID');
   });
 });

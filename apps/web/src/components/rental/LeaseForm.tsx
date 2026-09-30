@@ -1,3 +1,4 @@
+import { contactDisplayNameWithEmail } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
@@ -488,7 +489,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             >
               {clients.map(client => (
                 <Select.Option key={client.id} value={client.id}>
-                  {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
+                  {contactDisplayNameWithEmail(client)}
                 </Select.Option>
               ))}
             </Select>
@@ -508,7 +509,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             >
               {clients.map(client => (
                 <Select.Option key={client.id} value={client.id}>
-                  {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
+                  {contactDisplayNameWithEmail(client)}
                 </Select.Option>
               ))}
             </Select>

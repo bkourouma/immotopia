@@ -154,7 +154,8 @@ async function renderNotice(
 
 async function findTenantCall(tenantId: string, syndicateId: string, chargeCallId: string) {
   const call = await prisma.chargeCall.findFirst({
-    where: { id: chargeCallId, syndicateId, syndicate: { tenantId } },
+    // Un appel de montant nul n'a pas d'avis (BUG-050).
+    where: { id: chargeCallId, syndicateId, syndicate: { tenantId }, amount: { gt: 0 } },
     select: NOTICE_CALL_SELECT
   });
   if (!call) throw new NotFoundError('Appel de charges introuvable.');
@@ -184,7 +185,7 @@ export async function getChargeCallNoticeForCoOwner(
   const call = await prisma.chargeCall.findFirst({
     // Périmètre S5 : seuls les appels postérieurs à l'acquisition du lot
     // (`ownedSince`) ; ceux de l'ancien propriétaire répondent le même 404.
-    where: { id: chargeCallId, ...ownedChargeCallsWhere(scope, scope.lotIds) },
+    where: { id: chargeCallId, amount: { gt: 0 }, ...ownedChargeCallsWhere(scope, scope.lotIds) },
     select: NOTICE_CALL_SELECT
   });
   const lotScope = call ? scope.lots.find(lot => lot.lotId === call.lotId) : undefined;

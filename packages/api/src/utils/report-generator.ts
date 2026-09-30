@@ -3,6 +3,7 @@
  * Functions for generating reports in PDF, CSV, and Excel formats
  */
 
+import { toCsvString } from '../lib/csv';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
@@ -60,7 +61,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
     const lineHeight = 20;
 
     // Title
-    page.drawText('Rapport de Revenus', {
+    page.drawText(pdfSafe('Rapport de Revenus'), {
       x: margin,
       y,
       size: 24,
@@ -70,7 +71,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
     y -= 40;
 
     // Date range
-    page.drawText(`Période: ${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`, {
+    page.drawText(pdfSafe(`Période: ${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`), {
       x: margin,
       y,
       size: 12,
@@ -79,7 +80,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
     y -= 30;
 
     // Summary
-    page.drawText('Résumé', {
+    page.drawText(pdfSafe('Résumé'), {
       x: margin,
       y,
       size: 16,
@@ -87,7 +88,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
     });
     y -= lineHeight;
 
-    page.drawText(`Revenus totaux: ${formatCurrency(data.totalRevenue)}`, {
+    page.drawText(pdfSafe(`Revenus totaux: ${formatCurrency(data.totalRevenue)}`), {
       x: margin,
       y,
       size: 12,
@@ -95,7 +96,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
     });
     y -= lineHeight;
 
-    page.drawText(`Nombre de paiements: ${data.paymentCount}`, {
+    page.drawText(pdfSafe(`Nombre de paiements: ${data.paymentCount}`), {
       x: margin,
       y,
       size: 12,
@@ -105,7 +106,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
 
     // Revenues by property
     if (data.revenuesByProperty.length > 0) {
-      page.drawText('Revenus par propriété', {
+      page.drawText(pdfSafe('Revenus par propriété'), {
         x: margin,
         y,
         size: 16,
@@ -119,7 +120,7 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
           currentPage = pdfDoc.addPage([612, 792]);
           y = 750;
         }
-        currentPage.drawText(`${item.propertyAddress}: ${formatCurrency(item.revenue)}`, {
+        currentPage.drawText(pdfSafe(`${item.propertyAddress}: ${formatCurrency(item.revenue)}`), {
           x: margin + 20,
           y,
           size: 10,
@@ -166,8 +167,7 @@ export async function generateRevenueReportCSV(data: RevenueReportData, _tenantI
       rows.push([item.month, formatCurrency(item.revenue)]);
     }
 
-    const csvContent = rows.map(row => row.join(',')).join('\n');
-    return Buffer.from(csvContent, 'utf-8');
+    return Buffer.from(toCsvString(rows), 'utf-8');
   } catch (error) {
     logger.error('Error generating revenue report CSV:', error);
     throw error;
@@ -245,7 +245,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     const lineHeight = 20;
 
     // Title
-    page.drawText("Rapport d'Occupation", {
+    page.drawText(pdfSafe("Rapport d'Occupation"), {
       x: margin,
       y,
       size: 24,
@@ -253,7 +253,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     });
     y -= 40;
 
-    page.drawText(`Date: ${format(data.asOfDate, 'dd/MM/yyyy')}`, {
+    page.drawText(pdfSafe(`Date: ${format(data.asOfDate, 'dd/MM/yyyy')}`), {
       x: margin,
       y,
       size: 12,
@@ -262,7 +262,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     y -= 30;
 
     // Summary
-    page.drawText('Résumé', {
+    page.drawText(pdfSafe('Résumé'), {
       x: margin,
       y,
       size: 16,
@@ -270,7 +270,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     });
     y -= lineHeight;
 
-    page.drawText(`Total propriétés: ${data.totalProperties}`, {
+    page.drawText(pdfSafe(`Total propriétés: ${data.totalProperties}`), {
       x: margin,
       y,
       size: 12,
@@ -278,7 +278,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     });
     y -= lineHeight;
 
-    page.drawText(`Propriétés occupées: ${data.occupiedProperties}`, {
+    page.drawText(pdfSafe(`Propriétés occupées: ${data.occupiedProperties}`), {
       x: margin,
       y,
       size: 12,
@@ -286,7 +286,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     });
     y -= lineHeight;
 
-    page.drawText(`Propriétés disponibles: ${data.availableProperties}`, {
+    page.drawText(pdfSafe(`Propriétés disponibles: ${data.availableProperties}`), {
       x: margin,
       y,
       size: 12,
@@ -294,7 +294,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     });
     y -= lineHeight;
 
-    page.drawText(`Taux d'occupation: ${data.occupancyRate.toFixed(2)}%`, {
+    page.drawText(pdfSafe(`Taux d'occupation: ${data.occupancyRate.toFixed(2)}%`), {
       x: margin,
       y,
       size: 12,
@@ -303,7 +303,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     y -= 30;
 
     // Properties list
-    page.drawText('Détails par propriété', {
+    page.drawText(pdfSafe('Détails par propriété'), {
       x: margin,
       y,
       size: 16,
@@ -316,7 +316,7 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
         page = pdfDoc.addPage([612, 792]);
         y = 750;
       }
-      page.drawText(`${prop.address} - ${prop.status}`, {
+      page.drawText(pdfSafe(`${prop.address} - ${prop.status}`), {
         x: margin + 20,
         y,
         size: 10,
@@ -363,8 +363,7 @@ export async function generateOccupancyReportCSV(data: OccupancyReportData, _ten
       ]);
     }
 
-    const csvContent = rows.map(row => row.join(',')).join('\n');
-    return Buffer.from(csvContent, 'utf-8');
+    return Buffer.from(toCsvString(rows), 'utf-8');
   } catch (error) {
     logger.error('Error generating occupancy report CSV:', error);
     throw error;
@@ -578,8 +577,7 @@ async function exportDataCSV(
     }
   }
 
-  const csvContent = rows.map(row => row.join(',')).join('\n');
-  return Buffer.from(csvContent, 'utf-8');
+  return Buffer.from(toCsvString(rows), 'utf-8');
 }
 
 async function exportDataExcel(
@@ -740,6 +738,23 @@ async function exportDataExcel(
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
+}
+
+/**
+ * Les polices standard du PDF n'encodent que WinAnsi. Intl (fr-FR) produit des
+ * espaces insécables fines (U+202F) qui faisaient échouer drawText (500 sur le
+ * rapport de revenus) : on les ramène à une espace et on remplace tout
+ * caractère non encodable.
+ */
+const WIN_ANSI_EXTRAS = new Set(Array.from('€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ'));
+export function pdfSafe(text: string): string {
+  return Array.from(text.replace(/[\u00a0\u2007\u2009\u202f]/g, ' '))
+    .map(ch => {
+      const code = ch.codePointAt(0) as number;
+      if (code === 10 || code === 13 || code === 9) return ' ';
+      return (code >= 32 && code <= 255) || WIN_ANSI_EXTRAS.has(ch) ? ch : '?';
+    })
+    .join('');
 }
 
 function formatCurrency(amount: number): string {

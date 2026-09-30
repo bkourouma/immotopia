@@ -38,7 +38,7 @@ vi.mock('../../services/tenant-service', () => ({
 
 const listMembers = vi.fn();
 vi.mock('../../services/membership-service', () => ({
-  listMembers: (...a: unknown[]) => listMembers(...a)
+  listAssignableMembers: (...a: unknown[]) => listMembers(...a)
 }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({

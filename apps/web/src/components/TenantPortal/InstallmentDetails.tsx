@@ -334,14 +334,14 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
             scroll={{ x: 'max-content' }}
             columns={[
               {
-                title: 'Montant',
+                title: t('Montant'),
                 dataIndex: 'amount',
                 key: 'amount',
                 render: (amount: number) => formatCurrency(amount),
                 align: 'end' as const
               },
               {
-                title: 'Raison',
+                title: t('Raison'),
                 dataIndex: 'reason',
                 key: 'reason',
                 render: (reason: string | null) => reason || '-'

@@ -7,9 +7,12 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { PaymentDeclarationStatus, RentalPaymentStatus, RentalInstallmentStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { compteLocataireTx, libellePeriodeEcheance } from './rental-installment-service';
+import { compteLocataireTx, inscrireEcheanceFactureeTx, libellePeriodeEcheance } from './rental-installment-service';
 import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental-payment-service';
 import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
+import { syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
+import { t } from '../i18n';
+import { NotFoundError } from '../middleware/error-middleware';
 
 interface PaymentDeclarationFilters {
   status?: PaymentDeclarationStatus;
@@ -56,7 +59,7 @@ export async function approvePaymentDeclaration(
     });
 
     if (!declaration) {
-      throw new Error('Déclaration non trouvée ou déjà traitée');
+      throw new NotFoundError(t('Déclaration non trouvée ou déjà traitée'));
     }
 
     // Use transaction to ensure consistency
@@ -155,7 +158,7 @@ export async function approvePaymentDeclaration(
             }
 
             // Update installment
-            await tx.rentalInstallment.update({
+            const echeanceMiseAJour = await tx.rentalInstallment.update({
               where: { id: installment.id, tenant_id: tenantId },
               data: {
                 status: newStatus,
@@ -163,6 +166,10 @@ export async function approvePaymentDeclaration(
                 paid_at: newStatus === RentalInstallmentStatus.PAID ? new Date() : undefined
               }
             });
+
+            // L'échéance réglée est exigible : sa créance est portée au compte
+            // (idempotent, voir BUG-2026-09-30-058).
+            await inscrireEcheanceFactureeTx(tx, tenantId, echeanceMiseAJour);
           }
         }
       }
@@ -199,6 +206,9 @@ export async function approvePaymentDeclaration(
         dejaAffecte: montantAffecte,
         movementDate: dateReglement
       });
+
+      // Gestion directe : trésorerie et journal, dans la même transaction.
+      await syncDirectRentPaymentEntryTx(tx, tenantId, payment.id);
 
       // Update declaration status
       const updatedDeclaration = await tx.rentalPaymentDeclaration.update({
@@ -423,7 +433,7 @@ export async function rejectPaymentDeclaration(
     });
 
     if (!declaration) {
-      throw new Error('Déclaration non trouvée ou déjà traitée');
+      throw new NotFoundError(t('Déclaration non trouvée ou déjà traitée'));
     }
 
     // Update declaration status
@@ -814,7 +824,7 @@ export async function getPaymentDeclarationById(tenantId: string, declarationId:
     });
 
     if (!declaration) {
-      throw new Error('Déclaration non trouvée');
+      throw new NotFoundError(t('Déclaration non trouvée'));
     }
 
     return declaration;

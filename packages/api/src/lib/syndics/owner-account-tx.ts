@@ -8,6 +8,7 @@
 
 import { supportsOwnerAccount, type OwnerAccountTxClient } from '../finance/ledger';
 import type { PrismaTransactionClient } from '../../utils/database';
+import { syncLotOwnerFromProfilesTx } from './lot-owner';
 
 export async function ensureCrmRoleForContact(
   tx: PrismaTransactionClient,
@@ -77,6 +78,11 @@ export async function ensureOwnerAccountForLotTx(
   }
 
   let contactId = lot.coownerId ?? lot.ownerContactId ?? null;
+
+  // Le proprietaire du lot se lit d'abord de ses profils proprietaires actuels (BUG-087).
+  if (!contactId && (tx as any).lotOwnerProfile?.findMany) {
+    contactId = await syncLotOwnerFromProfilesTx(tx, lot.id);
+  }
 
   // Fallback for imported lots: map property owner user email to tenant CRM contact.
   if (!contactId) {

@@ -30,7 +30,8 @@ import {
   getSyndicate,
   importSyndicateLotsFromProperties,
   listSyndicateLots,
-  updateSyndicateLot
+  updateSyndicateLot,
+  deleteSyndicateLot
 } from '../../services/syndic-service';
 import { CrmContact } from '../../types/crm-types';
 import { Property } from '../../types/property-types';
@@ -145,7 +146,7 @@ function buildContactLabel(contact: CrmContact): string {
 }
 
 export const SyndicLots: React.FC = () => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
@@ -366,6 +367,41 @@ export const SyndicLots: React.FC = () => {
     setTenantOpen(true);
   };
 
+  // Désactiver = tantièmes à 0 : le lot sort de la clé de répartition, de la réserve de lots et des
+  // appels futurs, mais reste dans l'historique (appels, paiements, reçus).
+  const handleDeactivateLot = async (lot: SyndicateLot) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      await updateSyndicateLot(effectiveTenantId, syndicId, lot.id, { generalShares: 0 });
+      message.success(t('Lot désactivé'));
+      await loadData();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Désactivation du lot impossible'));
+    }
+  };
+
+  const handleDeleteLot = async (lot: SyndicateLot) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      await deleteSyndicateLot(effectiveTenantId, syndicId, lot.id);
+      message.success(t('Lot supprimé'));
+      await loadData();
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        // Le lot a des mouvements : on explique et on propose de le désactiver.
+        modal.confirm({
+          title: t('Suppression impossible'),
+          content: err.response?.data?.error,
+          okText: t('Désactiver le lot'),
+          cancelText: t('Annuler'),
+          onOk: () => handleDeactivateLot(lot)
+        });
+        return;
+      }
+      message.error(err.response?.data?.error || t('Suppression du lot impossible'));
+    }
+  };
+
   const openEditModal = (lot: SyndicateLot) => {
     setEditingLot(lot);
     form.setFieldsValue({
@@ -573,7 +609,7 @@ export const SyndicLots: React.FC = () => {
               <Col xs={24} md={8}>
                 <StatCard
                   label={t('Lots avec propriétaire')}
-                  value={lots.filter(lot => Boolean(lot.ownerContactId)).length}
+                  value={lots.filter(lot => Boolean(lot.ownerContactId || lot.ownersLabel)).length}
                 />
               </Col>
               <Col xs={24} md={8}>
@@ -594,6 +630,7 @@ export const SyndicLots: React.FC = () => {
                 ownerLabelById={ownerLabelById}
                 ownerLabelByEmail={ownerLabelByEmail}
                 onEdit={openEditModal}
+                onDelete={lot => void handleDeleteLot(lot)}
                 onAssignTenant={openTenantModal}
                 onViewAccount={lot =>
                   navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots/${lot.id}/compte`)
@@ -662,9 +699,10 @@ export const SyndicLots: React.FC = () => {
               <Form.Item
                 label={t('Tantièmes généraux')}
                 name="generalShares"
+                tooltip={t('0 tantième : le lot est inactif, exclu de la clé de répartition et des appels futurs.')}
                 rules={[{ required: true, message: t('Champ obligatoire') }]}
               >
-                <InputNumber min={1} style={{ width: '100%' }} />
+                <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>

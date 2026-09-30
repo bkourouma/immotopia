@@ -13,6 +13,7 @@ import {
   getPaymentDeclarationById
 } from '../services/rental-payment-declaration-service';
 import { PaymentDeclarationStatus } from '@prisma/client';
+import { parsePagination } from '../utils/pagination-helper';
 
 // Validation schemas
 const approvePaymentDeclarationSchema = z.object({
@@ -185,8 +186,7 @@ export async function listPaymentDeclarationsHandler(req: Request, res: Response
     }
 
     // Parse pagination (defaults so all declarations can be shown)
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+    const { page, limit } = parsePagination(req.query, { defaultPage: 1, defaultLimit: 100 });
     const pagination = { page: Math.max(1, page), limit: Math.min(500, Math.max(1, limit)) };
 
     const result = await getPaymentDeclarations(tenantId, filters, pagination);

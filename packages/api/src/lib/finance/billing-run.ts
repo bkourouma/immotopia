@@ -46,6 +46,9 @@ import { distributeInstallmentToPartnersTx } from './partnerships';
 import { buildInstallmentForPeriod } from './installment-builder';
 import type { LeaseForInstallmentBuilding } from './installment-builder';
 import { roundMoney } from './money';
+import { computeInstallmentStatus } from './installment-status';
+import { withEffectiveAmounts } from '../lease-lifecycle/effective-rent';
+import type { RentRevision } from '../lease-lifecycle/effective-rent';
 import type { BillingRunRecord, BillingRunSummary, RunRentBilling } from './types';
 
 // ---------------------------------------------------------------------------
@@ -103,6 +106,8 @@ type BillableLease = LeaseForInstallmentBuilding & {
    * deux baux successifs sur le même bien alimentent les mêmes associés.
    */
   property_id: string;
+  /** Révisions de loyer (dates d'effet) : le loyer facturé est celui de la période. */
+  events?: RentRevision[];
   property: { title: string } | null;
   primaryRenter: { user: { fullName: string | null; email: string } | null } | null;
 };
@@ -123,6 +128,10 @@ const LEASE_SELECT = {
   // Le compte rendu doit se lire sans aller chercher ailleurs : « Fatoumata
   // Diallo — Villa Kipe 12 », jamais un identifiant. On resout les deux noms
   // ici, en une requete, plutot qu'a l'affichage ligne par ligne.
+  events: {
+    where: { type: 'REVISION' as const, newRent: { not: null } },
+    select: { effectiveDate: true, newRent: true, newCharges: true, previousRent: true, previousCharges: true }
+  },
   property: { select: { title: true } },
   primaryRenter: { select: { user: { select: { fullName: true, email: true } } } }
 } satisfies Record<keyof BillableLease, unknown>;
@@ -238,6 +247,88 @@ function toRecord(row: NonNullable<RentBillingRunRow>, summary: BillingRunSummar
 // Avances — imputation du reliquat non alloué, plus ancien d'abord
 // ---------------------------------------------------------------------------
 
+/**
+ * Émet l'échéance déjà générée en Brouillon pour la période (« Générer les
+ * échéances ») : Brouillon -> « À payer » (ou « En retard » si la date est
+ * passée), et inscription de la créance au compte du locataire (idempotente :
+ * clé de source du grand livre). Une échéance déjà émise n'est pas retouchée
+ * (retourne null : exclusion `INSTALLMENT_ALREADY_EXISTS`, aucun doublon).
+ *
+ * Comme une échéance créée par la campagne, l'échéance émise ici reçoit les
+ * avances du locataire (applyAdvancesTx) et sa ventilation aux associés
+ * (distributeInstallmentToPartnersTx), dans la même transaction. Les avances
+ * ne sont imputées que si l'échéance n'a encore reçu aucun paiement.
+ */
+async function emettreEcheanceGeneree(
+  tenantId: string,
+  leaseId: string,
+  primaryRenterClientId: string,
+  periodYear: number,
+  periodMonth: number,
+  context: { propertyId: string; tenantLabel: string; summary: BillingRunSummary }
+): Promise<{ installmentId: string; amount: number } | null> {
+  return prisma.$transaction(async tx => {
+    const existing = await tx.rentalInstallment.findFirst({
+      where: { tenant_id: tenantId, lease_id: leaseId, period_year: periodYear, period_month: periodMonth }
+    });
+    if (!existing || existing.status !== RentalInstallmentStatus.DRAFT) {
+      return null;
+    }
+
+    const status = computeInstallmentStatus(existing, new Date(), { emitDraft: true });
+    const amount = roundMoney(
+      Number(existing.amount_rent) + Number(existing.amount_service) + Number(existing.amount_other_fees)
+    );
+    const account = await getOrCreateTenantAccountTx(tx, tenantId, primaryRenterClientId);
+    if (!account) {
+      throw new Error(`Compte de tiers introuvable ou impossible à créer pour le locataire ${primaryRenterClientId}`);
+    }
+
+    await tx.rentalInstallment.update({
+      where: { id: existing.id, tenant_id: tenantId },
+      data: { status }
+    });
+
+    if (amount > 0) {
+      await appendThirdPartyMovementTx(tx, {
+        accountId: account.id,
+        tenantId,
+        type: ThirdPartyMovementType.INSTALLMENT,
+        billed: amount,
+        label: libelleCampagne(periodYear, periodMonth),
+        sourceType: 'RENTAL_INSTALLMENT',
+        sourceId: existing.id,
+        leaseId,
+        movementDate: existing.due_date
+      });
+
+      // Même traitement qu'une échéance créée par la campagne : associés, puis avances.
+      await distributeInstallmentToPartnersTx(tx, tenantId, {
+        rentalInstallmentId: existing.id,
+        propertyId: context.propertyId,
+        amount,
+        periodYear,
+        periodMonth
+      });
+      if (Number(existing.amount_paid ?? 0) === 0) {
+        await applyAdvancesTx(tx, {
+          tenantId,
+          tenantClientId: primaryRenterClientId,
+          tenantLabel: context.tenantLabel,
+          accountId: account.id,
+          leaseId,
+          installment: { id: existing.id, currency: existing.currency, due_date: existing.due_date },
+          totalAmountDue: amount,
+          periodYear,
+          periodMonth,
+          summary: context.summary
+        });
+      }
+    }
+    return { installmentId: existing.id, amount };
+  });
+}
+
 /** Sous-ensemble de l'échéance nécessaire à l'imputation d'avance. */
 interface InstallmentForAdvance {
   id: string;
@@ -290,7 +381,10 @@ async function applyAdvancesTx(
     where: {
       tenant_id: args.tenantId,
       renter_client_id: args.tenantClientId,
-      status: RentalPaymentStatus.SUCCESS
+      status: RentalPaymentStatus.SUCCESS,
+      // Un règlement qui porte un dépôt de garantie n'est jamais une avance :
+      // c'est une dette envers le locataire, pas un crédit imputable sur un loyer.
+      depositMovements: { none: { type: 'COLLECT' } }
     },
     orderBy: [{ succeeded_at: 'asc' }, { initiated_at: 'asc' }],
     select: {
@@ -423,7 +517,13 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
         continue;
       }
 
-      const built = buildInstallmentForPeriod(lease, periodYear, periodMonth);
+      // Loyer effectif au premier jour de la période : une révision à date
+      // d'effet future ne s'applique pas à une période antérieure.
+      const built = buildInstallmentForPeriod(
+        withEffectiveAmounts(lease, lease.events, new Date(Date.UTC(periodYear, periodMonth - 1, 1, 12))),
+        periodYear,
+        periodMonth
+      );
       if (!built.included) {
         summary.excluded.push({ leaseId: lease.id, leaseLabel: libelleBail(lease), reason: built.reason });
         continue;
@@ -449,7 +549,10 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
       let installmentId: string;
       try {
         installmentId = await prisma.$transaction(async tx => {
-          const installment = await tx.rentalInstallment.create({ data: built.data });
+          // Émise d'emblée : « À payer » (ou « En retard » si la date est passée).
+          const installment = await tx.rentalInstallment.create({
+            data: { ...built.data, status: computeInstallmentStatus(built.data, new Date(), { emitDraft: true }) }
+          });
 
           const account = await getOrCreateTenantAccountTx(tx, tenantId, lease.primary_renter_client_id);
           if (!account) {
@@ -515,6 +618,40 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
         });
       } catch (error) {
         if (isUniqueConstraintViolation(error)) {
+          // Générée en Brouillon par « Générer les échéances » : la campagne
+          // l'émet au lieu de l'exclure. Déjà émise : exclue, sans doublon.
+          // Erreur isolée par bail : l'émission de CE bail est annulée (sa
+          // transaction), listée dans `summary.failed`, et la campagne continue.
+          let emise: { installmentId: string; amount: number } | null;
+          try {
+            emise = await emettreEcheanceGeneree(
+              tenantId,
+              lease.id,
+              lease.primary_renter_client_id,
+              periodYear,
+              periodMonth,
+              { propertyId: lease.property_id, tenantLabel: libelleLocataire(lease), summary }
+            );
+          } catch (emissionError) {
+            summary.failed = [
+              ...(summary.failed ?? []),
+              {
+                leaseId: lease.id,
+                leaseLabel: libelleBail(lease),
+                message: emissionError instanceof Error ? emissionError.message : String(emissionError)
+              }
+            ];
+            continue;
+          }
+          if (emise) {
+            summary.billed.push({
+              leaseId: lease.id,
+              leaseLabel: libelleBail(lease),
+              installmentId: emise.installmentId,
+              amount: emise.amount
+            });
+            continue;
+          }
           summary.excluded.push({
             leaseId: lease.id,
             leaseLabel: libelleBail(lease),

@@ -105,7 +105,10 @@ describe('listProperties — isolation tenant du OR (garde Prisma)', () => {
 
     const where = findManyMock.mock.calls[0][0].where;
     expect(where.OR.some((branch: any) => branch.ownershipType === 'PUBLIC')).toBe(false);
-    expect(where.OR.map((branch: any) => branch.ownershipType).sort()).toEqual(['CLIENT', 'TENANT']);
+    // CLIENT compte deux branches : mandat actif, puis bien saisi sans mandat encore.
+    expect([...new Set(where.OR.map((branch: any) => branch.ownershipType))].sort()).toEqual(['CLIENT', 'TENANT']);
+    // Chaque branche, y compris « sans mandat », reste bornée à l'agence.
+    for (const branch of where.OR) expect(mentionsTenant(branch, 'tenantId')).toBe(true);
     expect(mentionsTenant(where, 'tenantId')).toBe(true);
     // Le total est compté avec le même filtre que la page.
     expect(countMock.mock.calls[0][0].where).toEqual(where);

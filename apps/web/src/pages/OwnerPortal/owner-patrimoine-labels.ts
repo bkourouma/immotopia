@@ -1,16 +1,17 @@
 import React from 'react';
 import { Tag } from 'antd';
 import { t } from '../../i18n/t';
+import { formatYieldPercent } from '../../components/patrimoine/patrimoine-format';
 
 /** `null`/absent affichés en tiret — jamais un zéro ou un vide inventé. */
 export const DASH = '—';
 
-export const formatPercent = (value: number | null | undefined): string =>
-  value === null || value === undefined ? DASH : `${value.toFixed(2)} %`;
+/** Même formateur que les écrans de l'agence : arrondi au plus proche, séparateurs selon la langue. */
+export const formatPercent = (value: number | null | undefined): string => formatYieldPercent(value);
 
 /** Quote-part d'indivision ; `null` = bien détenu en entier. */
 export const sharePercentLabel = (value: number | null): string =>
-  value === null ? t('Bien entier') : `${value.toFixed(2)} %`;
+  value === null ? t('Bien entier') : formatYieldPercent(value);
 
 export function loanStatusTag(status: string): React.ReactNode {
   const map: Record<string, { label: string; color: string }> = {

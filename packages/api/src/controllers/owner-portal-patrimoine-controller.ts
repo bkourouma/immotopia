@@ -42,5 +42,8 @@ export const downloadOwnerPortalPatrimoineDocumentHandler = asyncHandler(async (
   const { tenantId, propertyIds } = requireOwnerPortal(req);
   const { propertyId, documentId } = req.params;
   await assertOwnerPortalDocumentAccessible(tenantId, propertyIds, propertyId);
-  sendPrivateFile(res, await getPropertyDocumentFileForTenant(tenantId, propertyId, documentId));
+  sendPrivateFile(
+    res,
+    await getPropertyDocumentFileForTenant(tenantId, propertyId, documentId, { managedByMandate: true })
+  );
 });

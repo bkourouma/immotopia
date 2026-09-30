@@ -93,21 +93,6 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     if (meeting.tenantId !== tenantId || meeting.syndicateId !== syndicateId) return null;
     return meeting;
   }),
-  createMeetingWithResolutions: jest.fn(async (tenantId: string, data: any) => {
-    const created: Meeting = {
-      id: MEETING_ID,
-      tenantId,
-      syndicateId: data.syndicateId,
-      type: data.type,
-      scheduledAt: data.scheduledAt.toISOString(),
-      status: 'PLANNED',
-      quorum: 0,
-      resolutions: [],
-      syndicate: { lots: [{ id: LOT_ID, lotNumber: 'A-01', generalShares: 100 }] }
-    };
-    store.meetings.set(created.id, created);
-    return created;
-  }),
   addResolutionToMeeting: jest.fn(async (tenantId: string, syndicateId: string, data: any) => {
     const meeting = Array.from(store.meetings.values()).find(
       m => m.id === data.meetingId && m.tenantId === tenantId && m.syndicateId === syndicateId
@@ -198,11 +183,31 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   )
 }));
 
+jest.mock('../../src/lib/syndics/meeting-writes', () => ({
+  ...jest.requireActual('../../src/lib/syndics/meeting-writes'),
+  createMeetingForTenant: jest.fn(async (tenantId: string, data: any) => {
+    const created: Meeting = {
+      id: MEETING_ID,
+      tenantId,
+      syndicateId: data.syndicateId,
+      type: data.type,
+      scheduledAt: data.scheduledAt.toISOString(),
+      status: 'PLANNED',
+      quorum: 0,
+      resolutions: [],
+      syndicate: { lots: [{ id: LOT_ID, lotNumber: 'A-01', generalShares: 100 }] }
+    };
+    store.meetings.set(created.id, created);
+    return created;
+  })
+}));
+
 jest.mock('../../src/lib/syndics/notifications', () => ({
   notifyChargeCall: jest.fn(),
   notifyMeetingConvocation: jest.fn().mockResolvedValue({ emailSent: 1, whatsappSent: 0 })
 }));
 
+import { notifyMeetingConvocation } from '../../src/lib/syndics/notifications';
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
 
@@ -216,6 +221,7 @@ describe('Syndics meetings routes', () => {
   app.use(errorHandler);
 
   beforeEach(() => {
+    (notifyMeetingConvocation as jest.Mock).mockClear();
     store.meetings.clear();
     store.proxies = [];
     store.meetings.set('other-tenant-meeting', {
@@ -241,6 +247,36 @@ describe('Syndics meetings routes', () => {
     expect(response.status).toBe(201);
     expect(response.body.success).toBe(true);
     expect(response.body.data.status).toBe('PLANNED');
+    // BUG-090 : la reponse porte l'AG creee et la convocation part apres creation.
+    expect(response.body.data.id).toBe(MEETING_ID);
+    expect(notifyMeetingConvocation).toHaveBeenCalledWith(MEETING_ID);
+    expect(response.body.convocation).toMatchObject({ emailSent: 1 });
+  });
+
+  it('keeps the meeting (201) and reports the failure when the convocation fails', async () => {
+    (notifyMeetingConvocation as jest.Mock).mockRejectedValueOnce(new Error('SMTP down'));
+    const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
+      type: 'ORDINARY',
+      scheduledAt: '2026-06-20T09:00:00.000Z'
+    });
+    expect(response.status).toBe(201);
+    expect(response.body.data.id).toBe(MEETING_ID);
+    expect(response.body.convocation).toMatchObject({ emailSent: 0, error: 'CONVOCATION_FAILED' });
+  });
+
+  it('resends the convocation of a planned meeting only', async () => {
+    await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
+      type: 'ORDINARY',
+      scheduledAt: '2026-06-20T09:00:00.000Z'
+    });
+    const url = `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}/convocation`;
+    const ok = await request(app).post(url);
+    expect(ok.status).toBe(200);
+    expect(ok.body.convocation.emailSent).toBe(1);
+
+    store.meetings.get(MEETING_ID)!.status = 'COMPLETED';
+    const frozen = await request(app).post(url);
+    expect(frozen.status).toBe(409);
   });
 
   it('adds a resolution then casts vote and recomputes quorum/results', async () => {

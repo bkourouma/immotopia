@@ -6,20 +6,15 @@ import {
   SubscriptionPlan,
   BillingCycle,
   SubscriptionStatus,
-  MembershipStatus,
-  InvitationStatus
+  MembershipStatus
 } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { ConflictError } from '../middleware/error-middleware';
 import { logAuditEvent, AuditActionKey } from './audit-service';
 import { hashPassword } from '../utils/password-utils';
 import crypto from 'crypto';
 import { generateSlugFromName } from './tenant-service';
-import {
-  createInvitationRecordTx,
-  buildInvitationAcceptUrl,
-  generateInvitationToken,
-  resolveRoleLabels
-} from './invitation-service';
+import { createInvitationRecordTx, buildInvitationAcceptUrl, resolveRoleLabels } from './invitation-service';
 import { emailService } from './email-service';
 import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx } from '../lib/finance/accounting';
 import { ensureDefaultTreasuryAccountTx } from '../lib/treasury/accounts';
@@ -29,7 +24,12 @@ import { DEFAULT_FINANCE_SETTINGS } from '../lib/settings/finance-settings';
 import { ProvisionTenantRequest, ProvisionTenantResult } from '../types/tenant-types';
 import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
 import { TRIAL_DAYS, packModules, packsForModules } from '../lib/subscription';
-import { linkExtensionsToPacksTx, loadCatalogByCodes, planInitialItems, RequestedItem } from './subscription-v2-service';
+import {
+  linkExtensionsToPacksTx,
+  loadCatalogByCodes,
+  planInitialItems,
+  RequestedItem
+} from './subscription-v2-service';
 
 /**
  * Provisioning d'une agence en un clic (lot F1, docs/architecture/PLAN-MULTI-TENANT.md).
@@ -109,7 +109,9 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
       requested.map(r => r.code)
     );
     const plannedItems = planInitialItems(requested, catalog);
-    const modules = packModules(plannedItems.map(p => ({ kind: p.catalog.kind, modules: p.catalog.modules }))) as ModuleKey[];
+    const modules = packModules(
+      plannedItems.map(p => ({ kind: p.catalog.kind, modules: p.catalog.modules }))
+    ) as ModuleKey[];
 
     // 1. Tenant ACTIF, slug unique.
     const slug = await generateUniqueSlugTx(tx, input.name);
@@ -291,47 +293,12 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
   }, PROVISIONING_TX_OPTIONS);
 }
 
-/**
- * Rejeu idempotent (base) : regenere un jeton d'invitation utilisable pour
- * l'agence deja creee, sans rien recreer.
- *
- * Le jeton en clair n'est jamais persiste (seul son hash l'est) : impossible
- * de reconstruire le lien d'origine pour une agence creee par une AUTRE
- * instance du process (donc absente du cache memoire). On emet un nouveau
- * jeton pour la meme invitation — exactement ce que fait un "renvoyer
- * l'invitation" manuel — plutot que d'echouer ou de mentir sur `acceptUrl`.
- */
-async function refreshReplayInvitationToken(
-  invitationId: string,
-  roleIds: string[],
-  tenantName: string,
-  tenantId: string,
-  email: string
-): Promise<{ acceptUrl: string; emailSent: boolean; expiresAt: Date }> {
-  const { token, hash } = generateInvitationToken();
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
-  await prisma.invitation.update({ where: { id: invitationId }, data: { tokenHash: hash, expiresAt } });
-  const acceptUrl = buildInvitationAcceptUrl(token);
-
-  let emailSent = false;
-  try {
-    const roleLabels = await resolveRoleLabels(roleIds);
-    await emailService.sendInviteEmail(email, token, tenantName, roleLabels, expiresAt, tenantId);
-    emailSent = true;
-  } catch (error) {
-    logger.error('Tenant provisioning replay: failed to resend invitation email', { invitationId, error });
-  }
-
-  return { acceptUrl, emailSent, expiresAt };
-}
-
 /** Une agence recemment creee par ce meme super-admin, avec le meme nom et le meme e-mail admin (voir F1.9). */
-async function findRecentDuplicateTenantId(
+async function findRecentDuplicate(
   actorUserId: string,
   name: string,
   adminEmail: string
-): Promise<string | null> {
+): Promise<{ tenantId: string; idempotencyKey: string | null } | null> {
   const since = new Date(Date.now() - IDEMPOTENCY_DB_WINDOW_MS);
   const logs = await prisma.auditLog.findMany({
     where: { actorUserId, actionKey: 'TENANT_PROVISIONED', createdAt: { gte: since } },
@@ -343,13 +310,22 @@ async function findRecentDuplicateTenantId(
   for (const log of logs) {
     const payload = (log.payload as Record<string, unknown> | null) ?? {};
     if (payload.name === name && payload.adminEmail === adminEmail && typeof payload.tenantId === 'string') {
-      return payload.tenantId;
+      return {
+        tenantId: payload.tenantId,
+        idempotencyKey: typeof payload.idempotencyKey === 'string' ? payload.idempotencyKey : null
+      };
     }
   }
   return null;
 }
 
-/** Reconstruit la reponse de F2 pour une agence deja creee, sans rien ecrire d'autre qu'un eventuel nouveau jeton d'invitation. */
+/**
+ * Reconstruit la reponse de F2 pour une agence deja creee. N'ecrit RIEN : en
+ * particulier elle ne regenere jamais le jeton d'invitation (seul son hash est
+ * persiste), sinon un rejeu invaliderait en silence le lien deja transmis
+ * (BUG-2026-09-30-008). `acceptUrl` reste donc vide : le lien d'origine est
+ * toujours valide, et « Renvoyer l'invitation » reste le geste explicite.
+ */
 async function buildReplayResult(tenantId: string, input: ProvisionTenantRequest): Promise<ProvisionTenantResult> {
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
@@ -383,22 +359,9 @@ async function buildReplayResult(tenantId: string, input: ProvisionTenantRequest
     throw new Error('Rejeu idempotent : données incomplètes pour cette agence.');
   }
 
-  let acceptUrl = '';
-  let emailSent = false;
-  let expiresAt = invitation.expiresAt;
-
-  if (invitation.status === InvitationStatus.PENDING) {
-    const refreshed = await refreshReplayInvitationToken(
-      invitation.id,
-      invitation.roleIds,
-      tenant.name,
-      tenantId,
-      invitation.email
-    );
-    acceptUrl = refreshed.acceptUrl;
-    emailSent = refreshed.emailSent;
-    expiresAt = refreshed.expiresAt;
-  }
+  const acceptUrl = '';
+  const emailSent = false;
+  const expiresAt = invitation.expiresAt;
 
   return {
     tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, type: tenant.type, status: tenant.status },
@@ -424,7 +387,8 @@ async function buildReplayResult(tenantId: string, input: ProvisionTenantRequest
       existingUser: true
     },
     invitation: { id: invitation.id, expiresAt: expiresAt.toISOString(), acceptUrl },
-    emailSent
+    emailSent,
+    alreadyExisted: true
   };
 }
 
@@ -448,29 +412,38 @@ export async function provisionTenant(
   // sur le meme bouton, meme onglet).
   if (idempotencyKey) {
     const cached = tenantProvisioningIdempotencyStore.get(actorUserId, idempotencyKey) as
-      | ProvisionTenantResult
-      | undefined;
+      ProvisionTenantResult | undefined;
     if (cached) {
       logger.info('Tenant provisioning: idempotent replay (memory)', {
         actorUserId,
         idempotencyKey,
         tenantId: cached.tenant.id
       });
-      return { result: cached, replay: true };
+      return { result: { ...cached, alreadyExisted: true }, replay: true };
     }
   }
 
   // Barriere 2 : base de donnees — resiste a un redemarrage du process ou a
   // un deuxieme appel sans (ou avec un autre) en-tete `Idempotency-Key`, tant
   // que le nom de l'agence et l'e-mail de l'administrateur sont identiques.
-  const duplicateTenantId = await findRecentDuplicateTenantId(actorUserId, input.name, input.adminEmail);
-  if (duplicateTenantId) {
-    logger.info('Tenant provisioning: idempotent replay (audit log)', { actorUserId, tenantId: duplicateTenantId });
-    const result = await buildReplayResult(duplicateTenantId, input);
-    if (idempotencyKey) {
+  const duplicate = await findRecentDuplicate(actorUserId, input.name, input.adminEmail);
+  if (duplicate) {
+    if (idempotencyKey && duplicate.idempotencyKey === idempotencyKey) {
+      // Meme cle (process redemarre) : vrai rejeu, sans toucher a l'invitation.
+      logger.info('Tenant provisioning: idempotent replay (audit log)', {
+        actorUserId,
+        tenantId: duplicate.tenantId
+      });
+      const result = await buildReplayResult(duplicate.tenantId, input);
       tenantProvisioningIdempotencyStore.set(actorUserId, idempotencyKey, result);
+      return { result, replay: true };
     }
-    return { result, replay: true };
+    // Nouvelle saisie (autre cle ou aucune) du meme nom + meme administrateur :
+    // refus explicite, l'invitation precedente reste intacte.
+    logger.info('Tenant provisioning: duplicate refused', { actorUserId, tenantId: duplicate.tenantId });
+    throw new ConflictError(
+      "Cette agence existe déjà avec cet administrateur : l'invitation précédente reste valide. Utilisez « Renvoyer l'invitation » depuis la fiche de l'agence."
+    );
   }
 
   const outcome = await runProvisioningTx(input, actorUserId);

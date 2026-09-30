@@ -243,10 +243,10 @@ export const BauxDeTerrain: React.FC = () => {
             status={<StatusTag status={b.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             highlight={<MoneyValue value={resteAConsommer(b.accountBalance)} />}
             fields={[
-              { label: 'Poste', value: b.costCategoryLabel },
+              { label: t('Poste'), value: b.costCategoryLabel },
               { label: t('Loyer annuel'), value: <MoneyValue value={b.annualAmount} /> },
               { label: t('Mensualité'), value: <MoneyValue value={b.monthlyAmount} /> },
-              { label: 'Chantiers', value: libelleChantiers(b) }
+              { label: t('Chantiers'), value: libelleChantiers(b) }
             ]}
             onOpen={() => ouvrirFiche(b)}
           />

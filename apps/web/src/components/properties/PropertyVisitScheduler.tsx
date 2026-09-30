@@ -16,7 +16,7 @@ import { PropertyVisitType, PropertyVisitGoal } from '../../types/property-types
 import { scheduleVisit } from '../../services/property-service';
 import { listDeals } from '../../services/crm-service';
 import { Deal } from '../../types/crm-types';
-import { listMembers, Member } from '../../services/membership-service';
+import { listAssignableMembers, Member } from '../../services/membership-service';
 import { ContactSearchableSelect } from './ContactSearchableSelect';
 import { getDealTypeLabel } from '../../utils/crm-utils';
 import { t } from '../../i18n/t';
@@ -45,6 +45,8 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Créneau refusé par l'API (409) : affiché en clair, avec l'heure de l'autre visite.
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
@@ -79,7 +81,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
   const loadMembers = async () => {
     setLoadingMembers(true);
     try {
-      const response = await listMembers(tenantId, { page: 1, limit: 500, status: 'ACTIVE' });
+      const response = await listAssignableMembers(tenantId);
       if (response.success) {
         setMembers(response.data.members || []);
       }
@@ -119,6 +121,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
 
   const handleSubmit = async (values: any) => {
     setLoading(true);
+    setConflictMessage(null);
 
     try {
       const scheduledDate = values.scheduledDate as Dayjs;
@@ -177,7 +180,24 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
       }, 1500);
     } catch (error: any) {
       console.error('Error scheduling visit:', error);
-      message.error(error.response?.data?.error || t('Erreur lors de la planification de la visite'));
+      const conflict = error.response?.status === 409 ? error.response?.data?.data?.conflict : undefined;
+      if (conflict?.startsAt && conflict?.endsAt) {
+        const day = dayjs(conflict.startsAt).format('DD/MM/YYYY');
+        const from = dayjs(conflict.startsAt).format('HH:mm');
+        const to = dayjs(conflict.endsAt).format('HH:mm');
+        setConflictMessage(
+          t(
+            'Créneau déjà occupé : une autre visite de ce bien est prévue le {{day}} de {{from}} à {{to}}. Choisissez un autre horaire.',
+            {
+              day,
+              from,
+              to
+            }
+          )
+        );
+      } else {
+        message.error(error.response?.data?.error || t('Erreur lors de la planification de la visite'));
+      }
     } finally {
       setLoading(false);
     }
@@ -185,6 +205,18 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
 
   return (
     <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      {conflictMessage && (
+        <Alert
+          type="warning"
+          showIcon
+          closable
+          onClose={() => setConflictMessage(null)}
+          message={t('Créneau indisponible')}
+          description={conflictMessage}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       {/* Success Message */}
       {successMessage && (
         <Alert

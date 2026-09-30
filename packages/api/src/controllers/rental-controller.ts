@@ -14,6 +14,7 @@ import {
 } from '../services/rental-lease-service';
 import { RentalLeaseStatus } from '@prisma/client';
 import { asyncHandler, UnauthorizedError, NotFoundError, BadRequestError } from '../middleware/error-middleware';
+import { parsePagination } from '../utils/pagination-helper';
 
 // Helper function to validate datetime strings
 const datetimeSchema = z.string().refine(
@@ -177,8 +178,7 @@ export const listLeasesHandler = asyncHandler(async (req: Request, res: Response
     filters.search = search as string;
   }
 
-  const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+  const { page, limit } = parsePagination(req.query);
 
   const result = await listLeases(tenantId, filters, { page, limit });
 

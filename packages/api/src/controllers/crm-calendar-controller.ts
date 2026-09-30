@@ -3,11 +3,11 @@ import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middlewar
 import { getCalendarEvents, CalendarFilters } from '../services/crm-calendar-service';
 import { rescheduleFollowUp, markFollowUpDone } from '../services/crm-activity-service';
 import { z } from 'zod';
+import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 
 // Validation schemas
 const calendarQuerySchema = z.object({
-  from: z.coerce.date(),
-  to: z.coerce.date(),
   scope: z.enum(['GLOBAL', 'MINE']).optional(),
   types: z.string().optional() // Comma-separated: "followups,propertyVisits"
 });
@@ -16,61 +16,71 @@ const rescheduleFollowUpSchema = z.object({
   nextActionAt: z.coerce.date()
 });
 
+/** Plafond de l'intervalle demandé : le calendrier affiche au plus quelques mois. */
+export const CALENDAR_MAX_RANGE_DAYS = 366;
+
+const CALENDAR_TYPES = ['followups', 'propertyVisits'] as const;
+
+function parseCalendarDate(value: unknown, label: 'from' | 'to'): Date {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new BadRequestError(t('Le paramètre « {{label}} » est obligatoire (date ISO, ex. 2026-09-01).', { label }));
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestError(
+      t("Le paramètre « {{label}} » n'est pas une date valide (attendu : date ISO).", { label })
+    );
+  }
+  return date;
+}
+
 /**
  * Get calendar events
  * GET /tenants/:tenantId/crm/calendar
+ *
+ * `from` et `to` sont obligatoires et bornés : toute erreur de paramètre
+ * répond immédiatement en 400 via `errorHandler` (pas de requête pendante).
  */
-export async function getCalendarHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const userId = req.user?.userId;
+export const getCalendarHandler = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const tenantId = getTenantIdFromRequest(req);
+  const userId = req.user?.userId;
 
-    // Validate query parameters
-    const validatedQuery = calendarQuerySchema.parse(req.query);
-
-    // Parse types filter
-    const types = validatedQuery.types
-      ? (validatedQuery.types.split(',') as ('followups' | 'propertyVisits')[])
-      : undefined;
-
-    const filters: CalendarFilters = {
-      from: validatedQuery.from,
-      to: validatedQuery.to,
-      scope: validatedQuery.scope || 'GLOBAL',
-      types,
-      userId: validatedQuery.scope === 'MINE' ? userId : undefined
-    };
-
-    const events = await getCalendarEvents(tenantId, filters);
-
-    res.status(200).json({
-      success: true,
-      events
-    });
-  } catch (error) {
-    console.error('Error fetching calendar events:', error);
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        error: 'Bad Request',
-        message: 'Invalid query parameters',
-        details: error.errors
-      });
-      return;
-    }
-
-    // Log detailed error for debugging
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error('Calendar events error details:', { errorMessage, errorStack });
-
-    res.status(500).json({
-      success: false,
-      error: 'Internal Server Error',
-      message: errorMessage || 'Failed to fetch calendar events'
-    });
+  const from = parseCalendarDate(req.query.from, 'from');
+  const to = parseCalendarDate(req.query.to, 'to');
+  if (to.getTime() < from.getTime()) {
+    throw new BadRequestError('La date de fin « to » doit être postérieure à la date de début « from ».');
   }
-}
+  if (to.getTime() - from.getTime() > CALENDAR_MAX_RANGE_DAYS * 24 * 3600 * 1000) {
+    throw new BadRequestError('La période demandée est trop longue (maximum 366 jours).');
+  }
+
+  const parsed = calendarQuerySchema.safeParse({ scope: req.query.scope, types: req.query.types });
+  if (!parsed.success) {
+    throw new BadRequestError('Le paramètre « scope » est invalide (valeurs : GLOBAL, MINE).');
+  }
+  const scope = parsed.data.scope || 'GLOBAL';
+
+  let types: ('followups' | 'propertyVisits')[] | undefined;
+  if (parsed.data.types) {
+    const requested = parsed.data.types.split(',').map(v => v.trim());
+    if (requested.some(v => !(CALENDAR_TYPES as readonly string[]).includes(v))) {
+      throw new BadRequestError('Le paramètre « types » est invalide (valeurs : followups, propertyVisits).');
+    }
+    types = requested as ('followups' | 'propertyVisits')[];
+  }
+
+  const filters: CalendarFilters = {
+    from,
+    to,
+    scope,
+    types,
+    userId: scope === 'MINE' ? userId : undefined
+  };
+
+  const events = await getCalendarEvents(tenantId, filters);
+
+  res.status(200).json({ success: true, events });
+});
 
 /**
  * Reschedule a follow-up

@@ -63,9 +63,15 @@ export interface PropertyDocumentSummary {
   updatedAt: Date;
 }
 
+/**
+ * Vue d'un media de bien renvoyee au client : sans `filePath` (chemin disque),
+ * alignee sur `PROPERTY_MEDIA_SELECT` (`utils/property-media-select.ts`).
+ */
+export type PropertyMediaSummary = Omit<PropertyMedia, 'filePath' | 'metadata'>;
+
 // Extended Property with relationships
 export interface PropertyDetail extends Property {
-  media?: PropertyMedia[];
+  media?: PropertyMediaSummary[];
   /**
    * Photo de vignette, resolue par le endpoint de liste (REFONTE_UI_UX.md §8.4).
    * Photo primaire si elle existe, sinon la premiere dans l ordre d affichage.
@@ -121,6 +127,8 @@ export interface UpdatePropertyRequest {
   // services/own-assets-barrier-service.ts.
   ownershipType?: PropertyOwnershipType;
   ownerUserId?: string;
+  /** Alternative à ownerUserId : trouve ou crée le compte par e-mail. */
+  ownerEmail?: string;
   title?: string;
   description?: string;
   address?: string;

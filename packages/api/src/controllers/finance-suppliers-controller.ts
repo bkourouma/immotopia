@@ -23,6 +23,8 @@ import {
   voidSupplierInvoiceSchema
 } from '../lib/finance/schemas-suppliers';
 import { prisma } from '../utils/database';
+import { getEntitlements } from '../services/subscription-v2-service';
+import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
 
 /**
  * Contrôleur des dix points d'entrée agence du module financier
@@ -520,6 +522,21 @@ export const listSupplierInvoicesHandler = asyncHandler(async (req: Request, res
 // F. POST suppliers/:supplierId/invoices — saisie en brouillon
 // ---------------------------------------------------------------------------
 
+/**
+ * L'exigence de chantier d'un fournisseur de matériaux n'existe que si
+ * l'agence possède CONSTRUCTION, en mode `enforce`. En `warn`/`off`, ou si les
+ * droits sont indisponibles : comportement inchangé (chantier exigé).
+ */
+async function isSiteRequiredForTenant(tenantId: string): Promise<boolean> {
+  try {
+    const entitlements = await getEntitlements(tenantId);
+    if (entitlements.enforcement !== 'enforce') return true;
+    return evaluateFeatureAccess(entitlements, 'CONSTRUCTION', false).allowed;
+  } catch {
+    return true;
+  }
+}
+
 export const createSupplierInvoiceHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);
   const supplierId = requireUuidParam(req, 'supplierId');
@@ -543,6 +560,8 @@ export const createSupplierInvoiceHandler = asyncHandler(async (req: Request, re
     amount: allocation.amount
   }));
 
+  const siteRequired = await isSiteRequiredForTenant(tenantId);
+
   const invoice = await prisma.$transaction(tx =>
     createSupplierInvoiceTx(tx, tenantId, {
       supplierId,
@@ -550,7 +569,8 @@ export const createSupplierInvoiceHandler = asyncHandler(async (req: Request, re
       reference: body.reference,
       lines,
       allocations,
-      createdByUserId: actorUserId
+      createdByUserId: actorUserId,
+      siteRequired
     })
   );
 

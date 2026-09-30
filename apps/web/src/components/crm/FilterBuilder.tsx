@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Collapse, Input, Button, Checkbox, Select, Space } from 'antd';
 import { useParams } from 'react-router-dom';
 import { listTags } from '../../services/crm-service';
-import { listMembers } from '../../services/membership-service';
+import { listAssignableMembers } from '../../services/membership-service';
 import { getAllCommunes } from '../../services/geographic-service';
 import type { ContactSearchFilters } from '../../services/contact-search.service';
 import type { CrmTag } from '../../types/crm-types';
@@ -14,24 +14,24 @@ interface FilterBuilderProps {
   onCancel: () => void;
 }
 
-const STATUS_OPTIONS = [
+const statusOptions = () => [
   { value: 'LEAD', label: translate('Lead') },
   { value: 'ACTIVE_CLIENT', label: translate('Client actif') },
   { value: 'ARCHIVED', label: translate('Archivé') }
 ];
 
-const TYPE_OPTIONS = [
+const typeOptions = () => [
   { value: 'PERSON', label: translate('Personne') },
   { value: 'COMPANY', label: translate('Société') }
 ];
 
-const MATURITY_OPTIONS = [
+const maturityOptions = () => [
   { value: 'COLD', label: translate('Froid') },
   { value: 'WARM', label: translate('Tiède') },
   { value: 'HOT', label: translate('Chaud') }
 ];
 
-const DEAL_TYPE_OPTIONS = [
+const dealTypeOptions = () => [
   { value: 'ACHAT', label: translate('Achat') },
   { value: 'LOCATION', label: translate('Location') },
   { value: 'VENTE', label: translate('Vente') },
@@ -39,7 +39,7 @@ const DEAL_TYPE_OPTIONS = [
   { value: 'MANDAT', label: translate('Mandat') }
 ];
 
-const BORROWING_OPTIONS = [
+const borrowingOptions = () => [
   { value: 'YES', label: translate('Oui') },
   { value: 'NO', label: translate('Non') },
   { value: 'UNKNOWN', label: translate('Inconnu') }
@@ -57,7 +57,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
     listTags(tenantId)
       .then(r => setTags(r.data || []))
       .catch(() => {});
-    listMembers(tenantId)
+    listAssignableMembers(tenantId)
       .then(r =>
         setUsers(
           (r.data?.members || []).map(m => ({ id: m.userId, fullName: m.user?.fullName ?? m.user?.email ?? null }))
@@ -137,7 +137,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               <Checkbox.Group
                 value={filters.statuses ?? []}
                 onChange={v => update('statuses', v as string[])}
-                options={STATUS_OPTIONS}
+                options={statusOptions()}
               />
             </div>
             <div>
@@ -145,7 +145,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               <Checkbox.Group
                 value={filters.contactTypes ?? []}
                 onChange={v => update('contactTypes', v as string[])}
-                options={TYPE_OPTIONS}
+                options={typeOptions()}
               />
             </div>
             <div>
@@ -153,7 +153,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               <Checkbox.Group
                 value={filters.maturityLevels ?? []}
                 onChange={v => update('maturityLevels', v as string[])}
-                options={MATURITY_OPTIONS}
+                options={maturityOptions()}
               />
             </div>
           </Space>
@@ -166,7 +166,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               <Checkbox.Group
                 value={filters.dealTypes ?? []}
                 onChange={v => update('dealTypes', v as string[])}
-                options={DEAL_TYPE_OPTIONS}
+                options={dealTypeOptions()}
               />
             </div>
             <Input
@@ -250,7 +250,7 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               <Checkbox.Group
                 value={filters.borrowingCapacities ?? []}
                 onChange={v => update('borrowingCapacities', v as string[])}
-                options={BORROWING_OPTIONS}
+                options={borrowingOptions()}
               />
             </div>
           </Space>

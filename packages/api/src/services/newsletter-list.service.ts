@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { ConflictError, NotFoundError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { prisma } from '../utils/database';
 import { NewsletterListType } from '@prisma/client';
 
@@ -18,7 +20,7 @@ export async function createList(tenantId: string, data: CreateListInput) {
     where: { tenantId_name: { tenantId, name: data.name } }
   });
   if (existing) {
-    throw new Error('Une liste avec ce nom existe déjà pour ce tenant.');
+    throw new ConflictError(t('Une liste avec ce nom existe déjà pour ce tenant.'));
   }
 
   const publicSubscribeToken = data.type === 'MANUAL' ? `lst_${crypto.randomBytes(16).toString('hex')}` : null;
@@ -100,13 +102,13 @@ export async function getListsWithCounts(tenantId: string) {
 
 export async function updateList(tenantId: string, listId: string, data: { name?: string; doubleOptIn?: boolean }) {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
 
   if (data.name && data.name !== list.name) {
     const existing = await prisma.newsletterList.findUnique({
       where: { tenantId_name: { tenantId, name: data.name } }
     });
-    if (existing) throw new Error('Une liste avec ce nom existe déjà.');
+    if (existing) throw new ConflictError(t('Une liste avec ce nom existe déjà.'));
   }
 
   return prisma.newsletterList.update({
@@ -120,7 +122,7 @@ export async function updateList(tenantId: string, listId: string, data: { name?
 
 export async function deleteList(tenantId: string, listId: string) {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
-  if (!list) throw new Error('Liste non trouvée.');
+  if (!list) throw new NotFoundError(t('Liste non trouvée.'));
 
   await prisma.newsletterList.delete({ where: { id: listId, tenantId } });
   return { success: true };

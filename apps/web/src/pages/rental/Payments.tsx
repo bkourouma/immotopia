@@ -22,7 +22,7 @@ import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStat
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
-import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
+import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux, deviseAffichee } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -215,7 +215,8 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             title: t('Locataire'),
             key: 'locataire',
             width: 170,
-            render: (_: unknown, p: RentalPayment) => nomDeLaPersonne(p.renterClient?.user)
+            render: (_: unknown, p: RentalPayment) =>
+              nomDeLaPersonne(p.renterClient?.user ?? p.lease?.primaryRenter?.user)
           }
         ]),
     { title: t('Date'), key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
@@ -223,7 +224,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
+      render: (_, p) => <MoneyValue value={p.amount} currency={deviseAffichee(p.currency)} />
     },
     {
       title: t('Reste à affecter'),
@@ -232,7 +233,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       render: (_, p) => {
         const reste = resteAAffecter(p);
         return reste > 0 ? (
-          <MoneyValue value={reste} currency={p.currency} />
+          <MoneyValue value={reste} currency={deviseAffichee(p.currency)} />
         ) : (
           // Un paiement entièrement affecté n'a pas besoin d'un « 0 » :
           // le mot dit la même chose et se lit plus vite.
@@ -339,7 +340,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           const reste = resteAAffecter(p);
           return (
             <DataCard
-              title={<MoneyValue value={p.amount} currency={p.currency} />}
+              title={<MoneyValue value={p.amount} currency={deviseAffichee(p.currency)} />}
               aria-label={t('Paiement du {{value}}', { value: dateCourte(p.initiated_at) })}
               subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
               status={<StatusTag status={p.status} />}
@@ -348,11 +349,14 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                   ? [
                       {
                         label: t('Déjà affecté'),
-                        value: <MoneyValue value={montantAffecte(p)} currency={p.currency} />
+                        value: <MoneyValue value={montantAffecte(p)} currency={deviseAffichee(p.currency)} />
                       },
-                      { label: t('Reste à affecter'), value: <MoneyValue value={reste} currency={p.currency} /> }
+                      {
+                        label: t('Reste à affecter'),
+                        value: <MoneyValue value={reste} currency={deviseAffichee(p.currency)} />
+                      }
                     ]
-                  : [{ label: 'Affectation', value: t('Intégralement affecté') }]),
+                  : [{ label: t('Affectation'), value: t('Intégralement affecté') }]),
                 ...(p.onlineCheckout
                   ? [
                       {
@@ -371,7 +375,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                   : [])
               ]}
               onOpen={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}
-              primaryAction={reste > 0 ? { label: 'Affecter', onClick: () => setAffectePour(p) } : undefined}
+              primaryAction={reste > 0 ? { label: t('Affecter'), onClick: () => setAffectePour(p) } : undefined}
             />
           );
         }}
@@ -410,7 +414,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         // déclarations en attente est partageable.
         onChange={cle => list.setFilters({ onglet: cle === 'paiements' ? undefined : cle })}
         items={[
-          { key: 'paiements', label: 'Paiements', children: listeDesPaiements },
+          { key: 'paiements', label: t('Paiements'), children: listeDesPaiements },
           {
             key: 'declarations',
             label: t('Déclarations en attente'),
@@ -440,7 +444,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       {boite(
         Boolean(affectePour),
         affectePour
-          ? t('Affecter {{value}}', { value: formatMoney(affectePour.amount, { currency: affectePour.currency }) })
+          ? t('Affecter {{value}}', {
+              value: formatMoney(affectePour.amount, { currency: deviseAffichee(affectePour.currency) })
+            })
           : '',
         () => setAffectePour(null),
         affectePour ? (

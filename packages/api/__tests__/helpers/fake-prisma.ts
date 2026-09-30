@@ -285,7 +285,7 @@ function createModel(name: string): FakeModel {
     if (!row) throw Object.assign(new Error(`${name}.update : aucune ligne`), { code: 'P2025' });
     applyData(row, args.data);
     row.updatedAt = new Date();
-    return copy(row);
+    return project(row, args);
   });
   model.upsert = jest.fn(async (args: any) => {
     const row = model.rows.find((candidate: Row) => matchesWhere(candidate, args.where));
@@ -340,6 +340,7 @@ export const FAKE_MODEL_NAMES = [
   'userRole',
   'permission',
   'property',
+  'propertyMandate',
   'rentalPenalty',
   'rentalLease',
   'maintenanceTicket',
@@ -367,6 +368,11 @@ export const FAKE_MODEL_NAMES = [
   'syndicateFund',
   'syndicateFundMovement',
   'budgetLineItem',
+  // Comptabilite de copropriete : ecriture d'encaissement des charges.
+  'chartOfAccount',
+  'accountingJournal',
+  'journalEntry',
+  'journalEntryLine',
   // Lot P5 : vue patrimoine du portail proprietaire.
   'assetValuation',
   'propertyLoan',
