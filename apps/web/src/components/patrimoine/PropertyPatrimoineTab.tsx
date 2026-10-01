@@ -22,6 +22,8 @@ import {
 } from 'antd';
 import type { RcFile } from 'antd/es/upload';
 import { UploadOutlined } from '@ant-design/icons';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKey } from '../../lib/query-keys';
 import {
   createExpense,
   createLoan,
@@ -163,6 +165,7 @@ interface SectionErrors {
 }
 
 export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId }) => {
+  const queryClient = useQueryClient();
   const { message } = App.useApp();
 
   const [loading, setLoading] = useState(true);
@@ -269,7 +272,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const annualExpenses = useMemo(
     () =>
       expenses
-        .filter(expense => new Date(expense.paidAt).getFullYear() === new Date().getFullYear())
+        // Une dépense capitalisée s'ajoute à la valeur du bien, pas aux charges : l'API
+        // l'exclut aussi du rendement net (BUG-2026-10-01-010).
+        .filter(
+          expense => !expense.isCapitalized && new Date(expense.paidAt).getFullYear() === new Date().getFullYear()
+        )
         .reduce((acc, expense) => acc + Number(expense.amount), 0),
     [expenses]
   );
@@ -315,6 +322,18 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setValuationModalOpen(true);
   };
 
+  /**
+   * La valeur marchande du profil fiscal et l'estimation fiscale dérivent de la
+   * dernière valorisation : on invalide les requêtes de PropertyHoldingTaxSection
+   * pour qu'elles se relancent sans rechargement (BUG-2026-10-01-002).
+   */
+  const invalidateTaxQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKey('property-tax-profile', tenantId, { propertyId }) }),
+      queryClient.invalidateQueries({ queryKey: queryKey('property-tax-estimate', tenantId, { propertyId }) })
+    ]);
+  };
+
   const submitValuation = async () => {
     try {
       const values = await valuationForm.validateFields();
@@ -336,6 +355,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         message.success(t('Valorisation ajoutée'));
       }
       setValuationModalOpen(false);
+      await invalidateTaxQueries();
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
@@ -350,6 +370,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       await deleteValuation(tenantId, propertyId, valuationId);
       message.success(t('Valorisation supprimée'));
+      await invalidateTaxQueries();
       await loadAll();
     } catch (e) {
       message.error(apiErrorMessage(e, t('Erreur de suppression de la valorisation')));

@@ -16,7 +16,7 @@ export const createValuationSchema = z.object({
 });
 
 export const updateValuationSchema = createValuationSchema.partial().refine(value => Object.keys(value).length > 0, {
-  message: 'Au moins un champ est requis pour la mise a jour de la valorisation'
+  message: 'Au moins un champ est requis pour la mise à jour de la valorisation'
 });
 
 export const createLoanSchema = z.object({
@@ -37,7 +37,7 @@ export const updateLoanSchema = createLoanSchema
   })
   .partial()
   .refine(value => Object.keys(value).length > 0, {
-    message: 'Au moins un champ est requis pour la mise a jour du pret'
+    message: 'Au moins un champ est requis pour la mise à jour du prêt'
   });
 
 export const createExpenseSchema = z.object({
@@ -74,7 +74,7 @@ export const createExpenseSchema = z.object({
 });
 
 export const updateExpenseSchema = createExpenseSchema.partial().refine(value => Object.keys(value).length > 0, {
-  message: 'Au moins un champ est requis pour la mise a jour de la depense'
+  message: 'Au moins un champ est requis pour la mise à jour de la dépense'
 });
 
 export const createWorkProgramSchema = z.object({
@@ -102,7 +102,7 @@ export const updateWorkProgramSchema = createWorkProgramSchema
   })
   .partial()
   .refine(value => Object.keys(value).length > 0, {
-    message: 'Au moins un champ est requis pour la mise a jour du programme de travaux'
+    message: 'Au moins un champ est requis pour la mise à jour du programme de travaux'
   });
 
 /** Voir US12 / FR-024 : pose ou retire le lien vers un chantier financier. */
@@ -122,7 +122,7 @@ export const updateStatementSchema = z
     paidAt: z.coerce.date().optional()
   })
   .refine(value => Object.keys(value).length > 0, {
-    message: 'Au moins un champ est requis pour la mise a jour du releve'
+    message: 'Au moins un champ est requis pour la mise à jour du relevé'
   });
 
 // Taux de croissance negatifs admis jusqu'a -50 % : un marche qui baisse ou

@@ -198,5 +198,66 @@ const PARAMETER_KEY_LABELS: Record<string, string> = {
 
 export function parameterKeyLabel(key: string, apiLabel: string): string {
   const known = PARAMETER_KEY_LABELS[key];
-  return known ? t(known) : apiLabel;
+  return known ? t(known) : taxLineLabel(apiLabel);
+}
+
+/**
+ * Libellés de lignes d'estimation fiscale, fournis en français par l'API : soit
+ * le littéral du moteur (`Base imposable`), soit la colonne `label` de
+ * `tax_parameters` (référentiel 2026, migration P4). Une table de `t()` littéraux
+ * (plutôt que `t(variable)`) garde chaque texte visible de `i18n:extract` ; un
+ * libellé ajouté plus tard en base retombe sur `t(label)`, donc sur le français
+ * tant qu'il n'a pas d'entrée au catalogue. Aucun calcul n'en dépend.
+ */
+const TAX_LINE_LABELS: Record<string, () => string> = {
+  'Aucun abattement': () => t('Aucun abattement'),
+  'Aucun abattement pour charges': () => t('Aucun abattement pour charges'),
+  'Aucune réfaction': () => t('Aucune réfaction'),
+  'Base : appréciation directe (valeur marchande × taux de rendement)': () =>
+    t('Base : appréciation directe (valeur marchande × taux de rendement)'),
+  'Base : loyers bruts encaissés': () => t('Base : loyers bruts encaissés'),
+  "Base : valeur locative (loyer de l'année N-1)": () => t("Base : valeur locative (loyer de l'année N-1)"),
+  "Base : valeur locative au 1er janvier de l'année N-1": () =>
+    t("Base : valeur locative au 1er janvier de l'année N-1"),
+  'Base : valeur marchande (bien vacant)': () => t('Base : valeur marchande (bien vacant)'),
+  'Base : valeur marchande (habitation principale)': () => t('Base : valeur marchande (habitation principale)'),
+  'Base : valeur marchande (résidence secondaire)': () => t('Base : valeur marchande (résidence secondaire)'),
+  'Base : valeur marchande du terrain au 1er janvier': () => t('Base : valeur marchande du terrain au 1er janvier'),
+  'Base arrondie au millier de francs inférieur': () => t('Base arrondie au millier de francs inférieur'),
+  'Base imposable': () => t('Base imposable'),
+  'Exonération : bien occupé par le propriétaire ou sa famille': () =>
+    t('Exonération : bien occupé par le propriétaire ou sa famille'),
+  'Exonération : immeuble occupé par le propriétaire ou sa famille': () =>
+    t('Exonération : immeuble occupé par le propriétaire ou sa famille'),
+  'Exonération des terrains urbains nus acquis depuis 2025 (informatif)': () =>
+    t('Exonération des terrains urbains nus acquis depuis 2025 (informatif)'),
+  'Immeubles des entreprises affectés ou non à leur activité': () =>
+    t('Immeubles des entreprises affectés ou non à leur activité'),
+  'Impôt foncier sur les terrains urbains non bâtis': () => t('Impôt foncier sur les terrains urbains non bâtis'),
+  'Impôt sur le patrimoine foncier bâti loué, personne morale': () =>
+    t('Impôt sur le patrimoine foncier bâti loué, personne morale'),
+  'Impôt sur le patrimoine foncier bâti loué, personne physique': () =>
+    t('Impôt sur le patrimoine foncier bâti loué, personne physique'),
+  'Impôt sur le revenu foncier, personne morale': () => t('Impôt sur le revenu foncier, personne morale'),
+  'Impôt sur le revenu foncier, personne physique': () => t('Impôt sur le revenu foncier, personne physique'),
+  'Impôt sur les revenus fonciers, immeubles en dur et semi-dur': () =>
+    t('Impôt sur les revenus fonciers, immeubles en dur et semi-dur'),
+  'Non dû : bien non productif de revenus': () => t('Non dû : bien non productif de revenus'),
+  'Non dû : bien occupé par son propriétaire': () => t('Non dû : bien occupé par son propriétaire'),
+  "Non dû : immeubles inscrits au bilan d'une société soumise à l'IS": () =>
+    t("Non dû : immeubles inscrits au bilan d'une société soumise à l'IS"),
+  "Non dû : l'occupation personnelle ne crée pas de valeur locative": () =>
+    t("Non dû : l'occupation personnelle ne crée pas de valeur locative"),
+  'Taux réduit : bien vacant': () => t('Taux réduit : bien vacant'),
+  'Taux réduit : habitation principale occupée par le propriétaire': () =>
+    t('Taux réduit : habitation principale occupée par le propriétaire'),
+  'Taux réduit : résidence secondaire': () => t('Taux réduit : résidence secondaire'),
+  'Taxe foncière, taux unique': () => t('Taxe foncière, taux unique'),
+  'Terrains nus imposables après 3 ans de détention (informatif)': () =>
+    t('Terrains nus imposables après 3 ans de détention (informatif)')
+};
+
+export function taxLineLabel(apiLabel: string): string {
+  const known = TAX_LINE_LABELS[apiLabel];
+  return known ? known() : t(apiLabel);
 }

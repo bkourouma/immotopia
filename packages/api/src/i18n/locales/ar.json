@@ -1332,5 +1332,19 @@
   "Trop de requêtes. Veuillez réessayer dans une minute.": "طلبات كثيرة جدًا. يرجى المحاولة مجددًا بعد دقيقة.",
   "La date de fin de la periodicite ne peut pas preceder la date de la depense": "لا يمكن أن يسبق تاريخ نهاية الدورية تاريخ النفقة",
   "La date de fin n'a de sens que pour une depense periodique": "لا معنى لتاريخ النهاية إلا للنفقة الدورية",
-  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "يجب أن يكون تاريخ النفقة الدورية تاريخ دفعة تمت بالفعل"
+  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "يجب أن يكون تاريخ النفقة الدورية تاريخ دفعة تمت بالفعل",
+  "La date de la dépense périodique doit être celle d'un paiement déjà effectué": "يجب أن يكون تاريخ النفقة الدورية تاريخ دفعة تمت بالفعل",
+  "La date de fin n'a de sens que pour une dépense périodique": "لا معنى لتاريخ النهاية إلا للنفقة الدورية",
+  "La date de fin de la périodicité ne peut pas précéder la date de la dépense": "لا يمكن أن يسبق تاريخ نهاية الدورية تاريخ النفقة",
+  "Le nom du fournisseur est requis quand l'agence est elle-même l'acheteuse": "اسم المورد مطلوب عندما تكون الوكالة نفسها هي المشتري",
+  "Dépense introuvable": "لم يُعثر على المصروف",
+  "La date de fin du prêt doit être postérieure à la date de début": "يجب أن يكون تاريخ انتهاء القرض بعد تاريخ البدء",
+  "Prêt introuvable": "لم يُعثر على القرض",
+  "Le coût réel de ce programme est dérivé du chantier rattaché ; il ne peut plus être saisi manuellement.": "التكلفة الفعلية لهذا البرنامج مستمَدّة من المشروع المرتبط؛ ولم يعد بالإمكان إدخالها يدويًا.",
+  "Relevé introuvable": "لم يُعثر على الكشف",
+  "Période invalide, format attendu YYYY-MM": "فترة غير صالحة، الصيغة المتوقَّعة YYYY-MM",
+  "Ce relevé est déjà réglé : il ne peut plus être recalculé. Un écart éventuel se régularise sur le relevé suivant.": "تمت تسوية هذا الكشف بالفعل: لم يعد من الممكن إعادة حسابه. تُسوّى أي فروق في الكشف التالي.",
+  "Ce relevé a déjà été envoyé au propriétaire : il ne peut plus être recalculé.": "تم إرسال هذا الكشف إلى المالك بالفعل: لم يعد من الممكن إعادة حسابه.",
+  "Ce relevé ne porte sur aucun bien : générez-en un nouveau en choisissant les biens.": "لا يشمل هذا الكشف أي عقار: أنشئ كشفًا جديدًا مع اختيار العقارات.",
+  "Ce relevé est encore un brouillon : il ne peut être partagé qu'une fois envoyé au propriétaire, depuis la liste des relevés (bouton « Envoyer »).": "لا يزال هذا الكشف مسودة: لا يمكن مشاركته إلا بعد إرساله إلى المالك من قائمة الكشوف (زر «إرسال»)."
 }

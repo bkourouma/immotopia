@@ -196,21 +196,47 @@ export const OwnerMonthlyReportPage: React.FC = () => {
     };
   }, []);
 
+  // Une seule requête par jeton : le second passage de l'effet (StrictMode) réutilise la promesse.
+  const requestRef = useRef<{ token: string; promise: ReturnType<typeof fetchPublicOwnerMonthlyReport> } | null>(null);
+  // Numéro de la dernière demande : une réponse d'un ancien jeton ou d'un montage nettoyé est ignorée.
+  const sequenceRef = useRef(0);
+
   useEffect(() => {
+    const load = (token: string) => {
+      sequenceRef.current += 1;
+      const sequence = sequenceRef.current;
+      setView({ kind: 'loading' });
+      if (requestRef.current?.token !== token) {
+        requestRef.current = { token, promise: fetchPublicOwnerMonthlyReport(token) };
+      }
+      const request = requestRef.current;
+      void request.promise.then(result => {
+        // Un échec transitoire (429, 5xx) ne reste pas en mémoire : rouvrir le même lien relance la requête.
+        if (result.status === 'unavailable' || result.status === 'rate_limited') {
+          if (requestRef.current === request) requestRef.current = null;
+        }
+        if (sequenceRef.current !== sequence) return;
+        if (result.status === 'ok') setView({ kind: 'ok', report: result.report });
+        else setView({ kind: result.status });
+      });
+    };
+
     if (tokenRef.current === undefined) tokenRef.current = consumeTokenFromHash();
-    const token = tokenRef.current;
-    if (!token) {
-      setView({ kind: 'invalid' });
-      return undefined;
-    }
-    let cancelled = false;
-    void fetchPublicOwnerMonthlyReport(token).then(result => {
-      if (cancelled) return;
-      if (result.status === 'ok') setView({ kind: 'ok', report: result.report });
-      else setView({ kind: result.status });
-    });
+    const initialToken = tokenRef.current;
+    if (!initialToken) setView({ kind: 'invalid' });
+    else load(initialToken);
+
+    // Un second lien ouvert dans le même onglet ne change que le fragment : pas de remontage.
+    const onHashChange = () => {
+      const next = consumeTokenFromHash();
+      if (!next) return;
+      tokenRef.current = next;
+      load(next);
+    };
+    window.addEventListener('hashchange', onHashChange);
     return () => {
-      cancelled = true;
+      window.removeEventListener('hashchange', onHashChange);
+      sequenceRef.current += 1;
     };
   }, []);
 
