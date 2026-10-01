@@ -179,6 +179,20 @@ describe('getPatrimoineOverview — occupation bornee a 100 %', () => {
     const overview = await getPatrimoineOverview(TENANT);
     expect(overview.totalAnnualRent).toBe(1_200_000);
   });
+
+  it("n'inclut pas les depenses capitalisees dans les charges de l'annee (BUG-2026-10-01-010)", async () => {
+    propertyFindMany.mockResolvedValue([{ id: 'p1' }]);
+    assetValuationFindMany.mockResolvedValue([]);
+    propertyLoanFindMany.mockResolvedValue([]);
+    propertyExpenseFindMany.mockResolvedValue([{ amount: 400_000 }]);
+    rentalLeaseFindMany.mockResolvedValue([]);
+
+    const overview = await getPatrimoineOverview(TENANT);
+    expect(overview.totalExpensesThisYear).toBe(400_000);
+    expect(propertyExpenseFindMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ tenantId: TENANT, isCapitalized: false })
+    });
+  });
 });
 
 describe("updatePropertyWorkProgram — 409 seulement si actualCost recu DIFFERE de l'existant", () => {

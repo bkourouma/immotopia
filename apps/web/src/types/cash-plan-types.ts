@@ -82,6 +82,8 @@ export interface CashPlanSourceStatus {
   status: CashPlanSourceStatusCode;
   reason: CashPlanSourceReason | null;
   count: number | null;
+  /** Taxe foncière : biens couverts par une charge récurrente, quand la raison principale est autre. */
+  coveredByRecurringExpenseCount?: number;
 }
 
 export interface CashPlanShortfall {

@@ -39,12 +39,18 @@ function resolveStatementId(req: Request): string {
 /**
  * Un relevé brouillon n'est pas définitif, et un relevé de l'ancien calcul
  * porte un loyer erroné : ni lien, ni envoi tant qu'ils ne sont pas corrigés
- * (même garde que l'envoi du relevé, `/send`).
+ * (le second cas est aussi gardé par l'envoi du relevé, `/send`).
+ *
+ * Il n'existe aucune action « valider » distincte de l'envoi : le relevé quitte
+ * l'état DRAFT quand `POST …/send` l'adresse au propriétaire (bouton « Envoyer »
+ * de la liste des relevés). Le message nomme cette action, la seule disponible.
  */
 export function assertStatementShareable(statement: { status: string; computationVersion: number }): void {
   if (statement.status === 'DRAFT') {
     throw new ConflictError(
-      t('Ce relevé est encore un brouillon : validez-le avant de le partager avec le propriétaire.')
+      t(
+        "Ce relevé est encore un brouillon : il ne peut être partagé qu'une fois envoyé au propriétaire, depuis la liste des relevés (bouton « Envoyer »)."
+      )
     );
   }
   if (statement.computationVersion < OWNER_STATEMENT_COMPUTATION_VERSION) {

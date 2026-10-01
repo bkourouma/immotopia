@@ -18,6 +18,7 @@ import {
   sourceKindLabel,
   sourceReasonLabel,
   sourceStatusLabel,
+  taxCoveredNoteLabel,
   warningLabel
 } from '../../components/patrimoine/cash-plan/cash-plan-labels';
 import { EXPENSE_RECURRENCES, expenseRecurrenceLabel } from '../../components/patrimoine/patrimoine-labels';
@@ -55,6 +56,8 @@ describe('libellés du plan de trésorerie', () => {
       /Date d'exigibilité de la taxe foncière non renseignée/
     );
     expect(sourceReasonLabel('TAX_NOT_ESTIMABLE', 3)).toMatch(/3 biens/);
+    expect(taxCoveredNoteLabel(1)).toMatch(/1 bien couvert par une charge récurrente de taxe foncière/);
+    expect(taxCoveredNoteLabel(2)).toMatch(/2 biens couverts par une charge récurrente de taxe foncière/);
   });
 
   it('couvre chaque avertissement et formate les mois', () => {

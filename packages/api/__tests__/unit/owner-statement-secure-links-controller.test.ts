@@ -297,3 +297,32 @@ describe('POST /secure-links : garde du relevé', () => {
     expect(res.status).toBe(201);
   });
 });
+
+describe('relevé brouillon : message du 409 (BUG-2026-10-01-006)', () => {
+  const DRAFT_MESSAGE =
+    "Ce relevé est encore un brouillon : il ne peut être partagé qu'une fois envoyé au propriétaire, depuis la liste des relevés (bouton « Envoyer »).";
+
+  beforeEach(() => {
+    getOwnerStatementById.mockResolvedValue({
+      id: STATEMENT,
+      status: 'DRAFT',
+      computationVersion: OWNER_STATEMENT_COMPUTATION_VERSION
+    });
+  });
+
+  it.each([
+    ['secure-links', () => createSecureLink],
+    ['send-monthly-report', () => sendOwnerMonthlyReport]
+  ])('POST /%s : 409, accents, et action réellement disponible (sans « valider »)', async (route, sideEffect) => {
+    const res = await request(buildApp()).post(`${BASE}/${route}`).send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe(DRAFT_MESSAGE);
+    // L'invite à « valider » est retirée : aucune action de validation n'existe,
+    // l'envoi depuis la liste (`POST /send`) est le seul moyen de sortir du brouillon.
+    expect(res.body.message).not.toMatch(/valid/i);
+    expect(res.body.message).toContain('liste des relevés');
+    expect(res.body.message).toContain('Envoyer');
+    expect(sideEffect()).not.toHaveBeenCalled();
+  });
+});

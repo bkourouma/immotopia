@@ -1360,5 +1360,19 @@
   "Un dossier doit conserver au moins une étape.": "A file must keep at least one step.",
   "Un dossier ne peut pas dépasser {{max}} étapes.": "A file cannot exceed {{max}} steps.",
   "Un motif est obligatoire pour rouvrir un dossier.": "A reason is required to reopen a file.",
-  "Un motif est obligatoire pour rouvrir une étape terminée.": "A reason is required to reopen a completed step."
+  "Un motif est obligatoire pour rouvrir une étape terminée.": "A reason is required to reopen a completed step.",
+  "La date de la dépense périodique doit être celle d'un paiement déjà effectué": "The date of a recurring expense must be that of a payment already made",
+  "La date de fin n'a de sens que pour une dépense périodique": "An end date only makes sense for a recurring expense",
+  "La date de fin de la périodicité ne peut pas précéder la date de la dépense": "The end date of the recurrence cannot be earlier than the expense date",
+  "Le nom du fournisseur est requis quand l'agence est elle-même l'acheteuse": "The supplier name is required when the agency itself is the buyer",
+  "Dépense introuvable": "Expense not found",
+  "La date de fin du prêt doit être postérieure à la date de début": "The loan end date must be later than the start date",
+  "Prêt introuvable": "Loan not found",
+  "Le coût réel de ce programme est dérivé du chantier rattaché ; il ne peut plus être saisi manuellement.": "This programme's actual cost is derived from the linked site; it can no longer be entered manually.",
+  "Relevé introuvable": "Statement not found",
+  "Période invalide, format attendu YYYY-MM": "Invalid period, expected format YYYY-MM",
+  "Ce relevé est déjà réglé : il ne peut plus être recalculé. Un écart éventuel se régularise sur le relevé suivant.": "This statement has already been paid: it can no longer be recalculated. Any difference is settled on the next statement.",
+  "Ce relevé a déjà été envoyé au propriétaire : il ne peut plus être recalculé.": "This statement has already been sent to the owner: it can no longer be recalculated.",
+  "Ce relevé ne porte sur aucun bien : générez-en un nouveau en choisissant les biens.": "This statement covers no property: generate a new one and choose the properties.",
+  "Ce relevé est encore un brouillon : il ne peut être partagé qu'une fois envoyé au propriétaire, depuis la liste des relevés (bouton « Envoyer »).": "This statement is still a draft: it can only be shared once it has been sent to the owner, from the statements list (\"Send\" button)."
 }
