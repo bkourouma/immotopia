@@ -78,7 +78,7 @@ Pièges et décisions :
 
 Reste à faire :
 
-- 058 : fusionner la PR #87 (l'API Pro de recette tourne depuis le worktree `fix-058`). BUG-2026-10-01-003 (filtre Période de la Balance clients : borne de fin exclue, solde ignorant la période) corrigé par la PR #88 (empilée sur #87, base `fix/finance-totaux-balance-clients`), « prêt au retest » : à fusionner après #87 puis rejouer l'écran avec un filtre. Les 3 mouvements par encaissement au relevé sont voulus (FR-011) ; DEP-289FBAB5 en double (net 0) au journal Pro reste à examiner.
+- 058 : fusionner la PR #87 (l'API Pro de recette tourne depuis le worktree `fix-058`). BUG-2026-10-01-003 (filtre Période de la Balance clients : borne de fin exclue, solde ignorant la période) corrigé par la PR #88 (empilée sur #87, base `fix/finance-totaux-balance-clients`) et rejoué dans l'interface (passé) : à fusionner après #87. Web ET API Pro de recette tournent depuis le worktree `fix-058`. Question ouverte : la colonne « À échoir » de la Balance âgée affiche des montants supérieurs au solde (Alpha 22 750 000 pour un solde de 650 000) ; définition à confirmer. Les 3 mouvements par encaissement au relevé sont voulus (FR-011) ; DEP-289FBAB5 en double (net 0) au journal Pro reste à examiner.
 - 089 : passé avec un compte jetable (`retest089.jetable@exemple.test`, mot de passe dans le scratchpad de la session) ; question produit ouverte : l'assistant d'un pack Promoteur n'annonce aucune capacité chantier/vente.
 - Nouvelles : BUG-2026-10-01-001 (sélecteur de bien Performance limité à 100), -002 (valeur marchande non rafraîchie). Ressaisir les noms de biens contenant U+FFFD (données de recette, pas le code d'export).
 - Écart du scénario I-01 : pas de champ honoraires dans le mandat de gestion.
