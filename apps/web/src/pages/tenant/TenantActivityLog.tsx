@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, Col, DatePicker, Empty, Row, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Card, Col, DatePicker, Empty, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -13,13 +13,9 @@ import {
   type TenantAuditLog,
   type TenantAuditOutcome
 } from '../../services/tenant-audit-service';
-import {
-  getAuditActionLabelFr,
-  getAuditCategoryLabelFr,
-  getAuditOutcomeLabelFr,
-  getAuditResourceDisplayLabel
-} from '../../constants/audit-labels';
+import { getAuditActionLabelFr, getAuditCategoryLabelFr, getAuditOutcomeLabelFr } from '../../constants/audit-labels';
 import { getAuditActorDisplay, getAuditOutcomeColor } from '../../utils/tenant-audit-display';
+import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { ActivityLogDetailModal } from '../../components/tenant/ActivityLogDetailModal';
 import { activeLocale, dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -40,17 +36,6 @@ function formatDate(iso: string): string {
   });
 }
 
-function ResourceCell({ log }: { log: TenantAuditLog }) {
-  if (log.resourceLabel) return <>{log.resourceLabel}</>;
-  const { label, tooltip } = getAuditResourceDisplayLabel(log.resourceType, log.resourceId, log.details);
-  if (!tooltip) return <>{label}</>;
-  return (
-    <Tooltip title={tooltip}>
-      <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.2)' }}>{label}</span>
-    </Tooltip>
-  );
-}
-
 function buildColumns(onOpen: (log: TenantAuditLog) => void): ColumnsType<TenantAuditLog> {
   return [
     {
@@ -62,7 +47,7 @@ function buildColumns(onOpen: (log: TenantAuditLog) => void): ColumnsType<Tenant
     },
     { title: t('Acteur'), key: 'actor', width: 200, render: (_, log) => getAuditActorDisplay(log) },
     { title: t('Action'), key: 'action', render: (_, log) => getAuditActionLabelFr(log.action) },
-    { title: t('Ressource'), key: 'resource', render: (_, log) => <ResourceCell log={log} /> },
+    { title: t('Ressource'), key: 'resource', render: (_, log) => <AuditResourceCell log={log} /> },
     {
       title: t('Résultat'),
       key: 'outcome',

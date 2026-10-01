@@ -161,7 +161,7 @@ migration diverge du catalogue. Le catalogue couvre les 130 clés en usage, dont
 | Niveau     | Route                              | Garde                                                        | Filtre forcé                                       |
 | ---------- | ---------------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
 | Agence     | `GET /api/tenants/:tenantId/audit` | `authenticate` + `requireTenantAccess` + `TENANT_AUDIT_VIEW` | `tenantId` de l'URL vérifié, `visibility = TENANT` |
-| Plateforme | `GET /api/admin/audit`             | `PLATFORM_TENANTS_VIEW` (`PLATFORM_AUDIT_VIEW` en phase 4)   | aucun, `tenantId` optionnel                        |
+| Plateforme | `GET /api/admin/audit`             | `PLATFORM_AUDIT_VIEW`                                        | aucun, `tenantId` optionnel                        |
 
 ### Niveau agence (phase 2, livré)
 
@@ -203,10 +203,39 @@ tenantId)` borne chaque requête à l'agence (sans cela, la garde Prisma
 - **Web** : page « Journal d'activité » (`/tenant/:tenantId/activity`), entrée
   du groupe « Agence », réservée à `TENANT_AUDIT_VIEW`.
 
-### Niveau plateforme (phase 4)
+### Niveau plateforme (phase 4, livré)
 
-Pagination par curseur, `PLATFORM_AUDIT_VIEW` / `PLATFORM_AUDIT_EXPORT`,
-consulter ou exporter écrit `AUDIT_VIEWED` / `AUDIT_EXPORTED`.
+- **Lecteur** : `services/audit-platform-read-service.ts`, séparé du lecteur
+  d'agence. Aucun filtre implicite : le super-administrateur lit tout (lignes
+  `PLATFORM_ONLY`, sans agence, IP et navigateur du personnel). Aucune route
+  d'agence ne l'importe.
+- **Consultation** `GET /api/admin/audit`, `PLATFORM_AUDIT_VIEW`. Pagination par
+  curseur (plus de `page`, de `limit` par page ni de total). Paramètres
+  (`lib/audit/platform-audit-schemas.ts`, `.strict()`) : `tenantId`, `scope`,
+  `visibility`, `category`, `outcome`, `actorType`, `actionKey`, `actorUserId`,
+  `entityType`, `entityId`, `requestId`, `startDate`, `endDate`, `cursor`,
+  `limit`. Les anciens alias (`page`, `action`, `resourceType`, `userId`) sont
+  refusés en 400. La première page écrit `AUDIT_VIEWED` (niveau `PLATFORM`).
+- **Export** `GET /api/admin/audit/export`, `PLATFORM_AUDIT_EXPORT` **et**
+  super-admin (un rôle plateforme délégué, même titulaire du droit, est refusé),
+  limité à 5 exports par 10 minutes et par utilisateur. Mêmes filtres, sans
+  `cursor` ni `limit`. CSV UTF-8 avec BOM, 50 000 lignes au plus, lu par lots de
+  1 000 avec contre-pression ; cellules protégées contre l'injection de formule
+  (`lib/csv.ts`). En-têtes `X-Export-Rows` et `X-Export-Truncated` (vrai quand le
+  filtre dépasse le plafond).
+- **Trace avant les données** : `preparePlatformAuditExport` écrit
+  `AUDIT_EXPORTED` (filtres, nombre de lignes, troncature) de façon synchrone ;
+  si l'écriture échoue, aucun octet n'est envoyé. Le middleware d'accès ne double
+  pas l'export par un `DATA_EXPORTED` (`/admin/audit/export` est exclu). Une
+  erreur en cours de flux coupe la connexion plutôt que d'envoyer un fichier
+  tronqué pour complet.
+- **Permissions** : `PLATFORM_AUDIT_VIEW` (super-admin, et tout rôle qui avait
+  `PLATFORM_TENANTS_VIEW`, l'ancienne garde de la route : la migration
+  `20261007120000` ne coupe l'accès à personne) et `PLATFORM_AUDIT_EXPORT`
+  (super-admin seul).
+- **Web** : l'écran « Journaux d'audit » passe au curseur, ajoute les filtres
+  (agence, catégorie, résultat, type d'acteur, visibilité, identifiant de
+  requête) et le bouton « Exporter en CSV ».
 
 ## 8. Plan et état
 
@@ -216,5 +245,5 @@ consulter ou exporter écrit `AUDIT_VIEWED` / `AUDIT_EXPORTED`.
 | 1     | Migration, catalogue, contexte, écriture critique (capacité), arrêt propre, contrôleur             | fait    |
 | 2     | Route et page « Journal d'activité » côté agence, permission `TENANT_AUDIT_VIEW`, test d'isolation | à faire |
 | 3     | Événements de sécurité (403, exports, téléchargements, portails), capture avant/après ciblée       | fait    |
-| 4     | Console plateforme (filtres, `requestId`, export audité), `PLATFORM_AUDIT_*`                       | à faire |
+| 4     | Console plateforme (filtres, `requestId`, export audité), `PLATFORM_AUDIT_*`                       | fait    |
 | 5     | Rétention, scellés, séparation des marqueurs anti-doublon                                          | à faire |

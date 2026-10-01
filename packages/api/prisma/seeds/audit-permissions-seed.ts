@@ -9,6 +9,7 @@
  * Repartition :
  *  - TENANT_ADMIN : oui.
  *  - PLATFORM_SUPER_ADMIN : oui (support sur une agence).
+ *  - PLATFORM_AUDIT_VIEW / PLATFORM_AUDIT_EXPORT : super-admin seulement (phase 4).
  *  - TENANT_MANAGER, TENANT_AGENT, TENANT_ACCOUNTANT : non. Un acces se donne
  *    explicitement a un role personnalise en lui accordant TENANT_AUDIT_VIEW.
  *
@@ -22,15 +23,26 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export const auditPermissions = [
-  { key: 'TENANT_AUDIT_VIEW', description: "Consulter le journal d'activite de l'agence (qui a fait quoi, quand)" }
+  { key: 'TENANT_AUDIT_VIEW', description: "Consulter le journal d'activite de l'agence (qui a fait quoi, quand)" },
+  {
+    key: 'PLATFORM_AUDIT_VIEW',
+    description: "Consulter le journal d'audit de la plateforme (toutes les agences et les actions de plateforme)"
+  },
+  { key: 'PLATFORM_AUDIT_EXPORT', description: "Exporter le journal d'audit de la plateforme en CSV" }
 ];
 
 export const AUDIT_ALL_KEYS = auditPermissions.map(p => p.key);
 
-/** Roles systeme qui recoivent le droit (les autres n'en ont aucun). */
+/**
+ * Roles systeme qui recoivent les droits (les autres n'en ont aucun). Le droit
+ * `PLATFORM_AUDIT_VIEW` est aussi accorde, par la migration
+ * `20261007120000_audit_platform_permissions`, a tout role plateforme qui avait
+ * deja `PLATFORM_TENANTS_VIEW` (la route y etait adossee avant la phase 4) ;
+ * l'export reste reserve au super-admin.
+ */
 export const AUDIT_ROLE_GRANTS: Record<string, string[]> = {
   PLATFORM_SUPER_ADMIN: AUDIT_ALL_KEYS,
-  TENANT_ADMIN: AUDIT_ALL_KEYS
+  TENANT_ADMIN: ['TENANT_AUDIT_VIEW']
 };
 
 async function seedAuditPermissions() {

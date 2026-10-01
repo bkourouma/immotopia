@@ -1,87 +1,55 @@
-import { Request } from 'express';
-import { getAuditLogs, enrichAuditLogsWithResourceLabels } from '../services/audit-service';
-import { AuditLogFilters } from '../types/audit-types';
-import { parsePagination } from '../utils/pagination-helper';
-import { asyncHandler, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
-
-/** Date de filtre facultative : absente = ignorée, illisible = 400 (et non un 500 de Prisma). */
-function optionalDate(value: unknown, invalidMessage: string): Date | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) {
-    throw new BadRequestError(invalidMessage);
-  }
-  return date;
-}
-
-function parseFilters(req: Request): AuditLogFilters {
-  return {
-    tenantId: (req.query.tenantId as string) || undefined,
-    actionKey: (req.query.actionKey as string) || (req.query.action as string) || undefined,
-    entityType: (req.query.entityType as string) || (req.query.resourceType as string) || undefined,
-    entityId: (req.query.entityId as string) || undefined,
-    actorUserId: (req.query.actorUserId as string) || (req.query.userId as string) || undefined,
-    startDate: optionalDate(req.query.startDate, 'Date de début invalide'),
-    endDate: optionalDate(req.query.endDate, 'Date de fin invalide'),
-    ...parsePagination(req.query, { defaultPage: 1, defaultLimit: 50 })
-  };
-}
+import { asyncHandler } from '../middleware/error-middleware';
+import { platformAuditExportQuerySchema, platformAuditQuerySchema } from '../lib/audit/platform-audit-schemas';
+import { getPlatformAuditLogs } from '../services/audit-platform-read-service';
+import { preparePlatformAuditExport, streamPlatformAuditCsv } from '../services/audit-platform-export-service';
+import { logAuditEvent } from '../services/audit-service';
+import { AuditActionKey } from '../types/audit-types';
 
 /**
- * Get audit logs with filtering (platform level)
- * GET /api/admin/audit
+ * Journal d'audit de la PLATEFORME (super-admin) : tout, toutes agences.
+ * Le niveau agence est `tenant-audit-controller`.
+ */
+
+/**
+ * GET /api/admin/audit — `PLATFORM_AUDIT_VIEW`.
+ * Pagination par curseur ; paramètres en schéma strict.
  */
 export const getAuditLogsHandler = asyncHandler(async (req, res) => {
-  if (!req.user?.userId) {
-    throw new UnauthorizedError('Authentification requise.');
+  const query = platformAuditQuerySchema.parse(req.query);
+  const page = await getPlatformAuditLogs(query);
+
+  // Audit de l'audit : première page seulement (« charger plus » n'en écrit pas).
+  if (!query.cursor) {
+    const { cursor: _cursor, limit: _limit, ...filters } = query;
+    logAuditEvent({
+      actionKey: AuditActionKey.AUDIT_VIEWED,
+      entityType: 'AuditLog',
+      entityId: 'platform',
+      payload: { level: 'PLATFORM', filters }
+    });
   }
 
-  const result = await getAuditLogs(parseFilters(req));
+  res.status(200).json({ success: true, data: page });
+});
 
-  const resourceLabels = await enrichAuditLogsWithResourceLabels(
-    result.logs.map(log => ({
-      id: log.id,
-      entityType: log.entityType,
-      entityId: log.entityId,
-      tenantId: log.tenantId,
-      payload: log.payload
-    }))
-  );
+/**
+ * GET /api/admin/audit/export — `PLATFORM_AUDIT_EXPORT` + super-admin.
+ * CSV, 50 000 lignes au plus ; `X-Export-Truncated: true` quand le filtre est
+ * trop large. La trace `AUDIT_EXPORTED` est écrite avant le premier octet.
+ */
+export const exportAuditLogsHandler = asyncHandler(async (req, res) => {
+  const filters = platformAuditExportQuerySchema.parse(req.query);
+  const plan = await preparePlatformAuditExport(filters);
 
-  const logs = result.logs.map(log => ({
-    id: log.id,
-    userId: log.actorUserId,
-    tenantId: log.tenantId,
-    action: log.actionKey,
-    resourceType: log.entityType,
-    resourceId: log.entityId,
-    resourceLabel: resourceLabels.get(log.id) ?? undefined,
-    details: log.payload,
-    changes: log.changes ?? undefined,
-    ipAddress: log.ipAddress ?? undefined,
-    userAgent: log.userAgent ?? undefined,
-    createdAt: log.createdAt,
-    scope: log.scope,
-    visibility: log.visibility,
-    category: log.category,
-    outcome: log.outcome,
-    actorType: log.actorType,
-    actorLabel: log.actorLabel ?? undefined,
-    requestId: log.requestId ?? undefined,
-    user: log.actor
-      ? {
-          id: log.actor.id,
-          email: log.actor.email,
-          fullName: log.actor.fullName ?? null
-        }
-      : undefined,
-    tenant: log.tenant ? { id: log.tenant.id, name: log.tenant.name } : undefined
-  }));
+  const day = new Date().toISOString().slice(0, 10);
+  res.status(200);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="journal-audit-${day}.csv"`);
+  res.setHeader('X-Export-Truncated', plan.truncated ? 'true' : 'false');
+  res.setHeader('X-Export-Rows', String(plan.rows));
+  res.setHeader('Cache-Control', 'no-store');
+  // Le navigateur ne lit un en-tête personnalisé inter-origine que s'il est exposé.
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Export-Truncated, X-Export-Rows');
 
-  res.status(200).json({
-    success: true,
-    data: { logs, pagination: result.pagination }
-  });
+  await streamPlatformAuditCsv(filters, res);
 });

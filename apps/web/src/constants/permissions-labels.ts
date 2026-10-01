@@ -52,6 +52,14 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Modifier les factures'),
     description: t('Modifier les factures et les marquer comme payées ou annulées.')
   },
+  PLATFORM_AUDIT_VIEW: {
+    label: t("Voir le journal d'audit de la plateforme"),
+    description: t('Consulter toutes les actions de toutes les agences et de la plateforme.')
+  },
+  PLATFORM_AUDIT_EXPORT: {
+    label: t("Exporter le journal d'audit"),
+    description: t("Exporter le journal d'audit de la plateforme en CSV.")
+  },
 
   // --- Paramètres du tenant ---
   TENANT_SETTINGS_VIEW: {

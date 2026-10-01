@@ -39,6 +39,8 @@ import {
   createMaintenanceTicketDirect,
   createOutsiderUser,
   createTenantMemberUser,
+  createSuperAdminUser,
+  createPlatformDelegateUser,
   createRentalFixtureDirect,
   RentalFixture,
   cleanupTenants,
@@ -1068,6 +1070,223 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect((row?.payload as any)?.contentType).toBe('application/pdf');
       expect((await visibleTo(adminB, tenantB.id)).map(log => log.id)).toContain(row?.id);
       expect((await visibleTo(adminA, tenantA.id)).map(log => log.id)).not.toContain(row?.id);
+    });
+  });
+  /**
+   * Console plateforme (ADR-006, phase 4) sur la vraie pile : le super-admin lit
+   * TOUT, un administrateur d'agence n'y entre pas, un rôle plateforme délégué
+   * consulte sans exporter, et l'export est tracé avant d'envoyer des données.
+   */
+  describe("Journal d'audit — console plateforme", () => {
+    const marker = randomUUID().slice(0, 8);
+    const requestId = `rid-${marker}`;
+    let superAdmin: TestUser;
+    let delegate: TestUser;
+    const ids: Record<string, string> = {};
+
+    async function insertRow(key: string, data: Record<string, unknown>) {
+      const row = await prisma.auditLog.create({
+        data: {
+          actionKey: 'PROPERTY_CREATED',
+          entityType: 'PROPERTY',
+          entityId: `${key}-${marker}`,
+          scope: 'TENANT',
+          visibility: 'TENANT',
+          category: 'DATA',
+          actorType: 'USER',
+          ...data
+        } as any
+      });
+      ids[key] = row.id;
+    }
+
+    async function readAll(user: TestUser, query: string): Promise<any[]> {
+      const logs: any[] = [];
+      let cursor: string | null = null;
+      for (let guard = 0; guard < 200; guard++) {
+        const suffix: string = `?limit=2${query}${cursor ? `&cursor=${cursor}` : ''}`;
+        const res: request.Response = await request(app).get(`/api/admin/audit${suffix}`).set(authed(user));
+        expect(res.status).toBe(200);
+        logs.push(...res.body.data.logs);
+        cursor = res.body.data.nextCursor;
+        if (!cursor) return logs;
+      }
+      throw new Error('pagination sans fin');
+    }
+
+    beforeAll(async () => {
+      superAdmin = await createSuperAdminUser('super-admin');
+      delegate = await createPlatformDelegateUser('delegue', `PLATFORM_AUDIT_DELEGATE_${marker}`, [
+        'PLATFORM_AUDIT_VIEW',
+        'PLATFORM_AUDIT_EXPORT'
+      ]);
+      const now = Date.now();
+      await insertRow('pA', {
+        tenantId: tenantA.id,
+        actorUserId: adminA.id,
+        requestId,
+        createdAt: new Date(now - 5000)
+      });
+      await insertRow('pAInternal', {
+        tenantId: tenantA.id,
+        visibility: 'PLATFORM_ONLY',
+        category: 'BILLING',
+        actionKey: 'CAPACITY_OVERRIDE_GRANTED',
+        requestId,
+        createdAt: new Date(now - 4000)
+      });
+      await insertRow('pB', { tenantId: tenantB.id, actorUserId: adminB.id, createdAt: new Date(now - 3000) });
+      await insertRow('pNull', {
+        tenantId: null,
+        scope: 'PLATFORM',
+        visibility: 'PLATFORM_ONLY',
+        actionKey: 'AI_SETTINGS_UPDATED',
+        category: 'AI',
+        createdAt: new Date(now - 2000)
+      });
+      await insertRow('pStaff', {
+        tenantId: tenantA.id,
+        actionKey: 'TENANT_UPDATED',
+        actorType: 'SUPER_ADMIN',
+        actorUserId: superAdmin.id,
+        actorLabel: 'staff@immotopia.test',
+        ipAddress: '203.0.113.9',
+        userAgent: 'staff-browser',
+        createdAt: new Date(now - 1000)
+      });
+    });
+
+    it('le super-admin lit tout : toutes les agences, les lignes réservées à la plateforme et sans agence', async () => {
+      const read = (await readAll(superAdmin, `&requestId=${requestId}`)).map(log => log.id);
+      expect(read.sort()).toEqual([ids.pA, ids.pAInternal].sort());
+
+      const all = await readAll(superAdmin, '');
+      const allIds = all.map(log => log.id);
+      for (const key of ['pA', 'pAInternal', 'pB', 'pNull', 'pStaff']) expect(allIds).toContain(ids[key]);
+    });
+
+    it("l'identité complète du personnel (nom, IP, navigateur) est visible de la plateforme", async () => {
+      const staff = (await readAll(superAdmin, '&actorType=SUPER_ADMIN')).find(log => log.id === ids.pStaff);
+      expect(staff).toMatchObject({
+        actorType: 'SUPER_ADMIN',
+        actorLabel: 'staff@immotopia.test',
+        ipAddress: '203.0.113.9',
+        userAgent: 'staff-browser',
+        user: { email: superAdmin.email },
+        tenant: { id: tenantA.id }
+      });
+    });
+
+    it('les filtres agence, visibilité et portée restreignent bien la lecture', async () => {
+      const ofA = (await readAll(superAdmin, `&tenantId=${tenantA.id}`)).map(log => log.id);
+      expect(ofA).toEqual(expect.arrayContaining([ids.pA, ids.pAInternal, ids.pStaff]));
+      expect(ofA).not.toContain(ids.pB);
+      expect(ofA).not.toContain(ids.pNull);
+
+      const platformOnly = await readAll(superAdmin, '&visibility=PLATFORM_ONLY');
+      expect(platformOnly.every(log => log.visibility === 'PLATFORM_ONLY')).toBe(true);
+      expect(platformOnly.map(log => log.id)).toEqual(expect.arrayContaining([ids.pAInternal, ids.pNull]));
+
+      const platformScope = (await readAll(superAdmin, '&scope=PLATFORM')).map(log => log.id);
+      expect(platformScope).toContain(ids.pNull);
+      expect(platformScope).not.toContain(ids.pA);
+    });
+
+    it('la pagination par curseur ne perd ni ne répète une ligne', async () => {
+      const read = (await readAll(superAdmin, `&tenantId=${tenantA.id}`)).map(log => log.id);
+      expect(new Set(read).size).toBe(read.length);
+      const expected = await prisma.auditLog.findMany({
+        where: { tenantId: tenantA.id },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true }
+      });
+      expect(read).toEqual(expected.map(row => row.id));
+    });
+
+    it("un administrateur d'agence n'entre ni dans la console ni dans l'export, un anonyme non plus", async () => {
+      expect((await request(app).get('/api/admin/audit')).status).toBe(401);
+      const view = await request(app).get('/api/admin/audit').set(authed(adminA));
+      const exp = await request(app).get('/api/admin/audit/export').set(authed(adminA));
+      expect(view.status).toBe(403);
+      expect(exp.status).toBe(403);
+      expect(JSON.stringify(view.body)).not.toContain(ids.pNull);
+      expect(exp.headers['content-type']).not.toContain('text/csv');
+    });
+
+    it('un rôle plateforme délégué consulte, mais seul le super-admin exporte', async () => {
+      const view = await request(app).get(`/api/admin/audit?requestId=${requestId}`).set(authed(delegate));
+      expect(view.status).toBe(200);
+      expect(view.body.data.logs.length).toBe(2);
+
+      const exp = await request(app).get('/api/admin/audit/export').set(authed(delegate));
+      expect(exp.status).toBe(403);
+      expect(exp.headers['content-type']).not.toContain('text/csv');
+    });
+
+    it('les anciens paramètres et ceux de l’export non prévus sont refusés en 400', async () => {
+      for (const url of [
+        '/api/admin/audit?page=1',
+        '/api/admin/audit?action=PROPERTY_CREATED',
+        '/api/admin/audit/export?limit=10',
+        '/api/admin/audit/export?cursor=abc'
+      ]) {
+        expect((await request(app).get(url).set(authed(superAdmin))).status).toBe(400);
+      }
+    });
+
+    it("l'export est tracé AVANT l'envoi des données, ne se double pas, et contient les lignes filtrées", async () => {
+      const before = await prisma.auditLog.count({
+        where: { actionKey: 'AUDIT_EXPORTED', actorUserId: superAdmin.id }
+      });
+      const res = await request(app)
+        .get(`/api/admin/audit/export?requestId=${requestId}`)
+        .set(authed(superAdmin))
+        .buffer(true)
+        .parse((response, callback) => {
+          let data = '';
+          response.setEncoding('utf8');
+          response.on('data', chunk => (data += chunk));
+          response.on('end', () => callback(null, data));
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/csv');
+      expect(res.headers['content-disposition']).toMatch(/journal-audit-\d{4}-\d{2}-\d{2}\.csv/);
+      expect(res.headers['x-export-truncated']).toBe('false');
+      expect(res.headers['x-export-rows']).toBe('2');
+      const lines = String(res.body).trimEnd().split('\r\n');
+      expect(lines).toHaveLength(1 + 2);
+      expect(String(res.body)).toContain(`pA-${marker}`);
+      expect(String(res.body)).toContain('CAPACITY_OVERRIDE_GRANTED');
+
+      // Aucun `flushAuditEvents()` : la trace de l'export est écrite de façon synchrone.
+      const traces = await prisma.auditLog.findMany({
+        where: { actionKey: 'AUDIT_EXPORTED', actorUserId: superAdmin.id },
+        orderBy: { createdAt: 'desc' }
+      });
+      expect(traces.length).toBe(before + 1);
+      expect(traces[0]).toMatchObject({ category: 'SECURITY', visibility: 'PLATFORM_ONLY', tenantId: null });
+      expect((traces[0].payload as any).rows).toBe(2);
+      expect((traces[0].payload as any).filters.requestId).toBe(requestId);
+
+      // Le middleware d'accès ne double pas l'export par un DATA_EXPORTED.
+      await flushAuditEvents();
+      const doubled = await prisma.auditLog.count({
+        where: { actionKey: 'DATA_EXPORTED', actorUserId: superAdmin.id }
+      });
+      expect(doubled).toBe(0);
+    });
+
+    it('consulter la console est tracé, réservé à la plateforme', async () => {
+      await flushAuditEvents();
+      const before = await prisma.auditLog.count({ where: { actionKey: 'AUDIT_VIEWED', actorUserId: superAdmin.id } });
+      expect((await request(app).get('/api/admin/audit?limit=5').set(authed(superAdmin))).status).toBe(200);
+      await flushAuditEvents();
+      const traces = await prisma.auditLog.findMany({
+        where: { actionKey: 'AUDIT_VIEWED', actorUserId: superAdmin.id }
+      });
+      expect(traces.length).toBe(before + 1);
+      expect(traces.every(trace => trace.visibility === 'PLATFORM_ONLY')).toBe(true);
     });
   });
 });

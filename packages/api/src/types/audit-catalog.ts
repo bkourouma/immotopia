@@ -210,6 +210,8 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
 
   // Audit de l'audit : consulter le journal est tracé, mais n'est pas montré à l'agence.
   [AuditActionKey.AUDIT_VIEWED]: internal('SECURITY'),
+  // L'export sort des données en bloc : sa trace est écrite AVANT l'envoi du fichier.
+  [AuditActionKey.AUDIT_EXPORTED]: internal('SECURITY', { critical: true }),
 
   // Accès. Un refus de droit d'un membre est montré à son agence ; la tentative
   // d'un étranger sur l'URL d'une agence reste réservée à la plateforme (elle

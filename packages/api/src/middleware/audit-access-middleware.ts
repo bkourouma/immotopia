@@ -31,8 +31,8 @@ const BUSINESS_403_CODES = new Set([
   'OWN_ASSETS_ONLY'
 ]);
 
-/** Déjà audités par leurs propres événements (`TENANT_DATA_EXPORT_DOWNLOADED`). */
-const ALREADY_AUDITED_PATHS = /\/data-exports(\/|$)/;
+/** Déjà audités par leurs propres événements (`TENANT_DATA_EXPORT_DOWNLOADED`, `AUDIT_EXPORTED`). */
+const ALREADY_AUDITED_PATHS = /\/data-exports(\/|$)|\/admin\/audit\/export$/;
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const FILE_CONTENT_TYPE = /pdf|csv|spreadsheetml|ms-excel|zip|wordprocessingml|msword|octet-stream/i;

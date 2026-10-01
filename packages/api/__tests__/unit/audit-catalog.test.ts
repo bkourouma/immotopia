@@ -73,6 +73,7 @@ describe('catalogue d’audit', () => {
     // ici, et nulle part ailleurs : la migration est figée.
     const postMigrationKeys = [
       'AUDIT_VIEWED',
+      'AUDIT_EXPORTED',
       'ACCESS_DENIED',
       'TENANT_ACCESS_DENIED',
       'DOCUMENT_DOWNLOADED',

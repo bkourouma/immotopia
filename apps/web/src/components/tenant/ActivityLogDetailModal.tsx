@@ -18,7 +18,7 @@ interface ActivityLogDetailModalProps {
   onClose: () => void;
 }
 
-function formatFullDate(iso: string): string {
+export function formatFullDate(iso: string): string {
   return new Date(iso).toLocaleString(activeLocale(), { dateStyle: 'medium', timeStyle: 'medium' });
 }
 
@@ -28,7 +28,7 @@ function resourceText(log: TenantAuditLog): string {
   return log.resourceId ? `${typeLabel} (${log.resourceId})` : typeLabel;
 }
 
-function ChangesBlock({ changes }: { changes: TenantAuditLog['changes'] }) {
+export function ChangesBlock({ changes }: { changes: TenantAuditLog['changes'] }) {
   const rows = toChangeRows(changes);
   if (rows.length === 0) return null;
   return (
@@ -46,7 +46,7 @@ function ChangesBlock({ changes }: { changes: TenantAuditLog['changes'] }) {
   );
 }
 
-function DetailsBlock({ details }: { details: TenantAuditLog['details'] }) {
+export function DetailsBlock({ details }: { details: TenantAuditLog['details'] }) {
   if (!details || Object.keys(details).length === 0) return null;
   return (
     <>

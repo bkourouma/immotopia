@@ -175,6 +175,7 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
 
   // Journal d'audit
   AUDIT_VIEWED: t("Consultation du journal d'audit"),
+  AUDIT_EXPORTED: t("Export du journal d'audit"),
 
   // Accès (posés à partir de la réponse du serveur)
   ACCESS_DENIED: t('Accès refusé : droit manquant pour cette action'),
@@ -250,6 +251,21 @@ export const AUDIT_OUTCOME_LABELS_FR: Record<string, string> = {
   DENIED: t('Refusée')
 };
 
+/** Libellé français du type d'acteur d'une ligne du journal. */
+export const AUDIT_ACTOR_TYPE_LABELS_FR: Record<string, string> = {
+  USER: t('Utilisateur'),
+  SUPER_ADMIN: t('Support ImmoTopia'),
+  PORTAL: t('Portail'),
+  SYSTEM: t('Système'),
+  AI: t('Assistant IA')
+};
+
+/** Libellé français de la visibilité d'une ligne (qui peut la lire). */
+export const AUDIT_VISIBILITY_LABELS_FR: Record<string, string> = {
+  TENANT: t("Visible de l'agence"),
+  PLATFORM_ONLY: t('Réservée à la plateforme')
+};
+
 export function getAuditActionLabelFr(actionKey: string): string {
   return AUDIT_ACTION_LABELS_FR[actionKey] ?? actionKey;
 }
@@ -260,6 +276,14 @@ export function getAuditEntityTypeLabelFr(entityType: string): string {
 
 export function getAuditCategoryLabelFr(category: string): string {
   return AUDIT_CATEGORY_LABELS_FR[category] ?? category;
+}
+
+export function getAuditActorTypeLabelFr(actorType: string): string {
+  return AUDIT_ACTOR_TYPE_LABELS_FR[actorType] ?? actorType;
+}
+
+export function getAuditVisibilityLabelFr(visibility: string): string {
+  return AUDIT_VISIBILITY_LABELS_FR[visibility] ?? visibility;
 }
 
 export function getAuditOutcomeLabelFr(outcome: string): string {

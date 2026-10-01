@@ -129,11 +129,11 @@ export interface MenuCatalogSection {
  */
 const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Super-administrateur.
-  administration: ['PLATFORM_TENANTS_VIEW'],
+  administration: ['PLATFORM_TENANTS_VIEW', 'PLATFORM_AUDIT_VIEW'],
   'admin-tenants': ['PLATFORM_TENANTS_VIEW'],
   'admin-roles': ['PLATFORM_TENANTS_EDIT'],
   'admin-statistics': ['PLATFORM_TENANTS_VIEW'],
-  'admin-audit': ['PLATFORM_TENANTS_VIEW'],
+  'admin-audit': ['PLATFORM_AUDIT_VIEW'],
   'admin-ai-settings': ['PLATFORM_TENANTS_EDIT'],
 
   // Parc immobilier.

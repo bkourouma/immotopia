@@ -63,7 +63,7 @@ export interface TenantAuditPage {
   nextCursor: string | null;
 }
 
-interface DecodedCursor {
+export interface DecodedCursor {
   createdAt: Date;
   id: string;
 }

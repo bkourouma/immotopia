@@ -1,446 +1,296 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Input,
-  Button,
-  Typography,
-  Alert,
-  Spin,
-  Empty,
-  Table,
-  Tag,
-  Space,
-  Row,
-  Col,
-  DatePicker,
-  Tooltip,
-  Modal,
-  Descriptions,
-  Divider
-} from 'antd';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, App, Button, Card, Empty, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { SearchOutlined, FilterOutlined, EyeOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import { getAuditLogs, AuditLog, AuditFilters } from '../../services/audit-service';
-import { getProperty } from '../../services/property-service';
-import type { Property } from '../../types/property-types';
+import { DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import {
-  getAuditActionLabelFr,
-  getAuditEntityTypeLabelFr,
-  getAuditResourceDisplayLabel
-} from '../../constants/audit-labels';
+  exportAuditLogs,
+  getAuditLogs,
+  type PlatformAuditExportFilters,
+  type PlatformAuditLog
+} from '../../services/audit-service';
+import { getAuditActionLabelFr, getAuditCategoryLabelFr, getAuditOutcomeLabelFr } from '../../constants/audit-labels';
+import { getAuditOutcomeColor } from '../../utils/tenant-audit-display';
+import { getPlatformActorDisplay } from '../../utils/platform-audit-display';
+import { saveBlob } from '../../utils/save-blob';
+import { useAuth } from '../../hooks/useAuth';
+import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
+import { PlatformAuditDetailModal } from '../../components/admin/PlatformAuditDetailModal';
+import {
+  EMPTY_AUDIT_FILTERS,
+  PlatformAuditFilterBar,
+  type PlatformAuditFilterState
+} from '../../components/admin/PlatformAuditFilterBar';
+import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
-const { Paragraph } = Typography;
 
-export const AuditLogs: React.FC = () => {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<AuditFilters>({
-    page: 1,
-    limit: 50
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    totalPages: 0
-  });
-  const [actionSearch, setActionSearch] = useState(filters.action || '');
-  const [resourceTypeSearch, setResourceTypeSearch] = useState(filters.resourceType || '');
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
-  const [propertyDetails, setPropertyDetails] = useState<Property | null>(null);
-  const [propertyLoading, setPropertyLoading] = useState(false);
+type ApiError = { response?: { status?: number; data?: { message?: string } } };
 
+const TEXT_FILTER_DELAY_MS = 400;
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(activeLocale(), {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+/** Valeur qui ne suit la saisie qu'après une courte pause : un appel à l'API par mot, pas par lettre. */
+function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    loadLogs();
-  }, [filters]);
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
-  const loadLogs = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await getAuditLogs(filters);
-      if (response.success) {
-        setLogs(response.data.logs);
-        setPagination(response.data.pagination);
-      } else {
-        setError(t('Erreur lors du chargement des logs'));
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors du chargement des logs'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString(activeLocale(), {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const handleApplyFilters = () => {
-    setFilters({
-      ...filters,
-      page: 1,
-      action: actionSearch || undefined,
-      resourceType: resourceTypeSearch || undefined
-    });
-  };
-
-  const handleDateRange = (dates: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null) => {
-    if (!dates || !dates[0] || !dates[1]) {
-      setFilters({ ...filters, page: 1, startDate: undefined, endDate: undefined });
-      return;
-    }
-    setFilters({
-      ...filters,
-      page: 1,
-      startDate: dates[0].format('YYYY-MM-DD'),
-      endDate: dates[1].format('YYYY-MM-DD')
-    });
-  };
-
-  const dateRangeValue: [dayjs.Dayjs, dayjs.Dayjs] | null =
-    filters.startDate && filters.endDate ? [dayjs(filters.startDate), dayjs(filters.endDate)] : null;
-
-  const openDetailModal = (record: AuditLog) => {
-    setSelectedLog(record);
-    setDetailModalOpen(true);
-    setPropertyDetails(null);
-    const isProperty =
-      (record.resourceType === 'PROPERTY' || record.resourceType === 'Property') &&
-      record.tenantId &&
-      record.resourceId;
-    if (isProperty) {
-      setPropertyLoading(true);
-      getProperty(record.tenantId!, record.resourceId!)
-        .then(p => setPropertyDetails(p))
-        .catch(() => setPropertyDetails(null))
-        .finally(() => setPropertyLoading(false));
-    }
-  };
-
-  const closeDetailModal = () => {
-    setDetailModalOpen(false);
-    setSelectedLog(null);
-    setPropertyDetails(null);
-  };
-
-  const columns: ColumnsType<AuditLog> = [
+function buildColumns(onOpen: (log: PlatformAuditLog) => void): ColumnsType<PlatformAuditLog> {
+  return [
     {
       title: t('Date'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 160,
-      render: (date: string) => formatDate(date)
+      render: (iso: string) => formatDate(iso)
+    },
+    { title: t('Agence'), key: 'tenant', width: 160, render: (_, log) => log.tenant?.name ?? '—' },
+    { title: t('Acteur'), key: 'actor', width: 200, render: (_, log) => getPlatformActorDisplay(log) },
+    { title: t('Action'), key: 'action', render: (_, log) => getAuditActionLabelFr(log.action) },
+    { title: t('Ressource'), key: 'resource', render: (_, log) => <AuditResourceCell log={log} /> },
+    {
+      title: t('Résultat'),
+      key: 'outcome',
+      width: 110,
+      render: (_, log) => <Tag color={getAuditOutcomeColor(log.outcome)}>{getAuditOutcomeLabelFr(log.outcome)}</Tag>
+    },
+    { title: t('Catégorie'), key: 'category', width: 150, render: (_, log) => getAuditCategoryLabelFr(log.category) },
+    {
+      title: t('Visibilité'),
+      key: 'visibility',
+      width: 110,
+      render: (_, log) =>
+        log.visibility === 'PLATFORM_ONLY' ? (
+          <Tooltip title={t('Réservée à la plateforme')}>
+            <Tag color="purple">{t('Plateforme')}</Tag>
+          </Tooltip>
+        ) : null
     },
     {
-      title: t('Utilisateur'),
-      key: 'user',
-      width: 180,
-      render: (_, record) => record.user?.fullName || record.user?.email || '-'
-    },
-    {
-      title: t('Action'),
-      dataIndex: 'action',
-      key: 'action',
-      width: 320,
-      render: (action: string, record: AuditLog) => {
-        const actionLabel = getAuditActionLabelFr(action);
-        const resourceLabel =
-          record.resourceLabel ||
-          (record.resourceId
-            ? `${getAuditEntityTypeLabelFr(record.resourceType)} (${record.resourceId.slice(0, 8)}…)`
-            : null);
-        return (
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <span style={{ fontWeight: 500 }}>{actionLabel}</span>
-            {resourceLabel && (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {t('Concerné :')} {resourceLabel}
-              </Text>
-            )}
-          </Space>
-        );
-      }
-    },
-    {
-      title: t('Ressource'),
-      key: 'resource',
-      render: (_, record) => {
-        if (record.resourceLabel) {
-          return record.resourceLabel;
-        }
-        const { label, tooltip } = getAuditResourceDisplayLabel(record.resourceType, record.resourceId, record.details);
-        if (tooltip) {
-          return (
-            <Tooltip title={tooltip}>
-              <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.2)' }}>{label}</span>
-            </Tooltip>
-          );
-        }
-        return label;
-      }
-    },
-    {
-      title: t('Agence'),
-      key: 'tenant',
-      width: 140,
-      render: (_, record) => record.tenant?.name || '-'
-    },
-    {
-      title: (
-        <Tooltip
-          title={t("Adresse IP de l'ordinateur ou de l'appareil ayant effectué l'action (traçabilité et sécurité)")}
-        >
-          <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.3)' }}>{t('IP client')}</span>
-        </Tooltip>
-      ),
-      dataIndex: 'ipAddress',
-      key: 'ipAddress',
-      width: 130,
-      render: (ip: string) => ip || '-'
-    },
-    {
-      title: t('Détails'),
-      key: 'details',
-      width: 100,
-      fixed: 'right',
-      render: (_, record) => (
-        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetailModal(record)}>
+      title: '',
+      key: 'open',
+      width: 90,
+      render: (_, log) => (
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => onOpen(log)}>
           {t('Voir')}
         </Button>
       )
     }
   ];
+}
+
+/** Filtres envoyés à l'API (liste et export) : seulement des clés définies. */
+function toApiFilters(
+  state: PlatformAuditFilterState,
+  actionKey: string,
+  requestId: string
+): PlatformAuditExportFilters {
+  return {
+    tenantId: state.tenantId,
+    category: state.category as PlatformAuditExportFilters['category'],
+    outcome: state.outcome as PlatformAuditExportFilters['outcome'],
+    actorType: state.actorType as PlatformAuditExportFilters['actorType'],
+    visibility: state.visibility === 'ALL' ? undefined : state.visibility,
+    startDate: state.range?.[0],
+    endDate: state.range?.[1],
+    actionKey: actionKey.trim().toUpperCase() || undefined,
+    requestId: requestId.trim() || undefined
+  };
+}
+
+interface AuditExportState {
+  exporting: boolean;
+  truncated: boolean;
+  forbidden: boolean;
+  dismissTruncated: () => void;
+  run: () => Promise<void>;
+}
+
+/** Export CSV avec les filtres courants. Un 403 retire le bouton : le front ne connaît pas la permission. */
+function useAuditExport(filters: PlatformAuditExportFilters): AuditExportState {
+  const { message } = App.useApp();
+  const [exporting, setExporting] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
+
+  const run = async () => {
+    setExporting(true);
+    setTruncated(false);
+    try {
+      const result = await exportAuditLogs(filters);
+      saveBlob(result.blob, result.filename);
+      setTruncated(result.truncated);
+    } catch (err) {
+      const error = err as ApiError;
+      if (error.response?.status === 403) setForbidden(true);
+      message.error(error.response?.data?.message || t("Erreur lors de l'export du journal d'audit"));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return { exporting, truncated, forbidden, dismissTruncated: () => setTruncated(false), run };
+}
+
+export const AuditLogs: React.FC = () => {
+  const { user } = useAuth();
+  const [state, setState] = useState<PlatformAuditFilterState>(EMPTY_AUDIT_FILTERS);
+  const [logs, setLogs] = useState<PlatformAuditLog[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<PlatformAuditLog | null>(null);
+  // Numéro de la dernière requête lancée : une réponse périmée (filtre changé
+  // entre-temps, page quittée) est ignorée.
+  const latestRequest = useRef(0);
+
+  const actionKey = useDebounced(state.actionText, TEXT_FILTER_DELAY_MS);
+  const requestId = useDebounced(state.requestIdText, TEXT_FILTER_DELAY_MS);
+  // Clé sérialisée : taper dans un champ texte recalcule les filtres, mais ne
+  // relance la lecture que lorsque leur contenu change vraiment.
+  const filtersKey = JSON.stringify(toApiFilters(state, actionKey, requestId));
+  const filters = useMemo<PlatformAuditExportFilters>(() => JSON.parse(filtersKey), [filtersKey]);
+  const auditExport = useAuditExport(filters);
+  const canExport = user?.globalRole === 'SUPER_ADMIN' && !auditExport.forbidden;
+
+  const fetchPage = useCallback(
+    async (cursor?: string) => {
+      const request = ++latestRequest.current;
+      const append = cursor !== undefined;
+      setError(null);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setLoadingMore(false);
+        setLogs([]);
+        setNextCursor(null);
+      }
+      try {
+        const response = await getAuditLogs({ ...filters, cursor });
+        if (request !== latestRequest.current) return;
+        if (!response.success) {
+          setError(t("Erreur lors du chargement du journal d'audit"));
+          return;
+        }
+        setLogs(previous => (append ? [...previous, ...response.data.logs] : response.data.logs));
+        setNextCursor(response.data.nextCursor);
+      } catch (err) {
+        if (request !== latestRequest.current) return;
+        setError((err as ApiError).response?.data?.message || t("Erreur lors du chargement du journal d'audit"));
+      } finally {
+        if (request === latestRequest.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [filters]
+  );
+
+  useEffect(() => {
+    void fetchPage();
+    return () => {
+      latestRequest.current += 1;
+    };
+  }, [fetchPage]);
+
+  const columns = useMemo(() => buildColumns(setSelected), []);
+  const hasFilters = JSON.stringify(state) !== JSON.stringify(EMPTY_AUDIT_FILTERS);
+  const patchState = (patch: Partial<PlatformAuditFilterState>) => setState(previous => ({ ...previous, ...patch }));
+  const filterByRequest = (id: string) => {
+    patchState({ requestIdText: id });
+    setSelected(null);
+  };
+  // Un échec en cours de liste ne perd pas les lignes déjà reçues.
+  const retry = () => void fetchPage(logs.length > 0 && nextCursor ? nextCursor : undefined);
 
   return (
-    <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }} wrap>
         <div>
-          <Title level={3} style={{ margin: 0 }}>
-            {t('Audit Logs')}
+          <Title level={2} style={{ margin: 0 }}>
+            {t("Journal d'audit")}
           </Title>
-          <Text type="secondary">{t('Historique des actions administratives')}</Text>
+          <Text type="secondary">{t('Toutes les actions de toutes les agences et de la plateforme.')}</Text>
         </div>
-
-        <Card>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12} md={6}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                {t('Action')}
-              </Text>
-              <Input
-                placeholder={t('Rechercher une action...')}
-                prefix={<SearchOutlined />}
-                value={actionSearch}
-                onChange={e => setActionSearch(e.target.value)}
-                allowClear
-              />
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                {t('Type de ressource')}
-              </Text>
-              <Input
-                placeholder={t('Type de ressource...')}
-                value={resourceTypeSearch}
-                onChange={e => setResourceTypeSearch(e.target.value)}
-                allowClear
-              />
-            </Col>
-            <Col xs={24} sm={12} md={8}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                {t('Période')}
-              </Text>
-              <RangePicker
-                style={{ width: '100%' }}
-                value={dateRangeValue}
-                onChange={handleDateRange}
-                format="DD/MM/YYYY"
-              />
-            </Col>
-            <Col xs={24} sm={12} md={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <Button type="primary" icon={<FilterOutlined />} onClick={handleApplyFilters} block>
-                {t('Filtrer')}
-              </Button>
-            </Col>
-          </Row>
-        </Card>
-
-        {error && (
-          <Alert
-            message={t('Erreur')}
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+        {canExport && (
+          <Button icon={<DownloadOutlined />} onClick={() => void auditExport.run()} loading={auditExport.exporting}>
+            {t('Exporter en CSV')}
+          </Button>
         )}
-
-        <Card>
-          <Spin spinning={loading}>
-            {!loading && logs.length === 0 ? (
-              <Empty description={t('Aucun log trouvé')} />
-            ) : (
-              <Table
-                rowKey="id"
-                columns={columns}
-                dataSource={logs}
-                scroll={{ x: 'max-content' }}
-                pagination={{
-                  current: pagination.page,
-                  pageSize: pagination.limit,
-                  total: pagination.total,
-                  showSizeChanger: true,
-                  showTotal: total => t('Total {{total}} résultat(s)', { total: total }),
-                  pageSizeOptions: ['20', '50', '100'],
-                  onChange: (page, pageSize) => {
-                    setFilters({
-                      ...filters,
-                      page,
-                      limit: pageSize || pagination.limit
-                    });
-                  }
-                }}
-                locale={{ emptyText: 'Aucune donnée' }}
-              />
-            )}
-          </Spin>
-        </Card>
-
-        <Modal
-          title={t("Détails du log d'audit")}
-          open={detailModalOpen}
-          onCancel={closeDetailModal}
-          footer={[
-            <Button key="close" onClick={closeDetailModal}>
-              {t('Fermer')}
-            </Button>
-          ]}
-          width={720}
-          destroyOnClose
-        >
-          {selectedLog && (
-            <>
-              <Descriptions title={t('Informations du log')} column={1} bordered size="small">
-                <Descriptions.Item label={t('Date')}>{formatDate(selectedLog.createdAt)}</Descriptions.Item>
-                <Descriptions.Item label={t('Utilisateur')}>
-                  {selectedLog.user?.fullName || selectedLog.user?.email || '-'}
-                  {selectedLog.user?.email && (
-                    <Text type="secondary" style={{ marginInlineStart: 8 }}>
-                      ({selectedLog.user.email})
-                    </Text>
-                  )}
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Action')}>
-                  <Tag color="blue">{getAuditActionLabelFr(selectedLog.action)}</Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Type de ressource')}>
-                  {getAuditEntityTypeLabelFr(selectedLog.resourceType)}
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Identifiant ressource')}>
-                  <Text code>{selectedLog.resourceId || '-'}</Text>
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Ressource')}>
-                  {selectedLog.resourceLabel ||
-                    (selectedLog.resourceId
-                      ? `${getAuditEntityTypeLabelFr(selectedLog.resourceType)} (${selectedLog.resourceId})`
-                      : '-')}
-                </Descriptions.Item>
-                <Descriptions.Item label={t('Agence')}>{selectedLog.tenant?.name || '-'}</Descriptions.Item>
-                <Descriptions.Item label={t('IP client')}>{selectedLog.ipAddress || '-'}</Descriptions.Item>
-                <Descriptions.Item label={'User-Agent'}>
-                  {selectedLog.userAgent ? (
-                    <Paragraph
-                      style={{ marginBottom: 0, wordBreak: 'break-all' }}
-                      ellipsis={{ rows: 2, expandable: true }}
-                    >
-                      {selectedLog.userAgent}
-                    </Paragraph>
-                  ) : (
-                    '-'
-                  )}
-                </Descriptions.Item>
-              </Descriptions>
-
-              {selectedLog.details && Object.keys(selectedLog.details).length > 0 && (
-                <>
-                  <Divider />
-                  <Title level={5}>{t('Données enregistrées (payload)')}</Title>
-                  <Descriptions column={1} bordered size="small">
-                    {Object.entries(selectedLog.details).map(([key, value]) => (
-                      <Descriptions.Item key={key} label={key}>
-                        {typeof value === 'object' && value !== null ? (
-                          <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                            {JSON.stringify(value, null, 2)}
-                          </pre>
-                        ) : (
-                          String(value ?? '')
-                        )}
-                      </Descriptions.Item>
-                    ))}
-                  </Descriptions>
-                </>
-              )}
-
-              {(selectedLog.resourceType === 'PROPERTY' || selectedLog.resourceType === 'Property') &&
-                selectedLog.tenantId &&
-                selectedLog.resourceId && (
-                  <>
-                    <Divider />
-                    <Title level={5}>{t('Données de la propriété')}</Title>
-                    {propertyLoading ? (
-                      <Spin />
-                    ) : propertyDetails ? (
-                      <Descriptions column={1} bordered size="small">
-                        <Descriptions.Item label={t('Référence')}>
-                          {propertyDetails.internalReference}
-                        </Descriptions.Item>
-                        <Descriptions.Item label={t('Titre')}>{propertyDetails.title}</Descriptions.Item>
-                        <Descriptions.Item label={t('Adresse')}>{propertyDetails.address}</Descriptions.Item>
-                        <Descriptions.Item label={t('Type de bien')}>{propertyDetails.propertyType}</Descriptions.Item>
-                        <Descriptions.Item label={t('Statut')}>{propertyDetails.status}</Descriptions.Item>
-                        <Descriptions.Item label={t('Prix')}>
-                          {propertyDetails.price != null
-                            ? `${propertyDetails.price} ${propertyDetails.currency || ''}`
-                            : '-'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label={t('Surface')}>
-                          {propertyDetails.surfaceArea != null ? `${propertyDetails.surfaceArea} m²` : '-'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label={t('Pièces')}>{propertyDetails.rooms ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label={t('Chambres')}>{propertyDetails.bedrooms ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label={t('Modes de transaction')}>
-                          {propertyDetails.transactionModes?.join(', ') || '-'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label={t('Publié')}>
-                          {propertyDetails.isPublished ? t('Oui') : t('Non')}
-                        </Descriptions.Item>
-                      </Descriptions>
-                    ) : (
-                      <Text type="secondary">
-                        {t('Impossible de charger les détails de la propriété (supprimée ou accès refusé).')}
-                      </Text>
-                    )}
-                  </>
-                )}
-            </>
-          )}
-        </Modal>
       </Space>
-    </>
+
+      {auditExport.truncated && (
+        <Alert
+          type="warning"
+          showIcon
+          closable
+          onClose={auditExport.dismissTruncated}
+          message={t("L'export est limité à 50 000 lignes : affinez les filtres pour obtenir tout le journal.")}
+        />
+      )}
+
+      <PlatformAuditFilterBar
+        value={state}
+        onChange={patchState}
+        onReset={() => setState(EMPTY_AUDIT_FILTERS)}
+        hasFilters={hasFilters}
+      />
+
+      {error && (
+        <Alert
+          type="error"
+          showIcon
+          message={t('Erreur')}
+          description={error}
+          action={
+            <Button size="small" onClick={retry}>
+              {t('Réessayer')}
+            </Button>
+          }
+        />
+      )}
+
+      <Card>
+        <Table<PlatformAuditLog>
+          rowKey="id"
+          columns={columns}
+          dataSource={logs}
+          loading={loading}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          onRow={log => ({ onClick: () => setSelected(log), style: { cursor: 'pointer' } })}
+          locale={{
+            emptyText:
+              loading || error ? <span /> : <Empty description={t('Aucune activité enregistrée pour ces critères')} />
+          }}
+        />
+        {nextCursor && (
+          <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <Button onClick={() => void fetchPage(nextCursor)} loading={loadingMore} disabled={loadingMore}>
+              {t('Charger plus')}
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <PlatformAuditDetailModal log={selected} onClose={() => setSelected(null)} onFilterRequest={filterByRequest} />
+    </Space>
   );
 };

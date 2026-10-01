@@ -185,6 +185,7 @@ export enum AuditActionKey {
 
   // Audit de l'audit (ADR-006) : consulter le journal est lui-même tracé.
   AUDIT_VIEWED = 'AUDIT_VIEWED',
+  AUDIT_EXPORTED = 'AUDIT_EXPORTED',
 
   // Accès (phase 3), posés par `middleware/audit-access-middleware.ts` à partir
   // de la réponse : un refus de droit, un fichier ou un export servi.
@@ -247,28 +248,4 @@ export interface AuditLogEntry {
   source?: string | null;
   /** Champs modifies : { champ: { before, after } }. Secrets masques a l'ecriture. */
   changes?: Record<string, unknown> | null;
-}
-
-// Audit log query filters
-export interface AuditLogFilters {
-  tenantId?: string;
-  actionKey?: string;
-  entityType?: string;
-  entityId?: string;
-  actorUserId?: string;
-  startDate?: Date;
-  endDate?: Date;
-  page?: number;
-  limit?: number;
-}
-
-// Audit log response
-export interface AuditLogResponse {
-  logs: AuditLogEntry[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
 }

@@ -353,3 +353,17 @@ export const aiActionRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/** Export du journal d'audit de la plateforme (ADR-006, phase 4) : lourd, réservé au super-admin. 5 par 10 minutes. */
+export const auditExportRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: req => `audit-export:${req.user?.userId ?? 'anonyme'}`,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'exports du journal d'audit en peu de temps. Réessayez dans quelques minutes."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});

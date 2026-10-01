@@ -6,7 +6,7 @@ import { t } from '../i18n/t';
  * lire une valeur de payload. Séparé de la page pour rester testable.
  */
 
-function fallbackActorLabel(actorType: TenantAuditActorType): string {
+export function fallbackActorLabel(actorType: TenantAuditActorType): string {
   switch (actorType) {
     case 'SYSTEM':
       return t('Système');
