@@ -162,6 +162,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'patrimoine-performance': ['PROPERTIES_VIEW'],
   'patrimoine-work-programs': ['PROPERTIES_VIEW'],
   'patrimoine-cash-plan': ['PROPERTIES_VIEW'],
+  'patrimoine-import': ['PROPERTIES_CREATE', 'PROPERTIES_EDIT'],
   'patrimoine-statements': ['OWNER_STATEMENTS_VIEW'],
   'patrimoine-entities': ['PROPERTIES_VIEW'],
   'patrimoine-tax-parameters': ['PROPERTIES_VIEW'],
