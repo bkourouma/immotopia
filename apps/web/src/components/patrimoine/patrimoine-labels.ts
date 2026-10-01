@@ -1,4 +1,4 @@
-import type { AssetValuation, PropertyExpense, PropertyLoan } from '../../types/patrimoine-types';
+import type { AssetValuation, ExpenseRecurrence, PropertyExpense, PropertyLoan } from '../../types/patrimoine-types';
 import { PATRIMONY_DOC_TYPES } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 
@@ -76,6 +76,15 @@ export function expenseCategoryLabel(category: PropertyExpense['category']): str
   if (category === 'UTILITIES') return t('Charges communes');
   if (category === 'OTHER') return t('Autre');
   return category;
+}
+
+export const EXPENSE_RECURRENCES: readonly ExpenseRecurrence[] = ['ONE_OFF', 'MONTHLY', 'QUARTERLY', 'ANNUAL'];
+
+export function expenseRecurrenceLabel(recurrence: ExpenseRecurrence | null | undefined): string {
+  if (recurrence === 'MONTHLY') return t('Mensuelle');
+  if (recurrence === 'QUARTERLY') return t('Trimestrielle');
+  if (recurrence === 'ANNUAL') return t('Annuelle');
+  return t('Ponctuelle');
 }
 
 /**

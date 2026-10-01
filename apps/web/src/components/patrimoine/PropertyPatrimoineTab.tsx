@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
   Alert,
@@ -43,6 +43,7 @@ import {
 } from '../../services/patrimoine-service';
 import type {
   AssetValuation,
+  ExpenseRecurrence,
   PaymentMethod,
   PropertyExpense,
   PropertyLoan,
@@ -56,7 +57,7 @@ import { ExpenseTracker } from './ExpenseTracker';
 import { LoanWidget } from './LoanWidget';
 import { ValuationHistory } from './ValuationHistory';
 import { YieldCalculator, type YieldAssumptionsInput } from './YieldCalculator';
-import { readYieldAssumptions, writeYieldAssumptions } from './yield-assumptions-storage';
+import { loadYieldAssumptions, persistYieldAssumptions } from './yield-assumptions-storage';
 import { YieldProjectionChart } from './YieldProjectionChart';
 import { WorkProgramTimeline } from './WorkProgramTimeline';
 import {
@@ -71,7 +72,9 @@ import {
   DEVISE_PATRIMOINE,
   apiErrorMessage,
   documentTypeOptions,
+  EXPENSE_RECURRENCES,
   expenseCategoryLabel,
+  expenseRecurrenceLabel,
   loanStatusLabel,
   valuationMethodLabel
 } from './patrimoine-labels';
@@ -90,6 +93,13 @@ function toDateTimeLocal(date?: string | null): string | undefined {
   const hh = pad(dt.getHours());
   const min = pad(dt.getMinutes());
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
+/** Date seule (AAAA-MM-JJ, UTC) d'une date ISO, pour un champ `type="date"`. */
+function toDateInput(date?: string | null): string | undefined {
+  if (!date) return undefined;
+  const dt = new Date(date);
+  return Number.isNaN(dt.getTime()) ? undefined : dt.toISOString().slice(0, 10);
 }
 
 function toIso(value?: string): string | undefined {
@@ -158,9 +168,12 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const [loading, setLoading] = useState(true);
   const [sectionErrors, setSectionErrors] = useState<SectionErrors>({});
   const [yieldLoading, setYieldLoading] = useState(false);
-  const [yieldAssumptions, setYieldAssumptions] = useState<YieldAssumptionsInput | undefined>(() =>
-    readYieldAssumptions(tenantId, propertyId)
-  );
+  const [yieldAssumptions, setYieldAssumptions] = useState<YieldAssumptionsInput | undefined>(undefined);
+  const [yieldSyncStatus, setYieldSyncStatus] = useState<'synced' | 'local'>('synced');
+  // Ignore la réponse d'un chargement périmé (changement d'agence ou de bien en cours de route).
+  const loadSeq = useRef(0);
+  const currentKey = useRef('');
+  currentKey.current = `${tenantId}:${propertyId}`;
   const [submitting, setSubmitting] = useState(false);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
@@ -194,21 +207,27 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   // pour filtrer le compte de trésorerie proposé et rendre le fournisseur requis.
   const expensePaymentMethod = Form.useWatch('paymentMethod', expenseForm) as PaymentMethod | undefined;
   const expenseAgencyIsBuyer = Form.useWatch('agencyIsBuyer', expenseForm) as boolean | undefined;
+  const expenseRecurrence = Form.useWatch('recurrence', expenseForm) as ExpenseRecurrence | undefined;
 
   const loadAll = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
-    const savedAssumptions = readYieldAssumptions(tenantId, propertyId);
-    setYieldAssumptions(savedAssumptions);
+    const loadYield = async () => {
+      const loaded = await loadYieldAssumptions(tenantId, propertyId);
+      const data = loaded.assumptions
+        ? await getPropertyYield(tenantId, propertyId, loaded.assumptions)
+        : await getPropertyYield(tenantId, propertyId);
+      return { loaded, data };
+    };
     const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes] = await Promise.allSettled([
       listValuations(tenantId, propertyId),
       listExpenses(tenantId, propertyId),
       listLoans(tenantId, propertyId),
       listWorkPrograms(tenantId, propertyId),
       listPropertyDocuments(tenantId, propertyId),
-      savedAssumptions
-        ? getPropertyYield(tenantId, propertyId, savedAssumptions)
-        : getPropertyYield(tenantId, propertyId)
+      loadYield()
     ]);
+    if (seq !== loadSeq.current) return;
 
     const erreurs: SectionErrors = {};
 
@@ -227,8 +246,17 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     if (documentsRes.status === 'fulfilled') setDocuments(documentsRes.value);
     else erreurs.documents = apiErrorMessage(documentsRes.reason, t('Erreur de chargement des documents'));
 
-    if (yieldRes.status === 'fulfilled') setYieldData(yieldRes.value);
-    else erreurs.yieldData = apiErrorMessage(yieldRes.reason, t('Erreur de chargement du rendement'));
+    if (yieldRes.status === 'fulfilled') {
+      setYieldData(yieldRes.value.data);
+      setYieldAssumptions(yieldRes.value.loaded.assumptions);
+      setYieldSyncStatus(yieldRes.value.loaded.synced ? 'synced' : 'local');
+    } else {
+      // Pas de rendement ni d'hypothèses de l'ancien bien affichés sous le nouveau.
+      setYieldData(null);
+      setYieldAssumptions(undefined);
+      setYieldSyncStatus('synced');
+      erreurs.yieldData = apiErrorMessage(yieldRes.reason, t('Erreur de chargement du rendement'));
+    }
 
     setSectionErrors(erreurs);
     setLoading(false);
@@ -247,17 +275,22 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   );
 
   const handleRecalculateYield = async (assumptions: YieldAssumptionsInput) => {
+    const key = `${tenantId}:${propertyId}`;
+    const memeBien = () => currentKey.current === key;
     setYieldLoading(true);
     try {
       const data = await getPropertyYield(tenantId, propertyId, assumptions);
+      if (!memeBien()) return;
+      // Le calcul s'affiche tout de suite ; la persistance ne le retarde pas.
       setYieldData(data);
       setYieldAssumptions(assumptions);
-      writeYieldAssumptions(tenantId, propertyId, assumptions);
       setSectionErrors(prev => ({ ...prev, yieldData: undefined }));
+      const { synced } = await persistYieldAssumptions(tenantId, propertyId, assumptions);
+      if (memeBien()) setYieldSyncStatus(synced ? 'synced' : 'local');
     } catch (e) {
-      message.error(apiErrorMessage(e, t('Échec du recalcul du rendement')));
+      if (memeBien()) message.error(apiErrorMessage(e, t('Échec du recalcul du rendement')));
     } finally {
-      setYieldLoading(false);
+      if (memeBien()) setYieldLoading(false);
     }
   };
 
@@ -328,7 +361,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const openCreateExpense = () => {
     setEditingExpenseId(null);
     expenseForm.resetFields();
-    expenseForm.setFieldsValue({ currency: 'XOF', category: 'OTHER', isCapitalized: false });
+    expenseForm.setFieldsValue({ currency: 'XOF', category: 'OTHER', isCapitalized: false, recurrence: 'ONE_OFF' });
     setExpenseModalOpen(true);
   };
 
@@ -346,7 +379,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       paymentMethod: item.paymentMethod || undefined,
       treasuryAccountId: item.treasuryAccountId || undefined,
       agencyIsBuyer: item.agencyIsBuyer || false,
-      supplierName: item.supplierName || undefined
+      supplierName: item.supplierName || undefined,
+      recurrence: item.recurrence || 'ONE_OFF',
+      recurrenceEndDate: toDateInput(item.recurrenceEndDate)
     });
     setExpenseModalOpen(true);
   };
@@ -366,7 +401,13 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         paymentMethod: values.paymentMethod,
         treasuryAccountId: values.treasuryAccountId,
         agencyIsBuyer: values.agencyIsBuyer,
-        supplierName: values.supplierName
+        supplierName: values.supplierName,
+        recurrence: values.recurrence || 'ONE_OFF',
+        // Une dépense ponctuelle n'a pas de fin ; une périodique sans fin court indéfiniment (null).
+        recurrenceEndDate:
+          values.recurrence && values.recurrence !== 'ONE_OFF' && values.recurrenceEndDate
+            ? toIso(values.recurrenceEndDate)
+            : null
       };
       setSubmitting(true);
       if (editingExpenseId) {
@@ -703,6 +744,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
             },
             {
+              title: t('Périodicité'),
+              dataIndex: 'recurrence',
+              render: (value: PropertyExpense['recurrence']) => expenseRecurrenceLabel(value)
+            },
+            {
               title: t('Montant'),
               dataIndex: 'amount',
               render: (value: number, record: PropertyExpense) => (
@@ -847,6 +893,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               data={yieldData}
               loading={yieldLoading}
               assumptions={yieldAssumptions}
+              syncStatus={yieldSyncStatus}
               onRecalculate={handleRecalculateYield}
             />
           )}
@@ -962,6 +1009,46 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <Form.Item name="paidAt" label={t('Date de paiement')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
+          <Form.Item
+            name="recurrence"
+            label={t('Périodicité')}
+            dependencies={['paidAt']}
+            extra={t(
+              "Indiquez la date d'un paiement déjà effectué : les occurrences suivantes sont déduites et alimentent le plan de trésorerie."
+            )}
+            rules={[
+              ({ getFieldValue }) => ({
+                validator: (_, value?: ExpenseRecurrence) => {
+                  const paidAt = getFieldValue('paidAt') as string | undefined;
+                  if (!value || value === 'ONE_OFF' || !paidAt) return Promise.resolve();
+                  if (new Date(paidAt).getTime() <= Date.now() + 24 * 3600 * 1000) return Promise.resolve();
+                  return Promise.reject(
+                    new Error(t("La date de paiement d'une dépense périodique ne peut pas être dans le futur"))
+                  );
+                }
+              })
+            ]}
+          >
+            <Select options={EXPENSE_RECURRENCES.map(value => ({ value, label: expenseRecurrenceLabel(value) }))} />
+          </Form.Item>
+          {expenseRecurrence && expenseRecurrence !== 'ONE_OFF' ? (
+            <Form.Item
+              name="recurrenceEndDate"
+              label={t('Date de fin')}
+              dependencies={['paidAt']}
+              rules={[
+                ({ getFieldValue }) => ({
+                  validator: (_, value?: string) => {
+                    const paidAt = getFieldValue('paidAt') as string | undefined;
+                    if (!value || !paidAt || value >= paidAt.slice(0, 10)) return Promise.resolve();
+                    return Promise.reject(new Error(t('La date de fin doit suivre la date de paiement')));
+                  }
+                })
+              ]}
+            >
+              <Input type="date" />
+            </Form.Item>
+          ) : null}
           <Form.Item name="isCapitalized" label={t('Capitalisée')} valuePropName="checked">
             <Switch />
           </Form.Item>

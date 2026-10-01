@@ -1,4 +1,5 @@
 import { activeLocale } from '../../i18n/format';
+import { t } from '../../i18n/t';
 
 /**
  * Formateurs communs des écrans Patrimoine.
@@ -25,4 +26,15 @@ export function formatAsOf(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'long', timeStyle: 'short' }).format(date);
+}
+
+/** DSCR : ratio de couverture (1.25 = « 1,25 x »), tiret si indéterminé. */
+export function formatDscr(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const valeur = new Intl.NumberFormat(activeLocale(), {
+    style: 'decimal',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+  return t('{{valeur}} x', { valeur });
 }

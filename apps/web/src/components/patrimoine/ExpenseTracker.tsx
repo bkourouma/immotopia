@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, Table, Tag } from 'antd';
 import type { PropertyExpense } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
-import { expenseCategoryLabel } from './patrimoine-labels';
+import { expenseCategoryLabel, expenseRecurrenceLabel } from './patrimoine-labels';
 
 import { activeLocale } from '../../i18n/format';
 interface Props {
@@ -28,6 +28,11 @@ export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
             title: t('Catégorie'),
             dataIndex: 'category',
             render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
+          },
+          {
+            title: t('Périodicité'),
+            dataIndex: 'recurrence',
+            render: (value: PropertyExpense['recurrence']) => expenseRecurrenceLabel(value)
           },
           {
             title: t('Montant'),

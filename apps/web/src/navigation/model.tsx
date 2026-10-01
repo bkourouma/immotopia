@@ -439,6 +439,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/patrimoine/work-programs'
             },
             {
+              key: 'patrimoine-cash-plan',
+              label: t('Trésorerie prévisionnelle'),
+              href: '/tenant/:tenantId/patrimoine/plan-tresorerie'
+            },
+            {
               key: 'patrimoine-statements',
               label: t('Relevés'),
               href: '/tenant/:tenantId/patrimoine/statements',
