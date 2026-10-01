@@ -124,6 +124,8 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     expect(classifyTenantRoute('/finance/clients/balance')).toBe('CORE');
     expect(classifyTenantRoute('/syndics/abc/lots')).toBe('SYNDIC');
     expect(classifyTenantRoute('/properties/abc/valuations')).toBe('PATRIMOINE');
+    expect(classifyTenantRoute('/properties/abc/yield')).toBe('PATRIMOINE');
+    expect(classifyTenantRoute('/properties/abc/yield/assumptions')).toBe('PATRIMOINE');
     expect(classifyTenantRoute('/properties/abc/media')).toBe('CORE');
     expect(classifyTenantRoute('/maintenance/tenant/tickets')).toBe('EXEMPT');
     expect(classifyTenantRoute('/maintenance/admin/tickets')).toBe('CORE');

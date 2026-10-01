@@ -35,6 +35,10 @@ import {
   exportAgencyPatrimoineHandler,
   exportPropertyPatrimoineHandler
 } from '../controllers/patrimoine-export-controller';
+import {
+  getYieldAssumptionsHandler,
+  setYieldAssumptionsHandler
+} from '../controllers/patrimoine-yield-assumptions-controller';
 
 const router = Router();
 
@@ -201,6 +205,19 @@ router.get(
   '/tenants/:tenantId/properties/:propertyId/yield',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getPropertyYieldHandler
+);
+
+// Hypotheses de projection enregistrees d'un bien (spec 029). Declarees apres
+// `/yield` : chemin plus long, aucune capture possible.
+router.get(
+  '/tenants/:tenantId/properties/:propertyId/yield/assumptions',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getYieldAssumptionsHandler
+);
+router.put(
+  '/tenants/:tenantId/properties/:propertyId/yield/assumptions',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  setYieldAssumptionsHandler
 );
 
 // Export d'un seul bien (lot P3).

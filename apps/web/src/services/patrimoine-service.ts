@@ -7,7 +7,9 @@ import {
   PropertyExpense,
   PropertyLoan,
   PropertyYieldData,
-  WorkProgram
+  WorkProgram,
+  YieldAssumptions as YieldAssumptionsFull,
+  YieldAssumptionsState
 } from '../types/patrimoine-types';
 
 type ApiResponse<T> = { success: boolean; data: T };
@@ -61,6 +63,27 @@ export async function getPropertyYield(
 ): Promise<PropertyYieldData> {
   const response = await apiClient.get<ApiResponse<PropertyYieldData>>(
     `/tenants/${tenantId}/properties/${propertyId}/yield${buildYieldQuery(assumptions)}`
+  );
+  return response.data.data;
+}
+
+/** Hypothèses de projection enregistrées pour le bien (défauts + `saved: false` s'il n'y en a pas). */
+export async function getYieldAssumptions(tenantId: string, propertyId: string): Promise<YieldAssumptionsState> {
+  const response = await apiClient.get<ApiResponse<YieldAssumptionsState>>(
+    `/tenants/${tenantId}/properties/${propertyId}/yield/assumptions`
+  );
+  return response.data.data;
+}
+
+/** Enregistre les cinq hypothèses (droit d'édition du bien requis). */
+export async function saveYieldAssumptions(
+  tenantId: string,
+  propertyId: string,
+  assumptions: YieldAssumptionsFull
+): Promise<YieldAssumptionsState> {
+  const response = await apiClient.put<ApiResponse<YieldAssumptionsState>>(
+    `/tenants/${tenantId}/properties/${propertyId}/yield/assumptions`,
+    assumptions
   );
   return response.data.data;
 }

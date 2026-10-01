@@ -12,6 +12,25 @@
  *
  * Les pourcentages sont exprimes en points (8.5 = 8,5 %).
  *
+ * Ratios bancaires (spec 029, `computeBankRatios`) -- tous calcules avec la
+ * **vacance des hypotheses appliquees** : loyers effectifs = loyers annuels x
+ * (1 - vacance). Un ratio indeterminable vaut `{ value: null, reason }` (code,
+ * jamais de texte) : jamais 0 ni une valeur inventee.
+ *
+ * - **DSCR** = (loyers effectifs - charges annuelles) / mensualites des 12
+ *   prochains mois. Ratio brut (1.25 = 1,25x). Sans pret actif : null.
+ * - **LTV** = capital restant du des prets actifs / valeur actuelle x 100.
+ * - **Cash-on-cash** = (loyers effectifs - charges - mensualites 12 mois) /
+ *   fonds propres x 100, fonds propres = cout de revient - capital initial des
+ *   prets actifs (sans pret actif : le cout de revient).
+ * - **TRI** (taux de rentabilite interne) du bien **avant financement** : les
+ *   mensualites et le capital emprunte n'entrent pas dans les flux. Flux 0 =
+ *   -cout de revient ; flux de l'annee k = loyer effectif projete - charges
+ *   projetees ; a l'annee de l'horizon s'ajoute la valeur terminale (valeur
+ *   projetee). Resolution numerique bornee (Newton + repli bissection sur
+ *   [-0.99 ; 10], 200 iterations max) ; pas de changement de signe ou
+ *   non-convergence : null / NOT_CONVERGENT. Resultat en points de %.
+ *
  * Le **cout de revient** (`costBasis`) = cout d'acquisition + depenses
  * capitalisees. Tant qu'aucun cout d'acquisition n'est connu, il vaut 0 et
  * signifie « inconnu » : le net-net et la plus-value latente sont alors `null`
@@ -86,6 +105,12 @@ export interface YieldInput {
    * chaque annee de la projection.
    */
   loans?: LoanSchedule[];
+  /** Somme des capitaux restants dus des prets ACTIFS (ratios bancaires). */
+  loanRemainingCapital?: number;
+  /** Somme des `capitalAmount` des prets ACTIFS (fonds propres). */
+  loanInitialCapital?: number;
+  /** Au moins un pret actif. Absent : deduit de `loans` / `annualLoanPayments`. */
+  hasActiveLoan?: boolean;
 }
 
 export interface YieldProjection {
@@ -214,5 +239,148 @@ export function projectedYieldAtHorizon(
       ? safePercent(annualRent - annualExpenses - loanPayments, projectedNetNetBase(input, value))
       : null,
     latentCapitalGain: known ? value - input.costBasis : null
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Ratios bancaires
+// ---------------------------------------------------------------------------
+
+export type RatioReason =
+  'NO_ACTIVE_LOAN' | 'NO_DEBT_SERVICE' | 'NO_VALUE' | 'NO_COST_BASIS' | 'NO_EQUITY' | 'NOT_CONVERGENT';
+
+export interface RatioResult {
+  value: number | null;
+  reason: RatioReason | null;
+}
+
+export interface BankRatios {
+  dscr: RatioResult;
+  ltv: RatioResult;
+  cashOnCash: RatioResult;
+  irr: RatioResult;
+}
+
+export interface BankRatioAssumptions extends ProjectionAssumptions {
+  years: number;
+}
+
+const fail = (reason: RatioReason): RatioResult => ({ value: null, reason });
+/**
+ * Garde-fou : un resultat non fini ne sort jamais comme valeur. Pour DSCR, LTV et
+ * cash-on-cash c'est impossible avec des entrees finies (les diviseurs sont
+ * verifies avant) ; la garde reste pour ne jamais exposer NaN/Infinity, avec
+ * `NO_VALUE`. Seul le TRI passe `NOT_CONVERGENT` (resolution numerique).
+ */
+const ok = (value: number, nonFinite: RatioReason = 'NO_VALUE'): RatioResult =>
+  Number.isFinite(value) ? { value, reason: null } : fail(nonFinite);
+
+function activeLoan(input: YieldInput): boolean {
+  if (typeof input.hasActiveLoan === 'boolean') return input.hasActiveLoan;
+  return (input.loans?.length ?? 0) > 0 || input.annualLoanPayments > 0;
+}
+
+function effectiveRent(input: YieldInput, assumptions: ProjectionAssumptions): number {
+  return input.annualRent * (1 - assumptions.vacancyRate);
+}
+
+export function debtServiceCoverageRatio(input: YieldInput, assumptions: ProjectionAssumptions): RatioResult {
+  if (!activeLoan(input)) return fail('NO_ACTIVE_LOAN');
+  // Pret actif mais aucune mensualite sur les 12 prochains mois (pret en fin d'echeance).
+  if (!(input.annualLoanPayments > 0)) return fail('NO_DEBT_SERVICE');
+  return ok((effectiveRent(input, assumptions) - input.annualExpenses) / input.annualLoanPayments);
+}
+
+export function loanToValue(input: YieldInput): RatioResult {
+  if (!activeLoan(input) || typeof input.loanRemainingCapital !== 'number') return fail('NO_ACTIVE_LOAN');
+  if (!(input.currentValue > 0)) return fail('NO_VALUE');
+  return ok((input.loanRemainingCapital / input.currentValue) * 100);
+}
+
+export function cashOnCash(input: YieldInput, assumptions: ProjectionAssumptions): RatioResult {
+  if (!hasCostBasis(input)) return fail('NO_COST_BASIS');
+  const borrowed = activeLoan(input) ? (input.loanInitialCapital ?? 0) : 0;
+  const equity = input.costBasis - borrowed;
+  if (!(equity > 0)) return fail('NO_EQUITY');
+  const cashFlow = effectiveRent(input, assumptions) - input.annualExpenses - input.annualLoanPayments;
+  return ok((cashFlow / equity) * 100);
+}
+
+const IRR_LOWER = -0.99;
+const IRR_UPPER = 10;
+const IRR_MAX_ITERATIONS = 200;
+const IRR_TOLERANCE = 1e-10;
+
+function npv(flows: number[], rate: number): number {
+  let total = 0;
+  for (let k = 0; k < flows.length; k += 1) total += flows[k] / (1 + rate) ** k;
+  return total;
+}
+
+function npvDerivative(flows: number[], rate: number): number {
+  let total = 0;
+  for (let k = 1; k < flows.length; k += 1) total -= (k * flows[k]) / (1 + rate) ** (k + 1);
+  return total;
+}
+
+/**
+ * Taux annuel (fraction) annulant la VAN, ou null : Newton borne, repli
+ * bissection. Arret sur une VAN proche de zero (tolerance RELATIVE au flux
+ * initial, pour des montants en XOF ~1e8) ou sur la largeur de l'intervalle.
+ * Si plusieurs racines existent, la racine renvoyee est celle trouvee dans
+ * l'intervalle borne [-0.99 ; 10].
+ */
+export function solveIrr(flows: number[]): number | null {
+  if (flows.some(flow => !Number.isFinite(flow))) return null;
+  let low = IRR_LOWER;
+  let high = IRR_UPPER;
+  const fLow = npv(flows, low);
+  const fHigh = npv(flows, high);
+  if (!Number.isFinite(fLow) || !Number.isFinite(fHigh)) return null;
+  if (fLow === 0) return low;
+  if (fHigh === 0) return high;
+  if (Math.sign(fLow) === Math.sign(fHigh)) return null;
+
+  const npvTolerance = IRR_TOLERANCE * Math.max(Math.abs(flows[0]), 1);
+  let rate = (low + high) / 2;
+  for (let i = 0; i < IRR_MAX_ITERATIONS; i += 1) {
+    const value = npv(flows, rate);
+    if (Math.abs(value) < npvTolerance) return rate;
+    if (Math.sign(value) === Math.sign(fLow)) low = rate;
+    else high = rate;
+    if (high - low < IRR_TOLERANCE) return rate;
+    const newton = rate - value / npvDerivative(flows, rate);
+    // Newton seulement s'il reste strictement dans l'intervalle ; sinon bissection.
+    rate = Number.isFinite(newton) && newton > low && newton < high ? newton : (low + high) / 2;
+  }
+  return null;
+}
+
+export function internalRateOfReturn(input: YieldInput, assumptions: BankRatioAssumptions): RatioResult {
+  if (!hasCostBasis(input)) return fail('NO_COST_BASIS');
+  if (!(input.currentValue > 0)) return fail('NO_VALUE');
+  if (!Number.isInteger(assumptions.years) || assumptions.years < 1) return fail('NOT_CONVERGENT');
+
+  const projection = projectYield(input, assumptions.years, assumptions);
+  const flows = [-input.costBasis];
+  let previousRent = 0;
+  let previousExpenses = 0;
+  for (const row of projection) {
+    flows.push(row.cumulativeRent - previousRent - (row.cumulativeExpenses - previousExpenses));
+    previousRent = row.cumulativeRent;
+    previousExpenses = row.cumulativeExpenses;
+  }
+  flows[flows.length - 1] += projection[projection.length - 1].estimatedValue;
+
+  const rate = solveIrr(flows);
+  return rate === null ? fail('NOT_CONVERGENT') : ok(rate * 100, 'NOT_CONVERGENT');
+}
+
+export function computeBankRatios(input: YieldInput, assumptions: BankRatioAssumptions): BankRatios {
+  return {
+    dscr: debtServiceCoverageRatio(input, assumptions),
+    ltv: loanToValue(input),
+    cashOnCash: cashOnCash(input, assumptions),
+    irr: internalRateOfReturn(input, assumptions)
   };
 }

@@ -119,13 +119,45 @@ export const updateStatementSchema = z
 
 // Taux de croissance negatifs admis jusqu'a -50 % : un marche qui baisse ou
 // un loyer renegocie a la baisse sont des hypotheses legitimes.
+// Bornes factorisees : la requete (coercion de chaines) et le corps du PUT
+// des hypotheses enregistrees (nombres JSON) partagent les memes regles.
+const YEARS_RULE = (schema: z.ZodNumber) => schema.int().min(1).max(30);
+const GROWTH_RULE = (schema: z.ZodNumber) => schema.min(-0.5).max(1);
+const VACANCY_RULE = (schema: z.ZodNumber) => schema.min(0).max(1);
+
+export const PROJECTION_DEFAULTS = {
+  years: 10,
+  valueGrowthRate: 0.03,
+  rentGrowthRate: 0.02,
+  expenseGrowthRate: 0.025,
+  vacancyRate: 0.05
+} as const;
+
 export const projectionQuerySchema = z.object({
-  years: z.coerce.number().int().min(1).max(30).default(10),
-  valueGrowthRate: z.coerce.number().min(-0.5).max(1).default(0.03),
-  rentGrowthRate: z.coerce.number().min(-0.5).max(1).default(0.02),
-  expenseGrowthRate: z.coerce.number().min(-0.5).max(1).default(0.025),
-  vacancyRate: z.coerce.number().min(0).max(1).default(0.05)
+  years: YEARS_RULE(z.coerce.number()).default(PROJECTION_DEFAULTS.years),
+  valueGrowthRate: GROWTH_RULE(z.coerce.number()).default(PROJECTION_DEFAULTS.valueGrowthRate),
+  rentGrowthRate: GROWTH_RULE(z.coerce.number()).default(PROJECTION_DEFAULTS.rentGrowthRate),
+  expenseGrowthRate: GROWTH_RULE(z.coerce.number()).default(PROJECTION_DEFAULTS.expenseGrowthRate),
+  vacancyRate: VACANCY_RULE(z.coerce.number()).default(PROJECTION_DEFAULTS.vacancyRate)
 });
+
+/** Surcharges de requete : memes regles, mais un champ absent reste `undefined` (pas de defaut). */
+export const projectionOverridesSchema = projectionQuerySchema.partial();
+
+/**
+ * `PUT .../yield/assumptions` : les cinq hypotheses sont obligatoires, nombres
+ * JSON stricts (pas de coercion de chaine ; `z.number()` refuse NaN et
+ * Infinity), aucun champ inconnu -- le `tenantId` du corps est donc refuse.
+ */
+export const yieldAssumptionsBodySchema = z
+  .object({
+    years: YEARS_RULE(z.number()),
+    valueGrowthRate: GROWTH_RULE(z.number()),
+    rentGrowthRate: GROWTH_RULE(z.number()),
+    expenseGrowthRate: GROWTH_RULE(z.number()),
+    vacancyRate: VACANCY_RULE(z.number())
+  })
+  .strict();
 
 /** `GET .../patrimoine/export` (agence ou bien) : format obligatoire, PDF ou Excel. */
 export const exportQuerySchema = z.object({
