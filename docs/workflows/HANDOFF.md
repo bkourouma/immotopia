@@ -71,6 +71,26 @@ Pièges et décisions :
 
 ---
 
+## Pilote — feuille de route patrimoine, vague A — 2026-10-01
+
+**État :** plan publié (PR #90) ; vague A livrée en trois PR indépendantes depuis `main` (CI non encore vue) : A1 #91 (`feat/patrimoine-projection`, spec 029), A2 #93 (`feat/patrimoine-tresorerie`, spec 030), A3 #92 (`feat/patrimoine-canaux`, spec 031). Aucune fusion faite. Plan : `docs/architecture/PLAN-PATRIMOINE-FEUILLE-DE-ROUTE.md` (14 capacités, vagues A/B/C, specs 029 à 040 réservées).
+
+Reste à faire :
+
+- Fusion de #91, #92, #93 (conflits attendus : classeur wiki binaire → reprendre la version de `main` et réappliquer les lignes du lot ; A1/A2 : `schemas.ts` `createExpenseSchema`, `queries.ts`, `PropertyPatrimoineTab.tsx`, `patrimoine-types.ts`, `patrimoine-labels.ts`). Migrations : `20261007090000` (A1), `…100000` (A2), `…110000` (A3).
+- Recette navigateur de la vague A (jamais rejouée) : carte « Ratios bancaires », synchronisation des hypothèses, page « Trésorerie prévisionnelle », rapport mensuel par lien (page publique `/rapport-proprietaire`), RTL arabe, mobile.
+- Vague B (spec 032 sinistres/assurances, 033 suivi foncier, 034 accès tiers de confiance — dépend des liens sécurisés de #92) ; vague C après fusion des PR multi-actifs (#52/#67/#69/#70/#74) : vue Groupe, multi-devises, dossier bancaire + déclaration fiscale, import en masse, paiement par lien, démembrement.
+- Décisions ouvertes : date d'exigibilité de la taxe foncière par pays ; arriérés au mois 1 du plan ; « bien en vente » ; volume d'appels au moteur fiscal (cache) ; route publique montée après CORS ; double envoi du rapport par le job ; `consentWhatsapp` à `true` par défaut en base (pas un vrai consentement) ; hypothèses des biens sous mandat en 404 ; TRI avant financement.
+
+Pièges :
+
+- Worktrees `.claude/worktrees/pat-{projection,tresorerie,canaux}` : `npm ci --ignore-scripts` + `prisma generate` PROPRES (schéma modifié, pas de jonction) ; `bcrypt` doit être recompilé (`npm rebuild bcrypt`), sinon `routes-inventory`/`route-features` ne démarrent pas. Disque D: presque plein (~19 Go libres).
+- Outil de base jetable : `scratchpad/scratch-db.cjs create|run|drop <nom>` (bases `immotopia_dev_<nom>`, mot de passe jamais affiché).
+- `i18n:extract` réécrit les fins de ligne de ~30 catalogues sans changer leur contenu et supprime des clés d'autres lots côté API : ne commiter que les catalogues au vrai diff.
+- `code-reviewer` n'existe pas comme type d'agent dans cette session : relecture faite par un `general-purpose` suivant `.claude/agents/code-reviewer.md`.
+
+---
+
 ## Pilote — environnements staging et production (PR #77, #78, #79, #81 fusionnées) — 2026-09-30
 
 **État :** tout est fusionné dans `main` (`a48559d2`) ; le clone du serveur est au même commit. La pile de production `immotopia-prod` est en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée, premier super-admin créé par le propriétaire, **e-mail SMTP et connexion Google actifs**, RCCM et compte contribuable posés), sauvegarde nocturne planifiée. Le staging est redéployé sur le même commit. La production n'est pas utilisée pour l'instant.
