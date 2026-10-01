@@ -84,6 +84,47 @@ export interface PropertyYieldData {
     latentCapitalGain: number | null;
   };
   projection: YieldProjectionPoint[];
+  /** Hypothèses réellement appliquées par le serveur (requête > enregistrées > défauts). */
+  assumptions?: YieldAssumptions;
+  /** Vrai si le serveur a une ligne d'hypothèses enregistrée pour ce bien. */
+  assumptionsSaved?: boolean;
+  /** Ratios bancaires ; absent sur un ancien serveur. */
+  ratios?: BankRatios;
+}
+
+/** Hypothèses de projection (fractions : 0.03 = 3 %). */
+export interface YieldAssumptions {
+  years: number;
+  valueGrowthRate: number;
+  rentGrowthRate: number;
+  expenseGrowthRate: number;
+  vacancyRate: number;
+}
+
+/** Réponse de GET/PUT `.../yield/assumptions`. */
+export interface YieldAssumptionsState {
+  assumptions: YieldAssumptions;
+  saved: boolean;
+  updatedAt: string | null;
+}
+
+export type BankRatioReason =
+  'NO_DEBT_SERVICE' | 'NO_ACTIVE_LOAN' | 'NO_VALUE' | 'NO_COST_BASIS' | 'NO_EQUITY' | 'NOT_CONVERGENT';
+
+/**
+ * `value: null` = indéterminable (jamais à afficher comme 0). Unités : dscr en
+ * ratio (1.25 = 1,25x) ; ltv, cashOnCash, irr en points de pourcentage (8.5 = 8,5 %).
+ */
+export interface BankRatio {
+  value: number | null;
+  reason: BankRatioReason | null;
+}
+
+export interface BankRatios {
+  dscr: BankRatio;
+  ltv: BankRatio;
+  cashOnCash: BankRatio;
+  irr: BankRatio;
 }
 
 export interface AssetValuation {
@@ -209,4 +250,64 @@ export interface OwnerStatement {
   sentAt?: string | null;
   paidAt?: string | null;
   items: OwnerStatementItem[];
+}
+
+/** Lien sécurisé du rapport mensuel d'un relevé (jamais de jeton : seulement son état). */
+export interface OwnerStatementSecureLink {
+  id: string;
+  scope: 'OWNER_MONTHLY_REPORT';
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  createdByUserId: string | null;
+  viewCount: number;
+  lastViewedAt: string | null;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+}
+
+/** Lien fraîchement créé : l'url porte le jeton en clair, renvoyée une seule fois. */
+export interface CreatedSecureLink {
+  id: string;
+  url: string;
+  expiresAt: string;
+}
+
+export type SendMonthlyReportReason =
+  'STATEMENT_NOT_FOUND' | 'NO_ELIGIBLE_CHANNEL' | 'EVENT_DISABLED' | 'ALREADY_SENT' | 'SEND_FAILED';
+
+export interface SendMonthlyReportResult {
+  sent: boolean;
+  channel: 'WHATSAPP' | 'EMAIL' | null;
+  reason?: SendMonthlyReportReason;
+}
+
+/** Rapport mensuel lu par le propriétaire via un lien sécurisé (public, lecture seule). */
+export interface OwnerMonthlyReportDto {
+  agencyName: string;
+  ownerName: string;
+  /** 'YYYY-MM' */
+  period: string;
+  currency: string;
+  expiresAt: string;
+  totals: {
+    totalRentDue: number;
+    totalRevenue: number;
+    totalArrears: number;
+    managementFees: number;
+    managementFeesVat: number;
+    totalExpenses: number;
+    /** Retenue à la source, déduite du net. */
+    withholdingTax: number;
+    /** Dépôt de garantie conservé, ajouté au net. */
+    depositRetained: number;
+    /** Net à reverser : toujours affiché tel quel, jamais recalculé côté client. */
+    netAmount: number;
+  };
+  properties: Array<{
+    reference: string;
+    title: string;
+    lines: Array<{ label: string; type: string; amount: number }>;
+    /** Net du bien (somme signée de ses lignes) ; la somme des biens égale `totals.netAmount`. */
+    subtotal: number;
+  }>;
 }

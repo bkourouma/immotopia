@@ -27,6 +27,8 @@ vi.mock('../../services/patrimoine-service', () => ({
   deleteWorkProgram: vi.fn(),
   downloadPatrimoineExport: vi.fn(),
   getPropertyYield: vi.fn(),
+  getYieldAssumptions: vi.fn(),
+  saveYieldAssumptions: vi.fn(),
   listExpenses: vi.fn(),
   listLoans: vi.fn(),
   listWorkPrograms: vi.fn(),
@@ -78,8 +80,10 @@ vi.mock('../../components/patrimoine/WorkProgramTimeline', () => ({
 
 vi.mock('../../components/patrimoine/YieldCalculator', () => ({
   YieldCalculator: ({
-    onRecalculate
+    onRecalculate,
+    syncStatus
   }: {
+    syncStatus?: string;
     onRecalculate?: (a: {
       years: number;
       valueGrowthRate: number;
@@ -88,20 +92,23 @@ vi.mock('../../components/patrimoine/YieldCalculator', () => ({
       vacancyRate: number;
     }) => void;
   }) => (
-    <button
-      type="button"
-      onClick={() =>
-        onRecalculate?.({
-          years: 5,
-          valueGrowthRate: 0.03,
-          rentGrowthRate: 0.02,
-          expenseGrowthRate: 0.02,
-          vacancyRate: 0.04
-        })
-      }
-    >
-      recalc-yield
-    </button>
+    <div>
+      <span data-testid="sync-status">{syncStatus}</span>
+      <button
+        type="button"
+        onClick={() =>
+          onRecalculate?.({
+            years: 5,
+            valueGrowthRate: 0.03,
+            rentGrowthRate: 0.02,
+            expenseGrowthRate: 0.02,
+            vacancyRate: 0.04
+          })
+        }
+      >
+        recalc-yield
+      </button>
+    </div>
   )
 }));
 
@@ -150,6 +157,22 @@ const baseYield = {
   projection: []
 };
 
+const defaultsServeur = {
+  years: 10,
+  valueGrowthRate: 0.03,
+  rentGrowthRate: 0.02,
+  expenseGrowthRate: 0.025,
+  vacancyRate: 0.05
+};
+
+const hypothesesRecalcul = {
+  years: 5,
+  valueGrowthRate: 0.03,
+  rentGrowthRate: 0.02,
+  expenseGrowthRate: 0.02,
+  vacancyRate: 0.04
+};
+
 const baseDocument = {
   id: 'doc-1',
   propertyId: 'property-1',
@@ -167,6 +190,16 @@ function mockLoadAll(overrides: { documents?: unknown[]; workPrograms?: unknown[
   vi.mocked(patrimoineService.listWorkPrograms).mockResolvedValue((overrides.workPrograms ?? []) as never);
   vi.mocked(propertyService.listPropertyDocuments).mockResolvedValue((overrides.documents ?? [baseDocument]) as never);
   vi.mocked(patrimoineService.getPropertyYield).mockResolvedValue(baseYield as never);
+  vi.mocked(patrimoineService.getYieldAssumptions).mockResolvedValue({
+    assumptions: defaultsServeur,
+    saved: false,
+    updatedAt: null
+  });
+  vi.mocked(patrimoineService.saveYieldAssumptions).mockImplementation(async (_t, _p, assumptions) => ({
+    assumptions,
+    saved: true,
+    updatedAt: '2026-10-01T00:00:00.000Z'
+  }));
 }
 
 function mount() {
@@ -182,6 +215,7 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 describe('PropertyPatrimoineTab — chargement et rendement', () => {
@@ -205,14 +239,34 @@ describe('PropertyPatrimoineTab — chargement et rendement', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'recalc-yield' }));
     await waitFor(() => {
-      expect(patrimoineService.getPropertyYield).toHaveBeenLastCalledWith('tenant-1', 'property-1', {
-        years: 5,
-        valueGrowthRate: 0.03,
-        rentGrowthRate: 0.02,
-        expenseGrowthRate: 0.02,
-        vacancyRate: 0.04
-      });
+      // Le calcul part avec les hypothèses saisies ET elles sont persistées sur le serveur.
+      expect(patrimoineService.saveYieldAssumptions).toHaveBeenCalledWith('tenant-1', 'property-1', hypothesesRecalcul);
+      expect(patrimoineService.getPropertyYield).toHaveBeenLastCalledWith('tenant-1', 'property-1', hypothesesRecalcul);
     });
+    await waitFor(() => expect(screen.getByTestId('sync-status')).toHaveTextContent('synced'));
+  });
+
+  it('signale « non synchronisé » quand la persistance échoue, sans bloquer le calcul', async () => {
+    mockLoadAll();
+    vi.mocked(patrimoineService.saveYieldAssumptions).mockRejectedValue({ response: { status: 403 } });
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'recalc-yield' }));
+    await waitFor(() => expect(screen.getByTestId('sync-status')).toHaveTextContent('local'));
+    expect(patrimoineService.getPropertyYield).toHaveBeenLastCalledWith('tenant-1', 'property-1', hypothesesRecalcul);
+    expect(screen.getByTestId('yield-projection')).toBeInTheDocument();
+  });
+
+  it('migre au chargement une valeur locale valide quand le serveur n’a rien (un seul PUT)', async () => {
+    mockLoadAll();
+    window.localStorage.setItem(
+      'patrimoine:performance:assumptions:tenant-1:property-1',
+      JSON.stringify(hypothesesRecalcul)
+    );
+    mount();
+    await waitFor(() => {
+      expect(patrimoineService.getPropertyYield).toHaveBeenCalledWith('tenant-1', 'property-1', hypothesesRecalcul);
+    });
+    expect(patrimoineService.saveYieldAssumptions).toHaveBeenCalledTimes(1);
   });
 
   it('conserve les hypothèses de projection après rechargement (BUG-033)', async () => {
@@ -222,17 +276,16 @@ describe('PropertyPatrimoineTab — chargement et rendement', () => {
     await waitFor(() => expect(patrimoineService.getPropertyYield).toHaveBeenCalledTimes(2));
     premier.unmount();
 
-    // « Rechargement » : nouveau montage, le chargement initial reprend les hypothèses.
+    // « Rechargement » : le serveur renvoie désormais la ligne enregistrée.
     vi.mocked(patrimoineService.getPropertyYield).mockClear();
+    vi.mocked(patrimoineService.getYieldAssumptions).mockResolvedValue({
+      assumptions: hypothesesRecalcul,
+      saved: true,
+      updatedAt: '2026-10-01T00:00:00.000Z'
+    });
     mount();
     await waitFor(() => {
-      expect(patrimoineService.getPropertyYield).toHaveBeenCalledWith('tenant-1', 'property-1', {
-        years: 5,
-        valueGrowthRate: 0.03,
-        rentGrowthRate: 0.02,
-        expenseGrowthRate: 0.02,
-        vacancyRate: 0.04
-      });
+      expect(patrimoineService.getPropertyYield).toHaveBeenCalledWith('tenant-1', 'property-1', hypothesesRecalcul);
     });
   });
 

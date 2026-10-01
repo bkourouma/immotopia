@@ -50,6 +50,7 @@ import newsletterRoutes from './routes/newsletter-routes';
 import newsletterPublicRoutes from './routes/newsletter-public-routes';
 import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
+import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
 import coOwnerPortalRoutes from './routes/coowner-portal-routes';
@@ -110,9 +111,17 @@ app.use(
   })
 );
 app.use(compressionMiddleware);
-app.use(express.json({ limit: '10mb' }));
+// Les liens securises publics (lot A3) ont leur propre parseur JSON borne a
+// 1 Ko et leur propre gestion d'erreur de corps (404 uniforme avec en-tetes
+// no-store, sans journaliser le message du parseur) : les parseurs globaux ne
+// retraitent pas ce prefixe. Tout le reste de l'app est inchange.
+const skipSecureLinkPublic =
+  (parser: express.RequestHandler): express.RequestHandler =>
+  (req, res, next) =>
+    req.path.startsWith(`${PUBLIC_SECURE_LINKS_PREFIX}/`) ? next() : parser(req, res, next);
+app.use(skipSecureLinkPublic(express.json({ limit: '10mb' })));
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(skipSecureLinkPublic(express.urlencoded({ extended: true, limit: '10mb' })));
 app.use(passport.initialize());
 
 // Static file serving for uploads
@@ -197,6 +206,10 @@ app.use('/api', whatsappWebhookRoutes);
 // Lot 7 : IPN PaySecureHub + simulateur, publics par nécessité — mêmes
 // raisons que le webhook WhatsApp ci-dessus.
 app.use('/api', paymentGatewayPublicRoutes);
+// Lot A3 : lecture publique d'un rapport par lien securise (jeton dans le corps,
+// limiteur par IP, parseur JSON propre de 1 Ko) — public par nature, monte avant
+// les routeurs d'agence, apres CORS, plancher de debit global et journal de requetes.
+app.use('/api', secureLinkPublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess

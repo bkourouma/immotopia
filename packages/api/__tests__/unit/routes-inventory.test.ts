@@ -116,6 +116,16 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
       'simulee puis relance le rapprochement, qui reste la seule porte qui change un statut.'
   },
   {
+    method: 'POST',
+    test: exact('/api/public/secure-links/owner-monthly-report'),
+    reason:
+      "Rapport mensuel d'un proprietaire lu par son lien securise (lot A3, lib/secure-links) : public par nature, le " +
+      "proprietaire n'a pas de session. Le jeton (32 octets aleatoires, SHA-256 seul en base, expirant, revocable) est " +
+      "dans le corps du POST et designe un unique releve, lu dans l'agence du lien : aucun identifiant d'agence, de bien " +
+      'ou de proprietaire ne vient de la requete. Limiteur par IP avant verification, refus uniforme 404, en-tetes ' +
+      'no-store/noindex, chaque consultation journalisee (SECURE_LINK_VIEWED).'
+  },
+  {
     method: 'GET',
     test: exact('/api/tenants'),
     reason: "Vitrine d'agences : ne renvoie que des champs publics (PUBLIC_TENANT_SELECT dans tenant-service.ts)."

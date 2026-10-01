@@ -52,6 +52,8 @@ fois au CRM et à la gestion locative).
 | Newsletter                           | `NewsletterList`, `NewsletterSubscriber`, `NewsletterCampaign`, `NewsletterCampaignRecipient`, `NewsletterTemplate`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Listes de diffusion et campagnes.                                                                                                                                                                                                                                                                                                                                                              |
 | Documents & audit                    | `AuditLog`, `SavedContactSearch`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Piste d'audit plateforme, recherches sauvegardées.                                                                                                                                                                                                                                                                                                                                             |
 
+**Patrimoine — hypothèses de projection.** `PropertyYieldAssumption` (table `property_yield_assumptions`, spec 029) enregistre les hypothèses de projection d'un bien : `years`, `valueGrowthRate`, `rentGrowthRate`, `expenseGrowthRate`, `vacancyRate` (Decimal(7,4), servis en `number`), `tenantId` direct, `updatedByUserId`. Clé unique `propertyId` : une ligne par bien, écrite par upsert, supprimée en cascade avec le bien ou l'agence.
+
 ## Motifs transverses
 
 ### Scoping par tenant
@@ -137,6 +139,59 @@ rôles, prestataires...) pour un statut actif/inactif simple.
 - `SyndicateStatus`, `MeetingStatus`, `ResolutionResult` : cycle de vie
   d'une assemblée générale de copropriété (voir `docs/README.md` §
   « PR empilées Syndic » pour le contexte récent).
+
+## SecureLink — liens publics à jeton (lot A3, spec 031)
+
+Modèle générique des liens partageables sans compte, ajouté par la spec
+[031](../../specs/031-patrimoine-canaux-liens-securises/spec.md) ; le premier usage est
+le rapport mensuel d'un propriétaire. Il relève du domaine « Documents & audit » ; les
+comptes ci-dessus ne le comptent pas tant que la migration n'est pas fusionnée. Modèle de
+menace : [SECURITY.md](../governance/SECURITY.md), section « 12 bis. Liens publics à jeton ».
+
+| Champ             | Type              | Règle                                                                                                                          |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `id`              | `String` (UUID)   | clé primaire (colonne texte, `@default(uuid())`) ; table `secure_links`                                                        |
+| `tenantId`        | `String`          | agence propriétaire du lien, obligatoire ; relation `Tenant`, `onDelete: Cascade`                                              |
+| `scope`           | `SecureLinkScope` | portée du lien ; une seule valeur aujourd'hui, `OWNER_MONTHLY_REPORT` ; une route n'accepte que sa propre portée               |
+| `objectType`      | `String`          | nom du modèle visé (`"OwnerStatement"`)                                                                                        |
+| `objectId`        | `String`          | identifiant de l'objet visé                                                                                                    |
+| `tokenHash`       | `String` (unique) | SHA-256 du jeton ; **jamais le jeton**                                                                                         |
+| `expiresAt`       | `DateTime`        | 7 jours par défaut (`SECURE_LINK_DEFAULT_TTL_DAYS`), 30 au plus (`SECURE_LINK_MAX_TTL_DAYS`)                                   |
+| `revokedAt`       | `DateTime?`       | posé à la révocation ; la ligne est conservée                                                                                  |
+| `createdByUserId` | `String?`         | utilisateur créateur ; nul pour un lien créé par le job mensuel ; relation `User` `onDelete: SetNull` ; jamais `include: user` |
+| `viewCount`       | `Int` (défaut 0)  | consultations réussies, incrémenté atomiquement                                                                                |
+| `lastViewedAt`    | `DateTime?`       | dernière consultation réussie                                                                                                  |
+| `createdAt`       | `DateTime`        | création                                                                                                                       |
+| `updatedAt`       | `DateTime`        | `@updatedAt`                                                                                                                   |
+
+**Index** : unique sur `tokenHash` (retrouve la ligne depuis le jeton reçu) ; index sur
+`tenantId` ; index sur `(tenantId, objectType, objectId)` (liste des liens d'un relevé) ;
+index sur `expiresAt`. Les colonnes sont en snake_case (`tenant_id`, `token_hash`…) ; le champ
+Prisma reste en camelCase.
+
+**Règles** :
+
+- **Jeton** : 32 octets aléatoires, base64url, renvoyé **une seule fois** à la création ;
+  seul son SHA-256 est stocké. Aucune colonne, aucun journal ni `AuditLog` ne contient le
+  clair (ni le hash). Un jeton oublié ne se relit pas : on en crée un autre.
+- **Pas de clé étrangère polymorphe** : `objectType` + `objectId` sont des chaînes, sans
+  `@relation` vers l'objet visé. Le lien survit donc à l'objet sans contrainte ; la
+  vérification relit l'objet par `id` **et** `tenantId` du lien, et refuse (404 uniforme) si
+  l'objet a disparu. Ajouter une portée = ajouter une valeur à l'enum et une fonction de
+  lecture de l'objet, sans toucher au schéma des modèles visés.
+- **Isolation** : `tenantId` direct, donc gardé automatiquement par l'extension Prisma et
+  vérifié par `schema-tenant-coverage.test.ts`. La recherche par `tokenHash` est la seule
+  lecture faite avant que le contexte d'agence existe ; elle est confinée à
+  `lib/secure-links` (voir SECURITY.md).
+- **Cycle de vie** : actif tant que `revokedAt` est nul et `expiresAt` est futur. Pas de
+  statut stocké : l'état se calcule. Pas de suppression logique générique : `revokedAt`
+  sert d'historique.
+- **Aucune réponse n'expose `tokenHash`** ; les listes d'agence renvoient l'identifiant, la
+  portée, l'objet visé, les dates, `viewCount`, `lastViewedAt` et un état calculé
+  (`ACTIVE`, `EXPIRED`, `REVOKED`).
+- **Hors export d'agence** : `SecureLink` est exclu de l'export de données de l'agence
+  (`services/tenant-data-export/model-registry.ts`), car le hash est un secret d'accès ; les
+  consultations restent dans `AuditLog`.
 
 ## Relations clés (cœur du système)
 

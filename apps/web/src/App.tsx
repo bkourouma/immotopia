@@ -42,6 +42,13 @@ const VerifyEmail = lazy(() =>
 const Login = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Login').then(m => ({ default: m.Login }))
 );
+// Rapport mensuel propriétaire : page publique (lien sécurisé, jeton dans le fragment),
+// hors AppShell et hors ProtectedRoute.
+const OwnerMonthlyReportPage = lazy(() =>
+  import(/* webpackChunkName: "public-report" */ './pages/public/OwnerMonthlyReportPage').then(m => ({
+    default: m.OwnerMonthlyReportPage
+  }))
+);
 const Dashboard = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Dashboard').then(m => ({ default: m.Dashboard }))
 );
@@ -816,6 +823,7 @@ function App() {
                         <Route path="/newsletter/unsubscribe" element={<UnsubscribePage />} />
                         <Route path="/newsletter/confirm" element={<ConfirmPage />} />
                         <Route path="/newsletter/subscribe" element={<SubscribePage />} />
+                        <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}

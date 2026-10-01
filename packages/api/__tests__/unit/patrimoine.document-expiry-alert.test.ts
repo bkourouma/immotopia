@@ -38,6 +38,14 @@ jest.mock('../../src/services/email-notification-config-service', () => ({
   getEmailNotificationConfig: (...a: any[]) => getEmailNotificationConfig(...a)
 }));
 
+// Canal WhatsApp des alertes proprietaire (lot A3) : coupe par defaut dans ces
+// tests, centres sur le canal e-mail ; le routage par canal a son propre test
+// (`patrimoine.notification-channels.test.ts`).
+const getWhatsappNotificationConfig = jest.fn();
+jest.mock('../../src/services/whatsapp-notification-config-service', () => ({
+  getWhatsappNotificationConfig: (...a: any[]) => getWhatsappNotificationConfig(...a)
+}));
+
 const sendEmail = jest.fn();
 jest.mock('../../src/services/email-service', () => ({
   emailService: { sendEmail: (...a: any[]) => sendEmail(...a) }
@@ -82,6 +90,7 @@ function mockEligibleOwner(overrides: Partial<{ consentEmail: boolean | null; em
 
 beforeEach(() => {
   jest.clearAllMocks();
+  getWhatsappNotificationConfig.mockResolvedValue({ enabled: false });
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   propertyDocumentUpdateMany.mockResolvedValue({ count: 1 });
   sendEmail.mockResolvedValue(undefined);

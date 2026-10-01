@@ -479,6 +479,7 @@ model User {
   userRoles           UserRole[]
   invitations         Invitation[] @relation("InvitedBy")
   acceptedInvitations Invitation[] @relation("AcceptedBy")
+  createdSecureLinks  SecureLink[] @relation("SecureLinkCreatedBy")
   lastLoginAt         DateTime?    @map("last_login_at")
 
   // CRM relationships
@@ -600,6 +601,7 @@ model Tenant {
   subscription Subscription?
   invoices     Invoice[]
   invitations  Invitation[]
+  secureLinks  SecureLink[]
 
   // Abonnements par packs (PLAN-ABONNEMENTS.md)
   subscriptionItems SubscriptionItem[]
@@ -729,6 +731,7 @@ model Tenant {
   holdingEntities          HoldingEntity[]
   propertyHoldings         PropertyHolding[]
   propertyTaxProfiles      PropertyTaxProfile[]
+  propertyYieldAssumptions PropertyYieldAssumption[]
   cashSessions             CashSession[]
   treasuryAccounts         TreasuryAccount[]
   treasuryTransfers        TreasuryTransfer[]
@@ -993,6 +996,41 @@ model Invitation {
   @@index([status])
   @@index([expiresAt])
   @@map("invitations")
+}
+
+/// Portee d'un lien securise (lib/secure-links). Une valeur par usage public ;
+/// les lots suivants (paiement par lien, tiers de confiance) en ajouteront.
+enum SecureLinkScope {
+  OWNER_MONTHLY_REPORT
+}
+
+/// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
+///
+/// Le jeton en clair n'est JAMAIS stocke : seul son SHA-256 hexadecimal l'est
+/// (comme `Invitation.tokenHash`). `objectType`/`objectId` designent l'objet
+/// vise sans cle etrangere (le type depend de la portee).
+model SecureLink {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  scope           SecureLinkScope
+  objectType      String          @map("object_type")
+  objectId        String          @map("object_id")
+  tokenHash       String          @unique @map("token_hash")
+  expiresAt       DateTime        @map("expires_at")
+  revokedAt       DateTime?       @map("revoked_at")
+  createdByUserId String?         @map("created_by_user_id")
+  viewCount       Int             @default(0) @map("view_count")
+  lastViewedAt    DateTime?       @map("last_viewed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("SecureLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, objectType, objectId])
+  @@index([expiresAt])
+  @@map("secure_links")
 }
 
 // Subscription
@@ -1842,6 +1880,7 @@ model Property {
   // PATRIMOINE — Lot P4
   holdings            PropertyHolding[]
   taxProfile          PropertyTaxProfile?
+  yieldAssumption     PropertyYieldAssumption?
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
@@ -8303,6 +8342,28 @@ model PropertyTaxProfile {
 
   @@index([tenantId])
   @@map("property_tax_profiles")
+}
+
+/// Hypotheses de projection d'un bien detenu (Patrimoine, spec 029) : une ligne
+/// par bien, posee par l'agence ; absente = valeurs par defaut du serveur.
+model PropertyYieldAssumption {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id")
+  propertyId        String   @unique @map("property_id")
+  years             Int
+  valueGrowthRate   Decimal  @map("value_growth_rate") @db.Decimal(7, 4)
+  rentGrowthRate    Decimal  @map("rent_growth_rate") @db.Decimal(7, 4)
+  expenseGrowthRate Decimal  @map("expense_growth_rate") @db.Decimal(7, 4)
+  vacancyRate       Decimal  @map("vacancy_rate") @db.Decimal(7, 4)
+  updatedByUserId   String?  @map("updated_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("property_yield_assumptions")
 }
 
 /// GLOBAL (plateforme, sans agence) : référentiel fiscal versionné par pays et par année,

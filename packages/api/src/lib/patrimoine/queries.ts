@@ -942,7 +942,11 @@ export async function buildPropertyYieldInput(tenantId: string, propertyId: stri
     costBasis,
     annualExpenses,
     annualLoanPayments,
-    loans
+    loans,
+    // Ratios bancaires (DSCR, LTV, cash-on-cash) : prets ACTIFS seulement.
+    loanRemainingCapital: activeLoans.reduce((sum, loan) => sum + Number(loan.remainingCapital), 0),
+    loanInitialCapital: activeLoans.reduce((sum, loan) => sum + Number(loan.capitalAmount), 0),
+    hasActiveLoan: activeLoans.length > 0
   };
 }
 

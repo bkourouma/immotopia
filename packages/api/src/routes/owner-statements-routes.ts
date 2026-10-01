@@ -12,6 +12,13 @@ import {
   updateOwnerStatementHandler
 } from '../controllers/owner-statements-controller';
 
+import {
+  createOwnerStatementSecureLinkHandler,
+  listOwnerStatementSecureLinksHandler,
+  revokeOwnerStatementSecureLinkHandler,
+  sendOwnerMonthlyReportHandler
+} from '../controllers/owner-statement-secure-links-controller';
+
 import { requireThirdPartyAllowed } from '../services/own-assets-barrier-service';
 
 const router = Router();
@@ -51,6 +58,28 @@ router.post(
   '/tenants/:tenantId/owner-statements/:statementId/send',
   requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
   sendOwnerStatementHandler
+);
+// Rapport mensuel du proprietaire (lot A3) : liens securises en lecture seule
+// vers le releve, et envoi par le meilleur canal (WhatsApp ou e-mail).
+router.post(
+  '/tenants/:tenantId/owner-statements/:statementId/secure-links',
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
+  createOwnerStatementSecureLinkHandler
+);
+router.get(
+  '/tenants/:tenantId/owner-statements/:statementId/secure-links',
+  requireAnyPropertyPermission(['OWNER_STATEMENTS_VIEW']),
+  listOwnerStatementSecureLinksHandler
+);
+router.delete(
+  '/tenants/:tenantId/owner-statements/:statementId/secure-links/:linkId',
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
+  revokeOwnerStatementSecureLinkHandler
+);
+router.post(
+  '/tenants/:tenantId/owner-statements/:statementId/send-monthly-report',
+  requirePropertyPermission('OWNER_STATEMENTS_EDIT'),
+  sendOwnerMonthlyReportHandler
 );
 
 export default router;
