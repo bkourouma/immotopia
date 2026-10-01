@@ -1332,5 +1332,8 @@
   "Trop de requêtes. Veuillez réessayer dans une minute.": "طلبات كثيرة جدًا. يرجى المحاولة مجددًا بعد دقيقة.",
   "La date de fin de la periodicite ne peut pas preceder la date de la depense": "لا يمكن أن يسبق تاريخ نهاية الدورية تاريخ النفقة",
   "La date de fin n'a de sens que pour une depense periodique": "لا معنى لتاريخ النهاية إلا للنفقة الدورية",
-  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "يجب أن يكون تاريخ النفقة الدورية تاريخ دفعة تمت بالفعل"
+  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "يجب أن يكون تاريخ النفقة الدورية تاريخ دفعة تمت بالفعل",
+  "Cette échéance est annulée.": "هذا القسط ملغى.",
+  "Cette échéance est déjà soldée.": "تمت تسوية هذا القسط بالفعل.",
+  "Le bail de cette échéance n'est pas actif.": "عقد الإيجار الخاص بهذا القسط غير ساري."
 }

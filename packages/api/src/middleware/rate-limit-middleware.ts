@@ -160,6 +160,47 @@ export const secureLinkPublicRateLimiter = rateLimit({
 });
 
 /**
+ * Demarrage d'un paiement par lien securise (spec 039) : plus strict que la
+ * consultation (10/min/IP), car chaque appel peut creer un paiement chez
+ * l'agregateur. Cle distincte, memes en-tetes anti-cache sur la 429, passe
+ * avant toute verification du jeton.
+ */
+export const secureLinkPaymentStartRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `secure-link-payment-start:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Statut d'un paiement par lien securise (spec 039) : la page de statut
+ * interroge toutes les 3 s (20/min), donc seau dedie de 90/min/IP (marge pour
+ * un NAT mobile), distinct de `secure-link:<ip>`. Memes en-tetes sur la 429.
+ */
+export const secureLinkStatusRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 90,
+  keyGenerator: req => `secure-link-status:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Baseline limiter applied to the whole API.
  * Sized well above normal single-user traffic; the per-endpoint limiters above
  * remain the tight ones on sensitive routes.

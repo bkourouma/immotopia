@@ -1332,5 +1332,8 @@
   "Trop de requêtes. Veuillez réessayer dans une minute.": "Too many requests. Please try again in a minute.",
   "La date de fin de la periodicite ne peut pas preceder la date de la depense": "The end date of the recurrence cannot be earlier than the expense date",
   "La date de fin n'a de sens que pour une depense periodique": "An end date only makes sense for a recurring expense",
-  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "The date of a recurring expense must be that of a payment already made"
+  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "The date of a recurring expense must be that of a payment already made",
+  "Cette échéance est annulée.": "This installment is canceled.",
+  "Cette échéance est déjà soldée.": "This installment is already settled.",
+  "Le bail de cette échéance n'est pas actif.": "The lease for this installment is not active."
 }

@@ -49,6 +49,18 @@ const OwnerMonthlyReportPage = lazy(() =>
     default: m.OwnerMonthlyReportPage
   }))
 );
+// Paiement d'un loyer par lien sécurisé (spec 039) : pages publiques, sans session,
+// hors AppShell et hors ProtectedRoute ; chunks lazy, rien dans le budget d'entrée.
+const InstallmentPaymentPage = lazy(() =>
+  import(/* webpackChunkName: "public-payment" */ './pages/public/InstallmentPaymentPage').then(m => ({
+    default: m.InstallmentPaymentPage
+  }))
+);
+const InstallmentPaymentStatusPage = lazy(() =>
+  import(/* webpackChunkName: "public-payment" */ './pages/public/InstallmentPaymentStatusPage').then(m => ({
+    default: m.InstallmentPaymentStatusPage
+  }))
+);
 const Dashboard = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Dashboard').then(m => ({ default: m.Dashboard }))
 );
@@ -824,6 +836,8 @@ function App() {
                         <Route path="/newsletter/confirm" element={<ConfirmPage />} />
                         <Route path="/newsletter/subscribe" element={<SubscribePage />} />
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
+                        <Route path="/payer" element={<InstallmentPaymentPage />} />
+                        <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}

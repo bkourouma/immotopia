@@ -158,6 +158,13 @@ serveur-à-serveur limite l'impact d'une IPN forgée (elle ne peut que
 déclencher une vérification, jamais imposer un statut), mais n'empêche pas
 un tiers de provoquer des appels superflus vers l'agrégateur.
 
+Le **lien de paiement d'une échéance** (spec 039) ne change rien à ce modèle : il crée les
+checkouts, l'IPN et la réconciliation les confirment. L'URL de retour du fournisseur pointe sur la
+page publique `/payer/statut?paiement=<code>`, qui interroge la route de statut
+(`POST /api/public/secure-links/installment-payment/status`) ; cette route réconcilie
+serveur à serveur et ne croit jamais l'URL de retour. La création concurrente de checkouts pour une
+même échéance est sérialisée par un verrou consultatif PostgreSQL, qui relit le reste dû sous le verrou (voir « 12 bis »). La route de statut a son propre limiteur (90 par minute et par IP) et réserve la réconciliation par une écriture atomique de `lastCheckedAt`.
+
 ## 7. Assainissement des entrées
 
 - Validation Zod en entrée de la quasi-totalité des routes récentes
@@ -511,9 +518,11 @@ Un lien public donne accès **sans compte** à un objet précis : celui qui poss
 est, pour le serveur, le destinataire. Le module générique `lib/secure-links` (spec
 [031](../../specs/031-patrimoine-canaux-liens-securises/spec.md), modèle `SecureLink` dans
 [DATA_MODELS.md](../architecture/DATA_MODELS.md)) en porte le premier usage, le rapport
-mensuel d'un propriétaire, et celui des lots suivants (paiement par lien, tiers de
-confiance). Toute nouvelle route publique à jeton réutilise ce module et ses mesures ;
-une route qui accepterait un jeton autrement est refusée en relecture.
+mensuel d'un propriétaire, le paiement d'une échéance de loyer (spec
+[039](../../specs/039-patrimoine-lien-paiement/spec.md), sous-section « Lien de paiement
+d'une échéance » ci-dessous) et celui des lots suivants (tiers de confiance). Toute nouvelle
+route publique à jeton réutilise ce module et ses mesures ; une route qui accepterait un
+jeton autrement est refusée en relecture.
 
 **Mécanisme.** Jeton de 32 octets aléatoires (`crypto.randomBytes`), base64url, renvoyé
 une seule fois à la création ; seul son SHA-256 est stocké (`SecureLink.tokenHash`,
@@ -560,7 +569,11 @@ reste de la requête passe par l'extension Prisma d'isolation (`TENANT_GUARD_MOD
 3. Réponse publique par projection explicite (`select`), sans coordonnées de contact, sans
    chemin de fichier, sans identifiant technique.
 4. Lecture seule d'abord. Un lien qui déclenche une écriture (paiement) exige un lot et une
-   relecture de sécurité propres.
+   relecture de sécurité propres : le lot C5 (spec
+   [039](../../specs/039-patrimoine-lien-paiement/spec.md), portée `INSTALLMENT_PAYMENT`) est ce
+   lot pour le paiement d'une échéance ; ses mesures sont dans la sous-section « Lien de
+   paiement d'une échéance ». Toute autre écriture déclenchée par un lien public exige son
+   propre lot.
 5. Route inscrite à la liste blanche de `routes-inventory.test.ts` avec sa justification,
    limiteur de débit, trois en-têtes de réponse ci-dessus, refus uniforme testé.
 
@@ -609,6 +622,63 @@ ne doit pas le contenir.
   boîte du destinataire) ; l'expiration courte est la parade.
 - La révocation automatique à la suppression de l'objet et la ré-émission d'un lien
   expiré ne sont pas prévues (spec 031, points ouverts).
+
+### Lien de paiement d'une échéance
+
+Portée `INSTALLMENT_PAYMENT` (lot C5, spec [039](../../specs/039-patrimoine-lien-paiement/spec.md)) :
+un `SecureLink` désigne **une** échéance de loyer (`objectType = "RentalInstallment"`) ; son
+porteur peut lancer le paiement Mobile Money de cette échéance et en lire le statut, sans compte.
+C'est la première portée publique qui **écrit** (un `RentalPayment` `PENDING` et un
+`OnlinePaymentCheckout`). Mécanisme, jeton, refus uniforme, limiteur et en-têtes : ceux de ce
+paragraphe 12 bis, inchangés. URL partagée `/payer#<jeton>` ; page de statut
+`/payer/statut?paiement=<codePaiement>`. Routes publiques : `POST
+/api/public/secure-links/installment-payment`, `…/start` (10 par minute et par IP) et
+`…/status` (90 par minute et par IP, limiteur distinct ; consultation à 30 par minute), avec le
+jeton ou le code **en corps**.
+
+| Menace propre au paiement                     | Mesure retenue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Montant choisi par l'appelant                 | Le montant n'est ni dans le lien ni dans le corps : seuls `token` et `codePaiement` sont lus. Le reste dû est **recalculé côté serveur** (`resteDuEcheance`, pénalités comprises) à chaque ouverture et à chaque démarrage ; le checkout est créé avec ce montant. Aucun identifiant (agence, bail, échéance, locataire) n'est accepté de l'appelant                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Double paiement, course entre deux ouvertures | **Verrou consultatif** `pg_advisory_xact_lock` (clé dérivée de l'agence et des échéances) dans la transaction de création, **sur le chemin « lien » seulement** ; configuration chargée avant la transaction, toutes les lectures sous verrou passent par `tx`. Ordre sous verrou : checkouts chevauchants, puis échéances et reste dû (relus sous le verrou : pas de TOCTOU côté lien). Un seul checkout actif par échéance : reprise d'un unique `PENDING` exact (moins de 15 minutes, issu d'un lien, même mode, mêmes échéances et montant, URL enregistrée) ; 409 sinon (autres échéances, autre montant, `PENDING` du portail, première requête encore en attente du fournisseur) ; **tout checkout `REVIEW` bloque, sans limite d'âge**, avec un message dédié. Le verrou n'est jamais tenu pendant l'appel réseau au fournisseur |
+| Rejeu après paiement, révocation, expiration  | À chaque appel : jeton, portée, agence active, bail `ACTIVE`, échéance non annulée, reste dû > 0. Un paiement confirmé rend le lien inopérant (404 uniforme) sans le révoquer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Redirection ouverte                           | L'URL de paiement est `checkout.checkoutUrl`, fournie par PaySecureHub ou le simulateur : jamais construite depuis une entrée de l'appelant. Le **serveur la normalise et la valide avant de la stocker** (`normalizeProviderCheckoutUrl` : `https` exigé, `http` seulement en `SIMULATOR` vers `localhost`, `127.0.0.1` ou `[::1]`, userinfo et espaces refusés) : une URL refusée n'est jamais stockée (paiement et checkout `FAILED`, 502). Elle est revalidée au démarrage, puis la page refait le contrôle avant de rediriger. L'URL de retour est construite côté serveur (`FRONTEND_URL`)                                                                                                                                                                                                                                         |
+| Fuite de données du locataire                 | Réponse publique **minimale**, par projection explicite : agence, période, échéance, montant, moyens de paiement ; ni nom, ni e-mail, ni téléphone, ni identifiant technique                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Statut par code de paiement                   | `/status` ne répond que pour un checkout issu d'un lien (`secureLinkId` non nul) d'une agence non suspendue ; code imprévisible (`IMT-` + 20 alphanumériques aléatoires), format validé avant lecture, **lecture seule** (ni démarrage, ni annulation) ; refus uniforme sinon. Limiteur dédié (90 par minute et par IP) ; réconciliation réservée par écriture atomique de `lastCheckedAt` (un seul appel fournisseur par fenêtre de 10 s). La page efface le code de l'URL, ne le garde qu'en `sessionStorage` de l'onglet (effacé sur réponse terminale) et **ne prend jamais le paramètre d'URL pour une preuve de paiement** : le statut vient du serveur, qui réconcilie auprès de l'agrégateur                                                                                                                                     |
+| IPN falsifiée                                 | **Inchangée** (voir §6) : l'IPN ne fait que déclencher une réconciliation serveur à serveur avec la clé de l'agence ; le lot n'ajoute aucune route d'IPN et ne touche ni `reconcileCheckout*` ni le simulateur                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Mode `LIVE` en recette                        | Aucun mode `LIVE` n'est activé ni testé par le lot ; le mode est celui de la configuration de l'agence, jamais choisi par le lien ; la recette passe par `SIMULATOR`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Envoi du lien au mauvais destinataire         | Destinataire lu sur la fiche CRM du locataire du bail (rapprochement déterministe : la plus ancienne en cas de doublon d'e-mail), jamais fourni ; consentement du canal et coordonnée exploitable ; un seul canal par message ; WhatsApp opt-in ; l'URL dans le corps, jamais dans un sujet (un `subjectOverride` d'e-mail ne reçoit aucune variable d'URL) ni un journal ; aucun lien conservé si rien n'est envoyé                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+**Permission côté agence.** Création, envoi et révocation exigent `RENTAL_PAYMENTS_CREATE`, la
+liste `RENTAL_PAYMENTS_VIEW` (aucune permission nouvelle : le lien déclenche la création d'un
+paiement locatif). Un lien ou une échéance d'une autre agence lève la même `NotFoundError` qu'un
+objet inexistant.
+
+**Journal.** Aux événements `SECURE_LINK_*` s'ajoutent `SECURE_LINK_PAYMENT_STARTED` (démarrage,
+créé ou repris) et `RENTAL_PAYMENT_LINK_SENT` (envoi : canal, `linkId`, `installmentId`) ; jamais
+le jeton, l'URL du lien ni l'URL de paiement. Un checkout issu d'un lien porte `secureLinkId` ; le
+paiement et le checkout portent comme acteur (`created_by_user_id`) l'agent qui a créé le lien : c'est
+la traçabilité réelle de l'origine du paiement (l'audit de démarrage n'a pas d'acteur, le locataire
+n'ayant pas de compte).
+
+**Limites connues.** Un lien divulgué permet à son porteur de **payer** cette échéance (rien
+d'autre) jusqu'à expiration ou révocation. Pas de révocation automatique des liens précédents de
+la même échéance (le verrou évite néanmoins plusieurs checkouts actifs). Limiteurs de débit en
+mémoire, par instance (30, 10 et 90 par minute), alors que le verrou consultatif est partagé entre
+instances. **Le chemin du portail locataire ne prend pas le verrou** : un paiement lancé depuis le
+portail et un autre depuis un lien, au même instant, sur la même échéance restent possibles (un
+`PENDING` du portail déjà présent donne 409 au lien, sans reprise). Un second lien de la même échéance
+qui reprend le checkout du premier affiche « aucun paiement » dans la liste de l'agence (jointure par
+`secureLinkId`). **Un checkout `REVIEW` n'est pas repris par la tâche planifiée** : seul le bouton
+« Vérifier » de l'agence ou un règlement manuel le résout, et il bloque tous les liens de l'échéance
+(le locataire voit « contactez votre agence ») ; **point ouvert** à décider : action « trancher un
+`REVIEW` » et borne d'âge. **Pas de liste blanche d'hôtes** pour l'URL du fournisseur ; en simulateur, un
+`BACKEND_URL` en `http` sur un hôte non local est refusé (le staging sert le simulateur en `https`).
+Pas de paiement partiel ; une échéance par lien. Au-delà de 15 minutes, un nouveau checkout peut être
+créé alors que l'ancien reste `PENDING` (48 h) : un double règlement tardif est confirmé par la
+réconciliation existante, le surplus restant en avance sur le compte du locataire. Durée de validité
+d'un lien `build-away` non utilisé inconnue (point 7 de
+[paysecurehub.md](../integrations/paysecurehub.md)). **Mode `LIVE` non validé** et envoi réel non
+vérifié.
 
 ## 13. Points ouverts
 

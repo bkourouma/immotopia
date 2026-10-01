@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, Row, Col, Tag, Typography, Spin, Alert, Descriptions, Space } from 'antd';
 import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design/icons';
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
+import { InstallmentPaymentLinksPanel } from '../../components/rental/InstallmentPaymentLinksPanel';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -184,6 +185,16 @@ export const InstallmentDetailPage: React.FC = () => {
             </Card>
           </Col>
         </Row>
+
+        {tenantId && installmentId && (
+          <InstallmentPaymentLinksPanel
+            tenantId={tenantId}
+            installmentId={installmentId}
+            remaining={remaining}
+            status={installment.status}
+            periodLabel={`${installment.period_month}/${installment.period_year}`}
+          />
+        )}
       </Space>
     </>
   );

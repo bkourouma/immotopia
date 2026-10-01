@@ -51,7 +51,8 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'LOAN_MATURITY_ALERT',
   'DOCUMENT_EXPIRY_ALERT',
   'WORK_PROGRAM_REMINDER',
-  'OWNER_MONTHLY_REPORT_SENT'
+  'OWNER_MONTHLY_REPORT_SENT',
+  'RENTER_PAYMENT_LINK_SENT'
 ] as const;
 
 export type EmailNotificationKey = (typeof EMAIL_NOTIFICATION_KEYS)[number];
@@ -295,6 +296,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       'Envoi au propriétaire du lien sécurisé vers son rapport mensuel (lecture seule, durée limitée), lorsque le canal e-mail est retenu.',
     recipientLabel: 'Propriétaire'
+  },
+  RENTER_PAYMENT_LINK_SENT: {
+    key: 'RENTER_PAYMENT_LINK_SENT',
+    label: 'Lien de paiement du loyer',
+    description:
+      "Envoi au locataire d'un lien sécurisé pour régler son loyer en ligne par Mobile Money (durée limitée, révocable), lorsque le canal e-mail est retenu.",
+    recipientLabel: 'Locataire'
   },
   INVITATION: {
     key: 'INVITATION',
