@@ -36,6 +36,12 @@ for script in deploy make-env set-google-oauth set-email-smtp backup bootstrap p
     if [[ "$rc" == "2" ]]; then ok "$script.sh '${arg}' -> usage (2)"; else ko "$script.sh '${arg}' devrait sortir en 2, code $rc"; fi
   done
 done
+# seed-pack-tests : seul `staging` est accepte ; `prod` est refuse (code 2) avant toute action.
+for arg in "" "dev" "prod" "production"; do
+  rc=0
+  bash infra/scripts/seed-pack-tests.sh $arg >/dev/null 2>&1 || rc=$?
+  if [[ "$rc" == "2" ]]; then ok "seed-pack-tests.sh '${arg}' -> refus (2)"; else ko "seed-pack-tests.sh '${arg}' devrait sortir en 2, code $rc"; fi
+done
 rc=0; bash infra/scripts/restore-check.sh >/dev/null 2>&1 || rc=$?
 [[ "$rc" == "2" ]] && ok "restore-check.sh sans argument -> usage (2)" || ko "restore-check.sh sans argument devrait sortir en 2, code $rc"
 
