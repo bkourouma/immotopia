@@ -22,7 +22,8 @@ export async function getTemplateByType(propertyType: PropertyType): Promise<Pro
     propertyType: template.propertyType,
     name: template.name,
     description: template.description || undefined,
-    fieldDefinitions: template.fieldDefinitions as PropertyField[],
+    // Colonne JSON : le contenu est écrit par le seed/l'admin au format PropertyField[].
+    fieldDefinitions: template.fieldDefinitions as unknown as PropertyField[],
     sections: template.sections as any,
     validationRules: template.validationRules as Record<string, any>
   };
@@ -123,7 +124,8 @@ export async function getAllTemplates(): Promise<PropertyTemplate[]> {
     propertyType: template.propertyType,
     name: template.name,
     description: template.description || undefined,
-    fieldDefinitions: template.fieldDefinitions as PropertyField[],
+    // Colonne JSON : le contenu est écrit par le seed/l'admin au format PropertyField[].
+    fieldDefinitions: template.fieldDefinitions as unknown as PropertyField[],
     sections: template.sections as any,
     validationRules: template.validationRules as Record<string, any>
   }));

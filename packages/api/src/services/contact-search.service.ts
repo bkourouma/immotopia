@@ -4,7 +4,7 @@
  */
 
 import { toCsvString } from '../lib/csv';
-import { Prisma } from '@prisma/client';
+import { Prisma, type JobStability, type CrmActivityType } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { NotFoundError, ForbiddenError, BadRequestError } from '../middleware/error-middleware';
 
@@ -189,7 +189,8 @@ function buildWhereClause(tenantId: string, filters: ContactSearchFilters): Pris
     and.push({ sectorOfActivity: { in: filters.sectorsOfActivity } });
   }
   if (filters.jobStabilities?.length) {
-    and.push({ jobStability: { in: filters.jobStabilities } });
+    // Cast ciblé : le filtre arrive en string[] depuis la requête, les valeurs sont celles de l'enum Prisma.
+    and.push({ jobStability: { in: filters.jobStabilities as JobStability[] } });
   }
 
   if (filters.incomeMin !== undefined || filters.incomeMax !== undefined) {
@@ -219,7 +220,7 @@ function buildWhereClause(tenantId: string, filters: ContactSearchFilters): Pris
     and.push({ paymentIncidentsCount: inc });
   }
 
-  const activeDealStageFilter = { notIn: ['WON', 'LOST'] as const };
+  const activeDealStageFilter: Prisma.EnumCrmDealStageFilter = { notIn: ['WON', 'LOST'] };
 
   if (filters.dealTypes?.length) {
     and.push({
@@ -335,7 +336,8 @@ function buildWhereClause(tenantId: string, filters: ContactSearchFilters): Pris
       occurredAt: { gte: dateThreshold }
     };
     if (filters.activityTypes?.length) {
-      activityWhere.activityType = { in: filters.activityTypes };
+      // Cast ciblé : string[] reçu de la requête, les valeurs sont celles de l'enum Prisma.
+      activityWhere.activityType = { in: filters.activityTypes as CrmActivityType[] };
     }
     and.push({ activities: { some: activityWhere } });
   }
@@ -462,7 +464,7 @@ export async function searchContacts(
 }
 
 export async function getFieldSuggestions(tenantId: string, field: string, query?: string): Promise<string[]> {
-  const fieldMap: Record<string, keyof Prisma.CrmContactScalarFieldEnum> = {
+  const fieldMap: Record<string, Prisma.CrmContactScalarFieldEnum> = {
     profession: 'profession',
     sectorOfActivity: 'sectorOfActivity',
     city: 'city',

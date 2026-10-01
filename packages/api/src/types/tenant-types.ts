@@ -11,7 +11,7 @@ export enum TenantStatus {
 }
 
 // Extended Tenant with relationships
-export interface TenantDetail extends Tenant {
+export interface TenantDetail extends Omit<Tenant, 'lastActivityAt'> {
   modules?: TenantModule[];
   subscription?: Subscription | null;
   invoices?: Invoice[];

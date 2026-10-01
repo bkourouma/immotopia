@@ -24,6 +24,7 @@ import {
 } from '@prisma/client';
 import { getDeposit, listDepositMovements } from './rental-deposit-service';
 import { createTicket, getTicketById } from './maintenance-ticket-service';
+import type { CreateTicketRequest } from '../types/maintenance-types';
 import { uploadAttachment } from './maintenance-attachment-service';
 import { addComment } from './maintenance-comment-service';
 import { getDocumentFile } from './document-generation-service';
@@ -33,11 +34,7 @@ import {
   tenantPortalTicketFilter
 } from '../lib/maintenance/portal-visibility';
 import { NotFoundError } from '../middleware/error-middleware';
-import {
-  PORTAL_RENTAL_DOCUMENT_SELECT,
-  toPortalAttachment,
-  toPortalRentalDocument
-} from '../lib/files/portal-files';
+import { PORTAL_RENTAL_DOCUMENT_SELECT, toPortalAttachment, toPortalRentalDocument } from '../lib/files/portal-files';
 
 export class TenantPortalService {
   /**
@@ -836,7 +833,7 @@ export class TenantPortalService {
       amount: number;
       paymentDate: string;
       paymentMethod: string;
-      transactionPhone: string;
+      transactionPhone?: string;
       mobileOperator?: string;
       reference?: string;
       installmentId?: string;
@@ -1522,8 +1519,10 @@ export class TenantPortalService {
         propertyId: lease.property.id,
         leaseId: leaseId,
         title: data.title,
-        category: data.category,
-        priority: data.priority,
+        // Cast ciblé : le validateur du portail laisse `category` en chaîne libre ;
+        // la valeur est transmise telle quelle, comme avant (validation inchangée).
+        category: data.category as CreateTicketRequest['category'],
+        priority: data.priority as CreateTicketRequest['priority'],
         description: data.description,
         locationDetails: data.locationDetails
       };

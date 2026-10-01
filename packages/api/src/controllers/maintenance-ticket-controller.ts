@@ -60,10 +60,14 @@ export async function createTicketHandler(req: Request, res: Response): Promise<
     const actorUserId = req.user?.userId;
 
     // Get tenant contact ID from request (could be from body, params, or user context)
+    // Cast ciblé : `tenantContext` n'existe pas sur le type de `req.user` (il est
+    // sur `req.tenantContext`). Lecture conservée à l'identique pour ne pas
+    // changer le comportement ; à revoir séparément.
+    const utilisateurAvecContexte = req.user as { userId: string; tenantContext?: { isClient?: boolean } } | undefined;
     const actorContactId =
       req.body.tenantContactId ||
       req.params.tenantContactId ||
-      (req.user?.tenantContext?.isClient ? req.user.userId : undefined);
+      (utilisateurAvecContexte?.tenantContext?.isClient ? utilisateurAvecContexte.userId : undefined);
 
     // Validate request body
     const validatedData = createTicketSchema.parse(req.body);

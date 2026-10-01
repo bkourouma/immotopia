@@ -72,7 +72,8 @@ export async function createActivity(tenantId: string, data: CreateActivityReque
   const activity = await prisma.crmActivity.create({
     data: {
       tenantId,
-      contactId: data.contactId || null,
+      // contactId est vérifié non vide plus haut (BadRequestError) et obligatoire en base.
+      contactId: data.contactId,
       dealId: data.dealId || null,
       activityType: data.activityType,
       direction: data.direction || null,

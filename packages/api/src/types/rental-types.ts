@@ -138,10 +138,12 @@ export interface CreateLeaseRequest {
   ownerContactId?: string;
   startDate: Date;
   endDate?: Date;
-  billingFrequency: RentalBillingFrequency;
-  dueDayOfMonth: number;
+  // Optionnels : le schéma zod les laisse optionnels et `createLease` applique
+  // ses valeurs par défaut (MONTHLY, 1, 0).
+  billingFrequency?: RentalBillingFrequency;
+  dueDayOfMonth?: number;
   currency?: string;
-  rentAmount: number;
+  rentAmount?: number;
   serviceChargeAmount?: number;
   securityDepositAmount?: number;
   penaltyGraceDays?: number;

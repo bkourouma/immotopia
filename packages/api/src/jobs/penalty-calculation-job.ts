@@ -37,7 +37,6 @@ export function startPenaltyCalculationJob() {
       }
     },
     {
-      scheduled: true,
       timezone: 'UTC' // Adjust timezone as needed
     }
   );
