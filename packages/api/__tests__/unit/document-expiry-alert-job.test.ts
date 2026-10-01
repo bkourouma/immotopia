@@ -24,6 +24,8 @@ const crmContactFindMany = jest.fn();
 const rentalLeaseFindMany = jest.fn();
 const propertyLoanFindMany = jest.fn();
 const workProgramFindMany = jest.fn();
+const insurancePolicyFindMany = jest.fn();
+const maintenanceLogEntryFindMany = jest.fn();
 const auditLogFindMany = jest.fn();
 const tenantFindUnique = jest.fn();
 const roleFindUnique = jest.fn();
@@ -58,6 +60,12 @@ jest.mock('../../src/utils/database', () => ({
     },
     workProgram: {
       findMany: (...a: any[]) => workProgramFindMany(...a)
+    },
+    insurancePolicy: {
+      findMany: (...a: any[]) => insurancePolicyFindMany(...a)
+    },
+    maintenanceLogEntry: {
+      findMany: (...a: any[]) => maintenanceLogEntryFindMany(...a)
     },
     auditLog: {
       findMany: (...a: any[]) => auditLogFindMany(...a)
@@ -136,6 +144,8 @@ beforeEach(() => {
   rentalLeaseFindMany.mockResolvedValue([]);
   propertyLoanFindMany.mockResolvedValue([]);
   workProgramFindMany.mockResolvedValue([]);
+  insurancePolicyFindMany.mockResolvedValue([]);
+  maintenanceLogEntryFindMany.mockResolvedValue([]);
   auditLogFindMany.mockResolvedValue([]);
   tenantFindUnique.mockResolvedValue({ name: 'Agence', contactEmail: null });
   roleFindUnique.mockResolvedValue(null);

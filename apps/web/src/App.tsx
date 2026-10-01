@@ -90,6 +90,9 @@ const WorkProgramsPage = lazy(() =>
     default: m.WorkProgramsPage
   }))
 );
+const InsuranceClaimsPage = lazy(
+  () => import(/* webpackChunkName: "patrimoine" */ './pages/insurance/InsuranceClaimsPage')
+);
 const OwnerStatementsPage = lazy(() =>
   import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/statements/OwnerStatementsPage').then(m => ({
     default: m.OwnerStatementsPage
@@ -888,6 +891,7 @@ function App() {
                             element={<PatrimoinePerformancePage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/work-programs" element={<WorkProgramsPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/claims" element={<InsuranceClaimsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/statements" element={<OwnerStatementsPage />} />
                           <Route
                             path="/tenant/:tenantId/patrimoine/statements/:id"

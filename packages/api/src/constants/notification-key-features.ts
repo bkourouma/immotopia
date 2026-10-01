@@ -41,6 +41,7 @@ export const NOTIFICATION_KEY_FEATURES: Readonly<Record<string, Feature>> = {
   COMMON_AREA_INCIDENT: 'SYNDIC',
   // Patrimoine (alertes d'échéance et rapport mensuel du propriétaire inclus)
   LOAN_MATURITY_ALERT: 'PATRIMOINE',
+  INSURANCE_DEADLINE_ALERT: 'PATRIMOINE',
   DOCUMENT_EXPIRY_ALERT: 'PATRIMOINE',
   WORK_PROGRAM_REMINDER: 'PATRIMOINE',
   OWNER_LEASE_ENDING_SOON: 'PATRIMOINE',
