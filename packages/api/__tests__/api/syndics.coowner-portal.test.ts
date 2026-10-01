@@ -57,8 +57,11 @@ jest.mock('../../src/services/email-service', () => ({
   }
 }));
 
+// La révocation d'accès écrit son audit DANS la transaction (`recordAuditEvent`).
+const mockRecordAuditEvent = jest.fn();
 jest.mock('../../src/services/audit-service', () => ({
   logAuditEvent: jest.fn(),
+  recordAuditEvent: (...args: unknown[]) => mockRecordAuditEvent(...args),
   flushAuditQueue: jest.fn()
 }));
 
@@ -862,6 +865,11 @@ describe('Gestionnaire — révoquer l’accès', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ closedLots: 2, unlinkedAccounts: 1 });
+    // La trace de révocation est écrite dans la transaction de la révocation.
+    expect(mockRecordAuditEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ actionKey: 'SYNDIC_COOWNER_PORTAL_REVOKED' })
+    );
     expect(mockPrisma.lotOwnerProfile.rows.find(p => p.id === PROFILE_AWA_L1)).toMatchObject({
       portalAccessEnabled: false,
       portalAccessToken: null

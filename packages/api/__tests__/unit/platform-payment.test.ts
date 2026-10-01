@@ -212,7 +212,7 @@ jest.mock('../../src/services/subscription-v2-service', () => ({
   })
 }));
 
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 
 const sendEmail = jest.fn(async () => undefined);
 jest.mock('../../src/services/email-service', () => ({
@@ -241,6 +241,7 @@ import * as audit from '../../src/services/audit-service';
 
 const applyDue = v2.applyDueItemTransitionsTx as jest.Mock;
 const logAuditEvent = audit.logAuditEvent as jest.Mock;
+const recordAuditEvent = audit.recordAuditEvent as jest.Mock;
 
 const PERIOD_END = new Date('2026-09-01T00:00:00.000Z');
 const NEXT_END = new Date('2026-10-01T00:00:00.000Z');
@@ -311,6 +312,7 @@ function reset() {
   store.seq = 0;
   applyDue.mockClear();
   logAuditEvent.mockClear();
+  recordAuditEvent.mockClear();
   sendEmail.mockClear();
 }
 
@@ -372,9 +374,12 @@ describe("Paiement en ligne d'une facture d'abonnement (compte ImmoTopia)", () =
     expect(sub.currentPeriodStart).toEqual(PERIOD_END);
     expect(sub.currentPeriodEnd).toEqual(NEXT_END);
     expect(applyDue).toHaveBeenCalledTimes(1);
-    expect(logAuditEvent).toHaveBeenCalledWith(
+    // Action critique : ecrite dans la transaction du reglement (tx).
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockPrisma,
       expect.objectContaining({ actionKey: 'INVOICE_MARKED_PAID', entityId: 'inv-a' })
     );
+    expect(logAuditEvent).not.toHaveBeenCalledWith(expect.objectContaining({ actionKey: 'INVOICE_MARKED_PAID' }));
   });
 
   it('IPN rejouée : idempotente, aucun second règlement', async () => {
@@ -500,7 +505,8 @@ describe('Constat manuel du super-admin', () => {
       paymentReference: 'VIR-42'
     });
     expect(store.subscriptions[0].status).toBe('ACTIVE');
-    expect(logAuditEvent).toHaveBeenCalledWith(
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockPrisma,
       expect.objectContaining({
         actorUserId: 'admin-1',
         actionKey: 'INVOICE_MARKED_PAID',

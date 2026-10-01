@@ -32,7 +32,8 @@ jest.mock('../../src/utils/logger', () => ({
 }));
 
 jest.mock('../../src/services/audit-service', () => ({
-  logAuditEvent: jest.fn()
+  logAuditEvent: jest.fn(),
+  recordAuditEvent: jest.fn()
 }));
 
 // La comptabilité de la gestion directe (trésorerie / 411) a sa propre suite :
@@ -429,6 +430,7 @@ import {
 } from '../../src/services/rental-installment-service';
 import { allocatePayment, createPayment, updatePaymentStatus } from '../../src/services/rental-payment-service';
 import { calculatePenalty, deletePenalty, updatePenalty } from '../../src/services/rental-penalty-service';
+import { recordAuditEvent } from '../../src/services/audit-service';
 import { rebuildThirdPartyAccount } from '../../src/lib/finance/ledger';
 
 // `rental-payment-declaration-service.ts` n'est volontairement pas importé
@@ -851,6 +853,13 @@ describe('Pénalité', () => {
     expect(store.penalties).toHaveLength(0);
     expect(mouvements('WAIVER')[0]).toMatchObject({ credit: 7500, sourceId: penalty.id });
     expect(compte()?.balance).toBe(0);
+    // Action critique : tracee dans la transaction de suppression (client `tx`), pas en file asynchrone.
+    const auditCall = (recordAuditEvent as jest.Mock).mock.calls.find(
+      ([, entry]) => entry.actionKey === 'RENTAL_PENALTY_DELETED'
+    );
+    expect(auditCall).toBeDefined();
+    expect(auditCall![0]).toHaveProperty('rentalPenalty');
+    expect(auditCall![1]).toMatchObject({ entityId: penalty.id, actorUserId: ACTOR_ID, tenantId: TENANT_ID });
   });
 });
 

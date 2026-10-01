@@ -1,12 +1,26 @@
-import { prisma } from '../utils/database';
+import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { MembershipStatus } from '@prisma/client';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
-import { logAuditEvent, AuditActionKey } from './audit-service';
-import { revokeUserSessions } from '../middleware/session-invalidation';
+import { recordAuditEvent, AuditActionKey } from './audit-service';
 import { invalidateAllUserPermissionCache } from './permission-service';
 import { emailService } from './email-service';
 import crypto from 'crypto';
+
+/**
+ * Revoke every active refresh token of a user inside the caller's transaction,
+ * so the revocation commits together with its audit trace. Mirrors
+ * `revokeUserSessions` (middleware/session-invalidation), which uses the global
+ * client and cannot join a transaction.
+ */
+async function revokeUserSessionsInTx(tx: PrismaTransactionClient, userId: string): Promise<number> {
+  const result = await tx.refreshToken.updateMany({
+    where: { userId, revoked: false },
+    data: { revoked: true, revokedAt: new Date() }
+  });
+  logger.info('Revoked user sessions', { userId, tokensRevoked: result.count });
+  return result.count;
+}
 
 /**
  * Interface for listing members with filters
@@ -239,21 +253,35 @@ export async function updateMemberRoles(
     throw new Error('Un ou plusieurs roles sont invalides ou ne sont pas des roles tenant.');
   }
 
-  // Remove existing tenant roles for this user in this tenant
-  await prisma.userRole.deleteMany({
-    where: {
-      userId,
-      tenantId
-    }
-  });
+  // Critical action: roles swap and audit trace commit together or not at all.
+  await prisma.$transaction(async tx => {
+    // Remove existing tenant roles for this user in this tenant
+    await tx.userRole.deleteMany({
+      where: {
+        userId,
+        tenantId
+      }
+    });
 
-  // Assign new roles
-  await prisma.userRole.createMany({
-    data: data.roleIds.map(roleId => ({
-      userId,
-      roleId,
-      tenantId
-    }))
+    // Assign new roles
+    await tx.userRole.createMany({
+      data: data.roleIds.map(roleId => ({
+        userId,
+        roleId,
+        tenantId
+      }))
+    });
+
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.ROLE_ASSIGNED,
+      entityType: 'UserRole',
+      entityId: userId,
+      payload: {
+        roleIds: data.roleIds
+      }
+    });
   });
 
   // Invalidate permission cache
@@ -264,18 +292,6 @@ export async function updateMemberRoles(
     tenantId,
     roleIds: data.roleIds,
     actorUserId
-  });
-
-  // Audit log
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.ROLE_ASSIGNED,
-    entityType: 'UserRole',
-    entityId: userId,
-    payload: {
-      roleIds: data.roleIds
-    }
   });
 
   // Return updated membership
@@ -307,38 +323,41 @@ export async function disableMember(userId: string, tenantId: string, actorUserI
     throw new Error('Ce membre est deja desactive.');
   }
 
-  // Update membership status
-  const updated = await prisma.membership.update({
-    where: {
-      userId_tenantId: {
-        userId,
-        tenantId
+  // Update membership status (critical action: audit trace in the same transaction)
+  const updated = await prisma.$transaction(async tx => {
+    const result = await tx.membership.update({
+      where: {
+        userId_tenantId: {
+          userId,
+          tenantId
+        }
+      },
+      data: {
+        status: MembershipStatus.DISABLED
       }
-    },
-    data: {
-      status: MembershipStatus.DISABLED
-    }
-  });
+    });
 
-  // Revoke all sessions for this user
-  await revokeUserSessions(userId);
+    // Revoke all sessions for this user
+    await revokeUserSessionsInTx(tx, userId);
+
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.USER_DISABLED,
+      entityType: 'Membership',
+      entityId: membership.id,
+      payload: {
+        userId
+      }
+    });
+
+    return result;
+  });
 
   // Invalidate permission cache
   invalidateAllUserPermissionCache(userId);
 
   logger.info('Member disabled', { userId, tenantId, actorUserId });
-
-  // Audit log
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.USER_DISABLED,
-    entityType: 'Membership',
-    entityId: membership.id,
-    payload: {
-      userId
-    }
-  });
 
   return updated;
 }
@@ -368,35 +387,38 @@ export async function enableMember(userId: string, tenantId: string, actorUserId
     throw new Error('Ce membre est deja actif.');
   }
 
-  // Update membership status
-  const updated = await prisma.membership.update({
-    where: {
-      userId_tenantId: {
-        userId,
-        tenantId
+  // Update membership status (critical action: audit trace in the same transaction)
+  const updated = await prisma.$transaction(async tx => {
+    const result = await tx.membership.update({
+      where: {
+        userId_tenantId: {
+          userId,
+          tenantId
+        }
+      },
+      data: {
+        status: MembershipStatus.ACTIVE
       }
-    },
-    data: {
-      status: MembershipStatus.ACTIVE
-    }
+    });
+
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.USER_ENABLED,
+      entityType: 'Membership',
+      entityId: membership.id,
+      payload: {
+        userId
+      }
+    });
+
+    return result;
   });
 
   // Invalidate permission cache
   invalidateAllUserPermissionCache(userId);
 
   logger.info('Member enabled', { userId, tenantId, actorUserId });
-
-  // Audit log
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.USER_ENABLED,
-    entityType: 'Membership',
-    entityId: membership.id,
-    payload: {
-      userId
-    }
-  });
 
   return updated;
 }
@@ -437,21 +459,19 @@ export async function resetMemberPassword(
   const generated = !newPassword;
   const password = newPassword || crypto.randomBytes(32).toString('base64url');
 
-  // Validate password strength
-  const passwordValidation = validatePasswordStrength(password);
-  if (!passwordValidation.isValid) {
-    throw new Error(passwordValidation.error);
+  // Validate the strength of a password the admin typed. The generated one is
+  // random and never shown to anyone: validating it made roughly one reset in
+  // four fail ("au moins un caractère spécial"), because base64url often has
+  // no `-` or `_`.
+  if (!generated) {
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.isValid) {
+      throw new Error(passwordValidation.error);
+    }
   }
 
   // Hash and update password
   const passwordHash = await hashPassword(password);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { passwordHash }
-  });
-
-  // Revoke all sessions
-  await revokeUserSessions(userId);
 
   // Issue a single-use reset link instead of e-mailing the password in clear
   // text (e-mail is not a confidential channel and the message is archived).
@@ -459,13 +479,35 @@ export async function resetMemberPassword(
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 24);
 
-  await prisma.passwordResetToken.updateMany({
-    where: { userId, used: false },
-    data: { used: true }
-  });
+  // Critical action: password change, session revocation, reset token and
+  // audit trace commit together or not at all.
+  await prisma.$transaction(async tx => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { passwordHash }
+    });
 
-  await prisma.passwordResetToken.create({
-    data: { token: resetToken, userId, expiresAt }
+    // Revoke all sessions
+    await revokeUserSessionsInTx(tx, userId);
+
+    await tx.passwordResetToken.updateMany({
+      where: { userId, used: false },
+      data: { used: true }
+    });
+
+    await tx.passwordResetToken.create({
+      data: { token: resetToken, userId, expiresAt }
+    });
+
+    if (actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.PASSWORD_RESET,
+        entityType: 'User',
+        entityId: userId
+      });
+    }
   });
 
   // Send password reset notification email
@@ -481,17 +523,6 @@ export async function resetMemberPassword(
   }
 
   logger.info('Member password reset', { userId, tenantId, actorUserId });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.PASSWORD_RESET,
-      entityType: 'User',
-      entityId: userId
-    });
-  }
 
   // A generated password is deliberately never returned: the member sets their
   // own through the reset link. Only an admin-chosen password is echoed back,
@@ -519,19 +550,20 @@ export async function revokeMemberSessions(userId: string, tenantId: string, act
     throw new Error('Membre introuvable.');
   }
 
-  // Revoke all sessions
-  await revokeUserSessions(userId);
+  // Revoke all sessions (critical action: audit trace in the same transaction)
+  await prisma.$transaction(async tx => {
+    await revokeUserSessionsInTx(tx, userId);
+
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SESSIONS_REVOKED,
+      entityType: 'User',
+      entityId: userId
+    });
+  });
 
   logger.info('Member sessions revoked', { userId, tenantId, actorUserId });
-
-  // Audit log
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.SESSIONS_REVOKED,
-    entityType: 'User',
-    entityId: userId
-  });
 }
 
 /**

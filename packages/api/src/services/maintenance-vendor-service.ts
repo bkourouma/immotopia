@@ -1,6 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { ConflictError } from '../middleware/error-middleware';
 import { CreateVendorRequest, UpdateVendorRequest } from '../types/maintenance-types';
 
@@ -404,28 +404,33 @@ export async function deleteVendor(tenantId: string, vendorId: string, actorUser
     );
   }
 
-  await prisma.maintenanceVendor.deleteMany({
-    where: {
-      id: vendorId,
-      tenant_id: tenantId
-    }
-  });
-  await prisma.serviceProvider.delete({
-    where: { id: vendorId, tenantId }
-  });
+  await prisma.$transaction(
+    async tx => {
+      await tx.maintenanceVendor.deleteMany({
+        where: {
+          id: vendorId,
+          tenant_id: tenantId
+        }
+      });
+      await tx.serviceProvider.delete({
+        where: { id: vendorId, tenantId }
+      });
 
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: 'MAINTENANCE_VENDOR_DELETED',
-      entityType: 'MaintenanceVendor',
-      entityId: vendorId,
-      payload: {
-        vendorName: provider.name
+      if (actorUserId) {
+        await recordAuditEvent(tx, {
+          actorUserId,
+          tenantId,
+          actionKey: 'MAINTENANCE_VENDOR_DELETED',
+          entityType: 'MaintenanceVendor',
+          entityId: vendorId,
+          payload: {
+            vendorName: provider.name
+          }
+        });
       }
-    });
-  }
+    },
+    { timeout: 20_000 }
+  );
 
   return { id: vendorId, name: provider.name };
 }

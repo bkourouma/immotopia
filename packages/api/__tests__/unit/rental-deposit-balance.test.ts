@@ -47,7 +47,7 @@ const mockPrisma: Row = {
 jest.mock('../../src/utils/database', () => ({
   prisma: new Proxy({}, { get: (_t, prop) => (mockPrisma as any)[prop] })
 }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 // Les écritures comptables du dépôt sont testées à part (finance.rental-deposit-ledger).
 jest.mock('../../src/lib/finance/rental-direct-ledger', () => ({
   syncDirectDepositMovementEntryTx: jest.fn(async () => 'none'),
@@ -61,6 +61,7 @@ jest.mock('../../src/services/rental-installment-service', () => ({
 
 import { RentalDepositMovementType as T } from '@prisma/client';
 import { computeDepositBalance, createDepositMovement } from '../../src/services/rental-deposit-service';
+import { logAuditEvent, recordAuditEvent } from '../../src/services/audit-service';
 
 const TENANT = 'tenant-A';
 
@@ -78,6 +79,31 @@ beforeEach(() => {
     refunded_amount: 0,
     forfeited_amount: 0
   };
+});
+
+describe("mouvement du dépôt — trace d'audit transactionnelle", () => {
+  it('écrit RENTAL_DEPOSIT_MOVEMENT_CREATED dans la transaction du mouvement', async () => {
+    const movement = await createDepositMovement(
+      TENANT,
+      'dep-1',
+      T.COLLECT,
+      900000,
+      'pay-1',
+      undefined,
+      undefined,
+      'user-1'
+    );
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockPrisma,
+      expect.objectContaining({
+        actionKey: 'RENTAL_DEPOSIT_MOVEMENT_CREATED',
+        entityId: movement.id,
+        actorUserId: 'user-1',
+        tenantId: TENANT
+      })
+    );
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe('solde du dépôt de garantie — une seule source de vérité', () => {

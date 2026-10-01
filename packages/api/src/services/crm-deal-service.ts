@@ -430,7 +430,9 @@ export async function updateDeal(tenantId: string, dealId: string, data: UpdateD
       payload: changedFields,
       // Avant/après : `existingDeal` est la ligne lue avant la mise à jour,
       // `updateData` ce qui vient d'être écrit.
-      changes: diffForAudit(existingDeal as unknown as Record<string, unknown>, updateData as Record<string, unknown>)
+      changes: diffForAudit(existingDeal as unknown as Record<string, unknown>, updateData as Record<string, unknown>, {
+        exclude: ['version']
+      })
     });
   }
 

@@ -1,7 +1,8 @@
 import { prisma } from '../utils/database';
 import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
+import { diffForAudit } from '../lib/audit/changes';
 import { RentalPenaltyMode, ThirdPartyMovementType } from '@prisma/client';
 import {
   compteLocataireTx,
@@ -516,7 +517,12 @@ export async function updatePenalty(
       oldAmount: Number(penalty.amount),
       newAmount: amount,
       reason
-    }
+    },
+    changes: diffForAudit(penalty as unknown as Record<string, unknown>, {
+      amount,
+      is_manual_override: true,
+      override_reason: reason
+    })
   });
 
   return updatedPenalty;
@@ -669,6 +675,20 @@ export async function deletePenalty(tenantId: string, penaltyId: string, actorUs
       }
     });
 
+    // Critical action: audit trail written in the same transaction (before
+    // the early return below, which must not skip it).
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: 'RENTAL_PENALTY_DELETED',
+      entityType: 'RENTAL_PENALTY',
+      entityId: penaltyId,
+      payload: {
+        installmentId: penalty.installment_id,
+        amount: Number(penalty.amount)
+      }
+    });
+
     const bail = await tx.rentalLease.findFirst({
       where: { id: penalty.installment.lease_id, tenant_id: tenantId },
       select: { primary_renter_client_id: true }
@@ -698,19 +718,6 @@ export async function deletePenalty(tenantId: string, penaltyId: string, actorUs
     penaltyId,
     tenantId,
     actorUserId
-  });
-
-  // Audit log
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: 'RENTAL_PENALTY_DELETED',
-    entityType: 'RENTAL_PENALTY',
-    entityId: penaltyId,
-    payload: {
-      installmentId: penalty.installment_id,
-      amount: Number(penalty.amount)
-    }
   });
 
   return penalty;

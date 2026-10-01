@@ -671,5 +671,10 @@
   "Échéance de loyer": "قسط الإيجار",
   "Élément d'abonnement": "عنصر اشتراك",
   "Émission d'un avoir sur une facture": "إصدار إشعار دائن على فاتورة",
-  "Émission d'une facture d'abonnement": "إصدار فاتورة اشتراك"
+  "Émission d'une facture d'abonnement": "إصدار فاتورة اشتراك",
+  "Accès refusé : droit manquant pour cette action": "تم رفض الوصول: صلاحية غير متوفرة لهذا الإجراء",
+  "Tentative d'accès à une agence dont l'utilisateur n'est pas membre": "محاولة وصول إلى وكالة ليس المستخدم عضوًا فيها",
+  "Téléchargement ou ouverture d'un document": "تنزيل مستند أو فتحه",
+  "Export de données (tableur ou archive)": "تصدير بيانات (جدول بيانات أو أرشيف)",
+  "Fonction de l'application": "وظيفة في التطبيق"
 }

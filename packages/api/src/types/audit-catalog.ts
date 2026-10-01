@@ -57,7 +57,8 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.TENANT_SUSPENDED]: tenant('ADMIN', { critical: true }),
   [AuditActionKey.TENANT_ACTIVATED]: tenant('ADMIN', { critical: true }),
   [AuditActionKey.TENANT_DATA_EXPORT_REQUESTED]: tenant('EXPORT', { critical: true }),
-  [AuditActionKey.TENANT_DATA_EXPORT_DOWNLOADED]: tenant('EXPORT', { critical: true }),
+  // Lecture (un fichier servi), sans écriture en base à rendre atomique : asynchrone.
+  [AuditActionKey.TENANT_DATA_EXPORT_DOWNLOADED]: tenant('EXPORT'),
   [AuditActionKey.TENANT_DATA_EXPORT_DELETED]: tenant('EXPORT'),
 
   // Modules

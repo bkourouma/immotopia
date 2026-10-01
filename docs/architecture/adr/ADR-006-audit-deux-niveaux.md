@@ -111,9 +111,13 @@ Valeurs par défaut retenues pour les points ouverts, à ajuster :
   façon lire le niveau agence.
 - **Chaînage de hachage ligne à ligne** — incompatible avec l'insertion
   asynchrone par lots sans verrou d'écriture global.
-- **Capture automatique de toutes les écritures Prisma dès la phase 1** —
-  volume et coût d'une lecture « avant » sur chaque `update` ; réservée aux
-  modèles financiers, syndic, location et CRM en phase 3.
+- **Capture automatique de toutes les écritures Prisma** (extension) — volume
+  et coût d'une lecture « avant » sur chaque `update`, `updateMany` sans
+  identifiants, risque de doublon avec les événements métier existants. En
+  phase 3, l'avant/après est **ciblé** : un utilitaire (`lib/audit/changes.ts`)
+  que les services déjà équipés d'une ligne « avant » appellent pour remplir
+  `changes` (affaires CRM, contacts, biens, baux, pénalités). L'extension reste
+  possible plus tard, modèle par modèle.
 - **Journal externe (SIEM, service dédié)** — hors de proportion avec l'état
   actuel ; le format reste exportable.
 

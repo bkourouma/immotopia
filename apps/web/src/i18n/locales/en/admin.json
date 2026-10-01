@@ -671,5 +671,10 @@
   "Échéance de loyer": "Rent installment",
   "Élément d'abonnement": "Subscription item",
   "Émission d'un avoir sur une facture": "Credit note issued on an invoice",
-  "Émission d'une facture d'abonnement": "Subscription invoice issued"
+  "Émission d'une facture d'abonnement": "Subscription invoice issued",
+  "Accès refusé : droit manquant pour cette action": "Access denied: missing permission for this action",
+  "Tentative d'accès à une agence dont l'utilisateur n'est pas membre": "Attempt to access an agency the user is not a member of",
+  "Téléchargement ou ouverture d'un document": "Document downloaded or opened",
+  "Export de données (tableur ou archive)": "Data export (spreadsheet or archive)",
+  "Fonction de l'application": "Application feature"
 }

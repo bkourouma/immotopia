@@ -109,6 +109,53 @@ migration diverge du catalogue. Le catalogue couvre les 130 clés en usage, dont
   `disconnectDatabase()` **avant** `$disconnect()`. Plus de `process.exit` dans
   `audit-service`.
 
+### Phase 3 : accès, authentification, actions critiques, avant/après
+
+- **Accès** (`middleware/audit-access-middleware.ts`, monté une fois dans
+  `app.ts`) : observe la **réponse**, pas la route, donc couvre toutes les routes
+  et les portails.
+  - 403 → `ACCESS_DENIED` (visible de l'agence du membre), ou
+    `TENANT_ACCESS_DENIED` quand l'utilisateur vise l'URL d'une agence dont il
+    n'est pas membre : écrit **sans agence** (`PLATFORM_ONLY`), pour ne pas
+    révéler son identité à l'agence visée ni polluer une agence inexistante. Les
+    403 commerciaux (`TENANT_SUSPENDED`, `SUBSCRIPTION_READ_ONLY`,
+    `MODULE_NOT_INCLUDED`, `MODULE_READ_ONLY`, `QUOTA_EXCEEDED`,
+    `OWN_ASSETS_ONLY`) ne sont pas des refus de droit. Anti-inondation : un même
+    refus = une ligne par minute, 30 refus par minute et par utilisateur.
+  - 200 avec un PDF, un Word, un CSV, un classeur, une archive ou un
+    `Content-Disposition: attachment` → `DOCUMENT_DOWNLOADED`, ou
+    `DATA_EXPORTED` (CSV, classeur, archive), avec le chemin normalisé (UUID
+    remplacés par `:id`), l'objet visé et le nom du fichier. L'export de données
+    d'agence (`/data-exports`) a ses propres événements et n'est pas doublé.
+- **Authentification** (`services/audit-auth-events.ts`) : une connexion n'a
+  pas d'agence ; chaque événement (`AUTH_LOGIN_SUCCEEDED`, `AUTH_LOGIN_FAILED`,
+  `AUTH_LOGOUT`, `AUTH_TOKEN_REUSE_DETECTED`, `AUTH_PASSWORD_RESET_COMPLETED`)
+  s'écrit **une fois par agence active** de l'utilisateur (membre actif ou
+  client de portail, 10 au plus) ; sans agence, une ligne de plateforme. Les deux
+  derniers sont écrits dans la transaction de leur effet. Non câblés à ce jour :
+  `AUTH_GOOGLE_LOGIN`, `AUTH_TOKEN_REFRESHED`, `AUTH_PASSWORD_RESET_REQUESTED`,
+  `AUTH_EMAIL_VERIFIED`, et l'échec de connexion d'un e-mail inconnu.
+- **Actions critiques** : 30 des actions marquées `critical` s'écrivent par
+  `recordAuditEvent(tx, …)` dans la transaction de leur effet (membres et rôles,
+  agences, abonnements et dérogations, réglage IA, export de données demandé,
+  factures, mandats, biens, baux, dépôts, pénalités, portail copropriétaire,
+  fonds de copropriété, suppressions de contact, de modèle et de prestataire).
+  Exceptions assumées : `AI_ACTION_EXECUTED` (le document est écrit par
+  `generateDocument`, qui prend ses propres connexions et écrit sur disque : à
+  traiter avec une refonte de ce générateur) ; `TENANT_DATA_EXPORT_DOWNLOADED`
+  n'est plus marqué critique (un fichier servi, aucune écriture à rendre
+  atomique) ; `ROLE_REMOVED` est marqué critique mais n'est écrit nulle part
+  (le retrait d'un rôle passe par `ROLE_ASSIGNED`, qui remplace l'ensemble).
+- **Avant/après** : `lib/audit/changes.ts` (`diffForAudit(avant, modifications)`)
+  remplit `changes` ; branché sur les affaires CRM, les contacts, les biens, les
+  baux et les pénalités. L'extension Prisma automatique n'est pas retenue (voir
+  l'ADR). Les champs sensibles des contacts (notes internes, salaire, pièce
+  d'identité) sont exclus de `changes`.
+- **Catalogue** : `CRM_DEAL_UPDATED` et `CRM_DEAL_STAGE_CHANGED` (écrites par une
+  variable, oubliées du premier catalogue) y entrent ; la migration
+  `20261007110000` rattrape leurs lignes historiques en suspendant le
+  déclencheur d'immuabilité le temps du correctif — l'unique exception.
+
 ## 7. Lecture (phases 2 et 4)
 
 | Niveau     | Route                              | Garde                                                        | Filtre forcé                                       |
@@ -168,6 +215,6 @@ consulter ou exporter écrit `AUDIT_VIEWED` / `AUDIT_EXPORTED`.
 | 0     | ADR-006 et cette spec                                                                              | fait    |
 | 1     | Migration, catalogue, contexte, écriture critique (capacité), arrêt propre, contrôleur             | fait    |
 | 2     | Route et page « Journal d'activité » côté agence, permission `TENANT_AUDIT_VIEW`, test d'isolation | à faire |
-| 3     | Événements de sécurité (403, exports, téléchargements, portails), capture avant/après ciblée       | à faire |
+| 3     | Événements de sécurité (403, exports, téléchargements, portails), capture avant/après ciblée       | fait    |
 | 4     | Console plateforme (filtres, `requestId`, export audité), `PLATFORM_AUDIT_*`                       | à faire |
 | 5     | Rétention, scellés, séparation des marqueurs anti-doublon                                          | à faire |

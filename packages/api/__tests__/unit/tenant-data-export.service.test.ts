@@ -8,7 +8,7 @@
  * (message generique), reprise au demarrage, journal d'audit.
  */
 
-const db = {
+const db: any = {
   tenant: { findUnique: jest.fn() },
   user: { findMany: jest.fn() },
   tenantDataExport: {
@@ -20,12 +20,18 @@ const db = {
     updateMany: jest.fn(),
     delete: jest.fn()
   },
-  $queryRaw: jest.fn()
+  $queryRaw: jest.fn(),
+  // Le faux client de transaction est le faux Prisma lui-meme (verifie par identite).
+  $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(db))
 };
 jest.mock('../../src/utils/database', () => ({ prisma: db }));
 
 const auditMock = jest.fn();
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (...a: any[]) => auditMock(...a) }));
+const recordAuditMock = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (...a: any[]) => auditMock(...a),
+  recordAuditEvent: (...a: any[]) => recordAuditMock(...a)
+}));
 
 const buildMock = jest.fn();
 class FakeDiskError extends Error {}
@@ -115,6 +121,7 @@ describe('Export agence — demande', () => {
     );
     await expect(requestTenantDataExport(TENANT, 'u-super')).rejects.toMatchObject({ statusCode: 409 });
     expect(auditMock).not.toHaveBeenCalled();
+    expect(recordAuditMock).not.toHaveBeenCalled();
   });
 
   it('agence inconnue : 404', async () => {
@@ -130,7 +137,10 @@ describe('Export agence — demande', () => {
     expect(db.tenantDataExport.create).toHaveBeenCalledWith({
       data: { tenantId: TENANT, requestedById: 'u-super', status: 'QUEUED' }
     });
-    expect(auditMock).toHaveBeenCalledWith(
+    // Action critique : ecrite dans la transaction, avec son client, pas via la file asynchrone.
+    expect(auditMock).not.toHaveBeenCalled();
+    expect(recordAuditMock).toHaveBeenCalledWith(
+      db,
       expect.objectContaining({ actionKey: 'TENANT_DATA_EXPORT_REQUESTED', tenantId: TENANT, entityId: EXPORT_ID })
     );
   });

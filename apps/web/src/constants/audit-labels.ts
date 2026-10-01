@@ -174,7 +174,13 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   AI_ACTION_REJECTED: t("Action de l'assistant IA rejetée"),
 
   // Journal d'audit
-  AUDIT_VIEWED: t("Consultation du journal d'audit")
+  AUDIT_VIEWED: t("Consultation du journal d'audit"),
+
+  // Accès (posés à partir de la réponse du serveur)
+  ACCESS_DENIED: t('Accès refusé : droit manquant pour cette action'),
+  TENANT_ACCESS_DENIED: t("Tentative d'accès à une agence dont l'utilisateur n'est pas membre"),
+  DOCUMENT_DOWNLOADED: t("Téléchargement ou ouverture d'un document"),
+  DATA_EXPORTED: t('Export de données (tableur ou archive)')
 };
 
 /** Libellé français pour chaque type d'entité (ressource) */
@@ -211,6 +217,8 @@ export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
   Membership: t('Adhésion'),
   Invitation: 'Invitation',
   UserRole: t('Rôle utilisateur'),
+  File: t('Fichier'),
+  Route: t("Fonction de l'application"),
   SubscriptionItem: t("Élément d'abonnement"),
   SubscriptionExtensionRequest: t("Demande d'extension"),
   RENTAL_INSTALLMENT: t('Échéance de loyer'),

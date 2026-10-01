@@ -35,15 +35,20 @@ jest.mock('../../src/services/permission-service', () => ({
   hasAllPermissions: jest.fn()
 }));
 
-const mockPrisma = {
+const mockPrisma: any = {
   user: { findUnique: jest.fn() },
-  platformAiSettings: { findUnique: jest.fn(), upsert: jest.fn() }
+  platformAiSettings: { findUnique: jest.fn(), upsert: jest.fn() },
+  $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockPrisma))
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+const mockRecordAudit = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: jest.fn(),
+  recordAuditEvent: (...a: unknown[]) => mockRecordAudit(...a)
+}));
 
 import { errorHandler } from '../../src/middleware/error-middleware';
 import platformAiSettingsRoutes from '../../src/routes/platform-ai-settings-routes';
@@ -119,6 +124,10 @@ describe('super-admin', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ ...body, source: 'database', updatedByName: 'Awa Diallo' });
     expect(mockPrisma.platformAiSettings.upsert).toHaveBeenCalledTimes(1);
+    expect(mockRecordAudit).toHaveBeenCalledWith(
+      mockPrisma,
+      expect.objectContaining({ actionKey: 'AI_SETTINGS_UPDATED' })
+    );
     expect(res.text).not.toContain('SUPER-SECRET');
   });
 

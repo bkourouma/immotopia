@@ -186,7 +186,14 @@ jest.mock('../../src/utils/database', () => ({
 const auditEvents: Row[] = [];
 jest.mock('../../src/services/audit-service', () => {
   const actual = jest.requireActual('../../src/services/audit-service');
-  return { ...actual, logAuditEvent: (entry: Row) => auditEvents.push(entry) };
+  return {
+    ...actual,
+    logAuditEvent: (entry: Row) => auditEvents.push(entry),
+    // Evenement critique : ecrit via le client de transaction, que l'on garde pour l'assertion.
+    recordAuditEvent: async (tx: Row, entry: Row) => {
+      auditEvents.push({ ...entry, tx });
+    }
+  };
 });
 
 import {
@@ -675,6 +682,8 @@ describe('lecture seule manuelle (Baba, 25/09) : hors impaye, seul le super-admi
       actionKey: 'SUBSCRIPTION_MANUAL_READ_ONLY_SET',
       payload: { reason: 'Abus signalé par un client' }
     });
+    // Evenement critique : ecrit avec le client de la transaction metier.
+    expect(auditEvents.at(-1)?.tx).toBe(fake);
   });
 
   it('refuse un motif trop court', async () => {
@@ -692,6 +701,7 @@ describe('lecture seule manuelle (Baba, 25/09) : hors impaye, seul le super-admi
       actionKey: 'SUBSCRIPTION_MANUAL_READ_ONLY_CLEARED',
       payload: { previousReason: 'Litige en cours' }
     });
+    expect(auditEvents.at(-1)?.tx).toBe(fake);
   });
 
   it('refuse de lever une lecture seule qui n’est pas posee', async () => {

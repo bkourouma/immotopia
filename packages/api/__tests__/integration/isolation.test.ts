@@ -29,6 +29,7 @@ import { prisma } from '../../src/utils/database';
 import { signProposal } from '../../src/lib/ai/proposal-token';
 import { flushAuditEvents } from '../../src/services/audit-service';
 import { encodeAuditCursor } from '../../src/services/audit-read-service';
+import { updateMemberRoles } from '../../src/services/membership-service';
 import {
   createTestTenant,
   createTenantAdminUser,
@@ -995,6 +996,78 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
       const read = (await readAll(adminA, tenantA.id)).map(log => log.id);
       expect(read.filter(id => traces.some(trace => trace.id === id))).toEqual([]);
+    });
+  });
+  /**
+   * Événements de la phase 3 (ADR-006) sur la vraie pile : refus de droit,
+   * tentative d'un étranger, écriture transactionnelle, téléchargement.
+   */
+  describe("Journal d'activité — événements d'accès et actions critiques", () => {
+    let agentA: TestUser;
+
+    beforeAll(async () => {
+      agentA = await createTenantMemberUser(tenantA, 'agent-a2', 'TENANT_AGENT_TEST', ['PROPERTIES_VIEW']);
+    });
+
+    async function visibleTo(user: TestUser, tenantId: string): Promise<any[]> {
+      await flushAuditEvents();
+      const res = await request(app).get(`/api/tenants/${tenantId}/audit?limit=100`).set(authed(user));
+      expect(res.status).toBe(200);
+      return res.body.data.logs;
+    }
+
+    it("un refus de droit d'un membre est tracé : l'administrateur de SON agence le voit, pas celui d'une autre", async () => {
+      const denied = await request(app).get(`/api/tenants/${tenantA.id}/audit`).set(authed(agentA));
+      expect(denied.status).toBe(403);
+      await flushAuditEvents();
+
+      const row = await prisma.auditLog.findFirst({
+        where: { tenantId: tenantA.id, actionKey: 'ACCESS_DENIED', actorUserId: agentA.id }
+      });
+      expect(row).toMatchObject({ outcome: 'DENIED', category: 'SECURITY', visibility: 'TENANT', scope: 'TENANT' });
+      expect((row?.payload as any)?.permission).toBe('TENANT_AUDIT_VIEW');
+
+      expect((await visibleTo(adminA, tenantA.id)).map(log => log.id)).toContain(row?.id);
+      expect((await visibleTo(adminB, tenantB.id)).map(log => log.id)).not.toContain(row?.id);
+    });
+
+    it("la tentative d'un étranger sur l'URL d'une agence est tracée, mais jamais montrée à cette agence", async () => {
+      const probe = await request(app).get(`/api/tenants/${tenantA.id}/audit`).set(authed(adminB));
+      expect(probe.status).toBe(403);
+      await flushAuditEvents();
+
+      const row = await prisma.auditLog.findFirst({
+        where: { actionKey: 'TENANT_ACCESS_DENIED', actorUserId: adminB.id, entityId: tenantA.id }
+      });
+      expect(row).toMatchObject({ tenantId: null, scope: 'PLATFORM', visibility: 'PLATFORM_ONLY' });
+      expect((row?.payload as any)?.targetTenantId).toBe(tenantA.id);
+
+      const seenByA = await visibleTo(adminA, tenantA.id);
+      expect(seenByA.map(log => log.id)).not.toContain(row?.id);
+      expect(JSON.stringify(seenByA)).not.toContain(adminB.email);
+    });
+
+    it("un changement de rôle est écrit dans la transaction : la trace existe sans attendre la file, et l'agence la voit", async () => {
+      const role = await prisma.role.findUniqueOrThrow({ where: { key: 'TENANT_AGENT_TEST' } });
+      await updateMemberRoles(agentA.id, tenantA.id, { roleIds: [role.id] }, adminA.id);
+
+      // Aucun `flushAuditEvents()` : une écriture asynchrone ne serait pas encore là.
+      const row = await prisma.auditLog.findFirst({
+        where: { tenantId: tenantA.id, actionKey: 'ROLE_ASSIGNED', entityId: agentA.id }
+      });
+      expect(row).toMatchObject({ category: 'SECURITY', visibility: 'TENANT', actorUserId: adminA.id });
+      expect((await visibleTo(adminA, tenantA.id)).map(log => log.id)).toContain(row?.id);
+    });
+
+    it("un document téléchargé est tracé au nom de l'agence (témoin : le bloc Syndic ci-dessus télécharge un PDF de B)", async () => {
+      await flushAuditEvents();
+      const row = await prisma.auditLog.findFirst({
+        where: { tenantId: tenantB.id, actionKey: 'DOCUMENT_DOWNLOADED', actorUserId: adminB.id }
+      });
+      expect(row).toMatchObject({ category: 'EXPORT', visibility: 'TENANT', outcome: 'SUCCESS' });
+      expect((row?.payload as any)?.contentType).toBe('application/pdf');
+      expect((await visibleTo(adminB, tenantB.id)).map(log => log.id)).toContain(row?.id);
+      expect((await visibleTo(adminA, tenantA.id)).map(log => log.id)).not.toContain(row?.id);
     });
   });
 });

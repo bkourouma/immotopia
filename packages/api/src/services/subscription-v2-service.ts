@@ -23,7 +23,7 @@ import {
   SubscriptionStatus
 } from '@prisma/client';
 import { prisma, PrismaTransactionClient } from '../utils/database';
-import { logAuditEvent, AuditActionKey } from './audit-service';
+import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import {
   CAPACITY_KEYS,
@@ -70,6 +70,15 @@ import {
 } from './lot-registry-service';
 
 type Db = PrismaTransactionClient | typeof prisma;
+
+/**
+ * Ouvre une transaction sur `db`, ou reutilise `db` s'il est deja un client de
+ * transaction (pas de transaction imbriquee) : l'ecriture metier et son
+ * evenement d'audit critique s'engagent ensemble.
+ */
+function runInTransaction<T>(db: Db, fn: (tx: PrismaTransactionClient) => Promise<T>): Promise<T> {
+  return '$transaction' in db ? db.$transaction(fn) : fn(db);
+}
 
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -1164,31 +1173,34 @@ export async function grantCapacityOverride(
   const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
   if (!tenant) throw new NotFoundError('Agence introuvable.');
 
-  const created = await db.capacityOverride.create({
-    data: {
+  const created = await runInTransaction(db, async tx => {
+    const row = await tx.capacityOverride.create({
+      data: {
+        tenantId,
+        capacityKey: input.capacityKey,
+        delta: input.delta,
+        reason: input.reason.trim(),
+        startsAt: input.startsAt ?? new Date(),
+        expiresAt: input.expiresAt ?? null,
+        grantedByUserId: actorUserId
+      }
+    });
+    await recordAuditEvent(tx, {
+      actorUserId,
       tenantId,
-      capacityKey: input.capacityKey,
-      delta: input.delta,
-      reason: input.reason.trim(),
-      startsAt: input.startsAt ?? new Date(),
-      expiresAt: input.expiresAt ?? null,
-      grantedByUserId: actorUserId
-    }
+      actionKey: AuditActionKey.CAPACITY_OVERRIDE_GRANTED,
+      entityType: 'CapacityOverride',
+      entityId: row.id,
+      payload: {
+        capacityKey: row.capacityKey,
+        delta: row.delta,
+        reason: row.reason,
+        expiresAt: row.expiresAt?.toISOString() ?? null
+      }
+    });
+    return row;
   });
   invalidateEntitlements(tenantId);
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.CAPACITY_OVERRIDE_GRANTED,
-    entityType: 'CapacityOverride',
-    entityId: created.id,
-    payload: {
-      capacityKey: created.capacityKey,
-      delta: created.delta,
-      reason: created.reason,
-      expiresAt: created.expiresAt?.toISOString() ?? null
-    }
-  });
   return created;
 }
 
@@ -1196,19 +1208,22 @@ export async function revokeCapacityOverride(tenantId: string, overrideId: strin
   const existing = await prisma.capacityOverride.findFirst({ where: { id: overrideId, tenantId } });
   if (!existing) throw new NotFoundError('Dérogation introuvable.');
   if (existing.revokedAt) throw new ConflictError('Cette dérogation est déjà révoquée.');
-  const updated = await prisma.capacityOverride.update({
-    where: { id: existing.id },
-    data: { revokedAt: new Date(), revokedByUserId: actorUserId }
+  const updated = await prisma.$transaction(async tx => {
+    const row = await tx.capacityOverride.update({
+      where: { id: existing.id },
+      data: { revokedAt: new Date(), revokedByUserId: actorUserId }
+    });
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.CAPACITY_OVERRIDE_REVOKED,
+      entityType: 'CapacityOverride',
+      entityId: row.id,
+      payload: { capacityKey: row.capacityKey, delta: row.delta }
+    });
+    return row;
   });
   invalidateEntitlements(tenantId);
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.CAPACITY_OVERRIDE_REVOKED,
-    entityType: 'CapacityOverride',
-    entityId: updated.id,
-    payload: { capacityKey: updated.capacityKey, delta: updated.delta }
-  });
   return updated;
 }
 
@@ -1292,19 +1307,22 @@ export async function setSubscriptionManualReadOnly(tenantId: string, reason: st
   // Capture avant l'ecriture : le faux client Prisma des tests mute la meme
   // ligne en place, contrairement au vrai client qui renvoie un objet neuf.
   const previousManualReadOnlyAt = subscription.manualReadOnlyAt?.toISOString() ?? null;
-  const updated = await prisma.subscription.update({
-    where: { tenantId },
-    data: { manualReadOnlyAt: new Date(), manualReadOnlyReason: trimmed }
+  const updated = await prisma.$transaction(async tx => {
+    const row = await tx.subscription.update({
+      where: { tenantId },
+      data: { manualReadOnlyAt: new Date(), manualReadOnlyReason: trimmed }
+    });
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SUBSCRIPTION_MANUAL_READ_ONLY_SET,
+      entityType: 'Subscription',
+      entityId: row.id,
+      payload: { reason: trimmed, previousManualReadOnlyAt }
+    });
+    return row;
   });
   invalidateEntitlements(tenantId);
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.SUBSCRIPTION_MANUAL_READ_ONLY_SET,
-    entityType: 'Subscription',
-    entityId: updated.id,
-    payload: { reason: trimmed, previousManualReadOnlyAt }
-  });
   return updated;
 }
 
@@ -1317,19 +1335,22 @@ export async function clearSubscriptionManualReadOnly(tenantId: string, actorUse
   // Capture avant l'ecriture : le faux client Prisma des tests mute la meme
   // ligne en place, contrairement au vrai client qui renvoie un objet neuf.
   const previousReason = subscription.manualReadOnlyReason;
-  const updated = await prisma.subscription.update({
-    where: { tenantId },
-    data: { manualReadOnlyAt: null, manualReadOnlyReason: null }
+  const updated = await prisma.$transaction(async tx => {
+    const row = await tx.subscription.update({
+      where: { tenantId },
+      data: { manualReadOnlyAt: null, manualReadOnlyReason: null }
+    });
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SUBSCRIPTION_MANUAL_READ_ONLY_CLEARED,
+      entityType: 'Subscription',
+      entityId: row.id,
+      payload: { previousReason }
+    });
+    return row;
   });
   invalidateEntitlements(tenantId);
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.SUBSCRIPTION_MANUAL_READ_ONLY_CLEARED,
-    entityType: 'Subscription',
-    entityId: updated.id,
-    payload: { previousReason }
-  });
   return updated;
 }
 

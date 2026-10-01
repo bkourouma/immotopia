@@ -2,7 +2,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { badRequest, notFound } from '../lib/errors';
 import { BadRequestError } from '../middleware/error-middleware';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { DocumentTemplateStatus, DocumentType } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -475,28 +475,31 @@ export async function deleteTemplate(tenantId: string | null, templateId: string
     successorId = alternative?.id ?? null;
   }
 
-  const [updated] = await prisma.$transaction([
-    prisma.documentTemplate.update({
-      where: { id: templateId, tenant_id: tenantId },
-      data: { status: DocumentTemplateStatus.DELETED, is_default: false }
-    }),
-    ...(successorId
-      ? [
-          prisma.documentTemplate.update({
-            where: { id: successorId, tenant_id: tenantId },
-            data: { is_default: true }
-          })
-        ]
-      : [])
-  ]);
+  const updated = await prisma.$transaction(
+    async tx => {
+      const deleted = await tx.documentTemplate.update({
+        where: { id: templateId, tenant_id: tenantId },
+        data: { status: DocumentTemplateStatus.DELETED, is_default: false }
+      });
+      if (successorId) {
+        await tx.documentTemplate.update({
+          where: { id: successorId, tenant_id: tenantId },
+          data: { is_default: true }
+        });
+      }
 
-  logAuditEvent({
-    actorUserId,
-    tenantId: tenantId || undefined,
-    actionKey: 'DOCUMENT_TEMPLATE_DELETED',
-    entityType: 'DOCUMENT_TEMPLATE',
-    entityId: templateId
-  });
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId: tenantId || undefined,
+        actionKey: 'DOCUMENT_TEMPLATE_DELETED',
+        entityType: 'DOCUMENT_TEMPLATE',
+        entityId: templateId
+      });
+
+      return deleted;
+    },
+    { timeout: 20_000 }
+  );
 
   return updated;
 }

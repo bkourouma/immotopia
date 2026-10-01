@@ -68,7 +68,7 @@ import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type Peri
 import { annualShareForPeriod } from './charge-schedule-periods';
 import { AppError, ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
-import { logAuditEvent } from '../../services/audit-service';
+import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import {
   ACTIVE_SYNDICATE_STATUSES,
@@ -5454,30 +5454,30 @@ export async function adjustSyndicateFundBalanceByTenant(
       sourceType: isExpense ? 'MANUAL_EXPENSE' : 'MANUAL_ADJUSTMENT',
       actorUserId: actorUserId ?? null
     });
+    // Critical action: audit trail written in the same transaction.
+    if (actorUserId) {
+      const balanceAfter = roundMoney(Number(row.balance));
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.SYNDICATE_FUND_BALANCE_ADJUSTED,
+        entityType: 'SYNDICATE_FUND',
+        entityId: fund.id,
+        payload: {
+          syndicateId,
+          kind: isExpense ? 'EXPENSE' : 'ADJUSTMENT',
+          direction: data.direction,
+          amount,
+          reason: data.reason,
+          previousBalance:
+            data.direction === 'CREDIT' ? roundMoney(balanceAfter - amount) : roundMoney(balanceAfter + amount),
+          newBalance: balanceAfter
+        }
+      });
+    }
     return row;
   });
   const nextBalance = roundMoney(Number(updated.balance));
-  const previousBalance =
-    data.direction === 'CREDIT' ? roundMoney(nextBalance - amount) : roundMoney(nextBalance + amount);
-
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.SYNDICATE_FUND_BALANCE_ADJUSTED,
-      entityType: 'SYNDICATE_FUND',
-      entityId: fund.id,
-      payload: {
-        syndicateId,
-        kind: isExpense ? 'EXPENSE' : 'ADJUSTMENT',
-        direction: data.direction,
-        amount,
-        reason: data.reason,
-        previousBalance,
-        newBalance: nextBalance
-      }
-    });
-  }
 
   // Permis (avance de tresorerie), mais signale a l'ecran.
   return { ...updated, negativeBalance: nextBalance < 0 };

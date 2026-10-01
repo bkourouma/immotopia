@@ -58,7 +58,7 @@ jest.mock('../../src/utils/database', () => ({
   }
 }));
 jest.mock('../../src/utils/logger', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 jest.mock('../../src/services/own-assets-barrier-service', () => ({
   assertThirdPartyAllowedForTenant: jest.fn(async () => undefined)
 }));
@@ -70,6 +70,7 @@ jest.mock('../../src/services/lot-registry-service', () => ({
 }));
 
 import { createMandate, revokeMandate } from '../../src/services/property-mandate-service';
+import { logAuditEvent, recordAuditEvent } from '../../src/services/audit-service';
 
 const T = 'tenant-1';
 
@@ -103,6 +104,12 @@ describe('mandat de gestion et registre des lots', () => {
     expect(mandates[0].isActive).toBe(false);
     expect(activations).toEqual([]);
     expect(syncCalls[1].options).toMatchObject({ reason: 'MANDATE_REVOKED' });
+    // Action critique : tracee avec le client de la MEME transaction que la synchro des lots.
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      syncCalls[1].tx,
+      expect.objectContaining({ actionKey: 'PROPERTY_MANDATE_REVOKED', entityId: 'm1', actorUserId: 'u1' })
+    );
+    expect(logAuditEvent).not.toHaveBeenCalledWith(expect.objectContaining({ actionKey: 'PROPERTY_MANDATE_REVOKED' }));
   });
 
   it('quota plein (enforce + Bloquer) : 409 type et aucun mandat ecrit', async () => {

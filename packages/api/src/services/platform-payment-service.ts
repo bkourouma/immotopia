@@ -32,7 +32,7 @@ import { env } from '../config/env';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { getUploadsRoot } from '../utils/project-root';
 import { AppError, BadRequestError, ConflictError, ErrorCode, NotFoundError } from '../middleware/error-middleware';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { addBillingPeriod } from '../lib/subscription';
 import { applyDueItemTransitionsTx, invalidateEntitlements } from './subscription-v2-service';
@@ -274,7 +274,13 @@ async function applyPaymentToSubscriptionTx(
   return 'RENEWED';
 }
 
-function auditSettlement(
+/**
+ * Trace du reglement (action critique) : ecrite dans la transaction du
+ * reglement, jamais commitee sans sa trace. Le cache des droits est invalide
+ * apres le commit (`invalidateSettlement`).
+ */
+async function recordSettlementAuditTx(
+  tx: PrismaTransactionClient,
   tenantId: string,
   invoiceId: string,
   result: SettleResult,
@@ -282,8 +288,7 @@ function auditSettlement(
   extra: Record<string, unknown>
 ) {
   if (!result.created || !result.payment) return;
-  invalidateEntitlements(tenantId);
-  logAuditEvent({
+  await recordAuditEvent(tx, {
     actorUserId,
     tenantId,
     actionKey: AuditActionKey.INVOICE_MARKED_PAID,
@@ -298,6 +303,11 @@ function auditSettlement(
       ...extra
     }
   });
+}
+
+function invalidateSettlement(tenantId: string, result: SettleResult) {
+  if (!result.created || !result.payment) return;
+  invalidateEntitlements(tenantId);
 }
 
 // =============================================================== constat manuel (super-admin)
@@ -364,8 +374,8 @@ export async function recordManualPayment(
 
   let result: SettleResult;
   try {
-    result = await prisma.$transaction(tx =>
-      settlePlatformInvoiceTx(tx, {
+    result = await prisma.$transaction(async tx => {
+      const settled = await settlePlatformInvoiceTx(tx, {
         tenantId,
         invoiceId,
         method: input.method,
@@ -374,8 +384,13 @@ export async function recordManualPayment(
         note: input.note?.trim() || null,
         proof,
         actorUserId
-      })
-    );
+      });
+      await recordSettlementAuditTx(tx, tenantId, invoiceId, settled, actorUserId, {
+        source: 'MANUAL',
+        hasProof: Boolean(proof)
+      });
+      return settled;
+    });
   } catch (error) {
     if (absoluteProof) await fs.unlink(absoluteProof).catch(() => undefined);
     throw error;
@@ -386,7 +401,7 @@ export async function recordManualPayment(
     throw new ConflictError('Cette facture est déjà réglée.');
   }
 
-  auditSettlement(tenantId, invoiceId, result, actorUserId, { source: 'MANUAL', hasProof: Boolean(proof) });
+  invalidateSettlement(tenantId, result);
   return { payment: toPaymentDto(result.payment), subscription: result.subscription };
 }
 
@@ -645,6 +660,11 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
               checkoutId: checkout.id,
               actorUserId: checkout.createdByUserId
             });
+            await recordSettlementAuditTx(tx, tenantId, checkout.invoiceId, settledResult, checkout.createdByUserId, {
+              source: 'ONLINE',
+              codePaiement: checkout.codePaiement,
+              mode: checkout.mode
+            });
           } else {
             await tx.platformPaymentCheckout.update({
               where: { id: checkout.id, tenantId: checkout.tenantId },
@@ -662,11 +682,7 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
       };
     });
     if (settled) {
-      auditSettlement(tenantId, checkout.invoiceId, settled, checkout.createdByUserId, {
-        source: 'ONLINE',
-        codePaiement: checkout.codePaiement,
-        mode: checkout.mode
-      });
+      invalidateSettlement(tenantId, settled);
     }
     return row;
   }

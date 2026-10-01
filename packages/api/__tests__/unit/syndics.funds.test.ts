@@ -25,7 +25,8 @@ jest.mock('@prisma/client', () => {
 });
 
 jest.mock('../../src/services/audit-service', () => ({
-  logAuditEvent: jest.fn()
+  logAuditEvent: jest.fn(),
+  recordAuditEvent: jest.fn()
 }));
 
 import {
@@ -33,7 +34,7 @@ import {
   createSyndicateFundBySyndicate,
   renameSyndicateFundByTenant
 } from '../../src/lib/syndics/queries';
-import { logAuditEvent } from '../../src/services/audit-service';
+import { logAuditEvent, recordAuditEvent } from '../../src/services/audit-service';
 
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
   __mockPrisma: {
@@ -131,7 +132,9 @@ describe('Syndicate funds queries - FR-013', () => {
         createdById: 'user-1'
       })
     });
-    expect(logAuditEvent).toHaveBeenCalledWith(
+    // Action critique : ecrite dans la transaction (tx), pas en file asynchrone.
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockPrisma,
       expect.objectContaining({
         actionKey: 'SYNDICATE_FUND_BALANCE_ADJUSTED',
         payload: expect.objectContaining({
