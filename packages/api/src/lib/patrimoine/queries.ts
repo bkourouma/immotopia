@@ -179,6 +179,31 @@ export async function deletePropertyValuation(tenantId: string, propertyId: stri
   await prisma.assetValuation.delete({ where: { id: valuationId, tenantId } });
 }
 
+type ExpenseRecurrenceValue = 'ONE_OFF' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+
+/**
+ * Coherence de la periodicite d'une depense (plan de tresorerie, spec 030) :
+ * une date de fin n'a de sens que pour une depense periodique, et ne peut pas
+ * preceder la date de reference `paidAt`. Appelee avec les valeurs EFFECTIVES
+ * (corps de la requete completes par la valeur stockee a la mise a jour).
+ */
+function assertExpenseRecurrence(recurrence: ExpenseRecurrenceValue, paidAt: Date, endDate: Date | null | undefined) {
+  // La date saisie est celle d'un paiement REEL (le journal ecrit le montant a `paidAt`) : une depense
+  // periodique ne peut pas etre datee dans le futur, les occurrences suivantes sont deduites.
+  if (recurrence !== 'ONE_OFF' && paidAt.getTime() > Date.now() + 24 * 3600 * 1000) {
+    throw badRequest("La date de la depense periodique doit etre celle d'un paiement deja effectue");
+  }
+  if (!endDate) return;
+  if (recurrence === 'ONE_OFF') {
+    throw badRequest("La date de fin n'a de sens que pour une depense periodique");
+  }
+  // Comparaison par jour UTC : une fin le meme jour que `paidAt` est acceptee.
+  const utcDay = (date: Date) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  if (utcDay(endDate) < utcDay(paidAt)) {
+    throw badRequest('La date de fin de la periodicite ne peut pas preceder la date de la depense');
+  }
+}
+
 export async function listPropertyExpenses(tenantId: string, propertyId: string) {
   await ensureTenantProperty(tenantId, propertyId);
   return prisma.propertyExpense.findMany({
@@ -214,9 +239,15 @@ export async function createPropertyExpense(
     /** Vrai quand l'agence a elle-meme commande le travail et doit la facture. */
     agencyIsBuyer?: boolean;
     supplierName?: string | null;
+    /** Plan de tresorerie : periodicite (ONE_OFF par defaut) et date de fin facultative. */
+    recurrence?: ExpenseRecurrenceValue;
+    recurrenceEndDate?: Date | null;
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
+
+  const recurrence = data.recurrence ?? 'ONE_OFF';
+  assertExpenseRecurrence(recurrence, data.paidAt, data.recurrenceEndDate);
 
   const agencyIsBuyer = data.agencyIsBuyer ?? false;
   if (agencyIsBuyer && !data.supplierName?.trim()) {
@@ -243,7 +274,9 @@ export async function createPropertyExpense(
         paymentMethod,
         treasuryAccountId: data.treasuryAccountId || null,
         agencyIsBuyer,
-        supplierName: data.supplierName ?? null
+        supplierName: data.supplierName ?? null,
+        recurrence,
+        recurrenceEndDate: data.recurrenceEndDate ?? null
       },
       include: { property: true }
     });
@@ -292,6 +325,8 @@ export async function updatePropertyExpense(
     treasuryAccountId: string | null;
     agencyIsBuyer: boolean;
     supplierName: string | null;
+    recurrence: ExpenseRecurrenceValue;
+    recurrenceEndDate: Date | null;
   }>
 ) {
   await ensureTenantProperty(tenantId, propertyId);
@@ -299,6 +334,13 @@ export async function updatePropertyExpense(
     where: { id: expenseId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Depense introuvable');
+
+  // Passer a ONE_OFF efface la date de fin ; sinon la valeur recue (ou stockee) doit rester coherente.
+  const effectiveRecurrence = data.recurrence ?? existing.recurrence;
+  let effectiveEndDate = existing.recurrenceEndDate;
+  if (data.recurrenceEndDate !== undefined) effectiveEndDate = data.recurrenceEndDate;
+  else if (data.recurrence === 'ONE_OFF') effectiveEndDate = null;
+  assertExpenseRecurrence(effectiveRecurrence, data.paidAt ?? existing.paidAt, effectiveEndDate);
 
   const effectiveAgencyIsBuyer = data.agencyIsBuyer ?? existing.agencyIsBuyer;
   const effectiveSupplierName = data.supplierName !== undefined ? data.supplierName : existing.supplierName;
@@ -326,7 +368,9 @@ export async function updatePropertyExpense(
         paymentMethod: data.paymentMethod,
         treasuryAccountId: data.treasuryAccountId,
         agencyIsBuyer: data.agencyIsBuyer,
-        supplierName: data.supplierName
+        supplierName: data.supplierName,
+        recurrence: data.recurrence,
+        recurrenceEndDate: effectiveEndDate
       },
       include: { property: true }
     });

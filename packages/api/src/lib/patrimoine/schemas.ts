@@ -62,7 +62,15 @@ export const createExpenseSchema = z.object({
   paymentMethod: z.enum(['MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'CHECK', 'CARD', 'OTHER']).optional().nullable(),
   treasuryAccountId: z.string().uuid().optional().nullable(),
   agencyIsBuyer: z.boolean().optional(),
-  supplierName: z.string().optional().nullable()
+  supplierName: z.string().optional().nullable(),
+  /**
+   * Plan de tresorerie (spec 030) : ONE_OFF (defaut) = depense ponctuelle ;
+   * sinon les occurrences tombent a `paidAt + k x pas`. La coherence entre
+   * `recurrence`, `recurrenceEndDate` et `paidAt` est verifiee par
+   * `assertExpenseRecurrence` (queries.ts), qui voit aussi la valeur stockee.
+   */
+  recurrence: z.enum(['ONE_OFF', 'MONTHLY', 'QUARTERLY', 'ANNUAL']).default('ONE_OFF'),
+  recurrenceEndDate: z.coerce.date().optional().nullable()
 });
 
 export const updateExpenseSchema = createExpenseSchema.partial().refine(value => Object.keys(value).length > 0, {

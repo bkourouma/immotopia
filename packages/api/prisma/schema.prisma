@@ -717,6 +717,7 @@ model Tenant {
   stockSettings            StockSettings?
   financeSettings          AgencyFinanceSettings?
   ownerPortalSettings      OwnerPortalSettings?
+  cashPlanSettings         PatrimonyCashPlanSettings?
   ownerManagementTerms     OwnerManagementTerms[]
   leaseManagementTerms     LeaseManagementTerms[]
   agentCommissionRates     AgentCommissionRate[]
@@ -4922,6 +4923,16 @@ enum LoanStatus {
   DEFAULTED
 }
 
+/// Periodicite d'une depense du bien (plan de tresorerie previsionnel, spec 030).
+/// ONE_OFF : depense ponctuelle, deja passee. Les autres valeurs ancrent une
+/// recurrence sur `paidAt`.
+enum ExpenseRecurrence {
+  ONE_OFF
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
 enum ExpenseCategory {
   PROPERTY_TAX
   CONDO_FEES
@@ -5150,27 +5161,31 @@ model PropertyLoan {
 }
 
 model PropertyExpense {
-  id                String          @id @default(uuid()) @db.Uuid
-  tenantId          String          @map("tenant_id")
-  propertyId        String          @map("property_id")
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id")
+  propertyId        String            @map("property_id")
   category          ExpenseCategory
   label             String
-  amount            Decimal         @db.Decimal(14, 2)
-  currency          String          @default("XOF")
-  paidAt            DateTime        @map("paid_at")
-  isCapitalized     Boolean         @default(false) @map("is_capitalized")
+  amount            Decimal           @db.Decimal(14, 2)
+  currency          String            @default("XOF")
+  paidAt            DateTime          @map("paid_at")
+  isCapitalized     Boolean           @default(false) @map("is_capitalized")
   /// Lot 10 : moyen et compte de paiement reels. Nuls : caisse par defaut,
   /// comme avant.
-  paymentMethod     PaymentMethod?  @map("payment_method")
-  treasuryAccountId String?         @map("treasury_account_id") @db.Uuid
+  paymentMethod     PaymentMethod?    @map("payment_method")
+  treasuryAccountId String?           @map("treasury_account_id") @db.Uuid
   /// Vrai quand l'agence a elle-meme commande le travail et doit la facture :
   /// la contrepartie est alors le 401, pas la tresorerie.
-  agencyIsBuyer     Boolean         @default(false) @map("agency_is_buyer")
-  supplierName      String?         @map("supplier_name")
-  receiptUrl        String?         @map("receipt_url")
+  agencyIsBuyer     Boolean           @default(false) @map("agency_is_buyer")
+  supplierName      String?           @map("supplier_name")
+  receiptUrl        String?           @map("receipt_url")
   notes             String?
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  /// Plan de tresorerie : ONE_OFF (defaut) = ponctuelle ; sinon les
+  /// occurrences tombent a `paidAt + k x pas`, jusqu'a `recurrenceEndDate`.
+  recurrence        ExpenseRecurrence @default(ONE_OFF) @map("recurrence")
+  recurrenceEndDate DateTime?         @map("recurrence_end_date")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -5253,6 +5268,24 @@ model OwnerPortalSettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("owner_portal_settings")
+}
+
+/// Reglage du plan de tresorerie previsionnel (spec 030) : date d'exigibilite
+/// annuelle de la taxe fonciere de l'agence. AUCUNE valeur par defaut : nul =
+/// « non renseigne », et la taxe n'entre alors pas dans le plan. Une contrainte
+/// CHECK (migration) impose les deux nuls ou les deux renseignes.
+model PatrimonyCashPlanSettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @unique @map("tenant_id")
+  propertyTaxDueMonth Int?     @map("property_tax_due_month")
+  propertyTaxDueDay   Int?     @map("property_tax_due_day")
+  updatedByUserId     String?  @map("updated_by_user_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("patrimony_cash_plan_settings")
 }
 
 /// Releve de gerance d'un proprietaire pour un mois.

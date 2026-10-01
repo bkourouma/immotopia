@@ -60,6 +60,7 @@ function buildRouteLabels(): Record<string, string> {
     comptabilite: t('Comptabilité'),
     caisse: t('Caisse'),
     tresorerie: t('Trésorerie'),
+    'plan-tresorerie': t('Trésorerie prévisionnelle'),
     budgets: t('Budgets'),
     'profils-incidents': t('Profils et incidents'),
     compte: t('Compte propriétaire'),
