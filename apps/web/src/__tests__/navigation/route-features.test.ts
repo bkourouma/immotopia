@@ -19,6 +19,7 @@ describe('featureForAgencyPath', () => {
     ['sales/mandates', 'SALES'],
     ['rental/leases', 'RENTAL'],
     ['patrimoine/performance', 'PATRIMOINE'],
+    ['patrimoine/plan-tresorerie', 'PATRIMOINE'],
     ['patrimoine/statements', 'RENTAL'],
     ['patrimoine/external-access', 'PATRIMOINE'],
     ['syndics/s1/lots', 'SYNDIC']

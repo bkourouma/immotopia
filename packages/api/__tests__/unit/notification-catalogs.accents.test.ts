@@ -21,6 +21,8 @@ describe('catalogues de notifications', () => {
   it('libellés e-mail Patrimoine accentués', () => {
     expect(EMAIL_NOTIFICATION_META.OWNER_STATEMENT_SENT.label).toBe('Relevé de gérance envoyé');
     expect(EMAIL_NOTIFICATION_META.LOAN_MATURITY_ALERT.label).toBe('Alerte fin de prêt');
+    expect(EMAIL_NOTIFICATION_META.INSURANCE_DEADLINE_ALERT.label).toBe('Alerte échéance assurance et entretien');
+    expect(featureOfNotificationKey('INSURANCE_DEADLINE_ALERT')).toBe('PATRIMOINE');
   });
 
   it('aucun texte sans accent dans les catalogues e-mail et WhatsApp', () => {

@@ -10,6 +10,9 @@ export type StatementStatus = 'DRAFT' | 'SENT' | 'PAID';
  */
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER';
 
+/** Périodicité d'une dépense : ponctuelle (passée) ou récurrente, qui alimente le plan de trésorerie. */
+export type ExpenseRecurrence = 'ONE_OFF' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+
 export type ExpenseCategory =
   | 'PROPERTY_TAX'
   | 'CONDO_FEES'
@@ -81,6 +84,47 @@ export interface PropertyYieldData {
     latentCapitalGain: number | null;
   };
   projection: YieldProjectionPoint[];
+  /** Hypothèses réellement appliquées par le serveur (requête > enregistrées > défauts). */
+  assumptions?: YieldAssumptions;
+  /** Vrai si le serveur a une ligne d'hypothèses enregistrée pour ce bien. */
+  assumptionsSaved?: boolean;
+  /** Ratios bancaires ; absent sur un ancien serveur. */
+  ratios?: BankRatios;
+}
+
+/** Hypothèses de projection (fractions : 0.03 = 3 %). */
+export interface YieldAssumptions {
+  years: number;
+  valueGrowthRate: number;
+  rentGrowthRate: number;
+  expenseGrowthRate: number;
+  vacancyRate: number;
+}
+
+/** Réponse de GET/PUT `.../yield/assumptions`. */
+export interface YieldAssumptionsState {
+  assumptions: YieldAssumptions;
+  saved: boolean;
+  updatedAt: string | null;
+}
+
+export type BankRatioReason =
+  'NO_DEBT_SERVICE' | 'NO_ACTIVE_LOAN' | 'NO_VALUE' | 'NO_COST_BASIS' | 'NO_EQUITY' | 'NOT_CONVERGENT';
+
+/**
+ * `value: null` = indéterminable (jamais à afficher comme 0). Unités : dscr en
+ * ratio (1.25 = 1,25x) ; ltv, cashOnCash, irr en points de pourcentage (8.5 = 8,5 %).
+ */
+export interface BankRatio {
+  value: number | null;
+  reason: BankRatioReason | null;
+}
+
+export interface BankRatios {
+  dscr: BankRatio;
+  ltv: BankRatio;
+  cashOnCash: BankRatio;
+  irr: BankRatio;
 }
 
 export interface AssetValuation {
@@ -116,6 +160,10 @@ export interface PropertyExpense {
   agencyIsBuyer?: boolean;
   /** Fournisseur, requis dès que `agencyIsBuyer` est coché. */
   supplierName?: string | null;
+  /** Périodicité ; absente = ponctuelle. `paidAt` est la date d'ancrage de la récurrence. */
+  recurrence?: ExpenseRecurrence;
+  /** Dernière occurrence d'une dépense périodique (ISO), sinon sans fin. */
+  recurrenceEndDate?: string | null;
 }
 
 export interface PropertyLoan {
