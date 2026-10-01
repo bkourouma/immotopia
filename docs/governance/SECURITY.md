@@ -510,33 +510,37 @@ traités (`PROVIDER_REFUSAL`) ; un repli serveur est actif par défaut
 Un lien public donne accès **sans compte** à un objet précis : celui qui possède l'URL
 est, pour le serveur, le destinataire. Le module générique `lib/secure-links` (spec
 [031](../../specs/031-patrimoine-canaux-liens-securises/spec.md), modèle `SecureLink` dans
-[DATA_MODELS.md](../architecture/DATA_MODELS.md)) en porte le premier usage, le rapport
-mensuel d'un propriétaire, et celui des lots suivants (paiement par lien, tiers de
-confiance). Toute nouvelle route publique à jeton réutilise ce module et ses mesures ;
-une route qui accepterait un jeton autrement est refusée en relecture.
+[DATA_MODELS.md](../architecture/DATA_MODELS.md)) en porte deux usages : le rapport
+mensuel d'un propriétaire, puis, avec le lot B3 (spec
+[034](../../specs/034-patrimoine-acces-tiers-confiance/spec.md)), l'accès en lecture seule
+des tiers de confiance (notaire, expert-comptable, banquier), détaillé en section 12 ter ;
+les lots suivants (paiement par lien) s'y ajouteront. Toute nouvelle route publique à jeton
+réutilise ce module et ses mesures ; une route qui accepterait un jeton autrement est refusée
+en relecture.
 
 **Mécanisme.** Jeton de 32 octets aléatoires (`crypto.randomBytes`), base64url, renvoyé
 une seule fois à la création ; seul son SHA-256 est stocké (`SecureLink.tokenHash`,
 unique). Expiration 7 jours par défaut (`SECURE_LINK_DEFAULT_TTL_DAYS`), 30 au plus
 (`SECURE_LINK_MAX_TTL_DAYS`) ; révocation par `revokedAt`. Portée unique par lien
 (`scope`) et objet unique (`objectType` + `objectId`). Le jeton transite dans le **fragment**
-de l'URL partagée (`/rapport-proprietaire#<jeton>`), puis en **corps** d'un `POST` ; il n'est
-jamais dans le chemin ni dans la chaîne de requête.
+de l'URL partagée (`/rapport-proprietaire#<jeton>`, ou `/acces-partage#<jeton>` pour la portée
+des tiers de confiance), puis en **corps** d'un `POST` ; il n'est jamais dans le chemin ni dans
+la chaîne de requête.
 
-| Menace                                      | Mesure retenue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fuite du lien (transfert, capture, partage) | Impossible à empêcher : on borne l'impact. Un seul objet, lecture seule, expiration, révocation à tout moment, consultations comptées (`viewCount`, `lastViewedAt`) et journalisées. Aucune donnée de contact dans la réponse publique                                                                                                                                                                                                                                                                                                                                           |
-| Devinette                                   | 256 bits d'entropie, générateur cryptographique ; limiteur de débit par IP en plus. Pas de jeton court, pas de code à chiffres                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Énumération et mesure de temps              | Refus **uniforme** : inconnu, expiré, révoqué, mauvaise portée, agence inactive, objet disparu donnent la même 404 « Lien invalide ou expiré. » (statut, corps, en-têtes). Recherche par hash : la protection principale est la **préimage** (le serveur ne compare que le SHA-256 d'un jeton de 256 bits, impossible à deviner ni à reconstruire par mesure de temps) ; la comparaison à temps constant (`timingSafeEqual`) n'est qu'une défense en profondeur                                                                                                                  |
-| Rejeu après révocation ou expiration        | `revokedAt`, `expiresAt`, portée et statut de l'agence contrôlés côté serveur à chaque appel ; aucun cache du verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Abus et déni de service                     | Limiteur de débit par IP, 30 requêtes par minute, appliqué avant toute vérification (en mémoire, par instance : voir « Limites ») ; corps **borné à 1 Ko** par un parseur JSON propre à la route (les parseurs globaux de 10 Mo l'ignorent : `app.ts`), toute erreur de corps (JSON invalide, trop gros, encodage refusé) devient la même 404 uniforme avec les mêmes en-têtes, sans journaliser le message du parseur ; seul `token` est lu ; la 429 du limiteur de la route porte les mêmes en-têtes que les autres réponses (voir « Limites » pour la 429 du plancher global) |
-| Journaux d'accès et journaux applicatifs    | Le jeton n'est jamais dans l'URL : le fragment ne part pas au serveur et le `POST` le porte en corps. `requestLogger` journalise `req.url` (voir « Points ouverts ») : un jeton en URL y serait écrit, donc interdit                                                                                                                                                                                                                                                                                                                                                             |
-| Cache, `Referer`, indexation                | `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow` sur **toutes** les réponses publiques, refus compris ; la page n'a aucun lien sortant ; un fragment n'est jamais transmis dans `Referer`                                                                                                                                                                                                                                                                                                                                            |
-| Accès inter-agences (IDOR)                  | La route publique n'accepte **aucun** identifiant : seul le jeton compte. L'objet est chargé par `id` ET `tenantId` du lien. Côté agence, `linkId` est vérifié contre le relevé et l'agence ; `NotFoundError` uniforme                                                                                                                                                                                                                                                                                                                                                           |
-| Base de données compromise                  | Seul le hash est stocké : il ne permet pas de reconstruire une URL valide. Aucun jeton, ni hash, dans `AuditLog`, journaux ni réponses de liste                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Lien utilisé comme porte vers autre chose   | Aucune session, aucun cookie, aucun jeton d'authentification émis ; une route n'accepte que sa propre portée ; le lien ne désigne qu'un objet                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Agence suspendue ou désactivée              | Agence active (`isActive`) et non `SUSPENDED` exigée à chaque consultation ; sinon refus uniforme, sans révéler la raison                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Envoi à un destinataire non consentant      | Canal choisi seulement avec consentement **et** coordonnée exploitable ; un seul canal par message ; le destinataire vient du contact du propriétaire, jamais d'un paramètre ; l'URL va dans le corps, jamais dans un sujet d'e-mail                                                                                                                                                                                                                                                                                                                                             |
+| Menace                                      | Mesure retenue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fuite du lien (transfert, capture, partage) | Impossible à empêcher : on borne l'impact. Un seul objet, lecture seule, expiration, révocation à tout moment, consultations comptées (`viewCount`, `lastViewedAt`) et journalisées. Aucune donnée de contact dans la réponse publique                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Devinette                                   | 256 bits d'entropie, générateur cryptographique ; limiteur de débit par IP en plus. Pas de jeton court, pas de code à chiffres                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Énumération et mesure de temps              | Refus **uniforme** : inconnu, expiré, révoqué, mauvaise portée, agence inactive, objet disparu donnent la même 404 « Lien invalide ou expiré. » (statut, corps, en-têtes). Recherche par hash : la protection principale est la **préimage** (le serveur ne compare que le SHA-256 d'un jeton de 256 bits, impossible à deviner ni à reconstruire par mesure de temps) ; la comparaison à temps constant (`timingSafeEqual`) n'est qu'une défense en profondeur                                                                                                                                                                                                |
+| Rejeu après révocation ou expiration        | `revokedAt`, `expiresAt`, portée et statut de l'agence contrôlés côté serveur à chaque appel ; aucun cache du verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Abus et déni de service                     | Limiteur de débit par IP, 30 requêtes par minute, appliqué avant toute vérification, **un seul budget partagé par toutes les routes publiques à jeton** (en mémoire, par instance : voir « Limites » et 12 ter) ; corps **borné à 1 Ko** par un parseur JSON propre à la route (les parseurs globaux de 10 Mo l'ignorent : `app.ts`), toute erreur de corps (JSON invalide, trop gros, encodage refusé) devient la même 404 uniforme avec les mêmes en-têtes, sans journaliser le message du parseur ; seul `token` est lu ; la 429 du limiteur de la route porte les mêmes en-têtes que les autres réponses (voir « Limites » pour la 429 du plancher global) |
+| Journaux d'accès et journaux applicatifs    | Le jeton n'est jamais dans l'URL : le fragment ne part pas au serveur et le `POST` le porte en corps. `requestLogger` journalise `req.url` (voir « Points ouverts ») : un jeton en URL y serait écrit, donc interdit                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Cache, `Referer`, indexation                | `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow` sur **toutes** les réponses publiques, refus compris ; la page n'a aucun lien sortant ; un fragment n'est jamais transmis dans `Referer`                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Accès inter-agences (IDOR)                  | La route publique n'accepte **aucun** identifiant : seul le jeton compte. L'objet est chargé par `id` ET `tenantId` du lien. Côté agence, `linkId` est vérifié contre le relevé et l'agence ; `NotFoundError` uniforme                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Base de données compromise                  | Seul le hash est stocké : il ne permet pas de reconstruire une URL valide. Aucun jeton, ni hash, dans `AuditLog`, journaux ni réponses de liste                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Lien utilisé comme porte vers autre chose   | Aucune session, aucun cookie, aucun jeton d'authentification émis ; une route n'accepte que sa propre portée ; le lien ne désigne qu'un objet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Agence suspendue ou désactivée              | Agence active (`isActive`) et non `SUSPENDED` exigée à chaque consultation ; sinon refus uniforme, sans révéler la raison                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Envoi à un destinataire non consentant      | Canal choisi seulement avec consentement **et** coordonnée exploitable ; un seul canal par message ; le destinataire vient du contact du propriétaire, jamais d'un paramètre ; l'URL va dans le corps, jamais dans un sujet d'e-mail                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 **Journal.** Création, consultation réussie et révocation passent par `logAuditEvent`
 (`SECURE_LINK_CREATED`, `SECURE_LINK_VIEWED`, `SECURE_LINK_REVOKED`), rattachées à
@@ -545,7 +549,9 @@ jeton, jamais son hash. L'événement de consultation porte aussi l'adresse IP e
 user-agent de l'appelant (colonnes `ipAddress` et `userAgent` du journal), seule trace de
 l'accès hors compteur ; il n'est écrit qu'après une lecture réussie. Les refus ne sont pas
 journalisés un par un (ils ne portent pas d'agence connue) : le volume est limité par le
-limiteur de débit.
+limiteur de débit. La portée `EXTERNAL_ACCESS_GRANT` ne passe pas par `recordSecureLinkView` :
+ses consultations sont journalisées sous `EXTERNAL_ACCESS_GRANT_VIEWED` et comptées sur
+l'accès (section 12 ter).
 
 **Isolation et contexte d'agence.** La recherche par `tokenHash` est la **seule** lecture
 sans contexte d'agence du module, confinée à `lib/secure-links` (même statut que la liste des
@@ -556,21 +562,28 @@ reste de la requête passe par l'extension Prisma d'isolation (`TENANT_GUARD_MOD
 
 1. Ajouter une valeur à `SecureLinkScope`, un cas dans `buildSecureLinkUrl` et une fonction de
    lecture de l'objet ; pas de clé étrangère polymorphe.
-2. Un lien = un objet. Jamais de portée « tout l'espace d'un client ».
+2. Un lien = un objet. Jamais de portée « tout l'espace d'un client ». Quand l'objet est un
+   accès à plusieurs biens (`ExternalAccessGrant`, section 12 ter), son périmètre est
+   **explicite** (biens et entités énumérés par l'agence), relu et refiltré par agence à
+   chaque appel, et le lien ne vit jamais au-delà de l'échéance de l'accès (`maxExpiresAt`) ;
+   la révocation de l'accès révoque tous ses liens (`revokeSecureLinksForObject`).
 3. Réponse publique par projection explicite (`select`), sans coordonnées de contact, sans
    chemin de fichier, sans identifiant technique.
 4. Lecture seule d'abord. Un lien qui déclenche une écriture (paiement) exige un lot et une
    relecture de sécurité propres.
 5. Route inscrite à la liste blanche de `routes-inventory.test.ts` avec sa justification,
-   limiteur de débit, trois en-têtes de réponse ci-dessus, refus uniforme testé.
+   limiteur de débit (`secureLinkPublicRateLimiter`, partagé : voir 12 ter), trois en-têtes de
+   réponse ci-dessus, refus uniforme testé.
 
 **Export d'agence.** `SecureLink` est exclu de l'export de données de l'agence
 (`services/tenant-data-export/model-registry.ts`) : le hash est un secret d'accès, l'archive
-ne doit pas le contenir.
+ne doit pas le contenir. Les quatre modèles `ExternalAccessGrant*` du lot B3, qui ne portent
+aucun secret, sont exportés (section 12 ter).
 
 **Limites connues.**
 
-- Un lien divulgué donne accès en lecture à un seul objet jusqu'à expiration ou révocation ;
+- Un lien divulgué donne accès en lecture à un seul objet jusqu'à expiration ou révocation
+  (pour la portée des tiers de confiance, à tout le périmètre de l'accès : section 12 ter) ;
   aucune vérification d'identité du porteur n'est faite (pas de code complémentaire).
 - Le limiteur de débit est en mémoire, par instance (comme les autres, voir « Points
   ouverts ») ; la latence de réponse entre un jeton inconnu et un jeton connu mais refusé
@@ -607,8 +620,152 @@ ne doit pas le contenir.
   de lien ni être envoyé (409 `ConflictError`) : même garde que l'envoi du relevé.
 - Le message qui porte le lien (WhatsApp, e-mail) est stocké par des tiers (fournisseur,
   boîte du destinataire) ; l'expiration courte est la parade.
-- La révocation automatique à la suppression de l'objet et la ré-émission d'un lien
-  expiré ne sont pas prévues (spec 031, points ouverts).
+- La révocation automatique à la suppression de l'objet n'est pas prévue (spec 031, points
+  ouverts). La ré-émission d'un lien expiré n'existe pas pour le rapport mensuel ; pour un
+  accès de tiers de confiance, l'agence en émet un nouveau (« Renvoyer un lien », 12 ter).
+
+## 12 ter. Accès des tiers de confiance
+
+Un notaire, un expert-comptable ou un banquier consulte, sans compte, une partie du
+patrimoine d'un client de l'agence : le lot B3 (spec
+[034](../../specs/034-patrimoine-acces-tiers-confiance/spec.md), modèles `ExternalAccessGrant*`
+dans [DATA_MODELS.md](../architecture/DATA_MODELS.md)) est la seconde portée de
+`lib/secure-links`, `EXTERNAL_ACCESS_GRANT`. Toutes les mesures de la section 12 bis
+s'appliquent telles quelles (jeton de 256 bits haché, fragment puis corps de `POST`, refus
+uniforme, en-têtes, limiteur, corps de 1 Ko). Cette section couvre ce que le lot ajoute ou
+aggrave : un lien qui ouvre **un périmètre de plusieurs biens et plusieurs rubriques** et non
+un seul objet, un accès qui peut être permanent, des documents privés et des données
+patrimoniales sensibles.
+
+**Mécanisme.**
+
+- **Un accès nominatif** (`ExternalAccessGrant`) : type de tiers, bénéficiaire (nom et e-mail
+  saisis par l'agence), **périmètre explicite** (biens listés et entités détentrices listées,
+  développées en biens par `PropertyHolding` à chaque consultation), **rubriques** accordées
+  (`VALUATIONS`, `YIELD_RATIOS`, `LOANS`, `EXPENSES`, `RENTS`, `DOCUMENTS`, `TITLES_OWNERSHIP` ;
+  jamais une liste vide), documents partageables liés un par un, échéance ou aucune.
+- **Périmètre.** Un bien est ouvert s'il appartient à l'agence ou s'il est un bien CLIENT sous
+  mandat de gestion **actif** de cette agence, selon la même règle à l'écriture et à chaque
+  consultation : un mandat échu referme l'accès sans action de l'agence. Il n'existe pas de
+  périmètre « tout ce que possède X ». Un périmètre qui se vide donne la 404 uniforme. Il est plafonné à **100 biens**, entités
+  développées comprises : 400 à l'écriture ; à la consultation, si des entités ont grossi, la
+  vue est tronquée aux 100 premiers biens par titre et `summary.truncated` vaut `true`.
+- **Rubriques.** Seules les rubriques accordées sont **lues et renvoyées** : une rubrique non
+  accordée est absente de la réponse, pas masquée. Projection par `select` explicite, jamais
+  par sérialisation d'un objet Prisma.
+- **Lien.** `SecureLink` de portée `EXTERNAL_ACCESS_GRANT`, `objectType = 'ExternalAccessGrant'`,
+  `objectId` = identifiant de l'accès ; URL partagée `<FRONTEND_URL>/acces-partage#<jeton>`
+  (jeton dans le fragment, puis dans le corps d'un `POST`). Chaque lien vit au plus
+  `SECURE_LINK_MAX_TTL_DAYS` (7 jours par défaut) et **jamais au-delà de l'échéance de
+  l'accès** (`maxExpiresAt`). Plusieurs liens peuvent être actifs ensemble ; un renvoi ne
+  révoque les précédents que sur demande (`revokePreviousLinks`).
+- **Permanent = réémission, pas jeton éternel.** Un accès sans échéance reste valable jusqu'à
+  révocation, mais aucun de ses liens ne l'est : à l'expiration d'un lien, l'agence en émet un
+  autre (« Renvoyer un lien »).
+- **Révocation.** Révoquer l'accès pose `revokedAt` sur lui **et** sur tous ses liens ;
+  changer `recipientEmail` révoque aussi les liens actifs. Indépendamment de l'état du lien,
+  l'accès lui-même est **relu à chaque appel** (existe, non révoqué, non expiré) : un lien
+  encore valide d'un accès révoqué ou expiré répond la 404 uniforme.
+- **Routes publiques.** `POST /api/public/external-access/patrimoine` (`{ token }`) et
+  `POST /api/public/external-access/documents/download` (`{ token, documentRef }`) : aucun
+  identifiant de bien, d'agence, d'entité ou de document ne vient de l'appelant. `documentRef`
+  est l'identifiant de la ligne de liaison de CET accès (jamais celui du document ni un chemin),
+  revérifié avec la rubrique `DOCUMENTS` et le périmètre courant ; le fichier part en pièce
+  jointe (`attachment`, `nosniff`).
+
+| Menace                                  | Mesure retenue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Énumération (accès, biens, documents)   | Aucun identifiant accepté de l'appelant public : seul le jeton compte, le document se désigne par une `ref` opaque. Refus public **uniforme** : jeton inconnu, expiré ou révoqué, mauvaise portée, agence inactive, accès révoqué, expiré ou supprimé, périmètre vide, `documentRef` invalide, corps malformé donnent la même 404 « Lien invalide ou expiré. ». Côté agence, toute référence inconnue ou étrangère donne la même `NotFoundError`                                                                                                                                                                                                                                            |
+| Fuite inter-tenant                      | `tenantId` direct sur les quatre modèles ; lecture sous `runWithTenantContext` de l'agence du lien, `tenantId` du lien dans chaque requête ; entités et mandats filtrés par agence ; extension Prisma active ; propriétaire désigné revérifié dans l'agence ; identifiants reçus côté agence revérifiés avant écriture                                                                                                                                                                                                                                                                                                                                                                      |
+| Élévation de portée : rubriques         | Clés d'une rubrique présentes seulement si elle est accordée, rubriques relues à chaque appel ; retirer une rubrique agit à la requête suivante sans réémettre de lien ; liste vide refusée ; défauts minimaux par type (banquier, expert-comptable, notaire)                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Élévation de portée : périmètre         | Périmètre explicite, entités développées à chaque appel et refiltrées (bien de l'agence ou bien CLIENT sous mandat actif) ; un nouveau bien ne rejoint un accès que par une action de l'agence ou par la participation d'une entité listée ; documents vérifiés dans le périmètre à l'écriture, à la consultation et au téléchargement                                                                                                                                                                                                                                                                                                                                                      |
+| Jeton volé ou transféré                 | Impossible à empêcher sans identité du porteur : on borne l'impact. Lecture seule ; lien borné par `SECURE_LINK_MAX_TTL_DAYS` et par l'échéance de l'accès ; révocation de l'accès et de tous ses liens à tout moment ; changement d'e-mail révoque les liens **avant** l'écriture du nouvel e-mail (échec fermé) ; consultations comptées et journalisées avec IP et user-agent                                                                                                                                                                                                                                                                                                            |
+| Rejeu après révocation ou expiration    | Jeton (révocation, échéance, portée, agence) **et** accès (`revokedAt`, `expiresAt`, périmètre) contrôlés côté serveur à chaque appel, vue comme téléchargement, sans cache du verdict ; la révocation de l'accès révoque aussi ses liens                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Données personnelles de tiers           | Projection explicite : ni e-mail ni téléphone, ni identité de locataire, ni nom de co-indivisaire (pourcentages seuls), ni texte libre interne (libellé ou fournisseur d'une dépense, notes), ni chemin disque, ni identifiant technique de bien, d'agence, d'entité ou de propriétaire. En `TITLES_OWNERSHIP`, seules les personnes **morales** de l'agence **explicitement listées** dans l'accès sont nommées (nom, forme, pays, RCCM, numéro fiscal, quote-part) ; un accès par biens seuls n'en nomme aucune ; toute autre détention est agrégée en `otherHoldersSharePercent`, sans nom ni identifiant. L'e-mail du bénéficiaire n'est jamais dans la vue publique ni dans le journal |
+| Déni de service par grand périmètre     | Périmètre plafonné à 100 biens (400 à l'écriture, troncature signalée à la consultation) ; 200 lignes de dépenses par bien ; rendement calculé par lots de 5 biens (environ 6 requêtes par bien) ; limiteur par IP avant toute vérification ; corps de 1 Ko. Coût borné mais non nul : voir limites                                                                                                                                                                                                                                                                                                                                                                                         |
+| Téléchargement hors périmètre           | `documentRef` = ligne de liaison de CET accès, bien encore dans le périmètre (mandat compris), rubrique `DOCUMENTS` accordée, accès valide ; sinon 404 uniforme. Document non lié, lié à un autre accès ou dont le bien est sorti du périmètre : 0 octet servi. `attachment` et `nosniff`, jamais de chemin disque                                                                                                                                                                                                                                                                                                                                                                          |
+| Journalisation                          | Création, modification, révocation, envoi de lien, consultation et téléchargement journalisés (voir ci-dessous), IP et user-agent en colonnes ; jamais le jeton, son hash, l'URL du lien ni l'e-mail du bénéficiaire ; message du parseur non journalisé                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Accès permanent devenu jeton éternel    | Aucun lien n'est permanent (durée bornée) ; l'accès reste révocable et visible dans la liste, avec son statut (`ACTIVE`, `EXPIRING`, `EXPIRED`, `REVOKED`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Envoi du lien à un mauvais destinataire | Destinataire lu sur l'accès, jamais fourni à l'envoi ; URL dans le corps de l'e-mail, jamais dans le sujet ni un journal ; valeurs échappées dans le HTML ; un seul e-mail par envoi, action explicite de l'agence (le tiers n'a pas de fiche CRM : aucun contrôle de consentement CRM)                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+**Permissions (aucune nouvelle).** Lecture (liste, détail, options, documents d'un bien,
+journal) : `PROPERTIES_VIEW` ; création, modification, révocation, renvoi de lien :
+`PROPERTIES_EDIT` (`requireAnyPropertyPermission` et `requirePropertyPermission`, comme
+`patrimoine-routes.ts`). Le périmètre porte sur des biens et leurs documents : qui peut voir ou
+modifier un bien décide déjà de qui le consulte, et une permission dédiée multiplierait les
+rôles à reconfigurer pour une fonction que les gestionnaires de biens exercent déjà. Les
+routes d'agence sont sous `/tenants/:tenantId/patrimoine`, donc soumises à la fonctionnalité
+d'abonnement `PATRIMOINE` (`lib/subscription/route-features.ts`).
+
+**Journal.** Six événements `logAuditEvent`, `entityType = 'ExternalAccessGrant'`, `entityId` =
+identifiant de l'accès : `EXTERNAL_ACCESS_GRANT_CREATED` (écrit après l'émission du lien :
+jamais pour un accès supprimé par compensation), `_UPDATED` (noms des champs
+modifiés, jamais leurs valeurs), `_REVOKED`, `_LINK_SENT` (`linkId`, `emailSent`), `_VIEWED` et
+`_DOCUMENT_DOWNLOADED` (`documentRef`, nom du document). Les consultations et téléchargements
+publics sont attribués à l'agence de l'accès (`actorUserId` nul) et portent l'adresse IP et le
+user-agent (tronqué à 500 caractères, sans saut de ligne) en colonnes ; ils ne sont écrits
+qu'après une lecture réussie ; l'événement d'audit est écrit avant le compteur, chacun isolé :
+l'échec du compteur ne supprime pas la trace d'audit et aucun des deux ne transforme la lecture
+en erreur. Pour cette portée, `recordSecureLinkView` n'est pas appelé : pas de
+`SECURE_LINK_VIEWED`, et seuls `viewCount` et `lastViewedAt` **de l'accès** sont mis à jour
+(pas ceux du `SecureLink`) ; chaque création et révocation d'un lien produit en revanche
+`SECURE_LINK_CREATED` et `SECURE_LINK_REVOKED`. Les refus ne sont pas journalisés un par un. Le
+journal d'un accès (`GET …/external-access/:grantId/access-log`, 50 lignes par défaut, 100 au
+plus) ne renvoie que des clés connues (`CREATED`, `UPDATED`, `REVOKED`, `LINK_SENT`, `VIEWED`,
+`DOCUMENT_DOWNLOADED`) et jamais la charge brute.
+
+**Isolation.** Même schéma qu'en 12 bis : la recherche par `tokenHash` est la seule lecture
+sans contexte d'agence ; tout le reste de la requête publique passe sous `runWithTenantContext`
+de l'agence du lien. Les lectures de `Property` ne sélectionnent jamais `tenantId` (nul pour un
+bien CLIENT sous mandat).
+
+**Export d'agence.** Les quatre modèles `ExternalAccessGrant*` sont **exportés** (ils ne
+portent aucun secret : classement `DIRECT` sur `tenantId`, dérivé du schéma) ; l'e-mail du
+bénéficiaire y figure comme donnée de l'agence. `SecureLink` reste exclu.
+
+**Limites connues.**
+
+- **Un lien divulgué ouvre tout le périmètre et toutes les rubriques de l'accès**, pas un seul
+  objet comme en 12 bis, jusqu'à expiration du lien ou révocation de l'accès. Aucune
+  vérification d'identité du porteur (pas de code complémentaire) : la borne d'impact est la
+  durée du lien, la révocation et le journal.
+- **Limiteur de débit partagé.** Les deux routes publiques utilisent le **même** limiteur que
+  le rapport mensuel (`secureLinkPublicRateLimiter`, 30 requêtes par minute et par IP, clé
+  commune) : un tiers qui consulte puis télécharge plusieurs documents, ou plusieurs porteurs
+  derrière une même adresse, épuisent le budget des autres liens publics de cette adresse. Il
+  est en mémoire, par instance (voir 13).
+- **`PROPERTIES_EDIT` suffit à ouvrir des documents privés à un tiers** : l'agence choisit les
+  documents d'un bien partagés, sans permission distincte. Une permission dédiée serait un
+  ajout de la plateforme, hors de ce lot.
+- **Messages de validation en français brut.** Les messages des schémas `zod` de l'API d'agence
+  (date d'expiration invalide, rubrique vide, e-mail invalide…) sont écrits en français sans
+  passer par `t()` : non traduits en anglais ni en arabe.
+- **Données exposées par la rubrique `TITLES_OWNERSHIP`** : nom, forme juridique, pays, RCCM
+  et numéro fiscal des seules personnes morales de l'agence explicitement listées dans l'accès
+  (un accès par biens seuls n'en nomme aucune : pour nommer une société, l'agence l'ajoute à
+  l'accès) ; les autres détentions ne sortent que sous forme d'un pourcentage agrégé.
+- **Plus-value latente et dépenses capitalisées.** La plus-value de la rubrique `VALUATIONS`
+  vient du moteur de rendement, dont le coût de revient inclut les dépenses capitalisées du
+  bien : un tiers qui voit valeur et plus-value peut en déduire un ordre de grandeur. Inférence
+  acceptée.
+- **Coût résiduel d'une consultation.** Borné (100 biens, environ 6 requêtes de rendement par
+  bien, par lots de 5) mais non nul, sur une route anonyme ; le limiteur par IP est partagé et
+  en mémoire, un porteur de lien valide peut en consommer le budget.
+- **Vue publique non conditionnée à l'abonnement `PATRIMOINE`.** Seules les routes d'agence le
+  sont : un accès déjà émis reste lisible si l'agence perd `PATRIMOINE` (une agence suspendue
+  ou inactive reste refusée). Décision produit à prendre.
+- **Pas de limiteur propre à `send-link`** : la route est authentifiée (`PROPERTIES_EDIT`) mais
+  chaque appel peut émettre un lien et un e-mail.
+- **Un document téléchargé échappe ensuite à tout contrôle** ; le fichier est lu en mémoire
+  puis envoyé en une réponse (pas de flux).
+- **Un renvoi n'invalide pas les anciens liens** sauf `revokePreviousLinks` ; la durée du lien
+  est validée **avant** toute révocation et, à la création, avant celle de l'accès (la
+  suppression compensatoire ne couvre que l'échec de `createSecureLink`, jamais un e-mail
+  parti).
+- **Retirer la rubrique `DOCUMENTS` supprime les documents liés** : repartager un document crée
+  une nouvelle `ref`.
+- L'envoi de l'e-mail n'est coupé que par `NODE_ENV=test` (voir 12 bis) : en développement,
+  un envoi depuis l'écran agence part réellement si un fournisseur est configuré.
 
 ## 13. Points ouverts
 

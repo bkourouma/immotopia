@@ -475,12 +475,13 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
 
   // New relationships for multi-tenant RBAC
-  memberships         Membership[]
-  userRoles           UserRole[]
-  invitations         Invitation[] @relation("InvitedBy")
-  acceptedInvitations Invitation[] @relation("AcceptedBy")
-  createdSecureLinks  SecureLink[] @relation("SecureLinkCreatedBy")
-  lastLoginAt         DateTime?    @map("last_login_at")
+  memberships                 Membership[]
+  userRoles                   UserRole[]
+  invitations                 Invitation[]          @relation("InvitedBy")
+  acceptedInvitations         Invitation[]          @relation("AcceptedBy")
+  createdSecureLinks          SecureLink[]          @relation("SecureLinkCreatedBy")
+  createdExternalAccessGrants ExternalAccessGrant[] @relation("ExternalAccessGrantCreatedBy")
+  lastLoginAt                 DateTime?             @map("last_login_at")
 
   // CRM relationships
   crmContactsAssigned  CrmContact[]  @relation("ContactAssignedTo")
@@ -596,12 +597,16 @@ model Tenant {
   clients TenantClient[]
 
   // New relationships for multi-tenant RBAC
-  modules      TenantModule[]
-  memberships  Membership[]
-  subscription Subscription?
-  invoices     Invoice[]
-  invitations  Invitation[]
-  secureLinks  SecureLink[]
+  modules                       TenantModule[]
+  memberships                   Membership[]
+  subscription                  Subscription?
+  invoices                      Invoice[]
+  invitations                   Invitation[]
+  secureLinks                   SecureLink[]
+  externalAccessGrants          ExternalAccessGrant[]
+  externalAccessGrantProperties ExternalAccessGrantProperty[]
+  externalAccessGrantEntities   ExternalAccessGrantEntity[]
+  externalAccessGrantDocuments  ExternalAccessGrantDocument[]
 
   // Abonnements par packs (PLAN-ABONNEMENTS.md)
   subscriptionItems SubscriptionItem[]
@@ -794,6 +799,7 @@ model TenantClient {
   ownerPayouts              OwnerPayout[]
   ownershipShares           PropertyOwnershipShare[]
   saleMandatesAsSeller      SaleMandate[]
+  externalAccessGrants      ExternalAccessGrant[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -1000,6 +1006,8 @@ model Invitation {
 /// les lots suivants (paiement par lien, tiers de confiance) en ajouteront.
 enum SecureLinkScope {
   OWNER_MONTHLY_REPORT
+  /// Acces en lecture seule d'un tiers de confiance (lot B3, spec 034).
+  EXTERNAL_ACCESS_GRANT
 }
 
 /// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
@@ -1029,6 +1037,116 @@ model SecureLink {
   @@index([tenantId, objectType, objectId])
   @@index([expiresAt])
   @@map("secure_links")
+}
+
+/// Type de tiers de confiance auquel l'agence ouvre un acces en lecture seule (lot B3, spec 034).
+enum ExternalAccessType {
+  NOTARY
+  ACCOUNTANT
+  BANKER
+}
+
+/// Rubriques ouvrables d'un acces tiers : seules celles accordees sont lues ET renvoyees.
+enum ExternalAccessSection {
+  VALUATIONS
+  YIELD_RATIOS
+  LOANS
+  EXPENSES
+  RENTS
+  DOCUMENTS
+  TITLES_OWNERSHIP
+}
+
+/// Acces nominatif d'un tiers de confiance (notaire, expert-comptable, banquier) a un
+/// perimetre EXPLICITE de biens, en lecture seule. Le lien d'acces est un `SecureLink`
+/// de portee EXTERNAL_ACCESS_GRANT dont `objectId` est l'id de ce grant. Contient l'e-mail
+/// du tiers (donnee de l'agence, jamais renvoyee par l'API publique).
+model ExternalAccessGrant {
+  id              String                  @id @default(uuid())
+  tenantId        String                  @map("tenant_id")
+  type            ExternalAccessType
+  recipientName   String                  @map("recipient_name")
+  recipientEmail  String                  @map("recipient_email")
+  /// Proprietaire pour le compte duquel l'acces est donne (informatif : nom + quote-part).
+  ownerClientId   String?                 @map("owner_client_id")
+  sections        ExternalAccessSection[]
+  /// Nul = acces permanent (les liens, eux, expirent toujours).
+  expiresAt       DateTime?               @map("expires_at")
+  revokedAt       DateTime?               @map("revoked_at")
+  createdByUserId String?                 @map("created_by_user_id")
+  viewCount       Int                     @default(0) @map("view_count")
+  lastViewedAt    DateTime?               @map("last_viewed_at")
+  lastLinkSentAt  DateTime?               @map("last_link_sent_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  tenant      Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient?                 @relation(fields: [ownerClientId], references: [id], onDelete: SetNull)
+  createdBy   User?                         @relation("ExternalAccessGrantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  properties  ExternalAccessGrantProperty[]
+  entities    ExternalAccessGrantEntity[]
+  documents   ExternalAccessGrantDocument[]
+
+  @@index([tenantId])
+  @@index([tenantId, revokedAt])
+  @@map("external_access_grants")
+}
+
+/// Bien du perimetre d'un acces tiers.
+model ExternalAccessGrantProperty {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  grantId    String   @map("grant_id")
+  propertyId String   @map("property_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grant    ExternalAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  property Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, propertyId])
+  @@index([tenantId])
+  @@index([grantId])
+  @@map("external_access_grant_properties")
+}
+
+/// Entite detentrice du perimetre : developpee en biens (PropertyHolding) a chaque consultation.
+model ExternalAccessGrantEntity {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  grantId   String   @map("grant_id")
+  entityId  String   @map("entity_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grant  ExternalAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  entity HoldingEntity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, entityId])
+  @@index([tenantId])
+  @@index([grantId])
+  @@map("external_access_grant_entities")
+}
+
+/// Document de bien explicitement partage avec le tiers (un document par ligne).
+/// Le public ne voit que l'id de cette ligne (`documentRef`), jamais l'id du document.
+model ExternalAccessGrantDocument {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  grantId    String   @map("grant_id")
+  propertyId String   @map("property_id")
+  documentId String   @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grant    ExternalAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  property Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  document PropertyDocument    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, documentId])
+  @@index([tenantId])
+  @@index([grantId])
+  @@map("external_access_grant_documents")
 }
 
 // Subscription
@@ -1867,17 +1985,20 @@ model Property {
   syndicateLots SyndicateLot[]
 
   // Patrimoine relationships
-  assetValuations     AssetValuation[]
-  propertyLoans       PropertyLoan[]
-  propertyExpenses    PropertyExpense[]
-  workPrograms        WorkProgram[]
-  constructionSites   ConstructionSite[]
-  patrimonyDocuments  PatrimonyDocument[]
-  ownerStatementItems OwnerStatementItem[]
-  ownershipShares     PropertyOwnershipShare[]
+  assetValuations               AssetValuation[]
+  propertyLoans                 PropertyLoan[]
+  propertyExpenses              PropertyExpense[]
+  workPrograms                  WorkProgram[]
+  constructionSites             ConstructionSite[]
+  patrimonyDocuments            PatrimonyDocument[]
+  ownerStatementItems           OwnerStatementItem[]
+  ownershipShares               PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
-  holdings            PropertyHolding[]
-  taxProfile          PropertyTaxProfile?
+  holdings                      PropertyHolding[]
+  taxProfile                    PropertyTaxProfile?
+  // Accès tiers de confiance (lot B3)
+  externalAccessGrantProperties ExternalAccessGrantProperty[]
+  externalAccessGrantDocuments  ExternalAccessGrantDocument[]
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
@@ -1950,8 +2071,9 @@ model PropertyDocument {
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property                     Property                      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant                       Tenant?                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  externalAccessGrantDocuments ExternalAccessGrantDocument[]
 
   @@index([tenantId])
   @@index([propertyId])
@@ -8251,11 +8373,12 @@ model HoldingEntity {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contact      CrmContact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  parentEntity HoldingEntity?    @relation("HoldingEntityParent", fields: [parentEntityId], references: [id], onDelete: SetNull)
-  children     HoldingEntity[]   @relation("HoldingEntityParent")
-  holdings     PropertyHolding[]
+  tenant                      Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact                     CrmContact?                 @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  parentEntity                HoldingEntity?              @relation("HoldingEntityParent", fields: [parentEntityId], references: [id], onDelete: SetNull)
+  children                    HoldingEntity[]             @relation("HoldingEntityParent")
+  holdings                    PropertyHolding[]
+  externalAccessGrantEntities ExternalAccessGrantEntity[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])

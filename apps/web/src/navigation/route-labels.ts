@@ -36,6 +36,7 @@ function buildRouteLabels(): Record<string, string> {
     statements: t('Relevés'),
     entities: t('Entités détentrices'),
     'tax-parameters': t('Paramètres fiscaux'),
+    'external-access': t('Accès partagés'),
 
     // Gestion locative
     rental: t('Gestion locative'),

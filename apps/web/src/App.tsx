@@ -116,6 +116,17 @@ const TaxParametersPage = lazy(() =>
     default: m.TaxParametersPage
   }))
 );
+// Lot B3 — accès en lecture seule des tiers de confiance (notaire, expert-comptable, banquier).
+const ExternalAccessPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/external-access/ExternalAccessPage').then(m => ({
+    default: m.ExternalAccessPage
+  }))
+);
+const ExternalAccessViewPage = lazy(() =>
+  import(/* webpackChunkName: "public-external-access" */ './pages/public/ExternalAccessViewPage').then(m => ({
+    default: m.ExternalAccessViewPage
+  }))
+);
 // Module financier — regroupe dans un seul morceau : les quatre ecrans se
 // consultent a la suite (une balance, puis le releve qu'elle ouvre), et les
 // separer ferait payer un aller-retour reseau a chaque clic.
@@ -819,6 +830,7 @@ function App() {
                         <Route path="/newsletter/confirm" element={<ConfirmPage />} />
                         <Route path="/newsletter/subscribe" element={<SubscribePage />} />
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
+                        <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}
@@ -899,6 +911,7 @@ function App() {
                             element={<HoldingEntityDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/external-access" element={<ExternalAccessPage />} />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne

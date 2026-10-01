@@ -51,7 +51,9 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'LOAN_MATURITY_ALERT',
   'DOCUMENT_EXPIRY_ALERT',
   'WORK_PROGRAM_REMINDER',
-  'OWNER_MONTHLY_REPORT_SENT'
+  'OWNER_MONTHLY_REPORT_SENT',
+  // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
+  'EXTERNAL_ACCESS_LINK_SENT'
 ] as const;
 
 export type EmailNotificationKey = (typeof EMAIL_NOTIFICATION_KEYS)[number];
@@ -295,6 +297,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       'Envoi au propriétaire du lien sécurisé vers son rapport mensuel (lecture seule, durée limitée), lorsque le canal e-mail est retenu.',
     recipientLabel: 'Propriétaire'
+  },
+  EXTERNAL_ACCESS_LINK_SENT: {
+    key: 'EXTERNAL_ACCESS_LINK_SENT',
+    label: 'Accès partagé à un tiers de confiance',
+    description:
+      "Envoi au notaire, à l'expert-comptable ou au banquier du lien sécurisé d'accès en lecture seule à une sélection de biens (durée limitée, révocable).",
+    recipientLabel: 'Tiers de confiance'
   },
   INVITATION: {
     key: 'INVITATION',

@@ -1329,5 +1329,18 @@
   "Lien introuvable.": "الرابط غير موجود.",
   "Lien invalide ou expiré.": "هذا الرابط غير صالح أو منتهي الصلاحية.",
   "LinkId manquant": "معرّف الرابط مفقود",
-  "Trop de requêtes. Veuillez réessayer dans une minute.": "طلبات كثيرة جدًا. يرجى المحاولة مجددًا بعد دقيقة."
+  "Trop de requêtes. Veuillez réessayer dans une minute.": "طلبات كثيرة جدًا. يرجى المحاولة مجددًا بعد دقيقة.",
+  "Accès introuvable.": "الوصول غير موجود.",
+  "Propriétaire introuvable.": "المالك غير موجود.",
+  "Ajoutez la rubrique « Documents » pour partager des documents.": "أضف قسم «المستندات» لمشاركة المستندات.",
+  "Choisissez au moins un bien ou une entité.": "اختر عقارًا أو كيانًا واحدًا على الأقل.",
+  "Cet accès est révoqué : il ne peut plus être modifié.": "تم إلغاء هذا الوصول: لم يعد من الممكن تعديله.",
+  "Cet accès est révoqué : aucun lien ne peut être envoyé.": "تم إلغاء هذا الوصول: لا يمكن إرسال أي رابط.",
+  "Cet accès est expiré : prolongez-le avant de renvoyer un lien.": "انتهت صلاحية هذا الوصول: مدّدها قبل إعادة إرسال رابط.",
+  "Notaire": "موثّق",
+  "Expert-comptable": "خبير محاسب",
+  "Banquier": "مصرفي",
+  "L'accès est expiré : aucun lien ne peut être créé.": "انتهت صلاحية الوصول: لا يمكن إنشاء أي رابط.",
+  "Un accès partagé ne peut couvrir plus de {{max}} biens.": "لا يمكن أن يشمل الوصول المشترك أكثر من {{max}} عقارًا.",
+  "Cette entité ne détient aucun bien.": "هذا الكيان لا يملك أي عقار."
 }

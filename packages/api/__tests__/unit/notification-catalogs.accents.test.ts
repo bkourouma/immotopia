@@ -62,6 +62,27 @@ describe('catalogues de notifications', () => {
       expect(WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES.OWNER_MONTHLY_REPORT_SENT).toContain('{{reportUrl}}');
     });
 
+    it('accès tiers de confiance (lot B3) : clé e-mail déclarée, gabarit complet, jamais d’URL dans le sujet', () => {
+      const key = 'EXTERNAL_ACCESS_LINK_SENT' as const;
+      expect(EMAIL_NOTIFICATION_KEYS.filter(k => k === key)).toHaveLength(1);
+      expect(EMAIL_NOTIFICATION_META[key].key).toBe(key);
+      expect(featureOfNotificationKey(key)).toBe('PATRIMOINE');
+      const template = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[key];
+      for (const variable of ['recipientName', 'agencyName', 'accessType', 'accessUrl', 'expiresAt']) {
+        expect(template.bodyHtml).toContain(`{{${variable}}}`);
+      }
+      expect(template.subject).not.toContain('{{accessUrl}}');
+      expect(template.bodyHtml).toContain('href="{{accessUrl}}"');
+      expect(
+        [
+          EMAIL_NOTIFICATION_META[key].label,
+          EMAIL_NOTIFICATION_META[key].description,
+          EMAIL_NOTIFICATION_META[key].recipientLabel,
+          template.subject
+        ].filter(text => UNACCENTED.test(text))
+      ).toEqual([]);
+    });
+
     it('les alertes propriétaire gardent leurs clés e-mail historiques (aucun changement pour les agences)', () => {
       expect(EMAIL_NOTIFICATION_KEYS).toEqual(expect.arrayContaining(['LEASE_ENDING_SOON', 'DOCUMENT_EXPIRY_ALERT']));
       expect(EMAIL_NOTIFICATION_KEYS).not.toContain('OWNER_LEASE_ENDING_SOON');

@@ -141,25 +141,27 @@ rôles, prestataires...) pour un statut actif/inactif simple.
 
 Modèle générique des liens partageables sans compte, ajouté par la spec
 [031](../../specs/031-patrimoine-canaux-liens-securises/spec.md) ; le premier usage est
-le rapport mensuel d'un propriétaire. Il relève du domaine « Documents & audit » ; les
-comptes ci-dessus ne le comptent pas tant que la migration n'est pas fusionnée. Modèle de
-menace : [SECURITY.md](../governance/SECURITY.md), section « 12 bis. Liens publics à jeton ».
+le rapport mensuel d'un propriétaire, le second l'accès des tiers de confiance (lot B3, spec
+[034](../../specs/034-patrimoine-acces-tiers-confiance/spec.md), section suivante). Il relève
+du domaine « Documents & audit » ; les comptes ci-dessus ne le comptent pas tant que la
+migration n'est pas fusionnée. Modèle de menace : [SECURITY.md](../governance/SECURITY.md),
+sections « 12 bis. Liens publics à jeton » et « 12 ter. Accès des tiers de confiance ».
 
-| Champ             | Type              | Règle                                                                                                                          |
-| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `id`              | `String` (UUID)   | clé primaire (colonne texte, `@default(uuid())`) ; table `secure_links`                                                        |
-| `tenantId`        | `String`          | agence propriétaire du lien, obligatoire ; relation `Tenant`, `onDelete: Cascade`                                              |
-| `scope`           | `SecureLinkScope` | portée du lien ; une seule valeur aujourd'hui, `OWNER_MONTHLY_REPORT` ; une route n'accepte que sa propre portée               |
-| `objectType`      | `String`          | nom du modèle visé (`"OwnerStatement"`)                                                                                        |
-| `objectId`        | `String`          | identifiant de l'objet visé                                                                                                    |
-| `tokenHash`       | `String` (unique) | SHA-256 du jeton ; **jamais le jeton**                                                                                         |
-| `expiresAt`       | `DateTime`        | 7 jours par défaut (`SECURE_LINK_DEFAULT_TTL_DAYS`), 30 au plus (`SECURE_LINK_MAX_TTL_DAYS`)                                   |
-| `revokedAt`       | `DateTime?`       | posé à la révocation ; la ligne est conservée                                                                                  |
-| `createdByUserId` | `String?`         | utilisateur créateur ; nul pour un lien créé par le job mensuel ; relation `User` `onDelete: SetNull` ; jamais `include: user` |
-| `viewCount`       | `Int` (défaut 0)  | consultations réussies, incrémenté atomiquement                                                                                |
-| `lastViewedAt`    | `DateTime?`       | dernière consultation réussie                                                                                                  |
-| `createdAt`       | `DateTime`        | création                                                                                                                       |
-| `updatedAt`       | `DateTime`        | `@updatedAt`                                                                                                                   |
+| Champ             | Type              | Règle                                                                                                                                                                                      |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`              | `String` (UUID)   | clé primaire (colonne texte, `@default(uuid())`) ; table `secure_links`                                                                                                                    |
+| `tenantId`        | `String`          | agence propriétaire du lien, obligatoire ; relation `Tenant`, `onDelete: Cascade`                                                                                                          |
+| `scope`           | `SecureLinkScope` | portée du lien ; deux valeurs : `OWNER_MONTHLY_REPORT` et `EXTERNAL_ACCESS_GRANT` (lot B3) ; une route n'accepte que sa propre portée                                                      |
+| `objectType`      | `String`          | nom du modèle visé (`"OwnerStatement"` ; `"ExternalAccessGrant"` pour l'accès d'un tiers de confiance)                                                                                     |
+| `objectId`        | `String`          | identifiant de l'objet visé                                                                                                                                                                |
+| `tokenHash`       | `String` (unique) | SHA-256 du jeton ; **jamais le jeton**                                                                                                                                                     |
+| `expiresAt`       | `DateTime`        | 7 jours par défaut (`SECURE_LINK_DEFAULT_TTL_DAYS`), 30 au plus (`SECURE_LINK_MAX_TTL_DAYS`) ; pour un accès tiers, jamais au-delà de l'échéance de l'accès (`maxExpiresAt` à la création) |
+| `revokedAt`       | `DateTime?`       | posé à la révocation ; la ligne est conservée                                                                                                                                              |
+| `createdByUserId` | `String?`         | utilisateur créateur ; nul pour un lien créé par le job mensuel ; relation `User` `onDelete: SetNull` ; jamais `include: user`                                                             |
+| `viewCount`       | `Int` (défaut 0)  | consultations réussies, incrémenté atomiquement ; **non incrémenté** pour la portée `EXTERNAL_ACCESS_GRANT` (le compteur est sur l'accès)                                                  |
+| `lastViewedAt`    | `DateTime?`       | dernière consultation réussie                                                                                                                                                              |
+| `createdAt`       | `DateTime`        | création                                                                                                                                                                                   |
+| `updatedAt`       | `DateTime`        | `@updatedAt`                                                                                                                                                                               |
 
 **Index** : unique sur `tokenHash` (retrouve la ligne depuis le jeton reçu) ; index sur
 `tenantId` ; index sur `(tenantId, objectType, objectId)` (liste des liens d'un relevé) ;
@@ -175,7 +177,10 @@ Prisma reste en camelCase.
   `@relation` vers l'objet visé. Le lien survit donc à l'objet sans contrainte ; la
   vérification relit l'objet par `id` **et** `tenantId` du lien, et refuse (404 uniforme) si
   l'objet a disparu. Ajouter une portée = ajouter une valeur à l'enum et une fonction de
-  lecture de l'objet, sans toucher au schéma des modèles visés.
+  lecture de l'objet, sans toucher au schéma des modèles visés. La valeur
+  `EXTERNAL_ACCESS_GRANT` a été ajoutée par une migration **séparée** de celle des tables du
+  lot B3 (`20261007140100_secure_link_scope_external_access`, `ALTER TYPE … ADD VALUE`) :
+  PostgreSQL interdit d'employer une valeur d'enum dans la transaction qui l'ajoute.
 - **Isolation** : `tenantId` direct, donc gardé automatiquement par l'extension Prisma et
   vérifié par `schema-tenant-coverage.test.ts`. La recherche par `tokenHash` est la seule
   lecture faite avant que le contexte d'agence existe ; elle est confinée à
@@ -187,8 +192,110 @@ Prisma reste en camelCase.
   portée, l'objet visé, les dates, `viewCount`, `lastViewedAt` et un état calculé
   (`ACTIVE`, `EXPIRED`, `REVOKED`).
 - **Hors export d'agence** : `SecureLink` est exclu de l'export de données de l'agence
-  (`services/tenant-data-export/model-registry.ts`), car le hash est un secret d'accès ; les
-  consultations restent dans `AuditLog`.
+  (`services/tenant-data-export/model-registry.ts`, `EXCLUDED_MODELS`), car le hash est un
+  secret d'accès ; les consultations restent dans `AuditLog`. Les quatre modèles
+  `ExternalAccessGrant*` du lot B3, eux, sont exportés (section suivante).
+
+## ExternalAccessGrant — accès des tiers de confiance (lot B3, spec 034)
+
+Accès nominatif en lecture seule qu'une agence ouvre à un notaire, un expert-comptable ou un
+banquier sur un périmètre **explicite** de biens (spec
+[034](../../specs/034-patrimoine-acces-tiers-confiance/spec.md)). Le lien d'accès est un
+`SecureLink` de portée `EXTERNAL_ACCESS_GRANT` ; le grant ne porte **jamais** de jeton ni
+d'empreinte : le secret reste dans `SecureLink`. Quatre modèles et deux enums, migration
+additive `20261007140000_patrimoine_acces_tiers`. Rattachés au domaine « Patrimoine » ; les
+comptes de modèles et d'enums ci-dessus ne les comptent pas tant que la migration n'est pas
+fusionnée. Modèle de menace : [SECURITY.md](../governance/SECURITY.md), section « 12 ter.
+Accès des tiers de confiance ».
+
+**Enums.**
+
+| Enum                    | Valeurs                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ExternalAccessType`    | `NOTARY`, `ACCOUNTANT`, `BANKER`                                                                     |
+| `ExternalAccessSection` | `VALUATIONS`, `YIELD_RATIOS`, `LOANS`, `EXPENSES`, `RENTS`, `DOCUMENTS`, `TITLES_OWNERSHIP`          |
+| `SecureLinkScope`       | valeur ajoutée : `EXTERNAL_ACCESS_GRANT` (à côté de `OWNER_MONTHLY_REPORT`, voir section précédente) |
+
+**`ExternalAccessGrant`** (table `external_access_grants`).
+
+| Champ             | Type                      | Règle                                                                                                                                                                                                                                                                                     |
+| ----------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | `String` (UUID)           | clé primaire (colonne texte, `@default(uuid())`)                                                                                                                                                                                                                                          |
+| `tenantId`        | `String`                  | agence propriétaire, obligatoire ; relation `Tenant`, `onDelete: Cascade`                                                                                                                                                                                                                 |
+| `type`            | `ExternalAccessType`      | nature du tiers ; fixe les rubriques proposées par défaut                                                                                                                                                                                                                                 |
+| `recipientName`   | `String`                  | nom du bénéficiaire (saisi par l'agence)                                                                                                                                                                                                                                                  |
+| `recipientEmail`  | `String`                  | e-mail du bénéficiaire, en minuscules ; donnée de l'agence, jamais renvoyée par l'API publique ni écrite dans `AuditLog`                                                                                                                                                                  |
+| `ownerClientId`   | `String?`                 | propriétaire pour le compte duquel l'accès est donné (nom et quote-part affichés, totaux de la synthèse pondérés) ; relation `TenantClient`, `onDelete: SetNull` ; doit être un client propriétaire éligible de l'agence (même filtre que les options du formulaire) ; fixé à la création |
+| `sections`        | `ExternalAccessSection[]` | rubriques accordées (tableau PostgreSQL, sans table de jointure) ; jamais vide (contrôle applicatif), dédoublonné, ordre canonique                                                                                                                                                        |
+| `expiresAt`       | `DateTime?`               | échéance de l'accès ; **nul = accès permanent** (les liens, eux, expirent toujours)                                                                                                                                                                                                       |
+| `revokedAt`       | `DateTime?`               | posé à la révocation ; la ligne est conservée                                                                                                                                                                                                                                             |
+| `createdByUserId` | `String?`                 | utilisateur créateur ; relation `User` (`ExternalAccessGrantCreatedBy`), `onDelete: SetNull` ; jamais `include: user`                                                                                                                                                                     |
+| `viewCount`       | `Int` (défaut 0)          | consultations réussies de la vue (un téléchargement ne l'incrémente pas)                                                                                                                                                                                                                  |
+| `lastViewedAt`    | `DateTime?`               | dernière consultation réussie                                                                                                                                                                                                                                                             |
+| `lastLinkSentAt`  | `DateTime?`               | dernière émission d'un lien (création ou renvoi), que l'e-mail soit parti ou non                                                                                                                                                                                                          |
+| `createdAt`       | `DateTime`                | création                                                                                                                                                                                                                                                                                  |
+| `updatedAt`       | `DateTime`                | `@updatedAt`                                                                                                                                                                                                                                                                              |
+
+**Index** : `tenantId` ; `(tenantId, revokedAt)`. Relations portées : `properties`,
+`entities`, `documents` (les trois tables de liaison ci-dessous).
+
+**Tables de liaison** (le périmètre explicite et les documents partagés). Chacune porte un
+`tenantId` direct (relation `Tenant`, `onDelete: Cascade`), une relation `grant` vers
+`ExternalAccessGrant` en `onDelete: Cascade`, une unicité et des index sur `tenantId` et
+`grantId`. Les colonnes sont en snake_case (`grant_id`, `property_id`…).
+
+| Modèle (table)                                                     | Champs propres                                                                                                                                           | Unicité                 |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `ExternalAccessGrantProperty` (`external_access_grant_properties`) | `propertyId` vers `Property`, `onDelete: Cascade`                                                                                                        | `(grantId, propertyId)` |
+| `ExternalAccessGrantEntity` (`external_access_grant_entities`)     | `entityId` (`@db.Uuid`) vers `HoldingEntity`, `onDelete: Cascade`                                                                                        | `(grantId, entityId)`   |
+| `ExternalAccessGrantDocument` (`external_access_grant_documents`)  | `propertyId` vers `Property`, `documentId` vers `PropertyDocument`, tous deux `onDelete: Cascade` ; **l'`id` de la ligne est la `documentRef` publique** | `(grantId, documentId)` |
+
+**Règles** :
+
+- **Jamais de jeton ; le secret reste dans `SecureLink`.** Aucune colonne de ces quatre
+  modèles ne contient de jeton, de hash ou d'URL de lien. Le grant se relie à ses liens
+  **sans clé étrangère** : chaque lien est un `SecureLink` de portée
+  `EXTERNAL_ACCESS_GRANT`, `objectType = 'ExternalAccessGrant'`, `objectId` = `id` du grant.
+  Un grant peut avoir plusieurs liens actifs en même temps. Supprimer un grant (annulation
+  d'une création dont le lien est refusé, ou cascade depuis l'agence) ne supprime pas ses
+  `SecureLink` : ils répondent la 404 uniforme faute de grant. L'application ne supprime
+  jamais un grant d'elle-même, hors cette annulation : elle le révoque.
+- **Périmètre explicite, jamais dynamique.** Un accès ouvre des biens listés
+  (`ExternalAccessGrantProperty`) et des entités détentrices listées
+  (`ExternalAccessGrantEntity`), développées en biens par `PropertyHolding` **à chaque
+  consultation**, puis refiltrées : un bien est dans le périmètre s'il appartient à l'agence,
+  ou s'il est un bien CLIENT sans agence (`tenantId` nul) sous mandat de gestion actif de cette
+  agence. Les lectures de `Property` ne sélectionnent jamais `tenantId` (nul pour un bien
+  CLIENT : l'extension de garde y verrait une fuite à tort). Aucun modèle ne représente
+  « tout ce que possède X ». Plafond : 100 biens par accès, entités développées
+  comprises (400 à l'écriture ; troncature à la consultation).
+- **Documents un par un.** Un document n'est partageable que s'il a sa ligne
+  `ExternalAccessGrantDocument` et appartient à un bien du périmètre ; la ligne répète
+  `propertyId`, recoupé avec celui du document à chaque lecture. L'API publique ne voit que
+  l'`id` de la ligne, jamais celui du `PropertyDocument` ni un chemin. Retirer la rubrique `DOCUMENTS` supprime ces
+  lignes (repartager crée une nouvelle `ref`).
+- **Cycle de vie calculé.** Pas de statut stocké : `REVOKED` si `revokedAt`, sinon `EXPIRED`
+  si `expiresAt` est passé, sinon `EXPIRING` si l'échéance tombe dans les 7 jours, sinon
+  `ACTIVE` (un accès permanent est `ACTIVE`). La consultation relit le grant à chaque appel.
+- **Révocation.** `revokedAt` sur le grant **et** `revokedAt` sur tous ses `SecureLink`
+  (`revokeSecureLinksForObject`) ; un changement de `recipientEmail` révoque aussi les liens
+  actifs. Un grant révoqué ne se modifie plus (409).
+- **Isolation.** `tenantId` direct sur les quatre modèles : gardés par l'extension Prisma et
+  vérifiés par `schema-tenant-coverage.test.ts`. Les identifiants reçus (biens, entités,
+  propriétaire, documents, grant) sont revérifiés par agence avant écriture.
+- **Compteurs.** À la consultation de la vue, seuls `viewCount` et `lastViewedAt` **du grant**
+  sont écrits, avec l'événement d'audit `EXTERNAL_ACCESS_GRANT_VIEWED` ; `recordSecureLinkView`
+  n'est pas appelé (compteurs de `SecureLink` et `SECURE_LINK_VIEWED` inchangés pour cette
+  portée).
+- **Journal.** Événements `EXTERNAL_ACCESS_GRANT_CREATED`, `_UPDATED`, `_REVOKED`, `_LINK_SENT`,
+  `_VIEWED` et `_DOCUMENT_DOWNLOADED` dans `AuditLog`, `entityType = 'ExternalAccessGrant'`,
+  `entityId` = `id` du grant ; jamais l'e-mail du bénéficiaire (voir SECURITY.md, § 12 ter).
+- **Export d'agence.** Les quatre modèles sont **exportés** : classés `DIRECT` sur `tenantId`
+  par la dérivation automatique du schéma (`services/tenant-data-export/model-registry.ts`,
+  aucune entrée à y ajouter) ; `recipientEmail` y figure comme donnée de l'agence, comme les
+  contacts du CRM. `SecureLink` reste **exclu** (`EXCLUDED_MODELS`) : le hash est le secret
+  d'accès. Le test `tenant-data-export.registry.test.ts` vérifie ce classement et l'absence de
+  champ sensible dans les quatre modèles.
 
 ## Relations clés (cœur du système)
 
