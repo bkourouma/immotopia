@@ -7,10 +7,11 @@
  * vrai par-dessus, comme en production, plutôt que d'être mocké -- le point à
  * vérifier ici est que `runWithTenantContext` pose le bon tenant avant chaque
  * requête, et que le traitement reste séquentiel, agence par agence, pour les
- * quatre alertes désormais enchaînées (documents, baux, emprunts, travaux) ;
+ * cinq alertes désormais enchaînées (documents, baux, emprunts, travaux, étapes
+ * foncières en retard) ;
  * le détail de chaque algorithme d'alerte est couvert par son propre test
  * dédié (`patrimoine.document-expiry-alert.test.ts`,
- * `patrimoine.deadline-alerts.test.ts`). Les trois alertes étendues ne
+ * `patrimoine.deadline-alerts.test.ts`, `patrimoine.land-alerts.test.ts`). Les quatre alertes étendues ne
  * trouvent ici aucune ligne (mocks vides) : seule celle des documents est
  * exercée, comme avant l'extension du lot P3.
  */
@@ -24,6 +25,7 @@ const crmContactFindMany = jest.fn();
 const rentalLeaseFindMany = jest.fn();
 const propertyLoanFindMany = jest.fn();
 const workProgramFindMany = jest.fn();
+const landRegularizationStepFindMany = jest.fn();
 const insurancePolicyFindMany = jest.fn();
 const maintenanceLogEntryFindMany = jest.fn();
 const auditLogFindMany = jest.fn();
@@ -60,6 +62,9 @@ jest.mock('../../src/utils/database', () => ({
     },
     workProgram: {
       findMany: (...a: any[]) => workProgramFindMany(...a)
+    },
+    landRegularizationStep: {
+      findMany: (...a: any[]) => landRegularizationStepFindMany(...a)
     },
     insurancePolicy: {
       findMany: (...a: any[]) => insurancePolicyFindMany(...a)
@@ -144,6 +149,7 @@ beforeEach(() => {
   rentalLeaseFindMany.mockResolvedValue([]);
   propertyLoanFindMany.mockResolvedValue([]);
   workProgramFindMany.mockResolvedValue([]);
+  landRegularizationStepFindMany.mockResolvedValue([]);
   insurancePolicyFindMany.mockResolvedValue([]);
   maintenanceLogEntryFindMany.mockResolvedValue([]);
   auditLogFindMany.mockResolvedValue([]);

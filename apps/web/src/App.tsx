@@ -124,6 +124,17 @@ const TaxParametersPage = lazy(() =>
     default: m.TaxParametersPage
   }))
 );
+// Lot B2 — régularisation foncière (spec 033).
+const LandRegularizationListPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/land/LandRegularizationListPage').then(m => ({
+    default: m.LandRegularizationListPage
+  }))
+);
+const LandRegularizationDetailPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/land/LandRegularizationDetailPage').then(m => ({
+    default: m.LandRegularizationDetailPage
+  }))
+);
 // Module financier — regroupe dans un seul morceau : les quatre ecrans se
 // consultent a la suite (une balance, puis le releve qu'elle ouvre), et les
 // separer ferait payer un aller-retour reseau a chaque clic.
@@ -909,6 +920,11 @@ function App() {
                             element={<HoldingEntityDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/land" element={<LandRegularizationListPage />} />
+                          <Route
+                            path="/tenant/:tenantId/patrimoine/land/:regularizationId"
+                            element={<LandRegularizationDetailPage />}
+                          />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne
