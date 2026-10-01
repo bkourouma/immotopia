@@ -9,6 +9,7 @@ import {
   alertLoanMaturity,
   alertUpcomingWorks
 } from '../lib/patrimoine/notifications';
+import { alertOverdueLandSteps } from '../lib/patrimoine/land-alerts';
 import { runInsuranceAlerts } from '../lib/patrimoine/insurance-alerts';
 
 /**
@@ -36,6 +37,10 @@ import { runInsuranceAlerts } from '../lib/patrimoine/insurance-alerts';
  * - `alertUpcomingWorks` : programmes de travaux planifies dont
  *   `plannedDate` approche. Memes destinataires internes que
  *   `alertLoanMaturity`.
+ * - `alertOverdueLandSteps` (`lib/patrimoine/land-alerts.ts`) : etapes de
+ *   regularisation fonciere (`A_FAIRE` / `EN_COURS`) dont l'echeance est
+ *   depassee, dans un dossier encore en cours. Memes destinataires internes ;
+ *   une relance par etape et par echeance (marque `AuditLog`).
  * - `runInsuranceAlerts` (lot B1, spec 032) : polices d'assurance dont
  *   `endDate` approche, prochaine echeance d'entretien et fin de garantie du
  *   carnet d'entretien. Memes destinataires internes, cle e-mail
@@ -107,6 +112,7 @@ export async function runDocumentExpiryAlerts(now: Date = new Date()): Promise<D
         accumulate(report, await alertExpiringLeases(tenant.id, { now }));
         accumulate(report, await alertLoanMaturity(tenant.id, { now }));
         accumulate(report, await alertUpcomingWorks(tenant.id, { now }));
+        accumulate(report, await alertOverdueLandSteps(tenant.id, { now }));
         accumulate(report, await runInsuranceAlerts(tenant.id, { now }));
       });
     } catch (error) {

@@ -475,12 +475,13 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
 
   // New relationships for multi-tenant RBAC
-  memberships         Membership[]
-  userRoles           UserRole[]
-  invitations         Invitation[] @relation("InvitedBy")
-  acceptedInvitations Invitation[] @relation("AcceptedBy")
-  createdSecureLinks  SecureLink[] @relation("SecureLinkCreatedBy")
-  lastLoginAt         DateTime?    @map("last_login_at")
+  memberships                Membership[]
+  userRoles                  UserRole[]
+  invitations                Invitation[]         @relation("InvitedBy")
+  acceptedInvitations        Invitation[]         @relation("AcceptedBy")
+  createdSecureLinks         SecureLink[]         @relation("SecureLinkCreatedBy")
+  createdLandRegularizations LandRegularization[] @relation("LandRegularizationCreatedBy")
+  lastLoginAt                DateTime?            @map("last_login_at")
 
   // CRM relationships
   crmContactsAssigned  CrmContact[]  @relation("ContactAssignedTo")
@@ -596,12 +597,14 @@ model Tenant {
   clients TenantClient[]
 
   // New relationships for multi-tenant RBAC
-  modules      TenantModule[]
-  memberships  Membership[]
-  subscription Subscription?
-  invoices     Invoice[]
-  invitations  Invitation[]
-  secureLinks  SecureLink[]
+  modules                 TenantModule[]
+  memberships             Membership[]
+  subscription            Subscription?
+  invoices                Invoice[]
+  invitations             Invitation[]
+  secureLinks             SecureLink[]
+  landRegularizations     LandRegularization[]
+  landRegularizationSteps LandRegularizationStep[]
 
   // Abonnements par packs (PLAN-ABONNEMENTS.md)
   subscriptionItems SubscriptionItem[]
@@ -1036,6 +1039,87 @@ model SecureLink {
   @@index([tenantId, objectType, objectId])
   @@index([expiresAt])
   @@map("secure_links")
+}
+
+// Lot B2 (spec 033) : suivi d'avancement de la regularisation fonciere d'un bien.
+enum LandTrackKey {
+  /// Filiere de Cote d'Ivoire (attestation villageoise -> titre foncier), A_VALIDER par un juriste local.
+  CI_ACD
+  /// Etapes saisies par l'utilisateur (autre pays, autre cas).
+  PERSONNALISEE
+}
+
+enum LandRegularizationStatus {
+  EN_COURS
+  TERMINEE
+  ABANDONNEE
+}
+
+enum LandStepStatus {
+  A_FAIRE
+  EN_COURS
+  TERMINEE
+  BLOQUEE
+}
+
+/// Un dossier de regularisation fonciere. UN SEUL dossier EN_COURS par bien :
+/// index unique partiel `land_regularizations_one_active_per_property_key`
+/// (migration SQL, non exprimable dans Prisma) ET verification en service.
+model LandRegularization {
+  id              String                   @id @default(uuid())
+  tenantId        String                   @map("tenant_id")
+  propertyId      String                   @map("property_id")
+  track           LandTrackKey
+  status          LandRegularizationStatus @default(EN_COURS)
+  startDate       DateTime                 @default(now()) @map("start_date")
+  endedAt         DateTime?                @map("ended_at")
+  notes           String?
+  createdByUserId String?                  @map("created_by_user_id")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  tenant    Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property  Property                 @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User?                    @relation("LandRegularizationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  steps     LandRegularizationStep[]
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([tenantId, status])
+  @@map("land_regularizations")
+}
+
+/// Une etape d'un dossier. `label` = texte francais (cle de traduction) pour une
+/// etape du catalogue, texte saisi pour une etape personnalisee. `costXof` =
+/// frais engages (XOF), jamais fusionne au cout de revient dans ce lot.
+model LandRegularizationStep {
+  id               String         @id @default(uuid())
+  tenantId         String         @map("tenant_id")
+  regularizationId String         @map("regularization_id")
+  stepKey          String         @map("step_key")
+  sortOrder        Int            @map("sort_order")
+  label            String
+  required         Boolean        @default(true)
+  status           LandStepStatus @default(A_FAIRE)
+  startedAt        DateTime?      @map("started_at")
+  completedAt      DateTime?      @map("completed_at")
+  dueDate          DateTime?      @map("due_date")
+  costXof          Decimal        @default(0) @map("cost_xof") @db.Decimal(14, 2)
+  notes            String?
+  documentId       String?        @map("document_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  regularization LandRegularization @relation(fields: [regularizationId], references: [id], onDelete: Cascade)
+  document       PropertyDocument?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@unique([regularizationId, sortOrder])
+  @@index([tenantId])
+  @@index([regularizationId])
+  @@index([tenantId, status, dueDate])
+  @@index([documentId])
+  @@map("land_regularization_steps")
 }
 
 // Subscription
@@ -1878,6 +1962,7 @@ model Property {
   propertyLoans       PropertyLoan[]
   propertyExpenses    PropertyExpense[]
   workPrograms        WorkProgram[]
+  landRegularizations LandRegularization[]
   constructionSites   ConstructionSite[]
   patrimonyDocuments  PatrimonyDocument[]
   ownerStatementItems OwnerStatementItem[]
@@ -1961,11 +2046,12 @@ model PropertyDocument {
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
 
-  property              Property                 @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant                Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  insurancePolicies     InsurancePolicy[]
-  insuranceClaimDocs    InsuranceClaimDocument[]
-  maintenanceLogEntries MaintenanceLogEntry[]
+  property                Property                 @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant                  Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  landRegularizationSteps LandRegularizationStep[]
+  insurancePolicies       InsurancePolicy[]
+  insuranceClaimDocs      InsuranceClaimDocument[]
+  maintenanceLogEntries   MaintenanceLogEntry[]
 
   @@index([tenantId])
   @@index([propertyId])

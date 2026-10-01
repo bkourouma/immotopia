@@ -464,6 +464,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               key: 'patrimoine-tax-parameters',
               label: t('Paramètres fiscaux'),
               href: '/tenant/:tenantId/patrimoine/tax-parameters'
+            },
+            {
+              key: 'patrimoine-land',
+              label: t('Régularisation foncière'),
+              href: '/tenant/:tenantId/patrimoine/land'
             }
           ]
         },
