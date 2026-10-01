@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from './logger';
 import { tenantGuardExtension } from './prisma-tenant-guard-extension';
+import { runShutdownHooks } from './shutdown-hooks';
 
 /**
  * Database connection utilities
@@ -87,6 +88,9 @@ export async function disconnectDatabase(): Promise<void> {
   deconnexionFaite = true;
 
   try {
+    // Les modules qui gardent du travail en memoire (file d'audit) le vident
+    // AVANT la fermeture du pool, sinon leur ecriture tombe sur une base fermee.
+    await runShutdownHooks();
     await prisma.$disconnect();
     logger.info('Database disconnected gracefully');
   } catch (error) {

@@ -1,32 +1,43 @@
 import { prisma } from '../utils/database';
 import { AuditLogEntry, AuditActionKey } from '../types/audit-types';
 import { logger } from '../utils/logger';
-import { getRequestContext } from '../utils/request-context';
-import { Prisma } from '@prisma/client';
+import { registerShutdownHook } from '../utils/shutdown-hooks';
+import { AuditRow, buildAuditRow } from './audit-entry-builder';
 
-// In-memory audit queue
-const auditQueue: AuditLogEntry[] = [];
+// In-memory audit queue. Rows are built (actor, tenant, request id, catalog,
+// redaction) when the event is logged, i.e. inside the request: the flush runs
+// from a timer, outside any request context.
+const auditQueue: AuditRow[] = [];
 let flushInterval: NodeJS.Timeout | null = null;
 
 // Queue flush threshold
 const QUEUE_FLUSH_THRESHOLD = 100;
 const QUEUE_FLUSH_INTERVAL_MS = 5000; // 5 seconds
 
+// Hard cap: while the database is down the queue would otherwise grow without
+// bound and take the process down with it. Oldest rows are dropped first.
+export const AUDIT_QUEUE_MAX = 10_000;
+
+function capQueue(): void {
+  const overflow = auditQueue.length - AUDIT_QUEUE_MAX;
+  if (overflow > 0) {
+    auditQueue.splice(0, overflow);
+    logger.error('Audit queue overflow: oldest events dropped', { dropped: overflow, max: AUDIT_QUEUE_MAX });
+  }
+}
+
 /**
- * Add audit log entry (non-blocking).
- * IP and User-Agent are filled from the current HTTP request context when available.
+ * Add audit log entry (non-blocking, best effort: up to a few seconds of events
+ * can be lost on a hard crash). Use `recordAuditEvent` inside the business
+ * transaction for actions that must never go unrecorded.
+ *
+ * Actor, agency, request id, IP and User-Agent are filled from the current
+ * request context when the caller does not provide them.
  * @param entry - Audit log entry
  */
 export function logAuditEvent(entry: AuditLogEntry): void {
-  const ctx = getRequestContext();
-  const enriched: AuditLogEntry = {
-    ...entry,
-    createdAt: entry.createdAt || new Date(),
-    ipAddress: entry.ipAddress ?? ctx?.ip ?? null,
-    userAgent: entry.userAgent ?? ctx?.userAgent ?? null
-  };
-
-  auditQueue.push(enriched);
+  auditQueue.push(buildAuditRow(entry));
+  capQueue();
 
   // Auto-flush if queue reaches threshold
   if (auditQueue.length >= QUEUE_FLUSH_THRESHOLD) {
@@ -43,6 +54,24 @@ export function logAuditEvent(entry: AuditLogEntry): void {
   }
 }
 
+/** Minimal shape of a Prisma client or transaction client that can write audit rows. */
+export interface AuditWriter {
+  auditLog: { create: (args: { data: AuditRow }) => Promise<unknown> };
+}
+
+/**
+ * Write an audit event through the given transaction client, in the same
+ * transaction as the business change. If the audit row cannot be written the
+ * transaction fails: no commit without its trace. Reserved for the actions
+ * flagged `critical` in `types/audit-catalog.ts`.
+ *
+ * The row is built here, at call time, so the request context is still
+ * available.
+ */
+export async function recordAuditEvent(tx: AuditWriter, entry: AuditLogEntry): Promise<void> {
+  await tx.auditLog.create({ data: buildAuditRow(entry) });
+}
+
 /**
  * Flush queue to database (batch insert)
  */
@@ -55,33 +84,20 @@ async function flushAuditQueue(): Promise<void> {
 
   try {
     await prisma.auditLog.createMany({
-      data: entries.map(entry => ({
-        actorUserId: entry.actorUserId || null,
-        tenantId: entry.tenantId || null,
-        actionKey: entry.actionKey,
-        entityType: entry.entityType,
-        entityId: entry.entityId,
-        ipAddress: entry.ipAddress || null,
-        userAgent: entry.userAgent || null,
-        // `Json?` de Prisma n'accepte pas un `null` ordinaire : il faut la
-        // valeur sentinelle `DbNull`, qui ecrit un NULL SQL. Un `null` nu ne
-        // compile pas — c'etait l'une des erreurs de type preexistantes, et
-        // elle empechait `ts-jest` de charger tout test dont le graphe de
-        // modules touche ce fichier.
-        payload: (entry.payload ?? Prisma.DbNull) as Prisma.InputJsonValue | typeof Prisma.DbNull,
-        createdAt: entry.createdAt || new Date()
-      })),
+      data: entries,
       skipDuplicates: true
     });
 
     logger.debug('Audit log queue flushed', { count: entries.length });
   } catch (error) {
-    // Re-queue failed entries (with retry limit)
+    // Re-queue failed entries, ahead of the ones logged meanwhile; the cap
+    // bounds the retry.
     logger.error('Audit log flush failed, re-queuing entries', {
       error,
       entryCount: entries.length
     });
     auditQueue.unshift(...entries);
+    capQueue();
   }
 
   // Clear interval if queue is empty
@@ -360,21 +376,15 @@ export async function enrichAuditLogsWithResourceLabels(
   return labelByLogId;
 }
 
-// Graceful shutdown: flush remaining entries
-process.on('SIGTERM', async () => {
+// Graceful shutdown: flush remaining entries BEFORE the database is closed.
+// `utils/database` runs the registered hooks ahead of `$disconnect()` and owns
+// `process.exit`; this module used to race it with its own SIGTERM handler.
+registerShutdownHook('audit-queue', async () => {
   if (flushInterval) {
     clearInterval(flushInterval);
+    flushInterval = null;
   }
   await flushAuditQueue();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  if (flushInterval) {
-    clearInterval(flushInterval);
-  }
-  await flushAuditQueue();
-  process.exit(0);
 });
 
 // Export AuditActionKey for convenience

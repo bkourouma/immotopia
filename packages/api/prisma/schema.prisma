@@ -1358,7 +1358,50 @@ model QuotaAlert {
   @@map("quota_alerts")
 }
 
-// Audit Log
+// Audit Log (ADR-006, specs/023-audit-deux-niveaux)
+//
+// Une seule table, deux portees de lecture : `scope`/`visibility` separent le
+// niveau agence du niveau plateforme. Invariant pose en SQL (migration
+// 20261007090000) : scope = PLATFORM OU tenant_id non nul. Le declencheur
+// `audit_logs_immutable` refuse UPDATE et DELETE.
+
+/// TENANT : l'evenement concerne une agence. PLATFORM : action de plateforme.
+enum AuditScope {
+  TENANT
+  PLATFORM
+}
+
+/// Qui peut lire l'evenement. PLATFORM_ONLY : jamais montre a l'agence.
+enum AuditVisibility {
+  TENANT
+  PLATFORM_ONLY
+}
+
+enum AuditCategory {
+  AUTH
+  DATA
+  ADMIN
+  SECURITY
+  BILLING
+  EXPORT
+  AI
+  SYSTEM
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+enum AuditActorType {
+  USER
+  SUPER_ADMIN
+  PORTAL
+  SYSTEM
+  AI
+}
+
 model AuditLog {
   id          String   @id @default(uuid())
   actorUserId String?  @map("actor_user_id")
@@ -1371,12 +1414,29 @@ model AuditLog {
   payload     Json?
   createdAt   DateTime @default(now()) @map("created_at")
 
+  scope      AuditScope      @default(PLATFORM)
+  visibility AuditVisibility @default(PLATFORM_ONLY)
+  category   AuditCategory   @default(DATA)
+  outcome    AuditOutcome    @default(SUCCESS)
+  actorType  AuditActorType  @default(USER) @map("actor_type")
+  /// Nom ou e-mail de l'acteur AU MOMENT de l'action : survit a sa suppression.
+  actorLabel String?         @map("actor_label")
+  /// Regroupe les evenements d'une meme requete HTTP.
+  requestId  String?         @map("request_id")
+  /// http | job | script | ai
+  source     String?
+  /// Champs modifies : { champ: { before, after } }, secrets masques.
+  changes    Json?
+
   // No relations on purpose: the ids are kept verbatim so the trail survives
   // the deletion of the user or tenant it refers to.
 
   @@index([actorUserId])
   @@index([tenantId])
   @@index([tenantId, createdAt])
+  @@index([tenantId, visibility, createdAt(sort: Desc)])
+  @@index([scope, createdAt(sort: Desc)])
+  @@index([requestId])
   @@index([actionKey])
   @@index([entityType, entityId])
   @@index([createdAt])

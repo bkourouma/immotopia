@@ -71,6 +71,26 @@ Pièges et décisions :
 
 ---
 
+## Branche `claude/elegant-pasteur-f0vpti` — 2026-10-01
+
+**État :** phases 0 et 1 du journal d'audit à deux niveaux faites, **non commitées, non poussées** (aucune PR). Décision : [ADR-006](../architecture/adr/ADR-006-audit-deux-niveaux.md) ; contrat et plan par phases : [specs/023-audit-deux-niveaux/spec.md](../../specs/023-audit-deux-niveaux/spec.md) (§8). Dernier commit de la branche : `d10c994` (base `main`).
+
+**Fait (phase 1) :** migration `20261007090000_audit_deux_niveaux` (colonnes `scope`/`visibility`/`category`/`outcome`/`actor_type`/`actor_label`/`request_id`/`source`/`changes`, CHECK scope/tenant, 3 index, déclencheur `audit_logs_immutable` qui refuse UPDATE et DELETE, rattrapage généré depuis le catalogue) ; `types/audit-catalog.ts` (130 clés, dont 44 qui circulaient en chaîne libre hors de l'enum, désormais dans `AuditActionKey`) ; `services/audit-entry-builder.ts` (contexte + catalogue + masquage des secrets) ; `recordAuditEvent(tx, …)` (voie transactionnelle) et file plafonnée à 10 000 dans `audit-service.ts` ; `utils/shutdown-hooks.ts` (la file est vidée AVANT `$disconnect`, plus de `process.exit` dans `audit-service`) ; `requestId` + en-tête `X-Request-Id` ; acteur et agence posés automatiquement (`authenticate`, `runWithTenantContext`, 3 portails) ; contrôleur `/api/admin/audit` en `asyncHandler`, avec les nouveaux champs. 4 suites ajoutées (32 tests).
+
+**Vérifié :** typecheck API 0 erreur ; lint 0 erreur ; `check:architecture` et `wiki:check` verts ; Jest API complet : 291 suites passées, 0 échec. Migration jouée sur un Postgres 16 réel, base vide ET base avec lignes existantes, aucune dérive `prisma migrate diff` ; écriture réelle, annulation de transaction sans trace et refus UPDATE/DELETE constatés.
+
+**Reste (voir spec §8) :** phase 2 (route et page agence, permission `TENANT_AUDIT_VIEW`, test d'isolation), phase 3 (événements de sécurité, conversion des appels `critical` vers `recordAuditEvent`, capture avant/après, événements de connexion rattachés à une agence), phase 4 (console plateforme, `PLATFORM_AUDIT_*`), phase 5 (rétention, scellés, marqueurs anti-doublon hors d'`AuditLog`). Défauts retenus pour les 5 décisions ouvertes : voir l'ADR, à valider.
+
+**Pièges :**
+
+- Le déclencheur d'immuabilité refuse tout UPDATE/DELETE sur `audit_logs`, y compris pour un script ; `TRUNCATE` reste possible. La purge de rétention (phase 5) devra poser `SET LOCAL app.audit_purge = 'on'`.
+- Une clé d'action hors catalogue est écrite `PLATFORM_ONLY` (invisible de l'agence) avec un avertissement : l'ajouter au catalogue ; `audit-catalog.test.ts` le vérifie pour les clés littérales.
+- `AuditLog` reste exempt de l'extension de garde tenant : la lecture agence de la phase 2 doit passer par un lecteur unique qui force `tenantId` et `visibility = TENANT`.
+- `npm run i18n:extract` (API) retire 11 traductions sans rapport avec cette branche (clés `t(variable)`) : ne pas le relancer sans les restaurer.
+- Dans ce conteneur : `npm ci --ignore-scripts` à la racine puis `npm rebuild bcrypt` (sans quoi 17 suites échouent) ; `jest <fichier> --selectProjects api` (le chemin AVANT l'option, sinon toute la suite tourne) ; `pkill -f jest` tue aussi le shell appelant.
+
+---
+
 ## Pilote — environnements staging et production (PR #77, #78, #79, #81 fusionnées) — 2026-09-30
 
 **État :** tout est fusionné dans `main` (`a48559d2`) ; le clone du serveur est au même commit. La pile de production `immotopia-prod` est en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée, premier super-admin créé par le propriétaire, **e-mail SMTP et connexion Google actifs**, RCCM et compte contribuable posés), sauvegarde nocturne planifiée. Le staging est redéployé sur le même commit. La production n'est pas utilisée pour l'instant.

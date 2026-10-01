@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
+import { setAuditActor } from './request-context';
 
 /**
  * Ambient tenant of the request currently being handled.
@@ -21,6 +22,8 @@ const storage = new AsyncLocalStorage<TenantContext>();
 
 /** Run `fn` with the given tenant as the ambient context. */
 export function runWithTenantContext<T>(context: TenantContext, fn: () => T): T {
+  // The agency of the request is also the agency of its audit events.
+  setAuditActor({ tenantId: context.tenantId });
   return storage.run(context, fn);
 }
 
