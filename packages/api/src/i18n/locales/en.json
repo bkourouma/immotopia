@@ -1322,5 +1322,8 @@
   "Vous ne pouvez supprimer que vos propres recherches": "You can only delete your own searches",
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}.",
   "Vue consolidée": "Consolidated view",
-  "Vue patrimoine indisponible.": "Portfolio view unavailable."
+  "Vue patrimoine indisponible.": "Portfolio view unavailable.",
+  "La date de fin de la periodicite ne peut pas preceder la date de la depense": "The end date of the recurrence cannot be earlier than the expense date",
+  "La date de fin n'a de sens que pour une depense periodique": "An end date only makes sense for a recurring expense",
+  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "The date of a recurring expense must be that of a payment already made"
 }

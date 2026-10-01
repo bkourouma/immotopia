@@ -10,6 +10,9 @@ export type StatementStatus = 'DRAFT' | 'SENT' | 'PAID';
  */
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER';
 
+/** Périodicité d'une dépense : ponctuelle (passée) ou récurrente, qui alimente le plan de trésorerie. */
+export type ExpenseRecurrence = 'ONE_OFF' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+
 export type ExpenseCategory =
   | 'PROPERTY_TAX'
   | 'CONDO_FEES'
@@ -116,6 +119,10 @@ export interface PropertyExpense {
   agencyIsBuyer?: boolean;
   /** Fournisseur, requis dès que `agencyIsBuyer` est coché. */
   supplierName?: string | null;
+  /** Périodicité ; absente = ponctuelle. `paidAt` est la date d'ancrage de la récurrence. */
+  recurrence?: ExpenseRecurrence;
+  /** Dernière occurrence d'une dépense périodique (ISO), sinon sans fin. */
+  recurrenceEndDate?: string | null;
 }
 
 export interface PropertyLoan {

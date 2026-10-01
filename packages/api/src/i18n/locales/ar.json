@@ -1322,5 +1322,8 @@
   "Vous ne pouvez supprimer que vos propres recherches": "لا يمكنك حذف سوى عمليات البحث الخاصة بك",
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "أنت تستخدم {{used}} {{label}} من أصل {{limit}} مشمولة. {{policy}} أضف امتدادًا من {{url}}.",
   "Vue consolidée": "نظرة موحّدة",
-  "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح."
+  "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح.",
+  "La date de fin de la periodicite ne peut pas preceder la date de la depense": "لا يمكن أن يسبق تاريخ نهاية الدورية تاريخ النفقة",
+  "La date de fin n'a de sens que pour une depense periodique": "لا معنى لتاريخ النهاية إلا للنفقة الدورية",
+  "La date de la depense periodique doit etre celle d'un paiement deja effectue": "يجب أن يكون تاريخ النفقة الدورية تاريخ دفعة تمت بالفعل"
 }

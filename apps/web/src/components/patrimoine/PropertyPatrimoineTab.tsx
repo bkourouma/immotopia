@@ -43,6 +43,7 @@ import {
 } from '../../services/patrimoine-service';
 import type {
   AssetValuation,
+  ExpenseRecurrence,
   PaymentMethod,
   PropertyExpense,
   PropertyLoan,
@@ -71,7 +72,9 @@ import {
   DEVISE_PATRIMOINE,
   apiErrorMessage,
   documentTypeOptions,
+  EXPENSE_RECURRENCES,
   expenseCategoryLabel,
+  expenseRecurrenceLabel,
   loanStatusLabel,
   valuationMethodLabel
 } from './patrimoine-labels';
@@ -90,6 +93,13 @@ function toDateTimeLocal(date?: string | null): string | undefined {
   const hh = pad(dt.getHours());
   const min = pad(dt.getMinutes());
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+}
+
+/** Date seule (AAAA-MM-JJ, UTC) d'une date ISO, pour un champ `type="date"`. */
+function toDateInput(date?: string | null): string | undefined {
+  if (!date) return undefined;
+  const dt = new Date(date);
+  return Number.isNaN(dt.getTime()) ? undefined : dt.toISOString().slice(0, 10);
 }
 
 function toIso(value?: string): string | undefined {
@@ -194,6 +204,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   // pour filtrer le compte de trésorerie proposé et rendre le fournisseur requis.
   const expensePaymentMethod = Form.useWatch('paymentMethod', expenseForm) as PaymentMethod | undefined;
   const expenseAgencyIsBuyer = Form.useWatch('agencyIsBuyer', expenseForm) as boolean | undefined;
+  const expenseRecurrence = Form.useWatch('recurrence', expenseForm) as ExpenseRecurrence | undefined;
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -328,7 +339,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const openCreateExpense = () => {
     setEditingExpenseId(null);
     expenseForm.resetFields();
-    expenseForm.setFieldsValue({ currency: 'XOF', category: 'OTHER', isCapitalized: false });
+    expenseForm.setFieldsValue({ currency: 'XOF', category: 'OTHER', isCapitalized: false, recurrence: 'ONE_OFF' });
     setExpenseModalOpen(true);
   };
 
@@ -346,7 +357,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       paymentMethod: item.paymentMethod || undefined,
       treasuryAccountId: item.treasuryAccountId || undefined,
       agencyIsBuyer: item.agencyIsBuyer || false,
-      supplierName: item.supplierName || undefined
+      supplierName: item.supplierName || undefined,
+      recurrence: item.recurrence || 'ONE_OFF',
+      recurrenceEndDate: toDateInput(item.recurrenceEndDate)
     });
     setExpenseModalOpen(true);
   };
@@ -366,7 +379,13 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         paymentMethod: values.paymentMethod,
         treasuryAccountId: values.treasuryAccountId,
         agencyIsBuyer: values.agencyIsBuyer,
-        supplierName: values.supplierName
+        supplierName: values.supplierName,
+        recurrence: values.recurrence || 'ONE_OFF',
+        // Une dépense ponctuelle n'a pas de fin ; une périodique sans fin court indéfiniment (null).
+        recurrenceEndDate:
+          values.recurrence && values.recurrence !== 'ONE_OFF' && values.recurrenceEndDate
+            ? toIso(values.recurrenceEndDate)
+            : null
       };
       setSubmitting(true);
       if (editingExpenseId) {
@@ -703,6 +722,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
             },
             {
+              title: t('Périodicité'),
+              dataIndex: 'recurrence',
+              render: (value: PropertyExpense['recurrence']) => expenseRecurrenceLabel(value)
+            },
+            {
               title: t('Montant'),
               dataIndex: 'amount',
               render: (value: number, record: PropertyExpense) => (
@@ -962,6 +986,46 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <Form.Item name="paidAt" label={t('Date de paiement')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
+          <Form.Item
+            name="recurrence"
+            label={t('Périodicité')}
+            dependencies={['paidAt']}
+            extra={t(
+              "Indiquez la date d'un paiement déjà effectué : les occurrences suivantes sont déduites et alimentent le plan de trésorerie."
+            )}
+            rules={[
+              ({ getFieldValue }) => ({
+                validator: (_, value?: ExpenseRecurrence) => {
+                  const paidAt = getFieldValue('paidAt') as string | undefined;
+                  if (!value || value === 'ONE_OFF' || !paidAt) return Promise.resolve();
+                  if (new Date(paidAt).getTime() <= Date.now() + 24 * 3600 * 1000) return Promise.resolve();
+                  return Promise.reject(
+                    new Error(t("La date de paiement d'une dépense périodique ne peut pas être dans le futur"))
+                  );
+                }
+              })
+            ]}
+          >
+            <Select options={EXPENSE_RECURRENCES.map(value => ({ value, label: expenseRecurrenceLabel(value) }))} />
+          </Form.Item>
+          {expenseRecurrence && expenseRecurrence !== 'ONE_OFF' ? (
+            <Form.Item
+              name="recurrenceEndDate"
+              label={t('Date de fin')}
+              dependencies={['paidAt']}
+              rules={[
+                ({ getFieldValue }) => ({
+                  validator: (_, value?: string) => {
+                    const paidAt = getFieldValue('paidAt') as string | undefined;
+                    if (!value || !paidAt || value >= paidAt.slice(0, 10)) return Promise.resolve();
+                    return Promise.reject(new Error(t('La date de fin doit suivre la date de paiement')));
+                  }
+                })
+              ]}
+            >
+              <Input type="date" />
+            </Form.Item>
+          ) : null}
           <Form.Item name="isCapitalized" label={t('Capitalisée')} valuePropName="checked">
             <Switch />
           </Form.Item>
