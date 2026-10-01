@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { OwnerMonthlyReportPage } from '../../pages/public/OwnerMonthlyReportPage';
 import apiClient from '../../utils/api-client';
 
@@ -154,6 +154,85 @@ describe('OwnerMonthlyReportPage', () => {
     mockPost.mockResolvedValueOnce({ status: 429, data: { success: false, message: 'Too many' } });
     render(<OwnerMonthlyReportPage />);
     expect(await screen.findByText('Trop de tentatives, réessayez dans quelques minutes.')).toBeInTheDocument();
+  });
+
+  it('sends a single request under React.StrictMode and still displays the report', async () => {
+    setHash('#jeton-abc');
+    mockPost.mockResolvedValue({ status: 200, data: { success: true, data: report } });
+    render(
+      <React.StrictMode>
+        <OwnerMonthlyReportPage />
+      </React.StrictMode>
+    );
+    expect(await screen.findByText('Agence Soleil')).toBeInTheDocument();
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe('');
+  });
+
+  it('loads the new report on hashchange, clears the fragment and ignores a late answer of the old token', async () => {
+    setHash('#ancien');
+    let resolveOld: (value: unknown) => void = () => undefined;
+    mockPost.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveOld = resolve;
+        })
+    );
+    mockPost.mockResolvedValueOnce({
+      status: 200,
+      data: { success: true, data: { ...report, agencyName: 'Agence Nouvelle' } }
+    });
+    const { container } = render(<OwnerMonthlyReportPage />);
+    expect(mockPost).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      window.history.replaceState(null, '', '/rapport-proprietaire#nouveau');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+
+    expect(await screen.findByText('Agence Nouvelle')).toBeInTheDocument();
+    expect(mockPost).toHaveBeenCalledTimes(2);
+    expect(mockPost.mock.calls[1][1]).toEqual({ token: 'nouveau' });
+    expect(window.location.hash).toBe('');
+
+    // Réponse tardive de l'ancien jeton : ignorée.
+    await act(async () => {
+      resolveOld({ status: 200, data: { success: true, data: { ...report, agencyName: 'Agence Ancienne' } } });
+    });
+    expect(screen.queryByText('Agence Ancienne')).not.toBeInTheDocument();
+    expect(screen.getByText('Agence Nouvelle')).toBeInTheDocument();
+    expect(container.innerHTML).not.toContain('nouveau');
+  });
+
+  it('retries the same link after a transient failure (the failed request is not cached)', async () => {
+    setHash('#jeton');
+    mockPost.mockResolvedValueOnce({ status: 429, data: { success: false, message: 'Too many' } });
+    mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: report } });
+    render(<OwnerMonthlyReportPage />);
+    expect(await screen.findByText('Trop de tentatives, réessayez dans quelques minutes.')).toBeInTheDocument();
+
+    act(() => {
+      window.history.replaceState(null, '', '/rapport-proprietaire#jeton');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+
+    expect(await screen.findByText('Agence Soleil')).toBeInTheDocument();
+    expect(mockPost).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not request anything on a hashchange with an empty fragment, and removes the listener on unmount', async () => {
+    setHash('#jeton');
+    mockPost.mockResolvedValue({ status: 200, data: { success: true, data: report } });
+    const { unmount } = render(<OwnerMonthlyReportPage />);
+    await screen.findByText('Agence Soleil');
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    unmount();
+    window.history.replaceState(null, '', '/rapport-proprietaire#autre');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(mockPost).toHaveBeenCalledTimes(1);
   });
 
   it('shows the invalid screen without any network call when the token is missing', async () => {
