@@ -6,7 +6,7 @@ import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { RegisterRequest, LoginRequest, PasswordResetRequest, ForgotPasswordRequest } from '../types/auth-types';
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
-import { logAuditEvent } from './audit-service';
+import { logAuthEvent, recordAuthEvent } from './audit-auth-events';
 import { AuditActionKey } from '../types/audit-types';
 import type { Language } from '../i18n';
 
@@ -259,12 +259,13 @@ export async function loginUser(data: LoginRequest) {
 
   if (!isPasswordValid) {
     logger.warn('Failed login attempt', { userId: user.id, email: user.email });
-    logAuditEvent({
+    void logAuthEvent({
       actorUserId: user.id,
-      tenantId: null,
+      actorLabel: user.email,
       actionKey: AuditActionKey.AUTH_LOGIN_FAILED,
       entityType: AUTH_ENTITY,
       entityId: user.id,
+      outcome: 'FAILURE',
       payload: { reason: 'invalid_password' }
     });
     throw new Error('Email ou mot de passe incorrect.');
@@ -299,9 +300,9 @@ export async function loginUser(data: LoginRequest) {
   });
 
   logger.info('User logged in', { userId: user.id, email: user.email, role: user.globalRole });
-  logAuditEvent({
+  void logAuthEvent({
     actorUserId: user.id,
-    tenantId: null,
+    actorLabel: user.email,
     actionKey: AuditActionKey.AUTH_LOGIN_SUCCEEDED,
     entityType: AUTH_ENTITY,
     entityId: user.id,
@@ -354,17 +355,22 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
     logger.warn('Refresh token reuse detected, revoking all sessions', {
       userId: tokenRecord.userId
     });
-    logAuditEvent({
-      actorUserId: tokenRecord.userId,
-      tenantId: null,
-      actionKey: AuditActionKey.AUTH_TOKEN_REUSE_DETECTED,
-      entityType: AUTH_ENTITY,
-      entityId: tokenRecord.userId,
-      payload: { revokedAllSessions: true }
-    });
-    await prisma.refreshToken.updateMany({
-      where: { userId: tokenRecord.userId, revoked: false },
-      data: { revoked: true, revokedAt: new Date() }
+    // Événement critique : la révocation de toutes les sessions et sa trace
+    // sont écrites ensemble, ou pas du tout.
+    await prisma.$transaction(async tx => {
+      await tx.refreshToken.updateMany({
+        where: { userId: tokenRecord.userId, revoked: false },
+        data: { revoked: true, revokedAt: new Date() }
+      });
+      await recordAuthEvent(tx, {
+        actorUserId: tokenRecord.userId,
+        actorLabel: tokenRecord.user.email,
+        actionKey: AuditActionKey.AUTH_TOKEN_REUSE_DETECTED,
+        entityType: AUTH_ENTITY,
+        entityId: tokenRecord.userId,
+        outcome: 'DENIED',
+        payload: { revokedAllSessions: true }
+      });
     });
     throw new Error('Session invalide. Veuillez vous reconnecter.');
   }
@@ -479,9 +485,8 @@ export async function logoutUser(refreshToken: string) {
   });
 
   if (tokenRecord) {
-    logAuditEvent({
+    void logAuthEvent({
       actorUserId: tokenRecord.userId,
-      tenantId: null,
       actionKey: AuditActionKey.AUTH_LOGOUT,
       entityType: AUTH_ENTITY,
       entityId: tokenRecord.userId
@@ -596,13 +601,15 @@ export async function resetPassword(data: PasswordResetRequest) {
       where: { id: resetToken.id },
       data: { used: true }
     });
-  });
 
-  logAuditEvent({
-    actorUserId: resetToken.userId,
-    tenantId: null,
-    actionKey: AuditActionKey.AUTH_PASSWORD_RESET_COMPLETED,
-    entityType: AUTH_ENTITY,
-    entityId: resetToken.userId
+    // Événement critique : le nouveau mot de passe et sa trace sont écrits
+    // ensemble, ou pas du tout.
+    await recordAuthEvent(tx, {
+      actorUserId: resetToken.userId,
+      actorLabel: resetToken.user.email,
+      actionKey: AuditActionKey.AUTH_PASSWORD_RESET_COMPLETED,
+      entityType: AUTH_ENTITY,
+      entityId: resetToken.userId
+    });
   });
 }

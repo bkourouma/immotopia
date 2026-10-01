@@ -71,6 +71,7 @@ import { corsMiddleware } from './middleware/cors-middleware';
 import { requestLogger } from './middleware/logging-middleware';
 import { responseSanitizer } from './middleware/response-sanitizer-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
+import { auditAccessMiddleware } from './middleware/audit-access-middleware';
 import { resolveLanguage } from './middleware/language-middleware';
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
@@ -171,6 +172,10 @@ app.use(globalApiRateLimiter);
 
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);
+
+// Refus de droit, fichiers et exports servis -> journal d'audit (ADR-006, phase 3).
+// Observe la reponse : un seul point pour toutes les routes, portails compris.
+app.use(auditAccessMiddleware);
 
 // Aucune reponse JSON ne porte d'empreinte de mot de passe ni de jeton, meme
 // quand un service renvoie un `User` complet. Voir le middleware.

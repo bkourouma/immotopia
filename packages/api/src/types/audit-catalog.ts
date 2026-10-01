@@ -160,6 +160,8 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.CRM_CONTACT_ROLES_UPDATED]: tenant('DATA'),
   [AuditActionKey.CRM_CONTACT_ROLE_DELETED]: tenant('DATA'),
   [AuditActionKey.CRM_DEAL_CREATED]: tenant('DATA'),
+  [AuditActionKey.CRM_DEAL_UPDATED]: tenant('DATA'),
+  [AuditActionKey.CRM_DEAL_STAGE_CHANGED]: tenant('DATA'),
 
   // Documents
   [AuditActionKey.DOCUMENT_GENERATED]: tenant('DATA'),
@@ -206,7 +208,15 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_MEETING_CONVOCATION_DELIVERY]: internal('SYSTEM'),
 
   // Audit de l'audit : consulter le journal est tracé, mais n'est pas montré à l'agence.
-  [AuditActionKey.AUDIT_VIEWED]: internal('SECURITY')
+  [AuditActionKey.AUDIT_VIEWED]: internal('SECURITY'),
+
+  // Accès. Un refus de droit d'un membre est montré à son agence ; la tentative
+  // d'un étranger sur l'URL d'une agence reste réservée à la plateforme (elle
+  // révélerait à l'agence l'identité de quelqu'un qui n'en fait pas partie).
+  [AuditActionKey.ACCESS_DENIED]: tenant('SECURITY'),
+  [AuditActionKey.TENANT_ACCESS_DENIED]: internal('SECURITY'),
+  [AuditActionKey.DOCUMENT_DOWNLOADED]: tenant('EXPORT'),
+  [AuditActionKey.DATA_EXPORTED]: tenant('EXPORT')
 };
 
 /** Entrée du catalogue pour une clé, ou `undefined` si la clé est libre (hors enum). */

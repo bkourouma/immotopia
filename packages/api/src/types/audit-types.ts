@@ -136,6 +136,8 @@ export enum AuditActionKey {
   CRM_CONTACT_ROLES_UPDATED = 'CRM_CONTACT_ROLES_UPDATED',
   CRM_CONTACT_ROLE_DELETED = 'CRM_CONTACT_ROLE_DELETED',
   CRM_DEAL_CREATED = 'CRM_DEAL_CREATED',
+  CRM_DEAL_UPDATED = 'CRM_DEAL_UPDATED',
+  CRM_DEAL_STAGE_CHANGED = 'CRM_DEAL_STAGE_CHANGED',
 
   // Documents
   DOCUMENT_GENERATED = 'DOCUMENT_GENERATED',
@@ -182,7 +184,14 @@ export enum AuditActionKey {
   SYNDIC_MEETING_CONVOCATION_DELIVERY = 'SYNDIC_MEETING_CONVOCATION_DELIVERY',
 
   // Audit de l'audit (ADR-006) : consulter le journal est lui-même tracé.
-  AUDIT_VIEWED = 'AUDIT_VIEWED'
+  AUDIT_VIEWED = 'AUDIT_VIEWED',
+
+  // Accès (phase 3), posés par `middleware/audit-access-middleware.ts` à partir
+  // de la réponse : un refus de droit, un fichier ou un export servi.
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  TENANT_ACCESS_DENIED = 'TENANT_ACCESS_DENIED',
+  DOCUMENT_DOWNLOADED = 'DOCUMENT_DOWNLOADED',
+  DATA_EXPORTED = 'DATA_EXPORTED'
 }
 
 // Audit log entry

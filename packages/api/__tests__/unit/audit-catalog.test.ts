@@ -71,7 +71,17 @@ describe('catalogue d’audit', () => {
     // Clés créées APRÈS la migration : elles n'existent pas dans l'historique à
     // rattraper, donc pas dans le SQL. Chaque nouvelle clé du catalogue s'ajoute
     // ici, et nulle part ailleurs : la migration est figée.
-    const postMigrationKeys = ['AUDIT_VIEWED'];
+    const postMigrationKeys = [
+      'AUDIT_VIEWED',
+      'ACCESS_DENIED',
+      'TENANT_ACCESS_DENIED',
+      'DOCUMENT_DOWNLOADED',
+      'DATA_EXPORTED',
+      // Écrites par une variable (`const actionKey = … ? … : …`), donc oubliées au
+      // premier catalogue ; rattrapées par la migration 20261007110000.
+      'CRM_DEAL_UPDATED',
+      'CRM_DEAL_STAGE_CHANGED'
+    ];
     const fromCatalog = Object.fromEntries(
       Object.entries(AUDIT_CATALOG)
         .filter(([key]) => !postMigrationKeys.includes(key))
