@@ -31,6 +31,7 @@ import {
   updatePropertyValuationHandler,
   updatePropertyWorkProgramHandler
 } from '../controllers/patrimoine-controller';
+import { getCashPlanHandler, updateCashPlanSettingsHandler } from '../controllers/patrimoine-cash-plan-controller';
 import {
   exportAgencyPatrimoineHandler,
   exportPropertyPatrimoineHandler
@@ -58,6 +59,20 @@ router.get(
   '/tenants/:tenantId/work-programs',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   listTenantWorkProgramsHandler
+);
+
+// Plan de tresorerie previsionnel (spec 030) : chemins fixes, declares avant
+// toute route parametree sous /patrimoine. La garde d'edition ne depend pas de
+// `:propertyId` (elle ne lit que `req.tenantContext`).
+router.get(
+  '/tenants/:tenantId/patrimoine/cash-plan',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getCashPlanHandler
+);
+router.put(
+  '/tenants/:tenantId/patrimoine/cash-plan/settings',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateCashPlanSettingsHandler
 );
 
 router.get(
