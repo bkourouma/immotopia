@@ -49,6 +49,7 @@ export const EMAIL_NOTIFICATION_KEYS = [
   // Patrimoine
   'OWNER_STATEMENT_SENT',
   'LOAN_MATURITY_ALERT',
+  'INSURANCE_DEADLINE_ALERT',
   'DOCUMENT_EXPIRY_ALERT',
   'WORK_PROGRAM_REMINDER',
   'OWNER_MONTHLY_REPORT_SENT'
@@ -275,6 +276,12 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     key: 'LOAN_MATURITY_ALERT',
     label: 'Alerte fin de prêt',
     description: 'Alerte de prêt immobilier arrivant à son terme.',
+    recipientLabel: 'Agence / Gestionnaire'
+  },
+  INSURANCE_DEADLINE_ALERT: {
+    key: 'INSURANCE_DEADLINE_ALERT',
+    label: 'Alerte échéance assurance et entretien',
+    description: "Alerte d'échéance d'une police d'assurance, d'une prochaine intervention ou d'une fin de garantie.",
     recipientLabel: 'Agence / Gestionnaire'
   },
   DOCUMENT_EXPIRY_ALERT: {
