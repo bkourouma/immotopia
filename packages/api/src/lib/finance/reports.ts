@@ -35,6 +35,7 @@
 import { prisma } from '../../utils/database';
 import { notFound } from '../errors';
 import { roundMoney } from './money';
+import { sumClientBilledSettledByAccount } from './third-party-totals';
 import {
   toAmount,
   toAmountOrZero,
@@ -161,18 +162,16 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
     soldes.map(g => [g.accountId, roundMoney(toAmountOrZero(g._sum.debit) - toAmountOrZero(g._sum.credit))])
   );
 
-  const grouped = await prisma.thirdPartyMovement.groupBy({
-    by: ['accountId'],
-    where: {
-      tenantId,
-      accountId: { in: accountIds },
-      movementDate: { ...(movementDateFilter?.gte ? { gte: movementDateFilter.gte } : {}), lte: upTo },
-      ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
-    },
-    _sum: { debit: true, credit: true }
+  // Facturé / réglé : règle unique `sumClientBilledSettledByAccount` (une reprise
+  // d'avance n'est ni une facturation ni un règlement — BUG-2026-09-30-058).
+  const grouped = await sumClientBilledSettledByAccount({
+    tenantId,
+    accountId: { in: accountIds },
+    movementDate: { ...(movementDateFilter?.gte ? { gte: movementDateFilter.gte } : {}), lte: upTo },
+    ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
   });
 
-  if (grouped.length === 0) {
+  if (grouped.size === 0) {
     return { lines: [], totalBalance: 0, currency: DEFAULT_CURRENCY };
   }
 
@@ -182,16 +181,16 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
     .filter((id): id is string => Boolean(id));
   const propertyLabelsByClient = await loadPropertyLabelsByClient(tenantId, tenantClientIds);
 
-  const lines: ClientsBalanceLine[] = grouped.map(group => {
-    const account = accountById.get(group.accountId)!;
+  const lines: ClientsBalanceLine[] = Array.from(grouped, ([accountId, totals]) => {
+    const account = accountById.get(accountId)!;
     const tenantClientId = account.tenantClientId ?? '';
     return {
       accountId: account.id,
       tenantClientId,
       label: account.label,
       propertyLabels: propertyLabelsByClient.get(tenantClientId) ?? [],
-      totalBilled: roundMoney(toAmountOrZero(group._sum.debit)),
-      totalSettled: roundMoney(toAmountOrZero(group._sum.credit)),
+      totalBilled: totals.billed,
+      totalSettled: totals.settled,
       balance: soldeParCompte.get(account.id) ?? 0,
       currency: account.currency
     };

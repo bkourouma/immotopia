@@ -36,6 +36,7 @@ jest.mock('@prisma/client', () => {
         return false;
       }
     }
+    if (where.type !== undefined && m.type !== where.type) return false;
     if (where.leaseId && !inFilter(where.leaseId, m.leaseId)) return false;
     if (where.movementDate && !matchesMovementDate(m.movementDate, where.movementDate)) return false;
     return true;
@@ -344,6 +345,88 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
     it('isole les tenants : un compte d un autre tenant n apparait jamais', async () => {
       const result = await getClientsBalance(OTHER_TENANT_ID);
       expect(result.lines).toHaveLength(0);
+    });
+
+    // BUG-2026-09-30-058 : un reglement affecte s'ecrit ADVANCE_RECEIVED (credit
+    // total) + PAYMENT (credit affecte) + ADVANCE_APPLIED (debit affecte). La
+    // reprise d'avance ne facture rien et annule un credit deja compte.
+    describe('reprise d avance (ADVANCE_APPLIED)', () => {
+      const day = (d: number) => new Date(Date.UTC(2026, 5, d));
+
+      const seedReglementAffecte = (prefix: string, accountId: string, date: Date, recu: number, affecte: number) => {
+        seedMovement({ id: `${prefix}-adv`, accountId, movementDate: date, type: 'ADVANCE_RECEIVED', credit: recu });
+        seedMovement({ id: `${prefix}-pay`, accountId, movementDate: date, type: 'PAYMENT', credit: affecte });
+        seedMovement({ id: `${prefix}-app`, accountId, movementDate: date, type: 'ADVANCE_APPLIED', debit: affecte });
+      };
+
+      beforeEach(() => {
+        store.movements.length = 0;
+        store.accounts.length = 0;
+        seedAccount({ id: 'acc-x', tenantClientId: 'client-x', label: 'Locataire X', balance: 0 });
+      });
+
+      it('cas du bug : 3 echeances de 480 000 + penalite 9 000, reglements 480 000 et 300 000', async () => {
+        for (const [i, amount] of [480000, 480000, 480000, 9000].entries()) {
+          seedMovement({
+            id: `due-${i}`,
+            accountId: 'acc-x',
+            movementDate: day(1 + i),
+            type: 'INSTALLMENT',
+            debit: amount
+          });
+        }
+        seedReglementAffecte('r1', 'acc-x', day(10), 480000, 480000);
+        seedReglementAffecte('r2', 'acc-x', day(11), 300000, 300000);
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled).toBe(1449000);
+        expect(line.totalSettled).toBe(780000);
+        expect(line.balance).toBe(669000);
+      });
+
+      it('avance partiellement imputee : 780 000 recus, 480 000 appliques a une echeance de 480 000', async () => {
+        seedMovement({ id: 'due', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 480000 });
+        seedReglementAffecte('r1', 'acc-x', day(10), 780000, 480000);
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled).toBe(480000);
+        expect(line.totalSettled).toBe(780000);
+        expect(line.balance).toBe(-300000); // avance restante de 300 000
+      });
+
+      it('sans ADVANCE_APPLIED, les totaux sont ceux de la somme brute (inchange)', async () => {
+        seedMovement({ id: 'due', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 100000 });
+        seedMovement({ id: 'pay', accountId: 'acc-x', movementDate: day(5), type: 'PAYMENT', credit: 40000 });
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled).toBe(100000);
+        expect(line.totalSettled).toBe(40000);
+        expect(line.balance).toBe(60000);
+      });
+
+      it('facture − regle = solde, avec ou sans reprise d avance', async () => {
+        seedMovement({ id: 'due1', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 250000 });
+        seedMovement({ id: 'due2', accountId: 'acc-x', movementDate: day(2), type: 'INSTALLMENT', debit: 250000 });
+        seedReglementAffecte('r1', 'acc-x', day(10), 400000, 250000);
+        seedMovement({ id: 'pay', accountId: 'acc-x', movementDate: day(12), type: 'PAYMENT', credit: 50000 });
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled - line.totalSettled).toBe(line.balance);
+      });
+
+      it('respecte le filtre de periode : seuls les mouvements de la fenetre comptent (facture 0, regle 100 000)', async () => {
+        seedMovement({ id: 'due', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 100000 });
+        seedReglementAffecte('r1', 'acc-x', day(20), 100000, 100000);
+
+        const [line] = (await getClientsBalance(TENANT_ID, { range: { from: day(15), to: day(25) } })).lines;
+
+        expect(line.totalBilled).toBe(0);
+        expect(line.totalSettled).toBe(100000);
+      });
     });
   });
 
