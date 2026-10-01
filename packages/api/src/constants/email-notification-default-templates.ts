@@ -318,6 +318,15 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;">Le programme <strong>{{workProgramTitle}}</strong> du bien {{propertyReference}} est planifié le {{plannedDate}}.</p>`
   },
+  OWNER_MONTHLY_REPORT_SENT: {
+    subject: 'Votre rapport mensuel - {{period}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Rapport mensuel</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Votre rapport mensuel pour la période <strong>{{period}}</strong> est disponible.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{reportUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Consulter mon rapport</a></p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel, en lecture seule, et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
   INVITATION: {
     subject: 'Invitation - {{agencyName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Vous êtes invité(e)</h1>

@@ -39,10 +39,13 @@ export const NOTIFICATION_KEY_FEATURES: Readonly<Record<string, Feature>> = {
   GENERAL_MEETING_MINUTES: 'SYNDIC',
   CONTRACT_RENEWAL_ALERT: 'SYNDIC',
   COMMON_AREA_INCIDENT: 'SYNDIC',
-  // Patrimoine
+  // Patrimoine (alertes d'échéance et rapport mensuel du propriétaire inclus)
   LOAN_MATURITY_ALERT: 'PATRIMOINE',
   DOCUMENT_EXPIRY_ALERT: 'PATRIMOINE',
-  WORK_PROGRAM_REMINDER: 'PATRIMOINE'
+  WORK_PROGRAM_REMINDER: 'PATRIMOINE',
+  OWNER_LEASE_ENDING_SOON: 'PATRIMOINE',
+  OWNER_DOCUMENT_EXPIRY_ALERT: 'PATRIMOINE',
+  OWNER_MONTHLY_REPORT_SENT: 'PATRIMOINE'
 };
 
 export function featureOfNotificationKey(key: string): Feature {

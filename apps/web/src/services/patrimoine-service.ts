@@ -2,7 +2,11 @@ import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
 import {
   AssetValuation,
+  CreatedSecureLink,
+  OwnerMonthlyReportDto,
   OwnerStatement,
+  OwnerStatementSecureLink,
+  SendMonthlyReportResult,
   PatrimoineOverviewData,
   PropertyExpense,
   PropertyLoan,
@@ -287,4 +291,86 @@ export async function downloadPatrimoineExport(
     blob: response.data,
     filename: filenameFromDisposition(response.headers?.['content-disposition'], `patrimoine.${format}`)
   };
+}
+
+// ---------------------------------------------------------------------------
+// Rapport mensuel et liens sécurisés (spec 031)
+// ---------------------------------------------------------------------------
+
+function secureLinksBase(tenantId: string, statementId: string): string {
+  return `/tenants/${tenantId}/owner-statements/${statementId}`;
+}
+
+/** Envoie le rapport du mois au propriétaire (WhatsApp, sinon e-mail). */
+export async function sendOwnerMonthlyReport(tenantId: string, statementId: string): Promise<SendMonthlyReportResult> {
+  const response = await apiClient.post<ApiResponse<SendMonthlyReportResult>>(
+    `${secureLinksBase(tenantId, statementId)}/send-monthly-report`
+  );
+  return response.data.data;
+}
+
+/** Crée un lien sécurisé. L'url (jeton en clair) n'est renvoyée qu'ici, une seule fois. */
+export async function createOwnerStatementSecureLink(
+  tenantId: string,
+  statementId: string,
+  ttlDays?: number
+): Promise<CreatedSecureLink> {
+  const response = await apiClient.post<ApiResponse<CreatedSecureLink>>(
+    `${secureLinksBase(tenantId, statementId)}/secure-links`,
+    ttlDays === undefined ? {} : { ttlDays }
+  );
+  return response.data.data;
+}
+
+export async function listOwnerStatementSecureLinks(
+  tenantId: string,
+  statementId: string
+): Promise<OwnerStatementSecureLink[]> {
+  const response = await apiClient.get<ApiResponse<OwnerStatementSecureLink[]>>(
+    `${secureLinksBase(tenantId, statementId)}/secure-links`
+  );
+  return response.data.data;
+}
+
+export async function revokeOwnerStatementSecureLink(
+  tenantId: string,
+  statementId: string,
+  linkId: string
+): Promise<void> {
+  await apiClient.delete(`${secureLinksBase(tenantId, statementId)}/secure-links/${encodeURIComponent(linkId)}`);
+}
+
+export type PublicMonthlyReportResult =
+  | { status: 'ok'; report: OwnerMonthlyReportDto }
+  | { status: 'invalid' }
+  | { status: 'rate_limited' }
+  | { status: 'unavailable' };
+
+/**
+ * Lecture publique du rapport mensuel par jeton (sans session).
+ *
+ * Le jeton part dans le CORPS, jamais dans l'URL. `withCredentials: false` : aucun
+ * cookie de session n'est joint. `validateStatus: () => true` : le client ne rejette
+ * jamais, donc ni rafraîchissement de session ni redirection vers la connexion ne
+ * se déclenchent ; l'appelant lit le statut. 429 : `rate_limited` ; 5xx et erreur
+ * réseau : `unavailable` (panne passagère, le lien peut être valide) ; tout autre
+ * échec (inconnu, expiré, révoqué, corps refusé : 404/400) se confond
+ * volontairement en `invalid`.
+ */
+export async function fetchPublicOwnerMonthlyReport(token: string): Promise<PublicMonthlyReportResult> {
+  try {
+    const response = await apiClient.post<ApiResponse<OwnerMonthlyReportDto>>(
+      '/public/secure-links/owner-monthly-report',
+      { token },
+      { withCredentials: false, validateStatus: () => true }
+    );
+    if (response.status === 429) return { status: 'rate_limited' };
+    if (response.status === 200 && response.data?.success && response.data.data) {
+      return { status: 'ok', report: response.data.data };
+    }
+    if (response.status >= 500) return { status: 'unavailable' };
+    return { status: 'invalid' };
+  } catch {
+    return { status: 'unavailable' };
+  }
 }
