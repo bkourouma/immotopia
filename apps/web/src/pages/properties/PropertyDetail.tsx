@@ -360,7 +360,17 @@ export const PropertyDetail: React.FC = () => {
     {
       key: 'type',
       label: t('Type de bien'),
-      children: TYPE_LABELS[property.propertyType] || property.propertyType
+      children: (
+        <Space size="small" wrap>
+          <span>{TYPE_LABELS[property.propertyType] || property.propertyType}</span>
+          {/* Lot B2 : un terrain se régularise (attestation villageoise → titre foncier). */}
+          {property.propertyType === 'TERRAIN' && possede('PATRIMOINE') && (
+            <Link to={`/tenant/${effectiveTenantId}/patrimoine/land?propertyId=${encodeURIComponent(id!)}`}>
+              {t('Régularisation foncière')}
+            </Link>
+          )}
+        </Space>
+      )
     },
     {
       key: 'owner',

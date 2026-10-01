@@ -117,6 +117,14 @@ export enum AuditActionKey {
   // Rapport mensuel propriétaire envoyé avec un lien sécurisé (lot A3).
   PATRIMOINE_OWNER_MONTHLY_REPORT_SENT = 'PATRIMOINE_OWNER_MONTHLY_REPORT_SENT',
 
+  // Patrimoine (lot B2, spec 033) : regularisation fonciere. Payloads sans donnee
+  // sensible (from/to, reason, reopened). L'alerte d'echeance depassee sert de marque anti-doublon.
+  LAND_REGULARIZATION_CREATED = 'LAND_REGULARIZATION_CREATED',
+  LAND_REGULARIZATION_STATUS_CHANGED = 'LAND_REGULARIZATION_STATUS_CHANGED',
+  LAND_STEP_STATUS_CHANGED = 'LAND_STEP_STATUS_CHANGED',
+  LAND_STEP_UPDATED = 'LAND_STEP_UPDATED',
+  PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT = 'PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT',
+
   // Liens sécurisés (lib/secure-links, lot A3) : jamais le jeton ni son hash.
   SECURE_LINK_CREATED = 'SECURE_LINK_CREATED',
   SECURE_LINK_VIEWED = 'SECURE_LINK_VIEWED',

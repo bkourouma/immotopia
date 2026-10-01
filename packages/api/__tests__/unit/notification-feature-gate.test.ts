@@ -197,6 +197,7 @@ describe('classement complet du catalogue', () => {
     for (const k of [
       'LOAN_MATURITY_ALERT',
       'WORK_PROGRAM_REMINDER',
+      'LAND_STEP_OVERDUE_ALERT',
       'DOCUMENT_EXPIRY_ALERT',
       'LEASE_ENDING_SOON',
       'DEAL_CREATED',

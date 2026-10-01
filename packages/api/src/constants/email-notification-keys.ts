@@ -51,6 +51,7 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'LOAN_MATURITY_ALERT',
   'DOCUMENT_EXPIRY_ALERT',
   'WORK_PROGRAM_REMINDER',
+  'LAND_STEP_OVERDUE_ALERT',
   'OWNER_MONTHLY_REPORT_SENT'
 ] as const;
 
@@ -288,6 +289,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     label: 'Rappel programme de travaux',
     description: 'Rappel sur un programme de travaux planifié.',
     recipientLabel: 'Gestionnaire'
+  },
+  LAND_STEP_OVERDUE_ALERT: {
+    key: 'LAND_STEP_OVERDUE_ALERT',
+    label: 'Relance étape de régularisation foncière en retard',
+    description:
+      "Alerte envoyée aux administrateurs de l'agence lorsqu'une étape d'un dossier de régularisation foncière en cours a dépassé son échéance (une seule fois par échéance).",
+    recipientLabel: 'Agence / Gestionnaire'
   },
   OWNER_MONTHLY_REPORT_SENT: {
     key: 'OWNER_MONTHLY_REPORT_SENT',
