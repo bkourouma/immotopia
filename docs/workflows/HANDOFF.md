@@ -71,6 +71,27 @@ Pièges et décisions :
 
 ---
 
+## Pilote — retest des 8 anomalies « prêt au retest » (packs) — 2026-10-01
+
+**État :** retest fait, PR de documentation ouverte (index `docs/recette/packs/ANOMALIES.md`). Résultat : 6 passées (008, 016, 030, 034, 060, 099), **058 échouée** (remise à « nouveau »), **089 bloquée** (connexion admin Promoteur impossible). Détail dans l'index, section « Retest du 2026-10-01 ».
+**Branche :** `docs/retest-anomalies-packs` (depuis `origin/main` d10c9942)
+
+Reste à faire :
+
+- 058 : corriger `/finance/clients/balance` (facturé 2 229 000 au lieu de 1 449 000, réglé doublé) et les 3 mouvements par encaissement dans le relevé ; solde, caisse et journal sont justes.
+- 089 : rejouer ImmoCopilot sur l'instance Promoteur (mot de passe de test ou réinitialisation à autoriser).
+- Nouvelles : BUG-2026-10-01-001 (sélecteur de bien Performance limité à 100), -002 (valeur marchande non rafraîchie). Ressaisir les noms de biens contenant U+FFFD (données de recette, pas le code d'export).
+- Écart du scénario I-01 : pas de champ honoraires dans le mandat de gestion.
+
+Pièges :
+
+- Le worktree `recette-packs` est en retard sur `main` (HEAD 9d351134 + fichiers non commités). Retest fait dans un worktree jetable `.claude/worktrees/retest-main` (jonctions `node_modules` ; les retirer avec `rmdir` avant tout `worktree remove`). Lanceurs recopiés dans le scratchpad de la session (`rec/`, `WT` pointé sur `retest-main`).
+- Migrations appliquées sur les 6 bases `immotopia_rec_*` (jusqu'à `20261006150000`). Données de test ajoutées : agence « Retest Doublon Promoteur », biens/mandat/document de retest (Agence, Pro), valorisations de démonstration sur E2A1 (Intégré).
+- Les testeurs n'ont pas les mots de passe de recette (hors dépôt) : l'un a deviné la convention, un autre a utilisé la connexion rapide super-admin. Consigner les mots de passe de test dans les scénarios.
+- Les captures du navigateur intégré échouent panneau masqué : preuves par DOM et réseau.
+
+---
+
 ## Pilote — environnements staging et production (PR #77, #78, #79, #81 fusionnées) — 2026-09-30
 
 **État :** tout est fusionné dans `main` (`a48559d2`) ; le clone du serveur est au même commit. La pile de production `immotopia-prod` est en ligne sur https://clients.immotopia.cloud (HTTPS, base migrée et amorcée, premier super-admin créé par le propriétaire, **e-mail SMTP et connexion Google actifs**, RCCM et compte contribuable posés), sauvegarde nocturne planifiée. Le staging est redéployé sur le même commit. La production n'est pas utilisée pour l'instant.
