@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { JSDOM } from 'jsdom';
+import type { NewsletterCampaignStatus, Prisma } from '@prisma/client';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
 import { prisma } from '../utils/database';
@@ -482,8 +484,8 @@ export async function cancelCampaign(tenantId: string, campaignId: string) {
 }
 
 export async function listCampaigns(tenantId: string, options: { status?: string; page?: number; limit?: number }) {
-  const where: { tenantId: string; status?: string } = { tenantId };
-  if (options.status) where.status = options.status as any;
+  const where: Prisma.NewsletterCampaignWhereInput = { tenantId };
+  if (options.status) where.status = options.status as NewsletterCampaignStatus;
 
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(100, Math.max(1, options.limit ?? 20));

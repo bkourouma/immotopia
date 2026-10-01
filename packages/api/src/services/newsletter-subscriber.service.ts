@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { toCsvString } from '../lib/csv';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
@@ -66,7 +67,7 @@ export async function listSubscribers(
   listId: string,
   options: { status?: string; page?: number; limit?: number }
 ) {
-  const where: { listId: string; tenantId: string; status?: string } = { listId, tenantId };
+  const where: Prisma.NewsletterSubscriberWhereInput = { listId, tenantId };
   if (options.status) where.status = options.status as 'PENDING_CONFIRMATION' | 'ACTIVE' | 'UNSUBSCRIBED';
 
   const page = Math.max(1, options.page ?? 1);

@@ -75,7 +75,7 @@ export function startReminderSchedulerJob() {
         });
       }
     },
-    { scheduled: true, timezone: 'UTC' }
+    { timezone: 'UTC' }
   );
   logger.info('Reminder scheduler job started (runs daily at 6:00 AM UTC)');
 }

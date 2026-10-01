@@ -64,9 +64,10 @@ export function validatePropertyOwnership() {
         hasAccess = property.ownerUserId === userId || property.isPublished;
       } else if (property.ownershipType === PropertyOwnershipType.CLIENT) {
         // Client property with mandate: owner or managing tenant has access
-        hasAccess =
+        hasAccess = Boolean(
           property.ownerUserId === userId ||
-          (tenantId && property.mandates.some(mandate => mandate.tenantId === tenantId && mandate.isActive));
+          (tenantId && property.mandates.some(mandate => mandate.tenantId === tenantId && mandate.isActive))
+        );
       }
 
       if (!hasAccess) {

@@ -3,7 +3,7 @@ import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateDealRequest, UpdateDealRequest, DealFilters, DealDetail } from '../types/crm-types';
-import { CrmDealStage } from '@prisma/client';
+import { CrmDealStage, Prisma } from '@prisma/client';
 import { assertActiveMember } from './crm-contact-service';
 import { t } from '../i18n';
 import { NotFoundError, ConflictError } from '../middleware/error-middleware';
@@ -43,7 +43,8 @@ export async function createDeal(tenantId: string, data: CreateDealRequest, acto
       budgetMin: data.budgetMin ? data.budgetMin : null,
       budgetMax: data.budgetMax ? data.budgetMax : null,
       locationZone: data.locationZone || null,
-      criteriaJson: data.criteriaJson || null,
+      // Colonne Json nullable : Prisma exige DbNull (et non null) pour écrire NULL en base.
+      criteriaJson: data.criteriaJson ? (data.criteriaJson as Prisma.InputJsonObject) : Prisma.DbNull,
       expectedValue: data.expectedValue ? data.expectedValue : null,
       assignedToUserId: data.assignedToUserId || null,
       version: 1 // Initial version for optimistic locking
@@ -478,7 +479,7 @@ export async function updateDealStage(tenantId: string, dealId: string, stage: C
 export async function closeDeal(
   tenantId: string,
   dealId: string,
-  stage: CrmDealStage.WON | CrmDealStage.LOST,
+  stage: typeof CrmDealStage.WON | typeof CrmDealStage.LOST,
   closedReason?: string,
   actorUserId?: string
 ) {

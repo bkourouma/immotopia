@@ -69,22 +69,18 @@ export function startNewsletterCampaignSchedulerJob() {
     logger.warn('Newsletter campaign scheduler job is already running');
     return;
   }
-  job = cron.schedule(
-    '* * * * *',
-    async () => {
-      try {
-        const result = await runNewsletterCampaignScheduler();
-        if (result.sent > 0 || result.failed > 0) {
-          logger.info('Newsletter campaign scheduler job completed', result);
-        }
-      } catch (error) {
-        logger.error('Newsletter campaign scheduler job error', {
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
+  job = cron.schedule('* * * * *', async () => {
+    try {
+      const result = await runNewsletterCampaignScheduler();
+      if (result.sent > 0 || result.failed > 0) {
+        logger.info('Newsletter campaign scheduler job completed', result);
       }
-    },
-    { scheduled: true }
-  );
+    } catch (error) {
+      logger.error('Newsletter campaign scheduler job error', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
   logger.info('Newsletter campaign scheduler job started (runs every minute)');
 }
 

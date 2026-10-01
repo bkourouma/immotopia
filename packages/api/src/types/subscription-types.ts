@@ -1,3 +1,5 @@
+import type { InvoiceStatus as PrismaInvoiceStatus } from '@prisma/client';
+
 // Subscription plan enum
 export enum SubscriptionPlan {
   BASIC = 'BASIC',
@@ -64,7 +66,8 @@ export interface CreateInvoiceRequest {
 
 // Update invoice request
 export interface UpdateInvoiceRequest {
-  status?: InvoiceStatus;
+  // Accepte aussi le type Prisma : `markInvoiceAsPaid` passe `InvoiceStatus` de `@prisma/client`.
+  status?: InvoiceStatus | PrismaInvoiceStatus;
   paidAt?: Date | null;
   notes?: string;
 }

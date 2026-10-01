@@ -146,10 +146,10 @@ export interface CreateContactRequest {
 // Update contact request
 export interface UpdateContactRequest {
   // Contact Type
-  contactType?: 'PERSON' | 'COMPANY';
+  contactType?: 'PERSON' | 'COMPANY' | null;
 
   // Person Identification
-  civility?: 'MR' | 'MRS' | 'MS' | 'DR' | 'PROF';
+  civility?: 'MR' | 'MRS' | 'MS' | 'DR' | 'PROF' | null;
   firstName?: string;
   lastName?: string;
   dateOfBirth?: Date | string | null;
@@ -199,15 +199,7 @@ export interface UpdateContactRequest {
   // CRM Behavior & Scoring
   source?: string | null; // Legacy
   leadSource?:
-    | 'WEBSITE'
-    | 'SOCIAL_MEDIA'
-    | 'REFERRAL'
-    | 'CAMPAIGN'
-    | 'AGENCY'
-    | 'WALK_IN'
-    | 'PHONE_CALL'
-    | 'OTHER'
-    | null;
+    'WEBSITE' | 'SOCIAL_MEDIA' | 'REFERRAL' | 'CAMPAIGN' | 'AGENCY' | 'WALK_IN' | 'PHONE_CALL' | 'OTHER' | null;
   maturityLevel?: 'COLD' | 'WARM' | 'HOT' | null;
   score?: number | null;
   priorityLevel?: 'LOW' | 'NORMAL' | 'HIGH' | null;
@@ -246,9 +238,13 @@ export interface ConvertContactRequest {
 
 // Extended Deal with relationships
 export interface DealDetail extends CrmDeal {
-  contact?: CrmContact;
-  activities?: CrmActivity[];
-  propertyMatches?: CrmDealProperty[];
+  // Sous-ensembles réellement renvoyés par getDealById (select explicites)
+  contact?: Pick<CrmContact, 'id' | 'firstName' | 'lastName' | 'email' | 'phonePrimary' | 'phoneSecondary'>;
+  assignedTo?: { id: string; email: string; fullName: string | null } | null;
+  activities?: (CrmActivity & { createdBy: { id: string; email: string; fullName: string | null } | null })[];
+  propertyMatches?: (CrmDealProperty & {
+    sourceOwner: { id: string; firstName: string; lastName: string } | null;
+  })[];
 }
 
 // Create deal request
@@ -269,12 +265,12 @@ export interface UpdateDealRequest {
   stage?: CrmDealStage;
   budgetMin?: number;
   budgetMax?: number;
-  locationZone?: string;
+  locationZone?: string | null;
   criteriaJson?: Record<string, unknown>;
   expectedValue?: number;
   probability?: number;
   assignedToUserId?: string | null;
-  closedReason?: string;
+  closedReason?: string | null;
   version: number; // Required for optimistic locking
 }
 

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import type { CrmActivityType, CrmContactStatus, CrmDealStage } from '@prisma/client';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import {
   createContactSchema,
@@ -123,7 +124,8 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
     const tenantId = getTenantIdFromRequest(req);
 
     const filters = {
-      status: req.query.status as string | undefined,
+      // Casts ciblés : valeurs de la query string, supposées issues des enums Prisma (comme avant).
+      status: req.query.status as CrmContactStatus | undefined,
       source: req.query.source as string | undefined,
       assignedTo: req.query.assignedTo as string | undefined,
       tag: req.query.tag as string | undefined,
@@ -497,7 +499,7 @@ export async function listDealsHandler(req: Request, res: Response): Promise<voi
 
     const filters = {
       type: req.query.type as 'ACHAT' | 'LOCATION' | undefined,
-      stage: req.query.stage as string | undefined,
+      stage: req.query.stage as CrmDealStage | undefined,
       assignedTo: req.query.assignedTo as string | undefined,
       contactId: req.query.contactId as string | undefined,
       ...parsePagination(req.query)
@@ -587,7 +589,8 @@ export async function createActivityHandler(req: Request, res: Response): Promis
     // Validate request body
     const validatedData = createActivitySchema.parse(req.body);
 
-    const activity = await createActivity(tenantId, validatedData, actorUserId);
+    // Route authentifiée : req.user est posé par le middleware d'authentification.
+    const activity = await createActivity(tenantId, validatedData, actorUserId as string);
 
     res.status(201).json({
       success: true,
@@ -632,7 +635,7 @@ export async function listActivitiesHandler(req: Request, res: Response): Promis
     const filters = {
       contactId: req.query.contactId as string | undefined,
       dealId: req.query.dealId as string | undefined,
-      type: req.query.type as string | undefined,
+      type: req.query.type as CrmActivityType | undefined,
       createdBy: req.query.createdBy as string | undefined,
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
