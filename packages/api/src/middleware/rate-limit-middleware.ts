@@ -367,3 +367,17 @@ export const auditExportRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/** Vérification d'intégrité du journal d'audit (ADR-006, phase 5) : relit des journées entières. 10 par 10 minutes. */
+export const auditIntegrityRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  keyGenerator: req => `audit-integrity:${req.user?.userId ?? 'anonyme'}`,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de vérifications d'intégrité du journal en peu de temps. Réessayez dans quelques minutes."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});

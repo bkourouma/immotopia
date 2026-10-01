@@ -3,6 +3,9 @@ import { platformAuditExportQuerySchema, platformAuditQuerySchema } from '../lib
 import { getPlatformAuditLogs } from '../services/audit-platform-read-service';
 import { preparePlatformAuditExport, streamPlatformAuditCsv } from '../services/audit-platform-export-service';
 import { logAuditEvent } from '../services/audit-service';
+import { auditIntegrityQuerySchema } from '../lib/audit/integrity-schemas';
+import { verifyAuditIntegrity } from '../services/audit-integrity-service';
+import { currentRetentionCutoffs } from '../services/audit-retention-service';
 import { AuditActionKey } from '../types/audit-types';
 
 /**
@@ -52,4 +55,23 @@ export const exportAuditLogsHandler = asyncHandler(async (req, res) => {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Export-Truncated, X-Export-Rows');
 
   await streamPlatformAuditCsv(filters, res);
+});
+
+/**
+ * GET /api/admin/audit/integrity — `PLATFORM_AUDIT_VIEW`.
+ * Recalcule les racines de Merkle des journées scellées et les compare aux
+ * scellés ; vérifie aussi la chaîne. Lecture seule, tracée (`AUDIT_VIEWED`).
+ */
+export const getAuditIntegrityHandler = asyncHandler(async (req, res) => {
+  const { from, to } = auditIntegrityQuerySchema.parse(req.query);
+  const report = await verifyAuditIntegrity({ from, to, cutoffs: currentRetentionCutoffs() });
+
+  logAuditEvent({
+    actionKey: AuditActionKey.AUDIT_VIEWED,
+    entityType: 'AuditLog',
+    entityId: 'platform',
+    payload: { level: 'PLATFORM', integrity: true, ok: report.ok, checked: report.partitions.checked }
+  });
+
+  res.status(200).json({ success: true, data: report });
 });

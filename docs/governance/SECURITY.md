@@ -104,6 +104,24 @@ blanche explicite) et `__tests__/unit/schema-tenant-coverage.test.ts`
 de bout en bout se vérifie avec `npm run test:isolation`, qui utilise une
 base dédiée (`DATABASE_URL_TEST`).
 
+### Journal d'audit
+
+Deux niveaux (agence, plateforme) dans une seule table, décrits dans
+[ADR-006](../architecture/adr/ADR-006-audit-deux-niveaux.md). Ce qui protège
+le journal lui-même :
+
+- l'agence ne lit que ses lignes `visibility = TENANT`, par un lecteur unique
+  (`audit-read-service.ts`) qui pose `tenantId` lui-même ; le personnel de la
+  plateforme y apparaît sans identité, IP ni navigateur ;
+- un déclencheur refuse `UPDATE` et `DELETE` (la purge de rétention passe par
+  `audit_logs_purge`, 180 jours minimum, partitions scellées seulement) ;
+- des scellés quotidiens chaînés (racines de Merkle) détectent une ligne
+  modifiée, supprimée ou une chaîne réécrite : `GET /api/admin/audit/integrity`,
+  job quotidien, alerte `AUDIT_INTEGRITY_FAILED` ;
+- **limite** : les scellés sont dans la même base ; un compte qui peut tout
+  réécrire peut recalculer la chaîne. Ancrer la tête de chaîne hors de la base
+  ([RUNBOOK](../workflows/RUNBOOK.md), « Journal d'audit »).
+
 ## 5. Fichiers privés
 
 `middleware/uploads-access-middleware.ts` s'exécute avant

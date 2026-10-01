@@ -237,13 +237,61 @@ tenantId)` borne chaque requête à l'agence (sans cela, la garde Prisma
   (agence, catégorie, résultat, type d'acteur, visibilité, identifiant de
   requête) et le bouton « Exporter en CSV ».
 
+### Phase 5 : rétention, scellés, marqueurs (livré)
+
+- **Marqueurs anti-doublon** : les quatre clés qui servaient de mémoire aux
+  alertes (`PATRIMOINE_LEASE_END_ALERT_SENT`, `PATRIMOINE_LOAN_MATURITY_ALERT_SENT`,
+  `PATRIMOINE_WORK_UPCOMING_ALERT_SENT`, `SYNDIC_MEETING_CONVOCATION_DELIVERY`)
+  quittent `AuditLog` pour la table `notification_markers` (par agence, gardée par
+  l'extension de garde tenant). Ce n'étaient pas des faits à auditer : les purger
+  aurait fait renvoyer des alertes. La migration `20261007130000` copie les lignes
+  existantes puis les retire du journal (seul usage légitime de la purge hors
+  rétention). Les 4 clés sortent de l'enum et du catalogue. Au passage,
+  `listInvitations` lit la colonne `roleIds` au lieu d'une requête par invitation
+  dans le journal.
+- **Scellés quotidiens** : `audit_seals`, un scellé par partition = (jour UTC,
+  agence ou `PLATFORM`, visibilité). Racine de Merkle de l'algorithme
+  `sha256-merkle-v1` (`lib/audit/integrity.ts`, fonctions pures, valeurs de
+  référence figées dans `audit-integrity.test.ts`), chaînée : `chainHash =
+sha256(prevHash | date | clé | visibilité | effectif | racine | algorithme)`.
+  Le verrou consultatif 7300000001 sérialise l'écriture de la chaîne. La table
+  est en ajout seul (déclencheur `audit_seals_immutable`). Une journée est scellée
+  après `AUDIT_SEAL_GRACE_DAYS` jours (défaut 2) : une ligne remise en file par
+  une panne de base garde sa date d'origine ; arrivée après le scellé, elle est
+  signalée `LATE_ROWS` (à regarder, pas une altération).
+- **Vérification** : `verifyAuditIntegrity` revérifie toute la chaîne, puis
+  recalcule la racine de chaque partition de la période. Statuts : `OK`,
+  `EXPIRED` (partition vide et plus ancienne que sa rétention : normal),
+  `LATE_ROWS`, `ROWS_MISSING`, `ALTERED`. Route
+  `GET /api/admin/audit/integrity?from&to` (jours `AAAA-MM-JJ`, schéma strict),
+  `PLATFORM_AUDIT_VIEW`, 10 appels par 10 minutes, tracée (`AUDIT_VIEWED`).
+  Sans période : les 500 scellés les plus récents.
+- **Rétention** : `AUDIT_RETENTION_TENANT_MONTHS` (lignes visibles de l'agence,
+  défaut 24) et `AUDIT_RETENTION_PLATFORM_MONTHS` (lignes `PLATFORM_ONLY`, défaut
+  60), bornes 7 à 240. Purge **désactivée par défaut** (`AUDIT_PURGE_ENABLED=false`).
+  La suppression passe uniquement par la fonction SQL `audit_logs_purge` : date
+  limite d'au moins 180 jours, lot de 1 à 50 000, et seules les lignes dont la
+  partition est scellée sont supprimées. Chaque lot est supprimé dans la même
+  transaction que sa trace `AUDIT_PURGED`. Les scellés ne sont jamais purgés : ils
+  prouvent ce qui a existé.
+- **Job** `jobs/audit-maintenance-job.ts`, chaque jour à 2 h 30 UTC : scelle
+  (trace `AUDIT_SEALED`), purge si activée, revérifie la chaîne et les 7 derniers
+  jours (échec : log d'erreur et `AUDIT_INTEGRITY_FAILED`, critique, plateforme
+  seule), journalise la tête de chaîne.
+- **Limite assumée** : les scellés vivent dans la même base. Qui peut tout
+  réécrire peut recalculer toute la chaîne. La garantie complète demande
+  d'ancrer la tête de chaîne ailleurs (voir RUNBOOK, « Journal d'audit »).
+- **Web** : carte « Intégrité du journal » dans l'écran « Journaux d'audit »
+  (vérification à la demande, jamais automatique) ; libellés des trois nouvelles
+  actions.
+
 ## 8. Plan et état
 
-| Phase | Contenu                                                                                            | État    |
-| ----- | -------------------------------------------------------------------------------------------------- | ------- |
-| 0     | ADR-006 et cette spec                                                                              | fait    |
-| 1     | Migration, catalogue, contexte, écriture critique (capacité), arrêt propre, contrôleur             | fait    |
-| 2     | Route et page « Journal d'activité » côté agence, permission `TENANT_AUDIT_VIEW`, test d'isolation | à faire |
-| 3     | Événements de sécurité (403, exports, téléchargements, portails), capture avant/après ciblée       | fait    |
-| 4     | Console plateforme (filtres, `requestId`, export audité), `PLATFORM_AUDIT_*`                       | fait    |
-| 5     | Rétention, scellés, séparation des marqueurs anti-doublon                                          | à faire |
+| Phase | Contenu                                                                                            | État |
+| ----- | -------------------------------------------------------------------------------------------------- | ---- |
+| 0     | ADR-006 et cette spec                                                                              | fait |
+| 1     | Migration, catalogue, contexte, écriture critique (capacité), arrêt propre, contrôleur             | fait |
+| 2     | Route et page « Journal d'activité » côté agence, permission `TENANT_AUDIT_VIEW`, test d'isolation | fait |
+| 3     | Événements de sécurité (403, exports, téléchargements, portails), capture avant/après ciblée       | fait |
+| 4     | Console plateforme (filtres, `requestId`, export audité), `PLATFORM_AUDIT_*`                       | fait |
+| 5     | Rétention, scellés, séparation des marqueurs anti-doublon                                          | fait |

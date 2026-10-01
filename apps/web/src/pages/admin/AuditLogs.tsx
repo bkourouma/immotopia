@@ -15,6 +15,7 @@ import { saveBlob } from '../../utils/save-blob';
 import { useAuth } from '../../hooks/useAuth';
 import { AuditResourceCell } from '../../components/audit/AuditResourceCell';
 import { PlatformAuditDetailModal } from '../../components/admin/PlatformAuditDetailModal';
+import { AuditIntegrityCard } from '../../components/admin/AuditIntegrityCard';
 import {
   EMPTY_AUDIT_FILTERS,
   PlatformAuditFilterBar,
@@ -252,6 +253,8 @@ export const AuditLogs: React.FC = () => {
         onReset={() => setState(EMPTY_AUDIT_FILTERS)}
         hasFilters={hasFilters}
       />
+
+      <AuditIntegrityCard />
 
       {error && (
         <Alert

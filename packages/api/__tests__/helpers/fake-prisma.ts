@@ -383,7 +383,9 @@ export const FAKE_MODEL_NAMES = [
   // Correctif securite invitations (IDOR resend/revoke, prise de compte).
   'invitation',
   'role',
-  'auditLog'
+  'auditLog',
+  // Marqueurs de notification (ADR-006, phase 5) : journal de remise des convocations.
+  'notificationMarker'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

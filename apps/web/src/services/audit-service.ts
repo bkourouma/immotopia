@@ -87,7 +87,7 @@ export interface PlatformAuditExportResult {
 }
 
 /** Ne garde que les valeurs définies et non vides : l'API refuse un paramètre inconnu et n'a que faire d'une chaîne vide. */
-function definedParams(filters: PlatformAuditFilters): Record<string, string | number> {
+function definedParams(filters: PlatformAuditFilters | AuditIntegrityParams): Record<string, string | number> {
   const params: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined || value === null || value === '') continue;
@@ -122,4 +122,69 @@ export async function exportAuditLogs(filters: PlatformAuditExportFilters = {}):
     filename: filenameFromDisposition(headers['content-disposition'], fallbackExportName()),
     truncated: String(headers['x-export-truncated'] ?? '').toLowerCase() === 'true'
   };
+}
+
+export type AuditIntegrityStatus = 'OK' | 'EXPIRED' | 'LATE_ROWS' | 'ROWS_MISSING' | 'ALTERED';
+
+/** Une partition (jour de scellement, agence, visibilité) dont le contenu diffère du scellé. */
+export interface AuditIntegrityFinding {
+  /** Jour scellé, `YYYY-MM-DD` (UTC). */
+  sealDate: string;
+  /** Identifiant de l'agence, ou clé réservée aux lignes sans agence. */
+  tenantKey: string;
+  visibility: PlatformAuditVisibility;
+  status: AuditIntegrityStatus;
+  sealedRows: number;
+  foundRows: number;
+}
+
+export interface AuditIntegrityChainHead {
+  seq: number;
+  sealDate: string;
+  chainHash: string;
+}
+
+export interface AuditIntegrityReport {
+  ok: boolean;
+  chain: {
+    ok: boolean;
+    sealsChecked: number;
+    /** Numéro du premier scellé dont le chaînage est rompu. */
+    brokenAtSeq?: number;
+    head: AuditIntegrityChainHead | null;
+  };
+  partitions: {
+    checked: number;
+    ok: number;
+    /** Partitions purgées après la durée de rétention : normal, rien à signaler. */
+    expired: number;
+    /** Lignes arrivées après le scellement : pas forcément une altération. */
+    lateRows: AuditIntegrityFinding[];
+    tampered: AuditIntegrityFinding[];
+    /** Vrai quand la période est trop large : seules les premières anomalies sont listées. */
+    truncated: boolean;
+  };
+}
+
+export interface AuditIntegrityResponse {
+  success: true;
+  data: AuditIntegrityReport;
+}
+
+/** Période de la vérification : jours `YYYY-MM-DD` (UTC), l'API répond 400 sinon. */
+export interface AuditIntegrityParams {
+  from?: string;
+  to?: string;
+}
+
+/**
+ * Vérifie l'intégrité du journal : chaîne des scellés puis partitions
+ * (`GET /api/admin/audit/integrity`). Sans période, les 500 derniers scellés.
+ * Calcul lourd, limité à 10 appels par 10 minutes côté API.
+ */
+export async function getAuditIntegrity(params: AuditIntegrityParams = {}): Promise<AuditIntegrityResponse> {
+  const response = await apiClient.get<AuditIntegrityResponse>('/admin/audit/integrity', {
+    params: definedParams(params)
+  });
+  return response.data;
 }

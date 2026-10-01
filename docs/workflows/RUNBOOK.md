@@ -476,6 +476,51 @@ coupe en milieu de réponse.
 - `PROPOSAL_EXPIRED` (410) : la proposition a plus de `AI_PROPOSAL_TTL_SECONDS` ;
   la redemander. `PROPOSAL_ALREADY_USED` (409) : déjà confirmée.
 
+## Journal d'audit (scellés, rétention, purge)
+
+Décision : [ADR-006](../architecture/adr/ADR-006-audit-deux-niveaux.md) ;
+spécification : `specs/023-audit-deux-niveaux/spec.md` (phase 5).
+
+| Variable                          | Défaut  | Rôle                                                              |
+| --------------------------------- | ------- | ----------------------------------------------------------------- |
+| `AUDIT_RETENTION_TENANT_MONTHS`   | `24`    | Conservation des lignes visibles de l'agence (7 à 240)            |
+| `AUDIT_RETENTION_PLATFORM_MONTHS` | `60`    | Conservation des lignes réservées à la plateforme (7 à 240)       |
+| `AUDIT_SEAL_GRACE_DAYS`           | `2`     | Jours d'attente avant de sceller une journée (1 à 30)             |
+| `AUDIT_PURGE_ENABLED`             | `false` | `true` pour que le job purge. **Irréversible** : valider d'abord. |
+
+**Job quotidien (2 h 30 UTC, `jobs/audit-maintenance-job.ts`)** : scelle les
+journées révolues, purge si `AUDIT_PURGE_ENABLED=true`, revérifie la chaîne et les
+7 derniers jours, journalise la tête de chaîne (« Audit : tête de chaîne à
+ancrer »). Il tourne dans chaque instance de l'API : le scellement est sérialisé
+par un verrou consultatif, la purge est idempotente.
+
+**Activer la purge** : confirmer les durées avec le responsable du produit
+(contrats, conformité), sauvegarder la base (DEPLOIEMENT.md), poser
+`AUDIT_PURGE_ENABLED=true`, redémarrer. Les premiers passages suppriment par lots
+de 5 000 (200 lots au plus par passage et par visibilité) ; chaque lot écrit un
+`AUDIT_PURGED` dans la même transaction. Seules les lignes d'une partition
+**scellée** et plus anciennes que la rétention partent ; les scellés restent.
+
+**Vérifier l'intégrité** : écran « Journaux d'audit » → « Vérifier l'intégrité »,
+ou `GET /api/admin/audit/integrity?from=AAAA-MM-JJ&to=AAAA-MM-JJ`. Statuts d'une
+partition : `OK` ; `EXPIRED` (purgée par la rétention, normal) ; `LATE_ROWS` (des
+lignes sont arrivées après le scellé — remise en file après une panne, à regarder
+mais pas une altération) ; `ROWS_MISSING` et `ALTERED` (**incident de sécurité** :
+lignes disparues ou modifiées). Une chaîne rompue (`brokenAtSeq`) est aussi un
+incident. Le job écrit alors `AUDIT_INTEGRITY_FAILED` et un log d'erreur : brancher
+une alerte sur le message « INTÉGRITÉ DU JOURNAL COMPROMISE ».
+
+**Ancrer la tête de chaîne (recommandé)** : les scellés vivent dans la même base,
+donc qui peut tout réécrire peut recalculer toute la chaîne. Recopier
+régulièrement la dernière valeur « tête de chaîne à ancrer » (`seq`, `sealDate`,
+`chainHash`) hors de la base : coffre, e-mail à la direction, ticket horodaté. Une
+chaîne dont le scellé `seq` ne retombe pas sur le `chainHash` ancré a été réécrite.
+
+**Remise à zéro d'une base de recette** : `TRUNCATE audit_logs, audit_seals` reste
+possible (un `TRUNCATE` ne passe pas par les déclencheurs de ligne) ; vider
+seulement `audit_logs` laisserait des scellés orphelins, que la vérification
+signalerait comme lignes disparues.
+
 ## Dépannage
 
 ### CORS / mauvais port

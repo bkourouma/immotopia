@@ -2,7 +2,12 @@
 
 ## Statut
 
-Proposé
+Accepté
+
+Les durées de rétention (24 mois pour l'agence, 60 mois pour la plateforme), le
+scellement systématique et la purge désactivée par défaut sont des valeurs par
+défaut posées à la livraison de la phase 5 : à confirmer par le responsable du
+produit (conformité, contrats) avant d'activer `AUDIT_PURGE_ENABLED`.
 
 ## Date
 
@@ -61,20 +66,23 @@ NOT NULL`.
    Permissions dédiées `TENANT_AUDIT_VIEW`, `PLATFORM_AUDIT_VIEW`,
    `PLATFORM_AUDIT_EXPORT`. Consulter ou exporter est lui-même audité.
 7. **Immuabilité** : un déclencheur Postgres refuse `UPDATE` et `DELETE` sur
-   `audit_logs`. La purge de rétention passe par une fonction dédiée.
-8. **Détection de falsification** (phase ultérieure) : scellés quotidiens par
-   agence et pour la plateforme (racine de Merkle), pas de chaînage ligne à
-   ligne.
+   `audit_logs`. La purge de rétention passe par une fonction dédiée
+   (`audit_logs_purge`) : 180 jours minimum, partitions scellées seulement.
+8. **Détection de falsification** (phase 5, livrée) : scellés quotidiens par
+   partition (jour, agence ou plateforme, visibilité), racine de Merkle,
+   scellés chaînés entre eux ; vérification à la demande et par le job
+   quotidien ; pas de chaînage ligne à ligne.
+9. **Marqueurs anti-doublon** hors du journal : table `notification_markers`.
 
 Valeurs par défaut retenues pour les points ouverts, à ajuster :
 
-| Point                                                | Défaut                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------- |
-| Actions du personnel plateforme visibles de l'agence | Oui pour support et accès ; non pour facturation interne et réglages IA   |
-| Rétention                                            | 24 mois côté agence, 5 ans côté plateforme                                |
-| Journalisation des lectures                          | Exports, téléchargements de documents, consultations sensibles uniquement |
-| Scellement cryptographique                           | Phase 5, optionnel                                                        |
-| Réservé à certains packs                             | Non, pour tous                                                            |
+| Point                                                | Défaut                                                                     |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| Actions du personnel plateforme visibles de l'agence | Oui pour support et accès ; non pour facturation interne et réglages IA    |
+| Rétention                                            | 24 mois côté agence, 60 mois côté plateforme ; purge désactivée par défaut |
+| Journalisation des lectures                          | Exports, téléchargements de documents, consultations sensibles uniquement  |
+| Scellement cryptographique                           | Toujours actif (phase 5) ; ancrage externe de la tête de chaîne conseillé  |
+| Réservé à certains packs                             | Non, pour tous                                                             |
 
 ## Conséquences positives
 
@@ -102,7 +110,15 @@ Valeurs par défaut retenues pour les points ouverts, à ajuster :
 - `AuditLog` reste exempt de l'extension de garde tenant : l'étanchéité de la
   lecture repose sur le lecteur unique et son test d'isolation, pas sur
   l'extension.
-- Les marqueurs anti-doublon restent dans `AuditLog` jusqu'à la phase 5.
+- Les scellés (`audit_seals`) vivent dans la même base : un compte qui peut
+  désactiver les déclencheurs peut aussi recalculer toute la chaîne. Ils détectent
+  une altération maladroite, une restauration partielle ou une suppression ciblée,
+  pas un attaquant omnipotent ; la tête de chaîne doit être ancrée hors de la base
+  (RUNBOOK). Aucun chaînage ligne à ligne : l'insertion reste asynchrone.
+- Une ligne remise en file après le scellement de sa journée n'est pas couverte
+  par ce scellé ; elle est signalée `LATE_ROWS` à la vérification.
+- La purge est irréversible : elle est donc désactivée par défaut, bornée à 180
+  jours minimum, limitée aux partitions scellées et tracée.
 
 ## Alternatives écartées
 

@@ -14,13 +14,15 @@ import type { PlatformAuditLog } from '../../services/audit-service';
 
 const getAuditLogs = vi.fn();
 const exportAuditLogs = vi.fn();
+const getAuditIntegrity = vi.fn();
 const listTenants = vi.fn();
 const saveBlob = vi.fn();
 const useAuthMock = vi.fn();
 
 vi.mock('../../services/audit-service', () => ({
   getAuditLogs: (...a: unknown[]) => getAuditLogs(...a),
-  exportAuditLogs: (...a: unknown[]) => exportAuditLogs(...a)
+  exportAuditLogs: (...a: unknown[]) => exportAuditLogs(...a),
+  getAuditIntegrity: (...a: unknown[]) => getAuditIntegrity(...a)
 }));
 
 vi.mock('../../services/tenant-service', () => ({

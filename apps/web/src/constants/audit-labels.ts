@@ -176,6 +176,9 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   // Journal d'audit
   AUDIT_VIEWED: t("Consultation du journal d'audit"),
   AUDIT_EXPORTED: t("Export du journal d'audit"),
+  AUDIT_SEALED: t('Scellement quotidien du journal'),
+  AUDIT_PURGED: t('Purge de rétention du journal'),
+  AUDIT_INTEGRITY_FAILED: t('Intégrité du journal compromise'),
 
   // Accès (posés à partir de la réponse du serveur)
   ACCESS_DENIED: t('Accès refusé : droit manquant pour cette action'),

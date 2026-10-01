@@ -108,13 +108,6 @@ export enum AuditActionKey {
   // Syndic - recus et quittances de charges (lot S3) : renvoi manuel par e-mail
   SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT = 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT',
 
-  // Patrimoine (lot P3) : alertes d'echeance envoyees (fin de bail, fin
-  // d'emprunt, travaux a venir) -- utilisees comme marque anti-doublon via
-  // `entityType`/`entityId`, voir `lib/patrimoine/notifications.ts`.
-  PATRIMOINE_LEASE_END_ALERT_SENT = 'PATRIMOINE_LEASE_END_ALERT_SENT',
-  PATRIMOINE_LOAN_MATURITY_ALERT_SENT = 'PATRIMOINE_LOAN_MATURITY_ALERT_SENT',
-  PATRIMOINE_WORK_UPCOMING_ALERT_SENT = 'PATRIMOINE_WORK_UPCOMING_ALERT_SENT',
-
   // ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md) : assistant IA.
   AI_CHAT_TURN = 'AI_CHAT_TURN',
   AI_TOOL_CALLED = 'AI_TOOL_CALLED',
@@ -181,11 +174,15 @@ export enum AuditActionKey {
   PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN = 'PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN',
   SUBSCRIPTION_PROVISIONED = 'SUBSCRIPTION_PROVISIONED',
   TENANT_PROVISIONED = 'TENANT_PROVISIONED',
-  SYNDIC_MEETING_CONVOCATION_DELIVERY = 'SYNDIC_MEETING_CONVOCATION_DELIVERY',
 
   // Audit de l'audit (ADR-006) : consulter le journal est lui-même tracé.
   AUDIT_VIEWED = 'AUDIT_VIEWED',
   AUDIT_EXPORTED = 'AUDIT_EXPORTED',
+
+  // Maintenance du journal (phase 5) : scellement quotidien et purge de retention.
+  AUDIT_SEALED = 'AUDIT_SEALED',
+  AUDIT_PURGED = 'AUDIT_PURGED',
+  AUDIT_INTEGRITY_FAILED = 'AUDIT_INTEGRITY_FAILED',
 
   // Accès (phase 3), posés par `middleware/audit-access-middleware.ts` à partir
   // de la réponse : un refus de droit, un fichier ou un export servi.

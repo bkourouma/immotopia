@@ -22,9 +22,9 @@ import {
   markInvoicePaidHandler
 } from '../controllers/subscription-controller';
 import { getGlobalStatisticsHandler, getTenantActivityStatsHandler } from '../controllers/statistics-controller';
-import { exportAuditLogsHandler, getAuditLogsHandler } from '../controllers/audit-controller';
+import { exportAuditLogsHandler, getAuditIntegrityHandler, getAuditLogsHandler } from '../controllers/audit-controller';
 import { requireSuperAdmin } from '../middleware/super-admin-middleware';
-import { auditExportRateLimiter } from '../middleware/rate-limit-middleware';
+import { auditExportRateLimiter, auditIntegrityRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   listCatalogHandler,
   updateCatalogItemHandler,
@@ -251,6 +251,13 @@ router.get(
   requireSuperAdmin,
   auditExportRateLimiter,
   exportAuditLogsHandler
+);
+// Intégrité (phase 5) : recalcul des scellés quotidiens, lecture seule.
+router.get(
+  '/audit/integrity',
+  requirePermission('PLATFORM_AUDIT_VIEW'),
+  auditIntegrityRateLimiter,
+  getAuditIntegrityHandler
 );
 
 export default router;

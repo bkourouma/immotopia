@@ -136,12 +136,6 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.DOCUMENT_SIGNATURE_UPLOADED]: tenant('DATA'),
   [AuditActionKey.DOCUMENT_SIGNATURE_REMOVED]: tenant('DATA'),
 
-  // Patrimoine : marqueurs anti-doublon des alertes d'échéance (`entityType` /
-  // `entityId`), pas des actions d'un utilisateur : jamais montrés à l'agence.
-  [AuditActionKey.PATRIMOINE_LEASE_END_ALERT_SENT]: internal('SYSTEM'),
-  [AuditActionKey.PATRIMOINE_LOAN_MATURITY_ALERT_SENT]: internal('SYSTEM'),
-  [AuditActionKey.PATRIMOINE_WORK_UPCOMING_ALERT_SENT]: internal('SYSTEM'),
-
   // ImmoCopilot
   [AuditActionKey.AI_CHAT_TURN]: tenant('AI'),
   [AuditActionKey.AI_TOOL_CALLED]: tenant('AI'),
@@ -206,12 +200,16 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN]: tenant('DATA'),
   [AuditActionKey.SUBSCRIPTION_PROVISIONED]: tenant('BILLING'),
   [AuditActionKey.TENANT_PROVISIONED]: tenant('ADMIN'),
-  [AuditActionKey.SYNDIC_MEETING_CONVOCATION_DELIVERY]: internal('SYSTEM'),
 
   // Audit de l'audit : consulter le journal est tracé, mais n'est pas montré à l'agence.
   [AuditActionKey.AUDIT_VIEWED]: internal('SECURITY'),
   // L'export sort des données en bloc : sa trace est écrite AVANT l'envoi du fichier.
   [AuditActionKey.AUDIT_EXPORTED]: internal('SECURITY', { critical: true }),
+
+  // Maintenance du journal : événements de système, réservés à la plateforme.
+  [AuditActionKey.AUDIT_SEALED]: internal('SYSTEM'),
+  [AuditActionKey.AUDIT_PURGED]: internal('SYSTEM', { critical: true }),
+  [AuditActionKey.AUDIT_INTEGRITY_FAILED]: internal('SECURITY', { critical: true }),
 
   // Accès. Un refus de droit d'un membre est montré à son agence ; la tentative
   // d'un étranger sur l'URL d'une agence reste réservée à la plateforme (elle

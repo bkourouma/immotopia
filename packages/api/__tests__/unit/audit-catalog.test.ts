@@ -74,6 +74,9 @@ describe('catalogue d’audit', () => {
     const postMigrationKeys = [
       'AUDIT_VIEWED',
       'AUDIT_EXPORTED',
+      'AUDIT_SEALED',
+      'AUDIT_PURGED',
+      'AUDIT_INTEGRITY_FAILED',
       'ACCESS_DENIED',
       'TENANT_ACCESS_DENIED',
       'DOCUMENT_DOWNLOADED',
@@ -88,6 +91,19 @@ describe('catalogue d’audit', () => {
         .filter(([key]) => !postMigrationKeys.includes(key))
         .map(([key, e]) => [key, `${e.category}/${e.visibility}`])
     );
+    // Clés RETIRÉES du catalogue après la migration : des marqueurs techniques
+    // sortis du journal par la migration 20261007130000 (`notification_markers`).
+    const removedAfterMigration = [
+      'PATRIMOINE_LEASE_END_ALERT_SENT',
+      'PATRIMOINE_LOAN_MATURITY_ALERT_SENT',
+      'PATRIMOINE_WORK_UPCOMING_ALERT_SENT',
+      'SYNDIC_MEETING_CONVOCATION_DELIVERY'
+    ];
+    for (const key of removedAfterMigration) {
+      expect(fromSql).toHaveProperty(key);
+      expect(AUDIT_CATALOG).not.toHaveProperty(key);
+      delete fromSql[key];
+    }
     expect(fromSql).toEqual(fromCatalog);
     for (const key of postMigrationKeys) {
       expect(AUDIT_CATALOG).toHaveProperty(key);
