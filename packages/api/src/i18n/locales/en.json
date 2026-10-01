@@ -1322,5 +1322,12 @@
   "Vous ne pouvez supprimer que vos propres recherches": "You can only delete your own searches",
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}.",
   "Vue consolidée": "Consolidated view",
-  "Vue patrimoine indisponible.": "Portfolio view unavailable."
+  "Vue patrimoine indisponible.": "Portfolio view unavailable.",
+  "Ce relevé a été calculé selon l'ancienne méthode : recalculez-le avant de l'envoyer.": "This statement was calculated with the old method: recalculate it before sending it.",
+  "Ce relevé est encore un brouillon : validez-le avant de le partager avec le propriétaire.": "This statement is still a draft: validate it before sharing it with the owner.",
+  "La durée du lien doit être comprise entre 1 et {{max}} jours.": "The link duration must be between 1 and {{max}} days.",
+  "Lien introuvable.": "Link not found.",
+  "Lien invalide ou expiré.": "This link is invalid or has expired.",
+  "LinkId manquant": "Missing linkId",
+  "Trop de requêtes. Veuillez réessayer dans une minute.": "Too many requests. Please try again in a minute."
 }

@@ -4,7 +4,8 @@
  */
 import { EMAIL_NOTIFICATION_KEYS, EMAIL_NOTIFICATION_META } from '../../src/constants/email-notification-keys';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../src/constants/email-notification-default-templates';
-import { WHATSAPP_NOTIFICATION_META } from '../../src/constants/whatsapp-notification-keys';
+import { featureOfNotificationKey } from '../../src/constants/notification-key-features';
+import { WHATSAPP_NOTIFICATION_KEYS, WHATSAPP_NOTIFICATION_META } from '../../src/constants/whatsapp-notification-keys';
 import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../../src/constants/whatsapp-notification-default-templates';
 
 const UNACCENTED =
@@ -30,5 +31,41 @@ describe('catalogues de notifications', () => {
     for (const t of Object.values<any>(EMAIL_NOTIFICATION_DEFAULT_TEMPLATES)) texts.push(t.subject);
     texts.push(...Object.values<string>(WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES));
     expect(texts.filter(t => UNACCENTED.test(t))).toEqual([]);
+  });
+
+  describe('canaux patrimoine du propriétaire (lot A3)', () => {
+    const NEW_WHATSAPP_KEYS = [
+      'OWNER_LEASE_ENDING_SOON',
+      'OWNER_DOCUMENT_EXPIRY_ALERT',
+      'OWNER_MONTHLY_REPORT_SENT'
+    ] as const;
+
+    it('chaque nouvelle clé WhatsApp est listée une fois, a une méta, un gabarit et relève de PATRIMOINE', () => {
+      for (const key of NEW_WHATSAPP_KEYS) {
+        expect(WHATSAPP_NOTIFICATION_KEYS.filter(k => k === key)).toHaveLength(1);
+        expect(WHATSAPP_NOTIFICATION_META[key].key).toBe(key);
+        expect(WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES[key]).toBeTruthy();
+        expect(featureOfNotificationKey(key)).toBe('PATRIMOINE');
+      }
+    });
+
+    it('un libellé distinct par clé WhatsApp', () => {
+      const labels = WHATSAPP_NOTIFICATION_KEYS.map(k => WHATSAPP_NOTIFICATION_META[k].label);
+      expect(new Set(labels).size).toBe(labels.length);
+      expect(new Set(WHATSAPP_NOTIFICATION_KEYS).size).toBe(WHATSAPP_NOTIFICATION_KEYS.length);
+    });
+
+    it('rapport mensuel : clé présente dans les deux catalogues, lien {{reportUrl}} dans les gabarits', () => {
+      expect(EMAIL_NOTIFICATION_KEYS).toContain('OWNER_MONTHLY_REPORT_SENT');
+      expect(featureOfNotificationKey('OWNER_MONTHLY_REPORT_SENT')).toBe('PATRIMOINE');
+      expect(EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.OWNER_MONTHLY_REPORT_SENT.bodyHtml).toContain('{{reportUrl}}');
+      expect(WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES.OWNER_MONTHLY_REPORT_SENT).toContain('{{reportUrl}}');
+    });
+
+    it('les alertes propriétaire gardent leurs clés e-mail historiques (aucun changement pour les agences)', () => {
+      expect(EMAIL_NOTIFICATION_KEYS).toEqual(expect.arrayContaining(['LEASE_ENDING_SOON', 'DOCUMENT_EXPIRY_ALERT']));
+      expect(EMAIL_NOTIFICATION_KEYS).not.toContain('OWNER_LEASE_ENDING_SOON');
+      expect(EMAIL_NOTIFICATION_KEYS).not.toContain('OWNER_DOCUMENT_EXPIRY_ALERT');
+    });
   });
 });

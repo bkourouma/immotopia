@@ -21,10 +21,14 @@ import {
  * - `alertExpiringDocuments` : documents patrimoine (`PropertyDocument`)
  *   expirant sous 30 jours, tous types confondus -- assurance comprise, sans
  *   filtre sur `documentType`. Alerte les proprietaires (indivision
- *   comprise), en filtrant sur leur consentement e-mail
- *   (`CrmContact.consentEmail === true`).
+ *   comprise), sur UN canal chacun (e-mail ou WhatsApp, routeur
+ *   `notification-channels.ts`) : consentement du contact
+ *   (`consentEmail` / `consentWhatsapp === true`) ET evenement active par
+ *   l'agence sur ce canal. L'e-mail reste actif par defaut ; la cle WhatsApp
+ *   `OWNER_DOCUMENT_EXPIRY_ALERT` est OPT-IN (desactivee sans ligne de config).
  * - `alertExpiringLeases` : baux actifs dont `end_date` approche. Meme
- *   destinataires (proprietaires) et meme regle de consentement.
+ *   destinataires (proprietaires), memes regles de consentement et de canaux
+ *   (cle WhatsApp `OWNER_LEASE_ENDING_SOON`, opt-in).
  * - `alertLoanMaturity` : emprunts actifs dont `endDate` approche. Alerte
  *   l'agence (administrateurs actifs), pas le proprietaire -- alerte
  *   operationnelle interne, aucun consentement CRM a verifier.

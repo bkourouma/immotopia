@@ -50,7 +50,8 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'OWNER_STATEMENT_SENT',
   'LOAN_MATURITY_ALERT',
   'DOCUMENT_EXPIRY_ALERT',
-  'WORK_PROGRAM_REMINDER'
+  'WORK_PROGRAM_REMINDER',
+  'OWNER_MONTHLY_REPORT_SENT'
 ] as const;
 
 export type EmailNotificationKey = (typeof EMAIL_NOTIFICATION_KEYS)[number];
@@ -287,6 +288,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     label: 'Rappel programme de travaux',
     description: 'Rappel sur un programme de travaux planifié.',
     recipientLabel: 'Gestionnaire'
+  },
+  OWNER_MONTHLY_REPORT_SENT: {
+    key: 'OWNER_MONTHLY_REPORT_SENT',
+    label: 'Rapport mensuel du propriétaire',
+    description:
+      'Envoi au propriétaire du lien sécurisé vers son rapport mensuel (lecture seule, durée limitée), lorsque le canal e-mail est retenu.',
+    recipientLabel: 'Propriétaire'
   },
   INVITATION: {
     key: 'INVITATION',

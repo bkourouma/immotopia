@@ -5,6 +5,7 @@ import { getOwnerStatementById, recomputeOwnerStatement } from '../../../service
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { MoneyValue } from '../../../components/primitives';
+import { OwnerStatementSecureLinks } from '../../../components/patrimoine/OwnerStatementSecureLinks';
 import {
   isLegacyStatement,
   statementStatusLabel,
@@ -244,6 +245,10 @@ export const OwnerStatementDetailPage: React.FC = () => {
           ]}
         />
       </Card>
+
+      {statement && effectiveTenantId ? (
+        <OwnerStatementSecureLinks tenantId={effectiveTenantId} statementId={statement.id} />
+      ) : null}
     </Space>
   );
 };

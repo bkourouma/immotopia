@@ -1322,5 +1322,12 @@
   "Vous ne pouvez supprimer que vos propres recherches": "لا يمكنك حذف سوى عمليات البحث الخاصة بك",
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "أنت تستخدم {{used}} {{label}} من أصل {{limit}} مشمولة. {{policy}} أضف امتدادًا من {{url}}.",
   "Vue consolidée": "نظرة موحّدة",
-  "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح."
+  "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح.",
+  "Ce relevé a été calculé selon l'ancienne méthode : recalculez-le avant de l'envoyer.": "تم احتساب هذا الكشف بالطريقة القديمة: أعد احتسابه قبل إرساله.",
+  "Ce relevé est encore un brouillon : validez-le avant de le partager avec le propriétaire.": "هذا الكشف لا يزال مسودة: اعتمده قبل مشاركته مع المالك.",
+  "La durée du lien doit être comprise entre 1 et {{max}} jours.": "يجب أن تتراوح مدة الرابط بين 1 و{{max}} يومًا.",
+  "Lien introuvable.": "الرابط غير موجود.",
+  "Lien invalide ou expiré.": "هذا الرابط غير صالح أو منتهي الصلاحية.",
+  "LinkId manquant": "معرّف الرابط مفقود",
+  "Trop de requêtes. Veuillez réessayer dans une minute.": "طلبات كثيرة جدًا. يرجى المحاولة مجددًا بعد دقيقة."
 }

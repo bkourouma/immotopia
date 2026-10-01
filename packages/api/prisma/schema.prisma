@@ -479,6 +479,7 @@ model User {
   userRoles           UserRole[]
   invitations         Invitation[] @relation("InvitedBy")
   acceptedInvitations Invitation[] @relation("AcceptedBy")
+  createdSecureLinks  SecureLink[] @relation("SecureLinkCreatedBy")
   lastLoginAt         DateTime?    @map("last_login_at")
 
   // CRM relationships
@@ -600,6 +601,7 @@ model Tenant {
   subscription Subscription?
   invoices     Invoice[]
   invitations  Invitation[]
+  secureLinks  SecureLink[]
 
   // Abonnements par packs (PLAN-ABONNEMENTS.md)
   subscriptionItems SubscriptionItem[]
@@ -993,6 +995,41 @@ model Invitation {
   @@index([status])
   @@index([expiresAt])
   @@map("invitations")
+}
+
+/// Portee d'un lien securise (lib/secure-links). Une valeur par usage public ;
+/// les lots suivants (paiement par lien, tiers de confiance) en ajouteront.
+enum SecureLinkScope {
+  OWNER_MONTHLY_REPORT
+}
+
+/// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
+///
+/// Le jeton en clair n'est JAMAIS stocke : seul son SHA-256 hexadecimal l'est
+/// (comme `Invitation.tokenHash`). `objectType`/`objectId` designent l'objet
+/// vise sans cle etrangere (le type depend de la portee).
+model SecureLink {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  scope           SecureLinkScope
+  objectType      String          @map("object_type")
+  objectId        String          @map("object_id")
+  tokenHash       String          @unique @map("token_hash")
+  expiresAt       DateTime        @map("expires_at")
+  revokedAt       DateTime?       @map("revoked_at")
+  createdByUserId String?         @map("created_by_user_id")
+  viewCount       Int             @default(0) @map("view_count")
+  lastViewedAt    DateTime?       @map("last_viewed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("SecureLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, objectType, objectId])
+  @@index([expiresAt])
+  @@map("secure_links")
 }
 
 // Subscription

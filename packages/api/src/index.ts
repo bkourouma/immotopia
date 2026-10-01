@@ -12,6 +12,7 @@ import { startSyndicChargeCallSchedulerJob } from './jobs/syndic-charge-call-sch
 import { recoverTenantDataExports } from './services/tenant-data-export/export-service';
 import { startTenantDataExportExpiryJob } from './jobs/tenant-data-export-expiry-job';
 import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
+import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { logger } from './utils/logger';
 
@@ -63,6 +64,8 @@ app.listen(PORT, () => {
     startTenantDataExportExpiryJob();
     // Lot Patrimoine : alerte quotidienne d'expiration des documents (7 h UTC).
     startDocumentExpiryAlertJob();
+    // Lot A3 : rapport mensuel propriétaire (liens sécurisés), coupé par défaut.
+    if (env.PATRIMOINE_MONTHLY_REPORT_JOB_ENABLED) startOwnerMonthlyReportJob();
     // Registre des lots : reconciliation quotidienne (mandats echus, derives).
     startLotReconciliationJob();
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
