@@ -189,8 +189,8 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
         )}
         <Space orientation="vertical" style={{ width: '100%' }} size="small">
           {rows.map((row, index) => (
-            <Row gutter={8} key={index} align="middle">
-              <Col flex="auto">
+            <Row gutter={[8, 8]} key={index} align="middle">
+              <Col xs={24} sm={{ flex: 'auto' }}>
                 <Select
                   style={{ width: '100%' }}
                   placeholder={t('Entité')}
@@ -218,7 +218,7 @@ export const PropertyHoldingTaxSection: React.FC<PropertyHoldingTaxSectionProps>
               </Col>
             </Row>
           ))}
-          <Space>
+          <Space wrap>
             <Button onClick={addRow}>{t('Ajouter un détenteur')}</Button>
             <Button type="primary" loading={savingHoldings} onClick={saveHoldings}>
               {t('Enregistrer les détenteurs')}

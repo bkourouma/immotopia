@@ -146,6 +146,13 @@ export function sourceReasonLabel(reason: CashPlanSourceReason, count: number | 
   }
 }
 
+/** Note : biens dont la taxe foncière est déjà portée par une charge récurrente (hors « non estimable »). */
+export function taxCoveredNoteLabel(count: number): string {
+  return count === 1
+    ? t('{{nombre}} bien couvert par une charge récurrente de taxe foncière (pas de doublon).', { nombre: count })
+    : t('{{nombre}} biens couverts par une charge récurrente de taxe foncière (pas de doublon).', { nombre: count });
+}
+
 export function excludedReasonLabel(reason: CashPlanExcludedReason): string {
   switch (reason) {
     case 'FOR_SALE':

@@ -133,6 +133,9 @@ rôles, prestataires...) pour un statut actif/inactif simple.
 - `ExpenseRecurrence` : `ONE_OFF` (défaut, dépense ponctuelle) / `MONTHLY` / `QUARTERLY` / `ANNUAL` ; `PropertyExpense.paidAt` est la date de la dépense ponctuelle ou la date d'ancrage de la récurrence (occurrences à `paidAt + k × pas`, jusqu'à `recurrenceEndDate`).
 - `PropertyStatus` : `DRAFT → UNDER_REVIEW → AVAILABLE → RESERVED/UNDER_OFFER → RENTED/SOLD → ARCHIVED`.
 - `SubscriptionStatus` : `TRIALING → ACTIVE → PAST_DUE → CANCELED/SUSPENDED`.
+- `LandRegularizationStatus` : `EN_COURS → TERMINEE/ABANDONNEE` (réouverture possible avec motif) ;
+  `LandStepStatus` : `A_FAIRE ↔ EN_COURS ↔ BLOQUEE`, `→ TERMINEE` (voir la section
+  « LandRegularization »).
 - `InvoiceStatus` : `DRAFT → ISSUED → PAID/FAILED/CANCELED/REFUNDED`.
 - `TenantStatus` : `PENDING → ACTIVE → SUSPENDED`.
 - `MembershipStatus` : `PENDING_INVITE → ACTIVE → DISABLED`.
@@ -229,6 +232,149 @@ d'une traite, donc dans une seule transaction : la valeur est donc ajoutée seul
 même fichier (ni `UPDATE`, ni index partiel, ni valeur par défaut). Elle est ordonnée **après**
 la migration de la colonne. Une autre branche qui ajoute sa propre valeur à `SecureLinkScope`
 prend un horodatage et un nom distincts.
+
+## LandRegularization — régularisation foncière (lot B2, spec 033)
+
+Suivi d'avancement de la régularisation foncière d'un bien (attestation villageoise, ACD,
+titre foncier…), ajouté par la spec
+[033](../../specs/033-patrimoine-regularisation-fonciere/spec.md) ; migration additive
+`20261007130000_patrimoine_regularisation_fonciere`. Il relève du domaine « Patrimoine » ; les
+comptes ci-dessus ne les comptent pas tant que la migration n'est pas fusionnée. Les filières
+(`CI_ACD`, `PERSONNALISEE`) sont des **constantes de code** (`lib/patrimoine/land/tracks.ts`), pas
+des tables : seul le suivi d'un bien est stocké.
+
+**Enums** : `LandTrackKey` (`CI_ACD`, `PERSONNALISEE`) ; `LandRegularizationStatus`
+(`EN_COURS`, `TERMINEE`, `ABANDONNEE`) ; `LandStepStatus` (`A_FAIRE`, `EN_COURS`, `TERMINEE`,
+`BLOQUEE`).
+
+### `LandRegularization` (table `land_regularizations`)
+
+Un dossier de régularisation d'un bien. Un bien peut en avoir plusieurs dans le temps, **un seul
+`EN_COURS`** à la fois.
+
+| Champ             | Type                       | Règle                                                                                                   |
+| ----------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`              | `String` (UUID)            | clé primaire (colonne texte, `@default(uuid())`)                                                        |
+| `tenantId`        | `String`                   | agence, obligatoire ; relation `Tenant`, `onDelete: Cascade`                                            |
+| `propertyId`      | `String`                   | bien concerné, obligatoire ; relation `Property`, `onDelete: Cascade`                                   |
+| `track`           | `LandTrackKey`             | filière suivie ; fixée à la création                                                                    |
+| `status`          | `LandRegularizationStatus` | défaut `EN_COURS`                                                                                       |
+| `startDate`       | `DateTime`                 | début du dossier, défaut maintenant                                                                     |
+| `endedAt`         | `DateTime?`                | renseigné à la clôture (terminé ou abandonné)                                                           |
+| `notes`           | `String?`                  | texte libre de l'agence                                                                                 |
+| `createdByUserId` | `String?`                  | créateur ; relation `User` (`LandRegularizationCreatedBy`) `onDelete: SetNull` ; jamais `include: user` |
+| `createdAt`       | `DateTime`                 | création                                                                                                |
+| `updatedAt`       | `DateTime`                 | `@updatedAt`                                                                                            |
+
+**Index** : `tenantId` ; `propertyId` ; `(tenantId, status)` ; et l'**index unique partiel**
+`land_regularizations_one_active_per_property_key` sur `property_id` `WHERE "status" = 'EN_COURS'`.
+Ce dernier n'est écrit **que dans la migration SQL** : Prisma ne sait pas exprimer un index
+partiel, il n'apparaît donc pas comme `@@unique` dans `schema.prisma` (un commentaire le signale).
+Ne jamais accepter qu'une migration générée le supprime.
+
+### `LandRegularizationStep` (table `land_regularization_steps`)
+
+Une étape d'un dossier. Les étapes d'une filière constante sont **copiées** à la création : le
+dossier ne dépend plus de la constante ensuite.
+
+| Champ              | Type             | Règle                                                                                                        |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| `id`               | `String` (UUID)  | clé primaire                                                                                                 |
+| `tenantId`         | `String`         | agence, **direct** (comme le dossier), obligatoire ; relation `Tenant`, `onDelete: Cascade`                  |
+| `regularizationId` | `String`         | dossier ; relation `LandRegularization`, `onDelete: Cascade`                                                 |
+| `stepKey`          | `String`         | clé de l'étape : clé du catalogue (`acd`, `titre_foncier`…) ou `custom_<n>`                                  |
+| `sortOrder`        | `Int`            | rang de l'étape (colonne `sort_order`) ; unique par dossier                                                  |
+| `label`            | `String`         | texte **français** (clé de traduction) pour une étape du catalogue, texte saisi pour une étape personnalisée |
+| `required`         | `Boolean`        | défaut `true` ; toutes les étapes de `CI_ACD` sont obligatoires                                              |
+| `status`           | `LandStepStatus` | défaut `A_FAIRE`                                                                                             |
+| `startedAt`        | `DateTime?`      | posé au premier passage à `EN_COURS` ou `TERMINEE`, jamais effacé                                            |
+| `completedAt`      | `DateTime?`      | posé à `TERMINEE`, remis à vide à la réouverture                                                             |
+| `dueDate`          | `DateTime?`      | échéance ; sert au retard et à la relance                                                                    |
+| `costXof`          | `Decimal(14,2)`  | frais engagés en XOF, défaut 0, jamais négatif (contrôlé par l'API)                                          |
+| `notes`            | `String?`        | texte libre                                                                                                  |
+| `documentId`       | `String?`        | pièce rattachée ; relation `PropertyDocument`, `onDelete: SetNull`                                           |
+| `createdAt`        | `DateTime`       | création                                                                                                     |
+| `updatedAt`        | `DateTime`       | `@updatedAt`                                                                                                 |
+
+**Index** : unique `(regularizationId, sortOrder)` ; `tenantId` ; `regularizationId` ;
+`(tenantId, status, dueDate)` (sélection des étapes en retard par l'alerte) ; `documentId`.
+Colonnes en snake_case (`tenant_id`, `regularization_id`, `cost_xof`…) ; les champs Prisma restent
+en camelCase.
+
+### Règles d'intégrité
+
+- **Un seul dossier `EN_COURS` par bien** : deux défenses, le contrôle du service (erreur 409
+  claire) et l'index unique partiel en base ; la violation de l'index lors d'une création
+  concurrente est convertie en la même erreur 409. La réouverture d'un dossier clos est refusée
+  si un autre dossier est déjà `EN_COURS` sur le bien.
+- **Isolation** : `tenantId` direct sur **les deux** modèles, donc gardés par l'extension Prisma
+  et vérifiés par `schema-tenant-coverage.test.ts`. Tout identifiant reçu (bien, dossier, étape,
+  document) est vérifié par agence ; `stepId` doit appartenir au dossier de l'URL.
+- **Pièce du même bien** : `documentId` doit désigner un `PropertyDocument` de la même agence
+  **et** du même bien que le dossier (la base ne le garantit pas : contrôle de service, test
+  dédié). Les types de document sont les types existants (`TITLE_DEED`, `LAND_CONCESSION`, `PLAN`,
+  `TAX_DOCUMENT`, `OTHER`) ; l'étape ne fournit qu'un type **suggéré**, aucun type n'est ajouté.
+- **Suppressions** : supprimer le bien supprime ses dossiers et leurs étapes (cascade) ;
+  supprimer un document rattaché vide `documentId` sans supprimer l'étape ; supprimer
+  l'utilisateur créateur vide `createdByUserId`.
+- **Transitions** : portées par une fonction pure (`lib/patrimoine/land/transitions.ts`), pas par
+  la base : aucune contrainte `CHECK` sur l'ordre des statuts. Terminer une étape exige les
+  obligatoires précédentes ; rouvrir exige un motif ; un dossier clos n'accepte plus de
+  modification.
+- **Aucun export vers le coût de revient** : `costXof` n'alimente ni `PropertyExpense`, ni
+  `AssetValuation`, ni le rendement, ni la consolidation, ni les exports ; la somme des frais
+  (`feesXof`) est calculée à la lecture et affichée à part sous le nom « frais de
+  régularisation ». Leur intégration est un lot ultérieur.
+- **Progression et retard calculés, jamais stockés** : pourcentage, étape courante, prochaine
+  échéance et étapes en retard se dérivent des étapes à chaque lecture.
+- **Audit** : `LAND_REGULARIZATION_CREATED`, `LAND_REGULARIZATION_STATUS_CHANGED`,
+  `LAND_STEP_STATUS_CHANGED` (avec `reopened: true` à une réouverture), `LAND_STEP_UPDATED` et
+  la marque anti-doublon `PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT` (`entityId` =
+  `<stepId>::<AAAA-MM-JJ de l'échéance>`) sont écrits dans `AuditLog`.
+- **Export d'agence** : les deux modèles sont exportés avec le reste (l'export est dérivé du
+  schéma, aucun secret n'y figure).
+
+## Assurances, sinistres et carnet d'entretien (lot B1, spec 032)
+
+Cinq modèles du domaine patrimoine, tous avec `tenantId` direct (donc cloisonnés par l'extension
+Prisma et couverts par `schema-tenant-coverage.test.ts`) et un `propertyId` vers `Property`
+(`onDelete: Cascade`). Migration `20261007120000_patrimoine_assurances_sinistres`. Règles métier :
+spec [032](../../specs/032-patrimoine-assurances-sinistres/spec.md) ; code : `lib/patrimoine/insurance/`.
+
+| Modèle (table)                                                   | Rôle et règles                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InsurancePolicy` (`insurance_policies`)                         | Police d'un bien : assureur, n° de police, `coverageType`, `startDate`/`endDate`, `annualPremium` `Decimal(14,2)?`, `currency` (défaut `XOF`), `documentId?` (`PropertyDocument`, `SetNull`). **Le statut n'est pas stocké** : il se dérive des dates (`policy-status.ts`).                                                                                                                                                                                      |
+| `InsuranceClaim` (`insurance_claims`)                            | Sinistre rattaché à une police (`onDelete: NoAction` : le 409 est applicatif, voir spec 032), `ticketId?` et `expenseId?` (simples liens, `SetNull` ; aucune dépense n'est créée), `status`, `claimedAmount`, `indemnifiedAmount?`, `deductible?`, `rejectionReason?`, horodatages `insurerNotifiedAt`/`expertiseAt`/`settledAt`/`rejectedAt`/`closedAt`. **Le reste à charge n'est jamais stocké** : `max(0, réclamé - indemnisé)`, exposé à partir de SETTLED. |
+| `InsuranceClaimDocument` (`insurance_claim_documents`)           | Liaison sinistre / `PropertyDocument` (`Cascade`) avec sa nature `kind` ; unique `(claimId, documentId)`. Retirer la liaison ne supprime pas le document.                                                                                                                                                                                                                                                                                                        |
+| `InsuranceClaimStatusHistory` (`insurance_claim_status_history`) | Une ligne par changement de statut (`fromStatus` nul à la déclaration, `toStatus`, `note`, `changedByUserId`, `changedAt`), écrite dans la même transaction que le changement.                                                                                                                                                                                                                                                                                   |
+| `MaintenanceLogEntry` (`maintenance_log_entries`)                | Une intervention d'entretien : `category`, `performedAt`, `vendorId?` (`MaintenanceVendor`, `SetNull`), `cost?`, `description`, `nextDueDate?`, `warrantyEndDate?`, `documentId?`.                                                                                                                                                                                                                                                                               |
+
+**Enums** : `InsuranceCoverageType` (`MULTIRISK_HOME`, `MULTIRISK_BUILDING`, `OWNER_LIABILITY`,
+`OTHER`) ; `InsuranceClaimCause` (`WATER_DAMAGE`, `FIRE`, `THEFT`, `STRUCTURAL`, `STORM`, `OTHER`) ;
+`InsuranceClaimStatus` (`DECLARED`, `INSURER_NOTIFIED`, `EXPERTISE`, `SETTLED`, `REJECTED`, `CLOSED`) ;
+`InsuranceClaimDocumentKind` (`PHOTO_BEFORE`, `PHOTO_AFTER`, `QUOTE`, `EXPERT_REPORT`,
+`INSURER_LETTER`, `INVOICE`) ; `MaintenanceLogCategory` (`PLUMBING`, `ELECTRICAL`,
+`AIR_CONDITIONING`, `GENERATOR`, `ROOF_WATERPROOFING`, `PAINTING`, `OTHER`).
+
+**Index** : `tenantId` sur chaque table ; `(tenantId, propertyId)` ; `(tenantId, endDate)` sur les
+polices ; `(tenantId, status)` et `policyId` sur les sinistres ; `(claimId, changedAt)` sur
+l'historique ; `(tenantId, propertyId, performedAt)`, `(tenantId, nextDueDate)` et
+`(tenantId, warrantyEndDate)` sur le carnet.
+
+**Règles** :
+
+- **Transitions** (table unique `claim-status.ts`) : DECLARED -> INSURER_NOTIFIED ;
+  INSURER_NOTIFIED -> EXPERTISE | SETTLED | REJECTED ; EXPERTISE -> SETTLED | REJECTED ;
+  SETTLED | REJECTED -> CLOSED. Toute autre transition répond 409. Chaque changement se fait
+  dans une `$transaction` avec mise à jour conditionnelle sur le statut courant.
+- **SETTLED** exige `indemnifiedAmount` (entre 0 et `claimedAmount`) ; **REJECTED** exige
+  `rejectionReason` et force `indemnifiedAmount` à 0. `indemnifiedAmount` ne change que par
+  cette transition.
+- **Références** : bien, police, ticket, dépense et document sont vérifiés pour l'agence (et le
+  même bien) avant écriture ; une référence étrangère lève la même `NotFoundError` qu'un objet
+  inexistant. `PropertyDocument.tenantId` étant nullable, l'appartenance d'un document passe par
+  son bien.
+- **Suppression** : une police portant des sinistres (409) ; un sinistre hors statut DECLARED (409).
 
 ## Relations clés (cœur du système)
 

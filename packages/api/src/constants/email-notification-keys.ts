@@ -49,8 +49,10 @@ export const EMAIL_NOTIFICATION_KEYS = [
   // Patrimoine
   'OWNER_STATEMENT_SENT',
   'LOAN_MATURITY_ALERT',
+  'INSURANCE_DEADLINE_ALERT',
   'DOCUMENT_EXPIRY_ALERT',
   'WORK_PROGRAM_REMINDER',
+  'LAND_STEP_OVERDUE_ALERT',
   'OWNER_MONTHLY_REPORT_SENT',
   'RENTER_PAYMENT_LINK_SENT'
 ] as const;
@@ -278,6 +280,12 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description: 'Alerte de prêt immobilier arrivant à son terme.',
     recipientLabel: 'Agence / Gestionnaire'
   },
+  INSURANCE_DEADLINE_ALERT: {
+    key: 'INSURANCE_DEADLINE_ALERT',
+    label: 'Alerte échéance assurance et entretien',
+    description: "Alerte d'échéance d'une police d'assurance, d'une prochaine intervention ou d'une fin de garantie.",
+    recipientLabel: 'Agence / Gestionnaire'
+  },
   DOCUMENT_EXPIRY_ALERT: {
     key: 'DOCUMENT_EXPIRY_ALERT',
     label: 'Alerte expiration document patrimoine',
@@ -289,6 +297,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     label: 'Rappel programme de travaux',
     description: 'Rappel sur un programme de travaux planifié.',
     recipientLabel: 'Gestionnaire'
+  },
+  LAND_STEP_OVERDUE_ALERT: {
+    key: 'LAND_STEP_OVERDUE_ALERT',
+    label: 'Relance étape de régularisation foncière en retard',
+    description:
+      "Alerte envoyée aux administrateurs de l'agence lorsqu'une étape d'un dossier de régularisation foncière en cours a dépassé son échéance (une seule fois par échéance).",
+    recipientLabel: 'Agence / Gestionnaire'
   },
   OWNER_MONTHLY_REPORT_SENT: {
     key: 'OWNER_MONTHLY_REPORT_SENT',

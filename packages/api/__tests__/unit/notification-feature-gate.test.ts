@@ -56,6 +56,7 @@ describe('filterNotificationItems', () => {
       'LEASE_ACTIVATED',
       'INSTALLMENT_OVERDUE',
       'LOAN_MATURITY_ALERT',
+      'INSURANCE_DEADLINE_ALERT',
       'MAINTENANCE_TICKET_CREATED_AGENCY',
       'INVITATION'
     ]) {
@@ -196,7 +197,9 @@ describe('classement complet du catalogue', () => {
     const e = await visible(EMAIL_NOTIFICATION_KEYS);
     for (const k of [
       'LOAN_MATURITY_ALERT',
+      'INSURANCE_DEADLINE_ALERT',
       'WORK_PROGRAM_REMINDER',
+      'LAND_STEP_OVERDUE_ALERT',
       'DOCUMENT_EXPIRY_ALERT',
       'LEASE_ENDING_SOON',
       'DEAL_CREATED',

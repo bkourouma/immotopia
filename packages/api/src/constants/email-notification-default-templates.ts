@@ -305,6 +305,13 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;">Le prêt du bien <strong>{{propertyReference}}</strong> arrive à échéance le {{loanEndDate}}.</p>`
   },
+  INSURANCE_DEADLINE_ALERT: {
+    subject: '{{alertTitle}} - {{propertyReference}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">{{alertTitle}}</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;">Bien <strong>{{propertyReference}}</strong> : {{itemLabel}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date d'échéance : <strong>{{dueDate}}</strong>.</p>`
+  },
   DOCUMENT_EXPIRY_ALERT: {
     subject: 'Document patrimoine expirant - {{documentTitle}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Document expirant</h1>
@@ -317,6 +324,14 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Rappel programme de travaux</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;">Le programme <strong>{{workProgramTitle}}</strong> du bien {{propertyReference}} est planifié le {{plannedDate}}.</p>`
+  },
+  LAND_STEP_OVERDUE_ALERT: {
+    subject: 'Régularisation foncière : étape en retard - {{propertyReference}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Étape de régularisation foncière en retard</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;">L'étape <strong>{{stepLabel}}</strong> du dossier « {{trackLabel}} » du bien <strong>{{propertyReference}}</strong> devait être achevée le {{dueDate}}. Son échéance est dépassée de {{daysOverdue}} jour(s).</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{regularizationUrl}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir le dossier de régularisation</a></p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   OWNER_MONTHLY_REPORT_SENT: {
     subject: 'Votre rapport mensuel - {{period}}',

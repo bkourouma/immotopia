@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Select, Space, Spin, Typography } from 'antd';
+import { Alert, Space, Spin, Typography } from 'antd';
 import { YieldCalculator, type YieldAssumptionsInput } from '../../components/patrimoine/YieldCalculator';
 import { YieldProjectionChart } from '../../components/patrimoine/YieldProjectionChart';
 import { getPatrimoinePerformance } from '../../services/patrimoine-service';
-import { listProperties } from '../../services/property-service';
+import { PropertySearchSelect } from '../../components/patrimoine/PropertySearchSelect';
 import type { PropertyYieldData } from '../../types/patrimoine-types';
 import { useAuth } from '../../hooks/useAuth';
 import { t } from '../../i18n/t';
@@ -28,7 +28,6 @@ export const PatrimoinePerformancePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [propertyId, setPropertyId] = useState<string | undefined>(undefined);
-  const [propertyOptions, setPropertyOptions] = useState<Array<{ label: string; value: string }>>([]);
   const [data, setData] = useState<PropertyYieldData | null>(null);
   // Hypothèses indexées par bien : jamais utilisées pour un autre bien que celui d'origine.
   const [assumptionsState, setAssumptionsState] = useState<{
@@ -39,19 +38,6 @@ export const PatrimoinePerformancePage: React.FC = () => {
   const currentPropertyId = useRef<string | undefined>(undefined);
   currentPropertyId.current = propertyId;
   const [syncStatus, setSyncStatus] = useState<'synced' | 'local'>('synced');
-
-  useEffect(() => {
-    if (!effectiveTenantId) return;
-    const run = async () => {
-      try {
-        const properties = await listProperties(effectiveTenantId, { page: 1, limit: 100 });
-        setPropertyOptions(properties.properties.map(property => ({ value: property.id, label: property.title })));
-      } catch {
-        setPropertyOptions([]);
-      }
-    };
-    void run();
-  }, [effectiveTenantId]);
 
   useEffect(() => {
     setAssumptionsState(null);
@@ -125,18 +111,13 @@ export const PatrimoinePerformancePage: React.FC = () => {
           <Text type="secondary">{t('Rendement brut, net, net-net et projection')}</Text>
         </div>
 
-        <Select
-          allowClear
+        <PropertySearchSelect
+          tenantId={effectiveTenantId}
+          ariaLabel={t('Sélectionnez un bien')}
           placeholder={t('Sélectionnez un bien')}
           style={{ width: '100%' }}
-          showSearch
-          optionFilterProp="label"
-          filterOption={(input, option) =>
-            typeof option?.label === 'string' && option.label.toLowerCase().includes(input.toLowerCase())
-          }
-          options={propertyOptions}
           value={propertyId}
-          onChange={value => setPropertyId(value)}
+          onChange={setPropertyId}
         />
 
         {!propertyId ? (
