@@ -73,13 +73,13 @@ Pièges et décisions :
 
 ## Pilote — retest des 8 anomalies « prêt au retest » (packs) — 2026-10-01
 
-**État :** retest fait, PR de documentation ouverte (index `docs/recette/packs/ANOMALIES.md`). Résultat : 6 passées (008, 016, 030, 034, 060, 099), **058 échouée** (remise à « nouveau »), **089 bloquée** (connexion admin Promoteur impossible). Détail dans l'index, section « Retest du 2026-10-01 ».
+**État :** retest fait, PR de documentation ouverte (index `docs/recette/packs/ANOMALIES.md`). Résultat : 7 passées (008, 016, 030, 034, 060, 089, 099) ; **058** corrigée dans la PR #87 (`fix/finance-totaux-balance-clients`), à rejouer dans l'interface. Détail dans l'index, section « Retest du 2026-10-01 ».
 **Branche :** `docs/retest-anomalies-packs` (depuis `origin/main` d10c9942)
 
 Reste à faire :
 
-- 058 : corriger `/finance/clients/balance` (facturé 2 229 000 au lieu de 1 449 000, réglé doublé) et les 3 mouvements par encaissement dans le relevé ; solde, caisse et journal sont justes.
-- 089 : rejouer ImmoCopilot sur l'instance Promoteur (mot de passe de test ou réinitialisation à autoriser).
+- 058 : fusionner la PR #87, puis rejouer l'écran Balance clients sur l'instance Pro (état du bus : « prêt au retest »). Les 3 mouvements par encaissement au relevé sont voulus (FR-011) ; DEP-289FBAB5 en double (net 0) au journal Pro reste à examiner.
+- 089 : passé avec un compte jetable (`retest089.jetable@exemple.test`, mot de passe dans le scratchpad de la session) ; question produit ouverte : l'assistant d'un pack Promoteur n'annonce aucune capacité chantier/vente.
 - Nouvelles : BUG-2026-10-01-001 (sélecteur de bien Performance limité à 100), -002 (valeur marchande non rafraîchie). Ressaisir les noms de biens contenant U+FFFD (données de recette, pas le code d'export).
 - Écart du scénario I-01 : pas de champ honoraires dans le mandat de gestion.
 
