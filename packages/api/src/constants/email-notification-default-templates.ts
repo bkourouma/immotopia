@@ -305,6 +305,13 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;">Le prêt du bien <strong>{{propertyReference}}</strong> arrive à échéance le {{loanEndDate}}.</p>`
   },
+  INSURANCE_DEADLINE_ALERT: {
+    subject: '{{alertTitle}} - {{propertyReference}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">{{alertTitle}}</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;">Bien <strong>{{propertyReference}}</strong> : {{itemLabel}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date d'échéance : <strong>{{dueDate}}</strong>.</p>`
+  },
   DOCUMENT_EXPIRY_ALERT: {
     subject: 'Document patrimoine expirant - {{documentTitle}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Document expirant</h1>
