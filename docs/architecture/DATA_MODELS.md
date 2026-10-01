@@ -297,6 +297,48 @@ en camelCase.
 - **Export d'agence** : les deux modèles sont exportés avec le reste (l'export est dérivé du
   schéma, aucun secret n'y figure).
 
+## Assurances, sinistres et carnet d'entretien (lot B1, spec 032)
+
+Cinq modèles du domaine patrimoine, tous avec `tenantId` direct (donc cloisonnés par l'extension
+Prisma et couverts par `schema-tenant-coverage.test.ts`) et un `propertyId` vers `Property`
+(`onDelete: Cascade`). Migration `20261007120000_patrimoine_assurances_sinistres`. Règles métier :
+spec [032](../../specs/032-patrimoine-assurances-sinistres/spec.md) ; code : `lib/patrimoine/insurance/`.
+
+| Modèle (table)                                                   | Rôle et règles                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InsurancePolicy` (`insurance_policies`)                         | Police d'un bien : assureur, n° de police, `coverageType`, `startDate`/`endDate`, `annualPremium` `Decimal(14,2)?`, `currency` (défaut `XOF`), `documentId?` (`PropertyDocument`, `SetNull`). **Le statut n'est pas stocké** : il se dérive des dates (`policy-status.ts`).                                                                                                                                                                                      |
+| `InsuranceClaim` (`insurance_claims`)                            | Sinistre rattaché à une police (`onDelete: NoAction` : le 409 est applicatif, voir spec 032), `ticketId?` et `expenseId?` (simples liens, `SetNull` ; aucune dépense n'est créée), `status`, `claimedAmount`, `indemnifiedAmount?`, `deductible?`, `rejectionReason?`, horodatages `insurerNotifiedAt`/`expertiseAt`/`settledAt`/`rejectedAt`/`closedAt`. **Le reste à charge n'est jamais stocké** : `max(0, réclamé - indemnisé)`, exposé à partir de SETTLED. |
+| `InsuranceClaimDocument` (`insurance_claim_documents`)           | Liaison sinistre / `PropertyDocument` (`Cascade`) avec sa nature `kind` ; unique `(claimId, documentId)`. Retirer la liaison ne supprime pas le document.                                                                                                                                                                                                                                                                                                        |
+| `InsuranceClaimStatusHistory` (`insurance_claim_status_history`) | Une ligne par changement de statut (`fromStatus` nul à la déclaration, `toStatus`, `note`, `changedByUserId`, `changedAt`), écrite dans la même transaction que le changement.                                                                                                                                                                                                                                                                                   |
+| `MaintenanceLogEntry` (`maintenance_log_entries`)                | Une intervention d'entretien : `category`, `performedAt`, `vendorId?` (`MaintenanceVendor`, `SetNull`), `cost?`, `description`, `nextDueDate?`, `warrantyEndDate?`, `documentId?`.                                                                                                                                                                                                                                                                               |
+
+**Enums** : `InsuranceCoverageType` (`MULTIRISK_HOME`, `MULTIRISK_BUILDING`, `OWNER_LIABILITY`,
+`OTHER`) ; `InsuranceClaimCause` (`WATER_DAMAGE`, `FIRE`, `THEFT`, `STRUCTURAL`, `STORM`, `OTHER`) ;
+`InsuranceClaimStatus` (`DECLARED`, `INSURER_NOTIFIED`, `EXPERTISE`, `SETTLED`, `REJECTED`, `CLOSED`) ;
+`InsuranceClaimDocumentKind` (`PHOTO_BEFORE`, `PHOTO_AFTER`, `QUOTE`, `EXPERT_REPORT`,
+`INSURER_LETTER`, `INVOICE`) ; `MaintenanceLogCategory` (`PLUMBING`, `ELECTRICAL`,
+`AIR_CONDITIONING`, `GENERATOR`, `ROOF_WATERPROOFING`, `PAINTING`, `OTHER`).
+
+**Index** : `tenantId` sur chaque table ; `(tenantId, propertyId)` ; `(tenantId, endDate)` sur les
+polices ; `(tenantId, status)` et `policyId` sur les sinistres ; `(claimId, changedAt)` sur
+l'historique ; `(tenantId, propertyId, performedAt)`, `(tenantId, nextDueDate)` et
+`(tenantId, warrantyEndDate)` sur le carnet.
+
+**Règles** :
+
+- **Transitions** (table unique `claim-status.ts`) : DECLARED -> INSURER_NOTIFIED ;
+  INSURER_NOTIFIED -> EXPERTISE | SETTLED | REJECTED ; EXPERTISE -> SETTLED | REJECTED ;
+  SETTLED | REJECTED -> CLOSED. Toute autre transition répond 409. Chaque changement se fait
+  dans une `$transaction` avec mise à jour conditionnelle sur le statut courant.
+- **SETTLED** exige `indemnifiedAmount` (entre 0 et `claimedAmount`) ; **REJECTED** exige
+  `rejectionReason` et force `indemnifiedAmount` à 0. `indemnifiedAmount` ne change que par
+  cette transition.
+- **Références** : bien, police, ticket, dépense et document sont vérifiés pour l'agence (et le
+  même bien) avant écriture ; une référence étrangère lève la même `NotFoundError` qu'un objet
+  inexistant. `PropertyDocument.tenantId` étant nullable, l'appartenance d'un document passe par
+  son bien.
+- **Suppression** : une police portant des sinistres (409) ; un sinistre hors statut DECLARED (409).
+
 ## Relations clés (cœur du système)
 
 Diagramme limité aux modèles centraux, noms réels du schéma. Les

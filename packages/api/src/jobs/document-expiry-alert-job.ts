@@ -10,6 +10,7 @@ import {
   alertUpcomingWorks
 } from '../lib/patrimoine/notifications';
 import { alertOverdueLandSteps } from '../lib/patrimoine/land-alerts';
+import { runInsuranceAlerts } from '../lib/patrimoine/insurance-alerts';
 
 /**
  * Alertes quotidiennes d'echeance patrimoine (lot P0, etendu lot P3).
@@ -40,9 +41,14 @@ import { alertOverdueLandSteps } from '../lib/patrimoine/land-alerts';
  *   regularisation fonciere (`A_FAIRE` / `EN_COURS`) dont l'echeance est
  *   depassee, dans un dossier encore en cours. Memes destinataires internes ;
  *   une relance par etape et par echeance (marque `AuditLog`).
+ * - `runInsuranceAlerts` (lot B1, spec 032) : polices d'assurance dont
+ *   `endDate` approche, prochaine echeance d'entretien et fin de garantie du
+ *   carnet d'entretien. Memes destinataires internes, cle e-mail
+ *   `INSURANCE_DEADLINE_ALERT`, anti-doublon par `AuditLog`
+ *   (voir `lib/patrimoine/insurance-alerts.ts`).
  *
  * Anti-doublon : `PropertyDocument.warningSentAt` (colonne existante,
- * reservee de facon atomique) pour les documents ; les quatre autres
+ * reservee de facon atomique) pour les documents ; les autres
  * s'appuient sur `AuditLog` en l'absence de colonne dediee -- voir le
  * commentaire de tete de `lib/patrimoine/notifications.ts` pour le detail et
  * la limite assumee (pas d'atomicite entre lecture et ecriture, acceptable
@@ -107,6 +113,7 @@ export async function runDocumentExpiryAlerts(now: Date = new Date()): Promise<D
         accumulate(report, await alertLoanMaturity(tenant.id, { now }));
         accumulate(report, await alertUpcomingWorks(tenant.id, { now }));
         accumulate(report, await alertOverdueLandSteps(tenant.id, { now }));
+        accumulate(report, await runInsuranceAlerts(tenant.id, { now }));
       });
     } catch (error) {
       report.failedTenants += 1;

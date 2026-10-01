@@ -116,6 +116,12 @@ export enum AuditActionKey {
   PATRIMOINE_WORK_UPCOMING_ALERT_SENT = 'PATRIMOINE_WORK_UPCOMING_ALERT_SENT',
   // Rapport mensuel propriétaire envoyé avec un lien sécurisé (lot A3).
   PATRIMOINE_OWNER_MONTHLY_REPORT_SENT = 'PATRIMOINE_OWNER_MONTHLY_REPORT_SENT',
+  // Patrimoine (spec 032) : alertes de police / d'entretien (marque anti-doublon,
+  // voir `lib/patrimoine/insurance-alerts.ts`) et suivi des sinistres.
+  PATRIMOINE_INSURANCE_POLICY_ALERT_SENT = 'PATRIMOINE_INSURANCE_POLICY_ALERT_SENT',
+  PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT = 'PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT',
+  PATRIMOINE_INSURANCE_CLAIM_DECLARED = 'PATRIMOINE_INSURANCE_CLAIM_DECLARED',
+  PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED = 'PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED',
 
   // Patrimoine (lot B2, spec 033) : regularisation fonciere. Payloads sans donnee
   // sensible (from/to, reason, reopened). L'alerte d'echeance depassee sert de marque anti-doublon.

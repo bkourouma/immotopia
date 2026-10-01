@@ -758,6 +758,11 @@ model Tenant {
   salePaymentMilestones    SalePaymentMilestone[]
   saleCommissions          SaleCommission[]
   saleCommissionPayments   SaleCommissionPayment[]
+  insurancePolicies        InsurancePolicy[]
+  insuranceClaims          InsuranceClaim[]
+  insuranceClaimDocs       InsuranceClaimDocument[]
+  insuranceClaimHistory    InsuranceClaimStatusHistory[]
+  maintenanceLogEntries    MaintenanceLogEntry[]
 
   @@index([slug])
   @@index([status])
@@ -1972,8 +1977,11 @@ model Property {
   siteLot     SiteLot?
 
   // Lot 9 : ventes immobilieres.
-  saleMandates   SaleMandate[]
-  saleAgreements SaleAgreement[]
+  saleMandates          SaleMandate[]
+  saleAgreements        SaleAgreement[]
+  insurancePolicies     InsurancePolicy[]
+  insuranceClaims       InsuranceClaim[]
+  maintenanceLogEntries MaintenanceLogEntry[]
 
   @@unique([tenantId, internalReference])
   @@index([tenantId])
@@ -2041,6 +2049,9 @@ model PropertyDocument {
   property                Property                 @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant                  Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   landRegularizationSteps LandRegularizationStep[]
+  insurancePolicies       InsurancePolicy[]
+  insuranceClaimDocs      InsuranceClaimDocument[]
+  maintenanceLogEntries   MaintenanceLogEntry[]
 
   @@index([tenantId])
   @@index([propertyId])
@@ -3013,10 +3024,11 @@ model MaintenanceTicket {
   assignedVendor   MaintenanceVendor? @relation(fields: [assigned_vendor_id], references: [id])
   assignedToUser   User?              @relation("MaintenanceTicketAssignedTo", fields: [assigned_to_user_id], references: [id])
 
-  attachments   MaintenanceTicketAttachment[]
-  comments      MaintenanceTicketComment[]
-  statusHistory MaintenanceTicketStatusHistory[]
-  syndicateLink SyndicateMaintenanceLink?
+  attachments     MaintenanceTicketAttachment[]
+  comments        MaintenanceTicketComment[]
+  statusHistory   MaintenanceTicketStatusHistory[]
+  syndicateLink   SyndicateMaintenanceLink?
+  insuranceClaims InsuranceClaim[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -3126,9 +3138,10 @@ model MaintenanceVendor {
   updated_at DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  tenant          Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  assignedTickets MaintenanceTicket[]
-  suppliers       Supplier[]
+  tenant                Tenant                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  assignedTickets       MaintenanceTicket[]
+  suppliers             Supplier[]
+  maintenanceLogEntries MaintenanceLogEntry[]
 
   @@index([tenant_id])
   @@index([tenant_id, is_active])
@@ -5273,8 +5286,9 @@ model PropertyExpense {
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property        Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  insuranceClaims InsuranceClaim[]
 
   @@index([tenantId])
   @@index([propertyId])
@@ -8480,4 +8494,199 @@ model TaxParameter {
   @@unique([country, year, taxKind, key, propertyKind, occupancy, ownerKind, bracketIndex], map: "tax_parameters_selector_key")
   @@index([country, year])
   @@map("tax_parameters")
+}
+
+// ---------------------------------------------------------------------------
+// Patrimoine (spec 032) : assurances, sinistres et carnet d'entretien.
+// ---------------------------------------------------------------------------
+
+enum InsuranceCoverageType {
+  MULTIRISK_HOME
+  MULTIRISK_BUILDING
+  OWNER_LIABILITY
+  OTHER
+}
+
+enum InsuranceClaimCause {
+  WATER_DAMAGE
+  FIRE
+  THEFT
+  STRUCTURAL
+  STORM
+  OTHER
+}
+
+/// DECLARED -> INSURER_NOTIFIED -> EXPERTISE -> SETTLED | REJECTED -> CLOSED
+/// (transitions controlees par `lib/patrimoine/insurance/claim-status.ts`).
+enum InsuranceClaimStatus {
+  DECLARED
+  INSURER_NOTIFIED
+  EXPERTISE
+  SETTLED
+  REJECTED
+  CLOSED
+}
+
+enum InsuranceClaimDocumentKind {
+  PHOTO_BEFORE
+  PHOTO_AFTER
+  QUOTE
+  EXPERT_REPORT
+  INSURER_LETTER
+  INVOICE
+}
+
+enum MaintenanceLogCategory {
+  PLUMBING
+  ELECTRICAL
+  AIR_CONDITIONING
+  GENERATOR
+  ROOF_WATERPROOFING
+  PAINTING
+  OTHER
+}
+
+/// Police d'assurance d'un bien. Le statut (a venir / active / expire bientot /
+/// expiree) est derive des dates, jamais stocke.
+model InsurancePolicy {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  propertyId      String                @map("property_id")
+  insurer         String
+  policyNumber    String                @map("policy_number")
+  coverageType    InsuranceCoverageType @map("coverage_type")
+  startDate       DateTime              @map("start_date")
+  endDate         DateTime              @map("end_date")
+  annualPremium   Decimal?              @map("annual_premium") @db.Decimal(14, 2)
+  currency        String                @default("XOF")
+  notes           String?               @db.Text
+  /// Piece justificative facultative : un `PropertyDocument` du meme bien.
+  documentId      String?               @map("document_id")
+  createdByUserId String?               @map("created_by_user_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  document PropertyDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  claims   InsuranceClaim[]
+
+  @@index([tenantId])
+  @@index([tenantId, propertyId])
+  @@index([tenantId, endDate])
+  @@map("insurance_policies")
+}
+
+/// Sinistre declare sur un bien au titre d'une police. Le reste a charge
+/// (reclame - indemnise, jamais negatif) est calcule, jamais stocke.
+model InsuranceClaim {
+  id                String               @id @default(uuid()) @db.Uuid
+  tenantId          String               @map("tenant_id")
+  propertyId        String               @map("property_id")
+  policyId          String               @map("policy_id") @db.Uuid
+  /// Ticket de maintenance lie (facultatif, meme agence).
+  ticketId          String?              @map("ticket_id") @db.Uuid
+  /// Depense liee (facultatif, meme agence) : simple lien, aucune depense n'est creee ici.
+  expenseId         String?              @map("expense_id") @db.Uuid
+  occurredAt        DateTime             @map("occurred_at")
+  declaredAt        DateTime             @default(now()) @map("declared_at")
+  cause             InsuranceClaimCause
+  description       String               @db.Text
+  status            InsuranceClaimStatus @default(DECLARED)
+  claimedAmount     Decimal              @map("claimed_amount") @db.Decimal(14, 2)
+  indemnifiedAmount Decimal?             @map("indemnified_amount") @db.Decimal(14, 2)
+  deductible        Decimal?             @db.Decimal(14, 2)
+  currency          String               @default("XOF")
+  rejectionReason   String?              @map("rejection_reason") @db.Text
+  insurerNotifiedAt DateTime?            @map("insurer_notified_at")
+  expertiseAt       DateTime?            @map("expertise_at")
+  settledAt         DateTime?            @map("settled_at")
+  rejectedAt        DateTime?            @map("rejected_at")
+  closedAt          DateTime?            @map("closed_at")
+  createdByUserId   String?              @map("created_by_user_id")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  tenant    Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property  Property                      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  policy    InsurancePolicy               @relation(fields: [policyId], references: [id], onDelete: NoAction)
+  ticket    MaintenanceTicket?            @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  expense   PropertyExpense?              @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  documents InsuranceClaimDocument[]
+  history   InsuranceClaimStatusHistory[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, propertyId])
+  @@index([policyId])
+  @@map("insurance_claims")
+}
+
+/// Piece d'un sinistre : liaison vers un `PropertyDocument` de la meme agence.
+model InsuranceClaimDocument {
+  id         String                     @id @default(uuid()) @db.Uuid
+  tenantId   String                     @map("tenant_id")
+  claimId    String                     @map("claim_id") @db.Uuid
+  documentId String                     @map("document_id")
+  kind       InsuranceClaimDocumentKind
+  createdAt  DateTime                   @default(now()) @map("created_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim    InsuranceClaim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  document PropertyDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, documentId])
+  @@index([tenantId])
+  @@index([documentId])
+  @@map("insurance_claim_documents")
+}
+
+/// Historique horodate des changements de statut d'un sinistre.
+model InsuranceClaimStatusHistory {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  claimId         String                @map("claim_id") @db.Uuid
+  fromStatus      InsuranceClaimStatus? @map("from_status")
+  toStatus        InsuranceClaimStatus  @map("to_status")
+  note            String?               @db.Text
+  changedByUserId String?               @map("changed_by_user_id")
+  changedAt       DateTime              @default(now()) @map("changed_at")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim  InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([claimId, changedAt])
+  @@map("insurance_claim_status_history")
+}
+
+/// Carnet d'entretien d'un bien : une ligne par intervention, vue chronologique.
+model MaintenanceLogEntry {
+  id              String                 @id @default(uuid()) @db.Uuid
+  tenantId        String                 @map("tenant_id")
+  propertyId      String                 @map("property_id")
+  category        MaintenanceLogCategory
+  performedAt     DateTime               @map("performed_at")
+  vendorId        String?                @map("vendor_id") @db.Uuid
+  cost            Decimal?               @db.Decimal(14, 2)
+  currency        String                 @default("XOF")
+  description     String                 @db.Text
+  nextDueDate     DateTime?              @map("next_due_date")
+  warrantyEndDate DateTime?              @map("warranty_end_date")
+  /// Piece facultative : un `PropertyDocument` du meme bien.
+  documentId      String?                @map("document_id")
+  createdByUserId String?                @map("created_by_user_id")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  vendor   MaintenanceVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  document PropertyDocument?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, propertyId, performedAt])
+  @@index([tenantId, nextDueDate])
+  @@index([tenantId, warrantyEndDate])
+  @@map("maintenance_log_entries")
 }
