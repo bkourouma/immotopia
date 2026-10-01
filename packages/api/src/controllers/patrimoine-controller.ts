@@ -6,7 +6,7 @@ import {
   createWorkProgramSchema,
   linkWorkProgramConstructionSiteSchema,
   listTenantWorkProgramsQuerySchema,
-  projectionQuerySchema,
+  projectionOverridesSchema,
   updateExpenseSchema,
   updateLoanSchema,
   updateValuationSchema,
@@ -38,7 +38,9 @@ import {
   updatePropertyValuation,
   updatePropertyWorkProgram
 } from '../lib/patrimoine/queries';
+import { resolveAppliedAssumptions } from '../lib/patrimoine/yield-assumptions';
 import {
+  computeBankRatios,
   grossYield,
   latentCapitalGain,
   netNetYield,
@@ -100,7 +102,7 @@ export const getPatrimoinePerformanceHandler = asyncHandler(async (req: Request,
   }
 
   const input = await buildPropertyYieldInput(tenantId, propertyId);
-  const assumptions = projectionQuerySchema.parse(req.query);
+  const { assumptions, assumptionsSaved } = await resolveAppliedAssumptions(tenantId, propertyId, req.query);
 
   const data = {
     propertyId,
@@ -109,7 +111,10 @@ export const getPatrimoinePerformanceHandler = asyncHandler(async (req: Request,
     netNetYield: netNetYield(input),
     latentCapitalGain: latentCapitalGain(input),
     projectedAtHorizon: projectedYieldAtHorizon(input, assumptions.years, assumptions),
-    projection: projectYield(input, assumptions.years, assumptions)
+    projection: projectYield(input, assumptions.years, assumptions),
+    assumptions,
+    assumptionsSaved,
+    ratios: computeBankRatios(input, assumptions)
   };
 
   res.json({ success: true, data });
@@ -293,8 +298,9 @@ export const deletePropertyWorkProgramHandler = asyncHandler(async (req: Request
 export const getPropertyYieldHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = resolveTenantId(req);
   const propertyId = resolvePropertyId(req);
-  const assumptions = projectionQuerySchema.parse(req.query);
+  projectionOverridesSchema.parse(req.query);
   const input = await buildPropertyYieldInput(tenantId, propertyId);
+  const { assumptions, assumptionsSaved } = await resolveAppliedAssumptions(tenantId, propertyId, req.query);
 
   const data = {
     grossYield: grossYield(input),
@@ -302,7 +308,10 @@ export const getPropertyYieldHandler = asyncHandler(async (req: Request, res: Re
     netNetYield: netNetYield(input),
     latentCapitalGain: latentCapitalGain(input),
     projectedAtHorizon: projectedYieldAtHorizon(input, assumptions.years, assumptions),
-    projection: projectYield(input, assumptions.years, assumptions)
+    projection: projectYield(input, assumptions.years, assumptions),
+    assumptions,
+    assumptionsSaved,
+    ratios: computeBankRatios(input, assumptions)
   };
 
   res.json({ success: true, data });

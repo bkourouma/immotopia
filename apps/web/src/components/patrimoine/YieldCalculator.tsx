@@ -5,6 +5,7 @@ import { t } from '../../i18n/t';
 import { formatMoney } from '../primitives';
 import { DEVISE_PATRIMOINE } from './patrimoine-labels';
 import { formatYieldPercent } from './patrimoine-format';
+import { BankRatiosCard } from './BankRatiosCard';
 
 export interface YieldAssumptionsInput {
   years: number;
@@ -19,6 +20,8 @@ interface Props {
   loading?: boolean;
   assumptions?: YieldAssumptionsInput;
   onRecalculate?: (assumptions: YieldAssumptionsInput) => void;
+  /** `local` : hypothèses conservées sur cet appareil seulement (serveur injoignable ou refus). */
+  syncStatus?: 'synced' | 'local';
 }
 
 const defaultAssumptions: YieldAssumptionsInput = {
@@ -60,7 +63,32 @@ const IndicateurAcquisition: React.FC<{
   return <Statistic title={title} value={formatYieldPercent(value)} loading={loading} />;
 };
 
-export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, onRecalculate }) => {
+const SyncAlert: React.FC<{ status: 'synced' | 'local' }> = ({ status }) =>
+  status === 'synced' ? (
+    <Alert
+      type="info"
+      showIcon
+      style={{ marginBottom: 16 }}
+      message={t(
+        "Hypothèses synchronisées avec le serveur : elles sont partagées entre vos appareils et les collaborateurs de l'agence."
+      )}
+    />
+  ) : (
+    <Alert
+      type="warning"
+      showIcon
+      style={{ marginBottom: 16 }}
+      message={t('Hypothèses non synchronisées : conservées sur cet appareil en attendant la connexion au serveur.')}
+    />
+  );
+
+export const YieldCalculator: React.FC<Props> = ({
+  data,
+  loading,
+  assumptions,
+  onRecalculate,
+  syncStatus = 'synced'
+}) => {
   const [form] = Form.useForm<YieldAssumptionsInput>();
 
   React.useEffect(() => {
@@ -147,40 +175,35 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
         </Row>
       </Card>
 
+      {data?.ratios ? <BankRatiosCard ratios={data.ratios} loading={loading} /> : null}
+
       <Card title={t('Hypothèses de projection')}>
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={t(
-            'Hypothèses non enregistrées sur le serveur : elles sont conservées sur cet appareil, pour ce bien.'
-          )}
-        />
+        <SyncAlert status={syncStatus} />
         <Form layout="vertical" form={form} onFinish={values => onRecalculate?.(values)}>
           <Row gutter={[16, 8]}>
             <Col xs={24} md={8}>
               <Form.Item name="years" label={t('Années')}>
-                <InputNumber min={1} max={30} style={{ width: '100%' }} />
+                <InputNumber min={1} max={30} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="valueGrowthRate" label={t('Croissance valeur (0.xx)')}>
-                <InputNumber min={-0.5} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={-0.5} max={1} step={0.005} precision={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="rentGrowthRate" label={t('Croissance loyers (0.xx)')}>
-                <InputNumber min={-0.5} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={-0.5} max={1} step={0.005} precision={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="expenseGrowthRate" label={t('Croissance charges (0.xx)')}>
-                <InputNumber min={-0.5} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={-0.5} max={1} step={0.005} precision={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="vacancyRate" label={t('Vacance locative (0.xx)')}>
-                <InputNumber min={0} max={1} step={0.005} style={{ width: '100%' }} />
+                <InputNumber min={0} max={1} step={0.005} precision={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
