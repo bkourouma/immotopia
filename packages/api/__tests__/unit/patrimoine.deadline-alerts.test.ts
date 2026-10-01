@@ -65,13 +65,22 @@ jest.mock('../../src/services/email-notification-config-service', () => ({
   getEmailNotificationConfig: (...a: any[]) => getEmailNotificationConfig(...a)
 }));
 
+// Canal WhatsApp des alertes proprietaire (lot A3) : coupe par defaut dans ces
+// tests, centres sur le canal e-mail ; le routage par canal a son propre test
+// (`patrimoine.notification-channels.test.ts`).
+const getWhatsappNotificationConfig = jest.fn();
+jest.mock('../../src/services/whatsapp-notification-config-service', () => ({
+  getWhatsappNotificationConfig: (...a: any[]) => getWhatsappNotificationConfig(...a)
+}));
+
 const sendEmail = jest.fn();
 jest.mock('../../src/services/email-service', () => ({
   emailService: { sendEmail: (...a: any[]) => sendEmail(...a) }
 }));
 
+const sendWhatsappNotification = jest.fn();
 jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
-  sendWhatsappNotification: jest.fn()
+  sendWhatsappNotification: (...a: any[]) => sendWhatsappNotification(...a)
 }));
 
 const logAuditEvent = jest.fn();
@@ -89,6 +98,8 @@ const NOW = new Date('2026-09-28T00:00:00.000Z');
 
 beforeEach(() => {
   jest.clearAllMocks();
+  getWhatsappNotificationConfig.mockResolvedValue({ enabled: false });
+  sendWhatsappNotification.mockResolvedValue(true);
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   sendEmail.mockResolvedValue(undefined);
   auditLogFindMany.mockResolvedValue([]);
@@ -227,6 +238,96 @@ describe('alertExpiringLeases', () => {
     const html = sendEmail.mock.calls[0][0].html as string;
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('alertExpiringLeases — canal WhatsApp (lot A3)', () => {
+  const lease = {
+    id: 'lease-1',
+    lease_number: 'BAIL-2026-001',
+    end_date: new Date('2026-10-15T00:00:00.000Z'),
+    property_id: 'prop-1',
+    owner_client_id: null,
+    property: { internalReference: 'REF-1', ownerUserId: null }
+  };
+
+  function mockOwner(overrides: Record<string, unknown>) {
+    propertyOwnershipShareFindMany.mockResolvedValue([{ ownerClientId: 'client-1' }]);
+    tenantClientFindMany.mockResolvedValue([{ id: 'client-1', details: { crmContactId: 'contact-1' } }]);
+    crmContactFindMany.mockResolvedValue([
+      {
+        id: 'contact-1',
+        email: 'owner@example.com',
+        firstName: 'Awa',
+        lastName: 'Koné',
+        consentEmail: true,
+        whatsappNumber: '+2250700000000',
+        phonePrimary: null,
+        consentWhatsapp: true,
+        preferredContactChannel: null,
+        ...overrides
+      }
+    ]);
+  }
+
+  beforeEach(() => {
+    rentalLeaseFindMany.mockResolvedValue([lease]);
+    getWhatsappNotificationConfig.mockResolvedValue({ enabled: true });
+  });
+
+  it('préféré WhatsApp : un seul message, par WhatsApp (clé propriétaire, contactId), aucun e-mail', async () => {
+    mockOwner({ preferredContactChannel: 'WHATSAPP' });
+
+    const report = await alertExpiringLeases(TENANT, { now: NOW });
+
+    expect(report.sent).toBe(1);
+    expect(sendWhatsappNotification).toHaveBeenCalledTimes(1);
+    expect(sendWhatsappNotification.mock.calls[0][0]).toMatchObject({
+      tenantId: TENANT,
+      notificationKey: 'OWNER_LEASE_ENDING_SOON',
+      contactId: 'contact-1'
+    });
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'lease-1::2026-10-15' }));
+  });
+
+  it('sans préférence : e-mail (comportement historique), WhatsApp non utilisé', async () => {
+    mockOwner({});
+
+    await alertExpiringLeases(TENANT, { now: NOW });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(sendWhatsappNotification).not.toHaveBeenCalled();
+  });
+
+  it('propriétaire joignable seulement par WhatsApp (pas de consentement e-mail) : alerté par WhatsApp', async () => {
+    mockOwner({ consentEmail: false });
+
+    const report = await alertExpiringLeases(TENANT, { now: NOW });
+
+    expect(report.sent).toBe(1);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(sendWhatsappNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('e-mail désactivé par l’agence mais WhatsApp actif : le traitement continue par WhatsApp', async () => {
+    getEmailNotificationConfig.mockResolvedValue({ enabled: false, subjectOverride: null, bodyHtmlOverride: null });
+    mockOwner({});
+
+    const report = await alertExpiringLeases(TENANT, { now: NOW });
+
+    expect(report.sent).toBe(1);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(sendWhatsappNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it('échec WhatsApp : repli sur l’e-mail', async () => {
+    sendWhatsappNotification.mockResolvedValue(false);
+    mockOwner({ preferredContactChannel: 'WHATSAPP' });
+
+    await alertExpiringLeases(TENANT, { now: NOW });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -505,6 +505,111 @@ pas les autres chemins de génération). Les refus du fournisseur sont
 traités (`PROVIDER_REFUSAL`) ; un repli serveur est actif par défaut
 (`AI_REFUSAL_FALLBACK=off` le coupe).
 
+## 12 bis. Liens publics à jeton
+
+Un lien public donne accès **sans compte** à un objet précis : celui qui possède l'URL
+est, pour le serveur, le destinataire. Le module générique `lib/secure-links` (spec
+[031](../../specs/031-patrimoine-canaux-liens-securises/spec.md), modèle `SecureLink` dans
+[DATA_MODELS.md](../architecture/DATA_MODELS.md)) en porte le premier usage, le rapport
+mensuel d'un propriétaire, et celui des lots suivants (paiement par lien, tiers de
+confiance). Toute nouvelle route publique à jeton réutilise ce module et ses mesures ;
+une route qui accepterait un jeton autrement est refusée en relecture.
+
+**Mécanisme.** Jeton de 32 octets aléatoires (`crypto.randomBytes`), base64url, renvoyé
+une seule fois à la création ; seul son SHA-256 est stocké (`SecureLink.tokenHash`,
+unique). Expiration 7 jours par défaut (`SECURE_LINK_DEFAULT_TTL_DAYS`), 30 au plus
+(`SECURE_LINK_MAX_TTL_DAYS`) ; révocation par `revokedAt`. Portée unique par lien
+(`scope`) et objet unique (`objectType` + `objectId`). Le jeton transite dans le **fragment**
+de l'URL partagée (`/rapport-proprietaire#<jeton>`), puis en **corps** d'un `POST` ; il n'est
+jamais dans le chemin ni dans la chaîne de requête.
+
+| Menace                                      | Mesure retenue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fuite du lien (transfert, capture, partage) | Impossible à empêcher : on borne l'impact. Un seul objet, lecture seule, expiration, révocation à tout moment, consultations comptées (`viewCount`, `lastViewedAt`) et journalisées. Aucune donnée de contact dans la réponse publique                                                                                                                                                                                                                                                                                                                                           |
+| Devinette                                   | 256 bits d'entropie, générateur cryptographique ; limiteur de débit par IP en plus. Pas de jeton court, pas de code à chiffres                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Énumération et mesure de temps              | Refus **uniforme** : inconnu, expiré, révoqué, mauvaise portée, agence inactive, objet disparu donnent la même 404 « Lien invalide ou expiré. » (statut, corps, en-têtes). Recherche par hash : la protection principale est la **préimage** (le serveur ne compare que le SHA-256 d'un jeton de 256 bits, impossible à deviner ni à reconstruire par mesure de temps) ; la comparaison à temps constant (`timingSafeEqual`) n'est qu'une défense en profondeur                                                                                                                  |
+| Rejeu après révocation ou expiration        | `revokedAt`, `expiresAt`, portée et statut de l'agence contrôlés côté serveur à chaque appel ; aucun cache du verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Abus et déni de service                     | Limiteur de débit par IP, 30 requêtes par minute, appliqué avant toute vérification (en mémoire, par instance : voir « Limites ») ; corps **borné à 1 Ko** par un parseur JSON propre à la route (les parseurs globaux de 10 Mo l'ignorent : `app.ts`), toute erreur de corps (JSON invalide, trop gros, encodage refusé) devient la même 404 uniforme avec les mêmes en-têtes, sans journaliser le message du parseur ; seul `token` est lu ; la 429 du limiteur de la route porte les mêmes en-têtes que les autres réponses (voir « Limites » pour la 429 du plancher global) |
+| Journaux d'accès et journaux applicatifs    | Le jeton n'est jamais dans l'URL : le fragment ne part pas au serveur et le `POST` le porte en corps. `requestLogger` journalise `req.url` (voir « Points ouverts ») : un jeton en URL y serait écrit, donc interdit                                                                                                                                                                                                                                                                                                                                                             |
+| Cache, `Referer`, indexation                | `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow` sur **toutes** les réponses publiques, refus compris ; la page n'a aucun lien sortant ; un fragment n'est jamais transmis dans `Referer`                                                                                                                                                                                                                                                                                                                                            |
+| Accès inter-agences (IDOR)                  | La route publique n'accepte **aucun** identifiant : seul le jeton compte. L'objet est chargé par `id` ET `tenantId` du lien. Côté agence, `linkId` est vérifié contre le relevé et l'agence ; `NotFoundError` uniforme                                                                                                                                                                                                                                                                                                                                                           |
+| Base de données compromise                  | Seul le hash est stocké : il ne permet pas de reconstruire une URL valide. Aucun jeton, ni hash, dans `AuditLog`, journaux ni réponses de liste                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Lien utilisé comme porte vers autre chose   | Aucune session, aucun cookie, aucun jeton d'authentification émis ; une route n'accepte que sa propre portée ; le lien ne désigne qu'un objet                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Agence suspendue ou désactivée              | Agence active (`isActive`) et non `SUSPENDED` exigée à chaque consultation ; sinon refus uniforme, sans révéler la raison                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Envoi à un destinataire non consentant      | Canal choisi seulement avec consentement **et** coordonnée exploitable ; un seul canal par message ; le destinataire vient du contact du propriétaire, jamais d'un paramètre ; l'URL va dans le corps, jamais dans un sujet d'e-mail                                                                                                                                                                                                                                                                                                                                             |
+
+**Journal.** Création, consultation réussie et révocation passent par `logAuditEvent`
+(`SECURE_LINK_CREATED`, `SECURE_LINK_VIEWED`, `SECURE_LINK_REVOKED`), rattachées à
+l'agence du lien. Le payload porte `linkId`, `scope`, `objectType`, `objectId` ; jamais le
+jeton, jamais son hash. L'événement de consultation porte aussi l'adresse IP et le
+user-agent de l'appelant (colonnes `ipAddress` et `userAgent` du journal), seule trace de
+l'accès hors compteur ; il n'est écrit qu'après une lecture réussie. Les refus ne sont pas
+journalisés un par un (ils ne portent pas d'agence connue) : le volume est limité par le
+limiteur de débit.
+
+**Isolation et contexte d'agence.** La recherche par `tokenHash` est la **seule** lecture
+sans contexte d'agence du module, confinée à `lib/secure-links` (même statut que la liste des
+agences d'un job). Elle est suivie d'un `runWithTenantContext` sur l'agence du lien : le
+reste de la requête passe par l'extension Prisma d'isolation (`TENANT_GUARD_MODE`).
+
+**Règles pour une nouvelle portée.**
+
+1. Ajouter une valeur à `SecureLinkScope`, un cas dans `buildSecureLinkUrl` et une fonction de
+   lecture de l'objet ; pas de clé étrangère polymorphe.
+2. Un lien = un objet. Jamais de portée « tout l'espace d'un client ».
+3. Réponse publique par projection explicite (`select`), sans coordonnées de contact, sans
+   chemin de fichier, sans identifiant technique.
+4. Lecture seule d'abord. Un lien qui déclenche une écriture (paiement) exige un lot et une
+   relecture de sécurité propres.
+5. Route inscrite à la liste blanche de `routes-inventory.test.ts` avec sa justification,
+   limiteur de débit, trois en-têtes de réponse ci-dessus, refus uniforme testé.
+
+**Export d'agence.** `SecureLink` est exclu de l'export de données de l'agence
+(`services/tenant-data-export/model-registry.ts`) : le hash est un secret d'accès, l'archive
+ne doit pas le contenir.
+
+**Limites connues.**
+
+- Un lien divulgué donne accès en lecture à un seul objet jusqu'à expiration ou révocation ;
+  aucune vérification d'identité du porteur n'est faite (pas de code complémentaire).
+- Le limiteur de débit est en mémoire, par instance (comme les autres, voir « Points
+  ouverts ») ; la latence de réponse entre un jeton inconnu et un jeton connu mais refusé
+  n'est pas rendue strictement identique : l'entropie du jeton rend l'énumération vaine.
+- Le plancher de débit **global** de l'API (1000 requêtes par 15 minutes et par IP,
+  appliqué avant toutes les routes) peut répondre 429 sans les en-têtes no-store /
+  noindex / no-referrer : il s'exécute avant le routeur public. Cette 429 ne porte
+  aucune donnée ; le défaut est documenté, pas corrigé.
+- **Libellé libre des dépenses exposé.** Le rapport public reprend le `label` de chaque
+  ligne du relevé, donc le libellé libre d'une dépense saisie par l'agence : un
+  commentaire interne saisi dans ce libellé serait visible du porteur du lien. À l'agence
+  de n'y mettre rien d'interne. **Point ouvert** (filtrage ou libellé public distinct à
+  décider).
+- **Chaque envoi manuel ou copie de lien crée un nouveau lien actif** sans révoquer les
+  précédents : plusieurs liens valides coexistent pour un même relevé jusqu'à expiration
+  ou révocation manuelle (la liste de l'écran agence les montre). **Point ouvert**
+  (révocation automatique des liens précédents à envisager).
+- **Alertes propriétaire par WhatsApp : opt-in par agence.** Les clés WhatsApp
+  `OWNER_LEASE_ENDING_SOON`, `OWNER_DOCUMENT_EXPIRY_ALERT` et `OWNER_MONTHLY_REPORT_SENT`
+  sont **désactivées sans ligne de configuration** (`defaultWhatsappEnabled`) : le
+  consentement WhatsApp vaut `true` par défaut en base, et les activer par défaut aurait
+  envoyé des alertes non sollicitées aux propriétaires d'agences qui avaient coupé
+  l'alerte e-mail. **Changement de comportement** : les alertes de bail et de document,
+  jusque-là e-mail seulement, peuvent désormais partir par WhatsApp (canal préféré du
+  contact, ou repli) **dès que l'agence active la clé** ; sans activation, rien ne change.
+  L'écran de configuration reflète l'état réel (clé désactivée tant qu'aucune ligne n'existe).
+- **Aucune garde logicielle de simulation hors tests.** L'envoi d'e-mail n'est coupé que
+  par `NODE_ENV=test` ; le fournisseur WhatsApp n'a pas de simulateur. En développement, la
+  protection contre un envoi réel est : job mensuel désactivé par défaut
+  (`PATRIMOINE_MONTHLY_REPORT_JOB_ENABLED=false`), WhatsApp opt-in, fournisseurs non
+  configurés. Un envoi manuel depuis l'écran agence part réellement si un fournisseur est
+  configuré.
+- Un relevé `DRAFT`, ou calculé selon une version obsolète du calcul, ne peut ni recevoir
+  de lien ni être envoyé (409 `ConflictError`) : même garde que l'envoi du relevé.
+- Le message qui porte le lien (WhatsApp, e-mail) est stocké par des tiers (fournisseur,
+  boîte du destinataire) ; l'expiration courte est la parade.
+- La révocation automatique à la suppression de l'objet et la ré-émission d'un lien
+  expiré ne sont pas prévues (spec 031, points ouverts).
+
 ## 13. Points ouverts
 
 Ce qui suit n'a pas pu être vérifié comme couvert dans le code au moment

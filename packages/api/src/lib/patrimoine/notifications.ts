@@ -8,21 +8,29 @@ import { emailService } from '../../services/email-service';
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
 import { logAuditEvent, flushAuditEvents } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
+import { createSecureLink, revokeSecureLink } from '../secure-links';
+import {
+  CHANNEL_RECIPIENT_SELECT,
+  anyChannelEnabled,
+  applyTemplate,
+  deliverOnBestChannel,
+  escapeHtml,
+  hasEligibleContactChannel,
+  loadChannelConfigs,
+  planChannels,
+  sendOnPlannedChannels,
+  type ChannelConfigs,
+  type ChannelRecipient,
+  type ChannelTargets,
+  type NotificationChannel
+} from './notification-channels';
 
 /**
- * Meme utilitaire que `services/email-service.ts` (non exporte de la, donc
- * duplique ici plutot qu'importe) : les valeurs injectees dans un template
- * HTML d'e-mail (nom du proprietaire, intitule d'une depense, reference d'un
- * bien...) viennent de saisies utilisateur et doivent etre echappees avant
- * d'atterrir dans le corps HTML -- jamais dans le sujet, texte brut.
+ * `escapeHtml` et `applyTemplate` vivent dans `notification-channels.ts` (le
+ * routeur de canaux les utilise aussi) : les valeurs injectees dans un template
+ * HTML d'e-mail viennent de saisies utilisateur et y sont echappees -- jamais
+ * dans le sujet ni dans le message WhatsApp, texte brut.
  */
-function escapeHtml(value: string): string {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function applyTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
-}
 
 function normalizeOwnerStatementTemplateText(template: string): string {
   return template
@@ -56,11 +64,21 @@ const PROPERTY_DOCUMENT_TYPE_LABELS: Record<PropertyDocumentType, string> = {
   OTHER: 'Autre document'
 };
 
-interface ExpiringDocumentRecipient {
-  contactId: string;
-  email: string;
+/**
+ * Destinataire d'une alerte proprietaire : le contact CRM tel que lu par le
+ * routeur de canaux (consentements, adresse, numero, canal prefere) + le nom
+ * a afficher. `email` est `null` quand le contact n'en a pas.
+ */
+interface ExpiringDocumentRecipient extends ChannelRecipient {
   name: string;
 }
+
+/** Cles d'evenement des alertes proprietaire : l'e-mail garde sa cle historique, WhatsApp a la sienne. */
+const LEASE_ALERT_TARGETS: ChannelTargets = { email: 'LEASE_ENDING_SOON', whatsapp: 'OWNER_LEASE_ENDING_SOON' };
+const DOCUMENT_ALERT_TARGETS: ChannelTargets = {
+  email: 'DOCUMENT_EXPIRY_ALERT',
+  whatsapp: 'OWNER_DOCUMENT_EXPIRY_ALERT'
+};
 
 /**
  * Destinataires eligibles pour l'alerte d'expiration d'un document : les
@@ -124,70 +142,94 @@ async function resolveDocumentOwnerRecipients(
 
   const contacts = await prisma.crmContact.findMany({
     where: { tenantId, id: { in: crmContactIds } },
-    select: { id: true, email: true, firstName: true, lastName: true, consentEmail: true }
+    select: { ...CHANNEL_RECIPIENT_SELECT, firstName: true, lastName: true }
   });
 
-  const seenEmails = new Set<string>();
+  // Dedoublonnage par e-mail consenti (comportement historique) ; un contact
+  // sans e-mail consenti, joignable seulement par WhatsApp, l'est par son id.
+  const seen = new Set<string>();
   const recipients: ExpiringDocumentRecipient[] = [];
   for (const contact of contacts) {
-    if (!contact.email || !contact.email.trim() || contact.consentEmail !== true) continue;
-    const normalizedEmail = contact.email.trim().toLowerCase();
-    if (seenEmails.has(normalizedEmail)) continue;
-    seenEmails.add(normalizedEmail);
-    recipients.push({
+    const recipient: ExpiringDocumentRecipient = {
       contactId: contact.id,
-      email: contact.email.trim(),
+      email: contact.email?.trim() || null,
+      consentEmail: contact.consentEmail ?? null,
+      whatsappNumber: contact.whatsappNumber ?? null,
+      phonePrimary: contact.phonePrimary ?? null,
+      consentWhatsapp: contact.consentWhatsapp ?? null,
+      preferredContactChannel: contact.preferredContactChannel ?? null,
       name: [contact.firstName, contact.lastName].filter(Boolean).join(' ') || 'Propriétaire'
-    });
+    };
+    // Les deux alertes prevoient les deux canaux : un contact sans consentement ni adresse
+    // utilisable sur aucun canal est silencieusement exclu, comme avant.
+    if (!hasEligibleContactChannel(recipient, LEASE_ALERT_TARGETS)) {
+      continue;
+    }
+    const dedupeKey =
+      recipient.consentEmail === true && recipient.email
+        ? `email:${recipient.email.toLowerCase()}`
+        : `contact:${recipient.contactId}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    recipients.push(recipient);
   }
   return recipients;
 }
 
 /**
- * Envoie l'alerte d'expiration d'un document a chacun de ses destinataires et
+ * Ecarte EN AMONT les destinataires sans aucun canal a la fois consenti,
+ * adressable ET active pour l'agence : leur « echec » n'en serait pas un
+ * (rien n'a ete tente), et pour un document la marque `warningSentAt` serait
+ * posee puis retiree pour rien.
+ */
+function deliverableRecipients(
+  recipients: ExpiringDocumentRecipient[],
+  configs: ChannelConfigs,
+  targets: ChannelTargets
+): ExpiringDocumentRecipient[] {
+  return recipients.filter(recipient => planChannels(recipient, configs, targets).channels.length > 0);
+}
+
+/**
+ * Envoie l'alerte d'expiration d'un document a chacun de ses destinataires,
+ * sur un seul canal chacun (routeur de canaux : prefere, puis repli), et
  * renvoie le nombre d'envois reussis. Un echec individuel (ex : fournisseur
- * e-mail indisponible pour un destinataire) est journalise avec le
- * `contactId` concerne et n'interrompt pas les envois suivants.
+ * indisponible pour un destinataire) est journalise avec le `contactId`
+ * concerne et n'interrompt pas les envois suivants.
  */
 async function sendExpiryAlertToRecipients(params: {
   recipients: ExpiringDocumentRecipient[];
+  configs: ChannelConfigs;
   documentId: string;
   documentFileName: string;
   documentTypeLabel: string;
   propertyReference: string;
   expiresAtLabel: string;
-  subjectTemplate: string;
-  bodyTemplate: string;
   tenantId: string;
 }): Promise<number> {
   let deliveredCount = 0;
   for (const recipient of params.recipients) {
-    const subjectVariables = {
-      ownerName: recipient.name,
-      documentTitle: params.documentFileName,
-      documentType: params.documentTypeLabel,
-      propertyReference: params.propertyReference,
-      expiresAt: params.expiresAtLabel
-    };
-    // Le sujet part en texte brut (pas de HTML a echapper) ; le corps HTML
-    // reprend les memes valeurs, echappees.
-    const bodyVariables = Object.fromEntries(
-      Object.entries(subjectVariables).map(([key, value]) => [key, escapeHtml(value)])
-    );
-
-    try {
-      await emailService.sendEmail({
-        to: recipient.email,
-        subject: applyTemplate(params.subjectTemplate, subjectVariables),
-        html: applyTemplate(params.bodyTemplate, bodyVariables),
-        tenantId: params.tenantId
-      });
+    // Texte brut : le canal e-mail echappe lui-meme les valeurs de son corps HTML.
+    const delivery = await deliverOnBestChannel({
+      tenantId: params.tenantId,
+      recipient,
+      configs: params.configs,
+      targets: DOCUMENT_ALERT_TARGETS,
+      variables: {
+        ownerName: recipient.name,
+        documentTitle: params.documentFileName,
+        documentType: params.documentTypeLabel,
+        propertyReference: params.propertyReference,
+        expiresAt: params.expiresAtLabel
+      }
+    });
+    if (delivery.sent) {
       deliveredCount += 1;
-    } catch (error) {
-      logger.warn('alertExpiringDocuments: envoi echoue pour un destinataire', {
+    } else {
+      logger.warn('alertExpiringDocuments: aucun envoi pour un destinataire', {
         documentId: params.documentId,
         contactId: recipient.contactId,
-        error: error instanceof Error ? error.message : String(error)
+        reason: delivery.reason
       });
     }
   }
@@ -224,9 +266,9 @@ export async function alertExpiringDocuments(tenantId: string, options?: { daysA
   const maxDate = new Date(now);
   maxDate.setDate(maxDate.getDate() + daysAhead);
 
-  const eventKey = 'DOCUMENT_EXPIRY_ALERT' as const;
-  const config = await getEmailNotificationConfig(tenantId, eventKey);
-  if (!config.enabled) {
+  // L'alerte part si au moins un canal (e-mail ou WhatsApp) est active pour l'agence.
+  const configs = await loadChannelConfigs(tenantId, DOCUMENT_ALERT_TARGETS);
+  if (!anyChannelEnabled(configs, DOCUMENT_ALERT_TARGETS)) {
     return { matched: 0, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 };
   }
 
@@ -248,7 +290,6 @@ export async function alertExpiringDocuments(tenantId: string, options?: { daysA
     }
   });
 
-  const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
   let sent = 0;
   let skippedNoRecipient = 0;
   let skippedAlreadySent = 0;
@@ -268,7 +309,8 @@ export async function alertExpiringDocuments(tenantId: string, options?: { daysA
       recipientsByProperty.set(doc.propertyId, recipients);
     }
 
-    if (recipients.length === 0) {
+    const deliverable = deliverableRecipients(recipients, configs, DOCUMENT_ALERT_TARGETS);
+    if (deliverable.length === 0) {
       skippedNoRecipient += 1;
       continue;
     }
@@ -291,14 +333,13 @@ export async function alertExpiringDocuments(tenantId: string, options?: { daysA
       : '';
 
     const deliveredCount = await sendExpiryAlertToRecipients({
-      recipients,
+      recipients: deliverable,
+      configs,
       documentId: doc.id,
       documentFileName: doc.fileName,
       documentTypeLabel,
       propertyReference,
       expiresAtLabel,
-      subjectTemplate: config.subjectOverride || defaults.subject,
-      bodyTemplate: config.bodyHtmlOverride || defaults.bodyHtml,
       tenantId
     });
 
@@ -425,9 +466,9 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
   const maxDate = new Date(now);
   maxDate.setDate(maxDate.getDate() + daysAhead);
 
-  const eventKey = 'LEASE_ENDING_SOON' as const;
-  const config = await getEmailNotificationConfig(tenantId, eventKey);
-  if (!config.enabled) {
+  // L'alerte part si au moins un canal (e-mail ou WhatsApp) est active pour l'agence.
+  const configs = await loadChannelConfigs(tenantId, LEASE_ALERT_TARGETS);
+  if (!anyChannelEnabled(configs, LEASE_ALERT_TARGETS)) {
     return { matched: 0, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 };
   }
 
@@ -452,7 +493,6 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
   const agencyName = tenant?.name ?? '';
-  const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
 
   let sent = 0;
   let skippedNoRecipient = 0;
@@ -485,7 +525,8 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
       );
       recipientsByPropertyAndOwner.set(cacheKey, recipients);
     }
-    if (recipients.length === 0) {
+    const deliverable = deliverableRecipients(recipients, configs, LEASE_ALERT_TARGETS);
+    if (deliverable.length === 0) {
       skippedNoRecipient += 1;
       continue;
     }
@@ -494,24 +535,21 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
     const leaseEndDate = new Date(lease.end_date).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
 
     let deliveredCount = 0;
-    for (const recipient of recipients) {
-      const subjectVariables = { contactName: recipient.name, leaseLabel, leaseEndDate, agencyName };
-      const bodyVariables = Object.fromEntries(
-        Object.entries(subjectVariables).map(([key, value]) => [key, escapeHtml(value)])
-      );
-      try {
-        await emailService.sendEmail({
-          to: recipient.email,
-          subject: applyTemplate(config.subjectOverride || defaults.subject, subjectVariables),
-          html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, bodyVariables),
-          tenantId
-        });
+    for (const recipient of deliverable) {
+      const delivery = await deliverOnBestChannel({
+        tenantId,
+        recipient,
+        configs,
+        targets: LEASE_ALERT_TARGETS,
+        variables: { contactName: recipient.name, ownerName: recipient.name, leaseLabel, leaseEndDate, agencyName }
+      });
+      if (delivery.sent) {
         deliveredCount += 1;
-      } catch (error) {
-        logger.warn('alertExpiringLeases: envoi echoue pour un destinataire', {
+      } else {
+        logger.warn('alertExpiringLeases: aucun envoi pour un destinataire', {
           leaseId: lease.id,
           contactId: recipient.contactId,
-          error: error instanceof Error ? error.message : String(error)
+          reason: delivery.reason
         });
       }
     }
@@ -860,4 +898,134 @@ export async function sendOwnerStatement(statementId: string, tenantId: string) 
     whatsappSent
   });
   return { sent: true as const, whatsappSent };
+}
+
+/** Cles d'evenement du rapport mensuel : la meme dans les deux catalogues. */
+const MONTHLY_REPORT_TARGETS: ChannelTargets = {
+  email: 'OWNER_MONTHLY_REPORT_SENT',
+  whatsapp: 'OWNER_MONTHLY_REPORT_SENT'
+};
+
+export type OwnerMonthlyReportResult = {
+  sent: boolean;
+  channel: NotificationChannel | null;
+  reason?: 'STATEMENT_NOT_FOUND' | 'NO_ELIGIBLE_CHANNEL' | 'EVENT_DISABLED' | 'ALREADY_SENT' | 'SEND_FAILED';
+};
+
+/**
+ * Envoie au proprietaire, sur UN canal (WhatsApp ou e-mail, voir
+ * `notification-channels.ts`), un lien securise vers son rapport mensuel.
+ *
+ * Ordre : releve de CETTE agence (`where: { id, tenantId }`), anti-doublon
+ * (sauf `force`), choix du canal eligible, PUIS creation du lien -- pas de lien
+ * orphelin quand aucun canal ne peut partir. Si l'envoi echoue sur tous les
+ * canaux, le lien cree est revoque. Le jeton n'est jamais journalise : il ne
+ * vit que dans l'URL transmise au message.
+ *
+ * Anti-doublon : `AuditLog` (`PATRIMOINE_OWNER_MONTHLY_REPORT_SENT`, cle = id du
+ * releve), meme principe que les alertes d'echeance. `options.force` (envoi
+ * manuel depuis l'agence) l'ignore ; le job mensuel ne l'utilise jamais.
+ */
+export async function sendOwnerMonthlyReport(
+  statementId: string,
+  tenantId: string,
+  options?: { actorUserId?: string | null; force?: boolean }
+): Promise<OwnerMonthlyReportResult> {
+  const actorUserId = options?.actorUserId ?? null;
+  const statement = await prisma.ownerStatement.findFirst({
+    where: { id: statementId, tenantId },
+    select: {
+      id: true,
+      period: true,
+      owner: { select: { ...CHANNEL_RECIPIENT_SELECT, firstName: true, lastName: true } }
+    }
+  });
+  if (!statement) {
+    logger.warn('sendOwnerMonthlyReport: releve introuvable', { statementId, tenantId });
+    return { sent: false, channel: null, reason: 'STATEMENT_NOT_FOUND' };
+  }
+
+  if (!options?.force) {
+    const done = await alreadyAlertedEntityIds(
+      tenantId,
+      AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT,
+      'OwnerStatement',
+      [statement.id]
+    );
+    if (done.has(statement.id)) return { sent: false, channel: null, reason: 'ALREADY_SENT' };
+  }
+
+  const owner = statement.owner;
+  const recipient: ChannelRecipient = {
+    contactId: owner.id,
+    email: owner.email?.trim() || null,
+    consentEmail: owner.consentEmail ?? null,
+    whatsappNumber: owner.whatsappNumber ?? null,
+    phonePrimary: owner.phonePrimary ?? null,
+    consentWhatsapp: owner.consentWhatsapp ?? null,
+    preferredContactChannel: owner.preferredContactChannel ?? null
+  };
+  const configs = await loadChannelConfigs(tenantId, MONTHLY_REPORT_TARGETS);
+  const plan = planChannels(recipient, configs, MONTHLY_REPORT_TARGETS);
+  if (plan.channels.length === 0) {
+    return { sent: false, channel: null, reason: plan.reason };
+  }
+
+  // Un canal est eligible : le lien peut maintenant etre cree.
+  const link = await createSecureLink({
+    tenantId,
+    scope: 'OWNER_MONTHLY_REPORT',
+    objectType: 'OwnerStatement',
+    objectId: statement.id,
+    createdByUserId: actorUserId
+  });
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+
+  const delivery = await sendOnPlannedChannels(plan, {
+    tenantId,
+    recipient,
+    configs,
+    targets: MONTHLY_REPORT_TARGETS,
+    variables: {
+      ownerName: [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Propriétaire',
+      period: statement.period,
+      reportUrl: link.url,
+      expiresAt: link.expiresAt.toLocaleDateString('fr-FR', { timeZone: 'UTC' }),
+      agencyName: tenant?.name ?? ''
+    }
+  });
+
+  if (!delivery.sent) {
+    try {
+      await revokeSecureLink(tenantId, link.id, actorUserId ?? 'system');
+    } catch (error) {
+      logger.error('sendOwnerMonthlyReport: revocation du lien impossible apres echec', {
+        tenantId,
+        statementId: statement.id,
+        linkId: link.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    // Tous les canaux eligibles ont echoue a l'envoi : raison distincte de
+    // « aucun canal eligible » (l'agence doit verifier ses fournisseurs).
+    return { sent: false, channel: null, reason: 'SEND_FAILED' };
+  }
+
+  logAuditEvent({
+    actorUserId,
+    tenantId,
+    actionKey: AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT,
+    entityType: 'OwnerStatement',
+    entityId: statement.id,
+    // Ni jeton ni URL : l'identifiant du lien suffit a retrouver sa trace.
+    payload: { statementId: statement.id, period: statement.period, channel: delivery.channel, linkId: link.id }
+  });
+  await flushAuditEvents();
+
+  logger.info('sendOwnerMonthlyReport completed', {
+    tenantId,
+    statementId: statement.id,
+    channel: delivery.channel
+  });
+  return { sent: true, channel: delivery.channel };
 }

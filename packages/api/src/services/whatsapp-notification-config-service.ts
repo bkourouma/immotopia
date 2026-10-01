@@ -7,6 +7,24 @@ import {
 } from '../constants/whatsapp-notification-keys';
 import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/whatsapp-notification-default-templates';
 
+/**
+ * Clés dont l'envoi WhatsApp est OPT-IN : sans ligne de configuration, la clé
+ * est DÉSACTIVÉE. Ce sont les alertes propriétaire ajoutées après coup
+ * (lot A3) : `consentWhatsapp` vaut true par défaut en base, donc les activer
+ * par défaut enverrait des messages non sollicités aux propriétaires d'agences
+ * qui avaient coupé l'alerte e-mail. Les autres clés restent activées par défaut.
+ */
+const WHATSAPP_OPT_IN_KEYS: ReadonlySet<WhatsappNotificationKey> = new Set<WhatsappNotificationKey>([
+  'OWNER_LEASE_ENDING_SOON',
+  'OWNER_DOCUMENT_EXPIRY_ALERT',
+  'OWNER_MONTHLY_REPORT_SENT'
+]);
+
+/** État d'activation d'une clé quand l'agence n'a aucune ligne de configuration. */
+export function defaultWhatsappEnabled(key: WhatsappNotificationKey): boolean {
+  return !WHATSAPP_OPT_IN_KEYS.has(key);
+}
+
 export interface WhatsappNotificationConfigItem {
   key: WhatsappNotificationKey;
   label: string;
@@ -75,7 +93,7 @@ export async function listWhatsappNotificationConfigs(tenantId: string): Promise
       label: meta?.label ?? key,
       description: meta?.description ?? '',
       recipientLabel: meta?.recipientLabel ?? '',
-      enabled: row?.enabled ?? true,
+      enabled: row?.enabled ?? defaultWhatsappEnabled(key),
       bodyOverride: row?.bodyOverride ?? null,
       contentSid: row?.contentSid ?? null,
       contentVariablesJson: row?.contentVariablesJson ?? null,
@@ -108,7 +126,12 @@ export async function getWhatsappNotificationConfig(
   });
 
   if (!config) {
-    return { enabled: true, bodyOverride: null, contentSid: null, contentVariablesJson: null };
+    return {
+      enabled: defaultWhatsappEnabled(notificationKey),
+      bodyOverride: null,
+      contentSid: null,
+      contentVariablesJson: null
+    };
   }
 
   return {
@@ -143,7 +166,7 @@ export async function updateWhatsappNotificationConfig(
     create: {
       tenant_id: tenantId,
       notification_key: notificationKey,
-      enabled: data.enabled ?? true,
+      enabled: data.enabled ?? defaultWhatsappEnabled(notificationKey),
       body_override: data.bodyOverride ?? null,
       content_sid: data.contentSid ?? null,
       content_variables_json: data.contentVariablesJson ?? null
@@ -193,7 +216,7 @@ export async function updateWhatsappNotificationConfig(
 }
 
 /**
- * Reset one notification to default (delete overrides, set enabled=true).
+ * Reset one notification to default (delete overrides ; l'activation retombe sur le défaut de la clé, voir `defaultWhatsappEnabled`).
  */
 export async function resetWhatsappNotificationConfig(
   tenantId: string,
