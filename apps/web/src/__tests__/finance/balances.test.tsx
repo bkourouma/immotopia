@@ -193,6 +193,20 @@ describe('Balance clients — état dans l’URL', () => {
     });
   });
 
+  it('précise que le solde est celui de la fin de période quand une période est filtrée, et seulement alors', async () => {
+    const note = 'Période filtrée : le solde est celui à la fin de la période.';
+    getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
+
+    const { unmount } = mountClients('/tenant/agence-1/finance/balance-clients?from=2026-01-01&to=2026-01-31');
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+    expect(screen.getByText(note)).toBeInTheDocument();
+    unmount();
+
+    mountClients();
+    await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+  });
+
   it('efface les filtres de l’adresse quand on les efface à l’écran', async () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
     const user = userEvent.setup({ delay: null });

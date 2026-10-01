@@ -161,6 +161,7 @@ jest.mock('@prisma/client', () => {
 });
 
 import { getAccountStatement, getClientsAgingBalance, getClientsBalance } from '../../src/lib/finance/reports';
+import { clientsBalanceQuerySchema, resolveRange } from '../../src/lib/finance/schemas';
 
 const { __store: store } = jest.requireMock('@prisma/client') as { __store: any };
 
@@ -324,7 +325,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       expect(line.accountId).toBe('acc-a');
       expect(line.totalBilled).toBe(50000);
       expect(line.totalSettled).toBe(0);
-      // Le solde reste le solde À DATE du compte, pas recalcule sur la periode.
+      // Solde à la fin de la période (28/02) : m1 + m3 − m2 = 90 000.
       expect(line.balance).toBe(90000);
     });
 
@@ -426,6 +427,89 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
         expect(line.totalBilled).toBe(0);
         expect(line.totalSettled).toBe(100000);
+      });
+    });
+
+    // BUG-2026-10-01-003 : borne de fin « jour seul » inclusive, solde à la fin de période.
+    describe('periode : borne de fin inclusive et solde a la fin de la periode', () => {
+      const at = (iso: string) => new Date(iso);
+      /** Comme le contrôleur : requête brute → schéma → resolveRange → lecteur. */
+      const balanceFor = async (query: Record<string, string>) => {
+        const range = resolveRange(clientsBalanceQuerySchema.parse(query));
+        return getClientsBalance(TENANT_ID, { range: range.from || range.to ? range : undefined });
+      };
+
+      beforeEach(() => {
+        store.movements.length = 0;
+        store.accounts.length = 0;
+        seedAccount({ id: 'acc-k', tenantClientId: 'client-k', label: 'Kouadio', balance: 0 });
+        seedMovement({
+          id: 'aout',
+          accountId: 'acc-k',
+          movementDate: at('2026-08-05T00:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 480000
+        });
+        seedMovement({
+          id: 'fac-30',
+          accountId: 'acc-k',
+          movementDate: at('2026-09-30T12:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 960000
+        });
+        seedMovement({
+          id: 'reg-30',
+          accountId: 'acc-k',
+          movementDate: at('2026-09-30T12:00:00.000Z'),
+          type: 'PAYMENT',
+          credit: 780000
+        });
+        // Postérieur à la fin de période (septembre) : hors facturé, réglé ET solde.
+        seedMovement({
+          id: 'oct',
+          accountId: 'acc-k',
+          movementDate: at('2026-10-01T00:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 50000
+        });
+      });
+
+      it('to jour seul : un mouvement a 12:00 le jour de `to` est compte', async () => {
+        const [line] = (await balanceFor({ from: '2026-09-01', to: '2026-09-30' })).lines;
+
+        expect(line.totalBilled).toBe(960000);
+        expect(line.totalSettled).toBe(780000);
+      });
+
+      it('from = to (meme jour) renvoie le jour entier', async () => {
+        const result = await balanceFor({ from: '2026-09-30', to: '2026-09-30' });
+
+        expect(result.lines).toHaveLength(1);
+        expect(result.lines[0].totalBilled).toBe(960000);
+        expect(result.lines[0].totalSettled).toBe(780000);
+      });
+
+      it('to avec heure explicite : non modifie (le mouvement de 12:00 est exclu a 06:00)', async () => {
+        const result = await balanceFor({ from: '2026-09-30T00:00:00.000Z', to: '2026-09-30T06:00:00.000Z' });
+
+        expect(result.lines).toHaveLength(0);
+      });
+
+      it('le solde d une periode est le solde a sa fin ; un mouvement posterieur en est exclu', async () => {
+        const [aout] = (await balanceFor({ from: '2026-08-01', to: '2026-08-31' })).lines;
+        expect(aout.totalBilled).toBe(480000);
+        expect(aout.totalSettled).toBe(0);
+        expect(aout.balance).toBe(480000); // fin août, pas le solde à date
+
+        const [sept] = (await balanceFor({ from: '2026-09-01', to: '2026-09-30' })).lines;
+        // 480 000 + 960 000 − 780 000 ; les 50 000 d'octobre n'y sont pas.
+        expect(sept.balance).toBe(660000);
+      });
+
+      it('sans periode : solde a date, mouvement d octobre compris', async () => {
+        const [line] = (await getClientsBalance(TENANT_ID, { asOf: at('2026-10-02T00:00:00.000Z') })).lines;
+
+        expect(line.balance).toBe(710000);
       });
     });
   });
