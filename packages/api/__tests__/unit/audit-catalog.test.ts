@@ -68,9 +68,19 @@ describe('catalogue d’audit', () => {
       }
     }
 
+    // Clés créées APRÈS la migration : elles n'existent pas dans l'historique à
+    // rattraper, donc pas dans le SQL. Chaque nouvelle clé du catalogue s'ajoute
+    // ici, et nulle part ailleurs : la migration est figée.
+    const postMigrationKeys = ['AUDIT_VIEWED'];
     const fromCatalog = Object.fromEntries(
-      Object.entries(AUDIT_CATALOG).map(([key, e]) => [key, `${e.category}/${e.visibility}`])
+      Object.entries(AUDIT_CATALOG)
+        .filter(([key]) => !postMigrationKeys.includes(key))
+        .map(([key, e]) => [key, `${e.category}/${e.visibility}`])
     );
     expect(fromSql).toEqual(fromCatalog);
+    for (const key of postMigrationKeys) {
+      expect(AUDIT_CATALOG).toHaveProperty(key);
+      expect(fromSql).not.toHaveProperty(key);
+    }
   });
 });

@@ -57,6 +57,7 @@ import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
+import tenantAuditRoutes from './routes/tenant-audit-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
@@ -270,6 +271,7 @@ app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', patrimoineEntitiesRoutes); // Patrimoine — entités détentrices et fiscalité (lot P4, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
+app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation

@@ -220,18 +220,52 @@ export async function getAuditLogs(filters: {
   };
 }
 
+const NATIVE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Identifiants acceptables par une colonne `@db.Uuid` (bail, ticket, prestataire).
+ * Un `entityId` d'une autre forme (ligne ancienne, clé libre) ferait échouer la
+ * requête entière ; il n'a de toute façon aucun libellé à fournir.
+ */
+function nativeUuids(ids: Set<string>): string[] {
+  return [...ids].filter(id => NATIVE_UUID.test(id));
+}
+
 /**
  * Enrich audit logs with human-readable resource labels by fetching actual entity data.
  * Same kind of display as in the app (e.g. property ref + title + address, lease number, contact name).
  */
 export async function enrichAuditLogsWithResourceLabels(
+  logs: Parameters<typeof loadResourceLabels>[0],
+  scopeTenantId?: string
+): Promise<Map<string, string>> {
+  // Les libellés sont cosmétiques : le journal doit s'afficher même quand ils
+  // ne peuvent pas être résolus.
+  try {
+    return await loadResourceLabels(logs, scopeTenantId);
+  } catch (error) {
+    logger.warn('Audit: libellés de ressource indisponibles', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return new Map();
+  }
+}
+
+async function loadResourceLabels(
   logs: Array<{
     id: string;
     entityType: string;
     entityId: string;
     tenantId: string | null;
     payload?: unknown;
-  }>
+  }>,
+  /**
+   * Vue d'une agence : chaque requete est bornee a cette agence. Sans cela, une
+   * ligne dont l'`entityId` designerait l'objet d'une autre agence en afficherait
+   * le libelle, et la garde Prisma (requete sans filtre d'agence en contexte
+   * d'agence) la signalerait. Absent : vue plateforme, toutes agences.
+   */
+  scopeTenantId?: string
 ): Promise<Map<string, string>> {
   const labelByLogId = new Map<string, string>();
   if (logs.length === 0) return labelByLogId;
@@ -261,13 +295,13 @@ export async function enrichAuditLogsWithResourceLabels(
     await Promise.all([
       propIds.size > 0
         ? prisma.property.findMany({
-            where: { id: { in: [...propIds] } },
+            where: { id: { in: [...propIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, internalReference: true, title: true, address: true }
           })
         : [],
-      leaseIds.size > 0
+      nativeUuids(leaseIds).length > 0
         ? prisma.rentalLease.findMany({
-            where: { id: { in: [...leaseIds] } },
+            where: { id: { in: nativeUuids(leaseIds) }, ...(scopeTenantId ? { tenant_id: scopeTenantId } : {}) },
             select: {
               id: true,
               lease_number: true,
@@ -277,13 +311,13 @@ export async function enrichAuditLogsWithResourceLabels(
         : [],
       contactIds.size > 0
         ? prisma.crmContact.findMany({
-            where: { id: { in: [...contactIds] } },
+            where: { id: { in: [...contactIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, firstName: true, lastName: true, email: true, legalName: true }
           })
         : [],
       dealIds.size > 0
         ? prisma.crmDeal.findMany({
-            where: { id: { in: [...dealIds] } },
+            where: { id: { in: [...dealIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: {
               id: true,
               type: true,
@@ -294,31 +328,31 @@ export async function enrichAuditLogsWithResourceLabels(
         : [],
       tenantIds.size > 0
         ? prisma.tenant.findMany({
-            where: { id: { in: [...tenantIds] } },
+            where: { id: { in: scopeTenantId ? [...tenantIds].filter(id => id === scopeTenantId) : [...tenantIds] } },
             select: { id: true, name: true }
           })
         : [],
       invoiceIds.size > 0
         ? prisma.invoice.findMany({
-            where: { id: { in: [...invoiceIds] } },
+            where: { id: { in: [...invoiceIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, invoiceNumber: true }
           })
         : [],
-      vendorIds.size > 0
+      nativeUuids(vendorIds).length > 0
         ? prisma.maintenanceVendor.findMany({
-            where: { id: { in: [...vendorIds] } },
+            where: { id: { in: nativeUuids(vendorIds) }, ...(scopeTenantId ? { tenant_id: scopeTenantId } : {}) },
             select: { id: true, name: true }
           })
         : [],
-      vendorIds.size > 0
+      nativeUuids(vendorIds).length > 0
         ? prisma.serviceProvider.findMany({
-            where: { id: { in: [...vendorIds] } },
+            where: { id: { in: nativeUuids(vendorIds) }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, name: true }
           })
         : [],
-      ticketIds.size > 0
+      nativeUuids(ticketIds).length > 0
         ? prisma.maintenanceTicket.findMany({
-            where: { id: { in: [...ticketIds] } },
+            where: { id: { in: nativeUuids(ticketIds) }, ...(scopeTenantId ? { tenant_id: scopeTenantId } : {}) },
             select: { id: true, title: true, category: true }
           })
         : []

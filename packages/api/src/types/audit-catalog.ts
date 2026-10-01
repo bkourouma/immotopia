@@ -203,7 +203,10 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN]: tenant('DATA'),
   [AuditActionKey.SUBSCRIPTION_PROVISIONED]: tenant('BILLING'),
   [AuditActionKey.TENANT_PROVISIONED]: tenant('ADMIN'),
-  [AuditActionKey.SYNDIC_MEETING_CONVOCATION_DELIVERY]: internal('SYSTEM')
+  [AuditActionKey.SYNDIC_MEETING_CONVOCATION_DELIVERY]: internal('SYSTEM'),
+
+  // Audit de l'audit : consulter le journal est tracé, mais n'est pas montré à l'agence.
+  [AuditActionKey.AUDIT_VIEWED]: internal('SECURITY')
 };
 
 /** Entrée du catalogue pour une clé, ou `undefined` si la clé est libre (hors enum). */

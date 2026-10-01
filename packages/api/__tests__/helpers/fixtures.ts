@@ -31,13 +31,18 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   'PROPERTIES_VIEW',
   'PROPERTIES_EDIT',
   'SYNDIC_VIEW',
+  // Ecriture Syndic (BUG-096) : les routes POST des quittances l'exigent ; sans
+  // lui les tests d'isolation recevaient 403 au lieu de 404.
+  'SYNDIC_EDIT',
   'MAINTENANCE_ADMIN',
   // ImmoCopilot : lecture des baux/documents, generation. Accordees des la
   // creation du role : `getUserPermissions` met les droits en cache 5 minutes
   // par utilisateur, un octroi tardif ne serait pas vu.
   'RENTAL_LEASES_VIEW',
   'RENTAL_DOCUMENTS_VIEW',
-  'RENTAL_DOCUMENTS_GENERATE'
+  'RENTAL_DOCUMENTS_GENERATE',
+  // Journal d'activite de l'agence (ADR-006) : octroye des la creation du role.
+  'TENANT_AUDIT_VIEW'
 ] as const;
 
 let tenantAdminRoleId: string | null = null;
@@ -133,6 +138,56 @@ export async function createTenantAdminUser(tenant: TestTenant, emailPrefix: str
 
   const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
 
+  return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
+}
+
+/**
+ * Cree un utilisateur, membre ACTIF de `tenant`, avec un role d'agence qui NE
+ * porte PAS le droit d'administrateur : sert a verifier qu'un membre sans le
+ * droit requis est refuse. Le role (cle `roleKey`) est cree s'il manque, avec
+ * exactement `permissionKeys`.
+ */
+export async function createTenantMemberUser(
+  tenant: TestTenant,
+  emailPrefix: string,
+  roleKey: string,
+  permissionKeys: string[]
+): Promise<TestUser> {
+  const role = await prisma.role.upsert({
+    where: { key: roleKey },
+    update: {},
+    create: { key: roleKey, name: roleKey, description: `Role de test (${roleKey})`, scope: RoleScope.TENANT }
+  });
+  for (const key of permissionKeys) {
+    const permission = await prisma.permission.upsert({
+      where: { key },
+      update: {},
+      create: { key, description: `Permission de test : ${key}` }
+    });
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+      update: {},
+      create: { roleId: role.id, permissionId: permission.id }
+    });
+  }
+
+  const email = `${emailPrefix}-${randomUUID().slice(0, 8)}@isolation-test.local`;
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: null,
+      fullName: `${emailPrefix} (test isolation)`,
+      globalRole: 'USER',
+      emailVerified: true,
+      isActive: true
+    }
+  });
+  await prisma.membership.create({
+    data: { userId: user.id, tenantId: tenant.id, status: MembershipStatus.ACTIVE, acceptedAt: new Date() }
+  });
+  await prisma.userRole.create({ data: { userId: user.id, roleId: role.id, tenantId: tenant.id } });
+
+  const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
   return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
 }
 

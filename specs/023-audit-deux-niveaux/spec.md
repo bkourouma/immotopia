@@ -111,13 +111,55 @@ migration diverge du catalogue. Le catalogue couvre les 130 clés en usage, dont
 
 ## 7. Lecture (phases 2 et 4)
 
-| Niveau     | Route                              | Garde                                       | Filtre forcé                                       |
-| ---------- | ---------------------------------- | ------------------------------------------- | -------------------------------------------------- |
-| Agence     | `GET /api/tenants/:tenantId/audit` | `requireTenantAccess` + `TENANT_AUDIT_VIEW` | `tenantId` de l'URL vérifié, `visibility = TENANT` |
-| Plateforme | `GET /api/admin/audit`             | `PLATFORM_AUDIT_VIEW`                       | aucun, `tenantId` optionnel                        |
+| Niveau     | Route                              | Garde                                                        | Filtre forcé                                       |
+| ---------- | ---------------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
+| Agence     | `GET /api/tenants/:tenantId/audit` | `authenticate` + `requireTenantAccess` + `TENANT_AUDIT_VIEW` | `tenantId` de l'URL vérifié, `visibility = TENANT` |
+| Plateforme | `GET /api/admin/audit`             | `PLATFORM_TENANTS_VIEW` (`PLATFORM_AUDIT_VIEW` en phase 4)   | aucun, `tenantId` optionnel                        |
 
-Pagination par curseur `(createdAt, id)`. Consulter ou exporter écrit
-`AUDIT_VIEWED` / `AUDIT_EXPORTED` (catégorie `SECURITY`, `PLATFORM_ONLY`).
+### Niveau agence (phase 2, livré)
+
+- **Lecteur unique** : `services/audit-read-service.ts` (`getTenantAuditLogs`).
+  `tenantId` est un paramètre séparé de `filters`, qui n'a aucun champ
+  `tenantId` ni `visibility` : rien à écraser. `AuditLog` reste exempté de
+  l'extension de garde tenant ; l'étanchéité repose sur ce module et sur son
+  test de bout en bout (`__tests__/integration/isolation.test.ts`, bloc
+  « Journal d'activité »).
+- **Paramètres** (`lib/audit/tenant-audit-schemas.ts`, `.strict()`) :
+  `category`, `outcome`, `actionKey`, `actorUserId`, `entityType`, `entityId`,
+  `startDate`, `endDate` (AAAA-MM-JJ, bornes incluses, `endDate` jusqu'à
+  23:59:59.999 UTC), `cursor`, `limit` (1 à 100, 50 par défaut). Tout autre
+  paramètre — `tenantId`, `visibility`, `scope` — est refusé en 400.
+- **Réponse** : `{ success, data: { logs[], nextCursor } }`. Pagination par
+  curseur opaque `(createdAt, id)` ; `nextCursor` est nul à la dernière page ;
+  tri `createdAt DESC, id DESC`, servi par l'index
+  `(tenant_id, visibility, created_at DESC)`.
+- **Personnel de la plateforme** : une ligne dont `actorType = SUPER_ADMIN`
+  est renvoyée sans identité, sans `actorLabel`, sans IP ni navigateur ; le
+  web affiche « Support ImmoTopia ».
+- **Libellés de ressource** : `enrichAuditLogsWithResourceLabels(logs,
+tenantId)` borne chaque requête à l'agence (sans cela, la garde Prisma
+  signalerait des requêtes sans filtre d'agence, et une ligne dont
+  l'`entityId` désigne l'objet d'une autre agence en afficherait le libellé).
+  Un `entityId` qui n'est pas un UUID est écarté pour les quatre modèles à
+  identifiant UUID natif, et un échec de résolution ne fait jamais échouer le
+  journal : les libellés sont cosmétiques.
+- **Abonnement** : `/audit` est classé `CORE` dans
+  `lib/subscription/route-features.ts` (lecture seule, jamais bloquée par un
+  module non souscrit).
+- **Audit de l'audit** : la première page d'une consultation (sans `cursor`)
+  écrit `AUDIT_VIEWED` (`SECURITY`, `PLATFORM_ONLY`, filtres sans `cursor` ni
+  `limit`) ; « charger plus » n'en écrit pas.
+- **Permission** : `TENANT_AUDIT_VIEW`, attribuée à `TENANT_ADMIN` et
+  `PLATFORM_SUPER_ADMIN` seulement (`prisma/seeds/audit-permissions-seed.ts`,
+  migration `20261007100000_audit_tenant_permission`). Ni gestionnaire, ni
+  agent, ni comptable ; un rôle personnalisé la reçoit explicitement.
+- **Web** : page « Journal d'activité » (`/tenant/:tenantId/activity`), entrée
+  du groupe « Agence », réservée à `TENANT_AUDIT_VIEW`.
+
+### Niveau plateforme (phase 4)
+
+Pagination par curseur, `PLATFORM_AUDIT_VIEW` / `PLATFORM_AUDIT_EXPORT`,
+consulter ou exporter écrit `AUDIT_VIEWED` / `AUDIT_EXPORTED`.
 
 ## 8. Plan et état
 
