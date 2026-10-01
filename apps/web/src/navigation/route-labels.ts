@@ -142,6 +142,7 @@ function buildRouteLabels(): Record<string, string> {
     collaborators: t('Collaborateurs'),
     invite: t('Inviter'),
     invitations: t('Invitations'),
+    activity: t("Journal d'activité"),
 
     // Portails
     owner: t('Portail propriétaire'),

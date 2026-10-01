@@ -62,6 +62,10 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Modifier les paramètres du tenant'),
     description: t("Modifier les paramètres de l'agence / opérateur.")
   },
+  TENANT_AUDIT_VIEW: {
+    label: t("Voir le journal d'activité"),
+    description: t("Consulter le journal d'activité de l'agence (qui a fait quoi, quand).")
+  },
 
   // --- Utilisateurs / collaborateurs ---
   USERS_VIEW: {

@@ -201,11 +201,12 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Paramétrage.
   documents: ['RENTAL_DOCUMENTS_VIEW'],
   'documents-templates': ['RENTAL_DOCUMENTS_VIEW'],
-  agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW'],
+  agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW', 'TENANT_AUDIT_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
   'agence-settings': ['TENANT_SETTINGS_VIEW'],
-  'agence-finance-settings': ['TENANT_SETTINGS_VIEW']
+  'agence-finance-settings': ['TENANT_SETTINGS_VIEW'],
+  'agence-activity': ['TENANT_AUDIT_VIEW']
 };
 
 function requirementsFor(navKey: string): string[] {
