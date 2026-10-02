@@ -488,6 +488,15 @@ describe('côté agence', () => {
     expect(createSecureLink).not.toHaveBeenCalled();
   });
 
+  it('BUG-015 : création refusée (400) sur un brouillon à venir', async () => {
+    installmentFindFirst.mockResolvedValueOnce(
+      installment({ status: 'DRAFT', amount_paid: '0', due_date: new Date('2099-01-05T00:00:00.000Z') })
+    );
+    loadConfig.mockResolvedValue(usableConfig);
+    await expect(createInstallmentPaymentLink(TENANT_A, 'inst-1', 'user-1')).rejects.toBeInstanceOf(BadRequestError);
+    expect(createSecureLink).not.toHaveBeenCalled();
+  });
+
   it('création : lien INSTALLMENT_PAYMENT sur RentalInstallment, contexte avec montant recalculé', async () => {
     installmentFindFirst.mockResolvedValueOnce(installment());
     const created = { id: 'link-9', token: TOKEN, expiresAt: new Date(), url: `https://app.example/payer#${TOKEN}` };

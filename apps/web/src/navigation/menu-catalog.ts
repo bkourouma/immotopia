@@ -370,6 +370,42 @@ export function defaultMenuEnabled(requires: string[], rolePermissionKeys: Set<s
   return requires.some(key => rolePermissionKeys.has(key));
 }
 
+/**
+ * Groupes du menu d'agence que la coquille masque d'après les permissions
+ * RÉELLES du compte, sans attendre qu'un administrateur ait coupé l'entrée.
+ *
+ * Le serveur ne connaît que des clés opaques et « l'absence de décision vaut
+ * autorisé » : un rôle sans `PROPERTIES_VIEW` voyait donc Biens et Patrimoine,
+ * et tombait sur un écran en erreur générique (BUG-2026-10-02-010 / -004).
+ * La liste est volontairement bornée à ces deux groupes, qui partagent la
+ * même permission d'entrée ; l'étendre à d'autres groupes se décide avec leurs
+ * propres permissions (voir `MENU_REQUIREMENTS`).
+ */
+const PERMISSION_GATED_GROUPS: readonly string[] = ['biens', 'patrimoine'];
+
+/**
+ * Clés de menu que les permissions du compte ne permettent pas d'ouvrir
+ * (groupes de `PERMISSION_GATED_GROUPS`, entrée par entrée : une feuille
+ * suit sa propre exigence, un groupe fermé emporte toutes ses feuilles).
+ */
+export function menuKeysDeniedByPermissions(persona: PersonaId, permissionKeys: Iterable<string>): string[] {
+  const held = new Set(permissionKeys);
+  const denied: string[] = [];
+  for (const group of getNavigation()[persona].tree) {
+    if (!PERMISSION_GATED_GROUPS.includes(group.key)) continue;
+    if (!defaultMenuEnabled(requirementsFor(group.key), held)) {
+      denied.push(menuKeyFor(persona, group.key));
+      continue;
+    }
+    for (const leaf of group.children ?? []) {
+      if (!defaultMenuEnabled(requirementsFor(leaf.key), held)) {
+        denied.push(menuKeyFor(persona, group.key, leaf.key));
+      }
+    }
+  }
+  return denied;
+}
+
 /** Carte complète des états par défaut d'un rôle. */
 export function defaultMenuMap(persona: PersonaId, rolePermissionKeys: Set<string> | null): Record<string, boolean> {
   const map: Record<string, boolean> = {};

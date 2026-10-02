@@ -1390,5 +1390,6 @@
   "Cette entité ne détient aucun bien.": "This entity holds no property.",
   "Cette échéance est annulée.": "This installment is canceled.",
   "Cette échéance est déjà soldée.": "This installment is already settled.",
-  "Le bail de cette échéance n'est pas actif.": "The lease for this installment is not active."
+  "Le bail de cette échéance n'est pas actif.": "The lease for this installment is not active.",
+  "Cette échéance est encore à l'état de brouillon : émettez-la avant d'envoyer un lien de paiement.": "This installment is still a draft: issue it before sending a payment link."
 }

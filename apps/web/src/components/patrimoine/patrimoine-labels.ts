@@ -1,3 +1,4 @@
+import type { FormInstance } from 'antd';
 import type { AssetValuation, ExpenseRecurrence, PropertyExpense, PropertyLoan } from '../../types/patrimoine-types';
 import { PATRIMONY_DOC_TYPES } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
@@ -94,13 +95,57 @@ export function expenseRecurrenceLabel(recurrence: ExpenseRecurrence | null | un
  */
 export const DEVISE_PATRIMOINE = 'XOF';
 
+export interface ApiFieldError {
+  field: string;
+  message: string;
+}
+
+/** Erreurs de validation `errors[]` d'une réponse d'API (champ + message), vides si absentes. */
+export function apiFieldErrors(error: unknown): ApiFieldError[] {
+  const list = (error as { response?: { data?: { errors?: unknown } } })?.response?.data?.errors;
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (item): item is ApiFieldError =>
+      typeof item?.field === 'string' && typeof item?.message === 'string' && item.message.length > 0
+  );
+}
+
 /**
- * Message d'une erreur d'API : `error` (alias historique) ou `message`,
- * sinon le repli fourni. Jamais d'erreur avalée en silence.
+ * Message d'une erreur d'API : le détail de validation (`errors[]`, la règle
+ * violée) d'abord, puis `error` (alias historique) ou `message`, sinon le
+ * repli fourni. Le message générique « Les données fournies sont invalides »
+ * ne dit pas quelle règle a été violée : on le remplace par le détail.
+ * Jamais d'erreur avalée en silence.
  */
 export function apiErrorMessage(error: unknown, fallback: string): string {
+  const details = apiFieldErrors(error);
+  if (details.length > 0) return details.map(detail => detail.message).join(' ');
   const data = (error as { response?: { data?: { error?: unknown; message?: unknown } } })?.response?.data;
   if (typeof data?.error === 'string' && data.error) return data.error;
   if (typeof data?.message === 'string' && data.message) return data.message;
   return fallback;
+}
+
+/**
+ * Pose chaque erreur de validation du serveur sur son champ de formulaire
+ * (`errors[{ field, message }]`). Renvoie `true` si au moins un champ a été
+ * marqué ; l'appelant garde alors une notification pour le résumé. Les champs
+ * que le formulaire ne porte pas sont ignorés (le message reste dans le toast).
+ */
+export function applyApiFieldErrors<Values>(
+  form: FormInstance<Values>,
+  error: unknown,
+  knownFields: string[]
+): boolean {
+  const fields = apiFieldErrors(error)
+    .filter(detail => knownFields.includes(detail.field))
+    .map(detail => ({ name: detail.field, errors: [detail.message] }));
+  if (fields.length === 0) return false;
+  form.setFields(fields as Parameters<FormInstance<Values>['setFields']>[0]);
+  return true;
+}
+
+/** Vrai quand l'API a refusé l'accès (403) : permission manquante, pas panne. */
+export function isForbiddenError(error: unknown): boolean {
+  return (error as { response?: { status?: number } })?.response?.status === 403;
 }

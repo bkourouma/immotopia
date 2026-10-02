@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Alert, Select } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { listInsuranceClaims } from '../../services/insurance-service';
+import { listInsuranceClaims, listInsurancePolicies } from '../../services/insurance-service';
 import type { InsuranceClaimDto, InsuranceClaimStatus } from '../../types/insurance-types';
 import { CLAIM_STATUS_VALUES, claimStatusLabel, options } from '../../components/insurance/insurance-labels';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,18 +10,20 @@ import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, DataView, FilterSheet } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { isForbiddenError } from '../../components/patrimoine/patrimoine-labels';
+import { PatrimoineForbidden } from '../../components/patrimoine/PatrimoineForbidden';
 import { ClaimCard, claimColumns } from './claims-columns';
 
 /**
  * Sinistres de l'agence : vue d'ensemble en lecture seule. Les changements de
  * statut se font dans l'onglet « Assurances et sinistres » de la fiche du bien.
- * Le statut vit dans l'URL ; le filtrage est fait par l'API, qui plafonne la
+ * Le statut, le bien et la police (spec 032 US4.2) vivent dans l'URL ; le filtrage est fait par l'API, qui plafonne la
  * liste (`CLAIMS_LIMIT`) : au plafond, la page le dit au lieu d'annoncer un
  * total exhaustif.
  */
 
-type Filtres = { status: string };
-const FILTER_KEYS = ['status'] as const;
+type Filtres = { status: string; propertyId: string; policyId: string };
+const FILTER_KEYS = ['status', 'propertyId', 'policyId'] as const;
 /** Maximum accepté par l'API pour une liste de sinistres. */
 const CLAIMS_LIMIT = 500;
 
@@ -38,6 +40,8 @@ export const InsuranceClaimsPage: React.FC = () => {
 
   const list = useListParams<Filtres>({ filterKeys: FILTER_KEYS, defaultPageSize: 25 });
   const status = (list.filters.status || undefined) as InsuranceClaimStatus | undefined;
+  const propertyId = list.filters.propertyId || undefined;
+  const policyId = list.filters.policyId || undefined;
 
   const {
     data,
@@ -46,15 +50,45 @@ export const InsuranceClaimsPage: React.FC = () => {
     error: erreur,
     refetch
   } = useQuery({
-    queryKey: queryKey('insurance-claims', agence, { status, limit: CLAIMS_LIMIT }),
-    queryFn: () => listInsuranceClaims(agence as string, { status, limit: CLAIMS_LIMIT }),
+    queryKey: queryKey('insurance-claims', agence, { status, propertyId, policyId, limit: CLAIMS_LIMIT }),
+    queryFn: () => listInsuranceClaims(agence as string, { status, propertyId, policyId, limit: CLAIMS_LIMIT }),
     enabled: Boolean(agence),
     staleTime: STALE_TIME.list
   });
 
+  // Les polices de l'agence alimentent les deux filtres : un sinistre dépend
+  // toujours d'une police, donc tout bien à filtrer en porte au moins une.
+  const { data: polices } = useQuery({
+    queryKey: queryKey('insurance-policies', agence, {}),
+    queryFn: () => listInsurancePolicies(agence as string),
+    enabled: Boolean(agence),
+    staleTime: STALE_TIME.list
+  });
+  const optionsBien = useMemo(() => {
+    const parId = new Map<string, string>();
+    for (const police of polices ?? []) {
+      if (police.propertyId && !parId.has(police.propertyId)) {
+        parId.set(police.propertyId, police.propertyReference || police.propertyId);
+      }
+    }
+    return Array.from(parId, ([value, label]) => ({ value, label }));
+  }, [polices]);
+  const optionsPolice = useMemo(
+    () =>
+      (polices ?? [])
+        .filter(police => !propertyId || police.propertyId === propertyId)
+        .map(police => ({
+          value: police.id,
+          label: t('{{assureur}} · n° {{numero}}', { assureur: police.insurer, numero: police.policyNumber })
+        })),
+    [polices, propertyId]
+  );
+
   if (!agence) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
+
+  if (isForbiddenError(erreur)) return <PatrimoineForbidden />;
 
   const tous = data ?? [];
   const tronque = tous.length >= CLAIMS_LIMIT;
@@ -77,7 +111,11 @@ export const InsuranceClaimsPage: React.FC = () => {
         />
       )}
 
-      <FilterSheet activeCount={status ? 1 : 0} onClear={list.clearFilters} title={t('Filtrer les sinistres')}>
+      <FilterSheet
+        activeCount={[status, propertyId, policyId].filter(Boolean).length}
+        onClear={list.clearFilters}
+        title={t('Filtrer les sinistres')}
+      >
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-statut-sinistre">{t('Statut')}</label>
           <Select
@@ -88,6 +126,35 @@ export const InsuranceClaimsPage: React.FC = () => {
             value={status}
             onChange={valeur => list.setFilters({ status: valeur })}
             options={options(CLAIM_STATUS_VALUES, claimStatusLabel)}
+          />
+        </div>
+        <div style={{ minWidth: 220 }}>
+          <label htmlFor="filtre-bien-sinistre">{t('Bien')}</label>
+          <Select
+            id="filtre-bien-sinistre"
+            style={{ width: '100%' }}
+            placeholder={t('Tous les biens')}
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            value={propertyId}
+            // Changer de bien invalide la police choisie : elle peut en dépendre.
+            onChange={valeur => list.setFilters({ propertyId: valeur, policyId: undefined })}
+            options={optionsBien}
+          />
+        </div>
+        <div style={{ minWidth: 220 }}>
+          <label htmlFor="filtre-police-sinistre">{t('Police')}</label>
+          <Select
+            id="filtre-police-sinistre"
+            style={{ width: '100%' }}
+            placeholder={t('Toutes les polices')}
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            value={policyId}
+            onChange={valeur => list.setFilters({ policyId: valeur })}
+            options={optionsPolice}
           />
         </div>
       </FilterSheet>

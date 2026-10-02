@@ -17,7 +17,8 @@ import type {
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { PageHeader, StateBlock, SkeletonList } from '../../../components/primitives';
-import { apiErrorMessage } from '../../../components/patrimoine/patrimoine-labels';
+import { apiErrorMessage, isForbiddenError } from '../../../components/patrimoine/patrimoine-labels';
+import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { ExternalAccessLinkReveal, ExternalAccessSendLinkModal, type RevealedLink } from './ExternalAccessLinkModals';
@@ -129,6 +130,8 @@ export const ExternalAccessPage: React.FC = () => {
   };
   const grants = grantsQuery.data ?? [];
 
+  if (isForbiddenError(grantsQuery.error) || isForbiddenError(optionsQuery.error)) return <PatrimoineForbidden />;
+
   return (
     <>
       <PageHeader
@@ -197,6 +200,8 @@ export const ExternalAccessPage: React.FC = () => {
             },
             {
               title: t('Rubriques'),
+              // Largeur bornée : les étiquettes passent à la ligne au lieu d'allonger le tableau.
+              width: 240,
               render: (_: unknown, grant) => (
                 <Space size={[4, 4]} wrap>
                   {grant.sections.map(section => (
@@ -218,6 +223,8 @@ export const ExternalAccessPage: React.FC = () => {
             {
               title: t('Actions'),
               align: 'end' as const,
+              // Épinglée au bord : les actions restent visibles même quand le tableau défile.
+              fixed: 'end' as const,
               render: (_: unknown, grant) => {
                 const live = grant.status === 'ACTIVE' || grant.status === 'EXPIRING';
                 return (

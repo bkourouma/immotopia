@@ -219,11 +219,20 @@ const ExpensesBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['ex
   currency
 }) => (
   <Card size="small" title={accessSectionLabel('EXPENSES')}>
-    <Descriptions column={1} size="small" style={{ marginBlockEnd: 8 }}>
-      <Descriptions.Item label={t('Total des 12 derniers mois')}>
-        <Money value={data.totalLast12Months} currency={currency} />
-      </Descriptions.Item>
-    </Descriptions>
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        columnGap: 8,
+        rowGap: 2,
+        marginBlockEnd: 8,
+        minWidth: 0,
+        overflowWrap: 'anywhere'
+      }}
+    >
+      <Text type="secondary">{t('Total des 12 derniers mois')} :</Text>
+      <Money value={data.totalLast12Months} currency={currency} />
+    </div>
     {data.items.length > 0 ? (
       <Text type="secondary" style={{ display: 'block', marginBlockEnd: 8 }}>
         {t('(détail sur 24 mois)')}
@@ -394,7 +403,14 @@ interface PropertyViewProps {
 
 /** Une carte par bien : identification, puis SEULES les rubriques présentes dans la réponse. */
 const PropertyView: React.FC<PropertyViewProps> = ({ property, currency, busyRef, onDownload }) => (
-  <Card title={`${property.reference} — ${property.title}`}>
+  <Card
+    title={
+      <span
+        style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+      >{`${property.reference} — ${property.title}`}</span>
+    }
+    styles={{ header: { height: 'auto', whiteSpace: 'normal' } }}
+  >
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Descriptions column={{ xs: 1, sm: 2 }} size="small">
         <Descriptions.Item label={t('Adresse')}>
@@ -529,6 +545,12 @@ export const ExternalAccessViewPage: React.FC = () => {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   // Le jeton survit au double montage de React.StrictMode : le fragment n'est lu qu'une fois.
   const tokenRef = useRef<string | null | undefined>(undefined);
+  // Une seule lecture par jeton : le second passage StrictMode réutilise la promesse
+  // (sinon deux POST, donc deux consultations journalisées et comptées).
+  const requestRef = useRef<{
+    token: string;
+    promise: ReturnType<typeof fetchPublicExternalAccessView>;
+  } | null>(null);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -551,7 +573,10 @@ export const ExternalAccessViewPage: React.FC = () => {
       return undefined;
     }
     let cancelled = false;
-    void fetchPublicExternalAccessView(token).then(result => {
+    if (requestRef.current?.token !== token) {
+      requestRef.current = { token, promise: fetchPublicExternalAccessView(token) };
+    }
+    void requestRef.current.promise.then(result => {
       if (cancelled) return;
       if (result.status === 'ok') setState({ kind: 'ok', view: result.view });
       else setState({ kind: result.status });

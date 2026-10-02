@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Button, Progress, Select, Tag } from 'antd';
+import { Button, Progress, Select, Tag, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -8,6 +8,8 @@ import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { DataCard, DataView, FilterSheet, PageHeader, StateBlock } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
+import { isForbiddenError } from '../../../components/patrimoine/patrimoine-labels';
+import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
 import { LandCreateModal } from './LandCreateModal';
 import { listLandRegularizations } from './land-regularization-service';
 import {
@@ -45,6 +47,8 @@ export const LandRegularizationListPage: React.FC = () => {
   });
 
   if (!agence) return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
+  // Sans droit sur les biens : un refus clair, sans titre ni bouton d'écriture.
+  if (isForbiddenError(error)) return <PatrimoineForbidden />;
 
   const dossiers = data ?? [];
   const isFiltered = Boolean(status || propertyId);
@@ -76,7 +80,11 @@ export const LandRegularizationListPage: React.FC = () => {
         </>
       )
     },
-    { title: t('Filière'), dataIndex: 'trackLabel', key: 'filiere' },
+    {
+      title: t('Filière'),
+      key: 'filiere',
+      render: (_, dossier) => <TrackCell dossier={dossier} />
+    },
     {
       title: t('Avancement'),
       key: 'avancement',
@@ -176,7 +184,14 @@ export const LandRegularizationListPage: React.FC = () => {
             title={dossier.property.title}
             subtitle={dossier.trackLabel}
             status={
-              <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+              <>
+                <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+                {dossier.validationStatus === 'A_VALIDER' && (
+                  <Tooltip title={t('À valider par un juriste local')}>
+                    <Tag color="warning">{t('À valider')}</Tag>
+                  </Tooltip>
+                )}
+              </>
             }
             fields={[
               { label: t('Avancement'), value: <ProgressCell dossier={dossier} /> },
@@ -202,6 +217,23 @@ export const LandRegularizationListPage: React.FC = () => {
     </>
   );
 };
+
+/**
+ * Filière du dossier. Une filière « à valider » (CI_ACD) ne se présente jamais
+ * comme certaine (FR-009, FR-033) : l'étiquette suit le nom partout.
+ */
+const TrackCell: React.FC<{ dossier: LandRegularizationSummary }> = ({ dossier }) => (
+  <span>
+    {dossier.trackLabel}
+    {dossier.validationStatus === 'A_VALIDER' && (
+      <Tooltip title={t('À valider par un juriste local')}>
+        <Tag color="warning" style={{ marginInlineStart: 8 }}>
+          {t('À valider')}
+        </Tag>
+      </Tooltip>
+    )}
+  </span>
+);
 
 const ProgressCell: React.FC<{ dossier: LandRegularizationSummary }> = ({ dossier }) => (
   <div style={{ minWidth: 140 }}>

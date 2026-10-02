@@ -3,7 +3,7 @@ import { Button, Form, Input, InputNumber, Modal, Select, Typography } from 'ant
 import { createMaintenanceLogEntry, updateMaintenanceLogEntry } from '../../services/insurance-service';
 import { uploadDocument } from '../../services/property-service';
 import type { MaintenanceLogCategory, MaintenanceLogEntryDto } from '../../types/insurance-types';
-import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
+import { apiErrorMessage, applyApiFieldErrors } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { CurrencyField, DEFAULT_CURRENCY, changedCurrency } from './CurrencyField';
@@ -31,6 +31,17 @@ interface Values {
 }
 
 const day = (value?: string | null) => (value ? value.slice(0, 10) : undefined);
+
+const FIELDS = [
+  'category',
+  'performedAt',
+  'vendorId',
+  'cost',
+  'currency',
+  'description',
+  'nextDueDate',
+  'warrantyEndDate'
+];
 
 function initialValues(entry: MaintenanceLogEntryDto | null): Partial<Values> {
   if (!entry) return { category: 'OTHER', currency: DEFAULT_CURRENCY };
@@ -91,6 +102,7 @@ export const MaintenanceLogFormModal: React.FC<Props> = ({ open, tenantId, prope
       feedback.success(entry ? t('Entrée mise à jour.') : t('Entrée ajoutée.'));
       onSaved();
     } catch (error) {
+      applyApiFieldErrors(form, error, FIELDS);
       feedback.error(apiErrorMessage(error, t('Enregistrement impossible.')));
     } finally {
       setSaving(false);

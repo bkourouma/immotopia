@@ -97,6 +97,8 @@ function montantAffecte(paiement: RentalPayment): number {
 }
 
 function resteAAffecter(paiement: RentalPayment): number {
+  // Un paiement échoué ou annulé n'a encaissé aucun argent : rien à affecter (BUG-2026-10-02-017).
+  if (paiement.status === 'FAILED' || paiement.status === 'CANCELED') return 0;
   return Number(paiement.amount || 0) - montantAffecte(paiement);
 }
 

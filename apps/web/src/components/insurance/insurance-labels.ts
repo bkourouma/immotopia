@@ -53,6 +53,22 @@ export function policyStatusColor(status: string): string {
   return { UPCOMING: 'blue', ACTIVE: 'green', EXPIRING_SOON: 'orange', EXPIRED: 'red' }[status] ?? 'default';
 }
 
+/**
+ * Nombre de jours avant l'échéance d'une police (`daysToExpiry`, spec 032
+ * FR-002) : « dans 30 jours », « aujourd'hui », « expirée depuis 5 jours »,
+ * « — » pour une police pas encore commencée ou une valeur absente.
+ */
+export function daysToExpiryLabel(status: string, days: number | null | undefined): string {
+  if (days === null || days === undefined || !Number.isFinite(days)) return '—';
+  if (status === 'UPCOMING') return '—';
+  if (days === 0) return t("Expire aujourd'hui");
+  if (days < 0) {
+    const passed = Math.abs(days);
+    return passed === 1 ? t('Expirée depuis 1 jour') : t('Expirée depuis {{n}} jours', { n: passed });
+  }
+  return days === 1 ? t('Dans 1 jour') : t('Dans {{n}} jours', { n: days });
+}
+
 export function claimStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     DECLARED: t('Déclaré'),

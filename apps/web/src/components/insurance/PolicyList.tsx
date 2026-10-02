@@ -3,7 +3,14 @@ import { Button, Popconfirm, Space, Table, Tag } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import type { InsurancePolicyDto } from '../../types/insurance-types';
 import { t } from '../../i18n/t';
-import { coverageLabel, formatAmount, formatDay, policyStatusColor, policyStatusLabel } from './insurance-labels';
+import {
+  coverageLabel,
+  daysToExpiryLabel,
+  formatAmount,
+  formatDay,
+  policyStatusColor,
+  policyStatusLabel
+} from './insurance-labels';
 
 interface Props {
   policies: InsurancePolicyDto[];
@@ -37,6 +44,11 @@ export const PolicyList: React.FC<Props> = ({ policies, canEdit, deletingId, onE
         title: t('Statut'),
         dataIndex: 'status',
         render: (value: string) => <Tag color={policyStatusColor(value)}>{policyStatusLabel(value)}</Tag>
+      },
+      {
+        title: t('Échéance'),
+        dataIndex: 'daysToExpiry',
+        render: (_: number, row: InsurancePolicyDto) => daysToExpiryLabel(row.status, row.daysToExpiry)
       },
       ...(canEdit
         ? [

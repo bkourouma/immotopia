@@ -1390,5 +1390,6 @@
   "Cette entité ne détient aucun bien.": "هذا الكيان لا يملك أي عقار.",
   "Cette échéance est annulée.": "هذا القسط ملغى.",
   "Cette échéance est déjà soldée.": "تمت تسوية هذا القسط بالفعل.",
-  "Le bail de cette échéance n'est pas actif.": "عقد الإيجار الخاص بهذا القسط غير ساري."
+  "Le bail de cette échéance n'est pas actif.": "عقد الإيجار الخاص بهذا القسط غير ساري.",
+  "Cette échéance est encore à l'état de brouillon : émettez-la avant d'envoyer un lien de paiement.": "هذا القسط ما زال مسودة: أصدره قبل إرسال رابط الدفع."
 }

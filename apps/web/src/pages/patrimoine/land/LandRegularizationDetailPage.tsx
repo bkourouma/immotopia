@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { httpStatusOf, landErrorMessage } from './land-errors';
+import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
 import { LandValidationAlert } from './LandValidationAlert';
 import { PageHeader, SkeletonDetail, StateBlock } from '../../../components/primitives';
 import { t } from '../../../i18n/t';
@@ -65,6 +66,7 @@ export const LandRegularizationDetailPage: React.FC = () => {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
   if (isPending) return <SkeletonDetail />;
+  if (httpStatusOf(error) === 403) return <PatrimoineForbidden />;
   if (httpStatusOf(error) === 404) {
     return (
       <StateBlock

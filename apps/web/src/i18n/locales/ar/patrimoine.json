@@ -947,5 +947,17 @@
   "Un e-mail contenant le lien a été envoyé à {{name}}.": "تم إرسال بريد إلكتروني يحتوي على الرابط إلى {{name}}.",
   "Un nouveau lien d’accès sera émis pour {{name}}.": "سيتم إصدار رابط وصول جديد لـ {{name}}.",
   "Valeur estimée, historique des estimations et plus-value latente.": "القيمة التقديرية وسجل التقييمات والربح الرأسمالي الكامن.",
-  "Votre compte doit être rattaché à une agence pour gérer les accès partagés.": "يجب ربط حسابك بوكالة لإدارة الوصول المشترك."
+  "Votre compte doit être rattaché à une agence pour gérer les accès partagés.": "يجب ربط حسابك بوكالة لإدارة الوصول المشترك.",
+  "Expire aujourd'hui": "تنتهي اليوم",
+  "Expirée depuis 1 jour": "انتهت منذ يوم واحد",
+  "Expirée depuis {{n}} jours": "انتهت منذ {{n}} أيام",
+  "Dans 1 jour": "بعد يوم واحد",
+  "Dans {{n}} jours": "بعد {{n}} أيام",
+  "Une pièce est déjà jointe.": "يوجد مستند مرفق بالفعل.",
+  "Sinistre clos : les pièces ne sont plus modifiables.": "المطالبة مغلقة: لم يعد بالإمكان تعديل المستندات.",
+  "Toutes les polices": "جميع الوثائق",
+  "Étape obligatoire": "خطوة إلزامية",
+  "Accès non autorisé": "الوصول غير مصرح به",
+  "Votre rôle ne donne pas accès aux biens ni au patrimoine. Demandez l'accès à un administrateur de l'agence.": "دورك لا يمنح الوصول إلى العقارات أو الممتلكات. اطلب الوصول من مسؤول الوكالة.",
+  "« {{champ}} » : {{valeur}} m² dépasse le maximum plausible ({{max}} m²). Vérifiez la colonne et l’unité.": "«{{champ}}»: ‏{{valeur}} م² يتجاوز الحد الأقصى المعقول ({{max}} م²). تحقق من العمود والوحدة."
 }

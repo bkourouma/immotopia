@@ -146,6 +146,12 @@ describe('Paiements — montant affecté', () => {
     mount([paiement({ allocations: [{ id: 'a1', amount: 400_000 }] })]);
     expect(await screen.findByRole('button', { name: 'Affecter' }, { timeout: 8000 })).toBeInTheDocument();
   });
+
+  it('BUG-017 : un paiement échoué ou annulé n’a rien à affecter', async () => {
+    mount([paiement({ id: 'pay-f', status: 'FAILED' }), paiement({ id: 'pay-c', status: 'CANCELED' })]);
+    await screen.findAllByText('Échoué', {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: 'Affecter' })).not.toBeInTheDocument();
+  });
 });
 
 describe('Paiements — affectation', () => {

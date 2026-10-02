@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Form, Input, InputNumber, Modal, Select } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Form, Input, InputNumber, Modal, Select, Typography } from 'antd';
 import { createInsurancePolicy, updateInsurancePolicy } from '../../services/insurance-service';
+import { uploadDocument } from '../../services/property-service';
 import type { InsuranceCoverageType, InsurancePolicyDto } from '../../types/insurance-types';
-import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
+import { apiErrorMessage, applyApiFieldErrors } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { CurrencyField, DEFAULT_CURRENCY, changedCurrency } from './CurrencyField';
@@ -30,14 +31,28 @@ interface Values {
 
 const day = (value?: string | null) => (value ? value.slice(0, 10) : '');
 
+const FIELDS = [
+  'insurer',
+  'policyNumber',
+  'coverageType',
+  'startDate',
+  'endDate',
+  'annualPremium',
+  'currency',
+  'notes'
+];
+
 /** Création et modification d'une police d'assurance du bien. */
 export const PolicyFormModal: React.FC<Props> = ({ open, tenantId, propertyId, policy, onClose, onSaved }) => {
   const [form] = Form.useForm<Values>();
   const devise = currencyLabel(Form.useWatch('currency', form));
   const [saving, setSaving] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    setFile(null);
     form.resetFields();
     if (policy) {
       form.setFieldsValue({
@@ -58,6 +73,9 @@ export const PolicyFormModal: React.FC<Props> = ({ open, tenantId, propertyId, p
   const submit = async (values: Values) => {
     setSaving(true);
     try {
+      // Pièce justificative (FR-004) : téléversée dans les documents du bien,
+      // puis liée à la police par son identifiant.
+      const document = file ? await uploadDocument(tenantId, propertyId, file, 'INSURANCE', undefined, false) : null;
       const payload = {
         insurer: values.insurer.trim(),
         policyNumber: values.policyNumber.trim(),
@@ -65,7 +83,8 @@ export const PolicyFormModal: React.FC<Props> = ({ open, tenantId, propertyId, p
         startDate: values.startDate,
         endDate: values.endDate,
         annualPremium: values.annualPremium ?? null,
-        notes: values.notes?.trim() || null
+        notes: values.notes?.trim() || null,
+        ...(document?.id ? { documentId: document.id as string } : {})
       };
       // PATCH : la devise n'est envoyée que si elle a changé (409 si la police a des sinistres).
       if (policy) {
@@ -83,6 +102,7 @@ export const PolicyFormModal: React.FC<Props> = ({ open, tenantId, propertyId, p
       feedback.success(policy ? t('Police mise à jour.') : t('Police ajoutée.'));
       onSaved();
     } catch (error) {
+      applyApiFieldErrors(form, error, FIELDS);
       feedback.error(apiErrorMessage(error, t('Enregistrement impossible.')));
     } finally {
       setSaving(false);
@@ -139,6 +159,22 @@ export const PolicyFormModal: React.FC<Props> = ({ open, tenantId, propertyId, p
         <CurrencyField />
         <Form.Item name="notes" label={t('Notes')}>
           <Input.TextArea rows={2} />
+        </Form.Item>
+        <Form.Item label={t('Pièce justificative')}>
+          <input
+            ref={input}
+            type="file"
+            hidden
+            data-testid="policy-file-input"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tiff"
+            onChange={event => setFile(event.target.files?.[0] ?? null)}
+          />
+          <Button onClick={() => input.current?.click()}>{t('Choisir un fichier')}</Button>{' '}
+          {file ? (
+            <Typography.Text type="secondary">{file.name}</Typography.Text>
+          ) : (
+            policy?.documentId && <Typography.Text type="secondary">{t('Une pièce est déjà jointe.')}</Typography.Text>
+          )}
         </Form.Item>
       </Form>
     </Modal>

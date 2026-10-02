@@ -96,4 +96,35 @@ describe('ClaimDocuments', () => {
     expect(String(feedbackError.mock.calls[0][0])).toContain('téléversé dans les documents du bien');
     expect(String(feedbackError.mock.calls[0][0])).toContain('pas pu être rattaché');
   });
+  it('sinistre clos : ni « Ajouter une pièce » ni « Retirer », et un message l’explique', () => {
+    render(
+      <AntApp>
+        <ClaimDocuments
+          tenantId="agence-1"
+          claim={{ ...(CLAIM as object), status: 'CLOSED' } as never}
+          canEdit
+          onChanged={vi.fn()}
+        />
+      </AntApp>
+    );
+    expect(screen.queryByRole('button', { name: /Ajouter une pièce/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('claim-file-input')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retirer/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Sinistre clos : les pièces ne sont plus modifiables.')).toBeInTheDocument();
+    expect(uploadDocument).not.toHaveBeenCalled();
+  });
+
+  it('sinistre rejeté : l’ajout de pièce reste proposé', () => {
+    render(
+      <AntApp>
+        <ClaimDocuments
+          tenantId="agence-1"
+          claim={{ ...(CLAIM as object), status: 'REJECTED' } as never}
+          canEdit
+          onChanged={vi.fn()}
+        />
+      </AntApp>
+    );
+    expect(screen.getByRole('button', { name: /Ajouter une pièce/ })).toBeInTheDocument();
+  });
 });

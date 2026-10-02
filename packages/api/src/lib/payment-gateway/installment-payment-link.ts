@@ -6,6 +6,7 @@ import { AppError, BadRequestError, NotFoundError } from '../../middleware/error
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { roundMoney } from '../finance/money';
+import { computeInstallmentStatus } from '../finance/installment-status';
 import {
   createSecureLink,
   invalidSecureLinkError,
@@ -97,7 +98,7 @@ const PENDING_WINDOW_MS = 15 * 60 * 1000;
 const STATUS_STALE_MS = 10 * 1000;
 const CODE_PAIEMENT_PATTERN = /^IMT-[A-Za-z0-9]{20}$/;
 
-type ContextFailure = 'NOT_FOUND' | 'LEASE_NOT_ACTIVE' | 'CANCELED' | 'SETTLED' | 'ONLINE_UNAVAILABLE';
+type ContextFailure = 'NOT_FOUND' | 'LEASE_NOT_ACTIVE' | 'CANCELED' | 'SETTLED' | 'NOT_ISSUED' | 'ONLINE_UNAVAILABLE';
 
 /**
  * Lit l'échéance (par id ET agence) et vérifie tout ce qui la rend payable :
@@ -131,6 +132,12 @@ async function loadInstallmentContext(
   if (!installment) return { failure: 'NOT_FOUND' };
   if (!installment.lease || installment.lease.status !== 'ACTIVE') return { failure: 'LEASE_NOT_ACTIVE' };
   if (installment.status === 'CANCELED') return { failure: 'CANCELED' };
+  // Spec 039 : un lien ne porte que sur une échéance exigible (DUE, OVERDUE ou
+  // PARTIAL). Statut calculé comme la liste : un brouillon dont la date est passée
+  // est « En retard » ; un brouillon à venir n'est pas encore émis (BUG-2026-10-02-015).
+  if (computeInstallmentStatus(installment, new Date(), { emitDraft: false }) === 'DRAFT') {
+    return { failure: 'NOT_ISSUED' };
+  }
 
   const amountDue = Math.round(roundMoney(resteDuEcheance(installment)));
   if (amountDue <= 0) return { failure: 'SETTLED' };
@@ -164,6 +171,10 @@ function failureToError(failure: ContextFailure): Error {
       return new BadRequestError(t('Cette échéance est annulée.'));
     case 'SETTLED':
       return new BadRequestError(t('Cette échéance est déjà soldée.'));
+    case 'NOT_ISSUED':
+      return new BadRequestError(
+        t("Cette échéance est encore à l'état de brouillon : émettez-la avant d'envoyer un lien de paiement.")
+      );
     case 'ONLINE_UNAVAILABLE':
       return new BadRequestError(t("Le paiement en ligne n'est pas disponible pour cette agence."));
   }
