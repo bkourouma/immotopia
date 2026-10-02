@@ -71,16 +71,26 @@ interface Instance {
 /** Une « instance d'API » : copie isolée des modules, pool de connexions propre. */
 function newInstance(): Instance {
   let instance!: Instance;
-  jest.isolateModules(() => {
-    const token = require('../../src/lib/ai/proposal-token');
-    const execute = require('../../src/lib/ai/actions/execute-rental-document');
-    const database = require('../../src/utils/database');
-    instance = {
-      redeemProposal: token.redeemProposal,
-      executeRentalDocument: execute.executeRentalDocument,
-      disconnect: () => database.prisma.$disconnect()
-    };
-  });
+  // `utils/database` réutilise `globalThis.prisma` hors production : sans cette
+  // remise à zéro, toutes les « instances » partageraient le pool du client de
+  // ce fichier de test au lieu d'avoir chacune le leur.
+  const globals = globalThis as { prisma?: unknown };
+  const sharedClient = globals.prisma;
+  delete globals.prisma;
+  try {
+    jest.isolateModules(() => {
+      const token = require('../../src/lib/ai/proposal-token');
+      const execute = require('../../src/lib/ai/actions/execute-rental-document');
+      const database = require('../../src/utils/database');
+      instance = {
+        redeemProposal: token.redeemProposal,
+        executeRentalDocument: execute.executeRentalDocument,
+        disconnect: () => database.prisma.$disconnect()
+      };
+    });
+  } finally {
+    globals.prisma = sharedClient;
+  }
   return instance;
 }
 
