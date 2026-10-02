@@ -41,7 +41,8 @@ import { generateDocument } from '../../src/services/document-generation-service
 
 const LEASE_ID = '11111111-1111-4111-8111-111111111111';
 
-describe('generateDocument — contrat de bail unique', () => {
+// OBSOLETE (integration PR #63) : un bail peut avoir plusieurs contrats (-A2, -A3), le refus 409 est retire ; voir document-lease-contract-numbering.test.ts. A SUPPRIMER.
+describe.skip('generateDocument — contrat de bail unique', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     rentalLeaseFindFirst.mockResolvedValue({ lease_number: 'BAIL-2026-0001' });

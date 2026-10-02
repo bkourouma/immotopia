@@ -60,6 +60,7 @@ const HABITATION_FIELDS = [
   'DELAI_GRACE',
   'DEPOT_GARANTIE',
   'DESCRIPTION_BIEN',
+  'DEVISE',
   'DUREE_BAIL',
   'EQUIPEMENTS',
   'JOUR_ECHEANCE',
@@ -273,7 +274,8 @@ describe('buildLeaseHabitationContext + contrat_bail_habitation.docx', () => {
     expect(context.DATE_DEBUT_BAIL).toBe('01/01/2026');
     expect(context.DATE_FIN_BAIL).toBe('31/12/2027');
     expect(context.DATE_SIGNATURE).toBe('20/12/2025');
-    // Sans devise : le modele pose « FCFA ».
+    // Sans devise : le modele pose `{{DEVISE}}`.
+    expect(context.DEVISE).toBe('FCFA');
     expect(context.LOYER_MENSUEL).toMatch(/^120\D000$/);
     expect(context.CHARGES_MENSUELLES).toMatch(/^15\D000$/);
     expect(context.DEPOT_GARANTIE).toMatch(/^240\D000$/);
@@ -296,6 +298,8 @@ describe('buildLeaseHabitationContext + contrat_bail_habitation.docx', () => {
     expect(text).toContain('au-delà de 5 jours');
     expect(text).toContain('solde impayé');
     expect(text).not.toContain('par jour de retard');
+    expect(text).not.toContain('faire valider');
+    expect(text).not.toContain('DEVISE');
     expect(text).toContain('Superficie : 45,5 m²');
     expect(text).toContain('Fait à Abidjan, le 20/12/2025');
     expect(text).toContain('Moussa Traoré');
@@ -362,6 +366,24 @@ describe('buildLeaseHabitationContext + contrat_bail_habitation.docx', () => {
     await renderModelText(HABITATION, context);
   });
 
+  it('devise du bail : DEVISE suit la devise du bail (XOF -> FCFA, autre devise telle quelle), rendue par le modele', async () => {
+    rentalLeaseFindFirst.mockResolvedValue({ ...fullLease(), currency: 'XOF' });
+    expect((await buildLeaseHabitationContext('agency-1', 'lease-1')).DEVISE).toBe('FCFA');
+
+    rentalLeaseFindFirst.mockResolvedValue({ ...fullLease(), currency: 'EUR' });
+    const context = await buildLeaseHabitationContext('agency-1', 'lease-1');
+    expect(context.DEVISE).toBe('EUR');
+    const text = await renderModelText(HABITATION, context);
+    expect(text).toContain('120 000 EUR');
+    expect(text).toContain('240 000 EUR');
+    expect(text).not.toContain('FCFA');
+  });
+
+  it('devise absente : FCFA par defaut', async () => {
+    rentalLeaseFindFirst.mockResolvedValue({ ...fullLease(), currency: null });
+    expect((await buildLeaseHabitationContext('agency-1', 'lease-1')).DEVISE).toBe('FCFA');
+  });
+
   it('un bail introuvable leve une erreur', async () => {
     rentalLeaseFindFirst.mockResolvedValue(null);
     await expect(buildLeaseHabitationContext('agency-1', 'nope')).rejects.toThrow('Bail introuvable');
@@ -411,6 +433,9 @@ describe('buildLeaseCommercialContext + contrat_bail_commercial.docx', () => {
     expect(text).toContain('Boutique Awa SARL');
     expect(text).toContain('CI-ABJ-2020-B-12345');
     expect(text).toContain('préavis de 6 mois');
+    expect(text).toContain('solde impayé');
+    expect(text).not.toContain('par jour de retard');
+    expect(text).not.toContain('faire valider');
     expect(text).toContain('durée de 24 mois');
     expect(text).toContain('Fait à Abidjan');
   });
