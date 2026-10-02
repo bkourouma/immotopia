@@ -230,6 +230,8 @@ Pièges et décisions :
 **État :** #55 et #56 fusionnées dans `main` (CI 6/6 verte avant chaque fusion) ; #52 (Patrimoine lot 1) laissée à sa session
 **Dernier commit :** voir `git log -1` sur `main`
 
+**Plan de reprise complet (décisions métier, 11 chantiers parallèles, ordre de fusion) :** [HANDOFF_PLAN_2026-09-29.md](HANDOFF_PLAN_2026-09-29.md) — rien n'a été lancé, le compte de la session est à court de crédit ; à exécuter depuis un autre compte via `/lead`, avant 16 h.
+
 Fait :
 
 - #55 (contrats de bail : champs des modèles DOCX) puis #56 (durcissements de l'audit
