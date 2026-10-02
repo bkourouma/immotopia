@@ -45,7 +45,8 @@ jest.mock('../../src/utils/logger', () => ({
 }));
 
 jest.mock('../../src/services/audit-service', () => ({
-  logAuditEvent: jest.fn()
+  logAuditEvent: jest.fn(),
+  recordAuditEvent: jest.fn()
 }));
 
 const generatePropertyReference = jest.fn();

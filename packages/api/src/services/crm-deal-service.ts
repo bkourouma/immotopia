@@ -1,6 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
+import { diffForAudit } from '../lib/audit/changes';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateDealRequest, UpdateDealRequest, DealFilters, DealDetail } from '../types/crm-types';
 import { CrmDealStage, Prisma } from '@prisma/client';
@@ -426,7 +427,12 @@ export async function updateDeal(tenantId: string, dealId: string, data: UpdateD
       actionKey,
       entityType: CRM_ENTITY_TYPES.DEAL,
       entityId: dealId,
-      payload: changedFields
+      payload: changedFields,
+      // Avant/après : `existingDeal` est la ligne lue avant la mise à jour,
+      // `updateData` ce qui vient d'être écrit.
+      changes: diffForAudit(existingDeal as unknown as Record<string, unknown>, updateData as Record<string, unknown>, {
+        exclude: ['version']
+      })
     });
   }
 

@@ -14,6 +14,7 @@ import { startTenantDataExportExpiryJob } from './jobs/tenant-data-export-expiry
 import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
 import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
+import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
 import { logger } from './utils/logger';
 
 /**
@@ -68,6 +69,8 @@ app.listen(PORT, () => {
     if (env.PATRIMOINE_MONTHLY_REPORT_JOB_ENABLED) startOwnerMonthlyReportJob();
     // Registre des lots : reconciliation quotidienne (mandats echus, derives).
     startLotReconciliationJob();
+    // Journal d'audit (ADR-006, phase 5) : scellement quotidien, purge (opt-in), verification.
+    startAuditMaintenanceJob();
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.
     recoverTenantDataExports().catch(error =>

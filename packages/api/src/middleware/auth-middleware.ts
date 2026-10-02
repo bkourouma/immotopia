@@ -1,6 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt-utils';
 import { t } from '../i18n';
+import { setAuditActor } from '../utils/request-context';
+
+/** Renseigne l'acteur du journal d'audit à partir du jeton vérifié. */
+function recordActor(user: { userId: string; email: string; globalRole: string }): void {
+  setAuditActor({
+    userId: user.userId,
+    label: user.email,
+    type: user.globalRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'USER'
+  });
+}
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   // Deja authentifie pour CETTE requete : on ne recommence pas.
@@ -47,6 +57,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
 
   // Attach user identity to request
   req.user = decoded;
+  recordActor(decoded);
   next();
 };
 
@@ -67,6 +78,7 @@ export const optionalAuthenticate = (req: Request, _res: Response, next: NextFun
     const decoded = verifyToken(token);
     if (decoded) {
       req.user = decoded;
+      recordActor(decoded);
     }
   }
   next();

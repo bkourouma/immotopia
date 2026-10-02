@@ -5,7 +5,7 @@ import { ValidationError } from '../middleware/error-middleware';
 import { AuditActionKey } from '../types/audit-types';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { recordAuditEvent } from './audit-service';
 
 /**
  * Réglage ImmoCopilot de la plateforme (fournisseur, modèle, effort, repli).
@@ -216,30 +216,33 @@ export async function updateAiSettings(input: AiSettingsInput, userId: string): 
   assertSettingsAllowed(data);
 
   const before = await getEffectiveAiConfig();
-  await prisma.platformAiSettings.upsert({
-    where: { id: SETTINGS_ID },
-    create: { id: SETTINGS_ID, ...data, updatedById: userId },
-    update: { ...data, updatedById: userId }
+  // Critical action: audit trace in the same transaction as the settings write.
+  await prisma.$transaction(async tx => {
+    await tx.platformAiSettings.upsert({
+      where: { id: SETTINGS_ID },
+      create: { id: SETTINGS_ID, ...data, updatedById: userId },
+      update: { ...data, updatedById: userId }
+    });
+
+    await recordAuditEvent(tx, {
+      actorUserId: userId,
+      tenantId: null,
+      actionKey: AuditActionKey.AI_SETTINGS_UPDATED,
+      entityType: 'PLATFORM_AI_SETTINGS',
+      entityId: SETTINGS_ID,
+      payload: {
+        before: {
+          provider: before.provider,
+          model: before.model,
+          effort: before.effort,
+          refusalFallback: before.refusalFallback,
+          source: before.source
+        },
+        after: data
+      }
+    });
   });
   invalidateAiConfigCache();
-
-  logAuditEvent({
-    actorUserId: userId,
-    tenantId: null,
-    actionKey: AuditActionKey.AI_SETTINGS_UPDATED,
-    entityType: 'PLATFORM_AI_SETTINGS',
-    entityId: SETTINGS_ID,
-    payload: {
-      before: {
-        provider: before.provider,
-        model: before.model,
-        effort: before.effort,
-        refusalFallback: before.refusalFallback,
-        source: before.source
-      },
-      after: data
-    }
-  });
 
   return getAiSettingsView();
 }

@@ -61,6 +61,7 @@ function tenantFieldOf(model: DmmfModel): string | undefined {
 const GLOBAL_MODELS = new Set([
   'User', // Un compte peut appartenir a plusieurs agences (Membership) : pas d'agence unique.
   'Tenant', // L'agence elle-meme.
+  'AuditSeal', // Scellés quotidiens du journal d'audit (phase 5) : une ligne par partition (agence ou plateforme), lue par la seule plateforme ; la clé d'agence est une chaîne de scellement, pas un tenantId.
   'RefreshToken', // Rattache a un User, pas a une agence.
   'PasswordResetToken', // Rattache a un User.
   'EmailVerificationToken', // Rattache a un User.

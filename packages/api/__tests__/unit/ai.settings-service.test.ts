@@ -10,15 +10,24 @@ jest.mock('../../src/config/env', () => ({
   fakeProviderAllowed: () => !mockIsProd
 }));
 
-const mockPrisma = {
-  platformAiSettings: { findUnique: jest.fn(), upsert: jest.fn() }
+const mockPrisma: {
+  platformAiSettings: { findUnique: jest.Mock; upsert: jest.Mock };
+  $transaction: jest.Mock;
+} = {
+  platformAiSettings: { findUnique: jest.fn(), upsert: jest.fn() },
+  // Le faux client de transaction est le faux Prisma lui-meme (verifie par identite).
+  $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockPrisma))
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 const mockLogAudit = jest.fn();
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (...a: unknown[]) => mockLogAudit(...a) }));
+const mockRecordAudit = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (...a: unknown[]) => mockLogAudit(...a),
+  recordAuditEvent: (...a: unknown[]) => mockRecordAudit(...a)
+}));
 
 import {
   aiSettingsInputSchema,
@@ -147,8 +156,11 @@ describe('updateAiSettings', () => {
     // Cache invalidé : la lecture suivante voit la base.
     expect(view.source).toBe('database');
     expect(view.updatedByName).toBe('Awa Diallo');
-    expect(mockLogAudit).toHaveBeenCalledTimes(1);
-    const entry = mockLogAudit.mock.calls[0][0];
+    // Action critique : evenement ecrit dans la transaction, jamais via la file asynchrone.
+    expect(mockLogAudit).not.toHaveBeenCalled();
+    expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+    expect(mockRecordAudit.mock.calls[0][0]).toBe(mockPrisma);
+    const entry = mockRecordAudit.mock.calls[0][1];
     expect(entry).toMatchObject({ actorUserId: 'user-1', actionKey: 'AI_SETTINGS_UPDATED', entityId: 'default' });
     const serialized = JSON.stringify(entry);
     expect(serialized).not.toContain(SECRET);

@@ -23,7 +23,7 @@ jest.mock('../../src/utils/database', () => ({ prisma: p }));
 jest.mock('../../src/utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 jest.mock('../../src/services/property-template-service', () => ({
   validatePropertyData: jest.fn(),
   getTemplateByType: jest.fn(),
@@ -36,9 +36,12 @@ jest.mock('../../src/services/own-assets-barrier-service', () => ({
 }));
 
 import { deleteProperty } from '../../src/services/property-service';
+import { logAuditEvent, recordAuditEvent } from '../../src/services/audit-service';
 import { ConflictError } from '../../src/middleware/error-middleware';
 
 const TENANT = 'tenant-1';
+
+const txClient = { property: p.property };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -66,7 +69,7 @@ beforeEach(() => {
   p.saleAgreement.count.mockResolvedValue(0);
   p.propertyVisit.count.mockResolvedValue(0);
   p.propertyDocument.count.mockResolvedValue(0);
-  p.$transaction.mockImplementation(async (cb: any) => cb({ property: p.property }));
+  p.$transaction.mockImplementation(async (cb: any) => cb(txClient));
   p.property.delete.mockResolvedValue({});
 });
 
@@ -83,6 +86,12 @@ describe('deleteProperty — blocages', () => {
   it('sans dépendance, supprime', async () => {
     await deleteProperty('b1', TENANT, 'u1', 'u1');
     expect(p.property.delete).toHaveBeenCalled();
+    // Action critique : tracee dans la transaction de suppression (tx), pas en file asynchrone.
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      txClient,
+      expect.objectContaining({ actionKey: 'PROPERTY_DELETED', entityId: 'b1', actorUserId: 'u1', tenantId: TENANT })
+    );
+    expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
   it('bail actif : 409 avec la référence du bail', async () => {

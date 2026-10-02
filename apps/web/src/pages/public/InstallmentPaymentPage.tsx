@@ -108,7 +108,7 @@ export const InstallmentPaymentPage: React.FC = () => {
     const previousTitle = document.title;
     document.title = t('Paiement du loyer');
     const removeMeta = installMeta([
-      { name: 'robots', content: 'noindex, nofollow' },
+      { name: 'robots', content: t('noindex, nofollow') },
       { name: 'referrer', content: 'no-referrer' }
     ]);
     return () => {

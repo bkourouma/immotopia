@@ -5,8 +5,7 @@ import { logger } from '../../utils/logger';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
-import { logAuditEvent, flushAuditEvents } from '../../services/audit-service';
-import { AuditActionKey } from '../../types/audit-types';
+import { MARKER_KIND, alreadyMarkedEntityIds, markNotified } from '../notification-markers';
 import { applyTemplate, escapeHtml } from './notification-channels';
 import { translateStepLabel, translateTrackLabel } from './land/tracks';
 import { startOfUtcDay } from './land/transitions';
@@ -76,20 +75,6 @@ async function resolveAgencyAdminRecipients(tenantId: string): Promise<AgencyAdm
 /** Marque composee id + echeance : une echeance deplacee peut redeclencher une relance. */
 function dateAlertKey(entityId: string, date: Date): string {
   return `${entityId}::${date.toISOString().slice(0, 10)}`;
-}
-
-async function alreadyAlertedKeys(tenantId: string, candidateKeys: string[]): Promise<Set<string>> {
-  if (candidateKeys.length === 0) return new Set();
-  const rows = await prisma.auditLog.findMany({
-    where: {
-      tenantId,
-      actionKey: AuditActionKey.PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT,
-      entityType: 'LandRegularizationStep',
-      entityId: { in: candidateKeys }
-    },
-    select: { entityId: true }
-  });
-  return new Set(rows.map(row => row.entityId));
 }
 
 /** Jours de retard : jours calendaires UTC entre l'echeance et aujourd'hui (>= 1 par construction). */
@@ -176,16 +161,13 @@ async function sendToRecipients(
   return delivered;
 }
 
-/** Pose la marque anti-doublon de l'etape (flush immediat : fenetre de perte bornee a une etape). */
+/** Pose la marque anti-doublon de l'etape (immediate : renvoi borne a une etape en cas de plantage). */
 async function markAlerted(tenantId: string, step: DatedOverdueStep, alertKey: string): Promise<void> {
-  logAuditEvent({
-    tenantId,
-    actionKey: AuditActionKey.PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT,
-    entityType: 'LandRegularizationStep',
-    entityId: alertKey,
-    payload: { stepId: step.id, regularizationId: step.regularization.id, dueDate: step.dueDate.toISOString() }
+  await markNotified(tenantId, MARKER_KIND.landStepOverdue, 'LandRegularizationStep', alertKey, {
+    stepId: step.id,
+    regularizationId: step.regularization.id,
+    dueDate: step.dueDate.toISOString()
   });
-  await flushAuditEvents();
 }
 
 type StepOutcome = 'sent' | 'skippedNoRecipient' | 'skippedAlreadySent' | 'failed';
@@ -220,8 +202,10 @@ async function buildContext(
 ): Promise<AlertContext> {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
   const recipients = await resolveAgencyAdminRecipients(tenantId);
-  const alreadySent = await alreadyAlertedKeys(
+  const alreadySent = await alreadyMarkedEntityIds(
     tenantId,
+    MARKER_KIND.landStepOverdue,
+    'LandRegularizationStep',
     steps.map(step => dateAlertKey(step.id, step.dueDate))
   );
   return { tenantId, today, config, agencyName: tenant?.name ?? '', recipients, alreadySent };
@@ -253,7 +237,6 @@ export async function alertOverdueLandSteps(tenantId: string, options?: { now?: 
     report[await alertOneStep(context, step)] += 1;
   }
 
-  await flushAuditEvents();
   logger.info('alertOverdueLandSteps completed', { tenantId, ...report });
   return report;
 }

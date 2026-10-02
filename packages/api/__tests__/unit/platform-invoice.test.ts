@@ -161,7 +161,7 @@ jest.mock('../../src/utils/database', () => ({
   }
 }));
 jest.mock('../../src/services/email-service', () => ({ emailService: { sendEmail: jest.fn(async () => undefined) } }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 
 const mockPreview = jest.fn();
 const mockCatalog = new Map<string, Row>([
@@ -173,6 +173,7 @@ jest.mock('../../src/services/subscription-v2-service', () => ({
   loadCatalogByCodes: jest.fn(async (_db: unknown, codes: string[]) => new Map([...mockCatalog].filter(([c]) => codes.includes(c))))
 }));
 
+import { logAuditEvent, recordAuditEvent } from '../../src/services/audit-service';
 import {
   dueOverageWindows,
   generateInvoiceForPeriod,
@@ -503,6 +504,16 @@ describe('avoir et retard', () => {
     expect(note.paymentMethod).toBe('COMPENSATION');
     expect(original.status).toBe('CANCELED');
     expect(original.cancelReason).toBe('Erreur de pack');
+    // Actions critiques : tracees DANS la transaction (tx), pas en file asynchrone.
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockFake,
+      expect.objectContaining({ actionKey: 'INVOICE_CREDIT_NOTE_ISSUED', entityId: note.id, actorUserId: 'admin-1' })
+    );
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockFake,
+      expect.objectContaining({ actionKey: 'INVOICE_CANCELED', entityId: original.id })
+    );
+    expect(logAuditEvent).not.toHaveBeenCalledWith(expect.objectContaining({ actionKey: 'INVOICE_CANCELED' }));
     const repending = mockDb.lines.filter(l => l.invoiceId === null && l.kind === 'PRORATA');
     expect(repending).toHaveLength(1);
     expect(repending[0].metadata.reissuedFromInvoiceId).toBe(original.id);

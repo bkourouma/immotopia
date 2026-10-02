@@ -7,13 +7,17 @@
  */
 
 const ownerStatementFindFirst = jest.fn();
-const auditLogFindMany = jest.fn();
+const markerFindMany = jest.fn();
+const markerCreate = jest.fn();
 const tenantFindUnique = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     ownerStatement: { findFirst: (...a: any[]) => ownerStatementFindFirst(...a) },
-    auditLog: { findMany: (...a: any[]) => auditLogFindMany(...a) },
+    notificationMarker: {
+      findMany: (...a: any[]) => markerFindMany(...a),
+      create: (...a: any[]) => markerCreate(...a)
+    },
     tenant: { findUnique: (...a: any[]) => tenantFindUnique(...a) }
   }
 }));
@@ -90,7 +94,8 @@ function statementRow(ownerOverrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   ownerStatementFindFirst.mockResolvedValue(statementRow());
-  auditLogFindMany.mockResolvedValue([]);
+  markerFindMany.mockResolvedValue([]);
+  markerCreate.mockResolvedValue({});
   tenantFindUnique.mockResolvedValue({ name: 'Agence Koumassi' });
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   getWhatsappNotificationConfig.mockResolvedValue({
@@ -208,6 +213,7 @@ describe('sendOwnerMonthlyReport', () => {
 
     expect(result).toEqual({ sent: false, channel: null, reason: 'SEND_FAILED' });
     expect(revokeSecureLink).toHaveBeenCalledWith(TENANT, 'link-1', 'user-9');
+    expect(markerCreate).not.toHaveBeenCalled();
     expect(logAuditEvent).not.toHaveBeenCalled();
   });
 
@@ -223,30 +229,41 @@ describe('sendOwnerMonthlyReport', () => {
   });
 
   it('anti-doublon : un relevé déjà envoyé n’est pas renvoyé, aucun lien créé', async () => {
-    auditLogFindMany.mockResolvedValue([{ entityId: STATEMENT }]);
+    markerFindMany.mockResolvedValue([{ entityId: STATEMENT }]);
 
     const result = await sendOwnerMonthlyReport(STATEMENT, TENANT);
 
     expect(result).toEqual({ sent: false, channel: null, reason: 'ALREADY_SENT' });
-    expect(auditLogFindMany.mock.calls[0][0].where).toMatchObject({
+    expect(markerFindMany.mock.calls[0][0].where).toMatchObject({
       tenantId: TENANT,
-      actionKey: AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT,
+      kind: 'PATRIMOINE_OWNER_MONTHLY_REPORT_SENT',
       entityType: 'OwnerStatement'
     });
     expect(createSecureLink).not.toHaveBeenCalled();
   });
 
   it('envoi manuel (force) : ignore l’anti-doublon', async () => {
-    auditLogFindMany.mockResolvedValue([{ entityId: STATEMENT }]);
+    markerFindMany.mockResolvedValue([{ entityId: STATEMENT }]);
 
     const result = await sendOwnerMonthlyReport(STATEMENT, TENANT, { force: true });
 
     expect(result.sent).toBe(true);
-    expect(auditLogFindMany).not.toHaveBeenCalled();
+    expect(markerFindMany).not.toHaveBeenCalled();
   });
 
-  it('succès : pose la marque anti-doublon (clé = id du relevé) sans jeton ni URL', async () => {
+  it('succès : pose la marque anti-doublon (clé = id du relevé) et la trace d’audit, sans jeton ni URL', async () => {
     await sendOwnerMonthlyReport(STATEMENT, TENANT, { actorUserId: 'user-9' });
+
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: TENANT,
+        kind: 'PATRIMOINE_OWNER_MONTHLY_REPORT_SENT',
+        entityType: 'OwnerStatement',
+        entityId: STATEMENT,
+        payload: { statementId: STATEMENT, period: '2026-09', channel: 'EMAIL' }
+      })
+    });
+    expect(JSON.stringify(markerCreate.mock.calls)).not.toContain(SECRET_TOKEN);
 
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({

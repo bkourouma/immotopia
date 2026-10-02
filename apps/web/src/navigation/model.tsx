@@ -657,7 +657,8 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               key: 'agence-finance-settings',
               label: t('Paramètres financiers'),
               href: '/tenant/:tenantId/settings/finance'
-            }
+            },
+            { key: 'agence-activity', label: t("Journal d'activité"), href: '/tenant/:tenantId/activity' }
           ]
         }
       ]

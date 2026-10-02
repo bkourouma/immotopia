@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { TenantStatus } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { runWithTenantContext } from '../utils/tenant-context';
+import { setAuditActor } from '../utils/request-context';
 import { AppError, ForbiddenError, UnauthorizedError } from './error-middleware';
 import { readCoOwnerContactIds, resolveCoOwnerScope, type CoOwnerPortalScope } from '../lib/syndics/coowner-portal';
 
@@ -106,6 +107,8 @@ export const requireCoOwnerPortalAccess = async (req: Request, _res: Response, n
     }
 
     const chosen = selected;
+    // Les événements d'audit de cette requête sont ceux d'un portail, pas d'un collaborateur.
+    setAuditActor({ type: 'PORTAL' });
     await runWithTenantContext({ tenantId: chosen.tenantId, userId, isSuperAdmin: false }, async () => {
       const scope = await resolveCoOwnerScope(chosen.tenantId, chosen.contactIds);
       if (scope.lotIds.length === 0) {

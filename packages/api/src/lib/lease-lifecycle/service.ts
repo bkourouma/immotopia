@@ -2,7 +2,7 @@ import { LeaseEventType, Prisma, RentalInstallmentStatus, RentalLeaseStatus } fr
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
-import { logAuditEvent } from '../../services/audit-service';
+import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { badRequest, conflict, notFound } from '../errors';
 import { roundMoney } from '../finance/money';
 import { buildInstallmentForPeriod } from '../finance/installment-builder';
@@ -117,6 +117,25 @@ function audit(
   payload: unknown
 ) {
   logAuditEvent({
+    actorUserId: actorUserId ?? null,
+    tenantId,
+    actionKey,
+    entityType: 'RENTAL_LEASE',
+    entityId: leaseId,
+    payload: payload as Record<string, unknown>
+  } as any);
+}
+
+/** Variante transactionnelle de `audit` : pour les actions critiques (pas de commit sans trace). */
+async function auditTx(
+  tx: Parameters<typeof recordAuditEvent>[0],
+  actorUserId: string | undefined,
+  tenantId: string,
+  leaseId: string,
+  actionKey: string,
+  payload: unknown
+) {
+  await recordAuditEvent(tx, {
     actorUserId: actorUserId ?? null,
     tenantId,
     actionKey,
@@ -615,7 +634,7 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
       );
     }
 
-    return tx.leaseEvent.create({
+    const terminationEvent = await tx.leaseEvent.create({
       data: {
         tenantId,
         leaseId,
@@ -631,9 +650,11 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
         createdByUserId: actorUserId ?? null
       }
     });
+    // Critical action: audit trail written in the same transaction.
+    await auditTx(tx, actorUserId, tenantId, leaseId, 'RENTAL_LEASE_TERMINATED', input);
+    return terminationEvent;
   });
 
-  audit(actorUserId, tenantId, leaseId, 'RENTAL_LEASE_TERMINATED', input);
   return eventDto(event);
 }
 

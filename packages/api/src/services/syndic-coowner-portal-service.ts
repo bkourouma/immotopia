@@ -7,7 +7,7 @@ import { frontendUrl } from '../config/env';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import { COOWNER_CONTACT_IDS_KEY, readCoOwnerContactIds } from '../lib/syndics/coowner-portal';
 import { emailService, isEmailDeliveryConfigured } from './email-service';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { isLanguage } from '../i18n';
 
@@ -431,18 +431,18 @@ export async function revokeCoOwnerPortalAccess(params: {
         data: { portalAccessEnabled: false, portalAccessToken: null }
       });
     }
+    // Critical action: audit trail written in the same transaction.
+    if (params.actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId: params.actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED,
+        entityType: 'LotOwnerProfile',
+        entityId: profile.id,
+        payload: { contactId: contact.id, closedLots: profiles.length, unlinkedAccounts: clients.length }
+      });
+    }
   });
-
-  if (params.actorUserId) {
-    logAuditEvent({
-      actorUserId: params.actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED,
-      entityType: 'LotOwnerProfile',
-      entityId: profile.id,
-      payload: { contactId: contact.id, closedLots: profiles.length, unlinkedAccounts: clients.length }
-    });
-  }
 
   return { closedLots: profiles.length, unlinkedAccounts: clients.length };
 }

@@ -10,7 +10,8 @@
 const rentalLeaseFindMany = jest.fn();
 const propertyDocumentFindMany = jest.fn();
 const propertyDocumentUpdateMany = jest.fn();
-const auditLogFindMany = jest.fn();
+const markerFindMany = jest.fn();
+const markerCreate = jest.fn();
 const tenantFindUnique = jest.fn();
 const propertyOwnershipShareFindMany = jest.fn();
 const tenantClientFindFirst = jest.fn();
@@ -27,7 +28,10 @@ jest.mock('../../src/utils/database', () => ({
       findMany: (...a: any[]) => propertyDocumentFindMany(...a),
       updateMany: (...a: any[]) => propertyDocumentUpdateMany(...a)
     },
-    auditLog: { findMany: (...a: any[]) => auditLogFindMany(...a) },
+    notificationMarker: {
+      findMany: (...a: any[]) => markerFindMany(...a),
+      create: (...a: any[]) => markerCreate(...a)
+    },
     tenant: { findUnique: (...a: any[]) => tenantFindUnique(...a) },
     propertyOwnershipShare: { findMany: (...a: any[]) => propertyOwnershipShareFindMany(...a) },
     tenantClient: {
@@ -120,7 +124,8 @@ beforeEach(() => {
   whatsappConfigFindMany.mockResolvedValue([]);
   sendWhatsappNotification.mockResolvedValue(true);
   sendEmail.mockResolvedValue(undefined);
-  auditLogFindMany.mockResolvedValue([]);
+  markerFindMany.mockResolvedValue([]);
+  markerCreate.mockResolvedValue({});
   tenantFindUnique.mockResolvedValue({ name: 'Agence' });
   tenantClientFindFirst.mockResolvedValue(null);
   propertyDocumentUpdateMany.mockResolvedValue({ count: 1 });

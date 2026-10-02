@@ -2,12 +2,13 @@
  * `lib/patrimoine/land-alerts.ts` — `alertOverdueLandSteps` (spec 033, lot B2).
  *
  * Mock à la frontière `utils/database` (`.claude/rules/testing.md`) ; config
- * des notifications, envoi d'e-mail et audit sont mockés : aucun envoi réel.
+ * des notifications et envoi d'e-mail sont mockés : aucun envoi réel.
  * Chaque factory couvre tous les exports utilisés par le fichier testé.
  */
 
 const landRegularizationStepFindMany = jest.fn();
-const auditLogFindMany = jest.fn();
+const markerFindMany = jest.fn();
+const markerCreate = jest.fn();
 const tenantFindUnique = jest.fn();
 const roleFindUnique = jest.fn();
 const userRoleFindMany = jest.fn();
@@ -16,7 +17,10 @@ const userFindMany = jest.fn();
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     landRegularizationStep: { findMany: (...a: any[]) => landRegularizationStepFindMany(...a) },
-    auditLog: { findMany: (...a: any[]) => auditLogFindMany(...a) },
+    notificationMarker: {
+      findMany: (...a: any[]) => markerFindMany(...a),
+      create: (...a: any[]) => markerCreate(...a)
+    },
     tenant: { findUnique: (...a: any[]) => tenantFindUnique(...a) },
     role: { findUnique: (...a: any[]) => roleFindUnique(...a) },
     userRole: { findMany: (...a: any[]) => userRoleFindMany(...a) },
@@ -34,14 +38,6 @@ jest.mock('../../src/services/email-service', () => ({
   emailService: { sendEmail: (...a: any[]) => sendEmail(...a) }
 }));
 
-const logAuditEvent = jest.fn();
-const flushAuditEvents = jest.fn();
-jest.mock('../../src/services/audit-service', () => ({
-  logAuditEvent: (...a: any[]) => logAuditEvent(...a),
-  flushAuditEvents: (...a: any[]) => flushAuditEvents(...a)
-}));
-
-import { AuditActionKey } from '../../src/types/audit-types';
 import { env } from '../../src/config/env';
 import { alertOverdueLandSteps } from '../../src/lib/patrimoine/land-alerts';
 
@@ -73,8 +69,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   sendEmail.mockResolvedValue(undefined);
-  auditLogFindMany.mockResolvedValue([]);
-  flushAuditEvents.mockResolvedValue(0);
+  markerFindMany.mockResolvedValue([]);
+  markerCreate.mockResolvedValue({});
   tenantFindUnique.mockResolvedValue({ name: 'Agence Koumassi', contactEmail: null });
   roleFindUnique.mockResolvedValue(null);
   userRoleFindMany.mockResolvedValue([]);
@@ -101,16 +97,15 @@ describe('alertOverdueLandSteps', () => {
     expect(mail.html).toContain('05/10/2026');
     expect(mail.html).toContain('Agence Koumassi');
     expect(mail.html).toContain(`${env.FRONTEND_URL.replace(/\/+$/, '')}/tenant/${TENANT}/patrimoine/land/reg-1`);
-    expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         tenantId: TENANT,
-        actionKey: AuditActionKey.PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT,
+        kind: 'PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT',
         entityType: 'LandRegularizationStep',
         entityId: 'step-1::2026-10-05',
         payload: expect.objectContaining({ stepId: 'step-1', regularizationId: 'reg-1' })
       })
-    );
-    expect(flushAuditEvents).toHaveBeenCalled();
+    });
   });
 
   it("ne demande à la base que les étapes A_FAIRE/EN_COURS échues avant le début du jour UTC, d'un dossier EN_COURS du bon tenant", async () => {
@@ -162,7 +157,7 @@ describe('alertOverdueLandSteps', () => {
 
     expect(report).toEqual({ matched: 0, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 });
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it('ignore par prudence une étape sans échéance renvoyée par la base', async () => {
@@ -195,17 +190,17 @@ describe('alertOverdueLandSteps', () => {
 
   it('deuxième passage : une étape déjà alertée pour la même échéance est ignorée', async () => {
     landRegularizationStepFindMany.mockResolvedValue([baseStep()]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'step-1::2026-10-05' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'step-1::2026-10-05' }]);
 
     const report = await alertOverdueLandSteps(TENANT, { now: NOW });
 
     expect(report).toEqual({ matched: 1, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 1, failed: 0 });
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).not.toHaveBeenCalled();
-    expect(auditLogFindMany).toHaveBeenCalledWith({
+    expect(markerCreate).not.toHaveBeenCalled();
+    expect(markerFindMany).toHaveBeenCalledWith({
       where: {
         tenantId: TENANT,
-        actionKey: AuditActionKey.PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT,
+        kind: 'PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT',
         entityType: 'LandRegularizationStep',
         entityId: { in: ['step-1::2026-10-05'] }
       },
@@ -215,12 +210,14 @@ describe('alertOverdueLandSteps', () => {
 
   it('échéance déplacée : une nouvelle relance part pour la nouvelle date', async () => {
     landRegularizationStepFindMany.mockResolvedValue([baseStep({ dueDate: new Date('2026-10-08T00:00:00.000Z') })]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'step-1::2026-10-05' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'step-1::2026-10-05' }]);
 
     const report = await alertOverdueLandSteps(TENANT, { now: NOW });
 
     expect(report).toEqual({ matched: 1, sent: 1, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 });
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'step-1::2026-10-08' }));
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ entityId: 'step-1::2026-10-08' })
+    });
   });
 
   it('aucun destinataire : étape comptée, non marquée (retentée le lendemain)', async () => {
@@ -232,7 +229,7 @@ describe('alertOverdueLandSteps', () => {
 
     expect(report).toEqual({ matched: 1, sent: 0, skippedNoRecipient: 1, skippedAlreadySent: 0, failed: 0 });
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it("repli sur l'e-mail de contact de l'agence sans administrateur actif", async () => {
@@ -253,8 +250,10 @@ describe('alertOverdueLandSteps', () => {
     const report = await alertOverdueLandSteps(TENANT, { now: NOW });
 
     expect(report).toEqual({ matched: 2, sent: 1, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 1 });
-    expect(logAuditEvent).toHaveBeenCalledTimes(1);
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'step-2::2026-10-05' }));
+    expect(markerCreate).toHaveBeenCalledTimes(1);
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ entityId: 'step-2::2026-10-05' })
+    });
   });
 
   it("un échec d'envoi vers un administrateur n'empêche pas les autres, et l'étape compte comme envoyée", async () => {
@@ -285,11 +284,13 @@ describe('alertOverdueLandSteps', () => {
     expect(getEmailNotificationConfig).toHaveBeenCalledWith('tenant-2', 'LAND_STEP_OVERDUE_ALERT');
     expect(landRegularizationStepFindMany.mock.calls[0][0].where.tenantId).toBe('tenant-2');
     expect(landRegularizationStepFindMany.mock.calls[0][0].where.regularization.tenantId).toBe('tenant-2');
-    expect(auditLogFindMany.mock.calls[0][0].where.tenantId).toBe('tenant-2');
+    expect(markerFindMany.mock.calls[0][0].where.tenantId).toBe('tenant-2');
     expect(userRoleFindMany.mock.calls[0][0].where.tenantId).toBe('tenant-2');
     expect(sendEmail.mock.calls[0][0].tenantId).toBe('tenant-2');
     expect(sendEmail.mock.calls[0][0].html).toContain('/tenant/tenant-2/patrimoine/land/reg-1');
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-2' }));
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tenantId: 'tenant-2' })
+    });
   });
 
   it('utilise le gabarit personnalisé de l’agence quand il existe', async () => {

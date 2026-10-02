@@ -3,8 +3,7 @@ import { logger } from '../../utils/logger';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
-import { logAuditEvent, flushAuditEvents } from '../../services/audit-service';
-import { AuditActionKey } from '../../types/audit-types';
+import { MARKER_KIND, alreadyMarkedEntityIds, markNotified, type MarkerKind } from '../notification-markers';
 import { applyTemplate, escapeHtml } from './notification-channels';
 import { MAINTENANCE_LOG_CATEGORY_LABELS } from './insurance/labels';
 
@@ -113,24 +112,10 @@ async function resolveAgencyAdminRecipients(tenantId: string): Promise<AdminReci
   return tenant?.contactEmail ? [{ email: tenant.contactEmail, fullName: tenant.name }] : [];
 }
 
-async function alreadyAlertedKeys(
-  tenantId: string,
-  actionKey: AuditActionKey,
-  entityType: string,
-  keys: string[]
-): Promise<Set<string>> {
-  if (keys.length === 0) return new Set();
-  const rows = await prisma.auditLog.findMany({
-    where: { tenantId, actionKey, entityType, entityId: { in: keys } },
-    select: { entityId: true }
-  });
-  return new Set(rows.map(row => row.entityId));
-}
-
 type AlertConfig = Awaited<ReturnType<typeof getEmailNotificationConfig>>;
 
 interface BatchTarget {
-  actionKey: AuditActionKey;
+  kind: MarkerKind;
   entityType: string;
   caller: string;
 }
@@ -174,7 +159,7 @@ async function deliverItem(
   return delivered;
 }
 
-/** Cœur commun aux deux alertes : anti-doublon, envoi, marque d'audit immédiate. */
+/** Cœur commun aux deux alertes : anti-doublon, envoi, marque anti-doublon immédiate. */
 async function processItems(
   tenantId: string,
   items: AlertItem[],
@@ -182,7 +167,7 @@ async function processItems(
   daysAhead: number,
   config: AlertConfig
 ): Promise<InsuranceAlertResult> {
-  const alreadySent = await alreadyAlertedKeys(tenantId, target.actionKey, target.entityType, items.map(alertKey));
+  const alreadySent = await alreadyMarkedEntityIds(tenantId, target.kind, target.entityType, items.map(alertKey));
   const recipients = await resolveAgencyAdminRecipients(tenantId);
   const result = { ...emptyResult(), matched: items.length };
 
@@ -194,21 +179,17 @@ async function processItems(
       result.skippedNoRecipient += 1;
     } else if ((await deliverItem(tenantId, item, recipients, config, target.caller)) > 0) {
       result.sent += 1;
-      logAuditEvent({
-        tenantId,
-        actionKey: target.actionKey,
-        entityType: target.entityType,
-        entityId: key,
-        payload: { id: item.id, kind: item.kind, dueDate: item.date.toISOString() }
+      // Marque immédiate : borne le renvoi, en cas de plantage, à une seule échéance.
+      await markNotified(tenantId, target.kind, target.entityType, key, {
+        id: item.id,
+        kind: item.kind,
+        dueDate: item.date.toISOString()
       });
-      // Flush immédiat : borne la perte en cas de plantage à une seule échéance.
-      await flushAuditEvents();
     } else {
       result.failed += 1;
     }
   }
 
-  await flushAuditEvents();
   logger.info(`${target.caller} completed`, { tenantId, daysAhead, ...result });
   return result;
 }
@@ -244,7 +225,7 @@ export async function alertExpiringInsurancePolicies(
     tenantId,
     items,
     {
-      actionKey: AuditActionKey.PATRIMOINE_INSURANCE_POLICY_ALERT_SENT,
+      kind: MARKER_KIND.insurancePolicy,
       entityType: 'InsurancePolicy',
       caller: 'alertExpiringInsurancePolicies'
     },
@@ -295,7 +276,7 @@ export async function alertMaintenanceDeadlines(
     tenantId,
     items,
     {
-      actionKey: AuditActionKey.PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT,
+      kind: MARKER_KIND.maintenanceDue,
       entityType: 'MaintenanceLogEntry',
       caller: 'alertMaintenanceDeadlines'
     },

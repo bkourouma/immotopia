@@ -4,14 +4,15 @@
  *
  * Mock à la frontière `utils/database`, comme l'exige `.claude/rules/testing.md`
  * pour un test de service ; les autres dépendances (config des notifications,
- * envoi d'e-mail, audit) sont aussi mockées, chaque factory couvrant tous les
+ * envoi d'e-mail, WhatsApp) sont aussi mockées, chaque factory couvrant tous les
  * exports utilisés par le fichier testé (AGENTS.md).
  */
 
 const rentalLeaseFindMany = jest.fn();
 const propertyLoanFindMany = jest.fn();
 const workProgramFindMany = jest.fn();
-const auditLogFindMany = jest.fn();
+const markerFindMany = jest.fn();
+const markerCreate = jest.fn();
 const tenantFindUnique = jest.fn();
 const roleFindUnique = jest.fn();
 const userRoleFindMany = jest.fn();
@@ -32,8 +33,9 @@ jest.mock('../../src/utils/database', () => ({
     workProgram: {
       findMany: (...a: any[]) => workProgramFindMany(...a)
     },
-    auditLog: {
-      findMany: (...a: any[]) => auditLogFindMany(...a)
+    notificationMarker: {
+      findMany: (...a: any[]) => markerFindMany(...a),
+      create: (...a: any[]) => markerCreate(...a)
     },
     tenant: {
       findUnique: (...a: any[]) => tenantFindUnique(...a)
@@ -83,14 +85,6 @@ jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
   sendWhatsappNotification: (...a: any[]) => sendWhatsappNotification(...a)
 }));
 
-const logAuditEvent = jest.fn();
-const flushAuditEvents = jest.fn();
-jest.mock('../../src/services/audit-service', () => ({
-  logAuditEvent: (...a: any[]) => logAuditEvent(...a),
-  flushAuditEvents: (...a: any[]) => flushAuditEvents(...a)
-}));
-
-import { AuditActionKey } from '../../src/types/audit-types';
 import { alertExpiringLeases, alertLoanMaturity, alertUpcomingWorks } from '../../src/lib/patrimoine/notifications';
 
 const TENANT = 'tenant-1';
@@ -102,8 +96,8 @@ beforeEach(() => {
   sendWhatsappNotification.mockResolvedValue(true);
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   sendEmail.mockResolvedValue(undefined);
-  auditLogFindMany.mockResolvedValue([]);
-  flushAuditEvents.mockResolvedValue(0);
+  markerFindMany.mockResolvedValue([]);
+  markerCreate.mockResolvedValue({});
   tenantFindUnique.mockResolvedValue({ name: 'Agence Koumassi', contactEmail: null });
   roleFindUnique.mockResolvedValue(null);
   userRoleFindMany.mockResolvedValue([]);
@@ -145,16 +139,15 @@ describe('alertExpiringLeases', () => {
     expect(report).toEqual({ matched: 1, sent: 1, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 });
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail.mock.calls[0][0]).toMatchObject({ to: 'owner@example.com', tenantId: TENANT });
-    expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         tenantId: TENANT,
-        actionKey: AuditActionKey.PATRIMOINE_LEASE_END_ALERT_SENT,
+        kind: 'PATRIMOINE_LEASE_END_ALERT_SENT',
         entityType: 'RentalLease',
         entityId: 'lease-1::2026-10-15',
         payload: expect.objectContaining({ leaseId: 'lease-1' })
       })
-    );
-    expect(flushAuditEvents).toHaveBeenCalled();
+    });
   });
 
   it('alerte le propriétaire assigné au bail (`owner_client_id`) même sans indivision déclarée sur le bien', async () => {
@@ -175,9 +168,9 @@ describe('alertExpiringLeases', () => {
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'proprietaire-bail@example.com' }));
   });
 
-  it('ignore un bail déjà alerté pour la même échéance (marque présente dans AuditLog)', async () => {
+  it('ignore un bail déjà alerté pour la même échéance (marque présente dans NotificationMarker)', async () => {
     rentalLeaseFindMany.mockResolvedValue([baseLease()]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'lease-1::2026-10-15' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'lease-1::2026-10-15' }]);
     mockEligiblePropertyOwner();
 
     const report = await alertExpiringLeases(TENANT, { now: NOW });
@@ -191,7 +184,7 @@ describe('alertExpiringLeases', () => {
     // (lease-1::2026-08-01) : le bail, renouvele avec une nouvelle end_date,
     // n'y correspond plus et doit pouvoir etre alerte a nouveau.
     rentalLeaseFindMany.mockResolvedValue([baseLease({ end_date: new Date('2026-10-15T00:00:00.000Z') })]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'lease-1::2026-08-01' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'lease-1::2026-08-01' }]);
     mockEligiblePropertyOwner();
 
     const report = await alertExpiringLeases(TENANT, { now: NOW });
@@ -207,7 +200,7 @@ describe('alertExpiringLeases', () => {
     const report = await alertExpiringLeases(TENANT, { now: NOW });
 
     expect(report).toEqual({ matched: 1, sent: 0, skippedNoRecipient: 1, skippedAlreadySent: 0, failed: 0 });
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it("n'envoie rien si la notification est désactivée pour l'agence", async () => {
@@ -288,7 +281,9 @@ describe('alertExpiringLeases — canal WhatsApp (lot A3)', () => {
       contactId: 'contact-1'
     });
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'lease-1::2026-10-15' }));
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tenantId: TENANT, entityId: 'lease-1::2026-10-15' })
+    });
   });
 
   it('sans préférence : e-mail (comportement historique), WhatsApp non utilisé', async () => {
@@ -351,13 +346,13 @@ describe('alertLoanMaturity', () => {
 
     expect(report).toEqual({ matched: 1, sent: 1, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 });
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'admin@agence.example' }));
-    expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actionKey: AuditActionKey.PATRIMOINE_LOAN_MATURITY_ALERT_SENT,
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: 'PATRIMOINE_LOAN_MATURITY_ALERT_SENT',
         entityId: 'loan-1::2026-10-20',
         payload: expect.objectContaining({ loanId: 'loan-1' })
       })
-    );
+    });
   });
 
   it("se rabat sur l'e-mail de contact de l'agence si aucun administrateur actif", async () => {
@@ -384,7 +379,7 @@ describe('alertLoanMaturity', () => {
 
   it('ignore un emprunt déjà alerté pour la même échéance', async () => {
     propertyLoanFindMany.mockResolvedValue([baseLoan()]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'loan-1::2026-10-20' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'loan-1::2026-10-20' }]);
     roleFindUnique.mockResolvedValue({ id: 'role-admin' });
     userRoleFindMany.mockResolvedValue([{ userId: 'user-1' }]);
     userFindMany.mockResolvedValue([{ email: 'admin@agence.example', fullName: 'Admin' }]);
@@ -397,7 +392,7 @@ describe('alertLoanMaturity', () => {
 
   it('relance une alerte après restructuration (nouvelle `endDate` sur le même emprunt)', async () => {
     propertyLoanFindMany.mockResolvedValue([baseLoan({ endDate: new Date('2026-10-20T00:00:00.000Z') })]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'loan-1::2026-07-01' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'loan-1::2026-07-01' }]);
     roleFindUnique.mockResolvedValue({ id: 'role-admin' });
     userRoleFindMany.mockResolvedValue([{ userId: 'user-1' }]);
     userFindMany.mockResolvedValue([{ email: 'admin@agence.example', fullName: 'Admin' }]);
@@ -429,13 +424,13 @@ describe('alertUpcomingWorks', () => {
 
     expect(report).toEqual({ matched: 1, sent: 1, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 });
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'admin@agence.example' }));
-    expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actionKey: AuditActionKey.PATRIMOINE_WORK_UPCOMING_ALERT_SENT,
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: 'PATRIMOINE_WORK_UPCOMING_ALERT_SENT',
         entityId: 'work-1::2026-10-10',
         payload: expect.objectContaining({ workProgramId: 'work-1' })
       })
-    );
+    });
   });
 
   it("se rabat sur l'e-mail de contact de l'agence si aucun administrateur actif", async () => {
@@ -462,7 +457,7 @@ describe('alertUpcomingWorks', () => {
 
   it('ignore un programme déjà alerté pour la même date planifiée', async () => {
     workProgramFindMany.mockResolvedValue([baseWork()]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'work-1::2026-10-10' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'work-1::2026-10-10' }]);
 
     const report = await alertUpcomingWorks(TENANT, { now: NOW });
 
@@ -472,7 +467,7 @@ describe('alertUpcomingWorks', () => {
 
   it('relance une alerte après report (nouvelle `plannedDate` sur le même programme)', async () => {
     workProgramFindMany.mockResolvedValue([baseWork({ plannedDate: new Date('2026-10-10T00:00:00.000Z') })]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'work-1::2026-09-01' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'work-1::2026-09-01' }]);
     roleFindUnique.mockResolvedValue({ id: 'role-admin' });
     userRoleFindMany.mockResolvedValue([{ userId: 'user-1' }]);
     userFindMany.mockResolvedValue([{ email: 'admin@agence.example', fullName: 'Admin' }]);
