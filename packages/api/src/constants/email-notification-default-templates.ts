@@ -305,6 +305,13 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;">Le prêt du bien <strong>{{propertyReference}}</strong> arrive à échéance le {{loanEndDate}}.</p>`
   },
+  INSURANCE_DEADLINE_ALERT: {
+    subject: '{{alertTitle}} - {{propertyReference}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">{{alertTitle}}</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;">Bien <strong>{{propertyReference}}</strong> : {{itemLabel}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date d'échéance : <strong>{{dueDate}}</strong>.</p>`
+  },
   DOCUMENT_EXPIRY_ALERT: {
     subject: 'Document patrimoine expirant - {{documentTitle}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Document expirant</h1>
@@ -317,6 +324,41 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#0f766e;">Rappel programme de travaux</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
 <p style="margin:0 0 20px 0;">Le programme <strong>{{workProgramTitle}}</strong> du bien {{propertyReference}} est planifié le {{plannedDate}}.</p>`
+  },
+  LAND_STEP_OVERDUE_ALERT: {
+    subject: 'Régularisation foncière : étape en retard - {{propertyReference}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Étape de régularisation foncière en retard</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;">L'étape <strong>{{stepLabel}}</strong> du dossier « {{trackLabel}} » du bien <strong>{{propertyReference}}</strong> devait être achevée le {{dueDate}}. Son échéance est dépassée de {{daysOverdue}} jour(s).</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{regularizationUrl}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir le dossier de régularisation</a></p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  OWNER_MONTHLY_REPORT_SENT: {
+    subject: 'Votre rapport mensuel - {{period}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Rapport mensuel</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">Votre rapport mensuel pour la période <strong>{{period}}</strong> est disponible.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{reportUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Consulter mon rapport</a></p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel, en lecture seule, et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  RENTER_PAYMENT_LINK_SENT: {
+    subject: 'Votre loyer {{period}} - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Paiement de votre loyer</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{renterName}},</p>
+<p style="margin:0 0 20px 0;">Votre loyer de la période <strong>{{period}}</strong> est à régler : <strong>{{amountDue}}</strong>. Vous pouvez le payer en ligne par Mobile Money.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{paymentUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Payer mon loyer</a></p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
+  EXTERNAL_ACCESS_LINK_SENT: {
+    subject: 'Accès partagé par {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Accès en lecture seule</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{recipientName}},</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> vous donne un accès en lecture seule à une sélection de biens, en qualité de <strong>{{accessType}}</strong>.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{accessUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Consulter les informations partagées</a></p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas : l'agence peut révoquer l'accès à tout moment.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   INVITATION: {
     subject: 'Invitation - {{agencyName}}',

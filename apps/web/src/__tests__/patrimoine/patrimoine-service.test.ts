@@ -6,6 +6,8 @@ import {
   downloadPatrimoineExport,
   getPatrimoinePerformance,
   getPropertyYield,
+  getYieldAssumptions,
+  saveYieldAssumptions,
   updateValuation,
   updateWorkProgram
 } from '../../services/patrimoine-service';
@@ -15,6 +17,7 @@ vi.mock('../../utils/api-client', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
+    put: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn()
   }
@@ -23,6 +26,7 @@ vi.mock('../../utils/api-client', () => ({
 const mockApiClient = apiClient as unknown as {
   get: Mock;
   post: Mock;
+  put: Mock;
   patch: Mock;
   delete: Mock;
 };
@@ -50,6 +54,21 @@ describe('patrimoine-service', () => {
     expect(mockApiClient.get).toHaveBeenCalledWith(
       '/tenants/tenant-1/properties/property-1/yield?years=12&valueGrowthRate=0.03&rentGrowthRate=0.02&expenseGrowthRate=0.025&vacancyRate=0.05'
     );
+  });
+
+  it('lit les hypothèses de projection enregistrées du bien', async () => {
+    const state = { assumptions: { years: 10 }, saved: false, updatedAt: null };
+    mockApiClient.get.mockResolvedValueOnce({ data: { success: true, data: state } } as never);
+    await expect(getYieldAssumptions('tenant-1', 'property-1')).resolves.toEqual(state);
+    expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/properties/property-1/yield/assumptions');
+  });
+
+  it('enregistre les cinq hypothèses par PUT', async () => {
+    const hyp = { years: 7, valueGrowthRate: 0.03, rentGrowthRate: 0.02, expenseGrowthRate: 0.025, vacancyRate: 0.05 };
+    const state = { assumptions: hyp, saved: true, updatedAt: '2026-10-01T00:00:00.000Z' };
+    mockApiClient.put.mockResolvedValueOnce({ data: { success: true, data: state } } as never);
+    await expect(saveYieldAssumptions('tenant-1', 'property-1', hyp)).resolves.toEqual(state);
+    expect(mockApiClient.put).toHaveBeenCalledWith('/tenants/tenant-1/properties/property-1/yield/assumptions', hyp);
   });
 
   it('builds performance endpoint with property and assumptions', async () => {

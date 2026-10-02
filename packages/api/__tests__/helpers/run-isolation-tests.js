@@ -12,7 +12,7 @@
  * definir `DATABASE_URL` avant chaque fichier de test. On ne touche pas ce
  * fichier partage : on lui fournit `TEST_DATABASE_URL` avec la MEME valeur
  * que `DATABASE_URL_TEST`, pour que les deux conventions pointent sur la
- * meme base.
+ * meme base. Le script lance aussi `__tests__/integration/external-access.db.test.ts` (lot B3).
  *
  * Si `DATABASE_URL_TEST` est absente, ce script ne fait rien (code 0) :
  * `__tests__/integration/isolation.test.ts` s'auto-ignore alors via
@@ -44,8 +44,11 @@ const env = {
 console.log('Application des migrations sur la base de test isolation...');
 execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
 
-console.log('Execution de la suite isolation (E1)...');
-execSync('npx jest __tests__/integration/isolation.test.ts', { stdio: 'inherit', env });
+console.log('Execution des suites sur base reelle : isolation (E1) et acces tiers de confiance (B3)...');
+execSync('npx jest __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts', {
+  stdio: 'inherit',
+  env
+});
 
 // Journal d'audit (phase 5) : scellement, verification, purge. Lance APRES et
 // SEPAREMENT : certains cas desactivent un declencheur de `audit_logs` le temps

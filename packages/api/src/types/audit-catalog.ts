@@ -132,6 +132,28 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED]: tenant('SECURITY', { critical: true }),
   [AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT]: tenant('DATA'),
 
+  // Patrimoine : rapport propriétaire, sinistres, régularisation foncière.
+  [AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT]: tenant('DATA'),
+  [AuditActionKey.PATRIMOINE_INSURANCE_CLAIM_DECLARED]: tenant('DATA'),
+  [AuditActionKey.PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED]: tenant('DATA'),
+  [AuditActionKey.LAND_REGULARIZATION_CREATED]: tenant('DATA'),
+  [AuditActionKey.LAND_REGULARIZATION_STATUS_CHANGED]: tenant('DATA'),
+  [AuditActionKey.LAND_STEP_STATUS_CHANGED]: tenant('DATA'),
+  [AuditActionKey.LAND_STEP_UPDATED]: tenant('DATA'),
+
+  // Liens sécurisés et accès de tiers de confiance : jamais le jeton ni son hash.
+  [AuditActionKey.SECURE_LINK_CREATED]: tenant('SECURITY'),
+  [AuditActionKey.SECURE_LINK_VIEWED]: tenant('SECURITY'),
+  [AuditActionKey.SECURE_LINK_REVOKED]: tenant('SECURITY'),
+  [AuditActionKey.SECURE_LINK_PAYMENT_STARTED]: tenant('BILLING'),
+  [AuditActionKey.RENTAL_PAYMENT_LINK_SENT]: tenant('BILLING'),
+  [AuditActionKey.EXTERNAL_ACCESS_GRANT_CREATED]: tenant('SECURITY'),
+  [AuditActionKey.EXTERNAL_ACCESS_GRANT_UPDATED]: tenant('SECURITY'),
+  [AuditActionKey.EXTERNAL_ACCESS_GRANT_REVOKED]: tenant('SECURITY'),
+  [AuditActionKey.EXTERNAL_ACCESS_GRANT_LINK_SENT]: tenant('SECURITY'),
+  [AuditActionKey.EXTERNAL_ACCESS_GRANT_VIEWED]: tenant('SECURITY'),
+  [AuditActionKey.EXTERNAL_ACCESS_GRANT_DOCUMENT_DOWNLOADED]: tenant('EXPORT'),
+
   // Identité des documents
   [AuditActionKey.DOCUMENT_SIGNATURE_UPLOADED]: tenant('DATA'),
   [AuditActionKey.DOCUMENT_SIGNATURE_REMOVED]: tenant('DATA'),

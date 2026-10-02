@@ -19,7 +19,10 @@ describe('featureForAgencyPath', () => {
     ['sales/mandates', 'SALES'],
     ['rental/leases', 'RENTAL'],
     ['patrimoine/performance', 'PATRIMOINE'],
+    ['patrimoine/plan-tresorerie', 'PATRIMOINE'],
+    ['patrimoine/importation', 'PATRIMOINE'],
     ['patrimoine/statements', 'RENTAL'],
+    ['patrimoine/external-access', 'PATRIMOINE'],
     ['syndics/s1/lots', 'SYNDIC']
   ])('%s -> %s', (path, feature) => {
     expect(featureForAgencyPath(`${T}/${path}`)).toBe(feature);

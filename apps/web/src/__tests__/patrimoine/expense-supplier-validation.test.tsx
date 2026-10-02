@@ -33,6 +33,18 @@ vi.mock('../../services/patrimoine-service', () => ({
     latentCapitalGain: 0,
     projection: []
   })),
+  getYieldAssumptions: vi.fn(async () => ({
+    assumptions: {
+      years: 10,
+      valueGrowthRate: 0.03,
+      rentGrowthRate: 0.02,
+      expenseGrowthRate: 0.025,
+      vacancyRate: 0.05
+    },
+    saved: false,
+    updatedAt: null
+  })),
+  saveYieldAssumptions: vi.fn(),
   listExpenses: vi.fn(async () => []),
   listLoans: vi.fn(async () => []),
   listWorkPrograms: vi.fn(async () => []),

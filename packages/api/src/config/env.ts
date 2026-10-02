@@ -121,6 +121,17 @@ const envSchema = z
     // Jours laisses pour regler une facture de depassement mensuel (annuel).
     PLATFORM_INVOICE_DUE_DAYS: z.coerce.number().int().min(0).max(90).default(7),
 
+    // Liens securises (lib/secure-links, lot A3) : duree de vie d'un lien public
+    // en lecture seule. `ttlDays` demande a la creation est borne a [1, MAX].
+    SECURE_LINK_DEFAULT_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+    SECURE_LINK_MAX_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+
+    // Tache planifiee du rapport mensuel proprietaire (lot A3) : coupee par defaut.
+    PATRIMOINE_MONTHLY_REPORT_JOB_ENABLED: z
+      .enum(['true', 'false', '1', '0'])
+      .default('false')
+      .transform(value => value === 'true' || value === '1'),
+
     // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
     // `warn` logs unscoped queries on tenant-owned models without blocking
     // them; `enforce` throws. See env.example for the warn → enforce sequence.

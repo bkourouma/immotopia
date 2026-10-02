@@ -439,6 +439,21 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/patrimoine/work-programs'
             },
             {
+              key: 'patrimoine-cash-plan',
+              label: t('Trésorerie prévisionnelle'),
+              href: '/tenant/:tenantId/patrimoine/plan-tresorerie'
+            },
+            {
+              key: 'patrimoine-import',
+              label: t('Importer mon patrimoine'),
+              href: '/tenant/:tenantId/patrimoine/importation'
+            },
+            {
+              key: 'patrimoine-claims',
+              label: t('Sinistres'),
+              href: '/tenant/:tenantId/patrimoine/claims'
+            },
+            {
               key: 'patrimoine-statements',
               label: t('Relevés'),
               href: '/tenant/:tenantId/patrimoine/statements',
@@ -454,6 +469,16 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               key: 'patrimoine-tax-parameters',
               label: t('Paramètres fiscaux'),
               href: '/tenant/:tenantId/patrimoine/tax-parameters'
+            },
+            {
+              key: 'patrimoine-external-access',
+              label: t('Accès partagés'),
+              href: '/tenant/:tenantId/patrimoine/external-access'
+            },
+            {
+              key: 'patrimoine-land',
+              label: t('Régularisation foncière'),
+              href: '/tenant/:tenantId/patrimoine/land'
             }
           ]
         },

@@ -110,8 +110,11 @@ export function nettoyerMontant(brut: unknown): number | null {
   } else if (texte.startsWith('+')) {
     texte = texte.slice(1);
   }
-  texte = texte.replace(/[+-]/g, '');
+  // Un signe qui subsiste à l'intérieur (« 1-2-3 », « 5+5 ») : ce n'est pas un montant.
+  if (/[+-]/.test(texte)) return null;
   if (texte === '') return null;
+  // Borne avant la regex ci-dessous (quadratique sur une longue suite de chiffres).
+  if (texte.length > 40) return null;
 
   const points = (texte.match(/\./g) ?? []).length;
   const virgules = (texte.match(/,/g) ?? []).length;
@@ -173,6 +176,12 @@ const FORMATS_MOIS = ['YYYY-MM', 'MM/YYYY', 'M/YYYY', 'MM-YYYY'];
  * Abidjan, et une pièce de caisse datée de la veille est une pièce fausse.
  */
 export function versDateISO(brut: unknown): string | null {
+  const iso = versDateISOBrute(brut);
+  // Avant 1900, c'est une faute de frappe (« 0026 ») ou un numéro de série mal lu.
+  return iso !== null && Number(iso.slice(0, 4)) >= 1900 ? iso : null;
+}
+
+function versDateISOBrute(brut: unknown): string | null {
   if (brut === null || brut === undefined || brut === '') return null;
 
   if (brut instanceof Date) {
@@ -200,7 +209,9 @@ export function versDateISO(brut: unknown): string | null {
 
   // Dernier recours : une chaîne ISO complète avec heure et fuseau.
   const iso = dayjs(texte);
-  return iso.isValid() && /\d{4}-\d{2}-\d{2}/.test(texte) ? iso.format('YYYY-MM-DD') : null;
+  const annee = /(\d{4})-\d{2}-\d{2}/.exec(texte)?.[1];
+  // dayjs ramène « 0026 » à 1926 : l'année lue doit être celle écrite.
+  return iso.isValid() && annee !== undefined && iso.format('YYYY') === annee ? iso.format('YYYY-MM-DD') : null;
 }
 
 function depuisSerieExcel(serie: number): string | null {
@@ -251,6 +262,20 @@ export function decouperPeriode(periode: string): { periodYear: number; periodMo
 export type ResultatRapprochement =
   { trouve: true; entree: EntreeReferentiel } | { trouve: false; motif: 'introuvable' | 'ambigu' };
 
+/** Une liste de référence dont les libellés et alias sont déjà normalisés (voir `rapprocherLibelleIndexe`). */
+export interface ReferentielIndexe {
+  entrees: EntreeReferentiel[];
+  /** Parallèle à `entrees` : libellé puis alias, chacun passé par `normaliserTexte`. */
+  normalisees: string[][];
+}
+
+export function indexerEntrees(entrees: EntreeReferentiel[]): ReferentielIndexe {
+  return {
+    entrees,
+    normalisees: entrees.map(entree => [entree.libelle, ...(entree.alias ?? [])].map(normaliserTexte))
+  };
+}
+
 /**
  * Retrouve l'entrée que désigne un libellé écrit à la main.
  *
@@ -264,23 +289,45 @@ export type ResultatRapprochement =
  *  3. sinon, on le dit : `introuvable`, ou `ambigu` quand plusieurs entrées
  *     se disputent le libellé.
  */
-export function rapprocherLibelle(entrees: EntreeReferentiel[], brut: string): ResultatRapprochement {
+export function rapprocherLibelle(
+  entrees: EntreeReferentiel[],
+  brut: string,
+  options?: { exacte?: boolean }
+): ResultatRapprochement {
+  return rapprocherLibelleIndexe(indexerEntrees(entrees), brut, options);
+}
+
+/**
+ * Même comportement que `rapprocherLibelle`, sur une liste déjà indexée : sert
+ * à réévaluer des centaines de lignes sans renormaliser la liste à chaque cellule.
+ */
+export function rapprocherLibelleIndexe(
+  index: ReferentielIndexe,
+  brut: string,
+  options?: { exacte?: boolean }
+): ResultatRapprochement {
   const cible = normaliserTexte(brut);
   if (cible === '') return { trouve: false, motif: 'introuvable' };
+  const { entrees, normalisees } = index;
 
-  const exactes = entrees.filter(entree =>
-    [entree.libelle, ...(entree.alias ?? [])].some(candidat => normaliserTexte(candidat) === cible)
-  );
+  const exactes: EntreeReferentiel[] = [];
+  for (let i = 0; i < entrees.length; i++) {
+    if (normalisees[i].some(candidat => candidat === cible)) exactes.push(entrees[i]);
+  }
   if (exactes.length === 1) return { trouve: true, entree: exactes[0] };
   if (exactes.length > 1) return { trouve: false, motif: 'ambigu' };
 
-  const partielles = entrees.filter(entree =>
-    [entree.libelle, ...(entree.alias ?? [])].some(candidat => {
-      const normalise = normaliserTexte(candidat);
-      if (normalise === '') return false;
-      return normalise.includes(cible) || cible.includes(normalise);
-    })
-  );
+  // `exacte` : un rattachement qui ne tolère aucune approximation (bien d'une
+  // valorisation, commune d'un bien) saute la passe d'inclusion.
+  if (options?.exacte) return { trouve: false, motif: 'introuvable' };
+
+  const partielles: EntreeReferentiel[] = [];
+  for (let i = 0; i < entrees.length; i++) {
+    const touche = normalisees[i].some(
+      normalise => normalise !== '' && (normalise.includes(cible) || cible.includes(normalise))
+    );
+    if (touche) partielles.push(entrees[i]);
+  }
   if (partielles.length === 1) return { trouve: true, entree: partielles[0] };
   if (partielles.length > 1) return { trouve: false, motif: 'ambigu' };
 

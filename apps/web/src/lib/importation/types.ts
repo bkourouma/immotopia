@@ -3,6 +3,7 @@ import type { Employee } from '../../types/finance-salaries-types';
 import type { Contractor, ContractorContract } from '../../types/finance-contractors-types';
 import type { StockItemRef, StockLocationRef } from '../../types/finance-stock-mouvements-types';
 import type { LandLease } from '../../types/finance-lot4-types';
+import type { GeographicLocation } from '../../services/geographic-service';
 
 /**
  * Le contrat d'un DESCRIPTEUR DE NATURE — le cœur de l'importation.
@@ -53,7 +54,34 @@ export type CleReferentiel =
   | 'articles'
   | 'lieux'
   | 'baux'
-  | 'facturesFournisseur';
+  | 'facturesFournisseur'
+  // Natures du patrimoine (spec 038). Les trois dernières sont des listes
+  // FERMÉES et statiques : elles ne coûtent aucun appel réseau.
+  | 'communes'
+  | 'biens'
+  | 'typesBien'
+  | 'modesTransaction'
+  | 'methodesValorisation';
+
+/**
+ * Un bien déjà enregistré, réduit à ce que l'import lit : le rattachement
+ * d'une valorisation (référence interne ou titre) et la détection de
+ * doublons (référence, titre + adresse). Jamais d'autre agence que la
+ * courante : le chargeur filtre sur `tenantId`.
+ */
+export interface BienExistant {
+  id: string;
+  internalReference: string;
+  title: string;
+  address: string;
+  tenantId: string | null;
+  /**
+   * La référence que l'agence a donnée au bien dans son propre fichier
+   * (`typeSpecificData.referenceImport`, posée par l'import des biens). Sert au
+   * rattachement des valorisations et à la détection des doublons.
+   */
+  referenceExterne?: string | null;
+}
 
 export interface Referentiel {
   postes: CostCategory[];
@@ -73,6 +101,10 @@ export interface Referentiel {
    * par les natures qui la déclarent.
    */
   facturesFournisseur: SupplierInvoice[];
+  /** Le référentiel géographique (communes, avec région et pays). */
+  communes: GeographicLocation[];
+  /** Les biens de l'agence courante (`GET /properties`, toutes les pages). */
+  biens: BienExistant[];
 }
 
 export const REFERENTIEL_VIDE: Referentiel = {
@@ -85,7 +117,9 @@ export const REFERENTIEL_VIDE: Referentiel = {
   articles: [],
   lieux: [],
   baux: [],
-  facturesFournisseur: []
+  facturesFournisseur: [],
+  communes: [],
+  biens: []
 };
 
 /** Une entrée rapprochable : un identifiant, un libellé, et ses synonymes. */
@@ -137,6 +171,18 @@ export interface ChampDocument {
   valeurParDefaut?: (contexte: ContexteImportation) => string | null;
   /** Précision affichée sous la liste déroulante du rapprochement. */
   aide?: string;
+  /**
+   * `reference` seulement : n'accepte QUE l'égalité après normalisation du
+   * libellé ou d'un alias — jamais l'inclusion. Une valorisation rattachée à
+   * un bien « proche » est une valorisation sur le mauvais bien.
+   */
+  correspondanceExacte?: boolean;
+  /**
+   * Valeur FICTIVE de la ligne d'exemple du gabarit téléchargeable (texte tel
+   * qu'un humain l'écrirait). Facultative : sans elle la cellule d'exemple
+   * reste vide. Jamais une donnée réelle.
+   */
+  exemple?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +265,7 @@ export interface DescripteurNature {
    * liste des sept natures couvertes tient parce que chaque fonction appelée
    * ici existait avant cet écran.
    */
-  enregistrer: (valeurs: ValeursLigne, contexte: ContexteImportation) => Promise<void>;
+  enregistrer: (valeurs: ValeursLigne, contexte: ContexteImportation) => Promise<void | string>;
 
   /**
    * L'empreinte d'une ligne candidate — « même chantier, même montant, même
@@ -229,7 +275,16 @@ export interface DescripteurNature {
    * quand l'application n'offre AUCUNE liste des pièces déjà saisies : mieux
    * vaut le dire à l'écran que promettre une vérification qui n'a pas lieu.
    */
-  empreinte?: (valeurs: ValeursLigne, contexte: ContexteImportation) => string | null;
+  empreinte?: (valeurs: ValeursLigne, contexte: ContexteImportation) => string | string[] | null;
+
+  /**
+   * Le motif en français d'un doublon, quand la nature a ses propres mots
+   * (« Une référence identique existe déjà »). `empreinte` est celle qui a
+   * touché ; `ligneDuFichier` est renseigné quand le doublon est INTERNE au
+   * fichier (numéro de la première occurrence), absent quand il est en base.
+   * Défaut : les motifs des natures finance.
+   */
+  motifDoublon?: (empreinte: string, ligneDuFichier?: number) => string;
 
   /** Les empreintes déjà en base. Va par paire avec `empreinte`. */
   chargerEmpreintes?: (contexte: ContexteImportation) => Promise<string[]>;

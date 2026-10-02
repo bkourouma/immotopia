@@ -67,7 +67,11 @@ export const WHATSAPP_VARIABLES_BY_KEY: Record<string, string[]> = {
     'totalExpenses',
     'netAmount',
     'currency'
-  ]
+  ],
+  OWNER_LEASE_ENDING_SOON: ['ownerName', 'leaseLabel', 'leaseEndDate', 'agencyName'],
+  OWNER_DOCUMENT_EXPIRY_ALERT: ['ownerName', 'documentTitle', 'documentType', 'propertyReference', 'expiresAt'],
+  OWNER_MONTHLY_REPORT_SENT: ['ownerName', 'period', 'reportUrl', 'expiresAt', 'agencyName'],
+  RENTER_PAYMENT_LINK_SENT: ['renterName', 'agencyName', 'period', 'amountDue', 'paymentUrl', 'expiresAt']
 };
 
 export function getVariablePlaceholder(name: string): string {

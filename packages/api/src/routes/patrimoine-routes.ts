@@ -31,10 +31,15 @@ import {
   updatePropertyValuationHandler,
   updatePropertyWorkProgramHandler
 } from '../controllers/patrimoine-controller';
+import { getCashPlanHandler, updateCashPlanSettingsHandler } from '../controllers/patrimoine-cash-plan-controller';
 import {
   exportAgencyPatrimoineHandler,
   exportPropertyPatrimoineHandler
 } from '../controllers/patrimoine-export-controller';
+import {
+  getYieldAssumptionsHandler,
+  setYieldAssumptionsHandler
+} from '../controllers/patrimoine-yield-assumptions-controller';
 
 const router = Router();
 
@@ -54,6 +59,20 @@ router.get(
   '/tenants/:tenantId/work-programs',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   listTenantWorkProgramsHandler
+);
+
+// Plan de tresorerie previsionnel (spec 030) : chemins fixes, declares avant
+// toute route parametree sous /patrimoine. La garde d'edition ne depend pas de
+// `:propertyId` (elle ne lit que `req.tenantContext`).
+router.get(
+  '/tenants/:tenantId/patrimoine/cash-plan',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getCashPlanHandler
+);
+router.put(
+  '/tenants/:tenantId/patrimoine/cash-plan/settings',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateCashPlanSettingsHandler
 );
 
 router.get(
@@ -201,6 +220,19 @@ router.get(
   '/tenants/:tenantId/properties/:propertyId/yield',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getPropertyYieldHandler
+);
+
+// Hypotheses de projection enregistrees d'un bien (spec 029). Declarees apres
+// `/yield` : chemin plus long, aucune capture possible.
+router.get(
+  '/tenants/:tenantId/properties/:propertyId/yield/assumptions',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getYieldAssumptionsHandler
+);
+router.put(
+  '/tenants/:tenantId/properties/:propertyId/yield/assumptions',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  setYieldAssumptionsHandler
 );
 
 // Export d'un seul bien (lot P3).

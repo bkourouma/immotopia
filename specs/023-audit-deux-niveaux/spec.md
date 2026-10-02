@@ -239,10 +239,14 @@ tenantId)` borne chaque requête à l'agence (sans cela, la garde Prisma
 
 ### Phase 5 : rétention, scellés, marqueurs (livré)
 
-- **Marqueurs anti-doublon** : les quatre clés qui servaient de mémoire aux
-  alertes (`PATRIMOINE_LEASE_END_ALERT_SENT`, `PATRIMOINE_LOAN_MATURITY_ALERT_SENT`,
-  `PATRIMOINE_WORK_UPCOMING_ALERT_SENT`, `SYNDIC_MEETING_CONVOCATION_DELIVERY`)
-  quittent `AuditLog` pour la table `notification_markers` (par agence, gardée par
+- **Marqueurs anti-doublon** : les clés qui servaient de mémoire aux alertes
+  (`PATRIMOINE_LEASE_END_ALERT_SENT`, `PATRIMOINE_LOAN_MATURITY_ALERT_SENT`,
+  `PATRIMOINE_WORK_UPCOMING_ALERT_SENT`, `SYNDIC_MEETING_CONVOCATION_DELIVERY`, puis, après
+  fusion de `main`, `PATRIMOINE_INSURANCE_POLICY_ALERT_SENT`,
+  `PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT` et `PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT`
+  des specs 032 et 033 ; le rapport propriétaire de la spec 031 écrit la marque ET garde son
+  événement d'audit `PATRIMOINE_OWNER_MONTHLY_REPORT_SENT`) passent par
+  `lib/notification-markers.ts`. Elles quittent `AuditLog` pour la table `notification_markers` (par agence, gardée par
   l'extension de garde tenant). Ce n'étaient pas des faits à auditer : les purger
   aurait fait renvoyer des alertes. La migration `20261007130000` copie les lignes
   existantes puis les retire du journal (seul usage légitime de la purge hors

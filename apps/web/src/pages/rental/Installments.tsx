@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Button, Select, Space, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined } from '@ant-design/icons';
+import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listInstallments,
@@ -19,6 +19,7 @@ import {
   CreatePaymentRequest
 } from '../../services/rental-service';
 import { PaymentForm } from '../../components/rental/PaymentForm';
+import { InstallmentPaymentLinkModal, canOfferPaymentLink } from '../../components/rental/InstallmentPaymentLinkButton';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -113,6 +114,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
   const [enCours, setEnCours] = useState<string | null>(null);
   const [formulairePour, setFormulairePour] = useState<RentalInstallment | null>(null);
+  const [lienPour, setLienPour] = useState<RentalInstallment | null>(null);
   const [action, setAction] = useState<'generer' | 'recalculer' | 'supprimer' | null>(null);
 
   /**
@@ -410,6 +412,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
             <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setFormulairePour(e)}>
               {t('Paiement…')}
             </Button>
+            {canOfferPaymentLink(resteAPayer(e), e.status) && (
+              <Button icon={<LinkOutlined />} onClick={() => setLienPour(e)}>
+                {t('Envoyer un lien de paiement')}
+              </Button>
+            )}
           </Space>
         );
       }
@@ -583,12 +590,27 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               secondaryActions={
                 solde
                   ? undefined
-                  : [{ key: 'form', label: t('Paiement détaillé…'), onClick: () => setFormulairePour(e) }]
+                  : [
+                      { key: 'form', label: t('Paiement détaillé…'), onClick: () => setFormulairePour(e) },
+                      ...(canOfferPaymentLink(reste, e.status)
+                        ? [{ key: 'lien', label: t('Envoyer un lien de paiement'), onClick: () => setLienPour(e) }]
+                        : [])
+                    ]
               }
             />
           );
         }}
       />
+
+      {lienPour && (
+        <InstallmentPaymentLinkModal
+          tenantId={tenantId}
+          installmentId={lienPour.id}
+          open
+          periodLabel={periode(lienPour)}
+          onClose={() => setLienPour(null)}
+        />
+      )}
 
       {/* Sous 992 px, le formulaire occupe la hauteur de l'écran plutôt qu'une
           boîte flottante : le §10.1 impose une page pleine dès quatre champs.

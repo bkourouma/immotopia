@@ -12,6 +12,7 @@ import { currentOwnerProfilesSorted } from './lot-owner';
 // Même substitution que les reçus S3 : les valeurs injectées dans le HTML
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
+import { MARKER_KIND } from '../notification-markers';
 
 /** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
 function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
@@ -336,7 +337,7 @@ function emptyConvocationResult(): ConvocationResult {
   };
 }
 
-const CONVOCATION_DELIVERY_ACTION = 'SYNDIC_MEETING_CONVOCATION_DELIVERY';
+const CONVOCATION_DELIVERY_ACTION = MARKER_KIND.convocationDelivery;
 
 type ConvocationRecipient = {
   id: string;

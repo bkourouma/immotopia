@@ -7,10 +7,11 @@
  * vrai par-dessus, comme en production, plutôt que d'être mocké -- le point à
  * vérifier ici est que `runWithTenantContext` pose le bon tenant avant chaque
  * requête, et que le traitement reste séquentiel, agence par agence, pour les
- * quatre alertes désormais enchaînées (documents, baux, emprunts, travaux) ;
+ * cinq alertes désormais enchaînées (documents, baux, emprunts, travaux, étapes
+ * foncières en retard) ;
  * le détail de chaque algorithme d'alerte est couvert par son propre test
  * dédié (`patrimoine.document-expiry-alert.test.ts`,
- * `patrimoine.deadline-alerts.test.ts`). Les trois alertes étendues ne
+ * `patrimoine.deadline-alerts.test.ts`, `patrimoine.land-alerts.test.ts`). Les quatre alertes étendues ne
  * trouvent ici aucune ligne (mocks vides) : seule celle des documents est
  * exercée, comme avant l'extension du lot P3.
  */
@@ -24,6 +25,9 @@ const crmContactFindMany = jest.fn();
 const rentalLeaseFindMany = jest.fn();
 const propertyLoanFindMany = jest.fn();
 const workProgramFindMany = jest.fn();
+const landRegularizationStepFindMany = jest.fn();
+const insurancePolicyFindMany = jest.fn();
+const maintenanceLogEntryFindMany = jest.fn();
 const auditLogFindMany = jest.fn();
 const tenantFindUnique = jest.fn();
 const roleFindUnique = jest.fn();
@@ -59,6 +63,15 @@ jest.mock('../../src/utils/database', () => ({
     workProgram: {
       findMany: (...a: any[]) => workProgramFindMany(...a)
     },
+    landRegularizationStep: {
+      findMany: (...a: any[]) => landRegularizationStepFindMany(...a)
+    },
+    insurancePolicy: {
+      findMany: (...a: any[]) => insurancePolicyFindMany(...a)
+    },
+    maintenanceLogEntry: {
+      findMany: (...a: any[]) => maintenanceLogEntryFindMany(...a)
+    },
     auditLog: {
       findMany: (...a: any[]) => auditLogFindMany(...a)
     },
@@ -77,6 +90,14 @@ jest.mock('../../src/utils/database', () => ({
 const getEmailNotificationConfig = jest.fn();
 jest.mock('../../src/services/email-notification-config-service', () => ({
   getEmailNotificationConfig: (...a: any[]) => getEmailNotificationConfig(...a)
+}));
+
+// Canal WhatsApp des alertes proprietaire (lot A3) : coupe par defaut dans ces
+// tests, centres sur le canal e-mail ; le routage par canal a son propre test
+// (`patrimoine.notification-channels.test.ts`).
+const getWhatsappNotificationConfig = jest.fn();
+jest.mock('../../src/services/whatsapp-notification-config-service', () => ({
+  getWhatsappNotificationConfig: (...a: any[]) => getWhatsappNotificationConfig(...a)
 }));
 
 const sendEmail = jest.fn();
@@ -113,6 +134,7 @@ function docFor(tenantId: string, docId: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  getWhatsappNotificationConfig.mockResolvedValue({ enabled: false });
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   propertyDocumentUpdateMany.mockResolvedValue({ count: 1 });
   sendEmail.mockResolvedValue(undefined);
@@ -127,6 +149,9 @@ beforeEach(() => {
   rentalLeaseFindMany.mockResolvedValue([]);
   propertyLoanFindMany.mockResolvedValue([]);
   workProgramFindMany.mockResolvedValue([]);
+  landRegularizationStepFindMany.mockResolvedValue([]);
+  insurancePolicyFindMany.mockResolvedValue([]);
+  maintenanceLogEntryFindMany.mockResolvedValue([]);
   auditLogFindMany.mockResolvedValue([]);
   tenantFindUnique.mockResolvedValue({ name: 'Agence', contactEmail: null });
   roleFindUnique.mockResolvedValue(null);

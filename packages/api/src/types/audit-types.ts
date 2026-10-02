@@ -108,6 +108,39 @@ export enum AuditActionKey {
   // Syndic - recus et quittances de charges (lot S3) : renvoi manuel par e-mail
   SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT = 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT',
 
+  // Rapport mensuel propriétaire envoyé avec un lien sécurisé (lot A3).
+  PATRIMOINE_OWNER_MONTHLY_REPORT_SENT = 'PATRIMOINE_OWNER_MONTHLY_REPORT_SENT',
+  // Patrimoine (spec 032) : suivi des sinistres. Les alertes de police et
+  // d'entretien ne sont plus des evenements d'audit (marques anti-doublon dans
+  // `notification_markers`, voir `lib/notification-markers.ts`).
+  PATRIMOINE_INSURANCE_CLAIM_DECLARED = 'PATRIMOINE_INSURANCE_CLAIM_DECLARED',
+  PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED = 'PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED',
+
+  // Patrimoine (lot B2, spec 033) : regularisation fonciere. Payloads sans donnee
+  // sensible (from/to, reason, reopened).
+  LAND_REGULARIZATION_CREATED = 'LAND_REGULARIZATION_CREATED',
+  LAND_REGULARIZATION_STATUS_CHANGED = 'LAND_REGULARIZATION_STATUS_CHANGED',
+  LAND_STEP_STATUS_CHANGED = 'LAND_STEP_STATUS_CHANGED',
+  LAND_STEP_UPDATED = 'LAND_STEP_UPDATED',
+
+  // Liens sécurisés (lib/secure-links, lot A3) : jamais le jeton ni son hash.
+  SECURE_LINK_CREATED = 'SECURE_LINK_CREATED',
+  SECURE_LINK_VIEWED = 'SECURE_LINK_VIEWED',
+  SECURE_LINK_REVOKED = 'SECURE_LINK_REVOKED',
+  /** Lot C5 : le locataire a lancé le paiement depuis son lien (checkout créé ou repris). */
+  SECURE_LINK_PAYMENT_STARTED = 'SECURE_LINK_PAYMENT_STARTED',
+  /** Lot C5 : lien de paiement d'une échéance envoyé au locataire (canal, jamais le jeton). */
+  RENTAL_PAYMENT_LINK_SENT = 'RENTAL_PAYMENT_LINK_SENT',
+
+  // Accès en lecture seule des tiers de confiance (lot B3, spec 034) : jamais le
+  // jeton, jamais l'e-mail du bénéficiaire. entityType 'ExternalAccessGrant'.
+  EXTERNAL_ACCESS_GRANT_CREATED = 'EXTERNAL_ACCESS_GRANT_CREATED',
+  EXTERNAL_ACCESS_GRANT_UPDATED = 'EXTERNAL_ACCESS_GRANT_UPDATED',
+  EXTERNAL_ACCESS_GRANT_REVOKED = 'EXTERNAL_ACCESS_GRANT_REVOKED',
+  EXTERNAL_ACCESS_GRANT_LINK_SENT = 'EXTERNAL_ACCESS_GRANT_LINK_SENT',
+  EXTERNAL_ACCESS_GRANT_VIEWED = 'EXTERNAL_ACCESS_GRANT_VIEWED',
+  EXTERNAL_ACCESS_GRANT_DOCUMENT_DOWNLOADED = 'EXTERNAL_ACCESS_GRANT_DOCUMENT_DOWNLOADED',
+
   // ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md) : assistant IA.
   AI_CHAT_TURN = 'AI_CHAT_TURN',
   AI_TOOL_CALLED = 'AI_TOOL_CALLED',

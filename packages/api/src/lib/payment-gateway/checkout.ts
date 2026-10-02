@@ -1,9 +1,12 @@
 import { randomBytes } from 'crypto';
 import { Prisma, RentalPaymentStatus } from '@prisma/client';
+import type { PaymentGatewayConfig } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../utils/database';
+import type { PrismaTransactionClient } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { env } from '../../config/env';
+import { t } from '../../i18n';
 import { runWithTenantContext } from '../../utils/tenant-context';
 import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { roundMoney } from '../finance/money';
@@ -145,7 +148,7 @@ async function renterContactInfo(
 }
 
 /** Montant restant dû d'une échéance — même calcul que le portail locataire et le service des échéances. */
-function resteDuEcheance(installment: {
+export function resteDuEcheance(installment: {
   amount_rent: unknown;
   amount_service: unknown;
   amount_other_fees: unknown;
@@ -166,21 +169,46 @@ function resteDuEcheance(installment: {
   return roundMoney(total - amountPaid);
 }
 
+const PENDING_REUSE_WINDOW_MS = 15 * 60 * 1000;
+
+function frontendBase(): string {
+  return env.FRONTEND_URL.replace(/\/$/, '');
+}
+
 /**
- * Démarre un paiement en ligne pour le locataire connecté — contrat §3.3.
- *
- * `leaseId` et `tenantClientId` viennent du contexte du portail
- * (`req.tenantPortal`), jamais du corps de la requête : seul `installmentIds`
- * est fourni par le locataire.
+ * URL de retour après le paiement chez l'agrégateur (ou le simulateur).
+ * Un checkout issu d'un lien de paiement revient sur la page publique de
+ * statut (jamais le jeton du lien, seulement le code de paiement) ; un
+ * checkout du portail locataire revient sur le portail.
  */
-export async function startCheckout(
+export function checkoutReturnUrl(checkout: { secureLinkId?: string | null; codePaiement: string }): string {
+  const code = encodeURIComponent(checkout.codePaiement);
+  return checkout.secureLinkId
+    ? `${frontendBase()}/payer/statut?paiement=${code}`
+    : `${frontendBase()}/tenant/payments?paiement=${code}`;
+}
+
+interface PreparedCheckout {
+  config: PaymentGatewayConfig;
+  uniqueIds: string[];
+  /** Entier, en FCFA. */
+  amount: number;
+}
+
+/**
+ * Contrôles communs au portail et au lien de paiement : configuration
+ * utilisable, de 1 à 24 échéances du MÊME tenant ET du bail, non annulées,
+ * reste dû > 0. Le montant est toujours recalculé ici, jamais fourni.
+ */
+async function prepareCheckout(
   tenantId: string,
-  tenantClientId: string,
   leaseId: string,
   installmentIds: string[],
-  actorUserId: string | undefined
-): Promise<OnlineCheckoutDto> {
-  const config = await loadConfig(tenantId);
+  db: Pick<PrismaTransactionClient, 'rentalInstallment'> = prisma,
+  preloadedConfig?: PaymentGatewayConfig | null
+): Promise<PreparedCheckout> {
+  // `preloadedConfig` : chargée AVANT d'ouvrir une transaction (aucune requête hors `tx` à l'intérieur).
+  const config = preloadedConfig === undefined ? await loadConfig(tenantId) : preloadedConfig;
   if (!isConfigUsable(config)) {
     throw new BadRequestError("Le paiement en ligne n'est pas disponible pour cette agence.");
   }
@@ -190,7 +218,7 @@ export async function startCheckout(
     throw new BadRequestError('Sélectionnez de 1 à 24 échéances.');
   }
 
-  const installments = await prisma.rentalInstallment.findMany({
+  const installments = await db.rentalInstallment.findMany({
     where: { id: { in: uniqueIds }, tenant_id: tenantId, lease_id: leaseId },
     select: {
       id: true,
@@ -222,7 +250,176 @@ export async function startCheckout(
   // PaySecureHub attend un montant entier (FCFA).
   amount = Math.round(roundMoney(amount));
 
-  const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+  return { config, uniqueIds, amount };
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * URL de paiement fournie par l'agrégateur, acceptée pour une redirection
+ * publique : forme normalisée (`href`) ou `null`. https obligatoire ; http
+ * seulement en simulateur ET sur l'hôte local ; pas d'identifiants dans
+ * l'URL, ni espace autour. Même esprit que `isSafeCheckoutUrl` côté web.
+ */
+export function normalizeProviderCheckoutUrl(raw: unknown, mode: 'SIMULATOR' | 'LIVE'): string | null {
+  if (typeof raw !== 'string' || raw === '' || raw !== raw.trim()) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.username || url.password) return null;
+  if (url.protocol === 'https:') return url.href;
+  if (url.protocol === 'http:' && mode === 'SIMULATOR' && LOCAL_HOSTS.has(url.hostname)) return url.href;
+  return null;
+}
+
+interface CheckoutCreationInput {
+  tenantId: string;
+  leaseId: string;
+  renterClientId: string;
+  actorUserId: string | null | undefined;
+  secureLinkId: string | null;
+}
+
+/** Crée le paiement PENDING et son checkout adossé, dans la transaction de l'appelant. */
+async function createCheckoutRowsTx(
+  tx: PrismaTransactionClient,
+  input: CheckoutCreationInput,
+  prepared: PreparedCheckout,
+  codePaiement: string
+) {
+  const { tenantId, leaseId, renterClientId, actorUserId, secureLinkId } = input;
+  const { config, uniqueIds, amount } = prepared;
+  const treasuryAccountId = config.treasuryAccountId ?? (await ensureCollectionAccountTx(tx, tenantId));
+
+  const payment = await tx.rentalPayment.create({
+    data: {
+      tenant_id: tenantId,
+      lease_id: leaseId,
+      renter_client_id: renterClientId,
+      method: 'MOBILE_MONEY',
+      status: 'PENDING',
+      currency: 'FCFA',
+      amount: new Decimal(amount),
+      treasury_account_id: treasuryAccountId,
+      psp_name: 'PAYSECUREHUB',
+      psp_reference: codePaiement,
+      idempotency_key: codePaiement,
+      created_by_user_id: actorUserId ?? null
+    }
+  });
+
+  const checkout = await tx.onlinePaymentCheckout.create({
+    data: {
+      tenantId,
+      paymentId: payment.id,
+      leaseId,
+      renterClientId,
+      provider: 'PAYSECUREHUB',
+      mode: config.mode,
+      codePaiement,
+      amount: new Decimal(amount),
+      currency: 'FCFA',
+      installmentIds: uniqueIds,
+      status: 'PENDING',
+      createdByUserId: actorUserId ?? null,
+      ...(secureLinkId ? { secureLinkId } : {})
+    }
+  });
+
+  return { payment, checkout };
+}
+
+/**
+ * Appel réseau hors transaction (ne pas garder une transaction ouverte le
+ * temps d'attendre PaySecureHub) : obtient l'URL de paiement, ou marque le
+ * paiement et le checkout FAILED et lève 502.
+ */
+async function requestProviderCheckout(
+  input: CheckoutCreationInput,
+  prepared: PreparedCheckout,
+  rows: { payment: { id: string }; checkout: { id: string; tenantId: string } },
+  codePaiement: string,
+  returnUrl: string,
+  validateUrl = false
+): Promise<OnlineCheckoutDto> {
+  const { tenantId, renterClientId } = input;
+  const { config, amount } = prepared;
+  const { payment, checkout } = rows;
+  try {
+    const renter = await renterContactInfo(tenantId, renterClientId);
+    const client = gatewayClientForMode(config.mode);
+    const credentials = credentialsFrom(config);
+    const result = await client.buildAway(credentials, {
+      codePaiement,
+      nomUsager: renter.nom,
+      prenomUsager: renter.prenom,
+      telephone: renter.telephone,
+      email: renter.email,
+      libelleArticle: 'Loyer',
+      quantite: 1,
+      montant: amount,
+      libOrder: `Paiement loyer ${codePaiement}`,
+      urlRetour: returnUrl,
+      urlCallback: `${env.BACKEND_URL.replace(/\/$/, '')}/api/payment-gateway/paysecurehub/ipn`
+    });
+
+    // Chemin « lien » : une URL refusée n'est jamais stockée (chemin FAILED + 502 ci-dessous).
+    // Le message d'erreur ne contient jamais l'URL.
+    let checkoutUrl = result.url;
+    if (validateUrl) {
+      const safe = normalizeProviderCheckoutUrl(result.url, config.mode);
+      if (!safe) throw new Error('Unsafe provider checkout URL');
+      checkoutUrl = safe;
+    }
+
+    const updated = await prisma.onlinePaymentCheckout.update({
+      where: { id: checkout.id, tenantId: checkout.tenantId },
+      data: { checkoutUrl, providerToken: result.tokens }
+    });
+    return toOnlineCheckoutDto(updated);
+  } catch (error) {
+    await prisma.$transaction([
+      prisma.rentalPayment.update({
+        where: { id: payment.id, tenant_id: tenantId },
+        data: { status: 'FAILED', failed_at: new Date() }
+      }),
+      prisma.onlinePaymentCheckout.update({
+        where: { id: checkout.id, tenantId: checkout.tenantId },
+        data: {
+          status: 'FAILED',
+          failureMessage: error instanceof GatewayError ? error.message : 'Erreur agrégateur.'
+        }
+      })
+    ]);
+    logger.warn('startCheckout: build-away a échoué, paiement et checkout marqués FAILED', {
+      checkoutId: checkout.id,
+      error: (error as Error)?.message
+    });
+    throw new AppError("Impossible de créer le paiement en ligne : l'agrégateur n'a pas répondu.", 502);
+  }
+}
+
+/**
+ * Démarre un paiement en ligne pour le locataire connecté — contrat §3.3.
+ *
+ * `leaseId` et `tenantClientId` viennent du contexte du portail
+ * (`req.tenantPortal`), jamais du corps de la requête : seul `installmentIds`
+ * est fourni par le locataire.
+ */
+export async function startCheckout(
+  tenantId: string,
+  tenantClientId: string,
+  leaseId: string,
+  installmentIds: string[],
+  actorUserId: string | undefined
+): Promise<OnlineCheckoutDto> {
+  const prepared = await prepareCheckout(tenantId, leaseId, installmentIds);
+  const { uniqueIds } = prepared;
+
+  const fifteenMinutesAgo = new Date(Date.now() - PENDING_REUSE_WINDOW_MS);
   const overlapping = await prisma.onlinePaymentCheckout.findFirst({
     where: {
       tenantId,
@@ -247,92 +444,132 @@ export async function startCheckout(
   }
 
   const codePaiement = generateCodePaiement();
+  const input: CheckoutCreationInput = {
+    tenantId,
+    leaseId,
+    renterClientId: tenantClientId,
+    actorUserId,
+    secureLinkId: null
+  };
 
-  const { payment, checkout } = await prisma.$transaction(async tx => {
-    const treasuryAccountId = config.treasuryAccountId ?? (await ensureCollectionAccountTx(tx, tenantId));
+  const rows = await prisma.$transaction(tx => createCheckoutRowsTx(tx, input, prepared, codePaiement));
+  return requestProviderCheckout(input, prepared, rows, codePaiement, checkoutReturnUrl({ codePaiement }));
+}
 
-    const payment = await tx.rentalPayment.create({
-      data: {
-        tenant_id: tenantId,
-        lease_id: leaseId,
-        renter_client_id: tenantClientId,
-        method: 'MOBILE_MONEY',
-        status: 'PENDING',
-        currency: 'FCFA',
-        amount: new Decimal(amount),
-        treasury_account_id: treasuryAccountId,
-        psp_name: 'PAYSECUREHUB',
-        psp_reference: codePaiement,
-        idempotency_key: codePaiement,
-        created_by_user_id: actorUserId ?? null
-      }
-    });
+export interface StartCheckoutForInstallmentsParams {
+  tenantId: string;
+  leaseId: string;
+  renterClientId: string;
+  installmentIds: string[];
+  actorUserId: string | null;
+  secureLinkId: string | null;
+  /** Construit l'URL de retour à partir du code de paiement ; par défaut `checkoutReturnUrl`. */
+  returnUrl?: (codePaiement: string) => string;
+}
 
-    const checkout = await tx.onlinePaymentCheckout.create({
-      data: {
+export interface StartCheckoutForInstallmentsResult {
+  checkout: OnlineCheckoutDto;
+  /** `true` si un checkout PENDING récent identique a été repris (même `checkoutUrl`). */
+  reused: boolean;
+  /** Mode du checkout : l'appelant en déduit les schémas d'URL acceptables (https, http en simulateur). */
+  mode: 'SIMULATOR' | 'LIVE';
+}
+
+const OVERLAP_MESSAGE = 'Un paiement en ligne est déjà en cours pour cette échéance.';
+const REVIEW_MESSAGE = "Votre paiement est en cours de vérification par l'agence. Contactez votre agence.";
+
+/**
+ * Variante initiée côté serveur (lien de paiement, agence) : l'appelant n'est
+ * pas le locataire connecté. Mêmes contrôles que le portail, plus une
+ * politique de chevauchement « REUSE » sous verrou consultatif : deux
+ * ouvertures simultanées d'un même lien ne créent qu'un seul checkout.
+ */
+export async function startCheckoutForInstallments(
+  params: StartCheckoutForInstallmentsParams
+): Promise<StartCheckoutForInstallmentsResult> {
+  const { tenantId, leaseId, renterClientId, installmentIds, actorUserId, secureLinkId } = params;
+  const uniqueIds = [...new Set(installmentIds)];
+  const input: CheckoutCreationInput = { tenantId, leaseId, renterClientId, actorUserId, secureLinkId };
+
+  // Configuration chargée AVANT la transaction : aucune requête hors `tx` ne
+  // doit s'exécuter pendant qu'elle tient une connexion (épuisement du pool).
+  const config = await loadConfig(tenantId);
+  if (!isConfigUsable(config)) {
+    throw new BadRequestError("Le paiement en ligne n'est pas disponible pour cette agence.");
+  }
+
+  const codePaiement = generateCodePaiement();
+  const lockKey = `${tenantId}:${[...uniqueIds].sort().join(',')}`;
+
+  const outcome = await prisma.$transaction(async tx => {
+    // Verrou libéré au COMMIT : sérialise les créations concurrentes pour ces échéances.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+
+    // Ordre de lecture sous verrou : checkouts chevauchants D'ABORD, puis
+    // échéances et reste dû. Une réconciliation SUCCESS entre les deux lectures
+    // est ainsi vue côté échéance (soldée) et ne laisse pas passer un doublon.
+    // PENDING dans la fenêtre de 15 min ; REVIEW sans limite d'âge.
+    const since = new Date(Date.now() - PENDING_REUSE_WINDOW_MS);
+    const overlapping = await tx.onlinePaymentCheckout.findMany({
+      where: {
         tenantId,
-        paymentId: payment.id,
         leaseId,
-        renterClientId: tenantClientId,
-        provider: 'PAYSECUREHUB',
-        mode: config.mode,
-        codePaiement,
-        amount: new Decimal(amount),
-        currency: 'FCFA',
-        installmentIds: uniqueIds,
-        status: 'PENDING',
-        createdByUserId: actorUserId ?? null
+        installmentIds: { hasSome: uniqueIds },
+        OR: [{ status: 'PENDING', createdAt: { gte: since } }, { status: 'REVIEW' }]
+      },
+      select: {
+        id: true,
+        status: true,
+        mode: true,
+        secureLinkId: true,
+        installmentIds: true,
+        amount: true,
+        checkoutUrl: true
       }
     });
 
-    return { payment, checkout };
+    const prepared = await prepareCheckout(tenantId, leaseId, uniqueIds, tx, config);
+    const { amount } = prepared;
+
+    if (overlapping.length > 0) {
+      // Un REVIEW mène toujours au 409 (message dédié), jamais à une reprise.
+      if (overlapping.some(row => row.status === 'REVIEW')) {
+        throw new AppError(t(REVIEW_MESSAGE), 409, ErrorCode.CONFLICT);
+      }
+      const sameSet = (ids: string[]) => ids.length === uniqueIds.length && uniqueIds.every(id => ids.includes(id));
+      // Reprise : PENDING du chemin « lien », même mode, mêmes échéances, même montant, URL présente.
+      const exact = overlapping.find(
+        row =>
+          row.status === 'PENDING' &&
+          row.mode === config.mode &&
+          row.secureLinkId != null &&
+          sameSet(row.installmentIds) &&
+          Math.round(Number(row.amount)) === amount &&
+          row.checkoutUrl
+      );
+      if (overlapping.length === 1 && exact) {
+        return { kind: 'reused' as const, id: exact.id, prepared };
+      }
+      throw new AppError(OVERLAP_MESSAGE, 409, ErrorCode.CONFLICT);
+    }
+
+    return {
+      kind: 'created' as const,
+      prepared,
+      rows: await createCheckoutRowsTx(tx, input, prepared, codePaiement)
+    };
   });
 
-  // Appel réseau hors transaction : ne pas garder une transaction ouverte le
-  // temps d'attendre PaySecureHub.
-  try {
-    const renter = await renterContactInfo(tenantId, tenantClientId);
-    const client = gatewayClientForMode(config.mode);
-    const credentials = credentialsFrom(config);
-    const result = await client.buildAway(credentials, {
-      codePaiement,
-      nomUsager: renter.nom,
-      prenomUsager: renter.prenom,
-      telephone: renter.telephone,
-      email: renter.email,
-      libelleArticle: 'Loyer',
-      quantite: 1,
-      montant: amount,
-      libOrder: `Paiement loyer ${codePaiement}`,
-      urlRetour: `${env.FRONTEND_URL.replace(/\/$/, '')}/tenant/payments?paiement=${codePaiement}`,
-      urlCallback: `${env.BACKEND_URL.replace(/\/$/, '')}/api/payment-gateway/paysecurehub/ipn`
-    });
-
-    const updated = await prisma.onlinePaymentCheckout.update({
-      where: { id: checkout.id, tenantId: checkout.tenantId },
-      data: { checkoutUrl: result.url, providerToken: result.tokens }
-    });
-    return toOnlineCheckoutDto(updated);
-  } catch (error) {
-    await prisma.$transaction([
-      prisma.rentalPayment.update({
-        where: { id: payment.id, tenant_id: tenantId },
-        data: { status: 'FAILED', failed_at: new Date() }
-      }),
-      prisma.onlinePaymentCheckout.update({
-        where: { id: checkout.id, tenantId: checkout.tenantId },
-        data: {
-          status: 'FAILED',
-          failureMessage: error instanceof GatewayError ? error.message : 'Erreur agrégateur.'
-        }
-      })
-    ]);
-    logger.warn('startCheckout: build-away a échoué, paiement et checkout marqués FAILED', {
-      checkoutId: checkout.id,
-      error: (error as Error)?.message
-    });
-    throw new AppError("Impossible de créer le paiement en ligne : l'agrégateur n'a pas répondu.", 502);
+  if (outcome.kind === 'reused') {
+    const existing = await prisma.onlinePaymentCheckout.findFirstOrThrow({ where: { id: outcome.id, tenantId } });
+    return { checkout: toOnlineCheckoutDto(existing), reused: true, mode: existing.mode };
   }
+
+  const returnUrl = params.returnUrl
+    ? params.returnUrl(codePaiement)
+    : checkoutReturnUrl({ secureLinkId, codePaiement });
+  const checkout = await requestProviderCheckout(input, outcome.prepared, outcome.rows, codePaiement, returnUrl, true);
+  return { checkout, reused: false, mode: outcome.prepared.config.mode };
 }
 
 export async function getCheckoutForPayment(tenantId: string, paymentId: string): Promise<CheckoutRow> {

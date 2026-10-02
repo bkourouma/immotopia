@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   Card,
@@ -31,7 +31,9 @@ import {
   ProfileOutlined,
   ApartmentOutlined,
   FolderOpenOutlined,
-  SolutionOutlined
+  SolutionOutlined,
+  SafetyCertificateOutlined,
+  BookOutlined
 } from '@ant-design/icons';
 import { Property, PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import { getProperty } from '../../services/property-service';
@@ -50,10 +52,17 @@ import { PropertySaleCard } from '../../components/properties/PropertySaleCard';
 import { PropertyDocumentsTab } from '../../components/properties/PropertyDocumentsTab';
 import { PropertyMandatesTab } from '../../components/properties/PropertyMandatesTab';
 import { API_URL } from '../../config/api';
+
 import { PageHeader, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
-
 import { activeLocale } from '../../i18n/format';
+
+const PropertyInsuranceTab = lazy(() =>
+  import('../../components/insurance/PropertyInsuranceTab').then(m => ({ default: m.PropertyInsuranceTab }))
+);
+const PropertyMaintenanceLogTab = lazy(() =>
+  import('../../components/insurance/PropertyMaintenanceLogTab').then(m => ({ default: m.PropertyMaintenanceLogTab }))
+);
 const { Text, Title } = Typography;
 
 /**
@@ -360,7 +369,17 @@ export const PropertyDetail: React.FC = () => {
     {
       key: 'type',
       label: t('Type de bien'),
-      children: TYPE_LABELS[property.propertyType] || property.propertyType
+      children: (
+        <Space size="small" wrap>
+          <span>{TYPE_LABELS[property.propertyType] || property.propertyType}</span>
+          {/* Lot B2 : un terrain se régularise (attestation villageoise → titre foncier). */}
+          {property.propertyType === 'TERRAIN' && possede('PATRIMOINE') && (
+            <Link to={`/tenant/${effectiveTenantId}/patrimoine/land?propertyId=${encodeURIComponent(id!)}`}>
+              {t('Régularisation foncière')}
+            </Link>
+          )}
+        </Space>
+      )
     },
     {
       key: 'owner',
@@ -599,6 +618,38 @@ export const PropertyDetail: React.FC = () => {
               <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
               <PropertyHoldingTaxSection tenantId={effectiveTenantId} propertyId={id!} />
             </>
+          )
+        }
+      : null,
+    possede('PATRIMOINE')
+      ? {
+          key: 'assurances',
+          label: (
+            <Space size="small">
+              <SafetyCertificateOutlined aria-hidden="true" />
+              {t('Assurances et sinistres')}
+            </Space>
+          ),
+          children: (
+            <Suspense fallback={<Spin />}>
+              <PropertyInsuranceTab propertyId={id!} tenantId={effectiveTenantId} />
+            </Suspense>
+          )
+        }
+      : null,
+    possede('PATRIMOINE')
+      ? {
+          key: 'carnet',
+          label: (
+            <Space size="small">
+              <BookOutlined aria-hidden="true" />
+              {t("Carnet d'entretien")}
+            </Space>
+          ),
+          children: (
+            <Suspense fallback={<Spin />}>
+              <PropertyMaintenanceLogTab propertyId={id!} tenantId={effectiveTenantId} />
+            </Suspense>
           )
         }
       : null,
