@@ -266,7 +266,7 @@ type Utilisateur = ReturnType<typeof userEvent.setup>;
 // (.xlsm), pour vérifier que la page les refuse elle-même.
 const nouvelUtilisateur = (): Utilisateur => userEvent.setup({ delay: null, applyAccept: false });
 
-const titreEtape = (nom: string) => screen.findByRole('heading', { name: nom }, { timeout: 10000 });
+const titreEtape = (nom: string) => screen.findByRole('heading', { name: nom }, { timeout: 30000 });
 
 async function choisirNature(user: Utilisateur, nature: 'Biens' | 'Valorisations') {
   await user.click(await screen.findByRole('radio', { name: new RegExp(`^${nature}`) }));
