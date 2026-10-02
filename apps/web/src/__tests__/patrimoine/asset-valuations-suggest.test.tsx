@@ -394,3 +394,66 @@ describe('fiabilité des valeurs', () => {
     expect(screen.getByText('Statut juridique fragile')).toBeInTheDocument();
   });
 });
+
+describe('cohérence après enregistrement des informations et de la suggestion', () => {
+  it('B2 : après « Compléter les informations », la suggestion est recalculée et l’avertissement disparaît', async () => {
+    const user = userEvent.setup();
+    suggestAssetValuation.mockResolvedValueOnce({ ok: false, missing: ['usefulLifeYears'] }).mockResolvedValue({
+      ok: true,
+      amount: 3_500_000,
+      currency: 'XOF',
+      method: 'DEPRECIATION_LINEAR',
+      assumptions: [],
+      valueDate: '2026-09-29'
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const arbre = (asset: Record<string, unknown>) => (
+      <QueryClientProvider client={queryClient}>
+        <AntApp>
+          <MemoryRouter>
+            <AssetValuationsTab tenantId="agence-1" asset={asset as never} onCompleteInfo={vi.fn()} />
+          </MemoryRouter>
+        </AntApp>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(arbre({ ...ACTIF, updatedAt: 't1', details: {} }));
+
+    await user.click(await screen.findByRole('button', { name: /Calculer une valeur/ }));
+    expect(await screen.findByText(/Il manque des informations/)).toBeInTheDocument();
+
+    // La fiche recharge l'actif après l'enregistrement du tiroir d'édition.
+    rerender(arbre({ ...ACTIF, updatedAt: 't2', details: { usefulLifeYears: 5 } }));
+
+    await waitFor(() => expect(screen.queryByText(/Il manque des informations/)).not.toBeInTheDocument());
+    expect(await screen.findByText(/Valeur calculée/)).toBeInTheDocument();
+    expect(suggestAssetValuation).toHaveBeenCalledTimes(2);
+  });
+
+  it('B1 : la valeur est enregistrée à la date de calcul renvoyée par le serveur', async () => {
+    const user = userEvent.setup();
+    suggestAssetValuation.mockResolvedValue({
+      ok: true,
+      amount: 6_261_541,
+      currency: 'XOF',
+      method: 'DEPRECIATION_LINEAR',
+      assumptions: [],
+      valueDate: '2026-09-28'
+    });
+    monter();
+
+    await user.click(await screen.findByRole('button', { name: /Calculer une valeur/ }));
+    await user.click(await screen.findByRole('button', { name: 'Enregistrer cette valeur' }));
+    const confirmation = await screen.findByText(/Enregistrer cette valeur de/);
+    await user.click(
+      within(confirmation.closest('.ant-popover') as HTMLElement).getByRole('button', { name: 'Enregistrer' })
+    );
+
+    await waitFor(() =>
+      expect(createAssetValuation).toHaveBeenCalledWith(
+        'agence-1',
+        'a1',
+        expect.objectContaining({ valuatedAt: '2026-09-28', method: 'DEPRECIATION_LINEAR' })
+      )
+    );
+  });
+});

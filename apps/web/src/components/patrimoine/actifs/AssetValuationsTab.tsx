@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   App,
@@ -455,11 +455,25 @@ export const AssetValuationsTab: React.FC<{
     }
   };
 
+  // Les informations de l'actif ont changé (« Compléter les informations ») : la suggestion affichée
+  // (surtout l'avertissement « il manque… ») est périmée. On la recalcule si elle était affichée.
+  const assetSignature = `${asset.updatedAt ?? ''}|${JSON.stringify(asset.details ?? {})}|${asset.acquisitionCost ?? ''}|${asset.acquisitionDate ?? ''}`;
+  const lastSignature = useRef(assetSignature);
+  const suggestionShown = useRef(false);
+  suggestionShown.current = suggestion !== null;
+  useEffect(() => {
+    if (lastSignature.current === assetSignature) return;
+    lastSignature.current = assetSignature;
+    if (suggestionShown.current) void handleSuggest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetSignature]);
+
   /** Enregistrement explicite (après confirmation) : montant et méthode de la suggestion, date du jour. */
   const handleSaveSuggestion = async (result: Extract<SuggestResponse, { ok: true }>) => {
     try {
       await createAssetValuation(tenantId, asset.id, {
-        valuatedAt: todayIso(),
+        // Même jour que celui du calcul : le serveur revérifie le montant à cette date.
+        valuatedAt: result.valueDate ?? todayIso(),
         estimatedValue: result.amount,
         currency: result.currency,
         method: result.method

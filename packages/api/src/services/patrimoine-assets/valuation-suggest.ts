@@ -18,6 +18,8 @@ export type SuggestResponse =
       currency: string;
       method: ValuationMethodKey;
       assumptions: { key: string; value: string | number }[];
+      /** Jour (AAAA-MM-JJ, UTC) sur lequel le montant est calculé : à renvoyer comme date de la valeur enregistrée. */
+      valueDate: string;
     }
   | { ok: false; missing: string[]; reason?: SuggestRefusalReason };
 
@@ -44,11 +46,22 @@ function inAssetCurrency(asset: SuggestAssetInput, line: SuggestLastValuation): 
   return asset.exchangeRateToXof && asset.exchangeRateToXof > 0 ? xof / asset.exchangeRateToXof : null;
 }
 
+/**
+ * Invariant temporel : une valeur calculée l'est toujours à un JOUR (minuit UTC), jamais à
+ * un instant. La suggestion et `verifiedMethod` (qui reçoit la date de la ligne, à minuit)
+ * partent ainsi de la même base ; sinon l'amortissement, continu dans le temps, dériverait
+ * de quelques milliers de XOF entre les deux calculs et la méthode retomberait en MANUAL.
+ */
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
 export function buildSuggestion(
   asset: SuggestAssetInput,
   last: SuggestLastValuation | null,
-  asOf: Date
+  instant: Date
 ): SuggestResponse {
+  const asOf = startOfUtcDay(instant);
   const amount = last ? inAssetCurrency(asset, last) : null;
   const result: SuggestValuationResult = suggestValuation(
     {
@@ -70,7 +83,8 @@ export function buildSuggestion(
     amount: result.amount,
     currency: asset.currency,
     method: result.method,
-    assumptions: result.assumptions
+    assumptions: result.assumptions,
+    valueDate: asOf.toISOString().slice(0, 10)
   };
 }
 
@@ -90,6 +104,10 @@ const TOLERANCE_OTHER = 0.01;
  * que si le serveur retrouve le montant (recalcul à la date de la ligne, avec la
  * valorisation antérieure de l'actif) ; sinon `MANUAL` : un montant retouché à la
  * main n'est jamais présenté comme calculé. Les autres méthodes passent telles quelles.
+ *
+ * Garde de non-falsification : le montant n'est JAMAIS repris du client, il est recalculé
+ * ici ; seule la date est partagée (jour UTC, cf. `startOfUtcDay`). La tolérance (1 XOF)
+ * ne couvre que l'arrondi, pas une dérive de date.
  */
 export function verifiedMethod(
   asset: SuggestAssetInput,
