@@ -30,8 +30,10 @@ const BUILD_DIR = join(WEB_ROOT, 'build');
  * Plafond du §8.1. Dépassement = sortie en échec.
  * Relevé de 225 280 à 226 304 o (+1 Kio) le 2026-09-29 : la marge n'était plus que de 58 o
  * et l'entrée de menu « Assistant IA » (super-admin) suffisait à la dépasser.
+ * Relevé de 226 304 à 227 328 o (+1 Kio) le 2026-10-02, sur décision explicite de l'utilisateur :
+ * les entrées de menu et routes du pack patrimoine (vagues B et C) dépassaient le plafond de 135 o.
  */
-const DEFAULT_BUDGET = 226_304;
+const DEFAULT_BUDGET = 227_328;
 
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');

@@ -130,6 +130,17 @@ const TaxParametersPage = lazy(() =>
     default: m.TaxParametersPage
   }))
 );
+// Lot B3 — accès en lecture seule des tiers de confiance (notaire, expert-comptable, banquier).
+const ExternalAccessPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/external-access/ExternalAccessPage').then(m => ({
+    default: m.ExternalAccessPage
+  }))
+);
+const ExternalAccessViewPage = lazy(() =>
+  import(/* webpackChunkName: "public-external-access" */ './pages/public/ExternalAccessViewPage').then(m => ({
+    default: m.ExternalAccessViewPage
+  }))
+);
 // Lot B2 — régularisation foncière (spec 033).
 const LandRegularizationListPage = lazy(() =>
   import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/land/LandRegularizationListPage').then(m => ({
@@ -844,6 +855,7 @@ function App() {
                         <Route path="/newsletter/confirm" element={<ConfirmPage />} />
                         <Route path="/newsletter/subscribe" element={<SubscribePage />} />
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
+                        <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}
@@ -927,6 +939,7 @@ function App() {
                             element={<HoldingEntityDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/external-access" element={<ExternalAccessPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/land" element={<LandRegularizationListPage />} />
                           <Route
                             path="/tenant/:tenantId/patrimoine/land/:regularizationId"

@@ -126,6 +126,30 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
       'no-store/noindex, chaque consultation journalisee (SECURE_LINK_VIEWED).'
   },
   {
+    method: 'POST',
+    test: exact('/api/public/external-access/patrimoine'),
+    reason:
+      "Vue en lecture seule d'un tiers de confiance (notaire, expert-comptable, banquier ; lot B3, spec 034), lue par " +
+      "son lien securise (lib/secure-links, portee EXTERNAL_ACCESS_GRANT) : public par nature, le tiers n'a pas de " +
+      'compte. Le jeton (32 octets aleatoires, SHA-256 seul en base, expirant, revocable) est dans le corps du POST et ' +
+      "designe un unique grant ; le grant, l'agence et le perimetre se deduisent du lien (aucun identifiant de bien, " +
+      "d'agence ou d'entite ne vient de la requete), relus a chaque appel. Seules les rubriques accordees sont lues et " +
+      'renvoyees, sans coordonnees ni chemin disque. Limiteur par IP avant verification, refus uniforme 404 (inconnu, ' +
+      'expire, revoque, grant revoque/expire, mauvaise portee, perimetre disparu), en-tetes no-store/noindex/' +
+      'no-referrer, chaque consultation journalisee (EXTERNAL_ACCESS_GRANT_VIEWED).'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/external-access/documents/download'),
+    reason:
+      "Telechargement d'un document que l'agence a explicitement lie a un acces de tiers de confiance (lot B3) : meme " +
+      'justification que la vue (jeton dans le corps, limiteur par IP, 404 uniforme, en-tetes no-store). Seul ' +
+      "`documentRef` (id opaque de la ligne de liaison, jamais celui du document) s'ajoute au jeton ; il est reverifie " +
+      'contre le grant du lien, la rubrique DOCUMENTS et le perimetre courant du bien (mandat compris). Fichier servi en ' +
+      'piece jointe, nosniff, jamais de chemin disque ; chaque telechargement est journalise ' +
+      '(EXTERNAL_ACCESS_GRANT_DOCUMENT_DOWNLOADED).'
+  },
+  {
     method: 'GET',
     test: exact('/api/tenants'),
     reason: "Vitrine d'agences : ne renvoie que des champs publics (PUBLIC_TENANT_SELECT dans tenant-service.ts)."
@@ -286,6 +310,39 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       expect(route!.middlewares).toContain(requireSuperAdmin);
     }
     expect(routes.filter(r => r.path.startsWith('/api/platform/ai-settings'))).toHaveLength(3);
+  });
+
+  it('declare les 9 routes agence des acces tiers de confiance (lot B3) avec authentification et garde d’agence', () => {
+    const base = '/api/tenants/:tenantId/patrimoine/external-access';
+    const expected: Array<[string, string]> = [
+      ['GET', base],
+      ['GET', `${base}/scope-options`],
+      ['GET', `${base}/property-documents/:propertyId`],
+      ['POST', base],
+      ['GET', `${base}/:grantId`],
+      ['PATCH', `${base}/:grantId`],
+      ['POST', `${base}/:grantId/revoke`],
+      ['POST', `${base}/:grantId/send-link`],
+      ['GET', `${base}/:grantId/access-log`]
+    ];
+    for (const [method, path] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      expect(route!.middlewares).toContain(authenticate);
+      // Aucune de ces routes n'est publique : elles ne figurent pas dans la liste blanche.
+      expect(isWhitelisted(route!)).toBeUndefined();
+    }
+    expect(routes.filter(r => r.path.startsWith(base))).toHaveLength(expected.length);
+  });
+
+  it('les 2 routes publiques des acces tiers (lot B3) sont des POST en liste blanche, sans autre methode', () => {
+    const publicRoutes = routes.filter(r => r.path.startsWith('/api/public/external-access'));
+    expect(publicRoutes.map(r => `${r.method} ${r.path}`).sort()).toEqual([
+      'POST /api/public/external-access/documents/download',
+      'POST /api/public/external-access/patrimoine'
+    ]);
+    for (const route of publicRoutes) expect(isWhitelisted(route)).toBeDefined();
   });
 
   it('chaque route hors liste blanche porte une garde d’agence ou une permission plateforme', () => {

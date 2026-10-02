@@ -1374,5 +1374,18 @@
   "Ce relevé est déjà réglé : il ne peut plus être recalculé. Un écart éventuel se régularise sur le relevé suivant.": "This statement has already been paid: it can no longer be recalculated. Any difference is settled on the next statement.",
   "Ce relevé a déjà été envoyé au propriétaire : il ne peut plus être recalculé.": "This statement has already been sent to the owner: it can no longer be recalculated.",
   "Ce relevé ne porte sur aucun bien : générez-en un nouveau en choisissant les biens.": "This statement covers no property: generate a new one and choose the properties.",
-  "Ce relevé est encore un brouillon : il ne peut être partagé qu'une fois envoyé au propriétaire, depuis la liste des relevés (bouton « Envoyer »).": "This statement is still a draft: it can only be shared once it has been sent to the owner, from the statements list (\"Send\" button)."
+  "Ce relevé est encore un brouillon : il ne peut être partagé qu'une fois envoyé au propriétaire, depuis la liste des relevés (bouton « Envoyer »).": "This statement is still a draft: it can only be shared once it has been sent to the owner, from the statements list (\"Send\" button).",
+  "Accès introuvable.": "Access not found.",
+  "Propriétaire introuvable.": "Owner not found.",
+  "Ajoutez la rubrique « Documents » pour partager des documents.": "Add the “Documents” section to share documents.",
+  "Choisissez au moins un bien ou une entité.": "Choose at least one property or entity.",
+  "Cet accès est révoqué : il ne peut plus être modifié.": "This access has been revoked: it can no longer be edited.",
+  "Cet accès est révoqué : aucun lien ne peut être envoyé.": "This access has been revoked: no link can be sent.",
+  "Cet accès est expiré : prolongez-le avant de renvoyer un lien.": "This access has expired: extend it before sending a new link.",
+  "Notaire": "Notary",
+  "Expert-comptable": "Chartered accountant",
+  "Banquier": "Banker",
+  "L'accès est expiré : aucun lien ne peut être créé.": "The access has expired: no link can be created.",
+  "Un accès partagé ne peut couvrir plus de {{max}} biens.": "A shared access cannot cover more than {{max}} properties.",
+  "Cette entité ne détient aucun bien.": "This entity holds no property."
 }

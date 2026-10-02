@@ -8,7 +8,7 @@ import { runWithTenantContext } from '../../utils/tenant-context';
 import { generateToken, hashToken, hashesMatch, looksLikeToken } from './token';
 import { invalidSecureLinkError } from './errors';
 
-export type SecureLinkScope = 'OWNER_MONTHLY_REPORT'; // = enum Prisma
+export type SecureLinkScope = 'OWNER_MONTHLY_REPORT' | 'EXTERNAL_ACCESS_GRANT'; // = enum Prisma
 
 export interface CreateSecureLinkInput {
   tenantId: string;
@@ -17,6 +17,12 @@ export interface CreateSecureLinkInput {
   objectId: string;
   createdByUserId?: string | null;
   ttlDays?: number;
+  /**
+   * Plafond de la date d'expiration (ex. `expiresAt` du grant d'un tiers de
+   * confiance) : le lien ne vit jamais au-delà, même si la durée demandée le
+   * permettrait. Une date déjà passée est refusée.
+   */
+  maxExpiresAt?: Date | null;
 }
 
 export interface CreatedSecureLink {
@@ -61,6 +67,8 @@ export function buildSecureLinkUrl(scope: SecureLinkScope, token: string): strin
   switch (scope) {
     case 'OWNER_MONTHLY_REPORT':
       return `${base}/rapport-proprietaire#${token}`;
+    case 'EXTERNAL_ACCESS_GRANT':
+      return `${base}/acces-partage#${token}`;
   }
 }
 
@@ -78,7 +86,13 @@ function resolveTtlDays(requested: number | undefined): number {
 export async function createSecureLink(input: CreateSecureLinkInput): Promise<CreatedSecureLink> {
   const ttlDays = resolveTtlDays(input.ttlDays);
   const token = generateToken();
-  const expiresAt = new Date(Date.now() + ttlDays * DAY_MS);
+  let expiresAt = new Date(Date.now() + ttlDays * DAY_MS);
+  if (input.maxExpiresAt) {
+    if (input.maxExpiresAt.getTime() <= Date.now()) {
+      throw new BadRequestError(t("L'accès est expiré : aucun lien ne peut être créé."));
+    }
+    if (input.maxExpiresAt.getTime() < expiresAt.getTime()) expiresAt = new Date(input.maxExpiresAt.getTime());
+  }
 
   const created = await prisma.secureLink.create({
     data: {
@@ -253,4 +267,64 @@ export async function listSecureLinks(
     ...row,
     status: row.revokedAt ? 'REVOKED' : row.expiresAt.getTime() <= now.getTime() ? 'EXPIRED' : 'ACTIVE'
   }));
+}
+
+/**
+ * Révoque TOUS les liens encore actifs d'un objet (ex. un grant de tiers de
+ * confiance révoqué) et renvoie leur nombre. Idempotent. Filtré par agence ;
+ * chaque lien révoqué est journalisé (identifiant seulement, jamais le jeton).
+ */
+export async function revokeSecureLinksForObject(
+  tenantId: string,
+  objectType: string,
+  objectId: string,
+  actorUserId: string | null
+): Promise<number> {
+  const active = await prisma.secureLink.findMany({
+    where: { tenantId, objectType, objectId, revokedAt: null },
+    select: { id: true, scope: true }
+  });
+  if (active.length === 0) return 0;
+
+  await prisma.secureLink.updateMany({
+    where: { id: { in: active.map(link => link.id) }, tenantId, revokedAt: null },
+    data: { revokedAt: new Date() }
+  });
+
+  for (const link of active) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SECURE_LINK_REVOKED,
+      entityType: 'SecureLink',
+      entityId: link.id,
+      payload: { linkId: link.id, scope: link.scope, objectType, objectId }
+    });
+  }
+  return active.length;
+}
+
+/** Nombre de liens actifs (non révoqués, non échus) par objet, en une requête. */
+export async function countActiveSecureLinksByObject(
+  tenantId: string,
+  scope: SecureLinkScope,
+  objectType: string,
+  objectIds: string[]
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (objectIds.length === 0) return result;
+  const rows = await prisma.secureLink.groupBy({
+    by: ['objectId'],
+    where: {
+      tenantId,
+      scope,
+      objectType,
+      objectId: { in: objectIds },
+      revokedAt: null,
+      expiresAt: { gt: new Date() }
+    },
+    _count: { _all: true }
+  });
+  for (const row of rows) result.set(row.objectId, row._count._all);
+  return result;
 }

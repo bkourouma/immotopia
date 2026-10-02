@@ -471,6 +471,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/patrimoine/tax-parameters'
             },
             {
+              key: 'patrimoine-external-access',
+              label: t('Accès partagés'),
+              href: '/tenant/:tenantId/patrimoine/external-access'
+            },
+            {
               key: 'patrimoine-land',
               label: t('Régularisation foncière'),
               href: '/tenant/:tenantId/patrimoine/land'
