@@ -657,12 +657,13 @@ export async function createManualReminder(
   syndicId: string,
   chargeId: string,
   data: CreateManualReminderRequest
-): Promise<PaymentReminder> {
-  const response = await apiClient.post<{ success: boolean; data: PaymentReminder }>(
+): Promise<PaymentReminder & { notificationFailed: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: PaymentReminder; notificationFailed?: boolean }>(
     `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`,
     data
   );
-  return response.data.data;
+  // La relance est enregistrée même si l'envoi échoue : l'API le signale à part.
+  return { ...response.data.data, notificationFailed: response.data.notificationFailed === true };
 }
 
 export async function runReminderBatch(tenantId: string, syndicId: string): Promise<ReminderBatchResult> {
