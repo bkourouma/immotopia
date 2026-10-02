@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMatch } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import { AssetDetailPage } from './AssetDetailPage';
 import { AssetsPage } from './AssetsPage';
 import { NetWorthPage } from './NetWorthPage';
@@ -12,19 +12,20 @@ import { NotFound } from '../../components/primitives/NotFound';
  * `App.tsx` ne charge qu'un seul module différé pour les écrans (valeur nette, actifs, projections) : chaque
  * `React.lazy` supplémentaire y coûte des octets sur le chemin critique, dont le
  * budget est mesuré par `npm run measure:entry` (REFONTE_UI_UX.md §8.1).
+ *
+ * Routes descendantes, relatives au joker `patrimoine/*` d'`App.tsx` : elles
+ * seules exposent `:assetId` à `useParams`. Avec `useMatch`, la fiche d'un
+ * actif ne recevait pas son identifiant et restait vide.
  */
-const PatrimoineAssetsRoutes: React.FC = () => {
-  const isNetWorth = useMatch('/tenant/:tenantId/patrimoine/valeur-nette');
-  const isProjections = useMatch('/tenant/:tenantId/patrimoine/projections');
-  const isList = useMatch('/tenant/:tenantId/patrimoine/actifs');
-  const isDetail = useMatch('/tenant/:tenantId/patrimoine/actifs/:assetId');
-
-  if (isNetWorth) return <NetWorthPage />;
-  if (isProjections) return <ProjectionsPage />;
-  if (isList) return <AssetsPage />;
-  if (isDetail) return <AssetDetailPage />;
-  // Tout autre chemin patrimoine inconnu : même écran que le joker global.
-  return <NotFound />;
-};
+const PatrimoineAssetsRoutes: React.FC = () => (
+  <Routes>
+    <Route path="valeur-nette" element={<NetWorthPage />} />
+    <Route path="projections" element={<ProjectionsPage />} />
+    <Route path="actifs" element={<AssetsPage />} />
+    <Route path="actifs/:assetId" element={<AssetDetailPage />} />
+    {/* Tout autre chemin patrimoine inconnu : même écran que le joker global. */}
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
 
 export default PatrimoineAssetsRoutes;
