@@ -71,6 +71,27 @@ Pièges et décisions :
 
 ---
 
+## Pilote — recette navigateur des vagues B et C, correctifs (PR #102) — 2026-10-02
+
+**État :** recette jouée (B1 assurances, B2 foncier, B3 accès tiers de confiance, C4 import, C5 lien de paiement) : 17 anomalies au bus (`BUG-2026-10-02-001` à `017`). Correctifs dans la PR #102 (`fix/patrimoine-recette-bc`, dernier commit 7007e4ec, CI en cours à la rédaction) : 001 à 015 rejouées et passées ; 016 (étiquette « À valider » rognée en mobile) et 017 (paiement échoué affichait « Reste à affecter ») corrigées, à l'état « prêt au retest ». Audit sécurité du diff : rien. Fusion de #102 : à la main de l'utilisateur.
+
+Reste à faire :
+
+- Rejouer 016 et 017 dans le navigateur ; suivre la CI de #102 et la fusionner sur accord.
+- Rôle avec `PROPERTIES_VIEW` sans `PROPERTIES_EDIT` : les boutons d'écriture restent visibles (l'API répond 403) ; il faut exposer les permissions dans le contexte d'authentification.
+- Réserves cosmétiques du retest : « 245 000 000 XOF » touche le bord du tableau « Synthèse » (page publique à 375 px) ; « Dernière consultation » rognée sous la colonne Actions collante (1920 px) ; le bouton « Envoyer un lien de paiement » reste affiché sur une échéance brouillon (l'API refuse) ; la réponse de génération d'échéances renvoie DRAFT pour une échéance déjà en retard (la liste renvoie OVERDUE).
+- Non joué : e-mails d'alerte quotidiens (job non déclenchable par l'interface), cas REVIEW du paiement, état « expiré » d'un accès partagé, isolation inter-agences réelle (`npm run test:isolation`), bien client sous mandat actif, arabe sur « Accès partagés ».
+- Plafond de surface de l'import (500 000 m²) à valider.
+
+Pièges :
+
+- Recette : worktree `.claude/worktrees/rec-bc` (détaché sur le commit testé), instances Agence/Patrimoine Pro lancées par `scratchpad/rec-a/rec-all.cjs` (lancer avec `Start-Process` détaché : un shell d'arrière-plan est tué au bout de quelques minutes). `instances.cjs` pointe sur `rec-bc`.
+- `npm ci --ignore-scripts` ne pose pas `lefthook` : `npm rebuild lefthook` ; Windows peut bloquer `lefthook.exe` (stratégie de contrôle d'application) tant que l'utilisateur ne l'a pas autorisé.
+- Le panneau navigateur intégré est souvent masqué (pas de capture) : les testeurs passent par `chrome-devtools`.
+- Instance de recette : l'inscription publique n'avait jamais pu fonctionner (confirmPassword non envoyé, corrigé dans #102) ; le super-admin du seed crée les agences jetables.
+
+---
+
 ## Pilote — feuille de route patrimoine, vagues A, B, C (partielle) et lot F1 — 2026-10-02
 
 **État :** fusionnés dans `main` : vague A (#91, #92, #93), vague B (B1 assurances #96, B2 foncier #95, B3 accès tiers de confiance #97), lot F1 de correctifs de recette (#98), C4 import en masse (#100), C5 lien de paiement Mobile Money (#99). Budget d'entrée web relevé de 1 Kio (226 304 -> 227 328 o gzip) sur décision explicite de l'utilisateur le 02/10 (marge actuelle 626 o). Non fusionnées : #90 (plan, cette branche), #86 (retest docs), #87 et #88 (balance clients, 058/003).
