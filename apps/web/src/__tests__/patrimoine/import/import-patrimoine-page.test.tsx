@@ -554,7 +554,7 @@ describe('Importer mon patrimoine — la page', () => {
     ).toBeInTheDocument();
 
     // Toujours à l'étape du fichier : aucun aperçu, aucune écriture.
-    expect(screen.getByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'L’aperçu' })).not.toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
   }, 30000);
@@ -929,7 +929,7 @@ describe('Importer mon patrimoine — la page', () => {
     expect(
       await screen.findByText('Ce fichier ne contient aucune ligne à importer (hors ligne d’exemple).')
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
 
     // L'exemple oublié à côté d'une vraie ligne : l'exemple est ignoré, la vraie part.
     await deposer(
