@@ -219,6 +219,12 @@ export const BalanceClients: React.FC = () => {
         </div>
       </FilterSheet>
 
+      {(filtresPeriode.from || filtresPeriode.to) && (
+        <p role="note" style={{ margin: '0 0 12px', opacity: 0.75 }}>
+          {t('Période filtrée : le solde est celui à la fin de la période.')}
+        </p>
+      )}
+
       <DataView<ClientsBalanceLine>
         // La balance n'est pas paginée : l'API la rend entière, comme les
         // pénalités (`pages/rental/Penalties.tsx`). `total` est donc le

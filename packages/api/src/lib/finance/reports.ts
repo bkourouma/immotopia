@@ -120,9 +120,8 @@ async function loadPropertyLabelsByClient(tenantId: string, tenantClientIds: str
  * Voir `GetClientsBalance` dans `./types.ts`.
  *
  * Une seule requête `groupBy` porte l'agrégation des montants facturés et
- * réglés sur la période filtrée ; le solde affiché, lui, est le solde
- * courant du compte (`ThirdPartyAccount.balance`), tenu à jour par le grand
- * livre à chaque mouvement — jamais recalculé ici.
+ * réglés sur la période filtrée ; le solde affiché est le solde à la fin de
+ * la période (à date sans période), agrégé par la même requête SQL.
  */
 export const getClientsBalance: GetClientsBalance = async (tenantId, filters) => {
   // Comptes TENANT du tenant : une ligne par locataire, chargée une seule
@@ -151,11 +150,12 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
   const asOf = filters?.asOf ?? new Date();
   const upTo = movementDateFilter?.lte && movementDateFilter.lte < asOf ? movementDateFilter.lte : asOf;
 
-  // Solde À DATE : Σ débits − Σ crédits des mouvements déjà exigibles. Même
-  // fonction que le relevé (`balanceUpTo`) : un loyer futur n'y figure pas.
+  // Solde À LA FIN DE LA PÉRIODE (à date sans période) : Σ débits − Σ crédits
+  // des mouvements dont la date est <= `upTo`, comme la clôture du relevé
+  // (`balanceUpTo`) : ni loyer futur, ni mouvement postérieur à la période.
   const soldes = await prisma.thirdPartyMovement.groupBy({
     by: ['accountId'],
-    where: { tenantId, accountId: { in: accountIds }, movementDate: { lte: asOf } },
+    where: { tenantId, accountId: { in: accountIds }, movementDate: { lte: upTo } },
     _sum: { debit: true, credit: true }
   });
   const soldeParCompte = new Map(

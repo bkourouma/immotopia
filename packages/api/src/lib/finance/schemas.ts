@@ -44,11 +44,29 @@ export interface ResolvedRange {
   to?: Date;
 }
 
-/** Résout les deux jeux de noms de bornes vers une seule forme `{ from, to }`. */
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Borne de fin « jour seul » : `z.coerce.date()` transforme « 2026-09-30 » en
+ * 2026-09-30T00:00:00.000Z, et un mouvement daté plus tard dans la journée
+ * serait alors exclu d'un filtre `<= to`. Une borne qui tombe exactement à
+ * minuit UTC désigne donc le jour ENTIER : elle est étendue à 23:59:59.999 UTC
+ * (l'Afrique de l'Ouest visée est à UTC+0). Une borne portant une heure
+ * explicite est laissée telle quelle.
+ */
+export function toInclusiveRangeEnd(date: Date): Date {
+  return date.getTime() % MS_PER_DAY === 0 ? new Date(date.getTime() + MS_PER_DAY - 1) : date;
+}
+
+/**
+ * Résout les deux jeux de noms de bornes vers une seule forme `{ from, to }`.
+ * La borne de fin est inclusive du jour entier (voir `toInclusiveRangeEnd`).
+ */
 export function resolveRange(input: { periodStart?: Date; periodEnd?: Date; from?: Date; to?: Date }): ResolvedRange {
+  const to = input.periodEnd ?? input.to;
   return {
     from: input.periodStart ?? input.from,
-    to: input.periodEnd ?? input.to
+    to: to ? toInclusiveRangeEnd(to) : undefined
   };
 }
 
