@@ -182,9 +182,16 @@ export const LandRegularizationListPage: React.FC = () => {
         renderCard={dossier => (
           <DataCard
             title={dossier.property.title}
-            subtitle={<TrackCell dossier={dossier} />}
+            subtitle={dossier.trackLabel}
             status={
-              <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+              <>
+                <Tag color={regularizationStatusColor(dossier.status)}>{regularizationStatusLabel(dossier.status)}</Tag>
+                {dossier.validationStatus === 'A_VALIDER' && (
+                  <Tooltip title={t('À valider par un juriste local')}>
+                    <Tag color="warning">{t('À valider')}</Tag>
+                  </Tooltip>
+                )}
+              </>
             }
             fields={[
               { label: t('Avancement'), value: <ProgressCell dossier={dossier} /> },
