@@ -1659,5 +1659,9 @@
   "Vérifiez les informations saisies": "Check the information you entered",
   "Vérifiez votre adresse e-mail": "Verify your email address",
   "Votre espace est déjà sur le palier payant.": "Your space is already on the paid tier.",
-  "Vous êtes sur le palier payant : merci de votre confiance.": "You are on the paid tier: thank you for your trust."
+  "Vous êtes sur le palier payant : merci de votre confiance.": "You are on the paid tier: thank you for your trust.",
+  "Consulter les actifs non immobiliers, dettes, entités détentrices et projections.": "View non-real-estate assets, debts, holding entities and projections.",
+  "Créer et modifier les actifs non immobiliers, dettes, entités détentrices et scénarios.": "Create and edit non-real-estate assets, debts, holding entities and scenarios.",
+  "Modifier le patrimoine personnel": "Edit personal patrimony",
+  "Voir le patrimoine personnel": "View personal patrimony"
 }

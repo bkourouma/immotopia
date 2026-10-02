@@ -47,8 +47,9 @@ execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
 console.log(
   'Execution des suites sur base reelle : isolation (E1), acces tiers de confiance (B3), patrimoine multi-actifs et espace particulier...'
 );
+// --runInBand : isolation.test.ts compare des compteurs GLOBAUX avant/apres ; une suite parallele qui ecrit dans la meme base les fausserait.
 execSync(
-  'npx jest __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts __tests__/integration/signup-guard.integration.test.ts __tests__/integration/personal-space.integration.test.ts',
+  'npx jest --runInBand __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts __tests__/integration/signup-guard.integration.test.ts __tests__/integration/personal-space.integration.test.ts __tests__/integration/patrimoine.personal-permission.integration.test.ts',
   { stdio: 'inherit', env }
 );
 

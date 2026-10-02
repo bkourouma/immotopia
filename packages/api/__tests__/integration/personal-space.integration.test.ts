@@ -138,9 +138,10 @@ maybeDescribe('espace personnel et palier gratuit (base dédiée)', () => {
       expect(membership.status).toBe('ACTIVE');
 
       const roles = await prisma.userRole.findMany({ where: { userId }, include: { role: { select: { key: true } } } });
-      expect(roles).toHaveLength(1);
-      expect(roles[0]).toMatchObject({ tenantId: result.tenantId });
-      expect(roles[0].role.key).toBe('TENANT_ADMIN');
+      // TENANT_ADMIN + PERSONAL_SPACE_OWNER (PATRIMOINE_PERSONAL_*), tous deux sur CE tenant seulement.
+      expect(roles).toHaveLength(2);
+      expect(roles.every(r => r.tenantId === result.tenantId)).toBe(true);
+      expect(roles.map(r => r.role.key).sort()).toEqual(['PERSONAL_SPACE_OWNER', 'TENANT_ADMIN']);
     });
 
     it('un utilisateur qui a un espace n’obtient aucun droit sur un autre tenant', async () => {

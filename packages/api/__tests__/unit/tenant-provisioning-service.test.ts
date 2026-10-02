@@ -306,6 +306,12 @@ jest.mock('../../src/services/tenant-service', () => ({
       .replace(/^-+|-+$/g, '')
 }));
 
+const mockGrantOwner = jest.fn(async () => undefined);
+jest.mock('../../src/lib/patrimoine/personal-permissions', () => ({
+  ensurePersonalSpaceOwnerRole: jest.fn(async () => 'role-owner'),
+  grantPersonalSpaceOwnerRole: (...a: unknown[]) => mockGrantOwner(...(a as []))
+}));
+
 jest.mock('../../src/services/audit-service', () => {
   const actual = jest.requireActual('../../src/services/audit-service');
   return {
@@ -644,7 +650,10 @@ describe('espace PARTICULIER (lot 4A) : coeur transactionnel reutilisable', () =
   });
 
   it('provisionTenant garde son comportement d agence (essai, invitation) et donne le pack gratuit a un type PARTICULIER sans items', async () => {
+    mockGrantOwner.mockClear();
     const agency = await provisionTenant(baseInput, 'super-admin-1');
+    // Une agence ne recoit JAMAIS le role PERSONAL_SPACE_OWNER (PATRIMOINE_PERSONAL_*).
+    expect(mockGrantOwner).not.toHaveBeenCalled();
     expect(agency.result.subscription.status).toBe('TRIALING');
     expect(agency.result.subscription.trialEndsAt).not.toBeNull();
 
@@ -654,6 +663,8 @@ describe('espace PARTICULIER (lot 4A) : coeur transactionnel reutilisable', () =
     );
     expect(particulier.result.modules).toEqual(['MODULE_PATRIMOINE']);
     expect(particulier.result.subscription.items.map(i => i.code)).toEqual(['PARTICULIER_GRATUIT']);
+    // Espace PARTICULIER : son administrateur recoit PERSONAL_SPACE_OWNER (une seule fois).
+    expect(mockGrantOwner).toHaveBeenCalledTimes(1);
   });
 
   it('cohérence type / packs : un PARTICULIER refuse un pack d’agence, une agence refuse un pack Particulier (422, rien créé)', async () => {

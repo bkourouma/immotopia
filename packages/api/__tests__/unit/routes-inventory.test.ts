@@ -381,6 +381,59 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     for (const route of publicRoutes) expect(isWhitelisted(route)).toBeDefined();
   });
 
+  it('protège les données personnelles du patrimoine par PATRIMOINE_PERSONAL_VIEW / _EDIT, route par route', () => {
+    // Refus par défaut : toute route /patrimoine/** doit porter la permission dédiée, sauf liste blanche EXPLICITE
+    // de chemins restés sous PROPERTIES_* (immobilier ou référentiel). Une route nouvelle tombe donc dans le refus.
+    const PROPERTIES_ALLOWLIST = [
+      /^\/api\/tenants\/:tenantId\/patrimoine\/(overview|performance|export|settings)$/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/work-programs(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/properties\/:propertyId(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/tax-parameters$/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/statements(\/|$)/,
+      // Lots immobiliers de main (A2 trésorerie, B1 assurances et carnet d'entretien, B2 foncier,
+      // B3 accès tiers) : rattachés aux biens, gardés par leurs propres droits PROPERTIES_*.
+      /^\/api\/tenants\/:tenantId\/patrimoine\/cash-plan(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/external-access(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/(land-tracks|land-regularizations)(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/insurance(\/|$)/,
+      /^\/api\/tenants\/:tenantId\/patrimoine\/maintenance-log(\/|$)/
+    ];
+    const personal = routes.filter(
+      r => r.path.startsWith('/api/tenants/:tenantId/patrimoine/') && !PROPERTIES_ALLOWLIST.some(re => re.test(r.path))
+    );
+    // 38 routes : actifs, valorisations, parts, dettes, valeur nette, entités, projections, scénarios, compteur.
+    expect(personal.length).toBeGreaterThanOrEqual(38);
+
+    const failures: string[] = [];
+    for (const route of personal) {
+      const keys = route.middlewares
+        .map(mw => (mw as any)?.permissionKey as string | undefined)
+        .filter((k): k is string => Boolean(k));
+      const isWrite = ['PATCH', 'PUT', 'DELETE'].includes(route.method);
+      // POST de lecture/calcul : suggestion de valorisation, projection, exécution d'un scénario.
+      const isComputePost = route.method === 'POST' && /\/(valuations\/suggest|projections|run)$/.test(route.path);
+      const expected =
+        isWrite || (route.method === 'POST' && !isComputePost)
+          ? 'PATRIMOINE_PERSONAL_EDIT'
+          : 'PATRIMOINE_PERSONAL_VIEW';
+      if (!(keys.length === 1 && keys[0] === expected)) {
+        failures.push(`${route.method} ${route.path} : attendu ${expected}, trouvé [${keys.join(', ')}]`);
+      }
+    }
+    expect(failures).toEqual([]);
+
+    // Aucun rôle d'agence ne doit porter ces clés par défaut : garde de non-régression sur les seeds.
+    // (Le rôle PERSONAL_SPACE_OWNER est le seul porteur : voir patrimoine-personal-permissions-seed.ts.)
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const seedsDir = path.join(__dirname, '../../prisma/seeds');
+    const offenders = fs
+      .readdirSync(seedsDir)
+      .filter(f => f.endsWith('.ts') && f !== 'patrimoine-personal-permissions-seed.ts')
+      .filter(f => /PATRIMOINE_PERSONAL_/.test(fs.readFileSync(path.join(seedsDir, f), 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
   it('chaque route hors liste blanche porte une garde d’agence ou une permission plateforme', () => {
     const failures: string[] = [];
 

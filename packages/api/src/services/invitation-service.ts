@@ -1,3 +1,4 @@
+import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { InvitationStatus, MembershipStatus } from '@prisma/client';
@@ -39,9 +40,10 @@ async function assertTenantRoles(roleIds: string[]): Promise<void> {
   if (!roleIds || roleIds.length === 0) return;
   const roles = await prisma.role.findMany({
     where: { id: { in: roleIds } },
-    select: { id: true, scope: true }
+    select: { id: true, scope: true, key: true }
   });
-  if (roles.length !== roleIds.length) {
+  // Rôle réservé (PERSONAL_SPACE_OWNER) : même réponse qu'un rôle inexistant.
+  if (roles.length !== roleIds.length || roles.some(role => RESERVED_ROLE_KEYS.includes(role.key))) {
     throw new BadRequestError('Un ou plusieurs roles sont introuvables.');
   }
   if (roles.some(role => role.scope !== 'TENANT')) {

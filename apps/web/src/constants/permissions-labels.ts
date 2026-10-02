@@ -191,6 +191,16 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     description: t('Planifier et gérer les visites des biens.')
   },
 
+  // --- Patrimoine personnel (espace particulier) ---
+  PATRIMOINE_PERSONAL_VIEW: {
+    label: t('Voir le patrimoine personnel'),
+    description: t('Consulter les actifs non immobiliers, dettes, entités détentrices et projections.')
+  },
+  PATRIMOINE_PERSONAL_EDIT: {
+    label: t('Modifier le patrimoine personnel'),
+    description: t('Créer et modifier les actifs non immobiliers, dettes, entités détentrices et scénarios.')
+  },
+
   // --- Location (baux, échéances, paiements, etc.) ---
   RENTAL_LEASES_VIEW: {
     label: t('Voir les baux'),

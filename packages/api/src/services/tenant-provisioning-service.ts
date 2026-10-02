@@ -32,6 +32,7 @@ import {
   packModules,
   packsForModules
 } from '../lib/subscription';
+import { ensurePersonalSpaceOwnerRole, grantPersonalSpaceOwnerRole } from '../lib/patrimoine/personal-permissions';
 import {
   linkExtensionsToPacksTx,
   loadCatalogByCodes,
@@ -277,6 +278,8 @@ export function assertTenantTypeMatchesPacks(type: TenantType, requested: readon
 
 /** La partie ECRITURE, tout-ou-rien : tout ce que F1.1 a F1.7 decrit, sauf l'envoi d'e-mail (F1.8) et l'idempotence (F1.9). */
 async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: string): Promise<ProvisioningOutcome> {
+  // Hors transaction (voir create-personal-space.ts) : creation du role sure en concurrence.
+  const personalOwnerRoleId = input.type === TenantType.PARTICULIER ? await ensurePersonalSpaceOwnerRole(prisma) : null;
   return prisma.$transaction(async tx => {
     const type = input.type ?? TenantType.AGENCY;
     const billingCycle = (input.billingCycle ?? 'MONTHLY') as BillingCycle;
@@ -362,11 +365,18 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
     await tx.userRole.create({
       data: { userId: adminUser.id, roleId: tenantAdminRole.id, tenantId: tenant.id }
     });
+    // Espace PARTICULIER : l'administrateur porte aussi PATRIMOINE_PERSONAL_* (role PERSONAL_SPACE_OWNER),
+    // que TENANT_ADMIN d'agence n'a pas ; l'invitation lui rend les deux roles.
+    const inviteRoleIds = [tenantAdminRole.id];
+    if (type === TenantType.PARTICULIER && personalOwnerRoleId) {
+      await grantPersonalSpaceOwnerRole(tx, personalOwnerRoleId, adminUser.id, tenant.id);
+      inviteRoleIds.push(personalOwnerRoleId);
+    }
 
     const { invitation, token } = await createInvitationRecordTx(tx, {
       tenantId: tenant.id,
       email: input.adminEmail,
-      roleIds: [tenantAdminRole.id],
+      roleIds: inviteRoleIds,
       invitedByUserId: actorUserId
     });
 

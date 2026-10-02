@@ -24,6 +24,8 @@ const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/integration/patrimoine.property-asset.integration.test.ts',
   // Importe `createProperty` (services/property-service), donc property-template-service et ses erreurs TS anciennes.
   '<rootDir>/__tests__/integration/personal-space.integration.test.ts',
+  // Importe l'app entiere (routes patrimoine, garde PATRIMOINE_PERSONAL_*).
+  '<rootDir>/__tests__/integration/patrimoine.personal-permission.integration.test.ts',
   '<rootDir>/__tests__/api/maintenance.attachment-files.test.ts',
   '<rootDir>/__tests__/api/maintenance.tenant-portal-visibility.test.ts',
   '<rootDir>/__tests__/api/private-files.test.ts',

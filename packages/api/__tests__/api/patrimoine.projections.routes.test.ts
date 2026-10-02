@@ -27,11 +27,15 @@ function hasPermission(req: any, keys: string[]): boolean {
   return keys.some(key => granted.includes(key));
 }
 
-jest.mock('../../src/middleware/property-rbac-middleware', () => ({
-  requirePropertyPermission: (key: string) => (req: any, res: any, next: any) =>
-    hasPermission(req, [key]) ? next() : res.status(403).json({ success: false, message: 'Refusé' }),
-  requireAnyPropertyPermission: (keys: string[]) => (req: any, res: any, next: any) =>
-    hasPermission(req, keys) ? next() : res.status(403).json({ success: false, message: 'Refusé' })
+jest.mock('../../src/middleware/patrimoine-rbac-middleware', () => ({
+  requirePatrimoinePersonalView: (req: any, res: any, next: any) =>
+    hasPermission(req, ['PATRIMOINE_PERSONAL_VIEW'])
+      ? next()
+      : res.status(403).json({ success: false, message: 'Refusé' }),
+  requirePatrimoinePersonalEdit: (req: any, res: any, next: any) =>
+    hasPermission(req, ['PATRIMOINE_PERSONAL_EDIT'])
+      ? next()
+      : res.status(403).json({ success: false, message: 'Refusé' })
 }));
 
 const mockProjection = { runProjection: jest.fn(async () => ({ base: { points: [], warnings: [] } })) };
@@ -71,8 +75,8 @@ app.use(errorHandler);
 
 const BASE = '/api/tenants/tenant-1/patrimoine';
 const SCENARIO = '11111111-1111-4111-8111-111111111111';
-const READ = 'PROPERTIES_VIEW';
-const WRITE = 'PROPERTIES_VIEW,PROPERTIES_EDIT';
+const READ = 'PATRIMOINE_PERSONAL_VIEW';
+const WRITE = 'PATRIMOINE_PERSONAL_VIEW,PATRIMOINE_PERSONAL_EDIT';
 const projectionBody = { horizonYears: 10, baseScenario: 'CENTRAL' };
 const scenarioBody = { name: 'Plan', horizonYears: 10, baseScenario: 'CENTRAL' };
 
@@ -93,7 +97,7 @@ describe('permissions', () => {
     ['post', `${BASE}/scenarios/${SCENARIO}/run`, {}]
   ];
 
-  it.each(writes)('%s %s exige PROPERTIES_EDIT', async (method, path, payload) => {
+  it.each(writes)('%s %s exige PATRIMOINE_PERSONAL_EDIT', async (method, path, payload) => {
     const denied = await call(method, path, READ, payload);
     expect(denied.status).toBe(403);
     const none = await call(method, path, undefined, payload);
@@ -102,12 +106,15 @@ describe('permissions', () => {
     expect([200, 201, 204]).toContain(ok.status);
   });
 
-  it.each(reads)('%s %s est en lecture (PROPERTIES_VIEW) et refuse sans permission', async (method, path, payload) => {
-    const none = await call(method, path, undefined, payload);
-    expect(none.status).toBe(403);
-    const ok = await call(method, path, READ, payload);
-    expect(ok.status).toBe(200);
-  });
+  it.each(reads)(
+    '%s %s est en lecture (PATRIMOINE_PERSONAL_VIEW) et refuse sans permission',
+    async (method, path, payload) => {
+      const none = await call(method, path, undefined, payload);
+      expect(none.status).toBe(403);
+      const ok = await call(method, path, READ, payload);
+      expect(ok.status).toBe(200);
+    }
+  );
 
   it('un refus n’appelle aucun service', async () => {
     await request(app).post(`${BASE}/scenarios`).set('x-perms', READ).send(scenarioBody);

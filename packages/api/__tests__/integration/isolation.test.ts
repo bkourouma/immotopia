@@ -39,6 +39,8 @@ import {
 import {
   createTestTenant,
   createTenantAdminUser,
+  ensureTenantAdminRole,
+  grantPersonalPatrimoineRole,
   suspendTenant,
   createContactDirect,
   createParticulierTenant,
@@ -136,6 +138,9 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
     createdTenantIds.push(tenantA.id, tenantB.id);
     adminA = await createTenantAdminUser(tenantA, 'admin-a');
     adminB = await createTenantAdminUser(tenantB, 'admin-b');
+    // Les routes de données personnelles du patrimoine exigent PATRIMOINE_PERSONAL_* (rôle dédié, jamais TENANT_ADMIN).
+    await grantPersonalPatrimoineRole(adminA, tenantA);
+    await grantPersonalPatrimoineRole(adminB, tenantB);
   });
 
   afterAll(async () => {
@@ -271,6 +276,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
 
     beforeAll(async () => {
       adminA2 = await createTenantAdminUser(tenantA, 'admin-a2');
+      await grantPersonalPatrimoineRole(adminA2, tenantA);
       outsider = await createOutsiderUser('sans-agence');
       rentalA = await createRentalFixtureDirect(tenantA.id, adminA.id, 'A');
       rentalB = await createRentalFixtureDirect(tenantB.id, adminB.id, 'B');
@@ -2272,6 +2278,8 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
     const agency = await createTestTenant('Agence-Usage');
     tenantIds.push(agency.id);
     const agencyAdmin = await createTenantAdminUser(agency, 'admin-usage');
+    // Le compteur d'usage exige PATRIMOINE_PERSONAL_VIEW ; le rôle est donné ici pour vérifier le plan AGENCY.
+    await grantPersonalPatrimoineRole(agencyAdmin, agency);
     userIds.push(agencyAdmin.id);
     const user = await verifiedUser();
     const { body } = await createSpaceFor(user);
@@ -2291,9 +2299,9 @@ maybeDescribe('Espace particulier — création en libre-service et compteur d�
     expect(agencyOnParticulier.status).toBe(403);
     expect(JSON.stringify(agencyOnParticulier.body)).not.toContain(spaceId);
 
-    // Le particulier n'a aucun droit sur l'agence : ses rôles ne portent que son espace.
+    // Le particulier n'a aucun droit sur l'agence : ses rôles (TENANT_ADMIN + PERSONAL_SPACE_OWNER) ne portent que son espace.
     const roles = await prisma.userRole.findMany({ where: { userId: user.id }, select: { tenantId: true } });
-    expect(roles).toEqual([{ tenantId: spaceId }]);
+    expect(roles).toEqual([{ tenantId: spaceId }, { tenantId: spaceId }]);
   });
 
   it('garde de type (mode warn) : un TENANT_ADMIN particulier reçoit 403 sur les routes d’agence, 200 sur son patrimoine ; l’agence n’est pas touchée', async () => {

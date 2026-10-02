@@ -27,11 +27,15 @@ function hasPermission(req: any, keys: string[]): boolean {
   return keys.some(key => granted.includes(key));
 }
 
-jest.mock('../../src/middleware/property-rbac-middleware', () => ({
-  requirePropertyPermission: (key: string) => (req: any, res: any, next: any) =>
-    hasPermission(req, [key]) ? next() : res.status(403).json({ success: false, message: 'Refusé' }),
-  requireAnyPropertyPermission: (keys: string[]) => (req: any, res: any, next: any) =>
-    hasPermission(req, keys) ? next() : res.status(403).json({ success: false, message: 'Refusé' })
+jest.mock('../../src/middleware/patrimoine-rbac-middleware', () => ({
+  requirePatrimoinePersonalView: (req: any, res: any, next: any) =>
+    hasPermission(req, ['PATRIMOINE_PERSONAL_VIEW'])
+      ? next()
+      : res.status(403).json({ success: false, message: 'Refusé' }),
+  requirePatrimoinePersonalEdit: (req: any, res: any, next: any) =>
+    hasPermission(req, ['PATRIMOINE_PERSONAL_EDIT'])
+      ? next()
+      : res.status(403).json({ success: false, message: 'Refusé' })
 }));
 
 const mockService = {
@@ -73,8 +77,8 @@ const TENANT = 'tenant-1';
 const BASE = `/api/tenants/${TENANT}/patrimoine`;
 const ASSET = '11111111-1111-4111-8111-111111111111';
 const VAL = '22222222-2222-4222-8222-222222222222';
-const READ = 'PROPERTIES_VIEW';
-const WRITE = 'PROPERTIES_VIEW,PROPERTIES_EDIT';
+const READ = 'PATRIMOINE_PERSONAL_VIEW';
+const WRITE = 'PATRIMOINE_PERSONAL_VIEW,PATRIMOINE_PERSONAL_EDIT';
 
 beforeEach(() => {
   Object.values(mockService).forEach(fn => fn.mockClear());
@@ -111,7 +115,7 @@ describe('permissions', () => {
     Object.values(mockService).forEach(fn => expect(fn).not.toHaveBeenCalled());
   });
 
-  it.each(reads)('GET %s : refusé sans PROPERTIES_VIEW, accepté avec', async path => {
+  it.each(reads)('GET %s : refusé sans PATRIMOINE_PERSONAL_VIEW, accepté avec', async path => {
     expect((await request(app).get(path).set('x-perms', '')).status).toBe(403);
     expect((await request(app).get(path).set('x-perms', READ)).status).toBe(200);
   });
@@ -244,7 +248,7 @@ describe('contrat des réponses', () => {
 describe('suggestion de valeur (lot 2)', () => {
   const path = `${BASE}/assets/${ASSET}/valuations/suggest`;
 
-  it('lecture seule : PROPERTIES_VIEW suffit, sans permission -> 403', async () => {
+  it('lecture seule : PATRIMOINE_PERSONAL_VIEW suffit, sans permission -> 403', async () => {
     expect((await request(app).post(path).set('x-perms', '').send({})).status).toBe(403);
     expect(mockService.suggestAssetValuation).not.toHaveBeenCalled();
     const ok = await request(app).post(path).set('x-perms', READ).send({});
