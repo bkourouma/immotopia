@@ -61,6 +61,7 @@ import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import patrimoineLandRoutes from './routes/patrimoine-land-routes';
 import patrimoineInsuranceRoutes from './routes/patrimoine-insurance-routes';
 import patrimoineAssetsRoutes from './routes/patrimoine-assets-routes';
+import patrimoineExportsRoutes from './routes/patrimoine-exports-routes';
 import personalSpaceRoutes from './routes/personal-space-routes';
 import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
@@ -303,6 +304,7 @@ app.use('/api', externalAccessRoutes); // Patrimoine — accès en lecture seule
 app.use('/api', patrimoineLandRoutes); // Patrimoine — régularisation foncière (lot B2, tenant-scoped)
 app.use('/api', patrimoineInsuranceRoutes); // Patrimoine — assurances, sinistres et carnet d'entretien (lot B1, tenant-scoped)
 app.use('/api', patrimoineAssetsRoutes); // Patrimoine — actifs, dettes, valeur nette (lot 1 multi-actifs, tenant-scoped)
+app.use('/api', patrimoineExportsRoutes); // Patrimoine — exports PDF/Excel de la situation patrimoniale (lot 5, tenant-scoped)
 app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et scénarios (lot 3, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)

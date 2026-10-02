@@ -1296,5 +1296,7 @@
   "Voir les actifs": "View assets",
   "Votre valeur nette année par année, selon des hypothèses que vous pouvez modifier": "Your net worth year by year, based on assumptions you can change",
   "Vous avez atteint la limite du palier gratuit : passez au palier payant pour ajouter d’autres actifs.": "You have reached the free tier limit: upgrade to the paid tier to add more assets.",
-  "Vous avez atteint le maximum de {{max}} opérations.": "You have reached the maximum of {{max}} operations."
+  "Vous avez atteint le maximum de {{max}} opérations.": "You have reached the maximum of {{max}} operations.",
+  "Exporter en Excel": "Export to Excel",
+  "Exporter en PDF": "Export to PDF"
 }

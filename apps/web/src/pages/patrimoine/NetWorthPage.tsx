@@ -15,6 +15,7 @@ import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, SkeletonStats, StatCard, StateBlock } from '../../components/primitives';
 import { AssetFormDrawer, useLinkedPropertyIds } from '../../components/patrimoine/actifs/AssetFormDrawer';
 import { ClassBreakdownCard, NetWorthHistoryCard } from '../../components/patrimoine/actifs/NetWorthCharts';
+import { NetWorthExportButtons } from '../../components/patrimoine/actifs/NetWorthExportButtons';
 import { DebtsPanel } from '../../components/patrimoine/actifs/DebtsPanel';
 import { exclusionReasonLabel } from '../../components/patrimoine/actifs/asset-classes';
 import { formatAmount, formatDay } from '../../components/patrimoine/actifs/asset-format';
@@ -145,6 +146,7 @@ export const NetWorthPage: React.FC = () => {
         />
       ) : (
         <>
+          <NetWorthExportButtons tenantId={agence} />
           <ExclusionBanner tenantId={agence} result={data} assets={assetsQuery.data ?? []} />
           <Row gutter={[16, 16]} style={{ marginBottom: 'var(--space-4)' }}>
             <Col xs={24} md={8}>

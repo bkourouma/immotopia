@@ -338,6 +338,26 @@ export const patrimoineProjectionRateLimiter = rateLimit({
 });
 
 /**
+ * Patrimoine : export PDF ou Excel de la situation patrimoniale. Un appel recharge
+ * actifs, valorisations et prêts de l'espace puis construit un fichier en mémoire :
+ * coûteux, et atteignable par tout compte auto-inscrit (espace PARTICULIER).
+ * 10 par minute, par utilisateur ET par agence (posé après `authenticate` et
+ * `requireTenantAccess`, avant les gardes lourdes). Compteurs en mémoire, purgés à chaque fenêtre.
+ */
+export const patrimoineExportRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'exports en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * ImmoCopilot : chaque tour de chat appelle un fournisseur LLM payant.
  * 20 par minute et, en plus, 300 par jour, par utilisateur ET par agence
  * (posés après `authenticate` et `requireTenantAccess`). Compteurs en mémoire
