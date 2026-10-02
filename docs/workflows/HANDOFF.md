@@ -18,6 +18,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `docs/wiki-patrimoine` — 2026-10-02
+
+**État :** classeur des fonctionnalités mis à jour (846 lignes), PR ouverte (fusion à l'utilisateur). `wiki:check` vert.
+
+**Fait :** 56 lignes ajoutées et 26 annotées pour des fonctionnalités NON fusionnées (statut « À vérifier (en développement, PR n°X non fusionnée) » + notes) : PR 52/69/70/74 (Patrimoine particulier, permissions, exports), 94 (journal d'audit), 71/72/73/63/88, branche `feat/sms-lot-1` (sans PR). Patrimoine PR 91–100 déjà présent dans le classeur.
+
+**Reste :** à chaque fusion d'une de ces PR, retirer les annotations « En développement » du classeur (binaire, ne pas fusionner : reprendre celui-ci). Ordre de fusion des PR empilées : 52, 69, 70, 74. Ouvrir ou archiver la branche SMS. Le .xlsx n'a pas été ouvert dans Excel.
+
+---
+
 ## Branche `fix/recette-packs-e2e` — 2026-09-30
 
 **État :** terminé côté code, PR ouverte (voir la PR ; fusion à l'utilisateur). Recette de bout en bout des 6 packs (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO) : un testeur par pack, ~100 anomalies consignées, ~30 correcteurs en parallèle. Rapport : `docs/recette/packs/RAPPORT_FINAL.md` ; index des anomalies : `docs/recette/packs/ANOMALIES.md` ; scénarios et journaux : `docs/recette/packs/SCENARIO_PACK_*.md`.
