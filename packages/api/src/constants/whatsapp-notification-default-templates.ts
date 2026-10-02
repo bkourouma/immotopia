@@ -38,6 +38,14 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
     'Bonjour {{userName}}, votre compte ImmoTopia a été créé pour {{tenantName}}. Définissez votre mot de passe ici :\n{{resetUrl}}',
   OWNER_STATEMENT_SENT:
     'Bonjour {{ownerName}}, votre relevé de gérance pour la période {{period}} est disponible. Loyers encaissés : {{totalRevenue}} {{currency}}, honoraires : {{managementFees}} {{currency}}, TVA : {{managementFeesVat}} {{currency}}, dépenses : {{totalExpenses}} {{currency}}. Net à vous reverser : {{netAmount}} {{currency}}.',
+  OWNER_LEASE_ENDING_SOON:
+    'Bonjour {{ownerName}}, le bail {{leaseLabel}} arrive à échéance le {{leaseEndDate}}. Contactez {{agencyName}} pour préparer la suite.',
+  OWNER_DOCUMENT_EXPIRY_ALERT:
+    'Bonjour {{ownerName}}, le document « {{documentTitle}} » ({{documentType}}) du bien {{propertyReference}} expire le {{expiresAt}}. Pensez à le renouveler.',
+  OWNER_MONTHLY_REPORT_SENT:
+    'Bonjour {{ownerName}}, votre rapport mensuel {{agencyName}} pour la période {{period}} est disponible : {{reportUrl}} (lien personnel en lecture seule, valable jusqu’au {{expiresAt}}).',
+  RENTER_PAYMENT_LINK_SENT:
+    'Bonjour {{renterName}}, votre loyer {{agencyName}} pour la période {{period}} est à régler : {{amountDue}}. Payez en ligne par Mobile Money : {{paymentUrl}} (lien personnel, valable jusqu’au {{expiresAt}}).',
   CHARGE_CALL_ISSUED:
     'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.',
   CHARGE_CALL_REMINDER:

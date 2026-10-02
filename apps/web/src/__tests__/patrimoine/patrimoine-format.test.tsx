@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { formatAsOf, formatYieldPercent } from '../../components/patrimoine/patrimoine-format';
+import { formatAsOf, formatDscr, formatYieldPercent } from '../../components/patrimoine/patrimoine-format';
 import { YieldCalculator } from '../../components/patrimoine/YieldCalculator';
 import { EntityConsolidationCard } from '../../components/patrimoine/entities/EntityConsolidationCard';
 import { formatPercent } from '../../pages/OwnerPortal/owner-patrimoine-labels';
@@ -25,6 +25,13 @@ describe('formatYieldPercent — un seul formateur pour les rendements (BUG 035/
     expect(formatYieldPercent(null)).toBe('—');
     expect(formatYieldPercent(undefined)).toBe('—');
     expect(formatYieldPercent(Number.NaN)).toBe('—');
+  });
+
+  it('formate le DSCR en ratio « 1,25 x » et rend un tiret s’il est indéterminé', () => {
+    expect(formatDscr(1.25)).toBe('1,25 x');
+    expect(formatDscr(0.8)).toBe('0,80 x');
+    expect(formatDscr(null)).toBe('—');
+    expect(formatDscr(undefined)).toBe('—');
   });
 
   it("formate l'horodatage de situation au lieu d'afficher l'ISO brut", () => {

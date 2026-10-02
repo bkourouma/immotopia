@@ -3,7 +3,14 @@ import { Alert, Collapse, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TaxComputation, TaxLine } from '../../../types/patrimoine-entities-types';
 import { MoneyValue } from '../../primitives';
-import { taxKindLabel, taxLineCodeLabel, taxReasonLabel, taxWarningLabel, parameterStatusLabel } from './tax-labels';
+import {
+  taxKindLabel,
+  taxLineCodeLabel,
+  taxLineLabel,
+  taxReasonLabel,
+  taxWarningLabel,
+  parameterStatusLabel
+} from './tax-labels';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -20,9 +27,11 @@ export interface TaxEstimateCardProps {
   fiscalYear: number;
 }
 
-const lineColumns: ColumnsType<TaxLine> = [
+// Fonction (et non constante de module) : les titres sont traduits au rendu, donc
+// suivent la langue active au lieu de celle du chargement du module.
+const buildLineColumns = (): ColumnsType<TaxLine> => [
   { title: t('Ligne'), dataIndex: 'code', key: 'code', render: (code: TaxLine['code']) => taxLineCodeLabel(code) },
-  { title: t('Libellé'), dataIndex: 'label', key: 'label' },
+  { title: t('Libellé'), dataIndex: 'label', key: 'label', render: (label: string) => taxLineLabel(label) },
   {
     title: t('Base'),
     dataIndex: 'base',
@@ -108,7 +117,7 @@ export const TaxEstimateCard: React.FC<TaxEstimateCardProps> = ({ computations, 
               )}
               <Table
                 rowKey={(line, index) => `${computation.taxKind}-${line.code}-${index}`}
-                columns={lineColumns}
+                columns={buildLineColumns()}
                 dataSource={computation.lines}
                 pagination={false}
                 size="small"

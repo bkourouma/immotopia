@@ -33,6 +33,11 @@ import {
   deleteLeaseHandler
 } from '../controllers/rental-controller';
 import {
+  createInstallmentPaymentLinkHandler,
+  listInstallmentPaymentLinksHandler,
+  revokeInstallmentPaymentLinkHandler
+} from '../controllers/rental-installment-payment-link-controller';
+import {
   generateInstallmentsHandler,
   listInstallmentsHandler,
   getInstallmentHandler,
@@ -111,6 +116,24 @@ router.post(
   '/:tenantId/rental/leases/:leaseId/installments/recalculate',
   requireInstallmentsGenerate,
   recalculateInstallmentStatusesHandler
+);
+
+// Lien de paiement Mobile Money d'une échéance (lot C5, spec 039). Créer un lien
+// ouvre la voie à un paiement locatif PENDING : même droit que la création d'un paiement.
+router.post(
+  '/:tenantId/rental/installments/:installmentId/payment-link',
+  requirePaymentsCreate,
+  createInstallmentPaymentLinkHandler
+);
+router.get(
+  '/:tenantId/rental/installments/:installmentId/payment-links',
+  requirePaymentsView,
+  listInstallmentPaymentLinksHandler
+);
+router.delete(
+  '/:tenantId/rental/installments/:installmentId/payment-link/:linkId',
+  requirePaymentsCreate,
+  revokeInstallmentPaymentLinkHandler
 );
 
 // Payment routes

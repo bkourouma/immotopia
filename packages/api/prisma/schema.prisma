@@ -475,11 +475,14 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
 
   // New relationships for multi-tenant RBAC
-  memberships         Membership[]
-  userRoles           UserRole[]
-  invitations         Invitation[] @relation("InvitedBy")
-  acceptedInvitations Invitation[] @relation("AcceptedBy")
-  lastLoginAt         DateTime?    @map("last_login_at")
+  memberships                 Membership[]
+  userRoles                   UserRole[]
+  invitations                 Invitation[]          @relation("InvitedBy")
+  acceptedInvitations         Invitation[]          @relation("AcceptedBy")
+  createdSecureLinks          SecureLink[]          @relation("SecureLinkCreatedBy")
+  createdExternalAccessGrants ExternalAccessGrant[] @relation("ExternalAccessGrantCreatedBy")
+  createdLandRegularizations  LandRegularization[]  @relation("LandRegularizationCreatedBy")
+  lastLoginAt                 DateTime?             @map("last_login_at")
 
   // CRM relationships
   crmContactsAssigned  CrmContact[]  @relation("ContactAssignedTo")
@@ -595,11 +598,18 @@ model Tenant {
   clients TenantClient[]
 
   // New relationships for multi-tenant RBAC
-  modules      TenantModule[]
-  memberships  Membership[]
-  subscription Subscription?
-  invoices     Invoice[]
-  invitations  Invitation[]
+  modules                       TenantModule[]
+  memberships                   Membership[]
+  subscription                  Subscription?
+  invoices                      Invoice[]
+  invitations                   Invitation[]
+  secureLinks                   SecureLink[]
+  externalAccessGrants          ExternalAccessGrant[]
+  externalAccessGrantProperties ExternalAccessGrantProperty[]
+  externalAccessGrantEntities   ExternalAccessGrantEntity[]
+  externalAccessGrantDocuments  ExternalAccessGrantDocument[]
+  landRegularizations           LandRegularization[]
+  landRegularizationSteps       LandRegularizationStep[]
 
   // Abonnements par packs (PLAN-ABONNEMENTS.md)
   subscriptionItems SubscriptionItem[]
@@ -715,6 +725,7 @@ model Tenant {
   stockSettings            StockSettings?
   financeSettings          AgencyFinanceSettings?
   ownerPortalSettings      OwnerPortalSettings?
+  cashPlanSettings         PatrimonyCashPlanSettings?
   ownerManagementTerms     OwnerManagementTerms[]
   leaseManagementTerms     LeaseManagementTerms[]
   agentCommissionRates     AgentCommissionRate[]
@@ -728,6 +739,7 @@ model Tenant {
   holdingEntities          HoldingEntity[]
   propertyHoldings         PropertyHolding[]
   propertyTaxProfiles      PropertyTaxProfile[]
+  propertyYieldAssumptions PropertyYieldAssumption[]
   cashSessions             CashSession[]
   treasuryAccounts         TreasuryAccount[]
   treasuryTransfers        TreasuryTransfer[]
@@ -751,6 +763,11 @@ model Tenant {
   salePaymentMilestones    SalePaymentMilestone[]
   saleCommissions          SaleCommission[]
   saleCommissionPayments   SaleCommissionPayment[]
+  insurancePolicies        InsurancePolicy[]
+  insuranceClaims          InsuranceClaim[]
+  insuranceClaimDocs       InsuranceClaimDocument[]
+  insuranceClaimHistory    InsuranceClaimStatusHistory[]
+  maintenanceLogEntries    MaintenanceLogEntry[]
 
   @@index([slug])
   @@index([status])
@@ -792,6 +809,7 @@ model TenantClient {
   ownerPayouts              OwnerPayout[]
   ownershipShares           PropertyOwnershipShare[]
   saleMandatesAsSeller      SaleMandate[]
+  externalAccessGrants      ExternalAccessGrant[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -992,6 +1010,236 @@ model Invitation {
   @@index([status])
   @@index([expiresAt])
   @@map("invitations")
+}
+
+/// Portee d'un lien securise (lib/secure-links). Une valeur par usage public ;
+/// les lots suivants en ajouteront.
+enum SecureLinkScope {
+  OWNER_MONTHLY_REPORT
+  /// Paiement Mobile Money d'une echeance de loyer (lot C5, spec 039).
+  INSTALLMENT_PAYMENT
+  /// Acces en lecture seule d'un tiers de confiance (lot B3, spec 034).
+  EXTERNAL_ACCESS_GRANT
+}
+
+/// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
+///
+/// Le jeton en clair n'est JAMAIS stocke : seul son SHA-256 hexadecimal l'est
+/// (comme `Invitation.tokenHash`). `objectType`/`objectId` designent l'objet
+/// vise sans cle etrangere (le type depend de la portee).
+model SecureLink {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  scope           SecureLinkScope
+  objectType      String          @map("object_type")
+  objectId        String          @map("object_id")
+  tokenHash       String          @unique @map("token_hash")
+  expiresAt       DateTime        @map("expires_at")
+  revokedAt       DateTime?       @map("revoked_at")
+  createdByUserId String?         @map("created_by_user_id")
+  viewCount       Int             @default(0) @map("view_count")
+  lastViewedAt    DateTime?       @map("last_viewed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("SecureLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, objectType, objectId])
+  @@index([expiresAt])
+  @@map("secure_links")
+}
+
+/// Type de tiers de confiance auquel l'agence ouvre un acces en lecture seule (lot B3, spec 034).
+enum ExternalAccessType {
+  NOTARY
+  ACCOUNTANT
+  BANKER
+}
+
+/// Rubriques ouvrables d'un acces tiers : seules celles accordees sont lues ET renvoyees.
+enum ExternalAccessSection {
+  VALUATIONS
+  YIELD_RATIOS
+  LOANS
+  EXPENSES
+  RENTS
+  DOCUMENTS
+  TITLES_OWNERSHIP
+}
+
+/// Acces nominatif d'un tiers de confiance (notaire, expert-comptable, banquier) a un
+/// perimetre EXPLICITE de biens, en lecture seule. Le lien d'acces est un `SecureLink`
+/// de portee EXTERNAL_ACCESS_GRANT dont `objectId` est l'id de ce grant. Contient l'e-mail
+/// du tiers (donnee de l'agence, jamais renvoyee par l'API publique).
+model ExternalAccessGrant {
+  id              String                  @id @default(uuid())
+  tenantId        String                  @map("tenant_id")
+  type            ExternalAccessType
+  recipientName   String                  @map("recipient_name")
+  recipientEmail  String                  @map("recipient_email")
+  /// Proprietaire pour le compte duquel l'acces est donne (informatif : nom + quote-part).
+  ownerClientId   String?                 @map("owner_client_id")
+  sections        ExternalAccessSection[]
+  /// Nul = acces permanent (les liens, eux, expirent toujours).
+  expiresAt       DateTime?               @map("expires_at")
+  revokedAt       DateTime?               @map("revoked_at")
+  createdByUserId String?                 @map("created_by_user_id")
+  viewCount       Int                     @default(0) @map("view_count")
+  lastViewedAt    DateTime?               @map("last_viewed_at")
+  lastLinkSentAt  DateTime?               @map("last_link_sent_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  tenant      Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient?                 @relation(fields: [ownerClientId], references: [id], onDelete: SetNull)
+  createdBy   User?                         @relation("ExternalAccessGrantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  properties  ExternalAccessGrantProperty[]
+  entities    ExternalAccessGrantEntity[]
+  documents   ExternalAccessGrantDocument[]
+
+  @@index([tenantId])
+  @@index([tenantId, revokedAt])
+  @@map("external_access_grants")
+}
+
+/// Bien du perimetre d'un acces tiers.
+model ExternalAccessGrantProperty {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  grantId    String   @map("grant_id")
+  propertyId String   @map("property_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grant    ExternalAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  property Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, propertyId])
+  @@index([tenantId])
+  @@index([grantId])
+  @@map("external_access_grant_properties")
+}
+
+/// Entite detentrice du perimetre : developpee en biens (PropertyHolding) a chaque consultation.
+model ExternalAccessGrantEntity {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  grantId   String   @map("grant_id")
+  entityId  String   @map("entity_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grant  ExternalAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  entity HoldingEntity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, entityId])
+  @@index([tenantId])
+  @@index([grantId])
+  @@map("external_access_grant_entities")
+}
+
+/// Document de bien explicitement partage avec le tiers (un document par ligne).
+/// Le public ne voit que l'id de cette ligne (`documentRef`), jamais l'id du document.
+model ExternalAccessGrantDocument {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  grantId    String   @map("grant_id")
+  propertyId String   @map("property_id")
+  documentId String   @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grant    ExternalAccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  property Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  document PropertyDocument    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, documentId])
+  @@index([tenantId])
+  @@index([grantId])
+  @@map("external_access_grant_documents")
+}
+
+// Lot B2 (spec 033) : suivi d'avancement de la regularisation fonciere d'un bien.
+enum LandTrackKey {
+  /// Filiere de Cote d'Ivoire (attestation villageoise -> titre foncier), A_VALIDER par un juriste local.
+  CI_ACD
+  /// Etapes saisies par l'utilisateur (autre pays, autre cas).
+  PERSONNALISEE
+}
+
+enum LandRegularizationStatus {
+  EN_COURS
+  TERMINEE
+  ABANDONNEE
+}
+
+enum LandStepStatus {
+  A_FAIRE
+  EN_COURS
+  TERMINEE
+  BLOQUEE
+}
+
+/// Un dossier de regularisation fonciere. UN SEUL dossier EN_COURS par bien :
+/// index unique partiel `land_regularizations_one_active_per_property_key`
+/// (migration SQL, non exprimable dans Prisma) ET verification en service.
+model LandRegularization {
+  id              String                   @id @default(uuid())
+  tenantId        String                   @map("tenant_id")
+  propertyId      String                   @map("property_id")
+  track           LandTrackKey
+  status          LandRegularizationStatus @default(EN_COURS)
+  startDate       DateTime                 @default(now()) @map("start_date")
+  endedAt         DateTime?                @map("ended_at")
+  notes           String?
+  createdByUserId String?                  @map("created_by_user_id")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  tenant    Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property  Property                 @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User?                    @relation("LandRegularizationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  steps     LandRegularizationStep[]
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([tenantId, status])
+  @@map("land_regularizations")
+}
+
+/// Une etape d'un dossier. `label` = texte francais (cle de traduction) pour une
+/// etape du catalogue, texte saisi pour une etape personnalisee. `costXof` =
+/// frais engages (XOF), jamais fusionne au cout de revient dans ce lot.
+model LandRegularizationStep {
+  id               String         @id @default(uuid())
+  tenantId         String         @map("tenant_id")
+  regularizationId String         @map("regularization_id")
+  stepKey          String         @map("step_key")
+  sortOrder        Int            @map("sort_order")
+  label            String
+  required         Boolean        @default(true)
+  status           LandStepStatus @default(A_FAIRE)
+  startedAt        DateTime?      @map("started_at")
+  completedAt      DateTime?      @map("completed_at")
+  dueDate          DateTime?      @map("due_date")
+  costXof          Decimal        @default(0) @map("cost_xof") @db.Decimal(14, 2)
+  notes            String?
+  documentId       String?        @map("document_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  regularization LandRegularization @relation(fields: [regularizationId], references: [id], onDelete: Cascade)
+  document       PropertyDocument?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@unique([regularizationId, sortOrder])
+  @@index([tenantId])
+  @@index([regularizationId])
+  @@index([tenantId, status, dueDate])
+  @@index([documentId])
+  @@map("land_regularization_steps")
 }
 
 // Subscription
@@ -1830,25 +2078,33 @@ model Property {
   syndicateLots SyndicateLot[]
 
   // Patrimoine relationships
-  assetValuations     AssetValuation[]
-  propertyLoans       PropertyLoan[]
-  propertyExpenses    PropertyExpense[]
-  workPrograms        WorkProgram[]
-  constructionSites   ConstructionSite[]
-  patrimonyDocuments  PatrimonyDocument[]
-  ownerStatementItems OwnerStatementItem[]
-  ownershipShares     PropertyOwnershipShare[]
+  assetValuations               AssetValuation[]
+  propertyLoans                 PropertyLoan[]
+  propertyExpenses              PropertyExpense[]
+  workPrograms                  WorkProgram[]
+  landRegularizations           LandRegularization[]
+  constructionSites             ConstructionSite[]
+  patrimonyDocuments            PatrimonyDocument[]
+  ownerStatementItems           OwnerStatementItem[]
+  ownershipShares               PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
-  holdings            PropertyHolding[]
-  taxProfile          PropertyTaxProfile?
+  holdings                      PropertyHolding[]
+  taxProfile                    PropertyTaxProfile?
+  yieldAssumption               PropertyYieldAssumption?
+  // Accès tiers de confiance (lot B3)
+  externalAccessGrantProperties ExternalAccessGrantProperty[]
+  externalAccessGrantDocuments  ExternalAccessGrantDocument[]
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
   siteLot     SiteLot?
 
   // Lot 9 : ventes immobilieres.
-  saleMandates   SaleMandate[]
-  saleAgreements SaleAgreement[]
+  saleMandates          SaleMandate[]
+  saleAgreements        SaleAgreement[]
+  insurancePolicies     InsurancePolicy[]
+  insuranceClaims       InsuranceClaim[]
+  maintenanceLogEntries MaintenanceLogEntry[]
 
   @@unique([tenantId, internalReference])
   @@index([tenantId])
@@ -1913,8 +2169,13 @@ model PropertyDocument {
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property                     Property                      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant                       Tenant?                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  externalAccessGrantDocuments ExternalAccessGrantDocument[]
+  landRegularizationSteps      LandRegularizationStep[]
+  insurancePolicies            InsurancePolicy[]
+  insuranceClaimDocs           InsuranceClaimDocument[]
+  maintenanceLogEntries        MaintenanceLogEntry[]
 
   @@index([tenantId])
   @@index([propertyId])
@@ -2561,6 +2822,10 @@ model OnlinePaymentCheckout {
   simulatedOutcome    String?              @map("simulated_outcome")
 
   createdByUserId String?   @map("created_by_user_id")
+  /// Lot C5 (spec 039) : lien de paiement `SecureLink` (portee INSTALLMENT_PAYMENT)
+  /// a l'origine de ce checkout ; nul pour un paiement lance depuis le portail
+  /// locataire. Champ simple (comme `leaseId`), jamais un jeton.
+  secureLinkId    String?   @map("secure_link_id")
   completedAt     DateTime? @map("completed_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -2569,6 +2834,7 @@ model OnlinePaymentCheckout {
   payment RentalPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status])
+  @@index([tenantId, secureLinkId])
   @@map("online_payment_checkouts")
 }
 
@@ -2887,10 +3153,11 @@ model MaintenanceTicket {
   assignedVendor   MaintenanceVendor? @relation(fields: [assigned_vendor_id], references: [id])
   assignedToUser   User?              @relation("MaintenanceTicketAssignedTo", fields: [assigned_to_user_id], references: [id])
 
-  attachments   MaintenanceTicketAttachment[]
-  comments      MaintenanceTicketComment[]
-  statusHistory MaintenanceTicketStatusHistory[]
-  syndicateLink SyndicateMaintenanceLink?
+  attachments     MaintenanceTicketAttachment[]
+  comments        MaintenanceTicketComment[]
+  statusHistory   MaintenanceTicketStatusHistory[]
+  syndicateLink   SyndicateMaintenanceLink?
+  insuranceClaims InsuranceClaim[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -3000,9 +3267,10 @@ model MaintenanceVendor {
   updated_at DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  tenant          Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  assignedTickets MaintenanceTicket[]
-  suppliers       Supplier[]
+  tenant                Tenant                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  assignedTickets       MaintenanceTicket[]
+  suppliers             Supplier[]
+  maintenanceLogEntries MaintenanceLogEntry[]
 
   @@index([tenant_id])
   @@index([tenant_id, is_active])
@@ -4883,6 +5151,16 @@ enum LoanStatus {
   DEFAULTED
 }
 
+/// Periodicite d'une depense du bien (plan de tresorerie previsionnel, spec 030).
+/// ONE_OFF : depense ponctuelle, deja passee. Les autres valeurs ancrent une
+/// recurrence sur `paidAt`.
+enum ExpenseRecurrence {
+  ONE_OFF
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
 enum ExpenseCategory {
   PROPERTY_TAX
   CONDO_FEES
@@ -5111,30 +5389,35 @@ model PropertyLoan {
 }
 
 model PropertyExpense {
-  id                String          @id @default(uuid()) @db.Uuid
-  tenantId          String          @map("tenant_id")
-  propertyId        String          @map("property_id")
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id")
+  propertyId        String            @map("property_id")
   category          ExpenseCategory
   label             String
-  amount            Decimal         @db.Decimal(14, 2)
-  currency          String          @default("XOF")
-  paidAt            DateTime        @map("paid_at")
-  isCapitalized     Boolean         @default(false) @map("is_capitalized")
+  amount            Decimal           @db.Decimal(14, 2)
+  currency          String            @default("XOF")
+  paidAt            DateTime          @map("paid_at")
+  isCapitalized     Boolean           @default(false) @map("is_capitalized")
   /// Lot 10 : moyen et compte de paiement reels. Nuls : caisse par defaut,
   /// comme avant.
-  paymentMethod     PaymentMethod?  @map("payment_method")
-  treasuryAccountId String?         @map("treasury_account_id") @db.Uuid
+  paymentMethod     PaymentMethod?    @map("payment_method")
+  treasuryAccountId String?           @map("treasury_account_id") @db.Uuid
   /// Vrai quand l'agence a elle-meme commande le travail et doit la facture :
   /// la contrepartie est alors le 401, pas la tresorerie.
-  agencyIsBuyer     Boolean         @default(false) @map("agency_is_buyer")
-  supplierName      String?         @map("supplier_name")
-  receiptUrl        String?         @map("receipt_url")
+  agencyIsBuyer     Boolean           @default(false) @map("agency_is_buyer")
+  supplierName      String?           @map("supplier_name")
+  receiptUrl        String?           @map("receipt_url")
   notes             String?
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  /// Plan de tresorerie : ONE_OFF (defaut) = ponctuelle ; sinon les
+  /// occurrences tombent a `paidAt + k x pas`, jusqu'a `recurrenceEndDate`.
+  recurrence        ExpenseRecurrence @default(ONE_OFF) @map("recurrence")
+  recurrenceEndDate DateTime?         @map("recurrence_end_date")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property        Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  insuranceClaims InsuranceClaim[]
 
   @@index([tenantId])
   @@index([propertyId])
@@ -5214,6 +5497,24 @@ model OwnerPortalSettings {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("owner_portal_settings")
+}
+
+/// Reglage du plan de tresorerie previsionnel (spec 030) : date d'exigibilite
+/// annuelle de la taxe fonciere de l'agence. AUCUNE valeur par defaut : nul =
+/// « non renseigne », et la taxe n'entre alors pas dans le plan. Une contrainte
+/// CHECK (migration) impose les deux nuls ou les deux renseignes.
+model PatrimonyCashPlanSettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @unique @map("tenant_id")
+  propertyTaxDueMonth Int?     @map("property_tax_due_month")
+  propertyTaxDueDay   Int?     @map("property_tax_due_day")
+  updatedByUserId     String?  @map("updated_by_user_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("patrimony_cash_plan_settings")
 }
 
 /// Releve de gerance d'un proprietaire pour un mois.
@@ -8214,11 +8515,12 @@ model HoldingEntity {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contact      CrmContact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  parentEntity HoldingEntity?    @relation("HoldingEntityParent", fields: [parentEntityId], references: [id], onDelete: SetNull)
-  children     HoldingEntity[]   @relation("HoldingEntityParent")
-  holdings     PropertyHolding[]
+  tenant                      Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact                     CrmContact?                 @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  parentEntity                HoldingEntity?              @relation("HoldingEntityParent", fields: [parentEntityId], references: [id], onDelete: SetNull)
+  children                    HoldingEntity[]             @relation("HoldingEntityParent")
+  holdings                    PropertyHolding[]
+  externalAccessGrantEntities ExternalAccessGrantEntity[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -8272,6 +8574,28 @@ model PropertyTaxProfile {
   @@map("property_tax_profiles")
 }
 
+/// Hypotheses de projection d'un bien detenu (Patrimoine, spec 029) : une ligne
+/// par bien, posee par l'agence ; absente = valeurs par defaut du serveur.
+model PropertyYieldAssumption {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id")
+  propertyId        String   @unique @map("property_id")
+  years             Int
+  valueGrowthRate   Decimal  @map("value_growth_rate") @db.Decimal(7, 4)
+  rentGrowthRate    Decimal  @map("rent_growth_rate") @db.Decimal(7, 4)
+  expenseGrowthRate Decimal  @map("expense_growth_rate") @db.Decimal(7, 4)
+  vacancyRate       Decimal  @map("vacancy_rate") @db.Decimal(7, 4)
+  updatedByUserId   String?  @map("updated_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("property_yield_assumptions")
+}
+
 /// GLOBAL (plateforme, sans agence) : référentiel fiscal versionné par pays et par année,
 /// alimenté par migration. Chaque ligne porte sa source et son statut de validation.
 model TaxParameter {
@@ -8300,4 +8624,199 @@ model TaxParameter {
   @@unique([country, year, taxKind, key, propertyKind, occupancy, ownerKind, bracketIndex], map: "tax_parameters_selector_key")
   @@index([country, year])
   @@map("tax_parameters")
+}
+
+// ---------------------------------------------------------------------------
+// Patrimoine (spec 032) : assurances, sinistres et carnet d'entretien.
+// ---------------------------------------------------------------------------
+
+enum InsuranceCoverageType {
+  MULTIRISK_HOME
+  MULTIRISK_BUILDING
+  OWNER_LIABILITY
+  OTHER
+}
+
+enum InsuranceClaimCause {
+  WATER_DAMAGE
+  FIRE
+  THEFT
+  STRUCTURAL
+  STORM
+  OTHER
+}
+
+/// DECLARED -> INSURER_NOTIFIED -> EXPERTISE -> SETTLED | REJECTED -> CLOSED
+/// (transitions controlees par `lib/patrimoine/insurance/claim-status.ts`).
+enum InsuranceClaimStatus {
+  DECLARED
+  INSURER_NOTIFIED
+  EXPERTISE
+  SETTLED
+  REJECTED
+  CLOSED
+}
+
+enum InsuranceClaimDocumentKind {
+  PHOTO_BEFORE
+  PHOTO_AFTER
+  QUOTE
+  EXPERT_REPORT
+  INSURER_LETTER
+  INVOICE
+}
+
+enum MaintenanceLogCategory {
+  PLUMBING
+  ELECTRICAL
+  AIR_CONDITIONING
+  GENERATOR
+  ROOF_WATERPROOFING
+  PAINTING
+  OTHER
+}
+
+/// Police d'assurance d'un bien. Le statut (a venir / active / expire bientot /
+/// expiree) est derive des dates, jamais stocke.
+model InsurancePolicy {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  propertyId      String                @map("property_id")
+  insurer         String
+  policyNumber    String                @map("policy_number")
+  coverageType    InsuranceCoverageType @map("coverage_type")
+  startDate       DateTime              @map("start_date")
+  endDate         DateTime              @map("end_date")
+  annualPremium   Decimal?              @map("annual_premium") @db.Decimal(14, 2)
+  currency        String                @default("XOF")
+  notes           String?               @db.Text
+  /// Piece justificative facultative : un `PropertyDocument` du meme bien.
+  documentId      String?               @map("document_id")
+  createdByUserId String?               @map("created_by_user_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  document PropertyDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  claims   InsuranceClaim[]
+
+  @@index([tenantId])
+  @@index([tenantId, propertyId])
+  @@index([tenantId, endDate])
+  @@map("insurance_policies")
+}
+
+/// Sinistre declare sur un bien au titre d'une police. Le reste a charge
+/// (reclame - indemnise, jamais negatif) est calcule, jamais stocke.
+model InsuranceClaim {
+  id                String               @id @default(uuid()) @db.Uuid
+  tenantId          String               @map("tenant_id")
+  propertyId        String               @map("property_id")
+  policyId          String               @map("policy_id") @db.Uuid
+  /// Ticket de maintenance lie (facultatif, meme agence).
+  ticketId          String?              @map("ticket_id") @db.Uuid
+  /// Depense liee (facultatif, meme agence) : simple lien, aucune depense n'est creee ici.
+  expenseId         String?              @map("expense_id") @db.Uuid
+  occurredAt        DateTime             @map("occurred_at")
+  declaredAt        DateTime             @default(now()) @map("declared_at")
+  cause             InsuranceClaimCause
+  description       String               @db.Text
+  status            InsuranceClaimStatus @default(DECLARED)
+  claimedAmount     Decimal              @map("claimed_amount") @db.Decimal(14, 2)
+  indemnifiedAmount Decimal?             @map("indemnified_amount") @db.Decimal(14, 2)
+  deductible        Decimal?             @db.Decimal(14, 2)
+  currency          String               @default("XOF")
+  rejectionReason   String?              @map("rejection_reason") @db.Text
+  insurerNotifiedAt DateTime?            @map("insurer_notified_at")
+  expertiseAt       DateTime?            @map("expertise_at")
+  settledAt         DateTime?            @map("settled_at")
+  rejectedAt        DateTime?            @map("rejected_at")
+  closedAt          DateTime?            @map("closed_at")
+  createdByUserId   String?              @map("created_by_user_id")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  tenant    Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property  Property                      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  policy    InsurancePolicy               @relation(fields: [policyId], references: [id], onDelete: NoAction)
+  ticket    MaintenanceTicket?            @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  expense   PropertyExpense?              @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  documents InsuranceClaimDocument[]
+  history   InsuranceClaimStatusHistory[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, propertyId])
+  @@index([policyId])
+  @@map("insurance_claims")
+}
+
+/// Piece d'un sinistre : liaison vers un `PropertyDocument` de la meme agence.
+model InsuranceClaimDocument {
+  id         String                     @id @default(uuid()) @db.Uuid
+  tenantId   String                     @map("tenant_id")
+  claimId    String                     @map("claim_id") @db.Uuid
+  documentId String                     @map("document_id")
+  kind       InsuranceClaimDocumentKind
+  createdAt  DateTime                   @default(now()) @map("created_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim    InsuranceClaim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  document PropertyDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, documentId])
+  @@index([tenantId])
+  @@index([documentId])
+  @@map("insurance_claim_documents")
+}
+
+/// Historique horodate des changements de statut d'un sinistre.
+model InsuranceClaimStatusHistory {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  claimId         String                @map("claim_id") @db.Uuid
+  fromStatus      InsuranceClaimStatus? @map("from_status")
+  toStatus        InsuranceClaimStatus  @map("to_status")
+  note            String?               @db.Text
+  changedByUserId String?               @map("changed_by_user_id")
+  changedAt       DateTime              @default(now()) @map("changed_at")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim  InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([claimId, changedAt])
+  @@map("insurance_claim_status_history")
+}
+
+/// Carnet d'entretien d'un bien : une ligne par intervention, vue chronologique.
+model MaintenanceLogEntry {
+  id              String                 @id @default(uuid()) @db.Uuid
+  tenantId        String                 @map("tenant_id")
+  propertyId      String                 @map("property_id")
+  category        MaintenanceLogCategory
+  performedAt     DateTime               @map("performed_at")
+  vendorId        String?                @map("vendor_id") @db.Uuid
+  cost            Decimal?               @db.Decimal(14, 2)
+  currency        String                 @default("XOF")
+  description     String                 @db.Text
+  nextDueDate     DateTime?              @map("next_due_date")
+  warrantyEndDate DateTime?              @map("warranty_end_date")
+  /// Piece facultative : un `PropertyDocument` du meme bien.
+  documentId      String?                @map("document_id")
+  createdByUserId String?                @map("created_by_user_id")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  vendor   MaintenanceVendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  document PropertyDocument?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, propertyId, performedAt])
+  @@index([tenantId, nextDueDate])
+  @@index([tenantId, warrantyEndDate])
+  @@map("maintenance_log_entries")
 }

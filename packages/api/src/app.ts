@@ -50,11 +50,16 @@ import newsletterRoutes from './routes/newsletter-routes';
 import newsletterPublicRoutes from './routes/newsletter-public-routes';
 import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
+import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
+import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
+import externalAccessRoutes from './routes/external-access-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
 import coOwnerPortalRoutes from './routes/coowner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
+import patrimoineLandRoutes from './routes/patrimoine-land-routes';
+import patrimoineInsuranceRoutes from './routes/patrimoine-insurance-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
@@ -110,9 +115,19 @@ app.use(
   })
 );
 app.use(compressionMiddleware);
-app.use(express.json({ limit: '10mb' }));
+// Les liens securises publics (lot A3) ont leur propre parseur JSON borne a
+// 1 Ko et leur propre gestion d'erreur de corps (404 uniforme avec en-tetes
+// no-store, sans journaliser le message du parseur) : les parseurs globaux ne
+// retraitent pas ce prefixe. Meme regle pour l'acces des tiers de confiance
+// (lot B3). Tout le reste de l'app est inchange.
+const PUBLIC_TOKEN_PREFIXES = [PUBLIC_SECURE_LINKS_PREFIX, PUBLIC_EXTERNAL_ACCESS_PREFIX];
+const skipSecureLinkPublic =
+  (parser: express.RequestHandler): express.RequestHandler =>
+  (req, res, next) =>
+    PUBLIC_TOKEN_PREFIXES.some(prefix => req.path.startsWith(`${prefix}/`)) ? next() : parser(req, res, next);
+app.use(skipSecureLinkPublic(express.json({ limit: '10mb' })));
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(skipSecureLinkPublic(express.urlencoded({ extended: true, limit: '10mb' })));
 app.use(passport.initialize());
 
 // Static file serving for uploads
@@ -197,6 +212,12 @@ app.use('/api', whatsappWebhookRoutes);
 // Lot 7 : IPN PaySecureHub + simulateur, publics par nécessité — mêmes
 // raisons que le webhook WhatsApp ci-dessus.
 app.use('/api', paymentGatewayPublicRoutes);
+// Lot A3 : lecture publique d'un rapport par lien securise (jeton dans le corps,
+// limiteur par IP, parseur JSON propre de 1 Ko) — public par nature, monte avant
+// les routeurs d'agence, apres CORS, plancher de debit global et journal de requetes.
+app.use('/api', secureLinkPublicRoutes);
+// Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
+app.use('/api', externalAccessPublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess
@@ -268,6 +289,9 @@ app.use('/api', syndicChargeSchedulesRoutes); // Programmations d'appels automat
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
 app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', patrimoineEntitiesRoutes); // Patrimoine — entités détentrices et fiscalité (lot P4, tenant-scoped)
+app.use('/api', externalAccessRoutes); // Patrimoine — accès en lecture seule des tiers de confiance (lot B3, tenant-scoped)
+app.use('/api', patrimoineLandRoutes); // Patrimoine — régularisation foncière (lot B2, tenant-scoped)
+app.use('/api', patrimoineInsuranceRoutes); // Patrimoine — assurances, sinistres et carnet d'entretien (lot B1, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions

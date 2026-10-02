@@ -21,6 +21,12 @@ export const WHATSAPP_NOTIFICATION_KEYS = [
   'PROPERTY_PUBLISHED_GROUP_BROADCAST',
   'PORTAL_ACCOUNT_CREATED',
   'OWNER_STATEMENT_SENT',
+  // Patrimoine – alertes et rapport mensuel du propriétaire
+  'OWNER_LEASE_ENDING_SOON',
+  'OWNER_DOCUMENT_EXPIRY_ALERT',
+  'OWNER_MONTHLY_REPORT_SENT',
+  // Location – lien de paiement du loyer envoyé au locataire
+  'RENTER_PAYMENT_LINK_SENT',
   // Syndic – appels de charges & AG & incidents
   'CHARGE_CALL_ISSUED',
   'CHARGE_CALL_REMINDER',
@@ -144,6 +150,34 @@ export const WHATSAPP_NOTIFICATION_META: Record<WhatsappNotificationKey, Whatsap
     label: 'Relevé de gérance envoyé (WhatsApp)',
     description: 'Envoi WhatsApp du relevé de gérance au propriétaire quand un numéro est renseigné.',
     recipientLabel: 'Propriétaire'
+  },
+  OWNER_LEASE_ENDING_SOON: {
+    key: 'OWNER_LEASE_ENDING_SOON',
+    label: 'Fin de bail prochaine (propriétaire, WhatsApp)',
+    description:
+      "Alerte WhatsApp envoyée au propriétaire lorsqu'un bail de son patrimoine arrive à échéance. L'e-mail correspondant reste configuré avec l'événement « Fin de bail prochaine ».",
+    recipientLabel: 'Propriétaire'
+  },
+  OWNER_DOCUMENT_EXPIRY_ALERT: {
+    key: 'OWNER_DOCUMENT_EXPIRY_ALERT',
+    label: 'Document à renouveler (propriétaire, WhatsApp)',
+    description:
+      "Alerte WhatsApp envoyée au propriétaire lorsqu'un document de son patrimoine (assurance, diagnostic, etc.) arrive à expiration. L'e-mail correspondant reste configuré avec l'événement « Alerte expiration document patrimoine ».",
+    recipientLabel: 'Propriétaire'
+  },
+  OWNER_MONTHLY_REPORT_SENT: {
+    key: 'OWNER_MONTHLY_REPORT_SENT',
+    label: 'Rapport mensuel du propriétaire (WhatsApp)',
+    description:
+      'Envoi WhatsApp du lien sécurisé vers le rapport mensuel du propriétaire (lecture seule, durée limitée), lorsque le propriétaire a consenti et que son numéro est renseigné.',
+    recipientLabel: 'Propriétaire'
+  },
+  RENTER_PAYMENT_LINK_SENT: {
+    key: 'RENTER_PAYMENT_LINK_SENT',
+    label: 'Lien de paiement du loyer (WhatsApp)',
+    description:
+      "Envoi WhatsApp au locataire d'un lien sécurisé pour régler son loyer en ligne par Mobile Money (durée limitée, révocable), lorsque le locataire a consenti et que son numéro est renseigné.",
+    recipientLabel: 'Locataire'
   },
   CHARGE_CALL_ISSUED: {
     key: 'CHARGE_CALL_ISSUED',
