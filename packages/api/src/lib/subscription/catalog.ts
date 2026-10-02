@@ -16,7 +16,7 @@
  */
 
 export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
-export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS';
+export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS';
 export type CatalogItemKindCode = 'PACK' | 'EXTENSION' | 'SETUP';
 
 export const MODULE_KEYS: readonly ModuleKeyCode[] = [
@@ -25,7 +25,13 @@ export const MODULE_KEYS: readonly ModuleKeyCode[] = [
   'MODULE_PROMOTER',
   'MODULE_PATRIMOINE'
 ];
-export const CAPACITY_KEYS: readonly CapacityKeyCode[] = ['LOTS', 'COPROPRIETES', 'CHANTIERS', 'BIENS_DETENUS'];
+export const CAPACITY_KEYS: readonly CapacityKeyCode[] = [
+  'LOTS',
+  'COPROPRIETES',
+  'CHANTIERS',
+  'BIENS_DETENUS',
+  'ACTIFS'
+];
 
 /** Codes stables des packs et extensions (les lignes SETUP suivent `SETUP_<PACK>`). */
 export const PACK = {
@@ -35,7 +41,10 @@ export const PACK = {
   INTEGRE: 'INTEGRE',
   /** Pack Patrimoine (lot P1, 28/09) : biens detenus en propre, sans mandat pour un tiers. */
   PATRIMOINE_ESSENTIEL: 'PATRIMOINE_ESSENTIEL',
-  PATRIMOINE_PRO: 'PATRIMOINE_PRO'
+  PATRIMOINE_PRO: 'PATRIMOINE_PRO',
+  /** Packs de l'espace personnel (lot 4A) : palier gratuit et palier Plus, comptes en actifs (capacite ACTIFS). */
+  PARTICULIER_GRATUIT: 'PARTICULIER_GRATUIT',
+  PARTICULIER_PLUS: 'PARTICULIER_PLUS'
 } as const;
 
 export const EXTENSION = {
@@ -50,6 +59,12 @@ export const PATRIMOINE_TIER_GROUP = 'PATRIMOINE';
 
 /** Packs dont l'unite de comptage est le bien detenu (capacite BIENS_DETENUS). */
 export const PATRIMOINE_PACKS: readonly string[] = [PACK.PATRIMOINE_ESSENTIEL, PACK.PATRIMOINE_PRO];
+
+/** Palier commun aux deux packs Particulier : Gratuit et Plus ne se cumulent pas (`rules.tierGroup`). */
+export const PARTICULIER_TIER_GROUP = 'PARTICULIER';
+
+/** Packs de l'espace personnel (unite de comptage : l'actif, capacite ACTIFS). */
+export const PARTICULIER_PACKS: readonly string[] = [PACK.PARTICULIER_GRATUIT, PACK.PARTICULIER_PLUS];
 
 /** L'annuel paye d'avance = 11 mensualites (12 mois pour 11). */
 export const ANNUAL_MONTHS = 11;
@@ -197,6 +212,42 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     isSellable: true,
     sortOrder: 60,
     capacities: { BIENS_DETENUS: 100 }
+  },
+  {
+    // PRIX ET PLAFOND PROVISOIRES (lot 4A, a valider par le produit) : ce sont
+    // des valeurs de depart, modifiables dans le catalogue (`updateCatalogItem`,
+    // ecran super-admin) SANS migration ; les abonnements en cours gardent leur
+    // prix fige (SubscriptionItem). Gratuit : aucune facture periodique n'est
+    // emise (voir `isFreeSubscription`, platform-invoice-service).
+    code: PACK.PARTICULIER_GRATUIT,
+    kind: 'PACK',
+    name: 'Particulier Gratuit',
+    description:
+      'Espace personnel gratuit — jusqu’à 10 actifs de patrimoine (immobilier, placements, prêts…), gestion locative directe comprise',
+    monthlyPrice: 0,
+    setupPrice: 0,
+    modules: ['MODULE_PATRIMOINE'],
+    exclusiveGroup: null,
+    rules: { tierGroup: PARTICULIER_TIER_GROUP },
+    isSellable: true,
+    sortOrder: 70,
+    capacities: { ACTIFS: 10 }
+  },
+  {
+    // PRIX ET PLAFOND PROVISOIRES : 2 900 FCFA HT/mois et 100 actifs, a valider
+    // par le produit ; modifiables via `updateCatalogItem`, sans migration.
+    code: PACK.PARTICULIER_PLUS,
+    kind: 'PACK',
+    name: 'Particulier Plus',
+    description: 'Espace personnel payant — jusqu’à 100 actifs de patrimoine, gestion locative directe comprise',
+    monthlyPrice: 2_900,
+    setupPrice: 0,
+    modules: ['MODULE_PATRIMOINE'],
+    exclusiveGroup: null,
+    rules: { tierGroup: PARTICULIER_TIER_GROUP },
+    isSellable: true,
+    sortOrder: 80,
+    capacities: { ACTIFS: 100 }
   },
   {
     code: EXTENSION.LOTS_10,

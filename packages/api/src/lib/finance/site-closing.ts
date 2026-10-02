@@ -73,6 +73,7 @@ import { roundMoneyXof, roundPercent } from './money';
 import type { FinanceReadClient } from './site-cost';
 import { sumSiteActualCost } from './site-cost';
 import { toAmount, toAmountOrZero } from './types';
+import { storedPropertyReliability } from '../patrimoine/property-asset';
 import type {
   AssertSiteOpenTx,
   CapitalizeSiteLotTx,
@@ -989,6 +990,11 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
   // `estimatedValue` est obligatoire en base et reçoit le même coût de
   // revient — au jour de la bascule, la valeur estimée du lot EST ce qu'il a
   // coûté ; toute autre valeur serait inventée.
+  const reliability = await storedPropertyReliability(tx, tenantId, property.id, {
+    method: 'MANUAL',
+    valuatedAt: params.acquisitionDate,
+    source: null
+  });
   await tx.assetValuation.create({
     data: {
       tenantId,
@@ -998,7 +1004,8 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
       currency: DEFAULT_CURRENCY,
       acquisitionCost: record.costPrice,
       acquisitionDate: params.acquisitionDate,
-      method: 'MANUAL'
+      method: 'MANUAL',
+      ...reliability
     }
   });
 

@@ -26,7 +26,8 @@ import { z } from 'zod';
 import { getTenantModules, updateTenantModules } from '../services/module-service';
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
-import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { AppError, asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import { httpUrl } from '../lib/safe-url';
 import { parsePagination } from '../utils/pagination-helper';
 
@@ -333,6 +334,16 @@ export async function updateTenantSelfHandler(req: Request, res: Response): Prom
       data: tenant
     });
   } catch (error) {
+    // Erreur typée (ex. téléphone invalide d'un espace personnel : 422 avec le champ) : statut et code conservés.
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: t(error.message),
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.errors ? { errors: error.errors.map(entry => ({ ...entry, message: t(entry.message) })) } : {})
+      });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     if (errorMessage.includes('introuvable')) {
       res.status(404).json({ success: false, message: errorMessage });

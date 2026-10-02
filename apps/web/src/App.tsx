@@ -87,9 +87,9 @@ const PropertyVisitsCalendar = lazy(() =>
     default: m.PropertyVisitsCalendar
   }))
 );
-const PatrimoineOverviewPage = lazy(() =>
+const PatrimoineHome = lazy(() =>
   import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/PatrimoineOverviewPage').then(m => ({
-    default: m.PatrimoineOverviewPage
+    default: m.PatrimoineHome
   }))
 );
 const PatrimoinePerformancePage = lazy(() =>
@@ -938,7 +938,7 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/properties/:id/edit" element={<PropertyEdit />} />
                           <Route path="/tenant/:tenantId/properties/:id" element={<PropertyDetail />} />
-                          <Route path="/tenant/:tenantId/patrimoine" element={<PatrimoineOverviewPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/*" element={<PatrimoineHome />} />
                           <Route
                             path="/tenant/:tenantId/patrimoine/performance"
                             element={<PatrimoinePerformancePage />}

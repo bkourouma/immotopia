@@ -51,6 +51,11 @@ export interface TenantMembership {
     id: string;
     name: string;
     slug: string;
+    /**
+     * Type de l'espace, quand la réponse `my-memberships` le porte. Absent
+     * aujourd'hui : la coquille le lit alors par `useTenantType`.
+     */
+    type?: 'AGENCY' | 'OPERATOR' | 'PARTICULIER';
   };
   status: string;
 }

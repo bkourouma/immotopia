@@ -44,11 +44,13 @@ const env = {
 console.log('Application des migrations sur la base de test isolation...');
 execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
 
-console.log('Execution des suites sur base reelle : isolation (E1) et acces tiers de confiance (B3)...');
-execSync('npx jest __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts', {
-  stdio: 'inherit',
-  env
-});
+console.log(
+  'Execution des suites sur base reelle : isolation (E1), acces tiers de confiance (B3), patrimoine multi-actifs et espace particulier...'
+);
+execSync(
+  'npx jest __tests__/integration/isolation.test.ts __tests__/integration/external-access.db.test.ts __tests__/integration/patrimoine.property-asset.integration.test.ts __tests__/integration/signup-guard.integration.test.ts __tests__/integration/personal-space.integration.test.ts',
+  { stdio: 'inherit', env }
+);
 
 // Journal d'audit (phase 5) : scellement, verification, purge. Lance APRES et
 // SEPAREMENT : certains cas desactivent un declencheur de `audit_logs` le temps

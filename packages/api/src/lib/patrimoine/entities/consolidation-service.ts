@@ -28,10 +28,16 @@ export async function getEntityConsolidation(tenantId: string, entityId: string)
   const entity = await prisma.holdingEntity.findFirst({ where: { id: entityId, tenantId } });
   if (!entity) throw new NotFoundError('Entité introuvable.');
 
-  const holdings = await prisma.propertyHolding.findMany({
-    where: { tenantId, entityId },
+  // Part d'un actif non immobilier (assetId) : hors consolidation immobilière, lot 1.
+  const holdingRows = await prisma.propertyHolding.findMany({
+    where: { tenantId, entityId, propertyId: { not: null } },
     include: { property: { select: { id: true, title: true, internalReference: true } } }
   });
+  const holdings = holdingRows.flatMap(row =>
+    row.propertyId !== null && row.property !== null
+      ? [{ ...row, propertyId: row.propertyId, property: row.property }]
+      : []
+  );
 
   const now = new Date();
   const propertyIds = holdings.map(h => h.propertyId);
@@ -52,6 +58,7 @@ export async function getEntityConsolidation(tenantId: string, entityId: string)
   const yieldInputByProperty = new Map(yieldInputs.map(entry => [entry.propertyId, entry.yieldInput]));
   const debtByProperty = new Map<string, number>();
   for (const loan of activeLoans) {
+    if (loan.propertyId === null) continue; // dette d'un actif ou dette personnelle : hors bien
     debtByProperty.set(loan.propertyId, (debtByProperty.get(loan.propertyId) ?? 0) + Number(loan.remainingCapital));
   }
 

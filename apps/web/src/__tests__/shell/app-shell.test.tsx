@@ -258,7 +258,8 @@ describe('AppShell — compte non rattaché', () => {
   it('rend l’écran dédié à la place de la coquille, sans aucun élément de navigation', () => {
     // Ni agence, ni contrat client : aucune destination, donc aucun menu.
     renderShell(makeAuth({}), '/dashboard');
-    expect(screen.getByText(/n’est rattaché à aucune agence/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Créer mon espace' })).toBeInTheDocument();
+    expect(screen.getByText(/n’est relié à aucune agence/)).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).not.toBeInTheDocument();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     // Le contenu de la route n'est pas rendu : il n'aurait rien a afficher.

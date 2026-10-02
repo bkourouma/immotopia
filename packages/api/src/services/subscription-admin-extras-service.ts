@@ -361,47 +361,72 @@ export async function listSubscriptionSummaries(
   const ids = [...new Set(tenantIds)].slice(0, MAX_SUMMARY_TENANTS);
   if (ids.length === 0) return {};
   const where = { tenantId: { in: ids } };
-  const [subscriptions, items, overrides, moduleRows, lots, copros, sites, requests, heldProperties] =
-    await Promise.all([
-      prisma.subscription.findMany({ where }),
-      prisma.subscriptionItem.findMany({
-        where: { ...where, status: { not: SubscriptionItemStatus.ENDED } },
-        include: itemInclude
-      }),
-      prisma.capacityOverride.findMany({ where: { ...where, revokedAt: null } }),
-      prisma.tenantModule.findMany({ where }),
-      prisma.lotActivation.groupBy({
-        by: ['tenantId'],
-        where: { ...where, deactivatedAt: null, kind: { not: 'HELD_PROPERTY' } },
-        _count: { _all: true }
-      }),
-      prisma.syndicate.groupBy({
-        by: ['tenantId'],
-        where: { ...where, status: { in: [...ACTIVE_SYNDICATE_STATUSES] } },
-        _count: { _all: true }
-      }),
-      prisma.constructionSite.groupBy({
-        by: ['tenantId'],
-        where: { ...where, status: { in: [...ACTIVE_SITE_STATUSES] } },
-        _count: { _all: true }
-      }),
-      prisma.subscriptionExtensionRequest.groupBy({
-        by: ['tenantId'],
-        where: { ...where, status: 'OPEN' },
-        _count: { _all: true }
-      }),
-      prisma.lotActivation.groupBy({
-        by: ['tenantId'],
-        where: { ...where, deactivatedAt: null, kind: 'HELD_PROPERTY' },
-        _count: { _all: true }
-      })
-    ]);
+  const [
+    subscriptions,
+    items,
+    overrides,
+    moduleRows,
+    lots,
+    copros,
+    sites,
+    requests,
+    heldProperties,
+    assets,
+    unlinkedProperties
+  ] = await Promise.all([
+    prisma.subscription.findMany({ where }),
+    prisma.subscriptionItem.findMany({
+      where: { ...where, status: { not: SubscriptionItemStatus.ENDED } },
+      include: itemInclude
+    }),
+    prisma.capacityOverride.findMany({ where: { ...where, revokedAt: null } }),
+    prisma.tenantModule.findMany({ where }),
+    prisma.lotActivation.groupBy({
+      by: ['tenantId'],
+      where: { ...where, deactivatedAt: null, kind: { not: 'HELD_PROPERTY' } },
+      _count: { _all: true }
+    }),
+    prisma.syndicate.groupBy({
+      by: ['tenantId'],
+      where: { ...where, status: { in: [...ACTIVE_SYNDICATE_STATUSES] } },
+      _count: { _all: true }
+    }),
+    prisma.constructionSite.groupBy({
+      by: ['tenantId'],
+      where: { ...where, status: { in: [...ACTIVE_SITE_STATUSES] } },
+      _count: { _all: true }
+    }),
+    prisma.subscriptionExtensionRequest.groupBy({
+      by: ['tenantId'],
+      where: { ...where, status: 'OPEN' },
+      _count: { _all: true }
+    }),
+    prisma.lotActivation.groupBy({
+      by: ['tenantId'],
+      where: { ...where, deactivatedAt: null, kind: 'HELD_PROPERTY' },
+      _count: { _all: true }
+    }),
+    // ACTIFS : meme definition que `countActiveAssets` (subscription-v2-service) — actifs non
+    // archives + biens non archives sans actif lie (un actif lie a un bien compte une fois).
+    prisma.asset.groupBy({
+      by: ['tenantId'],
+      where: { ...where, status: { not: 'ARCHIVED' } },
+      _count: { _all: true }
+    }),
+    prisma.property.groupBy({
+      by: ['tenantId'],
+      where: { ...where, status: { not: 'ARCHIVED' }, asset: { is: null } },
+      _count: { _all: true }
+    })
+  ]);
 
   const lotCounts = countMap(lots as Array<{ tenantId: string; _count: { _all: number } }>);
   const coproCounts = countMap(copros as Array<{ tenantId: string; _count: { _all: number } }>);
   const siteCounts = countMap(sites as Array<{ tenantId: string; _count: { _all: number } }>);
   const requestCounts = countMap(requests as Array<{ tenantId: string; _count: { _all: number } }>);
   const heldCounts = countMap(heldProperties as Array<{ tenantId: string; _count: { _all: number } }>);
+  const assetCounts = countMap(assets as Array<{ tenantId: string; _count: { _all: number } }>);
+  const unlinkedPropertyCounts = countMap(unlinkedProperties as Array<{ tenantId: string; _count: { _all: number } }>);
   const now = new Date();
   const enforcement = getSubscriptionEnforcement();
   const result: Record<string, SubscriptionSummary> = {};
@@ -449,7 +474,8 @@ export async function listSubscriptionSummaries(
         LOTS: lotCounts.get(tenantId) ?? 0,
         COPROPRIETES: coproCounts.get(tenantId) ?? 0,
         CHANTIERS: siteCounts.get(tenantId) ?? 0,
-        BIENS_DETENUS: heldCounts.get(tenantId) ?? 0
+        BIENS_DETENUS: heldCounts.get(tenantId) ?? 0,
+        ACTIFS: (assetCounts.get(tenantId) ?? 0) + (unlinkedPropertyCounts.get(tenantId) ?? 0)
       },
       enforcement,
       featuresFor: featuresForModules,

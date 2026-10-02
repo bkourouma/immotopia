@@ -293,10 +293,16 @@ export async function getEntityTaxEstimate(
   const fiscalYear = query.year ?? currentUtcYear();
   const ownerKind = ownerKindOf({ legalForm: entity.legalForm, fiscalOwnerKind: entity.fiscalOwnerKind as any });
 
-  const holdings = await prisma.propertyHolding.findMany({
-    where: { tenantId, entityId },
+  // Part d'un actif non immobilier (assetId) : hors consolidation immobilière, lot 1.
+  const holdingRows = await prisma.propertyHolding.findMany({
+    where: { tenantId, entityId, propertyId: { not: null } },
     include: { property: { select: { id: true, title: true, internalReference: true, propertyType: true } } }
   });
+  const holdings = holdingRows.flatMap(row =>
+    row.propertyId !== null && row.property !== null
+      ? [{ ...row, propertyId: row.propertyId, property: row.property }]
+      : []
+  );
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { country: true } });
   const endOfYear = new Date(Date.UTC(fiscalYear, 11, 31, 23, 59, 59, 999));

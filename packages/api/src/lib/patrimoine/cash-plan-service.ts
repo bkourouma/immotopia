@@ -239,9 +239,10 @@ export async function getCashPlan(
       rentAmount: num(row.rent_amount),
       serviceChargeAmount: num(row.service_charge_amount)
     })),
+    // `propertyId: { in: retainedIds }` exclut les dettes personnelles (propertyId nul, ADR-005).
     loans: loans.map(row => ({
       id: row.id,
-      propertyId: row.propertyId,
+      propertyId: row.propertyId as string,
       lender: row.lender,
       monthlyPayment: num(row.monthlyPayment),
       currency: row.currency,

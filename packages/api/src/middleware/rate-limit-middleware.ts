@@ -1,22 +1,19 @@
-import type { Request } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
 import { t } from '../i18n';
+import { assertSignupAllowed } from '../services/signup-guard-service';
 
 /**
- * Rate limiter for registration endpoint
- * 3 attempts per hour per IP
+ * Limiteur d'inscription : 3 par heure et par IP (fenêtre glissante).
+ * L'état est en base (`services/signup-guard-service.ts`), donc il survit au
+ * redémarrage et se partage entre instances, contrairement aux autres
+ * limiteurs de ce fichier (magasin en mémoire de processus). Refus : 429,
+ * code `SIGNUP_RATE_LIMITED`.
  */
-export const registrationRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // 3 requests per window
-  message: {
-    success: false,
-    message: "Trop de tentatives d'inscription. Veuillez réessayer dans une heure."
-  },
-  standardHeaders: true,
-  legacyHeaders: false
-});
+export function registrationRateLimiter(req: Request, _res: Response, next: NextFunction): void {
+  assertSignupAllowed(req.ip).then(() => next(), next);
+}
 
 /**
  * Rate limiter for login endpoint
@@ -315,6 +312,26 @@ export const chargeCallNoticeRateLimiter = rateLimit({
     success: false,
     code: 'RATE_LIMITED',
     message: "Trop de téléchargements d'avis d'appel en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Patrimoine : projection, simulation et exécution d'un scénario. Un appel
+ * recharge le patrimoine de l'agence et calcule jusqu'à 30 ans de trajectoires,
+ * bien plus coûteux qu'une lecture. 30 par minute, par utilisateur ET par
+ * agence (posé après `authenticate` et `requireTenantAccess`, avant les gardes
+ * lourdes). Compteurs en mémoire, purgés à chaque fenêtre.
+ */
+export const patrimoineProjectionRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: 'Trop de calculs de projection en peu de temps. Réessayez dans une minute.'
   },
   standardHeaders: true,
   legacyHeaders: false

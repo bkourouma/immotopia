@@ -81,10 +81,9 @@ export const Register: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // Remove role from formData as it's not needed in new architecture
-      const { ...registrationData } = formData;
-      await register(registrationData);
-      setSuccessMessage(t('Inscription réussie ! Veuillez vérifier votre email pour activer votre compte.'));
+      await register(formData);
+      // Message unique, que l'adresse soit nouvelle ou déjà connue : l'API ne révèle pas les comptes.
+      setSuccessMessage(t('Si cette adresse est valide, un e-mail de vérification vient de vous être envoyé.'));
       setTimeout(() => {
         navigate('/login');
       }, 3000);

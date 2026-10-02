@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/database';
-import { MembershipStatus, TenantStatus } from '@prisma/client';
+import { MembershipStatus, TenantStatus, TenantType } from '@prisma/client';
 import { t } from '../i18n';
-import { getTenantStatus } from '../utils/tenant-access';
+import { getTenantAccessInfo } from '../utils/tenant-access';
 import { runWithTenantContext } from '../utils/tenant-context';
 
 /**
@@ -110,7 +110,9 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
     // suspension revoque les sessions, mais sans ce controle un simple nouveau
     // login rouvrait l'acces. Le super-admin, lui, passe (bloc ci-dessus) pour
     // pouvoir la consulter et la reactiver.
-    const tenantStatus = await getTenantStatus(tenantId as string);
+    const tenantInfo = await getTenantAccessInfo(tenantId as string);
+    const tenantStatus = tenantInfo?.status ?? null;
+    const tenantType = tenantInfo?.type;
     if (tenantStatus === null) {
       res.status(404).json({ success: false, message: t('Agence introuvable.') });
       return;
@@ -148,7 +150,8 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         tenantId: tenantId as string,
         role: null, // Role is determined by UserRole, not CollaboratorRole
         isCollaborator: hasTenantRoles,
-        isClient: !hasTenantRoles
+        isClient: !hasTenantRoles,
+        tenantType
       };
       proceedWithTenantContext(req, next);
       return;
@@ -172,7 +175,8 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         role: null,
         isCollaborator: false,
         isClient: true,
-        clientType: client.clientType
+        clientType: client.clientType,
+        tenantType
       };
       proceedWithTenantContext(req, next);
       return;
@@ -235,6 +239,8 @@ declare module 'express-serve-static-core' {
       isClient: boolean;
       clientType?: string;
       isSuperAdmin?: boolean;
+      /** Type de l'espace, lu avec son statut (jamais pour le super-admin, qui n'en a pas besoin). */
+      tenantType?: TenantType;
     };
   }
 }

@@ -1,4 +1,4 @@
-import { MembershipStatus, TenantStatus } from '@prisma/client';
+import { MembershipStatus, TenantStatus, TenantType } from '@prisma/client';
 import { prisma } from './database';
 
 /**
@@ -12,11 +12,7 @@ import { prisma } from './database';
  * @param tenantId - Tenant owning the resource
  * @param globalRole - Global role from the JWT (SUPER_ADMIN bypasses)
  */
-export async function userHasTenantAccess(
-  userId: string,
-  tenantId: string,
-  globalRole?: string
-): Promise<boolean> {
+export async function userHasTenantAccess(userId: string, tenantId: string, globalRole?: string): Promise<boolean> {
   if (!userId || !tenantId) {
     return false;
   }
@@ -48,15 +44,26 @@ export async function userHasTenantAccess(
 }
 
 /**
+ * Statut et type d'un tenant, ou null s'il n'existe pas. UNE seule lecture :
+ * `requireTenantAccess` en tire le statut (suspension) ET le type (garde des
+ * espaces PARTICULIER), sans requete de plus.
+ */
+export async function getTenantAccessInfo(
+  tenantId: string
+): Promise<{ status: TenantStatus; type: TenantType | undefined } | null> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { status: true, type: true }
+  });
+  return tenant ? { status: tenant.status, type: tenant.type ?? undefined } : null;
+}
+
+/**
  * Status of a tenant, or null when it does not exist.
  *
  * Checked on every tenant-scoped request so that suspending an agency cuts
  * access at once, including for users who log in again after the suspension.
  */
 export async function getTenantStatus(tenantId: string): Promise<TenantStatus | null> {
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    select: { status: true }
-  });
-  return tenant?.status ?? null;
+  return (await getTenantAccessInfo(tenantId))?.status ?? null;
 }

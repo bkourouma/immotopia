@@ -102,7 +102,8 @@ export interface ExclusivityResult {
   ok: boolean;
   /**
    * Paires de packs incompatibles, ex. [['INTEGRE', 'AGENCE']] (exclusivite)
-   * ou [['PATRIMOINE_ESSENTIEL', 'PATRIMOINE_PRO']] (meme palier).
+   * ou [['PATRIMOINE_ESSENTIEL', 'PATRIMOINE_PRO']] (meme palier ; de meme
+   * PARTICULIER_GRATUIT / PARTICULIER_PLUS, `tierGroup` PARTICULIER).
    */
   conflicts: Array<[string, string]>;
   /** Pack present deux fois (un pack ne se souscrit qu'une fois). */

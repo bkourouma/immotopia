@@ -32,6 +32,9 @@ function buildRouteLabels(): Record<string, string> {
     // Patrimoine
     patrimoine: t('Patrimoine'),
     performance: t('Performance'),
+    'valeur-nette': t('Valeur nette'),
+    actifs: t('Mes actifs'),
+    projections: t('Projections'),
     'work-programs': t('Programmes de travaux'),
     claims: t('Sinistres'),
     statements: t('Relevés'),

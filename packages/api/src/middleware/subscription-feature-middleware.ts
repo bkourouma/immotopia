@@ -22,6 +22,10 @@
  * portails `/api/portal/*`, auth et `/api/admin` ne sont pas sous
  * `/api/tenants/:tenantId` : le garde ne les voit pas.
  *
+ * Garde de TYPE (independant de ce mode) : un espace PARTICULIER n'atteint que
+ * la liste blanche de `lib/subscription/particulier-routes.ts` (403
+ * PERSONAL_SPACE_ROUTE_FORBIDDEN sinon), y compris en `off` et `warn`.
+ *
  * Une erreur de calcul des droits laisse passer (journalisee) : une panne du
  * module d'abonnement ne doit pas fermer l'application.
  */
@@ -39,6 +43,9 @@ import {
   RouteFeature
 } from '../lib/subscription/route-features';
 import { logger } from '../utils/logger';
+import { t } from '../i18n';
+import { AppError } from './error-middleware';
+import { isRouteAllowedForParticulier } from '../lib/subscription/particulier-routes';
 import { authenticate } from './auth-middleware';
 import { requireTenantAccess } from './tenant-middleware';
 
@@ -71,12 +78,7 @@ function isExemptActor(req: Request): boolean {
  * Verifie la fonctionnalite pour l'agence `tenantId`. Leve l'erreur typee en
  * `enforce` ; en `warn`, journalise et compte, puis rend la main.
  */
-async function checkFeature(
-  req: Request,
-  tenantId: string,
-  feature: Feature,
-  write: boolean
-): Promise<void> {
+async function checkFeature(req: Request, tenantId: string, feature: Feature, write: boolean): Promise<void> {
   let entitlements;
   try {
     entitlements = await getEntitlements(tenantId);
@@ -144,15 +146,41 @@ export function requireFeature(feature: Feature) {
   return middleware;
 }
 
+/** 403 d'un espace personnel sur une route d'agence (code stable pour le web). */
+export const PERSONAL_SPACE_ROUTE_FORBIDDEN_CODE = 'PERSONAL_SPACE_ROUTE_FORBIDDEN';
+
+export class PersonalSpaceRouteForbiddenError extends AppError {
+  constructor() {
+    super(
+      t("Cette fonctionnalité n'est pas disponible dans un espace personnel."),
+      403,
+      PERSONAL_SPACE_ROUTE_FORBIDDEN_CODE
+    );
+  }
+}
+
+/**
+ * Garde de TYPE d'espace : un PARTICULIER n'atteint que la liste blanche de
+ * `lib/subscription/particulier-routes.ts`, quel que soit le mode
+ * d'application des quotas. Aucune requete : le type vient de
+ * `requireTenantAccess`. Rend l'erreur, ou `undefined` si la requete passe.
+ */
+function checkTenantTypeGuard(req: Request, relativePath: string): AppError | undefined {
+  if (req.tenantContext?.tenantType !== 'PARTICULIER') return undefined;
+  return isRouteAllowedForParticulier(relativePath) ? undefined : new PersonalSpaceRouteForbiddenError();
+}
+
 /**
  * Garde d'application, monte sur `/api/tenants/:tenantId`. `req.path` y est
  * relatif a ce prefixe : c'est la cle de la table.
+ *
+ * Deux gardes, dans cet ordre : (1) type d'espace, TOUJOURS actif ;
+ * (2) fonctionnalite d'abonnement, selon `SUBSCRIPTION_ENFORCEMENT`. Le
+ * garde authentifie et verifie l'acces a l'agence pour toute route d'agence
+ * (meme en mode `off`, meme route EXEMPT) : `requireTenantAccess` est
+ * idempotent, les routeurs suivants ne refont ni requete ni verification.
  */
 export function subscriptionRouteGuard(req: Request, res: Response, next: NextFunction): void {
-  if (getSubscriptionEnforcement() === 'off') {
-    next();
-    return;
-  }
   const tenantId = req.params?.tenantId;
   if (!tenantId || NON_TENANT_SEGMENTS.includes(tenantId)) {
     next();
@@ -160,11 +188,34 @@ export function subscriptionRouteGuard(req: Request, res: Response, next: NextFu
   }
 
   const relativePath = req.path;
+
+  // Le garde passe avant les routeurs : il authentifie et verifie l'acces a
+  // l'agence lui-meme, pour qu'un anonyme recoive 401 et un etranger 403
+  // d'acces — jamais l'etat de l'abonnement d'autrui.
+  authenticate(req, res, () => {
+    void requireTenantAccess(req, res, () => {
+      if (req.user?.globalRole === 'SUPER_ADMIN') {
+        next();
+        return;
+      }
+      const typeDenial = checkTenantTypeGuard(req, relativePath);
+      if (typeDenial) {
+        next(typeDenial);
+        return;
+      }
+      checkSubscriptionFeature(req, relativePath, tenantId).then(
+        () => next(),
+        error => next(error)
+      );
+    });
+  });
+}
+
+/** Garde de fonctionnalite d'abonnement (modes off / warn / enforce). */
+async function checkSubscriptionFeature(req: Request, relativePath: string, tenantId: string): Promise<void> {
+  if (getSubscriptionEnforcement() === 'off' || isExemptActor(req)) return;
   const classified: RouteFeature | undefined = classifyTenantRoute(relativePath);
-  if (classified === 'EXEMPT') {
-    next();
-    return;
-  }
+  if (classified === 'EXEMPT') return;
   if (!classified) {
     // Route non classee : le test d'inventaire doit l'avoir signalee. On ne
     // bloque pas (404 ou route neuve), on le dit.
@@ -172,26 +223,8 @@ export function subscriptionRouteGuard(req: Request, res: Response, next: NextFu
       method: req.method,
       path: req.originalUrl.split('?')[0]
     });
-    next();
     return;
   }
   const feature: Feature = classified;
-  const write = isWriteRequest(req.method, relativePath);
-
-  // Le garde passe avant les routeurs : il authentifie et verifie l'acces a
-  // l'agence lui-meme, pour qu'un anonyme recoive 401 et un etranger 403
-  // d'acces — jamais l'etat de l'abonnement d'autrui. Les deux gardes sont
-  // idempotents : les routeurs suivants ne refont pas le travail.
-  authenticate(req, res, () => {
-    void requireTenantAccess(req, res, () => {
-      if (isExemptActor(req)) {
-        next();
-        return;
-      }
-      checkFeature(req, tenantId, feature, write).then(
-        () => next(),
-        error => next(error)
-      );
-    });
-  });
+  await checkFeature(req, tenantId, feature, isWriteRequest(req.method, relativePath));
 }

@@ -11,6 +11,7 @@ import { VALUATION_ORDER_BY, compareValuationsDesc } from './valuation-order';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
 import { syncDirectExpenseEntryTx } from '../finance/rental-direct-ledger';
+import { ensurePropertyAsset, storedPropertyReliability } from './property-asset';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -109,6 +110,11 @@ export async function createPropertyValuation(
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
+  const reliability = await storedPropertyReliability(prisma, tenantId, propertyId, {
+    method: data.method,
+    valuatedAt: data.valuatedAt,
+    source: null
+  });
   return prisma.assetValuation.create({
     data: {
       tenantId,
@@ -119,7 +125,8 @@ export async function createPropertyValuation(
       acquisitionCost: toDecimal(data.acquisitionCost),
       acquisitionDate: data.acquisitionDate,
       method: data.method,
-      notes: data.notes
+      notes: data.notes,
+      ...reliability
     },
     include: { property: true }
   });
@@ -145,6 +152,13 @@ export async function updatePropertyValuation(
   });
   if (!existing) throw notFound('Valorisation introuvable');
 
+  // Fiabilité recalculée sur la ligne fusionnée avec le PATCH (la source, absente du module Bien, reste celle de la ligne).
+  const reliability = await storedPropertyReliability(prisma, tenantId, propertyId, {
+    method: data.method ?? existing.method,
+    valuatedAt: data.valuatedAt ?? existing.valuatedAt,
+    source: existing.source
+  });
+
   return prisma.assetValuation.update({
     where: { id: valuationId, tenantId },
     data: {
@@ -154,7 +168,8 @@ export async function updatePropertyValuation(
       acquisitionCost: toDecimal(data.acquisitionCost),
       acquisitionDate: data.acquisitionDate,
       method: data.method,
-      notes: data.notes
+      notes: data.notes,
+      ...reliability
     },
     include: { property: true }
   });
@@ -422,6 +437,7 @@ export async function createPropertyLoan(
   if (data.endDate <= data.startDate) {
     throw badRequest('La date de fin du prêt doit être postérieure à la date de début');
   }
+  await ensurePropertyAsset(prisma, tenantId, propertyId);
   return prisma.propertyLoan.create({
     data: {
       tenantId,
@@ -807,11 +823,14 @@ export async function getPatrimoineOverview(tenantId: string) {
       where: { tenantId, ownershipType: 'TENANT', status: { notIn: OCCUPANCY_EXCLUDED_STATUSES } },
       select: { id: true }
     }),
+    // Vue immobilière : seules les lignes rattachées à un bien comptent. Une
+    // valorisation ou un prêt portant `assetId` (actif non immobilier) ou sans
+    // bien (dette personnelle) relève de la valeur nette, pas de cette synthèse.
     prisma.assetValuation.findMany({
-      where: { tenantId },
+      where: { tenantId, propertyId: { not: null } },
       orderBy: [{ propertyId: 'asc' }, ...VALUATION_ORDER_BY]
     }),
-    prisma.propertyLoan.findMany({ where: { tenantId, status: 'ACTIVE' } }),
+    prisma.propertyLoan.findMany({ where: { tenantId, status: 'ACTIVE', propertyId: { not: null } } }),
     prisma.propertyExpense.findMany({
       where: {
         tenantId,
@@ -829,6 +848,7 @@ export async function getPatrimoineOverview(tenantId: string) {
 
   const latestByProperty = new Map<string, number>();
   for (const valuation of valuations) {
+    if (valuation.propertyId === null) continue;
     if (!latestByProperty.has(valuation.propertyId)) {
       latestByProperty.set(valuation.propertyId, Number(valuation.estimatedValue));
     }

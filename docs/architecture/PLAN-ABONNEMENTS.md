@@ -28,10 +28,31 @@ La seule source de prix est la grille du site
 | `EXT_CHANTIER` | EXTENSION (Promoteur ou Intégré) |                                                        40 000 (35 000 avec l'Intégré) |               — | —         | 1 chantier                            |
 | `SETUP_<PACK>` | SETUP, facturé une fois          |                                                                                     0 | montant du pack | —         | —                                     |
 
+**Packs Particulier (lot 4A, spec 026).** `PARTICULIER_GRATUIT` (0 FCFA, mise en
+route 0, 10 actifs) et `PARTICULIER_PLUS` (**2 900 FCFA HT/mois, provisoire**,
+mise en route 0, 100 actifs) ouvrent le module Patrimoine (fonctionnalités
+`CORE`, `RENTAL`, `PATRIMOINE`) et portent `rules.tierGroup = PARTICULIER` : ils ne
+se cumulent pas. Leur capacité est `ACTIFS` (actifs `Asset` non archivés, plus les biens non archivés sans actif lié : un actif lié à un bien compte une fois), sans
+extension ni dépassement facturé : le plafond est une garde (lot 4B), pas un
+tarif. Prix et plafonds se modifient dans le catalogue (`updateCatalogItem`),
+sans migration. Un abonnement dont tous les éléments vivants sont des packs
+Particulier à prix (mensuel et de mise en route) nul (`isFreeSubscription` ; une
+agence à prix nul reste facturée comme avant) n'émet **aucune**
+facture périodique ni de dépassement, se renouvelle d'office à l'échéance sans
+facture, n'a pas de rappel de fin d'essai, et ses alertes de seuil ne partent
+qu'à l'utilisateur (jamais au super-administrateur pour un tenant `PARTICULIER`).
+Les packs Particulier n'ont pas de ligne `SETUP_*`. Un espace `PARTICULIER` n'atteint
+que la liste blanche `lib/subscription/particulier-routes.ts` (403
+`PERSONAL_SPACE_ROUTE_FORBIDDEN` ailleurs), quel que soit `SUBSCRIPTION_ENFORCEMENT`.
+
 Les variantes de prix vivent dans `catalog_items.rules` (`CatalogRules` :
 `byHeldPacks`, `lotTiers`, `requiresAnyOf`). Le catalogue est amorcé par la
 migration et réaligné par `npm run db:seed:catalog` (`--missing-only` pour ne
-pas écraser une modification du super-admin). **Le prix est figé** dans
+pas écraser une modification du super-admin). **Sans `--missing-only`, le seed
+ÉCRASE les prix et plafonds ajustés** (packs Particulier compris) : après un
+ajustement produit, ne lancer que `--missing-only`. La migration
+`20261004220100`, déjà appliquée, n'est pas modifiable : elle amorce des
+valeurs provisoires que seul le catalogue en base fait évoluer. **Le prix est figé** dans
 `SubscriptionItem.unitMonthlyPrice` à la souscription : modifier le catalogue
 ne change aucun abonnement en cours.
 
@@ -216,6 +237,22 @@ Passage complet chaque jour à 02:30 UTC, alertes seules chaque heure à :15.
   qu'une fois par paiement, quel que soit le nombre de périodes en retard ; un
   paiement supplémentaire (ou la tâche planifiée à la prochaine échéance)
   avance la période suivante.
+
+### 6 sexies. Montée de palier de l'espace particulier (lot 4D, spec 026)
+
+`POST /api/tenants/:tenantId/subscription/upgrade` (`TENANT_SETTINGS_EDIT`, exemptée de la lecture
+seule par le préfixe `/subscription`) émet une facture `PLATFORM` du premier mois du pack cible
+(`generateUpgradeInvoiceTx`, `platform-invoice-service.ts` : prix du catalogue, TVA 18 %, une seule ligne
+PACK marquée `metadata.source = SUBSCRIPTION_UPGRADE` — `InvoiceLine.metadata`, aucune colonne ajoutée),
+puis démarre le paiement par `startInvoiceCheckout` (reprise 15 min : `409 PAYMENT_IN_PROGRESS`). Elle ne
+change NI la période NI les éléments de l'abonnement gratuit. Le changement n'a lieu qu'au règlement :
+`settlePlatformInvoiceTx` appelle `applyUpgradeForInvoiceTx` (`services/subscription-upgrade/`) dans la même
+transaction, sous le verrou de la facture puis celui de l'abonnement ; l'élément gratuit passe `ENDED`
+(`endReason = UPGRADE`), l'élément payant démarre au prix du catalogue, l'abonnement reste `ACTIVE` en
+cycle mensuel avec une période qui repart du paiement (premier mois déjà facturé : `billedThrough`), et les
+droits (cache de 30 s) sont invalidés après validation. Rejeu, `FAILED`, `CANCELED`, expiré, `REVIEW` ou
+montant divergent : aucun changement de pack. Hors périmètre : prélèvement récurrent, rétrogradation,
+prorata, remboursement.
 
 ### 6 quinquies. Lecture seule manuelle (vague 3, lot C — Baba, 25/09, D15)
 

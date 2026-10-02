@@ -213,6 +213,107 @@ Pièges et décisions :
 - Wiki des fonctionnalités : non mis à jour, aucune fonctionnalité visible de
   l'application (outillage d'exploitation seulement).
 
+---
+
+## Branche `claude/lucid-bell-0pzfvc` — 2026-09-29
+
+**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lots 1 à 4 livrés (API et web), lots 5 et 6 pas commencés
+**Dernier commit :** voir `git log -1` de la branche
+
+Fait :
+
+- ADR-005 `patrimoine-multi-actifs` (Accepté). Marché UEMOA, XOF, cadre OHADA.
+- Lot 1 (socle, `specs/023-…`) : `Asset` (10 classes), valorisations, dettes (adossées ou
+  personnelles), parts détenues, valeur nette et historique, écrans « Valeur nette » et « Mes actifs ».
+  Double clé : les lignes d'un actif immobilier restent sur `propertyId`, celles des autres actifs sur
+  `assetId` (`lib/patrimoine/asset-scope.ts`). Dépenses et travaux restent liés au bien.
+- Lot 2 (`specs/024-…`) : suggestion de valeur par classe (sans écriture), fiabilité calculée par le
+  serveur, statut juridique des biens, valeur périmée par classe, part de valeur peu fiable.
+- Lot 3 (`specs/025-…`) : projections sur 1 à 30 ans, trois scénarios, simulations sur copie (vente,
+  achat, emprunt, remboursement anticipé, épargne mensuelle), scénarios enregistrés (100 par agence,
+  audités), page « Projections ».
+- Relectures qualité et sécurité des lots 1, 2 et 3 : corrections faites (aucun bloquant restant).
+- Lot 4 (`specs/026-…`, espace particulier en libre-service) : type de tenant `PARTICULIER`, packs
+  `PARTICULIER_GRATUIT` (10 actifs) et `PARTICULIER_PLUS` (prix et plafond provisoires), capacité `ACTIFS` ;
+  `POST /api/personal-space` (idempotent, un seul espace par personne, e-mail vérifié exigé) ; garde
+  `FREE_TIER_LIMIT` à la création d'actif et de bien (verrou consultatif, indépendante de
+  `SUBSCRIPTION_ENFORCEMENT`) ; `GET patrimoine/usage` ; montée de palier `POST subscription/upgrade`
+  (facture, paiement PaySecureHub, changement de pack seulement au règlement réconcilié) ; anti-abus
+  d'inscription (limiteur par IP en base, réponse neutre) ; garde de liste blanche de routes pour un
+  espace `PARTICULIER` (`lib/subscription/particulier-routes.ts`, 403 `PERSONAL_SPACE_ROUTE_FORBIDDEN`) ;
+  web : « Créer mon espace », navigation réduite décidée par `tenant.type`, bandeau d'usage, carte de
+  montée de palier. Relectures qualité et sécurité faites, corrections appliquées.
+- Wiki des fonctionnalités à jour (742 lignes au lot 4).
+- Décisions du 2026-09-29 : validation fiscale utilisateur personnelle (« indicatif, non vérifié par
+  ImmoTopia ») ; palier gratuit du particulier = 10 actifs de tout type, gratuit durable, blocage à
+  l'ajout au-delà, garde dédiée sans toucher `SUBSCRIPTION_ENFORCEMENT` global ; palier payant
+  particulier = nouveau pack moins cher (prix provisoire à ajuster par le produit) ; mobile money
+  possible via PaySecureHub.
+
+Reste à faire :
+
+- Lot 5 (exports PDF et Excel de la situation patrimoniale) et lot 6 (collecte des paramètres
+  fiscaux par IA, validation personnelle) : pas commencés.
+- Recette navigateur de bout en bout : jamais faite (les écrans sont testés par des tests
+  automatiques seulement) ; le paiement mobile money réel n'est pas testable sans identifiants
+  PaySecureHub de production (simulateur seulement).
+- Décisions métier ouvertes : validation par un juriste local de la liste des statuts juridiques
+  fonciers ; relecture juridique des conditions d'utilisation, de la conservation des données et de la
+  protection des données par pays, et de la mention « indicatif, non vérifié par ImmoTopia » avant le
+  lot 6 ; durée d'essai ; captcha à revoir avant l'ouverture publique.
+- Décisions du 2026-09-29 (à la suite de la PR) : pack Particulier plus conservé à 2 900 FCFA HT par
+  mois et 100 actifs (modifiable au catalogue) ; pas de captcha maintenant ; conservation des données,
+  suppression sur demande à l'équipe (libre-service dans un lot ultérieur) ; hypothèses de projection par
+  défaut conservées, affichées comme indicatives ; liste des statuts fonciers conservée, marquée à
+  valider ; suppression d'un bien refusée (409) tant qu'un prêt actif y est adossé ; lot 6 : la
+  responsabilité d'un calcul fondé sur un paramètre validé revient à l'utilisateur, avec mention
+  explicite (à faire relire par un juriste avant l'ouverture publique) ;
+  `docs/documentation payhubsecure.docx` retiré du suivi git et ajouté à `.gitignore` (il reste dans
+  l'historique tant qu'il n'est pas purgé).
+
+Pièges et décisions :
+
+- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 253 octets après le lot 4) :
+  chaque `React.lazy` ou fichier partagé entre chunks ajouté coûte des octets sur la carte des
+  dépendances du chunk d'entrée, et la marge bouge de ±20 octets avec les hashes. Les écrans du
+  patrimoine sont montés sur la route `/tenant/:tenantId/patrimoine/*` (`PatrimoineHome`), pas sur des
+  `React.lazy` de `App.tsx` ; pas de graphique recharts de plus. Une économie réelle a été faite :
+  `antd/es/locale/fr_FR` (ESM) au lieu de `antd/locale/fr_FR` (CommonJS). Toujours remesurer avant de
+  pousser un changement web. Le chunk d'entrée embarque aussi tout le moteur de formulaires d'Ant
+  Design via `ConfigProvider` (`antd/es/form/context`) : gisement d'économie préexistant, non traité.
+- Les mensualités de dettes ne sont pas prélevées sur la trésorerie dans les projections (pas de
+  modèle de revenus) : la valeur nette augmente du capital remboursé ; l'écran le dit.
+- Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le résultat non validé
+  (`tax/engine.ts`, `allValidated`) ; `TaxParameter` est global, sans `tenantId` : la validation
+  personnelle du lot 6 exige une portée par tenant.
+- Supprimer un bien supprime ses valorisations et parts en cascade ; la suppression est refusée (409)
+  tant qu'un prêt actif y est adossé (`deleteProperty`).
+- Écrire un `.env` dans le dépôt est bloqué par une règle de refus : la base locale jetable se configure
+  par variables d'environnement (PostgreSQL 16, bases `immotopia` et `immotopia_isolation_test`).
+- Jest : chemin du fichier de test AVANT `--selectProjects`, et `--forceExit` ; ne jamais écrire
+  `--forceExit` dans une commande qui contient `git` (un hook la prend pour `--force`) ;
+  `routes-inventory` et `route-features` sont dans le projet `api-app`. Un test lit le code source avec
+  des expressions régulières (`lot-registry.call-sites`) : le hook de commit reformate les fichiers, les
+  regex doivent tolérer les retours à la ligne.
+- `npm run i18n:extract` touche des fichiers hors périmètre (`CopilotRoot.tsx`, clé vide dans
+  `common.json`, ordre dans `portal.json`) : les remettre à l'identique.
+- Lot 4 : un `TENANT_ADMIN` d'espace `PARTICULIER` atteignait les routes d'agence tant que
+  `SUBSCRIPTION_ENFORCEMENT=warn` ; le garde de type (`particulier-routes.ts`, monté avec
+  `subscriptionRouteGuard`) refuse par défaut toute route hors liste blanche : une nouvelle route utile à
+  un particulier doit y être ajoutée (test `particulier-routes`). `requireTenantAccess` lit maintenant
+  `status` et `type` du tenant (`utils/tenant-access.ts`) et `my-memberships` renvoie `tenant.type`.
+- Lot 4 : le compteur d'actifs = actifs non archivés + biens non archivés sans actif lié ; un actif lié à
+  un bien déjà compté ne change pas le compteur. `isFreeSubscription` ne vaut que pour les packs
+  Particulier à prix nul : une agence à prix nul est facturée comme avant.
+- Lot 4 : `db:seed:catalog` sans `--missing-only` écrase le prix et le plafond ajustés par le produit
+  (RUNBOOK). `ensurePropertyAsset` ne consulte le plafond que pour un bien archivé.
+- Tests d'intégration (base réelle) : `npm run test:isolation -w @immotopia/api` avec
+  `DATABASE_URL_TEST` ; `signup-guard.integration` échoue si `DATABASE_URL_TEST` est posé sans
+  `TEST_DATABASE_URL` hors de ce lanceur ; ils sont ignorés en CI. Sous charge (agents en parallèle) des
+  workers jest sont tués (SIGKILL, mémoire) : relancer la suite seule avant de conclure à une régression.
+- Le test `copilot-root` (Ctrl+J) est instable sous charge en CI (course entre le rendu du bouton et le
+  raccourci) : une relance suffit ; il n'est pas lié au patrimoine.
+
 ## Pilote — fusion des PR ImmoCopilot #55 et #56 — 2026-09-29
 
 **État :** #55 et #56 fusionnées dans `main` (CI 6/6 verte avant chaque fusion) ; #52 (Patrimoine lot 1) laissée à sa session

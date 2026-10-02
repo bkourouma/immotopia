@@ -60,6 +60,9 @@ import patrimoineRoutes from './routes/patrimoine-routes';
 import patrimoineEntitiesRoutes from './routes/patrimoine-entities-routes';
 import patrimoineLandRoutes from './routes/patrimoine-land-routes';
 import patrimoineInsuranceRoutes from './routes/patrimoine-insurance-routes';
+import patrimoineAssetsRoutes from './routes/patrimoine-assets-routes';
+import personalSpaceRoutes from './routes/personal-space-routes';
+import patrimoineProjectionsRoutes from './routes/patrimoine-projections-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import tenantAuditRoutes from './routes/tenant-audit-routes';
@@ -233,6 +236,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage ImmoCopilot (super-admin)
 app.use('/api/roles', roleRoutes);
+app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
 // tout routeur qui sert /api/tenants/:tenantId/... ; les webhooks, l'IPN,
@@ -298,6 +302,8 @@ app.use('/api', patrimoineEntitiesRoutes); // Patrimoine — entités détentric
 app.use('/api', externalAccessRoutes); // Patrimoine — accès en lecture seule des tiers de confiance (lot B3, tenant-scoped)
 app.use('/api', patrimoineLandRoutes); // Patrimoine — régularisation foncière (lot B2, tenant-scoped)
 app.use('/api', patrimoineInsuranceRoutes); // Patrimoine — assurances, sinistres et carnet d'entretien (lot B1, tenant-scoped)
+app.use('/api', patrimoineAssetsRoutes); // Patrimoine — actifs, dettes, valeur nette (lot 1 multi-actifs, tenant-scoped)
+app.use('/api', patrimoineProjectionsRoutes); // Patrimoine — projections et scénarios (lot 3, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
