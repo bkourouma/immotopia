@@ -28,6 +28,14 @@ Modèle de section :
 
 **Pièges :** le menu et le mot de passe commun (public) n'existent que sur le staging ; le one-clic « Se connecter » du panneau a disparu (choisir le compte puis « Se connecter »). Wiki non mis à jour : outillage de staging, aucune fonctionnalité de l'application.
 
+## Branche `docs/wiki-patrimoine` — 2026-10-02
+
+**État :** classeur des fonctionnalités mis à jour (846 lignes), PR ouverte (fusion à l'utilisateur). `wiki:check` vert.
+
+**Fait :** 56 lignes ajoutées et 26 annotées pour des fonctionnalités NON fusionnées (statut « À vérifier (en développement, PR n°X non fusionnée) » + notes) : PR 52/69/70/74 (Patrimoine particulier, permissions, exports), 94 (journal d'audit), 71/72/73/63/88, branche `feat/sms-lot-1` (sans PR). Patrimoine PR 91–100 déjà présent dans le classeur.
+
+**Reste :** à chaque fusion d'une de ces PR, retirer les annotations « En développement » du classeur (binaire, ne pas fusionner : reprendre celui-ci). Ordre de fusion des PR empilées : 52, 69, 70, 74. Ouvrir ou archiver la branche SMS. Le .xlsx n'a pas été ouvert dans Excel.
+
 ---
 
 ## Branche `fix/recette-packs-e2e` — 2026-09-30
