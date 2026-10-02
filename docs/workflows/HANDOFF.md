@@ -71,6 +71,20 @@ Pièges et décisions :
 
 ---
 
+## Branche `integration/multi-actifs` — 2026-10-02
+
+**État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).
+
+**Vérifié :** typecheck API et web 0 erreur ; Jest API `__tests__/unit` 317 suites / 4679 tests passés, `__tests__/api` 74 suites / 1546 tests passés ; Vitest web 2385/2386 (seul échec : `copilot-root` Ctrl+J, instable connu, passe seul) ; `check:architecture` vert ; `wiki:check` vert (841 lignes) ; `npx prisma migrate deploy` de zéro sur base jetable vierge : toutes les migrations passent, `migrate diff` base vers schéma vide. Lint : 1 erreur préexistante de `main` (`lib/audit/platform-audit-csv.ts`, espace insécable), non touchée.
+
+**Non vérifié :** `npm run test:isolation` (pas de `DATABASE_URL_TEST` dans ce worktree) ; recette navigateur.
+
+**À trancher :** deux ADR numérotés 005 (`environnements-staging-production` et `patrimoine-multi-actifs`) ; la navigation d'un espace PARTICULIER et la liste blanche `particulier-routes.ts` n'incluent pas les lots patrimoine de `main` (trésorerie, assurances, foncier, import, accès tiers) ; ces routes restent sous `PROPERTIES_*` et sont ajoutées à la liste blanche du test `routes-inventory` (permissions personnelles de la PR #69).
+
+**Pièges :** `PropertyHolding.propertyId` et `PropertyLoan.propertyId` deviennent nullables (actifs non immobiliers) : le code de `main` qui les lit (accès tiers, plan de trésorerie) a été typé en conséquence ; l'inscription de la PR #52 garde la personnalisation des e-mails de `main` (nom, langue) et ses événements `logAuthEvent`.
+
+---
+
 ## Branche `claude/elegant-pasteur-f0vpti` — 2026-10-01
 
 **État :** phases 0 et 1 du journal d'audit à deux niveaux livrées et poussées (`4050054`) ; phase 2 (niveau agence) **livrée** : backend (`8d2e23b`), wiki, et page web « Journal d'activité » (`/tenant/:tenantId/activity`, entrée « Agence > Journal d'activité », 3 fichiers de tests Vitest). Aucune PR ouverte. Décision : [ADR-006](../architecture/adr/ADR-006-audit-deux-niveaux.md) ; contrat et plan : [specs/023-audit-deux-niveaux/spec.md](../../specs/023-audit-deux-niveaux/spec.md) (§7 et §8).
