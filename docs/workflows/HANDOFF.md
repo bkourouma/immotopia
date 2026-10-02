@@ -71,6 +71,26 @@ Pièges et décisions :
 
 ---
 
+## Pilote — feuille de route patrimoine, vagues A, B, C (partielle) et lot F1 — 2026-10-02
+
+**État :** fusionnés dans `main` : vague A (#91, #92, #93), vague B (B1 assurances #96, B2 foncier #95, B3 accès tiers de confiance #97), lot F1 de correctifs de recette (#98), C4 import en masse (#100), C5 lien de paiement Mobile Money (#99). Budget d'entrée web relevé de 1 Kio (226 304 -> 227 328 o gzip) sur décision explicite de l'utilisateur le 02/10 (marge actuelle 626 o). Non fusionnées : #90 (plan, cette branche), #86 (retest docs), #87 et #88 (balance clients, 058/003).
+
+Reste à faire :
+
+- Capacités de la vague C encore à livrer (elles attendent la fusion des PR multi-actifs #52/#67/#69/#70/#74, à décider par l'utilisateur) : vue Groupe (1), export de ratios (8), dossier bancaire + déclaration fiscale (9, 6), multi-devises (11), démembrement (5).
+- Recette navigateur des vagues B, C et du lot F1 jamais rejouée (seule la vague A l'a été).
+- Alléger l'entrée web de façon structurelle (routes et menus du patrimoine hors du chunk d'entrée) : le budget a été relevé deux fois en une semaine.
+- Décisions ouvertes : raccourci INSURER_NOTIFIED -> SETTLED/REJECTED (B1) ; prix d'acquisition sans date et dépendance `jszip` (C4) ; traitement du checkout en REVIEW et des échéances DRAFT, mode LIVE PaySecureHub non testé (C5) ; B3 : une agence qui perd le pack PATRIMOINE peut encore lire les accès partagés ; BUG-2026-10-01-006 réclame une vraie action « marquer prêt » ; `isolation.test.ts` de B3 a 2 échecs Syndic S3 (404 au lieu de 403) non comparés à `main` ; 3 tests copilot instables (#84 non fusionnée).
+
+Pièges :
+
+- Après chaque fusion de `main` : `prisma generate` (client périmé = ~89 erreurs TS2339) ; `npm ci --ignore-scripts` + `npm rebuild bcrypt` dans chaque worktree à schéma modifié.
+- Conflits récurrents entre lots : classeur wiki (fusion à trois voies par clé + `wiki:export`), catalogues i18n plats (fusion à trois voies), `App.tsx`, menus de navigation, `schema.prisma` (union des relations et des valeurs d'enum), `email-notification-keys.ts`, `routes-inventory.test.ts`.
+- Tests API lancés en parallèle d'un build web : timeouts en cascade ; les relancer seuls.
+- Retirer les jonctions `node_modules` avec `rmdir` AVANT tout `git worktree remove` (incident du 27/09). Worktrees à nettoyer : `pat-*`, `retest-main`.
+
+---
+
 ## Pilote — feuille de route patrimoine, vague A — 2026-10-01
 
 **État :** plan publié (PR #90) ; vague A livrée en trois PR indépendantes depuis `main` (CI non encore vue) : A1 #91 (`feat/patrimoine-projection`, spec 029), A2 #93 (`feat/patrimoine-tresorerie`, spec 030), A3 #92 (`feat/patrimoine-canaux`, spec 031). Aucune fusion faite. Plan : `docs/architecture/PLAN-PATRIMOINE-FEUILLE-DE-ROUTE.md` (14 capacités, vagues A/B/C, specs 029 à 040 réservées).
