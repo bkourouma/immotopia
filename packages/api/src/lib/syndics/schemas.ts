@@ -92,6 +92,12 @@ export const createLotSchema = z.object({
   tantiemes: z.number().nonnegative(),
   surface: z.number().positive().optional(),
   floor: z.number().int().optional(),
+  // Tantiemes speciaux saisis (ex. ascenseur) : la valeur saisie est
+  // enregistree telle quelle ; vide ou null = aucun tantieme special.
+  specialShares: z.number().int().positive().nullable().optional(),
+  // « Proprietaire depuis le » (date ISO ou AAAA-MM-JJ).
+  ownerSince: z.coerce.date().nullable().optional(),
+  // Ancien contrat : sans `specialShares`, `true` recopie les tantiemes generaux.
   isParkingIncluded: z.boolean().optional().default(false)
 });
 
@@ -108,6 +114,8 @@ export const updateLotSchema = z
     tantiemes: z.number().nonnegative().optional(),
     surface: z.number().positive().nullable().optional(),
     floor: z.number().int().nullable().optional(),
+    specialShares: z.number().int().positive().nullable().optional(),
+    ownerSince: z.coerce.date().nullable().optional(),
     isParkingIncluded: z.boolean().optional()
   })
   .refine(value => Object.keys(value).length > 0, {
