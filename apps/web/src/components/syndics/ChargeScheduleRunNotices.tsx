@@ -5,6 +5,7 @@ import { useConfirmAction } from '../primitives';
 import { resendChargeScheduleRunNotices } from '../../services/syndic-charge-schedule-service';
 import { ChargeScheduleRun } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
+import { stripRawMailDetail } from './charge-schedule-notes';
 
 const { Text } = Typography;
 
@@ -30,7 +31,7 @@ const NOTIFICATION_DISABLED_HINT = t(
 
 function parseReasonLines(notes: string | null): string[] {
   if (!notes) return [];
-  return notes.split('\n').filter(Boolean);
+  return notes.split('\n').filter(Boolean).map(stripRawMailDetail);
 }
 
 export interface ChargeScheduleRunNoticesProps {

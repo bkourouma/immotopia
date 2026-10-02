@@ -94,8 +94,15 @@ describe('CopilotRoot', () => {
     getStatus.mockResolvedValue(ENABLED);
     renderRoot();
     await screen.findByRole('button', BUTTON);
-    const notPrevented = fireEvent.keyDown(window, { key: 'j', ...mod });
-    expect(notPrevented).toBe(false);
+    // Le bouton est commité dans le DOM avant l'effet passif qui pose
+    // l'écouteur `keydown` : `findByRole` peut rendre la main entre les deux
+    // (rare, mais fréquent sous charge en CI). On renvoie donc la touche
+    // jusqu'à ce que l'écouteur la prenne (`preventDefault`). Sans écouteur,
+    // l'envoi est sans effet ; une fois pris, le tiroir s'ouvre une seule fois.
+    await waitFor(() => {
+      const notPrevented = fireEvent.keyDown(window, { key: 'j', ...mod });
+      expect(notPrevented).toBe(false);
+    });
     expect(await screen.findByLabelText('Votre message')).toBeInTheDocument();
   });
 

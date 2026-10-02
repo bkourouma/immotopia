@@ -1124,5 +1124,7 @@
   "Vote enregistré": "تم تسجيل التصويت",
   "Vote impossible": "تعذّر التصويت",
   "Votes (lots) :": "الأصوات (الوحدات):",
-  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "يمكنك المزج بين مبنى وفيلا ومكتب ومحل تجاري وغيرها."
+  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "يمكنك المزج بين مبنى وفيلا ومكتب ومحل تجاري وغيرها.",
+  "Relance enregistrée, envoi échoué": "تم حفظ التذكير لكن فشل إرساله",
+  "Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué": "تم حفظ التذكيرات: {{remindersCreated}} تم إنشاؤها، منها {{failed}} فشل إرسالها"
 }

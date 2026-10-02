@@ -72,10 +72,10 @@ describe('syndic-charge-schedule-service (lot S4)', () => {
   it('updateChargeSchedule envoie PATCH .../programmations/:scheduleId', async () => {
     mockApiClient.patch.mockResolvedValue({ data: { success: true, data: { id: 'sched-1', active: false } } });
 
-    await updateChargeSchedule('tenant-1', 'syndic-1', 'sched-1', { active: false });
+    await updateChargeSchedule('tenant-1', 'syndic-1', 'sched-1', { label: 'Nouveau libellé' });
 
     expect(mockApiClient.patch).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/programmations/sched-1', {
-      active: false
+      label: 'Nouveau libellé'
     });
   });
 

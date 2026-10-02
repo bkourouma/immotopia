@@ -36,6 +36,16 @@ Modèle de section :
 
 **Reste :** à chaque fusion d'une de ces PR, retirer les annotations « En développement » du classeur (binaire, ne pas fusionner : reprendre celui-ci). Ordre de fusion des PR empilées : 52, 69, 70, 74. Ouvrir ou archiver la branche SMS. Le .xlsx n'a pas été ouvert dans Excel.
 
+## Branche `fix/test-copilot-root-instable` — 2026-09-30
+
+**État :** terminé, PR ouverte (fusion à l'utilisateur). Test seul modifié : `apps/web/src/__tests__/copilot/copilot-root.test.tsx`.
+
+**Cause :** dans `CopilotRoot`, l'écouteur `keydown` (Ctrl/Cmd+J) est posé par un `useEffect` (passif) qui tourne après le commit du bouton dans le DOM. `findByRole` rend la main dès la mutation du DOM, donc la touche partait parfois avant l'écouteur (`fireEvent` renvoyait `true`). Reproduit hors CI : ~3 % d'échecs sur 100 boucles, 0 sur 500 avec le correctif. Le composant n'est pas en cause (un humain ne tape pas dans cette fenêtre).
+
+**Correctif :** le test renvoie la touche dans un `waitFor` jusqu'à ce que l'écouteur l'ait prise (`preventDefault`). Pas de délai ajouté. Vérifié : 20 exécutions du fichier sans échec, lot `--shard=4/4` vert (44 fichiers, 377 tests), typecheck web sans erreur, eslint et prettier propres.
+
+**Piège :** tout test qui envoie un événement clavier `window` juste après `findBy*` sur un composant dont l'écouteur est posé dans un `useEffect` a la même fenêtre de course.
+
 ---
 
 ## Branche `fix/recette-packs-e2e` — 2026-09-30
@@ -334,10 +344,10 @@ Reste à faire :
   RTL non vérifiés. Ne pas fusionner avant.
 - Session « Cloud - ImmoCopilot IA assistant » : bloquée sur une demande de permission
   (`send_later`) que seul l'utilisateur peut trancher.
-- Baux : un seul contrat par bail (numéro de document = numéro du bail, index unique
-  `(tenant_id, document_number)`, P2002) — correctif dans `document-generation-service.ts` ;
-  préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
-  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir.
+- Baux : préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
+  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir. (Un second
+  contrat sur le même bail répond maintenant 409 avec renvoi vers « Régénérer » : branche
+  `fix/contrat-unique-par-bail`.)
 - ImmoCopilot : limiteurs de débit en mémoire par instance ; `connection_limit` à
   dimensionner ; après un échec de section exclusive le jeton est consommé (fail-closed) ;
   saturation réelle du pool non testée.

@@ -1027,8 +1027,13 @@ describe('notifyUncoveredCalls : chaque appel non notifie compte en skipped, ave
       notificationsSkipped: 1
     });
     const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
-    // Motif court et non sensible (code + reponse SMTP), jamais les identifiants du transporteur.
-    expect(history.notes).toBe("Avis non envoyé (échec de l'envoi) : A-01 (550 550 mailbox unavailable)");
+    // Le motif technique du serveur mail (code + reponse SMTP) n'est pas expose : journaux seulement.
+    expect(history.notes).toBe("Avis non envoyé (échec de l'envoi) : A-01");
+    expect(history.notes).not.toContain('550');
+    expect(warn).toHaveBeenCalledWith(
+      'Scheduled charge call notice send failed',
+      expect.objectContaining({ detail: '550 550 mailbox unavailable' })
+    );
     expect(warn).toHaveBeenCalledWith(
       'notifyChargeCall: email send failed',
       expect.objectContaining({ error: 'rejected' })

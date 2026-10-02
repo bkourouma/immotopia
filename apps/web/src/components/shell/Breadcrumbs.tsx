@@ -31,6 +31,20 @@ export interface Crumb {
   to?: string;
 }
 
+/**
+ * Racines de section qui n'ont pas de page à elles : le lien du fil d'Ariane
+ * mène alors à l'écran d'ouverture de la section.
+ *
+ * `/admin` n'est routé nulle part (l'administration de la plateforme ne
+ * commence qu'à `/admin/tenants`, `/admin/statistics`…) : le lien
+ * « Administration » ouvrait « Cette page n'existe pas » (HTTP-404 · /admin).
+ * La liste des agences est l'entrée du menu « Administration » (voir
+ * `navigation/model.tsx`).
+ */
+const SECTION_ROOT_TARGETS: Record<string, string> = {
+  '/admin': '/admin/tenants'
+};
+
 /** Découpe un chemin en fil d'Ariane, en absorbant les identifiants. */
 export function buildCrumbs(pathname: string): Crumb[] {
   const segments = pathname.split('/').filter(Boolean);
@@ -73,7 +87,7 @@ export function buildCrumbs(pathname: string): Crumb[] {
       return;
     }
 
-    crumbs.push({ label: labelForSegment(segment), to: isLast ? undefined : acc });
+    crumbs.push({ label: labelForSegment(segment), to: isLast ? undefined : (SECTION_ROOT_TARGETS[acc] ?? acc) });
   });
 
   return crumbs;

@@ -134,6 +134,20 @@ describe('revokeInvitationHandler', () => {
 });
 
 describe('acceptInvitationHandler', () => {
+  it("ne renvoie a l'appelant que id, status et tenantId de l'adhesion", async () => {
+    acceptInvitation.mockResolvedValue({
+      membership: { id: 'm-1', status: 'ACTIVE', tenantId: 't-1', invitedBy: 'super-1', userId: 'u-1' },
+      user: { id: 'u-1', email: 'e@example.com', fullName: 'E' }
+    });
+
+    const res = await request(buildApp(null))
+      .post('/auth/invitations/accept')
+      .send({ token: '11111111-1111-1111-1111-111111111111', password: 'MotDePasseValide#1' })
+      .expect(200);
+
+    expect(res.body.data.membership).toEqual({ id: 'm-1', status: 'ACTIVE', tenantId: 't-1' });
+  });
+
   it('transmet req.user?.userId comme requestingUserId quand une session existe', async () => {
     acceptInvitation.mockResolvedValue({
       membership: { id: 'm-1' },

@@ -445,13 +445,14 @@ function buildPropertyFields(property: any): Record<string, string> {
   };
 }
 
-/** Conditions financieres et durees du bail, telles que les modeles les lisent (« FCFA » est pose par le modele). */
+/** Conditions financieres et durees du bail, telles que les modeles les lisent (la devise est posee par `{{DEVISE}}`). */
 function buildLeaseTermsFields(lease: any): Record<string, string> {
   return {
     DATE_DEBUT_BAIL: orDash(formatDate(lease.start_date)),
     DATE_FIN_BAIL: orDash(formatDate(lease.end_date)),
     DUREE_BAIL: leaseDurationLabel(lease.start_date, lease.end_date),
-    // Sans devise : les modeles ecrivent « {{LOYER_MENSUEL}} FCFA ».
+    // Sans devise : les modeles ecrivent « {{LOYER_MENSUEL}} {{DEVISE}} ».
+    DEVISE: currencyLabel(lease.currency),
     LOYER_MENSUEL: formatNumber(lease.rent_amount),
     CHARGES_MENSUELLES: formatNumber(lease.service_charge_amount),
     DEPOT_GARANTIE: formatNumber(lease.security_deposit_amount),
@@ -804,9 +805,9 @@ export async function buildRentReceiptContext(
     // Dates
     DATE_GENERATION: formatDate(new Date()),
 
-    // Champs du modele DOCX `Reçu_Loyer.docx`. RECU_NUMERO est la reference du
-    // paiement : le numero definitif de quittance (RCU-...) n'est attribue
-    // qu'apres le rendu.
+    // Champs du modele DOCX `Reçu_Loyer.docx`. RECU_NUMERO vaut ici la reference du
+    // paiement (valeur provisoire) : `generateDocument` la remplace par le numero
+    // definitif de quittance (RCU-...) attribue avant le rendu.
     ...landlordAndProperty,
     RECU_NUMERO: paymentNumber,
     DATE_EMISSION: formatDate(new Date()),
@@ -818,6 +819,7 @@ export async function buildRentReceiptContext(
     MONTANT_CHARGES: formatNumber(breakdown.charges),
     MONTANT_PENALITES: formatNumber(breakdown.penalties),
     MONTANT_TOTAL: formatNumber(breakdown.total),
+    DEVISE: currencyLabel(payment.currency || payment.lease?.currency),
     MODE_PAIEMENT: paymentMethodLabel(payment.method),
     REFERENCE_PAIEMENT: orDash(payment.psp_reference || payment.psp_transaction_id || paymentNumber),
     DATE_PAIEMENT: orDash(formatDate(payment.succeeded_at || payment.initiated_at))
@@ -1039,6 +1041,7 @@ export async function buildRentStatementContext(
     RELEVE_REFERENCE: `RLV-${lease.lease_number || lease.id.substring(0, 8).toUpperCase()}-${statementMonth}`,
     DATE_EDITION: formatDate(new Date()),
     LIEU_EDITION: issuePlace(lease.tenant),
+    DEVISE: currencyLabel(currency),
     SOLDE_INITIAL: formatAmount(openingBalance, currency),
     TOTAL_LOYERS: formatAmount(totalRent, currency),
     TOTAL_CHARGES: formatAmount(totalCharges, currency),

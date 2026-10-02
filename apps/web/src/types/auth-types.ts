@@ -27,7 +27,7 @@ export interface LoginCredentials {
 export interface RegisterData {
   email: string;
   password: string;
-  confirmPassword?: string; // Frontend validation only
+  confirmPassword: string; // Contrôlé aussi côté API (registerSchema) : à envoyer
   fullName: string;
 }
 

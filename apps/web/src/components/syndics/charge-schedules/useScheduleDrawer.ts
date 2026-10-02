@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { App, Form } from 'antd';
 import dayjs from 'dayjs';
-import { createChargeSchedule, updateChargeSchedule } from '../../../services/syndic-charge-schedule-service';
+import {
+  createChargeSchedule,
+  pauseChargeSchedule,
+  resumeChargeSchedule,
+  updateChargeSchedule
+} from '../../../services/syndic-charge-schedule-service';
 import {
   ChargeSchedule,
   ChargeSchedulePreview,
@@ -99,7 +104,9 @@ export function useScheduleDrawer(
     } catch {
       return;
     }
-    const payload: CreateChargeScheduleRequest = {
+    // `active` n'appartient pas au PATCH (schéma strict côté API) : l'état actif/en
+    // pause passe par les routes dédiées `pause` et `reprise`.
+    const { active, ...payload }: CreateChargeScheduleRequest = {
       label: values.label,
       frequency: values.frequency,
       issueDay: values.issueDay,
@@ -116,9 +123,13 @@ export function useScheduleDrawer(
     try {
       if (editing) {
         await updateChargeSchedule(tenantId, syndicId, editing.id, payload);
+        if (active !== undefined && active !== editing.active) {
+          if (active) await resumeChargeSchedule(tenantId, syndicId, editing.id);
+          else await pauseChargeSchedule(tenantId, syndicId, editing.id);
+        }
         message.success(t('Programmation modifiée'));
       } else {
-        await createChargeSchedule(tenantId, syndicId, payload);
+        await createChargeSchedule(tenantId, syndicId, { ...payload, active });
         message.success(t('Programmation créée'));
       }
       closeDrawer();
