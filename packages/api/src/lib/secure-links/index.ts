@@ -4,6 +4,8 @@ export {
   verifySecureLink,
   recordSecureLinkView,
   revokeSecureLink,
+  revokeSecureLinksForObject,
+  countActiveSecureLinksByObject,
   listSecureLinks
 } from './service';
 export type {

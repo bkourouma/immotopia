@@ -107,6 +107,12 @@ const CashPlanPage = lazy(() =>
     default: m.CashPlanPage
   }))
 );
+// Spec 038 — import en masse du patrimoine (biens, valorisations).
+const ImportPatrimoinePage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/import/ImportPatrimoinePage').then(m => ({
+    default: m.ImportPatrimoinePage
+  }))
+);
 const InsuranceClaimsPage = lazy(
   () => import(/* webpackChunkName: "patrimoine" */ './pages/insurance/InsuranceClaimsPage')
 );
@@ -134,6 +140,17 @@ const HoldingEntityDetailPage = lazy(() =>
 const TaxParametersPage = lazy(() =>
   import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/tax/TaxParametersPage').then(m => ({
     default: m.TaxParametersPage
+  }))
+);
+// Lot B3 — accès en lecture seule des tiers de confiance (notaire, expert-comptable, banquier).
+const ExternalAccessPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/external-access/ExternalAccessPage').then(m => ({
+    default: m.ExternalAccessPage
+  }))
+);
+const ExternalAccessViewPage = lazy(() =>
+  import(/* webpackChunkName: "public-external-access" */ './pages/public/ExternalAccessViewPage').then(m => ({
+    default: m.ExternalAccessViewPage
   }))
 );
 // Lot B2 — régularisation foncière (spec 033).
@@ -852,6 +869,7 @@ function App() {
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
                         <Route path="/payer" element={<InstallmentPaymentPage />} />
                         <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
+                        <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}
@@ -922,6 +940,7 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/patrimoine/work-programs" element={<WorkProgramsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/plan-tresorerie" element={<CashPlanPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/importation" element={<ImportPatrimoinePage />} />
                           <Route path="/tenant/:tenantId/patrimoine/claims" element={<InsuranceClaimsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/statements" element={<OwnerStatementsPage />} />
                           <Route
@@ -934,6 +953,7 @@ function App() {
                             element={<HoldingEntityDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/external-access" element={<ExternalAccessPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/land" element={<LandRegularizationListPage />} />
                           <Route
                             path="/tenant/:tenantId/patrimoine/land/:regularizationId"

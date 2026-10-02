@@ -54,7 +54,9 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'WORK_PROGRAM_REMINDER',
   'LAND_STEP_OVERDUE_ALERT',
   'OWNER_MONTHLY_REPORT_SENT',
-  'RENTER_PAYMENT_LINK_SENT'
+  'RENTER_PAYMENT_LINK_SENT',
+  // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
+  'EXTERNAL_ACCESS_LINK_SENT'
 ] as const;
 
 export type EmailNotificationKey = (typeof EMAIL_NOTIFICATION_KEYS)[number];
@@ -318,6 +320,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       "Envoi au locataire d'un lien sécurisé pour régler son loyer en ligne par Mobile Money (durée limitée, révocable), lorsque le canal e-mail est retenu.",
     recipientLabel: 'Locataire'
+  },
+  EXTERNAL_ACCESS_LINK_SENT: {
+    key: 'EXTERNAL_ACCESS_LINK_SENT',
+    label: 'Accès partagé à un tiers de confiance',
+    description:
+      "Envoi au notaire, à l'expert-comptable ou au banquier du lien sécurisé d'accès en lecture seule à une sélection de biens (durée limitée, révocable).",
+    recipientLabel: 'Tiers de confiance'
   },
   INVITATION: {
     key: 'INVITATION',

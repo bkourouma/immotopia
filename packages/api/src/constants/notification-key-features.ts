@@ -48,7 +48,9 @@ export const NOTIFICATION_KEY_FEATURES: Readonly<Record<string, Feature>> = {
   LAND_STEP_OVERDUE_ALERT: 'PATRIMOINE',
   OWNER_LEASE_ENDING_SOON: 'PATRIMOINE',
   OWNER_DOCUMENT_EXPIRY_ALERT: 'PATRIMOINE',
-  OWNER_MONTHLY_REPORT_SENT: 'PATRIMOINE'
+  OWNER_MONTHLY_REPORT_SENT: 'PATRIMOINE',
+  // Accès en lecture seule des tiers de confiance (lot B3)
+  EXTERNAL_ACCESS_LINK_SENT: 'PATRIMOINE'
 };
 
 export function featureOfNotificationKey(key: string): Feature {

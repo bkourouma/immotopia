@@ -140,6 +140,15 @@ export enum AuditActionKey {
   /** Lot C5 : lien de paiement d'une échéance envoyé au locataire (canal, jamais le jeton). */
   RENTAL_PAYMENT_LINK_SENT = 'RENTAL_PAYMENT_LINK_SENT',
 
+  // Accès en lecture seule des tiers de confiance (lot B3, spec 034) : jamais le
+  // jeton, jamais l'e-mail du bénéficiaire. entityType 'ExternalAccessGrant'.
+  EXTERNAL_ACCESS_GRANT_CREATED = 'EXTERNAL_ACCESS_GRANT_CREATED',
+  EXTERNAL_ACCESS_GRANT_UPDATED = 'EXTERNAL_ACCESS_GRANT_UPDATED',
+  EXTERNAL_ACCESS_GRANT_REVOKED = 'EXTERNAL_ACCESS_GRANT_REVOKED',
+  EXTERNAL_ACCESS_GRANT_LINK_SENT = 'EXTERNAL_ACCESS_GRANT_LINK_SENT',
+  EXTERNAL_ACCESS_GRANT_VIEWED = 'EXTERNAL_ACCESS_GRANT_VIEWED',
+  EXTERNAL_ACCESS_GRANT_DOCUMENT_DOWNLOADED = 'EXTERNAL_ACCESS_GRANT_DOCUMENT_DOWNLOADED',
+
   // ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md) : assistant IA.
   AI_CHAT_TURN = 'AI_CHAT_TURN',
   AI_TOOL_CALLED = 'AI_TOOL_CALLED',

@@ -83,6 +83,24 @@ describe('Export agence — classement des modeles du schema', () => {
     expect(planOf('User')).toMatchObject({ kind: 'USER' });
   });
 
+  it('exporte les acces tiers de confiance (lot B3) : donnees de l’agence, sans jeton ni empreinte', () => {
+    // Le grant porte l'e-mail du tiers (saisi par l'agence, qui en est responsable de traitement) :
+    // c'est une donnee de l'agence, remise a l'agence, comme les contacts CRM. Le secret d'acces,
+    // lui, vit dans SecureLink, qui reste exclu.
+    for (const model of [
+      'ExternalAccessGrant',
+      'ExternalAccessGrantProperty',
+      'ExternalAccessGrantEntity',
+      'ExternalAccessGrantDocument'
+    ]) {
+      expect(planOf(model)).toMatchObject({ kind: 'DIRECT', path: ['tenantId'] });
+      const fields = (models.find(m => m.name === model) as DmmfModel).fields.map(f => f.name);
+      expect(fields.filter(isSensitiveFieldName)).toEqual([]);
+    }
+    expect(planOf('SecureLink')).toBeUndefined();
+    expect(EXCLUDED_MODELS).toHaveProperty('SecureLink');
+  });
+
   it('chaque modele exporte a une cle d’identifiant pour la pagination', () => {
     for (const plan of plans) {
       const model = models.find(m => m.name === plan.model) as DmmfModel;
