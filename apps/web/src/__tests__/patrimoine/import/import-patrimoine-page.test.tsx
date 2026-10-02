@@ -1,11 +1,15 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ImportPatrimoinePage } from '../../../pages/patrimoine/import/ImportPatrimoinePage';
+
+// Ces parcours (lecture et analyse de classeurs) sont lourds : sous la charge de la CI, l'attente par défaut
+// d'une seconde de `findBy*` / `waitFor` expire avant la fin du rendu.
+configure({ asyncUtilTimeout: 15000 });
 
 /**
  * Import en masse du patrimoine (spec 038) — rendu de la page de bout en bout.
