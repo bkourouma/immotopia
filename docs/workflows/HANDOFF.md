@@ -120,6 +120,25 @@ Pièges et décisions :
 - Web : les cartes `AUDIT_*_LABELS_FR` évaluent `t()` à l'import (comme le reste d'`audit-labels.ts`) : un changement de langue à chaud ne les retraduit pas. `PropertyPatrimoineTab.test.tsx` (envoi multipart) expire parfois sous charge dans la suite complète, et passe seul.
 - Dans ce conteneur : `npm ci --ignore-scripts` à la racine puis `npm rebuild bcrypt` ; `jest <fichier> --selectProjects api` (chemin AVANT l'option) ; `pkill -f jest` tue aussi le shell appelant ; Postgres 16 local à relancer (`service postgresql start`) s'il est tombé, bases d'essai `immo_audit` / `immo_iso` (utilisateur `immo`) ; deux Jest + Vitest en parallèle peuvent tuer des workers (SIGKILL, mémoire) : rejouer la suite touchée.
 
+## Pilote — retest des 8 anomalies « prêt au retest » (packs) — 2026-10-01
+
+**État :** retest fait, PR de documentation ouverte (index `docs/recette/packs/ANOMALIES.md`). Résultat : 8 passées (008, 016, 030, 034, 058, 060, 089, 099) ; **058** corrigée par la PR #87 (`fix/finance-totaux-balance-clients`) et rejouée dans l'interface (écran Balance clients conforme). Détail dans l'index, section « Retest du 2026-10-01 ».
+**Branche :** `docs/retest-anomalies-packs` (depuis `origin/main` d10c9942)
+
+Reste à faire :
+
+- 058 : fusionner la PR #87 (l'API Pro de recette tourne depuis le worktree `fix-058`). BUG-2026-10-01-003 (filtre Période de la Balance clients : borne de fin exclue, solde ignorant la période) corrigé par la PR #88 (empilée sur #87, base `fix/finance-totaux-balance-clients`) et rejoué dans l'interface (passé) : à fusionner après #87. Web ET API Pro de recette tournent depuis le worktree `fix-058`. Question ouverte : la colonne « À échoir » de la Balance âgée affiche des montants supérieurs au solde (Alpha 22 750 000 pour un solde de 650 000) ; définition à confirmer. Les 3 mouvements par encaissement au relevé sont voulus (FR-011) ; DEP-289FBAB5 en double (net 0) au journal Pro reste à examiner.
+- 089 : passé avec un compte jetable (`retest089.jetable@exemple.test`, mot de passe dans le scratchpad de la session) ; question produit ouverte : l'assistant d'un pack Promoteur n'annonce aucune capacité chantier/vente.
+- Nouvelles : BUG-2026-10-01-001 (sélecteur de bien Performance limité à 100), -002 (valeur marchande non rafraîchie). Ressaisir les noms de biens contenant U+FFFD (données de recette, pas le code d'export).
+- Écart du scénario I-01 : pas de champ honoraires dans le mandat de gestion.
+
+Pièges :
+
+- Le worktree `recette-packs` est en retard sur `main` (HEAD 9d351134 + fichiers non commités). Retest fait dans un worktree jetable `.claude/worktrees/retest-main` (jonctions `node_modules` ; les retirer avec `rmdir` avant tout `worktree remove`). Lanceurs recopiés dans le scratchpad de la session (`rec/`, `WT` pointé sur `retest-main`).
+- Migrations appliquées sur les 6 bases `immotopia_rec_*` (jusqu'à `20261006150000`). Données de test ajoutées : agence « Retest Doublon Promoteur », biens/mandat/document de retest (Agence, Pro), valorisations de démonstration sur E2A1 (Intégré).
+- Les testeurs n'ont pas les mots de passe de recette (hors dépôt) : l'un a deviné la convention, un autre a utilisé la connexion rapide super-admin. Consigner les mots de passe de test dans les scénarios.
+- Les captures du navigateur intégré échouent panneau masqué : preuves par DOM et réseau.
+
 ---
 
 ## Pilote — environnements staging et production (PR #77, #78, #79, #81 fusionnées) — 2026-09-30
