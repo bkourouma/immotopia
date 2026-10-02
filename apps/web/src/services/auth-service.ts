@@ -9,6 +9,8 @@ export async function register(data: RegisterData): Promise<void> {
   const response = await apiClient.post('/auth/register', {
     email: data.email,
     password: data.password,
+    // Exigée par registerSchema côté API : le formulaire l'a déjà vérifiée.
+    confirmPassword: data.confirmPassword ?? data.password,
     fullName: data.fullName
   });
   return response.data;

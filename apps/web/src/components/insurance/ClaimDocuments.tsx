@@ -23,13 +23,18 @@ interface Props {
  * la liaison (le document reste dans la GED du bien). Le téléchargement passe
  * par la route authentifiée des documents du bien (jamais une URL statique).
  */
-export const ClaimDocuments: React.FC<Props> = ({ tenantId, claim, canEdit, onChanged }) => {
+export const ClaimDocuments: React.FC<Props> = ({ tenantId, claim, canEdit: canEditProp, onChanged }) => {
+  // Un sinistre clos n'est plus modifiable : l'API refuse (409) le rattachement
+  // d'une pièce, et le téléversement préalable laissait un document orphelin.
+  const closed = claim.status === 'CLOSED';
+  const canEdit = canEditProp && !closed;
   const [kind, setKind] = useState<InsuranceClaimDocumentKind>('PHOTO_BEFORE');
   const [busy, setBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const add = async (file: File) => {
+    if (closed) return;
     setBusy(true);
     let documentId: string | null = null;
     try {
@@ -121,6 +126,9 @@ export const ClaimDocuments: React.FC<Props> = ({ tenantId, claim, canEdit, onCh
         );
       })}
       {claim.documents.length === 0 && <Typography.Text type="secondary">{t('Aucune pièce.')}</Typography.Text>}
+      {canEditProp && closed && (
+        <Typography.Text type="secondary">{t('Sinistre clos : les pièces ne sont plus modifiables.')}</Typography.Text>
+      )}
       {canEdit && (
         <Space wrap>
           <Select

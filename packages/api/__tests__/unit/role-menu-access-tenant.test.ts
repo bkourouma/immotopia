@@ -10,6 +10,7 @@
 
 const userHasTenantAccess = jest.fn();
 const getDisabledMenusForUser = jest.fn();
+const getUserPermissions = jest.fn();
 
 jest.mock('../../src/utils/tenant-access', () => ({
   userHasTenantAccess: (...a: any[]) => userHasTenantAccess(...a)
@@ -17,6 +18,10 @@ jest.mock('../../src/utils/tenant-access', () => ({
 
 jest.mock('../../src/services/role-menu-service', () => ({
   getDisabledMenusForUser: (...a: any[]) => getDisabledMenusForUser(...a)
+}));
+
+jest.mock('../../src/services/permission-service', () => ({
+  getUserPermissions: (...a: any[]) => getUserPermissions(...a)
 }));
 
 jest.mock('../../src/utils/database', () => ({
@@ -32,9 +37,12 @@ function mockRes() {
   return res;
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  getUserPermissions.mockResolvedValue(['PROPERTIES_VIEW']);
+});
 
-describe("getMyMenuAccessHandler — tenantId de query verifie", () => {
+describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
   it("403 quand l'utilisateur n'appartient pas a l'agence demandee en query", async () => {
     userHasTenantAccess.mockResolvedValue(false);
 
@@ -69,6 +77,27 @@ describe("getMyMenuAccessHandler — tenantId de query verifie", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it("renvoie les permissions effectives dans l'agence pour masquer les entrées inaccessibles", async () => {
+    userHasTenantAccess.mockResolvedValue(true);
+    getDisabledMenusForUser.mockResolvedValue([]);
+    getUserPermissions.mockResolvedValue(['FINANCE_REPORTS_READ']);
+
+    const req: any = {
+      user: { userId: 'user-1', globalRole: 'USER' },
+      query: { tenantId: 'tenant-A' },
+      tenantContext: undefined
+    };
+    const res = mockRes();
+
+    await getMyMenuAccessHandler(req, res);
+
+    expect(getUserPermissions).toHaveBeenCalledWith('user-1', 'tenant-A');
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { disabledMenuKeys: [], permissions: ['FINANCE_REPORTS_READ'] }
+    });
+  });
+
   it("ne casse pas l'appel sans tenantId (utilisateur plateforme)", async () => {
     getDisabledMenusForUser.mockResolvedValue([]);
 
@@ -83,6 +112,7 @@ describe("getMyMenuAccessHandler — tenantId de query verifie", () => {
 
     expect(userHasTenantAccess).not.toHaveBeenCalled();
     expect(getDisabledMenusForUser).toHaveBeenCalledWith('user-1', undefined);
+    expect(getUserPermissions).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
   });
 });

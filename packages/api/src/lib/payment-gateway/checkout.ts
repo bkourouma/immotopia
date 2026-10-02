@@ -255,6 +255,11 @@ async function prepareCheckout(
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/** Hôte de boucle locale : `localhost`, 127.0.0.1, [::1] ou `*.localhost` (RFC 6761). */
+function isLoopbackHost(hostname: string): boolean {
+  return LOCAL_HOSTS.has(hostname) || hostname.endsWith('.localhost');
+}
+
 /**
  * URL de paiement fournie par l'agrégateur, acceptée pour une redirection
  * publique : forme normalisée (`href`) ou `null`. https obligatoire ; http
@@ -271,7 +276,7 @@ export function normalizeProviderCheckoutUrl(raw: unknown, mode: 'SIMULATOR' | '
   }
   if (url.username || url.password) return null;
   if (url.protocol === 'https:') return url.href;
-  if (url.protocol === 'http:' && mode === 'SIMULATOR' && LOCAL_HOSTS.has(url.hostname)) return url.href;
+  if (url.protocol === 'http:' && mode === 'SIMULATOR' && isLoopbackHost(url.hostname)) return url.href;
   return null;
 }
 

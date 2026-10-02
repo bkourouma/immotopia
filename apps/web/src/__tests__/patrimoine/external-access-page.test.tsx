@@ -147,6 +147,14 @@ describe('<ExternalAccessPage> — liste', () => {
     expect(screen.getAllByText('Documents partageables').length).toBeGreaterThan(0);
   });
 
+  it('épingle la colonne Actions au bord du tableau (visible sans défilement horizontal)', async () => {
+    const { container } = monter();
+    await screen.findByText('Maître Koné');
+    const header = Array.from(container.querySelectorAll('th')).find(th => th.textContent === 'Actions');
+    expect(header).toBeTruthy();
+    expect(header!.className).toContain('ant-table-cell-fix-end');
+  });
+
   it('n’offre ni modification ni révocation sur un accès déjà révoqué', async () => {
     monter();
     await screen.findByText('Banque Nord');

@@ -102,5 +102,8 @@ export function isSafeCheckoutUrl(value: unknown): value is string {
   }
   if (url.username || url.password) return false;
   if (url.protocol === 'https:') return true;
-  return url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  return (
+    url.protocol === 'http:' &&
+    (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.hostname.endsWith('.localhost'))
+  );
 }

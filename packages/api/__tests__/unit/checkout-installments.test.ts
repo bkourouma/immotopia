@@ -521,6 +521,14 @@ describe('normalizeProviderCheckoutUrl', () => {
     expect(normalizeProviderCheckoutUrl('http://127.0.0.1:8001/p', 'SIMULATOR')).toBe('http://127.0.0.1:8001/p');
     expect(normalizeProviderCheckoutUrl('http://[::1]:8001/p', 'SIMULATOR')).toBe('http://[::1]:8001/p');
     expect(normalizeProviderCheckoutUrl('http://localhost:8001/p', 'LIVE')).toBeNull();
+    // BUG-2026-10-02-013 : instances de recette en *.localhost (RFC 6761)
+    expect(normalizeProviderCheckoutUrl('http://patpro.localhost:8806/p', 'SIMULATOR')).toBe(
+      'http://patpro.localhost:8806/p'
+    );
+    expect(normalizeProviderCheckoutUrl('http://patpro.localhost:8806/p', 'LIVE')).toBeNull();
+    expect(normalizeProviderCheckoutUrl('http://evil.com/p', 'SIMULATOR')).toBeNull();
+    expect(normalizeProviderCheckoutUrl('http://localhost.evil.com/p', 'SIMULATOR')).toBeNull();
+    expect(normalizeProviderCheckoutUrl('http://u:p@patpro.localhost:8806/p', 'SIMULATOR')).toBeNull();
     expect(normalizeProviderCheckoutUrl('http://a.example/p', 'SIMULATOR')).toBeNull();
     expect(normalizeProviderCheckoutUrl('https://u:p@a.example/', 'LIVE')).toBeNull();
     expect(normalizeProviderCheckoutUrl('https://u@a.example/', 'LIVE')).toBeNull();

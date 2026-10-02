@@ -57,6 +57,13 @@ const DATE_FUTURE = (champ: ChampDocument): string =>
 
 const TITRE_MAX = 200;
 const ADRESSE_MAX = 500;
+/**
+ * Surface plausible d'un bien, en m² (50 ha). Au-delà, la colonne est presque
+ * sûrement un montant ou une unité erronée (BUG-2026-10-02-014) : on refuse
+ * plutôt que d'enregistrer un bien de 1 000 000 m². La spec 038 ne fixe pas de
+ * borne ; une surface plus grande se corrige à la main dans l'aperçu.
+ */
+const SURFACE_MAX = 500_000;
 
 const CHAMPS_BIENS: ChampDocument[] = [
   {
@@ -178,6 +185,16 @@ function validerBien(valeurs: ValeursLigne, contexte: ContexteImportation): stri
   const surface = nombreOuNul(valeurs, 'surfaceArea');
   if (valeurs.propertyType === PropertyType.TERRAIN && surface === null) {
     motifs.push(t('La surface est obligatoire pour un terrain.'));
+  }
+
+  if (surface !== null && surface > SURFACE_MAX) {
+    motifs.push(
+      t('« {{champ}} » : {{valeur}} m² dépasse le maximum plausible ({{max}} m²). Vérifiez la colonne et l’unité.', {
+        champ: t('Surface (m²)'),
+        valeur: surface.toLocaleString('fr-FR'),
+        max: SURFACE_MAX.toLocaleString('fr-FR')
+      })
+    );
   }
 
   const pieces = nombreOuNul(valeurs, 'rooms');

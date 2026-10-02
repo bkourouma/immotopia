@@ -116,4 +116,16 @@ describe('Reprise de session au démarrage', () => {
     await waitFor(() => expect(screen.getByText('déconnecté')).toBeInTheDocument());
     expect(refreshSession).not.toHaveBeenCalled();
   });
+
+  it('ne lance AUCUN appel d’authentification sur une page publique à jeton', async () => {
+    window.history.replaceState(null, '', '/acces-partage');
+    try {
+      monter();
+      await waitFor(() => expect(screen.getByText('déconnecté')).toBeInTheDocument());
+      expect(getMe).not.toHaveBeenCalled();
+      expect(refreshSession).not.toHaveBeenCalled();
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
 });

@@ -714,7 +714,10 @@ export async function getInstallmentById(tenantId: string, installmentId: string
     }
   });
 
-  return installment;
+  if (!installment) return installment;
+  // Même statut dérivé que la liste (BUG-2026-10-02-015) : sans cela le détail
+  // affiche « Brouillon » pour une échéance que la liste dit « En retard ».
+  return { ...installment, status: computeInstallmentStatus(installment, new Date(), { emitDraft: false }) };
 }
 
 /**

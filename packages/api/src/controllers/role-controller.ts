@@ -289,7 +289,8 @@ export async function listMenuAccessHandler(_req: Request, res: Response): Promi
  *
  * L'interface n'a pas besoin de connaître les rôles de la personne connectée
  * pour masquer une entrée : elle a besoin de savoir quelles entrées masquer.
- * On ne renvoie donc que cela.
+ * On renvoie donc ces clés, plus les permissions effectives dans l'agence
+ * (l'interface masque aussi les entrées que le rôle ne peut pas ouvrir).
  */
 export async function getMyMenuAccessHandler(req: Request, res: Response): Promise<void> {
   try {
@@ -310,7 +311,7 @@ export async function getMyMenuAccessHandler(req: Request, res: Response): Promi
     if (queryTenantId) {
       const hasAccess = await userHasTenantAccess(req.user.userId, queryTenantId, req.user.globalRole);
       if (!hasAccess) {
-        res.status(403).json({ success: false, message: "Accès refusé à cette agence." });
+        res.status(403).json({ success: false, message: 'Accès refusé à cette agence.' });
         return;
       }
     }
@@ -320,7 +321,16 @@ export async function getMyMenuAccessHandler(req: Request, res: Response): Promi
     const { getDisabledMenusForUser } = await import('../services/role-menu-service');
     const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);
 
-    res.status(200).json({ success: true, data: { disabledMenuKeys } });
+    // Permissions effectives dans l'agence : l'interface en déduit les entrées
+    // que le rôle ne peut de toute façon pas ouvrir (BUG-2026-10-02-010). Sans
+    // agence (utilisateur plateforme), le champ est absent : rien n'est déduit.
+    let permissions: string[] | undefined;
+    if (tenantId) {
+      const { getUserPermissions } = await import('../services/permission-service');
+      permissions = await getUserPermissions(req.user.userId, tenantId);
+    }
+
+    res.status(200).json({ success: true, data: { disabledMenuKeys, ...(permissions ? { permissions } : {}) } });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     res.status(400).json({ success: false, message: errorMessage });

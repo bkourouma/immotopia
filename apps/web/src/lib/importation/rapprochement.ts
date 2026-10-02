@@ -56,6 +56,10 @@ export function scoreEntete(entete: string, champ: ChampDocument): number {
     if (candidat === cible) return 100;
   }
   for (const candidat of candidats) {
+    // Même garde que ci-dessous : une abréviation d'une ou deux lettres (« m »
+    // pour « m² ») est préfixe de « montant » et rapprocherait n'importe quoi.
+    const court = cible.length < candidat.length ? cible : candidat;
+    if (court.length < 3) continue;
     if (cible.startsWith(candidat) || candidat.startsWith(cible)) return 70;
   }
   for (const candidat of candidats) {

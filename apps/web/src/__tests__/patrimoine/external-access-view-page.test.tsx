@@ -83,6 +83,20 @@ describe('ExternalAccessViewPage', () => {
     expect(container.innerHTML).not.toContain('jeton-abc');
   });
 
+  it('ne poste qu’une fois sous React.StrictMode (une ouverture = une consultation)', async () => {
+    setHash('#jeton-abc');
+    mockPost.mockResolvedValue({ status: 200, data: { success: true, data: makeView() } });
+
+    render(
+      <React.StrictMode>
+        <ExternalAccessViewPage />
+      </React.StrictMode>
+    );
+
+    expect(await screen.findByText('Accès en lecture seule accordé par Agence Soleil')).toBeInTheDocument();
+    expect(mockPost).toHaveBeenCalledTimes(1);
+  });
+
   it('est en lecture seule : aucun champ de saisie ni lien sortant', async () => {
     setHash('#jeton-abc');
     mockPost.mockResolvedValueOnce({ status: 200, data: { success: true, data: makeView() } });

@@ -140,4 +140,29 @@ describe('<LandRegularizationListPage>', () => {
     await waitFor(() => expect(screen.getByText('Nouveau dossier de régularisation')).toBeInTheDocument());
     expect(listLandTracks).toHaveBeenCalledWith('agence-1');
   });
+  it('FR-009 : une filière CI_ACD porte l’étiquette « À valider » dans la liste', async () => {
+    listLandRegularizations.mockResolvedValue([
+      resume({ id: 'reg-1', validationStatus: 'A_VALIDER' }),
+      resume({
+        id: 'reg-2',
+        track: 'PERSONNALISEE',
+        trackLabel: 'Parcours personnalisé',
+        validationStatus: 'NON_APPLICABLE',
+        property: { id: 'bien-2', internalReference: 'TER-002', title: 'Parcelle de Yopougon' }
+      })
+    ]);
+    monter();
+
+    await screen.findByText('Parcelle de Yopougon');
+    expect(screen.getAllByText('À valider')).toHaveLength(1);
+  });
+
+  it('un 403 affiche un refus clair, sans bouton « Nouveau dossier »', async () => {
+    listLandRegularizations.mockRejectedValue({ response: { status: 403, data: { message: 'Permission denied' } } });
+    monter();
+
+    expect(await screen.findByText('Accès non autorisé')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Nouveau dossier/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Impossible de charger les dossiers de régularisation.')).not.toBeInTheDocument();
+  });
 });

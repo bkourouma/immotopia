@@ -4,7 +4,7 @@ import { createInsuranceClaim } from '../../services/insurance-service';
 import { propertyMaintenanceService } from '../../services/maintenance-service';
 import { listExpenses } from '../../services/patrimoine-service';
 import type { InsuranceClaimCause, InsurancePolicyDto } from '../../types/insurance-types';
-import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
+import { apiErrorMessage, applyApiFieldErrors } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { CAUSE_VALUES, causeLabel, currencyLabel, formatAmount, formatDay, options } from './insurance-labels';
@@ -28,6 +28,17 @@ interface Values {
   ticketId?: string;
   expenseId?: string;
 }
+
+const FIELDS = [
+  'policyId',
+  'occurredAt',
+  'cause',
+  'description',
+  'claimedAmount',
+  'deductible',
+  'ticketId',
+  'expenseId'
+];
 
 type Choice = { value: string; label: string };
 
@@ -93,6 +104,7 @@ export const ClaimFormModal: React.FC<Props> = ({ open, tenantId, propertyId, po
       feedback.success(t('Sinistre déclaré.'));
       onSaved();
     } catch (error) {
+      applyApiFieldErrors(form, error, FIELDS);
       feedback.error(apiErrorMessage(error, t('Déclaration impossible.')));
     } finally {
       setSaving(false);

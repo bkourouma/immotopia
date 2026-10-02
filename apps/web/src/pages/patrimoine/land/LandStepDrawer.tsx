@@ -3,6 +3,7 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Descriptions,
   Divider,
   Drawer,
@@ -62,6 +63,7 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
   const { message } = App.useApp();
   const [reason, setReason] = useState('');
   const [label, setLabel] = useState('');
+  const [required, setRequired] = useState(true);
   const [dueDate, setDueDate] = useState('');
   const [cost, setCost] = useState<number | null>(0);
   const [notes, setNotes] = useState('');
@@ -75,6 +77,7 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
     if (!step) return;
     setReason('');
     setLabel(step.label);
+    setRequired(step.required);
     setDueDate(toDateInput(step.dueDate));
     setCost(step.costXof);
     setNotes(step.notes ?? '');
@@ -127,7 +130,8 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
     run(
       () =>
         updateLandStep(tenantId, regularization.id, step.id, {
-          ...(custom ? { label: label.trim() } : {}),
+          // `label` et `required` ne se modifient que sur une filière personnalisée (FR-016).
+          ...(custom ? { label: label.trim(), ...(required !== step.required ? { required } : {}) } : {}),
           dueDate: dueDate || null,
           costXof: cost ?? 0,
           notes: notes.trim() || null
@@ -252,6 +256,18 @@ export const LandStepDrawer: React.FC<LandStepDrawerProps> = ({
               disabled={!editable}
               onChange={event => setLabel(event.target.value)}
             />
+          </div>
+        )}
+        {custom && (
+          <div>
+            <Checkbox
+              id="obligatoire-etape"
+              checked={required}
+              disabled={!editable}
+              onChange={event => setRequired(event.target.checked)}
+            >
+              {t('Étape obligatoire')}
+            </Checkbox>
           </div>
         )}
         <div>

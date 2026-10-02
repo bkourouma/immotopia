@@ -10,6 +10,7 @@ import {
 } from '../types/auth-types';
 import apiClient, { refreshSession } from '../utils/api-client';
 import { getStoredActiveTenantId, setStoredActiveTenantId } from '../utils/active-tenant';
+import { isPublicTokenPath } from '../utils/public-routes';
 import { t } from '../i18n/t';
 import { LANGUAGE_STORAGE_KEY } from '../i18n/config';
 
@@ -235,6 +236,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsLoading(false);
       }
     };
+
+    // Page publique à jeton : pas d'amorçage d'authentification (aucun 401 inutile).
+    if (isPublicTokenPath(window.location.pathname)) {
+      setIsLoading(false);
+      return;
+    }
 
     checkAuth();
   }, []);

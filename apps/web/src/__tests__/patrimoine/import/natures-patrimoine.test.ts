@@ -33,7 +33,7 @@ import {
 import { DESCRIPTEURS } from '../../../lib/importation/natures';
 import { MODES_DE_TRANSACTION, TYPES_DE_BIEN } from '../../../lib/importation/listes-patrimoine';
 import { entreesReferentiel } from '../../../lib/importation/referentiel';
-import { evaluerLigne, marquerDoublons } from '../../../lib/importation/rapprochement';
+import { evaluerLigne, marquerDoublons, proposerRapprochement } from '../../../lib/importation/rapprochement';
 import { ErreurPartielle } from '../../../lib/importation/execution';
 import { rapprocherLibelle } from '../../../lib/importation/valeurs';
 import { REFERENTIEL_VIDE } from '../../../lib/importation/types';
@@ -255,6 +255,23 @@ describe('BIENS — validation', () => {
     const sans = evaluerBien({ propertyType: 'Terrain', surfaceArea: '' });
     expect(sans.erreurs).toEqual(['La surface est obligatoire pour un terrain.']);
     expect(evaluerBien({ propertyType: 'Terrain', surfaceArea: '400' }).erreurs).toEqual([]);
+  });
+
+  it('BUG-014 : refuse une surface aberrante (1 000 000 m²) avec un message clair', () => {
+    const ligne = evaluerBien({ surfaceArea: '1000000' });
+    expect(ligne.erreurs).toHaveLength(1);
+    expect(ligne.erreurs[0]).toContain('maximum plausible');
+    expect(evaluerBien({ surfaceArea: '500000' }).erreurs).toEqual([]);
+  });
+
+  it('BUG-014 : « Montant » n’est jamais rapproché de « Surface (m²) »', () => {
+    const rapprochement = proposerRapprochement(
+      ['Nom du bien', 'Categorie', 'Commune', 'Transaction', 'Montant'],
+      BIENS.champs
+    );
+    expect(rapprochement).not.toContain('surfaceArea');
+    expect(rapprochement[4]).toBeNull();
+    expect(proposerRapprochement(['Surface', 'm²'], BIENS.champs)[0]).toBe('surfaceArea');
   });
 
   it('refuse une date d’acquisition sans prix', () => {

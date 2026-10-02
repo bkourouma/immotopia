@@ -947,5 +947,17 @@
   "Un e-mail contenant le lien a été envoyé à {{name}}.": "An e-mail containing the link was sent to {{name}}.",
   "Un nouveau lien d’accès sera émis pour {{name}}.": "A new access link will be issued for {{name}}.",
   "Valeur estimée, historique des estimations et plus-value latente.": "Estimated value, valuation history and latent capital gain.",
-  "Votre compte doit être rattaché à une agence pour gérer les accès partagés.": "Your account must be attached to an agency to manage shared access."
+  "Votre compte doit être rattaché à une agence pour gérer les accès partagés.": "Your account must be attached to an agency to manage shared access.",
+  "Expire aujourd'hui": "Expires today",
+  "Expirée depuis 1 jour": "Expired 1 day ago",
+  "Expirée depuis {{n}} jours": "Expired {{n}} days ago",
+  "Dans 1 jour": "In 1 day",
+  "Dans {{n}} jours": "In {{n}} days",
+  "Une pièce est déjà jointe.": "A document is already attached.",
+  "Sinistre clos : les pièces ne sont plus modifiables.": "Claim closed: documents can no longer be changed.",
+  "Toutes les polices": "All policies",
+  "Étape obligatoire": "Required step",
+  "Accès non autorisé": "Access not authorised",
+  "Votre rôle ne donne pas accès aux biens ni au patrimoine. Demandez l'accès à un administrateur de l'agence.": "Your role does not give access to properties or assets. Ask an agency administrator for access.",
+  "« {{champ}} » : {{valeur}} m² dépasse le maximum plausible ({{max}} m²). Vérifiez la colonne et l’unité.": "\"{{champ}}\": {{valeur}} m² exceeds the plausible maximum ({{max}} m²). Check the column and the unit."
 }

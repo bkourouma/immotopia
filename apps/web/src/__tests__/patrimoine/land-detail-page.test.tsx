@@ -294,4 +294,46 @@ describe('<LandRegularizationDetailPage>', () => {
     await user.clear(within(tiroir).getByLabelText("Libellé de l'étape"));
     expect(within(tiroir).getByRole('button', { name: "Enregistrer l'étape" })).toBeDisabled();
   });
+  it('étape personnalisée : décocher « Étape obligatoire » envoie required: false', async () => {
+    const user = userEvent.setup();
+    getLandRegularization.mockResolvedValue(detail({ track: 'PERSONNALISEE', validationStatus: 'NON_APPLICABLE' }));
+    updateLandStep.mockResolvedValue(detail());
+    monter();
+
+    const tiroir = await ouvrirEtape(user, 'Dossier technique du géomètre');
+    const caseObligatoire = within(tiroir).getByRole('checkbox', { name: 'Étape obligatoire' });
+    expect(caseObligatoire).toBeChecked();
+    await user.click(caseObligatoire);
+    await user.click(within(tiroir).getByRole('button', { name: "Enregistrer l'étape" }));
+
+    await waitFor(() => expect(updateLandStep).toHaveBeenCalledTimes(1));
+    expect(updateLandStep.mock.calls[0][3]).toMatchObject({ required: false });
+  });
+
+  it('étape personnalisée : sans changement, required n’est pas renvoyé', async () => {
+    const user = userEvent.setup();
+    getLandRegularization.mockResolvedValue(detail({ track: 'PERSONNALISEE', validationStatus: 'NON_APPLICABLE' }));
+    updateLandStep.mockResolvedValue(detail());
+    monter();
+
+    const tiroir = await ouvrirEtape(user, 'Dossier technique du géomètre');
+    await user.click(within(tiroir).getByRole('button', { name: "Enregistrer l'étape" }));
+
+    await waitFor(() => expect(updateLandStep).toHaveBeenCalledTimes(1));
+    expect(updateLandStep.mock.calls[0][3]).not.toHaveProperty('required');
+  });
+
+  it('filière CI_ACD : aucune case « Étape obligatoire » (réservée aux dossiers personnalisés)', async () => {
+    const user = userEvent.setup();
+    monter();
+    const tiroir = await ouvrirEtape(user, 'Dossier technique du géomètre');
+    expect(within(tiroir).queryByRole('checkbox', { name: 'Étape obligatoire' })).not.toBeInTheDocument();
+  });
+
+  it('un 403 affiche un refus clair, sans « Réessayer »', async () => {
+    getLandRegularization.mockRejectedValue({ response: { status: 403, data: { message: 'Permission denied' } } });
+    monter();
+    expect(await screen.findByText('Accès non autorisé')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+  });
 });
