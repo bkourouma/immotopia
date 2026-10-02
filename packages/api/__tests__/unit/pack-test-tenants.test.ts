@@ -3,7 +3,7 @@
  * prisma/seeds/seed-pack-test-tenants.ts. Aucun accès base.
  */
 import type { Request, Response } from 'express';
-import { PACK } from '../../src/lib/subscription/catalog';
+import { PACK, PARTICULIER_PACKS } from '../../src/lib/subscription/catalog';
 import { loginSchema, validate } from '../../src/middleware/validation-middleware';
 import {
   PACK_TEST_EMAIL_DOMAIN,
@@ -14,8 +14,11 @@ import {
 } from '../../prisma/seeds/pack-test-tenants';
 
 describe('données des agences de test par pack', () => {
-  it('couvre exactement les 6 packs du catalogue, une fois chacun', () => {
-    const catalogPacks = Object.values(PACK).sort();
+  it('couvre exactement les 6 packs d’agence du catalogue, une fois chacun', () => {
+    // Les packs Particulier sont des espaces personnels (inscription libre), pas des agences à provisionner.
+    const catalogPacks = Object.values(PACK)
+      .filter(code => !PARTICULIER_PACKS.includes(code))
+      .sort();
     expect(PACK_TEST_TENANTS.map(t => t.pack).sort()).toEqual(catalogPacks);
     expect(catalogPacks).toHaveLength(6);
   });

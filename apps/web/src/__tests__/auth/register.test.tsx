@@ -91,7 +91,7 @@ describe('<Register>', () => {
     expect(body.confirmPassword).toBe(MOT_DE_PASSE);
     expect(body).toMatchObject({ email: 'jean.dupont@example.com', fullName: 'Jean Dupont', password: MOT_DE_PASSE });
     expect(
-      await screen.findByText('Inscription réussie ! Veuillez vérifier votre email pour activer votre compte.')
+      await screen.findByText('Si cette adresse est valide, un e-mail de vérification vient de vous être envoyé.')
     ).toBeInTheDocument();
   });
 
