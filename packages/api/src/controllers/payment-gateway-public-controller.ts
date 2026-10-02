@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { env } from '../config/env';
 import { currentLanguage, t } from '../i18n';
 import {
+  checkoutReturnUrl,
   findSimulatorCheckout,
   reconcileCheckoutPublic,
   recordSimulatedOutcome
@@ -82,7 +83,9 @@ async function findAnySimulatorCheckout(
 ): Promise<{ codePaiement: string; amount: unknown; platformTenantId: string | null } | null> {
   if (isPlatformCodePaiement(codePaiement)) {
     const platform = await findPlatformSimulatorCheckout(codePaiement);
-    return platform ? { codePaiement: platform.codePaiement, amount: platform.amount, platformTenantId: platform.tenantId } : null;
+    return platform
+      ? { codePaiement: platform.codePaiement, amount: platform.amount, platformTenantId: platform.tenantId }
+      : null;
   }
   const rental = await findSimulatorCheckout(codePaiement);
   return rental ? { codePaiement: rental.codePaiement, amount: rental.amount, platformTenantId: null } : null;
@@ -181,7 +184,9 @@ export const simulatorActionHandler = asyncHandler(async (req: Request, res: Res
     try {
       await reconcilePlatformCheckoutPublic(codePaiement);
     } catch (error) {
-      logger.warn('Simulateur PaySecureHub (abonnement) : rapprochement en échec', { error: (error as Error)?.message });
+      logger.warn('Simulateur PaySecureHub (abonnement) : rapprochement en échec', {
+        error: (error as Error)?.message
+      });
     }
     res.redirect(303, platformReturnUrl(platform.tenantId, codePaiement));
     return;
@@ -200,6 +205,5 @@ export const simulatorActionHandler = asyncHandler(async (req: Request, res: Res
     logger.warn('Simulateur PaySecureHub : rapprochement en échec', { error: (error as Error)?.message });
   }
 
-  const retour = `${env.FRONTEND_URL.replace(/\/$/, '')}/tenant/payments?paiement=${encodeURIComponent(codePaiement)}`;
-  res.redirect(303, retour);
+  res.redirect(303, checkoutReturnUrl(checkout));
 });

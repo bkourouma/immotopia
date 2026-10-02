@@ -248,3 +248,29 @@ describe('loadChannelConfigs', () => {
     expect(getWhatsappNotificationConfig).not.toHaveBeenCalled();
   });
 });
+
+describe('sujet d’e-mail et variables d’URL', () => {
+  it('un subjectOverride contenant {{paymentUrl}} / {{reportUrl}} n’injecte pas l’URL dans le sujet, le corps la contient', async () => {
+    const url = 'https://app.test/payer#tok_SECRET';
+    const configs: ChannelConfigs = {
+      EMAIL: {
+        enabled: true,
+        subjectOverride: 'Loyer {{period}} {{paymentUrl}} {{reportUrl}}',
+        bodyHtmlOverride: '<a href="{{paymentUrl}}">Payer</a> {{period}}'
+      }
+    };
+
+    await deliverOnBestChannel({
+      tenantId: TENANT,
+      recipient: recipient(),
+      configs,
+      targets: { email: 'OWNER_MONTHLY_REPORT_SENT' },
+      variables: { period: '10/2026', paymentUrl: url, reportUrl: url }
+    });
+
+    const mail = sendEmail.mock.calls[0][0];
+    expect(mail.subject).toBe('Loyer 10/2026  ');
+    expect(mail.subject).not.toContain('tok_SECRET');
+    expect(mail.html).toContain(url);
+  });
+});

@@ -1387,5 +1387,8 @@
   "Banquier": "Banker",
   "L'accès est expiré : aucun lien ne peut être créé.": "The access has expired: no link can be created.",
   "Un accès partagé ne peut couvrir plus de {{max}} biens.": "A shared access cannot cover more than {{max}} properties.",
-  "Cette entité ne détient aucun bien.": "This entity holds no property."
+  "Cette entité ne détient aucun bien.": "This entity holds no property.",
+  "Cette échéance est annulée.": "This installment is canceled.",
+  "Cette échéance est déjà soldée.": "This installment is already settled.",
+  "Le bail de cette échéance n'est pas actif.": "The lease for this installment is not active."
 }

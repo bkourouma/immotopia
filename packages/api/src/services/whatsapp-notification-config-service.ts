@@ -17,7 +17,8 @@ import { WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES } from '../constants/whatsapp-n
 const WHATSAPP_OPT_IN_KEYS: ReadonlySet<WhatsappNotificationKey> = new Set<WhatsappNotificationKey>([
   'OWNER_LEASE_ENDING_SOON',
   'OWNER_DOCUMENT_EXPIRY_ALERT',
-  'OWNER_MONTHLY_REPORT_SENT'
+  'OWNER_MONTHLY_REPORT_SENT',
+  'RENTER_PAYMENT_LINK_SENT'
 ]);
 
 /** État d'activation d'une clé quand l'agence n'a aucune ligne de configuration. */

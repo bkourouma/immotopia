@@ -1013,9 +1013,11 @@ model Invitation {
 }
 
 /// Portee d'un lien securise (lib/secure-links). Une valeur par usage public ;
-/// les lots suivants (paiement par lien, tiers de confiance) en ajouteront.
+/// les lots suivants en ajouteront.
 enum SecureLinkScope {
   OWNER_MONTHLY_REPORT
+  /// Paiement Mobile Money d'une echeance de loyer (lot C5, spec 039).
+  INSTALLMENT_PAYMENT
   /// Acces en lecture seule d'un tiers de confiance (lot B3, spec 034).
   EXTERNAL_ACCESS_GRANT
 }
@@ -2820,6 +2822,10 @@ model OnlinePaymentCheckout {
   simulatedOutcome    String?              @map("simulated_outcome")
 
   createdByUserId String?   @map("created_by_user_id")
+  /// Lot C5 (spec 039) : lien de paiement `SecureLink` (portee INSTALLMENT_PAYMENT)
+  /// a l'origine de ce checkout ; nul pour un paiement lance depuis le portail
+  /// locataire. Champ simple (comme `leaseId`), jamais un jeton.
+  secureLinkId    String?   @map("secure_link_id")
   completedAt     DateTime? @map("completed_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -2828,6 +2834,7 @@ model OnlinePaymentCheckout {
   payment RentalPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status])
+  @@index([tenantId, secureLinkId])
   @@map("online_payment_checkouts")
 }
 

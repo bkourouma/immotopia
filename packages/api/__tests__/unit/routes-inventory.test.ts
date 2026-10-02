@@ -127,6 +127,35 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   },
   {
     method: 'POST',
+    test: exact('/api/public/secure-links/installment-payment'),
+    reason:
+      'Echeance de loyer a payer, lue par son lien securise (spec 039, lib/secure-links) : public par nature, le locataire ' +
+      "n'a pas de session. Le jeton (32 octets aleatoires, 256 bits, SHA-256 seul en base, expirant, revocable) est dans " +
+      "le corps du POST (1 Ko max) et designe une unique echeance, lue dans l'agence du lien : aucun identifiant, montant " +
+      'ou agence ne vient de la requete (montant recalcule cote serveur). Lecture seule. Limiteur par IP avant ' +
+      'verification, refus uniforme 404, en-tetes no-store/noindex/no-referrer.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/secure-links/installment-payment/start'),
+    reason:
+      "Demarrage du paiement Mobile Money d'une echeance par son lien securise (spec 039) : public par nature, le " +
+      "locataire n'a pas de session. Meme jeton secret a 256 bits dans le corps (1 Ko max), objet unique ; le montant " +
+      "n'est jamais lu de l'appelant (recalcule cote serveur) et l'URL de paiement est fournie par le fournisseur, jamais " +
+      'construite a partir de la requete. Limiteur par IP plus strict (10/min) avant verification, refus uniforme 404, ' +
+      'en-tetes no-store/noindex/no-referrer, audit SECURE_LINK_PAYMENT_STARTED.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/secure-links/installment-payment/status'),
+    reason:
+      "Statut d'un paiement issu d'un lien de loyer (spec 039) : public par nature (retour du fournisseur de paiement, " +
+      'sans session). Le corps (1 Ko max) porte la reference IMT-<20 alphanumeriques>, imprevisible, qui ne sert que les ' +
+      "paiements issus d'un lien securise d'une agence non suspendue. Lecture seule, aucun identifiant ni montant lu de " +
+      "l'appelant. Limiteur par IP dedie (90/min, la page de statut interroge toutes les 3 s) avant verification, refus uniforme 404, en-tetes no-store/noindex/no-referrer."
+  },
+  {
+    method: 'POST',
     test: exact('/api/public/external-access/patrimoine'),
     reason:
       "Vue en lecture seule d'un tiers de confiance (notaire, expert-comptable, banquier ; lot B3, spec 034), lue par " +

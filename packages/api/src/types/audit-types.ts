@@ -135,6 +135,10 @@ export enum AuditActionKey {
   SECURE_LINK_CREATED = 'SECURE_LINK_CREATED',
   SECURE_LINK_VIEWED = 'SECURE_LINK_VIEWED',
   SECURE_LINK_REVOKED = 'SECURE_LINK_REVOKED',
+  /** Lot C5 : le locataire a lancé le paiement depuis son lien (checkout créé ou repris). */
+  SECURE_LINK_PAYMENT_STARTED = 'SECURE_LINK_PAYMENT_STARTED',
+  /** Lot C5 : lien de paiement d'une échéance envoyé au locataire (canal, jamais le jeton). */
+  RENTAL_PAYMENT_LINK_SENT = 'RENTAL_PAYMENT_LINK_SENT',
 
   // Accès en lecture seule des tiers de confiance (lot B3, spec 034) : jamais le
   // jeton, jamais l'e-mail du bénéficiaire. entityType 'ExternalAccessGrant'.

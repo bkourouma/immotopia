@@ -121,6 +121,11 @@ function escapeVariables(variables: Record<string, string>): Record<string, stri
   return Object.fromEntries(Object.entries(variables).map(([key, value]) => [key, escapeHtml(value)]));
 }
 
+/** Variables du sujet : toute clé finissant par `Url` (lien porteur d'un jeton) en est exclue. */
+function withoutUrlVariables(variables: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(variables).filter(([key]) => !/Url$/.test(key)));
+}
+
 function nonEmpty(value: string | null | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -136,8 +141,9 @@ const emailSender: ChannelSender = {
     try {
       await emailService.sendEmail({
         to: recipient.email.trim(),
-        // Le sujet part en texte brut ; le corps HTML reprend les valeurs échappées.
-        subject: applyTemplate(config.subjectOverride || defaults.subject, variables),
+        // Le sujet part en texte brut, sans variable d'URL (jeton) : elle reste dans le corps.
+        subject: applyTemplate(config.subjectOverride || defaults.subject, withoutUrlVariables(variables)),
+        // Le corps HTML reprend les valeurs échappées.
         html: applyTemplate(config.bodyHtmlOverride || defaults.bodyHtml, escapeVariables(variables)),
         tenantId
       });

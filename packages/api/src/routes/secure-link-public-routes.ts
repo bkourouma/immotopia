@@ -1,6 +1,15 @@
 import express, { NextFunction, Request, Response, Router } from 'express';
 import { invalidSecureLinkError } from '../lib/secure-links';
-import { secureLinkPublicRateLimiter } from '../middleware/rate-limit-middleware';
+import {
+  secureLinkPaymentStartRateLimiter,
+  secureLinkPublicRateLimiter,
+  secureLinkStatusRateLimiter
+} from '../middleware/rate-limit-middleware';
+import {
+  installmentPaymentPublicHandler,
+  installmentPaymentStartHandler,
+  installmentPaymentStatusHandler
+} from '../controllers/installment-payment-public-controller';
 import {
   ownerMonthlyReportPublicHandler,
   secureLinkNoStoreHeaders
@@ -42,6 +51,32 @@ router.post(
   secureLinkNoStoreHeaders,
   express.json({ limit: MAX_BODY }),
   ownerMonthlyReportPublicHandler
+);
+
+// Lien de paiement d'un loyer (spec 039) : même gabarit, jeton / code dans le corps.
+router.post(
+  '/public/secure-links/installment-payment',
+  secureLinkPublicRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  installmentPaymentPublicHandler
+);
+
+// Démarrage du paiement : limiteur plus strict (10/min/IP), toujours avant toute vérification.
+router.post(
+  '/public/secure-links/installment-payment/start',
+  secureLinkPaymentStartRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  installmentPaymentStartHandler
+);
+
+router.post(
+  '/public/secure-links/installment-payment/status',
+  secureLinkStatusRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  installmentPaymentStatusHandler
 );
 
 // Erreur de parseur : refus uniforme (les en-têtes no-store sont déjà posés),

@@ -8,7 +8,7 @@ import { runWithTenantContext } from '../../utils/tenant-context';
 import { generateToken, hashToken, hashesMatch, looksLikeToken } from './token';
 import { invalidSecureLinkError } from './errors';
 
-export type SecureLinkScope = 'OWNER_MONTHLY_REPORT' | 'EXTERNAL_ACCESS_GRANT'; // = enum Prisma
+export type SecureLinkScope = 'OWNER_MONTHLY_REPORT' | 'EXTERNAL_ACCESS_GRANT' | 'INSTALLMENT_PAYMENT'; // = enum Prisma
 
 export interface CreateSecureLinkInput {
   tenantId: string;
@@ -67,6 +67,8 @@ export function buildSecureLinkUrl(scope: SecureLinkScope, token: string): strin
   switch (scope) {
     case 'OWNER_MONTHLY_REPORT':
       return `${base}/rapport-proprietaire#${token}`;
+    case 'INSTALLMENT_PAYMENT':
+      return `${base}/payer#${token}`;
     case 'EXTERNAL_ACCESS_GRANT':
       return `${base}/acces-partage#${token}`;
   }
