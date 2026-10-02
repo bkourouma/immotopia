@@ -139,6 +139,65 @@ Pièges :
 - Les testeurs n'ont pas les mots de passe de recette (hors dépôt) : l'un a deviné la convention, un autre a utilisé la connexion rapide super-admin. Consigner les mots de passe de test dans les scénarios.
 - Les captures du navigateur intégré échouent panneau masqué : preuves par DOM et réseau.
 
+## Pilote — recette navigateur des vagues B et C, correctifs (PR #102) — 2026-10-02
+
+**État :** recette jouée (B1 assurances, B2 foncier, B3 accès tiers de confiance, C4 import, C5 lien de paiement) : 17 anomalies au bus (`BUG-2026-10-02-001` à `017`). Correctifs dans la PR #102 (`fix/patrimoine-recette-bc`, dernier commit 7007e4ec, CI en cours à la rédaction) : 001 à 015 rejouées et passées ; 016 (étiquette « À valider » rognée en mobile) et 017 (paiement échoué affichait « Reste à affecter ») corrigées, à l'état « prêt au retest ». Audit sécurité du diff : rien. Fusion de #102 : à la main de l'utilisateur.
+
+Reste à faire :
+
+- Rejouer 016 et 017 dans le navigateur ; suivre la CI de #102 et la fusionner sur accord.
+- Rôle avec `PROPERTIES_VIEW` sans `PROPERTIES_EDIT` : les boutons d'écriture restent visibles (l'API répond 403) ; il faut exposer les permissions dans le contexte d'authentification.
+- Réserves cosmétiques du retest : « 245 000 000 XOF » touche le bord du tableau « Synthèse » (page publique à 375 px) ; « Dernière consultation » rognée sous la colonne Actions collante (1920 px) ; le bouton « Envoyer un lien de paiement » reste affiché sur une échéance brouillon (l'API refuse) ; la réponse de génération d'échéances renvoie DRAFT pour une échéance déjà en retard (la liste renvoie OVERDUE).
+- Non joué : e-mails d'alerte quotidiens (job non déclenchable par l'interface), cas REVIEW du paiement, état « expiré » d'un accès partagé, isolation inter-agences réelle (`npm run test:isolation`), bien client sous mandat actif, arabe sur « Accès partagés ».
+- Plafond de surface de l'import (500 000 m²) à valider.
+
+Pièges :
+
+- Recette : worktree `.claude/worktrees/rec-bc` (détaché sur le commit testé), instances Agence/Patrimoine Pro lancées par `scratchpad/rec-a/rec-all.cjs` (lancer avec `Start-Process` détaché : un shell d'arrière-plan est tué au bout de quelques minutes). `instances.cjs` pointe sur `rec-bc`.
+- `npm ci --ignore-scripts` ne pose pas `lefthook` : `npm rebuild lefthook` ; Windows peut bloquer `lefthook.exe` (stratégie de contrôle d'application) tant que l'utilisateur ne l'a pas autorisé.
+- Le panneau navigateur intégré est souvent masqué (pas de capture) : les testeurs passent par `chrome-devtools`.
+- Instance de recette : l'inscription publique n'avait jamais pu fonctionner (confirmPassword non envoyé, corrigé dans #102) ; le super-admin du seed crée les agences jetables.
+
+---
+
+## Pilote — feuille de route patrimoine, vagues A, B, C (partielle) et lot F1 — 2026-10-02
+
+**État :** fusionnés dans `main` : vague A (#91, #92, #93), vague B (B1 assurances #96, B2 foncier #95, B3 accès tiers de confiance #97), lot F1 de correctifs de recette (#98), C4 import en masse (#100), C5 lien de paiement Mobile Money (#99). Budget d'entrée web relevé de 1 Kio (226 304 -> 227 328 o gzip) sur décision explicite de l'utilisateur le 02/10 (marge actuelle 626 o). Non fusionnées : #90 (plan, cette branche), #86 (retest docs), #87 et #88 (balance clients, 058/003).
+
+Reste à faire :
+
+- Capacités de la vague C encore à livrer (elles attendent la fusion des PR multi-actifs #52/#67/#69/#70/#74, à décider par l'utilisateur) : vue Groupe (1), export de ratios (8), dossier bancaire + déclaration fiscale (9, 6), multi-devises (11), démembrement (5).
+- Recette navigateur des vagues B, C et du lot F1 jamais rejouée (seule la vague A l'a été).
+- Alléger l'entrée web de façon structurelle (routes et menus du patrimoine hors du chunk d'entrée) : le budget a été relevé deux fois en une semaine.
+- Décisions ouvertes : raccourci INSURER_NOTIFIED -> SETTLED/REJECTED (B1) ; prix d'acquisition sans date et dépendance `jszip` (C4) ; traitement du checkout en REVIEW et des échéances DRAFT, mode LIVE PaySecureHub non testé (C5) ; B3 : une agence qui perd le pack PATRIMOINE peut encore lire les accès partagés ; BUG-2026-10-01-006 réclame une vraie action « marquer prêt » ; `isolation.test.ts` de B3 a 2 échecs Syndic S3 (404 au lieu de 403) non comparés à `main` ; 3 tests copilot instables (#84 non fusionnée).
+
+Pièges :
+
+- Après chaque fusion de `main` : `prisma generate` (client périmé = ~89 erreurs TS2339) ; `npm ci --ignore-scripts` + `npm rebuild bcrypt` dans chaque worktree à schéma modifié.
+- Conflits récurrents entre lots : classeur wiki (fusion à trois voies par clé + `wiki:export`), catalogues i18n plats (fusion à trois voies), `App.tsx`, menus de navigation, `schema.prisma` (union des relations et des valeurs d'enum), `email-notification-keys.ts`, `routes-inventory.test.ts`.
+- Tests API lancés en parallèle d'un build web : timeouts en cascade ; les relancer seuls.
+- Retirer les jonctions `node_modules` avec `rmdir` AVANT tout `git worktree remove` (incident du 27/09). Worktrees à nettoyer : `pat-*`, `retest-main`.
+
+---
+
+## Pilote — feuille de route patrimoine, vague A — 2026-10-01
+
+**État :** plan publié (PR #90) ; vague A livrée en trois PR indépendantes depuis `main` (CI non encore vue) : A1 #91 (`feat/patrimoine-projection`, spec 029), A2 #93 (`feat/patrimoine-tresorerie`, spec 030), A3 #92 (`feat/patrimoine-canaux`, spec 031). Aucune fusion faite. Plan : `docs/architecture/PLAN-PATRIMOINE-FEUILLE-DE-ROUTE.md` (14 capacités, vagues A/B/C, specs 029 à 040 réservées).
+
+Reste à faire :
+
+- Fusion de #91, #92, #93 (conflits attendus : classeur wiki binaire → reprendre la version de `main` et réappliquer les lignes du lot ; A1/A2 : `schemas.ts` `createExpenseSchema`, `queries.ts`, `PropertyPatrimoineTab.tsx`, `patrimoine-types.ts`, `patrimoine-labels.ts`). Migrations : `20261007090000` (A1), `…100000` (A2), `…110000` (A3).
+- Recette navigateur de la vague A (jamais rejouée) : carte « Ratios bancaires », synchronisation des hypothèses, page « Trésorerie prévisionnelle », rapport mensuel par lien (page publique `/rapport-proprietaire`), RTL arabe, mobile.
+- Vague B (spec 032 sinistres/assurances, 033 suivi foncier, 034 accès tiers de confiance — dépend des liens sécurisés de #92) ; vague C après fusion des PR multi-actifs (#52/#67/#69/#70/#74) : vue Groupe, multi-devises, dossier bancaire + déclaration fiscale, import en masse, paiement par lien, démembrement.
+- Décisions ouvertes : date d'exigibilité de la taxe foncière par pays ; arriérés au mois 1 du plan ; « bien en vente » ; volume d'appels au moteur fiscal (cache) ; route publique montée après CORS ; double envoi du rapport par le job ; `consentWhatsapp` à `true` par défaut en base (pas un vrai consentement) ; hypothèses des biens sous mandat en 404 ; TRI avant financement.
+
+Pièges :
+
+- Worktrees `.claude/worktrees/pat-{projection,tresorerie,canaux}` : `npm ci --ignore-scripts` + `prisma generate` PROPRES (schéma modifié, pas de jonction) ; `bcrypt` doit être recompilé (`npm rebuild bcrypt`), sinon `routes-inventory`/`route-features` ne démarrent pas. Disque D: presque plein (~19 Go libres).
+- Outil de base jetable : `scratchpad/scratch-db.cjs create|run|drop <nom>` (bases `immotopia_dev_<nom>`, mot de passe jamais affiché).
+- `i18n:extract` réécrit les fins de ligne de ~30 catalogues sans changer leur contenu et supprime des clés d'autres lots côté API : ne commiter que les catalogues au vrai diff.
+- `code-reviewer` n'existe pas comme type d'agent dans cette session : relecture faite par un `general-purpose` suivant `.claude/agents/code-reviewer.md`.
+
 ---
 
 ## Pilote — environnements staging et production (PR #77, #78, #79, #81 fusionnées) — 2026-09-30
