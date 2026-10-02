@@ -3,13 +3,14 @@
  * d'assurance, de la prochaine échéance d'entretien et de la fin de garantie
  * (lot B1, spec 032).
  *
- * Mock à la frontière `utils/database` ; e-mail, configuration et audit
- * mockés : aucun envoi réel.
+ * Mock à la frontière `utils/database` ; e-mail et configuration mockés :
+ * aucun envoi réel. Les marques anti-doublon sont des `NotificationMarker`.
  */
 
 const insurancePolicyFindMany = jest.fn();
 const maintenanceLogEntryFindMany = jest.fn();
-const auditLogFindMany = jest.fn();
+const markerFindMany = jest.fn();
+const markerCreate = jest.fn();
 const tenantFindUnique = jest.fn();
 const roleFindUnique = jest.fn();
 const userRoleFindMany = jest.fn();
@@ -19,7 +20,10 @@ jest.mock('../../src/utils/database', () => ({
   prisma: {
     insurancePolicy: { findMany: (...a: any[]) => insurancePolicyFindMany(...a) },
     maintenanceLogEntry: { findMany: (...a: any[]) => maintenanceLogEntryFindMany(...a) },
-    auditLog: { findMany: (...a: any[]) => auditLogFindMany(...a) },
+    notificationMarker: {
+      findMany: (...a: any[]) => markerFindMany(...a),
+      create: (...a: any[]) => markerCreate(...a)
+    },
     tenant: { findUnique: (...a: any[]) => tenantFindUnique(...a) },
     role: { findUnique: (...a: any[]) => roleFindUnique(...a) },
     userRole: { findMany: (...a: any[]) => userRoleFindMany(...a) },
@@ -37,14 +41,6 @@ jest.mock('../../src/services/email-service', () => ({
   emailService: { sendEmail: (...a: any[]) => sendEmail(...a) }
 }));
 
-const logAuditEvent = jest.fn();
-const flushAuditEvents = jest.fn();
-jest.mock('../../src/services/audit-service', () => ({
-  logAuditEvent: (...a: any[]) => logAuditEvent(...a),
-  flushAuditEvents: (...a: any[]) => flushAuditEvents(...a)
-}));
-
-import { AuditActionKey } from '../../src/types/audit-types';
 import {
   alertExpiringInsurancePolicies,
   alertMaintenanceDeadlines,
@@ -82,8 +78,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   getEmailNotificationConfig.mockResolvedValue({ enabled: true, subjectOverride: null, bodyHtmlOverride: null });
   sendEmail.mockResolvedValue(undefined);
-  auditLogFindMany.mockResolvedValue([]);
-  flushAuditEvents.mockResolvedValue(0);
+  markerFindMany.mockResolvedValue([]);
+  markerCreate.mockResolvedValue({});
   tenantFindUnique.mockResolvedValue({ name: 'Agence', contactEmail: null });
   roleFindUnique.mockResolvedValue({ id: 'role-admin' });
   userRoleFindMany.mockResolvedValue([{ userId: 'u1' }]);
@@ -114,25 +110,24 @@ describe('alertExpiringInsurancePolicies', () => {
     expect(mail.subject).toContain('REF-1');
     expect(mail.html).toContain('NSIA');
     expect(mail.html).toContain('20/10/2026');
-    expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(markerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         tenantId: TENANT,
-        actionKey: AuditActionKey.PATRIMOINE_INSURANCE_POLICY_ALERT_SENT,
+        kind: 'PATRIMOINE_INSURANCE_POLICY_ALERT_SENT',
         entityType: 'InsurancePolicy',
         entityId: 'pol-1::POLICY::2026-10-20'
       })
-    );
-    expect(flushAuditEvents).toHaveBeenCalled();
+    });
   });
 
-  it("aucun doublon au 2e passage : la marque d'audit exclut la police", async () => {
+  it('aucun doublon au 2e passage : la marque exclut la police', async () => {
     insurancePolicyFindMany.mockResolvedValue([policy()]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'pol-1::POLICY::2026-10-20' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'pol-1::POLICY::2026-10-20' }]);
     const result = await alertExpiringInsurancePolicies(TENANT, { now: NOW });
 
     expect(result).toEqual({ matched: 1, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 1, failed: 0 });
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it("événement désactivé : rien d'envoyé, rien de marqué", async () => {
@@ -141,7 +136,7 @@ describe('alertExpiringInsurancePolicies', () => {
     expect(result).toEqual({ matched: 0, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 0 });
     expect(insurancePolicyFindMany).not.toHaveBeenCalled();
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it('aucun destinataire : compté, non marqué (réessayé le lendemain)', async () => {
@@ -150,7 +145,7 @@ describe('alertExpiringInsurancePolicies', () => {
     const result = await alertExpiringInsurancePolicies(TENANT, { now: NOW });
     expect(result.skippedNoRecipient).toBe(1);
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it('repli sur Tenant.contactEmail sans administrateur', async () => {
@@ -167,7 +162,7 @@ describe('alertExpiringInsurancePolicies', () => {
     sendEmail.mockRejectedValue(new Error('SMTP indisponible'));
     const result = await alertExpiringInsurancePolicies(TENANT, { now: NOW });
     expect(result).toEqual({ matched: 1, sent: 0, skippedNoRecipient: 0, skippedAlreadySent: 0, failed: 1 });
-    expect(logAuditEvent).not.toHaveBeenCalled();
+    expect(markerCreate).not.toHaveBeenCalled();
   });
 
   it('échappe le texte saisi dans le corps HTML, mais pas dans le sujet', async () => {
@@ -191,10 +186,10 @@ describe('alertMaintenanceDeadlines', () => {
 
     expect(result.matched).toBe(2);
     expect(result.sent).toBe(2);
-    const keys = logAuditEvent.mock.calls.map(call => call[0].entityId);
+    const keys = markerCreate.mock.calls.map(call => call[0].data.entityId);
     expect(keys).toEqual(['log-1::DUE::2026-10-10', 'log-1::WARRANTY::2026-10-25']);
-    expect(logAuditEvent.mock.calls[0][0]).toMatchObject({
-      actionKey: AuditActionKey.PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT,
+    expect(markerCreate.mock.calls[0][0].data).toMatchObject({
+      kind: 'PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT',
       entityType: 'MaintenanceLogEntry'
     });
     const subjects = sendEmail.mock.calls.map(call => call[0].subject);
@@ -211,7 +206,7 @@ describe('alertMaintenanceDeadlines', () => {
     ]);
     const result = await alertMaintenanceDeadlines(TENANT, { now: NOW });
     expect(result.matched).toBe(2);
-    expect(logAuditEvent.mock.calls.map(c => c[0].entityId)).toEqual(['a::DUE::2026-10-01', 'b::DUE::2026-10-31']);
+    expect(markerCreate.mock.calls.map(c => c[0].data.entityId)).toEqual(['a::DUE::2026-10-01', 'b::DUE::2026-10-31']);
   });
 
   it('lit la configuration e-mail une seule fois par alerte', async () => {
@@ -224,7 +219,7 @@ describe('alertMaintenanceDeadlines', () => {
     maintenanceLogEntryFindMany.mockResolvedValue([
       entry({ nextDueDate: day('2026-10-10'), warrantyEndDate: day('2026-10-25') })
     ]);
-    auditLogFindMany.mockResolvedValue([{ entityId: 'log-1::DUE::2026-10-10' }]);
+    markerFindMany.mockResolvedValue([{ entityId: 'log-1::DUE::2026-10-10' }]);
     const result = await alertMaintenanceDeadlines(TENANT, { now: NOW });
     expect(result).toMatchObject({ matched: 2, sent: 1, skippedAlreadySent: 1 });
     expect(sendEmail).toHaveBeenCalledTimes(1);

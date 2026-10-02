@@ -1,6 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
+import { diffForAudit } from '../lib/audit/changes';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
 import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
@@ -756,7 +757,16 @@ export async function updateContact(
       actionKey: 'CRM_CONTACT_UPDATED',
       entityType: CRM_ENTITY_TYPES.CONTACT,
       entityId: contactId,
-      payload: changedFields
+      payload: changedFields,
+      // Avant/après, sans les champs les plus sensibles (déjà présents, pour
+      // l'existant, dans `payload` : on n'en recopie pas de plus).
+      changes: diffForAudit(
+        existingContact as unknown as Record<string, unknown>,
+        updateData as Record<string, unknown>,
+        {
+          exclude: ['internalNotes', 'salaire', 'numeroPieceId']
+        }
+      )
     });
   }
 
@@ -799,70 +809,74 @@ export async function deleteContact(tenantId: string, contactId: string, actorUs
     throw new NotFoundError(t('Contact introuvable'));
   }
 
-  // Delete related CRM data with explicit cascades where needed
-  await prisma.$transaction([
-    // Tags (no tenantId column on this join table)
-    prisma.crmContactTag.deleteMany({
-      where: {
-        contactId
+  // Delete related CRM data with explicit cascades where needed. The audit
+  // event (critical action) is written in the same transaction.
+  await prisma.$transaction(
+    async tx => {
+      // Tags (no tenantId column on this join table)
+      await tx.crmContactTag.deleteMany({
+        where: {
+          contactId
+        }
+      });
+      // Target zones (no tenantId column on this join table)
+      await tx.crmContactTargetZone.deleteMany({
+        where: {
+          contactId
+        }
+      });
+      // Roles
+      await tx.crmContactRole.deleteMany({
+        where: {
+          contactId,
+          tenantId
+        }
+      });
+      // Activities
+      await tx.crmActivity.deleteMany({
+        where: {
+          contactId,
+          tenantId
+        }
+      });
+      // Deals
+      await tx.crmDeal.deleteMany({
+        where: {
+          contactId,
+          tenantId
+        }
+      });
+      // Finally, the contact itself (will cascade to many relations by FK)
+      await tx.crmContact.deleteMany({
+        where: {
+          id: contactId,
+          tenantId
+        }
+      });
+
+      if (actorUserId) {
+        await recordAuditEvent(tx, {
+          actorUserId,
+          tenantId,
+          actionKey: 'CRM_CONTACT_DELETED',
+          entityType: CRM_ENTITY_TYPES.CONTACT,
+          entityId: contactId,
+          payload: {
+            email: existingContact.email,
+            firstName: existingContact.firstName,
+            lastName: existingContact.lastName
+          }
+        });
       }
-    }),
-    // Target zones (no tenantId column on this join table)
-    prisma.crmContactTargetZone.deleteMany({
-      where: {
-        contactId
-      }
-    }),
-    // Roles
-    prisma.crmContactRole.deleteMany({
-      where: {
-        contactId,
-        tenantId
-      }
-    }),
-    // Activities
-    prisma.crmActivity.deleteMany({
-      where: {
-        contactId,
-        tenantId
-      }
-    }),
-    // Deals
-    prisma.crmDeal.deleteMany({
-      where: {
-        contactId,
-        tenantId
-      }
-    }),
-    // Finally, the contact itself (will cascade to many relations by FK)
-    prisma.crmContact.deleteMany({
-      where: {
-        id: contactId,
-        tenantId
-      }
-    })
-  ]);
+    },
+    { timeout: 20_000 }
+  );
 
   logger.info('CRM contact deleted', {
     contactId,
     tenantId,
     email: existingContact.email
   });
-
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: 'CRM_CONTACT_DELETED',
-      entityType: CRM_ENTITY_TYPES.CONTACT,
-      entityId: contactId,
-      payload: {
-        email: existingContact.email,
-        firstName: existingContact.firstName,
-        lastName: existingContact.lastName
-      }
-    });
-  }
 }
 
 /**

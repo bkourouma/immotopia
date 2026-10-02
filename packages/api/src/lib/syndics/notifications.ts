@@ -12,6 +12,7 @@ import { currentOwnerProfilesSorted } from './lot-owner';
 // Même substitution que les reçus S3 : les valeurs injectées dans le HTML
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
+import { MARKER_KIND } from '../notification-markers';
 
 /** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
 function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
@@ -336,7 +337,7 @@ function emptyConvocationResult(): ConvocationResult {
   };
 }
 
-const CONVOCATION_DELIVERY_ACTION = 'SYNDIC_MEETING_CONVOCATION_DELIVERY';
+const CONVOCATION_DELIVERY_ACTION = MARKER_KIND.convocationDelivery;
 
 type ConvocationRecipient = {
   id: string;
@@ -384,12 +385,16 @@ export function collectConvocationRecipients(
   });
 }
 
-/** Dernier résultat journalisé par contact (SENT / FAILED / NOT_SERVED) pour cette assemblée. */
+/**
+ * Dernier résultat enregistré par contact (SENT / FAILED / NOT_SERVED) pour cette
+ * assemblée, lu dans `NotificationMarker` (et non plus dans le journal d'audit :
+ * ce n'est pas une action d'utilisateur, ADR-006 phase 5).
+ */
 async function loadConvocationDeliveries(tenantId: string, meetingId: string): Promise<Map<string, string>> {
   const statuses = new Map<string, string>();
   try {
-    const rows = await prisma.auditLog.findMany({
-      where: { tenantId, actionKey: CONVOCATION_DELIVERY_ACTION, entityType: 'GeneralMeeting', entityId: meetingId },
+    const rows = await prisma.notificationMarker.findMany({
+      where: { tenantId, kind: CONVOCATION_DELIVERY_ACTION, entityType: 'GeneralMeeting', entityId: meetingId },
       orderBy: { createdAt: 'asc' },
       select: { payload: true }
     });
@@ -408,10 +413,10 @@ async function loadConvocationDeliveries(tenantId: string, meetingId: string): P
 
 async function recordConvocationDelivery(tenantId: string, meetingId: string, contactId: string, status: string) {
   try {
-    await prisma.auditLog.create({
+    await prisma.notificationMarker.create({
       data: {
         tenantId,
-        actionKey: CONVOCATION_DELIVERY_ACTION,
+        kind: CONVOCATION_DELIVERY_ACTION,
         entityType: 'GeneralMeeting',
         entityId: meetingId,
         payload: { contactId, status }

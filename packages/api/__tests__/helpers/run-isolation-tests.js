@@ -49,3 +49,9 @@ execSync('npx jest __tests__/integration/isolation.test.ts __tests__/integration
   stdio: 'inherit',
   env
 });
+
+// Journal d'audit (phase 5) : scellement, verification, purge. Lance APRES et
+// SEPAREMENT : certains cas desactivent un declencheur de `audit_logs` le temps
+// d'une alteration simulee, ce qui ne doit jamais croiser une autre suite.
+console.log("Execution de la suite integrite du journal d'audit...");
+execSync('npx jest --runInBand __tests__/integration/audit-integrity.test.ts', { stdio: 'inherit', env });

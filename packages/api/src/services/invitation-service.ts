@@ -702,57 +702,31 @@ export async function listInvitations(tenantId: string) {
     }
   });
 
-  // Get roleIds from audit logs for each invitation
-  const invitationsWithRoleIds = await Promise.all(
-    invitations.map(async invitation => {
-      // Find audit log for this invitation creation
-      const auditLog = await prisma.auditLog.findFirst({
-        where: {
-          tenantId,
-          entityType: 'Invitation',
-          entityId: invitation.id,
-          actionKey: AuditActionKey.USER_INVITED
-        },
-        orderBy: {
-          createdAt: 'desc'
+  // `roleIds` est une colonne de l'invitation : on ne le relit plus dans le
+  // journal d'audit (une requête par invitation, et une dépendance à une table
+  // que la retention purge, ADR-006 phase 5).
+  return invitations.map(invitation => ({
+    id: invitation.id,
+    email: invitation.email,
+    status: invitation.status,
+    invitedAt: invitation.createdAt,
+    expiresAt: invitation.expiresAt,
+    acceptedAt: invitation.acceptedAt,
+    revokedAt: invitation.revokedAt,
+    roleIds: invitation.roleIds,
+    invitedBy: invitation.inviter
+      ? {
+          id: invitation.inviter.id,
+          email: invitation.inviter.email,
+          fullName: invitation.inviter.fullName
         }
-      });
-
-      // Extract roleIds from audit log payload
-      let roleIds: string[] = [];
-      if (auditLog?.payload && typeof auditLog.payload === 'object') {
-        const payload = auditLog.payload as any;
-        if (Array.isArray(payload.roleIds)) {
-          roleIds = payload.roleIds;
+      : null,
+    acceptedBy: invitation.accepter
+      ? {
+          id: invitation.accepter.id,
+          email: invitation.accepter.email,
+          fullName: invitation.accepter.fullName
         }
-      }
-
-      return {
-        id: invitation.id,
-        email: invitation.email,
-        status: invitation.status,
-        invitedAt: invitation.createdAt,
-        expiresAt: invitation.expiresAt,
-        acceptedAt: invitation.acceptedAt,
-        revokedAt: invitation.revokedAt,
-        roleIds,
-        invitedBy: invitation.inviter
-          ? {
-              id: invitation.inviter.id,
-              email: invitation.inviter.email,
-              fullName: invitation.inviter.fullName
-            }
-          : null,
-        acceptedBy: invitation.accepter
-          ? {
-              id: invitation.accepter.id,
-              email: invitation.accepter.email,
-              fullName: invitation.accepter.fullName
-            }
-          : null
-      };
-    })
-  );
-
-  return invitationsWithRoleIds;
+      : null
+  }));
 }

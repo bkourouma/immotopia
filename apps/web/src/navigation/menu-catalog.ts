@@ -129,11 +129,11 @@ export interface MenuCatalogSection {
  */
 const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Super-administrateur.
-  administration: ['PLATFORM_TENANTS_VIEW'],
+  administration: ['PLATFORM_TENANTS_VIEW', 'PLATFORM_AUDIT_VIEW'],
   'admin-tenants': ['PLATFORM_TENANTS_VIEW'],
   'admin-roles': ['PLATFORM_TENANTS_EDIT'],
   'admin-statistics': ['PLATFORM_TENANTS_VIEW'],
-  'admin-audit': ['PLATFORM_TENANTS_VIEW'],
+  'admin-audit': ['PLATFORM_AUDIT_VIEW'],
   'admin-ai-settings': ['PLATFORM_TENANTS_EDIT'],
 
   // Parc immobilier.
@@ -206,11 +206,12 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Paramétrage.
   documents: ['RENTAL_DOCUMENTS_VIEW'],
   'documents-templates': ['RENTAL_DOCUMENTS_VIEW'],
-  agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW'],
+  agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW', 'TENANT_AUDIT_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
   'agence-settings': ['TENANT_SETTINGS_VIEW'],
-  'agence-finance-settings': ['TENANT_SETTINGS_VIEW']
+  'agence-finance-settings': ['TENANT_SETTINGS_VIEW'],
+  'agence-activity': ['TENANT_AUDIT_VIEW']
 };
 
 function requirementsFor(navKey: string): string[] {

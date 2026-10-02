@@ -22,7 +22,9 @@ import {
   markInvoicePaidHandler
 } from '../controllers/subscription-controller';
 import { getGlobalStatisticsHandler, getTenantActivityStatsHandler } from '../controllers/statistics-controller';
-import { getAuditLogsHandler } from '../controllers/audit-controller';
+import { exportAuditLogsHandler, getAuditIntegrityHandler, getAuditLogsHandler } from '../controllers/audit-controller';
+import { requireSuperAdmin } from '../middleware/super-admin-middleware';
+import { auditExportRateLimiter, auditIntegrityRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   listCatalogHandler,
   updateCatalogItemHandler,
@@ -239,11 +241,23 @@ router.get('/statistics', requirePermission('PLATFORM_TENANTS_VIEW'), getGlobalS
 
 router.get('/tenants/:tenantId/activity', requirePermission('PLATFORM_TENANTS_VIEW'), getTenantActivityStatsHandler);
 
-// Audit log routes
+// Audit log routes (ADR-006, niveau plateforme). La consultation et l'export ont
+// leurs droits : PLATFORM_AUDIT_VIEW / PLATFORM_AUDIT_EXPORT. L'export est en
+// plus réservé au super-admin et limité en débit.
+router.get('/audit', requirePermission('PLATFORM_AUDIT_VIEW'), getAuditLogsHandler);
 router.get(
-  '/audit',
-  requirePermission('PLATFORM_TENANTS_VIEW'), // Using same permission as viewing tenants
-  getAuditLogsHandler
+  '/audit/export',
+  requirePermission('PLATFORM_AUDIT_EXPORT'),
+  requireSuperAdmin,
+  auditExportRateLimiter,
+  exportAuditLogsHandler
+);
+// Intégrité (phase 5) : recalcul des scellés quotidiens, lecture seule.
+router.get(
+  '/audit/integrity',
+  requirePermission('PLATFORM_AUDIT_VIEW'),
+  auditIntegrityRateLimiter,
+  getAuditIntegrityHandler
 );
 
 export default router;

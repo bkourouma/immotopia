@@ -10,7 +10,7 @@ const mockPrisma: Record<string, any> = {
 const mockSend = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), recordAuditEvent: jest.fn() }));
 jest.mock('../../src/services/email-service', () => ({
   emailService: { sendVerificationEmail: (...a: any[]) => mockSend(...a) },
   isEmailDeliveryConfigured: () => true

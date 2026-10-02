@@ -4,7 +4,7 @@
  */
 const mockPrisma = {
   generalMeeting: { findUnique: jest.fn() },
-  auditLog: { findMany: jest.fn(async () => [] as any[]), create: jest.fn(async () => ({})) }
+  notificationMarker: { findMany: jest.fn(async () => [] as any[]), create: jest.fn(async () => ({})) }
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
@@ -101,7 +101,7 @@ describe('notifyMeetingConvocation : destinataires et renvoi (M3)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPrisma.auditLog.findMany.mockResolvedValue([]);
+    mockPrisma.notificationMarker.findMany.mockResolvedValue([]);
     mockSendEmail.mockResolvedValue(undefined);
   });
 
@@ -115,7 +115,7 @@ describe('notifyMeetingConvocation : destinataires et renvoi (M3)', () => {
 
   it('le renvoi ne relance que les destinataires en échec ou jamais servis', async () => {
     mockPrisma.generalMeeting.findUnique.mockResolvedValue(meeting());
-    mockPrisma.auditLog.findMany.mockResolvedValue([
+    mockPrisma.notificationMarker.findMany.mockResolvedValue([
       { payload: { contactId: 'a', status: 'SENT' } },
       { payload: { contactId: 'b', status: 'FAILED' } }
       // d : jamais servi
@@ -124,12 +124,12 @@ describe('notifyMeetingConvocation : destinataires et renvoi (M3)', () => {
     expect(mockSendEmail.mock.calls.map(call => (call[0] as any).to).sort()).toEqual(['b@x.ci', 'd@x.ci']);
     expect(result).toMatchObject({ owners: 2, alreadyServed: 1, emailSent: 2 });
     // Le dernier résultat de chaque destinataire est journalisé pour le renvoi suivant.
-    expect(mockPrisma.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.notificationMarker.create).toHaveBeenCalledTimes(2);
   });
 
   it('l option all renvoie à tous', async () => {
     mockPrisma.generalMeeting.findUnique.mockResolvedValue(meeting());
-    mockPrisma.auditLog.findMany.mockResolvedValue([{ payload: { contactId: 'a', status: 'SENT' } }]);
+    mockPrisma.notificationMarker.findMany.mockResolvedValue([{ payload: { contactId: 'a', status: 'SENT' } }]);
     await notifyMeetingConvocation('m1', { all: true });
     expect(mockSendEmail).toHaveBeenCalledTimes(3);
   });

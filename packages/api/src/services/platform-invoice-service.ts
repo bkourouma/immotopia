@@ -36,7 +36,7 @@ import { logger } from '../utils/logger';
 import { t } from '../i18n';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { ChargeLine, PLATFORM_TAX_RATE_PERCENT, addBillingPeriod } from '../lib/subscription';
 import {
@@ -715,25 +715,27 @@ export async function issueCreditNote(tenantId: string, invoiceId: string, input
         await tx.subscriptionItem.updateMany({ where: { tenantId, id: { in: setupIds } }, data: { billedThrough: null } });
       }
     }
+
+    // Actions critiques : tracees dans la transaction, jamais commitees sans trace.
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.INVOICE_CREDIT_NOTE_ISSUED,
+      entityType: 'Invoice',
+      entityId: note.id,
+      payload: { creditedInvoiceId: invoiceId, invoiceNumber: note.invoiceNumber, reason }
+    });
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.INVOICE_CANCELED,
+      entityType: 'Invoice',
+      entityId: invoiceId,
+      payload: { creditNoteId: note.id, reason }
+    });
     return note;
   });
 
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.INVOICE_CREDIT_NOTE_ISSUED,
-    entityType: 'Invoice',
-    entityId: creditNote.id,
-    payload: { creditedInvoiceId: invoiceId, invoiceNumber: creditNote.invoiceNumber, reason }
-  });
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: AuditActionKey.INVOICE_CANCELED,
-    entityType: 'Invoice',
-    entityId: invoiceId,
-    payload: { creditNoteId: creditNote.id, reason }
-  });
   await sendPlatformInvoiceEmail(tenantId, creditNote.id);
   return loadInvoice(prisma, tenantId, creditNote.id);
 }

@@ -1,6 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { CreateMandateRequest } from '../types/property-types';
@@ -211,6 +211,20 @@ export async function revokeMandate(mandateId: string, tenantId: string, actorUs
       { propertyIds: [mandate.propertyId] },
       { actorUserId, reason: 'MANDATE_REVOKED' }
     );
+    // Critical action: audit trail written in the same transaction.
+    if (actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.PROPERTY_MANDATE_REVOKED,
+        entityType: PROPERTY_ENTITY_TYPES.PROPERTY_MANDATE,
+        entityId: mandateId,
+        payload: {
+          propertyId: mandate.propertyId,
+          revokedAt: updated.revokedAt
+        }
+      });
+    }
     return updated;
   });
 
@@ -219,21 +233,6 @@ export async function revokeMandate(mandateId: string, tenantId: string, actorUs
     propertyId: mandate.propertyId,
     tenantId
   });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.PROPERTY_MANDATE_REVOKED,
-      entityType: PROPERTY_ENTITY_TYPES.PROPERTY_MANDATE,
-      entityId: mandateId,
-      payload: {
-        propertyId: mandate.propertyId,
-        revokedAt: revoked.revokedAt
-      }
-    });
-  }
 
   return revoked;
 }

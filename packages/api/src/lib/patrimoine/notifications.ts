@@ -8,6 +8,7 @@ import { emailService } from '../../services/email-service';
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
 import { logAuditEvent, flushAuditEvents } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
+import { MARKER_KIND, alreadyMarkedEntityIds, markNotified } from '../notification-markers';
 import { createSecureLink, revokeSecureLink } from '../secure-links';
 import {
   CHANNEL_RECIPIENT_SELECT,
@@ -410,16 +411,15 @@ async function resolveAgencyAdminRecipients(tenantId: string): Promise<AgencyAdm
 /**
  * Anti-doublon des trois alertes ci-dessous (`RentalLease`, `PropertyLoan`,
  * `WorkProgram`) : ces modeles n'ont pas de colonne `warningSentAt` dediee
- * comme `PropertyDocument`. En ajouter une exigerait une migration Prisma ;
- * ce worktree partage son `node_modules/.prisma` (jonction Windows, voir
- * RUNBOOK.md) avec le checkout principal, et y lancer `prisma generate`
- * desynchroniserait le client genere des deux tant qu'il n'est pas relance
- * partout. On reutilise donc `AuditLog` (deja indexe sur
- * `entityType, entityId`) comme marque de reservation : une entree y est
- * ecrite apres l'envoi (flush immediat, `await flushAuditEvents()` juste
- * apres chaque `logAuditEvent` reussi -- pas en fin de boucle complete, pour
- * borner la fenetre de perte en cas de crash a une seule entite plutot qu'a
- * tout le lot du jour pour l'agence), et le prochain passage l'exclut.
+ * comme `PropertyDocument`. Une marque est ecrite dans `NotificationMarker`
+ * APRES l'envoi, entite par entite (pas en fin de boucle : un crash ne perd la
+ * marque que d'une seule entite plutot que de tout le lot du jour pour
+ * l'agence), et le prochain passage l'exclut.
+ *
+ * Ces marques vivaient dans `AuditLog` ; elles n'y ont pas leur place (ce ne
+ * sont pas des actions d'utilisateur, et la retention du journal d'audit ne doit
+ * pas decider de ce qu'on renvoie). Voir ADR-006, phase 5.
+ *
  * Limite assumee : contrairement a la reservation atomique `updateMany` de
  * `alertExpiringDocuments`, cette lecture-puis-ecriture n'est pas atomique --
  * accepte car ce job tourne une fois par jour, sequentiellement, une agence a
@@ -434,20 +434,6 @@ async function resolveAgencyAdminRecipients(tenantId: string): Promise<AgencyAdm
  */
 function dateAlertKey(entityId: string, date: Date): string {
   return `${entityId}::${date.toISOString().slice(0, 10)}`;
-}
-
-async function alreadyAlertedEntityIds(
-  tenantId: string,
-  actionKey: AuditActionKey,
-  entityType: string,
-  candidateIds: string[]
-): Promise<Set<string>> {
-  if (candidateIds.length === 0) return new Set();
-  const rows = await prisma.auditLog.findMany({
-    where: { tenantId, actionKey, entityType, entityId: { in: candidateIds } },
-    select: { entityId: true }
-  });
-  return new Set(rows.map(row => row.entityId));
 }
 
 /**
@@ -484,9 +470,9 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
     }
   });
 
-  const alreadySent = await alreadyAlertedEntityIds(
+  const alreadySent = await alreadyMarkedEntityIds(
     tenantId,
-    AuditActionKey.PATRIMOINE_LEASE_END_ALERT_SENT,
+    MARKER_KIND.leaseEnd,
     'RentalLease',
     leases.filter(lease => lease.end_date).map(lease => dateAlertKey(lease.id, lease.end_date as Date))
   );
@@ -556,25 +542,15 @@ export async function alertExpiringLeases(tenantId: string, options?: { daysAhea
 
     if (deliveredCount > 0) {
       sent += 1;
-      logAuditEvent({
-        tenantId,
-        actionKey: AuditActionKey.PATRIMOINE_LEASE_END_ALERT_SENT,
-        entityType: 'RentalLease',
-        entityId: alertKey,
-        payload: { leaseId: lease.id, endDate: lease.end_date.toISOString() }
+      await markNotified(tenantId, MARKER_KIND.leaseEnd, 'RentalLease', alertKey, {
+        leaseId: lease.id,
+        endDate: lease.end_date.toISOString()
       });
-      // Flush immediat plutot qu'en fin de boucle : reduit la fenetre d'un
-      // crash entre l'envoi et l'ecriture de la marque anti-doublon a une
-      // seule entite plutot qu'a tout le lot du jour pour cette agence (la
-      // reservation n'est de toute facon pas atomique avec l'envoi, voir la
-      // doc de `alreadyAlertedEntityIds` ci-dessus).
-      await flushAuditEvents();
     } else {
       failed += 1;
     }
   }
 
-  await flushAuditEvents();
   logger.info('alertExpiringLeases completed', {
     tenantId,
     daysAhead,
@@ -610,9 +586,9 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
     select: { id: true, endDate: true, property: { select: { internalReference: true } } }
   });
 
-  const alreadySent = await alreadyAlertedEntityIds(
+  const alreadySent = await alreadyMarkedEntityIds(
     tenantId,
-    AuditActionKey.PATRIMOINE_LOAN_MATURITY_ALERT_SENT,
+    MARKER_KIND.loanMaturity,
     'PropertyLoan',
     loans.map(loan => dateAlertKey(loan.id, loan.endDate))
   );
@@ -661,21 +637,15 @@ export async function alertLoanMaturity(tenantId: string, options?: { daysAhead?
 
     if (deliveredCount > 0) {
       sent += 1;
-      logAuditEvent({
-        tenantId,
-        actionKey: AuditActionKey.PATRIMOINE_LOAN_MATURITY_ALERT_SENT,
-        entityType: 'PropertyLoan',
-        entityId: alertKey,
-        payload: { loanId: loan.id, endDate: loan.endDate.toISOString() }
+      await markNotified(tenantId, MARKER_KIND.loanMaturity, 'PropertyLoan', alertKey, {
+        loanId: loan.id,
+        endDate: loan.endDate.toISOString()
       });
-      // Flush immediat : voir le commentaire equivalent dans `alertExpiringLeases`.
-      await flushAuditEvents();
     } else {
       failed += 1;
     }
   }
 
-  await flushAuditEvents();
   logger.info('alertLoanMaturity completed', {
     tenantId,
     daysAhead,
@@ -709,9 +679,9 @@ export async function alertUpcomingWorks(tenantId: string, options?: { daysAhead
     select: { id: true, title: true, plannedDate: true, property: { select: { internalReference: true } } }
   });
 
-  const alreadySent = await alreadyAlertedEntityIds(
+  const alreadySent = await alreadyMarkedEntityIds(
     tenantId,
-    AuditActionKey.PATRIMOINE_WORK_UPCOMING_ALERT_SENT,
+    MARKER_KIND.workUpcoming,
     'WorkProgram',
     works.map(work => dateAlertKey(work.id, work.plannedDate))
   );
@@ -760,21 +730,15 @@ export async function alertUpcomingWorks(tenantId: string, options?: { daysAhead
 
     if (deliveredCount > 0) {
       sent += 1;
-      logAuditEvent({
-        tenantId,
-        actionKey: AuditActionKey.PATRIMOINE_WORK_UPCOMING_ALERT_SENT,
-        entityType: 'WorkProgram',
-        entityId: alertKey,
-        payload: { workProgramId: work.id, plannedDate: work.plannedDate.toISOString() }
+      await markNotified(tenantId, MARKER_KIND.workUpcoming, 'WorkProgram', alertKey, {
+        workProgramId: work.id,
+        plannedDate: work.plannedDate.toISOString()
       });
-      // Flush immediat : voir le commentaire equivalent dans `alertExpiringLeases`.
-      await flushAuditEvents();
     } else {
       failed += 1;
     }
   }
 
-  await flushAuditEvents();
   logger.info('alertUpcomingWorks completed', {
     tenantId,
     daysAhead,
@@ -922,8 +886,9 @@ export type OwnerMonthlyReportResult = {
  * canaux, le lien cree est revoque. Le jeton n'est jamais journalise : il ne
  * vit que dans l'URL transmise au message.
  *
- * Anti-doublon : `AuditLog` (`PATRIMOINE_OWNER_MONTHLY_REPORT_SENT`, cle = id du
- * releve), meme principe que les alertes d'echeance. `options.force` (envoi
+ * Anti-doublon : marque `notification_markers` (`PATRIMOINE_OWNER_MONTHLY_REPORT_SENT`, cle =
+ * id du releve), meme principe que les alertes d'echeance ; l'envoi reste aussi
+ * trace au journal d'audit. `options.force` (envoi
  * manuel depuis l'agence) l'ignore ; le job mensuel ne l'utilise jamais.
  */
 export async function sendOwnerMonthlyReport(
@@ -946,12 +911,9 @@ export async function sendOwnerMonthlyReport(
   }
 
   if (!options?.force) {
-    const done = await alreadyAlertedEntityIds(
-      tenantId,
-      AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT,
-      'OwnerStatement',
-      [statement.id]
-    );
+    const done = await alreadyMarkedEntityIds(tenantId, MARKER_KIND.ownerMonthlyReport, 'OwnerStatement', [
+      statement.id
+    ]);
     if (done.has(statement.id)) return { sent: false, channel: null, reason: 'ALREADY_SENT' };
   }
 
@@ -1011,6 +973,12 @@ export async function sendOwnerMonthlyReport(
     return { sent: false, channel: null, reason: 'SEND_FAILED' };
   }
 
+  // Marque anti-doublon ET trace d'audit : l'envoi d'un rapport est aussi un fait.
+  await markNotified(tenantId, MARKER_KIND.ownerMonthlyReport, 'OwnerStatement', statement.id, {
+    statementId: statement.id,
+    period: statement.period,
+    channel: delivery.channel
+  });
   logAuditEvent({
     actorUserId,
     tenantId,

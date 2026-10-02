@@ -1,7 +1,8 @@
 import { prisma } from '../utils/database';
 import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
+import { diffForAudit } from '../lib/audit/changes';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { syncLotActivationsTx } from './lot-registry-service';
@@ -703,7 +704,12 @@ export async function updateProperty(
       entityId: updated.id,
       payload: {
         changes: data
-      }
+      },
+      // Avant/après des champs réellement modifiés (`existing` est la ligne lue
+      // avant la mise à jour ; `version` n'est qu'un compteur technique).
+      changes: diffForAudit(existing as unknown as Record<string, unknown>, updateData as Record<string, unknown>, {
+        exclude: ['version']
+      })
     });
   }
 
@@ -1204,21 +1210,6 @@ export async function deleteProperty(
     tenantId: property.tenantId
   });
 
-  // Audit log before deletion
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId: property.tenantId || null,
-      actionKey: AuditActionKey.PROPERTY_DELETED,
-      entityType: PROPERTY_ENTITY_TYPES.PROPERTY,
-      entityId: propertyId,
-      payload: {
-        internalReference: property.internalReference,
-        title: property.title
-      }
-    });
-  }
-
   // Hard delete - Prisma will cascade delete related records (media, documents, etc.)
   // based on the schema's onDelete: Cascade relationships. Le lot compte dans
   // l'abonnement est ferme dans la meme transaction (l'historique du registre
@@ -1250,6 +1241,20 @@ export async function deleteProperty(
           },
           { actorUserId, reason: 'PROPERTY_DELETED' }
         );
+      }
+      // Critical action: audit trail written in the same transaction as the delete.
+      if (actorUserId) {
+        await recordAuditEvent(tx, {
+          actorUserId,
+          tenantId: property.tenantId || null,
+          actionKey: AuditActionKey.PROPERTY_DELETED,
+          entityType: PROPERTY_ENTITY_TYPES.PROPERTY,
+          entityId: propertyId,
+          payload: {
+            internalReference: property.internalReference,
+            title: property.title
+          }
+        });
       }
     });
   } catch (error: any) {

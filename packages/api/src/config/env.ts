@@ -137,6 +137,24 @@ const envSchema = z
     // them; `enforce` throws. See env.example for the warn → enforce sequence.
     TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn'),
 
+    // Journal d'audit : retention, scellement, purge (ADR-006, phase 5,
+    // jobs/audit-maintenance-job.ts). Les durees sont des DEFAUTS A VALIDER.
+    // Minimum 7 mois : la fonction SQL `audit_logs_purge` refuse de toute facon
+    // une date limite de moins de 180 jours.
+    // - lignes visibles de l'agence (visibility = TENANT) : 24 mois ;
+    // - lignes reservees a la plateforme (PLATFORM_ONLY, sans agence) : 60 mois.
+    AUDIT_RETENTION_TENANT_MONTHS: z.coerce.number().int().min(7).max(240).default(24),
+    AUDIT_RETENTION_PLATFORM_MONTHS: z.coerce.number().int().min(7).max(240).default(60),
+    // Jours laisses a une journee avant d'etre scellee : une ligne remise en file
+    // par une panne de base peut arriver avec la date de sa journee d'origine.
+    AUDIT_SEAL_GRACE_DAYS: z.coerce.number().int().min(1).max(30).default(2),
+    // La purge est DESTRUCTIVE : elle est desactivee tant qu'elle n'est pas
+    // activee expressement (`true`). Le scellement, lui, est toujours actif.
+    AUDIT_PURGE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform(value => value === 'true'),
+
     // Abonnements par packs (lib/subscription, docs/architecture/PLAN-ABONNEMENTS.md).
     // `off` : droits calcules mais jamais appliques ; `warn` : modules,
     // lecture seule et quotas journalises sans bloquer ; `enforce` : appliques.

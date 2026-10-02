@@ -513,6 +513,11 @@ const InvitationsList = lazy(() =>
 const TenantSettings = lazy(() =>
   import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantSettings').then(m => ({ default: m.TenantSettings }))
 );
+const TenantActivityLog = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantActivityLog').then(m => ({
+    default: m.TenantActivityLog
+  }))
+);
 const AgencyFinanceSettings = lazy(() =>
   import(/* webpackChunkName: "tenant" */ './pages/tenant/AgencyFinanceSettings').then(m => ({
     default: m.AgencyFinanceSettings
@@ -1024,6 +1029,7 @@ function App() {
                           <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
+                          <Route path="/tenant/:tenantId/activity" element={<TenantActivityLog />} />
                           <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
                           <Route
                             path="/tenant/:tenantId/settings/abonnement"

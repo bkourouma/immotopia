@@ -89,6 +89,9 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   AuditLog:
     'Journal de securite de la plateforme : actions du super-admin, adresses IP et charges techniques ; ' +
     "conserve par ImmoTopia, pas remis a l'agence.",
+  AuditSeal:
+    "Scelles de hachage du journal d'audit (phase 5) : empreintes techniques, sans donnee metier ; " +
+    "conserves par ImmoTopia, pas remis a l'agence.",
   TenantDataExport: "Historique des exports eux-memes : chemins disque internes, sans donnee metier de l'agence.",
   // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
   // fiscal de la plateforme, commun à toutes les agences.

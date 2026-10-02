@@ -612,12 +612,13 @@ model Tenant {
   landRegularizationSteps       LandRegularizationStep[]
 
   // Abonnements par packs (PLAN-ABONNEMENTS.md)
-  subscriptionItems SubscriptionItem[]
-  capacityOverrides CapacityOverride[]
-  lotActivations    LotActivation[]
-  invoiceLines      InvoiceLine[]
-  usageSnapshots    UsageSnapshot[]
-  quotaAlerts       QuotaAlert[]
+  subscriptionItems   SubscriptionItem[]
+  capacityOverrides   CapacityOverride[]
+  lotActivations      LotActivation[]
+  invoiceLines        InvoiceLine[]
+  usageSnapshots      UsageSnapshot[]
+  quotaAlerts         QuotaAlert[]
+  notificationMarkers NotificationMarker[]
 
   // CRM relationships
   crmContacts           CrmContact[]
@@ -1606,7 +1607,50 @@ model QuotaAlert {
   @@map("quota_alerts")
 }
 
-// Audit Log
+// Audit Log (ADR-006, specs/023-audit-deux-niveaux)
+//
+// Une seule table, deux portees de lecture : `scope`/`visibility` separent le
+// niveau agence du niveau plateforme. Invariant pose en SQL (migration
+// 20261007090000) : scope = PLATFORM OU tenant_id non nul. Le declencheur
+// `audit_logs_immutable` refuse UPDATE et DELETE.
+
+/// TENANT : l'evenement concerne une agence. PLATFORM : action de plateforme.
+enum AuditScope {
+  TENANT
+  PLATFORM
+}
+
+/// Qui peut lire l'evenement. PLATFORM_ONLY : jamais montre a l'agence.
+enum AuditVisibility {
+  TENANT
+  PLATFORM_ONLY
+}
+
+enum AuditCategory {
+  AUTH
+  DATA
+  ADMIN
+  SECURITY
+  BILLING
+  EXPORT
+  AI
+  SYSTEM
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+enum AuditActorType {
+  USER
+  SUPER_ADMIN
+  PORTAL
+  SYSTEM
+  AI
+}
+
 model AuditLog {
   id          String   @id @default(uuid())
   actorUserId String?  @map("actor_user_id")
@@ -1619,16 +1663,79 @@ model AuditLog {
   payload     Json?
   createdAt   DateTime @default(now()) @map("created_at")
 
+  scope      AuditScope      @default(PLATFORM)
+  visibility AuditVisibility @default(PLATFORM_ONLY)
+  category   AuditCategory   @default(DATA)
+  outcome    AuditOutcome    @default(SUCCESS)
+  actorType  AuditActorType  @default(USER) @map("actor_type")
+  /// Nom ou e-mail de l'acteur AU MOMENT de l'action : survit a sa suppression.
+  actorLabel String?         @map("actor_label")
+  /// Regroupe les evenements d'une meme requete HTTP.
+  requestId  String?         @map("request_id")
+  /// http | job | script | ai
+  source     String?
+  /// Champs modifies : { champ: { before, after } }, secrets masques.
+  changes    Json?
+
   // No relations on purpose: the ids are kept verbatim so the trail survives
   // the deletion of the user or tenant it refers to.
 
   @@index([actorUserId])
   @@index([tenantId])
   @@index([tenantId, createdAt])
+  @@index([tenantId, visibility, createdAt(sort: Desc)])
+  @@index([scope, createdAt(sort: Desc)])
+  @@index([requestId])
   @@index([actionKey])
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+/// Marqueur de notification deja envoyee (ADR-006, phase 5) : anti-doublon des
+/// alertes d'echeance du patrimoine et journal de remise des convocations de
+/// copropriete. Ce n'est PAS une action d'utilisateur : il vivait dans
+/// `AuditLog`, qu'il polluait (et qu'une purge de retention aurait vide de ses
+/// marqueurs). `kind` garde les anciennes cles (`PATRIMOINE_LEASE_END_ALERT_SENT`...).
+model NotificationMarker {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  kind       String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kind, entityType, entityId])
+  @@map("notification_markers")
+}
+
+/// Scelle quotidien du journal d'audit (ADR-006, phase 5) : racine de Merkle des
+/// lignes d'une journee UTC, pour UNE agence (ou la plateforme) et UNE visibilite
+/// (une partition a une seule duree de conservation, donc se purge d'un bloc).
+/// Les scelles sont chaines (`chainHash` depend de `prevHash`) : en supprimer ou
+/// en reecrire un casse la chaine. Immuable (declencheur SQL), sans relation :
+/// survit a la suppression d'une agence, comme `AuditLog`.
+model AuditSeal {
+  id         String          @id @default(uuid())
+  /// Ordre de la chaine.
+  seq        Int             @unique @default(autoincrement())
+  sealDate   DateTime        @map("seal_date") @db.Date
+  /// Identifiant de l'agence, ou `PLATFORM` pour les lignes sans agence.
+  tenantKey  String          @map("tenant_key")
+  visibility AuditVisibility
+  rowCount   Int             @map("row_count")
+  rootHash   String          @map("root_hash")
+  prevHash   String          @map("prev_hash")
+  chainHash  String          @map("chain_hash")
+  algorithm  String          @default("sha256-merkle-v1")
+  sealedAt   DateTime        @default(now()) @map("sealed_at")
+
+  @@unique([sealDate, tenantKey, visibility])
+  @@index([sealDate])
+  @@map("audit_seals")
 }
 
 // CRM Models

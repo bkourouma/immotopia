@@ -1,6 +1,7 @@
 ﻿import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
+import { diffForAudit } from '../lib/audit/changes';
 import { BadRequestError } from '../middleware/error-middleware';
 import { CreateLeaseRequest, UpdateLeaseRequest, LeaseDetail } from '../types/rental-types';
 import {
@@ -946,21 +947,22 @@ export async function updateLease(
   }
 
   // Update lease
+  const leaseUpdate = {
+    end_date: data.endDate !== undefined ? data.endDate : undefined,
+    move_in_date: data.moveInDate !== undefined ? data.moveInDate : undefined,
+    move_out_date: data.moveOutDate !== undefined ? data.moveOutDate : undefined,
+    rent_amount: data.rentAmount !== undefined ? data.rentAmount : undefined,
+    service_charge_amount: data.serviceChargeAmount !== undefined ? data.serviceChargeAmount : undefined,
+    security_deposit_amount: data.securityDepositAmount !== undefined ? data.securityDepositAmount : undefined,
+    billing_frequency: data.billingFrequency !== undefined ? data.billingFrequency : undefined,
+    notes: data.notes !== undefined ? data.notes : undefined
+  };
   const lease = await prisma.rentalLease.update({
     where: {
       id: leaseId,
       tenant_id: tenantId
     },
-    data: {
-      end_date: data.endDate !== undefined ? data.endDate : undefined,
-      move_in_date: data.moveInDate !== undefined ? data.moveInDate : undefined,
-      move_out_date: data.moveOutDate !== undefined ? data.moveOutDate : undefined,
-      rent_amount: data.rentAmount !== undefined ? data.rentAmount : undefined,
-      service_charge_amount: data.serviceChargeAmount !== undefined ? data.serviceChargeAmount : undefined,
-      security_deposit_amount: data.securityDepositAmount !== undefined ? data.securityDepositAmount : undefined,
-      billing_frequency: data.billingFrequency !== undefined ? data.billingFrequency : undefined,
-      notes: data.notes !== undefined ? data.notes : undefined
-    },
+    data: leaseUpdate,
     include: {
       property: {
         select: {
@@ -994,7 +996,9 @@ export async function updateLease(
     actionKey: 'RENTAL_LEASE_UPDATED',
     entityType: 'RENTAL_LEASE',
     entityId: lease.id,
-    payload: data as unknown as Record<string, unknown>
+    payload: data as unknown as Record<string, unknown>,
+    // Avant/après : loyer, charges, dépôt, dates, fréquence de facturation.
+    changes: diffForAudit(existingLease as unknown as Record<string, unknown>, leaseUpdate)
   });
 
   return withPublicDocuments(lease) as unknown as LeaseDetail;
@@ -1371,6 +1375,18 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
       }
     });
     await syncLotActivationsTx(tx, tenantId, { propertyIds: [propertyId] }, { actorUserId, reason: 'LEASE_DELETED' });
+    // Critical action: audit trail written in the same transaction.
+    await recordAuditEvent(tx, {
+      actorUserId,
+      tenantId,
+      actionKey: 'RENTAL_LEASE_DELETED',
+      entityType: 'RENTAL_LEASE',
+      entityId: leaseId,
+      payload: {
+        leaseNumber: lease.lease_number,
+        status: lease.status
+      }
+    });
   });
 
   logger.info('Rental lease deleted', {
@@ -1408,17 +1424,4 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
       });
     }
   }
-
-  // Audit log
-  logAuditEvent({
-    actorUserId,
-    tenantId,
-    actionKey: 'RENTAL_LEASE_DELETED',
-    entityType: 'RENTAL_LEASE',
-    entityId: leaseId,
-    payload: {
-      leaseNumber: lease.lease_number,
-      status: lease.status
-    }
-  });
 }

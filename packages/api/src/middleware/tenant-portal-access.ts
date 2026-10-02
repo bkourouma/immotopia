@@ -3,6 +3,7 @@ import { prisma } from '../utils/database';
 import { RentalLeaseStatus, TenantStatus } from '@prisma/client';
 import { t } from '../i18n';
 import { runWithTenantContext } from '../utils/tenant-context';
+import { setAuditActor } from '../utils/request-context';
 
 /** Header a client can send to pick which agency's portal it wants (B3 b). */
 const PORTAL_TENANT_HEADER = 'x-portal-tenant-id';
@@ -140,6 +141,8 @@ export const requireTenantPortalAccess = async (req: Request, res: Response, nex
       availableTenantIds
     };
 
+    // Les événements d'audit de cette requête sont ceux d'un portail, pas d'un collaborateur.
+    setAuditActor({ type: 'PORTAL' });
     runWithTenantContext(
       {
         tenantId: tenantClient.tenantId,

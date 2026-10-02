@@ -1,32 +1,43 @@
 import { prisma } from '../utils/database';
 import { AuditLogEntry, AuditActionKey } from '../types/audit-types';
 import { logger } from '../utils/logger';
-import { getRequestContext } from '../utils/request-context';
-import { Prisma } from '@prisma/client';
+import { registerShutdownHook } from '../utils/shutdown-hooks';
+import { AuditRow, buildAuditRow } from './audit-entry-builder';
 
-// In-memory audit queue
-const auditQueue: AuditLogEntry[] = [];
+// In-memory audit queue. Rows are built (actor, tenant, request id, catalog,
+// redaction) when the event is logged, i.e. inside the request: the flush runs
+// from a timer, outside any request context.
+const auditQueue: AuditRow[] = [];
 let flushInterval: NodeJS.Timeout | null = null;
 
 // Queue flush threshold
 const QUEUE_FLUSH_THRESHOLD = 100;
 const QUEUE_FLUSH_INTERVAL_MS = 5000; // 5 seconds
 
+// Hard cap: while the database is down the queue would otherwise grow without
+// bound and take the process down with it. Oldest rows are dropped first.
+export const AUDIT_QUEUE_MAX = 10_000;
+
+function capQueue(): void {
+  const overflow = auditQueue.length - AUDIT_QUEUE_MAX;
+  if (overflow > 0) {
+    auditQueue.splice(0, overflow);
+    logger.error('Audit queue overflow: oldest events dropped', { dropped: overflow, max: AUDIT_QUEUE_MAX });
+  }
+}
+
 /**
- * Add audit log entry (non-blocking).
- * IP and User-Agent are filled from the current HTTP request context when available.
+ * Add audit log entry (non-blocking, best effort: up to a few seconds of events
+ * can be lost on a hard crash). Use `recordAuditEvent` inside the business
+ * transaction for actions that must never go unrecorded.
+ *
+ * Actor, agency, request id, IP and User-Agent are filled from the current
+ * request context when the caller does not provide them.
  * @param entry - Audit log entry
  */
 export function logAuditEvent(entry: AuditLogEntry): void {
-  const ctx = getRequestContext();
-  const enriched: AuditLogEntry = {
-    ...entry,
-    createdAt: entry.createdAt || new Date(),
-    ipAddress: entry.ipAddress ?? ctx?.ip ?? null,
-    userAgent: entry.userAgent ?? ctx?.userAgent ?? null
-  };
-
-  auditQueue.push(enriched);
+  auditQueue.push(buildAuditRow(entry));
+  capQueue();
 
   // Auto-flush if queue reaches threshold
   if (auditQueue.length >= QUEUE_FLUSH_THRESHOLD) {
@@ -43,6 +54,24 @@ export function logAuditEvent(entry: AuditLogEntry): void {
   }
 }
 
+/** Minimal shape of a Prisma client or transaction client that can write audit rows. */
+export interface AuditWriter {
+  auditLog: { create: (args: { data: AuditRow }) => Promise<unknown> };
+}
+
+/**
+ * Write an audit event through the given transaction client, in the same
+ * transaction as the business change. If the audit row cannot be written the
+ * transaction fails: no commit without its trace. Reserved for the actions
+ * flagged `critical` in `types/audit-catalog.ts`.
+ *
+ * The row is built here, at call time, so the request context is still
+ * available.
+ */
+export async function recordAuditEvent(tx: AuditWriter, entry: AuditLogEntry): Promise<void> {
+  await tx.auditLog.create({ data: buildAuditRow(entry) });
+}
+
 /**
  * Flush queue to database (batch insert)
  */
@@ -55,33 +84,20 @@ async function flushAuditQueue(): Promise<void> {
 
   try {
     await prisma.auditLog.createMany({
-      data: entries.map(entry => ({
-        actorUserId: entry.actorUserId || null,
-        tenantId: entry.tenantId || null,
-        actionKey: entry.actionKey,
-        entityType: entry.entityType,
-        entityId: entry.entityId,
-        ipAddress: entry.ipAddress || null,
-        userAgent: entry.userAgent || null,
-        // `Json?` de Prisma n'accepte pas un `null` ordinaire : il faut la
-        // valeur sentinelle `DbNull`, qui ecrit un NULL SQL. Un `null` nu ne
-        // compile pas — c'etait l'une des erreurs de type preexistantes, et
-        // elle empechait `ts-jest` de charger tout test dont le graphe de
-        // modules touche ce fichier.
-        payload: (entry.payload ?? Prisma.DbNull) as Prisma.InputJsonValue | typeof Prisma.DbNull,
-        createdAt: entry.createdAt || new Date()
-      })),
+      data: entries,
       skipDuplicates: true
     });
 
     logger.debug('Audit log queue flushed', { count: entries.length });
   } catch (error) {
-    // Re-queue failed entries (with retry limit)
+    // Re-queue failed entries, ahead of the ones logged meanwhile; the cap
+    // bounds the retry.
     logger.error('Audit log flush failed, re-queuing entries', {
       error,
       entryCount: entries.length
     });
     auditQueue.unshift(...entries);
+    capQueue();
   }
 
   // Clear interval if queue is empty
@@ -102,106 +118,15 @@ export async function flushAuditEvents(): Promise<number> {
   return auditQueue.length;
 }
 
+const NATIVE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Get audit logs with filtering
- * @param filters - Filter criteria
- * @returns Audit logs and pagination info
+ * Identifiants acceptables par une colonne `@db.Uuid` (bail, ticket, prestataire).
+ * Un `entityId` d'une autre forme (ligne ancienne, clé libre) ferait échouer la
+ * requête entière ; il n'a de toute façon aucun libellé à fournir.
  */
-export async function getAuditLogs(filters: {
-  tenantId?: string;
-  actionKey?: string;
-  entityType?: string;
-  entityId?: string;
-  actorUserId?: string;
-  startDate?: Date;
-  endDate?: Date;
-  page?: number;
-  limit?: number;
-}) {
-  const page = filters.page || 1;
-  const limit = filters.limit || 50;
-  const skip = (page - 1) * limit;
-
-  const where: any = {};
-
-  if (filters.tenantId) {
-    where.tenantId = filters.tenantId;
-  }
-  if (filters.actionKey) {
-    where.actionKey = filters.actionKey;
-  }
-  if (filters.entityType) {
-    where.entityType = filters.entityType;
-  }
-  if (filters.entityId) {
-    where.entityId = filters.entityId;
-  }
-  if (filters.actorUserId) {
-    where.actorUserId = filters.actorUserId;
-  }
-  if (filters.startDate || filters.endDate) {
-    where.createdAt = {};
-    if (filters.startDate) {
-      where.createdAt.gte = filters.startDate;
-    }
-    if (filters.endDate) {
-      where.createdAt.lte = filters.endDate;
-    }
-  }
-
-  const [rows, total] = await Promise.all([
-    prisma.auditLog.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: {
-        createdAt: 'desc'
-      }
-    }),
-    prisma.auditLog.count({ where })
-  ]);
-
-  // AuditLog no longer carries foreign keys to users/tenants, so that a
-  // deleted user or tenant cannot erase who did what. Resolve the labels in a
-  // second query instead — two round-trips, not one per row.
-  const actorIds = [...new Set(rows.map(r => r.actorUserId).filter((id): id is string => Boolean(id)))];
-  const tenantIds = [...new Set(rows.map(r => r.tenantId).filter((id): id is string => Boolean(id)))];
-
-  const [actors, tenants] = await Promise.all([
-    actorIds.length
-      ? prisma.user.findMany({
-          where: { id: { in: actorIds } },
-          select: { id: true, email: true, fullName: true }
-        })
-      : Promise.resolve([]),
-    tenantIds.length
-      ? prisma.tenant.findMany({
-          where: { id: { in: tenantIds } },
-          select: { id: true, name: true }
-        })
-      : Promise.resolve([])
-  ]);
-
-  const actorById = new Map(actors.map(a => [a.id, a]));
-  const tenantById = new Map(tenants.map(t => [t.id, t]));
-
-  // Keep the previous response shape: null means the referenced entity is gone,
-  // while the id itself is still on the log line.
-  const logs = rows.map(row => ({
-    ...row,
-    actor: row.actorUserId ? (actorById.get(row.actorUserId) ?? null) : null,
-    tenant: row.tenantId ? (tenantById.get(row.tenantId) ?? null) : null
-  }));
-
-  return {
-    logs,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit)
-    }
-  };
+function nativeUuids(ids: Set<string>): string[] {
+  return [...ids].filter(id => NATIVE_UUID.test(id));
 }
 
 /**
@@ -209,13 +134,36 @@ export async function getAuditLogs(filters: {
  * Same kind of display as in the app (e.g. property ref + title + address, lease number, contact name).
  */
 export async function enrichAuditLogsWithResourceLabels(
+  logs: Parameters<typeof loadResourceLabels>[0],
+  scopeTenantId?: string
+): Promise<Map<string, string>> {
+  // Les libellés sont cosmétiques : le journal doit s'afficher même quand ils
+  // ne peuvent pas être résolus.
+  try {
+    return await loadResourceLabels(logs, scopeTenantId);
+  } catch (error) {
+    logger.warn('Audit: libellés de ressource indisponibles', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return new Map();
+  }
+}
+
+async function loadResourceLabels(
   logs: Array<{
     id: string;
     entityType: string;
     entityId: string;
     tenantId: string | null;
     payload?: unknown;
-  }>
+  }>,
+  /**
+   * Vue d'une agence : chaque requete est bornee a cette agence. Sans cela, une
+   * ligne dont l'`entityId` designerait l'objet d'une autre agence en afficherait
+   * le libelle, et la garde Prisma (requete sans filtre d'agence en contexte
+   * d'agence) la signalerait. Absent : vue plateforme, toutes agences.
+   */
+  scopeTenantId?: string
 ): Promise<Map<string, string>> {
   const labelByLogId = new Map<string, string>();
   if (logs.length === 0) return labelByLogId;
@@ -245,13 +193,13 @@ export async function enrichAuditLogsWithResourceLabels(
     await Promise.all([
       propIds.size > 0
         ? prisma.property.findMany({
-            where: { id: { in: [...propIds] } },
+            where: { id: { in: [...propIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, internalReference: true, title: true, address: true }
           })
         : [],
-      leaseIds.size > 0
+      nativeUuids(leaseIds).length > 0
         ? prisma.rentalLease.findMany({
-            where: { id: { in: [...leaseIds] } },
+            where: { id: { in: nativeUuids(leaseIds) }, ...(scopeTenantId ? { tenant_id: scopeTenantId } : {}) },
             select: {
               id: true,
               lease_number: true,
@@ -261,13 +209,13 @@ export async function enrichAuditLogsWithResourceLabels(
         : [],
       contactIds.size > 0
         ? prisma.crmContact.findMany({
-            where: { id: { in: [...contactIds] } },
+            where: { id: { in: [...contactIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, firstName: true, lastName: true, email: true, legalName: true }
           })
         : [],
       dealIds.size > 0
         ? prisma.crmDeal.findMany({
-            where: { id: { in: [...dealIds] } },
+            where: { id: { in: [...dealIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: {
               id: true,
               type: true,
@@ -278,31 +226,31 @@ export async function enrichAuditLogsWithResourceLabels(
         : [],
       tenantIds.size > 0
         ? prisma.tenant.findMany({
-            where: { id: { in: [...tenantIds] } },
+            where: { id: { in: scopeTenantId ? [...tenantIds].filter(id => id === scopeTenantId) : [...tenantIds] } },
             select: { id: true, name: true }
           })
         : [],
       invoiceIds.size > 0
         ? prisma.invoice.findMany({
-            where: { id: { in: [...invoiceIds] } },
+            where: { id: { in: [...invoiceIds] }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, invoiceNumber: true }
           })
         : [],
-      vendorIds.size > 0
+      nativeUuids(vendorIds).length > 0
         ? prisma.maintenanceVendor.findMany({
-            where: { id: { in: [...vendorIds] } },
+            where: { id: { in: nativeUuids(vendorIds) }, ...(scopeTenantId ? { tenant_id: scopeTenantId } : {}) },
             select: { id: true, name: true }
           })
         : [],
-      vendorIds.size > 0
+      nativeUuids(vendorIds).length > 0
         ? prisma.serviceProvider.findMany({
-            where: { id: { in: [...vendorIds] } },
+            where: { id: { in: nativeUuids(vendorIds) }, ...(scopeTenantId ? { tenantId: scopeTenantId } : {}) },
             select: { id: true, name: true }
           })
         : [],
-      ticketIds.size > 0
+      nativeUuids(ticketIds).length > 0
         ? prisma.maintenanceTicket.findMany({
-            where: { id: { in: [...ticketIds] } },
+            where: { id: { in: nativeUuids(ticketIds) }, ...(scopeTenantId ? { tenant_id: scopeTenantId } : {}) },
             select: { id: true, title: true, category: true }
           })
         : []
@@ -360,21 +308,15 @@ export async function enrichAuditLogsWithResourceLabels(
   return labelByLogId;
 }
 
-// Graceful shutdown: flush remaining entries
-process.on('SIGTERM', async () => {
+// Graceful shutdown: flush remaining entries BEFORE the database is closed.
+// `utils/database` runs the registered hooks ahead of `$disconnect()` and owns
+// `process.exit`; this module used to race it with its own SIGTERM handler.
+registerShutdownHook('audit-queue', async () => {
   if (flushInterval) {
     clearInterval(flushInterval);
+    flushInterval = null;
   }
   await flushAuditQueue();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  if (flushInterval) {
-    clearInterval(flushInterval);
-  }
-  await flushAuditQueue();
-  process.exit(0);
 });
 
 // Export AuditActionKey for convenience

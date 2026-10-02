@@ -3,7 +3,7 @@ import { ClientType, Prisma, TenantStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { UpdateTenantRequest, TenantFilters, TenantStats } from '../types/tenant-types';
 import { revokeTenantSessions } from '../middleware/session-invalidation';
-import { logAuditEvent, AuditActionKey } from './audit-service';
+import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
 import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { getUploadsRoot } from '../utils/project-root';
 import { env, frontendUrl } from '../config/env';
@@ -124,38 +124,58 @@ export async function updateTenant(tenantId: string, data: UpdateTenantRequest, 
     await revokeTenantSessions(tenantId);
   }
 
-  const updated = await prisma.tenant.update({
-    where: { id: tenantId },
-    data: {
-      name: data.name,
-      legalName: data.legalName,
-      status: data.status,
-      contactEmail: data.contactEmail,
-      contactPhone: data.contactPhone,
-      country: data.country,
-      city: data.city,
-      address: data.address,
-      brandingPrimaryColor: data.brandingPrimaryColor,
-      subdomain: data.subdomain,
-      customDomain: data.customDomain,
-      logoUrl: data.logoUrl,
-      website: data.website
+  const auditActionKey =
+    data.status === TenantStatus.SUSPENDED
+      ? AuditActionKey.TENANT_SUSPENDED
+      : data.status === TenantStatus.ACTIVE
+        ? AuditActionKey.TENANT_ACTIVATED
+        : AuditActionKey.TENANT_UPDATED;
+  const isCriticalAudit = auditActionKey !== AuditActionKey.TENANT_UPDATED;
+
+  // TENANT_SUSPENDED / TENANT_ACTIVATED are critical: their audit trace is
+  // written in the same transaction as the status change. TENANT_UPDATED stays
+  // on the asynchronous queue.
+  const updated = await prisma.$transaction(async tx => {
+    const result = await tx.tenant.update({
+      where: { id: tenantId },
+      data: {
+        name: data.name,
+        legalName: data.legalName,
+        status: data.status,
+        contactEmail: data.contactEmail,
+        contactPhone: data.contactPhone,
+        country: data.country,
+        city: data.city,
+        address: data.address,
+        brandingPrimaryColor: data.brandingPrimaryColor,
+        subdomain: data.subdomain,
+        customDomain: data.customDomain,
+        logoUrl: data.logoUrl,
+        website: data.website
+      }
+    });
+
+    if (actorUserId && isCriticalAudit) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: auditActionKey,
+        entityType: 'Tenant',
+        entityId: tenantId
+      });
     }
+
+    return result;
   });
 
   logger.info('Tenant updated', { tenantId, changes: Object.keys(data) });
 
-  // Audit log
-  if (actorUserId) {
+  // Audit log (non-critical)
+  if (actorUserId && !isCriticalAudit) {
     logAuditEvent({
       actorUserId,
       tenantId,
-      actionKey:
-        data.status === TenantStatus.SUSPENDED
-          ? AuditActionKey.TENANT_SUSPENDED
-          : data.status === TenantStatus.ACTIVE
-            ? AuditActionKey.TENANT_ACTIVATED
-            : AuditActionKey.TENANT_UPDATED,
+      actionKey: auditActionKey,
       entityType: 'Tenant',
       entityId: tenantId
     });
@@ -175,26 +195,29 @@ export async function suspendTenant(tenantId: string, actorUserId?: string) {
   await revokeTenantSessions(tenantId);
 
   // Update tenant status
-  const tenant = await prisma.tenant.update({
-    where: { id: tenantId },
-    data: {
-      status: TenantStatus.SUSPENDED,
-      isActive: false
+  const tenant = await prisma.$transaction(async tx => {
+    const result = await tx.tenant.update({
+      where: { id: tenantId },
+      data: {
+        status: TenantStatus.SUSPENDED,
+        isActive: false
+      }
+    });
+
+    if (actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.TENANT_SUSPENDED,
+        entityType: 'Tenant',
+        entityId: tenantId
+      });
     }
+
+    return result;
   });
 
   logger.info('Tenant suspended', { tenantId });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.TENANT_SUSPENDED,
-      entityType: 'Tenant',
-      entityId: tenantId
-    });
-  }
 
   return tenant;
 }
@@ -215,26 +238,29 @@ export async function activateTenant(tenantId: string, actorUserId?: string) {
   }
 
   // Update tenant status
-  const updated = await prisma.tenant.update({
-    where: { id: tenantId },
-    data: {
-      status: TenantStatus.ACTIVE,
-      isActive: true
+  const updated = await prisma.$transaction(async tx => {
+    const result = await tx.tenant.update({
+      where: { id: tenantId },
+      data: {
+        status: TenantStatus.ACTIVE,
+        isActive: true
+      }
+    });
+
+    if (actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.TENANT_ACTIVATED,
+        entityType: 'Tenant',
+        entityId: tenantId
+      });
     }
+
+    return result;
   });
 
   logger.info('Tenant activated', { tenantId });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.TENANT_ACTIVATED,
-      entityType: 'Tenant',
-      entityId: tenantId
-    });
-  }
 
   return updated;
 }

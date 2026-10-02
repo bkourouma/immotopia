@@ -1,7 +1,7 @@
 import { prisma } from '../utils/database';
 import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { logAuditEvent } from './audit-service';
+import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { RentalDepositMovementType } from '@prisma/client';
 import { assertTreasuryAccountUsableTx, type PaymentMethodLike } from '../lib/treasury/accounts';
 import { t } from '../i18n';
@@ -483,6 +483,22 @@ export async function createDepositMovement(
 
       await postDepositAccountingTx(tx, tenantId, type, created.id, paymentId);
 
+      // Critical action: audit trail written in the same transaction.
+      if (actorUserId) {
+        await recordAuditEvent(tx, {
+          actorUserId,
+          tenantId,
+          actionKey: 'RENTAL_DEPOSIT_MOVEMENT_CREATED',
+          entityType: 'RENTAL_DEPOSIT_MOVEMENT',
+          entityId: created.id,
+          payload: {
+            depositId,
+            type,
+            amount
+          }
+        });
+      }
+
       return created;
     },
     { timeout: 15000, maxWait: 10000 }
@@ -495,22 +511,6 @@ export async function createDepositMovement(
     type,
     amount
   });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: 'RENTAL_DEPOSIT_MOVEMENT_CREATED',
-      entityType: 'RENTAL_DEPOSIT_MOVEMENT',
-      entityId: movement.id,
-      payload: {
-        depositId,
-        type,
-        amount
-      }
-    });
-  }
 
   // Notifications email (locataire + propriétaire) si config activée
   try {

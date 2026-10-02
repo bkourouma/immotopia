@@ -534,7 +534,7 @@ export const ExternalAccessViewPage: React.FC = () => {
     const previousTitle = document.title;
     document.title = t('Accès partagé');
     const removeMeta = installMeta([
-      { name: 'robots', content: 'noindex, nofollow' },
+      { name: 'robots', content: t('noindex, nofollow') },
       { name: 'referrer', content: 'no-referrer' }
     ]);
     return () => {

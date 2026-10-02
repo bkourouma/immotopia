@@ -62,6 +62,7 @@ import patrimoineLandRoutes from './routes/patrimoine-land-routes';
 import patrimoineInsuranceRoutes from './routes/patrimoine-insurance-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
+import tenantAuditRoutes from './routes/tenant-audit-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
@@ -75,6 +76,7 @@ import { corsMiddleware } from './middleware/cors-middleware';
 import { requestLogger } from './middleware/logging-middleware';
 import { responseSanitizer } from './middleware/response-sanitizer-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
+import { auditAccessMiddleware } from './middleware/audit-access-middleware';
 import { resolveLanguage } from './middleware/language-middleware';
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
@@ -186,6 +188,10 @@ app.use(globalApiRateLimiter);
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);
 
+// Refus de droit, fichiers et exports servis -> journal d'audit (ADR-006, phase 3).
+// Observe la reponse : un seul point pour toutes les routes, portails compris.
+app.use(auditAccessMiddleware);
+
 // Aucune reponse JSON ne porte d'empreinte de mot de passe ni de jeton, meme
 // quand un service renvoie un `User` complet. Voir le middleware.
 app.use(responseSanitizer);
@@ -294,6 +300,7 @@ app.use('/api', patrimoineLandRoutes); // Patrimoine — régularisation fonciè
 app.use('/api', patrimoineInsuranceRoutes); // Patrimoine — assurances, sinistres et carnet d'entretien (lot B1, tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
+app.use('/api', tenantAuditRoutes); // Journal d'activite de l'agence (tenant-scoped, ADR-006)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation

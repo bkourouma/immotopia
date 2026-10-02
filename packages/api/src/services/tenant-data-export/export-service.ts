@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { Prisma, TenantDataExportStatus, type TenantDataExport } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
-import { logAuditEvent } from '../audit-service';
+import { logAuditEvent, recordAuditEvent } from '../audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { AppError, ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { InsufficientDiskSpaceError, buildTenantArchive, type ExportDataSource } from './archive-builder';
@@ -286,8 +286,21 @@ export async function requestTenantDataExport(tenantId: string, actorUserId: str
       select: { id: true }
     });
     if (active) throw new ConflictError('Un export de cette agence est déjà en préparation.');
-    const created = await prisma.tenantDataExport
-      .create({ data: { tenantId: tenant.id, requestedById: actorUserId, status: TenantDataExportStatus.QUEUED } })
+    // Action critique : la demande et sa trace d'audit s'engagent ensemble.
+    const created = await prisma
+      .$transaction(async tx => {
+        const row = await tx.tenantDataExport.create({
+          data: { tenantId: tenant.id, requestedById: actorUserId, status: TenantDataExportStatus.QUEUED }
+        });
+        await recordAuditEvent(tx, {
+          actorUserId,
+          tenantId: tenant.id,
+          actionKey: AuditActionKey.TENANT_DATA_EXPORT_REQUESTED,
+          entityType: ENTITY_TYPE,
+          entityId: row.id
+        });
+        return row;
+      })
       .catch(error => {
         // Index unique partiel (tenant_id) WHERE status IN (QUEUED, RUNNING) :
         // une demande concurrente, sur une autre instance, a gagne la course.
@@ -296,13 +309,6 @@ export async function requestTenantDataExport(tenantId: string, actorUserId: str
         }
         throw error;
       });
-    logAuditEvent({
-      actorUserId,
-      tenantId: tenant.id,
-      actionKey: AuditActionKey.TENANT_DATA_EXPORT_REQUESTED,
-      entityType: ENTITY_TYPE,
-      entityId: created.id
-    });
     scheduleTenantDataExport(created.id);
     return (await toDtos([created]))[0];
   } finally {

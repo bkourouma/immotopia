@@ -2,7 +2,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { BillingCycle, SubscriptionStatus } from '@prisma/client';
 import { CreateSubscriptionRequest, UpdateSubscriptionRequest } from '../types/subscription-types';
-import { logAuditEvent, AuditActionKey } from './audit-service';
+import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
 
 /**
  * Create a subscription for a tenant
@@ -174,13 +174,31 @@ export async function cancelSubscription(tenantId: string, cancelAt?: Date, acto
   // Set cancel date to end of current period if not provided
   const cancellationDate = cancelAt || subscription.currentPeriodEnd;
 
-  const updated = await prisma.subscription.update({
-    where: { tenantId },
-    data: {
-      status: SubscriptionStatus.CANCELED,
-      cancelAt: cancellationDate,
-      canceledAt: new Date()
+  // Critical action: audit trace in the same transaction as the cancellation.
+  const updated = await prisma.$transaction(async tx => {
+    const result = await tx.subscription.update({
+      where: { tenantId },
+      data: {
+        status: SubscriptionStatus.CANCELED,
+        cancelAt: cancellationDate,
+        canceledAt: new Date()
+      }
+    });
+
+    if (actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: AuditActionKey.SUBSCRIPTION_CANCELED,
+        entityType: 'Subscription',
+        entityId: result.id,
+        payload: {
+          cancelAt: cancellationDate
+        }
+      });
     }
+
+    return result;
   });
 
   logger.info('Subscription canceled', {
@@ -188,20 +206,6 @@ export async function cancelSubscription(tenantId: string, cancelAt?: Date, acto
     tenantId,
     cancelAt: cancellationDate
   });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId,
-      actionKey: AuditActionKey.SUBSCRIPTION_CANCELED,
-      entityType: 'Subscription',
-      entityId: updated.id,
-      payload: {
-        cancelAt: cancellationDate
-      }
-    });
-  }
 
   return updated;
 }

@@ -108,28 +108,20 @@ export enum AuditActionKey {
   // Syndic - recus et quittances de charges (lot S3) : renvoi manuel par e-mail
   SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT = 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT',
 
-  // Patrimoine (lot P3) : alertes d'echeance envoyees (fin de bail, fin
-  // d'emprunt, travaux a venir) -- utilisees comme marque anti-doublon via
-  // `entityType`/`entityId`, voir `lib/patrimoine/notifications.ts`.
-  PATRIMOINE_LEASE_END_ALERT_SENT = 'PATRIMOINE_LEASE_END_ALERT_SENT',
-  PATRIMOINE_LOAN_MATURITY_ALERT_SENT = 'PATRIMOINE_LOAN_MATURITY_ALERT_SENT',
-  PATRIMOINE_WORK_UPCOMING_ALERT_SENT = 'PATRIMOINE_WORK_UPCOMING_ALERT_SENT',
   // Rapport mensuel propriétaire envoyé avec un lien sécurisé (lot A3).
   PATRIMOINE_OWNER_MONTHLY_REPORT_SENT = 'PATRIMOINE_OWNER_MONTHLY_REPORT_SENT',
-  // Patrimoine (spec 032) : alertes de police / d'entretien (marque anti-doublon,
-  // voir `lib/patrimoine/insurance-alerts.ts`) et suivi des sinistres.
-  PATRIMOINE_INSURANCE_POLICY_ALERT_SENT = 'PATRIMOINE_INSURANCE_POLICY_ALERT_SENT',
-  PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT = 'PATRIMOINE_MAINTENANCE_DUE_ALERT_SENT',
+  // Patrimoine (spec 032) : suivi des sinistres. Les alertes de police et
+  // d'entretien ne sont plus des evenements d'audit (marques anti-doublon dans
+  // `notification_markers`, voir `lib/notification-markers.ts`).
   PATRIMOINE_INSURANCE_CLAIM_DECLARED = 'PATRIMOINE_INSURANCE_CLAIM_DECLARED',
   PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED = 'PATRIMOINE_INSURANCE_CLAIM_STATUS_CHANGED',
 
   // Patrimoine (lot B2, spec 033) : regularisation fonciere. Payloads sans donnee
-  // sensible (from/to, reason, reopened). L'alerte d'echeance depassee sert de marque anti-doublon.
+  // sensible (from/to, reason, reopened).
   LAND_REGULARIZATION_CREATED = 'LAND_REGULARIZATION_CREATED',
   LAND_REGULARIZATION_STATUS_CHANGED = 'LAND_REGULARIZATION_STATUS_CHANGED',
   LAND_STEP_STATUS_CHANGED = 'LAND_STEP_STATUS_CHANGED',
   LAND_STEP_UPDATED = 'LAND_STEP_UPDATED',
-  PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT = 'PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT',
 
   // Liens sécurisés (lib/secure-links, lot A3) : jamais le jeton ni son hash.
   SECURE_LINK_CREATED = 'SECURE_LINK_CREATED',
@@ -159,7 +151,78 @@ export enum AuditActionKey {
   AI_ACTION_REJECTED = 'AI_ACTION_REJECTED',
 
   // Réglage ImmoCopilot de la plateforme (super-admin) : jamais de secret dans le payload.
-  AI_SETTINGS_UPDATED = 'AI_SETTINGS_UPDATED'
+  AI_SETTINGS_UPDATED = 'AI_SETTINGS_UPDATED',
+
+  // CRM (clés historiques, longtemps passées en chaîne libre)
+  CRM_ACTIVITY_CREATED = 'CRM_ACTIVITY_CREATED',
+  CRM_CONTACT_CREATED = 'CRM_CONTACT_CREATED',
+  CRM_CONTACT_UPDATED = 'CRM_CONTACT_UPDATED',
+  CRM_CONTACT_DELETED = 'CRM_CONTACT_DELETED',
+  CRM_CONTACT_CONVERTED = 'CRM_CONTACT_CONVERTED',
+  CRM_CONTACT_ROLES_UPDATED = 'CRM_CONTACT_ROLES_UPDATED',
+  CRM_CONTACT_ROLE_DELETED = 'CRM_CONTACT_ROLE_DELETED',
+  CRM_DEAL_CREATED = 'CRM_DEAL_CREATED',
+  CRM_DEAL_UPDATED = 'CRM_DEAL_UPDATED',
+  CRM_DEAL_STAGE_CHANGED = 'CRM_DEAL_STAGE_CHANGED',
+
+  // Documents
+  DOCUMENT_GENERATED = 'DOCUMENT_GENERATED',
+  DOCUMENT_REGENERATED = 'DOCUMENT_REGENERATED',
+  DOCUMENT_TEMPLATE_UPLOADED = 'DOCUMENT_TEMPLATE_UPLOADED',
+  DOCUMENT_TEMPLATE_ACTIVATED = 'DOCUMENT_TEMPLATE_ACTIVATED',
+  DOCUMENT_TEMPLATE_DEACTIVATED = 'DOCUMENT_TEMPLATE_DEACTIVATED',
+  DOCUMENT_TEMPLATE_SET_DEFAULT = 'DOCUMENT_TEMPLATE_SET_DEFAULT',
+  DOCUMENT_TEMPLATE_DELETED = 'DOCUMENT_TEMPLATE_DELETED',
+
+  // Maintenance
+  MAINTENANCE_TICKET_CREATED = 'MAINTENANCE_TICKET_CREATED',
+  MAINTENANCE_VENDOR_CREATED = 'MAINTENANCE_VENDOR_CREATED',
+  MAINTENANCE_VENDOR_UPDATED = 'MAINTENANCE_VENDOR_UPDATED',
+  MAINTENANCE_VENDOR_DEACTIVATED = 'MAINTENANCE_VENDOR_DEACTIVATED',
+  MAINTENANCE_VENDOR_DELETED = 'MAINTENANCE_VENDOR_DELETED',
+
+  // Location
+  RENTAL_LEASE_CREATED = 'RENTAL_LEASE_CREATED',
+  RENTAL_LEASE_UPDATED = 'RENTAL_LEASE_UPDATED',
+  RENTAL_LEASE_STATUS_UPDATED = 'RENTAL_LEASE_STATUS_UPDATED',
+  RENTAL_LEASE_DELETED = 'RENTAL_LEASE_DELETED',
+  RENTAL_LEASE_CO_RENTER_ADDED = 'RENTAL_LEASE_CO_RENTER_ADDED',
+  RENTAL_LEASE_CO_RENTER_REMOVED = 'RENTAL_LEASE_CO_RENTER_REMOVED',
+  RENTAL_LEASE_RENT_REVISED = 'RENTAL_LEASE_RENT_REVISED',
+  RENTAL_LEASE_RENEWED = 'RENTAL_LEASE_RENEWED',
+  RENTAL_LEASE_AMENDED = 'RENTAL_LEASE_AMENDED',
+  RENTAL_LEASE_TERMINATED = 'RENTAL_LEASE_TERMINATED',
+  RENTAL_DOCUMENT_GENERATED = 'RENTAL_DOCUMENT_GENERATED',
+  RENTAL_DOCUMENT_STATUS_UPDATED = 'RENTAL_DOCUMENT_STATUS_UPDATED',
+  RENTAL_DEPOSIT_CREATED = 'RENTAL_DEPOSIT_CREATED',
+  RENTAL_DEPOSIT_MOVEMENT_CREATED = 'RENTAL_DEPOSIT_MOVEMENT_CREATED',
+  RENTAL_INSTALLMENT_MARKED_OVERDUE = 'RENTAL_INSTALLMENT_MARKED_OVERDUE',
+  RENTAL_PENALTY_CALCULATED = 'RENTAL_PENALTY_CALCULATED',
+  RENTAL_PENALTY_UPDATED = 'RENTAL_PENALTY_UPDATED',
+  RENTAL_PENALTY_DELETED = 'RENTAL_PENALTY_DELETED',
+  RENTAL_PENALTY_JUSTIFICATION_UPLOADED = 'RENTAL_PENALTY_JUSTIFICATION_UPLOADED',
+
+  // Divers
+  LOT_REGISTRY_RECONCILED = 'LOT_REGISTRY_RECONCILED',
+  PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN = 'PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN',
+  SUBSCRIPTION_PROVISIONED = 'SUBSCRIPTION_PROVISIONED',
+  TENANT_PROVISIONED = 'TENANT_PROVISIONED',
+
+  // Audit de l'audit (ADR-006) : consulter le journal est lui-même tracé.
+  AUDIT_VIEWED = 'AUDIT_VIEWED',
+  AUDIT_EXPORTED = 'AUDIT_EXPORTED',
+
+  // Maintenance du journal (phase 5) : scellement quotidien et purge de retention.
+  AUDIT_SEALED = 'AUDIT_SEALED',
+  AUDIT_PURGED = 'AUDIT_PURGED',
+  AUDIT_INTEGRITY_FAILED = 'AUDIT_INTEGRITY_FAILED',
+
+  // Accès (phase 3), posés par `middleware/audit-access-middleware.ts` à partir
+  // de la réponse : un refus de droit, un fichier ou un export servi.
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  TENANT_ACCESS_DENIED = 'TENANT_ACCESS_DENIED',
+  DOCUMENT_DOWNLOADED = 'DOCUMENT_DOWNLOADED',
+  DATA_EXPORTED = 'DATA_EXPORTED'
 }
 
 // Audit log entry
@@ -181,6 +244,20 @@ export const PROPERTY_ENTITY_TYPES = {
 
 export type CrmEntityType = (typeof CRM_ENTITY_TYPES)[keyof typeof CRM_ENTITY_TYPES];
 
+// Valeurs des enumerations Prisma (AuditScope, ...), redeclarees ici pour que ce
+// module reste importable dans les tests qui remplacent `@prisma/client` par un
+// mock sans enumerations.
+export type AuditScopeValue = 'TENANT' | 'PLATFORM';
+export type AuditVisibilityValue = 'TENANT' | 'PLATFORM_ONLY';
+export type AuditCategoryValue = 'AUTH' | 'DATA' | 'ADMIN' | 'SECURITY' | 'BILLING' | 'EXPORT' | 'AI' | 'SYSTEM';
+export type AuditOutcomeValue = 'SUCCESS' | 'FAILURE' | 'DENIED';
+export type AuditActorTypeValue = 'USER' | 'SUPER_ADMIN' | 'PORTAL' | 'SYSTEM' | 'AI';
+
+/**
+ * Entree de journal telle que l'ecrit un appelant. Tout ce qui est facultatif
+ * est complete automatiquement (contexte de requete, catalogue) ; une valeur
+ * fournie par l'appelant l'emporte toujours.
+ */
 export interface AuditLogEntry {
   actorUserId?: string | null;
   tenantId?: string | null;
@@ -191,28 +268,14 @@ export interface AuditLogEntry {
   userAgent?: string | null;
   payload?: Record<string, unknown> | null;
   createdAt?: Date;
-}
-
-// Audit log query filters
-export interface AuditLogFilters {
-  tenantId?: string;
-  actionKey?: string;
-  entityType?: string;
-  entityId?: string;
-  actorUserId?: string;
-  startDate?: Date;
-  endDate?: Date;
-  page?: number;
-  limit?: number;
-}
-
-// Audit log response
-export interface AuditLogResponse {
-  logs: AuditLogEntry[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  scope?: AuditScopeValue;
+  visibility?: AuditVisibilityValue;
+  category?: AuditCategoryValue;
+  outcome?: AuditOutcomeValue;
+  actorType?: AuditActorTypeValue;
+  actorLabel?: string | null;
+  requestId?: string | null;
+  source?: string | null;
+  /** Champs modifies : { champ: { before, after } }. Secrets masques a l'ecriture. */
+  changes?: Record<string, unknown> | null;
 }
