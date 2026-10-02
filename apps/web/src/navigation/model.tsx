@@ -444,6 +444,11 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/patrimoine/plan-tresorerie'
             },
             {
+              key: 'patrimoine-import',
+              label: t('Importer mon patrimoine'),
+              href: '/tenant/:tenantId/patrimoine/importation'
+            },
+            {
               key: 'patrimoine-claims',
               label: t('Sinistres'),
               href: '/tenant/:tenantId/patrimoine/claims'

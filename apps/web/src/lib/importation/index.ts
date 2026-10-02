@@ -50,3 +50,8 @@ export { lireClasseur, texteDeCellule } from './classeur';
 
 export type { CompteRenduImport, OptionsExecution, ResultatLigne } from './execution';
 export { executerImport, motifDeLErreur } from './execution';
+
+// Les natures du patrimoine (spec 038), la lecture de fichier, les gabarits et le
+// rapport ne passent PAS par ce fichier : la page finance l'importe, et elle ne
+// doit pas embarquer ces modules. La page patrimoine les importe en direct.
+export type { BienExistant } from './types';

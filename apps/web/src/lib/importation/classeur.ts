@@ -92,7 +92,9 @@ export async function lireClasseur(fichier: File | Blob): Promise<FeuilleLue> {
   const brutes: Array<{ numero: number; cellules: string[] }> = [];
   feuille.eachRow({ includeEmpty: false }, (ligne, numero) => {
     const valeurs = Array.isArray(ligne.values) ? ligne.values.slice(1) : [];
-    brutes.push({ numero, cellules: valeurs.map(texteDeCellule) });
+    // `Array.from` et non `map` : `values` est CREUX quand une colonne est vide au
+    // milieu, et `map` saute les trous (le tableau resterait creux).
+    brutes.push({ numero, cellules: Array.from({ length: valeurs.length }, (_, i) => texteDeCellule(valeurs[i])) });
   });
 
   const indexEntetes = brutes.findIndex(ligne => ligne.cellules.some(cellule => cellule !== ''));

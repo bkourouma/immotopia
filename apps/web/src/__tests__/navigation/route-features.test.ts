@@ -20,6 +20,7 @@ describe('featureForAgencyPath', () => {
     ['rental/leases', 'RENTAL'],
     ['patrimoine/performance', 'PATRIMOINE'],
     ['patrimoine/plan-tresorerie', 'PATRIMOINE'],
+    ['patrimoine/importation', 'PATRIMOINE'],
     ['patrimoine/statements', 'RENTAL'],
     ['syndics/s1/lots', 'SYNDIC']
   ])('%s -> %s', (path, feature) => {

@@ -1,11 +1,12 @@
 import { t } from '../../i18n/t';
-import { entreesReferentiel } from './referentiel';
+import { estUneFormuleRefusee } from './formules';
+import { entreesIndexees } from './referentiel';
 import {
   decouperPeriode,
   nettoyerEntier,
   nettoyerMontant,
   normaliserTexte,
-  rapprocherLibelle,
+  rapprocherLibelleIndexe,
   versDateISO,
   versPeriodeISO
 } from './valeurs';
@@ -133,6 +134,18 @@ function evaluerCellule(champ: ChampDocument, texte: string, contexte: ContexteI
     return { texte, valeur: null };
   }
 
+  // Une formule (« = » ou « @ » en tête) est refusée pour TOUT type de champ : un
+  // tableur l'exécuterait, et un nombre ou une date n'en commence jamais par un.
+  if (estUneFormuleRefusee(brut)) {
+    return {
+      texte,
+      valeur: null,
+      erreur: t('« {{champ}} » ne peut pas commencer par « = » ou « @ » (formule refusée).', {
+        champ: t(champ.libelle)
+      })
+    };
+  }
+
   switch (champ.type) {
     case 'texte':
       return { texte, valeur: brut };
@@ -211,8 +224,8 @@ function evaluerCellule(champ: ChampDocument, texte: string, contexte: ContexteI
           erreur: t('« {{champ}} » : aucune liste de référence déclarée.', { champ: t(champ.libelle) })
         };
       }
-      const entrees = entreesReferentiel(champ.referentiel, contexte.referentiel);
-      const resultat = rapprocherLibelle(entrees, brut);
+      const index = entreesIndexees(champ.referentiel, contexte.referentiel);
+      const resultat = rapprocherLibelleIndexe(index, brut, { exacte: champ.correspondanceExacte === true });
       if (!resultat.trouve) {
         const motif =
           resultat.motif === 'ambigu'
@@ -297,23 +310,41 @@ export function marquerDoublons(
   const enBase = new Set(empreintesExistantes);
   const vues = new Map<string, number>();
 
+  const motifBase = (empreinte: string): string =>
+    descripteur.motifDoublon
+      ? descripteur.motifDoublon(empreinte)
+      : t('Une pièce du même chantier, du même montant et de la même date existe déjà.');
+  const motifFichier = (empreinte: string, premiere: number): string =>
+    descripteur.motifDoublon
+      ? descripteur.motifDoublon(empreinte, premiere)
+      : t('Identique à la ligne {{ligne}} de ce fichier.', { ligne: premiere });
+
   return lignes.map(ligne => {
     if (ligne.erreurs.length > 0) return { ...ligne, doublon: null };
-    const empreinte = descripteur.empreinte?.(valeursDeLaLigne(ligne.cellules), contexte) ?? null;
-    if (!empreinte) return { ...ligne, doublon: null };
+    const brute = descripteur.empreinte?.(valeursDeLaLigne(ligne.cellules), contexte) ?? null;
+    const empreintes = (Array.isArray(brute) ? brute : [brute]).filter(
+      (empreinte): empreinte is string => typeof empreinte === 'string' && empreinte !== ''
+    );
+    if (empreintes.length === 0) return { ...ligne, doublon: null };
 
-    const premiere = vues.get(empreinte);
-    if (premiere !== undefined) {
-      return { ...ligne, doublon: t('Identique à la ligne {{ligne}} de ce fichier.', { ligne: premiere }) };
+    // Le doublon interne au fichier prime sur celui de la base. Chaque
+    // empreinte est testée, puis toutes sont mémorisées pour les lignes
+    // suivantes.
+    let doublon: string | null = null;
+    for (const empreinte of empreintes) {
+      const premiere = vues.get(empreinte);
+      if (premiere !== undefined) {
+        doublon = motifFichier(empreinte, premiere);
+        break;
+      }
     }
-    vues.set(empreinte, ligne.numero);
-
-    if (enBase.has(empreinte)) {
-      return {
-        ...ligne,
-        doublon: t('Une pièce du même chantier, du même montant et de la même date existe déjà.')
-      };
+    if (doublon === null) {
+      const touchee = empreintes.find(empreinte => enBase.has(empreinte));
+      if (touchee !== undefined) doublon = motifBase(touchee);
     }
-    return { ...ligne, doublon: null };
+    for (const empreinte of empreintes) {
+      if (!vues.has(empreinte)) vues.set(empreinte, ligne.numero);
+    }
+    return { ...ligne, doublon };
   });
 }

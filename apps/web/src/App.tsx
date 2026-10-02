@@ -95,6 +95,12 @@ const CashPlanPage = lazy(() =>
     default: m.CashPlanPage
   }))
 );
+// Spec 038 — import en masse du patrimoine (biens, valorisations).
+const ImportPatrimoinePage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/import/ImportPatrimoinePage').then(m => ({
+    default: m.ImportPatrimoinePage
+  }))
+);
 const InsuranceClaimsPage = lazy(
   () => import(/* webpackChunkName: "patrimoine" */ './pages/insurance/InsuranceClaimsPage')
 );
@@ -908,6 +914,7 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/patrimoine/work-programs" element={<WorkProgramsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/plan-tresorerie" element={<CashPlanPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/importation" element={<ImportPatrimoinePage />} />
                           <Route path="/tenant/:tenantId/patrimoine/claims" element={<InsuranceClaimsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/statements" element={<OwnerStatementsPage />} />
                           <Route
