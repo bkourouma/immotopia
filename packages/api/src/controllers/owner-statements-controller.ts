@@ -58,7 +58,7 @@ export const sendOwnerStatementHandler = asyncHandler(async (req: Request, res: 
   // Un releve de l'ancien calcul porte le loyer du contrat pour un loyer
   // encaisse : l'envoyer tel quel repeterait l'erreur.
   if (statement.computationVersion < OWNER_STATEMENT_COMPUTATION_VERSION) {
-    throw new ConflictError("Ce releve a ete calcule selon l'ancienne methode : recalculez-le avant de l'envoyer.");
+    throw new ConflictError("Ce relevé a été calculé selon l'ancienne méthode : recalculez-le avant de l'envoyer.");
   }
   const result = await sendOwnerStatement(statement.id, tenantId);
   res.status(result.sent ? 202 : 200).json({ success: true, data: result });

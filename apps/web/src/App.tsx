@@ -95,6 +95,12 @@ const CashPlanPage = lazy(() =>
     default: m.CashPlanPage
   }))
 );
+// Spec 038 — import en masse du patrimoine (biens, valorisations).
+const ImportPatrimoinePage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/import/ImportPatrimoinePage').then(m => ({
+    default: m.ImportPatrimoinePage
+  }))
+);
 const InsuranceClaimsPage = lazy(
   () => import(/* webpackChunkName: "patrimoine" */ './pages/insurance/InsuranceClaimsPage')
 );
@@ -133,6 +139,17 @@ const ExternalAccessPage = lazy(() =>
 const ExternalAccessViewPage = lazy(() =>
   import(/* webpackChunkName: "public-external-access" */ './pages/public/ExternalAccessViewPage').then(m => ({
     default: m.ExternalAccessViewPage
+  }))
+);
+// Lot B2 — régularisation foncière (spec 033).
+const LandRegularizationListPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/land/LandRegularizationListPage').then(m => ({
+    default: m.LandRegularizationListPage
+  }))
+);
+const LandRegularizationDetailPage = lazy(() =>
+  import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/land/LandRegularizationDetailPage').then(m => ({
+    default: m.LandRegularizationDetailPage
   }))
 );
 // Module financier — regroupe dans un seul morceau : les quatre ecrans se
@@ -909,6 +926,7 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/patrimoine/work-programs" element={<WorkProgramsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/plan-tresorerie" element={<CashPlanPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/importation" element={<ImportPatrimoinePage />} />
                           <Route path="/tenant/:tenantId/patrimoine/claims" element={<InsuranceClaimsPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/statements" element={<OwnerStatementsPage />} />
                           <Route
@@ -922,6 +940,11 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/patrimoine/tax-parameters" element={<TaxParametersPage />} />
                           <Route path="/tenant/:tenantId/patrimoine/external-access" element={<ExternalAccessPage />} />
+                          <Route path="/tenant/:tenantId/patrimoine/land" element={<LandRegularizationListPage />} />
+                          <Route
+                            path="/tenant/:tenantId/patrimoine/land/:regularizationId"
+                            element={<LandRegularizationDetailPage />}
+                          />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne

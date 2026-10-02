@@ -133,6 +133,9 @@ rôles, prestataires...) pour un statut actif/inactif simple.
 - `ExpenseRecurrence` : `ONE_OFF` (défaut, dépense ponctuelle) / `MONTHLY` / `QUARTERLY` / `ANNUAL` ; `PropertyExpense.paidAt` est la date de la dépense ponctuelle ou la date d'ancrage de la récurrence (occurrences à `paidAt + k × pas`, jusqu'à `recurrenceEndDate`).
 - `PropertyStatus` : `DRAFT → UNDER_REVIEW → AVAILABLE → RESERVED/UNDER_OFFER → RENTED/SOLD → ARCHIVED`.
 - `SubscriptionStatus` : `TRIALING → ACTIVE → PAST_DUE → CANCELED/SUSPENDED`.
+- `LandRegularizationStatus` : `EN_COURS → TERMINEE/ABANDONNEE` (réouverture possible avec motif) ;
+  `LandStepStatus` : `A_FAIRE ↔ EN_COURS ↔ BLOQUEE`, `→ TERMINEE` (voir la section
+  « LandRegularization »).
 - `InvoiceStatus` : `DRAFT → ISSUED → PAID/FAILED/CANCELED/REFUNDED`.
 - `TenantStatus` : `PENDING → ACTIVE → SUSPENDED`.
 - `MembershipStatus` : `PENDING_INVITE → ACTIVE → DISABLED`.
@@ -299,6 +302,107 @@ Accès des tiers de confiance ».
   contacts du CRM. `SecureLink` reste **exclu** (`EXCLUDED_MODELS`) : le hash est le secret
   d'accès. Le test `tenant-data-export.registry.test.ts` vérifie ce classement et l'absence de
   champ sensible dans les quatre modèles.
+
+## LandRegularization — régularisation foncière (lot B2, spec 033)
+
+Suivi d'avancement de la régularisation foncière d'un bien (attestation villageoise, ACD,
+titre foncier…), ajouté par la spec
+[033](../../specs/033-patrimoine-regularisation-fonciere/spec.md) ; migration additive
+`20261007130000_patrimoine_regularisation_fonciere`. Il relève du domaine « Patrimoine » ; les
+comptes ci-dessus ne les comptent pas tant que la migration n'est pas fusionnée. Les filières
+(`CI_ACD`, `PERSONNALISEE`) sont des **constantes de code** (`lib/patrimoine/land/tracks.ts`), pas
+des tables : seul le suivi d'un bien est stocké.
+
+**Enums** : `LandTrackKey` (`CI_ACD`, `PERSONNALISEE`) ; `LandRegularizationStatus`
+(`EN_COURS`, `TERMINEE`, `ABANDONNEE`) ; `LandStepStatus` (`A_FAIRE`, `EN_COURS`, `TERMINEE`,
+`BLOQUEE`).
+
+### `LandRegularization` (table `land_regularizations`)
+
+Un dossier de régularisation d'un bien. Un bien peut en avoir plusieurs dans le temps, **un seul
+`EN_COURS`** à la fois.
+
+| Champ             | Type                       | Règle                                                                                                   |
+| ----------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`              | `String` (UUID)            | clé primaire (colonne texte, `@default(uuid())`)                                                        |
+| `tenantId`        | `String`                   | agence, obligatoire ; relation `Tenant`, `onDelete: Cascade`                                            |
+| `propertyId`      | `String`                   | bien concerné, obligatoire ; relation `Property`, `onDelete: Cascade`                                   |
+| `track`           | `LandTrackKey`             | filière suivie ; fixée à la création                                                                    |
+| `status`          | `LandRegularizationStatus` | défaut `EN_COURS`                                                                                       |
+| `startDate`       | `DateTime`                 | début du dossier, défaut maintenant                                                                     |
+| `endedAt`         | `DateTime?`                | renseigné à la clôture (terminé ou abandonné)                                                           |
+| `notes`           | `String?`                  | texte libre de l'agence                                                                                 |
+| `createdByUserId` | `String?`                  | créateur ; relation `User` (`LandRegularizationCreatedBy`) `onDelete: SetNull` ; jamais `include: user` |
+| `createdAt`       | `DateTime`                 | création                                                                                                |
+| `updatedAt`       | `DateTime`                 | `@updatedAt`                                                                                            |
+
+**Index** : `tenantId` ; `propertyId` ; `(tenantId, status)` ; et l'**index unique partiel**
+`land_regularizations_one_active_per_property_key` sur `property_id` `WHERE "status" = 'EN_COURS'`.
+Ce dernier n'est écrit **que dans la migration SQL** : Prisma ne sait pas exprimer un index
+partiel, il n'apparaît donc pas comme `@@unique` dans `schema.prisma` (un commentaire le signale).
+Ne jamais accepter qu'une migration générée le supprime.
+
+### `LandRegularizationStep` (table `land_regularization_steps`)
+
+Une étape d'un dossier. Les étapes d'une filière constante sont **copiées** à la création : le
+dossier ne dépend plus de la constante ensuite.
+
+| Champ              | Type             | Règle                                                                                                        |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| `id`               | `String` (UUID)  | clé primaire                                                                                                 |
+| `tenantId`         | `String`         | agence, **direct** (comme le dossier), obligatoire ; relation `Tenant`, `onDelete: Cascade`                  |
+| `regularizationId` | `String`         | dossier ; relation `LandRegularization`, `onDelete: Cascade`                                                 |
+| `stepKey`          | `String`         | clé de l'étape : clé du catalogue (`acd`, `titre_foncier`…) ou `custom_<n>`                                  |
+| `sortOrder`        | `Int`            | rang de l'étape (colonne `sort_order`) ; unique par dossier                                                  |
+| `label`            | `String`         | texte **français** (clé de traduction) pour une étape du catalogue, texte saisi pour une étape personnalisée |
+| `required`         | `Boolean`        | défaut `true` ; toutes les étapes de `CI_ACD` sont obligatoires                                              |
+| `status`           | `LandStepStatus` | défaut `A_FAIRE`                                                                                             |
+| `startedAt`        | `DateTime?`      | posé au premier passage à `EN_COURS` ou `TERMINEE`, jamais effacé                                            |
+| `completedAt`      | `DateTime?`      | posé à `TERMINEE`, remis à vide à la réouverture                                                             |
+| `dueDate`          | `DateTime?`      | échéance ; sert au retard et à la relance                                                                    |
+| `costXof`          | `Decimal(14,2)`  | frais engagés en XOF, défaut 0, jamais négatif (contrôlé par l'API)                                          |
+| `notes`            | `String?`        | texte libre                                                                                                  |
+| `documentId`       | `String?`        | pièce rattachée ; relation `PropertyDocument`, `onDelete: SetNull`                                           |
+| `createdAt`        | `DateTime`       | création                                                                                                     |
+| `updatedAt`        | `DateTime`       | `@updatedAt`                                                                                                 |
+
+**Index** : unique `(regularizationId, sortOrder)` ; `tenantId` ; `regularizationId` ;
+`(tenantId, status, dueDate)` (sélection des étapes en retard par l'alerte) ; `documentId`.
+Colonnes en snake_case (`tenant_id`, `regularization_id`, `cost_xof`…) ; les champs Prisma restent
+en camelCase.
+
+### Règles d'intégrité
+
+- **Un seul dossier `EN_COURS` par bien** : deux défenses, le contrôle du service (erreur 409
+  claire) et l'index unique partiel en base ; la violation de l'index lors d'une création
+  concurrente est convertie en la même erreur 409. La réouverture d'un dossier clos est refusée
+  si un autre dossier est déjà `EN_COURS` sur le bien.
+- **Isolation** : `tenantId` direct sur **les deux** modèles, donc gardés par l'extension Prisma
+  et vérifiés par `schema-tenant-coverage.test.ts`. Tout identifiant reçu (bien, dossier, étape,
+  document) est vérifié par agence ; `stepId` doit appartenir au dossier de l'URL.
+- **Pièce du même bien** : `documentId` doit désigner un `PropertyDocument` de la même agence
+  **et** du même bien que le dossier (la base ne le garantit pas : contrôle de service, test
+  dédié). Les types de document sont les types existants (`TITLE_DEED`, `LAND_CONCESSION`, `PLAN`,
+  `TAX_DOCUMENT`, `OTHER`) ; l'étape ne fournit qu'un type **suggéré**, aucun type n'est ajouté.
+- **Suppressions** : supprimer le bien supprime ses dossiers et leurs étapes (cascade) ;
+  supprimer un document rattaché vide `documentId` sans supprimer l'étape ; supprimer
+  l'utilisateur créateur vide `createdByUserId`.
+- **Transitions** : portées par une fonction pure (`lib/patrimoine/land/transitions.ts`), pas par
+  la base : aucune contrainte `CHECK` sur l'ordre des statuts. Terminer une étape exige les
+  obligatoires précédentes ; rouvrir exige un motif ; un dossier clos n'accepte plus de
+  modification.
+- **Aucun export vers le coût de revient** : `costXof` n'alimente ni `PropertyExpense`, ni
+  `AssetValuation`, ni le rendement, ni la consolidation, ni les exports ; la somme des frais
+  (`feesXof`) est calculée à la lecture et affichée à part sous le nom « frais de
+  régularisation ». Leur intégration est un lot ultérieur.
+- **Progression et retard calculés, jamais stockés** : pourcentage, étape courante, prochaine
+  échéance et étapes en retard se dérivent des étapes à chaque lecture.
+- **Audit** : `LAND_REGULARIZATION_CREATED`, `LAND_REGULARIZATION_STATUS_CHANGED`,
+  `LAND_STEP_STATUS_CHANGED` (avec `reopened: true` à une réouverture), `LAND_STEP_UPDATED` et
+  la marque anti-doublon `PATRIMOINE_LAND_STEP_OVERDUE_ALERT_SENT` (`entityId` =
+  `<stepId>::<AAAA-MM-JJ de l'échéance>`) sont écrits dans `AuditLog`.
+- **Export d'agence** : les deux modèles sont exportés avec le reste (l'export est dérivé du
+  schéma, aucun secret n'y figure).
 
 ## Assurances, sinistres et carnet d'entretien (lot B1, spec 032)
 

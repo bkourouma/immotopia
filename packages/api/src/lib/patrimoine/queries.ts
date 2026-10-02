@@ -191,16 +191,16 @@ function assertExpenseRecurrence(recurrence: ExpenseRecurrenceValue, paidAt: Dat
   // La date saisie est celle d'un paiement REEL (le journal ecrit le montant a `paidAt`) : une depense
   // periodique ne peut pas etre datee dans le futur, les occurrences suivantes sont deduites.
   if (recurrence !== 'ONE_OFF' && paidAt.getTime() > Date.now() + 24 * 3600 * 1000) {
-    throw badRequest("La date de la depense periodique doit etre celle d'un paiement deja effectue");
+    throw badRequest("La date de la dépense périodique doit être celle d'un paiement déjà effectué");
   }
   if (!endDate) return;
   if (recurrence === 'ONE_OFF') {
-    throw badRequest("La date de fin n'a de sens que pour une depense periodique");
+    throw badRequest("La date de fin n'a de sens que pour une dépense périodique");
   }
   // Comparaison par jour UTC : une fin le meme jour que `paidAt` est acceptee.
   const utcDay = (date: Date) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   if (utcDay(endDate) < utcDay(paidAt)) {
-    throw badRequest('La date de fin de la periodicite ne peut pas preceder la date de la depense');
+    throw badRequest('La date de fin de la périodicité ne peut pas précéder la date de la dépense');
   }
 }
 
@@ -251,7 +251,7 @@ export async function createPropertyExpense(
 
   const agencyIsBuyer = data.agencyIsBuyer ?? false;
   if (agencyIsBuyer && !data.supplierName?.trim()) {
-    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-meme l'acheteuse");
+    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-même l'acheteuse");
   }
 
   const paymentMethod = data.paymentMethod ?? 'CASH';
@@ -295,7 +295,7 @@ export async function getPropertyExpenseById(tenantId: string, propertyId: strin
     where: { id: expenseId, tenantId, propertyId },
     include: { property: true }
   });
-  if (!expense) throw notFound('Depense introuvable');
+  if (!expense) throw notFound('Dépense introuvable');
   return expense;
 }
 
@@ -333,7 +333,7 @@ export async function updatePropertyExpense(
   const existing = await prisma.propertyExpense.findFirst({
     where: { id: expenseId, tenantId, propertyId }
   });
-  if (!existing) throw notFound('Depense introuvable');
+  if (!existing) throw notFound('Dépense introuvable');
 
   // Passer a ONE_OFF efface la date de fin ; sinon la valeur recue (ou stockee) doit rester coherente.
   const effectiveRecurrence = data.recurrence ?? existing.recurrence;
@@ -345,7 +345,7 @@ export async function updatePropertyExpense(
   const effectiveAgencyIsBuyer = data.agencyIsBuyer ?? existing.agencyIsBuyer;
   const effectiveSupplierName = data.supplierName !== undefined ? data.supplierName : existing.supplierName;
   if (effectiveAgencyIsBuyer && !effectiveSupplierName?.trim()) {
-    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-meme l'acheteuse");
+    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-même l'acheteuse");
   }
 
   const treasuryAccountId = data.treasuryAccountId !== undefined ? data.treasuryAccountId : existing.treasuryAccountId;
@@ -387,7 +387,7 @@ export async function deletePropertyExpense(tenantId: string, propertyId: string
   const existing = await prisma.propertyExpense.findFirst({
     where: { id: expenseId, tenantId, propertyId }
   });
-  if (!existing) throw notFound('Depense introuvable');
+  if (!existing) throw notFound('Dépense introuvable');
   await prisma.$transaction(async tx => {
     await tx.propertyExpense.delete({ where: { id: expenseId, tenantId } });
     // Dépense supprimée : son écriture éventuelle est contre-passée.
@@ -420,7 +420,7 @@ export async function createPropertyLoan(
 ) {
   await ensureTenantProperty(tenantId, propertyId);
   if (data.endDate <= data.startDate) {
-    throw badRequest('La date de fin du pret doit etre posterieure a la date de debut');
+    throw badRequest('La date de fin du prêt doit être postérieure à la date de début');
   }
   return prisma.propertyLoan.create({
     data: {
@@ -445,7 +445,7 @@ export async function getPropertyLoanById(tenantId: string, propertyId: string, 
     where: { id: loanId, tenantId, propertyId },
     include: { property: true }
   });
-  if (!loan) throw notFound('Pret introuvable');
+  if (!loan) throw notFound('Prêt introuvable');
   return loan;
 }
 
@@ -469,10 +469,10 @@ export async function updatePropertyLoan(
   const existing = await prisma.propertyLoan.findFirst({
     where: { id: loanId, tenantId, propertyId }
   });
-  if (!existing) throw notFound('Pret introuvable');
+  if (!existing) throw notFound('Prêt introuvable');
 
   if (data.startDate && data.endDate && data.endDate <= data.startDate) {
-    throw badRequest('La date de fin du pret doit etre posterieure a la date de debut');
+    throw badRequest('La date de fin du prêt doit être postérieure à la date de début');
   }
 
   return prisma.propertyLoan.update({
@@ -498,7 +498,7 @@ export async function deletePropertyLoan(tenantId: string, propertyId: string, l
   const existing = await prisma.propertyLoan.findFirst({
     where: { id: loanId, tenantId, propertyId }
   });
-  if (!existing) throw notFound('Pret introuvable');
+  if (!existing) throw notFound('Prêt introuvable');
   await prisma.propertyLoan.delete({ where: { id: loanId, tenantId } });
 }
 
@@ -662,7 +662,7 @@ export async function updatePropertyWorkProgram(
   const existingActualCost = existing.actualCost !== null ? Number(existing.actualCost) : null;
   if (typeof data.actualCost === 'number' && existing.constructionSiteId && data.actualCost !== existingActualCost) {
     throw conflict(
-      'Le cout reel de ce programme est derive du chantier rattache ; il ne peut plus etre saisi manuellement.'
+      'Le coût réel de ce programme est dérivé du chantier rattaché ; il ne peut plus être saisi manuellement.'
     );
   }
 
@@ -815,6 +815,9 @@ export async function getPatrimoineOverview(tenantId: string) {
     prisma.propertyExpense.findMany({
       where: {
         tenantId,
+        // Charges COURANTES : une depense capitalisee (renovation lourde) releve du cout de revient,
+        // comme dans le rendement (`buildPropertyYieldInput`) -- BUG-2026-10-01-010.
+        isCapitalized: false,
         paidAt: { gte: yearStart, lte: yearEnd }
       }
     }),
@@ -981,7 +984,7 @@ export async function getOwnerStatementById(tenantId: string, statementId: strin
       items: { include: { property: true } }
     }
   });
-  if (!statement) throw notFound('Releve introuvable');
+  if (!statement) throw notFound('Relevé introuvable');
   return statement;
 }
 
@@ -996,7 +999,7 @@ function periodBounds(period: string): { periodStart: Date; periodEnd: Date } {
   const year = Number(yearStr);
   const month = Number(monthStr);
   if (!year || !month || month < 1 || month > 12) {
-    throw badRequest('Periode invalide, format attendu YYYY-MM');
+    throw badRequest('Période invalide, format attendu YYYY-MM');
   }
   return {
     periodStart: new Date(Date.UTC(year, month - 1, 1)),
@@ -1025,7 +1028,7 @@ export async function generateOwnerStatement(
   const owner = await prisma.crmContact.findFirst({
     where: { id: params.ownerContactId, tenantId }
   });
-  if (!owner) throw notFound('Contact proprietaire introuvable');
+  if (!owner) throw notFound('Contact propriétaire introuvable');
 
   const { periodStart, periodEnd } = periodBounds(params.period);
   const propertyIds = Array.from(new Set(params.propertyIds));
@@ -1050,14 +1053,14 @@ export async function generateOwnerStatement(
   if (existing) {
     if (existing.status === StatementStatus.PAID) {
       throw conflict(
-        'Ce releve est deja regle : il ne peut plus etre recalcule. Un ecart eventuel se regularise sur le releve suivant.'
+        'Ce relevé est déjà réglé : il ne peut plus être recalculé. Un écart éventuel se régularise sur le relevé suivant.'
       );
     }
     if (
       existing.status === StatementStatus.SENT &&
       existing.computationVersion >= OWNER_STATEMENT_COMPUTATION_VERSION
     ) {
-      throw conflict('Ce releve a deja ete envoye au proprietaire : il ne peut plus etre recalcule.');
+      throw conflict('Ce relevé a déjà été envoyé au propriétaire : il ne peut plus être recalculé.');
     }
   }
 
@@ -1291,14 +1294,14 @@ export async function recomputeOwnerStatement(tenantId: string, statementId: str
     where: { tenantId, id: statementId },
     include: { items: { select: { propertyId: true } } }
   });
-  if (!statement) throw notFound('Releve introuvable');
+  if (!statement) throw notFound('Relevé introuvable');
 
   const propertyIds =
     statement.propertyIds.length > 0
       ? statement.propertyIds
       : Array.from(new Set(statement.items.map(item => item.propertyId)));
   if (propertyIds.length === 0) {
-    throw badRequest('Ce releve ne porte sur aucun bien : generez-en un nouveau en choisissant les biens.');
+    throw badRequest('Ce relevé ne porte sur aucun bien : générez-en un nouveau en choisissant les biens.');
   }
 
   return generateOwnerStatement(tenantId, {
@@ -1319,7 +1322,7 @@ export async function updateOwnerStatement(
   const existing = await prisma.ownerStatement.findFirst({
     where: { id: statementId, tenantId }
   });
-  if (!existing) throw notFound('Releve introuvable');
+  if (!existing) throw notFound('Relevé introuvable');
 
   return prisma.ownerStatement.update({
     where: { id: statementId, tenantId },

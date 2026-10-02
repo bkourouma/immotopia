@@ -63,6 +63,11 @@ export interface CashPlanSourceStatus {
   status: 'INCLUDED' | 'NO_DATA' | 'NOT_CONFIGURED' | 'PARTIAL';
   reason: CashPlanSourceReason | null;
   count: number | null;
+  /**
+   * Source PROPERTY_TAX seulement : biens couverts par une dépense récurrente de taxe foncière, quand la raison
+   * principale est TAX_NOT_ESTIMABLE (ils ne sont alors pas comptés dans `count`). Absent sinon.
+   */
+  coveredByRecurringExpenseCount?: number;
 }
 
 export interface CashPlanShortfall {
@@ -728,8 +733,10 @@ function taxSource(
   const reason: CashPlanSourceReason | null =
     outcome.notEstimable > 0 ? 'TAX_NOT_ESTIMABLE' : outcome.covered > 0 ? 'TAX_COVERED_BY_RECURRING_EXPENSE' : null;
   const count = reason === 'TAX_NOT_ESTIMABLE' ? outcome.notEstimable : reason ? outcome.covered : null;
-  if (hasLines) return { source, status: reason ? 'PARTIAL' : 'INCLUDED', reason, count };
-  return { source, status: 'NO_DATA', reason, count };
+  const coverage =
+    reason === 'TAX_NOT_ESTIMABLE' && outcome.covered > 0 ? { coveredByRecurringExpenseCount: outcome.covered } : {};
+  if (hasLines) return { source, status: reason ? 'PARTIAL' : 'INCLUDED', reason, count, ...coverage };
+  return { source, status: 'NO_DATA', reason, count, ...coverage };
 }
 
 // ---------------------------------------------------------------------------

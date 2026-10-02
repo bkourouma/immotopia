@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, App, InputNumber, Segmented, Select, Skeleton, Space, Typography } from 'antd';
+import { Alert, App, InputNumber, Segmented, Skeleton, Space, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCashPlan, updateCashPlanSettings } from '../../services/cash-plan-service';
-import { listProperties } from '../../services/property-service';
+import { PropertySearchSelect } from '../../components/patrimoine/PropertySearchSelect';
 import { useAuth } from '../../hooks/useAuth';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, formatMoney } from '../../components/primitives';
@@ -70,17 +70,6 @@ export const CashPlanPage: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  const propertiesQuery = useQuery({
-    queryKey: queryKey('properties-options', agence, { limit: 100 }),
-    queryFn: () => listProperties(agence as string, { page: 1, limit: 100 }),
-    enabled: Boolean(agence),
-    staleTime: STALE_TIME.reference
-  });
-  const propertyOptions = (propertiesQuery.data?.properties ?? []).map(property => ({
-    value: property.id,
-    label: property.title
-  }));
-
   const saveSettings = useMutation({
     mutationFn: (values: { month: number | null; day: number | null }) =>
       updateCashPlanSettings(agence as string, { propertyTaxDueMonth: values.month, propertyTaxDueDay: values.day }),
@@ -138,16 +127,13 @@ export const CashPlanPage: React.FC = () => {
           <label htmlFor="cash-plan-property" style={{ display: 'block' }}>
             {t('Bien')}
           </label>
-          <Select
+          <PropertySearchSelect
             id="cash-plan-property"
-            showSearch
-            optionFilterProp="label"
-            allowClear
+            tenantId={agence}
             style={{ minWidth: 240 }}
             placeholder={t('Tous les biens')}
             value={propertyId}
-            onChange={value => setPropertyId(value)}
-            options={propertyOptions}
+            onChange={setPropertyId}
           />
         </div>
       </Space>

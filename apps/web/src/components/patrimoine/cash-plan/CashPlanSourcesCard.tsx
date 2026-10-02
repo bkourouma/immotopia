@@ -7,7 +7,8 @@ import {
   monthName,
   sourceKeyLabel,
   sourceReasonLabel,
-  sourceStatusLabel
+  sourceStatusLabel,
+  taxCoveredNoteLabel
 } from './cash-plan-labels';
 
 const { Text } = Typography;
@@ -135,6 +136,9 @@ export const CashPlanSourcesCard: React.FC<Props> = ({ plan, saving, saveError, 
               <li key={source.source}>
                 <Text strong>{sourceKeyLabel(source.source)}</Text> <Tag>{sourceStatusLabel(source.status)}</Tag>
                 <div>{source.reason ? sourceReasonLabel(source.reason, source.count) : null}</div>
+                {source.coveredByRecurringExpenseCount ? (
+                  <div>{taxCoveredNoteLabel(source.coveredByRecurringExpenseCount)}</div>
+                ) : null}
               </li>
             ))}
           </ul>
