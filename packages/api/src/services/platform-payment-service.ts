@@ -36,6 +36,8 @@ import { logAuditEvent, recordAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { addBillingPeriod } from '../lib/subscription';
 import { applyDueItemTransitionsTx, invalidateEntitlements } from './subscription-v2-service';
+import { applyUpgradeForInvoiceTx } from './subscription-upgrade/apply-upgrade';
+import { UPGRADE_AUDIT, UPGRADE_SOURCE_PACK, UpgradeTarget } from './subscription-upgrade/constants';
 import { gatewayClientForMode } from '../lib/payment-gateway/paysecurehub';
 import { GatewayError, type ProviderStatus } from '../lib/payment-gateway/types';
 import { generatePlatformCodePaiement } from '../lib/payment-gateway/codes';
@@ -163,8 +165,19 @@ export interface SettleResult {
   /** Faux : la facture etait deja reglee (rejeu ou double paiement). */
   created: boolean;
   payment: PaymentRow | null;
-  /** RENEWED : l'abonnement est sorti de PAST_DUE / la periode a avance. */
-  subscription: 'NONE' | 'RENEWED';
+  /**
+   * RENEWED : l'abonnement est sorti de PAST_DUE / la periode a avance.
+   * UPGRADED : facture d'upgrade d'un espace particulier, abonnement passe
+   * au palier payant (lot 4D).
+   */
+  subscription: 'NONE' | 'RENEWED' | 'UPGRADED';
+  /** Cible du palier appliquee (facture d'upgrade seulement), pour l'audit apres commit. */
+  upgradeApplied?: UpgradeTarget;
+  /**
+   * Facture d'upgrade ENCAISSEE mais palier NON applique (abonnement non
+   * eligible, deja sur la cible...) : argent recu sans effet, a traiter.
+   */
+  upgradeNotApplied?: { target: UpgradeTarget; reason: 'ALREADY_ON_TARGET' | 'NOT_ELIGIBLE' };
 }
 
 /**
@@ -218,7 +231,27 @@ export async function settlePlatformInvoiceTx(tx: PrismaTransactionClient, input
     }
   });
 
-  const subscription = await applyPaymentToSubscriptionTx(tx, tenantId, invoice, input.now ?? new Date());
+  const now = input.now ?? new Date();
+  // Facture d'upgrade (lot 4D) : le reglement fait passer l'abonnement gratuit
+  // au palier payant, dans cette transaction ; le renouvellement de periode
+  // ci-dessous ne s'applique alors pas (la periode repart du paiement).
+  const upgrade = await applyUpgradeForInvoiceTx(tx, {
+    tenantId,
+    invoiceId,
+    actorUserId: input.actorUserId ?? null,
+    now
+  });
+  if (upgrade.target !== null) {
+    return upgrade.applied
+      ? { created: true, payment, subscription: 'UPGRADED', upgradeApplied: upgrade.target }
+      : {
+          created: true,
+          payment,
+          subscription: 'NONE',
+          upgradeNotApplied: { target: upgrade.target, reason: upgrade.reason ?? 'NOT_ELIGIBLE' }
+        };
+  }
+  const subscription = await applyPaymentToSubscriptionTx(tx, tenantId, invoice, now);
   return { created: true, payment, subscription };
 }
 
@@ -241,14 +274,18 @@ async function applyPaymentToSubscriptionTx(
   if (!sub) return 'NONE';
   if (invoice.subscriptionId && invoice.subscriptionId !== sub.id) return 'NONE';
 
-  const live: SubscriptionStatus[] = [SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE];
+  const live: SubscriptionStatus[] = [
+    SubscriptionStatus.TRIALING,
+    SubscriptionStatus.ACTIVE,
+    SubscriptionStatus.PAST_DUE
+  ];
   if (!live.includes(sub.status)) return 'NONE';
 
   const boundary =
     sub.status === SubscriptionStatus.PAST_DUE
-      ? sub.pastDueAt ?? sub.currentPeriodEnd
+      ? (sub.pastDueAt ?? sub.currentPeriodEnd)
       : sub.status === SubscriptionStatus.TRIALING
-        ? sub.trialEndsAt ?? sub.currentPeriodEnd
+        ? (sub.trialEndsAt ?? sub.currentPeriodEnd)
         : sub.currentPeriodEnd;
 
   if (sub.status !== SubscriptionStatus.PAST_DUE && boundary.getTime() > now.getTime()) return 'NONE';
@@ -257,7 +294,8 @@ async function applyPaymentToSubscriptionTx(
   const covers =
     invoice.periodStart === null
       ? sub.status === SubscriptionStatus.PAST_DUE
-      : invoice.periodStart.getTime() >= boundary.getTime() - DAY_MS && invoice.periodStart.getTime() < nextEnd.getTime();
+      : invoice.periodStart.getTime() >= boundary.getTime() - DAY_MS &&
+        invoice.periodStart.getTime() < nextEnd.getTime();
   if (!covers) return 'NONE';
 
   await applyDueItemTransitionsTx(tx, tenantId, now);
@@ -303,6 +341,37 @@ async function recordSettlementAuditTx(
       ...extra
     }
   });
+  if (result.upgradeNotApplied) {
+    // Identifiants et raison seulement : jamais de montant ni de nom.
+    logger.error('Facture d’upgrade encaissée sans changement de palier : à traiter par le support', {
+      tenantId,
+      invoiceId,
+      reason: result.upgradeNotApplied.reason
+    });
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: UPGRADE_AUDIT.NOT_APPLIED,
+      entityType: 'Invoice',
+      entityId: invoiceId,
+      payload: {
+        invoiceId,
+        to: result.upgradeNotApplied.target,
+        reason: result.upgradeNotApplied.reason,
+        source: extra.source ?? null
+      }
+    });
+  }
+  if (result.upgradeApplied) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: UPGRADE_AUDIT.APPLIED,
+      entityType: 'Invoice',
+      entityId: invoiceId,
+      payload: { invoiceId, from: UPGRADE_SOURCE_PACK, to: result.upgradeApplied, source: extra.source ?? null }
+    });
+  }
 }
 
 function invalidateSettlement(tenantId: string, result: SettleResult) {
@@ -344,7 +413,7 @@ export async function recordManualPayment(
   invoiceId: string,
   input: ManualPaymentInput,
   actorUserId: string
-): Promise<{ payment: PlatformInvoicePaymentDto; subscription: 'NONE' | 'RENEWED' }> {
+): Promise<{ payment: PlatformInvoicePaymentDto; subscription: 'NONE' | 'RENEWED' | 'UPGRADED' }> {
   if (!MANUAL_METHODS.includes(input.method)) {
     throw new BadRequestError('Mode de règlement invalide pour un constat manuel.');
   }
@@ -369,7 +438,11 @@ export async function recordManualPayment(
     absoluteProof = path.join(getUploadsRoot(env.UPLOADS_DIR), ...relative.split('/'));
     await fs.mkdir(path.dirname(absoluteProof), { recursive: true });
     await fs.writeFile(absoluteProof, input.proof.buffer);
-    proof = { path: relative, name: path.basename(input.proof.originalName).slice(0, 200), mimeType: input.proof.mimeType };
+    proof = {
+      path: relative,
+      name: path.basename(input.proof.originalName).slice(0, 200),
+      mimeType: input.proof.mimeType
+    };
   }
 
   let result: SettleResult;
@@ -406,8 +479,14 @@ export async function recordManualPayment(
 }
 
 /** Reglement d'une facture (ou `null`), vu par le super-admin ou l'agence. */
-export async function getInvoicePayment(tenantId: string, invoiceId: string): Promise<PlatformInvoicePaymentDto | null> {
-  const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId, kind: 'PLATFORM' }, select: { id: true } });
+export async function getInvoicePayment(
+  tenantId: string,
+  invoiceId: string
+): Promise<PlatformInvoicePaymentDto | null> {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, tenantId, kind: 'PLATFORM' },
+    select: { id: true }
+  });
   if (!invoice) throw new NotFoundError('Facture introuvable.');
   const payment = await prisma.platformInvoicePayment.findFirst({ where: { invoiceId, tenantId } });
   return payment ? toPaymentDto(payment) : null;
@@ -432,7 +511,10 @@ export async function getInvoicePaymentProof(
 
 /** Facture de l'agence, pour lire `tenantId` depuis une route plateforme `/admin/invoices/:invoiceId`. */
 export async function resolvePlatformInvoiceTenant(invoiceId: string): Promise<string> {
-  const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, kind: 'PLATFORM' }, select: { tenantId: true } });
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, kind: 'PLATFORM' },
+    select: { tenantId: true }
+  });
   if (!invoice) throw new NotFoundError('Facture introuvable.');
   return invoice.tenantId;
 }
@@ -471,10 +553,16 @@ export async function startInvoiceCheckout(
     select: { codePaiement: true, checkoutUrl: true }
   });
   if (pending) {
-    throw new AppError('Un paiement en ligne est déjà en cours pour cette facture.', 409, ErrorCode.CONFLICT, undefined, {
-      codePaiement: pending.codePaiement,
-      checkoutUrl: pending.checkoutUrl
-    });
+    throw new AppError(
+      'Un paiement en ligne est déjà en cours pour cette facture.',
+      409,
+      ErrorCode.CONFLICT,
+      undefined,
+      {
+        codePaiement: pending.codePaiement,
+        checkoutUrl: pending.checkoutUrl
+      }
+    );
   }
 
   const codePaiement = generatePlatformCodePaiement();
@@ -495,7 +583,10 @@ export async function startInvoiceCheckout(
   // Appel reseau hors transaction.
   try {
     const [tenant, user] = await Promise.all([
-      prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true, contactPhone: true } }),
+      prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { name: true, contactEmail: true, contactPhone: true }
+      }),
       actorUserId
         ? prisma.user.findUnique({ where: { id: actorUserId }, select: { fullName: true, email: true } })
         : Promise.resolve(null)
@@ -542,7 +633,10 @@ export async function startInvoiceCheckout(
 }
 
 /** Checkout d'une facture par son code, pour le retour de paiement ; rapproche s'il est en attente depuis plus de 10 s. */
-export async function getInvoiceCheckoutForTenant(tenantId: string, codePaiement: string): Promise<PlatformCheckoutDto> {
+export async function getInvoiceCheckoutForTenant(
+  tenantId: string,
+  codePaiement: string
+): Promise<PlatformCheckoutDto> {
   const checkout = await prisma.platformPaymentCheckout.findFirst({ where: { tenantId, codePaiement } });
   if (!checkout) throw new NotFoundError('Paiement en ligne introuvable.');
   const stale = Date.now() - 10 * 1000;
@@ -603,7 +697,10 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
   const reviewContrary = `PaySecureHub rapporte maintenant « ${ps.rawState ?? ''} » pour un paiement déjà réussi.`;
 
   if (target === null || checkout.status === target) {
-    return prisma.platformPaymentCheckout.update({ where: { id: checkout.id, tenantId: checkout.tenantId }, data: bookkeeping });
+    return prisma.platformPaymentCheckout.update({
+      where: { id: checkout.id, tenantId: checkout.tenantId },
+      data: bookkeeping
+    });
   }
 
   if (checkout.status === 'SUCCESS') {
@@ -642,7 +739,16 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
           // argent recu deux fois, a trancher par le super-admin.
           await tx.platformPaymentCheckout.update({
             where: { id: checkout.id, tenantId: checkout.tenantId },
-            data: { status: 'REVIEW', reviewReason: 'Facture déjà réglée par un autre paiement : double encaissement à vérifier.' }
+            data: {
+              status: 'REVIEW',
+              reviewReason: 'Facture déjà réglée par un autre paiement : double encaissement à vérifier.'
+            }
+          });
+        } else if (already && checkout.status === 'REVIEW') {
+          // Rejeu d'un paiement deja regle et mis en revue : la revue n'est pas effacee.
+          await tx.platformPaymentCheckout.update({
+            where: { id: checkout.id, tenantId: checkout.tenantId },
+            data: { status: 'REVIEW', reviewReason: checkout.reviewReason }
           });
         } else if (!already) {
           const invoice = await tx.invoice.findFirst({
@@ -665,6 +771,16 @@ export async function applyPlatformProviderStatus(checkout: CheckoutRow, ps: Pro
               codePaiement: checkout.codePaiement,
               mode: checkout.mode
             });
+            if (settledResult.upgradeNotApplied) {
+              // Encaissé sans changement de palier : le paiement est en revue (statut REVIEW existant).
+              await tx.platformPaymentCheckout.update({
+                where: { id: checkout.id, tenantId: checkout.tenantId },
+                data: {
+                  status: 'REVIEW',
+                  reviewReason: `Montée de palier non appliquée (${settledResult.upgradeNotApplied.reason}) : paiement encaissé, à traiter.`
+                }
+              });
+            }
           } else {
             await tx.platformPaymentCheckout.update({
               where: { id: checkout.id, tenantId: checkout.tenantId },
@@ -739,7 +855,10 @@ export async function recordPlatformSimulatedOutcome(
   outcome: 'SUCCESS' | 'FAILED' | 'CANCELED'
 ): Promise<void> {
   await runWithTenantContext({ tenantId: checkout.tenantId }, () =>
-    prisma.platformPaymentCheckout.update({ where: { id: checkout.id, tenantId: checkout.tenantId }, data: { simulatedOutcome: outcome } })
+    prisma.platformPaymentCheckout.update({
+      where: { id: checkout.id, tenantId: checkout.tenantId },
+      data: { simulatedOutcome: outcome }
+    })
   );
 }
 
@@ -762,7 +881,9 @@ export async function reconcilePendingPlatformCheckouts(
     let stillPending = true;
     try {
       // eslint-disable-next-line no-await-in-loop -- sequentiel, peu de lignes.
-      const result = await runWithTenantContext({ tenantId: row.tenantId }, () => reconcilePlatformCheckout(row.tenantId, row.id));
+      const result = await runWithTenantContext({ tenantId: row.tenantId }, () =>
+        reconcilePlatformCheckout(row.tenantId, row.id)
+      );
       reconciled++;
       stillPending = result.status === 'PENDING';
     } catch (error) {
@@ -785,4 +906,3 @@ export async function reconcilePendingPlatformCheckouts(
   }
   return { reconciled, expired, errors };
 }
-

@@ -16,6 +16,8 @@ const p = {
   propertyVisit: { count: jest.fn() },
   propertyDocument: { count: jest.fn() },
   crmDealProperty: { count: jest.fn() },
+  // Patrimoine multi-actifs (PR #52) : refus 409 si un pret ACTIF porte sur le bien.
+  propertyLoan: { count: jest.fn() },
   $transaction: jest.fn()
 };
 
@@ -60,6 +62,7 @@ beforeEach(() => {
     containerParentId: null
   });
   p.crmDealProperty.count.mockResolvedValue(0);
+  p.propertyLoan.count.mockResolvedValue(0);
   p.rentalLease.findMany.mockResolvedValue([]);
   p.rentalInstallment.count.mockResolvedValue(0);
   p.propertyMandate.count.mockResolvedValue(0);

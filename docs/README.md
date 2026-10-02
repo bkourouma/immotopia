@@ -29,6 +29,7 @@
 - [ADR-002 — Repomix et Lefthook](architecture/adr/ADR-002-repomix-lefthook.md)
 - [ADR-003 — migration des fonds de copropriété hors dépôt](architecture/adr/ADR-003-migration-hors-git-fonds-copropriete.md)
 - [ADR-005 — staging sur `app`, production sur `clients`](architecture/adr/ADR-005-environnements-staging-production.md)
+- [ADR-005 — patrimoine multi-actifs](architecture/adr/ADR-005-patrimoine-multi-actifs.md)
 - [Standards de code](governance/CODING_STANDARDS.md) et
   [sécurité — modèle de menace](governance/SECURITY.md)
 - [Contexte IA avec Repomix](../repomix.config.json) — génération locale via `npm run repomix`

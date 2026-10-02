@@ -6,6 +6,49 @@ import { RegisterData } from '../types/auth-types';
 import { API_ORIGIN } from '../config/api';
 import { t } from '../i18n/t';
 
+/** Champs que le formulaire sait afficher sous leur saisie. */
+const CHAMPS_DU_FORMULAIRE = ['fullName', 'email', 'password', 'confirmPassword'];
+
+/**
+ * Traduit le refus du serveur en erreurs d'écran.
+ *
+ * Une erreur de champ s'affiche sous sa saisie, mais le bandeau `general` est
+ * TOUJOURS posé : sans lui, un refus portant sur un champ que le formulaire ne
+ * montre pas (ou une erreur de champ passée inaperçue plus bas dans la page)
+ * laissait l'écran muet, sans que la personne sache que l'inscription avait
+ * échoué.
+ */
+function erreursDeInscription(error: unknown): Record<string, string> {
+  const data = (
+    error as {
+      response?: { data?: { message?: string; errors?: Array<{ field?: string; message?: string }> } };
+    } | null
+  )?.response?.data;
+  const details = Array.isArray(data?.errors) ? data.errors : [];
+
+  if (details.length === 0) {
+    return { general: data?.message || t("Une erreur est survenue lors de l'inscription.") };
+  }
+
+  const errors: Record<string, string> = {};
+  const horsFormulaire: string[] = [];
+  details.forEach(detail => {
+    if (detail.field && CHAMPS_DU_FORMULAIRE.includes(detail.field)) {
+      errors[detail.field] = detail.message ?? '';
+    } else if (detail.message) {
+      horsFormulaire.push(detail.message);
+    }
+  });
+
+  const bandeau: string[] = [];
+  if (Object.keys(errors).length > 0) {
+    bandeau.push(t("L'inscription a été refusée : vérifiez les champs signalés."));
+  }
+  bandeau.push(...horsFormulaire);
+  errors.general = bandeau.length > 0 ? bandeau.join(' ') : t("Une erreur est survenue lors de l'inscription.");
+  return errors;
+}
+
 export const Register: React.FC = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState<RegisterData>({
@@ -81,23 +124,14 @@ export const Register: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // Remove role from formData as it's not needed in new architecture
-      const { ...registrationData } = formData;
-      await register(registrationData);
-      setSuccessMessage(t('Inscription réussie ! Veuillez vérifier votre email pour activer votre compte.'));
+      await register(formData);
+      // Message unique, que l'adresse soit nouvelle ou déjà connue : l'API ne révèle pas les comptes.
+      setSuccessMessage(t('Si cette adresse est valide, un e-mail de vérification vient de vous être envoyé.'));
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (error: any) {
-      if (error.response?.data?.errors) {
-        const fieldErrors: Record<string, string> = {};
-        error.response.data.errors.forEach((err: { field: string; message: string }) => {
-          fieldErrors[err.field] = err.message;
-        });
-        setErrors(fieldErrors);
-      } else {
-        setErrors({ general: error.response?.data?.message || t("Une erreur est survenue lors de l'inscription.") });
-      }
+      setErrors(erreursDeInscription(error));
     } finally {
       setIsSubmitting(false);
     }

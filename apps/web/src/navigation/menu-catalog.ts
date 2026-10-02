@@ -157,15 +157,20 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'finance-comptabilite': ['FINANCE_REPORTS_READ'],
 
   // Patrimoine et entretien.
-  patrimoine: ['PROPERTIES_VIEW'],
+  patrimoine: ['PROPERTIES_VIEW', 'PATRIMOINE_PERSONAL_VIEW'],
   'patrimoine-overview': ['PROPERTIES_VIEW'],
+  // Données personnelles (actifs non immobiliers, dettes, entités, projections) : permission dédiée,
+  // non accordée aux rôles d'agence ; réservée au propriétaire d'un espace PARTICULIER.
+  'patrimoine-net-worth': ['PATRIMOINE_PERSONAL_VIEW'],
+  'patrimoine-assets': ['PATRIMOINE_PERSONAL_VIEW'],
+  'patrimoine-projections': ['PATRIMOINE_PERSONAL_VIEW'],
   'patrimoine-performance': ['PROPERTIES_VIEW'],
   'patrimoine-work-programs': ['PROPERTIES_VIEW'],
   'patrimoine-cash-plan': ['PROPERTIES_VIEW'],
   'patrimoine-import': ['PROPERTIES_CREATE', 'PROPERTIES_EDIT'],
   'patrimoine-claims': ['PROPERTIES_VIEW'],
   'patrimoine-statements': ['OWNER_STATEMENTS_VIEW'],
-  'patrimoine-entities': ['PROPERTIES_VIEW'],
+  'patrimoine-entities': ['PATRIMOINE_PERSONAL_VIEW'],
   'patrimoine-tax-parameters': ['PROPERTIES_VIEW'],
   'patrimoine-external-access': ['PROPERTIES_VIEW'],
   'patrimoine-land': ['PROPERTIES_VIEW'],

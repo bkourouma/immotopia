@@ -14,6 +14,8 @@ import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { getNavigation } from '../../navigation/model';
 import { featureForAgencyPath, isAgencyPathNotIncluded } from '../../navigation/route-features';
+import { particulierNavigation } from '../../navigation/particulier';
+import { useTenantType } from '../../hooks/useTenantType';
 import { withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
@@ -127,7 +129,21 @@ export const AppShell: React.FC = () => {
    */
   const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
 
-  const personaNav = persona && persona !== 'non-rattache' ? getNavigation()[persona] : null;
+  // Type de l'espace, renvoyé par le serveur : un espace PARTICULIER a une
+  // navigation réduite, quel que soit SUBSCRIPTION_ENFORCEMENT (voir
+  // navigation/particulier.tsx). `null` tant qu'il n'est pas connu : menu
+  // d'agence par défaut, l'API restant juge de chaque accès.
+  const tenantType = useTenantType(
+    navContext.tenantId,
+    persona === 'collaborateur',
+    tenantMembership?.tenant.type ?? null
+  );
+  const baseNav = persona && persona !== 'non-rattache' ? getNavigation()[persona] : null;
+  const personaNav = useMemo(
+    () =>
+      baseNav && persona === 'collaborateur' && tenantType === 'PARTICULIER' ? particulierNavigation(baseNav) : baseNav,
+    [baseNav, persona, tenantType]
+  );
 
   /**
    * Menus coupes pour ce compte (Admin > Roles et permissions > Menus).
@@ -325,7 +341,7 @@ export const AppShell: React.FC = () => {
         />
       )}
 
-      {persona === 'collaborateur' && navContext.tenantId && (
+      {persona === 'collaborateur' && tenantType !== 'PARTICULIER' && navContext.tenantId && (
         <Suspense fallback={null}>
           <CopilotRoot
             tenantId={navContext.tenantId}

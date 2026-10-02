@@ -11,13 +11,13 @@ vitrine.
 
 Hiérarchie : pack > module > fonctionnalité > sous-fonctionnalité, la
 sous-fonctionnalité étant la plus petite action utilisateur identifiable
-(795 lignes au 02/10/2026).
+(847 lignes au 02/10/2026).
 
 ## Feuilles du classeur
 
 - **Lisez-moi** : présentation du classeur, méthode de construction, date.
 - **Sous-fonctionnalites** : le tableau Excel nommé `SousFonctionnalites`
-  (référence `A1:O796`), une ligne par sous-fonctionnalité, 15 colonnes :
+  (référence `A1:O848`), une ligne par sous-fonctionnalité, 15 colonnes :
 
   | Colonne                    | Contenu                                                                                         |
   | -------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -153,7 +153,7 @@ ws.append([
 
 # Indispensable : sans cette ligne, les lignes ajoutées restent hors du
 # tableau nommé SousFonctionnalites.
-ws.tables["SousFonctionnalites"].ref = f"A1:O{ws.max_row}"
+ws.tables["SousFonctionnalites"].ref = f"A1:O848{ws.max_row}"
 
 wb.save(path)
 ```

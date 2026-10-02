@@ -18,6 +18,36 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/comptes-test-packs` — 2026-10-01
+
+**État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** : pas d'accès SSH non interactif depuis le poste (connexion fermée), et la fusion de la PR est préalable.
+
+**Fait :** un tenant par pack de test (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO) créé par `packages/api/prisma/seeds/seed-pack-test-tenants.ts` (vrai `provisionTenant`, administrateur à mot de passe connu, abonnement repoussé de 5 ans, idempotent) via `infra/scripts/seed-pack-tests.sh staging` (refuse `prod`) ; menu déroulant « Choisir un compte de test » sur la page de connexion (`apps/web/src/dev/DevAccountsSelect.tsx`, remplace le panneau `DevAccountsPanel`), 6 groupes de pack en tête puis les comptes historiques ; garde-fou du `Dockerfile.web` étendu au nouveau mot de passe et au domaine `packs.immotopia.test`. Vérifié : Jest 10/10, Vitest 11/11, typecheck web 0 erreur, `check-infra` vert, bundle sans identifiants quand `VITE_SHOW_DEMO_ACCOUNTS=false`.
+
+**Reste à faire (chaque action serveur exige un « oui ») :** fusionner la PR, puis sur le serveur `git pull`, `./infra/scripts/deploy.sh staging` (reconstruit le web avec le menu), `./infra/scripts/seed-pack-tests.sh staging` (crée les 6 agences). Non éprouvé : le seed contre une vraie base, `-e ALLOW_PACK_TEST_TENANTS=1` dans `compose run`, le `RUN` du garde-fou dans un vrai `docker build`, le rendu du menu dans un navigateur.
+
+**Pièges :** le menu et le mot de passe commun (public) n'existent que sur le staging ; le one-clic « Se connecter » du panneau a disparu (choisir le compte puis « Se connecter »). Wiki non mis à jour : outillage de staging, aucune fonctionnalité de l'application.
+
+## Branche `docs/wiki-patrimoine` — 2026-10-02
+
+**État :** classeur des fonctionnalités mis à jour (846 lignes), PR ouverte (fusion à l'utilisateur). `wiki:check` vert.
+
+**Fait :** 56 lignes ajoutées et 26 annotées pour des fonctionnalités NON fusionnées (statut « À vérifier (en développement, PR n°X non fusionnée) » + notes) : PR 52/69/70/74 (Patrimoine particulier, permissions, exports), 94 (journal d'audit), 71/72/73/63/88, branche `feat/sms-lot-1` (sans PR). Patrimoine PR 91–100 déjà présent dans le classeur.
+
+**Reste :** à chaque fusion d'une de ces PR, retirer les annotations « En développement » du classeur (binaire, ne pas fusionner : reprendre celui-ci). Ordre de fusion des PR empilées : 52, 69, 70, 74. Ouvrir ou archiver la branche SMS. Le .xlsx n'a pas été ouvert dans Excel.
+
+## Branche `fix/test-copilot-root-instable` — 2026-09-30
+
+**État :** terminé, PR ouverte (fusion à l'utilisateur). Test seul modifié : `apps/web/src/__tests__/copilot/copilot-root.test.tsx`.
+
+**Cause :** dans `CopilotRoot`, l'écouteur `keydown` (Ctrl/Cmd+J) est posé par un `useEffect` (passif) qui tourne après le commit du bouton dans le DOM. `findByRole` rend la main dès la mutation du DOM, donc la touche partait parfois avant l'écouteur (`fireEvent` renvoyait `true`). Reproduit hors CI : ~3 % d'échecs sur 100 boucles, 0 sur 500 avec le correctif. Le composant n'est pas en cause (un humain ne tape pas dans cette fenêtre).
+
+**Correctif :** le test renvoie la touche dans un `waitFor` jusqu'à ce que l'écouteur l'ait prise (`preventDefault`). Pas de délai ajouté. Vérifié : 20 exécutions du fichier sans échec, lot `--shard=4/4` vert (44 fichiers, 377 tests), typecheck web sans erreur, eslint et prettier propres.
+
+**Piège :** tout test qui envoie un événement clavier `window` juste après `findBy*` sur un composant dont l'écouteur est posé dans un `useEffect` a la même fenêtre de course.
+
+---
+
 ## Branche `fix/recette-packs-e2e` — 2026-09-30
 
 **État :** terminé côté code, PR ouverte (voir la PR ; fusion à l'utilisateur). Recette de bout en bout des 6 packs (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO) : un testeur par pack, ~100 anomalies consignées, ~30 correcteurs en parallèle. Rapport : `docs/recette/packs/RAPPORT_FINAL.md` ; index des anomalies : `docs/recette/packs/ANOMALIES.md` ; scénarios et journaux : `docs/recette/packs/SCENARIO_PACK_*.md`.
@@ -71,6 +101,20 @@ Pièges et décisions :
 
 ---
 
+## Branche `integration/multi-actifs` — 2026-10-02
+
+**État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).
+
+**Vérifié :** typecheck API et web 0 erreur ; Jest API `__tests__/unit` 317 suites / 4679 tests passés, `__tests__/api` 74 suites / 1546 tests passés ; Vitest web 2385/2386 (seul échec : `copilot-root` Ctrl+J, instable connu, passe seul) ; `check:architecture` vert ; `wiki:check` vert (841 lignes) ; `npx prisma migrate deploy` de zéro sur base jetable vierge : toutes les migrations passent, `migrate diff` base vers schéma vide. Lint : 1 erreur préexistante de `main` (`lib/audit/platform-audit-csv.ts`, espace insécable), non touchée.
+
+**Non vérifié :** `npm run test:isolation` (pas de `DATABASE_URL_TEST` dans ce worktree) ; recette navigateur.
+
+**À trancher :** deux ADR numérotés 005 (`environnements-staging-production` et `patrimoine-multi-actifs`) ; la navigation d'un espace PARTICULIER et la liste blanche `particulier-routes.ts` n'incluent pas les lots patrimoine de `main` (trésorerie, assurances, foncier, import, accès tiers) ; ces routes restent sous `PROPERTIES_*` et sont ajoutées à la liste blanche du test `routes-inventory` (permissions personnelles de la PR #69).
+
+**Pièges :** `PropertyHolding.propertyId` et `PropertyLoan.propertyId` deviennent nullables (actifs non immobiliers) : le code de `main` qui les lit (accès tiers, plan de trésorerie) a été typé en conséquence ; l'inscription de la PR #52 garde la personnalisation des e-mails de `main` (nom, langue) et ses événements `logAuthEvent`.
+
+---
+
 ## Branche `claude/elegant-pasteur-f0vpti` — 2026-10-01
 
 **État :** phases 0 et 1 du journal d'audit à deux niveaux livrées et poussées (`4050054`) ; phase 2 (niveau agence) **livrée** : backend (`8d2e23b`), wiki, et page web « Journal d'activité » (`/tenant/:tenantId/activity`, entrée « Agence > Journal d'activité », 3 fichiers de tests Vitest). Aucune PR ouverte. Décision : [ADR-006](../architecture/adr/ADR-006-audit-deux-niveaux.md) ; contrat et plan : [specs/023-audit-deux-niveaux/spec.md](../../specs/023-audit-deux-niveaux/spec.md) (§7 et §8).
@@ -107,6 +151,84 @@ Pièges et décisions :
 - Web : le front ne connaît pas les permissions de l'utilisateur connecté (`useAuth` ne porte que `globalRole`) : le bouton « Exporter en CSV » est montré aux seuls `SUPER_ADMIN` (l'API l'exige de toute façon) et disparaît après un 403. Un contrôle exact demanderait d'exposer les permissions dans `/auth/me`. L'ancien filtre « Type de ressource » de la console n'a pas été reconduit (l'API accepte `entityType`).
 - Web : les cartes `AUDIT_*_LABELS_FR` évaluent `t()` à l'import (comme le reste d'`audit-labels.ts`) : un changement de langue à chaud ne les retraduit pas. `PropertyPatrimoineTab.test.tsx` (envoi multipart) expire parfois sous charge dans la suite complète, et passe seul.
 - Dans ce conteneur : `npm ci --ignore-scripts` à la racine puis `npm rebuild bcrypt` ; `jest <fichier> --selectProjects api` (chemin AVANT l'option) ; `pkill -f jest` tue aussi le shell appelant ; Postgres 16 local à relancer (`service postgresql start`) s'il est tombé, bases d'essai `immo_audit` / `immo_iso` (utilisateur `immo`) ; deux Jest + Vitest en parallèle peuvent tuer des workers (SIGKILL, mémoire) : rejouer la suite touchée.
+
+## Pilote — retest des 8 anomalies « prêt au retest » (packs) — 2026-10-01
+
+**État :** retest fait, PR de documentation ouverte (index `docs/recette/packs/ANOMALIES.md`). Résultat : 8 passées (008, 016, 030, 034, 058, 060, 089, 099) ; **058** corrigée par la PR #87 (`fix/finance-totaux-balance-clients`) et rejouée dans l'interface (écran Balance clients conforme). Détail dans l'index, section « Retest du 2026-10-01 ».
+**Branche :** `docs/retest-anomalies-packs` (depuis `origin/main` d10c9942)
+
+Reste à faire :
+
+- 058 : fusionner la PR #87 (l'API Pro de recette tourne depuis le worktree `fix-058`). BUG-2026-10-01-003 (filtre Période de la Balance clients : borne de fin exclue, solde ignorant la période) corrigé par la PR #88 (empilée sur #87, base `fix/finance-totaux-balance-clients`) et rejoué dans l'interface (passé) : à fusionner après #87. Web ET API Pro de recette tournent depuis le worktree `fix-058`. Question ouverte : la colonne « À échoir » de la Balance âgée affiche des montants supérieurs au solde (Alpha 22 750 000 pour un solde de 650 000) ; définition à confirmer. Les 3 mouvements par encaissement au relevé sont voulus (FR-011) ; DEP-289FBAB5 en double (net 0) au journal Pro reste à examiner.
+- 089 : passé avec un compte jetable (`retest089.jetable@exemple.test`, mot de passe dans le scratchpad de la session) ; question produit ouverte : l'assistant d'un pack Promoteur n'annonce aucune capacité chantier/vente.
+- Nouvelles : BUG-2026-10-01-001 (sélecteur de bien Performance limité à 100), -002 (valeur marchande non rafraîchie). Ressaisir les noms de biens contenant U+FFFD (données de recette, pas le code d'export).
+- Écart du scénario I-01 : pas de champ honoraires dans le mandat de gestion.
+
+Pièges :
+
+- Le worktree `recette-packs` est en retard sur `main` (HEAD 9d351134 + fichiers non commités). Retest fait dans un worktree jetable `.claude/worktrees/retest-main` (jonctions `node_modules` ; les retirer avec `rmdir` avant tout `worktree remove`). Lanceurs recopiés dans le scratchpad de la session (`rec/`, `WT` pointé sur `retest-main`).
+- Migrations appliquées sur les 6 bases `immotopia_rec_*` (jusqu'à `20261006150000`). Données de test ajoutées : agence « Retest Doublon Promoteur », biens/mandat/document de retest (Agence, Pro), valorisations de démonstration sur E2A1 (Intégré).
+- Les testeurs n'ont pas les mots de passe de recette (hors dépôt) : l'un a deviné la convention, un autre a utilisé la connexion rapide super-admin. Consigner les mots de passe de test dans les scénarios.
+- Les captures du navigateur intégré échouent panneau masqué : preuves par DOM et réseau.
+
+## Pilote — recette navigateur des vagues B et C, correctifs (PR #102) — 2026-10-02
+
+**État :** recette jouée (B1 assurances, B2 foncier, B3 accès tiers de confiance, C4 import, C5 lien de paiement) : 17 anomalies au bus (`BUG-2026-10-02-001` à `017`). Correctifs dans la PR #102 (`fix/patrimoine-recette-bc`, dernier commit 7007e4ec, CI en cours à la rédaction) : 001 à 015 rejouées et passées ; 016 (étiquette « À valider » rognée en mobile) et 017 (paiement échoué affichait « Reste à affecter ») corrigées, à l'état « prêt au retest ». Audit sécurité du diff : rien. Fusion de #102 : à la main de l'utilisateur.
+
+Reste à faire :
+
+- Rejouer 016 et 017 dans le navigateur ; suivre la CI de #102 et la fusionner sur accord.
+- Rôle avec `PROPERTIES_VIEW` sans `PROPERTIES_EDIT` : les boutons d'écriture restent visibles (l'API répond 403) ; il faut exposer les permissions dans le contexte d'authentification.
+- Réserves cosmétiques du retest : « 245 000 000 XOF » touche le bord du tableau « Synthèse » (page publique à 375 px) ; « Dernière consultation » rognée sous la colonne Actions collante (1920 px) ; le bouton « Envoyer un lien de paiement » reste affiché sur une échéance brouillon (l'API refuse) ; la réponse de génération d'échéances renvoie DRAFT pour une échéance déjà en retard (la liste renvoie OVERDUE).
+- Non joué : e-mails d'alerte quotidiens (job non déclenchable par l'interface), cas REVIEW du paiement, état « expiré » d'un accès partagé, isolation inter-agences réelle (`npm run test:isolation`), bien client sous mandat actif, arabe sur « Accès partagés ».
+- Plafond de surface de l'import (500 000 m²) à valider.
+
+Pièges :
+
+- Recette : worktree `.claude/worktrees/rec-bc` (détaché sur le commit testé), instances Agence/Patrimoine Pro lancées par `scratchpad/rec-a/rec-all.cjs` (lancer avec `Start-Process` détaché : un shell d'arrière-plan est tué au bout de quelques minutes). `instances.cjs` pointe sur `rec-bc`.
+- `npm ci --ignore-scripts` ne pose pas `lefthook` : `npm rebuild lefthook` ; Windows peut bloquer `lefthook.exe` (stratégie de contrôle d'application) tant que l'utilisateur ne l'a pas autorisé.
+- Le panneau navigateur intégré est souvent masqué (pas de capture) : les testeurs passent par `chrome-devtools`.
+- Instance de recette : l'inscription publique n'avait jamais pu fonctionner (confirmPassword non envoyé, corrigé dans #102) ; le super-admin du seed crée les agences jetables.
+
+---
+
+## Pilote — feuille de route patrimoine, vagues A, B, C (partielle) et lot F1 — 2026-10-02
+
+**État :** fusionnés dans `main` : vague A (#91, #92, #93), vague B (B1 assurances #96, B2 foncier #95, B3 accès tiers de confiance #97), lot F1 de correctifs de recette (#98), C4 import en masse (#100), C5 lien de paiement Mobile Money (#99). Budget d'entrée web relevé de 1 Kio (226 304 -> 227 328 o gzip) sur décision explicite de l'utilisateur le 02/10 (marge actuelle 626 o). Non fusionnées : #90 (plan, cette branche), #86 (retest docs), #87 et #88 (balance clients, 058/003).
+
+Reste à faire :
+
+- Capacités de la vague C encore à livrer (elles attendent la fusion des PR multi-actifs #52/#67/#69/#70/#74, à décider par l'utilisateur) : vue Groupe (1), export de ratios (8), dossier bancaire + déclaration fiscale (9, 6), multi-devises (11), démembrement (5).
+- Recette navigateur des vagues B, C et du lot F1 jamais rejouée (seule la vague A l'a été).
+- Alléger l'entrée web de façon structurelle (routes et menus du patrimoine hors du chunk d'entrée) : le budget a été relevé deux fois en une semaine.
+- Décisions ouvertes : raccourci INSURER_NOTIFIED -> SETTLED/REJECTED (B1) ; prix d'acquisition sans date et dépendance `jszip` (C4) ; traitement du checkout en REVIEW et des échéances DRAFT, mode LIVE PaySecureHub non testé (C5) ; B3 : une agence qui perd le pack PATRIMOINE peut encore lire les accès partagés ; BUG-2026-10-01-006 réclame une vraie action « marquer prêt » ; `isolation.test.ts` de B3 a 2 échecs Syndic S3 (404 au lieu de 403) non comparés à `main` ; 3 tests copilot instables (#84 non fusionnée).
+
+Pièges :
+
+- Après chaque fusion de `main` : `prisma generate` (client périmé = ~89 erreurs TS2339) ; `npm ci --ignore-scripts` + `npm rebuild bcrypt` dans chaque worktree à schéma modifié.
+- Conflits récurrents entre lots : classeur wiki (fusion à trois voies par clé + `wiki:export`), catalogues i18n plats (fusion à trois voies), `App.tsx`, menus de navigation, `schema.prisma` (union des relations et des valeurs d'enum), `email-notification-keys.ts`, `routes-inventory.test.ts`.
+- Tests API lancés en parallèle d'un build web : timeouts en cascade ; les relancer seuls.
+- Retirer les jonctions `node_modules` avec `rmdir` AVANT tout `git worktree remove` (incident du 27/09). Worktrees à nettoyer : `pat-*`, `retest-main`.
+
+---
+
+## Pilote — feuille de route patrimoine, vague A — 2026-10-01
+
+**État :** plan publié (PR #90) ; vague A livrée en trois PR indépendantes depuis `main` (CI non encore vue) : A1 #91 (`feat/patrimoine-projection`, spec 029), A2 #93 (`feat/patrimoine-tresorerie`, spec 030), A3 #92 (`feat/patrimoine-canaux`, spec 031). Aucune fusion faite. Plan : `docs/architecture/PLAN-PATRIMOINE-FEUILLE-DE-ROUTE.md` (14 capacités, vagues A/B/C, specs 029 à 040 réservées).
+
+Reste à faire :
+
+- Fusion de #91, #92, #93 (conflits attendus : classeur wiki binaire → reprendre la version de `main` et réappliquer les lignes du lot ; A1/A2 : `schemas.ts` `createExpenseSchema`, `queries.ts`, `PropertyPatrimoineTab.tsx`, `patrimoine-types.ts`, `patrimoine-labels.ts`). Migrations : `20261007090000` (A1), `…100000` (A2), `…110000` (A3).
+- Recette navigateur de la vague A (jamais rejouée) : carte « Ratios bancaires », synchronisation des hypothèses, page « Trésorerie prévisionnelle », rapport mensuel par lien (page publique `/rapport-proprietaire`), RTL arabe, mobile.
+- Vague B (spec 032 sinistres/assurances, 033 suivi foncier, 034 accès tiers de confiance — dépend des liens sécurisés de #92) ; vague C après fusion des PR multi-actifs (#52/#67/#69/#70/#74) : vue Groupe, multi-devises, dossier bancaire + déclaration fiscale, import en masse, paiement par lien, démembrement.
+- Décisions ouvertes : date d'exigibilité de la taxe foncière par pays ; arriérés au mois 1 du plan ; « bien en vente » ; volume d'appels au moteur fiscal (cache) ; route publique montée après CORS ; double envoi du rapport par le job ; `consentWhatsapp` à `true` par défaut en base (pas un vrai consentement) ; hypothèses des biens sous mandat en 404 ; TRI avant financement.
+
+Pièges :
+
+- Worktrees `.claude/worktrees/pat-{projection,tresorerie,canaux}` : `npm ci --ignore-scripts` + `prisma generate` PROPRES (schéma modifié, pas de jonction) ; `bcrypt` doit être recompilé (`npm rebuild bcrypt`), sinon `routes-inventory`/`route-features` ne démarrent pas. Disque D: presque plein (~19 Go libres).
+- Outil de base jetable : `scratchpad/scratch-db.cjs create|run|drop <nom>` (bases `immotopia_dev_<nom>`, mot de passe jamais affiché).
+- `i18n:extract` réécrit les fins de ligne de ~30 catalogues sans changer leur contenu et supprime des clés d'autres lots côté API : ne commiter que les catalogues au vrai diff.
+- `code-reviewer` n'existe pas comme type d'agent dans cette session : relecture faite par un `general-purpose` suivant `.claude/agents/code-reviewer.md`.
 
 ---
 
@@ -213,10 +335,113 @@ Pièges et décisions :
 - Wiki des fonctionnalités : non mis à jour, aucune fonctionnalité visible de
   l'application (outillage d'exploitation seulement).
 
+---
+
+## Branche `claude/lucid-bell-0pzfvc` — 2026-09-29
+
+**État :** en cours — PR brouillon [#52](https://github.com/bkourouma/immotopia/pull/52) ; lots 1 à 4 livrés (API et web), lots 5 et 6 pas commencés
+**Dernier commit :** voir `git log -1` de la branche
+
+Fait :
+
+- ADR-005 `patrimoine-multi-actifs` (Accepté). Marché UEMOA, XOF, cadre OHADA.
+- Lot 1 (socle, `specs/023-…`) : `Asset` (10 classes), valorisations, dettes (adossées ou
+  personnelles), parts détenues, valeur nette et historique, écrans « Valeur nette » et « Mes actifs ».
+  Double clé : les lignes d'un actif immobilier restent sur `propertyId`, celles des autres actifs sur
+  `assetId` (`lib/patrimoine/asset-scope.ts`). Dépenses et travaux restent liés au bien.
+- Lot 2 (`specs/024-…`) : suggestion de valeur par classe (sans écriture), fiabilité calculée par le
+  serveur, statut juridique des biens, valeur périmée par classe, part de valeur peu fiable.
+- Lot 3 (`specs/025-…`) : projections sur 1 à 30 ans, trois scénarios, simulations sur copie (vente,
+  achat, emprunt, remboursement anticipé, épargne mensuelle), scénarios enregistrés (100 par agence,
+  audités), page « Projections ».
+- Relectures qualité et sécurité des lots 1, 2 et 3 : corrections faites (aucun bloquant restant).
+- Lot 4 (`specs/026-…`, espace particulier en libre-service) : type de tenant `PARTICULIER`, packs
+  `PARTICULIER_GRATUIT` (10 actifs) et `PARTICULIER_PLUS` (prix et plafond provisoires), capacité `ACTIFS` ;
+  `POST /api/personal-space` (idempotent, un seul espace par personne, e-mail vérifié exigé) ; garde
+  `FREE_TIER_LIMIT` à la création d'actif et de bien (verrou consultatif, indépendante de
+  `SUBSCRIPTION_ENFORCEMENT`) ; `GET patrimoine/usage` ; montée de palier `POST subscription/upgrade`
+  (facture, paiement PaySecureHub, changement de pack seulement au règlement réconcilié) ; anti-abus
+  d'inscription (limiteur par IP en base, réponse neutre) ; garde de liste blanche de routes pour un
+  espace `PARTICULIER` (`lib/subscription/particulier-routes.ts`, 403 `PERSONAL_SPACE_ROUTE_FORBIDDEN`) ;
+  web : « Créer mon espace », navigation réduite décidée par `tenant.type`, bandeau d'usage, carte de
+  montée de palier. Relectures qualité et sécurité faites, corrections appliquées.
+- Wiki des fonctionnalités à jour (742 lignes au lot 4).
+- Décisions du 2026-09-29 : validation fiscale utilisateur personnelle (« indicatif, non vérifié par
+  ImmoTopia ») ; palier gratuit du particulier = 10 actifs de tout type, gratuit durable, blocage à
+  l'ajout au-delà, garde dédiée sans toucher `SUBSCRIPTION_ENFORCEMENT` global ; palier payant
+  particulier = nouveau pack moins cher (prix provisoire à ajuster par le produit) ; mobile money
+  possible via PaySecureHub.
+
+Reste à faire :
+
+- Lot 5 (exports PDF et Excel de la situation patrimoniale) et lot 6 (collecte des paramètres
+  fiscaux par IA, validation personnelle) : pas commencés.
+- Recette navigateur de bout en bout : jamais faite (les écrans sont testés par des tests
+  automatiques seulement) ; le paiement mobile money réel n'est pas testable sans identifiants
+  PaySecureHub de production (simulateur seulement).
+- Décisions métier ouvertes : validation par un juriste local de la liste des statuts juridiques
+  fonciers ; relecture juridique des conditions d'utilisation, de la conservation des données et de la
+  protection des données par pays, et de la mention « indicatif, non vérifié par ImmoTopia » avant le
+  lot 6 ; durée d'essai ; captcha à revoir avant l'ouverture publique.
+- Décisions du 2026-09-29 (à la suite de la PR) : pack Particulier plus conservé à 2 900 FCFA HT par
+  mois et 100 actifs (modifiable au catalogue) ; pas de captcha maintenant ; conservation des données,
+  suppression sur demande à l'équipe (libre-service dans un lot ultérieur) ; hypothèses de projection par
+  défaut conservées, affichées comme indicatives ; liste des statuts fonciers conservée, marquée à
+  valider ; suppression d'un bien refusée (409) tant qu'un prêt actif y est adossé ; lot 6 : la
+  responsabilité d'un calcul fondé sur un paramètre validé revient à l'utilisateur, avec mention
+  explicite (à faire relire par un juriste avant l'ouverture publique) ;
+  `docs/documentation payhubsecure.docx` retiré du suivi git et ajouté à `.gitignore` (il reste dans
+  l'historique tant qu'il n'est pas purgé).
+
+Pièges et décisions :
+
+- **Budget d'entrée du web** (`npm run measure:entry`, 225 280 octets gzip, marge de 253 octets après le lot 4) :
+  chaque `React.lazy` ou fichier partagé entre chunks ajouté coûte des octets sur la carte des
+  dépendances du chunk d'entrée, et la marge bouge de ±20 octets avec les hashes. Les écrans du
+  patrimoine sont montés sur la route `/tenant/:tenantId/patrimoine/*` (`PatrimoineHome`), pas sur des
+  `React.lazy` de `App.tsx` ; pas de graphique recharts de plus. Une économie réelle a été faite :
+  `antd/es/locale/fr_FR` (ESM) au lieu de `antd/locale/fr_FR` (CommonJS). Toujours remesurer avant de
+  pousser un changement web. Le chunk d'entrée embarque aussi tout le moteur de formulaires d'Ant
+  Design via `ConfigProvider` (`antd/es/form/context`) : gisement d'économie préexistant, non traité.
+- Les mensualités de dettes ne sont pas prélevées sur la trésorerie dans les projections (pas de
+  modèle de revenus) : la valeur nette augmente du capital remboursé ; l'écran le dit.
+- Le moteur fiscal calcule déjà avec un paramètre `A_VALIDER` et marque le résultat non validé
+  (`tax/engine.ts`, `allValidated`) ; `TaxParameter` est global, sans `tenantId` : la validation
+  personnelle du lot 6 exige une portée par tenant.
+- Supprimer un bien supprime ses valorisations et parts en cascade ; la suppression est refusée (409)
+  tant qu'un prêt actif y est adossé (`deleteProperty`).
+- Écrire un `.env` dans le dépôt est bloqué par une règle de refus : la base locale jetable se configure
+  par variables d'environnement (PostgreSQL 16, bases `immotopia` et `immotopia_isolation_test`).
+- Jest : chemin du fichier de test AVANT `--selectProjects`, et `--forceExit` ; ne jamais écrire
+  `--forceExit` dans une commande qui contient `git` (un hook la prend pour `--force`) ;
+  `routes-inventory` et `route-features` sont dans le projet `api-app`. Un test lit le code source avec
+  des expressions régulières (`lot-registry.call-sites`) : le hook de commit reformate les fichiers, les
+  regex doivent tolérer les retours à la ligne.
+- `npm run i18n:extract` touche des fichiers hors périmètre (`CopilotRoot.tsx`, clé vide dans
+  `common.json`, ordre dans `portal.json`) : les remettre à l'identique.
+- Lot 4 : un `TENANT_ADMIN` d'espace `PARTICULIER` atteignait les routes d'agence tant que
+  `SUBSCRIPTION_ENFORCEMENT=warn` ; le garde de type (`particulier-routes.ts`, monté avec
+  `subscriptionRouteGuard`) refuse par défaut toute route hors liste blanche : une nouvelle route utile à
+  un particulier doit y être ajoutée (test `particulier-routes`). `requireTenantAccess` lit maintenant
+  `status` et `type` du tenant (`utils/tenant-access.ts`) et `my-memberships` renvoie `tenant.type`.
+- Lot 4 : le compteur d'actifs = actifs non archivés + biens non archivés sans actif lié ; un actif lié à
+  un bien déjà compté ne change pas le compteur. `isFreeSubscription` ne vaut que pour les packs
+  Particulier à prix nul : une agence à prix nul est facturée comme avant.
+- Lot 4 : `db:seed:catalog` sans `--missing-only` écrase le prix et le plafond ajustés par le produit
+  (RUNBOOK). `ensurePropertyAsset` ne consulte le plafond que pour un bien archivé.
+- Tests d'intégration (base réelle) : `npm run test:isolation -w @immotopia/api` avec
+  `DATABASE_URL_TEST` ; `signup-guard.integration` échoue si `DATABASE_URL_TEST` est posé sans
+  `TEST_DATABASE_URL` hors de ce lanceur ; ils sont ignorés en CI. Sous charge (agents en parallèle) des
+  workers jest sont tués (SIGKILL, mémoire) : relancer la suite seule avant de conclure à une régression.
+- Le test `copilot-root` (Ctrl+J) est instable sous charge en CI (course entre le rendu du bouton et le
+  raccourci) : une relance suffit ; il n'est pas lié au patrimoine.
+
 ## Pilote — fusion des PR ImmoCopilot #55 et #56 — 2026-09-29
 
 **État :** #55 et #56 fusionnées dans `main` (CI 6/6 verte avant chaque fusion) ; #52 (Patrimoine lot 1) laissée à sa session
 **Dernier commit :** voir `git log -1` sur `main`
+
+**Plan de reprise complet (décisions métier, 11 chantiers parallèles, ordre de fusion) :** [HANDOFF_PLAN_2026-09-29.md](HANDOFF_PLAN_2026-09-29.md) — rien n'a été lancé, le compte de la session est à court de crédit ; à exécuter depuis un autre compte via `/lead`, avant 16 h.
 
 Fait :
 
@@ -234,10 +459,10 @@ Reste à faire :
   RTL non vérifiés. Ne pas fusionner avant.
 - Session « Cloud - ImmoCopilot IA assistant » : bloquée sur une demande de permission
   (`send_later`) que seul l'utilisateur peut trancher.
-- Baux : un seul contrat par bail (numéro de document = numéro du bail, index unique
-  `(tenant_id, document_number)`, P2002) — correctif dans `document-generation-service.ts` ;
-  préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
-  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir.
+- Baux : préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
+  « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir. (Un second
+  contrat sur le même bail répond maintenant 409 avec renvoi vers « Régénérer » : branche
+  `fix/contrat-unique-par-bail`.)
 - ImmoCopilot : limiteurs de débit en mémoire par instance ; `connection_limit` à
   dimensionner ; après un échec de section exclusive le jeton est consommé (fail-closed) ;
   saturation réelle du pool non testée.

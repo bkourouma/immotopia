@@ -52,7 +52,7 @@ COPY apps/web apps/web
 # la mauvaise origine, par exemple celle du staging depuis la production.
 ARG VITE_API_ORIGIN
 ARG VITE_API_URL=/api
-# Panneau « Comptes par tenant » sur l'écran de connexion. Masque par defaut :
+# Menu deroulant de comptes de test sur l'ecran de connexion. Masque par defaut :
 # seul le staging l'active (VITE_SHOW_DEMO_ACCOUNTS=true dans staging.conf).
 ARG VITE_SHOW_DEMO_ACCOUNTS=false
 ENV VITE_API_ORIGIN=$VITE_API_ORIGIN
@@ -69,13 +69,14 @@ RUN if grep -rql "localhost:8001" apps/web/build/assets; then \
     fi
 
 # Garde-fou : hors staging (VITE_SHOW_DEMO_ACCOUNTS != true), le bundle ne doit
-# contenir AUCUN identifiant de demonstration. Le panneau est retire par
+# contenir AUCUN identifiant de demonstration. Le menu est retire par
 # elimination de code mort (apps/web/src/pages/Login.tsx) ; ce controle fait
-# echouer le build si cette elimination cessait de jouer. Les deux valeurs
-# viennent de apps/web/src/dev/dev-accounts.ts : les mettre a jour ici si elles
-# changent.
+# echouer le build si cette elimination cessait de jouer. Les motifs viennent
+# de apps/web/src/dev/dev-accounts.ts (mots de passe historiques, mot de passe
+# commun des comptes de pack PackTest@2026, domaine packs.immotopia.test) : les
+# mettre a jour ici s'ils changent.
 RUN if [ "$VITE_SHOW_DEMO_ACCOUNTS" != "true" ] \
-      && grep -rqE 'Admin@123456|DevMick@2003' apps/web/build; then \
+      && grep -rqE 'Admin@123456|DevMick@2003|PackTest@2026|packs\.immotopia\.test' apps/web/build; then \
       echo "ERREUR : des identifiants de demonstration sont presents dans le bundle alors que VITE_SHOW_DEMO_ACCOUNTS n'est pas true." >&2; \
       exit 1; \
     fi

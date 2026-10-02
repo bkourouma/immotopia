@@ -1,0 +1,1387 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia - Credits IA d'ImmoCopilot (spec 028) API
+  version: 0.1.0
+  description: >
+    Contrat PROPOSE de la facturation des credits IA : etat et blocage dans
+    l'assistant, ecran "Assistant IA" de l'agence (solde, historique, packs,
+    recharges, depassement, interrupteur), reglages, tarifs et tableau de marge
+    du super-admin. Specification seule, aucune route n'existe encore. Les
+    routes d'agence sont sous /api/tenants/{tenantId} ; celles de l'ecran sont
+    sous /subscription/ai, prefixe EXEMPT de lib/subscription/route-features.ts
+    (une agence en lecture seule voit et paie). Les routes du super-admin sont
+    sous /api/admin. Reponses enveloppees {success, data} comme le reste de
+    l'API ; erreurs typees d'AppError avec `code` et `data`. Permission requise
+    notee en `x-permission`, lot livrable en `x-lot`. Routes EXISTANTES modifiees
+    sans changement de contrat : POST /admin/tenants/{tenantId}/platform-invoices/{invoiceId}/credit-note
+    (natures AI_USAGE et AI_TOPUP, code AI_TOPUP_LOT_CONSUMED), POST
+    /tenants/{tenantId}/subscription/invoices/{invoiceId}/checkout (brouillon
+    AI_TOPUP payable), POST /admin/tenants/{tenantId}/subscription/items (packs
+    IA). Voir spec.md §6.
+servers:
+  - url: /api
+tags:
+  - name: Assistant
+    description: Etat et chat (routes existantes, contrat etendu)
+  - name: Ecran Assistant IA (agence)
+  - name: Super-admin - reglages et prix
+  - name: Super-admin - agences
+  - name: Super-admin - marge
+
+paths:
+  /tenants/{tenantId}/ai/status:
+    get:
+      tags: [Assistant]
+      summary: Etat de l'assistant, avec le solde de credits en mode ENFORCE
+      description: >
+        Contrat EXISTANT etendu de facon retrocompatible (spec FR-110, FR-126) :
+        aucun champ retire ; `credits` n'est present qu'en mode ENFORCE ; la
+        raison TENANT_DISABLED s'ajoute. Repond meme assistant desactive.
+      x-permission: collaborateur de l'agence (requireAiStatusAccess), aucune permission dediee
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Etat de l'assistant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/CopilotStatus" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/ai/chat:
+    post:
+      tags: [Assistant]
+      summary: Conversation en flux SSE (contrat 022), avec les refus de credits
+      description: >
+        Le succes est un flux `text/event-stream` (spec 022 §5). Tous les refus
+        ci-dessous sont du JSON type renvoye AVANT l'ouverture du flux (spec
+        FR-031) : le fournisseur n'a pas ete appele et aucun credit n'est debite.
+        Ordre des garde-fous : limiteurs de debit (429 RATE_LIMITED), puis
+        requireAiQuota (403, 402, 429 AI_MONTHLY_LIMIT_REACHED, 503), puis
+        validation du corps (400), puis reservation du credit (402, 503).
+      x-permission: collaborateur de l'agence ; chaque outil verifie la sienne (022)
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+      responses:
+        "200":
+          description: Flux SSE (meta, text_delta, tool_status, cartes, action_proposal, error, done)
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Validation" }
+        "402": { $ref: "#/components/responses/CreditsExhausted" }
+        "403": { $ref: "#/components/responses/TenantDisabled" }
+        "429": { $ref: "#/components/responses/RateOrMonthlyLimit" }
+        "503": { $ref: "#/components/responses/BillingOrProviderUnavailable" }
+
+  /tenants/{tenantId}/subscription/ai:
+    get:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Vue d'ensemble de l'assistant pour l'agence (reglages, solde, pack, factures ouvertes)
+      description: >
+        `active` est vrai seulement en mode ENFORCE ; sinon `credits`, `pack` et
+        `openInvoices` sont absents (SHADOW et OFF : l'agence ne voit rien de la
+        facturation, FR-115) et seuls les reglages restent renvoyes.
+      x-permission: TENANT_SETTINGS_VIEW
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Vue d'ensemble
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiOverview" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/subscription/ai/usage:
+    get:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Historique d'usage du mois, par jour ou par utilisateur (jamais de contenu)
+      x-permission: TENANT_SETTINGS_VIEW
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Month"
+        - name: groupBy
+          in: query
+          required: false
+          schema: { type: string, enum: [day, user], default: day }
+        - name: userId
+          in: query
+          required: false
+          description: Verifie comme appartenant a l'agence (404 identique a un objet inexistant sinon).
+          schema: { type: string }
+      responses:
+        "200":
+          description: Historique (nombres de requetes et de credits seulement)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiUsageHistory" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/subscription/ai/offers:
+    get:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Packs mensuels et recharges disponibles pour cette agence
+      x-permission: TENANT_SETTINGS_VIEW
+      x-lot: C
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Offres, avec leur eligibilite
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiOffers" }
+
+  /tenants/{tenantId}/subscription/ai/settings:
+    put:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Interrupteur IA, opt-in du depassement et plafond mensuel
+      description: >
+        L'interrupteur (lot B) ne peut pas lever une coupure imposee par le
+        super-admin. Le depassement (lot D) exige un plafond mensuel HT borne par
+        les reglages plateforme ; l'activation sans plafond est refusee (400).
+        Refuse hors mode ENFORCE pour le depassement (409 AI_BILLING_NOT_ACTIVE).
+      x-permission: TENANT_SETTINGS_EDIT
+      x-lot: B (interrupteur), D (depassement)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiTenantSettingsInput" }
+      responses:
+        "200":
+          description: Reglages mis a jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiTenantSettings" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/AiConflict" }
+
+  /tenants/{tenantId}/subscription/ai/pack:
+    put:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Souscrire ou changer de pack IA (montee immediate, descente a l'echeance)
+      description: >
+        Un seul pack IA actif par agence. Appelle addSubscriptionItem (prorata,
+        lien au pack de base, prix fige). Montee : avoir au prorata de l'ancien,
+        restant reporte. Descente : programmee a l'echeance. Refus : essai
+        (AI_PACK_NOT_DURING_TRIAL), hors ENFORCE (AI_BILLING_NOT_ACTIVE), lecture
+        seule d'impaye (AI_PACK_READ_ONLY).
+      x-permission: TENANT_SETTINGS_EDIT
+      x-lot: C
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiPackInput" }
+      responses:
+        "200":
+          description: Pack souscrit ou changement enregistre
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiPackChangeResult" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/AiConflict" }
+    delete:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Retirer le pack IA a l'echeance (sans remboursement)
+      x-permission: TENANT_SETTINGS_EDIT
+      x-lot: C
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Retrait programme
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiPackChangeResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/AiConflict" }
+
+  /tenants/{tenantId}/subscription/ai/topups:
+    post:
+      tags: [Ecran Assistant IA (agence)]
+      summary: Acheter une recharge prepayee (facture en brouillon puis paiement en ligne)
+      description: >
+        Cree (ou reutilise si identique et de moins de 15 minutes) une facture
+        AI_TOPUP en brouillon avec TVA 18 % et demarre le paiement en ligne
+        PaySecureHub ; sans passerelle, `manualPayment` est vrai et le
+        super-admin constate le paiement. AUCUN credit avant le reglement
+        confirme par rapprochement serveur : la facture est alors numerotee et le
+        lot TOPUP cree dans la meme transaction. Le suivi passe par la route
+        existante GET /subscription/checkouts/{codePaiement}.
+      x-permission: TENANT_SETTINGS_EDIT
+      x-lot: E
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiTopupInput" }
+      responses:
+        "201":
+          description: Commande de recharge creee
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiTopupOrder" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/AiConflict" }
+        "502":
+          description: L'agregateur n'a pas repondu (le paiement est marque FAILED).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /admin/ai-billing/settings:
+    get:
+      tags: [Super-admin - reglages et prix]
+      summary: Reglage plateforme de la facturation IA (mode, gratuit, plafonds, depassement)
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW + requireSuperAdmin
+      x-lot: A
+      responses:
+        "200":
+          description: Reglage effectif (valeurs par defaut du code si aucune ligne, mode OFF)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiBillingSettings" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Super-admin - reglages et prix]
+      summary: Modifier le reglage plateforme (sans deploiement, avec audit sans secret)
+      description: >
+        Le passage au mode ENFORCE est refuse tant que le taux de change n'est pas
+        renseigne et qu'aucun modele servi n'a de tarif (400) ; le retour a OFF est
+        toujours permis. Les modifications s'appliquent sous 30 secondes et jamais
+        aux lots deja crees.
+      x-permission: PLATFORM_SUBSCRIPTIONS_EDIT + requireSuperAdmin
+      x-lot: A (mode, taux), B (gratuit, plafond dur), C (plancher de marge), D (depassement)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiBillingSettingsInput" }
+      responses:
+        "200":
+          description: Reglage mis a jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiBillingSettings" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/ai-billing/model-prices:
+    get:
+      tags: [Super-admin - reglages et prix]
+      summary: Tarifs versionnes des modeles (dollars par million de jetons)
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW + requireSuperAdmin
+      x-lot: A
+      parameters:
+        - name: model
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Tarifs, les plus recents d'abord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiModelPrice" }
+    post:
+      tags: [Super-admin - reglages et prix]
+      summary: Ajouter un tarif a effet date (jamais de modification ni de suppression)
+      description: >
+        Le cout d'une requete passee ne change jamais : un changement de tarif est
+        une nouvelle ligne. Unicite (fournisseur, modele, date d'effet).
+      x-permission: PLATFORM_SUBSCRIPTIONS_EDIT + requireSuperAdmin
+      x-lot: A
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiModelPriceInput" }
+      responses:
+        "201":
+          description: Tarif enregistre
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiModelPrice" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "409": { $ref: "#/components/responses/AiConflict" }
+
+  /admin/ai-billing/topup-offers:
+    get:
+      tags: [Super-admin - reglages et prix]
+      summary: Offres de recharge (catalogue global)
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW + requireSuperAdmin
+      x-lot: E
+      responses:
+        "200":
+          description: Offres
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiTopupOffer" }
+
+  /admin/ai-billing/topup-offers/{code}:
+    patch:
+      tags: [Super-admin - reglages et prix]
+      summary: Modifier une offre de recharge (le prix se fige sur la facture de l'achat)
+      x-permission: PLATFORM_SUBSCRIPTIONS_EDIT + requireSuperAdmin
+      x-lot: E
+      parameters:
+        - $ref: "#/components/parameters/Code"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiTopupOfferPatch" }
+      responses:
+        "200":
+          description: Offre mise a jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiTopupOffer" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/ai-billing/usage:
+    get:
+      tags: [Super-admin - marge]
+      summary: Usage et cout agreges par agence, modele et mois
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW
+      x-lot: A
+      parameters:
+        - $ref: "#/components/parameters/Month"
+        - name: groupBy
+          in: query
+          required: false
+          schema:
+            { type: string, enum: [tenant, model, month], default: tenant }
+      responses:
+        "200":
+          description: Agregats (jetons, cout en dollars et en FCFA, usage incomplet)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiUsageAggregate" }
+
+  /admin/ai-billing/margin:
+    get:
+      tags: [Super-admin - marge]
+      summary: Tableau de marge (revenu impute contre cout fournisseur)
+      description: >
+        Revenu impute = somme de unit_value_xof x credits consommes ; casse =
+        restants des lots expires ; frais de passerelle reels repris de
+        providerFees des factures liees. Voir spec §7 et FR-103.
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW
+      x-lot: B (sources), C, D, E
+      parameters:
+        - $ref: "#/components/parameters/Month"
+        - name: groupBy
+          in: query
+          required: false
+          schema:
+            { type: string, enum: [tenant, source, model], default: source }
+      responses:
+        "200":
+          description: Tableau de marge et alertes de prix
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiMarginReport" }
+
+  /admin/tenants/{tenantId}/ai-billing:
+    get:
+      tags: [Super-admin - agences]
+      summary: Vue d'une agence - solde, lots, mois, reglages et derogations, factures liees
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: "Vue detaillee (couts et jetons inclus, reserves au super-admin)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiTenantBilling" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/tenants/{tenantId}/ai-billing/usage:
+    get:
+      tags: [Super-admin - agences]
+      summary: Requetes d'une agence pour un mois (pagine, sans contenu)
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Month"
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Evenements d'usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/AiUsageEventView" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/tenants/{tenantId}/ai-billing/usage/export:
+    get:
+      tags: [Super-admin - agences]
+      summary: Export CSV de l'usage d'un mois (par jour et par utilisateur, jamais de contenu)
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/Month"
+      responses:
+        "200":
+          description: Fichier CSV
+          content:
+            text/csv:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/tenants/{tenantId}/ai-billing/ledger:
+    get:
+      tags: [Super-admin - agences]
+      summary: Journal en ajout seul des mouvements de credits
+      x-permission: PLATFORM_SUBSCRIPTIONS_VIEW
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: grantId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        "200":
+          description: Mouvements, les plus recents d'abord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/AiLedgerEntry" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/tenants/{tenantId}/ai-billing/grants:
+    post:
+      tags: [Super-admin - agences]
+      summary: Accorder des credits offerts ou restituer des credits (motif obligatoire)
+      description: >
+        GIFT cree un lot ADMIN_GRANT de valeur unitaire 0 (expiration 12 mois au
+        plus). REFUND corrige une erreur de comptage (ecriture REFUND du journal,
+        sans facture). Chaque geste ecrit un audit sans contenu de conversation.
+      x-permission: PLATFORM_SUBSCRIPTIONS_EDIT
+      x-lot: B
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiGrantInput" }
+      responses:
+        "201":
+          description: Lot ou ecriture creee
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiGrant" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/tenants/{tenantId}/ai-billing/overrides:
+    put:
+      tags: [Super-admin - agences]
+      summary: Derogations par agence et coupure forcee de l'assistant
+      description: >
+        La coupure forcee exige un motif et ne peut pas etre levee par
+        l'administrateur de l'agence. La politique de quota (BLOCK, BILL_OVERAGE,
+        WARN_ONLY) se regle par la route existante PATCH
+        /admin/tenants/{tenantId}/subscription/settings.
+      x-permission: PLATFORM_SUBSCRIPTIONS_EDIT
+      x-lot: B (gratuit, plafond dur, coupure), D (prix de depassement)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiOverridesInput" }
+      responses:
+        "200":
+          description: Derogations enregistrees
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/AiTenantSettings" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string }
+    Code:
+      name: code
+      in: path
+      required: true
+      description: Code d'une offre (par exemple AI_TOPUP_100).
+      schema: { type: string }
+    Month:
+      name: month
+      in: query
+      required: false
+      description: Mois UTC au format AAAA-MM (defaut, le mois courant).
+      schema:
+        {
+          type: string,
+          pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$",
+          example: "2026-09",
+        }
+
+  responses:
+    NotFound:
+      description: Introuvable, ou appartenant a une autre agence (meme reponse).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Permission manquante, ou compte refuse par l'assistant (super-admin, client de portail).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Validation:
+      description: "Donnees invalides (Zod .strict() : champ inconnu rejete)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    AiConflict:
+      description: >
+        Etat incompatible : AI_BILLING_NOT_ACTIVE (mode OFF ou SHADOW),
+        AI_PACK_NOT_DURING_TRIAL, AI_PACK_READ_ONLY, doublon de tarif, ou
+        AI_TOPUP_LOT_CONSUMED.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    CreditsExhausted:
+      description: >
+        402 AI_CREDITS_EXHAUSTED (data.reason NO_CREDITS, OVERAGE_NOT_ENABLED,
+        OVERAGE_SUSPENDED_UNPAID, POLICY_BLOCK, PHASE_RESTRICTED) ou 402
+        AI_OVERAGE_CAP_REACHED. JSON avant tout flux ; le fournisseur n'a pas ete
+        appele.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CreditsError" }
+    TenantDisabled:
+      description: >
+        403 AI_TENANT_DISABLED (data.by = TENANT ou PLATFORM), ou refus
+        d'acces existant (compte non collaborateur, aucun outil disponible).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateOrMonthlyLimit:
+      description: >
+        429 RATE_LIMITED (limiteurs de debit existants, inchanges) ou 429
+        AI_MONTHLY_LIMIT_REACHED (plafond dur mensuel, meme avec depassement
+        active).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BillingOrProviderUnavailable:
+      description: >
+        503 AI_BILLING_UNAVAILABLE (reservation impossible en ENFORCE, retentable,
+        fournisseur non appele) ou 503 AI_DISABLED (aucun fournisseur, existant).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        code:
+          type: string
+          description: >
+            AI_CREDITS_EXHAUSTED, AI_OVERAGE_CAP_REACHED, AI_TENANT_DISABLED,
+            AI_MONTHLY_LIMIT_REACHED, AI_BILLING_UNAVAILABLE,
+            AI_BILLING_NOT_ACTIVE, AI_PACK_NOT_DURING_TRIAL, AI_PACK_READ_ONLY,
+            AI_TOPUP_LOT_CONSUMED, AI_DISABLED, RATE_LIMITED, NOT_FOUND,
+            VALIDATION_ERROR.
+        data:
+          description: Detail selon le code.
+          type: object
+          additionalProperties: true
+
+    CreditsError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  enum:
+                    - NO_CREDITS
+                    - OVERAGE_NOT_ENABLED
+                    - OVERAGE_SUSPENDED_UNPAID
+                    - POLICY_BLOCK
+                    - PHASE_RESTRICTED
+                    - CAP_REACHED
+                balance: { $ref: "#/components/schemas/AiBalance" }
+                resetAt: { type: string, format: date-time }
+                canPurchase:
+                  type: boolean
+                  description: Vrai si l'utilisateur detient TENANT_SETTINGS_EDIT.
+                purchasePath:
+                  type: string
+                  description: Chemin relatif de l'ecran "Assistant IA", jamais une URL absolue.
+                  example: /tenant/abc/settings/assistant-ia
+                overage: { $ref: "#/components/schemas/AiOverageState" }
+
+    ChatRequest:
+      type: object
+      additionalProperties: false
+      required: [messages]
+      description: Contrat de la spec 022 §5, inchange.
+      properties:
+        conversationId: { type: string }
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content: { type: string, maxLength: 4000 }
+        context:
+          type: object
+          properties:
+            currentPath: { type: string }
+            activeEntityType: { type: string, enum: [PROPERTY, LEASE] }
+            activeEntityId: { type: string }
+
+    CopilotStatus:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        reason:
+          type: string
+          enum: [NOT_CONFIGURED, NO_TOOLS, TENANT_DISABLED]
+        provider:
+          type: string
+          nullable: true
+          enum: [fake, anthropic, openrouter]
+        tools:
+          type: array
+          items: { type: string }
+        limits:
+          type: object
+          properties:
+            maxMessages: { type: integer }
+            maxMessageChars: { type: integer }
+        credits:
+          allOf:
+            - $ref: "#/components/schemas/AiCreditsStatus"
+          description: Present seulement en mode ENFORCE.
+
+    AiBalance:
+      type: object
+      properties:
+        monthlyFree: { type: integer, minimum: 0 }
+        adminGrant: { type: integer, minimum: 0 }
+        pack: { type: integer, minimum: 0 }
+        topup: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+        nextTopupExpiry: { type: string, format: date-time, nullable: true }
+
+    AiOverageState:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        monthlyCapXof: { type: number, nullable: true }
+        usedXof: { type: number }
+        capReached: { type: boolean }
+
+    AiCreditsStatus:
+      type: object
+      properties:
+        periodKey: { type: string, example: "2026-09" }
+        resetAt:
+          {
+            type: string,
+            format: date-time,
+            description: "1er du mois suivant a 00:00 UTC.",
+          }
+        balance: { $ref: "#/components/schemas/AiBalance" }
+        allocatedThisMonth: { type: integer }
+        consumedThisMonth: { type: integer }
+        reserved:
+          { type: integer, description: Requetes en cours (credits reserves). }
+        overage: { $ref: "#/components/schemas/AiOverageState" }
+        canPurchase: { type: boolean }
+        purchasePath: { type: string }
+        blocked:
+          type: boolean
+          description: Vrai si la prochaine requete serait refusee.
+
+    AiTenantSettings:
+      type: object
+      properties:
+        aiEnabled: { type: boolean }
+        disabledByPlatform:
+          type: boolean
+          description: Coupure imposee par le super-admin (non levable par l'agence).
+        disabledByPlatformReason: { type: string, nullable: true }
+        overageEnabled: { type: boolean }
+        overageMonthlyCapXof: { type: number, nullable: true }
+        overageUnitPriceXof:
+          { type: number, description: Prix HT d'une requete de depassement. }
+        overageCapBounds:
+          type: object
+          properties:
+            min: { type: number }
+            max: { type: number }
+            suggested: { type: number }
+        freeCreditsOverride:
+          {
+            type: integer,
+            nullable: true,
+            description: Visible du super-admin seulement.,
+          }
+        hardMonthlyCapOverride:
+          {
+            type: integer,
+            nullable: true,
+            description: Visible du super-admin seulement.,
+          }
+
+    AiTenantSettingsInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        aiEnabled: { type: boolean }
+        overageEnabled: { type: boolean }
+        overageMonthlyCapXof:
+          type: number
+          minimum: 1
+          description: Obligatoire quand overageEnabled est vrai ; borne par les reglages plateforme.
+
+    AiOverview:
+      type: object
+      properties:
+        active:
+          type: boolean
+          description: Vrai seulement en mode ENFORCE.
+        settings: { $ref: "#/components/schemas/AiTenantSettings" }
+        credits:
+          allOf:
+            - $ref: "#/components/schemas/AiCreditsStatus"
+          nullable: true
+        freeAllocation:
+          type: object
+          nullable: true
+          properties:
+            perMember: { type: integer }
+            cap: { type: integer }
+            activeCollaborators: { type: integer }
+            credits: { type: integer }
+        pack:
+          allOf:
+            - $ref: "#/components/schemas/AiPackItem"
+          nullable: true
+        openInvoices:
+          type: array
+          items: { $ref: "#/components/schemas/AiInvoiceRef" }
+
+    AiPackItem:
+      type: object
+      properties:
+        itemId: { type: string }
+        code: { type: string, enum: [EXT_IA_100, EXT_IA_500, EXT_IA_2000] }
+        credits: { type: integer }
+        unitMonthlyPrice:
+          { type: number, description: Prix HT fige a la souscription. }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time, nullable: true }
+        scheduledCode:
+          {
+            type: string,
+            nullable: true,
+            description: Pack programme a l'echeance (descente).,
+          }
+
+    AiInvoiceRef:
+      type: object
+      properties:
+        id: { type: string }
+        invoiceNumber: { type: string }
+        nature:
+          {
+            type: string,
+            enum: [PERIOD, OVERAGE, CREDIT_NOTE, AI_USAGE, AI_TOPUP],
+          }
+        status:
+          {
+            type: string,
+            enum: [DRAFT, ISSUED, PAID, FAILED, CANCELED, REFUNDED, OVERDUE],
+          }
+        amountTotal: { type: number }
+        dueDate: { type: string, format: date-time }
+
+    AiUsageHistory:
+      type: object
+      properties:
+        month: { type: string, example: "2026-09" }
+        groupBy: { type: string, enum: [day, user] }
+        totals:
+          type: object
+          properties:
+            requests: { type: integer }
+            releasedRequests: { type: integer }
+            creditsBySource:
+              type: object
+              properties:
+                monthlyFree: { type: integer }
+                adminGrant: { type: integer }
+                pack: { type: integer }
+                topup: { type: integer }
+                overage: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date, nullable: true }
+              userId: { type: string, nullable: true }
+              userName: { type: string, nullable: true }
+              requests: { type: integer }
+              credits: { type: integer }
+
+    AiOffers:
+      type: object
+      properties:
+        packs:
+          type: array
+          items: { $ref: "#/components/schemas/AiPackOffer" }
+        topups:
+          type: array
+          items: { $ref: "#/components/schemas/AiTopupOfferView" }
+
+    AiPackOffer:
+      type: object
+      properties:
+        code: { type: string, enum: [EXT_IA_100, EXT_IA_500, EXT_IA_2000] }
+        name: { type: string }
+        credits: { type: integer }
+        monthlyPriceExclTax: { type: number }
+        monthlyPriceInclTax: { type: number }
+        firstMonthCredits:
+          type: integer
+          description: Credits du mois de l'achat (prorata, arrondi au-dessus).
+        proratedAmountExclTax: { type: number, nullable: true }
+        current: { type: boolean }
+        available: { type: boolean }
+        unavailableReason:
+          type: string
+          nullable: true
+          enum: [TRIAL, READ_ONLY, NOT_ACTIVE, PACK_PRESENT]
+
+    AiTopupOfferView:
+      type: object
+      properties:
+        code: { type: string, example: AI_TOPUP_100 }
+        name: { type: string }
+        credits: { type: integer }
+        priceExclTax: { type: number }
+        priceInclTax: { type: number }
+        validityMonths: { type: integer }
+        available: { type: boolean }
+
+    AiPackInput:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string, enum: [EXT_IA_100, EXT_IA_500, EXT_IA_2000] }
+
+    AiPackChangeResult:
+      type: object
+      properties:
+        item: { $ref: "#/components/schemas/AiPackItem" }
+        upgrade: { type: boolean }
+        immediate: { type: boolean }
+        switchAt: { type: string, format: date-time }
+        firstMonthCredits: { type: integer }
+        carriedOverCredits:
+          type: integer
+          description: Restant de l'ancien lot reporte dans le nouveau (montee seulement).
+
+    AiTopupInput:
+      type: object
+      additionalProperties: false
+      required: [offerCode]
+      properties:
+        offerCode: { type: string, example: AI_TOPUP_100 }
+        quantity: { type: integer, minimum: 1, maximum: 10, default: 1 }
+
+    AiTopupOrder:
+      type: object
+      properties:
+        invoice:
+          type: object
+          properties:
+            id: { type: string }
+            nature: { type: string, enum: [AI_TOPUP] }
+            status: { type: string, enum: [DRAFT] }
+            amountExclTax: { type: number }
+            taxAmount: { type: number }
+            amountTotal: { type: number }
+        checkout:
+          type: object
+          nullable: true
+          properties:
+            codePaiement: { type: string }
+            checkoutUrl: { type: string, nullable: true }
+            status: { type: string }
+            mode: { type: string, enum: [SIMULATOR, LIVE] }
+        manualPayment:
+          type: boolean
+          description: Vrai si le paiement en ligne n'est pas disponible (constat manuel par le super-admin).
+        credits: { type: integer }
+        validityMonths: { type: integer }
+
+    AiBillingSettings:
+      type: object
+      properties:
+        mode: { type: string, enum: [OFF, SHADOW, ENFORCE] }
+        usdToXofRate: { type: number, nullable: true }
+        stuckReservationMinutes: { type: integer }
+        freeCreditsPerMember: { type: integer }
+        freeCreditsCap: { type: integer }
+        hardMonthlyCap: { type: integer }
+        maxCostPerRequestXof: { type: number, nullable: true }
+        freeBudgetMonthlyCredits: { type: integer, nullable: true }
+        overageUnitPriceXof: { type: number }
+        overageCapMinXof: { type: number }
+        overageCapMaxXof: { type: number }
+        overageCapSuggestedXof: { type: number }
+        marginFloorMultiplier: { type: number }
+        source: { type: string, enum: [database, default] }
+        updatedAt: { type: string, format: date-time, nullable: true }
+
+    AiBillingSettingsInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        mode: { type: string, enum: [OFF, SHADOW, ENFORCE] }
+        usdToXofRate:
+          { type: number, exclusiveMinimum: true, minimum: 0, nullable: true }
+        stuckReservationMinutes: { type: integer, minimum: 5, maximum: 240 }
+        freeCreditsPerMember: { type: integer, minimum: 0, maximum: 1000 }
+        freeCreditsCap: { type: integer, minimum: 0, maximum: 100000 }
+        hardMonthlyCap: { type: integer, minimum: 1, maximum: 1000000 }
+        maxCostPerRequestXof: { type: number, minimum: 0, nullable: true }
+        freeBudgetMonthlyCredits: { type: integer, minimum: 0, nullable: true }
+        overageUnitPriceXof: { type: number, minimum: 0 }
+        overageCapMinXof: { type: number, minimum: 0 }
+        overageCapMaxXof: { type: number, minimum: 0 }
+        overageCapSuggestedXof: { type: number, minimum: 0 }
+        marginFloorMultiplier: { type: number, minimum: 1, maximum: 10 }
+
+    AiModelPrice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string, enum: [anthropic, openrouter, fake] }
+        model: { type: string }
+        effectiveFrom: { type: string, format: date-time }
+        currency: { type: string, example: USD }
+        inputPerMTok: { type: number }
+        outputPerMTok: { type: number }
+        cacheReadPerMTok: { type: number, nullable: true }
+        cacheWritePerMTok: { type: number, nullable: true }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AiModelPriceInput:
+      type: object
+      additionalProperties: false
+      required: [provider, model, effectiveFrom, inputPerMTok, outputPerMTok]
+      properties:
+        provider: { type: string, enum: [anthropic, openrouter, fake] }
+        model: { type: string, minLength: 1, maxLength: 200 }
+        effectiveFrom: { type: string, format: date-time }
+        inputPerMTok: { type: number, minimum: 0 }
+        outputPerMTok: { type: number, minimum: 0 }
+        cacheReadPerMTok: { type: number, minimum: 0, nullable: true }
+        cacheWritePerMTok: { type: number, minimum: 0, nullable: true }
+        note: { type: string, maxLength: 500, nullable: true }
+
+    AiTopupOffer:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        credits: { type: integer }
+        priceExclTax: { type: number }
+        validityMonths: { type: integer }
+        isSellable: { type: boolean }
+        sortOrder: { type: integer }
+
+    AiTopupOfferPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, maxLength: 200 }
+        credits: { type: integer, minimum: 1 }
+        priceExclTax: { type: number, minimum: 0 }
+        validityMonths: { type: integer, minimum: 1, maximum: 36 }
+        isSellable: { type: boolean }
+        sortOrder: { type: integer }
+
+    AiUsageAggregate:
+      type: object
+      properties:
+        month: { type: string, nullable: true }
+        groupBy: { type: string, enum: [tenant, model, month] }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label: { type: string, nullable: true }
+              requests: { type: integer }
+              chargedCredits: { type: integer }
+              releasedRequests: { type: integer }
+              inputTokens: { type: integer }
+              outputTokens: { type: integer }
+              costUsd: { type: number }
+              costXof: { type: number, nullable: true }
+              averageCostXofPerRequest: { type: number, nullable: true }
+              p95CostXofPerRequest: { type: number, nullable: true }
+              incompleteUsage: { type: integer }
+              unknownCostRequests: { type: integer }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/AiWarning" }
+
+    AiWarning:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - MODEL_WITHOUT_PRICE
+            - FX_RATE_MISSING
+            - INCOMPLETE_USAGE_HIGH
+            - FREE_BUDGET_EXCEEDED
+            - PRICE_BELOW_MARGIN_FLOOR
+            - USAGE_WRITE_FAILURES
+        message: { type: string }
+        data: { type: object, additionalProperties: true }
+
+    AiMarginReport:
+      type: object
+      properties:
+        month: { type: string, nullable: true }
+        groupBy: { type: string, enum: [tenant, source, model] }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              label: { type: string, nullable: true }
+              requests: { type: integer }
+              creditsBySource:
+                type: object
+                additionalProperties: { type: integer }
+              imputedRevenueXof: { type: number }
+              costXof: { type: number }
+              releasedRequestsCostXof: { type: number }
+              grossMarginXof: { type: number }
+              grossMarginPct: { type: number, nullable: true }
+              gatewayFeesXof: { type: number }
+              breakageCredits: { type: integer }
+              incompleteUsageRatio: { type: number }
+        totals:
+          type: object
+          properties:
+            imputedRevenueXof: { type: number }
+            costXof: { type: number }
+            grossMarginXof: { type: number }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/AiWarning" }
+
+    AiGrant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        source:
+          {
+            type: string,
+            enum: [MONTHLY_FREE, PACK_MONTHLY, ADMIN_GRANT, TOPUP],
+          }
+        quantity: { type: integer }
+        remaining: { type: integer }
+        unitValueXof: { type: number }
+        validFrom: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        periodKey: { type: string, nullable: true }
+        subscriptionItemId: { type: string, nullable: true }
+        invoiceId: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AiGrantInput:
+      type: object
+      additionalProperties: false
+      required: [kind, quantity, reason]
+      properties:
+        kind: { type: string, enum: [GIFT, REFUND] }
+        quantity: { type: integer, minimum: 1, maximum: 10000 }
+        expiresAt:
+          type: string
+          format: date-time
+          description: Pour GIFT seulement ; 12 mois au plus (defaut, fin du mois courant).
+        reason: { type: string, minLength: 10, maxLength: 500 }
+
+    AiLedgerEntry:
+      type: object
+      properties:
+        id:
+          {
+            type: string,
+            description: Identifiant sequentiel (BigInt) en chaine.,
+          }
+        grantId: { type: string, format: uuid }
+        usageEventId: { type: string, format: uuid, nullable: true }
+        entryType:
+          {
+            type: string,
+            enum: [GRANT, RESERVE, CONSUME, RELEASE, EXPIRE, REFUND, ADJUST],
+          }
+        delta: { type: integer }
+        remainingAfter: { type: integer }
+        actorUserId: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AiUsageEventView:
+      type: object
+      description: Vue super-admin d'un evenement d'usage. Jamais de contenu de message ni de reponse.
+      properties:
+        requestId: { type: string, format: uuid }
+        userId: { type: string, nullable: true }
+        provider: { type: string }
+        model: { type: string, nullable: true }
+        status: { type: string, enum: [RESERVED, SETTLED, RELEASED, EXPIRED] }
+        outcome: { type: string, nullable: true }
+        source:
+          {
+            type: string,
+            nullable: true,
+            enum:
+              [
+                MONTHLY_FREE,
+                PACK_MONTHLY,
+                ADMIN_GRANT,
+                TOPUP,
+                OVERAGE,
+                UNBILLED,
+              ],
+          }
+        creditsCharged: { type: integer }
+        providerCalls: { type: integer }
+        rounds: { type: integer }
+        toolCalls: { type: integer }
+        durationMs: { type: integer, nullable: true }
+        inputTokens: { type: integer, nullable: true }
+        outputTokens: { type: integer, nullable: true }
+        cacheReadTokens: { type: integer, nullable: true }
+        cacheWriteTokens: { type: integer, nullable: true }
+        usageComplete: { type: boolean }
+        costUsd: { type: number, nullable: true }
+        costXof: { type: number, nullable: true }
+        costSource:
+          { type: string, enum: [PROVIDER_REPORTED, COMPUTED, UNKNOWN] }
+        shadowBlocked: { type: boolean }
+        reservedAt: { type: string, format: date-time }
+        settledAt: { type: string, format: date-time, nullable: true }
+
+    AiTenantBilling:
+      type: object
+      properties:
+        settings: { $ref: "#/components/schemas/AiTenantSettings" }
+        credits: { $ref: "#/components/schemas/AiCreditsStatus" }
+        grants:
+          type: array
+          items: { $ref: "#/components/schemas/AiGrant" }
+        months:
+          type: array
+          items:
+            type: object
+            properties:
+              periodKey: { type: string }
+              status: { type: string, enum: [OPEN, INVOICED, WAIVED] }
+              requests: { type: integer }
+              overageCredits: { type: integer }
+              overageAmountXof: { type: number, nullable: true }
+              overageInvoiceId: { type: string, nullable: true }
+              costXof: { type: number }
+              incompleteUsage: { type: integer }
+        invoices:
+          type: array
+          items: { $ref: "#/components/schemas/AiInvoiceRef" }
+
+    AiOverridesInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        freeCreditsOverride:
+          { type: integer, minimum: 0, maximum: 100000, nullable: true }
+        hardMonthlyCapOverride:
+          { type: integer, minimum: 1, maximum: 1000000, nullable: true }
+        overageUnitPriceOverride: { type: number, minimum: 0, nullable: true }
+        platformDisabled:
+          type: boolean
+          description: Coupure forcee ; exige platformDisabledReason.
+        platformDisabledReason: { type: string, minLength: 10, maxLength: 500 }
+        notes: { type: string, maxLength: 1000, nullable: true }

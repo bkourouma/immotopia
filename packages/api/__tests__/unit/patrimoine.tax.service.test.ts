@@ -29,6 +29,10 @@ function matchesWhere(row: Row, where: Row): boolean {
     if (expected && typeof expected === 'object' && 'in' in (expected as Row)) {
       return (expected as Row).in.includes(row[key]);
     }
+    // `{ not: null }` : le service écarte les parts d'actif (propertyId nul).
+    if (expected && typeof expected === 'object' && 'not' in (expected as Row)) {
+      return row[key] !== (expected as Row).not && row[key] !== undefined;
+    }
     return row[key] === expected;
   });
 }
@@ -293,5 +297,46 @@ describe("tax/service — année partielle (estimation d'une entité)", () => {
 
     const estimate = await getEntityTaxEstimate(TENANT_A, 'entity-1', { year: 2026 });
     expect(estimate.properties).toHaveLength(0);
+  });
+});
+
+describe("tax/service — part d'un actif non immobilier (lot 1 multi-actifs)", () => {
+  it("l'estimation d'une entité ignore les parts d'actifs (propertyId nul) : hors consolidation immobilière", async () => {
+    store.properties.push({
+      id: 'prop-1',
+      tenantId: TENANT_A,
+      propertyType: 'APARTMENT',
+      title: 'Bien 1',
+      internalReference: 'REF-1'
+    });
+    store.entities.push({ id: 'entity-1', tenantId: TENANT_A, legalForm: 'SCI', fiscalOwnerKind: null, country: 'CI' });
+    store.holdings.push(
+      {
+        id: 'holding-property',
+        tenantId: TENANT_A,
+        propertyId: 'prop-1',
+        entityId: 'entity-1',
+        sharePercent: 50,
+        effectiveFrom: null,
+        property: store.properties[0]
+      },
+      {
+        id: 'holding-asset',
+        tenantId: TENANT_A,
+        propertyId: null,
+        assetId: 'asset-1',
+        entityId: 'entity-1',
+        sharePercent: 30,
+        effectiveFrom: null,
+        property: null
+      }
+    );
+
+    const estimate = await getEntityTaxEstimate(TENANT_A, 'entity-1', { year: 2026 });
+
+    expect(estimate.properties.map(p => p.propertyId)).toEqual(['prop-1']);
+    expect(mockPrisma.propertyHolding.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT_A, entityId: 'entity-1', propertyId: { not: null } } })
+    );
   });
 });

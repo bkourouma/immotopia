@@ -21,7 +21,7 @@
  */
 
 import { prisma } from '../../utils/database';
-import { roundMoneyXof } from './money';
+import { roundMoney, roundMoneyXof } from './money';
 import { toAmountOrZero } from './types';
 
 export interface MovementTotals {
@@ -82,4 +82,55 @@ export async function sumNetMovementsByAccount(
     rounded.set(accountId, { billed: roundMoneyXof(entry.billed), settled: roundMoneyXof(entry.settled) });
   }
   return rounded;
+}
+
+/**
+ * Cumuls facture / regle des comptes LOCATAIRES — regle UNIQUE de la balance
+ * clients (BUG-2026-09-30-058).
+ *
+ * **Regle comptable.** Un reglement affecte a une echeance s'ecrit au grand
+ * livre en trois mouvements : `ADVANCE_RECEIVED` (credit du montant recu),
+ * `PAYMENT` (credit de l'affectation) puis `ADVANCE_APPLIED` (DEBIT du meme
+ * montant, « reprise de l'avance »). Le solde est juste — la reprise annule le
+ * credit en double — mais une addition brute de `debit` et `credit` gonflait
+ * « Facture » ET « Regle » du montant affecte. Une reprise d'avance est un
+ * transfert interne : elle ne facture rien et annule un credit deja compte.
+ *
+ *   facture = somme des debits − somme des debits ADVANCE_APPLIED
+ *   regle   = somme des credits − somme des debits ADVANCE_APPLIED
+ *   solde   = facture − regle (inchange)
+ *
+ * Agregation SQL (deux `groupBy`), jamais en memoire.
+ *
+ * @param baseWhere filtre commun (tenant, comptes, periode, bail).
+ */
+export async function sumClientBilledSettledByAccount(
+  baseWhere: Record<string, unknown>
+): Promise<Map<string, MovementTotals>> {
+  const [grouped, applied] = await Promise.all([
+    prisma.thirdPartyMovement.groupBy({
+      by: ['accountId'],
+      where: baseWhere as any,
+      _sum: { debit: true, credit: true }
+    }),
+    prisma.thirdPartyMovement.groupBy({
+      by: ['accountId'],
+      where: { ...baseWhere, type: 'ADVANCE_APPLIED' } as any,
+      _sum: { debit: true }
+    })
+  ]);
+
+  const appliedByAccount = new Map<string, number>(
+    (applied as any[]).map(g => [g.accountId as string, toAmountOrZero(g._sum.debit)])
+  );
+
+  const totals = new Map<string, MovementTotals>();
+  for (const group of grouped as any[]) {
+    const reprise = appliedByAccount.get(group.accountId) ?? 0;
+    totals.set(group.accountId, {
+      billed: roundMoney(toAmountOrZero(group._sum.debit) - reprise),
+      settled: roundMoney(toAmountOrZero(group._sum.credit) - reprise)
+    });
+  }
+  return totals;
 }

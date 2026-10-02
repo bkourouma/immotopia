@@ -69,6 +69,7 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   SecureLink:
     "Lien securise a jeton (lot A3) : porte le SHA-256 du jeton d'acces public ; l'exporter remettrait un secret " +
     "d'authentification a quiconque lit l'archive. Les consultations sont dans le journal d'audit de la plateforme.",
+  SignupAttempt: "Tentative d'inscription (limiteur anti-abus par empreinte d'IP, sans agence).",
   // Catalogues et referentiels globaux de la plateforme, sans donnee d'agence.
   Role: 'Catalogue de roles de la plateforme (sans agence).',
   Permission: 'Catalogue de permissions de la plateforme.',

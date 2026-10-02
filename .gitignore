@@ -78,3 +78,5 @@ CLAUDE.local.md
 # Copies de sauvegardes et de secrets rapatriees du serveur (infra/scripts/pull-backups.sh).
 # Donnees et secrets EN CLAIR : ne jamais les versionner (le depot est public).
 /backups-serveur/
+# Documentation du fournisseur de paiement : coordonnees personnelles, conservee hors du depot
+docs/documentation payhubsecure.docx

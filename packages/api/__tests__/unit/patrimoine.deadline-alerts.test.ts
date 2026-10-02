@@ -355,6 +355,16 @@ describe('alertLoanMaturity', () => {
     });
   });
 
+  it("ne lit que les prêts rattachés à un bien : ni prêt d'actif non immobilier, ni dette personnelle", async () => {
+    propertyLoanFindMany.mockResolvedValue([]);
+
+    await alertLoanMaturity(TENANT, { now: NOW });
+
+    expect(propertyLoanFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: TENANT, propertyId: { not: null } }) })
+    );
+  });
+
   it("se rabat sur l'e-mail de contact de l'agence si aucun administrateur actif", async () => {
     propertyLoanFindMany.mockResolvedValue([baseLoan()]);
     roleFindUnique.mockResolvedValue(null);

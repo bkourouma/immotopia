@@ -362,7 +362,8 @@ async function loadHoldings(tenantId: string, propertyIds: string[], grantEntity
     row.entity.tenantId === tenantId && row.entity.legalForm !== 'INDIVIDUAL' && listed.has(row.entityId);
 
   const result = new Map<string, { shown: typeof rows; otherShare: number | null }>();
-  for (const [propertyId, group] of groupBy(rows, row => row.propertyId)) {
+  // `propertyId: { in: [...] }` exclut les parts d'actifs non immobiliers (propertyId nul).
+  for (const [propertyId, group] of groupBy(rows, row => row.propertyId as string)) {
     const others = group.filter(row => !detailed(row));
     result.set(propertyId, {
       shown: group.filter(detailed),

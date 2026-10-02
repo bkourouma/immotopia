@@ -580,6 +580,24 @@ function rethrowLotNumberRace(error: unknown): never {
   throw error;
 }
 
+/**
+ * Tantiemes speciaux (ex. ascenseur) d'un lot cree. La valeur saisie
+ * (`specialShares`) est enregistree telle quelle ; vide ou null = aucun
+ * tantieme special (le lot pese 0 dans une repartition « tantiemes speciaux »).
+ * Sans `specialShares`, l'ancien contrat `isParkingIncluded` recopie les
+ * tantiemes generaux ; sinon null.
+ */
+function resolveCreateSpecialShares(data: {
+  tantiemes: number;
+  specialShares?: number | null;
+  isParkingIncluded?: boolean;
+}): number | null {
+  if (data.specialShares !== undefined) {
+    return data.specialShares === null ? null : Math.round(data.specialShares);
+  }
+  return data.isParkingIncluded ? Math.round(data.tantiemes) : null;
+}
+
 export async function createSyndicateLot(
   tenantId: string,
   data: {
@@ -591,6 +609,8 @@ export async function createSyndicateLot(
     tantiemes: number;
     surface?: number | null;
     floor?: number | null;
+    specialShares?: number | null;
+    ownerSince?: Date | null;
     isParkingIncluded?: boolean;
   }
 ) {
@@ -653,7 +673,8 @@ export async function createSyndicateLot(
           lotNumber,
           lotType: data.lotType,
           generalShares: Math.round(data.tantiemes),
-          specialShares: data.isParkingIncluded ? Math.round(data.tantiemes) : null
+          specialShares: resolveCreateSpecialShares(data),
+          ownerSince: data.ownerSince ?? null
         }
       });
 
@@ -999,6 +1020,8 @@ export async function updateSyndicateLotByTenant(
     tantiemes?: number;
     surface?: number | null;
     floor?: number | null;
+    specialShares?: number | null;
+    ownerSince?: Date | null;
     isParkingIncluded?: boolean;
   }
 ) {
@@ -1046,9 +1069,13 @@ export async function updateSyndicateLotByTenant(
           ...(Object.prototype.hasOwnProperty.call(data, 'tantiemes')
             ? { generalShares: data.tantiemes !== undefined ? Math.round(data.tantiemes) : undefined }
             : {}),
-          ...(Object.prototype.hasOwnProperty.call(data, 'isParkingIncluded')
-            ? { specialShares: data.isParkingIncluded ? Math.round(data.tantiemes ?? 0) : null }
-            : {})
+          // La valeur saisie l'emporte ; absente, l'ancien `isParkingIncluded` s'applique.
+          ...(Object.prototype.hasOwnProperty.call(data, 'specialShares')
+            ? { specialShares: data.specialShares === null ? null : Math.round(data.specialShares ?? 0) }
+            : Object.prototype.hasOwnProperty.call(data, 'isParkingIncluded')
+              ? { specialShares: data.isParkingIncluded ? Math.round(data.tantiemes ?? 0) : null }
+              : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, 'ownerSince') ? { ownerSince: data.ownerSince ?? null } : {})
         }
       });
       // Type de lot ou bien rattache modifies : le lot entre, sort ou change de cle (D2).

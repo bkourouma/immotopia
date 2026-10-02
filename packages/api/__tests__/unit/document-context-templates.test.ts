@@ -154,6 +154,37 @@ describe('buildRentReceiptContext + Reçu_Loyer.docx', () => {
     expect(text).toContain('135 000 FCFA');
     expect(text).toContain('BAIL-2026-001');
     expect(text).toContain('Abidjan');
+    expect(context.DEVISE).toBe('FCFA');
+    expect(text).toContain('Montant FCFA');
+  });
+
+  it('devise du paiement : DEVISE suit la devise, le modele ne dit plus FCFA en dur', async () => {
+    const june = installment(6, { amount_paid: 135000, status: 'PAID' });
+    rentalPaymentFindFirst.mockResolvedValue({
+      ...payment(135000, [{ installment: june, amount: 135000 }]),
+      currency: 'EUR'
+    });
+    rentalInstallmentFindFirst.mockResolvedValue(june);
+
+    const context = await buildRentReceiptContext('agency-1', 'pay-1');
+    expect(context.DEVISE).toBe('EUR');
+
+    const text = await renderModelText('Reçu_Loyer.docx', context);
+    expect(text).toContain('135 000 EUR');
+    expect(text).toContain('Montant EUR');
+    expect(text).not.toContain('FCFA');
+  });
+
+  it('numero du recu : le contexte porte la reference du paiement, generateDocument la remplace par RCU-… avant le rendu', async () => {
+    const june = installment(6, { amount_paid: 135000, status: 'PAID' });
+    rentalPaymentFindFirst.mockResolvedValue(payment(135000, [{ installment: june, amount: 135000 }]));
+    rentalInstallmentFindFirst.mockResolvedValue(june);
+
+    const context = await buildRentReceiptContext('agency-1', 'pay-1');
+    context.RECU_NUMERO = 'RCU-202606-0042';
+
+    const text = await renderModelText('Reçu_Loyer.docx', context);
+    expect(text).toContain('N° Reçu : RCU-202606-0042');
   });
 
   it('paiement partiel : le loyer est rempli en premier, le total egale le montant paye', async () => {
@@ -290,6 +321,8 @@ describe('buildRentStatementContext + Releve_Compte.docx', () => {
     expect(text).toContain('Échéance avril 2026');
     expect(text).toContain('Échéances juin 2026 à août 2026');
     expect(text).toContain('330 000 FCFA');
+    expect(context.DEVISE).toBe('FCFA');
+    expect(text).toContain('Montant (FCFA)');
   });
 
   it('releve court : lignes inutilisees a « — », sans champ en clair', async () => {

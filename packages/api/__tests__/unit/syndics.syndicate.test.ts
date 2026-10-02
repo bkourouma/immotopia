@@ -22,6 +22,7 @@ jest.mock('@prisma/client', () => {
       // Unicite du numero de lot (BUG-025) : aucun doublon par defaut.
       findFirst: jest.fn(async () => null),
       create: jest.fn(),
+      update: jest.fn(),
       // `syncSyndicateLotCount` recompte les lots puis met a jour le syndicat
       // depuis le commit 3b568c5 ; le mock ne l'avait pas suivi.
       count: jest.fn(async () => 1)
@@ -77,6 +78,7 @@ import {
   createSyndicateLot,
   createSyndicateWithDefaults,
   createServiceProvider,
+  updateSyndicateLotByTenant,
   updateServiceProviderByTenant,
   deleteServiceProviderByTenant,
   deleteEmptySyndicateByTenant,
@@ -109,6 +111,8 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
     };
     syndicateLot: {
       create: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
       count: jest.Mock;
     };
     syndicateBudget: { count: jest.Mock };
@@ -273,6 +277,75 @@ describe('Syndics queries - US1', () => {
       })
     });
     expect(result.id).toBe('lot-mp1');
+  });
+
+  describe('tantièmes spéciaux et « Propriétaire depuis le » d’un lot', () => {
+    const baseLot = {
+      syndicateId: 'syndic-1',
+      lotNumber: 'A101',
+      lotType: 'APARTMENT' as any,
+      tantiemes: 150
+    };
+
+    beforeEach(() => {
+      (mockPrisma.syndicate.findFirst as jest.Mock).mockResolvedValue({ id: 'syndic-1', propertyId: null });
+      (mockPrisma.syndicateLot.create as jest.Mock).mockResolvedValue({ id: 'lot-1' });
+      // Contrôle d'unicité du numéro (where.lotNumber) : aucun doublon ; sinon, le lot existant.
+      (mockPrisma.syndicateLot.findFirst as jest.Mock).mockImplementation(async (args: any) =>
+        args?.where?.lotNumber ? null : { id: 'lot-1', propertyId: null }
+      );
+      (mockPrisma.syndicateLot.update as jest.Mock).mockResolvedValue({ id: 'lot-1', propertyId: null });
+    });
+
+    afterEach(() => {
+      (mockPrisma.syndicateLot.findFirst as jest.Mock).mockImplementation(async () => null);
+    });
+
+    const createdData = () => (mockPrisma.syndicateLot.create as jest.Mock).mock.calls[0][0].data;
+    const updatedData = () => (mockPrisma.syndicateLot.update as jest.Mock).mock.calls[0][0].data;
+
+    it('création : enregistre les tantièmes spéciaux saisis, pas les généraux', async () => {
+      await createSyndicateLot('tenant-a', { ...baseLot, specialShares: 250, isParkingIncluded: false });
+      expect(createdData()).toMatchObject({ generalShares: 150, specialShares: 250 });
+    });
+
+    it('création : la valeur saisie l’emporte sur isParkingIncluded', async () => {
+      await createSyndicateLot('tenant-a', { ...baseLot, specialShares: 250, isParkingIncluded: true });
+      expect(createdData().specialShares).toBe(250);
+    });
+
+    it('création : vide ou null = aucun tantième spécial', async () => {
+      await createSyndicateLot('tenant-a', { ...baseLot, specialShares: null });
+      expect(createdData().specialShares).toBeNull();
+    });
+
+    it('création : sans champ, ancien contrat isParkingIncluded conservé', async () => {
+      await createSyndicateLot('tenant-a', { ...baseLot, isParkingIncluded: true });
+      expect(createdData().specialShares).toBe(150);
+      (mockPrisma.syndicateLot.create as jest.Mock).mockClear();
+      await createSyndicateLot('tenant-a', { ...baseLot });
+      expect(createdData().specialShares).toBeNull();
+    });
+
+    it('création : enregistre « Propriétaire depuis le »', async () => {
+      const since = new Date('2019-03-15T00:00:00.000Z');
+      await createSyndicateLot('tenant-a', { ...baseLot, ownerSince: since });
+      expect(createdData().ownerSince).toEqual(since);
+    });
+
+    it('modification : enregistre les tantièmes spéciaux saisis et la date, sans toucher aux généraux', async () => {
+      const since = new Date('2021-07-02T00:00:00.000Z');
+      await updateSyndicateLotByTenant('tenant-a', 'syndic-1', 'lot-1', { specialShares: 250, ownerSince: since });
+      expect(updatedData()).toEqual({ specialShares: 250, ownerSince: since });
+    });
+
+    it('modification : null efface les tantièmes spéciaux et la date ; champ absent = inchangé', async () => {
+      await updateSyndicateLotByTenant('tenant-a', 'syndic-1', 'lot-1', { specialShares: null, ownerSince: null });
+      expect(updatedData()).toEqual({ specialShares: null, ownerSince: null });
+      (mockPrisma.syndicateLot.update as jest.Mock).mockClear();
+      await updateSyndicateLotByTenant('tenant-a', 'syndic-1', 'lot-1', { lotNumber: 'A102' });
+      expect(updatedData()).toEqual({ lotNumber: 'A102' });
+    });
   });
 
   it('rejects lot creation when syndicate is from another tenant', async () => {

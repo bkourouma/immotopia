@@ -40,6 +40,7 @@ import {
   tenantGetInvoicePaymentHandler,
   tenantListExtensionRequestsHandler
 } from '../controllers/platform-billing-controller';
+import { startUpgradeHandler } from '../controllers/subscription-upgrade-controller';
 import { platformInvoiceTenantRouter } from './platform-invoice-routes';
 
 const router = Router();
@@ -101,6 +102,16 @@ router.post(
   requireTenantAccess,
   requirePermission('TENANT_SETTINGS_EDIT'),
   startCheckoutHandler
+);
+// Montee de palier de l'espace particulier (lot 4D) : facture du premier mois
+// du pack payant puis paiement en ligne ; le pack ne change qu'au reglement
+// confirme par le serveur. `/subscription` est EXEMPT de la lecture seule.
+router.post(
+  '/:tenantId/subscription/upgrade',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  startUpgradeHandler
 );
 router.get(
   '/:tenantId/subscription/invoices/:invoiceId/payment',

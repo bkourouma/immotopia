@@ -51,8 +51,7 @@ export const registerSchema = z
       .string()
       .min(1, 'Le nom complet est requis')
       .max(100, 'Le nom complet ne peut pas dépasser 100 caractères')
-      .trim(),
-    role: z.enum(['STUDENT', 'INSTRUCTOR']).optional().default('STUDENT')
+      .trim()
   })
   .refine(data => data.password === data.confirmPassword, {
     message: 'Les mots de passe ne correspondent pas',

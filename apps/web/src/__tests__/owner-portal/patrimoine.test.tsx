@@ -85,6 +85,38 @@ describe('Mon patrimoine — synthèse et biens', () => {
     expect(screen.getAllByText(/12\s000\s000/).length).toBeGreaterThan(0);
   });
 
+  // Recette du 29/09/2026 : la devise s'affichait « XOF » (code ISO renvoyé par
+  // l'API, recopié tel quel) là où le reste de l'application dit « FCFA ».
+  it('écrit la devise « FCFA » comme le formateur commun, jamais le code « XOF »', async () => {
+    getPatrimoine.mockResolvedValue(overview());
+
+    const { container } = mount();
+
+    expect(await screen.findByText('Villa Cocody', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getAllByText(/45\s000\s000\sFCFA/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/12\s000\s000\sFCFA/).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/XOF/);
+  });
+
+  it('conserve une devise autre que le franc CFA', async () => {
+    getPatrimoine.mockResolvedValue(
+      overview({
+        summary: {
+          propertyCount: 1,
+          currency: 'EUR',
+          totalEstimatedValue: 45_000_000,
+          totalLatentCapitalGain: 5_000_000,
+          totalRemainingLoanCapital: 12_000_000
+        }
+      })
+    );
+
+    mount();
+
+    expect(await screen.findByText('Villa Cocody', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getAllByText(/45\s000\s000\sEUR/).length).toBeGreaterThan(0);
+  });
+
   it('ne rend pas les colonnes d’une rubrique absente de la réponse', async () => {
     const sansEmprunts = overview({
       sections: { valuation: true, yield: true, loans: false, works: true, documents: true },

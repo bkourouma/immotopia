@@ -62,7 +62,8 @@ const CAPACITY_LABELS: Record<string, string> = {
   LOTS: 'lots',
   COPROPRIETES: 'copropriétés',
   CHANTIERS: 'chantiers',
-  BIENS_DETENUS: 'biens détenus'
+  BIENS_DETENUS: 'biens détenus',
+  ACTIFS: 'actifs'
 };
 
 function capacityLabel(capacityKey: string): string {

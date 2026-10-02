@@ -37,6 +37,11 @@ const OUTSIDE_SUBSCRIPTION: Array<{ prefix: string; exact?: boolean; reason: str
   { prefix: '/api/admin', reason: 'Super-admin (permissions PLATFORM_*).' },
   { prefix: '/api/platform', reason: 'Super-admin : reglages de la plateforme (PLATFORM_* + requireSuperAdmin).' },
   { prefix: '/api/roles', reason: 'Catalogue des roles, commun a la plateforme.' },
+  {
+    prefix: '/api/personal-space',
+    exact: true,
+    reason: "Creation de l'espace personnel (lot 4B) : l'utilisateur n'appartient encore a aucune agence."
+  },
   { prefix: '/api/portal', reason: 'Portails locataire, proprietaire et coproprietaire : jamais bloques (D8).' },
   { prefix: '/api/payment-gateway', reason: 'IPN et simulateur PaySecureHub : jamais bloques.' },
   { prefix: '/api/whatsapp', reason: 'Webhook WhatsApp.' },
@@ -128,6 +133,9 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     expect(classifyTenantRoute('/patrimoine/cash-plan/settings')).toBe('PATRIMOINE');
     expect(classifyTenantRoute('/properties/abc/yield')).toBe('PATRIMOINE');
     expect(classifyTenantRoute('/properties/abc/yield/assumptions')).toBe('PATRIMOINE');
+    expect(classifyTenantRoute('/patrimoine/assets/abc/valuations')).toBe('PATRIMOINE');
+    expect(classifyTenantRoute('/patrimoine/net-worth/history')).toBe('PATRIMOINE');
+    expect(classifyTenantRoute('/patrimoine/debts')).toBe('PATRIMOINE');
     expect(classifyTenantRoute('/properties/abc/media')).toBe('CORE');
     expect(classifyTenantRoute('/maintenance/tenant/tickets')).toBe('EXEMPT');
     expect(classifyTenantRoute('/maintenance/admin/tickets')).toBe('CORE');

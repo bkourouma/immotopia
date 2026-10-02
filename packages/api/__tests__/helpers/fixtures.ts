@@ -13,9 +13,24 @@
  */
 
 import { randomUUID } from 'crypto';
-import { MembershipStatus, RoleScope, TenantStatus, PropertyOwnershipType, PropertyType } from '@prisma/client';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import {
+  DocumentTemplateStatus,
+  DocumentType,
+  MembershipStatus,
+  RoleScope,
+  TenantStatus,
+  PropertyOwnershipType,
+  PropertyType
+} from '@prisma/client';
 import { prisma } from '../../src/utils/database';
 import { generateAccessToken } from '../../src/utils/jwt-utils';
+import { uploadTemplate } from '../../src/services/document-template-service';
+import {
+  ensurePersonalSpaceOwnerRole,
+  grantPersonalSpaceOwnerRole
+} from '../../src/lib/patrimoine/personal-permissions';
 
 /**
  * Permissions accordees au role TENANT_ADMIN de test. Limitee aux ressources
@@ -35,6 +50,9 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   // lui les tests d'isolation recevaient 403 au lieu de 404.
   'SYNDIC_EDIT',
   'MAINTENANCE_ADMIN',
+  // Espace particulier : montee de palier (lot 4D).
+  'TENANT_SETTINGS_VIEW',
+  'TENANT_SETTINGS_EDIT',
   // ImmoCopilot : lecture des baux/documents, generation. Accordees des la
   // creation du role : `getUserPermissions` met les droits en cache 5 minutes
   // par utilisateur, un octroi tardif ne serait pas vu.
@@ -102,6 +120,54 @@ export async function createTestTenant(namePrefix: string): Promise<TestTenant> 
       slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
       type: 'AGENCY',
       status: TenantStatus.ACTIVE
+    }
+  });
+  return { id: tenant.id, slug: tenant.slug };
+}
+
+/**
+ * Espace PARTICULIER ACTIF sur le palier gratuit (lot 4) : abonnement ACTIVE
+ * mensuel, quota BLOCK, un element PARTICULIER_GRATUIT (le catalogue vient des
+ * migrations). `phone: null` : aucun telephone (refus PHONE_REQUIRED).
+ */
+export async function createParticulierTenant(
+  namePrefix: string,
+  options: { phone?: string | null } = {}
+): Promise<TestTenant> {
+  const suffix = randomUUID().slice(0, 8);
+  const now = new Date();
+  const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const catalog = await prisma.catalogItem.findUniqueOrThrow({ where: { code: 'PARTICULIER_GRATUIT' } });
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `${namePrefix} ${suffix}`,
+      slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
+      type: 'PARTICULIER',
+      status: TenantStatus.ACTIVE,
+      contactPhone: options.phone === undefined ? '+2250102030405' : options.phone
+    }
+  });
+  const subscription = await prisma.subscription.create({
+    data: {
+      tenantId: tenant.id,
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+      startAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd: end,
+      nextBillingAt: end,
+      quotaPolicy: 'BLOCK'
+    }
+  });
+  await prisma.subscriptionItem.create({
+    data: {
+      subscriptionId: subscription.id,
+      tenantId: tenant.id,
+      catalogItemId: catalog.id,
+      quantity: 1,
+      unitMonthlyPrice: 0,
+      status: 'ACTIVE',
+      startsAt: now
     }
   });
   return { id: tenant.id, slug: tenant.slug };
@@ -254,6 +320,16 @@ export async function createPlatformDelegateUser(
   await prisma.userRole.create({ data: { userId: user.id, roleId: role.id, tenantId: null } });
   const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
   return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
+}
+
+/**
+ * Donne a `user` le role PERSONAL_SPACE_OWNER (PATRIMOINE_PERSONAL_VIEW / _EDIT) sur `tenant`.
+ * Le role TENANT_ADMIN de test ne les porte PAS (comme en production) : les
+ * tests qui exercent les routes de donnees personnelles du patrimoine l'appellent.
+ */
+export async function grantPersonalPatrimoineRole(user: { id: string }, tenant: { id: string }): Promise<void> {
+  const roleId = await ensurePersonalSpaceOwnerRole(prisma);
+  await grantPersonalSpaceOwnerRole(prisma, roleId, user.id, tenant.id);
 }
 
 export async function suspendTenant(tenantId: string): Promise<void> {
@@ -443,13 +519,132 @@ export async function createRentalFixtureDirect(
   };
 }
 
-/** Nettoyage best-effort : supprime les agences de test et tout ce qui en depend en cascade. */
+/**
+ * Supprime les donnees `rental_*` d'une agence. Le schema n'a pas de cascade
+ * depuis `tenants` vers ces tables : sans cet ordre (enfants avant parents),
+ * `tenant.delete` echoue sur la premiere cle etrangere rencontree.
+ */
+async function deleteRentalDataOfTenant(tenantId: string): Promise<void> {
+  const where = { tenant_id: tenantId };
+  // Auto-reference des documents (remplacement) : on la rompt avant la suppression.
+  await prisma.rentalDocument.updateMany({ where, data: { superseded_by_id: null } });
+  await prisma.rentalDocument.deleteMany({ where });
+  await prisma.rentalDepositMovement.deleteMany({ where });
+  await prisma.rentalPaymentAllocation.deleteMany({ where });
+  await prisma.rentalRefund.deleteMany({ where });
+  await prisma.rentalPenalty.deleteMany({ where });
+  await prisma.rentalPaymentDeclaration.deleteMany({ where });
+  // Les baux emportent en cascade echeances, lignes d'echeance, depot de garantie,
+  // co-locataires, evenements, etats des lieux et conditions de gestion.
+  await prisma.rentalPayment.deleteMany({ where });
+  await prisma.rentalInstallmentItem.deleteMany({ where });
+  await prisma.rentalInstallment.deleteMany({ where });
+  await prisma.rentalSecurityDeposit.deleteMany({ where });
+  await prisma.rentalPenaltyRule.deleteMany({ where });
+  await prisma.rentalLease.deleteMany({ where });
+}
+
+/**
+ * Supprime les agences de test, leurs donnees `rental_*` puis l'agence elle-meme.
+ *
+ * Un echec n'est JAMAIS silencieux : chaque agence est tentee (pour ne pas
+ * laisser d'autres lignes orphelines), puis une erreur listant tous les echecs
+ * est levee — le `afterAll` de la suite echoue et la base de test n'est pas
+ * declaree propre a tort.
+ */
 export async function cleanupTenants(tenantIds: string[]): Promise<void> {
+  const failures: string[] = [];
   for (const tenantId of tenantIds) {
     try {
+      await deleteRentalDataOfTenant(tenantId);
       await prisma.tenant.delete({ where: { id: tenantId } });
-    } catch {
-      // Best-effort : la base de test est jetable, une ligne orpheline n'est pas bloquante.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`agence ${tenantId} : ${message}`);
     }
+  }
+  if (failures.length > 0) {
+    const detail = failures.join('\n');
+    // eslint-disable-next-line no-console
+    console.error(`cleanupTenants : ${failures.length} echec(s)\n${detail}`);
+    throw new Error(`cleanupTenants a echoue pour ${failures.length} agence(s) :\n${detail}`);
+  }
+}
+
+/** Modeles DOCX livres avec le depot (assets/modeles_documents), par type de document. */
+const SHIPPED_TEMPLATE_FILES: Partial<Record<DocumentType, { file: string; name: string }>> = {
+  [DocumentType.RENT_RECEIPT]: { file: 'Reçu_Loyer.docx', name: 'Recu de loyer (fixture isolation)' },
+  [DocumentType.RENT_STATEMENT]: { file: 'Releve_Compte.docx', name: 'Releve de compte (fixture isolation)' }
+};
+
+export interface SeededGlobalTemplates {
+  /** Modeles crees par cet appel (les modeles deja presents en base ne sont ni touches ni supprimes). */
+  createdTemplateIds: string[];
+  /** Utilisateur technique cree pour porter `created_by_user_id`, s'il a fallu en creer un. */
+  createdUserId: string | null;
+}
+
+/**
+ * Seme (si absent) un modele GLOBAL par defaut (`tenant_id` null) pour chaque
+ * type demande, a partir des DOCX livres avec le depot : c'est ce qu'exige la
+ * generation reelle d'un document. Equivalent, pour la suite d'isolation, de
+ * `npm run db:seed:document-templates`, sans dependre d'un seed prealable ni
+ * d'un utilisateur « admin » preexistant. Passe par `uploadTemplate` (le meme
+ * chemin que le seed) : le fichier est copie sous `assets/modeles_documents/default/`
+ * (ignore par Git).
+ */
+export async function ensureGlobalDocumentTemplates(types: DocumentType[]): Promise<SeededGlobalTemplates> {
+  const result: SeededGlobalTemplates = { createdTemplateIds: [], createdUserId: null };
+  const cwd = process.cwd();
+  const root =
+    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
+      ? path.resolve(cwd, '..', '..')
+      : cwd;
+
+  for (const type of types) {
+    const existing = await prisma.documentTemplate.findFirst({
+      where: { tenant_id: null, doc_type: type, is_default: true, status: DocumentTemplateStatus.ACTIVE }
+    });
+    if (existing) continue;
+
+    const shipped = SHIPPED_TEMPLATE_FILES[type];
+    if (!shipped) throw new Error(`Aucun modele DOCX livre connu pour ${type}`);
+
+    if (!result.createdUserId) {
+      const suffix = randomUUID().slice(0, 8);
+      const user = await prisma.user.create({
+        data: {
+          email: `template-seeder-${suffix}@isolation-test.local`,
+          passwordHash: null,
+          fullName: `Semeur de modeles ${suffix}`,
+          globalRole: 'USER',
+          emailVerified: true,
+          isActive: false
+        }
+      });
+      result.createdUserId = user.id;
+    }
+
+    const buffer = await fs.readFile(path.join(root, 'assets', 'modeles_documents', shipped.file));
+    const created = await uploadTemplate(null, type, buffer, `${type}.docx`, shipped.name, result.createdUserId);
+    await prisma.documentTemplate.update({
+      where: { id: created.id },
+      data: { is_default: true, status: DocumentTemplateStatus.ACTIVE }
+    });
+    result.createdTemplateIds.push(created.id);
+  }
+  return result;
+}
+
+/** Retire ce que `ensureGlobalDocumentTemplates` a cree (a appeler APRES `cleanupTenants`, qui supprime les documents generes). */
+export async function removeSeededGlobalTemplates(seeded: SeededGlobalTemplates): Promise<void> {
+  for (const id of seeded.createdTemplateIds) {
+    const template = await prisma.documentTemplate.findUnique({ where: { id } });
+    if (!template) continue;
+    await prisma.documentTemplate.delete({ where: { id } });
+    if (template.storage_path) await fs.rm(template.storage_path, { force: true });
+  }
+  if (seeded.createdUserId) {
+    await prisma.user.delete({ where: { id: seeded.createdUserId } });
   }
 }

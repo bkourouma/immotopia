@@ -7,7 +7,7 @@ import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrim
 import type { PatrimoineOverview, PatrimoineSummaryProperty } from '../../services/owner-portal-patrimoine-service';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { StateBlock, formatMoney } from '../../components/primitives';
-import { DASH, formatPercent, sharePercentLabel } from './owner-patrimoine-labels';
+import { DASH, deviseAffichee, formatPercent, sharePercentLabel } from './owner-patrimoine-labels';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -105,7 +105,7 @@ export default function Patrimoine() {
         key: 'valuation',
         render: (_: unknown, record) =>
           record.valuation
-            ? formatMoney(record.valuation.estimatedValue, { currency: record.valuation.currency })
+            ? formatMoney(record.valuation.estimatedValue, { currency: deviseAffichee(record.valuation.currency) })
             : DASH
       },
       {
@@ -116,7 +116,7 @@ export default function Patrimoine() {
             ? DASH
             : record.latentCapitalGain === null
               ? t('Non renseigné')
-              : formatMoney(record.latentCapitalGain, { currency: summary.currency })
+              : formatMoney(record.latentCapitalGain, { currency: deviseAffichee(summary.currency) })
       }
     );
   }
@@ -148,7 +148,9 @@ export default function Patrimoine() {
       title: t('Capital restant dû'),
       key: 'loanSummary',
       render: (_: unknown, record) =>
-        record.loanSummary ? formatMoney(record.loanSummary.remainingCapital, { currency: summary.currency }) : DASH
+        record.loanSummary
+          ? formatMoney(record.loanSummary.remainingCapital, { currency: deviseAffichee(summary.currency) })
+          : DASH
     });
   }
 
@@ -190,7 +192,7 @@ export default function Patrimoine() {
               value={
                 summary.totalEstimatedValue === undefined
                   ? DASH
-                  : formatMoney(summary.totalEstimatedValue, { currency: summary.currency })
+                  : formatMoney(summary.totalEstimatedValue, { currency: deviseAffichee(summary.currency) })
               }
               icon={<GoldOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18, color: '#1890ff' }}
@@ -206,7 +208,7 @@ export default function Patrimoine() {
                   ? DASH
                   : summary.totalLatentCapitalGain === null
                     ? t('Non renseigné')
-                    : formatMoney(summary.totalLatentCapitalGain, { currency: summary.currency })
+                    : formatMoney(summary.totalLatentCapitalGain, { currency: deviseAffichee(summary.currency) })
               }
               icon={<RiseOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
@@ -220,7 +222,7 @@ export default function Patrimoine() {
               value={
                 summary.totalRemainingLoanCapital === undefined
                   ? DASH
-                  : formatMoney(summary.totalRemainingLoanCapital, { currency: summary.currency })
+                  : formatMoney(summary.totalRemainingLoanCapital, { currency: deviseAffichee(summary.currency) })
               }
               icon={<BankOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ fontSize: 18, color: '#faad14' }}

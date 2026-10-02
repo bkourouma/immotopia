@@ -215,6 +215,7 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 | `set-email-smtp.sh <staging\|prod> [fich.]`   | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets. |
 | `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
 | `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
+| `seed-pack-tests.sh staging [--dry-run]`      | Crée ou resynchronise 6 agences de test (une par pack) à mot de passe public. Refuse `prod`. Voir « Comptes de test par pack ».                                                             |
 | `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
@@ -691,8 +692,8 @@ que les saisies et la création du compte.
 ### Étape 6 — Première connexion et première agence
 
 Ouvrir https://clients.immotopia.cloud et se connecter avec le SUPER_ADMIN.
-Vérifier que l'écran de connexion **n'affiche pas** le panneau « Comptes par
-tenant ». Créer la première agence dans l'administration (Agences). Sans e-mail
+Vérifier que l'écran de connexion **n'affiche pas** le menu « Choisir un compte de test ».
+Créer la première agence dans l'administration (Agences). Sans e-mail
 configuré (étape 2), aucune invitation ne partira : brancher l'e-mail avant
 d'inviter quiconque. L'abonnement d'essai d'une agence se pose avec l'outil
 d'exploitation décrit dans [RUNBOOK.md](RUNBOOK.md), section « Outil
@@ -880,6 +881,39 @@ environnement, commit, utilisateur.
   survivrait (voir le retour arrière ci-dessous).
 - Si le changement touche `infra/`, `docker-compose.prod.yml` ou un réglage
   d'environnement : `bash infra/scripts/check-infra.sh` est vert.
+
+### Comptes de test par pack (staging)
+
+`seed-pack-tests.sh` crée, sur le **staging uniquement**, une agence de test par
+pack d'abonnement (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL,
+PATRIMOINE_PRO), nommées « Test — Pack … », chacune avec un administrateur
+`<pack>@packs.immotopia.test` (par exemple `agence@packs.immotopia.test`) qui
+partage le mot de passe défini dans `prisma/seeds/pack-test-tenants.ts`. Les agences
+passent par le vrai service de provisionnement (modules, abonnement, socle
+comptable) ; le compte est ensuite rendu utilisable sans invitation et l'essai
+est repoussé à +5 ans, pour qu'aucune ne tombe en lecture seule. Le menu
+déroulant de l'écran de connexion du staging les propose.
+
+```bash
+./infra/scripts/deploy.sh staging           # amène d'abord le web à jour
+./infra/scripts/seed-pack-tests.sh staging  # crée ou resynchronise les 6 agences
+./infra/scripts/seed-pack-tests.sh staging --dry-run   # n'affiche que le plan
+```
+
+Il faut un SUPER_ADMIN (`bootstrap.sh` d'abord). Le script est **idempotent** :
+une agence existante (repérée par son nom) n'est pas recréée, seuls le mot de
+passe, la membership, le rôle et la fin d'essai sont resynchronisés ; on peut le
+relancer sans doublon. Il **refuse `prod`** (code 2) avant toute action, et le
+seed refuse en plus toute origine autre que `https://app.immotopia.cloud` en
+production (garde `ALLOW_PACK_TEST_TENANTS=1`).
+
+**Attention : mot de passe public, staging seulement.** Il figure dans le bundle
+du staging ; ne jamais réutiliser ces comptes ni ce mot de passe ailleurs.
+
+Pour les retirer, suspendre chaque agence avec l'outil d'exploitation
+(`docker exec immotopia-saas-api node dist/scripts/provision-subscription.js suspend --tenant <slug> [--dry-run]`,
+voir le [RUNBOOK](RUNBOOK.md)). Les relancer ne les réactive pas : le seed ne
+touche pas le statut d'une agence existante.
 
 ### Retour arrière (non éprouvé)
 

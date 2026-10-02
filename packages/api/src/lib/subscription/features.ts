@@ -12,6 +12,8 @@
  *                 barriere « detenu en propre » de guards.ts refuse mandat et
  *                 proprietaire tiers a un compte qui n'a que ce module) ;
  * - PATRIMOINE  : Agence, Promoteur, Patrimoine ;
+ *   Les packs Particulier (Gratuit, Plus) ouvrent MODULE_PATRIMOINE : memes
+ *   fonctionnalites (CORE, RENTAL, PATRIMOINE), deduites de `modules` du pack ;
  * - SYNDIC      : Syndic ;
  * - CONSTRUCTION: Promoteur (chantiers, BTP, stock).
  */

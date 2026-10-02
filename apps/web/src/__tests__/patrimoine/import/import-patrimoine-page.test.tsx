@@ -1,11 +1,15 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ImportPatrimoinePage } from '../../../pages/patrimoine/import/ImportPatrimoinePage';
+
+// Ces parcours (lecture et analyse de classeurs) sont lourds : sous la charge de la CI, l'attente par défaut
+// d'une seconde de `findBy*` / `waitFor` expire avant la fin du rendu.
+configure({ asyncUtilTimeout: 15000 });
 
 /**
  * Import en masse du patrimoine (spec 038) — rendu de la page de bout en bout.
@@ -262,7 +266,7 @@ type Utilisateur = ReturnType<typeof userEvent.setup>;
 // (.xlsm), pour vérifier que la page les refuse elle-même.
 const nouvelUtilisateur = (): Utilisateur => userEvent.setup({ delay: null, applyAccept: false });
 
-const titreEtape = (nom: string) => screen.findByRole('heading', { name: nom }, { timeout: 10000 });
+const titreEtape = (nom: string) => screen.findByRole('heading', { name: nom }, { timeout: 30000 });
 
 async function choisirNature(user: Utilisateur, nature: 'Biens' | 'Valorisations') {
   await user.click(await screen.findByRole('radio', { name: new RegExp(`^${nature}`) }));
@@ -550,7 +554,7 @@ describe('Importer mon patrimoine — la page', () => {
     ).toBeInTheDocument();
 
     // Toujours à l'étape du fichier : aucun aperçu, aucune écriture.
-    expect(screen.getByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'L’aperçu' })).not.toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
   }, 30000);
@@ -925,7 +929,7 @@ describe('Importer mon patrimoine — la page', () => {
     expect(
       await screen.findByText('Ce fichier ne contient aucune ligne à importer (hors ligne d’exemple).')
     ).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Le fichier' })).toBeInTheDocument();
 
     // L'exemple oublié à côté d'une vraie ligne : l'exemple est ignoré, la vraie part.
     await deposer(

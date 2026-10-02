@@ -45,7 +45,8 @@ beforeEach(() => {
   resolveTemplate.mockResolvedValue({ id: 'tpl', placeholders: [], file_hash_sha256: 'h' });
 });
 
-describe('generateDocument : contrat déjà généré', () => {
+// OBSOLETE (integration PR #63) : un bail peut avoir plusieurs contrats (-A2, -A3), le refus 409 est retire ; voir document-lease-contract-numbering.test.ts. A SUPPRIMER.
+describe.skip('generateDocument : contrat déjà généré', () => {
   it('refus 409 avant tout rendu, avec le document existant', async () => {
     rentalDocumentFindFirst.mockResolvedValue({ id: 'doc-1' });
 

@@ -1,6 +1,7 @@
+import { RESERVED_ROLE_KEYS } from '../lib/patrimoine/personal-permissions';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { InvitationStatus, MembershipStatus } from '@prisma/client';
+import { GlobalRole, InvitationStatus, MembershipStatus } from '@prisma/client';
 import { emailService } from './email-service';
 import { hashPassword, validatePasswordStrength } from '../utils/password-utils';
 import { logAuditEvent, AuditActionKey } from './audit-service';
@@ -39,9 +40,10 @@ async function assertTenantRoles(roleIds: string[]): Promise<void> {
   if (!roleIds || roleIds.length === 0) return;
   const roles = await prisma.role.findMany({
     where: { id: { in: roleIds } },
-    select: { id: true, scope: true }
+    select: { id: true, scope: true, key: true }
   });
-  if (roles.length !== roleIds.length) {
+  // Rôle réservé (PERSONAL_SPACE_OWNER) : même réponse qu'un rôle inexistant.
+  if (roles.length !== roleIds.length || roles.some(role => RESERVED_ROLE_KEYS.includes(role.key))) {
     throw new BadRequestError('Un ou plusieurs roles sont introuvables.');
   }
   if (roles.some(role => role.scope !== 'TENANT')) {
@@ -333,6 +335,59 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
 }
 
 /**
+ * Compte cree par le provisionnement d'agence de la plateforme et jamais
+ * active : seul cas ou le jeton d'invitation SEUL peut fixer un mot de passe
+ * sur un compte existant (le jeton en clair ne prouve pas l'identite de son
+ * porteur, donc toute autre situation exige la session du compte).
+ *
+ * Protections effectives : `emailVerified` faux (les chemins de connexion
+ * l'exigent ou le forcent, voir auth-service.ts / passport.ts : c'est le
+ * couplage a maintenir), aucun refresh token jamais emis pour ce compte, aucune
+ * adhesion ACTIVE ailleurs, adhesion PENDING_INVITE dans l'agence de
+ * l'invitation posee par le meme acteur, cet acteur etant super-admin actif.
+ * `lastLoginAt` n'est PAS alimente aujourd'hui : le tester est inoffensif
+ * mais ne protege rien tant qu'il n'est pas ecrit a la connexion.
+ * Defense en profondeur : compte USER simple, sans Google, actif.
+ */
+async function isNeverActivatedProvisionedAdmin(
+  user: {
+    id: string;
+    emailVerified: boolean;
+    lastLoginAt: Date | null;
+    globalRole: GlobalRole;
+    googleId: string | null;
+    isActive: boolean;
+  },
+  invitation: { tenantId: string; invitedBy: string | null }
+): Promise<boolean> {
+  if (user.emailVerified || user.lastLoginAt || !invitation.invitedBy) return false;
+  if (user.globalRole !== GlobalRole.USER || user.googleId || user.isActive === false) return false;
+
+  const issuedTokens = await prisma.refreshToken.count({ where: { userId: user.id } });
+  if (issuedTokens > 0) return false;
+
+  const activeMembership = await prisma.membership.findFirst({
+    where: { userId: user.id, status: MembershipStatus.ACTIVE },
+    select: { id: true }
+  });
+  if (activeMembership) return false;
+
+  const pending = await prisma.membership.findUnique({
+    where: { userId_tenantId: { userId: user.id, tenantId: invitation.tenantId } },
+    select: { status: true, invitedBy: true }
+  });
+  if (!pending || pending.status !== MembershipStatus.PENDING_INVITE || pending.invitedBy !== invitation.invitedBy) {
+    return false;
+  }
+
+  const inviter = await prisma.user.findUnique({
+    where: { id: invitation.invitedBy },
+    select: { globalRole: true, isActive: true }
+  });
+  return inviter?.globalRole === 'SUPER_ADMIN' && inviter.isActive !== false;
+}
+
+/**
  * Accept an invitation
  * @param data - Acceptance data
  * @returns Created membership and user
@@ -382,10 +437,23 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
   // acceptInvitation en recreait un second, doublon, sous la casse du jeton.
   let user = await prisma.user.findFirst({
     where: { email: { equals: invitation.email, mode: 'insensitive' } },
-    select: { id: true, email: true, fullName: true }
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      emailVerified: true,
+      lastLoginAt: true,
+      globalRole: true,
+      googleId: true,
+      isActive: true
+    }
   });
 
   const isNewUser = !user;
+  // Vrai seulement pour l'administrateur d'une agence fraichement creee par
+  // le super-admin : son compte n'a jamais ete active (voir plus bas).
+  let activatesProvisionedAdmin = false;
+  let provisionedPasswordHash: string | null = null;
 
   if (user) {
     // Compte EXISTANT : l'acceptation ne fixe/reecrit JAMAIS son mot de
@@ -395,7 +463,23 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     // permettait auparavant une prise de compte (invite d'un email
     // existant -> resend -> jeton -> reecriture du mot de passe).
     if (!data.requestingUserId || data.requestingUserId !== user.id) {
-      throw new InvitationRequiresLoginError();
+      // Exception etroite : premier administrateur cree par le provisionnement
+      // de la plateforme (compte jamais active, mot de passe jetable inconnu).
+      // Le jeton ne sert alors qu'a FIXER un premier mot de passe, et
+      // seulement si toutes les conditions de `isNeverActivatedProvisionedAdmin`
+      // sont reunies ; sinon comportement inchange (session requise).
+      if (!(await isNeverActivatedProvisionedAdmin(user, invitation))) {
+        throw new InvitationRequiresLoginError();
+      }
+      if (!data.password) {
+        throw new BadRequestError('Le mot de passe est requis pour créer votre compte.');
+      }
+      const passwordValidation = validatePasswordStrength(data.password);
+      if (!passwordValidation.isValid) {
+        throw new BadRequestError(passwordValidation.error);
+      }
+      provisionedPasswordHash = await hashPassword(data.password);
+      activatesProvisionedAdmin = true;
     }
 
     // User exists - check if already has membership
@@ -446,54 +530,94 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
         emailVerified: true, // Trust invitation email
         isActive: true
       },
-      select: { id: true, email: true, fullName: true }
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        emailVerified: true,
+        lastLoginAt: true,
+        globalRole: true,
+        googleId: true,
+        isActive: true
+      }
     });
   }
 
-  // Create or update membership
-  const membership = await prisma.membership.upsert({
-    where: {
-      userId_tenantId: {
-        userId: user.id,
-        tenantId: invitation.tenantId
+  if (!user) {
+    throw new NotFoundError('Invitation invalide.');
+  }
+  const activatedUser = user;
+  const membership = await prisma.$transaction(async tx => {
+    // Reservation atomique de l'invitation : une seule acceptation gagne, la
+    // seconde (course) echoue proprement avant d'ecrire quoi que ce soit.
+    const claimed = await tx.invitation.updateMany({
+      // tokenHash + expiresAt : un resend (nouveau jeton) ou une expiration
+      // pendant le hachage du mot de passe ne laissent pas passer l'ancien jeton.
+      where: { id: invitation.id, status: InvitationStatus.PENDING, tokenHash, expiresAt: { gt: new Date() } },
+      data: {
+        status: InvitationStatus.ACCEPTED,
+        acceptedBy: activatedUser.id,
+        acceptedAt: new Date()
       }
-    },
-    update: {
-      status: MembershipStatus.ACTIVE,
-      acceptedAt: new Date()
-    },
-    create: {
-      userId: user.id,
-      tenantId: invitation.tenantId,
-      status: MembershipStatus.ACTIVE,
-      invitedBy: invitation.invitedBy,
-      invitedAt: invitation.createdAt,
-      acceptedAt: new Date()
-    }
-  });
-
-  // Update invitation
-  await prisma.invitation.update({
-    where: { id: invitation.id },
-    data: {
-      status: InvitationStatus.ACCEPTED,
-      acceptedBy: user.id,
-      acceptedAt: new Date()
-    }
-  });
-
-  // Attribution des roles choisis au moment de l'invitation. Les permissions
-  // sont calculees uniquement a partir de user_roles : sans cette etape, le
-  // collaborateur arrive sans aucun droit et toutes les routes repondent 403.
-  if (invitation.roleIds.length > 0) {
-    await prisma.userRole.createMany({
-      data: invitation.roleIds.map(roleId => ({
-        userId: user.id,
-        roleId,
-        tenantId: invitation.tenantId
-      })),
-      skipDuplicates: true
     });
+    if (claimed.count !== 1) {
+      throw new ConflictError('Cette invitation a déjà été acceptée.');
+    }
+
+    if (activatesProvisionedAdmin && provisionedPasswordHash) {
+      // Garde rejouee dans l'ecriture : le compte ne doit toujours jamais
+      // avoir ete active ni verifie au moment precis de l'ecriture.
+      const written = await tx.user.updateMany({
+        where: { id: activatedUser.id, emailVerified: false, lastLoginAt: null, isActive: true },
+        data: {
+          passwordHash: provisionedPasswordHash,
+          fullName: data.fullName ?? activatedUser.fullName,
+          emailVerified: true
+        }
+      });
+      if (written.count !== 1) {
+        throw new InvitationRequiresLoginError();
+      }
+    }
+
+    const upserted = await tx.membership.upsert({
+      where: {
+        userId_tenantId: {
+          userId: activatedUser.id,
+          tenantId: invitation.tenantId
+        }
+      },
+      update: {
+        status: MembershipStatus.ACTIVE,
+        acceptedAt: new Date()
+      },
+      create: {
+        userId: activatedUser.id,
+        tenantId: invitation.tenantId,
+        status: MembershipStatus.ACTIVE,
+        invitedBy: invitation.invitedBy,
+        invitedAt: invitation.createdAt,
+        acceptedAt: new Date()
+      }
+    });
+
+    // Attribution des roles choisis au moment de l'invitation. Les
+    // permissions sont calculees uniquement a partir de user_roles : sans
+    // cette etape, le collaborateur arrive sans aucun droit.
+    if (invitation.roleIds.length > 0) {
+      await tx.userRole.createMany({
+        data: invitation.roleIds.map(roleId => ({
+          userId: activatedUser.id,
+          roleId,
+          tenantId: invitation.tenantId
+        })),
+        skipDuplicates: true
+      });
+    }
+    return upserted;
+  });
+
+  if (invitation.roleIds.length > 0) {
     logger.info('Invitation roles assigned', {
       invitationId: invitation.id,
       userId: user.id,
@@ -524,7 +648,8 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     entityId: membership.id,
     payload: {
       email: invitation.email,
-      isNewUser
+      isNewUser,
+      passwordSetByInvitation: activatesProvisionedAdmin
     }
   });
 

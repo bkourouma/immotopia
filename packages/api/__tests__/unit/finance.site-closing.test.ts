@@ -35,6 +35,7 @@ const store = {
   users: [] as Row[],
   properties: [] as Row[],
   valuations: [] as Row[],
+  assets: [] as Row[],
   seq: 0
 };
 
@@ -197,6 +198,24 @@ const mockPrisma: Row = {
     })
   },
 
+  asset: {
+    findUnique: jest.fn(
+      async ({ where }: Row) =>
+        store.assets.find(a => a.propertyId === where.propertyId && a.tenantId === where.tenantId) ?? null
+    ),
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const found = store.assets.find(a => a.id === where.id && a.tenantId === where.tenantId);
+      return found ? { details: found.details } : null;
+    }),
+    upsert: jest.fn(async ({ where, create }: Row) => {
+      const found = store.assets.find(a => a.propertyId === where.propertyId && a.tenantId === where.tenantId);
+      if (found) return found;
+      const row = { id: nextId('actif'), ...create };
+      store.assets.push(row);
+      return row;
+    })
+  },
+
   assetValuation: {
     create: jest.fn(async ({ data }: Row) => {
       const created = { id: nextId('evaluation'), ...data };
@@ -259,6 +278,7 @@ function resetStore(): void {
   store.users = [];
   store.properties = [];
   store.valuations = [];
+  store.assets = [];
   store.seq = 0;
 }
 
@@ -987,12 +1007,27 @@ describe('capitalizeSiteLotTx', () => {
     });
 
     expect(store.properties).toHaveLength(1);
+    // L'actif REAL_ESTATE du bien naît dans la même transaction ; la
+    // valorisation reste sur propertyId (lot 1 multi-actifs).
+    expect(store.assets).toHaveLength(1);
+    expect(store.assets[0]).toMatchObject({
+      propertyId: capitalized.propertyId,
+      tenantId: TENANT,
+      assetClass: 'REAL_ESTATE'
+    });
     expect(store.valuations).toHaveLength(1);
+    expect(store.valuations[0].assetId).toBeUndefined();
     expect(store.valuations[0]).toMatchObject({
       propertyId: capitalized.propertyId,
       acquisitionCost: 333_333,
       acquisitionDate: BASCULE.acquisitionDate,
       currency: 'XOF'
+    });
+    // La fiabilité est stockée : saisie manuelle sans source, statut juridique encore inconnu.
+    expect(store.valuations[0]).toMatchObject({
+      method: 'MANUAL',
+      reliability: 'LOW',
+      reliabilityReasons: expect.arrayContaining(['METHOD_MANUAL_NO_SOURCE', 'LEGAL_STATUS_UNKNOWN'])
     });
     // Le lot pointe désormais vers son bien.
     expect(store.lots.find(row => row.id === lots[1].id)!.propertyId).toBe(capitalized.propertyId);

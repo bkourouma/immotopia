@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Table, Tag, Checkbox, Progress } from 'antd';
+import {
+  Card,
+  Space,
+  Typography,
+  Button,
+  Input,
+  Select,
+  Alert,
+  Spin,
+  Empty,
+  Table,
+  Tag,
+  Checkbox,
+  Progress
+} from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -55,7 +69,9 @@ export const TenantsList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   // Ouvert directement à l'arrivée depuis /admin/tenants/new (TenantCreate.tsx
   // redirige ici plutôt que de dupliquer le formulaire).
-  const [createOpen, setCreateOpen] = useState(Boolean((location.state as { openCreate?: boolean } | null)?.openCreate));
+  const [createOpen, setCreateOpen] = useState(
+    Boolean((location.state as { openCreate?: boolean } | null)?.openCreate)
+  );
 
   // Packs, % de lots utilisés et prochaine échéance : le catalogue est global
   // (chargé une fois), le résumé de toute la page arrive en UNE requête
@@ -65,7 +81,9 @@ export const TenantsList: React.FC = () => {
   const [nearLimitOnly, setNearLimitOnly] = useState(false);
 
   useEffect(() => {
-    listCatalog().then(setCatalog).catch(() => setCatalog([]));
+    listCatalog()
+      .then(setCatalog)
+      .catch(() => setCatalog([]));
   }, []);
 
   useEffect(() => {
@@ -190,7 +208,13 @@ export const TenantsList: React.FC = () => {
             percent={Math.min(100, percent)}
             size="small"
             status={percent >= 100 ? 'exception' : 'normal'}
-            strokeColor={percent >= 100 ? 'var(--color-error-text)' : percent >= 80 ? 'var(--color-warning-text)' : 'var(--color-success-text)'}
+            strokeColor={
+              percent >= 100
+                ? 'var(--color-error-text)'
+                : percent >= 80
+                  ? 'var(--color-warning-text)'
+                  : 'var(--color-success-text)'
+            }
             style={{ minWidth: 120 }}
           />
         );
@@ -254,7 +278,7 @@ export const TenantsList: React.FC = () => {
         >
           <div>
             <Title level={3} style={{ margin: 0 }}>
-              {t('Tenants')}
+              {t('Agences')}
             </Title>
             <Text type="secondary">{t('Gérez toutes les agences de la plateforme')}</Text>
           </div>
@@ -313,7 +337,9 @@ export const TenantsList: React.FC = () => {
             {!loading && (!filteredTenants || filteredTenants.length === 0) ? (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={nearLimitOnly ? t('Aucune agence proche de la limite sur cette page') : t('Aucune agence trouvée')}
+                description={
+                  nearLimitOnly ? t('Aucune agence proche de la limite sur cette page') : t('Aucune agence trouvée')
+                }
               />
             ) : (
               <Table

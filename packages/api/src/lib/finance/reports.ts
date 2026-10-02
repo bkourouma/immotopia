@@ -35,6 +35,7 @@
 import { prisma } from '../../utils/database';
 import { notFound } from '../errors';
 import { roundMoney } from './money';
+import { sumClientBilledSettledByAccount } from './third-party-totals';
 import {
   toAmount,
   toAmountOrZero,
@@ -119,9 +120,8 @@ async function loadPropertyLabelsByClient(tenantId: string, tenantClientIds: str
  * Voir `GetClientsBalance` dans `./types.ts`.
  *
  * Une seule requête `groupBy` porte l'agrégation des montants facturés et
- * réglés sur la période filtrée ; le solde affiché, lui, est le solde
- * courant du compte (`ThirdPartyAccount.balance`), tenu à jour par le grand
- * livre à chaque mouvement — jamais recalculé ici.
+ * réglés sur la période filtrée ; le solde affiché est le solde à la fin de
+ * la période (à date sans période), agrégé par la même requête SQL.
  */
 export const getClientsBalance: GetClientsBalance = async (tenantId, filters) => {
   // Comptes TENANT du tenant : une ligne par locataire, chargée une seule
@@ -150,29 +150,28 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
   const asOf = filters?.asOf ?? new Date();
   const upTo = movementDateFilter?.lte && movementDateFilter.lte < asOf ? movementDateFilter.lte : asOf;
 
-  // Solde À DATE : Σ débits − Σ crédits des mouvements déjà exigibles. Même
-  // fonction que le relevé (`balanceUpTo`) : un loyer futur n'y figure pas.
+  // Solde À LA FIN DE LA PÉRIODE (à date sans période) : Σ débits − Σ crédits
+  // des mouvements dont la date est <= `upTo`, comme la clôture du relevé
+  // (`balanceUpTo`) : ni loyer futur, ni mouvement postérieur à la période.
   const soldes = await prisma.thirdPartyMovement.groupBy({
     by: ['accountId'],
-    where: { tenantId, accountId: { in: accountIds }, movementDate: { lte: asOf } },
+    where: { tenantId, accountId: { in: accountIds }, movementDate: { lte: upTo } },
     _sum: { debit: true, credit: true }
   });
   const soldeParCompte = new Map(
     soldes.map(g => [g.accountId, roundMoney(toAmountOrZero(g._sum.debit) - toAmountOrZero(g._sum.credit))])
   );
 
-  const grouped = await prisma.thirdPartyMovement.groupBy({
-    by: ['accountId'],
-    where: {
-      tenantId,
-      accountId: { in: accountIds },
-      movementDate: { ...(movementDateFilter?.gte ? { gte: movementDateFilter.gte } : {}), lte: upTo },
-      ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
-    },
-    _sum: { debit: true, credit: true }
+  // Facturé / réglé : règle unique `sumClientBilledSettledByAccount` (une reprise
+  // d'avance n'est ni une facturation ni un règlement — BUG-2026-09-30-058).
+  const grouped = await sumClientBilledSettledByAccount({
+    tenantId,
+    accountId: { in: accountIds },
+    movementDate: { ...(movementDateFilter?.gte ? { gte: movementDateFilter.gte } : {}), lte: upTo },
+    ...(leaseIdFilter ? { leaseId: { in: leaseIdFilter } } : {})
   });
 
-  if (grouped.length === 0) {
+  if (grouped.size === 0) {
     return { lines: [], totalBalance: 0, currency: DEFAULT_CURRENCY };
   }
 
@@ -182,16 +181,16 @@ export const getClientsBalance: GetClientsBalance = async (tenantId, filters) =>
     .filter((id): id is string => Boolean(id));
   const propertyLabelsByClient = await loadPropertyLabelsByClient(tenantId, tenantClientIds);
 
-  const lines: ClientsBalanceLine[] = grouped.map(group => {
-    const account = accountById.get(group.accountId)!;
+  const lines: ClientsBalanceLine[] = Array.from(grouped, ([accountId, totals]) => {
+    const account = accountById.get(accountId)!;
     const tenantClientId = account.tenantClientId ?? '';
     return {
       accountId: account.id,
       tenantClientId,
       label: account.label,
       propertyLabels: propertyLabelsByClient.get(tenantClientId) ?? [],
-      totalBilled: roundMoney(toAmountOrZero(group._sum.debit)),
-      totalSettled: roundMoney(toAmountOrZero(group._sum.credit)),
+      totalBilled: totals.billed,
+      totalSettled: totals.settled,
       balance: soldeParCompte.get(account.id) ?? 0,
       currency: account.currency
     };

@@ -36,6 +36,7 @@ jest.mock('@prisma/client', () => {
         return false;
       }
     }
+    if (where.type !== undefined && m.type !== where.type) return false;
     if (where.leaseId && !inFilter(where.leaseId, m.leaseId)) return false;
     if (where.movementDate && !matchesMovementDate(m.movementDate, where.movementDate)) return false;
     return true;
@@ -160,6 +161,7 @@ jest.mock('@prisma/client', () => {
 });
 
 import { getAccountStatement, getClientsAgingBalance, getClientsBalance } from '../../src/lib/finance/reports';
+import { clientsBalanceQuerySchema, resolveRange } from '../../src/lib/finance/schemas';
 
 const { __store: store } = jest.requireMock('@prisma/client') as { __store: any };
 
@@ -323,7 +325,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       expect(line.accountId).toBe('acc-a');
       expect(line.totalBilled).toBe(50000);
       expect(line.totalSettled).toBe(0);
-      // Le solde reste le solde À DATE du compte, pas recalcule sur la periode.
+      // Solde à la fin de la période (28/02) : m1 + m3 − m2 = 90 000.
       expect(line.balance).toBe(90000);
     });
 
@@ -344,6 +346,171 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
     it('isole les tenants : un compte d un autre tenant n apparait jamais', async () => {
       const result = await getClientsBalance(OTHER_TENANT_ID);
       expect(result.lines).toHaveLength(0);
+    });
+
+    // BUG-2026-09-30-058 : un reglement affecte s'ecrit ADVANCE_RECEIVED (credit
+    // total) + PAYMENT (credit affecte) + ADVANCE_APPLIED (debit affecte). La
+    // reprise d'avance ne facture rien et annule un credit deja compte.
+    describe('reprise d avance (ADVANCE_APPLIED)', () => {
+      const day = (d: number) => new Date(Date.UTC(2026, 5, d));
+
+      const seedReglementAffecte = (prefix: string, accountId: string, date: Date, recu: number, affecte: number) => {
+        seedMovement({ id: `${prefix}-adv`, accountId, movementDate: date, type: 'ADVANCE_RECEIVED', credit: recu });
+        seedMovement({ id: `${prefix}-pay`, accountId, movementDate: date, type: 'PAYMENT', credit: affecte });
+        seedMovement({ id: `${prefix}-app`, accountId, movementDate: date, type: 'ADVANCE_APPLIED', debit: affecte });
+      };
+
+      beforeEach(() => {
+        store.movements.length = 0;
+        store.accounts.length = 0;
+        seedAccount({ id: 'acc-x', tenantClientId: 'client-x', label: 'Locataire X', balance: 0 });
+      });
+
+      it('cas du bug : 3 echeances de 480 000 + penalite 9 000, reglements 480 000 et 300 000', async () => {
+        for (const [i, amount] of [480000, 480000, 480000, 9000].entries()) {
+          seedMovement({
+            id: `due-${i}`,
+            accountId: 'acc-x',
+            movementDate: day(1 + i),
+            type: 'INSTALLMENT',
+            debit: amount
+          });
+        }
+        seedReglementAffecte('r1', 'acc-x', day(10), 480000, 480000);
+        seedReglementAffecte('r2', 'acc-x', day(11), 300000, 300000);
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled).toBe(1449000);
+        expect(line.totalSettled).toBe(780000);
+        expect(line.balance).toBe(669000);
+      });
+
+      it('avance partiellement imputee : 780 000 recus, 480 000 appliques a une echeance de 480 000', async () => {
+        seedMovement({ id: 'due', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 480000 });
+        seedReglementAffecte('r1', 'acc-x', day(10), 780000, 480000);
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled).toBe(480000);
+        expect(line.totalSettled).toBe(780000);
+        expect(line.balance).toBe(-300000); // avance restante de 300 000
+      });
+
+      it('sans ADVANCE_APPLIED, les totaux sont ceux de la somme brute (inchange)', async () => {
+        seedMovement({ id: 'due', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 100000 });
+        seedMovement({ id: 'pay', accountId: 'acc-x', movementDate: day(5), type: 'PAYMENT', credit: 40000 });
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled).toBe(100000);
+        expect(line.totalSettled).toBe(40000);
+        expect(line.balance).toBe(60000);
+      });
+
+      it('facture − regle = solde, avec ou sans reprise d avance', async () => {
+        seedMovement({ id: 'due1', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 250000 });
+        seedMovement({ id: 'due2', accountId: 'acc-x', movementDate: day(2), type: 'INSTALLMENT', debit: 250000 });
+        seedReglementAffecte('r1', 'acc-x', day(10), 400000, 250000);
+        seedMovement({ id: 'pay', accountId: 'acc-x', movementDate: day(12), type: 'PAYMENT', credit: 50000 });
+
+        const [line] = (await getClientsBalance(TENANT_ID)).lines;
+
+        expect(line.totalBilled - line.totalSettled).toBe(line.balance);
+      });
+
+      it('respecte le filtre de periode : seuls les mouvements de la fenetre comptent (facture 0, regle 100 000)', async () => {
+        seedMovement({ id: 'due', accountId: 'acc-x', movementDate: day(1), type: 'INSTALLMENT', debit: 100000 });
+        seedReglementAffecte('r1', 'acc-x', day(20), 100000, 100000);
+
+        const [line] = (await getClientsBalance(TENANT_ID, { range: { from: day(15), to: day(25) } })).lines;
+
+        expect(line.totalBilled).toBe(0);
+        expect(line.totalSettled).toBe(100000);
+      });
+    });
+
+    // BUG-2026-10-01-003 : borne de fin « jour seul » inclusive, solde à la fin de période.
+    describe('periode : borne de fin inclusive et solde a la fin de la periode', () => {
+      const at = (iso: string) => new Date(iso);
+      /** Comme le contrôleur : requête brute → schéma → resolveRange → lecteur. */
+      const balanceFor = async (query: Record<string, string>) => {
+        const range = resolveRange(clientsBalanceQuerySchema.parse(query));
+        return getClientsBalance(TENANT_ID, { range: range.from || range.to ? range : undefined });
+      };
+
+      beforeEach(() => {
+        store.movements.length = 0;
+        store.accounts.length = 0;
+        seedAccount({ id: 'acc-k', tenantClientId: 'client-k', label: 'Kouadio', balance: 0 });
+        seedMovement({
+          id: 'aout',
+          accountId: 'acc-k',
+          movementDate: at('2026-08-05T00:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 480000
+        });
+        seedMovement({
+          id: 'fac-30',
+          accountId: 'acc-k',
+          movementDate: at('2026-09-30T12:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 960000
+        });
+        seedMovement({
+          id: 'reg-30',
+          accountId: 'acc-k',
+          movementDate: at('2026-09-30T12:00:00.000Z'),
+          type: 'PAYMENT',
+          credit: 780000
+        });
+        // Postérieur à la fin de période (septembre) : hors facturé, réglé ET solde.
+        seedMovement({
+          id: 'oct',
+          accountId: 'acc-k',
+          movementDate: at('2026-10-01T00:00:00.000Z'),
+          type: 'INSTALLMENT',
+          debit: 50000
+        });
+      });
+
+      it('to jour seul : un mouvement a 12:00 le jour de `to` est compte', async () => {
+        const [line] = (await balanceFor({ from: '2026-09-01', to: '2026-09-30' })).lines;
+
+        expect(line.totalBilled).toBe(960000);
+        expect(line.totalSettled).toBe(780000);
+      });
+
+      it('from = to (meme jour) renvoie le jour entier', async () => {
+        const result = await balanceFor({ from: '2026-09-30', to: '2026-09-30' });
+
+        expect(result.lines).toHaveLength(1);
+        expect(result.lines[0].totalBilled).toBe(960000);
+        expect(result.lines[0].totalSettled).toBe(780000);
+      });
+
+      it('to avec heure explicite : non modifie (le mouvement de 12:00 est exclu a 06:00)', async () => {
+        const result = await balanceFor({ from: '2026-09-30T00:00:00.000Z', to: '2026-09-30T06:00:00.000Z' });
+
+        expect(result.lines).toHaveLength(0);
+      });
+
+      it('le solde d une periode est le solde a sa fin ; un mouvement posterieur en est exclu', async () => {
+        const [aout] = (await balanceFor({ from: '2026-08-01', to: '2026-08-31' })).lines;
+        expect(aout.totalBilled).toBe(480000);
+        expect(aout.totalSettled).toBe(0);
+        expect(aout.balance).toBe(480000); // fin août, pas le solde à date
+
+        const [sept] = (await balanceFor({ from: '2026-09-01', to: '2026-09-30' })).lines;
+        // 480 000 + 960 000 − 780 000 ; les 50 000 d'octobre n'y sont pas.
+        expect(sept.balance).toBe(660000);
+      });
+
+      it('sans periode : solde a date, mouvement d octobre compris', async () => {
+        const [line] = (await getClientsBalance(TENANT_ID, { asOf: at('2026-10-02T00:00:00.000Z') })).lines;
+
+        expect(line.balance).toBe(710000);
+      });
     });
   });
 

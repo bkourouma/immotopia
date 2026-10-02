@@ -194,19 +194,19 @@ tourner si `NODE_ENV=production`, quelle que soit la valeur de
 Autres seeds utiles, à lancer séparément selon le besoin (liste tirée de
 `packages/api/package.json`, non exhaustive dans ce document) :
 
-| Script                                                   | Rôle                                                                                                 |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `db:seed:rbac`                                           | Rôles et permissions — **à lancer avant le seed principal** d'après `docs/setup/getting-started.md`. |
-| `db:seed:geographic`                                     | Référentiel pays/régions/communes.                                                                   |
-| `db:seed:super-admin`                                    | Compte super-admin plateforme.                                                                       |
-| `db:seed:catalog`                                        | Catalogue des offres d'abonnement par packs.                                                         |
-| `db:seed:property-templates`                             | Gabarits de biens par type.                                                                          |
-| `db:seed:document-templates`                             | Gabarits de documents (baux, quittances...).                                                         |
-| `db:seed:maintenance`, `db:seed:maintenance-permissions` | Données et permissions du module maintenance.                                                        |
-| `db:seed:communication-permissions`                      | Permissions du module communication.                                                                 |
-| `db:seed:tenant-members`                                 | Membres de démonstration par agence.                                                                 |
-| `db:seed:syndic-demo`                                    | Jeu de données de démonstration syndic/copropriété.                                                  |
-| `db:seed:crm`, `db:seed:comprehensive`                   | Données CRM de démonstration, jeu de données complet.                                                |
+| Script                                                   | Rôle                                                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `db:seed:rbac`                                           | Rôles et permissions — **à lancer avant le seed principal** d'après `docs/setup/getting-started.md`.     |
+| `db:seed:geographic`                                     | Référentiel pays/régions/communes.                                                                       |
+| `db:seed:super-admin`                                    | Compte super-admin plateforme.                                                                           |
+| `db:seed:catalog`                                        | Catalogue des offres d'abonnement par packs. **Sans `--missing-only`, écrase prix et plafonds ajustés.** |
+| `db:seed:property-templates`                             | Gabarits de biens par type.                                                                              |
+| `db:seed:document-templates`                             | Gabarits de documents (baux, quittances...).                                                             |
+| `db:seed:maintenance`, `db:seed:maintenance-permissions` | Données et permissions du module maintenance.                                                            |
+| `db:seed:communication-permissions`                      | Permissions du module communication.                                                                     |
+| `db:seed:tenant-members`                                 | Membres de démonstration par agence.                                                                     |
+| `db:seed:syndic-demo`                                    | Jeu de données de démonstration syndic/copropriété.                                                      |
+| `db:seed:crm`, `db:seed:comprehensive`                   | Données CRM de démonstration, jeu de données complet.                                                    |
 
 ## Commandes quotidiennes
 
@@ -249,12 +249,11 @@ npm run test:isolation -w @immotopia/api
 
 Le runner recopie `DATABASE_URL_TEST` dans `DATABASE_URL`, applique lui-même
 `prisma migrate deploy` ; aucun seed n'est nécessaire (les fixtures créent le
-rôle `TENANT_ADMIN` et ses permissions). **Un succès se lit dans « Tests: 43
-passed, 43 total »** (suite `api-app`), jamais dans le seul code de sortie : sans
+rôle `TENANT_ADMIN` et ses permissions). **Un succès se lit dans « Tests: 46
+passed, 46 total »** (suite `api-app`), jamais dans le seul code de sortie : sans
 base, le script sort en succès et la suite s'ignore. Jest signale « did not exit
 one second after the test run » (file d'audit ouverte) : sans effet sur le
-résultat. Les données de test des baux restent en base (pas de cascade
-`rental_*` dans le nettoyage) : la base est jetable.
+résultat. Le nettoyage de fin de suite supprime aussi les données `rental_*` des agences de test (le schéma n'a pas de cascade) et échoue bruyamment si une suppression échoue : la base reste propre d'un passage à l'autre.
 
 i18n (voir aussi [docs/architecture/i18n.md](../architecture/i18n.md)) :
 
@@ -520,6 +519,35 @@ chaîne dont le scellé `seq` ne retombe pas sur le `chainHash` ancré a été r
 possible (un `TRUNCATE` ne passe pas par les déclencheurs de ligne) ; vider
 seulement `audit_logs` laisserait des scellés orphelins, que la vérification
 signalerait comme lignes disparues.
+
+### Catalogue d'abonnement : `--missing-only` après un ajustement produit
+
+`npm run db:seed:catalog` **sans** `--missing-only` réaligne le catalogue sur
+la grille codée dans `catalog.ts` et **écrase** les prix et plafonds que le
+produit a ajustés depuis (par exemple le prix de `PARTICULIER_PLUS` ou le
+plafond d'`ACTIFS`). Après tout ajustement de prix ou de plafond, ne lancer que
+`npm run db:seed:catalog -- --missing-only`, qui crée les offres absentes sans
+toucher aux autres. Les lignes de la migration `20261004220100` ne sont pas
+modifiables une fois appliquée : elles amorcent les valeurs provisoires du lot 4.
+
+### Inscription libre : limiteur par IP et `trust proxy`
+
+Le limiteur d'inscription (`services/signup-guard-service.ts`, 3 par heure et
+par IP, état dans la table `signup_attempts`) lit l'adresse dans `req.ip`, donc
+dépend de `app.set('trust proxy', 1)` dans `app.ts` : **un seul** proxy de
+confiance devant l'API. À vérifier à chaque déploiement :
+
+- Topologie : si deux proxys se suivent (CDN puis répartiteur), `req.ip` vaut
+  l'adresse du premier proxy et TOUS les visiteurs partagent un compteur ;
+  ajuster `trust proxy` au nombre réel de sauts, jamais à `true`.
+- Adresses partagées : des visiteurs derrière une même IP (CGNAT des
+  opérateurs mobiles, agence, cybercafé) partagent aussi un compteur ; les
+  IPv6 sont regroupées par préfixe /64.
+- Panne de base : le limiteur laisse passer (fail-open, avertissement dans les
+  journaux) ; une panne de PostgreSQL ne bloque pas les inscriptions mais les
+  laisse sans plafond.
+- La purge des lignes de plus de 24 h tourne au plus une fois par minute et par
+  processus.
 
 ## Dépannage
 

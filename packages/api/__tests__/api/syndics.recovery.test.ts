@@ -239,6 +239,7 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
 
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
+import { prisma } from '../../src/utils/database';
 const mockNotifications = jest.requireMock('../../src/lib/syndics/notifications') as Record<string, jest.Mock>;
 
 describe('Syndics recovery routes', () => {
@@ -274,6 +275,48 @@ describe('Syndics recovery routes', () => {
     expect(response.status).toBe(201);
     expect(response.body.success).toBe(true);
     expect(mockNotifications.notifyChargeCallReminder).toHaveBeenCalledTimes(1);
+  });
+
+  it("signale un échec d'envoi de relance sans le présenter comme un succès ni exposer l'erreur brute", async () => {
+    mockNotifications.notifyChargeCallReminder.mockRejectedValueOnce(new Error('554 EMESSAGE rejected by mail server'));
+    const updateMany = jest.spyOn(prisma.paymentReminder, 'updateMany').mockResolvedValue({ count: 1 } as any);
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${CHARGE_ID}/relance`)
+      .send({ reminderLevel: 1, channel: 'EMAIL' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.notificationFailed).toBe(true);
+    expect(response.body.data.status).toBe('FAILED');
+    expect(JSON.stringify(response.body)).not.toContain('554');
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: response.body.data.id }),
+        data: { status: 'FAILED' }
+      })
+    );
+    updateMany.mockRestore();
+  });
+
+  it('un envoi réussi ne marque pas la relance en échec', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges/${CHARGE_ID}/relance`)
+      .send({ reminderLevel: 1, channel: 'EMAIL' });
+
+    expect(response.body.notificationFailed).toBe(false);
+    expect(response.body.data.status).toBe('SENT');
+  });
+
+  it('batch : compte les envois en échec', async () => {
+    mockNotifications.notifyChargeCallReminder.mockRejectedValueOnce(new Error('554 EMESSAGE'));
+    const updateMany = jest.spyOn(prisma.paymentReminder, 'updateMany').mockResolvedValue({ count: 1 } as any);
+
+    const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/relances/batch`).send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.remindersCreated).toBe(1);
+    expect(response.body.data.notificationsFailed).toBe(1);
+    updateMany.mockRestore();
   });
 
   it('runs reminder batch and triggers notifications', async () => {

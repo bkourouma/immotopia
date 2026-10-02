@@ -1,0 +1,1117 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Syndic - Cloture d'exercice (spec 027) API
+  version: 0.1.0
+  description: >
+    Contrat PROPOSE de la cloture d'exercice du module Syndic : exercices,
+    controles, apercu, cloture, reouverture, dossier de comptes, approbation
+    par l'AG, regularisation des charges. Specification seule, aucune route
+    n'existe encore. Les routes d'agence sont sous
+    /api/tenants/{tenantId}/syndics/{syndicId} (fonctionnalite SYNDIC de
+    l'abonnement) ; les routes de portail sous /api/portal/copropriete (hors abonnement, comme les autres portails). Reponses enveloppees
+    {success, data} comme le reste de l'API ; erreurs typees d'AppError avec
+    `code`. Permission requise notee en `x-permission`. Voir spec.md §6.
+servers:
+  - url: /api
+tags:
+  - name: Exercices
+  - name: Controles et apercu
+  - name: Cloture
+  - name: Approbation AG
+  - name: Regularisation
+  - name: Parametrage
+  - name: Portail
+
+paths:
+  /tenants/{tenantId}/syndics/{syndicId}/exercices:
+    get:
+      tags: [Exercices]
+      summary: Liste des exercices (l'exercice courant et le precedent sont crees a la demande)
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+      responses:
+        "200":
+          description: Exercices, du plus recent au plus ancien
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/FiscalYear" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Exercices]
+      summary: Creer un exercice explicite (idempotent)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [year]
+              properties:
+                year: { type: integer, minimum: 2000, maximum: 2100 }
+      responses:
+        "201":
+          description: Exercice cree ou deja existant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FiscalYearEnvelope" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}:
+    get:
+      tags: [Exercices]
+      summary: Detail d'un exercice (statut, approbation, versions de cloture)
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      responses:
+        "200":
+          description: Exercice et ses clotures (la version active en premier)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/FiscalYearDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Exercices]
+      summary: Visa de verification et date limite indicative d'approbation
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                reviewedBy: { type: string, maxLength: 200, nullable: true }
+                reviewedAt: { type: string, format: date, nullable: true }
+                approvalDueDate: { type: string, format: date, nullable: true }
+      responses:
+        "200":
+          description: Exercice mis a jour
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FiscalYearEnvelope" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/controles:
+    get:
+      tags: [Controles et apercu]
+      summary: Controles avant cloture (lecture pure, aucune ecriture)
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      responses:
+        "200":
+          description: Controles, bloquants d'abord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      canClose:
+                        {
+                          type: boolean,
+                          description: "Vrai s'il n'y a aucun controle bloquant.",
+                        }
+                      checks:
+                        type: array
+                        items: { $ref: "#/components/schemas/ClosingCheck" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/apercu-cloture:
+    get:
+      tags: [Controles et apercu]
+      summary: Apercu de la cloture - ecritures, etats, rapprochement, empreinte (rien n'est ecrit)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+        - name: adjustmentAccountId
+          in: query
+          required: false
+          description: Contrepartie des ajustements manuels de compte de lot (FR-025).
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Apercu recalcule a chaque appel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/ClosingPreview" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/releves-bancaires:
+    get:
+      tags: [Controles et apercu]
+      summary: Soldes de releves bancaires saisis pour l'exercice
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      responses:
+        "200":
+          description: Liste des soldes saisis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/BankCheck" }
+    post:
+      tags: [Controles et apercu]
+      summary: Saisir le solde d'un releve bancaire a la date d'arrete
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BankCheckInput" }
+      responses:
+        "201":
+          description: Solde enregistre
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/BankCheck" }
+        "409": { $ref: "#/components/responses/FiscalYearClosed" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/releves-bancaires/{checkId}:
+    delete:
+      tags: [Controles et apercu]
+      summary: Retirer un solde de releve saisi (exercice ouvert)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+        - name: checkId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Retire }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/FiscalYearClosed" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/cloture:
+    post:
+      tags: [Cloture]
+      summary: Cloturer l'exercice (transaction unique, verrou d'exercice)
+      description: >
+        Recontrole, recalcule l'apercu, compare l'empreinte, pose les ecritures,
+        verrouille, fige budgets et instantanes, ouvre N+1 et son ecriture
+        d'ouverture. Le dossier de comptes est genere apres validation. Voir
+        spec.md FR-030 a FR-039.
+      x-permission: SYNDIC_FISCAL_YEAR_CLOSE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CloseRequest" }
+      responses:
+        "201":
+          description: Exercice clos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/ClosingResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >
+            Codes possibles : FISCAL_YEAR_ALREADY_CLOSED, CLOSING_BLOCKED (liste
+            des bloquants dans `data`), WARNINGS_NOT_ACKNOWLEDGED (codes
+            manquants dans `data`), PREVIEW_STALE (rien n'est ecrit).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/reouverture:
+    post:
+      tags: [Cloture]
+      summary: Rouvrir un exercice clos (ecritures de cloture contre-passees)
+      x-permission: SYNDIC_FISCAL_YEAR_REOPEN
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Exercice rouvert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FiscalYearEnvelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: >
+            REOPEN_FORBIDDEN (exercice non clos, comptes approuves, exercice
+            suivant clos).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/dossier:
+    get:
+      tags: [Cloture]
+      summary: Telecharger le dossier de comptes (PDF, stockage prive)
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+        - name: version
+          in: query
+          required: false
+          description: Version de cloture (defaut - la version active).
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Fichier PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/dossier/publication:
+    put:
+      tags: [Cloture]
+      summary: Publier (ou retirer) le dossier de comptes au portail copropriétaire
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [published]
+              properties:
+                published: { type: boolean }
+      responses:
+        "200":
+          description: Publication mise a jour
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FiscalYearEnvelope" }
+        "409":
+          description: Exercice non clos ou dossier absent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/soumission-ag:
+    post:
+      tags: [Approbation AG]
+      summary: Soumettre les comptes a l'AGO (cree ou relie l'assemblee, 4 resolutions pre-remplies)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitToMeetingRequest" }
+      responses:
+        "201":
+          description: Comptes soumis (exercice SUBMITTED)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      fiscalYear: { $ref: "#/components/schemas/FiscalYear" }
+                      meetingId: { type: string, format: uuid }
+                      resolutionIds:
+                        type: array
+                        items: { type: string, format: uuid }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Exercice non clos, assemblee deja cloturee ou annulee.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/constat-approbation:
+    post:
+      tags: [Approbation AG]
+      summary: Constater l'approbation (ou le rejet) des comptes d'apres le vote
+      description: >
+        Le resultat est relu sur les votes de la resolution, jamais recopie
+        d'un champ saisi. Exige une assemblee COMPLETED et un resultat.
+      x-permission: SYNDIC_FISCAL_YEAR_CLOSE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Approbation constatee (APPROVED ou REJECTED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FiscalYearEnvelope" }
+        "409":
+          description: APPROVAL_NOT_READY (assemblee non cloturee, pas de resultat, exercice non soumis).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/regularisation/apercu:
+    get:
+      tags: [Regularisation]
+      summary: Apercu de la regularisation des charges courantes, lot par lot (rien n'est ecrit)
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      responses:
+        "200":
+          description: Provisions, reel reparti, ecart par lot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/RegularisationPreview" }
+        "409":
+          description: Exercice non clos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/regularisation:
+    post:
+      tags: [Regularisation]
+      summary: Appliquer la regularisation votee (une seule fois par exercice)
+      x-permission: SYNDIC_FISCAL_YEAR_CLOSE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplyRegularisationRequest" }
+      responses:
+        "201":
+          description: Regularisation appliquee
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/RegularisationResult" }
+        "409":
+          description: >
+            REGULARISATION_ALREADY_APPLIED, RESOLUTION_NOT_APPROVED, exercice
+            non clos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/budget-suivant:
+    post:
+      tags: [Exercices]
+      summary: Preparer le budget de l'exercice suivant en brouillon (lot C6)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                basis:
+                  type: string
+                  enum: [FORECAST, ACTUAL]
+                  default: FORECAST
+      responses:
+        "201":
+          description: Budget N+1 en brouillon (identifiant)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      budgetId: { type: string, format: uuid }
+
+  /tenants/{tenantId}/syndics/{syndicId}/exercices/{year}/reprise-soldes:
+    get:
+      tags: [Exercices]
+      summary: Proposition de reprise des soldes du premier exercice (lot C6)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      responses:
+        "200":
+          description: Ecriture d'ouverture proposee
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/PreviewEntry" }
+    post:
+      tags: [Exercices]
+      summary: Poster l'ecriture de reprise des soldes validee (lot C6)
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreviewEntry" }
+      responses:
+        "201": { description: Ecriture postee }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/parametres-cloture:
+    get:
+      tags: [Parametrage]
+      summary: Comptes utilises par la cloture
+      x-permission: SYNDIC_FISCAL_YEAR_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+      responses:
+        "200":
+          description: Parametrage (champs nuls si non configure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/ClosingSettings" }
+    put:
+      tags: [Parametrage]
+      summary: Enregistrer les comptes de cloture et les comptes de capitaux propres des fonds
+      description: >
+        Chaque identifiant de compte et de fonds est verifie comme appartenant
+        a la copropriete de l'agence (meme 404 qu'un objet inexistant).
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClosingSettingsInput" }
+      responses:
+        "200":
+          description: Parametrage enregistre
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: "#/components/schemas/ClosingSettings" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/plan-minimal:
+    post:
+      tags: [Parametrage]
+      summary: Creer les comptes manquants du plan minimal (1010, 1020, 4500, 521, 7010, 7020, 7580)
+      description: Idempotent ; ne recree jamais un compte existant. Numeros a valider par un expert-comptable.
+      x-permission: SYNDIC_FISCAL_YEAR_PREPARE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+      responses:
+        "200":
+          description: Comptes crees et deja presents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: array
+                        items: { type: string }
+                      existing:
+                        type: array
+                        items: { type: string }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/balance:
+    get:
+      tags: [Exercices]
+      summary: Balance de verification (route EXISTANTE, parametre ajoute)
+      description: >
+        `exercice` limite la balance aux ecritures datees de l'exercice ; sans
+        lui le comportement est inchange. Meme parametre sur `grand-livre`.
+      x-permission: PROPERTIES_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SyndicId"
+        - name: exercice
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200": { description: Balance (contrat existant inchange) }
+
+  /portal/copropriete/coproprietes/{syndicId}/exercices:
+    get:
+      tags: [Portail]
+      summary: Exercices clos publies de la copropriete d'un lot ouvert au portail
+      description: >
+        Portail copropriétaire (requireCoOwnerPortalAccess). Jamais de chemin
+        disque. Un exercice termine avant l'acquisition du lot est masque.
+      parameters:
+        - $ref: "#/components/parameters/SyndicId"
+      responses:
+        "200":
+          description: Exercices publies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/PortalFiscalYear" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /portal/copropriete/coproprietes/{syndicId}/exercices/{year}/dossier:
+    get:
+      tags: [Portail]
+      summary: Telecharger le dossier de comptes publie (PDF)
+      description: Limite par coOwnerPortalPdfRateLimiter.
+      parameters:
+        - $ref: "#/components/parameters/SyndicId"
+        - $ref: "#/components/parameters/Year"
+      responses:
+        "200":
+          description: Fichier PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string }
+    SyndicId:
+      name: syndicId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Year:
+      name: year
+      in: path
+      required: true
+      description: Annee de l'exercice (calendaire en V1).
+      schema: { type: integer, minimum: 2000, maximum: 2100 }
+
+  responses:
+    NotFound:
+      description: Introuvable, ou appartenant a une autre agence (meme reponse).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Permission SYNDIC_FISCAL_YEAR_* manquante.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Validation:
+      description: Donnees invalides.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    FiscalYearClosed:
+      description: FISCAL_YEAR_CLOSED - exercice clos, aucune piece datee dedans.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        code:
+          type: string
+          description: >
+            FISCAL_YEAR_CLOSED, FISCAL_YEAR_ALREADY_CLOSED, CLOSING_BLOCKED,
+            WARNINGS_NOT_ACKNOWLEDGED, PREVIEW_STALE, REOPEN_FORBIDDEN,
+            APPROVAL_NOT_READY, REGULARISATION_ALREADY_APPLIED,
+            RESOLUTION_NOT_APPROVED, NOT_FOUND, VALIDATION_ERROR.
+        data:
+          {
+            description: Detail selon le code (bloquants,
+            avertissements manquants...).,
+          }
+
+    FiscalYearEnvelope:
+      type: object
+      properties:
+        success: { type: boolean }
+        data: { $ref: "#/components/schemas/FiscalYear" }
+
+    FiscalYear:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        year: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        status: { type: string, enum: [OPEN, CLOSED] }
+        closedAt: { type: string, format: date-time, nullable: true }
+        approvalStatus:
+          type: string
+          enum: [NOT_SUBMITTED, SUBMITTED, APPROVED, REJECTED]
+        accountsMeetingId: { type: string, format: uuid, nullable: true }
+        accountsResolutionId: { type: string, format: uuid, nullable: true }
+        approvedAt: { type: string, format: date-time, nullable: true }
+        reviewedBy: { type: string, nullable: true }
+        reviewedAt: { type: string, format: date, nullable: true }
+        approvalDueDate: { type: string, format: date, nullable: true }
+        approvalOverdue:
+          type: boolean
+          description: Exercice clos, non approuve, date limite indicative depassee (indicatif, ne bloque rien).
+        dossierAvailable: { type: boolean }
+        dossierPublished: { type: boolean }
+        activeVersion: { type: integer, nullable: true }
+        regularisationApplied: { type: boolean }
+
+    FiscalYearDetail:
+      allOf:
+        - $ref: "#/components/schemas/FiscalYear"
+        - type: object
+          properties:
+            closings:
+              type: array
+              items:
+                type: object
+                properties:
+                  version: { type: integer }
+                  closedAt: { type: string, format: date-time }
+                  closedById: { type: string, nullable: true }
+                  reopenedAt:
+                    { type: string, format: date-time, nullable: true }
+                  reopenReason: { type: string, nullable: true }
+                  summary:
+                    {
+                      type: object,
+                      description: "Chiffres figes (data-model.md §4).",
+                    }
+
+    ClosingCheck:
+      type: object
+      properties:
+        code: { type: string, example: CLO-B03 }
+        severity: { type: string, enum: [BLOCKING, WARNING, INFO] }
+        message: { type: string }
+        count: { type: integer }
+        items:
+          type: array
+          maxItems: 50
+          items: { type: object, additionalProperties: true }
+        fixHint: { type: string, nullable: true }
+
+    PreviewEntryLine:
+      type: object
+      properties:
+        accountNumber: { type: string }
+        accountId: { type: string, format: uuid }
+        lotId: { type: string, format: uuid, nullable: true }
+        debit: { type: number }
+        credit: { type: number }
+        label: { type: string }
+
+    PreviewEntry:
+      type: object
+      properties:
+        reference: { type: string, example: APP-2026 }
+        date: { type: string, format: date }
+        journalCode: { type: string, example: OD }
+        description: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/PreviewEntryLine" }
+
+    LotBalance:
+      type: object
+      properties:
+        lotId: { type: string, format: uuid }
+        lotNumber: { type: string }
+        openingBalance: { type: number, description: "Positif = debiteur." }
+        calledAmount: { type: number }
+        cashReceived: { type: number }
+        penalties: { type: number }
+        waivers: { type: number }
+        adjustments: { type: number }
+        regularisations:
+          {
+            type: number,
+            description: "Credits de regularisation (non monetaires) de l'exercice.",
+          }
+        otherMovements: { type: number }
+        closingBalance: { type: number }
+        advance: { type: number }
+
+    FundBalance:
+      type: object
+      properties:
+        fundId: { type: string, format: uuid }
+        name: { type: string }
+        openingBalance: { type: number }
+        credits: { type: number }
+        debits: { type: number }
+        closingBalance: { type: number }
+        accountingBalance: { type: number, nullable: true }
+        result:
+          {
+            type: number,
+            description: "Resultat de l'exercice affecte a ce fonds.",
+          }
+
+    TreasuryReconciliation:
+      type: object
+      properties:
+        bankAccount:
+          {
+            type: number,
+            description: "Solde du compte 521 a la date d'arret.",
+          }
+        fundsTotal: { type: number }
+        advances: { type: number }
+        unfundedAllocations: { type: number }
+        gap: { type: number, description: "Ecart non explique ; 0 attendu." }
+        statementBalances:
+          type: array
+          items: { $ref: "#/components/schemas/BankCheck" }
+
+    ClosingPreview:
+      type: object
+      properties:
+        previewHash:
+          {
+            type: string,
+            description: "SHA-256 de l'ensemble ; a renvoyer a la cloture.",
+          }
+        generatedAt: { type: string, format: date-time }
+        canClose: { type: boolean }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/ClosingCheck" }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/PreviewEntry" }
+        openingEntry: { $ref: "#/components/schemas/PreviewEntry" }
+        lotBalances:
+          type: array
+          items: { $ref: "#/components/schemas/LotBalance" }
+        fundBalances:
+          type: array
+          items: { $ref: "#/components/schemas/FundBalance" }
+        treasury: { $ref: "#/components/schemas/TreasuryReconciliation" }
+        summary:
+          {
+            type: object,
+            description: "Meme forme que le resume fige (data-model.md §4).",
+          }
+
+    CloseRequest:
+      type: object
+      additionalProperties: false
+      required: [previewHash]
+      properties:
+        previewHash: { type: string }
+        acknowledgedWarnings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code]
+            properties:
+              code: { type: string }
+              note: { type: string, maxLength: 500 }
+        adjustmentAccountId: { type: string, format: uuid }
+
+    ClosingResult:
+      type: object
+      properties:
+        fiscalYear: { $ref: "#/components/schemas/FiscalYear" }
+        version: { type: integer }
+        nextFiscalYear: { $ref: "#/components/schemas/FiscalYear" }
+        entriesCreated: { type: integer }
+        entriesLocked: { type: integer }
+        dossierGenerated:
+          {
+            type: boolean,
+            description: "Faux si la generation a echoue apres la cloture (a rejouer).",
+          }
+
+    SubmitToMeetingRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        meetingId:
+          type: string
+          format: uuid
+          description: AG ORDINARY non cloturee a relier. Absent - une AG est creee.
+        scheduledAt: { type: string, format: date-time }
+        location: { type: string, maxLength: 300 }
+        includeBudgetResolution: { type: boolean, default: true }
+
+    ClosingSettings:
+      type: object
+      properties:
+        ownersAccountId: { type: string, format: uuid, nullable: true }
+        bankAccountId: { type: string, format: uuid, nullable: true }
+        callIncomeRegularAccountId:
+          { type: string, format: uuid, nullable: true }
+        callIncomeExceptionalAccountId:
+          { type: string, format: uuid, nullable: true }
+        penaltyIncomeAccountId: { type: string, format: uuid, nullable: true }
+        adjustmentAccountId: { type: string, format: uuid, nullable: true }
+        pendingResultAccountId: { type: string, format: uuid, nullable: true }
+        journalCode: { type: string, default: OD }
+        fundEquityAccounts:
+          type: array
+          items:
+            type: object
+            properties:
+              fundId: { type: string, format: uuid }
+              equityAccountId: { type: string, format: uuid, nullable: true }
+
+    ClosingSettingsInput:
+      type: object
+      additionalProperties: false
+      properties:
+        ownersAccountId: { type: string, format: uuid, nullable: true }
+        bankAccountId: { type: string, format: uuid, nullable: true }
+        callIncomeRegularAccountId:
+          { type: string, format: uuid, nullable: true }
+        callIncomeExceptionalAccountId:
+          { type: string, format: uuid, nullable: true }
+        penaltyIncomeAccountId: { type: string, format: uuid, nullable: true }
+        adjustmentAccountId: { type: string, format: uuid, nullable: true }
+        pendingResultAccountId: { type: string, format: uuid, nullable: true }
+        journalCode: { type: string, minLength: 1, maxLength: 10 }
+        fundEquityAccounts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [fundId]
+            properties:
+              fundId: { type: string, format: uuid }
+              equityAccountId: { type: string, format: uuid, nullable: true }
+
+    BankCheckInput:
+      type: object
+      additionalProperties: false
+      required: [label, statementDate, statementBalance]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 200 }
+        accountRef: { type: string, maxLength: 100 }
+        statementDate: { type: string, format: date }
+        statementBalance: { type: number }
+        note: { type: string, maxLength: 500 }
+
+    BankCheck:
+      allOf:
+        - $ref: "#/components/schemas/BankCheckInput"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+
+    RegularisationLine:
+      type: object
+      properties:
+        lotId: { type: string, format: uuid }
+        lotNumber: { type: string }
+        provisions: { type: number }
+        share: { type: number }
+        delta:
+          {
+            type: number,
+            description: "Positif = excedent (credit), negatif = deficit (appel).",
+          }
+
+    RegularisationPreview:
+      type: object
+      properties:
+        year: { type: integer }
+        budgetsConsidered:
+          type: array
+          items: { type: string, format: uuid }
+        forecast: { type: number }
+        actual: { type: number }
+        totalSurplus: { type: number }
+        totalDeficit: { type: number }
+        unattachedInvoices:
+          {
+            type: integer,
+            description: "Factures reparties par tantiemes generaux (CLO-W07).",
+          }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/RegularisationLine" }
+
+    ApplyRegularisationRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, resolutionId, effectiveDate]
+      properties:
+        decision: { type: string, enum: [SETTLE_PER_LOT, KEEP_IN_FUND] }
+        resolutionId:
+          type: string
+          format: uuid
+          description: Resolution RESULT_ALLOCATION approuvee d'une AG COMPLETED de la copropriete.
+        effectiveDate:
+          type: string
+          format: date
+          description: Posterieure ou egale a la seance, dans un exercice ouvert.
+        deficitDueDate:
+          type: string
+          format: date
+          description: Echeance des appels de regularisation (obligatoire s'il y a un deficit).
+
+    RegularisationResult:
+      type: object
+      properties:
+        reference: { type: string, example: REG-2026 }
+        decision: { type: string }
+        totalSurplus: { type: number }
+        totalDeficit: { type: number }
+        creditsCreated: { type: integer }
+        callsCreated: { type: integer }
+        creditsImputed:
+          type: number
+          description: Part des credits deja imputee sur des appels ouverts.
+        journalEntryId: { type: string, format: uuid, nullable: true }
+
+    PortalFiscalYear:
+      type: object
+      properties:
+        year: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        approvalStatus:
+          { type: string, enum: [SUBMITTED, APPROVED, REJECTED, NOT_SUBMITTED] }
+        approvedAt: { type: string, format: date-time, nullable: true }
+        dossierPath:
+          type: string
+          description: Chemin RELATIF de la route authentifiee, jamais un chemin disque.
+          example: /api/portal/copropriete/coproprietes/{syndicId}/exercices/2026/dossier

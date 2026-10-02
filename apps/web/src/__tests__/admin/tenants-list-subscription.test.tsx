@@ -67,7 +67,21 @@ function summaryFor(tenantId: string) {
 }
 
 const CATALOG = [
-  { id: 'c-1', code: 'AGENCE', kind: 'PACK', name: 'Agence', description: null, monthlyPrice: 29_900, setupPrice: 100_000, modules: ['MODULE_AGENCY'], exclusiveGroup: null, rules: null, isSellable: true, sortOrder: 10, capacities: { LOTS: 100 } }
+  {
+    id: 'c-1',
+    code: 'AGENCE',
+    kind: 'PACK',
+    name: 'Agence',
+    description: null,
+    monthlyPrice: 29_900,
+    setupPrice: 100_000,
+    modules: ['MODULE_AGENCY'],
+    exclusiveGroup: null,
+    rules: null,
+    isSellable: true,
+    sortOrder: 10,
+    capacities: { LOTS: 100 }
+  }
 ];
 
 function mount() {
@@ -89,10 +103,24 @@ beforeEach(() => {
     if (url === '/admin/catalog') return Promise.resolve({ data: { success: true, data: CATALOG } });
     if (url === '/admin/subscriptions/summaries') {
       return Promise.resolve({
-        data: { success: true, data: { 'tenant-proche': summaryFor('tenant-proche'), 'tenant-large': summaryFor('tenant-large') } }
+        data: {
+          success: true,
+          data: { 'tenant-proche': summaryFor('tenant-proche'), 'tenant-large': summaryFor('tenant-large') }
+        }
       });
     }
     return Promise.reject(new Error(`GET non simulé : ${url}`));
+  });
+});
+
+describe('<TenantsList> — titre', () => {
+  // Recette du 29/09/2026 : le titre disait « Tenants » alors que le menu et le
+  // fil d'Ariane disent « Agences ».
+  it('titre la page « Agences », comme le menu', async () => {
+    mount();
+
+    expect(await screen.findByRole('heading', { level: 3, name: 'Agences' })).toBeInTheDocument();
+    expect(screen.queryByText('Tenants')).not.toBeInTheDocument();
   });
 });
 

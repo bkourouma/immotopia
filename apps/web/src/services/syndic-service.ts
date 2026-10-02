@@ -175,8 +175,9 @@ export async function createSyndicateLot(
     lotNumber: data.lotNumber,
     lotType: data.lotType,
     tantiemes: data.generalShares,
-    // v2 backend derives special shares from isParkingIncluded/tantiemes.
-    isParkingIncluded: data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0
+    // Tantièmes spéciaux saisis, enregistrés tels quels ; vide = aucun.
+    specialShares: data.specialShares ?? null,
+    ownerSince: data.ownerSince || undefined
   };
 
   const response = await apiClient.post<{ success: boolean; data: SyndicateLot }>(
@@ -198,8 +199,9 @@ export async function updateSyndicateLot(
     lotNumber: data.lotNumber,
     lotType: data.lotType,
     tantiemes: data.generalShares,
-    isParkingIncluded:
-      data.lotType !== undefined ? data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0 : undefined
+    // `null` efface les tantièmes spéciaux ; `undefined` les laisse inchangés.
+    specialShares: data.specialShares,
+    ownerSince: data.ownerSince
   };
 
   const response = await apiClient.patch<{ success: boolean; data: SyndicateLot }>(
@@ -655,12 +657,13 @@ export async function createManualReminder(
   syndicId: string,
   chargeId: string,
   data: CreateManualReminderRequest
-): Promise<PaymentReminder> {
-  const response = await apiClient.post<{ success: boolean; data: PaymentReminder }>(
+): Promise<PaymentReminder & { notificationFailed: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: PaymentReminder; notificationFailed?: boolean }>(
     `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/relance`,
     data
   );
-  return response.data.data;
+  // La relance est enregistrée même si l'envoi échoue : l'API le signale à part.
+  return { ...response.data.data, notificationFailed: response.data.notificationFailed === true };
 }
 
 export async function runReminderBatch(tenantId: string, syndicId: string): Promise<ReminderBatchResult> {

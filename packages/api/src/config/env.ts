@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { connectionLimitWarnings, perInstanceLimitersWarning } from '../lib/ai/pool-guard';
 
 /**
  * Centralised, validated environment configuration.
@@ -255,6 +256,18 @@ function loadEnv(): Env {
     // eslint-disable-next-line no-console
     console.warn(
       '⚠️  AI_PROVIDER=fake : ImmoCopilot répond avec le faux fournisseur déterministe (développement et recette uniquement).'
+    );
+  }
+
+  // ImmoCopilot : pool Prisma vs sections exclusives, limiteurs par instance (lib/ai/pool-guard.ts).
+  for (const message of connectionLimitWarnings(env.DATABASE_URL, env.AI_PROVIDER !== 'disabled')) {
+    // eslint-disable-next-line no-console
+    console.warn(`⚠️  ${message}`);
+  }
+  if (env.NODE_ENV === 'production' && env.AI_PROVIDER !== 'disabled') {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `⚠️  ${perInstanceLimitersWarning({ tenantMinute: env.AI_TENANT_MINUTE_LIMIT, tenantDaily: env.AI_TENANT_DAILY_LIMIT })}`
     );
   }
 
