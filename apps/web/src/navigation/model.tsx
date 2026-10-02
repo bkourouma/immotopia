@@ -429,6 +429,17 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           children: [
             { key: 'patrimoine-overview', label: t('Vue consolidée'), href: '/tenant/:tenantId/patrimoine' },
             {
+              key: 'patrimoine-net-worth',
+              label: t('Valeur nette'),
+              href: '/tenant/:tenantId/patrimoine/valeur-nette'
+            },
+            { key: 'patrimoine-assets', label: t('Mes actifs'), href: '/tenant/:tenantId/patrimoine/actifs' },
+            {
+              key: 'patrimoine-projections',
+              label: t('Projections'),
+              href: '/tenant/:tenantId/patrimoine/projections'
+            },
+            {
               key: 'patrimoine-performance',
               label: t('Performance'),
               href: '/tenant/:tenantId/patrimoine/performance'

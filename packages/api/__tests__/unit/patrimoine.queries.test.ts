@@ -15,6 +15,20 @@ const workProgramFindFirst = jest.fn();
 const workProgramUpdate = jest.fn();
 const workProgramFindMany = jest.fn();
 const workProgramCount = jest.fn();
+const assetFindUnique = jest.fn();
+const assetUpsert = jest.fn();
+const assetFindFirst = jest.fn();
+const assetValuationUpdate = jest.fn();
+const assetValuationCreate = jest.fn();
+const propertyLoanCreate = jest.fn();
+
+// Palier gratuit (lot 4B) : la garde lit les droits d'abonnement en base ; hors sujet ici (voir personal-space.*.test.ts).
+jest.mock('../../src/services/personal-space/free-tier', () => ({
+  getAssetCapacityLimit: jest.fn(async () => null),
+  isFreeTierLimitReached: jest.fn(async () => false),
+  lockTenantAssets: jest.fn(async () => undefined),
+  assertFreeTierCapacityTx: jest.fn(async () => undefined)
+}));
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
@@ -23,12 +37,22 @@ jest.mock('../../src/utils/database', () => ({
       findMany: (...a: any[]) => propertyFindMany(...a)
     },
     rentalLease: { findMany: (...a: any[]) => rentalLeaseFindMany(...a) },
+    asset: {
+      findUnique: (...a: any[]) => assetFindUnique(...a),
+      upsert: (...a: any[]) => assetUpsert(...a),
+      findFirst: (...a: any[]) => assetFindFirst(...a)
+    },
     assetValuation: {
+      create: (...a: any[]) => assetValuationCreate(...a),
+      update: (...a: any[]) => assetValuationUpdate(...a),
       findMany: (...a: any[]) => assetValuationFindMany(...a),
       findFirst: (...a: any[]) => assetValuationFindFirst(...a)
     },
     propertyExpense: { findMany: (...a: any[]) => propertyExpenseFindMany(...a) },
-    propertyLoan: { findMany: (...a: any[]) => propertyLoanFindMany(...a) },
+    propertyLoan: {
+      findMany: (...a: any[]) => propertyLoanFindMany(...a),
+      create: (...a: any[]) => propertyLoanCreate(...a)
+    },
     workProgram: {
       findFirst: (...a: any[]) => workProgramFindFirst(...a),
       update: (...a: any[]) => workProgramUpdate(...a),
@@ -40,6 +64,9 @@ jest.mock('../../src/utils/database', () => ({
 
 import {
   buildPropertyYieldInput,
+  createPropertyLoan,
+  createPropertyValuation,
+  updatePropertyValuation,
   getPatrimoineOverview,
   listTenantWorkPrograms,
   updatePropertyWorkProgram
@@ -247,5 +274,107 @@ describe('listTenantWorkPrograms — upcoming=true', () => {
 
     expect(result.total).toBe(1);
     expect(workProgramFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 25 }));
+  });
+});
+
+describe('actif REAL_ESTATE créé à la volée (lot 1 multi-actifs)', () => {
+  beforeEach(() => {
+    propertyFindFirst.mockResolvedValue({ id: PROPERTY, tenantId: TENANT, internalReference: 'REF-1', title: 'Villa' });
+    assetFindUnique.mockResolvedValue(null);
+    assetUpsert.mockResolvedValue({ id: 'asset-1' });
+    assetFindFirst.mockResolvedValue({ details: {} });
+    assetValuationUpdate.mockResolvedValue({ id: 'val-1' });
+    assetValuationCreate.mockResolvedValue({ id: 'val-1' });
+    propertyLoanCreate.mockResolvedValue({ id: 'loan-1' });
+  });
+
+  it("createPropertyValuation garantit l'actif et laisse la ligne sur propertyId", async () => {
+    await createPropertyValuation(TENANT, PROPERTY, {
+      valuatedAt: new Date('2026-01-01'),
+      estimatedValue: 1000,
+      currency: 'XOF',
+      method: 'MANUAL'
+    });
+    expect(assetUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { propertyId: PROPERTY, tenantId: TENANT },
+        create: expect.objectContaining({ tenantId: TENANT, assetClass: 'REAL_ESTATE', name: 'REF-1' })
+      })
+    );
+    const data = assetValuationCreate.mock.calls[0][0].data;
+    expect(data).toMatchObject({ tenantId: TENANT, propertyId: PROPERTY });
+    expect(data.assetId).toBeUndefined();
+  });
+
+  it('createPropertyValuation stocke une fiabilité (saisie manuelle sans source : LOW)', async () => {
+    await createPropertyValuation(TENANT, PROPERTY, {
+      valuatedAt: new Date(),
+      estimatedValue: 1000,
+      currency: 'XOF',
+      method: 'MANUAL'
+    });
+    const data = assetValuationCreate.mock.calls[0][0].data;
+    expect(data.reliability).toBe('LOW');
+    expect(data.reliabilityReasons).toContain('METHOD_MANUAL_NO_SOURCE');
+  });
+
+  it('createPropertyValuation : un terrain à statut juridique fragile est plafonné à LOW, même expertisé', async () => {
+    assetFindUnique.mockResolvedValue({ id: 'asset-1' });
+    assetFindFirst.mockResolvedValue({ details: { legalStatus: 'ATTESTATION_COUTUMIERE' } });
+    await createPropertyValuation(TENANT, PROPERTY, {
+      valuatedAt: new Date(),
+      estimatedValue: 1000,
+      currency: 'XOF',
+      method: 'EXPERT_APPRAISAL'
+    });
+    expect(assetFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'asset-1', tenantId: TENANT } })
+    );
+    const data = assetValuationCreate.mock.calls[0][0].data;
+    expect(data.reliability).toBe('LOW');
+    expect(data.reliabilityReasons).toContain('LEGAL_STATUS_FRAGILE');
+  });
+
+  it('updatePropertyValuation recalcule la fiabilité sur la ligne fusionnée', async () => {
+    assetValuationFindFirst.mockResolvedValue({
+      id: 'val-1',
+      method: 'MANUAL',
+      valuatedAt: new Date(),
+      source: 'Notaire'
+    });
+    await updatePropertyValuation(TENANT, PROPERTY, 'val-1', { method: 'EXPERT_APPRAISAL' });
+    const data = assetValuationUpdate.mock.calls[0][0].data;
+    expect(data.reliability).toBe('MEDIUM');
+    expect(data.reliabilityReasons).toEqual(['METHOD_EXPERT', 'LEGAL_STATUS_UNKNOWN']);
+  });
+
+  it("createPropertyLoan garantit l'actif et laisse la ligne sur propertyId", async () => {
+    await createPropertyLoan(TENANT, PROPERTY, {
+      lender: 'Banque',
+      capitalAmount: 1000,
+      remainingCapital: 900,
+      interestRate: 5,
+      monthlyPayment: 50,
+      currency: 'XOF',
+      startDate: new Date('2026-01-01'),
+      endDate: new Date('2030-01-01')
+    });
+    expect(assetUpsert).toHaveBeenCalledTimes(1);
+    const data = propertyLoanCreate.mock.calls[0][0].data;
+    expect(data).toMatchObject({ tenantId: TENANT, propertyId: PROPERTY });
+    expect(data.assetId).toBeUndefined();
+  });
+
+  it("aucun actif n'est créé si le bien n'appartient pas à l'agence", async () => {
+    propertyFindFirst.mockResolvedValue(null);
+    await expect(
+      createPropertyValuation(TENANT, PROPERTY, {
+        valuatedAt: new Date(),
+        estimatedValue: 1,
+        currency: 'XOF',
+        method: 'MANUAL'
+      })
+    ).rejects.toMatchObject({ status: 404 });
+    expect(assetUpsert).not.toHaveBeenCalled();
   });
 });

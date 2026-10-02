@@ -39,6 +39,7 @@ import {
   invalidateEntitlements,
   linkExtensionsToPacksTx,
   loadCatalogByCodes,
+  loadExistingCatalogByCodes,
   planInitialItems,
   syncTenantModulesTx
 } from './subscription-v2-service';
@@ -459,7 +460,7 @@ async function computeSetupCharge(
     firstInvoiceAlreadyIssued = previousPeriodInvoices > 0;
     if (!firstInvoiceAlreadyIssued) {
       const [catalog, existingSetups] = await Promise.all([
-        loadCatalogByCodes(db, autoSetupCodes),
+        loadExistingCatalogByCodes(db, autoSetupCodes),
         db.subscriptionItem.findMany({
           where: { tenantId, catalogItem: { code: { in: autoSetupCodes } } },
           select: { catalogItem: { select: { code: true } } }
@@ -552,9 +553,11 @@ async function computeEntitlementsForItems(
 }
 
 /** Avertissement de dépassement (sous BILL_OVERAGE, un dépassement est facturé). */
-function overageWarnings(capacities: Record<CapacityKeyCode, { overBy: number }>): string[] {
+function overageWarnings(capacities: Record<CapacityKeyCode, { overBy: number; limit: number }>): string[] {
   const warnings: string[] = [];
   for (const key of Object.keys(capacities) as CapacityKeyCode[]) {
+    // ACTIFS : compteur des packs Particulier ; sans pack Particulier (plafond 0), les actifs d'une agence ne comptent pas.
+    if (key === 'ACTIFS' && capacities[key].limit <= 0) continue;
     const overBy = capacities[key].overBy;
     if (overBy > 0) {
       warnings.push(
@@ -574,6 +577,7 @@ function quotaThresholdWarnings(capacities: Record<CapacityKeyCode, { used: numb
   const warnings: string[] = [];
   for (const key of Object.keys(capacities) as CapacityKeyCode[]) {
     const cap = capacities[key];
+    if (key === 'ACTIFS' && cap.limit <= 0) continue; // voir overageWarnings
     const crossed = crossedThresholds(cap.used, cap.limit);
     if (crossed.length === 0) continue;
     warnings.push(

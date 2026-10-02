@@ -306,6 +306,12 @@ jest.mock('../../src/services/tenant-service', () => ({
       .replace(/^-+|-+$/g, '')
 }));
 
+const mockGrantOwner = jest.fn(async () => undefined);
+jest.mock('../../src/lib/patrimoine/personal-permissions', () => ({
+  ensurePersonalSpaceOwnerRole: jest.fn(async () => 'role-owner'),
+  grantPersonalSpaceOwnerRole: (...a: unknown[]) => mockGrantOwner(...(a as []))
+}));
+
 jest.mock('../../src/services/audit-service', () => {
   const actual = jest.requireActual('../../src/services/audit-service');
   return {
@@ -316,7 +322,7 @@ jest.mock('../../src/services/audit-service', () => {
   };
 });
 
-import { provisionTenant } from '../../src/services/tenant-provisioning-service';
+import { createTenantCoreTx, provisionTenant } from '../../src/services/tenant-provisioning-service';
 import type { ProvisionTenantRequest } from '../../src/types/tenant-types';
 
 const baseInput: ProvisionTenantRequest = {
@@ -587,5 +593,138 @@ describe('provisionTenant — abonnement par packs (PLAN-ABONNEMENTS.md)', () =>
     expect(first.result.subscription.items.find(i => i.code === 'SETUP_AGENCE')).toMatchObject({
       unitSetupPrice: 100_000
     });
+  });
+});
+
+describe('espace PARTICULIER (lot 4A) : coeur transactionnel reutilisable', () => {
+  it('createTenantCoreTx cree tenant, module Patrimoine, abonnement ACTIVE gratuit en BLOCK, sans invitation ni e-mail', async () => {
+    const outcome = await fakePrisma.$transaction((tx: any) =>
+      createTenantCoreTx(tx, {
+        name: 'Espace de Awa',
+        type: 'PARTICULIER' as any,
+        slug: 'awa-a1b2c3d4',
+        country: 'CI',
+        requested: [{ code: 'PARTICULIER_GRATUIT', quantity: 1 }],
+        planKey: null,
+        billingCycle: 'MONTHLY' as any,
+        subscription: { status: 'ACTIVE', quotaPolicy: 'BLOCK' as any },
+        actorUserId: 'user-1'
+      })
+    );
+    expect(outcome.tenant).toMatchObject({ type: 'PARTICULIER', slug: 'awa-a1b2c3d4', status: 'ACTIVE' });
+    expect(outcome.modules).toEqual(['MODULE_PATRIMOINE']);
+    expect(outcome.itemsSummary).toEqual([
+      expect.objectContaining({ code: 'PARTICULIER_GRATUIT', unitMonthlyPrice: 0, unitSetupPrice: 0 })
+    ]);
+    expect(outcome.tenantAdminRoleId).toBe('role-tenant-admin');
+
+    const sub = store.subscriptions[0];
+    expect(sub).toMatchObject({ status: 'ACTIVE', quotaPolicy: 'BLOCK', planKey: null });
+    expect(sub.trialEndsAt).toBeUndefined();
+    expect(sub.currentPeriodEnd.getTime()).toBeGreaterThan(Date.now() + 27 * 24 * 60 * 60 * 1000);
+    expect(store.subscriptionItems).toHaveLength(1);
+
+    // Le coeur ne cree ni utilisateur, ni appartenance, ni role, ni invitation : c'est l'affaire de l'appelant.
+    expect(store.users).toHaveLength(0);
+    expect(store.memberships).toHaveLength(0);
+    expect(store.userRoles).toHaveLength(0);
+    expect(store.invitations).toHaveLength(0);
+    expect(sendInviteEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('un pack inconnu annule tout (aucun tenant cree)', async () => {
+    await expect(
+      fakePrisma.$transaction((tx: any) =>
+        createTenantCoreTx(tx, {
+          name: 'X',
+          type: 'PARTICULIER' as any,
+          requested: [{ code: 'NEXISTE_PAS', quantity: 1 }],
+          planKey: null,
+          billingCycle: 'MONTHLY' as any,
+          subscription: { status: 'ACTIVE' },
+          actorUserId: 'user-1'
+        })
+      )
+    ).rejects.toThrow();
+    expect(store.tenants).toHaveLength(0);
+  });
+
+  it('provisionTenant garde son comportement d agence (essai, invitation) et donne le pack gratuit a un type PARTICULIER sans items', async () => {
+    mockGrantOwner.mockClear();
+    const agency = await provisionTenant(baseInput, 'super-admin-1');
+    // Une agence ne recoit JAMAIS le role PERSONAL_SPACE_OWNER (PATRIMOINE_PERSONAL_*).
+    expect(mockGrantOwner).not.toHaveBeenCalled();
+    expect(agency.result.subscription.status).toBe('TRIALING');
+    expect(agency.result.subscription.trialEndsAt).not.toBeNull();
+
+    const particulier = await provisionTenant(
+      { ...baseInput, name: 'Espace admin', adminEmail: 'p@example.com', type: 'PARTICULIER' },
+      'super-admin-1'
+    );
+    expect(particulier.result.modules).toEqual(['MODULE_PATRIMOINE']);
+    expect(particulier.result.subscription.items.map(i => i.code)).toEqual(['PARTICULIER_GRATUIT']);
+    // Espace PARTICULIER : son administrateur recoit PERSONAL_SPACE_OWNER (une seule fois).
+    expect(mockGrantOwner).toHaveBeenCalledTimes(1);
+  });
+
+  it('cohérence type / packs : un PARTICULIER refuse un pack d’agence, une agence refuse un pack Particulier (422, rien créé)', async () => {
+    await expect(
+      provisionTenant(
+        { ...baseInput, name: 'Faux particulier', type: 'PARTICULIER', items: [{ code: 'AGENCE', quantity: 1 }] },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422, code: 'VALIDATION_ERROR' });
+    await expect(
+      provisionTenant(
+        {
+          ...baseInput,
+          name: 'Fausse agence',
+          adminEmail: 'fa@example.com',
+          type: 'AGENCY',
+          items: [{ code: 'PARTICULIER_GRATUIT', quantity: 1 }]
+        },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422 });
+    await expect(
+      provisionTenant(
+        {
+          ...baseInput,
+          name: 'Faux operateur',
+          adminEmail: 'fo@example.com',
+          type: 'OPERATOR',
+          items: [{ code: 'PARTICULIER_PLUS', quantity: 1 }]
+        },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422 });
+    // Ancien format : un PARTICULIER avec des modules (donc des packs d'agence) est refuse aussi.
+    await expect(
+      provisionTenant(
+        {
+          ...baseInput,
+          name: 'Modules',
+          adminEmail: 'm@example.com',
+          type: 'PARTICULIER',
+          modules: ['MODULE_PATRIMOINE']
+        },
+        'super-admin-1'
+      )
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(store.tenants).toHaveLength(0);
+  });
+
+  it('cohérence type / packs : les combinaisons valides passent', async () => {
+    const ok = await provisionTenant(
+      {
+        ...baseInput,
+        name: 'Vrai particulier',
+        adminEmail: 'vp@example.com',
+        type: 'PARTICULIER',
+        items: [{ code: 'PARTICULIER_PLUS', quantity: 1 }]
+      },
+      'super-admin-1'
+    );
+    expect(ok.result.subscription.items.map(i => i.code)).toEqual(['PARTICULIER_PLUS']);
   });
 });

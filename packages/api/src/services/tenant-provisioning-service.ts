@@ -6,10 +6,11 @@ import {
   SubscriptionPlan,
   BillingCycle,
   SubscriptionStatus,
-  MembershipStatus
+  MembershipStatus,
+  QuotaPolicy
 } from '@prisma/client';
 import { logger } from '../utils/logger';
-import { ConflictError } from '../middleware/error-middleware';
+import { ConflictError, ValidationError } from '../middleware/error-middleware';
 import { logAuditEvent, AuditActionKey } from './audit-service';
 import { hashPassword } from '../utils/password-utils';
 import crypto from 'crypto';
@@ -23,7 +24,15 @@ import { ensureRentalAccountsTx } from '../lib/owner-account/accounts';
 import { DEFAULT_FINANCE_SETTINGS } from '../lib/settings/finance-settings';
 import { ProvisionTenantRequest, ProvisionTenantResult } from '../types/tenant-types';
 import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
-import { TRIAL_DAYS, packModules, packsForModules } from '../lib/subscription';
+import {
+  PACK,
+  PARTICULIER_PACKS,
+  TRIAL_DAYS,
+  addBillingPeriod,
+  packModules,
+  packsForModules
+} from '../lib/subscription';
+import { ensurePersonalSpaceOwnerRole, grantPersonalSpaceOwnerRole } from '../lib/patrimoine/personal-permissions';
 import {
   linkExtensionsToPacksTx,
   loadCatalogByCodes,
@@ -57,7 +66,10 @@ const IDEMPOTENCY_DB_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 const DEFAULT_MODULES_BY_TYPE: Record<TenantType, ModuleKey[]> = {
   [TenantType.AGENCY]: [ModuleKey.MODULE_AGENCY],
-  [TenantType.OPERATOR]: [ModuleKey.MODULE_AGENCY, ModuleKey.MODULE_SYNDIC, ModuleKey.MODULE_PROMOTER]
+  [TenantType.OPERATOR]: [ModuleKey.MODULE_AGENCY, ModuleKey.MODULE_SYNDIC, ModuleKey.MODULE_PROMOTER],
+  // Espace personnel (lot 4). Ancien format sans `items` : `runProvisioningTx`
+  // le traite a part (pack PARTICULIER_GRATUIT, pas Patrimoine Essentiel).
+  [TenantType.PARTICULIER]: [ModuleKey.MODULE_PATRIMOINE]
 };
 
 /** Slug unique a partir du nom, en tentant `-2`, `-3`... comme les autres slugs de la plateforme. */
@@ -83,8 +95,191 @@ interface ProvisioningOutcome {
   inviteExpiresAt: Date;
 }
 
+/** Donnees d'un espace a creer par `createTenantCoreTx` (agence ou espace personnel). */
+export interface TenantCoreInput {
+  name: string;
+  type: TenantType;
+  /** Slug impose (espace personnel : non previsible) ; sinon derive du nom, suffixe `-2`, `-3`... si pris. */
+  slug?: string;
+  legalName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  country?: string;
+  city?: string;
+  address?: string;
+  website?: string;
+  brandingPrimaryColor?: string;
+  /** Packs et extensions souscrits, valides et chiffres par `planInitialItems` AVANT toute ecriture. */
+  requested: RequestedItem[];
+  planKey: SubscriptionPlan | null;
+  billingCycle: BillingCycle;
+  /**
+   * `TRIALING` (agence : essai de TRIAL_DAYS jours, prolongeable) ou `ACTIVE`
+   * (espace personnel : pas d'essai, periode courante d'un cycle). `quotaPolicy`
+   * n'est ecrite que si elle est fournie (sinon le defaut de la base).
+   */
+  subscription: { status: 'TRIALING' | 'ACTIVE'; quotaPolicy?: QuotaPolicy };
+  actorUserId: string;
+}
+
+export interface TenantCoreResult {
+  tenant: Awaited<ReturnType<PrismaTransactionClient['tenant']['create']>>;
+  modules: ModuleKey[];
+  subscription: Awaited<ReturnType<PrismaTransactionClient['subscription']['create']>>;
+  itemsSummary: ProvisionTenantResult['subscription']['items'];
+  tenantAdminRoleId: string;
+  now: Date;
+}
+
+/**
+ * Coeur transactionnel du provisionnement, SANS utilisateur ni invitation :
+ * Tenant ACTIF, modules (source PACK), abonnement et elements au prix fige,
+ * parametres financiers, socle comptable/tresorerie/stock, et identifiant du
+ * role TENANT_ADMIN. A appeler DANS une transaction (`prisma.$transaction`
+ * avec `PROVISIONING_TX_OPTIONS` : plusieurs dizaines d'ecritures).
+ *
+ * Partage par `provisionTenant` (agence creee par le super-admin : essai puis
+ * invitation) et par la creation d'un espace personnel (lot 4B :
+ * appartenance ACTIVE immediate, ni invitation ni e-mail). L'appelant cree
+ * lui-meme Membership et UserRole.
+ */
+export async function createTenantCoreTx(
+  tx: PrismaTransactionClient,
+  input: TenantCoreInput
+): Promise<TenantCoreResult> {
+  const { actorUserId } = input;
+  const catalog = await loadCatalogByCodes(
+    tx,
+    input.requested.map(r => r.code)
+  );
+  const plannedItems = planInitialItems(input.requested, catalog);
+  const modules = packModules(
+    plannedItems.map(p => ({ kind: p.catalog.kind, modules: p.catalog.modules }))
+  ) as ModuleKey[];
+
+  // 1. Tenant ACTIF, slug unique.
+  const slug = input.slug ?? (await generateUniqueSlugTx(tx, input.name));
+  const tenant = await tx.tenant.create({
+    data: {
+      name: input.name,
+      slug,
+      type: input.type,
+      status: TenantStatus.ACTIVE,
+      isActive: true,
+      legalName: input.legalName,
+      contactEmail: input.contactEmail,
+      contactPhone: input.contactPhone,
+      country: input.country,
+      city: input.city,
+      address: input.address,
+      website: input.website,
+      brandingPrimaryColor: input.brandingPrimaryColor
+    }
+  });
+
+  // 2. Modules, deduits des packs (source PACK : `syncTenantModulesTx`
+  // les recalcule a chaque changement de pack).
+  await tx.tenantModule.createMany({
+    data: modules.map(moduleKey => ({
+      tenantId: tenant.id,
+      moduleKey,
+      enabled: true,
+      enabledAt: new Date(),
+      enabledBy: actorUserId,
+      source: 'PACK' as const
+    }))
+  });
+
+  // 3. Abonnement (essai D8 : 30 jours, prolongeable ; ou actif d'emblee) et
+  // elements souscrits au prix du catalogue, FIGE (D12).
+  const now = new Date();
+  const trial = input.subscription.status === 'TRIALING';
+  const currentPeriodEnd = trial
+    ? new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+    : addBillingPeriod(now, input.billingCycle);
+  const subscription = await tx.subscription.create({
+    data: {
+      tenantId: tenant.id,
+      planKey: input.planKey,
+      billingCycle: input.billingCycle,
+      status: trial ? SubscriptionStatus.TRIALING : SubscriptionStatus.ACTIVE,
+      startAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd,
+      ...(trial ? { trialEndsAt: currentPeriodEnd } : {}),
+      nextBillingAt: currentPeriodEnd,
+      ...(input.subscription.quotaPolicy ? { quotaPolicy: input.subscription.quotaPolicy } : {})
+    }
+  });
+  await tx.subscriptionItem.createMany({
+    data: plannedItems.map(p => ({
+      subscriptionId: subscription.id,
+      tenantId: tenant.id,
+      catalogItemId: p.catalog.id,
+      quantity: p.quantity,
+      unitMonthlyPrice: p.unitMonthlyPrice,
+      unitSetupPrice: p.unitSetupPrice,
+      status: 'ACTIVE' as const,
+      startsAt: now,
+      addedByUserId: actorUserId
+    }))
+  });
+  // Extensions souscrites d'emblee : liees a leur pack (retirees avec lui).
+  await linkExtensionsToPacksTx(tx, tenant.id);
+  const itemsSummary = plannedItems.map(p => ({
+    code: p.catalog.code,
+    kind: p.catalog.kind,
+    quantity: p.quantity,
+    unitMonthlyPrice: p.unitMonthlyPrice,
+    unitSetupPrice: p.unitSetupPrice
+  }));
+
+  // 4. Parametres financiers par defaut : un `create` sans donnees suffit,
+  // toutes les colonnes ont un defaut Prisma qui reprend exactement
+  // `DEFAULT_FINANCE_SETTINGS` (lib/settings/finance-settings.ts).
+  await tx.agencyFinanceSettings.create({ data: { tenantId: tenant.id } });
+
+  // 5. Socle comptable, tresorerie et stock — fonctions `ensure*Tx`
+  // existantes (lecture puis creation de ce qui manque), non modifiees ici.
+  await ensureOperationalChartOfAccountsTx(tx, tenant.id);
+  await ensureOperationalJournalTx(tx, tenant.id, now.getFullYear(), 'GENERAL');
+  await ensureDefaultTreasuryAccountTx(tx, tenant.id, 'CASH');
+  await ensureRentalAccountsTx(tx, tenant.id, DEFAULT_FINANCE_SETTINGS);
+  await ensureStockSettingsTx(tx, tenant.id);
+
+  const tenantAdminRole = await tx.role.findFirst({
+    where: { key: 'TENANT_ADMIN', scope: 'TENANT' },
+    select: { id: true }
+  });
+  if (!tenantAdminRole) {
+    throw new Error('Le rôle TENANT_ADMIN est introuvable : vérifiez le seed des rôles plateforme.');
+  }
+
+  return { tenant, modules, subscription, itemsSummary, tenantAdminRoleId: tenantAdminRole.id, now };
+}
+
+/**
+ * Coherence type d'espace / packs (creation super-admin) : un espace PARTICULIER
+ * n'accepte que des packs Particulier, et une agence ou un operateur n'en
+ * accepte aucun (sinon un espace aurait un menu et des droits incoherents, ou
+ * une agence l'abonnement gratuit d'un particulier). Erreur typee 422.
+ */
+export function assertTenantTypeMatchesPacks(type: TenantType, requested: readonly RequestedItem[]): void {
+  const particulierOnly = type === TenantType.PARTICULIER;
+  const offending = requested.filter(item => PARTICULIER_PACKS.includes(item.code) !== particulierOnly);
+  if (offending.length === 0) return;
+  throw new ValidationError(
+    particulierOnly
+      ? 'Un espace personnel n’accepte que des packs Particulier.'
+      : 'Les packs Particulier sont réservés aux espaces personnels.',
+    [{ field: 'items', message: offending.map(item => item.code).join(', ') }]
+  );
+}
+
 /** La partie ECRITURE, tout-ou-rien : tout ce que F1.1 a F1.7 decrit, sauf l'envoi d'e-mail (F1.8) et l'idempotence (F1.9). */
 async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: string): Promise<ProvisioningOutcome> {
+  // Hors transaction (voir create-personal-space.ts) : creation du role sure en concurrence.
+  const personalOwnerRoleId = input.type === TenantType.PARTICULIER ? await ensurePersonalSpaceOwnerRole(prisma) : null;
   return prisma.$transaction(async tx => {
     const type = input.type ?? TenantType.AGENCY;
     const billingCycle = (input.billingCycle ?? 'MONTHLY') as BillingCycle;
@@ -93,7 +288,7 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
     // `items` (packs + extensions) est le format de reference. L'ancien
     // format (`modules`, `planKey`) reste accepte et converti en packs ; il
     // garde alors l'etiquette `planKey` (PRO par defaut) des anciens ecrans.
-    // Validation et prix AVANT toute ecriture.
+    // Validation et prix AVANT toute ecriture (dans `createTenantCoreTx`).
     let requested: RequestedItem[];
     let planKey: SubscriptionPlan | null;
     if (input.items?.length) {
@@ -101,116 +296,40 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
       planKey = (input.planKey ?? null) as SubscriptionPlan | null;
     } else {
       const legacyModules = input.modules?.length ? [...new Set(input.modules)] : DEFAULT_MODULES_BY_TYPE[type];
-      requested = packsForModules(legacyModules).packs.map(code => ({ code, quantity: 1 }));
+      requested =
+        type === TenantType.PARTICULIER && !input.modules?.length
+          ? [{ code: PACK.PARTICULIER_GRATUIT, quantity: 1 }]
+          : packsForModules(legacyModules).packs.map(code => ({ code, quantity: 1 }));
       planKey = (input.planKey ?? 'PRO') as SubscriptionPlan;
     }
-    const catalog = await loadCatalogByCodes(
-      tx,
-      requested.map(r => r.code)
-    );
-    const plannedItems = planInitialItems(requested, catalog);
-    const modules = packModules(
-      plannedItems.map(p => ({ kind: p.catalog.kind, modules: p.catalog.modules }))
-    ) as ModuleKey[];
 
-    // 1. Tenant ACTIF, slug unique.
-    const slug = await generateUniqueSlugTx(tx, input.name);
-    const tenant = await tx.tenant.create({
-      data: {
-        name: input.name,
-        slug,
-        type,
-        status: TenantStatus.ACTIVE,
-        isActive: true,
-        legalName: input.legalName,
-        contactEmail: input.contactEmail,
-        contactPhone: input.contactPhone,
-        country: input.country,
-        city: input.city,
-        address: input.address,
-        website: input.website,
-        brandingPrimaryColor: input.brandingPrimaryColor
-      }
+    assertTenantTypeMatchesPacks(type, requested);
+
+    // 1 a 5. Tenant, modules, abonnement d'essai, parametres financiers, socle.
+    const core = await createTenantCoreTx(tx, {
+      name: input.name,
+      type,
+      legalName: input.legalName,
+      contactEmail: input.contactEmail,
+      contactPhone: input.contactPhone,
+      country: input.country,
+      city: input.city,
+      address: input.address,
+      website: input.website,
+      brandingPrimaryColor: input.brandingPrimaryColor,
+      requested,
+      planKey,
+      billingCycle,
+      subscription: { status: 'TRIALING' },
+      actorUserId
     });
-
-    // 2. Modules, deduits des packs (source PACK : `syncTenantModulesTx`
-    // les recalcule a chaque changement de pack).
-    await tx.tenantModule.createMany({
-      data: modules.map(moduleKey => ({
-        tenantId: tenant.id,
-        moduleKey,
-        enabled: true,
-        enabledAt: new Date(),
-        enabledBy: actorUserId,
-        source: 'PACK' as const
-      }))
-    });
-
-    // 3. Abonnement d'essai (D8 : 30 jours, prolongeable) et elements
-    // souscrits au prix du catalogue, FIGE (D12).
-    const now = new Date();
-    const currentPeriodEnd = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-    const subscription = await tx.subscription.create({
-      data: {
-        tenantId: tenant.id,
-        planKey,
-        billingCycle,
-        status: SubscriptionStatus.TRIALING,
-        startAt: now,
-        currentPeriodStart: now,
-        currentPeriodEnd,
-        trialEndsAt: currentPeriodEnd,
-        nextBillingAt: currentPeriodEnd
-      }
-    });
-    await tx.subscriptionItem.createMany({
-      data: plannedItems.map(p => ({
-        subscriptionId: subscription.id,
-        tenantId: tenant.id,
-        catalogItemId: p.catalog.id,
-        quantity: p.quantity,
-        unitMonthlyPrice: p.unitMonthlyPrice,
-        unitSetupPrice: p.unitSetupPrice,
-        status: 'ACTIVE' as const,
-        startsAt: now,
-        addedByUserId: actorUserId
-      }))
-    });
-    // Extensions souscrites d'emblee : liees a leur pack (retirees avec lui).
-    await linkExtensionsToPacksTx(tx, tenant.id);
-    const itemsSummary = plannedItems.map(p => ({
-      code: p.catalog.code,
-      kind: p.catalog.kind,
-      quantity: p.quantity,
-      unitMonthlyPrice: p.unitMonthlyPrice,
-      unitSetupPrice: p.unitSetupPrice
-    }));
-
-    // 4. Parametres financiers par defaut : un `create` sans donnees suffit,
-    // toutes les colonnes ont un defaut Prisma qui reprend exactement
-    // `DEFAULT_FINANCE_SETTINGS` (lib/settings/finance-settings.ts).
-    await tx.agencyFinanceSettings.create({ data: { tenantId: tenant.id } });
-
-    // 5. Socle comptable, tresorerie et stock — fonctions `ensure*Tx`
-    // existantes (lecture puis creation de ce qui manque), non modifiees ici.
-    await ensureOperationalChartOfAccountsTx(tx, tenant.id);
-    await ensureOperationalJournalTx(tx, tenant.id, now.getFullYear(), 'GENERAL');
-    await ensureDefaultTreasuryAccountTx(tx, tenant.id, 'CASH');
-    await ensureRentalAccountsTx(tx, tenant.id, DEFAULT_FINANCE_SETTINGS);
-    await ensureStockSettingsTx(tx, tenant.id);
+    const { tenant, modules, subscription, itemsSummary, now } = core;
+    const tenantAdminRole = { id: core.tenantAdminRoleId };
 
     // 6. Administrateur : utilisateur trouve ou cree, Membership, role,
     // invitation. Le tenant vient d'etre cree DANS cette transaction : aucune
     // ligne existante ne peut deja pointer vers lui, donc chaque `create`
     // ci-dessous est sans risque de doublon (pas besoin d'upsert).
-    const tenantAdminRole = await tx.role.findFirst({
-      where: { key: 'TENANT_ADMIN', scope: 'TENANT' },
-      select: { id: true }
-    });
-    if (!tenantAdminRole) {
-      throw new Error('Le rôle TENANT_ADMIN est introuvable : vérifiez le seed des rôles plateforme.');
-    }
-
     let adminUser = await tx.user.findFirst({
       where: { email: { equals: input.adminEmail, mode: 'insensitive' } }
     });
@@ -246,11 +365,18 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
     await tx.userRole.create({
       data: { userId: adminUser.id, roleId: tenantAdminRole.id, tenantId: tenant.id }
     });
+    // Espace PARTICULIER : l'administrateur porte aussi PATRIMOINE_PERSONAL_* (role PERSONAL_SPACE_OWNER),
+    // que TENANT_ADMIN d'agence n'a pas ; l'invitation lui rend les deux roles.
+    const inviteRoleIds = [tenantAdminRole.id];
+    if (type === TenantType.PARTICULIER && personalOwnerRoleId) {
+      await grantPersonalSpaceOwnerRole(tx, personalOwnerRoleId, adminUser.id, tenant.id);
+      inviteRoleIds.push(personalOwnerRoleId);
+    }
 
     const { invitation, token } = await createInvitationRecordTx(tx, {
       tenantId: tenant.id,
       email: input.adminEmail,
-      roleIds: [tenantAdminRole.id],
+      roleIds: inviteRoleIds,
       invitedByUserId: actorUserId
     });
 

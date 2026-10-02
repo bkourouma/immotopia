@@ -1,3 +1,4 @@
+import { assertFreeTierCapacityTx, getAssetCapacityLimit, lockTenantAssets } from './personal-space/free-tier';
 import { prisma } from '../utils/database';
 import { PROPERTY_MEDIA_SELECT } from '../utils/property-media-select';
 import { logger } from '../utils/logger';
@@ -236,6 +237,11 @@ export async function createProperty(
     );
   }
 
+  // Palier gratuit (lot 4) : un bien sans actif lié compte dans le plafond d'ACTIFS. Plafond lu par le
+  // cache des droits (aucun surcoût pour une agence : `null`) ; comptage et création sous verrou.
+  const capacityLimit =
+    tenantId && data.ownershipType === PropertyOwnershipType.TENANT ? await getAssetCapacityLimit(tenantId) : null;
+
   // Retry logic for handling unique constraint violations (reference collisions)
   const MAX_RETRIES = 5;
   let retries = 0;
@@ -249,6 +255,10 @@ export async function createProperty(
       // Create property — et, dans la meme transaction, son entree au registre
       // des lots de l'abonnement (D1 ; QuotaExceededError en BLOCK annule tout).
       property = await prisma.$transaction(async tx => {
+        if (tenantId && capacityLimit !== null) {
+          await lockTenantAssets(tx, tenantId);
+          await assertFreeTierCapacityTx(tx, tenantId, capacityLimit);
+        }
         const created = await tx.property.create({
           data: {
             internalReference,
@@ -1201,6 +1211,17 @@ export async function deleteProperty(
       }),
       blocages
     );
+  }
+
+  // La suppression du bien emporte ses prets en cascade : une dette active ne
+  // doit pas disparaitre en silence (patrimoine, valeur nette).
+  if (property.tenantId) {
+    const activeLoans = await prisma.propertyLoan.count({
+      where: { tenantId: property.tenantId, propertyId, status: 'ACTIVE' }
+    });
+    if (activeLoans > 0) {
+      throw new ConflictError('Ce bien porte un prêt actif : soldez-le ou supprimez-le avant de supprimer le bien.');
+    }
   }
 
   // Log before deletion for audit

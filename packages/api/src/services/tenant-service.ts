@@ -1,10 +1,11 @@
 import { prisma, type PrismaTransactionClient } from '../utils/database';
-import { ClientType, Prisma, TenantStatus } from '@prisma/client';
+import { ClientType, Prisma, TenantStatus, TenantType } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { UpdateTenantRequest, TenantFilters, TenantStats } from '../types/tenant-types';
 import { revokeTenantSessions } from '../middleware/session-invalidation';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
-import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { BadRequestError, NotFoundError, ValidationError } from '../middleware/error-middleware';
+import { isValidUemoaPhone, normalizeUemoaPhone } from './personal-space/schemas';
 import { getUploadsRoot } from '../utils/project-root';
 import { env, frontendUrl } from '../config/env';
 import * as path from 'path';
@@ -119,6 +120,18 @@ export async function updateTenant(tenantId: string, data: UpdateTenantRequest, 
     throw new Error('Tenant introuvable.');
   }
 
+  // Espace personnel : le téléphone sert au paiement mobile money, il est validé (format international
+  // UEMOA, mêmes règles que la création d'espace) et normalisé avant écriture. Les autres types : inchangés.
+  let contactPhone = data.contactPhone;
+  if (tenant.type === TenantType.PARTICULIER && typeof contactPhone === 'string' && contactPhone.trim() !== '') {
+    const normalized = normalizeUemoaPhone(contactPhone);
+    if (!isValidUemoaPhone(normalized)) {
+      const message = 'Numéro de téléphone invalide (format international, ex. +2250712345678).';
+      throw new ValidationError(message, [{ field: 'contactPhone', message }]);
+    }
+    contactPhone = normalized;
+  }
+
   // If status is being changed to SUSPENDED, revoke all sessions
   if (data.status === TenantStatus.SUSPENDED && tenant.status !== TenantStatus.SUSPENDED) {
     await revokeTenantSessions(tenantId);
@@ -143,7 +156,7 @@ export async function updateTenant(tenantId: string, data: UpdateTenantRequest, 
         legalName: data.legalName,
         status: data.status,
         contactEmail: data.contactEmail,
-        contactPhone: data.contactPhone,
+        contactPhone,
         country: data.country,
         city: data.city,
         address: data.address,
@@ -533,7 +546,8 @@ export async function getUserTenantMemberships(userId: string) {
           select: {
             id: true,
             name: true,
-            slug: true
+            slug: true,
+            type: true
           }
         }
       }
@@ -553,6 +567,7 @@ export async function getUserTenantMemberships(userId: string) {
           tenant_id: string;
           tenant_name: string;
           tenant_slug: string | null;
+          tenant_type: string;
         }>
       >`
         SELECT
@@ -560,7 +575,8 @@ export async function getUserTenantMemberships(userId: string) {
           tc.client_type,
           t.id AS tenant_id,
           t.name AS tenant_name,
-          t.slug AS tenant_slug
+          t.slug AS tenant_slug,
+          t.type::text AS tenant_type
         FROM tenant_clients tc
         JOIN tenants t ON t.id = tc.tenant_id
         WHERE tc.user_id = ${userId}
@@ -573,7 +589,8 @@ export async function getUserTenantMemberships(userId: string) {
         tenant: {
           id: row.tenant_id,
           name: row.tenant_name,
-          slug: row.tenant_slug
+          slug: row.tenant_slug,
+          type: row.tenant_type
         }
       }));
     } catch (fallbackError: any) {
@@ -596,7 +613,8 @@ export async function getUserTenantMemberships(userId: string) {
           select: {
             id: true,
             name: true,
-            slug: true
+            slug: true,
+            type: true
           }
         }
       }
@@ -616,6 +634,7 @@ export async function getUserTenantMemberships(userId: string) {
           tenant_id: string;
           tenant_name: string;
           tenant_slug: string | null;
+          tenant_type: string;
         }>
       >`
         SELECT
@@ -623,7 +642,8 @@ export async function getUserTenantMemberships(userId: string) {
           m.status::text AS status,
           t.id AS tenant_id,
           t.name AS tenant_name,
-          t.slug AS tenant_slug
+          t.slug AS tenant_slug,
+          t.type::text AS tenant_type
         FROM memberships m
         JOIN tenants t ON t.id = m.tenant_id
         WHERE m.user_id = ${userId}
@@ -638,7 +658,8 @@ export async function getUserTenantMemberships(userId: string) {
         tenant: {
           id: row.tenant_id,
           name: row.tenant_name,
-          slug: row.tenant_slug
+          slug: row.tenant_slug,
+          type: row.tenant_type
         }
       }));
     } catch (fallbackError: any) {

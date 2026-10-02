@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Col, Row, Spin, Tabs, Typography } from 'antd';
 import {
   AlertOutlined,
@@ -15,6 +15,7 @@ import { useAgencyFeatures } from '../hooks/useAgencyFeatures';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { queryKey, STALE_TIME } from '../lib/query-keys';
 import { resolvePersona } from '../navigation/resolve';
+import { useTenantType } from '../hooks/useTenantType';
 import { getTenantDashboard } from '../services/dashboard-service';
 import type { DashboardBucket } from '../services/dashboard-service';
 import { PageHeader, StatCard, StateBlock, formatMoney } from '../components/primitives';
@@ -83,11 +84,15 @@ export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { isDesktop } = useBreakpoint();
   const tenantId = tenantMembership?.tenantId;
+  // Espace personnel : l'accueil est la valeur nette du patrimoine, pas des
+  // indicateurs d'agence (impayés, tickets…) qui seraient vides. Décidé par le
+  // type de l'espace renvoyé par le serveur (lot 4C).
+  const tenantType = useTenantType(tenantId, Boolean(tenantId), tenantMembership?.tenant.type ?? null);
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: queryKey('tenant-dashboard', tenantId),
     queryFn: () => getTenantDashboard(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && tenantType !== 'PARTICULIER',
     staleTime: STALE_TIME.list
   });
 
@@ -501,6 +506,10 @@ export const Dashboard: React.FC = () => {
         <Spin size="large" aria-label={t('Chargement')} />
       </div>
     );
+  }
+
+  if (tenantId && tenantType === 'PARTICULIER') {
+    return <Navigate to={`/tenant/${tenantId}/patrimoine/valeur-nette`} replace />;
   }
 
   // La redirection est en cours : ne pas rendre le tableau de bord de l'agence

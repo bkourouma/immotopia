@@ -27,6 +27,10 @@ import {
 import { prisma } from '../../src/utils/database';
 import { generateAccessToken } from '../../src/utils/jwt-utils';
 import { uploadTemplate } from '../../src/services/document-template-service';
+import {
+  ensurePersonalSpaceOwnerRole,
+  grantPersonalSpaceOwnerRole
+} from '../../src/lib/patrimoine/personal-permissions';
 
 /**
  * Permissions accordees au role TENANT_ADMIN de test. Limitee aux ressources
@@ -46,6 +50,9 @@ const TENANT_ADMIN_TEST_PERMISSIONS = [
   // lui les tests d'isolation recevaient 403 au lieu de 404.
   'SYNDIC_EDIT',
   'MAINTENANCE_ADMIN',
+  // Espace particulier : montee de palier (lot 4D).
+  'TENANT_SETTINGS_VIEW',
+  'TENANT_SETTINGS_EDIT',
   // ImmoCopilot : lecture des baux/documents, generation. Accordees des la
   // creation du role : `getUserPermissions` met les droits en cache 5 minutes
   // par utilisateur, un octroi tardif ne serait pas vu.
@@ -113,6 +120,54 @@ export async function createTestTenant(namePrefix: string): Promise<TestTenant> 
       slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
       type: 'AGENCY',
       status: TenantStatus.ACTIVE
+    }
+  });
+  return { id: tenant.id, slug: tenant.slug };
+}
+
+/**
+ * Espace PARTICULIER ACTIF sur le palier gratuit (lot 4) : abonnement ACTIVE
+ * mensuel, quota BLOCK, un element PARTICULIER_GRATUIT (le catalogue vient des
+ * migrations). `phone: null` : aucun telephone (refus PHONE_REQUIRED).
+ */
+export async function createParticulierTenant(
+  namePrefix: string,
+  options: { phone?: string | null } = {}
+): Promise<TestTenant> {
+  const suffix = randomUUID().slice(0, 8);
+  const now = new Date();
+  const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const catalog = await prisma.catalogItem.findUniqueOrThrow({ where: { code: 'PARTICULIER_GRATUIT' } });
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `${namePrefix} ${suffix}`,
+      slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
+      type: 'PARTICULIER',
+      status: TenantStatus.ACTIVE,
+      contactPhone: options.phone === undefined ? '+2250102030405' : options.phone
+    }
+  });
+  const subscription = await prisma.subscription.create({
+    data: {
+      tenantId: tenant.id,
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+      startAt: now,
+      currentPeriodStart: now,
+      currentPeriodEnd: end,
+      nextBillingAt: end,
+      quotaPolicy: 'BLOCK'
+    }
+  });
+  await prisma.subscriptionItem.create({
+    data: {
+      subscriptionId: subscription.id,
+      tenantId: tenant.id,
+      catalogItemId: catalog.id,
+      quantity: 1,
+      unitMonthlyPrice: 0,
+      status: 'ACTIVE',
+      startsAt: now
     }
   });
   return { id: tenant.id, slug: tenant.slug };
@@ -265,6 +320,16 @@ export async function createPlatformDelegateUser(
   await prisma.userRole.create({ data: { userId: user.id, roleId: role.id, tenantId: null } });
   const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
   return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
+}
+
+/**
+ * Donne a `user` le role PERSONAL_SPACE_OWNER (PATRIMOINE_PERSONAL_VIEW / _EDIT) sur `tenant`.
+ * Le role TENANT_ADMIN de test ne les porte PAS (comme en production) : les
+ * tests qui exercent les routes de donnees personnelles du patrimoine l'appellent.
+ */
+export async function grantPersonalPatrimoineRole(user: { id: string }, tenant: { id: string }): Promise<void> {
+  const roleId = await ensurePersonalSpaceOwnerRole(prisma);
+  await grantPersonalSpaceOwnerRole(prisma, roleId, user.id, tenant.id);
 }
 
 export async function suspendTenant(tenantId: string): Promise<void> {

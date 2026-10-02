@@ -70,7 +70,8 @@ export async function propertyIdsHeldByEntities(tenantId: string, entityIds: str
     where: { tenantId, entityId: { in: agencyEntityIds } },
     select: { propertyId: true }
   });
-  return Array.from(new Set(holdings.map(holding => holding.propertyId)));
+  // Les parts d'un actif non immobilier (propertyId nul, ADR-005) ne désignent aucun bien.
+  return Array.from(new Set(holdings.map(holding => holding.propertyId).filter((id): id is string => id !== null)));
 }
 
 /** Parmi `candidateIds`, les biens réellement dans le périmètre de l'agence (tri stable par titre). */

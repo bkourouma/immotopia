@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   registerUser,
+  REGISTRATION_ACCEPTED_MESSAGE,
   verifyEmail,
   resendVerificationEmail,
   loginUser,
@@ -13,7 +14,7 @@ import {
 } from '../services/auth-service';
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
 import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookies';
-import { isLanguage } from '../i18n';
+import { isLanguage, t } from '../i18n';
 import { logger } from '../utils/logger';
 import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 
@@ -22,25 +23,16 @@ import { BadRequestError, UnauthorizedError } from '../middleware/error-middlewa
  * POST /api/auth/register
  */
 export async function register(req: Request, res: Response): Promise<void> {
-  try {
-    // Explicit cast or validation should ideally happen in middleware
-    const data: RegisterRequest = {
-      email: req.body.email,
-      password: req.body.password,
-      fullName: req.body.fullName
-    };
+  const data: RegisterRequest = {
+    email: req.body.email,
+    password: req.body.password,
+    fullName: req.body.fullName
+  };
 
-    const user = await registerUser(data);
+  await registerUser(data);
 
-    res.status(201).json({
-      success: true,
-      message: 'Inscription réussie ! Veuillez vérifier votre email.',
-      user
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Une erreur est survenue lors de l'inscription.";
-    res.status(400).json({ success: false, message: errorMessage });
-  }
+  // Même réponse que l'adresse existe déjà ou non : aucun compte n'est révélé.
+  res.status(201).json({ success: true, message: t(REGISTRATION_ACCEPTED_MESSAGE) });
 }
 
 /**

@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TenantSubscriptionSettings } from '../../pages/tenant/TenantSubscriptionSettings';
 
 /**
@@ -39,6 +40,18 @@ vi.mock('../../services/platform-billing-service', () => ({
   startInvoiceCheckout: (...a: unknown[]) => startInvoiceCheckout(...a),
   getInvoiceCheckout: (...a: unknown[]) => getInvoiceCheckout(...a)
 }));
+
+// Carte du palier personnel : pour une agence, l'usage renvoie `AGENCY` et la carte disparaît.
+vi.mock('../../services/personal-space-service', async () => {
+  const actual = await vi.importActual<typeof import('../../services/personal-space-service')>(
+    '../../services/personal-space-service'
+  );
+  return {
+    ...actual,
+    getAssetUsage: vi.fn().mockResolvedValue({ plan: 'AGENCY', limit: null, used: 0, canAdd: true, upgrade: null }),
+    getTenantIdentity: vi.fn().mockResolvedValue({ type: 'AGENCY', contactPhone: null })
+  };
+});
 
 const ENTITLEMENTS = {
   tenantId: 'tenant-1',
@@ -95,14 +108,17 @@ const INVOICE = {
 };
 
 function mount(url = '/tenant/tenant-1/settings/abonnement') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AntApp>
-      <MemoryRouter initialEntries={[url]}>
-        <Routes>
-          <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
-        </Routes>
-      </MemoryRouter>
-    </AntApp>
+    <QueryClientProvider client={queryClient}>
+      <AntApp>
+        <MemoryRouter initialEntries={[url]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
 }
 

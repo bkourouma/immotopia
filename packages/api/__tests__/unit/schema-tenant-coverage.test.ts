@@ -88,7 +88,11 @@ const GLOBAL_MODELS = new Set([
   'TaxParameter',
   // Reglage ImmoCopilot de la plateforme : ligne unique (id 'default') editee par le
   // super-admin (fournisseur, modele, effort, repli). Aucune donnee d'agence, aucune cle API.
-  'PlatformAiSettings'
+  'PlatformAiSettings',
+  // Anti-abus d'inscription : compteur par IP hachée (HMAC), sans agence par
+  // nature — une inscription précède tout rattachement à une agence. Ne porte
+  // aucune donnée d'agence ni d'utilisateur.
+  'SignupAttempt'
 ]);
 
 /**

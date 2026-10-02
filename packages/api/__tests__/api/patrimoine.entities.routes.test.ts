@@ -24,6 +24,11 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
   }
 }));
 
+jest.mock('../../src/middleware/patrimoine-rbac-middleware', () => ({
+  requirePatrimoinePersonalView: (_req: any, _res: any, next: any) => next(),
+  requirePatrimoinePersonalEdit: (_req: any, _res: any, next: any) => next()
+}));
+
 jest.mock('../../src/middleware/property-rbac-middleware', () => ({
   requirePropertyPermission: () => (_req: any, _res: any, next: any) => next()
 }));

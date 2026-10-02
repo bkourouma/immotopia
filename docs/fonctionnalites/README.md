@@ -153,7 +153,7 @@ ws.append([
 
 # Indispensable : sans cette ligne, les lignes ajoutées restent hors du
 # tableau nommé SousFonctionnalites.
-ws.tables["SousFonctionnalites"].ref = f"A1:O{ws.max_row}"
+ws.tables["SousFonctionnalites"].ref = f"A1:O848{ws.max_row}"
 
 wb.save(path)
 ```

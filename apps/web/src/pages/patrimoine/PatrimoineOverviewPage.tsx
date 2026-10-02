@@ -8,6 +8,7 @@ import { getPatrimoineOverview, listTenantWorkPrograms } from '../../services/pa
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, SkeletonStats } from '../../components/primitives';
+import PatrimoineAssetsRoutes from './PatrimoineAssetsRoutes';
 import { t } from '../../i18n/t';
 
 /**
@@ -112,4 +113,18 @@ export const PatrimoineOverviewPage: React.FC = () => {
       )}
     </>
   );
+};
+
+/**
+ * Accueil du patrimoine, monté sur `/tenant/:tenantId/patrimoine/*`.
+ *
+ * Les routes patrimoine exactes déclarées dans `App.tsx` l'emportent sur ce
+ * joker. Sans sous-chemin, on affiche la vue consolidée ; sinon les écrans du
+ * patrimoine multi-actifs (lot 1). Les rattacher à cette route évite un
+ * `React.lazy` de plus dans `App.tsx`, dont chaque octet pèse sur le chemin
+ * critique (`npm run measure:entry`, REFONTE_UI_UX.md §8.1).
+ */
+export const PatrimoineHome: React.FC = () => {
+  const subPath = useParams()['*'];
+  return subPath ? <PatrimoineAssetsRoutes /> : <PatrimoineOverviewPage />;
 };

@@ -12,7 +12,11 @@ import {
   DEFAULT_CATALOG,
   EXTENSION,
   PACK,
+  PARTICULIER_PACKS,
   PATRIMOINE_PACKS,
+  packsForModules,
+  featuresForModules,
+  validateExclusivity,
   PricingCatalogItem,
   annualPrice,
   computeComboDiscount,
@@ -87,10 +91,12 @@ describe('Catalogue par defaut = grille du site', () => {
       'utf8'
     );
     // Les offres Patrimoine (lot P1) ne viennent pas de cette migration-ci
-    // mais de 20261001101600_patrimoine_pack_catalogue (verifie ci-dessous).
+    // mais de 20261001101600_patrimoine_pack_catalogue, celles du lot 4A de
+    // 20261004220100_particulier_catalogue (verifies ci-dessous).
     for (const item of DEFAULT_CATALOG) {
       if (
         PATRIMOINE_PACKS.includes(item.code) ||
+        PARTICULIER_PACKS.includes(item.code) ||
         item.code === EXTENSION.BIENS_10 ||
         item.code.startsWith('SETUP_PATRIMOINE_')
       ) {
@@ -101,6 +107,77 @@ describe('Catalogue par defaut = grille du site', () => {
         new RegExp(`'${item.code}', '${item.kind}', '[^']*', [^\\n]*, ${item.monthlyPrice}, ${item.setupPrice},`)
       );
     }
+  });
+
+  it('la migration Particulier amorce exactement les deux packs (prix, capacite ACTIFS, palier)', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../prisma/migrations/20261004220100_particulier_catalogue/migration.sql'),
+      'utf8'
+    );
+    const enums = fs.readFileSync(
+      path.join(__dirname, '../../prisma/migrations/20261004220000_particulier_enums/migration.sql'),
+      'utf8'
+    );
+    expect(enums).toContain(`ALTER TYPE "TenantType" ADD VALUE IF NOT EXISTS 'PARTICULIER'`);
+    expect(enums).toContain(`ALTER TYPE "CapacityKey" ADD VALUE IF NOT EXISTS 'ACTIFS'`);
+    // Une valeur d'enum ajoutee ne s'emploie pas dans la meme transaction.
+    expect(enums).not.toContain('INSERT');
+    for (const code of PARTICULIER_PACKS) {
+      const item = DEFAULT_CATALOG.find(c => c.code === code)!;
+      expect(sql).toMatch(
+        new RegExp(`'${item.code}', '${item.kind}', '[^']*', [^\\n]*, ${item.monthlyPrice}, ${item.setupPrice},`)
+      );
+      expect(sql).toContain(`'{"tierGroup":"PARTICULIER"}'::jsonb`);
+      expect(sql).toContain(`'ACTIFS', ${item.capacities.ACTIFS} FROM "catalog_items" WHERE "code" = '${item.code}'`);
+    }
+  });
+
+  it('packs Particulier : gratuit a 0 pour 10 actifs, Plus a 2 900 pour 100 actifs, meme palier, module Patrimoine', () => {
+    const def = (code: string) => DEFAULT_CATALOG.find(c => c.code === code)!;
+    expect(def(PACK.PARTICULIER_GRATUIT)).toMatchObject({
+      kind: 'PACK',
+      monthlyPrice: 0,
+      setupPrice: 0,
+      modules: ['MODULE_PATRIMOINE'],
+      capacities: { ACTIFS: 10 },
+      rules: { tierGroup: 'PARTICULIER' }
+    });
+    expect(def(PACK.PARTICULIER_PLUS)).toMatchObject({
+      kind: 'PACK',
+      monthlyPrice: 2_900,
+      setupPrice: 0,
+      modules: ['MODULE_PATRIMOINE'],
+      capacities: { ACTIFS: 100 },
+      rules: { tierGroup: 'PARTICULIER' }
+    });
+    // Annuel : convention existante (11 mensualites).
+    expect(annualPrice(2_900)).toBe(2_900 * ANNUAL_MONTHS);
+    // Aucune mise en route vendue a part.
+    expect(DEFAULT_CATALOG.some(c => c.code.startsWith('SETUP_PARTICULIER'))).toBe(false);
+  });
+
+  it('les deux packs Particulier ne se cumulent pas ; ils ouvrent les fonctionnalites du module Patrimoine', () => {
+    const def = (code: string) => DEFAULT_CATALOG.find(c => c.code === code)!;
+    const items = (codes: string[]) =>
+      codes.map(code => ({
+        code,
+        kind: 'PACK' as const,
+        exclusiveGroup: def(code).exclusiveGroup,
+        tierGroup: def(code).rules?.tierGroup ?? null
+      }));
+    expect(validateExclusivity(items([PACK.PARTICULIER_GRATUIT, PACK.PARTICULIER_PLUS])).ok).toBe(false);
+    expect(validateExclusivity(items([PACK.PARTICULIER_GRATUIT])).ok).toBe(true);
+    expect(featuresForModules(def(PACK.PARTICULIER_GRATUIT).modules)).toEqual(['CORE', 'RENTAL', 'PATRIMOINE']);
+    expect(featuresForModules(def(PACK.PARTICULIER_PLUS).modules)).toEqual(['CORE', 'RENTAL', 'PATRIMOINE']);
+  });
+
+  it('packsForModules est inchange par les packs Particulier', () => {
+    expect(packsForModules(['MODULE_PATRIMOINE'])).toEqual({ packs: [PACK.PATRIMOINE_ESSENTIEL], toReview: false });
+    expect(packsForModules(['MODULE_AGENCY'])).toEqual({ packs: [PACK.AGENCE], toReview: false });
+  });
+
+  it('ACTIFS : aucun depassement facture (pas d extension), le pack Plus ne porte pas de bloc', () => {
+    expect(DEFAULT_CATALOG.filter(c => c.kind === 'EXTENSION').some(c => c.capacities.ACTIFS)).toBe(false);
   });
 
   it('la migration Patrimoine amorce exactement les offres Patrimoine du catalogue', () => {

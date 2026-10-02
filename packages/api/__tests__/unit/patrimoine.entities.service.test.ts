@@ -14,6 +14,7 @@ const store = {
   propertyHoldings: [] as Row[],
   contacts: [] as Row[],
   properties: [] as Row[],
+  assets: [] as Row[],
   seq: 0
 };
 
@@ -30,6 +31,10 @@ function matchesWhere(row: Row, where: Row): boolean {
     if (expected && typeof expected === 'object' && 'in' in (expected as Row)) {
       return (expected as Row).in.includes(row[key]);
     }
+    // `{ not: null }` : le service écarte les parts d'actif (propertyId nul).
+    if (expected && typeof expected === 'object' && 'not' in (expected as Row)) {
+      return row[key] !== (expected as Row).not && row[key] !== undefined;
+    }
     return row[key] === expected;
   });
 }
@@ -38,8 +43,12 @@ function matchesWhere(row: Row, where: Row): boolean {
 function withIncludes(row: Row | undefined, include: Row | undefined): Row | null {
   if (!row) return null;
   if (!include) return row;
-  const holdings = store.propertyHoldings
-    .filter(h => h.entityId === row.id)
+  // `include.holdings.where` et `_count.select.holdings.where` sont honorés comme Prisma le fait.
+  const holdingsWhere: Row = include.holdings?.where ?? {};
+  const countWhere: Row = include._count?.select?.holdings?.where ?? {};
+  const allHoldings = store.propertyHoldings.filter(h => h.entityId === row.id);
+  const holdings = allHoldings
+    .filter(h => matchesWhere(h, holdingsWhere))
     .map(h => ({
       ...h,
       property: store.properties.find(p => p.id === h.propertyId) ?? {
@@ -62,7 +71,7 @@ function withIncludes(row: Row | undefined, include: Row | undefined): Row | nul
         legalForm: e.legalForm
       })),
     holdings,
-    _count: { holdings: holdings.length }
+    _count: { holdings: allHoldings.filter(h => matchesWhere(h, countWhere)).length }
   };
 }
 
@@ -113,6 +122,21 @@ const holdingEntityDelegate = {
   })
 };
 
+/** Émule `include: { property }` sur une ligne créée ou modifiée. */
+function withProperty(row: Row, include: Row | undefined): Row {
+  if (!include?.property) return row;
+  return {
+    ...row,
+    property: store.properties.find(p => p.id === row.propertyId) ?? {
+      id: row.propertyId,
+      title: 'Bien',
+      internalReference: 'REF',
+      propertyType: 'APARTMENT',
+      status: 'ACTIVE'
+    }
+  };
+}
+
 const propertyHoldingDelegate = {
   findFirst: jest.fn(async ({ where }: Row) => store.propertyHoldings.find(h => matchesWhere(h, where)) ?? null),
   findMany: jest.fn(async ({ where }: Row = {}) => store.propertyHoldings.filter(h => matchesWhere(h, where ?? {}))),
@@ -128,10 +152,10 @@ const propertyHoldingDelegate = {
       _sum: { sharePercent: sum }
     }));
   }),
-  create: jest.fn(async ({ data }: Row) => {
+  create: jest.fn(async ({ data, include }: Row) => {
     const created = { id: nextId('holding'), notes: null, effectiveFrom: null, createdAt: new Date(), ...data };
     store.propertyHoldings.push(created);
-    return created;
+    return withProperty(created, include);
   }),
   createMany: jest.fn(async ({ data }: Row) => {
     for (const item of data) {
@@ -145,7 +169,7 @@ const propertyHoldingDelegate = {
     }
     return { count: data.length };
   }),
-  update: jest.fn(async ({ where, data }: Row) => {
+  update: jest.fn(async ({ where, data, include }: Row) => {
     const row = store.propertyHoldings.find(h => matchesWhere(h, where));
     if (!row) {
       const err: any = new Error('Record not found');
@@ -153,7 +177,7 @@ const propertyHoldingDelegate = {
       throw err;
     }
     Object.assign(row, Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)));
-    return row;
+    return withProperty(row, include);
   }),
   delete: jest.fn(async ({ where }: Row) => {
     const index = store.propertyHoldings.findIndex(h => matchesWhere(h, where));
@@ -184,11 +208,24 @@ const propertyDelegate = {
   findFirst: jest.fn(async ({ where }: Row) => store.properties.find(p => matchesWhere(p, where)) ?? null)
 };
 
+const assetDelegate = {
+  count: jest.fn(async ({ where }: Row) => store.assets.filter(a => matchesWhere(a, where)).length),
+  findUnique: jest.fn(async ({ where }: Row) => store.assets.find(a => a.propertyId === where.propertyId) ?? null),
+  upsert: jest.fn(async ({ where, create }: Row) => {
+    const found = store.assets.find(a => a.propertyId === where.propertyId);
+    if (found) return found;
+    const row = { id: nextId('asset'), ...create };
+    store.assets.push(row);
+    return row;
+  })
+};
+
 const mockPrisma: Row = {
   holdingEntity: holdingEntityDelegate,
   propertyHolding: propertyHoldingDelegate,
   crmContact: crmContactDelegate,
   property: propertyDelegate,
+  asset: assetDelegate,
   $transaction: jest.fn(async (callback: (tx: Row) => Promise<unknown>) => {
     const tx = {
       ...mockPrisma,
@@ -201,6 +238,14 @@ const mockPrisma: Row = {
   })
 };
 
+// Palier gratuit (lot 4B) : la garde lit les droits d'abonnement en base ; hors sujet ici (voir personal-space.*.test.ts).
+jest.mock('../../src/services/personal-space/free-tier', () => ({
+  getAssetCapacityLimit: jest.fn(async () => null),
+  isFreeTierLimitReached: jest.fn(async () => false),
+  lockTenantAssets: jest.fn(async () => undefined),
+  assertFreeTierCapacityTx: jest.fn(async () => undefined)
+}));
+
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 import {
@@ -209,7 +254,9 @@ import {
   createEntityHolding,
   setPropertyHoldings,
   deleteHoldingEntity,
-  getHoldingEntityById
+  getHoldingEntityById,
+  updateEntityHolding,
+  deleteEntityHolding
 } from '../../src/lib/patrimoine/entities/service';
 
 beforeEach(() => {
@@ -217,6 +264,7 @@ beforeEach(() => {
   store.propertyHoldings = [];
   store.contacts = [];
   store.properties = [];
+  store.assets = [];
   jest.clearAllMocks();
 });
 
@@ -348,5 +396,113 @@ describe('entities/service — isolation tenant', () => {
     await createEntityHolding(TENANT_A, entity.id, { propertyId: 'prop-1', sharePercent: 30 } as any);
 
     await expect(deleteHoldingEntity(TENANT_A, entity.id)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("refuse la suppression d'une entité qui porte encore un actif (SET NULL sinon silencieux)", async () => {
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E2', legalForm: 'SCI', country: 'CI' } as any);
+    store.assets.push({ id: 'asset-x', tenantId: TENANT_A, holdingEntityId: entity.id });
+
+    await expect(deleteHoldingEntity(TENANT_A, entity.id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining('biens ou actifs')
+    });
+    expect(holdingEntityDelegate.delete).not.toHaveBeenCalled();
+    expect(assetDelegate.count).toHaveBeenCalledWith({ where: { holdingEntityId: entity.id, tenantId: TENANT_A } });
+  });
+
+  it("supprime une entité sans part ni actif ; l'actif d'une autre agence ne bloque pas", async () => {
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E3', legalForm: 'SCI', country: 'CI' } as any);
+    store.assets.push({ id: 'asset-y', tenantId: TENANT_B, holdingEntityId: entity.id });
+
+    await expect(deleteHoldingEntity(TENANT_A, entity.id)).resolves.toBeUndefined();
+    expect(holdingEntityDelegate.delete).toHaveBeenCalled();
+  });
+});
+
+describe('entities/service — actif du bien créé à la volée (lot 1 multi-actifs)', () => {
+  it('createEntityHolding garantit un actif REAL_ESTATE pour le bien', async () => {
+    store.properties.push({ id: 'prop-1', tenantId: TENANT_A, title: 'Bien', internalReference: 'REF-1' });
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E1', legalForm: 'SCI', country: 'CI' } as any);
+    await createEntityHolding(TENANT_A, entity.id, { propertyId: 'prop-1', sharePercent: 30 } as any);
+
+    expect(store.assets).toHaveLength(1);
+    expect(store.assets[0]).toMatchObject({ propertyId: 'prop-1', assetClass: 'REAL_ESTATE', tenantId: TENANT_A });
+  });
+
+  it("setPropertyHoldings garantit l'actif, sans doublon au second appel", async () => {
+    store.properties.push({ id: 'prop-1', tenantId: TENANT_A, title: 'Bien', internalReference: 'REF-1' });
+    const entity = await createHoldingEntity(TENANT_A, { name: 'E1', legalForm: 'SCI', country: 'CI' } as any);
+    const input = { holdings: [{ entityId: entity.id, sharePercent: 50 }] } as any;
+    // La relecture finale (`getPropertyHoldings`) n'est pas l'objet du test.
+    propertyHoldingDelegate.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await setPropertyHoldings(TENANT_A, 'prop-1', input);
+    await setPropertyHoldings(TENANT_A, 'prop-1', input);
+
+    expect(store.assets).toHaveLength(1);
+  });
+});
+
+describe("entities/service — part d'un actif non immobilier (lot 1 multi-actifs)", () => {
+  function seedEntityWithAssetHolding() {
+    store.properties.push({ id: 'prop-1', tenantId: TENANT_A, title: 'Bien 1', internalReference: 'REF-1' });
+    store.holdingEntities.push({
+      id: 'entity-1',
+      tenantId: TENANT_A,
+      name: 'SCI A',
+      legalForm: 'SCI',
+      country: 'CI',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    store.propertyHoldings.push(
+      {
+        id: 'holding-property',
+        tenantId: TENANT_A,
+        entityId: 'entity-1',
+        propertyId: 'prop-1',
+        assetId: null,
+        sharePercent: 40
+      },
+      {
+        id: 'holding-asset',
+        tenantId: TENANT_A,
+        entityId: 'entity-1',
+        propertyId: null,
+        assetId: 'asset-1',
+        sharePercent: 25
+      }
+    );
+  }
+
+  it("la fiche d'une entité ne liste que les parts de biens et ne compte que les biens", async () => {
+    seedEntityWithAssetHolding();
+
+    const detail = await getHoldingEntityById(TENANT_A, 'entity-1');
+
+    expect(detail.holdings.map(h => h.id)).toEqual(['holding-property']);
+    expect(detail.propertiesCount).toBe(1);
+    const include = holdingEntityDelegate.findFirst.mock.calls.at(-1)?.[0].include;
+    expect(include.holdings.where).toEqual({ propertyId: { not: null } });
+  });
+
+  it("modifier ou détacher une part d'actif par les routes immobilières -> 404", async () => {
+    seedEntityWithAssetHolding();
+
+    await expect(
+      updateEntityHolding(TENANT_A, 'entity-1', 'holding-asset', { sharePercent: 10 } as any)
+    ).rejects.toMatchObject({
+      statusCode: 404
+    });
+    await expect(deleteEntityHolding(TENANT_A, 'entity-1', 'holding-asset')).rejects.toMatchObject({ statusCode: 404 });
+    expect(store.propertyHoldings.find(h => h.id === 'holding-asset')?.sharePercent).toBe(25);
+  });
+
+  it("une part d'actif n'entre pas dans le total de quotes-parts d'un bien", async () => {
+    seedEntityWithAssetHolding();
+    store.holdingEntities.push({ id: 'entity-2', tenantId: TENANT_A, name: 'SCI B', legalForm: 'SCI', country: 'CI' });
+
+    // 40 % déjà sur le bien : 60 % restent disponibles, la part d'actif (25 %) ne compte pas.
+    const created = await createEntityHolding(TENANT_A, 'entity-2', { propertyId: 'prop-1', sharePercent: 60 } as any);
+    expect(created.propertyTotalSharePercent).toBe(100);
   });
 });

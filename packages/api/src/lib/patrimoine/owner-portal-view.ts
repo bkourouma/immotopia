@@ -86,6 +86,8 @@ async function latestValuationsByProperty(tenantId: string, propertyIds: string[
   });
   const byProperty = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
+    // `in: propertyIds` exclut déjà les lignes d'actif (propertyId nul) ; le garde satisfait le typage.
+    if (row.propertyId === null) continue;
     if (!byProperty.has(row.propertyId)) byProperty.set(row.propertyId, row);
   }
   return byProperty;
@@ -100,6 +102,7 @@ async function activeLoanSummariesByProperty(tenantId: string, propertyIds: stri
     select: { propertyId: true, remainingCapital: true }
   });
   for (const loan of loans) {
+    if (loan.propertyId === null) continue; // exclu par `in: propertyIds`, garde de typage
     const current = result.get(loan.propertyId) ?? { count: 0, remainingCapital: 0 };
     current.count += 1;
     current.remainingCapital += Number(loan.remainingCapital);

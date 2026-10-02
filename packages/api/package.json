@@ -39,6 +39,7 @@
     "db:seed:maintenance": "ts-node prisma/seeds/maintenance-seed.ts",
     "db:seed:maintenance-permissions": "ts-node prisma/seeds/maintenance-permissions-seed.ts",
     "db:seed:communication-permissions": "ts-node prisma/seeds/communication-permissions-seed.ts",
+    "db:seed:patrimoine-personal-permissions": "ts-node -T prisma/seeds/patrimoine-personal-permissions-seed.ts",
     "db:seed:tenant-members": "ts-node prisma/seeds/seed-tenant-members.ts",
     "db:seed:geographic": "ts-node prisma/seeds/geographic-seed.ts",
     "db:seed:property-templates": "ts-node prisma/seeds/property-templates-seed.ts",

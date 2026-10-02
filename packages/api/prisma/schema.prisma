@@ -19,6 +19,7 @@ enum GlobalRole {
 enum TenantType {
   AGENCY
   OPERATOR
+  PARTICULIER // Espace personnel en libre-service (lot 4) : patrimoine seul, palier gratuit ou Plus
 }
 
 enum ClientType {
@@ -104,6 +105,7 @@ enum CapacityKey {
   COPROPRIETES // Coproprietes actives (ACTIVE, IN_DISPUTE)
   CHANTIERS // Chantiers actifs (PLANNED, IN_PROGRESS, SUSPENDED)
   BIENS_DETENUS // Biens detenus en propre (pack Patrimoine), loues ou non
+  ACTIFS // Actifs Asset non archives (packs Particulier) ; pas d'extension ni de depassement facture
 }
 
 enum SubscriptionItemStatus {
@@ -741,6 +743,8 @@ model Tenant {
   propertyHoldings         PropertyHolding[]
   propertyTaxProfiles      PropertyTaxProfile[]
   propertyYieldAssumptions PropertyYieldAssumption[]
+  assets                   Asset[]
+  patrimonyScenarios       PatrimonyScenario[]
   cashSessions             CashSession[]
   treasuryAccounts         TreasuryAccount[]
   treasuryTransfers        TreasuryTransfer[]
@@ -2201,6 +2205,8 @@ model Property {
   // Accès tiers de confiance (lot B3)
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantDocuments  ExternalAccessGrantDocument[]
+  /// Actif patrimonial REAL_ESTATE adossé à ce bien (1:1 facultatif, ADR-005).
+  asset                         Asset?
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
@@ -5250,6 +5256,21 @@ enum ValuationMethod {
   MANUAL
   MARKET_ESTIMATE
   EXPERT_APPRAISAL
+  /// Amortissement linéaire d'un actif (véhicule, équipement) : lot 2, spec 024.
+  DEPRECIATION_LINEAR
+  DEPRECIATION_DECLINING
+  /// Part détenue dans une entreprise.
+  EQUITY_SHARE
+  /// Coût unitaire x quantité (stocks).
+  UNIT_COST
+  /// Solde saisi (trésorerie).
+  BALANCE
+  /// Épargne cumulée avec rendement.
+  ACCRUED_SAVINGS
+  /// Créance actualisée.
+  DISCOUNTED_CLAIM
+  /// Valeur unitaire x quantité (agriculture).
+  UNIT_VALUE
 }
 
 enum LoanStatus {
@@ -5447,33 +5468,145 @@ enum PatrimonyDocType {
   OTHER
 }
 
-model AssetValuation {
-  id              String          @id @default(uuid()) @db.Uuid
-  tenantId        String          @map("tenant_id")
-  propertyId      String          @map("property_id")
-  valuatedAt      DateTime        @map("valuated_at")
-  estimatedValue  Decimal         @map("estimated_value") @db.Decimal(14, 2)
-  currency        String          @default("XOF")
-  acquisitionCost Decimal?        @map("acquisition_cost") @db.Decimal(14, 2)
-  acquisitionDate DateTime?       @map("acquisition_date")
-  method          ValuationMethod @default(MANUAL)
-  notes           String?
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+enum AssetClass {
+  REAL_ESTATE
+  BUSINESS_EQUITY
+  INVENTORY
+  VEHICLE_EQUIPMENT
+  CASH
+  SAVINGS_INVESTMENT
+  RECEIVABLE
+  AGRICULTURE
+  MOVABLE
+  OTHER
+}
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+enum AssetStatus {
+  ACTIVE
+  /// Vendu, cédé ou détruit : sort de la valeur nette à disposedAt.
+  DISPOSED
+  ARCHIVED
+}
+
+enum ValuationReliability {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// Racine du patrimoine d'un tenant (ADR-005, spec 023) : un élément de n'importe
+/// quelle classe. L'immobilier reste maître de sa fiche (`Property`) ; un actif
+/// REAL_ESTATE porte un `propertyId` unique. CHECK SQL : asset_class <> 'REAL_ESTATE'
+/// => property_id IS NULL (assets_property_only_real_estate_chk).
+model Asset {
+  id                String      @id @default(uuid()) @db.Uuid
+  tenantId          String      @map("tenant_id")
+  name              String
+  assetClass        AssetClass  @map("asset_class")
+  status            AssetStatus @default(ACTIVE)
+  currency          String      @default("XOF")
+  /// Nul si XOF ; strictement positif sinon (contrôlé par le service).
+  exchangeRateToXof Decimal?    @map("exchange_rate_to_xof") @db.Decimal(18, 6)
+  acquisitionCost   Decimal?    @map("acquisition_cost") @db.Decimal(14, 2)
+  acquisitionDate   DateTime?   @map("acquisition_date")
+  disposedAt        DateTime?   @map("disposed_at")
+  holdingEntityId   String?     @map("holding_entity_id") @db.Uuid
+  propertyId        String?     @unique @map("property_id")
+  /// Attributs propres à la classe, validés par un schéma zod versionné.
+  details           Json        @default("{}")
+  detailsVersion    Int         @default(1) @map("details_version")
+  notes             String?
+  createdByUserId   String?     @map("created_by_user_id")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  holdingEntity HoldingEntity?      @relation(fields: [holdingEntityId], references: [id], onDelete: SetNull)
+  property      Property?           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  valuations    AssetValuation[]
+  loans         PropertyLoan[]
+  documents     PatrimonyDocument[]
+  holdings      PropertyHolding[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, assetClass])
+  @@index([holdingEntityId])
+  @@map("assets")
+}
+
+model AssetValuation {
+  id                 String                @id @default(uuid()) @db.Uuid
+  tenantId           String                @map("tenant_id")
+  /// Exactement un de propertyId / assetId (CHECK asset_valuations_one_target_chk).
+  propertyId         String?               @map("property_id")
+  assetId            String?               @map("asset_id") @db.Uuid
+  valuatedAt         DateTime              @map("valuated_at")
+  estimatedValue     Decimal               @map("estimated_value") @db.Decimal(14, 2)
+  currency           String                @default("XOF")
+  acquisitionCost    Decimal?              @map("acquisition_cost") @db.Decimal(14, 2)
+  acquisitionDate    DateTime?             @map("acquisition_date")
+  method             ValuationMethod       @default(MANUAL)
+  /// Origine de la valeur (facture, relevé, expert...). Renseigné à partir du lot 2.
+  source             String?
+  /// Fiabilité affichée (lot 2) ; nulle au lot 1.
+  reliability        ValuationReliability?
+  /// Clés de raison stables de la fiabilité (spec 024), traduites côté web. Vide avant le lot 2.
+  reliabilityReasons String[]              @default([]) @map("reliability_reasons")
+  notes              String?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  asset    Asset?    @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([propertyId])
   @@index([tenantId, propertyId, valuatedAt])
+  @@index([assetId])
+  @@index([tenantId, assetId, valuatedAt])
   @@map("asset_valuations")
+}
+
+/// Scénario de projection de patrimoine (lot 3, spec 025) : hypothèses et
+/// opérations de simulation nommées, sans aucun résultat de calcul. CHECK SQL :
+/// horizon_years entre 1 et 30 (patrimony_scenarios_horizon_years_chk), nom de
+/// 1 à 120 caractères (patrimony_scenarios_name_length_chk).
+model PatrimonyScenario {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  name            String
+  horizonYears    Int                   @map("horizon_years")
+  baseScenario    ProjectionScenarioKey @default(CENTRAL) @map("base_scenario")
+  /// Surcharges par rapport au scénario de base, validées par un schéma zod à l'écriture ; la lecture tolère un JSON illisible.
+  assumptions     Json                  @default("{}")
+  /// Opérations de simulation (vente, achat, emprunt, remboursement anticipé, épargne).
+  operations      Json                  @default("[]")
+  /// Version du format du JSON : écrite à la création mais PAS ENCORE LUE (la lecture ne migre rien) ; réservée à une évolution future des schémas.
+  schemaVersion   Int                   @default(1) @map("schema_version")
+  createdByUserId String?               @map("created_by_user_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, updatedAt])
+  @@map("patrimony_scenarios")
+}
+
+enum ProjectionScenarioKey {
+  PRUDENT
+  CENTRAL
+  OPTIMISTIC
 }
 
 model PropertyLoan {
   id               String     @id @default(uuid()) @db.Uuid
   tenantId         String     @map("tenant_id")
-  propertyId       String     @map("property_id")
+  /// Au plus un de propertyId / assetId (CHECK property_loans_at_most_one_target_chk) ; aucun = dette personnelle.
+  propertyId       String?    @map("property_id")
+  assetId          String?    @map("asset_id") @db.Uuid
   lender           String
   capitalAmount    Decimal    @map("capital_amount") @db.Decimal(14, 2)
   remainingCapital Decimal    @map("remaining_capital") @db.Decimal(14, 2)
@@ -5486,12 +5619,16 @@ model PropertyLoan {
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// Restrict : supprimer un actif ne doit jamais effacer silencieusement une dette (elle reste due) ; il faut la détacher ou la clôturer d'abord.
+  asset    Asset?    @relation(fields: [assetId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([propertyId])
   @@index([tenantId, propertyId, status])
+  @@index([assetId])
+  @@index([tenantId, assetId, status])
   @@map("property_loans")
 }
 
@@ -5730,6 +5867,7 @@ model PatrimonyDocument {
   id             String           @id @default(uuid()) @db.Uuid
   tenantId       String           @map("tenant_id")
   propertyId     String?          @map("property_id")
+  assetId        String?          @map("asset_id") @db.Uuid
   ownerContactId String?          @map("owner_contact_id")
   title          String
   type           PatrimonyDocType
@@ -5740,10 +5878,12 @@ model PatrimonyDocument {
 
   tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   property Property?   @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  asset    Asset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)
   owner    CrmContact? @relation("PatrimonyDocumentOwner", fields: [ownerContactId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([propertyId])
+  @@index([assetId])
   @@index([ownerContactId])
   @@index([tenantId, expiresAt])
   @@map("patrimony_documents")
@@ -8628,6 +8768,7 @@ model HoldingEntity {
   children                    HoldingEntity[]             @relation("HoldingEntityParent")
   holdings                    PropertyHolding[]
   externalAccessGrantEntities ExternalAccessGrantEntity[]
+  assets                      Asset[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -8639,7 +8780,9 @@ model HoldingEntity {
 model PropertyHolding {
   id              String    @id @default(uuid()) @db.Uuid
   tenantId        String    @map("tenant_id")
-  propertyId      String    @map("property_id")
+  /// Exactement un de propertyId / assetId (CHECK property_holdings_one_target_chk).
+  propertyId      String?   @map("property_id")
+  assetId         String?   @map("asset_id") @db.Uuid
   entityId        String    @map("entity_id") @db.Uuid
   /// En pourcentage : 50 pour 50 %. Quatre décimales.
   sharePercent    Decimal   @map("share_percent") @db.Decimal(7, 4)
@@ -8650,10 +8793,13 @@ model PropertyHolding {
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  property Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property Property?     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  asset    Asset?        @relation(fields: [assetId], references: [id], onDelete: Cascade)
   entity   HoldingEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
   @@unique([propertyId, entityId])
+  @@unique([assetId, entityId])
+  @@index([assetId])
   @@index([tenantId])
   @@index([entityId])
   @@map("property_holdings")
@@ -8926,4 +9072,18 @@ model MaintenanceLogEntry {
   @@index([tenantId, nextDueDate])
   @@index([tenantId, warrantyEndDate])
   @@map("maintenance_log_entries")
+}
+
+// Anti-abus d'inscription : une ligne par inscription ACCEPTÉE depuis une adresse IP.
+// Modèle global (aucune agence : l'inscription précède tout rattachement). L'IP n'est jamais
+// stockée en clair : `ipHash` est un HMAC-SHA256 (services/signup-guard-service.ts).
+// Lignes purgées après 24 h par le service lui-même.
+model SignupAttempt {
+  id        BigInt   @id @default(autoincrement())
+  ipHash    String   @map("ip_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
+  @@map("signup_attempts")
 }

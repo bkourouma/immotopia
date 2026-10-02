@@ -75,6 +75,14 @@ export function valuationMethodLabel(method: string, language?: Language): strin
   if (method === 'MANUAL') return t('Manuelle', undefined, language);
   if (method === 'MARKET_ESTIMATE') return t('Estimation de marché', undefined, language);
   if (method === 'EXPERT_APPRAISAL') return t('Expertise', undefined, language);
+  if (method === 'DEPRECIATION_LINEAR') return t('Amortissement linéaire', undefined, language);
+  if (method === 'DEPRECIATION_DECLINING') return t('Amortissement dégressif', undefined, language);
+  if (method === 'EQUITY_SHARE') return t("Quote-part de l'entreprise", undefined, language);
+  if (method === 'UNIT_COST') return t('Quantité × coût unitaire', undefined, language);
+  if (method === 'ACCRUED_SAVINGS') return t('Épargne capitalisée', undefined, language);
+  if (method === 'DISCOUNTED_CLAIM') return t('Créance décotée', undefined, language);
+  if (method === 'UNIT_VALUE') return t('Valeur unitaire', undefined, language);
+  if (method === 'BALANCE') return t('Solde', undefined, language);
   return method;
 }
 

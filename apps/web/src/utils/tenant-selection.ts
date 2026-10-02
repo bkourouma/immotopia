@@ -35,7 +35,8 @@ export function buildTenantMembership(membership: any): TenantMembership {
     tenant: {
       id: membership.tenant.id,
       name: membership.tenant.name,
-      slug: membership.tenant.slug || membership.tenant.id
+      slug: membership.tenant.slug || membership.tenant.id,
+      ...(membership.tenant.type ? { type: membership.tenant.type } : {})
     },
     status: membership.status
   };
