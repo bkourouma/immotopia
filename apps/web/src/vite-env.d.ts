@@ -6,9 +6,10 @@ interface ImportMetaEnv {
   /** Full REST base URL; defaults to `${VITE_API_ORIGIN}/api` */
   readonly VITE_API_URL?: string;
   /**
-   * When `"true"`, the login screen includes the « Comptes par tenant » panel.
-   * Compile-time only (Vite inlines it). Local `npm run dev` already shows the
-   * panel via `import.meta.env.DEV`.
+   * When `"true"`, the login screen includes the « Choisir un compte de test »
+   * dropdown (one test account per subscription pack). Compile-time only (Vite
+   * inlines it). Local `npm run dev` already shows the dropdown via
+   * `import.meta.env.DEV`.
    */
   readonly VITE_SHOW_DEMO_ACCOUNTS?: string;
 }

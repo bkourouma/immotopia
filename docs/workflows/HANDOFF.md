@@ -18,6 +18,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/comptes-test-packs` — 2026-10-01
+
+**État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** : pas d'accès SSH non interactif depuis le poste (connexion fermée), et la fusion de la PR est préalable.
+
+**Fait :** un tenant par pack de test (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO) créé par `packages/api/prisma/seeds/seed-pack-test-tenants.ts` (vrai `provisionTenant`, administrateur à mot de passe connu, abonnement repoussé de 5 ans, idempotent) via `infra/scripts/seed-pack-tests.sh staging` (refuse `prod`) ; menu déroulant « Choisir un compte de test » sur la page de connexion (`apps/web/src/dev/DevAccountsSelect.tsx`, remplace le panneau `DevAccountsPanel`), 6 groupes de pack en tête puis les comptes historiques ; garde-fou du `Dockerfile.web` étendu au nouveau mot de passe et au domaine `packs.immotopia.test`. Vérifié : Jest 10/10, Vitest 11/11, typecheck web 0 erreur, `check-infra` vert, bundle sans identifiants quand `VITE_SHOW_DEMO_ACCOUNTS=false`.
+
+**Reste à faire (chaque action serveur exige un « oui ») :** fusionner la PR, puis sur le serveur `git pull`, `./infra/scripts/deploy.sh staging` (reconstruit le web avec le menu), `./infra/scripts/seed-pack-tests.sh staging` (crée les 6 agences). Non éprouvé : le seed contre une vraie base, `-e ALLOW_PACK_TEST_TENANTS=1` dans `compose run`, le `RUN` du garde-fou dans un vrai `docker build`, le rendu du menu dans un navigateur.
+
+**Pièges :** le menu et le mot de passe commun (public) n'existent que sur le staging ; le one-clic « Se connecter » du panneau a disparu (choisir le compte puis « Se connecter »). Wiki non mis à jour : outillage de staging, aucune fonctionnalité de l'application.
+
+---
+
 ## Branche `fix/recette-packs-e2e` — 2026-09-30
 
 **État :** terminé côté code, PR ouverte (voir la PR ; fusion à l'utilisateur). Recette de bout en bout des 6 packs (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO) : un testeur par pack, ~100 anomalies consignées, ~30 correcteurs en parallèle. Rapport : `docs/recette/packs/RAPPORT_FINAL.md` ; index des anomalies : `docs/recette/packs/ANOMALIES.md` ; scénarios et journaux : `docs/recette/packs/SCENARIO_PACK_*.md`.
