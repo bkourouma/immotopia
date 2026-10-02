@@ -171,6 +171,27 @@ Pièges :
 - Les testeurs n'ont pas les mots de passe de recette (hors dépôt) : l'un a deviné la convention, un autre a utilisé la connexion rapide super-admin. Consigner les mots de passe de test dans les scénarios.
 - Les captures du navigateur intégré échouent panneau masqué : preuves par DOM et réseau.
 
+## Pilote — intégration de toutes les PR et déploiement du staging — 2026-10-02
+
+**État :** `main` = 72214188 (PR #103, intégration des 24 PR restantes : multi-actifs #52/#67/#69/#70/#74, syndic/baux/sécurité/web #59/#62/#63/#64/#68/#71/#72/#73/#84, finance/comptes de test/docs #60/#65/#66/#76/#86/#87/#88/#89/#90/#101). **Staging déployé en version 72214188** sur app.immotopia.cloud (111 migrations, schéma à jour, conteneurs sains, tests de fumée HTTPS et pages publiques à jeton OK, aucun conteneur voisin touché) ; les 6 agences de test par pack y sont créées (`seed-pack-tests.sh staging`). **Production NON déployée** (aucune consigne). Seule PR ouverte voulue : #75 (supprime 662 lignes de HANDOFF, périmée : à fermer).
+
+Reste à faire :
+
+- Validation fonctionnelle du staging par connexion (comptes `<pack>@packs.immotopia.test`, mot de passe de `prisma/seeds/pack-test-tenants.ts`) : parcours patrimoine (actifs multi-actifs, projections, trésorerie, assurances, foncier, accès partagés, import, lien de paiement), contrats de bail `-A2`, syndic, balance clients. Aucune validation par connexion n'a été faite (pas de saisie d'identifiants sur un site distant).
+- Décisions ouvertes : espace particulier (navigation et liste blanche `particulier-routes.ts` sans les lots patrimoine de main) ; permissions personnelles (#69) : routes patrimoine de main laissées sous `PROPERTIES_*` ; ADR-005 en double (environnements / patrimoine-multi-actifs : renuméroter l'un) ; modèles `.docx` de bail déjà semés en base gardent l'ancien texte (#63) ; plafond de surface de l'import (500 000 m²) ; libellé « Affecté » d'un paiement échoué ; rôle lecture seule voit les boutons d'écriture.
+- Production : ne pas déployer sans décision. Cycle : `backup.sh prod`, étiquette `avant-AAAAMMJJ`, `deploy.sh prod` sur le même commit que le staging (DEPLOIEMENT.md). Les migrations d'audit et de patrimoine sont à relire avant la prod.
+- Lint local rouge (`no-irregular-whitespace`, `platform-audit-csv.ts:70`, BOM littéral) mais vert en CI : à corriger par `﻿`.
+- `npm run test:isolation` jamais rejoué sur l'ensemble (pas de base `DATABASE_URL_TEST` sur le poste).
+
+Pièges :
+
+- `check-infra.sh` échoue sur le serveur (le dossier du checkout s'appelle `immotopia-saas`, son chemin apparaît dans le rendu du compose prod) : faux positif, il passe en local et en CI ; `deploy.sh` a ses propres contrôles.
+- Déploiement : `ssh alliance` (port 2222), checkout `/home/deployer/immotopia-saas` : `git fetch`, `git merge --ff-only origin/main`, `nohup ./infra/scripts/deploy.sh staging > journal &` (~8 min). `pgrep -f` dans la commande ssh se trouve lui-même : lire le journal.
+- Des tests web sous charge échouent par délai (import patrimoine, copilot-root Ctrl+J/Cmd+J, land-detail) : relancer les jobs échoués ; ne jamais lancer Jest/Vitest pendant un build.
+- Un contrôle de permissions de la session refuse les fusions en rafale de PR non nommées ; une seule PR d'intégration (branches `integration/*`) a évité d'avoir à les fusionner une à une.
+
+---
+
 ## Pilote — recette navigateur des vagues B et C, correctifs (PR #102) — 2026-10-02
 
 **État :** recette jouée (B1 assurances, B2 foncier, B3 accès tiers de confiance, C4 import, C5 lien de paiement) : 17 anomalies au bus (`BUG-2026-10-02-001` à `017`). Correctifs dans la PR #102 (`fix/patrimoine-recette-bc`, dernier commit 7007e4ec, CI en cours à la rédaction) : 001 à 015 rejouées et passées ; 016 (étiquette « À valider » rognée en mobile) et 017 (paiement échoué affichait « Reste à affecter ») corrigées, à l'état « prêt au retest ». Audit sécurité du diff : rien. Fusion de #102 : à la main de l'utilisateur.
