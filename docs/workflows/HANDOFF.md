@@ -18,6 +18,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/immocopilot-o9nygz` — 2026-10-03
+
+**État :** étape 1 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` prête, PR ouverte (fusion à l'utilisateur) ; étapes 2 à 4 non commencées.
+
+**Fait :** page `/tenant/:tenantId/assistant` (fil en haut, saisie en bas, colonne artefact vide), dictée Web Speech (`useSpeechDictation`), composants partagés avec le tiroir (`CopilotThread`, `CopilotComposer`), entrée de menu « Assistant », wiki mis à jour. Vérifié : typecheck web, lint web, `check:architecture`, 245 tests ciblés, `build` (marge du budget d'entrée : 599 o).
+
+**Reste à faire :** étape 2 (panneau artefact : tableaux, textes, graphiques, téléchargement), 3 (passerelle générique en lecture, catalogue des routes sans DELETE), 4 (écritures : plan, données avant/après, accord explicite). Décision en attente : liste des anciennes conversations (stockage serveur).
+
+**Pièges :** pas testé dans un navigateur ni avec un vrai micro ; la conversation du tiroir n'est pas transférée à la page ; la hauteur de la page ignore `TenantSuspendedBanner` ; `i18n:extract` sans `--only` a réordonné `common.json` (en/ar) et touché d'autres catalogues, ces derniers ont été restaurés ; `t('noindex, nofollow')` à corriger ailleurs ; `npm run typecheck` à la racine échoue côté API (client Prisma à régénérer ?).
+
 ## Branche `feat/comptes-test-packs` — 2026-10-01
 
 **État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** : pas d'accès SSH non interactif depuis le poste (connexion fermée), et la fusion de la PR est préalable.

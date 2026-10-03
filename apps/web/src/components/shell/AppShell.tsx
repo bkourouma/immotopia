@@ -16,7 +16,8 @@ import { getNavigation } from '../../navigation/model';
 import { featureForAgencyPath, isAgencyPathNotIncluded } from '../../navigation/route-features';
 import { particulierNavigation } from '../../navigation/particulier';
 import { useTenantType } from '../../hooks/useTenantType';
-import { withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
+import { useCopilotStatus } from '../../hooks/useCopilotStatus';
+import { withAssistantMenu, withOwnerPatrimoineMenu } from '../../navigation/owner-patrimoine-menu';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
@@ -188,9 +189,18 @@ export const AppShell: React.FC = () => {
     };
   }, [persona]);
 
+  // ImmoCopilot : même condition de montage que le bouton flottant. Un seul
+  // appel d'état, partagé avec `CopilotRoot`.
+  const showCopilot = persona === 'collaborateur' && tenantType !== 'PARTICULIER' && Boolean(navContext.tenantId);
+  const copilotStatus = useCopilotStatus(navContext.tenantId, showCopilot);
+
   const effectiveDisabledMenuKeys = useMemo(
-    () => withOwnerPatrimoineMenu(disabledMenuKeys, ownerPatrimoineEnabled),
-    [disabledMenuKeys, ownerPatrimoineEnabled]
+    () =>
+      withAssistantMenu(
+        withOwnerPatrimoineMenu(disabledMenuKeys, ownerPatrimoineEnabled),
+        Boolean(copilotStatus?.enabled)
+      ),
+    [disabledMenuKeys, ownerPatrimoineEnabled, copilotStatus]
   );
 
   // Adresse tapée à la main d'un module hors abonnement : l'écran de refus
@@ -341,10 +351,11 @@ export const AppShell: React.FC = () => {
         />
       )}
 
-      {persona === 'collaborateur' && tenantType !== 'PARTICULIER' && navContext.tenantId && (
+      {showCopilot && navContext.tenantId && (
         <Suspense fallback={null}>
           <CopilotRoot
             tenantId={navContext.tenantId}
+            status={copilotStatus}
             hasTabs={showTabs}
             hasAction={Boolean(action)}
             isDesktop={isDesktop}

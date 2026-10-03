@@ -27,8 +27,11 @@ ChatGPT/Claude/Gemini) avec un panneau « artefact » et la dictée ; toute
 
 ### Étape 1 — Page de chat plein écran + dictée
 
-- Route `/tenant/:slug/assistant`, page `React.lazy`, entrée de menu ; le
-  tiroir devient un raccourci qui y mène (Ctrl/Cmd+J conservé).
+- Route `/tenant/:tenantId/assistant` (le paramètre de route de l'application
+  est `:tenantId`, pas `:slug`), page `React.lazy`, entrée de menu « Assistant »
+  visible seulement si ImmoCopilot est activé pour l'agence ; le tiroir reste
+  (Ctrl/Cmd+J conservé) avec un bouton « Ouvrir en pleine page ». La
+  conversation n'est pas transférée du tiroir à la page (état en mémoire).
 - Mise en page : fil des messages défilant en haut, zone de saisie fixée en
   bas (Entrée envoie, Maj+Entrée saut de ligne), emplacement de l'artefact à
   droite (replié sur mobile) — vide à cette étape.
