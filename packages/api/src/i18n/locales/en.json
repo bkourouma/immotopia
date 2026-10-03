@@ -1516,5 +1516,13 @@
   "Property not found or does not belong to this tenant": "Property not found or does not belong to this tenant",
   "Tenant ID is required for tenant-owned properties": "Tenant ID is required for tenant-owned properties",
   "Un fournisseur de materiaux exige un rattachement a un chantier": "A materials supplier requires a link to a site",
-  "Vous n'avez pas les droits nécessaires pour effectuer cette action.": "You do not have the necessary permissions to perform this action."
+  "Vous n'avez pas les droits nécessaires pour effectuer cette action.": "You do not have the necessary permissions to perform this action.",
+  "Au moins une photo principale est obligatoire": "At least one main photo is required",
+  "Certains documents obligatoires sont invalides ou expirés : {{documents}}": "Some required documents are invalid or expired: {{documents}}",
+  "La description est obligatoire": "The description is required",
+  "La géolocalisation (latitude/longitude) est obligatoire": "Geolocation (latitude/longitude) is required",
+  "Le prix est obligatoire pour la publication": "The price is required for publication",
+  "Le propriétaire de ce bien ne peut pas être retiré.": "The owner of this property cannot be removed.",
+  "Le statut du bien doit être : {{statuts}}": "The property status must be: {{statuts}}",
+  "Les conditions de publication ne sont pas remplies : {{conditions}}": "Publication requirements not met: {{conditions}}"
 }

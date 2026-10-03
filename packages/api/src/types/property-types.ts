@@ -114,7 +114,7 @@ export interface CreatePropertyRequest {
   rooms?: number;
   bedrooms?: number;
   bathrooms?: number;
-  furnishingStatus?: PropertyFurnishingStatus;
+  furnishingStatus?: PropertyFurnishingStatus | null;
   availability?: PropertyAvailability;
   status?: PropertyStatus; // Optional initial status
   typeSpecificData?: Record<string, any>;
@@ -126,7 +126,7 @@ export interface UpdatePropertyRequest {
   // de detention peut rattacher un proprietaire tiers, voir
   // services/own-assets-barrier-service.ts.
   ownershipType?: PropertyOwnershipType;
-  ownerUserId?: string;
+  ownerUserId?: string | null;
   /** Alternative à ownerUserId : trouve ou crée le compte par e-mail. */
   ownerEmail?: string;
   title?: string;
@@ -145,7 +145,7 @@ export interface UpdatePropertyRequest {
   rooms?: number;
   bedrooms?: number;
   bathrooms?: number;
-  furnishingStatus?: PropertyFurnishingStatus;
+  furnishingStatus?: PropertyFurnishingStatus | null;
   availability?: PropertyAvailability;
   status?: PropertyStatus;
   typeSpecificData?: Record<string, any>;

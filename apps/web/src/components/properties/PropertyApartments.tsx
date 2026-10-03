@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { App, Card, Button, Modal, Form, Input, InputNumber, Select, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, DeleteOutlined, UploadOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons';
-import { Property, PropertyMediaType } from '../../types/property-types';
+import { Property, PropertyFurnishingStatus, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { useNavigate } from 'react-router-dom';
 import { uploadMedia } from '../../services/property-service';
@@ -129,7 +129,10 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
               rooms: rooms,
               bedrooms: bedrooms,
               bathrooms: group.bathrooms,
-              furnishingStatus: group.furnishingStatus,
+              // Sans choix, non meublé — la valeur par défaut de l'assistant de
+              // création du bien : un `null` ici rendait l'appartement
+              // impossible à modifier (BUG-2026-09-28-013).
+              furnishingStatus: group.furnishingStatus ?? PropertyFurnishingStatus.UNFURNISHED,
               availability: group.availability || 'AVAILABLE',
               status: group.status || 'AVAILABLE'
             }

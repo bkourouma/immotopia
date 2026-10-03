@@ -552,6 +552,12 @@ export async function updateProperty(
     throw new NotFoundError(t('Bien introuvable ou accès refusé'));
   }
 
+  // Seul un bien de l'agence peut n'avoir aucun proprietaire : retirer celui
+  // d'un bien prive ou sous mandat le rendrait orphelin.
+  if (data.ownerUserId === null && existing.ownershipType !== PropertyOwnershipType.TENANT) {
+    throw new BadRequestError('Le propriétaire de ce bien ne peut pas être retiré.');
+  }
+
   // Validate against template if typeSpecificData is provided
   // Merge typeSpecificData fields into the data object for validation
   if (data.typeSpecificData) {

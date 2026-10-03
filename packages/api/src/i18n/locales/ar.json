@@ -1516,5 +1516,13 @@
   "Property not found or does not belong to this tenant": "لم يُعثر على العقار أو لا ينتمي إلى هذه الوكالة",
   "Tenant ID is required for tenant-owned properties": "معرّف الوكالة مطلوب للعقارات المملوكة لوكالة",
   "Un fournisseur de materiaux exige un rattachement a un chantier": "مورّد المواد يستوجب الربط بمشروع",
-  "Vous n'avez pas les droits nécessaires pour effectuer cette action.": "ليست لديك الصلاحيات اللازمة لتنفيذ هذا الإجراء."
+  "Vous n'avez pas les droits nécessaires pour effectuer cette action.": "ليست لديك الصلاحيات اللازمة لتنفيذ هذا الإجراء.",
+  "Au moins une photo principale est obligatoire": "صورة رئيسية واحدة على الأقل مطلوبة",
+  "Certains documents obligatoires sont invalides ou expirés : {{documents}}": "بعض المستندات الإلزامية غير صالحة أو منتهية الصلاحية: {{documents}}",
+  "La description est obligatoire": "الوصف مطلوب",
+  "La géolocalisation (latitude/longitude) est obligatoire": "الموقع الجغرافي (خط العرض/خط الطول) مطلوب",
+  "Le prix est obligatoire pour la publication": "السعر مطلوب للنشر",
+  "Le propriétaire de ce bien ne peut pas être retiré.": "لا يمكن إزالة مالك هذا العقار.",
+  "Le statut du bien doit être : {{statuts}}": "يجب أن تكون حالة العقار: {{statuts}}",
+  "Les conditions de publication ne sont pas remplies : {{conditions}}": "شروط النشر غير مستوفاة: {{conditions}}"
 }
