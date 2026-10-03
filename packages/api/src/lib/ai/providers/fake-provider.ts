@@ -20,6 +20,9 @@ import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, L
  *   `PATCH .../crm/contacts/:contactId` (champ `internalNotes`, texte cité entre guillemets, sinon une
  *   note neutre) sur le premier contact trouvé. Exemples sans risque ; le fournisseur n'écrit
  *   jamais : il ne fait que PLANIFIER, l'accord humain et la route de confirmation restent seuls maîtres ;
+ *   « désactive » + « collaborateur » (ou membre, utilisateur) : call_read de la liste des collaborateurs,
+ *   puis plan_write SENSIBLE de `POST .../users/:userId/disable` (dernier collaborateur listé), pour
+ *   exercer de bout en bout le mot de confirmation. Même garantie : il ne planifie que ;
  * - « tableau », « graphique » (+ « baux » pour des baux, sinon des biens) : search_properties ou
  *   search_leases puis show_artifact (table ou chart construit sur les résultats) ; « synthèse » :
  *   show_artifact (markdown) sans recherche. Seulement si show_artifact est offert ;
@@ -372,6 +375,24 @@ function extractTagName(text: string): string {
 const CREATE_TAG = 'POST /api/tenants/:tenantId/crm/tags';
 const LIST_CONTACTS = 'GET /api/tenants/:tenantId/crm/contacts';
 const PATCH_CONTACT = 'PATCH /api/tenants/:tenantId/crm/contacts/:contactId';
+const LIST_MEMBERS = 'GET /api/tenants/:tenantId/users';
+const DISABLE_MEMBER = 'POST /api/tenants/:tenantId/users/:userId/disable';
+
+/** Dernier collaborateur de `{ data: { members: [{ user: { id } }] } }` (le premier est souvent le demandeur). */
+function lastMemberUserId(data: unknown): string | null {
+  // Le résultat de call_read porte le corps de la réponse (`{ success, data: { members } }`) : on le déballe.
+  let node = data as { members?: unknown; data?: unknown } | null;
+  for (let depth = 0; depth < 3 && node && !Array.isArray(node.members); depth += 1) {
+    node = node.data as typeof node;
+  }
+  const members = node?.members;
+  if (!Array.isArray(members)) return null;
+  for (let index = members.length - 1; index >= 0; index -= 1) {
+    const id = (members[index] as { user?: { id?: unknown } } | null)?.user?.id;
+    if (typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)) return id;
+  }
+  return null;
+}
 
 /** Dernier mot de l'assistant après un plan : le plan est PROPOSÉ, jamais « fait ». */
 function planOutcomeText(result: ToolResult | undefined): string {
@@ -551,6 +572,30 @@ export class FakeProvider implements LlmProvider {
             t('Lire la fiche du contact.'),
             t('Remplacer sa note interne par le texte indiqué, sans toucher aux autres champs.')
           ]
+        });
+      }
+      return { text: planOutcomeText(results[1]) };
+    }
+
+    // 000 bis. Plan SENSIBLE de test (recette) : « désactive le collaborateur » -> lecture des collaborateurs
+    // puis plan_write de `POST .../users/:userId/disable` (sensible : mot de confirmation exigé). Ne fait que
+    // PLANIFIER : seule la confirmation humaine écrit.
+    if (
+      canPlan &&
+      canReadForPlan &&
+      /\b(desactive|desactiver)\b/.test(normalized) &&
+      /\b(collaborateur|collaborateurs|membre|membres|utilisateur|utilisateurs)\b/.test(normalized)
+    ) {
+      if (round === 0) return call('call_read', { capabilityId: LIST_MEMBERS, query: { limit: 50 } });
+      if (round === 1) {
+        const userId = lastMemberUserId((results[0]?.data as { data?: unknown } | null)?.data);
+        if (!userId) return { text: t("Je n'ai trouvé aucun collaborateur à désactiver.") };
+        return call('plan_write', {
+          capabilityId: DISABLE_MEMBER,
+          pathParams: { userId },
+          body: {},
+          title: t('Désactiver un collaborateur'),
+          steps: [t('Lire la fiche du collaborateur.'), t("Désactiver son accès à l'agence après votre approbation.")]
         });
       }
       return { text: planOutcomeText(results[1]) };

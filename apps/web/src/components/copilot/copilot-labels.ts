@@ -1,6 +1,7 @@
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import type { CopilotToolName } from '../../types/copilot';
+import { statusLabel } from '../primitives/StatusTag';
 
 /**
  * Libellés des énumérations affichées par les cartes du copilote. Mêmes textes
@@ -75,4 +76,18 @@ export function copilotToolLabel(tool: CopilotToolName): string {
     call_read: t('Consultation d’une donnée')
   };
   return labels[tool];
+}
+
+const ENUM_CODE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+
+/**
+ * Libellé d'une valeur d'énumération connue (type ou statut de bien, de bail, de
+ * paiement…), réutilisant les textes des écrans. `null` si le texte n'est pas EXACTEMENT
+ * un code connu : un nom, une référence ou une phrase ne sont jamais traduits.
+ */
+export function knownEnumLabel(value: string): string | null {
+  if (!ENUM_CODE.test(value)) return null;
+  const type = propertyTypeLabel(value);
+  if (type !== value) return type;
+  return statusLabel(value);
 }

@@ -51,7 +51,9 @@ export function DocumentDownloadCard({
     <Card size="small" data-testid="copilot-download-card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
         <div style={{ minWidth: 0 }}>
-          <Typography.Text strong>{label ?? filename}</Typography.Text>
+          <Typography.Text strong>
+            <bdi>{label ?? filename}</bdi>
+          </Typography.Text>
           {formatLabel ? (
             <div>
               <Typography.Text type="secondary">{formatLabel}</Typography.Text>
