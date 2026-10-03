@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Cree, sur le STAGING uniquement, une agence de test par pack d'abonnement
+# Cree, sur le STAGING uniquement, deux agences de test par pack d'abonnement
 # (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO),
 # chacune avec un administrateur a mot de passe connu :
 #
@@ -84,7 +84,7 @@ compose() {
 
 step "Plan"
 echo "    environnement : $ENV_NAME  (pile $STACK_NAME, $PUBLIC_ORIGIN)"
-info "6 agences de test, une par pack : AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO"
+info "12 agences de test, deux par pack (6 mois et 3 ans d'historique) : AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL, PATRIMOINE_PRO"
 info "administrateurs : <pack>@packs.immotopia.test (mot de passe commun, public : staging seulement)"
 info "idempotent : une agence existante est resynchronisee, jamais dupliquee"
 info "seed : prisma/seeds/seed-pack-test-tenants.ts (image $MIGRATE_IMAGE, ALLOW_PACK_TEST_TENANTS=1)"

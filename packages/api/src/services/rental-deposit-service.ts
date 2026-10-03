@@ -72,7 +72,7 @@ export async function createDeposit(tenantId: string, leaseId: string, actorUser
     depositId: deposit.id,
     leaseId,
     tenantId,
-    targetAmount: deposit.target_amount
+    targetAmount: Number(deposit.target_amount)
   });
 
   // Audit log
@@ -84,7 +84,7 @@ export async function createDeposit(tenantId: string, leaseId: string, actorUser
     entityId: deposit.id,
     payload: {
       leaseId,
-      targetAmount: deposit.target_amount
+      targetAmount: Number(deposit.target_amount)
     }
   });
 
@@ -196,7 +196,7 @@ export async function getDeposit(tenantId: string, leaseId: string, actorUserId?
       depositId: deposit.id,
       leaseId,
       tenantId,
-      targetAmount: deposit.target_amount
+      targetAmount: Number(deposit.target_amount)
     });
 
     // Audit log if actorUserId provided
@@ -209,7 +209,7 @@ export async function getDeposit(tenantId: string, leaseId: string, actorUserId?
         entityId: deposit.id,
         payload: {
           leaseId,
-          targetAmount: deposit.target_amount,
+          targetAmount: Number(deposit.target_amount),
           autoCreated: true
         }
       });
