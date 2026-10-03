@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { getUserPermissions } from './permission-service';
 
 /**
  * Accès aux menus par rôle.
@@ -141,4 +142,26 @@ export async function getDisabledMenusForUser(userId: string, tenantId?: string)
   }
 
   return Array.from(deniedSomewhere).filter(menuKey => !allowedSomewhere.has(menuKey));
+}
+
+/**
+ * Permissions à comparer au catalogue de menus (`requires` côté interface).
+ *
+ * Renvoie `null` quand la navigation ne doit PAS être filtrée par permission :
+ * hors agence, super-administrateur, et administrateur de l'agence (il voit
+ * toute l'agence, comme avant). Pour tout autre rôle — y compris un rôle
+ * personnalisé — l'interface masque ce que l'API refuserait : on préfère un
+ * menu de moins à un bouton qui répond 403.
+ */
+export async function getMenuPermissionKeysForUser(
+  userId: string,
+  tenantId: string | undefined,
+  globalRole?: string
+): Promise<string[] | null> {
+  if (!tenantId || globalRole === 'SUPER_ADMIN') return null;
+
+  const roleKeys = await resolveRoleKeysForUser(userId, tenantId);
+  if (roleKeys.includes('TENANT_ADMIN') || roleKeys.includes('PLATFORM_SUPER_ADMIN')) return null;
+
+  return getUserPermissions(userId, tenantId);
 }

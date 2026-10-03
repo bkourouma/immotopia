@@ -323,8 +323,10 @@ export async function getMyMenuAccessHandler(req: Request, res: Response): Promi
 
     const tenantId = queryTenantId ?? req.tenantContext?.tenantId;
 
-    const { getDisabledMenusForUser } = await import('../services/role-menu-service');
+    const { getDisabledMenusForUser, getMenuPermissionKeysForUser } = await import('../services/role-menu-service');
     const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);
+    // `null` : ne pas filtrer par permission (admin d'agence, super-admin).
+    const permissionKeys = await getMenuPermissionKeysForUser(req.user.userId, tenantId, req.user.globalRole);
 
     // Permissions effectives dans l'agence : l'interface en déduit les entrées
     // que le rôle ne peut de toute façon pas ouvrir (BUG-2026-10-02-010). Sans
@@ -335,7 +337,10 @@ export async function getMyMenuAccessHandler(req: Request, res: Response): Promi
       permissions = await getUserPermissions(req.user.userId, tenantId);
     }
 
-    res.status(200).json({ success: true, data: { disabledMenuKeys, ...(permissions ? { permissions } : {}) } });
+    res.status(200).json({
+      success: true,
+      data: { disabledMenuKeys, permissionKeys, ...(permissions ? { permissions } : {}) }
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     res.status(400).json({ success: false, message: errorMessage });

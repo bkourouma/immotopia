@@ -6,6 +6,7 @@ import { InviteCollaboratorRequest, inviteCollaborator } from '../../services/in
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { t } from '../../i18n/t';
+import { writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
 
@@ -88,7 +89,11 @@ export const InviteCollaborator: React.FC = () => {
         setError(response.message || t("Erreur lors de l'invitation"));
       }
     } catch (err: any) {
-      const apiMessage = err.response?.data?.message || t("Erreur lors de l'invitation");
+      const apiMessage = writeErrorMessage(
+        err,
+        t("Erreur lors de l'invitation"),
+        t("Vous n'avez pas les droits nécessaires pour inviter un collaborateur.")
+      );
       setError(
         apiMessage.includes('plus actif')
           ? t('{{apiMessage}} Veuillez activer le tenant (paramètres ou administration) puis réessayer.', {

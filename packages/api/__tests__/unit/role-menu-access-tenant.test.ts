@@ -11,13 +11,15 @@
 const userHasTenantAccess = jest.fn();
 const getDisabledMenusForUser = jest.fn();
 const getUserPermissions = jest.fn();
+const getMenuPermissionKeysForUser = jest.fn().mockResolvedValue(null);
 
 jest.mock('../../src/utils/tenant-access', () => ({
   userHasTenantAccess: (...a: any[]) => userHasTenantAccess(...a)
 }));
 
 jest.mock('../../src/services/role-menu-service', () => ({
-  getDisabledMenusForUser: (...a: any[]) => getDisabledMenusForUser(...a)
+  getDisabledMenusForUser: (...a: any[]) => getDisabledMenusForUser(...a),
+  getMenuPermissionKeysForUser: (...a: any[]) => getMenuPermissionKeysForUser(...a)
 }));
 
 jest.mock('../../src/services/permission-service', () => ({
@@ -40,6 +42,7 @@ function mockRes() {
 beforeEach(() => {
   jest.clearAllMocks();
   getUserPermissions.mockResolvedValue(['PROPERTIES_VIEW']);
+  getMenuPermissionKeysForUser.mockResolvedValue(null);
 });
 
 describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
@@ -94,7 +97,7 @@ describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
     expect(getUserPermissions).toHaveBeenCalledWith('user-1', 'tenant-A');
     expect(res.json).toHaveBeenCalledWith({
       success: true,
-      data: { disabledMenuKeys: [], permissions: ['FINANCE_REPORTS_READ'] }
+      data: { disabledMenuKeys: [], permissionKeys: null, permissions: ['FINANCE_REPORTS_READ'] }
     });
   });
 
@@ -114,5 +117,23 @@ describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
     expect(getDisabledMenusForUser).toHaveBeenCalledWith('user-1', undefined);
     expect(getUserPermissions).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('getMyMenuAccessHandler — permissions pour le filtrage du menu', () => {
+  it("renvoie les permissions calculees pour l'agence demandee", async () => {
+    userHasTenantAccess.mockResolvedValue(true);
+    getDisabledMenusForUser.mockResolvedValue([]);
+    getMenuPermissionKeysForUser.mockResolvedValue(['PROPERTIES_VIEW']);
+
+    const req: any = { user: { userId: 'u1', globalRole: 'USER' }, query: { tenantId: 'tenant-A' } };
+    const res = mockRes();
+    await getMyMenuAccessHandler(req, res);
+
+    expect(getMenuPermissionKeysForUser).toHaveBeenCalledWith('u1', 'tenant-A', 'USER');
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { disabledMenuKeys: [], permissionKeys: ['PROPERTIES_VIEW'], permissions: ['PROPERTIES_VIEW'] }
+    });
   });
 });

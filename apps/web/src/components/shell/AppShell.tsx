@@ -4,10 +4,10 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import {
-  useDisabledMenuKeys,
   CORE_ONLY_ACCESS,
   useFeatureAccessState,
   useFilteredNavigation,
+  useMyMenuAccess,
   useOwnAssetsOnly
 } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
@@ -151,7 +151,7 @@ export const AppShell: React.FC = () => {
    * decide de montrer a ce role. Sans ce filtrage, l'ecran d'administration ne
    * serait qu'une declaration d'intention.
    */
-  const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
+  const { disabled: disabledMenuKeys, permissions } = useMyMenuAccess(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
   const { access: featureAccess, loading: featureAccessLoading } = useFeatureAccessState(
     navContext.tenantId,
@@ -209,7 +209,8 @@ export const AppShell: React.FC = () => {
     effectiveDisabledMenuKeys,
     // Pendant la lecture des droits : socle seul, pas de menu complet qui clignote.
     featureAccessLoading ? CORE_ONLY_ACCESS : featureAccess,
-    ownAssetsOnly
+    ownAssetsOnly,
+    permissions
   );
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
