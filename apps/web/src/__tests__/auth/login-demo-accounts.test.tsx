@@ -39,10 +39,10 @@ describe('Login — comptes de démonstration', () => {
 
     const select = await screen.findByTestId('dev-accounts-select');
     fireEvent.mouseDown(within(select).getByRole('combobox'));
-    fireEvent.click(await screen.findByText('Admin Test Syndic'));
+    fireEvent.click(await screen.findByText('Admin Test Syndic (3 ans)'));
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Adresse email')).toHaveValue('syndic@packs.immotopia.test');
+      expect(screen.getByLabelText('Adresse email')).toHaveValue('syndic-3ans@packs.immotopia.test');
     });
     expect(screen.getByPlaceholderText('••••••••')).toHaveValue('PackTest@2026');
   });

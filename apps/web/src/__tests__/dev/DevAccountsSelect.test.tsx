@@ -16,21 +16,23 @@ function openMenu(): HTMLElement {
 }
 
 describe('DevAccountsSelect', () => {
-  it('liste les six packs en groupes, puis les comptes historiques', () => {
+  it('liste les douze groupes de packs, puis les comptes historiques', () => {
     render(<DevAccountsSelect onPick={vi.fn()} onClear={vi.fn()} />);
     openMenu();
 
     const groupLabels = Array.from(document.querySelectorAll('.ant-select-item-group')).map(el => el.textContent);
-    expect(groupLabels.slice(0, 6)).toEqual([
-      'Pack Agence',
-      'Pack Syndic',
-      'Pack Promoteur',
-      'Pack Opérateur intégré',
-      'Pack Patrimoine Essentiel',
-      'Pack Patrimoine Pro'
-    ]);
+    expect(groupLabels.slice(0, 12)).toEqual(
+      [
+        'Pack Agence',
+        'Pack Syndic',
+        'Pack Promoteur',
+        'Pack Opérateur intégré',
+        'Pack Patrimoine Essentiel',
+        'Pack Patrimoine Pro'
+      ].flatMap(label => [`${label} · 6 mois`, `${label} · 3 ans`])
+    );
     expect(groupLabels).toHaveLength(DEV_TENANT_ACCOUNTS.length);
-    expect(screen.getByText('Admin Test Syndic')).toBeInTheDocument();
+    expect(screen.getByText('Admin Test Syndic (6 mois)')).toBeInTheDocument();
     expect(screen.getByText('Super Administrator')).toBeInTheDocument();
   });
 
@@ -45,11 +47,11 @@ describe('DevAccountsSelect', () => {
     render(<DevAccountsSelect onPick={onPick} onClear={vi.fn()} />);
     openMenu();
 
-    fireEvent.click(screen.getByText('Admin Test Promoteur'));
+    fireEvent.click(screen.getByText('Admin Test Promoteur (3 ans)'));
 
     expect(onPick).toHaveBeenCalledTimes(1);
     expect(onPick).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'promoteur@packs.immotopia.test', password: 'PackTest@2026' })
+      expect.objectContaining({ email: 'promoteur-3ans@packs.immotopia.test', password: 'PackTest@2026' })
     );
   });
 
@@ -59,12 +61,13 @@ describe('DevAccountsSelect', () => {
     const input = within(select).getByRole('combobox');
 
     fireEvent.change(input, { target: { value: 'patrimoine pro' } });
-    expect(screen.getByText('Admin Test Patrimoine Pro')).toBeInTheDocument();
-    expect(screen.queryByText('Admin Test Syndic')).not.toBeInTheDocument();
+    expect(screen.getByText('Admin Test Patrimoine Pro (6 mois)')).toBeInTheDocument();
+    expect(screen.getByText('Admin Test Patrimoine Pro (3 ans)')).toBeInTheDocument();
+    expect(screen.queryByText('Admin Test Syndic (6 mois)')).not.toBeInTheDocument();
 
-    fireEvent.change(input, { target: { value: 'syndic@packs' } });
-    expect(screen.getByText('Admin Test Syndic')).toBeInTheDocument();
-    expect(screen.queryByText('Admin Test Patrimoine Pro')).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'syndic-3ans@packs' } });
+    expect(screen.getByText('Admin Test Syndic (3 ans)')).toBeInTheDocument();
+    expect(screen.queryByText('Admin Test Syndic (6 mois)')).not.toBeInTheDocument();
   });
 
   it('effacer le choix appelle onClear', () => {
@@ -72,7 +75,7 @@ describe('DevAccountsSelect', () => {
     render(<DevAccountsSelect activeEmail="syndic@packs.immotopia.test" onPick={vi.fn()} onClear={onClear} />);
 
     const select = screen.getByTestId('dev-accounts-select');
-    expect(within(select).getByText('Admin Test Syndic')).toBeInTheDocument();
+    expect(within(select).getByText('Admin Test Syndic (6 mois)')).toBeInTheDocument();
 
     const clear = select.querySelector('.ant-select-clear');
     expect(clear).not.toBeNull();

@@ -8,8 +8,8 @@
  *
  * Deux familles de groupes :
  *
- * - six agences de test, une par pack d'abonnement (`pack-*`), avec un
- *   administrateur chacune et un mot de passe commun (`PACK_PASSWORD`) ;
+ * - douze agences de test, deux par pack d'abonnement (6 mois et 3 ans,
+ *   `pack-*`), avec un administrateur chacune et un mot de passe commun (`PACK_PASSWORD`) ;
  *   le contrat des données est partagé avec le seed du staging côté API ;
  * - les comptes historiques (plateforme, Ivoire Résidences).
  *
@@ -40,42 +40,48 @@ export interface DevTenantAccounts {
 
 const PASSWORD = 'DevMick@2003';
 
-/** Mot de passe commun des six administrateurs de pack. */
+/** Mot de passe commun des administrateurs de pack. */
 export const PACK_PASSWORD = 'PackTest@2026';
 
 /** Domaine des e-mails des agences de test par pack. */
 export const PACK_EMAIL_DOMAIN = 'packs.immotopia.test';
 
-/** Une agence de test par pack d'abonnement, un TENANT_ADMIN chacune. */
-function packGroup(slug: string, label: string, fullName: string, emailLocalPart: string): DevTenantAccounts {
-  return {
-    id: `pack-${slug}`,
-    name: `Test — ${label}`,
-    label,
+/** Profils d'historique des agences de test : 6 mois ou 3 ans de gestion. */
+const PACK_PROFILES = [
+  { suffix: '6m', label: '6 mois', emailSuffix: '' },
+  { suffix: '3a', label: '3 ans', emailSuffix: '-3ans' }
+] as const;
+
+/** Deux agences de test par pack (6 mois, 3 ans), un TENANT_ADMIN chacune. */
+function packGroups(slug: string, label: string, fullName: string, emailLocalPart: string): DevTenantAccounts[] {
+  return PACK_PROFILES.map(profile => ({
+    id: `pack-${slug}-${profile.suffix}`,
+    name: `Test — ${label} · ${profile.label}`,
+    label: `${label} · ${profile.label}`,
     accounts: [
       {
-        email: `${emailLocalPart}@${PACK_EMAIL_DOMAIN}`,
+        email: `${emailLocalPart}${profile.emailSuffix}@${PACK_EMAIL_DOMAIN}`,
         password: PACK_PASSWORD,
-        fullName,
+        fullName: `${fullName} (${profile.label})`,
         // Administrateur (TENANT_ADMIN) de l'agence de test du pack.
-        persona: 'Collaborateur'
+        persona: 'Collaborateur' as const
       }
     ]
-  };
+  }));
 }
 
 export const DEV_TENANT_ACCOUNTS: DevTenantAccounts[] = [
-  packGroup('agence', 'Pack Agence', 'Admin Test Agence', 'agence'),
-  packGroup('syndic', 'Pack Syndic', 'Admin Test Syndic', 'syndic'),
-  packGroup('promoteur', 'Pack Promoteur', 'Admin Test Promoteur', 'promoteur'),
-  packGroup('integre', 'Pack Opérateur intégré', 'Admin Test Intégré', 'integre'),
-  packGroup(
+  ...packGroups('agence', 'Pack Agence', 'Admin Test Agence', 'agence'),
+  ...packGroups('syndic', 'Pack Syndic', 'Admin Test Syndic', 'syndic'),
+  ...packGroups('promoteur', 'Pack Promoteur', 'Admin Test Promoteur', 'promoteur'),
+  ...packGroups('integre', 'Pack Opérateur intégré', 'Admin Test Intégré', 'integre'),
+  ...packGroups(
     'patrimoine-essentiel',
     'Pack Patrimoine Essentiel',
     'Admin Test Patrimoine Essentiel',
     'patrimoine-essentiel'
   ),
-  packGroup('patrimoine-pro', 'Pack Patrimoine Pro', 'Admin Test Patrimoine Pro', 'patrimoine-pro'),
+  ...packGroups('patrimoine-pro', 'Pack Patrimoine Pro', 'Admin Test Patrimoine Pro', 'patrimoine-pro'),
   {
     id: 'platform',
     name: 'Plateforme (hors agence)',
