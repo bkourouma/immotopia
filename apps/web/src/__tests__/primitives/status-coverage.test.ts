@@ -72,6 +72,16 @@ const UNIONS_FINANCE: Record<string, string[]> = {
   RetentionStatus: ['HELD', 'RELEASED']
 };
 
+/**
+ * Statuts de la plateforme (super-admin), eux aussi des unions TypeScript —
+ * `services/admin-subscription-service.ts` (`SubscriptionStatus`), calquée sur
+ * l'enum Prisma du même nom. TRIALING et PAST_DUE manquaient à `<StatusTag>`
+ * et s'affichaient en code brut sur la fiche agence (BUG-2026-09-28-002).
+ */
+const UNIONS_PLATFORM: Record<string, string[]> = {
+  SubscriptionStatus: ['TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED', 'SUSPENDED']
+};
+
 describe('StatusTag — couverture des statuts du dépôt', () => {
   for (const [nom, valeurs] of Object.entries(ENUMS)) {
     describe(nom, () => {
@@ -88,6 +98,18 @@ describe('StatusTag — couverture des statuts du dépôt', () => {
   }
 
   for (const [nom, codes] of Object.entries(UNIONS_FINANCE)) {
+    describe(nom, () => {
+      for (const code of codes) {
+        it(`traduit ${code}`, () => {
+          const libelle = statusLabel(code);
+          expect(libelle, `« ${code} » (${nom}) s'afficherait en anglais à l'utilisateur`).not.toBeNull();
+          expect(libelle).not.toBe(code);
+        });
+      }
+    });
+  }
+
+  for (const [nom, codes] of Object.entries(UNIONS_PLATFORM)) {
     describe(nom, () => {
       for (const code of codes) {
         it(`traduit ${code}`, () => {

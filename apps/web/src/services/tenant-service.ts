@@ -32,12 +32,26 @@ export interface TenantFilters {
   limit?: number;
 }
 
+/**
+ * Contrat exact de `GET /api/admin/tenants/:id/stats`
+ * (packages/api/src/services/tenant-service.ts, `getTenantStats`) : cette
+ * interface décrivait un contrat imaginé (totalProperties/totalClients/…) qui
+ * ne correspondait à aucun champ réellement renvoyé — l'onglet Statistiques
+ * de la fiche agence affichait quatre valeurs vides (BUG-2026-09-28-001).
+ */
 export interface TenantStats {
-  totalProperties: number;
-  totalClients: number;
-  totalCollaborators: number;
-  activeModules: number;
-  lastActivity: string;
+  collaboratorCount: number;
+  activeCollaborators: number;
+  disabledCollaborators: number;
+  /** Codes bruts (`MODULE_AGENCY`, …) : passer par un libellé métier à l'affichage. */
+  enabledModules: TenantModuleKey[];
+  subscription: {
+    /** `null` pour une agence créée avec des packs (planKey déprécié). */
+    plan: TenantPlanKey | null;
+    status: string;
+    billingCycle: TenantBillingCycle;
+  } | null;
+  lastLoginAt: string | null;
 }
 
 /** Offre d'abonnement proposée à la création d'une agence. */
