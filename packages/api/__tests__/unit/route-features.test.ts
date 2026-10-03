@@ -142,10 +142,11 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     expect(classifyTenantRoute('/')).toBe('CORE');
   });
 
-  it("classe l'assistant ImmoCopilot : statut et chat = socle, confirmation = location", () => {
+  it("classe l'assistant ImmoCopilot : statut, chat et confirmation = socle (le module location d'une quittance est vérifié par le contrôleur)", () => {
     expect(classifyTenantRoute('/ai/status')).toBe('CORE');
     expect(classifyTenantRoute('/ai/chat')).toBe('CORE');
-    expect(classifyTenantRoute('/ai/actions/execute')).toBe('RENTAL');
+    // Étape 4 : la même route confirme aussi les écritures génériques, gardées par la route réellement appelée.
+    expect(classifyTenantRoute('/ai/actions/execute')).toBe('CORE');
   });
 
   it('distingue lecture et ecriture (export et recherche = lecture)', () => {
@@ -155,6 +156,9 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     // Le chat de l'assistant est un POST de lecture ; la confirmation est bien une ecriture.
     expect(isWriteRequest('POST', '/ai/chat')).toBe(false);
     expect(isWriteRequest('POST', '/ai/actions/execute')).toBe(true);
+    // Refuser un plan n'écrit rien : permis même à un module en lecture seule.
+    expect(isWriteRequest('POST', '/ai/actions/reject')).toBe(false);
+    expect(classifyTenantRoute('/ai/actions/reject')).toBe('CORE');
     expect(isWriteRequest('GET', '/ai/status')).toBe(false);
     expect(isWriteRequest('DELETE', '/syndics/abc')).toBe(true);
   });

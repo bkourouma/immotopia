@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { t } from '../../i18n/t';
-import copilotService from '../../services/copilot-service';
+import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
 
 // Le tiroir (chat, Markdown, cartes) ne se charge qu'à la première ouverture :
@@ -14,6 +14,11 @@ const COPILOT_KEYSHORTCUTS = 'Control+J Meta+J';
 
 export interface CopilotRootProps {
   tenantId: string;
+  /**
+   * État déjà lu par l'appelant (la coquille, qui en tire aussi le menu) :
+   * `null` tant qu'il est inconnu. Absent : le composant le lit lui-même.
+   */
+  status?: CopilotStatus | null;
   /** Vrai quand la barre d'onglets basse est affichée (mobile et tablette). */
   hasTabs?: boolean;
   /** Vrai quand l'action flottante de l'écran est affichée : le bouton se place au-dessus. */
@@ -29,29 +34,16 @@ export interface CopilotRootProps {
  */
 const CopilotRoot: React.FC<CopilotRootProps> = ({
   tenantId,
+  status: statusProp,
   hasTabs = false,
   hasAction = false,
   isDesktop = true
 }) => {
-  const [status, setStatus] = useState<CopilotStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    setStatus(null);
-    // Le service est déjà défensif ; ce `catch` ne fait que garantir qu'une
-    // erreur inattendue laisse le bouton masqué.
-    copilotService
-      .getStatus(tenantId)
-      .catch(() => null)
-      .then(s => {
-        if (!cancelled) setStatus(s);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId]);
+  const ownStatus = useCopilotStatus(tenantId, statusProp === undefined);
+  const status = statusProp === undefined ? ownStatus : statusProp;
 
   const enabled = Boolean(status?.enabled);
 

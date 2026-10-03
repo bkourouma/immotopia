@@ -11,6 +11,16 @@ export const COPILOT_MAX_MESSAGES = 20;
 export const COPILOT_MAX_MESSAGE_CHARS = 4000;
 export const COPILOT_MAX_TOTAL_CHARS = 24000;
 
+// Artefacts (plan V2, étape 2) : limites du panneau d'affichage.
+export const COPILOT_ARTIFACT_MAX_ROWS = 500;
+export const COPILOT_ARTIFACT_MAX_COLUMNS = 20;
+export const COPILOT_ARTIFACT_MAX_MARKDOWN_CHARS = 20000;
+export const COPILOT_ARTIFACT_MAX_CHART_POINTS = 200;
+export const COPILOT_ARTIFACT_MAX_SERIES = 6;
+
+/** Plans d'écriture au plus par requête de chat : une IA qui chaîne des écritures reste lisible pour l'humain. */
+export const COPILOT_MAX_WRITE_PLANS_PER_REQUEST = 3;
+
 // --- Noms et codes ---------------------------------------------------------
 
 export type CopilotToolName =
@@ -18,7 +28,11 @@ export type CopilotToolName =
   | 'search_leases'
   | 'list_lease_documents'
   | 'list_property_documents'
-  | 'propose_rental_document';
+  | 'propose_rental_document'
+  | 'show_artifact'
+  | 'list_capabilities'
+  | 'call_read'
+  | 'plan_write';
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -81,9 +95,33 @@ export const chatRequestSchema = z
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 
-export const executeRequestSchema = z.object({ proposalToken: z.string().min(20).max(4096) }).strict();
+/**
+ * Taille maximale d'un jeton de proposition. Un jeton de plan d'écriture porte le
+ * corps de la requête (8 Ko au plus) en base64url : 4 096 caractères ne suffisent plus.
+ */
+export const COPILOT_MAX_PROPOSAL_TOKEN_CHARS = 16384;
+
+export const executeRequestSchema = z
+  .object({
+    proposalToken: z.string().min(20).max(COPILOT_MAX_PROPOSAL_TOKEN_CHARS),
+    /** Mot saisi par l'utilisateur pour un plan sensible (`CONFIRMER`) ; revérifié par le serveur. */
+    confirmation: z.string().max(20).optional()
+  })
+  .strict();
 
 export type ExecuteRequest = z.infer<typeof executeRequestSchema>;
+
+/** Refus d'un plan par l'humain : `POST /ai/actions/reject` consomme le jeton (il ne pourra plus être exécuté). */
+export const rejectRequestSchema = z
+  .object({ proposalToken: z.string().min(20).max(COPILOT_MAX_PROPOSAL_TOKEN_CHARS) })
+  .strict();
+
+export type RejectRequest = z.infer<typeof rejectRequestSchema>;
+
+/** Réponse du refus : `rejected: false` si le jeton était déjà utilisé ou expiré (idempotent, jamais d'erreur). */
+export interface RejectPayload {
+  rejected: boolean;
+}
 
 // --- Cartes et propositions ------------------------------------------------
 
@@ -155,6 +193,72 @@ export interface ActionExecutedPayload {
   };
 }
 
+// --- Plans d'écriture (plan V2, étape 4) ------------------------------------
+
+export type PlanScalar = string | number | boolean | null;
+
+export interface WritePlanChange {
+  field: string;
+  /** Absent = création (aucune valeur avant). */
+  before: PlanScalar | undefined;
+  after: PlanScalar;
+}
+
+/** Paramètre de requête envoyé à la route, tel qu'affiché (valeur masquée si la clé évoque un secret). */
+export interface WritePlanQueryParam {
+  key: string;
+  value: string;
+}
+
+/** Paramètre de chemin de la route (identifiant brut, `tenantId` exclu). */
+export interface WritePlanPathParam {
+  name: string;
+  value: string;
+}
+
+/**
+ * Plan d'écriture montré à l'humain. `title` et `steps` sont rédigés par le modèle
+ * (texte non fiable, rendu en texte brut) ; `target`, `changes`, `warnings` et les
+ * indicateurs de sensibilité sont CALCULÉS PAR LE SERVEUR, jamais par le modèle.
+ */
+export interface WritePlan {
+  proposalId: string;
+  token: string;
+  expiresAt: string;
+  action: 'EXECUTE_CAPABILITY';
+  capabilityId: string;
+  method: 'POST' | 'PUT' | 'PATCH';
+  module: string;
+  title: string;
+  steps: string[];
+  recordKind: 'create' | 'update' | 'action';
+  target: { label: string; resolved: boolean } | null;
+  /** Identifiants de chemin envoyés (hors tenantId), calculés par le serveur depuis la requête signée. */
+  pathParams?: WritePlanPathParam[];
+  /** Paramètres de requête envoyés (calculés depuis la requête signée ; valeurs secrètes masquées). Non vide : confirmation par mot. */
+  query?: WritePlanQueryParam[];
+  /** Instant (ISO) de la lecture de l'état « avant » ; absent si aucun état n'a été lu. */
+  stateReadAt?: string;
+  changes: WritePlanChange[];
+  changesTruncated?: boolean;
+  warnings: string[];
+  sensitive: boolean;
+  sensitiveReason?: string;
+  requiresTypedConfirmation: boolean;
+  confirmationWord?: 'CONFIRMER';
+}
+
+/** Résultat de POST /actions/execute pour un jeton de plan d'écriture. */
+export interface CapabilityExecutedPayload {
+  kind: 'capability';
+  proposalId: string;
+  ok: boolean;
+  status: number;
+  message: string;
+  /** Réponse de la route, masquée et réduite comme `call_read`. */
+  resultPreview: unknown;
+}
+
 export interface CopilotStatus {
   enabled: boolean;
   reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';
@@ -162,6 +266,31 @@ export interface CopilotStatus {
   tools: CopilotToolName[];
   limits: { maxMessages: number; maxMessageChars: number };
 }
+
+// --- Artefacts -------------------------------------------------------------
+
+/** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
+export type ArtifactCell = string | number | null;
+
+export type CopilotArtifact =
+  | {
+      kind: 'table';
+      id: string;
+      title: string;
+      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      rows: Record<string, ArtifactCell>[];
+      truncated?: boolean;
+    }
+  | { kind: 'markdown'; id: string; title: string; content: string }
+  | {
+      kind: 'chart';
+      id: string;
+      title: string;
+      chartType: 'bar' | 'line' | 'pie';
+      xKey: string;
+      series: { key: string; label: string }[];
+      data: Record<string, ArtifactCell>[];
+    };
 
 // --- Fil SSE ---------------------------------------------------------------
 
@@ -182,6 +311,8 @@ export type CopilotSseEvent =
       items: DocumentCardItem[];
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
+  | { type: 'write_plan'; plan: WritePlan }
+  | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
       code: CopilotErrorCode;
@@ -218,6 +349,32 @@ export interface ProposalClaims {
   tid: string;
   act: 'GENERATE_RENTAL_DOCUMENT';
   args: GenerateRentalDocumentArgs;
+  iat: number;
+  exp: number;
+}
+
+/** Arguments signés d'un plan d'écriture : exactement ce que la confirmation exécutera. */
+export interface ExecuteCapabilityArgs {
+  capabilityId: string;
+  pathParams: Record<string, string>;
+  query: Record<string, string | number | boolean>;
+  body: Record<string, unknown> | null;
+  /**
+   * `true` si le plan a exigé le mot de confirmation pour une raison que seul l'état lu à l'émission connaît
+   * (liste remplacée par une plus courte). Signé et inclus dans `planHash` : le serveur l'applique à l'exécution.
+   */
+  requireConfirmation?: boolean;
+  /** SHA-256 (hex) de la requête approuvée : voir `lib/ai/plan-hash.ts`. */
+  planHash: string;
+}
+
+export interface CapabilityProposalClaims {
+  v: 1;
+  jti: string;
+  sub: string;
+  tid: string;
+  act: 'EXECUTE_CAPABILITY';
+  args: ExecuteCapabilityArgs;
   iat: number;
   exp: number;
 }
@@ -289,6 +446,15 @@ export interface CopilotToolContext {
    * Mutable, propre à la requête.
    */
   seenLeaseIds: Set<string>;
+  /**
+   * En-têtes qui rejouent l'authentification de l'utilisateur du chat pour la
+   * passerelle (`call_read`, appel loopback). Fonction, et non propriété
+   * lisible : le jeton ne figure ni dans un `JSON.stringify(ctx)`, ni dans un
+   * journal, ni dans un résultat d'outil. Absente : la passerelle refuse d'appeler.
+   */
+  loopbackHeaders?: () => Record<string, string>;
+  /** Plans d'écriture émis pendant CETTE requête de chat (plafond : `COPILOT_MAX_WRITE_PLANS_PER_REQUEST`). Mutable. */
+  writePlansIssued?: number;
 }
 
 export interface CopilotToolOutcome {

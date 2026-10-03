@@ -1,6 +1,13 @@
 import apiClient from '../utils/api-client';
 import { postEventStream } from '../utils/event-stream';
-import type { ActionExecutedPayload, ChatRequest, CopilotSseEvent, CopilotStatus } from '../types/copilot';
+import type {
+  ActionExecutedPayload,
+  ChatRequest,
+  CopilotSseEvent,
+  CopilotStatus,
+  ExecuteActionResult,
+  ExecuteRequest
+} from '../types/copilot';
 
 const DISABLED_STATUS: CopilotStatus = {
   enabled: false,
@@ -39,6 +46,8 @@ const KNOWN_EVENTS = new Set([
   'lease_results',
   'document_list',
   'action_proposal',
+  'write_plan',
+  'artifact',
   'error',
   'done'
 ]);
@@ -69,11 +78,39 @@ async function streamChat(
   });
 }
 
-/** Confirme une proposition : le serveur rejoue auth, permission et jeton. */
-async function executeProposal(tenantId: string, proposalToken: string): Promise<ActionExecutedPayload> {
-  const response = await apiClient.post(`/tenants/${tenantId}/ai/actions/execute`, { proposalToken });
-  return unwrap<ActionExecutedPayload>(response.data);
+/**
+ * Exécute un jeton d'accord : le serveur rejoue auth, permission et jeton. Le retour
+ * est un document déjà existant (génération de quittance) OU un résultat de capacité
+ * (`kind: 'capability'`) selon le type du jeton. `confirmation` : mot saisi pour un
+ * plan sensible ; omis du corps quand il est absent.
+ */
+async function executeAction(
+  tenantId: string,
+  proposalToken: string,
+  confirmation?: string
+): Promise<ExecuteActionResult> {
+  const body: ExecuteRequest = confirmation ? { proposalToken, confirmation } : { proposalToken };
+  const response = await apiClient.post(`/tenants/${tenantId}/ai/actions/execute`, body);
+  return unwrap<ExecuteActionResult>(response.data);
 }
 
-export const copilotService = { getStatus, streamChat, executeProposal };
+/** Confirme une proposition de document (génération de quittance ou de relevé). */
+async function executeProposal(tenantId: string, proposalToken: string): Promise<ActionExecutedPayload> {
+  return (await executeAction(tenantId, proposalToken)) as ActionExecutedPayload;
+}
+
+/**
+ * Signale au serveur qu'un plan a été refusé (invalide le jeton). MEILLEUR EFFORT :
+ * ne lève jamais, renvoie `false` en cas d'échec ; l'interface n'en dépend pas.
+ */
+async function rejectAction(tenantId: string, proposalToken: string): Promise<boolean> {
+  try {
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/actions/reject`, { proposalToken });
+    return unwrap<{ rejected?: boolean } | undefined>(response.data)?.rejected === true;
+  } catch {
+    return false;
+  }
+}
+
+export const copilotService = { getStatus, streamChat, executeAction, executeProposal, rejectAction };
 export default copilotService;

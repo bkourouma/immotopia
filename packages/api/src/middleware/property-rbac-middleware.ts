@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
  * @returns Express middleware function
  */
 export function requirePropertyPermission(permissionKey: string) {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const middleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // User must be authenticated
       if (!req.user?.userId) {
@@ -52,6 +52,9 @@ export function requirePropertyPermission(permissionKey: string) {
       });
     }
   };
+
+  // Lisible par le catalogue de la passerelle IA (lib/ai/gateway) : aucune incidence sur la garde.
+  return Object.assign(middleware, { permissionKey });
 }
 
 /**
@@ -60,7 +63,7 @@ export function requirePropertyPermission(permissionKey: string) {
  * @returns Express middleware function
  */
 export function requireAnyPropertyPermission(permissionKeys: string[]) {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const middleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.userId) {
         res.status(401).json({
@@ -96,4 +99,7 @@ export function requireAnyPropertyPermission(permissionKeys: string[]) {
       });
     }
   };
+
+  // Lisible par le catalogue de la passerelle IA (lib/ai/gateway) : aucune incidence sur la garde.
+  return Object.assign(middleware, { anyPermissionKeys: [...permissionKeys] });
 }

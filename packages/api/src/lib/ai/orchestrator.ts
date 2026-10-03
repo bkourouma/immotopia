@@ -25,9 +25,9 @@ import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/r
  * exécute et rend les résultats, jusqu'à une réponse finale.
  *
  * GARANTIE CENTRALE : aucun chemin du chat vers une écriture. Ce module
- * n'importe ni `executeRentalDocument` ni `generateDocument`. Les seuls outils
+ * n'importe ni `executeRentalDocument`, ni `executeCapability`, ni `generateDocument`. Les seuls outils
  * joignables sont ceux du registre autorisé pour l'utilisateur (lecture, ou
- * proposition qui n'écrit rien) ; la génération n'existe que derrière la route
+ * proposition qui n'écrit rien : `propose_rental_document`, `plan_write`) ; la génération n'existe que derrière la route
  * HTTP de confirmation, avec un jeton signé.
  *
  * Tout ce qui vient du modèle est non fiable : un nom d'outil hors registre
@@ -56,6 +56,8 @@ export interface RunChatInput {
   conversationId: string;
   requestId: string;
   signal: AbortSignal;
+  /** Authentification rejouée par la passerelle (`call_read`) ; voir `gateway/loopback-auth.ts`. Jamais journalisée. */
+  loopbackHeaders?: () => Record<string, string>;
   emit: (event: CopilotSseEvent) => void;
   now?: () => Date;
 }
@@ -129,6 +131,8 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     requestId: input.requestId,
     conversationId: input.conversationId,
     signal,
+    loopbackHeaders: input.loopbackHeaders,
+    writePlansIssued: 0,
     // Bail de l'écran vérifié côté serveur : seule source de confiance hors résultats d'outils.
     seenLeaseIds: new Set(input.pageContext?.entityType === 'LEASE' ? [input.pageContext.entityId] : [])
   };

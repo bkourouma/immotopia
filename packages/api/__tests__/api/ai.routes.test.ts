@@ -217,7 +217,14 @@ describe('GET /ai/status', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.enabled).toBe(true);
     expect(res.body.data.provider).toBe('fake');
-    expect([...res.body.data.tools].sort()).toEqual(['list_property_documents', 'search_properties']);
+    expect([...res.body.data.tools].sort()).toEqual([
+      'call_read',
+      'list_capabilities',
+      'list_property_documents',
+      'plan_write',
+      'search_properties',
+      'show_artifact'
+    ]);
     expect(mockGetUserPermissions).toHaveBeenCalledWith(currentUser, TENANT_A);
   });
 
@@ -241,7 +248,14 @@ describe('GET /ai/status', () => {
     });
     const res = await get(`${base()}/status`);
     expect(res.status).toBe(200);
-    expect([...res.body.data.tools].sort()).toEqual(['list_property_documents', 'search_properties']);
+    expect([...res.body.data.tools].sort()).toEqual([
+      'call_read',
+      'list_capabilities',
+      'list_property_documents',
+      'plan_write',
+      'search_properties',
+      'show_artifact'
+    ]);
     expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A);
   });
 

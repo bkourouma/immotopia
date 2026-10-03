@@ -388,21 +388,22 @@ l'exécution aussi. Appliquer la migration `20261004090000_platform_ai_settings`
 Variables du backend (validées par `packages/api/src/config/env.ts`,
 documentées dans `packages/api/env.example`) :
 
-| Variable                  | Défaut                         | Rôle                                                                                                                                                                                  |
-| ------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AI_PROVIDER`             | `disabled`                     | `disabled`, `fake` (déterministe, dev et test seulement, voir ci-dessous), `anthropic` ou `openrouter`. Simple valeur par défaut : le réglage du super-admin en base est prioritaire. |
-| `ANTHROPIC_API_KEY`       | aucune                         | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`.                                                                                     |
-| `OPENROUTER_API_KEY`      | aucune                         | Exigée si `AI_PROVIDER=openrouter`. Mêmes règles que la clé Anthropic (jamais par défaut ni `VITE_*`).                                                                                |
-| `OPENROUTER_BASE_URL`     | `https://openrouter.ai/api/v1` | Point d'entrée OpenAI-compatible d'OpenRouter.                                                                                                                                        |
-| `AI_MODEL`                | `claude-opus-5-5`              | Modèle par défaut : `claude-opus-5-5` pour `anthropic` ; identifiant OpenRouter `fournisseur/modele` (ex. `anthropic/claude-sonnet-4.5`) exigé pour `openrouter`.                     |
-| `AI_EFFORT`               | `low`                          | Effort de raisonnement (`anthropic` seulement) : `low`, `medium` ou `high`.                                                                                                           |
-| `AI_MAX_OUTPUT_TOKENS`    | `16000`                        | Plafond de tokens de sortie par tour (1024 à 64000).                                                                                                                                  |
-| `AI_MAX_TOOL_ROUNDS`      | `4`                            | Tours d'outils maximum par requête de chat (1 à 8).                                                                                                                                   |
-| `AI_REQUEST_TIMEOUT_MS`   | `60000`                        | Délai maximal d'un appel au fournisseur.                                                                                                                                              |
-| `AI_PROPOSAL_TTL_SECONDS` | `300`                          | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.                                                                                                   |
-| `AI_REFUSAL_FALLBACK`     | `on`                           | Repli serveur en cas de refus (`anthropic` seulement) ; `off` le coupe.                                                                                                               |
-| `AI_TENANT_MINUTE_LIMIT`  | `100`                          | Plafond de `POST /ai/chat` par minute et PAR AGENCE, tous collaborateurs confondus (1 à 100000).                                                                                      |
-| `AI_TENANT_DAILY_LIMIT`   | `3000`                         | Plafond de `POST /ai/chat` par jour et PAR AGENCE (1 à 1000000).                                                                                                                      |
+| Variable                    | Défaut                         | Rôle                                                                                                                                                                                  |
+| --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_PROVIDER`               | `disabled`                     | `disabled`, `fake` (déterministe, dev et test seulement, voir ci-dessous), `anthropic` ou `openrouter`. Simple valeur par défaut : le réglage du super-admin en base est prioritaire. |
+| `ANTHROPIC_API_KEY`         | aucune                         | Exigée si `AI_PROVIDER=anthropic`. Jamais de valeur par défaut, jamais commitée, jamais `VITE_*`.                                                                                     |
+| `OPENROUTER_API_KEY`        | aucune                         | Exigée si `AI_PROVIDER=openrouter`. Mêmes règles que la clé Anthropic (jamais par défaut ni `VITE_*`).                                                                                |
+| `OPENROUTER_BASE_URL`       | `https://openrouter.ai/api/v1` | Point d'entrée OpenAI-compatible d'OpenRouter.                                                                                                                                        |
+| `AI_MODEL`                  | `claude-opus-5-5`              | Modèle par défaut : `claude-opus-5-5` pour `anthropic` ; identifiant OpenRouter `fournisseur/modele` (ex. `anthropic/claude-sonnet-4.5`) exigé pour `openrouter`.                     |
+| `AI_EFFORT`                 | `low`                          | Effort de raisonnement (`anthropic` seulement) : `low`, `medium` ou `high`.                                                                                                           |
+| `AI_MAX_OUTPUT_TOKENS`      | `16000`                        | Plafond de tokens de sortie par tour (1024 à 64000).                                                                                                                                  |
+| `AI_MAX_TOOL_ROUNDS`        | `4`                            | Tours d'outils maximum par requête de chat (1 à 8).                                                                                                                                   |
+| `AI_REQUEST_TIMEOUT_MS`     | `60000`                        | Délai maximal d'un appel au fournisseur.                                                                                                                                              |
+| `AI_PROPOSAL_TTL_SECONDS`   | `300`                          | Validité d'une proposition à confirmer (60 à 900). Le jeton dérive de `JWT_SECRET`.                                                                                                   |
+| `AI_WRITE_PLAN_TTL_SECONDS` | `900`                          | Validité d'un plan d'écriture à approuver (300 à 3600), le temps de lire les changements et de saisir `CONFIRMER`. Même clé de signature.                                             |
+| `AI_REFUSAL_FALLBACK`       | `on`                           | Repli serveur en cas de refus (`anthropic` seulement) ; `off` le coupe.                                                                                                               |
+| `AI_TENANT_MINUTE_LIMIT`    | `100`                          | Plafond de `POST /ai/chat` par minute et PAR AGENCE, tous collaborateurs confondus (1 à 100000).                                                                                      |
+| `AI_TENANT_DAILY_LIMIT`     | `3000`                         | Plafond de `POST /ai/chat` par jour et PAR AGENCE (1 à 1000000).                                                                                                                      |
 
 Le serveur ne démarre pas dans trois cas : `anthropic` sans `ANTHROPIC_API_KEY`,
 `openrouter` sans `OPENROUTER_API_KEY` ou avec un `AI_MODEL` sans `/`, et `fake` dès que la variable **brute** `NODE_ENV` n'est pas explicitement
@@ -417,7 +418,9 @@ de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), avec
 `NODE_ENV=development` explicite, jamais
 dans un `.env` commité, puis relancer l'API. Le faux fournisseur répond par
 règles sur mots-clés (biens et commune, « quittance » avec un numéro de bail
-`L-…` et une période, « documents »), sans réseau ni clé. La quittance exige un
+`L-…` et une période, « documents », « tableau » ou « graphique » des biens ou
+des baux, « synthèse »), sans réseau ni clé. Les trois derniers appellent
+`show_artifact` et émettent l'événement SSE `artifact` (panneau latéral du web). La quittance exige un
 paiement encaissé pour la période et un modèle `RENT_RECEIPT` actif ; le relevé
 un modèle `RENT_STATEMENT` (le seed ne sème que la quittance). `TENANT_AGENT` n'a
 aucune permission `RENTAL_*` par défaut : il ne voit ni proposition ni
@@ -459,6 +462,19 @@ un commentaire `: ping` toutes les 15 s). Symptôme d'un tampon : le texte
 n'arrive qu'à la fin, d'un bloc. Symptôme d'un délai trop court : le flux se
 coupe en milieu de réponse.
 
+**Catalogue de la passerelle (`npm run ai:catalog`).** Les outils `list_capabilities`
+et `call_read` s'appuient sur `packages/api/src/lib/ai/gateway/catalog.generated.json`,
+produit à partir de la pile Express réelle. **À relancer chaque fois qu'une route
+d'agence est ajoutée, déplacée, retirée, ou qu'une de ses gardes de permission
+change**, depuis `packages/api` : `npm run ai:catalog`, puis commiter le fichier avec la
+route. Sinon `__tests__/unit/ai.catalog.test.ts` (projet jest `api-app`) échoue avec
+« Catalogue périmé : lancer npm run ai:catalog ». Le script ne démarre ni serveur ni
+base. Une route `DELETE` ou finissant par `/delete`, `/remove`, `/destroy`, `/purge` n'y
+entre jamais (le test le vérifie) ; un chemin évoquant un secret y est marqué
+`sensitive` et reste invisible de l'assistant. L'appel `call_read` se fait par loopback
+sur `127.0.0.1:<PORT>` (`config/env.ts`) : si l'API écoute derrière un autre port que
+`PORT`, la passerelle répond des erreurs de connexion.
+
 **Dépannage rapide.**
 
 - Bouton absent : `GET /api/tenants/:tenantId/ai/status` doit répondre
@@ -470,10 +486,26 @@ coupe en milieu de réponse.
   et `AI_TENANT_DAILY_LIMIT` pour toute l'agence (message « … par votre agence »).
 - Serveur qui refuse de démarrer sur `AI_PROVIDER` : `fake` sans `NODE_ENV`
   explicite `development` ou `test`.
-- Confirmation refusée (403, « Vous n'avez plus la permission… ») : il faut
+- Confirmation d'une quittance refusée (403, « Vous n'avez plus la permission… ») : il faut
   `RENTAL_DOCUMENTS_GENERATE` **et** `RENTAL_DOCUMENTS_VIEW`.
-- `PROPOSAL_EXPIRED` (410) : la proposition a plus de `AI_PROPOSAL_TTL_SECONDS` ;
-  la redemander. `PROPOSAL_ALREADY_USED` (409) : déjà confirmée.
+- `PROPOSAL_EXPIRED` (410) : la proposition a plus de `AI_PROPOSAL_TTL_SECONDS`
+  (`AI_WRITE_PLAN_TTL_SECONDS` pour un plan d'écriture) ; la redemander.
+  `PROPOSAL_ALREADY_USED` (409) : déjà confirmée.
+- Écritures générées par l'assistant (plan d'écriture, étape 4) : `plan_write` ne fait
+  que PLANIFIER ; l'écriture part à la confirmation, par un appel de l'API à
+  elle-même (`127.0.0.1`, `PORT`) avec le jeton d'accès de l'utilisateur qui
+  confirme. Si la confirmation répond 200 avec `ok: false`, c'est la route
+  appelée qui a refusé (permission, validation, abonnement) : son message est
+  affiché, le plan est consommé (en redemander un). `CONFIRMATION_REQUIRED`
+  (400) : plan sensible, avec paramètres de requête, liste remplacée ou volumineux, saisir `CONFIRMER` ; le plan
+  n'est pas consommé. Refuser un plan appelle `POST /ai/actions/reject` (le jeton est consommé ; réponse 200
+  `{ rejected: false }` s'il l'était déjà ou avait expiré ; audit `AI_PROPOSAL_REJECTED`). Statut 504
+  « Délai dépassé » : l'écriture a pu aboutir (30 s), vérifier avant de réessayer.
+  Un proxy qui coupe `127.0.0.1` ou un `PORT` erroné donne 502 « n'a pas pu être
+  envoyée ». Chercher une exécution par son `capabilityId` et son `planHash` dans le
+  journal d'audit (`AI_ACTION_EXECUTED`, entité `AI_CAPABILITY`) ; la route appelée
+  journalise aussi son propre événement sous l'identité de l'utilisateur, avec le
+  même `X-Request-Id`.
 
 ## Journal d'audit (scellés, rétention, purge)
 

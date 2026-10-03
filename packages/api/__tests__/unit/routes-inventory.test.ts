@@ -311,11 +311,12 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
   });
 
-  it('declare les 3 routes de l’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
+  it('declare les 4 routes de l’assistant ImmoCopilot avec les gardes d’agence et de collaborateur', () => {
     const expected: Array<[string, string]> = [
       ['GET', '/api/tenants/:tenantId/ai/status'],
       ['POST', '/api/tenants/:tenantId/ai/chat'],
-      ['POST', '/api/tenants/:tenantId/ai/actions/execute']
+      ['POST', '/api/tenants/:tenantId/ai/actions/execute'],
+      ['POST', '/api/tenants/:tenantId/ai/actions/reject']
     ];
     for (const [method, path] of expected) {
       const route = routes.find(r => r.method === method && r.path === path);
@@ -327,10 +328,11 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
     const execute = routes.find(r => r.method === 'POST' && r.path === '/api/tenants/:tenantId/ai/actions/execute');
     const executeKeys = execute!.middlewares.map(mw => (mw as any)?.permissionKey);
-    // GENERATE pour produire, VIEW pour télécharger la carte de résultat : les deux sont exigées.
-    expect(executeKeys).toContain('RENTAL_DOCUMENTS_GENERATE');
-    expect(executeKeys).toContain('RENTAL_DOCUMENTS_VIEW');
-    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(3);
+    // Étape 4 : la route sert deux actions (quittance, plan d'écriture générique) et n'a plus de permission
+    // fixe. Le contrôleur exige GENERATE et VIEW pour une quittance (testé dans ai.routes.capability.test.ts) ;
+    // un plan d'écriture est gardé par la route réellement appelée par loopback, sous l'identité du confirmeur.
+    expect(executeKeys.filter(key => typeof key === 'string')).toEqual([]);
+    expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(4);
   });
 
   it('declare les 3 routes du reglage IA de la plateforme avec permission PLATFORM et super-admin', () => {

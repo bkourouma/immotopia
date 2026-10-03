@@ -36,7 +36,11 @@ declare module 'express-serve-static-core' {
  * @returns Express middleware function
  */
 export function requirePermission(permissionKey: string) {
-  const middleware = async function requirePermissionCheck(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const middleware = async function requirePermissionCheck(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       // User must be authenticated
       if (!req.user?.userId) {
@@ -86,7 +90,7 @@ export function requirePermission(permissionKey: string) {
  * @returns Express middleware function
  */
 export function requireAnyPermission(permissionKeys: string[]) {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const middleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.userId) {
         res.status(401).json({
@@ -119,6 +123,9 @@ export function requireAnyPermission(permissionKeys: string[]) {
       });
     }
   };
+
+  // Lisible par le catalogue de la passerelle IA (lib/ai/gateway) : aucune incidence sur la garde.
+  return Object.assign(middleware, { anyPermissionKeys: [...permissionKeys] });
 }
 
 /**
@@ -127,7 +134,7 @@ export function requireAnyPermission(permissionKeys: string[]) {
  * @returns Express middleware function
  */
 export function requireAllPermissions(permissionKeys: string[]) {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const middleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.user?.userId) {
         res.status(401).json({
@@ -160,6 +167,9 @@ export function requireAllPermissions(permissionKeys: string[]) {
       });
     }
   };
+
+  // Lisible par le catalogue de la passerelle IA (lib/ai/gateway) : aucune incidence sur la garde.
+  return Object.assign(middleware, { allPermissionKeys: [...permissionKeys] });
 }
 
 /**

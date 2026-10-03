@@ -27,3 +27,15 @@ export function withOwnerPatrimoineMenu(disabled: Set<string>, enabled: boolean 
   next.add(OWNER_PATRIMOINE_MENU_KEY);
   return next;
 }
+
+/**
+ * Ajoute la clé du menu « Assistant » (collaborateur) aux menus coupés tant
+ * qu'ImmoCopilot n'est pas confirmé activé : l'entrée n'apparaît qu'une fois
+ * l'état connu et positif, et jamais pour une agence qui n'a pas l'assistant.
+ */
+export function withAssistantMenu(disabled: Set<string>, enabled: boolean): Set<string> {
+  if (enabled) return disabled;
+  const next = new Set(disabled);
+  next.add(menuKeyFor('collaborateur', 'assistant'));
+  return next;
+}

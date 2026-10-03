@@ -22,6 +22,8 @@ function buildRouteLabels(): Record<string, string> {
     settings: t('Paramètres'),
     profile: t('Profil'),
 
+    assistant: t('Assistant'),
+
     // Propriétés
     properties: t('Propriétés'),
     new: t('Nouveau'),

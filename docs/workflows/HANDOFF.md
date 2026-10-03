@@ -113,6 +113,16 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/immocopilot-o9nygz` — 2026-10-03
+
+**État :** étapes 1 à 4 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` dans la PR #107 (fusion à l'utilisateur) ; audit de sécurité fait (0 bloquant, 5 importants corrigés).
+
+**Fait :** page `/tenant/:tenantId/assistant` + dictée ; panneau artefact (`show_artifact`, tableau/Markdown/graphique, export CSV/XLSX/MD/PNG) ; passerelle générique en lecture (catalogue `catalog.generated.json` sans DELETE, `list_capabilities`, `call_read` par loopback sous l'identité de l'utilisateur, masquage et plafonds) ; écritures (`plan_write` : avant/après calculés par le serveur, jeton `EXECUTE_CAPABILITY` 900 s à usage unique, exécution par `/ai/actions/execute`, refus par `/ai/actions/reject`, mot « CONFIRMER » pour les actions sensibles, requête/paramètres de chemin/listes remplacées affichés). Vérifié : tests API ciblés (664 + 17) et web (369), tsc des deux côtés, check:architecture, build et budget d'entrée web.
+
+**Reste à faire :** recette navigateur réelle (dictée, PNG, RTL, carte d'accord) avec un vrai fournisseur ; `npm run test:isolation` (base dédiée) ; décisions : liste des anciennes conversations (stockage serveur), schémas Zod dans le catalogue, lever la dépendance à `PROPERTIES_VIEW`, refuser les créations imbriquées sans GET parent (3 sur 26 aujourd'hui : acceptées avec avertissement).
+
+**Pièges :** `npm run ai:catalog` à relancer à chaque route ajoutée (le test échoue sinon) ; `npx prisma generate` si le client est périmé ; `i18n:extract` réécrit tout (web comme API) : restaurer les catalogues sans rapport et ne garder que ses clés ; `/ai/actions/reject` est dans `READ_LIKE_POSTS` ; limiteurs en mémoire par instance ; POST de lecture (search/export) passent par un plan lourd ; routes multipart non gérées ; un échec après réclamation du jeton consomme le plan ; test web `copilot-root` parfois en timeout sous charge.
+
 ## Branche `integration/multi-actifs` — 2026-10-02
 
 **État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).

@@ -549,6 +549,7 @@ const DealFormPage = lazy(() =>
 const Activities = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Activities').then(m => ({ default: m.Activities }))
 );
+const AssistantPage = lazy(() => import('./pages/assistant/AssistantPage'));
 const CrmDashboard = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Dashboard').then(m => ({ default: m.CrmDashboard }))
 );
@@ -1045,6 +1046,7 @@ function App() {
                           <Route path="/tenant/:tenantId/crm/deals/:dealId" element={<DealDetailPage />} />
                           <Route path="/tenant/:tenantId/crm/deals/:dealId/edit" element={<DealFormPage />} />
                           <Route path="/tenant/:tenantId/crm/activities" element={<Activities />} />
+                          <Route path="/tenant/:tenantId/assistant" element={<AssistantPage />} />
                           <Route path="/tenant/:tenantId/crm/dashboard" element={<CrmDashboard />} />
                           <Route path="/tenant/:tenantId/crm/calendar" element={<CalendarPage />} />
                           <Route path="/tenant/:tenantId/rental/leases" element={<Leases />} />
