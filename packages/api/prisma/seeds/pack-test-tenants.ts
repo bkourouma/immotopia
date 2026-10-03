@@ -16,12 +16,18 @@ import { PACK } from '../../src/lib/subscription/catalog';
 
 export type PackTestPackCode = (typeof PACK)[keyof typeof PACK];
 
+export type PackTestProfile = '6m' | '3y';
+
 export interface PackTestTenant {
   pack: PackTestPackCode;
   tenantName: string;
+  /** Ancien nom de l'agence (avant les profils d'historique) : renommée si elle existe encore. */
+  legacyTenantName?: string;
   adminName: string;
   adminEmail: string;
   tenantType: 'AGENCY' | 'OPERATOR';
+  /** Historique à reconstituer : 6 mois ou 3 ans de gestion. */
+  profile: PackTestProfile;
 }
 
 /**
@@ -33,50 +39,87 @@ export const PACK_TEST_PASSWORD = 'PackTest@2026';
 
 export const PACK_TEST_EMAIL_DOMAIN = 'packs.immotopia.test';
 
-export const PACK_TEST_TENANTS: readonly PackTestTenant[] = [
+/** Libellés des deux profils d'historique, repris dans le nom des agences. */
+export const PACK_TEST_PROFILE_LABEL: Record<PackTestProfile, string> = { '6m': '6 mois', '3y': '3 ans' };
+
+interface PackTestBase {
+  pack: PackTestPackCode;
+  /** Nom d'origine « Test — Pack X » (devient legacyTenantName du profil 6 mois). */
+  baseName: string;
+  adminName: string;
+  /** Partie locale de l'e-mail du profil 6 mois (inchangée depuis la première version). */
+  emailLocalPart: string;
+  tenantType: 'AGENCY' | 'OPERATOR';
+}
+
+const PACK_TEST_BASES: readonly PackTestBase[] = [
   {
     pack: PACK.AGENCE,
-    tenantName: 'Test — Pack Agence',
+    baseName: 'Test — Pack Agence',
     adminName: 'Admin Test Agence',
-    adminEmail: 'agence@packs.immotopia.test',
+    emailLocalPart: 'agence',
     tenantType: 'AGENCY'
   },
   {
     pack: PACK.SYNDIC,
-    tenantName: 'Test — Pack Syndic',
+    baseName: 'Test — Pack Syndic',
     adminName: 'Admin Test Syndic',
-    adminEmail: 'syndic@packs.immotopia.test',
+    emailLocalPart: 'syndic',
     tenantType: 'AGENCY'
   },
   {
     pack: PACK.PROMOTEUR,
-    tenantName: 'Test — Pack Promoteur',
+    baseName: 'Test — Pack Promoteur',
     adminName: 'Admin Test Promoteur',
-    adminEmail: 'promoteur@packs.immotopia.test',
+    emailLocalPart: 'promoteur',
     tenantType: 'AGENCY'
   },
   {
     pack: PACK.INTEGRE,
-    tenantName: 'Test — Pack Opérateur intégré',
+    baseName: 'Test — Pack Opérateur intégré',
     adminName: 'Admin Test Intégré',
-    adminEmail: 'integre@packs.immotopia.test',
+    emailLocalPart: 'integre',
     tenantType: 'OPERATOR'
   },
   {
     pack: PACK.PATRIMOINE_ESSENTIEL,
-    tenantName: 'Test — Pack Patrimoine Essentiel',
+    baseName: 'Test — Pack Patrimoine Essentiel',
     adminName: 'Admin Test Patrimoine Essentiel',
-    adminEmail: 'patrimoine-essentiel@packs.immotopia.test',
+    emailLocalPart: 'patrimoine-essentiel',
     tenantType: 'AGENCY'
   },
   {
     pack: PACK.PATRIMOINE_PRO,
-    tenantName: 'Test — Pack Patrimoine Pro',
+    baseName: 'Test — Pack Patrimoine Pro',
     adminName: 'Admin Test Patrimoine Pro',
-    adminEmail: 'patrimoine-pro@packs.immotopia.test',
+    emailLocalPart: 'patrimoine-pro',
     tenantType: 'AGENCY'
   }
 ];
+
+/**
+ * Deux agences par pack : « 6 mois » (reprend l'agence et l'e-mail d'origine) et
+ * « 3 ans » (e-mail suffixé `-3ans`).
+ */
+export const PACK_TEST_TENANTS: readonly PackTestTenant[] = PACK_TEST_BASES.flatMap(base => [
+  {
+    pack: base.pack,
+    tenantName: `${base.baseName} · ${PACK_TEST_PROFILE_LABEL['6m']}`,
+    legacyTenantName: base.baseName,
+    adminName: `${base.adminName} (6 mois)`,
+    adminEmail: `${base.emailLocalPart}@${PACK_TEST_EMAIL_DOMAIN}`,
+    tenantType: base.tenantType,
+    profile: '6m' as const
+  },
+  {
+    pack: base.pack,
+    tenantName: `${base.baseName} · ${PACK_TEST_PROFILE_LABEL['3y']}`,
+    adminName: `${base.adminName} (3 ans)`,
+    adminEmail: `${base.emailLocalPart}-3ans@${PACK_TEST_EMAIL_DOMAIN}`,
+    tenantType: base.tenantType,
+    profile: '3y' as const
+  }
+]);
 
 /** Seule origine publique autorisée en production : le staging. */
 export const STAGING_ORIGIN = 'https://app.immotopia.cloud';

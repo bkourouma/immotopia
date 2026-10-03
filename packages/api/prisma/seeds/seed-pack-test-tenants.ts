@@ -16,7 +16,10 @@
  *
  * Codes de sortie : 0 succès, 1 refus de la garde ou erreur.
  */
+import './pack-history/disable-outbound';
 import { GlobalRole, InvitationStatus, MembershipStatus } from '@prisma/client';
+import { neutralizeOutbound, buildContext } from './pack-history/types';
+import { historySeedersForPack } from './pack-history';
 import { env } from '../../src/config/env';
 import { prisma, disconnectDatabase } from '../../src/utils/database';
 import { hashPassword } from '../../src/utils/password-utils';
@@ -48,7 +51,7 @@ async function findSuperAdminActor(): Promise<string> {
 }
 
 /** Rend le compte administrateur directement utilisable (équivaut à une invitation acceptée). */
-async function makeAdminUsable(tenantId: string, entry: PackTestTenant, passwordHash: string): Promise<void> {
+async function makeAdminUsable(tenantId: string, entry: PackTestTenant, passwordHash: string): Promise<string> {
   const now = new Date();
   const user = await prisma.user.findFirst({
     where: { email: { equals: entry.adminEmail, mode: 'insensitive' } },
@@ -94,14 +97,23 @@ async function makeAdminUsable(tenantId: string, entry: PackTestTenant, password
       nextBillingAt: far
     }
   });
+  return user.id;
 }
 
 async function seedOne(
   entry: PackTestTenant,
   actorUserId: string,
   passwordHash: string
-): Promise<'créée' | 'resynchronisée'> {
-  const existing = await prisma.tenant.findFirst({ where: { name: entry.tenantName }, select: { id: true } });
+): Promise<{ outcome: 'créée' | 'resynchronisée'; tenantId: string; adminUserId: string }> {
+  let existing = await prisma.tenant.findFirst({ where: { name: entry.tenantName }, select: { id: true } });
+  if (!existing && entry.legacyTenantName) {
+    // Agence créée avant les profils d'historique : on la renomme, on ne la recrée pas.
+    const legacy = await prisma.tenant.findFirst({ where: { name: entry.legacyTenantName }, select: { id: true } });
+    if (legacy) {
+      await prisma.tenant.update({ where: { id: legacy.id }, data: { name: entry.tenantName } });
+      existing = legacy;
+    }
+  }
 
   let tenantId: string;
   let outcome: 'créée' | 'resynchronisée';
@@ -123,8 +135,26 @@ async function seedOne(
     outcome = 'créée';
   }
 
-  await makeAdminUsable(tenantId, entry, passwordHash);
-  return outcome;
+  const adminUserId = await makeAdminUsable(tenantId, entry, passwordHash);
+  return { outcome, tenantId, adminUserId };
+}
+
+/** Reconstitue 6 mois ou 3 ans d'historique par module du pack (idempotent, voir pack-history/). */
+async function seedHistory(entry: PackTestTenant, tenantId: string, adminUserId: string): Promise<void> {
+  const ctx = buildContext(
+    {
+      prisma,
+      tenantId,
+      adminUserId,
+      profile: entry.profile,
+      log: message => console.log(`  [${entry.tenantName}] ${message}`)
+    },
+    entry.tenantName
+  );
+  for (const seeder of historySeedersForPack(entry.pack)) {
+    // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : les modules partagent contacts et biens.
+    await seeder(ctx);
+  }
 }
 
 async function main(): Promise<number> {
@@ -140,13 +170,21 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  // PACK_TEST_HISTORY=0 : crée les agences sans leur historique (diagnostic).
+  const withHistory = process.env.PACK_TEST_HISTORY !== '0';
+  if (withHistory) neutralizeOutbound();
+
   const actorUserId = await findSuperAdminActor();
   const passwordHash = await hashPassword(PACK_TEST_PASSWORD);
 
   for (const entry of PACK_TEST_TENANTS) {
     // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible, une agence à la fois.
-    const outcome = await seedOne(entry, actorUserId, passwordHash);
+    const { outcome, tenantId, adminUserId } = await seedOne(entry, actorUserId, passwordHash);
     console.log(`Agence ${outcome} : ${entry.tenantName} (pack ${entry.pack}, administrateur ${entry.adminEmail}).`);
+    if (withHistory) {
+      // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
+      await seedHistory(entry, tenantId, adminUserId);
+    }
   }
   console.log(`${PACK_TEST_TENANTS.length} agences de test prêtes (idempotent : relançable sans doublon).`);
   return 0;

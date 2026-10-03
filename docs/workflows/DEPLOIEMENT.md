@@ -215,7 +215,7 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 | `set-email-smtp.sh <staging\|prod> [fich.]`   | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets. |
 | `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
 | `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
-| `seed-pack-tests.sh staging [--dry-run]`      | Crée ou resynchronise 6 agences de test (une par pack) à mot de passe public. Refuse `prod`. Voir « Comptes de test par pack ».                                                             |
+| `seed-pack-tests.sh staging [--dry-run]`      | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public. Refuse `prod`. Voir « Comptes de test par pack ».                          |
 | `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
@@ -884,19 +884,35 @@ environnement, commit, utilisateur.
 
 ### Comptes de test par pack (staging)
 
-`seed-pack-tests.sh` crée, sur le **staging uniquement**, une agence de test par
-pack d'abonnement (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL,
-PATRIMOINE_PRO), nommées « Test — Pack … », chacune avec un administrateur
-`<pack>@packs.immotopia.test` (par exemple `agence@packs.immotopia.test`) qui
-partage le mot de passe défini dans `prisma/seeds/pack-test-tenants.ts`. Les agences
-passent par le vrai service de provisionnement (modules, abonnement, socle
-comptable) ; le compte est ensuite rendu utilisable sans invitation et l'essai
-est repoussé à +5 ans, pour qu'aucune ne tombe en lecture seule. Le menu
-déroulant de l'écran de connexion du staging les propose.
+`seed-pack-tests.sh` crée, sur le **staging uniquement**, **deux agences de test par
+pack** d'abonnement (AGENCE, SYNDIC, PROMOTEUR, INTEGRE, PATRIMOINE_ESSENTIEL,
+PATRIMOINE_PRO), soit 12 agences : « Test — Pack … · 6 mois » (un jeune parc, six
+mois de gestion) et « Test — Pack … · 3 ans » (36 mois : parc plus large, baux
+renouvelés ou résiliés, budgets qui évoluent, impayés anciens régularisés). Chacune
+a un administrateur `<pack>@packs.immotopia.test` (6 mois, par exemple
+`agence@packs.immotopia.test`) ou `<pack>-3ans@packs.immotopia.test` (3 ans), au mot de
+passe défini dans `prisma/seeds/pack-test-tenants.ts`. Les agences passent par le vrai
+service de provisionnement (modules, abonnement, socle comptable) ; le compte est
+ensuite rendu utilisable sans invitation et l'essai est repoussé à +5 ans. Une agence
+créée avant les profils (« Test — Pack X ») est renommée en « · 6 mois », pas recréée.
+
+Puis l'historique est reconstitué module par module (`prisma/seeds/pack-history/`),
+dates relatives à la date du seed, hasard déterministe : agence (contacts, biens, baux,
+encaissements, pénalités, relevés, affaires, visites, maintenance, via les services de
+l'application), syndic (copropriétés, appels, paiements, relances, AG, fonds,
+comptabilité), promoteur (chantiers, lots, budgets, fournisseurs, factures, bail de
+terrain), patrimoine (biens détenus, loyers, charges, travaux, assurances, prêts,
+valorisations ; entités, actifs, scénarios, sinistres en Pro). INTEGRE reçoit agence +
+syndic + promoteur. Le module Promoteur n'a ni ventes ni acquéreurs : le code ne les
+connaît pas. Aucun envoi sortant n'est possible pendant le seed (SMTP/SMS coupés avant
+tout import). Un seed d'historique interrompu laisse une agence partielle que la relance
+ne complète pas (garde d'idempotence « le module a déjà des données ») : la suspendre ou
+la purger, puis relancer. `PACK_TEST_HISTORY=0` crée les agences sans historique.
+Durée constatée en local : une douzaine de minutes.
 
 ```bash
 ./infra/scripts/deploy.sh staging           # amène d'abord le web à jour
-./infra/scripts/seed-pack-tests.sh staging  # crée ou resynchronise les 6 agences
+./infra/scripts/seed-pack-tests.sh staging  # crée ou resynchronise les 12 agences et leur historique
 ./infra/scripts/seed-pack-tests.sh staging --dry-run   # n'affiche que le plan
 ```
 

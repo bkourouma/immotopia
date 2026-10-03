@@ -18,6 +18,18 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/donnees-test-packs` — 2026-10-03
+
+**État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Éprouvé de bout en bout sur une base PostgreSQL jetable (conteneur `immotopia-donnees-test`, port 5447) : 12 agences créées, code de sortie 0, aucun échec d'audit, relance sans doublon (~12 min).
+
+**Fait :** deux agences par pack (« · 6 mois » reprend l'agence et l'e-mail d'origine, renommée ; « · 3 ans », e-mail `<pack>-3ans@packs.immotopia.test`), historique par module dans `packages/api/prisma/seeds/pack-history/` (agence, syndic, promoteur, patrimoine ; INTEGRE = agence+syndic+promoteur), `disable-outbound.ts` importé en premier (SMTP/SMS coupés), menu de connexion à 12 groupes, doc DEPLOIEMENT. Correctif produit : `rental-deposit-service` mettait un Decimal Prisma dans la charge d'audit (`Number(...)`), ce qui faisait échouer tout le lot d'audit.
+
+**Reste :** après fusion, sur le serveur : `git pull`, `./infra/scripts/deploy.sh staging` (menu), `./infra/scripts/seed-pack-tests.sh staging`. Non éprouvé : le seed dans l'image `migrate` du staging, l'affichage des écrans sur ces données (aucune recette navigateur).
+
+**Pièges :** le module Promoteur n'a ni ventes ni acquéreurs (le code ne les connaît pas). Un seed d'historique interrompu laisse une agence partielle que la relance ne complète pas (garde « déjà des données ») : la purger. Les documents patrimoine/syndic n'ont pas de fichier réel (téléchargement 404). `prisma generate` dans le worktree modifie le client partagé via la jonction `node_modules`. L'EmailService retombe sur smtp.hostinger.com sans variable : d'où `disable-outbound`. Wiki non mis à jour : outillage de staging.
+
+---
+
 ## Branche `feat/comptes-test-packs` — 2026-10-01
 
 **État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** : pas d'accès SSH non interactif depuis le poste (connexion fermée), et la fusion de la PR est préalable.

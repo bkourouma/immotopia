@@ -14,12 +14,20 @@ import {
 } from '../../prisma/seeds/pack-test-tenants';
 
 describe('données des agences de test par pack', () => {
-  it('couvre exactement les 6 packs d’agence du catalogue, une fois chacun', () => {
+  it('couvre exactement les 6 packs d’agence du catalogue, deux fois chacun (6 mois et 3 ans)', () => {
     // Les packs Particulier sont des espaces personnels (inscription libre), pas des agences à provisionner.
     const catalogPacks = Object.values(PACK)
       .filter(code => !PARTICULIER_PACKS.includes(code))
       .sort();
-    expect(PACK_TEST_TENANTS.map(t => t.pack).sort()).toEqual(catalogPacks);
+    expect([...new Set(PACK_TEST_TENANTS.map(t => t.pack))].sort()).toEqual(catalogPacks);
+    expect(PACK_TEST_TENANTS).toHaveLength(12);
+    for (const pack of catalogPacks) {
+      expect(
+        PACK_TEST_TENANTS.filter(t => t.pack === pack)
+          .map(t => t.profile)
+          .sort()
+      ).toEqual(['3y', '6m']);
+    }
     expect(catalogPacks).toHaveLength(6);
   });
 
