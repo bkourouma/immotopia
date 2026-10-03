@@ -221,6 +221,7 @@ describe('GET /ai/status', () => {
       'call_read',
       'list_capabilities',
       'list_property_documents',
+      'plan_write',
       'search_properties',
       'show_artifact'
     ]);
@@ -251,6 +252,7 @@ describe('GET /ai/status', () => {
       'call_read',
       'list_capabilities',
       'list_property_documents',
+      'plan_write',
       'search_properties',
       'show_artifact'
     ]);

@@ -424,7 +424,7 @@ de poser la clé ; ce n'est pas un réglage technique.
 **Jamais d'écriture depuis le chat.** L'orchestrateur (`lib/ai/orchestrator.ts`)
 n'importe ni le générateur de documents ni l'exécuteur : les outils du registre
 sont en lecture, ou préparent une proposition qui n'écrit rien
-(`propose_rental_document`). Cet outil ne signe une proposition que pour un
+(`propose_rental_document`, `plan_write`). Cet outil ne signe une proposition que pour un
 `leaseId` **vu** dans la même requête : identifiant renvoyé par un résultat
 d'outil (`search_leases`, `list_lease_documents`) ou issu du contexte d'écran
 vérifié. Sinon il répond `NOT_POSSIBLE` (raison `lease_not_seen`) : un contenu
@@ -491,10 +491,11 @@ permet de consulter sans un outil par route.
   vérifie la sienne ; limite connue : un rôle sans `PROPERTIES_VIEW` ne reçoit pas la
   passerelle. `list_capabilities` filtre selon les permissions que le catalogue connaît
   (gardes `requirePermission` et variantes) et laisse passer le reste.
-- **Pas d'écriture à ce stade.** Seules les routes GET sont appelables ; les écritures
-  du catalogue (POST, PUT, PATCH) sont réservées à l'étape 4 (aperçu et accord humain).
-  Limites : le catalogue ne porte ni schéma de requête ni schéma de corps ; une route GET
-  à effet de bord éventuel reste exécutée sous les droits de l'utilisateur.
+- **Lecture seule.** `call_read` n'appelle que des routes GET ; les écritures du catalogue
+  (POST, PUT, PATCH) ne passent que par `plan_write` puis la confirmation humaine (bloc
+  « Écritures génériques » plus bas). Limites : le catalogue ne porte ni schéma de requête ni
+  schéma de corps ; une route GET à effet de bord éventuel reste exécutée sous les droits de
+  l'utilisateur.
 
 **Jeton de proposition** (`lib/ai/proposal-token.ts`).
 
@@ -504,7 +505,11 @@ permet de consulter sans un outil par route.
 - Liée à l'utilisateur (`sub`), à l'agence (`tid`), à l'action et aux arguments
   résolus **par le serveur** (`leaseId`, `paymentId`, `installmentId`, ou
   bail et dates du relevé) : le client ne peut rien modifier.
-- Durée `AI_PROPOSAL_TTL_SECONDS` (300 s par défaut, 60 à 900).
+- Durée `AI_PROPOSAL_TTL_SECONDS` (300 s par défaut, 60 à 900) ; `AI_WRITE_PLAN_TTL_SECONDS`
+  (900 s par défaut, 300 à 3600) pour un plan d'écriture. Deux actions portées par le même jeton
+  et la même clé : `GENERATE_RENTAL_DOCUMENT` et `EXECUTE_CAPABILITY` ; chaque vérificateur
+  refuse le jeton de l'autre (`BAD_CLAIMS`). Taille maximale 16 384 caractères (un plan porte le
+  corps de la requête, 8 Ko, en base64url).
 - **Usage unique, atomique** : table mémoire (double clic simultané dans le
   processus, sans aller-retour base), puis ligne `AuditLog`
   `AI_PROPOSAL_REDEEMED`. Son `findFirst` puis `create` s'exécutent dans une
@@ -517,8 +522,11 @@ permet de consulter sans un outil par route.
 - Signature, utilisateur ou agence incorrects : le même code
   `PROPOSAL_INVALID` (400) côté client ; l'audit distingue le motif.
 
-**Confirmation** (`POST /ai/actions/execute`, `lib/ai/actions/execute-rental-document.ts`).
-Seule porte de génération de l'assistant. Ordre : signature, expiration,
+**Confirmation d'une quittance** (`POST /ai/actions/execute`, `lib/ai/actions/execute-rental-document.ts`).
+Porte de génération de documents (la confirmation d'un plan d'écriture a la sienne, plus bas).
+Les permissions `RENTAL_DOCUMENTS_GENERATE` et `RENTAL_DOCUMENTS_VIEW` ne sont plus des gardes de
+route (elles dépendent de l'action du jeton) : le contrôleur les vérifie pour cette action, comme le
+module « location » de l'abonnement en mode `enforce`. Ordre : signature, expiration,
 utilisateur et agence, `RENTAL_DOCUMENTS_GENERATE` **et**
 `RENTAL_DOCUMENTS_VIEW` (permissions relues : la carte de résultat renvoie vers
 le téléchargement, qui exige VIEW), usage unique, **revalidation de
@@ -533,6 +541,95 @@ FINAL du premier et la renvoie (`alreadyExisted`). Toute erreur non typée
 devient « La génération du document a échoué. » (détail journalisé, jamais
 renvoyé).
 
+**Écritures génériques** (`plan_write`, `lib/ai/tools/plan-write.ts`,
+`lib/ai/actions/execute-capability.ts`, plan V2 étape 4). L'assistant peut proposer toute écriture
+d'agence du catalogue (POST, PUT, PATCH) ; il n'écrit jamais : seule la route de confirmation humaine écrit.
+
+- **Aucune suppression, jamais.** Le catalogue n'a ni `DELETE` ni suffixe destructeur
+  (`/delete`, `/remove`, `/destroy`, `/purge`). La règle est revérifiée trois fois : à l'émission
+  (`findWritableEntry`), à la lecture des claims du jeton (l'id doit être `POST|PUT|PATCH /api/tenants/:tenantId…`,
+  donc un jeton `DELETE` forgé, même signé avec la vraie clé, est refusé comme invalide) et à l'exécution
+  (catalogue relu, `isDestructive`, `loopbackWrite` n'accepte que POST, PUT, PATCH).
+- **Le plan, pas le récit du modèle.** `title` et `steps` (≤ 120 et ≤ 240 caractères, 1 à 8 étapes, texte
+  brut, ni HTML ni caractère de contrôle) sont du texte non fiable du modèle. Ce que l'humain
+  approuve est CALCULÉ PAR LE SERVEUR : enregistrement visé (lu par un GET loopback), avant/après champ
+  par champ (corps aplati en notation pointée, champs inchangés omis), avertissements, sensibilité. Le
+  modèle ne peut fournir aucun de ces champs (schéma strict). Si l'état actuel est illisible (403, 404,
+  autre erreur, délai), le plan est refusé : l'utilisateur ne pourrait pas écrire.
+  Une action sur une ressource (`/x/:id/verbe`) lit la ressource parente pour nommer la cible. Le plan
+  rappelle toujours que « le serveur peut modifier d'autres champs » (dates, statuts, montants calculés).
+- **Corps borné.** Objet JSON de 8 Ko au plus (sérialisé), 4 niveaux d'imbrication, clés `__proto__`,
+  `constructor`, `prototype` refusées (validé sur la valeur d'origine : Zod écarterait `__proto__` en
+  silence). Paramètres de chemin et de requête comme `call_read`. `:tenantId` est imposé par le serveur.
+- **Masquage.** Toute clé évoquant un secret (`password`, `secret`, `token`, `apiKey`, `hash`…) est
+  affichée `[masqué]` avant ET après, jamais comparée ; un JWT ou un `Bearer` perdu dans une valeur
+  aussi ; les valeurs de plus de 300 caractères sont tronquées à l'AFFICHAGE seulement (avertissement),
+  la requête signée reste exacte. `resultPreview` à l'exécution est masqué et réduit comme `call_read`.
+  Le corps complet voyage dans le jeton, que seul le navigateur de l'utilisateur reçoit : c'est son
+  propre contenu, mais ne jamais mettre de secret dans un plan.
+- **Plan > 30 changements** : 30 affichés, `changesTruncated`, avertissement, et le mot de confirmation
+  devient obligatoire (l'humain ne peut pas lire le reste).
+- **Écritures sensibles** (plan en rouge, `sensitive`, `sensitiveReason`, mot `CONFIRMER` à saisir). Test par
+  MOT de chemin (segment découpé sur `-`, `_`, majuscules ; singulier ou pluriel ; un paramètre n'est pas
+  un mot), liste dans `SENSITIVE_WRITE_WORDS` (`gateway/path-rules.ts`) : paiement (pay, payment, payout,
+  refund, transfer, paiement, virement), envois (send, email, mail, sms, whatsapp, notify, notification,
+  remind, relance, campaign, newsletter), signature (sign, signature), validation ou clôture comptable
+  (validate, approve, close, cloture, lock, invoice, facture, void, annulation), comptes et droits (role,
+  permission, invite, activate, suspend, password), imports et masse (import, bulk, batch). Ce n'est pas
+  une liste blanche : une écriture hors liste n'est pas inoffensive, son plan montre les changements
+  et la route réelle garde la permission. Les chemins évoquant un secret ou un jeton (`reset-password`,
+  passerelle de paiement, liens sécurisés, invitations) restent **interdits**, pas seulement renforcés.
+- **Jeton `EXECUTE_CAPABILITY`.** Claims `args = { capabilityId, pathParams, query, body, planHash }`,
+  liés à `sub`, `tid`, `jti` à usage unique (table mémoire puis `AuditLog` sous verrou consultatif, comme
+  les quittances), expiration `AI_WRITE_PLAN_TTL_SECONDS` = 900 s : il faut lire le plan, ses changements et
+  saisir un mot (300 s suffisaient pour une carte de quittance, pas pour ceci ; plancher 300 s).
+  `planHash` = SHA-256 de la forme canonique de la requête approuvée `{ capabilityId, pathParams, query,
+body }` : les `changes` affichés sont une fonction déterministe de ce corps et de l'état lu, c'est donc
+  bien la requête que l'accord autorise. Il est recalculable à partir des seuls arguments : toute
+  incohérence (jeton forgé) est refusée avant l'écriture. L'empreinte de ce que l'humain a VU (`displayHash`,
+  plan sans jeton) est journalisée à l'émission.
+- **Exécution** (`POST /ai/actions/execute`, aiguillée par l'action du jeton lue sans confiance, chaque
+  exécuteur revérifie tout). Ordre : signature, expiration, utilisateur, agence → `planHash` recalculé →
+  catalogue revérifié (existe, POST/PUT/PATCH, ni destructif ni sensible-interdit) → permissions que le
+  catalogue connaît (relues, jeton non consommé si refus) → mot de confirmation si exigé → usage unique →
+  **appel loopback** (`127.0.0.1`, `PORT`, méthode, chemin résolu, requête, corps JSON, délai 30 s,
+  redirections non suivies, jamais rejoué) avec les **en-têtes d'authentification de la requête de
+  confirmation** : l'écriture s'exécute sous l'identité de l'utilisateur QUI CONFIRME et traverse toute la chaîne
+  réelle (authentification, accès à l'agence, permission de la route, abonnement, validation du corps,
+  garde Prisma, limiteurs, audit propre de la route, `X-Request-Id` repris). Aucun compte de service.
+  Mot manquant ou erroné : `CONFIRMATION_REQUIRED` (400) AVANT la réclamation, le jeton n'est PAS consommé
+  (l'utilisateur ressaisit dans le délai). Toute autre issue après la réclamation consomme le jeton ; une
+  réponse de la route (200, 403, 422…) devient `CapabilityExecutedPayload { ok, status, message, resultPreview }`
+  (HTTP 201 si la route a réussi, 200 sinon). Un délai de 30 s répond 504 : l'écriture a pu aboutir, elle n'est
+  pas rejouée.
+- **Audit.** `AI_PROPOSAL_ISSUED` (`entityType AI_PROPOSAL`) : capabilityId, `planHash`, `displayHash`,
+  nature, sensibilité, nombre de changements, `requestId`. `AI_ACTION_EXECUTED` (`entityType AI_CAPABILITY`) :
+  qui, agence, capabilityId, `planHash`, statut HTTP, `ok`, `requestId`. `AI_ACTION_REJECTED` : motif
+  (`PLAN_HASH_MISMATCH`, `CAPABILITY_NOT_ALLOWED`, `PERMISSION_REVOKED`, `CONFIRMATION_REQUIRED`, `NO_AUTH_HEADERS`,
+  motifs du jeton). Jamais le corps brut, ni une valeur, ni un jeton d'accès.
+- **Abonnement.** `/ai/actions` passe de RENTAL à CORE dans `lib/subscription/route-features.ts` : sinon une
+  agence sans module location ne pourrait pas confirmer une écriture générique. Le module RENTAL reste exigé pour
+  confirmer une quittance (contrôleur) et la route appelée par loopback porte son propre module.
+
+| Menace                                                                                | Réponse                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Injection de prompt qui déclenche un plan trompeur (titre rassurant, corps différent) | L'humain voit les changements calculés par le serveur sur le corps réellement signé, pas le récit du modèle ; la requête exécutée est celle du jeton (`planHash`) ; données lues = données (invite, règles 2 et 3) ; 3 plans au plus par requête ; plan sensible ou volumineux : mot à saisir |
+| Plan à rallonge qui cache des champs                                                  | Plus de 30 changements : mot obligatoire, avertissement « N autres changements ne sont pas affichés »                                                                                                                                                                                         |
+| Rejeu d'un plan ou double clic                                                        | Usage unique (mémoire puis `AuditLog` sous verrou consultatif) ; `PROPOSAL_ALREADY_USED` (409) ; jamais de relance automatique                                                                                                                                                                |
+| Confusion d'agence ou d'utilisateur                                                   | `sub` et `tid` du jeton comparés à la requête authentifiée ; `:tenantId` imposé dans le chemin ; l'appel loopback vise l'agence de la route et traverse `requireTenantAccess` et la garde Prisma                                                                                              |
+| Élévation de permission                                                               | Aucune permission fixe n'est accordée à l'IA : la route réelle vérifie celle de l'écriture sous l'identité du confirmeur ; permissions du catalogue relues avant de consommer le jeton ; un rôle sans `PROPERTIES_VIEW` n'a pas l'outil                                                       |
+| Suppression                                                                           | Absente du catalogue, refusée à l'émission, dans les claims et à l'exécution ; test avec jeton forgé signé                                                                                                                                                                                    |
+| Effets externes (paiement, envoi, signature, clôture)                                 | Plan sensible, mot `CONFIRMER`, raison affichée ; chemins secrets interdits                                                                                                                                                                                                                   |
+| Jeton volé                                                                            | Lié à l'utilisateur et à l'agence, usage unique, 900 s, jamais renvoyé au modèle ni journalisé ; il faut aussi les en-têtes d'authentification de la requête                                                                                                                                  |
+| Fuite de secret dans un plan ou un résultat                                           | Masquage avant/après et de `resultPreview`, valeurs longues tronquées à l'affichage, audit sans corps                                                                                                                                                                                         |
+
+Limites connues de l'étape 4 : le catalogue ne porte pas le schéma des corps (le modèle devine les champs ; la
+route réelle valide et refuse) ; certains POST du catalogue sont des lectures (`…/search`, `…/export`) et passent par
+un plan inutilement lourd ; les valeurs « avant » d'une mise à jour supposent que la route GET du même chemin (ou du
+parent) renvoie les mêmes noms de champs que ceux du corps, sinon le plan signale les champs absents ; une écriture
+« annuler » n'existe pas (pas de défaire automatique) ; l'écriture et son audit de route ne sont pas atomiques avec la
+réclamation du jeton (un échec après réclamation consomme le plan) ; les limiteurs restent en mémoire, par instance.
+
 **Contrôle d'accès.** Toutes les routes `/ai/*` passent `authenticate`,
 `requireTenantAccess`, `requireTenantCollaborator` (les clients de portail sont
 refusés) puis `requireAiAssistantAccess` : **refus du super-admin** en MVP.
@@ -541,10 +638,11 @@ corps ni du modèle ; un schéma strict rejette une clé `tenantId` en entrée d
 outil. Chaque outil vérifie sa permission (`PROPERTIES_VIEW`,
 `RENTAL_LEASES_VIEW`, `RENTAL_DOCUMENTS_VIEW`, `RENTAL_DOCUMENTS_GENERATE`) ; la passerelle
 de lecture ajoute en plus celle de la route appelée (voir ci-dessus).
-`propose_rental_document` et `POST /ai/actions/execute` exigent
-`RENTAL_DOCUMENTS_GENERATE` **et** `RENTAL_DOCUMENTS_VIEW` ; en
+`propose_rental_document` et la confirmation d'une quittance exigent
+`RENTAL_DOCUMENTS_GENERATE` **et** `RENTAL_DOCUMENTS_VIEW` ; la confirmation d'un plan d'écriture
+n'exige aucune permission fixe (la route réellement appelée porte celle de l'écriture) ; en
 mode `enforce`, les modules de l'abonnement filtrent aussi les outils
-(`/ai` en CORE, `/ai/actions` en RENTAL). Le cache des permissions dure
+(`/ai` et `/ai/actions` en CORE ; le module RENTAL d'une quittance est vérifié par le contrôleur). Le cache des permissions dure
 5 minutes : une révocation peut mettre ce temps à s'appliquer. Le correctif
 RBAC des routes de documents (`routes/document-routes.ts`) retire au rôle
 `TENANT_AGENT` la génération et le téléchargement, qui n'avaient aucune garde.
@@ -562,7 +660,13 @@ consomme pas le budget commun.
 | `POST /ai/chat`            | utilisateur et agence | 300 par jour                                         |
 | `POST /ai/chat`            | agence seule          | `AI_TENANT_MINUTE_LIMIT` par minute (100 par défaut) |
 | `POST /ai/chat`            | agence seule          | `AI_TENANT_DAILY_LIMIT` par jour (3000 par défaut)   |
-| `POST /ai/actions/execute` | utilisateur et agence | 10 par minute                                        |
+| `POST /ai/actions/execute` | utilisateur et agence | 10 par minute (quittances et plans d'écriture)       |
+
+Une IA qui chaîne des écritures reste bornée : au plus 3 plans d'écriture par requête de chat (donc
+au plus 3 cartes d'accord à lire), 4 tours d'outils et 8 appels d'outils par requête, 20 requêtes de
+chat par minute, et chaque plan ne s'exécute que par une confirmation humaine, limitée à 10 par
+minute. L'appel loopback de la confirmation traverse en plus les limiteurs de la route appelée
+(IP de l'utilisateur transmise par `X-Forwarded-For`).
 
 Autres plafonds : 20 messages de 4 000 caractères et 24 000 au total par
 requête ; `AI_MAX_TOOL_ROUNDS` tours d'outils (4 par défaut) et 8 appels d'outils
@@ -573,7 +677,8 @@ texte : fournisseur, issue, nombre de tours et d'outils ; son `entityId` est le
 `requestId` **généré par le serveur** : le `conversationId` du client n'est
 qu'un écho pour l'interface, jamais une clé d'audit), `AI_TOOL_CALLED`,
 `AI_TOOL_DENIED`, `AI_PROPOSAL_ISSUED`, `AI_PROPOSAL_REDEEMED`,
-`AI_ACTION_EXECUTED`, `AI_ACTION_REJECTED`. Sauf la réclamation du jeton
+`AI_ACTION_EXECUTED`, `AI_ACTION_REJECTED` (voir « Écritures génériques » pour le contenu des
+événements d'un plan). Sauf la réclamation du jeton
 (synchrone, sous verrou), l'écriture passe par la file asynchrone `logAuditEvent`.
 
 **Flux SSE.** En-têtes `Cache-Control: no-cache, no-transform` (le middleware

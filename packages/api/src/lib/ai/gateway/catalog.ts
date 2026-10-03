@@ -1,5 +1,6 @@
 import rawCatalog from './catalog.generated.json';
 import type { CatalogEntry } from './catalog-builder';
+import { isDestructive } from './path-rules';
 
 /**
  * Accès en lecture au catalogue généré (`npm run ai:catalog`). Index seulement :
@@ -17,8 +18,18 @@ const BY_ID: ReadonlyMap<string, CatalogEntry> = new Map(ENTRIES.map(entry => [e
 /** Plafond de résultats de `list_capabilities`. */
 export const MAX_CAPABILITY_RESULTS = 20;
 
-/** Étape 3 : lecture seule. L'étape 4 ouvrira les écritures par un outil distinct (`plan_write`). */
+/** Lecture (`call_read`). */
 export const READABLE_METHODS: ReadonlySet<string> = new Set(['GET']);
+/** Écritures (`plan_write`, puis confirmation humaine). Jamais DELETE : le catalogue n'en contient pas. */
+export const WRITABLE_METHODS: ReadonlySet<string> = new Set(['POST', 'PUT', 'PATCH']);
+
+/** Entrée du catalogue pour une écriture (POST/PUT/PATCH) autorisée : ni sensible-interdite, ni destructive. */
+export function findWritableEntry(id: string): CatalogEntry | undefined {
+  const entry = BY_ID.get(id);
+  if (!entry || !WRITABLE_METHODS.has(entry.method) || entry.sensitive) return undefined;
+  if (isDestructive(entry.method, entry.path) || entry.id !== `${entry.method} ${entry.path}`) return undefined;
+  return entry;
+}
 
 export function getCatalogEntries(): readonly CatalogEntry[] {
   return ENTRIES;

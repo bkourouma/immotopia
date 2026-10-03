@@ -74,7 +74,14 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   { prefix: '/dashboard', feature: 'CORE' },
   { prefix: '/audit', feature: 'CORE', note: "Journal d'activité de l'agence (ADR-006) : lecture seule." },
   { prefix: '/documents', feature: 'CORE' },
-  { prefix: '/ai', feature: 'CORE', note: 'Assistant ImmoCopilot : statut et chat (lecture seule, aucune écriture).' },
+  {
+    prefix: '/ai',
+    feature: 'CORE',
+    note:
+      "Assistant ImmoCopilot : statut, chat et confirmation. La confirmation d'une quittance exige en plus le module " +
+      "RENTAL (vérifié par le contrôleur, selon l'action du jeton) ; celle d'une écriture générique est gardée par la route " +
+      'réellement appelée (même chaîne, même abonnement).'
+  },
   { prefix: '/maintenance', feature: 'CORE' },
   { prefix: '/email-notifications', feature: 'CORE' },
   { prefix: '/whatsapp-notifications', feature: 'CORE' },
@@ -122,11 +129,6 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
 
   // ------------------------------------------------------------ gestion locative
   { prefix: '/rental', feature: 'RENTAL', note: 'Baux, echeances, paiements, penalites, etats des lieux.' },
-  {
-    prefix: '/ai/actions',
-    feature: 'RENTAL',
-    note: "Confirmation d'une quittance ou d'un relevé proposé par l'assistant (génère un document de location)."
-  },
   { prefix: '/owner-statements', feature: 'RENTAL' },
   { prefix: '/owner-accounts', feature: 'RENTAL' },
   { prefix: '/settings/finance/owners', feature: 'RENTAL', note: 'Honoraires de gestion par mandant.' },

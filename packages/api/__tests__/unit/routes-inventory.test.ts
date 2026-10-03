@@ -327,9 +327,10 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
     }
     const execute = routes.find(r => r.method === 'POST' && r.path === '/api/tenants/:tenantId/ai/actions/execute');
     const executeKeys = execute!.middlewares.map(mw => (mw as any)?.permissionKey);
-    // GENERATE pour produire, VIEW pour télécharger la carte de résultat : les deux sont exigées.
-    expect(executeKeys).toContain('RENTAL_DOCUMENTS_GENERATE');
-    expect(executeKeys).toContain('RENTAL_DOCUMENTS_VIEW');
+    // Étape 4 : la route sert deux actions (quittance, plan d'écriture générique) et n'a plus de permission
+    // fixe. Le contrôleur exige GENERATE et VIEW pour une quittance (testé dans ai.routes.capability.test.ts) ;
+    // un plan d'écriture est gardé par la route réellement appelée par loopback, sous l'identité du confirmeur.
+    expect(executeKeys.filter(key => typeof key === 'string')).toEqual([]);
     expect(routes.filter(r => r.path.startsWith('/api/tenants/:tenantId/ai'))).toHaveLength(3);
   });
 

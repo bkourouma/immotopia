@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n/t';
 import copilotService from '../services/copilot-service';
 import { sanitizeArtifact } from '../utils/copilot-artifact';
+import { requiredConfirmationWord, sanitizeWritePlan } from '../utils/copilot-write-plan';
 import {
   COPILOT_MAX_MESSAGES,
   COPILOT_MAX_MESSAGE_CHARS,
@@ -13,7 +14,9 @@ import {
   type CopilotProposalState,
   type CopilotSseEvent,
   type CopilotUiMessage,
-  type UseCopilotChatResult
+  type UseCopilotChatResult,
+  type WritePlanState,
+  isCapabilityExecuted
 } from '../types/copilot';
 
 type ChatError = { code: string; message: string };
@@ -47,6 +50,28 @@ function toChatError(err: unknown): ChatError {
   const message = data?.message ?? (typeof e.status === 'number' ? e.message : undefined);
   if (code.startsWith('PROPOSAL_')) return { code, message: proposalErrorMessage(code, undefined) };
   return { code, message: message || t("L'assistant est indisponible pour le moment.") };
+}
+
+/** Message affiché quand l'exécution d'un plan d'écriture échoue (erreur HTTP ou réseau). */
+function planErrorMessage(err: unknown): ChatError {
+  const e = (err ?? {}) as {
+    status?: number;
+    response?: { status?: number; data?: { code?: string; message?: string } };
+  };
+  const chat = toChatError(err);
+  if (chat.code.startsWith('PROPOSAL_')) return chat;
+  const status = e.response?.status ?? e.status;
+  const serverMessage = e.response?.data?.message;
+  if (serverMessage) return { code: chat.code, message: serverMessage };
+  if (status === 403) return { code: chat.code, message: t("Vous n'avez pas la permission d'effectuer cette action.") };
+  if (typeof status !== 'number') {
+    // Pas de réponse : l'issue est inconnue, on ne promet pas que rien n'a été modifié.
+    return {
+      code: chat.code,
+      message: t("La connexion a été interrompue : vérifiez dans l'application si l'action a été effectuée.")
+    };
+  }
+  return { code: chat.code, message: t("L'action n'a pas pu être effectuée.") };
 }
 
 function isAbort(err: unknown, signal: AbortSignal): boolean {
@@ -92,6 +117,8 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
   const abortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const streamingRef = useRef(false);
+  // Verrou synchrone : un double clic ne peut jamais lancer deux exécutions du même plan.
+  const inFlightPlansRef = useRef<Set<string>>(new Set());
 
   const updateMessage = useCallback((id: string, fn: (m: CopilotUiMessage) => CopilotUiMessage) => {
     setMessages(prev => prev.map(m => (m.id === id ? fn(m) : m)));
@@ -115,6 +142,24 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     []
   );
 
+  const setPlanState = useCallback(
+    (
+      proposalId: string,
+      state: WritePlanState,
+      extra?: Partial<Extract<CopilotAttachment, { kind: 'write_plan' }>>
+    ) => {
+      setMessages(prev =>
+        prev.map(m => ({
+          ...m,
+          attachments: m.attachments.map(a =>
+            a.kind === 'write_plan' && a.plan.proposalId === proposalId ? { ...a, ...extra, state } : a
+          )
+        }))
+      );
+    },
+    []
+  );
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -124,6 +169,7 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     abortRef.current = null;
     streamingRef.current = false;
     conversationIdRef.current = undefined;
+    inFlightPlansRef.current.clear();
     setMessages([]);
     setArtifacts([]);
     setSelectedArtifactId(undefined);
@@ -193,6 +239,12 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
           case 'action_proposal':
             addAttachment({ kind: 'proposal', proposal: e.proposal, state: 'pending' });
             break;
+          case 'write_plan': {
+            const plan = sanitizeWritePlan(e.plan);
+            if (!plan) break; // mal formé : jamais proposé à l'approbation
+            addAttachment({ kind: 'write_plan', plan, state: 'pending' });
+            break;
+          }
           case 'artifact': {
             const artifact = sanitizeArtifact(e.artifact);
             if (!artifact) break; // mal formé : ignoré
@@ -293,6 +345,76 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     [setProposalState]
   );
 
+  const approveWritePlan = useCallback(
+    async (proposalId: string, confirmation?: string): Promise<void> => {
+      if (inFlightPlansRef.current.has(proposalId)) return;
+      let found: Extract<CopilotAttachment, { kind: 'write_plan' }> | undefined;
+      for (const m of messagesRef.current) {
+        for (const a of m.attachments) {
+          if (a.kind === 'write_plan' && a.plan.proposalId === proposalId && a.state === 'pending') found = a;
+        }
+      }
+      if (!found) return;
+      const { plan } = found;
+
+      const expiry = Date.parse(plan.expiresAt);
+      if (Number.isFinite(expiry) && Date.now() >= expiry) {
+        setPlanState(proposalId, 'expired', {
+          error: { code: 'PROPOSAL_EXPIRED', message: proposalErrorMessage('PROPOSAL_EXPIRED') }
+        });
+        return;
+      }
+      const word = requiredConfirmationWord(plan);
+      if (word !== null && confirmation !== word) return; // défensif : le bouton est déjà désactivé
+
+      inFlightPlansRef.current.add(proposalId);
+      setPlanState(proposalId, 'approving');
+      try {
+        const result = await copilotService.executeAction(
+          tenantId,
+          plan.token,
+          word !== null ? confirmation : undefined
+        );
+        const decidedAt = new Date().toISOString();
+        if (!isCapabilityExecuted(result)) {
+          setPlanState(proposalId, 'failed', {
+            decidedAt,
+            error: { code: 'INTERNAL', message: t("L'action n'a pas pu être effectuée.") }
+          });
+        } else if (result.ok) {
+          setPlanState(proposalId, 'executed', { result, decidedAt, error: undefined });
+        } else {
+          setPlanState(proposalId, 'failed', {
+            result,
+            decidedAt,
+            error: { code: 'EXECUTION_FAILED', message: result.message || t("L'action n'a pas pu être effectuée.") }
+          });
+        }
+      } catch (err) {
+        const e = planErrorMessage(err);
+        setPlanState(proposalId, e.code === 'PROPOSAL_EXPIRED' ? 'expired' : 'failed', {
+          error: e,
+          decidedAt: new Date().toISOString()
+        });
+      } finally {
+        inFlightPlansRef.current.delete(proposalId);
+      }
+    },
+    [tenantId, setPlanState]
+  );
+
+  const refuseWritePlan = useCallback(
+    (proposalId: string): void => {
+      if (inFlightPlansRef.current.has(proposalId)) return;
+      const pending = messagesRef.current.some(m =>
+        m.attachments.some(a => a.kind === 'write_plan' && a.plan.proposalId === proposalId && a.state === 'pending')
+      );
+      // Aucun appel serveur : le jeton expire seul. L'assistant n'est pas informé.
+      if (pending) setPlanState(proposalId, 'refused', { decidedAt: new Date().toISOString() });
+    },
+    [setPlanState]
+  );
+
   const selectArtifact = useCallback((id: string) => {
     setSelectedArtifactId(prev => (artifactsRef.current.some(a => a.id === id) ? id : prev));
   }, []);
@@ -308,6 +430,8 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     stop,
     confirmProposal,
     cancelProposal,
+    approveWritePlan,
+    refuseWritePlan,
     reset
   };
 }

@@ -74,3 +74,32 @@ describe('executeProposal', () => {
     expect(mockedPost).toHaveBeenCalledWith('/tenants/t1/ai/actions/execute', { proposalToken: 'tok' });
   });
 });
+
+describe('executeAction', () => {
+  it('envoie la confirmation seulement si elle est fournie', async () => {
+    const payload = { kind: 'capability', proposalId: 'p1', ok: true, status: 200, message: 'ok', resultPreview: null };
+    mockedPost.mockResolvedValue({ data: { success: true, data: payload } });
+    await expect(copilotService.executeAction('t1', 'tok', 'CONFIRMER')).resolves.toEqual(payload);
+    expect(mockedPost).toHaveBeenLastCalledWith('/tenants/t1/ai/actions/execute', {
+      proposalToken: 'tok',
+      confirmation: 'CONFIRMER'
+    });
+    await copilotService.executeAction('t1', 'tok');
+    expect(mockedPost).toHaveBeenLastCalledWith('/tenants/t1/ai/actions/execute', { proposalToken: 'tok' });
+  });
+});
+
+describe('événement write_plan', () => {
+  it('est reconnu et typé par le parseur', async () => {
+    mockedStream.mockImplementation(async (_p, _b, opts) => {
+      opts.onEvent({ event: 'write_plan', data: '{"plan":{"proposalId":"p1"}}' });
+    });
+    const events: unknown[] = [];
+    await copilotService.streamChat(
+      't1',
+      { messages: [{ role: 'user', content: 'x' }] },
+      { onEvent: e => events.push(e) }
+    );
+    expect(events).toEqual([{ type: 'write_plan', plan: { proposalId: 'p1' } }]);
+  });
+});

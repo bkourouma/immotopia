@@ -68,6 +68,8 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
           propertyId={propertyId}
           onConfirm={id => void chat.confirmProposal(id)}
           onCancel={chat.cancelProposal}
+          onApprovePlan={(id, confirmation) => void chat.approveWritePlan(id, confirmation)}
+          onRefusePlan={chat.refuseWritePlan}
           onOpenArtifact={onOpenArtifact}
         />
         {chat.error && <Alert type="error" showIcon message={chat.error.message} style={{ marginTop: 12 }} />}

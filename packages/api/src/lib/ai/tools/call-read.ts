@@ -1,9 +1,17 @@
 import { z } from 'zod';
 import { currentLanguage, t } from '../../../i18n';
-import { ForbiddenError, NotFoundError, BadRequestError } from '../../../middleware/error-middleware';
+import { ForbiddenError, NotFoundError } from '../../../middleware/error-middleware';
 import type { CopilotToolDefinition, CopilotToolOutcome } from '../contracts';
 import { findCatalogEntry, READABLE_METHODS } from '../gateway/catalog';
 import { LoopbackTimeoutError, loopbackGet } from '../gateway/loopback';
+import {
+  buildPath,
+  buildQueryString,
+  httpErrorMessage,
+  MAX_QUERY_KEYS,
+  pathParamsSchema,
+  querySchema
+} from '../gateway/request-utils';
 import { redactSecrets, reduceForModel } from '../gateway/sanitize';
 import { assertToolPermission } from './tool-utils';
 
@@ -28,74 +36,16 @@ import { assertToolPermission } from './tool-utils';
 
 const PERMISSION = 'PROPERTIES_VIEW';
 
-const MAX_QUERY_KEYS = 20;
-const MAX_QUERY_VALUE_CHARS = 200;
-/** UUID ou jeton simple. */
-const PATH_PARAM_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-const QUERY_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
-const MAX_ERROR_MESSAGE_CHARS = 300;
-
 const inputSchema = z
   .object({
     capabilityId: z.string().min(1).max(300),
-    pathParams: z
-      .record(z.string(), z.string().regex(PATH_PARAM_PATTERN, 'jeton simple attendu (lettres, chiffres, _ et -)'))
-      .optional(),
-    query: z
-      .record(
-        z.string().regex(QUERY_KEY_PATTERN),
-        z.union([z.string().max(MAX_QUERY_VALUE_CHARS), z.number().finite(), z.boolean()])
-      )
-      .refine(query => Object.keys(query).length <= MAX_QUERY_KEYS, `${MAX_QUERY_KEYS} paramètres de requête au plus`)
-      .optional()
+    pathParams: pathParamsSchema.optional(),
+    query: querySchema.optional()
   })
   .strict();
 
-type Input = z.infer<typeof inputSchema>;
-
 function fail(status: number, message: string): CopilotToolOutcome {
   return { modelResult: { ok: false, status, message } };
-}
-
-/** Message d'erreur d'une réponse HTTP, sans pile ni détail : `message` (ou `error`) texte court, sinon générique. */
-function httpErrorMessage(status: number, text: string): string {
-  try {
-    const body = JSON.parse(text) as { message?: unknown; error?: unknown };
-    const message =
-      typeof body.message === 'string' ? body.message : typeof body.error === 'string' ? body.error : null;
-    if (message) return message.slice(0, MAX_ERROR_MESSAGE_CHARS);
-  } catch {
-    /* corps non JSON : message générique */
-  }
-  if (status === 401) return t('Authentification refusée.');
-  if (status === 403) return t("Vous n'avez pas la permission de consulter cette ressource.");
-  if (status === 404) return t('Ressource introuvable.');
-  if (status === 429) return t('Trop de requêtes, réessayez dans un instant.');
-  return t('La consultation a échoué.');
-}
-
-function buildPath(template: string, tenantId: string, params: Record<string, string>, expected: string[]): string {
-  for (const key of Object.keys(params)) {
-    if (!expected.includes(key)) {
-      throw new BadRequestError(
-        t('Paramètre de chemin inattendu : {{name}}. Le tenantId est imposé par le serveur.', { name: key })
-      );
-    }
-  }
-  const missing = expected.filter(key => !params[key]);
-  if (missing.length > 0) {
-    throw new BadRequestError(t('Paramètre(s) de chemin manquant(s) : {{names}}.', { names: missing.join(', ') }));
-  }
-  return template.replace(/:([A-Za-z0-9_]+)/g, (_match, name: string) =>
-    name === 'tenantId' ? encodeURIComponent(tenantId) : encodeURIComponent(params[name] ?? '')
-  );
-}
-
-function buildQueryString(query: Input['query']): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(query ?? {})) search.append(key, String(value));
-  const text = search.toString();
-  return text ? `?${text}` : '';
 }
 
 export const callReadTool: CopilotToolDefinition<typeof inputSchema> = {

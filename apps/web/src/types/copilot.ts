@@ -45,6 +45,8 @@ export interface ChatRequest {
 
 export interface ExecuteRequest {
   proposalToken: string;
+  /** Mot de confirmation saisi (plans sensibles) ; le serveur le revérifie. */
+  confirmation?: string;
 }
 
 // --- Cartes et propositions ------------------------------------------------
@@ -117,6 +119,60 @@ export interface ActionExecutedPayload {
   };
 }
 
+// --- Plans d'écriture (étape 4 : carte d'accord) ------------------------------
+
+export type PlanScalar = string | number | boolean | null;
+
+export interface WritePlanChange {
+  field: string;
+  /** Absent = création (aucune valeur avant). */
+  before: PlanScalar | undefined;
+  after: PlanScalar;
+}
+
+/**
+ * Plan d'écriture : `title` et `steps` sont rédigés par l'assistant (texte non
+ * fiable, rendu en texte brut) ; `target`, `changes` et `warnings` sont calculés
+ * par le SERVEUR. Aucune écriture n'a eu lieu tant que l'utilisateur n'approuve pas.
+ */
+export interface WritePlan {
+  proposalId: string;
+  token: string;
+  expiresAt: string;
+  action: 'EXECUTE_CAPABILITY';
+  capabilityId: string;
+  method: 'POST' | 'PUT' | 'PATCH';
+  module: string;
+  title: string;
+  steps: string[];
+  recordKind: 'create' | 'update' | 'action';
+  target: { label: string; resolved: boolean } | null;
+  changes: WritePlanChange[];
+  changesTruncated?: boolean;
+  warnings: string[];
+  sensitive: boolean;
+  sensitiveReason?: string;
+  requiresTypedConfirmation: boolean;
+  confirmationWord?: 'CONFIRMER';
+}
+
+/** Résultat de POST /actions/execute pour un jeton de plan d'écriture. */
+export interface CapabilityExecutedPayload {
+  kind: 'capability';
+  proposalId: string;
+  ok: boolean;
+  status: number;
+  message: string;
+  resultPreview: unknown;
+}
+
+/** Retour de POST /actions/execute : document (sans `kind`) ou capacité (`kind: 'capability'`). */
+export type ExecuteActionResult = ActionExecutedPayload | CapabilityExecutedPayload;
+
+export function isCapabilityExecuted(r: ExecuteActionResult | undefined): r is CapabilityExecutedPayload {
+  return !!r && (r as { kind?: unknown }).kind === 'capability';
+}
+
 export interface CopilotStatus {
   enabled: boolean;
   reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';
@@ -175,6 +231,7 @@ export type CopilotSseEvent =
       items: DocumentCardItem[];
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
+  | { type: 'write_plan'; plan: WritePlan }
   | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
@@ -197,6 +254,9 @@ export interface CopilotPageContext {
 
 export type CopilotProposalState = 'pending' | 'confirming' | 'confirmed' | 'cancelled' | 'expired' | 'failed';
 
+/** pending -> approving -> executed | failed | refused | expired. */
+export type WritePlanState = 'pending' | 'approving' | 'executed' | 'failed' | 'refused' | 'expired';
+
 export type CopilotAttachment =
   | { kind: 'properties'; items: PropertyCardItem[]; total: number }
   | { kind: 'leases'; items: LeaseCardItem[] }
@@ -208,6 +268,15 @@ export type CopilotAttachment =
       state: CopilotProposalState;
       result?: ActionExecutedPayload;
       error?: { code: string; message: string };
+    }
+  | {
+      kind: 'write_plan';
+      plan: WritePlan;
+      state: WritePlanState;
+      result?: CapabilityExecutedPayload;
+      error?: { code: string; message: string };
+      /** Instant de la décision (ISO) : exécution, échec ou refus. */
+      decidedAt?: string;
     };
 
 export interface CopilotUiMessage {
@@ -232,5 +301,13 @@ export interface UseCopilotChatResult {
   stop(): void;
   confirmProposal(proposalId: string): Promise<void>;
   cancelProposal(proposalId: string): void;
+  /** Approuve un plan d'écriture ; `confirmation` : mot saisi pour un plan sensible. */
+  approveWritePlan(proposalId: string, confirmation?: string): Promise<void>;
+  /**
+   * Refuse un plan : aucun appel serveur, état local « Refusé ». L'assistant n'en
+   * est PAS informé automatiquement (le refus n'entre pas dans l'historique envoyé) ;
+   * l'utilisateur peut le lui dire dans un message.
+   */
+  refuseWritePlan(proposalId: string): void;
   reset(): void;
 }

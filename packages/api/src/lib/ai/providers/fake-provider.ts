@@ -14,6 +14,12 @@ import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, L
  * - « capacités », « catalogue » (passerelle, seulement si list_capabilities et call_read sont offerts) :
  *   list_capabilities (mot-clé cité après « sur », sinon la liste des modules), puis call_read sur la
  *   première route sans paramètre de chemin trouvée ;
+ * - « crée » + « étiquette » (écriture, seulement si plan_write est offert) : plan_write d'une
+ *   création `POST .../crm/tags` (nom cité après « étiquette », sinon « Prioritaire ») ;
+ *   « modifie » + « contact » : call_read de la liste des contacts, puis plan_write d'un
+ *   `PATCH .../crm/contacts/:contactId` (champ `internalNotes`, texte cité entre guillemets, sinon une
+ *   note neutre) sur le premier contact trouvé. Exemples sans risque ; le fournisseur n'écrit
+ *   jamais : il ne fait que PLANIFIER, l'accord humain et la route de confirmation restent seuls maîtres ;
  * - « tableau », « graphique » (+ « baux » pour des baux, sinon des biens) : search_properties ou
  *   search_leases puis show_artifact (table ou chart construit sur les résultats) ; « synthèse » :
  *   show_artifact (markdown) sans recherche. Seulement si show_artifact est offert ;
@@ -330,6 +336,51 @@ function artifactInput(kind: ArtifactKind, source: 'properties' | 'leases', data
   };
 }
 
+/** Premier objet portant un `id` texte dans un résultat d'outil (liste de contacts, enveloppe quelconque). */
+function findFirstId(data: unknown, depth = 0): string | null {
+  if (depth > 6 || data === null || typeof data !== 'object') return null;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const found = findFirstId(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  if (typeof record.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(record.id)) return record.id;
+  for (const value of Object.values(record)) {
+    const found = findFirstId(value, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Texte cité entre guillemets (« … », "…"), sinon null. */
+function extractQuoted(text: string): string | null {
+  const match = /[«"“]\s*([^»"”]{1,200}?)\s*[»"”]/.exec(text);
+  return match ? match[1].replace(/[<>]/g, '') : null;
+}
+
+/** Nom d'étiquette cité après « étiquette » ou entre guillemets. */
+function extractTagName(text: string): string {
+  const quoted = extractQuoted(text);
+  if (quoted) return quoted.slice(0, 60);
+  const match = /(?<![\p{L}])[ée]tiquette\s+([\p{L}0-9][\p{L}0-9' _-]{0,40})/iu.exec(text);
+  return match ? match[1].trim() : 'Prioritaire';
+}
+
+const CREATE_TAG = 'POST /api/tenants/:tenantId/crm/tags';
+const LIST_CONTACTS = 'GET /api/tenants/:tenantId/crm/contacts';
+const PATCH_CONTACT = 'PATCH /api/tenants/:tenantId/crm/contacts/:contactId';
+
+/** Dernier mot de l'assistant après un plan : le plan est PROPOSÉ, jamais « fait ». */
+function planOutcomeText(result: ToolResult | undefined): string {
+  const data = result?.data as { planned?: unknown } | null;
+  return data?.planned === true
+    ? t("J'ai préparé le plan d'écriture. Rien n'a été modifié : il ne sera appliqué qu'après votre approbation.")
+    : t("Je n'ai pas pu préparer ce plan d'écriture.");
+}
+
 /** Capacités annoncées : uniquement celles des outils réellement offerts par le serveur. */
 function capabilitiesText(offered: ReadonlySet<string> | null): string {
   const has = (name: string) => offered === null || offered.has(name);
@@ -453,8 +504,56 @@ export class FakeProvider implements LlmProvider {
           typeof message === 'string' ? message : t("Cette fonctionnalité n'est pas comprise dans votre abonnement.")
       };
     }
+    const planError = results.find(result => result.isError && result.name === 'plan_write');
+    if (planError) {
+      const message = (planError.data as { message?: unknown } | null)?.message;
+      return {
+        text:
+          typeof message === 'string'
+            ? t("Je n'ai pas pu préparer ce plan d'écriture : {{reason}}", { reason: message })
+            : t("Je n'ai pas pu préparer ce plan d'écriture.")
+      };
+    }
     if (results.some(result => result.isError)) {
       return { text: t("Je n'ai pas pu terminer cette recherche : un outil a renvoyé une erreur.") };
+    }
+
+    // Le bloc <screen_context> (JSON, guillemets compris) précède le texte de l'utilisateur : on l'écarte.
+    const userText = question.replace(/<screen_context>[\s\S]*?<\/screen_context>/g, '').trim();
+
+    // 000. Écriture : plan_write seulement (création d'une étiquette, modification d'un contact)
+    const canPlan = offered === null || offered.has('plan_write');
+    if (canPlan && /\b(cree|creer)\b/.test(normalized) && /\b(etiquette|etiquettes|tag)\b/.test(normalized)) {
+      if (round === 0) {
+        const name = extractTagName(userText);
+        return call('plan_write', {
+          capabilityId: CREATE_TAG,
+          body: { name, color: '#1677ff' },
+          title: t('Créer l’étiquette « {{name}} »', { name }),
+          steps: [t('Ajouter l’étiquette « {{name}} » à la liste des étiquettes de l’agence.', { name })]
+        });
+      }
+      return { text: planOutcomeText(results[0]) };
+    }
+    const canReadForPlan = offered === null || offered.has('call_read');
+    if (canPlan && canReadForPlan && /\b(modifie|modifier)\b/.test(normalized) && /\bcontacts?\b/.test(normalized)) {
+      if (round === 0) return call('call_read', { capabilityId: LIST_CONTACTS, query: { limit: 1 } });
+      if (round === 1) {
+        const contactId = findFirstId((results[0]?.data as { data?: unknown } | null)?.data);
+        if (!contactId) return { text: t("Je n'ai trouvé aucun contact à modifier.") };
+        const note = extractQuoted(userText) ?? t('Note ajoutée par l’assistant.');
+        return call('plan_write', {
+          capabilityId: PATCH_CONTACT,
+          pathParams: { contactId },
+          body: { internalNotes: note.slice(0, 500) },
+          title: t('Mettre à jour la note interne du contact'),
+          steps: [
+            t('Lire la fiche du contact.'),
+            t('Remplacer sa note interne par le texte indiqué, sans toucher aux autres champs.')
+          ]
+        });
+      }
+      return { text: planOutcomeText(results[1]) };
     }
 
     // 00. Passerelle générique : list_capabilities puis call_read (lecture seule)

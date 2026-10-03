@@ -18,7 +18,7 @@ ChatGPT/Claude/Gemini) avec un panneau « artefact » et la dictée ; toute
 ## Principes inchangés (v1, SECURITY §12)
 
 - L'IA n'écrit jamais : seule la route de confirmation humaine écrit
-  (jeton HMAC à usage unique, 300 s, verrou consultatif).
+  (jeton HMAC à usage unique, 300 s ou 900 s pour un plan d'écriture, verrou consultatif).
 - Chaque appel passe par les services et permissions existants, dans le
   contexte d'agence : mêmes `requireTenantAccess`, même garde Prisma.
 - Tout ce que renvoie un outil est une donnée, jamais une instruction.
@@ -73,25 +73,44 @@ ChatGPT/Claude/Gemini) avec un panneau « artefact » et la dictée ; toute
   (50 éléments, 500 caractères, profondeur 6, ~12 000 caractères). Détail :
   SECURITY §12.
 
-### Étape 4 — Écritures avec aperçu et accord
+### Étape 4 — Écritures avec aperçu et accord (réalisée)
 
-- Outil `plan_write` : l'IA décrit l'action (route du catalogue + corps) ;
-  le serveur valide, **simule** (lecture des enregistrements touchés,
-  calcul avant/après) sans rien écrire, et renvoie : étapes prévues,
-  enregistrements impactés, champs avant → après, avertissements.
-- La carte d'accord affiche ce plan ; Approuver / Refuser. L'approbation
-  appelle la route de confirmation, qui revérifie permissions, tenant et
-  jeton, puis exécute la route du catalogue.
-- Routes à effets de bord externes (paiements, envois d'e-mails ou SMS,
-  signatures) : marquées « sensibles » dans le catalogue, plan en rouge,
-  accord renforcé (saisie d'une confirmation).
-- Chaque exécution est journalisée (qui, quoi, plan approuvé).
+- Outil `plan_write` (`lib/ai/tools/plan-write.ts`, kind `proposal`, permission `PROPERTIES_VIEW` comme
+  `call_read`) : l'IA décrit l'écriture (id POST/PUT/PATCH du catalogue, `pathParams`, `query`, `body`,
+  `title`, `steps`) ; le serveur valide, **simule** sans rien écrire (GET loopback de l'état actuel,
+  calcul avant/après en notation pointée, champs inchangés omis, secrets masqués, avertissements) et émet
+  l'événement SSE `write_plan` avec un jeton signé. Le modèle ne reçoit que `{ planned, proposalId, summary }`,
+  jamais le jeton. Au plus 3 plans par requête de chat.
+- La carte d'accord affiche le plan ; Approuver appelle `POST /ai/actions/execute` (jeton + `confirmation`
+  éventuelle). `lib/ai/actions/execute-capability.ts` revérifie jeton, empreinte, catalogue, permissions,
+  mot de confirmation, puis exécute par **loopback sous l'identité de l'utilisateur qui confirme**.
+- Écritures sensibles (paiement, envoi, signature, clôture comptable, droits d'accès, imports en masse) :
+  `sensitive`, raison, mot `CONFIRMER` à saisir. Liste par mots de chemin : `gateway/path-rules.ts`.
+- Journal : `AI_PROPOSAL_ISSUED` (empreintes `planHash` et `displayHash`), `AI_ACTION_EXECUTED`
+  (`AI_CAPABILITY`, statut HTTP). Détail et modèle de menace : SECURITY §12, « Écritures génériques ».
+
+Décisions de l'étape 4 :
+
+| Sujet                          | Décision                                                                                                                                                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Durée d'un plan                | 900 s (`AI_WRITE_PLAN_TTL_SECONDS`, 300 à 3600) : lecture des changements et saisie du mot ; les quittances gardent 300 s                                                                                  |
+| Taille du jeton                | Le jeton porte le corps (8 Ko) : maximum relevé de 4 096 à 16 384 caractères (`COPILOT_MAX_PROPOSAL_TOKEN_CHARS`)                                                                                          |
+| `planHash`                     | SHA-256 de la requête approuvée canonique (`capabilityId`, `pathParams`, `query`, `body`), pas du plan affiché : recalculable à l'exécution ; l'empreinte du plan affiché (`displayHash`) est dans l'audit |
+| Mot de confirmation manquant   | Erreur `CONFIRMATION_REQUIRED` (400) AVANT la réclamation : le jeton n'est pas consommé, on peut ressaisir                                                                                                 |
+| Plan de plus de 30 changements | 30 affichés, `changesTruncated`, mot obligatoire (l'humain ne peut pas tout lire)                                                                                                                          |
+| Écriture refusée par la route  | HTTP 200 avec `ok: false`, `status` et message de la route ; jeton consommé. Succès : 201                                                                                                                  |
+| Délai de 30 s                  | 504 « l'écriture a peut-être été appliquée », jamais rejouée                                                                                                                                               |
+| Abonnement                     | `/ai/actions` passe de RENTAL à CORE (route-features) ; RENTAL vérifié par le contrôleur pour une quittance                                                                                                |
+| Permissions de la route        | `/actions/execute` n'exige plus `documents:generate` à la route : le contrôleur le vérifie pour une quittance, la route réelle (loopback) porte celle d'une écriture générique                             |
+| État illisible                 | Mise à jour ou action dont l'état actuel est illisible (403, 404…) : plan refusé ; sans route GET connue : plan accepté avec avertissement et sans valeur « avant »                                        |
+| Quotas                         | 3 plans par requête, 4 tours et 8 appels d'outils, 20 chats par minute, 10 confirmations par minute : pas de nouveau limiteur                                                                              |
 
 ## Points ouverts
 
 - Liste des conversations passées (barre latérale) : demande de stockage
   serveur des conversations, non prévue aux étapes 1 à 4 — à décider.
-- Quotas : une IA qui chaîne des écritures consomme plus ; vérifier les
-  limiteurs (`ai-limiteurs.md`) à l'étape 4.
+- Quotas : vérifiés à l'étape 4 (limiteurs de SECURITY §12, aucun ajout nécessaire :
+  3 plans par requête de chat, 10 confirmations par minute) ; les compteurs restent en
+  mémoire, par instance.
 - Annuler une écriture déjà approuvée : hors périmètre (pas de suppression,
   donc pas de défaire automatique).

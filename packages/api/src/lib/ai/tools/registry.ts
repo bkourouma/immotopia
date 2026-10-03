@@ -3,6 +3,7 @@ import { callReadTool } from './call-read';
 import { listCapabilitiesTool } from './list-capabilities';
 import { listLeaseDocumentsTool } from './list-lease-documents';
 import { listPropertyDocumentsTool } from './list-property-documents';
+import { planWriteTool } from './plan-write';
 import { proposeRentalDocumentTool } from './propose-rental-document';
 import { searchLeasesTool } from './search-leases';
 import { searchPropertiesTool } from './search-properties';
@@ -21,7 +22,8 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   proposeRentalDocumentTool,
   showArtifactTool,
   listCapabilitiesTool,
-  callReadTool
+  callReadTool,
+  planWriteTool
 ] as readonly CopilotToolDefinition[];
 
 export type ToolFeature = CopilotToolDefinition['feature'];

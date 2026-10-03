@@ -180,6 +180,10 @@ const envSchema = z
     AI_MAX_TOOL_ROUNDS: z.coerce.number().int().min(1).max(8).default(4),
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
     AI_PROPOSAL_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+    // Plans d'ecriture generiques (plan V2, etape 4) : l'utilisateur doit lire les
+    // changements calcules par le serveur et, pour un plan sensible, saisir un mot de
+    // confirmation. 300 s ne suffisent pas toujours : 900 s par defaut, 300 s au minimum.
+    AI_WRITE_PLAN_TTL_SECONDS: z.coerce.number().int().min(300).max(3600).default(900),
     AI_REFUSAL_FALLBACK: z.enum(['on', 'off']).default('on'),
     // Plafonds PAR AGENCE (tous collaborateurs confondus) sur POST /ai/chat, en
     // plus des limites par utilisateur (rate-limit-middleware.ts).

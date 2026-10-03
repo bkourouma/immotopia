@@ -10,6 +10,8 @@ import { createAbortError } from '../providers/anthropic-provider';
  */
 
 export const LOOPBACK_TIMEOUT_MS = 10_000;
+/** Délai d'une écriture confirmée (plus long qu'une lecture : calculs, génération de pièces). */
+export const LOOPBACK_WRITE_TIMEOUT_MS = 30_000;
 /** Octets lus au plus : au-delà, la réponse est refusée (le modèle doit filtrer ou paginer). */
 export const LOOPBACK_MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -83,6 +85,40 @@ export async function loopbackGet(args: {
     return { status: response.status, contentType: response.headers.get('content-type') ?? '', text, tooLarge };
   } catch (error) {
     // Abandon de l'appelant : erreur d'abandon normalisée (celle que l'orchestrateur reconnaît).
+    if (args.signal.aborted) throw createAbortError();
+    if (timeout.aborted) throw new LoopbackTimeoutError();
+    throw error;
+  }
+}
+
+/**
+ * Écriture loopback (POST/PUT/PATCH), RÉSERVÉE à l'exécution confirmée par un humain
+ * (`actions/execute-capability.ts`) : aucun outil du modèle ne l'importe. `headers` porte
+ * l'authentification de l'utilisateur QUI CONFIRME. Corps JSON, délai
+ * `LOOPBACK_WRITE_TIMEOUT_MS`, redirections non suivies. Pas de relance automatique :
+ * une écriture n'est jamais rejouée (après un délai, elle a pu aboutir).
+ */
+export async function loopbackWrite(args: {
+  method: 'POST' | 'PUT' | 'PATCH';
+  pathAndQuery: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown> | null;
+  signal: AbortSignal;
+  timeoutMs?: number;
+}): Promise<LoopbackResponse> {
+  const timeout = AbortSignal.timeout(args.timeoutMs ?? LOOPBACK_WRITE_TIMEOUT_MS);
+  const signal = AbortSignal.any([args.signal, timeout]);
+  try {
+    const response = await fetch(`${loopbackBaseUrl()}${args.pathAndQuery}`, {
+      method: args.method,
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...args.headers },
+      body: JSON.stringify(args.body ?? {}),
+      redirect: 'manual',
+      signal
+    });
+    const { text, tooLarge } = await readCapped(response);
+    return { status: response.status, contentType: response.headers.get('content-type') ?? '', text, tooLarge };
+  } catch (error) {
     if (args.signal.aborted) throw createAbortError();
     if (timeout.aborted) throw new LoopbackTimeoutError();
     throw error;

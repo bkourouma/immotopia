@@ -5,7 +5,15 @@ import { AppError } from '../../middleware/error-middleware';
 import { AuditActionKey } from '../../types/audit-types';
 import { t } from '../../i18n';
 import { withTransactionalAdvisoryLock } from './advisory-lock';
-import type { GenerateRentalDocumentArgs, ProposalClaims } from './contracts';
+import {
+  COPILOT_MAX_PROPOSAL_TOKEN_CHARS,
+  type CapabilityProposalClaims,
+  type ExecuteCapabilityArgs,
+  type GenerateRentalDocumentArgs,
+  type ProposalClaims
+} from './contracts';
+import { pathParamsSchema, querySchema } from './gateway/request-utils';
+import { planBodySchema } from './gateway/write-input';
 
 /**
  * Jeton de proposition d'ImmoCopilot (docs/architecture/PLAN_IMMOCOPILOT.md, §3).
@@ -16,6 +24,13 @@ import type { GenerateRentalDocumentArgs, ProposalClaims } from './contracts';
  *
  * Le jeton est lié à l'utilisateur (`sub`), à l'agence (`tid`), à l'action et
  * aux arguments résolus par le serveur ; il est à usage unique.
+ *
+ * Deux actions : `GENERATE_RENTAL_DOCUMENT` (quittance ou relevé, 300 s par défaut) et
+ * `EXECUTE_CAPABILITY` (écriture générique du catalogue, plan V2 étape 4). Cette seconde
+ * porte la requête exacte à exécuter (route, paramètres, corps) et son empreinte
+ * `planHash` ; sa durée est `AI_WRITE_PLAN_TTL_SECONDS` (900 s par défaut) : l'humain doit
+ * le temps de lire les changements calculés par le serveur et, pour un plan sensible, de
+ * saisir le mot de confirmation. Le jeton reste de même forme et de même clé.
  */
 
 const TOKEN_VERSION = 'v1';
@@ -100,7 +115,7 @@ const argsSchema = z.discriminatedUnion('docType', [
     .strict()
 ]);
 
-const claimsSchema = z
+const rentalClaimsSchema = z
   .object({
     v: z.literal(1),
     jti: z.string().min(1),
@@ -112,6 +127,36 @@ const claimsSchema = z
     exp: z.number().int()
   })
   .strict();
+
+/** Seules les écritures POST/PUT/PATCH d'une route d'agence : un id `DELETE ...` forgé est refusé dès la lecture des claims. */
+const CAPABILITY_ID_PATTERN = /^(POST|PUT|PATCH) \/api\/tenants\/:tenantId(\/[^\s]*)?$/;
+
+const capabilityArgsSchema = z
+  .object({
+    capabilityId: z.string().max(300).regex(CAPABILITY_ID_PATTERN),
+    pathParams: pathParamsSchema,
+    query: querySchema,
+    body: z.union([z.null(), planBodySchema]),
+    planHash: z.string().regex(/^[0-9a-f]{64}$/)
+  })
+  .strict();
+
+const capabilityClaimsSchema = z
+  .object({
+    v: z.literal(1),
+    jti: z.string().min(1),
+    sub: z.string().min(1),
+    tid: z.string().min(1),
+    act: z.literal('EXECUTE_CAPABILITY'),
+    args: capabilityArgsSchema,
+    iat: z.number().int(),
+    exp: z.number().int()
+  })
+  .strict();
+
+const claimsSchema = z.discriminatedUnion('act', [rentalClaimsSchema, capabilityClaimsSchema]);
+
+export type AnyProposalClaims = ProposalClaims | CapabilityProposalClaims;
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -141,18 +186,54 @@ export function signProposal(input: SignProposalInput): { token: string; claims:
   return { token: `${TOKEN_VERSION}.${payload}.${signature}`, claims };
 }
 
-// --- Vérification ----------------------------------------------------------
+export interface SignCapabilityProposalInput {
+  userId: string;
+  tenantId: string;
+  args: ExecuteCapabilityArgs;
+}
+
+/** Signe un plan d'écriture. Durée : `env.AI_WRITE_PLAN_TTL_SECONDS` (voir l'en-tête du fichier). */
+export function signCapabilityProposal(input: SignCapabilityProposalInput): {
+  token: string;
+  claims: CapabilityProposalClaims;
+} {
+  const iat = nowSeconds();
+  const claims: CapabilityProposalClaims = {
+    v: 1,
+    jti: randomUUID(),
+    sub: input.userId,
+    tid: input.tenantId,
+    act: 'EXECUTE_CAPABILITY',
+    args: input.args,
+    iat,
+    exp: iat + env.AI_WRITE_PLAN_TTL_SECONDS
+  };
+  const payload = Buffer.from(JSON.stringify(claims), 'utf8').toString('base64url');
+  const signature = sign(payload).toString('base64url');
+  return { token: `${TOKEN_VERSION}.${payload}.${signature}`, claims };
+}
 
 /**
- * Vérifie un jeton, dans l'ordre : format et signature (`timingSafeEqual`,
- * longueurs contrôlées avant) → charge utile → expiration → utilisateur →
- * agence. Ne consomme rien : l'usage unique est `redeemProposal`.
- *
- * @throws ProposalError `PROPOSAL_INVALID` (signature, utilisateur ou agence
- *         incorrects — même code et même message) ou `PROPOSAL_EXPIRED`.
+ * Action portée par un jeton, lue SANS vérifier la signature : sert uniquement à
+ * aiguiller la confirmation vers le bon exécuteur, qui vérifie ensuite tout (signature
+ * comprise, et que l'action est bien la sienne). Ne pas s'en servir pour autoriser.
  */
-export function verifyProposal(token: string, expected: { userId: string; tenantId: string }): ProposalClaims {
-  if (typeof token !== 'string' || token.length > 4096) throw invalid('MALFORMED');
+export function peekProposalAction(token: string): 'GENERATE_RENTAL_DOCUMENT' | 'EXECUTE_CAPABILITY' | null {
+  if (typeof token !== 'string' || token.length > COPILOT_MAX_PROPOSAL_TOKEN_CHARS) return null;
+  const payload = token.split('.')[1];
+  if (!payload || !B64URL.test(payload)) return null;
+  try {
+    const act = (JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { act?: unknown } | null)?.act;
+    return act === 'GENERATE_RENTAL_DOCUMENT' || act === 'EXECUTE_CAPABILITY' ? act : null;
+  } catch {
+    return null;
+  }
+}
+
+// --- Vérification ----------------------------------------------------------
+
+function verifyAny(token: string, expected: { userId: string; tenantId: string }): AnyProposalClaims {
+  if (typeof token !== 'string' || token.length > COPILOT_MAX_PROPOSAL_TOKEN_CHARS) throw invalid('MALFORMED');
   const parts = token.split('.');
   if (parts.length !== 3 || parts[0] !== TOKEN_VERSION) throw invalid('MALFORMED');
   const [, payload, signature] = parts;
@@ -170,13 +251,38 @@ export function verifyProposal(token: string, expected: { userId: string; tenant
   }
   const parsed = claimsSchema.safeParse(raw);
   if (!parsed.success) throw invalid('BAD_CLAIMS');
-  const claims = parsed.data as ProposalClaims;
+  const claims = parsed.data as AnyProposalClaims;
 
   const now = nowSeconds();
   if (claims.iat > now + CLOCK_SKEW_SECONDS) throw invalid('BAD_CLAIMS', claims.jti);
   if (now >= claims.exp) throw new ProposalError('PROPOSAL_EXPIRED', 'EXPIRED', claims.jti);
   if (claims.sub !== expected.userId) throw invalid('WRONG_USER', claims.jti);
   if (claims.tid !== expected.tenantId) throw invalid('WRONG_TENANT', claims.jti);
+  return claims;
+}
+
+/**
+ * Vérifie un jeton de génération de document, dans l'ordre : format et signature
+ * (`timingSafeEqual`, longueurs contrôlées avant) → charge utile → expiration →
+ * utilisateur → agence. Ne consomme rien : l'usage unique est `redeemProposal`.
+ * Un jeton d'une autre action est refusé (`BAD_CLAIMS`).
+ *
+ * @throws ProposalError `PROPOSAL_INVALID` (signature, utilisateur ou agence
+ *         incorrects — même code et même message) ou `PROPOSAL_EXPIRED`.
+ */
+export function verifyProposal(token: string, expected: { userId: string; tenantId: string }): ProposalClaims {
+  const claims = verifyAny(token, expected);
+  if (claims.act !== 'GENERATE_RENTAL_DOCUMENT') throw invalid('BAD_CLAIMS', claims.jti);
+  return claims;
+}
+
+/** Même vérification pour un plan d'écriture (`EXECUTE_CAPABILITY`) ; un jeton d'une autre action est refusé. */
+export function verifyCapabilityProposal(
+  token: string,
+  expected: { userId: string; tenantId: string }
+): CapabilityProposalClaims {
+  const claims = verifyAny(token, expected);
+  if (claims.act !== 'EXECUTE_CAPABILITY') throw invalid('BAD_CLAIMS', claims.jti);
   return claims;
 }
 
@@ -209,7 +315,7 @@ export function resetProposalUsageForTests(): void {
  * @throws ProposalError `PROPOSAL_ALREADY_USED` (409) si déjà réclamé. Une panne
  *         de base libère la réservation puis remonte l'erreur.
  */
-export async function redeemProposal(claims: ProposalClaims): Promise<void> {
+export async function redeemProposal(claims: AnyProposalClaims): Promise<void> {
   const now = nowSeconds();
   pruneUsed(now);
   if (usedProposals.has(claims.jti)) throw new ProposalError('PROPOSAL_ALREADY_USED', 'ALREADY_USED', claims.jti);
@@ -230,7 +336,10 @@ export async function redeemProposal(claims: ProposalClaims): Promise<void> {
           actionKey: AuditActionKey.AI_PROPOSAL_REDEEMED,
           entityType: 'AI_PROPOSAL',
           entityId: claims.jti,
-          payload: { act: claims.act, docType: claims.args.docType, leaseId: claims.args.leaseId }
+          payload:
+            claims.act === 'EXECUTE_CAPABILITY'
+              ? { act: claims.act, capabilityId: claims.args.capabilityId, planHash: claims.args.planHash }
+              : { act: claims.act, docType: claims.args.docType, leaseId: claims.args.leaseId }
         },
         select: { id: true }
       });

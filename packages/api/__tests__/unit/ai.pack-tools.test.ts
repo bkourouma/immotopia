@@ -59,7 +59,14 @@ function toolsOfPack(modules: ModuleKeyCode[], readOnly = false) {
 }
 
 const RENTAL_TOOLS = ['search_leases', 'list_lease_documents', 'propose_rental_document'];
-const CORE_TOOLS = ['search_properties', 'list_property_documents', 'show_artifact', 'list_capabilities', 'call_read'];
+const CORE_TOOLS = [
+  'search_properties',
+  'list_property_documents',
+  'show_artifact',
+  'list_capabilities',
+  'call_read',
+  'plan_write'
+];
 
 describe('ImmoCopilot — outils et prompt par pack', () => {
   it.each([

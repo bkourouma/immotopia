@@ -100,13 +100,14 @@ beforeEach(() => {
 });
 
 describe('registre', () => {
-  it('ne contient que les 8 outils du plan, sans outil d’exécution', () => {
+  it('ne contient que les 9 outils du plan, sans outil d’exécution', () => {
     expect(ALL_TOOLS.map(t => t.name).sort()).toEqual(
       [
         'call_read',
         'list_capabilities',
         'list_lease_documents',
         'list_property_documents',
+        'plan_write',
         'propose_rental_document',
         'search_leases',
         'search_properties',
@@ -124,7 +125,8 @@ describe('registre', () => {
     ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE'],
     ['show_artifact', 'PROPERTIES_VIEW'],
     ['list_capabilities', 'PROPERTIES_VIEW'],
-    ['call_read', 'PROPERTIES_VIEW']
+    ['call_read', 'PROPERTIES_VIEW'],
+    ['plan_write', 'PROPERTIES_VIEW']
   ])('%s exige %s', (name, permission) => {
     expect(tool(name).requiredPermission).toBe(permission);
     const required = [permission, ...(tool(name).additionalPermissions ?? [])];
@@ -149,8 +151,15 @@ describe('registre', () => {
       toolsForUser(['PROPERTIES_VIEW'])
         .map(t => t.name)
         .sort()
-    ).toEqual(['call_read', 'list_capabilities', 'list_property_documents', 'search_properties', 'show_artifact']);
-    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(8);
+    ).toEqual([
+      'call_read',
+      'list_capabilities',
+      'list_property_documents',
+      'plan_write',
+      'search_properties',
+      'show_artifact'
+    ]);
+    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(9);
   });
 
   it('filtre aussi selon les droits d’abonnement quand ils sont fournis', () => {
@@ -159,6 +168,7 @@ describe('registre', () => {
       'call_read',
       'list_capabilities',
       'list_property_documents',
+      'plan_write',
       'search_properties',
       'show_artifact'
     ]);
@@ -167,7 +177,7 @@ describe('registre', () => {
 
   it('expose des spécifications neutres avec additionalProperties:false', () => {
     const specs = toLlmToolSpecs(toolsForUser(new Set(ALL_PERMS)));
-    expect(specs).toHaveLength(8);
+    expect(specs).toHaveLength(9);
     for (const spec of specs) expect(spec.inputSchema.additionalProperties).toBe(false);
   });
 

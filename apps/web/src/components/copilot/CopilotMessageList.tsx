@@ -6,12 +6,16 @@ import { DocumentListCard } from './DocumentListCard';
 import { LeaseResultCard } from './LeaseResultCard';
 import { PropertyResultCard } from './PropertyResultCard';
 import { SafeMarkdown } from './SafeMarkdown';
+import { WritePlanCard } from './WritePlanCard';
 
 export interface CopilotMessageListProps {
   messages: CopilotUiMessage[];
   tenantId: string;
   onConfirm(proposalId: string): void;
   onCancel(proposalId: string): void;
+  /** Accord d'un plan d'écriture (étape 4) ; `confirmation` : mot saisi pour un plan sensible. */
+  onApprovePlan?(proposalId: string, confirmation?: string): void;
+  onRefusePlan?(proposalId: string): void;
   /** Bien affiché à l'écran : nécessaire au téléchargement des pièces d'un bien. */
   propertyId?: string;
   /** Ouvre un artefact dans le panneau ; sans lui (tiroir), la pastille n'est pas cliquable. */
@@ -24,6 +28,8 @@ function Attachment({
   propertyId,
   onConfirm,
   onCancel,
+  onApprovePlan,
+  onRefusePlan,
   onOpenArtifact
 }: { attachment: CopilotAttachment } & Omit<CopilotMessageListProps, 'messages'>): React.ReactElement {
   switch (attachment.kind) {
@@ -72,6 +78,18 @@ function Attachment({
           onCancel={onCancel}
         />
       );
+    case 'write_plan':
+      return (
+        <WritePlanCard
+          plan={attachment.plan}
+          state={attachment.state}
+          result={attachment.result}
+          error={attachment.error}
+          decidedAt={attachment.decidedAt}
+          onApprove={(id, confirmation) => onApprovePlan?.(id, confirmation)}
+          onRefuse={id => onRefusePlan?.(id)}
+        />
+      );
   }
 }
 
@@ -80,6 +98,8 @@ export function CopilotMessageList({
   tenantId,
   onConfirm,
   onCancel,
+  onApprovePlan,
+  onRefusePlan,
   propertyId,
   onOpenArtifact
 }: CopilotMessageListProps): React.ReactElement {
@@ -122,6 +142,8 @@ export function CopilotMessageList({
                   propertyId={propertyId}
                   onConfirm={onConfirm}
                   onCancel={onCancel}
+                  onApprovePlan={onApprovePlan}
+                  onRefusePlan={onRefusePlan}
                   onOpenArtifact={onOpenArtifact}
                 />
               </div>

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { requireTenantAccess } from '../../../middleware/tenant-middleware';
+import { isDestructive, isSensitivePath } from './path-rules';
 import type { DiscoveredRoute } from './route-walker';
 
 /**
@@ -51,29 +52,7 @@ export const EXCLUDED_ABSOLUTE_PREFIXES = ['/api/auth', '/api/admin', '/api/plat
 /** Segments d'agence hors périmètre : l'assistant lui-même. */
 const EXCLUDED_TENANT_SEGMENTS = new Set(['ai']);
 
-/** Écriture destructrice déguisée en POST (ou autre méthode) : suffixe du chemin. */
-const DESTRUCTIVE_SUFFIX = /\/(delete|remove|destroy|purge)$/i;
-
-/**
- * Chemin évoquant un secret, un jeton ou un identifiant de connexion. Testé par
- * segment : « cash-sessions » (caisse, donnée métier) n'est PAS une session de
- * connexion, seul le segment `session(s)` seul l'est.
- */
-const SENSITIVE_SEGMENT =
-  /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp)/i;
-const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso', 'oauth']);
-
-export function isSensitivePath(path: string): boolean {
-  return path.split('/').some(segment => {
-    const bare = segment.replace(/^:/, '').toLowerCase();
-    if (segment.startsWith(':')) return false; // un paramètre n'est pas un mot du chemin
-    return SENSITIVE_SEGMENT.test(bare) || SENSITIVE_EXACT_SEGMENTS.has(bare);
-  });
-}
-
-export function isDestructive(method: string, path: string): boolean {
-  return method === 'DELETE' || DESTRUCTIVE_SUFFIX.test(path);
-}
+export { isSensitivePath, isDestructive };
 
 function isExcludedPath(path: string): boolean {
   if (EXCLUDED_ABSOLUTE_PREFIXES.some(prefix => path === prefix || path.startsWith(`${prefix}/`))) return true;

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { AiDisabledError } from '../middleware/ai-access-middleware';
 import { asyncHandler, ForbiddenError } from '../middleware/error-middleware';
+import { t } from '../i18n';
 import {
   chatRequestSchema,
   COPILOT_MAX_MESSAGE_CHARS,
@@ -9,7 +10,9 @@ import {
   executeRequestSchema
 } from '../lib/ai/contracts';
 import type { CopilotStatus, CopilotToolDefinition } from '../lib/ai/contracts';
+import { executeCapability } from '../lib/ai/actions/execute-capability';
 import { executeRentalDocument } from '../lib/ai/actions/execute-rental-document';
+import { peekProposalAction } from '../lib/ai/proposal-token';
 import { runChat } from '../lib/ai/orchestrator';
 import { resolvePageContext } from '../lib/ai/page-context';
 import { getLlmProvider } from '../lib/ai/providers';
@@ -19,7 +22,8 @@ import { toolsForUser, type ToolFeature } from '../lib/ai/tools/registry';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
 import { getSubscriptionEnforcement } from '../lib/subscription/enforcement';
 import { getEntitlements } from '../services/subscription-v2-service';
-import { getUserPermissions } from '../services/permission-service';
+import { getUserPermissions, hasPermission } from '../services/permission-service';
+import { assertModuleAccess, assertSubscriptionWritable } from '../lib/subscription/guards';
 import { logger } from '../utils/logger';
 
 /**
@@ -142,16 +146,70 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
   }
 });
 
+const RENTAL_GENERATE = 'RENTAL_DOCUMENTS_GENERATE';
+/** Le téléchargement du document produit exige aussi la lecture. */
+const RENTAL_VIEW = 'RENTAL_DOCUMENTS_VIEW';
+
 /**
- * POST /ai/actions/execute — confirmation humaine d'une proposition.
- * Rejoue auth, agence, collaborateur, RENTAL_DOCUMENTS_GENERATE et RENTAL_DOCUMENTS_VIEW (routes),
- * puis le jeton signé, à usage unique. `userId` et `tenantId` viennent de la
- * requête authentifiée, jamais du corps. Toujours 201 : une quittance déjà
- * existante est renvoyée avec `alreadyExisted: true`.
+ * Module « location » de l'abonnement, exigé pour confirmer une quittance (il l'était par la table
+ * `route-features` quand `/ai/actions` entier était classé RENTAL ; une écriture générique n'en dépend pas :
+ * la route réellement appelée porte son propre module). Même décision que `subscriptionRouteGuard`, en `enforce`.
+ */
+async function assertRentalWritable(tenantId: string): Promise<void> {
+  if (getSubscriptionEnforcement() !== 'enforce') return;
+  let entitlements: Awaited<ReturnType<typeof getEntitlements>>;
+  try {
+    entitlements = await getEntitlements(tenantId);
+  } catch (error) {
+    logger.error('ImmoCopilot : droits d’abonnement indisponibles, confirmation non filtrée', { tenantId, error });
+    return;
+  }
+  if (entitlements.enforcement !== 'enforce') return;
+  const decision = evaluateFeatureAccess(entitlements, 'RENTAL', true);
+  if (decision.allowed) return;
+  if (decision.code === 'SUBSCRIPTION_READ_ONLY') assertSubscriptionWritable(entitlements);
+  else if (decision.moduleKey) assertModuleAccess(entitlements, decision.moduleKey, { write: true });
+}
+
+/**
+ * POST /ai/actions/execute — confirmation humaine d'une proposition (SEULE porte d'écriture
+ * de l'assistant). Rejoue auth, agence, collaborateur, garde de l'assistant (routes), puis
+ * aiguille selon l'action du jeton (lue sans confiance, chaque exécuteur re-vérifie tout) :
+ *
+ * - `EXECUTE_CAPABILITY` (plan d'écriture générique, étape 4) : aucune permission fixe ici,
+ *   l'écriture part par loopback sous l'identité de l'utilisateur qui confirme et c'est la route
+ *   réelle qui porte la permission de l'écriture ; l'exécuteur relit en plus les permissions
+ *   connues du catalogue. `confirmation` (mot CONFIRMER) exigé pour un plan sensible. 201 si la
+ *   route a réussi, 200 avec `ok: false` si elle a refusé (le jeton est alors consommé).
+ * - `GENERATE_RENTAL_DOCUMENT` (ou jeton illisible) : `RENTAL_DOCUMENTS_GENERATE` ET
+ *   `RENTAL_DOCUMENTS_VIEW`, module location de l'abonnement, puis jeton. Toujours 201 : une
+ *   quittance déjà existante est renvoyée avec `alreadyExisted: true`.
+ *
+ * `userId` et `tenantId` viennent de la requête authentifiée, jamais du corps.
  */
 export const executeActionHandler = asyncHandler(async (req: Request, res: Response) => {
   const { tenantId, userId } = requireContext(req);
-  const { proposalToken } = executeRequestSchema.parse(req.body ?? {});
+  const { proposalToken, confirmation } = executeRequestSchema.parse(req.body ?? {});
+
+  if (peekProposalAction(proposalToken) === 'EXECUTE_CAPABILITY') {
+    const { payload } = await executeCapability({
+      token: proposalToken,
+      userId,
+      tenantId,
+      confirmation,
+      loopbackHeaders: loopbackHeadersFor(req)
+    });
+    res.status(payload.ok ? 201 : 200).json({ success: true, data: payload });
+    return;
+  }
+
+  if (
+    !(await hasPermission(userId, RENTAL_GENERATE, tenantId)) ||
+    !(await hasPermission(userId, RENTAL_VIEW, tenantId))
+  ) {
+    throw new ForbiddenError(t("Vous n'avez pas la permission de générer ce document."));
+  }
+  await assertRentalWritable(tenantId);
   const { payload } = await executeRentalDocument({ token: proposalToken, userId, tenantId });
   res.status(201).json({ success: true, data: payload });
 });
