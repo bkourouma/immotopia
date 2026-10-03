@@ -112,6 +112,8 @@ run_seed() {
   local script="$1"; shift
   compose --profile tools run --rm --no-deps -T -w /repo/packages/api \
     -e ALLOW_PACK_TEST_TENANTS=1 \
+    -e UPLOADS_DIR=/data/uploads \
+    -v "${STACK_NAME}-uploads-data:/data/uploads" \
     --entrypoint npx migrate ts-node -T "prisma/seeds/${script}.ts" "$@"
 }
 

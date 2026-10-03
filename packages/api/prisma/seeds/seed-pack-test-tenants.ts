@@ -20,6 +20,7 @@ import './pack-history/disable-outbound';
 import { GlobalRole, InvitationStatus, MembershipStatus } from '@prisma/client';
 import { neutralizeOutbound, buildContext } from './pack-history/types';
 import { historySeedersForPack } from './pack-history';
+import { seedPropertyImages } from './pack-history/property-images';
 import { env } from '../../src/config/env';
 import { prisma, disconnectDatabase } from '../../src/utils/database';
 import { hashPassword } from '../../src/utils/password-utils';
@@ -155,6 +156,8 @@ async function seedHistory(entry: PackTestTenant, tenantId: string, adminUserId:
     // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : les modules partagent contacts et biens.
     await seeder(ctx);
   }
+  // Photos des biens : indépendant de l'historique (idempotent), donc aussi pour les agences déjà peuplées.
+  await seedPropertyImages(ctx);
 }
 
 async function main(): Promise<number> {
