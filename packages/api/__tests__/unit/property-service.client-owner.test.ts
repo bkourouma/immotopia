@@ -77,7 +77,9 @@ beforeEach(() => {
     owner: { id: 'u-new', email: data.ownerUserId ? 'boutique@example.test' : '', fullName: 'Boutique Ivoire SARL' },
     ...data
   }));
-  transactionMock.mockImplementation(async (callback: any) => callback({ property: { create: propertyCreate } }));
+  transactionMock.mockImplementation(async (callback: any) =>
+    callback({ property: { create: propertyCreate }, propertyMandate: { create: jest.fn() } })
+  );
 });
 
 describe('createProperty — bien CLIENT et nom du propriétaire', () => {

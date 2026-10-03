@@ -19,7 +19,7 @@ import { FeedbackBridge } from '../../lib/feedback';
  */
 
 const getTemplate = vi.fn();
-const getTenantClients = vi.fn();
+const getOwnerClients = vi.fn();
 const publishProperty = vi.fn();
 
 vi.mock('../../services/property-service', () => ({
@@ -32,7 +32,7 @@ vi.mock('../../services/property-service', () => ({
 
 vi.mock('../../services/tenant-service', () => ({
   __esModule: true,
-  getTenantClients: (...a: unknown[]) => getTenantClients(...a)
+  getOwnerClients: (...a: unknown[]) => getOwnerClients(...a)
 }));
 
 vi.mock('../../services/geographic-service', () => ({
@@ -81,10 +81,10 @@ const APPARTEMENT: Property = {
 
 beforeEach(() => {
   getTemplate.mockReset();
-  getTenantClients.mockReset();
+  getOwnerClients.mockReset();
   publishProperty.mockReset();
   getTemplate.mockResolvedValue({ sections: [], fieldDefinitions: [] });
-  getTenantClients.mockResolvedValue({ success: true, data: [] });
+  getOwnerClients.mockResolvedValue([]);
 });
 
 describe('property-api-errors', () => {
@@ -112,7 +112,7 @@ describe('Formulaire du bien — refus de validation de l’API', () => {
         <PropertyForm tenantId="agence-1" property={APPARTEMENT} onSubmit={onSubmit} />
       </AntApp>
     );
-    await waitFor(() => expect(getTenantClients).toHaveBeenCalled());
+    await waitFor(() => expect(getOwnerClients).toHaveBeenCalled());
 
     await user.click(screen.getByRole('button', { name: /Mettre à jour/i }));
 
@@ -135,7 +135,7 @@ describe('Formulaire du bien — propriétaire hors liste', () => {
         <PropertyForm tenantId="agence-1" property={bien} onSubmit={vi.fn()} />
       </AntApp>
     );
-    await waitFor(() => expect(getTenantClients).toHaveBeenCalled());
+    await waitFor(() => expect(getOwnerClients).toHaveBeenCalled());
 
     expect(await screen.findByText('Awa Konaté OI')).toBeInTheDocument();
     expect(screen.queryByText('b260bc68-6a8d-4654-b56d-0c999d678a56')).toBeNull();

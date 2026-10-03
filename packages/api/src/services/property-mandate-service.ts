@@ -79,6 +79,20 @@ export async function createMandate(tenantId: string, data: CreateMandateRequest
     }
   }
 
+  // Bien déjà rattaché à l'agence : son propriétaire doit être un client de
+  // CETTE agence (TenantClient). Sans propriétaire, pas de mandat possible.
+  if (property.tenantId) {
+    const ownerClient = property.ownerUserId
+      ? await prisma.tenantClient.findFirst({
+          where: { tenantId, userId: property.ownerUserId },
+          select: { id: true }
+        })
+      : null;
+    if (!ownerClient) {
+      throw new NotFoundError(t('Propriétaire introuvable.'));
+    }
+  }
+
   // Create mandate
   // Mandat + registre des lots dans la MEME transaction : un bien CLIENT en
   // location entre dans la reserve LOTS tout de suite ; en enforce + Bloquer,
