@@ -652,5 +652,8 @@
   "Virement bancaire": "تحويل مصرفي",
   "Voir": "عرض",
   "Voir la preuve de paiement": "عرض إثبات الدفع",
-  "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "هل تريدون إعادة إنشائه انطلاقًا من البيانات الحالية لعقد الإيجار؟ سيتم استبدال النسخة السابقة."
+  "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "هل تريدون إعادة إنشائه انطلاقًا من البيانات الحالية لعقد الإيجار؟ سيتم استبدال النسخة السابقة.",
+  "Annuler ce paiement ?": "هل تريد إلغاء هذه الدفعة؟",
+  "Confirmer": "تأكيد",
+  "Les affectations aux échéances et la collecte du dépôt de garantie rattachées à ce paiement seront défaites.": "سيتم التراجع عن تخصيصات الدفعة للأقساط وعن تحصيل مبلغ الضمان المرتبط بها."
 }

@@ -222,6 +222,10 @@ export async function updateAgencyFinanceSettings(
     withholdingAccountNumber: input.withholdingAccountNumber,
     updatedByUserId: userId ?? null
   };
+  // Les encaissements déjà faits gardent les honoraires de leurs conditions d'alors.
+  // Import différé : materialize lit ces mêmes réglages (dépendance circulaire).
+  const { freezeManagementFees } = await import('../rental-fees/materialize');
+  await freezeManagementFees(tenantId);
   const row = await prisma.agencyFinanceSettings.upsert({
     where: { tenantId },
     create: { tenantId, ...data },

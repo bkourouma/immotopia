@@ -875,5 +875,13 @@
   "Vue d'ensemble de votre portefeuille immobilier": "Overview of your property portfolio",
   "Vue d'ensemble de votre situation locative": "Overview of your rental position",
   "Vue indisponible": "View unavailable",
-  "Actifs": "Assets"
+  "Actifs": "Assets",
+  "⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.": "⚠️ This property has no active lease. You need an active lease to create a maintenance ticket.",
+  "Bail sélectionné automatiquement": "Lease selected automatically",
+  "Cette propriété n'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance.": "This property has no active lease. Please contact your manager to activate a lease before creating a maintenance ticket.",
+  "Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.": "This property has no active lease. You need an active lease to create a maintenance ticket.",
+  "Le bail actif a été sélectionné automatiquement": "The active lease was selected automatically",
+  "Reste dû : {{paid}} déjà réglés sur {{total}}": "Balance due: {{paid}} already paid out of {{total}}",
+  "Sélectionner un bail": "Select a lease",
+  "Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété": "Select the relevant lease if you have several for this property"
 }

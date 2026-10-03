@@ -4,6 +4,29 @@ import { agencyFeeTerms, getAgencyFinanceSettings } from '../settings/finance-se
 import { computeAllocationFee, feeTermsFromRow, resolveFeeTerms } from './fee-terms';
 
 /**
+ * Un niveau de conditions ne vaut que pour les encaissements enregistrés
+ * après son dernier enregistrement (BUG-2026-09-28-029) : fixer ou changer un
+ * taux ne touche jamais un encaissement déjà fait. `levelSince` est la date
+ * d'enregistrement du niveau retenu.
+ *
+ * Les encaissements antérieurs qui avaient déjà des honoraires applicables les
+ * ont reçus AVANT le changement (`freezeManagementFees`, appelé avant chaque
+ * enregistrement de conditions) ; ceux qui n'en avaient pas n'en reçoivent pas.
+ */
+export function feeTermsApplyToAllocation(levelSince: Date | null | undefined, allocationCreatedAt: Date): boolean {
+  return !levelSince || allocationCreatedAt.getTime() >= levelSince.getTime();
+}
+
+/**
+ * Fige les honoraires de tous les encaissements déjà faits, avec les conditions
+ * encore en vigueur. À appeler AVANT d'enregistrer un changement de conditions
+ * (bail, propriétaire, agence).
+ */
+export async function freezeManagementFees(tenantId: string): Promise<number> {
+  return materializeManagementFees(tenantId, { from: new Date(0), to: new Date() });
+}
+
+/**
  * Crée les honoraires des encaissements d'une période qui n'en ont pas encore.
  *
  * Pourquoi « à la demande » et non au moment de l'affectation : un règlement
@@ -42,6 +65,7 @@ export async function materializeManagementFees(
     select: {
       id: true,
       amount: true,
+      created_at: true,
       payment_id: true,
       payment: { select: { succeeded_at: true, initiated_at: true } },
       installment: {
@@ -75,6 +99,8 @@ export async function materializeManagementFees(
     prisma.agentCommissionRate.findMany({ where: { tenantId } })
   ]);
   const ownerTermsById = new Map(ownerTerms.map(row => [row.ownerClientId, feeTermsFromRow(row)]));
+  const ownerSinceById = new Map(ownerTerms.map(row => [row.ownerClientId, row.updatedAt]));
+  const agencySince = settings.updatedAt ? new Date(settings.updatedAt) : null;
   const shareByAgent = new Map(agentRates.map(row => [row.userId, Number(row.sharePercent)]));
   const agency = agencyFeeTerms(settings);
 
@@ -89,6 +115,14 @@ export async function materializeManagementFees(
       agency
     });
     if (terms.source === 'NONE') continue;
+
+    const levelSince =
+      terms.source === 'LEASE'
+        ? lease.managementTerms?.updatedAt
+        : terms.source === 'OWNER'
+          ? ownerSinceById.get(lease.owner_client_id ?? '')
+          : agencySince;
+    if (!feeTermsApplyToAllocation(levelSince, allocation.created_at)) continue;
 
     const inst = allocation.installment;
     const amountRent = Number(inst.amount_rent);

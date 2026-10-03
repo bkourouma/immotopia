@@ -875,5 +875,13 @@
   "Vue d'ensemble de votre portefeuille immobilier": "نظرة عامة على محفظتك العقارية",
   "Vue d'ensemble de votre situation locative": "نظرة عامة على وضعك الإيجاري",
   "Vue indisponible": "الصفحة غير متاحة",
-  "Actifs": "الأصول"
+  "Actifs": "الأصول",
+  "⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.": "⚠️ لا يوجد عقد إيجار نشط لهذا العقار. تحتاج إلى عقد نشط لإنشاء تذكرة صيانة.",
+  "Bail sélectionné automatiquement": "تم اختيار العقد تلقائيًا",
+  "Cette propriété n'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance.": "لا يوجد عقد إيجار نشط لهذا العقار. يُرجى التواصل مع مديرك لتفعيل عقد قبل إنشاء تذكرة صيانة.",
+  "Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.": "لا يوجد عقد إيجار نشط لهذا العقار. تحتاج إلى عقد نشط لإنشاء تذكرة صيانة.",
+  "Le bail actif a été sélectionné automatiquement": "تم اختيار العقد النشط تلقائيًا",
+  "Reste dû : {{paid}} déjà réglés sur {{total}}": "المبلغ المتبقي: تم سداد {{paid}} من أصل {{total}}",
+  "Sélectionner un bail": "اختيار عقد",
+  "Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété": "اختر العقد المعني إن كان لديك أكثر من عقد لهذا العقار"
 }

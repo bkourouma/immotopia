@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { syncDirectDepositMovementEntryTx, syncDirectRentPaymentEntryTx } from '../lib/finance/rental-direct-ledger';
 import { annulerPieceTx, compteLocataireDuBailTx, compteLocataireTx } from './rental-installment-service';
 import { NotFoundError, ConflictError, BadRequestError } from '../middleware/error-middleware';
+import { montantDisponibleTx } from './rental-payment-service';
 
 /**
  * Create security deposit for a lease
@@ -249,8 +250,10 @@ export function computeDepositBalance(deposit: {
 /** Contrôles métier d'un mouvement, sur le dépôt relu sous verrou. */
 async function assertDepositMovementAllowedTx(
   tx: PrismaTransactionClient,
+  tenantId: string,
   deposit: {
     id: string;
+    lease_id?: string | null;
     target_amount: unknown;
     collected_amount: unknown;
     refunded_amount: unknown;
@@ -280,6 +283,26 @@ async function assertDepositMovementAllowedTx(
     }
     if (!paymentId) {
       throw new BadRequestError(t("L'identifiant du paiement est requis pour l'encaissement du dépôt"));
+    }
+
+    // Un paiement ne sert qu'à une destination à la fois : la collecte ne peut
+    // s'appuyer que sur un règlement encaissé, du même bail, dont le montant
+    // n'est ni déjà affecté à des loyers ni déjà déposé en garantie.
+    const payment = await tx.rentalPayment.findFirst({ where: { id: paymentId, tenant_id: tenantId } });
+    if (!payment) {
+      throw new NotFoundError(t('Paiement introuvable'));
+    }
+    if (payment.status !== 'SUCCESS') {
+      throw new ConflictError(t('Seul un paiement encaissé peut servir à collecter le dépôt de garantie'));
+    }
+    if (payment.lease_id && deposit.lease_id && payment.lease_id !== deposit.lease_id) {
+      throw new BadRequestError(t("Ce paiement n'appartient pas au bail de ce dépôt de garantie"));
+    }
+    const disponible = await montantDisponibleTx(tx, tenantId, payment);
+    if (disponible < Number(amount)) {
+      throw new ConflictError(
+        t("Ce paiement n'est plus assez disponible : il est déjà affecté à un loyer ou à un dépôt de garantie")
+      );
     }
   }
 
@@ -455,7 +478,7 @@ export async function createDepositMovement(
         throw new NotFoundError(t('Dépôt de garantie introuvable'));
       }
 
-      await assertDepositMovementAllowedTx(tx, locked, type, amount, paymentId);
+      await assertDepositMovementAllowedTx(tx, tenantId, locked, type, amount, paymentId);
       await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
 
       const created = await tx.rentalDepositMovement.create({

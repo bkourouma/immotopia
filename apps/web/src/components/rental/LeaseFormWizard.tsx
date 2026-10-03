@@ -1,5 +1,5 @@
 import { contactDisplayNameWithEmail } from '../../utils/contact-display';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -15,6 +15,7 @@ import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { StepRail } from '../primitives/StepRail';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { t } from '../../i18n/t';
+import { findLeaseOwnerContactId } from './lease-owner-match';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -74,165 +75,60 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     loadClients();
   }, [tenantId]);
 
-  // Auto-fill rent amount and currency when property is selected
+  // Pré-remplissage loyer/devise : une seule fois par bien choisi, sans écraser
+  // une saisie manuelle ni se rejouer quand les listes se rechargent.
+  const prefilledPropertyRef = useRef<string>('');
+  const touchedFieldsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!formData.propertyId || lease) return;
+    if (prefilledPropertyRef.current === formData.propertyId) return;
     const selectedProperty = properties.find(p => p.id === formData.propertyId);
     if (!selectedProperty) return;
+    prefilledPropertyRef.current = formData.propertyId;
     setFormData(prev => {
       const updates: Partial<typeof prev> = {};
-      if (selectedProperty.price != null && selectedProperty.price > 0) {
+      if (!touchedFieldsRef.current.has('rentAmount') && selectedProperty.price != null && selectedProperty.price > 0) {
         updates.rentAmount = String(selectedProperty.price);
       }
-      if (selectedProperty.currency) {
+      if (!touchedFieldsRef.current.has('currency') && selectedProperty.currency) {
         updates.currency = selectedProperty.currency;
       }
       return Object.keys(updates).length ? { ...prev, ...updates } : prev;
     });
   }, [formData.propertyId, properties, lease]);
 
-  // Auto-select owner when property is selected
+  // Propriétaire par défaut : celui du bien (e-mail exact), sinon vide. Jamais
+  // de rapprochement flou, jamais d'écrasement d'un choix de l'utilisateur.
+  const ownerResolvedForRef = useRef<string>('');
   useEffect(() => {
-    console.log('[LeaseFormWizard] Auto-select owner effect triggered', {
-      propertyId: formData.propertyId,
-      hasLease: !!lease,
-      propertiesCount: properties.length,
-      clientsCount: clients.length
-    });
+    // Jamais pour un compte « détenu en propre » (aucun propriétaire tiers possible).
+    if (lease || ownAssetsOnly || !formData.propertyId || clients.length === 0) return;
+    if (ownerResolvedForRef.current === formData.propertyId) return;
+    const listed = properties.find(p => p.id === formData.propertyId);
+    if (!listed) return;
+    ownerResolvedForRef.current = formData.propertyId;
 
-    // Only auto-select if we're creating a new lease (not editing) ; jamais pour
-    // un compte « détenu en propre » (aucun propriétaire tiers possible).
-    if (lease || !formData.propertyId || ownAssetsOnly) {
-      console.log('[LeaseFormWizard] Skipping auto-select:', {
-        reason: lease ? 'editing existing lease' : 'no property selected'
-      });
-      return;
-    }
-
-    const autoSelectOwner = async () => {
-      console.log('[LeaseFormWizard] Starting auto-select owner process', {
-        propertyId: formData.propertyId
-      });
-
-      // Find the selected property in the list
-      let selectedProperty = properties.find(p => p.id === formData.propertyId);
-      console.log('[LeaseFormWizard] Property found in list:', {
-        found: !!selectedProperty,
-        hasOwner: !!selectedProperty?.owner,
-        hasContainerParent: !!selectedProperty?.containerParent,
-        ownerEmail: selectedProperty?.owner?.email,
-        ownerId: selectedProperty?.owner?.id
-      });
-
-      // If the selected property is linked to an immeuble (building), get the immeuble's owner for display
-      const parentImmeubleId = selectedProperty?.containerParent?.id;
-      const isLinkedToImmeuble =
-        parentImmeubleId && selectedProperty?.containerParent?.propertyType === PropertyType.IMMEUBLE;
-      if (selectedProperty && isLinkedToImmeuble && parentImmeubleId) {
+    const resolveOwner = async () => {
+      let property: Property = listed;
+      if (property.ownershipType !== 'TENANT') {
+        const parentId = property.containerParent?.id;
+        const linkedToImmeuble = parentId && property.containerParent?.propertyType === PropertyType.IMMEUBLE;
         try {
-          const parentImmeuble = await getProperty(tenantId, parentImmeubleId);
-          const immeubleOwner = parentImmeuble.owner ?? undefined;
-          const effectiveOwner = selectedProperty.owner ?? immeubleOwner;
-          if (effectiveOwner) {
-            selectedProperty = { ...selectedProperty, owner: effectiveOwner };
-            console.log('[LeaseFormWizard] Using immeuble owner for property linked to building:', {
-              hasOwner: !!effectiveOwner,
-              ownerEmail: effectiveOwner.email
-            });
+          if (!property.owner && linkedToImmeuble && parentId) {
+            const parent = await getProperty(tenantId, parentId);
+            if (parent.owner) property = { ...property, owner: parent.owner };
           }
+          if (!property.owner) property = await getProperty(tenantId, formData.propertyId);
         } catch (error) {
-          console.error('[LeaseFormWizard] Error loading parent immeuble:', error);
+          console.error('[LeaseFormWizard] Propriétaire du bien indisponible :', error);
         }
       }
-
-      // If property still doesn't have owner info, load full property details
-      if (selectedProperty && !selectedProperty.owner) {
-        console.log('[LeaseFormWizard] Property owner not in list, loading full details...');
-        try {
-          const propertyDetails = await getProperty(tenantId, formData.propertyId);
-          selectedProperty = propertyDetails;
-          console.log('[LeaseFormWizard] Property details loaded:', {
-            hasOwner: !!propertyDetails.owner,
-            ownerEmail: propertyDetails.owner?.email,
-            ownerId: propertyDetails.owner?.id
-          });
-        } catch (error) {
-          console.error('[LeaseFormWizard] Error loading property details:', error);
-          return;
-        }
-      }
-
-      // If property has an owner with email, find matching contact
-      const ownerEmail = selectedProperty?.owner?.email;
-      console.log('[LeaseFormWizard] Checking owner email:', {
-        ownerEmail,
-        clientsAvailable: clients.length > 0
-      });
-
-      if (ownerEmail && clients.length > 0) {
-        // Normalize email for comparison (lowercase, trim)
-        const normalizedOwnerEmail = ownerEmail.toLowerCase().trim();
-        console.log('[LeaseFormWizard] Searching for contact with email:', normalizedOwnerEmail);
-
-        // Rapprochement par e-mail EXACT uniquement (principal ou secondaire). Jamais
-        // par nom ni par domaine : un rapprochement approximatif remplissait en
-        // silence un tiers qui, pour un pack Patrimoine, faisait refuser le bail.
-        const ownerContact = clients.find(client => {
-          const primary = (client.email || '').toLowerCase().trim();
-          const secondary = (client.emailSecondary || '').toLowerCase().trim();
-          return primary === normalizedOwnerEmail || secondary === normalizedOwnerEmail;
-        });
-
-        if (ownerContact) {
-          // Only auto-select if no owner is currently selected, or if the current owner doesn't match
-          const currentOwnerContact = formData.ownerClientId
-            ? clients.find(client => client.id === formData.ownerClientId)
-            : null;
-
-          console.log('[LeaseFormWizard] Current owner state:', {
-            currentOwnerClientId: formData.ownerClientId,
-            currentOwnerContact: currentOwnerContact
-              ? {
-                  id: currentOwnerContact.id,
-                  email: currentOwnerContact.email
-                }
-              : null
-          });
-
-          // Auto-select if no owner selected, or if current owner email doesn't match property owner
-          const normalizedCurrentEmail = currentOwnerContact?.email?.toLowerCase().trim();
-          if (!currentOwnerContact || normalizedCurrentEmail !== normalizedOwnerEmail) {
-            console.log('[LeaseFormWizard] ✅ Auto-selecting owner contact:', {
-              contactId: ownerContact.id,
-              contactName: `${ownerContact.firstName} ${ownerContact.lastName}`,
-              contactEmail: ownerContact.email,
-              propertyOwnerEmail: ownerEmail
-            });
-            setFormData(prev => ({ ...prev, ownerClientId: ownerContact.id }));
-          } else {
-            console.log('[LeaseFormWizard] Owner already matches, skipping auto-select');
-          }
-        } else {
-          console.warn('[LeaseFormWizard] ❌ No matching contact found for owner:', {
-            ownerEmail: normalizedOwnerEmail,
-            ownerName: selectedProperty?.owner?.fullName,
-            ownerId: selectedProperty?.owner?.id,
-            totalClients: clients.length
-          });
-          console.log(
-            '[LeaseFormWizard] Tip: Create a CRM contact with email:',
-            normalizedOwnerEmail,
-            'to enable auto-selection'
-          );
-        }
-      } else {
-        console.log('[LeaseFormWizard] Cannot auto-select owner:', {
-          reason: !ownerEmail ? 'no owner email' : 'no clients loaded'
-        });
-      }
+      if (touchedFieldsRef.current.has('ownerClientId')) return;
+      const contactId = findLeaseOwnerContactId(property, clients) || '';
+      setFormData(prev => (prev.ownerClientId === contactId ? prev : { ...prev, ownerClientId: contactId }));
     };
 
-    autoSelectOwner();
+    void resolveOwner();
   }, [formData.propertyId, properties, clients, lease, tenantId, ownAssetsOnly]);
 
   // Helper functions for number formatting
@@ -278,6 +174,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   };
 
   const handleChange = (field: string, value: string | number) => {
+    touchedFieldsRef.current.add(field);
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear errors for this field
     if (stepErrors[currentStep]?.[field]) {

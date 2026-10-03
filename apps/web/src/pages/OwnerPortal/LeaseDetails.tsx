@@ -95,6 +95,8 @@ interface LeaseDetailsData {
   deposit: {
     target_amount: number;
     held_amount: number;
+    /** Solde actuel du dépôt (collecté - remboursé - confisqué) : le montant détenu. */
+    current_balance?: number;
     refunded_amount: number;
     movements: Array<{
       id: string;
@@ -493,7 +495,7 @@ export default function LeaseDetails() {
                   <Col xs={24} sm={12} lg={8}>
                     <Statistic
                       title={t('Montant détenu')}
-                      value={formatCurrency(Number(data.deposit.held_amount))}
+                      value={formatCurrency(Number(data.deposit.current_balance ?? data.deposit.held_amount))}
                       prefix={<SafetyOutlined />}
                       valueStyle={{ color: '#1890ff' }}
                     />

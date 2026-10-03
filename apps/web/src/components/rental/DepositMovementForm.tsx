@@ -28,6 +28,13 @@ const RefundTreasuryAccountField: React.FC<{
   <TreasuryAccountSelector tenantId={tenantId} paymentMethod="OTHER" value={value} onChange={id => onChange?.(id)} />
 );
 
+/** Montant d'un paiement encore libre : ni affecté à une échéance, ni versé au dépôt. */
+function availableAmount(p: RentalPayment): number {
+  const allocated = (p.allocations || []).reduce((sum, a) => sum + Number(a.amount), 0);
+  const deposited = (p.depositMovements || []).reduce((sum, m) => sum + Number(m.amount), 0);
+  return Number(p.amount) - allocated - deposited;
+}
+
 interface DepositMovementFormProps {
   tenantId: string;
   deposit: RentalSecurityDeposit;
@@ -53,8 +60,9 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
   const [movementType, setMovementType] = useState<string>(RentalDepositMovementType.COLLECT);
 
   // Load payments when type is COLLECT and leaseId is available.
-  // On affiche uniquement les paiements non alloués aux échéances (montant alloué = 0),
-  // pour éviter d'associer la collecte du dépôt à un paiement déjà affecté au loyer.
+  // Un paiement ne sert qu'à une destination : on ne propose que ceux dont le
+  // montant encore libre (montant - affecté aux échéances - déjà déposé en
+  // garantie) couvre le dépôt attendu.
   useEffect(() => {
     const loadPayments = async () => {
       if (movementType === RentalDepositMovementType.COLLECT && leaseId && tenantId) {
@@ -66,10 +74,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
           });
           if (response.success) {
             const all = response.data || [];
-            const allocatedSum = (p: RentalPayment) =>
-              (p.allocations || []).reduce((sum, a) => sum + Number(a.amount), 0);
-            const unallocated = all.filter(p => allocatedSum(p) === 0);
-            setPayments(unallocated);
+            const target = Number(deposit?.target_amount || 0);
+            setPayments(all.filter(p => availableAmount(p) >= target));
           }
         } catch (err) {
           console.error('Error loading payments:', err);
@@ -82,7 +88,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
     };
 
     loadPayments();
-  }, [movementType, leaseId, tenantId]);
+  }, [movementType, leaseId, tenantId, deposit?.target_amount]);
 
   // Pour une Collecte, le montant doit être égal au montant cible du dépôt (règle backend).
   useEffect(() => {

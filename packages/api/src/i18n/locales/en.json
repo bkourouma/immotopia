@@ -1524,5 +1524,12 @@
   "Le prix est obligatoire pour la publication": "The price is required for publication",
   "Le propriétaire de ce bien ne peut pas être retiré.": "The owner of this property cannot be removed.",
   "Le statut du bien doit être : {{statuts}}": "The property status must be: {{statuts}}",
-  "Les conditions de publication ne sont pas remplies : {{conditions}}": "Publication requirements not met: {{conditions}}"
+  "Les conditions de publication ne sont pas remplies : {{conditions}}": "Publication requirements not met: {{conditions}}",
+  "Ce paiement n'appartient pas au bail de ce dépôt de garantie": "This payment does not belong to the lease of this security deposit",
+  "Ce paiement n'est plus assez disponible : il est déjà affecté à un loyer ou à un dépôt de garantie": "This payment no longer has enough available balance: it is already allocated to rent or to a security deposit",
+  "Le dépôt de garantie ne peut être collecté qu'une seule fois": "The security deposit can only be collected once",
+  "Le montant collecté doit être égal au dépôt de garantie attendu": "The amount collected must equal the expected security deposit",
+  "Le solde du dépôt de garantie est insuffisant pour ce mouvement": "The security deposit balance is not sufficient for this movement",
+  "Seul un paiement encaissé peut servir à collecter le dépôt de garantie": "Only a received payment can be used to collect the security deposit",
+  "Un paiement est requis pour collecter le dépôt de garantie": "A payment is required to collect the security deposit"
 }
