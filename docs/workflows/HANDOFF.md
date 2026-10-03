@@ -497,8 +497,7 @@ Reste à faire :
   (`send_later`) que seul l'utilisateur peut trancher.
 - Baux : préavis (3 mois habitation, 6 mois commercial) à faire valider par le métier ;
   « FCFA » en dur dans les modèles ; texte « par jour de retard » à revoir. (Un second
-  contrat sur le même bail répond maintenant 409 avec renvoi vers « Régénérer » : branche
-  `fix/contrat-unique-par-bail`.)
+  contrat sur le même bail est numéroté `<bail>-A2`, `-A3`… sous verrou.)
 - ImmoCopilot : limiteurs de débit en mémoire par instance ; `connection_limit` à
   dimensionner ; après un échec de section exclusive le jeton est consommé (fail-closed) ;
   saturation réelle du pool non testée.
