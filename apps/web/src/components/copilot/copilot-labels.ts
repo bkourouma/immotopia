@@ -1,5 +1,6 @@
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import type { CopilotToolName } from '../../types/copilot';
 
 /**
  * Libellés des énumérations affichées par les cartes du copilote. Mêmes textes
@@ -55,4 +56,23 @@ export function formatCopilotAmount(amount: string | number | null): string {
   if (amount === null || amount === '') return '';
   const n = Number(amount);
   return Number.isFinite(n) ? n.toLocaleString(activeLocale()) : String(amount);
+}
+
+/**
+ * Libellé d'état d'un outil du copilote (« en cours »). La passerelle générique
+ * (`list_capabilities`, `call_read`) consulte n'importe quel écran en lecture :
+ * le texte le dit, sans prétendre écrire quoi que ce soit.
+ */
+export function copilotToolLabel(tool: CopilotToolName): string {
+  const labels: Record<CopilotToolName, string> = {
+    search_properties: t('Recherche de biens'),
+    search_leases: t('Recherche de baux'),
+    list_lease_documents: t('Liste des documents du bail'),
+    list_property_documents: t('Liste des documents du bien'),
+    propose_rental_document: t('Préparation d’un document'),
+    show_artifact: t('Affichage dans le panneau'),
+    list_capabilities: t('Recherche dans les consultations disponibles'),
+    call_read: t('Consultation d’une donnée')
+  };
+  return labels[tool];
 }

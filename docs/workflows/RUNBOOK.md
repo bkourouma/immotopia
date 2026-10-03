@@ -461,6 +461,19 @@ un commentaire `: ping` toutes les 15 s). Symptôme d'un tampon : le texte
 n'arrive qu'à la fin, d'un bloc. Symptôme d'un délai trop court : le flux se
 coupe en milieu de réponse.
 
+**Catalogue de la passerelle (`npm run ai:catalog`).** Les outils `list_capabilities`
+et `call_read` s'appuient sur `packages/api/src/lib/ai/gateway/catalog.generated.json`,
+produit à partir de la pile Express réelle. **À relancer chaque fois qu'une route
+d'agence est ajoutée, déplacée, retirée, ou qu'une de ses gardes de permission
+change**, depuis `packages/api` : `npm run ai:catalog`, puis commiter le fichier avec la
+route. Sinon `__tests__/unit/ai.catalog.test.ts` (projet jest `api-app`) échoue avec
+« Catalogue périmé : lancer npm run ai:catalog ». Le script ne démarre ni serveur ni
+base. Une route `DELETE` ou finissant par `/delete`, `/remove`, `/destroy`, `/purge` n'y
+entre jamais (le test le vérifie) ; un chemin évoquant un secret y est marqué
+`sensitive` et reste invisible de l'assistant. L'appel `call_read` se fait par loopback
+sur `127.0.0.1:<PORT>` (`config/env.ts`) : si l'API écoute derrière un autre port que
+`PORT`, la passerelle répond des erreurs de connexion.
+
 **Dépannage rapide.**
 
 - Bouton absent : `GET /api/tenants/:tenantId/ai/status` doit répondre

@@ -11,6 +11,9 @@ import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, L
  * confirmation humaine restent seuls maîtres de la génération.
  *
  * Sans script, des règles par mots-clés lisent le dernier message utilisateur :
+ * - « capacités », « catalogue » (passerelle, seulement si list_capabilities et call_read sont offerts) :
+ *   list_capabilities (mot-clé cité après « sur », sinon la liste des modules), puis call_read sur la
+ *   première route sans paramètre de chemin trouvée ;
  * - « tableau », « graphique » (+ « baux » pour des baux, sinon des biens) : search_properties ou
  *   search_leases puis show_artifact (table ou chart construit sur les résultats) ; « synthèse » :
  *   show_artifact (markdown) sans recherche. Seulement si show_artifact est offert ;
@@ -452,6 +455,28 @@ export class FakeProvider implements LlmProvider {
     }
     if (results.some(result => result.isError)) {
       return { text: t("Je n'ai pas pu terminer cette recherche : un outil a renvoyé une erreur.") };
+    }
+
+    // 00. Passerelle générique : list_capabilities puis call_read (lecture seule)
+    const canQueryGateway = offered === null || (offered.has('list_capabilities') && offered.has('call_read'));
+    if (canQueryGateway && /\b(capacite|capacites|catalogue)\b/.test(normalized)) {
+      if (round === 0) {
+        const topic = /\bsur\s+(?:les?\s+|la\s+|l')?([a-z0-9-]{4,})/.exec(normalized)?.[1];
+        return call('list_capabilities', topic ? { query: topic } : {});
+      }
+      if (round === 1) {
+        const data = results[0]?.data as { items?: Array<{ id?: unknown; pathParams?: unknown }> } | null;
+        const target = (data?.items ?? []).find(
+          item => typeof item.id === 'string' && Array.isArray(item.pathParams) && item.pathParams.length === 0
+        );
+        return target
+          ? call('call_read', { capabilityId: target.id })
+          : { text: t('Aucune consultation correspondante dans le catalogue.') };
+      }
+      const read = results[1]?.data as { ok?: unknown; status?: unknown } | null;
+      return read?.ok === true
+        ? { text: t("J'ai consulté la donnée demandée (statut {{status}}).", { status: String(read.status) }) }
+        : { text: t("La consultation n'a pas abouti.") };
     }
 
     // 0. Artefact (tableau, graphique, synthèse) — seulement si show_artifact est offert

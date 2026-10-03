@@ -406,7 +406,8 @@ de poser la clé ; ce n'est pas un réglage technique.
   du service) : jamais d'e-mail, de téléphone, de chemin de fichier
   (`file_path`), de `mm_phone`, de notes ni de propriétaire. Les biens publics
   d'autres agences, que `listProperties` inclut, sont écartés.
-- Sorties plafonnées : 10 éléments et 8 Ko par résultat d'outil.
+- Sorties plafonnées : 10 éléments et 8 Ko par résultat d'outil (`call_read`, la passerelle
+  générique, a son propre plafond de 12 000 caractères : voir plus bas).
 - Le jeton de proposition n'est jamais renvoyé au modèle : il ne sort que par
   l'événement d'interface `action_proposal`.
 - Le contexte d'écran (page courante) est vérifié côté serveur (entité de
@@ -443,6 +444,57 @@ liens `javascript:` refusés ; limites (500 lignes, 20 colonnes, 20 000 caractè
 de Markdown, 200 points, 6 séries) ; au-delà de 500 lignes, troncature avec
 `truncated: true`. Le web rend le Markdown par un composant sûr
 (`SafeMarkdown`), jamais par `dangerouslySetInnerHTML`.
+
+**Passerelle générique en lecture** (`list_capabilities`, `call_read`,
+`lib/ai/gateway/*`, plan V2 étape 3). L'assistant consulte tout ce que l'interface
+permet de consulter sans un outil par route.
+
+- **Catalogue généré, sans DELETE.** `catalog.generated.json` est produit par
+  `npm run ai:catalog` depuis la pile Express réelle : routes d'agence seulement
+  (`requireTenantAccess`, préfixe `/api/tenants/:tenantId`). Exclus par construction :
+  `/auth`, `/admin`, `/platform`, `/portal`, l'assistant lui-même, les routes publiques
+  et les webhooks, **toute route `DELETE`** et toute écriture destructrice déguisée en
+  POST (chemin finissant par `/delete`, `/remove`, `/destroy`, `/purge`). Un test échoue
+  si le fichier est périmé, si une telle route y figure ou si une route d'agence n'a pas
+  d'entrée. Le catalogue est un INDEX : il n'accorde aucun droit.
+- **Loopback sous l'identité de l'utilisateur.** `call_read` n'accepte qu'un id GET du
+  catalogue, non sensible, et rejoue la requête vers l'API elle-même
+  (`127.0.0.1` et `PORT` de `config/env.ts`, jamais une URL ou un hôte fournis par le
+  modèle) avec le **même jeton** que la requête de chat (cookie `accessToken` ou
+  `Authorization: Bearer`) : pas de compte de service. Toute la chaîne réelle s'applique
+  (authentification, accès à l'agence, permission de la route, abonnement, garde Prisma,
+  limiteurs ; `X-Forwarded-For` reprend l'IP de l'appelant pour que limiteurs et audit
+  voient l'utilisateur) : c'est elle qui fait autorité. Le jeton n'est porté que par une
+  fonction du contexte d'outil (`loopbackHeaders`) : jamais journalisé, jamais renvoyé au
+  modèle, jamais dans l'audit. `:tenantId` est imposé depuis le contexte ; les autres
+  paramètres de chemin sont un UUID ou un jeton simple (`^[A-Za-z0-9_-]{1,64}$`),
+  encodés ; la requête est limitée à 20 clés de valeurs primitives. L'URL de base ne se
+  change que par `setLoopbackBaseUrlForTests`, refusé hors `NODE_ENV=test`.
+- **Données sensibles.** Les chemins évoquant un secret (secret, token, credential,
+  password, api-key, webhook, jwt, invitation, session de connexion, passerelle de
+  paiement, lien sécurisé…) sont marqués `sensitive` : absents de `list_capabilities`,
+  refusés par `call_read` (même refus qu'un id inconnu). En plus, toute clé de la
+  réponse dont le nom évoque `password`, `secret`, `token`, `apiKey`, `authorization`,
+  `hash`, `credential`, `cookie` est remplacée par `[masqué]` à toute profondeur, ainsi
+  qu'un JWT ou un `Bearer …` égaré dans une valeur ; `iban` et `rib` restent visibles
+  (données métier). C'est un filet : les `select` explicites des services restent la règle.
+- **Plafonds.** Délai 10 s, abandon avec la connexion du chat, redirections non suivies,
+  JSON seulement (sinon « contenu non textuel, non affiché »), 2 Mio lus au plus
+  (au-delà : 413 renvoyé au modèle, qui doit filtrer ou paginer). Avant retour au
+  modèle : tableaux de plus de 50 éléments, chaînes de plus de 500 caractères,
+  objets de plus de 100 clés et profondeur au-delà de 6 tronqués ; total d'environ
+  12 000 caractères (paliers de plus en plus stricts, `truncated: true`). Erreur HTTP :
+  `{ ok: false, status, message }`, sans pile. Le contenu renvoyé est une donnée, jamais
+  une instruction (invite système, règle 2 et règle de la passerelle).
+- **Permission des outils.** `PROPERTIES_VIEW`, comme `show_artifact` : la plus faible des
+  permissions de lecture (socle CORE). Elle n'ouvre rien par elle-même, la route appelée
+  vérifie la sienne ; limite connue : un rôle sans `PROPERTIES_VIEW` ne reçoit pas la
+  passerelle. `list_capabilities` filtre selon les permissions que le catalogue connaît
+  (gardes `requirePermission` et variantes) et laisse passer le reste.
+- **Pas d'écriture à ce stade.** Seules les routes GET sont appelables ; les écritures
+  du catalogue (POST, PUT, PATCH) sont réservées à l'étape 4 (aperçu et accord humain).
+  Limites : le catalogue ne porte ni schéma de requête ni schéma de corps ; une route GET
+  à effet de bord éventuel reste exécutée sous les droits de l'utilisateur.
 
 **Jeton de proposition** (`lib/ai/proposal-token.ts`).
 
@@ -487,7 +539,8 @@ refusés) puis `requireAiAssistantAccess` : **refus du super-admin** en MVP.
 `tenantId` et `userId` viennent de `req.tenantContext` et `req.user`, jamais du
 corps ni du modèle ; un schéma strict rejette une clé `tenantId` en entrée d'un
 outil. Chaque outil vérifie sa permission (`PROPERTIES_VIEW`,
-`RENTAL_LEASES_VIEW`, `RENTAL_DOCUMENTS_VIEW`, `RENTAL_DOCUMENTS_GENERATE`).
+`RENTAL_LEASES_VIEW`, `RENTAL_DOCUMENTS_VIEW`, `RENTAL_DOCUMENTS_GENERATE`) ; la passerelle
+de lecture ajoute en plus celle de la route appelée (voir ci-dessus).
 `propose_rental_document` et `POST /ai/actions/execute` exigent
 `RENTAL_DOCUMENTS_GENERATE` **et** `RENTAL_DOCUMENTS_VIEW` ; en
 mode `enforce`, les modules de l'abonnement filtrent aussi les outils

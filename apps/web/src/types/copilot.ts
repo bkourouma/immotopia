@@ -13,7 +13,10 @@ export type CopilotToolName =
   | 'search_leases'
   | 'list_lease_documents'
   | 'list_property_documents'
-  | 'propose_rental_document';
+  | 'propose_rental_document'
+  | 'show_artifact'
+  | 'list_capabilities'
+  | 'call_read';
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'

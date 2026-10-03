@@ -13,6 +13,7 @@ import { executeRentalDocument } from '../lib/ai/actions/execute-rental-document
 import { runChat } from '../lib/ai/orchestrator';
 import { resolvePageContext } from '../lib/ai/page-context';
 import { getLlmProvider } from '../lib/ai/providers';
+import { loopbackHeadersFor } from '../lib/ai/gateway/loopback-auth';
 import { openSseStream } from '../lib/ai/sse';
 import { toolsForUser, type ToolFeature } from '../lib/ai/tools/registry';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
@@ -133,6 +134,7 @@ export const chatHandler = asyncHandler(async (req: Request, res: Response) => {
       conversationId: body.conversationId ?? randomUUID(),
       requestId: randomUUID(),
       signal: stream.signal,
+      loopbackHeaders: loopbackHeadersFor(req),
       emit: event => stream.send(event)
     });
   } finally {

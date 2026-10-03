@@ -56,6 +56,8 @@ export interface RunChatInput {
   conversationId: string;
   requestId: string;
   signal: AbortSignal;
+  /** Authentification rejouée par la passerelle (`call_read`) ; voir `gateway/loopback-auth.ts`. Jamais journalisée. */
+  loopbackHeaders?: () => Record<string, string>;
   emit: (event: CopilotSseEvent) => void;
   now?: () => Date;
 }
@@ -129,6 +131,7 @@ export async function runChat(input: RunChatInput): Promise<ChatDoneReason> {
     requestId: input.requestId,
     conversationId: input.conversationId,
     signal,
+    loopbackHeaders: input.loopbackHeaders,
     // Bail de l'écran vérifié côté serveur : seule source de confiance hors résultats d'outils.
     seenLeaseIds: new Set(input.pageContext?.entityType === 'LEASE' ? [input.pageContext.entityId] : [])
   };

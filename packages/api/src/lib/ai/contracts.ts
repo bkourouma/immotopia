@@ -26,7 +26,9 @@ export type CopilotToolName =
   | 'list_lease_documents'
   | 'list_property_documents'
   | 'propose_rental_document'
-  | 'show_artifact';
+  | 'show_artifact'
+  | 'list_capabilities'
+  | 'call_read';
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -323,6 +325,13 @@ export interface CopilotToolContext {
    * Mutable, propre à la requête.
    */
   seenLeaseIds: Set<string>;
+  /**
+   * En-têtes qui rejouent l'authentification de l'utilisateur du chat pour la
+   * passerelle (`call_read`, appel loopback). Fonction, et non propriété
+   * lisible : le jeton ne figure ni dans un `JSON.stringify(ctx)`, ni dans un
+   * journal, ni dans un résultat d'outil. Absente : la passerelle refuse d'appeler.
+   */
+  loopbackHeaders?: () => Record<string, string>;
 }
 
 export interface CopilotToolOutcome {

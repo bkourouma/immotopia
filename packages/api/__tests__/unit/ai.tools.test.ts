@@ -100,9 +100,11 @@ beforeEach(() => {
 });
 
 describe('registre', () => {
-  it('ne contient que les 6 outils du plan, sans outil d’exécution', () => {
+  it('ne contient que les 8 outils du plan, sans outil d’exécution', () => {
     expect(ALL_TOOLS.map(t => t.name).sort()).toEqual(
       [
+        'call_read',
+        'list_capabilities',
         'list_lease_documents',
         'list_property_documents',
         'propose_rental_document',
@@ -120,7 +122,9 @@ describe('registre', () => {
     ['list_lease_documents', 'RENTAL_DOCUMENTS_VIEW'],
     ['list_property_documents', 'PROPERTIES_VIEW'],
     ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE'],
-    ['show_artifact', 'PROPERTIES_VIEW']
+    ['show_artifact', 'PROPERTIES_VIEW'],
+    ['list_capabilities', 'PROPERTIES_VIEW'],
+    ['call_read', 'PROPERTIES_VIEW']
   ])('%s exige %s', (name, permission) => {
     expect(tool(name).requiredPermission).toBe(permission);
     const required = [permission, ...(tool(name).additionalPermissions ?? [])];
@@ -145,19 +149,25 @@ describe('registre', () => {
       toolsForUser(['PROPERTIES_VIEW'])
         .map(t => t.name)
         .sort()
-    ).toEqual(['list_property_documents', 'search_properties', 'show_artifact']);
-    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(6);
+    ).toEqual(['call_read', 'list_capabilities', 'list_property_documents', 'search_properties', 'show_artifact']);
+    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(8);
   });
 
   it('filtre aussi selon les droits d’abonnement quand ils sont fournis', () => {
     const core = toolsForUser(new Set(ALL_PERMS), new Set(['CORE'] as const));
-    expect(core.map(t => t.name).sort()).toEqual(['list_property_documents', 'search_properties', 'show_artifact']);
+    expect(core.map(t => t.name).sort()).toEqual([
+      'call_read',
+      'list_capabilities',
+      'list_property_documents',
+      'search_properties',
+      'show_artifact'
+    ]);
     expect(toolsForUser(new Set(ALL_PERMS), [])).toEqual([]);
   });
 
   it('expose des spécifications neutres avec additionalProperties:false', () => {
     const specs = toLlmToolSpecs(toolsForUser(new Set(ALL_PERMS)));
-    expect(specs).toHaveLength(6);
+    expect(specs).toHaveLength(8);
     for (const spec of specs) expect(spec.inputSchema.additionalProperties).toBe(false);
   });
 

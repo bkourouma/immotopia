@@ -1,4 +1,6 @@
 import type { CopilotToolDefinition, CopilotToolName, LlmToolSpec } from '../contracts';
+import { callReadTool } from './call-read';
+import { listCapabilitiesTool } from './list-capabilities';
 import { listLeaseDocumentsTool } from './list-lease-documents';
 import { listPropertyDocumentsTool } from './list-property-documents';
 import { proposeRentalDocumentTool } from './propose-rental-document';
@@ -17,7 +19,9 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   listLeaseDocumentsTool,
   listPropertyDocumentsTool,
   proposeRentalDocumentTool,
-  showArtifactTool
+  showArtifactTool,
+  listCapabilitiesTool,
+  callReadTool
 ] as readonly CopilotToolDefinition[];
 
 export type ToolFeature = CopilotToolDefinition['feature'];

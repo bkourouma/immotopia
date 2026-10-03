@@ -53,17 +53,25 @@ ChatGPT/Claude/Gemini) avec un panneau « artefact » et la dictée ; toute
   PNG pour un graphique — côté navigateur à partir des données déjà reçues.
 - Outil `show_artifact` (lecture seule) pour que l'IA publie un résultat.
 
-### Étape 3 — Passerelle générique en lecture
+### Étape 3 — Passerelle générique en lecture (réalisée)
 
-- Script de génération du catalogue à partir des routes Express :
-  méthode, chemin, permission requise, schéma Zod du corps/requête. Le
-  catalogue est versionné ; un test échoue si une route apparaît sans
-  entrée ou si une route `DELETE` figure au catalogue
-  (`routes-inventory.test.ts` étendu).
-- Outils `list_capabilities` (recherche dans le catalogue) et
-  `call_read` : exécute une route `GET` du catalogue **en interne**, sous
-  l'identité et les permissions de l'utilisateur, jamais avec un compte de
-  service. Réponses tronquées et réduites avant retour au modèle.
+- Script `packages/api/scripts/generate-ai-catalog.ts` (`npm run ai:catalog`) : parcourt
+  la pile Express réelle (`lib/ai/gateway/route-walker.ts`, partagé avec les tests) et
+  écrit `lib/ai/gateway/catalog.generated.json` : id `METHOD /chemin`, chemin, module,
+  résumé, permissions lues sur les gardes, drapeau `sensitive`. Routes d'agence
+  seulement ; aucune `DELETE` ni écriture destructrice (`/delete|/remove|/destroy|/purge`).
+  Le catalogue est versionné ; `__tests__/unit/ai.catalog.test.ts` échoue s'il est
+  périmé, si une route destructrice ou hors périmètre y figure, ou si une route d'agence
+  n'y a pas d'entrée.
+- **Décision changée** : le catalogue ne porte PAS le schéma Zod du corps ni de la
+  requête (les contrôleurs parsent leurs schémas en ligne, pas de registre à lire).
+  À reprendre à l'étape 4 si `plan_write` en a besoin.
+- Outils `list_capabilities` (recherche, GET seulement, 20 résultats) et `call_read`
+  : exécutent une route GET par **requête loopback** sous l'identité de l'utilisateur
+  (même jeton, aucune URL fournie par le modèle), donc avec toute la chaîne de
+  middlewares réelle. Réponses masquées (clés évoquant un secret) puis réduites
+  (50 éléments, 500 caractères, profondeur 6, ~12 000 caractères). Détail :
+  SECURITY §12.
 
 ### Étape 4 — Écritures avec aperçu et accord
 
