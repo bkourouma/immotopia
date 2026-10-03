@@ -1716,5 +1716,10 @@
   "Valider une pièce financière.": "اعتماد مستند مالي.",
   "Vérification de l’adresse e-mail": "التحقق من عنوان البريد الإلكتروني",
   "Voir les comptes de tiers": "عرض حسابات الأطراف الثالثة",
-  "Voir les rapports financiers": "عرض التقارير المالية"
+  "Voir les rapports financiers": "عرض التقارير المالية",
+  "Chaud": "ساخن",
+  "Client actif": "عميل نشط",
+  "Froid": "بارد",
+  "Prospect": "عميل محتمل",
+  "Tiède": "فاتر"
 }

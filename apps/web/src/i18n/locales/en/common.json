@@ -1716,5 +1716,10 @@
   "Valider une pièce financière.": "Validate a financial document.",
   "Vérification de l’adresse e-mail": "Email address verified",
   "Voir les comptes de tiers": "View third-party accounts",
-  "Voir les rapports financiers": "View financial reports"
+  "Voir les rapports financiers": "View financial reports",
+  "Chaud": "Hot",
+  "Client actif": "Active client",
+  "Froid": "Cold",
+  "Prospect": "Lead",
+  "Tiède": "Warm"
 }

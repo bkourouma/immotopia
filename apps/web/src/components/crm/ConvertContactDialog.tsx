@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { CrmContactRoleType } from '../../types/crm-types';
 import { UserCheck } from 'lucide-react';
 import { t } from '../../i18n/t';
+import { getContactRoleLabel } from '../../utils/crm-utils';
 
 interface ConvertContactDialogProps {
   contactName: string;
@@ -11,12 +12,7 @@ interface ConvertContactDialogProps {
   loading?: boolean;
 }
 
-const roleOptions: { value: CrmContactRoleType; label: string }[] = [
-  { value: 'PROPRIETAIRE', label: t('Propriétaire') },
-  { value: 'LOCATAIRE', label: t('Locataire') },
-  { value: 'COPROPRIETAIRE', label: t('Copropriétaire') },
-  { value: 'ACQUEREUR', label: t('Acquéreur') }
-];
+const ROLE_VALUES: CrmContactRoleType[] = ['PROPRIETAIRE', 'LOCATAIRE', 'COPROPRIETAIRE', 'ACQUEREUR'];
 
 export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
   contactName,
@@ -24,6 +20,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
   onCancel,
   loading = false
 }) => {
+  const roleOptions = ROLE_VALUES.map(value => ({ value, label: getContactRoleLabel(value) }));
   const [selectedRoles, setSelectedRoles] = useState<CrmContactRoleType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,7 +33,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
     e.preventDefault();
 
     if (selectedRoles.length === 0) {
-      setError(t('Veuillez sélectionner au moins un rôle'));
+      setError(t('Sélectionnez au moins un rôle'));
       return;
     }
 
