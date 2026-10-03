@@ -171,6 +171,21 @@ Pièges :
 - Les testeurs n'ont pas les mots de passe de recette (hors dépôt) : l'un a deviné la convention, un autre a utilisé la connexion rapide super-admin. Consigner les mots de passe de test dans les scénarios.
 - Les captures du navigateur intégré échouent panneau masqué : preuves par DOM et réseau.
 
+## Pilote — clôture : tout est sur GitHub, staging à jour — 2026-10-03
+
+**État :** `main` = `a2ff8d5c` + la PR de cette passation (documentation seule). Aucune PR de code ouverte. Le **code du staging (72214188) est identique à celui de `main`** : les commits suivants ne touchent que `HANDOFF.md` et retirent deux tests obsolètes, donc aucun redéploiement n'était nécessaire. Production non touchée.
+
+**Fait :** ajout au dépôt de `docs/Compte-rendu-entretien-module-syndic.md` et `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md`, restés non suivis depuis le 2026-09-26.
+
+**Volontairement NON commité (poste local) :** `.claude/launch.json` du checkout principal (entrées `rec-*`/`*-oi` pointant vers des scripts du scratchpad de sessions passées) ; `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx` à la racine de `docs/` (copie périmée, 847 lignes ; le classeur de référence est `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx`, 848 lignes, déjà dans `main`).
+
+**Travail poussé sur GitHub mais NON intégré dans `main` ni sur le staging — décision de l'utilisateur :**
+
+- `origin/test/recette-operateur-integre` (16 commits du 2026-09-29 : chantiers, décaissements, comptes dormants des propriétaires, gardes de communication, verrou paiement/dépôt, newsletters…) : fusion d'essai dans `main` = ~100 fichiers en conflit (services API, composants web, catalogues i18n, `HANDOFF.md`), dans du code de finance et de sécurité. Abandonnée sans rien résoudre. À reporter commit par commit (cherry-pick + recette), pas à fusionner d'un bloc.
+- `origin/feat/sms-lot-1` (lot SMS-1 : fondations, fournisseur Orange CI, sans PR) : fonctionnalité inachevée, non intégrée.
+- Branches de passation ou de nettoyage périmées (`docs/handoff-reprise-2026-09-29`, `docs/spec-fournisseur-sms`, `chore/i18n-syndic-orphelins`, `docs/wiki-fonctionnalites`, anciennes `00x-*`, `salvage/*`, `archive/*`) : rien à reprendre, à supprimer quand l'utilisateur le décide.
+- Une trentaine de worktrees sous `.claude/worktrees/` sont sales ou sur des branches fusionnées (`recette-packs` à ne pas supprimer, 354 fichiers de recette hors dépôt). À nettoyer avec `rmdir` de la jonction `node_modules` AVANT `git worktree remove`.
+
 ## Pilote — intégration de toutes les PR et déploiement du staging — 2026-10-02
 
 **État :** `main` = 72214188 (PR #103, intégration des 24 PR restantes : multi-actifs #52/#67/#69/#70/#74, syndic/baux/sécurité/web #59/#62/#63/#64/#68/#71/#72/#73/#84, finance/comptes de test/docs #60/#65/#66/#76/#86/#87/#88/#89/#90/#101). **Staging déployé en version 72214188** sur app.immotopia.cloud (111 migrations, schéma à jour, conteneurs sains, tests de fumée HTTPS et pages publiques à jeton OK, aucun conteneur voisin touché) ; les 6 agences de test par pack y sont créées (`seed-pack-tests.sh staging`). **Production NON déployée** (aucune consigne). Seule PR ouverte voulue : #75 (supprime 662 lignes de HANDOFF, périmée : à fermer).
