@@ -4,6 +4,7 @@ import { listPropertyDocumentsTool } from './list-property-documents';
 import { proposeRentalDocumentTool } from './propose-rental-document';
 import { searchLeasesTool } from './search-leases';
 import { searchPropertiesTool } from './search-properties';
+import { showArtifactTool } from './show-artifact';
 
 /**
  * Registre des outils exposés au LLM. L'exécution d'un document
@@ -15,7 +16,8 @@ export const ALL_TOOLS: readonly CopilotToolDefinition[] = [
   searchLeasesTool,
   listLeaseDocumentsTool,
   listPropertyDocumentsTool,
-  proposeRentalDocumentTool
+  proposeRentalDocumentTool,
+  showArtifactTool
 ] as readonly CopilotToolDefinition[];
 
 export type ToolFeature = CopilotToolDefinition['feature'];

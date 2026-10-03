@@ -100,14 +100,15 @@ beforeEach(() => {
 });
 
 describe('registre', () => {
-  it('ne contient que les 5 outils du plan, sans outil d’exécution', () => {
+  it('ne contient que les 6 outils du plan, sans outil d’exécution', () => {
     expect(ALL_TOOLS.map(t => t.name).sort()).toEqual(
       [
         'list_lease_documents',
         'list_property_documents',
         'propose_rental_document',
         'search_leases',
-        'search_properties'
+        'search_properties',
+        'show_artifact'
       ].sort()
     );
     expect(ALL_TOOLS.some(t => /execute/i.test(t.name))).toBe(false);
@@ -118,7 +119,8 @@ describe('registre', () => {
     ['search_leases', 'RENTAL_LEASES_VIEW'],
     ['list_lease_documents', 'RENTAL_DOCUMENTS_VIEW'],
     ['list_property_documents', 'PROPERTIES_VIEW'],
-    ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE']
+    ['propose_rental_document', 'RENTAL_DOCUMENTS_GENERATE'],
+    ['show_artifact', 'PROPERTIES_VIEW']
   ])('%s exige %s', (name, permission) => {
     expect(tool(name).requiredPermission).toBe(permission);
     const required = [permission, ...(tool(name).additionalPermissions ?? [])];
@@ -143,25 +145,28 @@ describe('registre', () => {
       toolsForUser(['PROPERTIES_VIEW'])
         .map(t => t.name)
         .sort()
-    ).toEqual(['list_property_documents', 'search_properties']);
-    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(5);
+    ).toEqual(['list_property_documents', 'search_properties', 'show_artifact']);
+    expect(toolsForUser(new Set(ALL_PERMS))).toHaveLength(6);
   });
 
   it('filtre aussi selon les droits d’abonnement quand ils sont fournis', () => {
     const core = toolsForUser(new Set(ALL_PERMS), new Set(['CORE'] as const));
-    expect(core.map(t => t.name).sort()).toEqual(['list_property_documents', 'search_properties']);
+    expect(core.map(t => t.name).sort()).toEqual(['list_property_documents', 'search_properties', 'show_artifact']);
     expect(toolsForUser(new Set(ALL_PERMS), [])).toEqual([]);
   });
 
   it('expose des spécifications neutres avec additionalProperties:false', () => {
     const specs = toLlmToolSpecs(toolsForUser(new Set(ALL_PERMS)));
-    expect(specs).toHaveLength(5);
+    expect(specs).toHaveLength(6);
     for (const spec of specs) expect(spec.inputSchema.additionalProperties).toBe(false);
   });
 
   it.each(ALL_TOOLS.map(t => [t.name]))('%s : le schéma JSON écrit à la main correspond au schéma Zod', name => {
     const definition = tool(name);
-    const shape = (definition.inputSchema as unknown as z.ZodObject<z.ZodRawShape>).shape;
+    // Un schéma affiné (superRefine, ex. show_artifact) enveloppe l'objet dans un ZodEffects.
+    const schema = definition.inputSchema as unknown as z.ZodTypeAny;
+    const base = (schema instanceof z.ZodEffects ? schema.innerType() : schema) as z.ZodObject<z.ZodRawShape>;
+    const shape = base.shape;
     const json = definition.jsonSchema as {
       type: string;
       additionalProperties: boolean;
@@ -194,7 +199,8 @@ describe('permissions à l’exécution', () => {
     ['search_leases', {}],
     ['list_lease_documents', { leaseId: LEASE_ID }],
     ['list_property_documents', { propertyId: PROPERTY_ID }],
-    ['propose_rental_document', { docType: 'RENT_RECEIPT', leaseId: LEASE_ID, period: '2026-08' }]
+    ['propose_rental_document', { docType: 'RENT_RECEIPT', leaseId: LEASE_ID, period: '2026-08' }],
+    ['show_artifact', { kind: 'markdown', title: 'Synthèse', content: 'Texte' }]
   ];
 
   it.each(calls)('%s sans sa permission lève ForbiddenError et n’appelle aucun service', async (name, input) => {

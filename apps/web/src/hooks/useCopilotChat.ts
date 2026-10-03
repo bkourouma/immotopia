@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n/t';
 import copilotService from '../services/copilot-service';
+import { sanitizeArtifact } from '../utils/copilot-artifact';
 import {
   COPILOT_MAX_MESSAGES,
   COPILOT_MAX_MESSAGE_CHARS,
   COPILOT_MAX_TOTAL_CHARS,
+  type CopilotArtifact,
   type CopilotAttachment,
   type CopilotChatStatus,
   type CopilotPageContext,
@@ -78,11 +80,15 @@ const nextId = () => `copilot-msg-${++idCounter}`;
  */
 export function useCopilotChat(tenantId: string): UseCopilotChatResult {
   const [messages, setMessages] = useState<CopilotUiMessage[]>([]);
+  const [artifacts, setArtifacts] = useState<CopilotArtifact[]>([]);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | undefined>();
   const [status, setStatus] = useState<CopilotChatStatus>('idle');
   const [error, setError] = useState<ChatError | undefined>();
 
   const messagesRef = useRef<CopilotUiMessage[]>([]);
   messagesRef.current = messages;
+  const artifactsRef = useRef<CopilotArtifact[]>([]);
+  artifactsRef.current = artifacts;
   const abortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const streamingRef = useRef(false);
@@ -119,6 +125,8 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     streamingRef.current = false;
     conversationIdRef.current = undefined;
     setMessages([]);
+    setArtifacts([]);
+    setSelectedArtifactId(undefined);
     setStatus('idle');
     setError(undefined);
   }, []);
@@ -185,6 +193,28 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
           case 'action_proposal':
             addAttachment({ kind: 'proposal', proposal: e.proposal, state: 'pending' });
             break;
+          case 'artifact': {
+            const artifact = sanitizeArtifact(e.artifact);
+            if (!artifact) break; // mal formé : ignoré
+            setArtifacts(prev =>
+              prev.some(a => a.id === artifact.id)
+                ? prev.map(a => (a.id === artifact.id ? artifact : a))
+                : [...prev, artifact]
+            );
+            setSelectedArtifactId(artifact.id);
+            updateMessage(assistantId, m =>
+              m.attachments.some(a => a.kind === 'artifact' && a.artifactId === artifact.id)
+                ? m
+                : {
+                    ...m,
+                    attachments: [
+                      ...m.attachments,
+                      { kind: 'artifact', artifactId: artifact.id, title: artifact.title, artifactKind: artifact.kind }
+                    ]
+                  }
+            );
+            break;
+          }
           case 'error':
             failed = { code: e.code, message: e.message };
             break;
@@ -263,7 +293,23 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
     [setProposalState]
   );
 
-  return { messages, status, error, send, stop, confirmProposal, cancelProposal, reset };
+  const selectArtifact = useCallback((id: string) => {
+    setSelectedArtifactId(prev => (artifactsRef.current.some(a => a.id === id) ? id : prev));
+  }, []);
+
+  return {
+    messages,
+    artifacts,
+    selectedArtifactId,
+    selectArtifact,
+    status,
+    error,
+    send,
+    stop,
+    confirmProposal,
+    cancelProposal,
+    reset
+  };
 }
 
 export default useCopilotChat;

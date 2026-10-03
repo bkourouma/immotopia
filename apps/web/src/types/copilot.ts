@@ -122,6 +122,37 @@ export interface CopilotStatus {
   limits: { maxMessages: number; maxMessageChars: number };
 }
 
+// --- Artefacts (panneau de résultats) ---------------------------------------
+
+export type ArtifactCell = string | number | null;
+
+export type CopilotArtifact =
+  | {
+      kind: 'table';
+      id: string;
+      title: string;
+      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      rows: Record<string, ArtifactCell>[];
+      truncated?: boolean;
+    }
+  | { kind: 'markdown'; id: string; title: string; content: string }
+  | {
+      kind: 'chart';
+      id: string;
+      title: string;
+      chartType: 'bar' | 'line' | 'pie';
+      xKey: string;
+      series: { key: string; label: string }[];
+      data: Record<string, ArtifactCell>[];
+    };
+
+/** Limites de l'API ; le front les réapplique à l'affichage (défensif). */
+export const ARTIFACT_MAX_ROWS = 500;
+export const ARTIFACT_MAX_COLUMNS = 20;
+export const ARTIFACT_MAX_MARKDOWN_CHARS = 20000;
+export const ARTIFACT_MAX_CHART_POINTS = 200;
+export const ARTIFACT_MAX_SERIES = 6;
+
 // --- Fil SSE ---------------------------------------------------------------
 
 // "event: <type>\ndata: <JSON de l'objet>\n\n" ; commentaire ": ping" toutes les 15 s
@@ -141,6 +172,7 @@ export type CopilotSseEvent =
       items: DocumentCardItem[];
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
+  | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
       code: CopilotErrorCode;
@@ -166,6 +198,7 @@ export type CopilotAttachment =
   | { kind: 'properties'; items: PropertyCardItem[]; total: number }
   | { kind: 'leases'; items: LeaseCardItem[] }
   | { kind: 'documents'; scope: 'lease' | 'property'; items: DocumentCardItem[] }
+  | { kind: 'artifact'; artifactId: string; title: string; artifactKind: CopilotArtifact['kind'] }
   | {
       kind: 'proposal';
       proposal: ActionProposal;
@@ -185,6 +218,11 @@ export type CopilotChatStatus = 'idle' | 'streaming' | 'error';
 
 export interface UseCopilotChatResult {
   messages: CopilotUiMessage[];
+  /** Artefacts de la conversation, du plus ancien au plus récent. */
+  artifacts: CopilotArtifact[];
+  /** Artefact affiché dans le panneau (le dernier reçu par défaut). */
+  selectedArtifactId?: string;
+  selectArtifact(id: string): void;
   status: CopilotChatStatus;
   error?: { code: string; message: string };
   send(text: string, ctx: CopilotPageContext): Promise<void>;

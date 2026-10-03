@@ -1487,5 +1487,20 @@
   "Une dette sans taux de change n’est pas comptée dans le total": "A debt without an exchange rate is not counted in the total",
   "Valeur ancienne": "Outdated value",
   "Valeur d'origine": "Original value",
-  "Valeur nette": "Net worth"
+  "Valeur nette": "Net worth",
+  "## Synthèse\n\n- Données issues des outils de l’assistant.\n- Aucune écriture n’a été faite.": "## Summary\n\n- Data from the assistant's tools.\n- Nothing was written.",
+  "Aucun résultat à afficher.": "No results to display.",
+  "Bail": "Lease",
+  "Baux trouvés": "Leases found",
+  "Biens trouvés": "Properties found",
+  "Début": "Start",
+  "J'ai affiché la synthèse dans le panneau.": "I displayed the summary in the panel.",
+  "J'ai affiché le résultat dans le panneau.": "I displayed the result in the panel.",
+  "Je n'ai pas pu afficher ce résultat.": "I could not display this result.",
+  "Loyer": "Rent",
+  "Loyers des baux": "Lease rents",
+  "Prix": "Price",
+  "Prix des biens": "Property prices",
+  "Titre": "Title",
+  "Zone": "Area"
 }

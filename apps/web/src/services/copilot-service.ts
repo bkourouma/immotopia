@@ -39,6 +39,7 @@ const KNOWN_EVENTS = new Set([
   'lease_results',
   'document_list',
   'action_proposal',
+  'artifact',
   'error',
   'done'
 ]);

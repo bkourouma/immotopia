@@ -435,6 +435,15 @@ instructions** dans l'invite système, première ligne de défense contre
 l'injection ; les gardes serveur (aucun outil d'écriture, jeton, confirmation
 humaine, permission par outil) sont la vraie protection.
 
+**Artefacts** (`show_artifact`, événement SSE `artifact`). Données d'affichage
+seulement (tableau, Markdown, graphique) : l'outil ne lit ni n'écrit rien, il
+re-présente des résultats déjà passés par des outils soumis à leurs permissions.
+Schéma Zod strict : `id` généré par le serveur, jamais par le modèle ; HTML et
+liens `javascript:` refusés ; limites (500 lignes, 20 colonnes, 20 000 caractères
+de Markdown, 200 points, 6 séries) ; au-delà de 500 lignes, troncature avec
+`truncated: true`. Le web rend le Markdown par un composant sûr
+(`SafeMarkdown`), jamais par `dangerouslySetInnerHTML`.
+
 **Jeton de proposition** (`lib/ai/proposal-token.ts`).
 
 - Forme `v1.<claims>.<signature>` : HMAC-SHA256, clé dérivée par HKDF de

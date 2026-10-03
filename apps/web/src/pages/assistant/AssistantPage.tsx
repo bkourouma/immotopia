@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ClearOutlined } from '@ant-design/icons';
-import { Button, Result, Skeleton, Typography } from 'antd';
+import { ClearOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { Button, Drawer, Result, Skeleton, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { useLocation, useParams } from 'react-router-dom';
+import { ArtifactPanel } from '../../components/copilot/artifact/ArtifactPanel';
 import { CopilotComposer } from '../../components/copilot/CopilotComposer';
 import { CopilotThread } from '../../components/copilot/CopilotThread';
 import { getCopilotPageContext } from '../../components/copilot/copilot-page-context';
@@ -15,6 +16,7 @@ import type { CopilotStatus } from '../../types/copilot';
 /** Colonne de lecture : les messages ne s'étirent pas sur tout un grand écran. */
 const READING_WIDTH = 820;
 const ARTIFACT_WIDTH = 380;
+const ARTIFACT_MAX_WIDTH = 680;
 
 /**
  * Hauteur de la page : la fenêtre moins l'en-tête de la coquille (64 px) et les
@@ -41,6 +43,36 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
   const inputRef = useRef<TextAreaRef>(null);
   const streaming = chat.status === 'streaming';
   const context = getCopilotPageContext(pathname);
+  const artifactCount = chat.artifacts.length;
+  const hasArtifacts = artifactCount > 0;
+  // Ordinateur : le panneau apparaît seul à chaque nouvel artefact. Mobile : tiroir,
+  // ouvert seulement à la demande (la pastille du message).
+  const [desktopOpen, setDesktopOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (artifactCount > 0) setDesktopOpen(true);
+  }, [artifactCount, chat.selectedArtifactId]);
+  useEffect(() => {
+    if (artifactCount === 0) setDrawerOpen(false);
+  }, [artifactCount]);
+
+  const openArtifact = (id: string) => {
+    chat.selectArtifact(id);
+    setDesktopOpen(true);
+    setDrawerOpen(true);
+  };
+  const closePanel = () => {
+    setDesktopOpen(false);
+    setDrawerOpen(false);
+  };
+  const panel = (
+    <ArtifactPanel
+      artifacts={chat.artifacts}
+      selectedId={chat.selectedArtifactId}
+      onSelect={chat.selectArtifact}
+      onClose={closePanel}
+    />
+  );
 
   // Quitter la page arrête le flux en cours.
   useEffect(() => () => stop(), [stop]);
@@ -65,14 +97,25 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           <Typography.Title level={4} style={{ margin: 0 }}>
             {t('Assistant')}
           </Typography.Title>
-          <Button
-            type="text"
-            icon={<ClearOutlined />}
-            disabled={chat.messages.length === 0}
-            onClick={() => chat.reset()}
-          >
-            {t('Nouvelle conversation')}
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {hasArtifacts && (showArtifact ? !desktopOpen : true) && (
+              <Button
+                type="text"
+                icon={<DatabaseOutlined aria-hidden />}
+                onClick={() => (showArtifact ? setDesktopOpen(true) : setDrawerOpen(true))}
+              >
+                {t('Résultats ({{count}})', { count: artifactCount })}
+              </Button>
+            )}
+            <Button
+              type="text"
+              icon={<ClearOutlined />}
+              disabled={chat.messages.length === 0}
+              onClick={() => chat.reset()}
+            >
+              {t('Nouvelle conversation')}
+            </Button>
+          </div>
         </div>
         <CopilotThread
           chat={chat}
@@ -81,6 +124,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           pathname={pathname}
           onSuggestion={submit}
           maxWidth={READING_WIDTH}
+          onOpenArtifact={openArtifact}
         />
         <div
           style={{ width: '100%', maxWidth: READING_WIDTH, marginInline: 'auto', paddingBlockStart: 'var(--space-2)' }}
@@ -96,24 +140,32 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
           />
         </div>
       </section>
-      {showArtifact && (
+      {showArtifact && desktopOpen && hasArtifacts && (
         <aside
           aria-label={t('Résultats et documents')}
           style={{
-            flex: `0 0 ${ARTIFACT_WIDTH}px`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            flex: `0 0 clamp(${ARTIFACT_WIDTH}px, 42%, ${ARTIFACT_MAX_WIDTH}px)`,
+            minWidth: 0,
             padding: 'var(--space-4)',
-            textAlign: 'center',
-            border: '1px dashed var(--border-subtle, #d9d9d9)',
-            borderRadius: 'var(--radius-lg, 12px)'
+            border: '1px solid var(--border-subtle, #d9d9d9)',
+            borderRadius: 'var(--radius-lg, 12px)',
+            background: 'var(--surface-card, transparent)'
           }}
         >
-          <Typography.Text type="secondary">
-            {t('Les tableaux, textes et graphiques générés par l’assistant apparaîtront ici.')}
-          </Typography.Text>
+          {panel}
         </aside>
+      )}
+      {!showArtifact && (
+        <Drawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          title={t('Résultats et documents')}
+          placement="right"
+          size="100%"
+          destroyOnHidden
+        >
+          {panel}
+        </Drawer>
       )}
     </div>
   );
@@ -122,7 +174,7 @@ const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boo
 /**
  * Page de chat plein écran d'ImmoCopilot (`/tenant/:tenantId/assistant`).
  * Même conversation que le tiroir, mais fil en haut, saisie fixée en bas et
- * emplacement de l'artefact à droite (replié sous 992 px).
+ * panneau d'artefacts à droite (tiroir plein écran sous 992 px).
  */
 const AssistantPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();

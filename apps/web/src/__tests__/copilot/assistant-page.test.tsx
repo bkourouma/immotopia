@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
@@ -50,6 +50,69 @@ beforeEach(() => {
 afterEach(() => {
   delete w.SpeechRecognition;
   delete w.webkitSpeechRecognition;
+});
+
+const ARTIFACT_EVENT = {
+  type: 'artifact' as const,
+  artifact: {
+    kind: 'markdown' as const,
+    id: 'a1',
+    title: 'Synthèse du mois',
+    content: 'Contenu **important**'
+  }
+};
+
+function setDesktop(desktop: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: desktop && /min-width/.test(query),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false
+    })
+  });
+}
+
+describe('AssistantPage — artefacts', () => {
+  afterEach(() => setDesktop(false));
+
+  async function sendWithArtifact() {
+    getStatus.mockResolvedValue(ENABLED);
+    streamChat.mockImplementation(async (_t, _r, opts) => {
+      opts.onEvent({ type: 'text_delta', text: 'Voilà' });
+      opts.onEvent(ARTIFACT_EVENT);
+      opts.onEvent({ type: 'done', reason: 'end_turn' });
+    });
+    renderPage();
+    const input = await screen.findByLabelText('Votre message');
+    fireEvent.change(input, { target: { value: 'synthèse' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+  }
+
+  it('ordinateur : le panneau apparaît seul et peut être refermé', async () => {
+    setDesktop(true);
+    await sendWithArtifact();
+    const panel = await screen.findByRole('complementary', { name: 'Résultats et documents' });
+    expect(within(panel).getByText('important')).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Fermer le panneau' }));
+    await waitFor(() => expect(screen.queryByRole('complementary')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir : Synthèse du mois' }));
+    expect(await screen.findByRole('complementary')).toBeInTheDocument();
+  });
+
+  it('mobile : le panneau reste replié, la pastille ouvre un tiroir', async () => {
+    setDesktop(false);
+    await sendWithArtifact();
+    const chip = await screen.findByRole('button', { name: 'Ouvrir : Synthèse du mois' });
+    expect(screen.queryByText('important')).not.toBeInTheDocument();
+    fireEvent.click(chip);
+    expect(await screen.findByText('important')).toBeInTheDocument();
+  });
 });
 
 describe('AssistantPage', () => {

@@ -11,6 +11,9 @@ import type { CopilotToolName, LlmBlock, LlmMessage, LlmProvider, LlmToolSpec, L
  * confirmation humaine restent seuls maîtres de la génération.
  *
  * Sans script, des règles par mots-clés lisent le dernier message utilisateur :
+ * - « tableau », « graphique » (+ « baux » pour des baux, sinon des biens) : search_properties ou
+ *   search_leases puis show_artifact (table ou chart construit sur les résultats) ; « synthèse » :
+ *   show_artifact (markdown) sans recherche. Seulement si show_artifact est offert ;
  * - « quittance » (+ `L-\d+` ou `BAIL-AAAA-NNNN` ou le bail actif, + période `YYYY-MM` ou mois en
  *   lettres) : search_leases puis propose_rental_document ;
  * - « relevé » (+ période : deux dates, un ou deux mois ; à défaut les 12
@@ -220,6 +223,110 @@ function proposalFailureText(data: unknown, periodLabel: string): string | null 
     : t('Je ne peux pas proposer ce document pour le moment.');
 }
 
+/** Texte affichable sans balise : le schéma de show_artifact refuse le HTML. */
+const plain = (value: unknown): string => (typeof value === 'string' ? value.replace(/[<>]/g, '') : '');
+const numberOrNull = (value: unknown): number | null => {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+};
+
+type ArtifactKind = 'table' | 'chart';
+
+/** Artefact construit sur les résultats d'une recherche de biens ou de baux (jamais sur autre chose). */
+function artifactInput(kind: ArtifactKind, source: 'properties' | 'leases', data: unknown): FakeStep {
+  const items = ((data as { items?: unknown } | null)?.items ?? []) as Array<Record<string, unknown>>;
+  const list = Array.isArray(items) ? items.slice(0, 10) : [];
+  if (list.length === 0) return { text: t('Aucun résultat à afficher.') };
+
+  if (source === 'properties') {
+    if (kind === 'chart') {
+      return {
+        toolCalls: [
+          {
+            name: 'show_artifact',
+            input: {
+              kind: 'chart',
+              title: t('Prix des biens'),
+              chartType: 'bar',
+              xKey: 'reference',
+              series: [{ key: 'price', label: t('Prix') }],
+              data: list.map(item => ({ reference: plain(item.internalReference), price: numberOrNull(item.price) }))
+            }
+          }
+        ]
+      };
+    }
+    return {
+      toolCalls: [
+        {
+          name: 'show_artifact',
+          input: {
+            kind: 'table',
+            title: t('Biens trouvés'),
+            columns: [
+              { key: 'reference', label: t('Référence') },
+              { key: 'title', label: t('Titre') },
+              { key: 'status', label: t('Statut') },
+              { key: 'zone', label: t('Zone') },
+              { key: 'price', label: t('Prix'), type: 'currency' }
+            ],
+            rows: list.map(item => ({
+              reference: plain(item.internalReference),
+              title: plain(item.title),
+              status: plain(item.status),
+              zone: plain(item.locationZone),
+              price: numberOrNull(item.price)
+            }))
+          }
+        }
+      ]
+    };
+  }
+
+  if (kind === 'chart') {
+    return {
+      toolCalls: [
+        {
+          name: 'show_artifact',
+          input: {
+            kind: 'chart',
+            title: t('Loyers des baux'),
+            chartType: 'bar',
+            xKey: 'lease',
+            series: [{ key: 'rent', label: t('Loyer') }],
+            data: list.map(item => ({ lease: plain(item.leaseNumber), rent: numberOrNull(item.rentAmount) }))
+          }
+        }
+      ]
+    };
+  }
+  return {
+    toolCalls: [
+      {
+        name: 'show_artifact',
+        input: {
+          kind: 'table',
+          title: t('Baux trouvés'),
+          columns: [
+            { key: 'lease', label: t('Bail') },
+            { key: 'status', label: t('Statut') },
+            { key: 'renter', label: t('Locataire') },
+            { key: 'rent', label: t('Loyer'), type: 'currency' },
+            { key: 'start', label: t('Début'), type: 'date' }
+          ],
+          rows: list.map(item => ({
+            lease: plain(item.leaseNumber),
+            status: plain(item.status),
+            renter: plain(item.renterName),
+            rent: numberOrNull(item.rentAmount),
+            start: plain(item.startDate)
+          }))
+        }
+      }
+    ]
+  };
+}
+
 /** Capacités annoncées : uniquement celles des outils réellement offerts par le serveur. */
 function capabilitiesText(offered: ReadonlySet<string> | null): string {
   const has = (name: string) => offered === null || offered.has(name);
@@ -345,6 +452,42 @@ export class FakeProvider implements LlmProvider {
     }
     if (results.some(result => result.isError)) {
       return { text: t("Je n'ai pas pu terminer cette recherche : un outil a renvoyé une erreur.") };
+    }
+
+    // 0. Artefact (tableau, graphique, synthèse) — seulement si show_artifact est offert
+    const canShow = offered === null || offered.has('show_artifact');
+    if (canShow && /\b(tableau|graphique|synthese)\b/.test(normalized)) {
+      if (/\bsynthese\b/.test(normalized)) {
+        if (round === 0) {
+          return {
+            toolCalls: [
+              {
+                name: 'show_artifact',
+                input: {
+                  kind: 'markdown',
+                  title: t('Synthèse'),
+                  content: t(
+                    '## Synthèse\n\n- Données issues des outils de l’assistant.\n- Aucune écriture n’a été faite.'
+                  )
+                }
+              }
+            ]
+          };
+        }
+        return { text: t("J'ai affiché la synthèse dans le panneau.") };
+      }
+      const kind: ArtifactKind = /\bgraphique\b/.test(normalized) ? 'chart' : 'table';
+      const source = /\b(bail|baux|loyer|loyers|locataire|locataires)\b/.test(normalized) ? 'leases' : 'properties';
+      if (round === 0) {
+        if (source === 'leases') return leaseSearch();
+        const place = extractPlace(question);
+        return call('search_properties', place ? { city: place } : {});
+      }
+      if (round === 1) return artifactInput(kind, source, results[0]?.data);
+      const shown = results[1]?.data as { shown?: unknown } | null;
+      return shown?.shown === true
+        ? { text: t("J'ai affiché le résultat dans le panneau.") }
+        : { text: t("Je n'ai pas pu afficher ce résultat.") };
     }
 
     // 1. Quittance

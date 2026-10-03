@@ -11,6 +11,13 @@ export const COPILOT_MAX_MESSAGES = 20;
 export const COPILOT_MAX_MESSAGE_CHARS = 4000;
 export const COPILOT_MAX_TOTAL_CHARS = 24000;
 
+// Artefacts (plan V2, étape 2) : limites du panneau d'affichage.
+export const COPILOT_ARTIFACT_MAX_ROWS = 500;
+export const COPILOT_ARTIFACT_MAX_COLUMNS = 20;
+export const COPILOT_ARTIFACT_MAX_MARKDOWN_CHARS = 20000;
+export const COPILOT_ARTIFACT_MAX_CHART_POINTS = 200;
+export const COPILOT_ARTIFACT_MAX_SERIES = 6;
+
 // --- Noms et codes ---------------------------------------------------------
 
 export type CopilotToolName =
@@ -18,7 +25,8 @@ export type CopilotToolName =
   | 'search_leases'
   | 'list_lease_documents'
   | 'list_property_documents'
-  | 'propose_rental_document';
+  | 'propose_rental_document'
+  | 'show_artifact';
 
 export type CopilotErrorCode =
   | 'AI_DISABLED'
@@ -163,6 +171,31 @@ export interface CopilotStatus {
   limits: { maxMessages: number; maxMessageChars: number };
 }
 
+// --- Artefacts -------------------------------------------------------------
+
+/** Données d'affichage seulement : jamais de HTML, jamais d'écriture. L'`id` est généré par le serveur. */
+export type ArtifactCell = string | number | null;
+
+export type CopilotArtifact =
+  | {
+      kind: 'table';
+      id: string;
+      title: string;
+      columns: { key: string; label: string; type?: 'text' | 'number' | 'currency' | 'date' }[];
+      rows: Record<string, ArtifactCell>[];
+      truncated?: boolean;
+    }
+  | { kind: 'markdown'; id: string; title: string; content: string }
+  | {
+      kind: 'chart';
+      id: string;
+      title: string;
+      chartType: 'bar' | 'line' | 'pie';
+      xKey: string;
+      series: { key: string; label: string }[];
+      data: Record<string, ArtifactCell>[];
+    };
+
 // --- Fil SSE ---------------------------------------------------------------
 
 // "event: <type>\ndata: <JSON de l'objet>\n\n" ; commentaire ": ping" toutes les 15 s
@@ -182,6 +215,7 @@ export type CopilotSseEvent =
       items: DocumentCardItem[];
     }
   | { type: 'action_proposal'; proposal: ActionProposal }
+  | { type: 'artifact'; artifact: CopilotArtifact }
   | {
       type: 'error';
       code: CopilotErrorCode;

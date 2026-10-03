@@ -14,6 +14,8 @@ export interface CopilotThreadProps {
   onSuggestion(text: string): void;
   /** Largeur maximale de la colonne de lecture (la page) ; sans limite dans le tiroir. */
   maxWidth?: number;
+  /** Ouvre un artefact dans le panneau (page plein écran). */
+  onOpenArtifact?(artifactId: string): void;
 }
 
 /**
@@ -27,7 +29,8 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
   pathname,
   propertyId,
   onSuggestion,
-  maxWidth
+  maxWidth,
+  onOpenArtifact
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const streaming = chat.status === 'streaming';
@@ -65,6 +68,7 @@ export const CopilotThread: React.FC<CopilotThreadProps> = ({
           propertyId={propertyId}
           onConfirm={id => void chat.confirmProposal(id)}
           onCancel={chat.cancelProposal}
+          onOpenArtifact={onOpenArtifact}
         />
         {chat.error && <Alert type="error" showIcon message={chat.error.message} style={{ marginTop: 12 }} />}
       </div>

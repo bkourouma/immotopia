@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CopilotAttachment, CopilotUiMessage } from '../../types/copilot';
 import { ActionProposalCard } from './ActionProposalCard';
+import { ArtifactChip } from './artifact/ArtifactChip';
 import { DocumentListCard } from './DocumentListCard';
 import { LeaseResultCard } from './LeaseResultCard';
 import { PropertyResultCard } from './PropertyResultCard';
@@ -13,6 +14,8 @@ export interface CopilotMessageListProps {
   onCancel(proposalId: string): void;
   /** Bien affiché à l'écran : nécessaire au téléchargement des pièces d'un bien. */
   propertyId?: string;
+  /** Ouvre un artefact dans le panneau ; sans lui (tiroir), la pastille n'est pas cliquable. */
+  onOpenArtifact?(artifactId: string): void;
 }
 
 function Attachment({
@@ -20,7 +23,8 @@ function Attachment({
   tenantId,
   propertyId,
   onConfirm,
-  onCancel
+  onCancel,
+  onOpenArtifact
 }: { attachment: CopilotAttachment } & Omit<CopilotMessageListProps, 'messages'>): React.ReactElement {
   switch (attachment.kind) {
     case 'properties':
@@ -48,6 +52,14 @@ function Attachment({
           propertyId={propertyId}
         />
       );
+    case 'artifact':
+      return (
+        <ArtifactChip
+          title={attachment.title}
+          kind={attachment.artifactKind}
+          onOpen={onOpenArtifact ? () => onOpenArtifact(attachment.artifactId) : undefined}
+        />
+      );
     case 'proposal':
       return (
         <ActionProposalCard
@@ -68,7 +80,8 @@ export function CopilotMessageList({
   tenantId,
   onConfirm,
   onCancel,
-  propertyId
+  propertyId,
+  onOpenArtifact
 }: CopilotMessageListProps): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -109,6 +122,7 @@ export function CopilotMessageList({
                   propertyId={propertyId}
                   onConfirm={onConfirm}
                   onCancel={onCancel}
+                  onOpenArtifact={onOpenArtifact}
                 />
               </div>
             ))}

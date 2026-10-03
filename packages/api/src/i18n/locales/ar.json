@@ -1487,5 +1487,20 @@
   "Une dette sans taux de change n’est pas comptée dans le total": "الدين بلا سعر صرف غير محتسب في الإجمالي",
   "Valeur ancienne": "قيمة قديمة",
   "Valeur d'origine": "القيمة الأصلية",
-  "Valeur nette": "صافي القيمة"
+  "Valeur nette": "صافي القيمة",
+  "## Synthèse\n\n- Données issues des outils de l’assistant.\n- Aucune écriture n’a été faite.": "## ملخص\n\n- بيانات مستمدة من أدوات المساعد.\n- لم تتم أي كتابة.",
+  "Aucun résultat à afficher.": "لا توجد نتائج للعرض.",
+  "Bail": "عقد الإيجار",
+  "Baux trouvés": "عقود الإيجار المعثور عليها",
+  "Biens trouvés": "العقارات المعثور عليها",
+  "Début": "البداية",
+  "J'ai affiché la synthèse dans le panneau.": "عرضتُ الملخص في اللوحة.",
+  "J'ai affiché le résultat dans le panneau.": "عرضتُ النتيجة في اللوحة.",
+  "Je n'ai pas pu afficher ce résultat.": "تعذّر عليّ عرض هذه النتيجة.",
+  "Loyer": "الإيجار",
+  "Loyers des baux": "إيجارات العقود",
+  "Prix": "السعر",
+  "Prix des biens": "أسعار العقارات",
+  "Titre": "العنوان",
+  "Zone": "المنطقة"
 }

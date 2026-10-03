@@ -417,7 +417,9 @@ de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), avec
 `NODE_ENV=development` explicite, jamais
 dans un `.env` commité, puis relancer l'API. Le faux fournisseur répond par
 règles sur mots-clés (biens et commune, « quittance » avec un numéro de bail
-`L-…` et une période, « documents »), sans réseau ni clé. La quittance exige un
+`L-…` et une période, « documents », « tableau » ou « graphique » des biens ou
+des baux, « synthèse »), sans réseau ni clé. Les trois derniers appellent
+`show_artifact` et émettent l'événement SSE `artifact` (panneau latéral du web). La quittance exige un
 paiement encaissé pour la période et un modèle `RENT_RECEIPT` actif ; le relevé
 un modèle `RENT_STATEMENT` (le seed ne sème que la quittance). `TENANT_AGENT` n'a
 aucune permission `RENTAL_*` par défaut : il ne voit ni proposition ni

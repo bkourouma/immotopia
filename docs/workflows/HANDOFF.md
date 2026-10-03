@@ -20,13 +20,13 @@ Modèle de section :
 ```markdown
 ## Branche `feat/immocopilot-o9nygz` — 2026-10-03
 
-**État :** étape 1 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` prête, PR ouverte (fusion à l'utilisateur) ; étapes 2 à 4 non commencées.
+**État :** étapes 1 et 2 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` dans la PR #107 (fusion à l'utilisateur) ; étapes 3 et 4 non commencées.
 
-**Fait :** page `/tenant/:tenantId/assistant` (fil en haut, saisie en bas, colonne artefact vide), dictée Web Speech (`useSpeechDictation`), composants partagés avec le tiroir (`CopilotThread`, `CopilotComposer`), entrée de menu « Assistant », wiki mis à jour. Vérifié : typecheck web, lint web, `check:architecture`, 245 tests ciblés, `build` (marge du budget d'entrée : 599 o).
+**Fait :** étape 1 — page `/tenant/:tenantId/assistant`, dictée Web Speech, composants partagés avec le tiroir, menu « Assistant ». Étape 2 — outil `show_artifact` (lecture seule, permission `PROPERTIES_VIEW`, schéma strict : 500 lignes, pas de HTML, ids générés côté serveur), événement SSE `artifact`, fournisseur `fake` (mots-clés « tableau », « graphique », « synthèse »), panneau artefact côté web (tableau, Markdown sûr, graphique recharts), téléchargement CSV/XLSX/MD/PNG avec protection contre l'injection de formules. Vérifié : tests ciblés API (168 + 53 + inventaire des routes) et web (269), tsc API sans erreur, build web et budget d'entrée, wiki:check.
 
-**Reste à faire :** étape 2 (panneau artefact : tableaux, textes, graphiques, téléchargement), 3 (passerelle générique en lecture, catalogue des routes sans DELETE), 4 (écritures : plan, données avant/après, accord explicite). Décision en attente : liste des anciennes conversations (stockage serveur).
+**Reste à faire :** étape 3 (passerelle générique en lecture : catalogue des routes sans DELETE, `list_capabilities`, `call_read`), étape 4 (écritures : plan, avant/après, accord explicite). Décision en attente : liste des anciennes conversations (stockage serveur).
 
-**Pièges :** pas testé dans un navigateur ni avec un vrai micro ; la conversation du tiroir n'est pas transférée à la page ; la hauteur de la page ignore `TenantSuspendedBanner` ; `i18n:extract` sans `--only` a réordonné `common.json` (en/ar) et touché d'autres catalogues, ces derniers ont été restaurés ; `t('noindex, nofollow')` à corriger ailleurs ; `npm run typecheck` à la racine échoue côté API (client Prisma à régénérer ?).
+**Pièges :** pas testé dans un navigateur ni avec un vrai micro ; un rôle sans `PROPERTIES_VIEW` (locations seules) ne reçoit pas `show_artifact` ; `npx prisma generate` nécessaire si le client Prisma est périmé ; `i18n:extract` réécrit tout : restaurer les catalogues sans rapport et ne garder que ses clés ; test web `copilot-root` (AppShell) parfois en timeout sous charge ; `t('noindex, nofollow')` à corriger ailleurs ; la conversation du tiroir n'est pas transférée à la page.
 
 ## Branche `feat/comptes-test-packs` — 2026-10-01
 
