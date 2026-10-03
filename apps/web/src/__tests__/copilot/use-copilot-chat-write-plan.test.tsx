@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilityExecutedPayload, CopilotSseEvent, WritePlan } from '../../types/copilot';
 
 vi.mock('../../services/copilot-service', () => {
-  const service = { getStatus: vi.fn(), streamChat: vi.fn(), executeProposal: vi.fn(), executeAction: vi.fn() };
+  const service = {
+    getStatus: vi.fn(),
+    streamChat: vi.fn(),
+    executeProposal: vi.fn(),
+    executeAction: vi.fn(),
+    rejectAction: vi.fn()
+  };
   return { default: service, copilotService: service };
 });
 
@@ -12,6 +18,7 @@ import { useCopilotChat } from '../../hooks/useCopilotChat';
 
 const streamChat = vi.mocked(copilotService.streamChat);
 const executeAction = vi.mocked(copilotService.executeAction);
+const rejectAction = vi.mocked(copilotService.rejectAction);
 
 function makePlan(over: Partial<WritePlan> = {}): WritePlan {
   return {
@@ -65,7 +72,10 @@ const planOf = (r: { current: ReturnType<typeof useCopilotChat> }) => {
   return a;
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  rejectAction.mockResolvedValue(true);
+});
 
 describe("useCopilotChat : plan d'écriture", () => {
   it('un plan reçu devient un élément du fil, en attente', async () => {
@@ -129,11 +139,12 @@ describe("useCopilotChat : plan d'écriture", () => {
     expect(executeAction).toHaveBeenCalledWith('t1', 'jeton-plan', 'CONFIRMER');
   });
 
-  it('refuser : aucun appel serveur, état refusé, le chat continue', async () => {
+  it('refuser : rejet serveur au meilleur effort, état refusé, le chat continue', async () => {
     const { result } = await withPlan();
     act(() => result.current.refuseWritePlan('wp1'));
     expect(planOf(result)).toMatchObject({ state: 'refused' });
     expect(executeAction).not.toHaveBeenCalled();
+    expect(rejectAction).toHaveBeenCalledWith('t1', 'jeton-plan');
     streamChat.mockImplementation(async (_t, req, opts) => {
       // Le refus n'entre pas dans l'historique : l'assistant n'en est pas informé.
       expect(JSON.stringify(req.messages)).not.toMatch(/refus/i);
@@ -143,6 +154,68 @@ describe("useCopilotChat : plan d'écriture", () => {
       await result.current.send('autre chose', {});
     });
     expect(result.current.status).toBe('idle');
+  });
+
+  it("refuser : l'échec (ou le blocage) du rejet n'empêche rien", async () => {
+    const { result } = await withPlan();
+    rejectAction.mockReturnValue(new Promise<boolean>(() => undefined));
+    act(() => result.current.refuseWritePlan('wp1'));
+    expect(planOf(result).state).toBe('refused');
+    const second = await withPlan(makePlan({ proposalId: 'wp2' }));
+    rejectAction.mockRejectedValue(new Error('boom'));
+    await act(async () => {
+      second.result.current.refuseWritePlan('wp2');
+    });
+    expect(planOf(second.result).state).toBe('refused');
+  });
+
+  it('refuser un plan expiré : état refusé mais aucun appel au serveur', async () => {
+    const { result } = await withPlan(makePlan({ expiresAt: new Date(Date.now() - 1000).toISOString() }));
+    act(() => result.current.refuseWritePlan('wp1'));
+    expect(planOf(result).state).toBe('refused');
+    expect(rejectAction).not.toHaveBeenCalled();
+  });
+
+  it('sensible=false + requiresTypedConfirmation=true : exige le mot', async () => {
+    const { result } = await withPlan(makePlan({ sensitive: false, requiresTypedConfirmation: true }));
+    executeAction.mockResolvedValue(ok);
+    await act(async () => {
+      await result.current.approveWritePlan('wp1');
+    });
+    expect(executeAction).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.approveWritePlan('wp1', 'CONFIRMER');
+    });
+    expect(executeAction).toHaveBeenCalledWith('t1', 'jeton-plan', 'CONFIRMER');
+  });
+
+  it('CONFIRMATION_REQUIRED : reste en attente avec un message clair', async () => {
+    const { result } = await withPlan();
+    executeAction.mockRejectedValue({
+      response: { status: 400, data: { code: 'CONFIRMATION_REQUIRED', message: 'brut' } }
+    });
+    await act(async () => {
+      await result.current.approveWritePlan('wp1');
+    });
+    expect(planOf(result)).toMatchObject({
+      state: 'pending',
+      error: { code: 'CONFIRMATION_REQUIRED', message: 'Saisissez le mot de confirmation' }
+    });
+    executeAction.mockResolvedValue(ok);
+    await act(async () => {
+      await result.current.approveWritePlan('wp1');
+    });
+    expect(planOf(result).state).toBe('executed');
+  });
+
+  it('un jeton de 16 384 caractères est conservé et envoyé tel quel', async () => {
+    const token = 'a'.repeat(16_384);
+    const { result } = await withPlan(makePlan({ token }));
+    executeAction.mockResolvedValue(ok);
+    await act(async () => {
+      await result.current.approveWritePlan('wp1');
+    });
+    expect(executeAction).toHaveBeenCalledWith('t1', token, undefined);
   });
 
   it('ok:false : état failed avec le message du serveur', async () => {

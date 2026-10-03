@@ -190,7 +190,7 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
  * permises a un module en lecture seule (D11 : lecture et export).
  * Chemins relatifs, meme syntaxe que la table.
  */
-export const READ_LIKE_POSTS: readonly string[] = ['/properties/search', '/ai/chat'];
+export const READ_LIKE_POSTS: readonly string[] = ['/properties/search', '/ai/chat', '/ai/actions/reject'];
 
 /**
  * Premiers segments sous `/api/tenants/` qui ne sont PAS un identifiant

@@ -39,6 +39,13 @@ export function formatDecisionTime(iso: string | undefined): string {
   return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(d);
 }
 
+/** Heure « HH:MM » de lecture de l'état (langue active) ; vide si la date est illisible. */
+export function formatStateReadTime(iso: string | undefined): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat(activeLocale(), { hour: '2-digit', minute: '2-digit' }).format(d);
+}
+
 /** Décompte lisible « 4 min 05 s » ; `null` une fois le délai écoulé. */
 export function formatCountdown(msLeft: number): string | null {
   if (msLeft <= 0) return null;

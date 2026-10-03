@@ -15,6 +15,7 @@ import {
   type CopilotSseEvent,
   type CopilotUiMessage,
   type UseCopilotChatResult,
+  type WritePlan,
   type WritePlanState,
   isCapabilityExecuted
 } from '../types/copilot';
@@ -392,6 +393,13 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
         }
       } catch (err) {
         const e = planErrorMessage(err);
+        if (e.code === 'CONFIRMATION_REQUIRED') {
+          // Mot absent ou erroné : le jeton reste valide, la carte reste en attente.
+          setPlanState(proposalId, 'pending', {
+            error: { code: e.code, message: t('Saisissez le mot de confirmation') }
+          });
+          return;
+        }
         setPlanState(proposalId, e.code === 'PROPOSAL_EXPIRED' ? 'expired' : 'failed', {
           error: e,
           decidedAt: new Date().toISOString()
@@ -406,13 +414,21 @@ export function useCopilotChat(tenantId: string): UseCopilotChatResult {
   const refuseWritePlan = useCallback(
     (proposalId: string): void => {
       if (inFlightPlansRef.current.has(proposalId)) return;
-      const pending = messagesRef.current.some(m =>
-        m.attachments.some(a => a.kind === 'write_plan' && a.plan.proposalId === proposalId && a.state === 'pending')
-      );
-      // Aucun appel serveur : le jeton expire seul. L'assistant n'est pas informé.
-      if (pending) setPlanState(proposalId, 'refused', { decidedAt: new Date().toISOString() });
+      // L'assistant n'est pas informé du refus. Un plan expiré n'appelle rien.
+      let plan: WritePlan | undefined;
+      for (const m of messagesRef.current) {
+        for (const a of m.attachments) {
+          if (a.kind === 'write_plan' && a.plan.proposalId === proposalId && a.state === 'pending') plan = a.plan;
+        }
+      }
+      if (!plan) return;
+      setPlanState(proposalId, 'refused', { decidedAt: new Date().toISOString() });
+      const expiry = Date.parse(plan.expiresAt);
+      if (Number.isFinite(expiry) && Date.now() >= expiry) return;
+      // Meilleur effort : ni attente, ni erreur affichée (le service ne lève jamais).
+      void Promise.resolve(copilotService.rejectAction(tenantId, plan.token)).catch(() => undefined);
     },
-    [setPlanState]
+    [tenantId, setPlanState]
   );
 
   const selectArtifact = useCallback((id: string) => {

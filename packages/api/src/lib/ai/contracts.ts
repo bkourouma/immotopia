@@ -111,6 +111,18 @@ export const executeRequestSchema = z
 
 export type ExecuteRequest = z.infer<typeof executeRequestSchema>;
 
+/** Refus d'un plan par l'humain : `POST /ai/actions/reject` consomme le jeton (il ne pourra plus être exécuté). */
+export const rejectRequestSchema = z
+  .object({ proposalToken: z.string().min(20).max(COPILOT_MAX_PROPOSAL_TOKEN_CHARS) })
+  .strict();
+
+export type RejectRequest = z.infer<typeof rejectRequestSchema>;
+
+/** Réponse du refus : `rejected: false` si le jeton était déjà utilisé ou expiré (idempotent, jamais d'erreur). */
+export interface RejectPayload {
+  rejected: boolean;
+}
+
 // --- Cartes et propositions ------------------------------------------------
 
 export interface PropertyCardItem {
@@ -192,6 +204,18 @@ export interface WritePlanChange {
   after: PlanScalar;
 }
 
+/** Paramètre de requête envoyé à la route, tel qu'affiché (valeur masquée si la clé évoque un secret). */
+export interface WritePlanQueryParam {
+  key: string;
+  value: string;
+}
+
+/** Paramètre de chemin de la route (identifiant brut, `tenantId` exclu). */
+export interface WritePlanPathParam {
+  name: string;
+  value: string;
+}
+
 /**
  * Plan d'écriture montré à l'humain. `title` et `steps` sont rédigés par le modèle
  * (texte non fiable, rendu en texte brut) ; `target`, `changes`, `warnings` et les
@@ -209,6 +233,12 @@ export interface WritePlan {
   steps: string[];
   recordKind: 'create' | 'update' | 'action';
   target: { label: string; resolved: boolean } | null;
+  /** Identifiants de chemin envoyés (hors tenantId), calculés par le serveur depuis la requête signée. */
+  pathParams?: WritePlanPathParam[];
+  /** Paramètres de requête envoyés (calculés depuis la requête signée ; valeurs secrètes masquées). Non vide : confirmation par mot. */
+  query?: WritePlanQueryParam[];
+  /** Instant (ISO) de la lecture de l'état « avant » ; absent si aucun état n'a été lu. */
+  stateReadAt?: string;
   changes: WritePlanChange[];
   changesTruncated?: boolean;
   warnings: string[];
@@ -329,6 +359,11 @@ export interface ExecuteCapabilityArgs {
   pathParams: Record<string, string>;
   query: Record<string, string | number | boolean>;
   body: Record<string, unknown> | null;
+  /**
+   * `true` si le plan a exigé le mot de confirmation pour une raison que seul l'état lu à l'émission connaît
+   * (liste remplacée par une plus courte). Signé et inclus dans `planHash` : le serveur l'applique à l'exécution.
+   */
+  requireConfirmation?: boolean;
   /** SHA-256 (hex) de la requête approuvée : voir `lib/ai/plan-hash.ts`. */
   planHash: string;
 }

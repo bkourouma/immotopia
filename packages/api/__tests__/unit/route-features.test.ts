@@ -156,6 +156,9 @@ describe("Abonnements — classement des routes d'agence (vague 2, lot A)", () =
     // Le chat de l'assistant est un POST de lecture ; la confirmation est bien une ecriture.
     expect(isWriteRequest('POST', '/ai/chat')).toBe(false);
     expect(isWriteRequest('POST', '/ai/actions/execute')).toBe(true);
+    // Refuser un plan n'écrit rien : permis même à un module en lecture seule.
+    expect(isWriteRequest('POST', '/ai/actions/reject')).toBe(false);
+    expect(classifyTenantRoute('/ai/actions/reject')).toBe('CORE');
     expect(isWriteRequest('GET', '/ai/status')).toBe(false);
     expect(isWriteRequest('DELETE', '/syndics/abc')).toBe(true);
   });

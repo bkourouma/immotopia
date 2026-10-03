@@ -36,7 +36,7 @@ import {
 } from '../../src/lib/ai/contracts';
 import { findWritableEntry, getCatalogEntries } from '../../src/lib/ai/gateway/catalog';
 import { setLoopbackBaseUrlForTests } from '../../src/lib/ai/gateway/loopback';
-import { pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
+import { bodySensitivity, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
 import { validatePlanBody } from '../../src/lib/ai/gateway/write-input';
 import { computePlanHash, canonicalJson } from '../../src/lib/ai/plan-hash';
 import { verifyCapabilityProposal } from '../../src/lib/ai/proposal-token';
@@ -44,7 +44,15 @@ import { runChat } from '../../src/lib/ai/orchestrator';
 import { FakeProvider } from '../../src/lib/ai/providers';
 import { planWriteTool } from '../../src/lib/ai/tools/plan-write';
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
-import { assessWrite, classifyRecord, computeChanges, flattenLeaves, unwrapRecord } from '../../src/lib/ai/write-plan';
+import {
+  assessWrite,
+  classifyRecord,
+  computeChanges,
+  displayQuery,
+  flattenLeaves,
+  lastParamAncestorPath,
+  unwrapRecord
+} from '../../src/lib/ai/write-plan';
 import { formatSseEvent } from '../../src/lib/ai/sse';
 import { buildSystemPrompt } from '../../src/lib/ai/system-prompt';
 
@@ -433,6 +441,313 @@ describe('plan_write — simulation sans écriture', () => {
   });
 });
 
+// --- audit de sécurité : query, parent, sensibilité, listes, champs protégés ----------------------
+
+const POST_CHARGES = 'POST /api/tenants/:tenantId/syndics/:syndicId/charges/batch';
+const SYNDIC_ID = '66666666-6666-4666-8666-666666666666';
+
+describe('plan_write — paramètres de requête montrés à l’humain', () => {
+  it('query non vide : champ `query` calculé, avertissement serveur, mot de confirmation exigé, valeurs secrètes masquées', async () => {
+    const p = planOf(
+      await plan({
+        capabilityId: PATCH_CONTACT,
+        pathParams: { contactId: CONTACT_ID },
+        query: { notify: true, apiKey: 'sk-live-123', limit: 5 },
+        body: { city: 'Bouaké' }
+      })
+    );
+    expect(p.query).toEqual([
+      { key: 'notify', value: 'true' },
+      { key: 'apiKey', value: '[masqué]' },
+      { key: 'limit', value: '5' }
+    ]);
+    expect(p.warnings.join(' | ')).toContain('Paramètres envoyés à la route : notify=true, apiKey=[masqué], limit=5');
+    expect(JSON.stringify(p)).not.toContain('sk-live-123');
+    expect(p.sensitive).toBe(false);
+    expect(p.requiresTypedConfirmation).toBe(true);
+    expect(p.confirmationWord).toBe('CONFIRMER');
+  });
+
+  it('sans query : pas de champ query, pas de mot ; la query entre dans displayHash', async () => {
+    const without = planOf(
+      await plan({ capabilityId: PATCH_CONTACT, pathParams: { contactId: CONTACT_ID }, body: { city: 'B' } })
+    );
+    expect(without.query).toBeUndefined();
+    expect(without.requiresTypedConfirmation).toBe(false);
+    const hashOf = () => mockLogAudit.mock.calls.at(-1)![0].payload.displayHash as string;
+    const h1 = hashOf();
+    await plan({
+      capabilityId: PATCH_CONTACT,
+      pathParams: { contactId: CONTACT_ID },
+      query: { a: 1 },
+      body: { city: 'B' }
+    });
+    expect(hashOf()).not.toBe(h1);
+  });
+
+  it('displayQuery et assessWrite (pur)', () => {
+    expect(displayQuery({ token: 'abc', x: 'y'.repeat(300) })[0]).toEqual({ key: 'token', value: '[masqué]' });
+    expect(displayQuery({ x: 'y'.repeat(300) })[0]!.value).toHaveLength(121);
+    expect(displayQuery({ jwt: 'Bearer abc' })[0]!.value).toBe('[masqué]');
+    expect(assessWrite(findWritableEntry(POST_CONTACTS)!, null, { a: 1 }).requiresTypedConfirmation).toBe(true);
+    expect(assessWrite(findWritableEntry(POST_CONTACTS)!, null, {}).requiresTypedConfirmation).toBe(false);
+  });
+});
+
+describe('plan_write — parent d’une création imbriquée', () => {
+  it('POST /syndics/:syndicId/charges/batch (création imbriquée) : lit le GET du parent, renseigne target et pathParams', async () => {
+    handler = (_req, res) => json(res, 200, { success: true, data: { id: SYNDIC_ID, name: 'Résidence Les Palmiers' } });
+    const p = planOf(
+      await plan({ capabilityId: POST_CHARGES, pathParams: { syndicId: SYNDIC_ID }, body: { amount: 100 } })
+    );
+    expect(received.map(r => `${r.method} ${r.url}`)).toEqual([`GET /api/tenants/${TENANT}/syndics/${SYNDIC_ID}`]);
+    expect(p.recordKind).toBe('create');
+    expect(p.target).toEqual({ label: 'Résidence Les Palmiers', resolved: true });
+    expect(p.pathParams).toEqual([{ name: 'syndicId', value: SYNDIC_ID }]);
+    // Création : aucun « avant » même si le parent a été lu.
+    expect(p.changes).toEqual([{ field: 'amount', before: undefined, after: 100 }]);
+    expect(p.stateReadAt).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
+    nothingWritten();
+  });
+
+  it.each([
+    [404, NotFoundError],
+    [403, ForbiddenError],
+    [500, BadRequestError]
+  ])('parent illisible (%i) : plan refusé', async (status, errorClass) => {
+    handler = (_req, res) => json(res, status, { success: false, message: 'non' });
+    await expect(
+      plan({ capabilityId: POST_CHARGES, pathParams: { syndicId: SYNDIC_ID }, body: { amount: 1 } })
+    ).rejects.toBeInstanceOf(errorClass);
+  });
+
+  it('pathParams exposés aussi pour une mise à jour et une action ; absents sans paramètre', async () => {
+    const upd = planOf(
+      await plan({ capabilityId: PATCH_CONTACT, pathParams: { contactId: CONTACT_ID }, body: { city: 'Z' } })
+    );
+    expect(upd.pathParams).toEqual([{ name: 'contactId', value: CONTACT_ID }]);
+    const create = planOf(await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'A' } }));
+    expect(create.pathParams).toBeUndefined();
+    expect(create.stateReadAt).toBeUndefined();
+  });
+
+  it('parent sans route de lecture connue : cible non résolue (id brut) et avertissement', async () => {
+    const orphan = 'POST /api/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/ajustements';
+    const p = planOf(
+      await plan({ capabilityId: orphan, pathParams: { syndicId: SYNDIC_ID, lotId: CONTACT_ID }, body: { montant: 5 } })
+    );
+    expect(received).toHaveLength(0);
+    expect(p.target).toEqual({ label: CONTACT_ID, resolved: false });
+    expect(p.warnings.join(' | ')).toContain("n'a pas pu être vérifié");
+  });
+
+  it('lastParamAncestorPath', () => {
+    expect(lastParamAncestorPath('/api/tenants/:tenantId/syndics/:syndicId/charges')).toBe(
+      '/api/tenants/:tenantId/syndics/:syndicId'
+    );
+    expect(lastParamAncestorPath('/api/tenants/:tenantId/crm/contacts')).toBeNull();
+    expect(lastParamAncestorPath('/api/tenants/:tenantId/crm/contacts/:id')).toBeNull();
+  });
+});
+
+describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
+  const T = '/api/tenants/:tenantId';
+  const SENSITIVE_ROUTES = [
+    `PATCH ${T}/users/:userId`,
+    `POST ${T}/users/:userId/disable`,
+    `POST ${T}/users/:userId/enable`,
+    `POST ${T}/users/:userId/revoke-sessions`,
+    `POST ${T}/patrimoine/external-access`,
+    `POST ${T}/patrimoine/external-access/:grantId/revoke`,
+    `POST ${T}/rental/deposits/:depositId/movements`,
+    `POST ${T}/finance/billing-runs`,
+    `POST ${T}/subscription/upgrade`,
+    `POST ${T}/syndics/:syndicId/quittances/:receiptId/envoi`,
+    `POST ${T}/syndics/:syndicId/assemblees/:meetingId/convocation`,
+    `PATCH ${T}/syndics/:syndicId/comptabilite/ecritures/:entryId/verrouiller`,
+    `POST ${T}/rental/leases/:leaseId/events/termination`,
+    `PATCH ${T}/rental/leases/:leaseId/status`,
+    `POST ${T}/sales/agreements/:id/cancel`,
+    `POST ${T}/sales/mandates/:id/revoke`,
+    `POST ${T}/patrimoine/assets/:assetId/dispose`,
+    `POST ${T}/properties/:id/publish`
+  ];
+
+  it.each(SENSITIVE_ROUTES)('%s : dans le catalogue, écriture autorisée ET classée sensible', id => {
+    const entry = findWritableEntry(id);
+    expect(entry).toBeDefined();
+    expect(writeSensitivity(entry!.path)).not.toBeNull();
+    expect(assessWrite(entry!, {})).toMatchObject({ sensitive: true, requiresTypedConfirmation: true });
+  });
+
+  it('chaque route du catalogue évoquant un mot de la liste est classée (aucune ne passe au travers)', () => {
+    const lexicon =
+      /(envoi|convocation|verrouiller|remise|ajustement|resiliation|termination|terminate|disable|enable|revoke|cancel|deposit|movement|billing|upgrade|dispose|archive|external-access|\/users|publish|release|issue|complete|generer-appels|generer-manquantes|renvoyer|ecriture)/i;
+    const missed = getCatalogEntries()
+      .filter(entry => entry.method !== 'GET' && lexicon.test(entry.path) && writeSensitivity(entry.path) === null)
+      .map(entry => entry.id);
+    expect(missed).toEqual([]);
+  });
+
+  it.each([
+    ['/api/tenants/:tenantId/x/:id/generer-appels', 'bulk'],
+    ['/api/tenants/:tenantId/x/:id/generer-manquantes', 'bulk'],
+    ['/api/tenants/:tenantId/x/:id/renvoyer', 'sending'],
+    ['/api/tenants/:tenantId/x/:id/remise', 'payment'],
+    ['/api/tenants/:tenantId/x/ajustements', 'accounting'],
+    ['/api/tenants/:tenantId/x/:id/resiliation', 'lifecycle'],
+    ['/api/tenants/:tenantId/x/:id/terminate', 'lifecycle'],
+    ['/api/tenants/:tenantId/x/:id/archive', 'lifecycle'],
+    ['/api/tenants/:tenantId/x/:id/complete', 'lifecycle'],
+    ['/api/tenants/:tenantId/x/:id/release', 'payment'],
+    ['/api/tenants/:tenantId/x/:id/issue', 'accounting'],
+    ['/api/tenants/:tenantId/bail/:id/status', 'lifecycle']
+  ])('%s -> %s', (path, category) => {
+    expect(writeSensitivity(path)?.category).toBe(category);
+  });
+
+  it('`status` n’est sensible que sur un bail ; une création banale reste non sensible', () => {
+    expect(writeSensitivity('/api/tenants/:tenantId/maintenance/tickets/:id/status')).toBeNull();
+    expect(writeSensitivity('/api/tenants/:tenantId/rental/leases/:id/status')).not.toBeNull();
+    expect(writeSensitivity('/api/tenants/:tenantId/x/:id/envois')).not.toBeNull();
+    expect(writeSensitivity('/api/tenants/:tenantId/crm/tags')).toBeNull();
+  });
+
+  it('une écriture non classée reste à l’accord simple : plan non sensible, pas de mot', async () => {
+    const p = planOf(await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'Awa' } }));
+    expect(p.sensitive).toBe(false);
+    expect(p.requiresTypedConfirmation).toBe(false);
+    expect(p.confirmationWord).toBeUndefined();
+  });
+
+  it('plan sur un statut de bail : sensible (lifecycle), raison d’état irréversible', async () => {
+    const p = planOf(
+      await plan({
+        capabilityId: `PATCH ${T}/rental/leases/:leaseId/status`,
+        pathParams: { leaseId: CONTACT_ID },
+        body: { status: 'TERMINATED' }
+      })
+    );
+    expect(p.sensitive).toBe(true);
+    expect(p.sensitiveReason).toMatch(/résiliation|annulation|état/i);
+    expect(p.requiresTypedConfirmation).toBe(true);
+  });
+});
+
+describe('sensibilité par le corps (routes de comptes)', () => {
+  const PATCH_USER = 'PATCH /api/tenants/:tenantId/users/:userId';
+
+  it.each([
+    [{ roles: ['ADMIN'] }],
+    [{ role: 'ADMIN' }],
+    [{ permissions: ['X'] }],
+    [{ isActive: false }],
+    [{ status: 'DISABLED' }],
+    [{ password: 'x' }],
+    [{ email: 'a@b.c' }],
+    [{ profile: { nested: { ISACTIVE: true } } }],
+    [{ list: [{ role: 'x' }] }]
+  ])('%j sur une route users : sensible (accès)', body => {
+    expect(bodySensitivity('/api/tenants/:tenantId/users/:userId', body)).toMatchObject({ category: 'access' });
+    expect(assessWrite({ path: '/api/tenants/:tenantId/memberships/:id' }, body).sensitive).toBe(true);
+    expect(assessWrite({ path: '/api/tenants/:tenantId/collaborators' }, body).requiresTypedConfirmation).toBe(true);
+  });
+
+  it('hors route de comptes, ces clés ne rendent rien sensible ; un corps banal non plus', () => {
+    expect(bodySensitivity('/api/tenants/:tenantId/crm/contacts/:id', { email: 'a@b.c', status: 'X' })).toBeNull();
+    expect(bodySensitivity('/api/tenants/:tenantId/crm/contacts', null)).toBeNull();
+  });
+
+  it('PATCH /users/:userId : sensible par le chemin (mot users) ; plan avec corps { roles }', async () => {
+    handler = (_req, res) =>
+      json(res, 200, { success: true, data: { id: CONTACT_ID, fullName: 'U', roles: ['AGENT'] } });
+    const p = planOf(
+      await plan({ capabilityId: PATCH_USER, pathParams: { userId: CONTACT_ID }, body: { roles: ['ADMIN'] } })
+    );
+    expect(p.sensitive).toBe(true);
+    expect(p.requiresTypedConfirmation).toBe(true);
+  });
+});
+
+describe('remplacement d’une liste', () => {
+  it('computeChanges : tableau plus court que l’état -> changement de niveau liste, replacedLists', () => {
+    const { changes, replacedLists } = computeChanges(
+      { tags: ['a'], lines: [{ n: 1 }, { n: 2 }] },
+      { tags: ['a', 'b', 'c'], lines: [{ n: 1 }, { n: 2 }] }
+    );
+    expect(changes).toEqual([{ field: 'tags', before: '[3 éléments]', after: '[1 éléments]' }]);
+    expect(replacedLists).toEqual([{ field: 'tags', before: 3, after: 1, removed: 2 }]);
+  });
+
+  it('tableau vide, imbriqué ; plus long ou égal : pas de changement de liste ; création : jamais', () => {
+    expect(computeChanges({ items: [] }, { items: [1, 2] }).replacedLists).toEqual([
+      { field: 'items', before: 2, after: 0, removed: 2 }
+    ]);
+    expect(computeChanges({ o: { l: [1] } }, { o: { l: [1, 2] } }).replacedLists).toHaveLength(1);
+    expect(computeChanges({ l: [1, 2, 3] }, { l: [1, 2] }).replacedLists).toEqual([]);
+    expect(computeChanges({ l: [1, 2] }, { l: [1, 2] }).replacedLists).toEqual([]);
+    expect(computeChanges({ l: [1] }, undefined).replacedLists).toEqual([]);
+  });
+
+  it('plan : avertissement « liste remplacée : N éléments retirés », mot exigé, signé dans le jeton', async () => {
+    handler = (_req, res) =>
+      json(res, 200, { success: true, data: { id: CONTACT_ID, fullName: 'Awa', tags: ['a', 'b', 'c', 'd'] } });
+    const outcome = await plan({
+      capabilityId: PATCH_CONTACT,
+      pathParams: { contactId: CONTACT_ID },
+      body: { tags: ['a'] }
+    });
+    const p = planOf(outcome);
+    expect(p.changes).toContainEqual({ field: 'tags', before: '[4 éléments]', after: '[1 éléments]' });
+    expect(p.warnings.join(' | ')).toContain('éléments retirés');
+    expect(p.warnings.join(' | ')).toMatch(/3 éléments retirés/);
+    expect(p.sensitive).toBe(false);
+    expect(p.requiresTypedConfirmation).toBe(true);
+    expect(p.confirmationWord).toBe('CONFIRMER');
+    const claims = verifyCapabilityProposal(p.token, { userId: USER, tenantId: TENANT });
+    expect(claims.args.requireConfirmation).toBe(true);
+    expect(computePlanHash(claims.args)).toBe(claims.args.planHash);
+  });
+
+  it('liste inchangée ou plus longue : aucune exigence', async () => {
+    handler = (_req, res) => json(res, 200, { success: true, data: { id: CONTACT_ID, fullName: 'Awa', tags: ['a'] } });
+    const p = planOf(
+      await plan({ capabilityId: PATCH_CONTACT, pathParams: { contactId: CONTACT_ID }, body: { tags: ['a', 'b'] } })
+    );
+    expect(p.requiresTypedConfirmation).toBe(false);
+    const claims = verifyCapabilityProposal(p.token, { userId: USER, tenantId: TENANT });
+    expect(claims.args.requireConfirmation).toBeUndefined();
+  });
+});
+
+describe('champs protégés et instant de lecture', () => {
+  it('un champ secret écrit : avertissement « champ protégé : valeur non affichée », valeur jamais montrée', async () => {
+    const p = planOf(
+      await plan({
+        capabilityId: PATCH_CONTACT,
+        pathParams: { contactId: CONTACT_ID },
+        body: { city: 'Y', password: 'nouveau-secret-xyz', apiToken: 'tok-abc' }
+      })
+    );
+    expect(p.warnings.join(' | ')).toContain('Champ protégé : valeur non affichée');
+    expect(p.warnings.join(' | ')).toContain('password');
+    expect(JSON.stringify(p)).not.toContain('nouveau-secret-xyz');
+    expect(JSON.stringify(p)).not.toContain('tok-abc');
+  });
+
+  it('pas de champ secret : pas d’avertissement ; stateReadAt = instant ISO de la lecture « avant »', async () => {
+    const before = Date.now();
+    const p = planOf(
+      await plan({ capabilityId: PATCH_CONTACT, pathParams: { contactId: CONTACT_ID }, body: { city: 'Y' } })
+    );
+    expect(p.warnings.join(' | ')).not.toContain('Champ protégé');
+    const at = Date.parse(p.stateReadAt!);
+    expect(at).toBeGreaterThanOrEqual(before - 1);
+    expect(at).toBeLessThanOrEqual(Date.now() + 1);
+    expect(new Date(at).toISOString()).toBe(p.stateReadAt);
+  });
+});
+
 // --- jeton, audit, résultat renvoyé au modèle -----------------------------------------
 
 describe('plan_write — jeton, audit et résultat', () => {
@@ -682,6 +997,9 @@ describe('contrat figé (miroir du front)', () => {
         'steps',
         'recordKind',
         'target',
+        'pathParams',
+        'query',
+        'stateReadAt',
         'changes',
         'changesTruncated',
         'warnings',

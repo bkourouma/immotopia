@@ -5,7 +5,7 @@ import type { ExecuteCapabilityArgs } from './contracts';
  * Empreinte d'un plan d'écriture.
  *
  * `planHash` = SHA-256 (hex) de la forme CANONIQUE (clés triées, sans espace) de la
- * requête approuvée : `{ v, capabilityId, pathParams, query, body }`. Les `changes`
+ * requête approuvée : `{ v, capabilityId, pathParams, query, body[, requireConfirmation] }`. Les `changes`
  * affichés à l'humain sont une fonction déterministe de ce corps et de l'état lu au
  * moment du plan : c'est donc bien la requête que l'accord autorise, et elle seule.
  * Recalculable à partir des seuls arguments signés : à l'exécution, toute
@@ -37,7 +37,9 @@ export function computePlanHash(args: Omit<ExecuteCapabilityArgs, 'planHash'>): 
       capabilityId: args.capabilityId,
       pathParams: args.pathParams,
       query: args.query,
-      body: args.body
+      body: args.body,
+      // Seulement quand vrai : l'empreinte d'un plan ordinaire est inchangée.
+      ...(args.requireConfirmation ? { requireConfirmation: true } : {})
     })
   );
 }

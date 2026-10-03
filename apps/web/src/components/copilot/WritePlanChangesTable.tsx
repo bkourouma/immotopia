@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircleOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, LockOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { t } from '../../i18n/t';
 import type { WritePlanChange } from '../../types/copilot';
@@ -13,9 +13,36 @@ const cellStyle: React.CSSProperties = {
   overflowWrap: 'anywhere'
 };
 
+/** Valeur affichée à la place d'un champ au nom protégé (mot de passe, jeton…). */
+export const MASKED_VALUE = '[masqué]';
+
+const visuallyHidden: React.CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap'
+};
+
+/**
+ * Valeur protégée : le texte « [masqué] » reste, accompagné d'une icône et d'un
+ * texte lisible par les lecteurs d'écran (jamais la valeur seule).
+ */
+export function MaskedValue(): React.ReactElement {
+  return (
+    <span>
+      <LockOutlined aria-hidden="true" style={{ marginInlineEnd: 4 }} />
+      <span>{MASKED_VALUE}</span>
+      <span style={visuallyHidden}> ({t("champ protégé : la valeur n'est pas affichée")})</span>
+    </span>
+  );
+}
+
 /** Valeur longue repliable ; le texte est rendu tel quel (jamais en HTML). */
-function Value({ text }: { text: string }): React.ReactElement {
+export function Value({ text }: { text: string }): React.ReactElement {
   const [open, setOpen] = useState(false);
+  if (text === MASKED_VALUE) return <MaskedValue />;
   if (text.length <= LONG_VALUE_CHARS) return <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>;
   return (
     <span>

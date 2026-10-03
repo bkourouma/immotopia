@@ -1,7 +1,7 @@
 import type { CatalogEntry } from './gateway/catalog-builder';
 import { isSecretKey, REDACTED, redactSecrets } from './gateway/sanitize';
-import { writeSensitivity, type WriteSensitivityCategory } from './gateway/path-rules';
-import type { PlanScalar, WritePlanChange } from './contracts';
+import { bodySensitivity, writeSensitivity, type WriteSensitivityCategory } from './gateway/path-rules';
+import type { PlanScalar, WritePlanChange, WritePlanQueryParam } from './contracts';
 
 /**
  * Calculs PURS d'un plan d'écriture (plan V2, étape 4) : tout ce que l'humain voit
@@ -89,7 +89,25 @@ export interface ChangeSet {
   valuesTruncated: boolean;
   /** Feuilles du corps, secrets compris (pour le plafond de confirmation). */
   leafCount: number;
+  /** Listes du corps plus courtes que celles de l'état : des éléments sont retirés par le remplacement. */
+  replacedLists: Array<{ field: string; before: number; after: number; removed: number }>;
 }
+
+/** Listes du corps (chemin pointé) : les tableaux, à toute profondeur, y compris vides. */
+function collectArrays(value: unknown, prefix = '', out: Array<{ field: string; items: unknown[] }> = []) {
+  if (out.length >= 200) return out;
+  if (Array.isArray(value)) {
+    if (prefix) out.push({ field: prefix, items: value });
+    value.forEach((item, index) => collectArrays(item, prefix ? `${prefix}.${index}` : String(index), out));
+  } else if (value !== null && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      collectArrays(child, prefix ? `${prefix}.${key}` : key, out);
+    }
+  }
+  return out;
+}
+
+const itemsLabel = (count: number): string => `[${count} éléments]`;
 
 /**
  * Changements d'un corps. `state` = enregistrement actuel lu par le serveur (mise à
@@ -127,7 +145,22 @@ export function computeChanges(body: Record<string, unknown> | null, state: unkn
     valuesTruncated ||= after.truncated || before.truncated;
     changes.push({ field: leaf.field, before: before.value, after: after.value });
   }
-  return { changes, absentFields, valuesTruncated, leafCount: leaves.length };
+
+  // Remplacement d'une liste : le corps remplace TOUT le tableau. Comparés par indice, les éléments
+  // retirés (état plus long que le corps) n'apparaîtraient nulle part : un changement de niveau liste
+  // les rend visibles, et `replacedLists` permet l'avertissement et la confirmation renforcée.
+  const replacedLists: ChangeSet['replacedLists'] = [];
+  if (state !== undefined) {
+    for (const { field, items } of collectArrays(body ?? {})) {
+      if (isSecretField(field)) continue;
+      const current = lookup(state, field);
+      if (!current.found || !Array.isArray(current.value) || current.value.length <= items.length) continue;
+      const removed = current.value.length - items.length;
+      replacedLists.push({ field, before: current.value.length, after: items.length, removed });
+      changes.push({ field, before: itemsLabel(current.value.length), after: itemsLabel(items.length) });
+    }
+  }
+  return { changes, absentFields, valuesTruncated, leafCount: leaves.length, replacedLists };
 }
 
 // --- Enregistrement lu -------------------------------------------------------
@@ -209,13 +242,52 @@ export function parentResourcePath(path: string): string | null {
   return `/${segments.slice(0, -1).join('/')}`;
 }
 
+/**
+ * Chemin de la ressource qui porte le DERNIER paramètre de chemin propre à la route (`tenantId` exclu) :
+ * `/api/tenants/:tenantId/syndics/:syndicId/charges` -> `.../syndics/:syndicId`. Sert à nommer le parent
+ * visé par une création imbriquée. `null` si le chemin n'a aucun paramètre autre que `tenantId`, ou si
+ * le dernier segment est lui-même un paramètre (la route vise alors sa propre ressource).
+ */
+export function lastParamAncestorPath(path: string): string | null {
+  const segments = segmentsOf(path);
+  let index = -1;
+  for (let i = segments.length - 1; i >= 0; i -= 1) {
+    if (segments[i]!.startsWith(':') && segments[i] !== ':tenantId') {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0 || index === segments.length - 1) return null;
+  return `/${segments.slice(0, index + 1).join('/')}`;
+}
+
 export interface WriteAssessment {
   sensitive: boolean;
   category?: WriteSensitivityCategory;
   /** Mot du chemin qui a déclenché la sensibilité. */
   word?: string;
-  /** Mot de confirmation exigé : écriture sensible, ou corps plus gros que ce que le plan peut afficher. */
+  /**
+   * Mot de confirmation exigé : écriture sensible (chemin ou corps), requête portant des paramètres de
+   * requête (non reproduits dans les changements), ou corps plus gros que ce que le plan peut afficher.
+   */
   requiresTypedConfirmation: boolean;
+}
+
+const MAX_QUERY_VALUE_DISPLAY = 120;
+
+/**
+ * Paramètres de requête signés, tels qu'AFFICHÉS : valeur masquée si la clé évoque un secret, JWT/Bearer
+ * masqués, valeurs longues tronquées à l'affichage. Calculé par le serveur depuis la requête signée.
+ */
+export function displayQuery(query: Record<string, string | number | boolean> | undefined): WritePlanQueryParam[] {
+  return Object.entries(query ?? {}).map(([key, raw]) => {
+    if (isSecretKey(key)) return { key, value: REDACTED };
+    const masked = String(redactSecrets(raw));
+    return {
+      key,
+      value: masked.length > MAX_QUERY_VALUE_DISPLAY ? `${masked.slice(0, MAX_QUERY_VALUE_DISPLAY)}…` : masked
+    };
+  });
 }
 
 /**
@@ -223,12 +295,17 @@ export interface WriteAssessment {
  * plan et à l'exécution (aucun état caché dans le jeton à falsifier). Un corps de plus de
  * `MAX_DISPLAYED_CHANGES` champs ne peut pas être affiché en entier : le mot est alors exigé.
  */
-export function assessWrite(entry: Pick<CatalogEntry, 'path'>, body: Record<string, unknown> | null): WriteAssessment {
-  const hit = writeSensitivity(entry.path);
+export function assessWrite(
+  entry: Pick<CatalogEntry, 'path'>,
+  body: Record<string, unknown> | null,
+  query: Record<string, unknown> = {}
+): WriteAssessment {
+  const hit = writeSensitivity(entry.path) ?? bodySensitivity(entry.path, body);
   const tooLarge = flattenLeaves(body ?? {}).length > MAX_DISPLAYED_CHANGES;
+  const hasQuery = Object.keys(query).length > 0;
   return {
     sensitive: hit !== null,
     ...(hit ? { category: hit.category, word: hit.word } : {}),
-    requiresTypedConfirmation: hit !== null || tooLarge
+    requiresTypedConfirmation: hit !== null || tooLarge || hasQuery
   };
 }

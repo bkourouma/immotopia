@@ -24,6 +24,9 @@ import {
   classifyRecord,
   computeChanges,
   CONFIRMATION_WORD,
+  displayQuery,
+  isSecretField,
+  lastParamAncestorPath,
   MAX_DISPLAYED_CHANGES,
   parentResourcePath,
   readableLabel,
@@ -92,6 +95,10 @@ const SENSITIVE_REASONS: Record<WriteSensitivityCategory, () => string> = {
   signature: () => t("Signature d'un document."),
   accounting: () => t('Validation, clôture ou facturation : opération comptable difficile à annuler.'),
   access: () => t("Gestion de comptes, de rôles ou de droits d'accès."),
+  lifecycle: () =>
+    t(
+      'Changement d’état difficile à annuler (résiliation, annulation, archivage, cession, publication, statut d’un bail).'
+    ),
   bulk: () => t('Import ou opération en masse : beaucoup d’enregistrements peuvent changer.')
 };
 
@@ -120,6 +127,12 @@ function findStateSource(entry: CatalogEntry, kind: RecordKind): StateSource | n
     const parentPath = parentResourcePath(entry.path);
     const parent = parentPath ? readable(parentPath) : undefined;
     if (parent) return { entry: parent, role: 'parent' };
+  }
+  if (kind === 'create' && entry.pathParams.length > 0) {
+    // Création imbriquée (`POST /syndics/:syndicId/charges`) : le parent désigné par les paramètres de chemin.
+    const ancestorPath = lastParamAncestorPath(entry.path);
+    const ancestor = ancestorPath ? readable(ancestorPath) : undefined;
+    if (ancestor) return { entry: ancestor, role: 'parent' };
   }
   return null;
 }
@@ -274,7 +287,13 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
     ];
 
     let state: ReadState | null = null;
-    if (source) state = await readCurrentState(source, pathParams, ctx, headers);
+    let stateReadAt: string | undefined;
+    if (source) {
+      // Un parent illisible (403, 404, autre erreur, délai) refuse le plan, comme pour une mise à jour.
+      state = await readCurrentState(source, pathParams, ctx, headers);
+      stateReadAt = new Date().toISOString();
+    }
+    const nestedCreate = kind === 'create' && entry.pathParams.length > 0;
 
     // « Avant » : état de l'enregistrement pour une mise à jour seulement ; une action ou une création n'a pas d'avant.
     const beforeState = kind === 'update' && state?.record ? state.record : undefined;
@@ -295,8 +314,29 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
     if (changeSet.valuesTruncated) {
       warnings.push(t('Certaines valeurs longues sont tronquées à l’affichage ; la requête envoyée est complète.'));
     }
-    if (kind === 'action' && !state) {
+    if ((kind === 'action' || nestedCreate) && !state) {
       warnings.push(t("L'enregistrement visé n'a pas pu être vérifié (aucune route de lecture connue)."));
+    }
+    if (changeSet.changes.some(change => isSecretField(change.field))) {
+      const protectedFields = [...new Set(changeSet.changes.filter(c => isSecretField(c.field)).map(c => c.field))];
+      warnings.push(
+        t('Champ protégé : valeur non affichée ({{fields}}).', {
+          fields: protectedFields.slice(0, 10).join(', ') + (protectedFields.length > 10 ? '…' : '')
+        })
+      );
+    }
+    for (const list of changeSet.replacedLists) {
+      warnings.push(
+        t('Liste remplacée : {{removed}} éléments retirés ({{field}}).', { removed: list.removed, field: list.field })
+      );
+    }
+    const displayedQuery = displayQuery(query);
+    if (displayedQuery.length > 0) {
+      warnings.push(
+        t('Paramètres envoyés à la route : {{params}}.', {
+          params: displayedQuery.map(param => `${param.key}=${param.value}`).join(', ')
+        })
+      );
     }
 
     const truncated = changeSet.changes.length > MAX_DISPLAYED_CHANGES;
@@ -309,29 +349,37 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
       );
     }
 
-    const assessment = assessWrite(entry, body);
+    const assessment = assessWrite(entry, body, query);
+    // Liste raccourcie : seule l'état lu à l'émission le sait, donc le plan SIGNE l'exigence (voir `requireConfirmation`).
+    const forceConfirmation = changeSet.replacedLists.length > 0;
+    const requiresTypedConfirmation = assessment.requiresTypedConfirmation || forceConfirmation;
     if (assessment.sensitive) {
       warnings.push(
         t(
           'Action sensible : à approuver avec une extrême attention, elle peut avoir des effets externes difficiles à annuler.'
         )
       );
-    } else if (assessment.requiresTypedConfirmation) {
+    } else if (changeSet.leafCount > MAX_DISPLAYED_CHANGES) {
       warnings.push(t('Corps volumineux : la saisie du mot de confirmation est exigée.'));
     }
 
     let target: WritePlan['target'] = null;
-    if (kind !== 'create') {
+    if (kind !== 'create' || nestedCreate) {
       const fallback = lastParamValue(entry, pathParams);
       const label = readableLabel(state?.record ?? null) ?? fallback;
       target = label ? { label, resolved: state !== null } : null;
     }
+
+    const pathParamsDisplay = entry.pathParams
+      .filter(name => pathParams[name] !== undefined)
+      .map(name => ({ name, value: pathParams[name]! }));
 
     const args: ExecuteCapabilityArgs = {
       capabilityId: entry.id,
       pathParams,
       query,
       body,
+      ...(forceConfirmation ? { requireConfirmation: true as const } : {}),
       planHash: ''
     };
     args.planHash = computePlanHash(args);
@@ -349,6 +397,9 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
       steps: input.steps,
       recordKind: kind,
       target,
+      ...(pathParamsDisplay.length > 0 ? { pathParams: pathParamsDisplay } : {}),
+      ...(displayedQuery.length > 0 ? { query: displayedQuery } : {}),
+      ...(stateReadAt ? { stateReadAt } : {}),
       changes,
       ...(truncated ? { changesTruncated: true } : {}),
       warnings,
@@ -356,8 +407,8 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
       ...(assessment.sensitive && assessment.category
         ? { sensitiveReason: SENSITIVE_REASONS[assessment.category]() }
         : {}),
-      requiresTypedConfirmation: assessment.requiresTypedConfirmation,
-      ...(assessment.requiresTypedConfirmation ? { confirmationWord: CONFIRMATION_WORD } : {})
+      requiresTypedConfirmation,
+      ...(requiresTypedConfirmation ? { confirmationWord: CONFIRMATION_WORD } : {})
     };
 
     ctx.writePlansIssued = issued + 1;
@@ -389,7 +440,7 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
         proposalId: claims.jti,
         summary:
           `Plan « ${input.title} » prêt (${entry.method} ${entry.module}, ${changeSet.changes.length} changement(s) calculé(s) par le serveur` +
-          `${assessment.requiresTypedConfirmation ? ', confirmation renforcée exigée' : ''}). ` +
+          `${requiresTypedConfirmation ? ', confirmation renforcée exigée' : ''}). ` +
           "AUCUNE écriture n'a été faite. Attends la décision humaine dans l'interface (approbation ou refus) ; " +
           "ne prétends jamais l'écriture effectuée avant d'en voir le résultat, et n'en propose pas d'autre tant que l'utilisateur n'a pas répondu."
       },

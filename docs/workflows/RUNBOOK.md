@@ -497,7 +497,9 @@ sur `127.0.0.1:<PORT>` (`config/env.ts`) : si l'API écoute derrière un autre p
   confirme. Si la confirmation répond 200 avec `ok: false`, c'est la route
   appelée qui a refusé (permission, validation, abonnement) : son message est
   affiché, le plan est consommé (en redemander un). `CONFIRMATION_REQUIRED`
-  (400) : plan sensible, saisir `CONFIRMER` ; le plan n'est pas consommé. Statut 504
+  (400) : plan sensible, avec paramètres de requête, liste remplacée ou volumineux, saisir `CONFIRMER` ; le plan
+  n'est pas consommé. Refuser un plan appelle `POST /ai/actions/reject` (le jeton est consommé ; réponse 200
+  `{ rejected: false }` s'il l'était déjà ou avait expiré ; audit `AI_PROPOSAL_REJECTED`). Statut 504
   « Délai dépassé » : l'écriture a pu aboutir (30 s), vérifier avant de réessayer.
   Un proxy qui coupe `127.0.0.1` ou un `PORT` erroné donne 502 « n'a pas pu être
   envoyée ». Chercher une exécution par son `capabilityId` et son `planHash` dans le

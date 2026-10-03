@@ -20,13 +20,13 @@ Modèle de section :
 ```markdown
 ## Branche `feat/immocopilot-o9nygz` — 2026-10-03
 
-**État :** étapes 1 et 2 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` dans la PR #107 (fusion à l'utilisateur) ; étapes 3 et 4 non commencées.
+**État :** étapes 1 à 4 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` dans la PR #107 (fusion à l'utilisateur) ; audit de sécurité fait (0 bloquant, 5 importants corrigés).
 
-**Fait :** étape 1 — page `/tenant/:tenantId/assistant`, dictée Web Speech, composants partagés avec le tiroir, menu « Assistant ». Étape 2 — outil `show_artifact` (lecture seule, permission `PROPERTIES_VIEW`, schéma strict : 500 lignes, pas de HTML, ids générés côté serveur), événement SSE `artifact`, fournisseur `fake` (mots-clés « tableau », « graphique », « synthèse »), panneau artefact côté web (tableau, Markdown sûr, graphique recharts), téléchargement CSV/XLSX/MD/PNG avec protection contre l'injection de formules. Vérifié : tests ciblés API (168 + 53 + inventaire des routes) et web (269), tsc API sans erreur, build web et budget d'entrée, wiki:check.
+**Fait :** page `/tenant/:tenantId/assistant` + dictée ; panneau artefact (`show_artifact`, tableau/Markdown/graphique, export CSV/XLSX/MD/PNG) ; passerelle générique en lecture (catalogue `catalog.generated.json` sans DELETE, `list_capabilities`, `call_read` par loopback sous l'identité de l'utilisateur, masquage et plafonds) ; écritures (`plan_write` : avant/après calculés par le serveur, jeton `EXECUTE_CAPABILITY` 900 s à usage unique, exécution par `/ai/actions/execute`, refus par `/ai/actions/reject`, mot « CONFIRMER » pour les actions sensibles, requête/paramètres de chemin/listes remplacées affichés). Vérifié : tests API ciblés (664 + 17) et web (369), tsc des deux côtés, check:architecture, build et budget d'entrée web.
 
-**Reste à faire :** étape 3 (passerelle générique en lecture : catalogue des routes sans DELETE, `list_capabilities`, `call_read`), étape 4 (écritures : plan, avant/après, accord explicite). Décision en attente : liste des anciennes conversations (stockage serveur).
+**Reste à faire :** recette navigateur réelle (dictée, PNG, RTL, carte d'accord) avec un vrai fournisseur ; `npm run test:isolation` (base dédiée) ; décisions : liste des anciennes conversations (stockage serveur), schémas Zod dans le catalogue, lever la dépendance à `PROPERTIES_VIEW`, refuser les créations imbriquées sans GET parent (3 sur 26 aujourd'hui : acceptées avec avertissement).
 
-**Pièges :** pas testé dans un navigateur ni avec un vrai micro ; un rôle sans `PROPERTIES_VIEW` (locations seules) ne reçoit pas `show_artifact` ; `npx prisma generate` nécessaire si le client Prisma est périmé ; `i18n:extract` réécrit tout : restaurer les catalogues sans rapport et ne garder que ses clés ; test web `copilot-root` (AppShell) parfois en timeout sous charge ; `t('noindex, nofollow')` à corriger ailleurs ; la conversation du tiroir n'est pas transférée à la page.
+**Pièges :** `npm run ai:catalog` à relancer à chaque route ajoutée (le test échoue sinon) ; `npx prisma generate` si le client est périmé ; `i18n:extract` réécrit tout (web comme API) : restaurer les catalogues sans rapport et ne garder que ses clés ; `/ai/actions/reject` est dans `READ_LIKE_POSTS` ; limiteurs en mémoire par instance ; POST de lecture (search/export) passent par un plan lourd ; routes multipart non gérées ; un échec après réclamation du jeton consomme le plan ; test web `copilot-root` parfois en timeout sous charge.
 
 ## Branche `feat/comptes-test-packs` — 2026-10-01
 

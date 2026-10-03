@@ -103,3 +103,17 @@ describe('événement write_plan', () => {
     expect(events).toEqual([{ type: 'write_plan', plan: { proposalId: 'p1' } }]);
   });
 });
+
+describe('rejectAction', () => {
+  it("POST /ai/actions/reject avec le jeton (jusqu'à 16 384 caractères)", async () => {
+    mockedPost.mockResolvedValue({ data: { success: true, data: { rejected: true } } });
+    const token = 'x'.repeat(16_384);
+    await expect(copilotService.rejectAction('t1', token)).resolves.toBe(true);
+    expect(mockedPost).toHaveBeenLastCalledWith('/tenants/t1/ai/actions/reject', { proposalToken: token });
+  });
+
+  it('ne lève jamais : erreur réseau ou 4xx donnent false', async () => {
+    mockedPost.mockRejectedValue({ response: { status: 500 } });
+    await expect(copilotService.rejectAction('t1', 'tok')).resolves.toBe(false);
+  });
+});

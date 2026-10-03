@@ -102,7 +102,9 @@ describe('catalogue d’audit', () => {
       // Écrites par une variable (`const actionKey = … ? … : …`), donc oubliées au
       // premier catalogue ; rattrapées par la migration 20261007110000.
       'CRM_DEAL_UPDATED',
-      'CRM_DEAL_STAGE_CHANGED'
+      'CRM_DEAL_STAGE_CHANGED',
+      // Refus d'un plan d'écriture de l'assistant (POST /ai/actions/reject).
+      'AI_PROPOSAL_REJECTED'
     ];
     const fromCatalog = Object.fromEntries(
       Object.entries(AUDIT_CATALOG)

@@ -1558,5 +1558,9 @@
   "Vous n'avez pas la permission d'effectuer cette écriture.": "You do not have permission to perform this write.",
   "Vous n'avez pas la permission de générer ce document.": "You do not have permission to generate this document.",
   "Vous n'avez pas la permission de lire cet enregistrement, donc de le modifier : plan refusé.": "You do not have permission to read this record, so to modify it: plan refused.",
-  "Vous n'avez plus la permission d'effectuer cette écriture.": "You no longer have permission to perform this write."
+  "Vous n'avez plus la permission d'effectuer cette écriture.": "You no longer have permission to perform this write.",
+  "Champ protégé : valeur non affichée ({{fields}}).": "Protected field: value not displayed ({{fields}}).",
+  "Changement d’état difficile à annuler (résiliation, annulation, archivage, cession, publication, statut d’un bail).": "State change that is hard to undo (termination, cancellation, archiving, disposal, publication, lease status).",
+  "Liste remplacée : {{removed}} éléments retirés ({{field}}).": "List replaced: {{removed}} items removed ({{field}}).",
+  "Paramètres envoyés à la route : {{params}}.": "Parameters sent to the route: {{params}}."
 }

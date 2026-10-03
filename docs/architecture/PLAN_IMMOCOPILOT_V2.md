@@ -89,6 +89,21 @@ ChatGPT/Claude/Gemini) avec un panneau « artefact » et la dictée ; toute
 - Journal : `AI_PROPOSAL_ISSUED` (empreintes `planHash` et `displayHash`), `AI_ACTION_EXECUTED`
   (`AI_CAPABILITY`, statut HTTP). Détail et modèle de menace : SECURITY §12, « Écritures génériques ».
 
+Correctifs de l'audit de sécurité de l'étape 4 (contrat `WritePlan`, champs optionnels que le web miroite) :
+
+- `query?: { key, value }[]` : paramètres de requête envoyés (secrets masqués) ; non vide : avertissement
+  « Paramètres envoyés à la route » et mot de confirmation. `pathParams?: { name, value }[]` : identifiants de chemin
+  bruts (hors `tenantId`). `stateReadAt?` : instant ISO de la lecture de l'état « avant ». `requiresTypedConfirmation`
+  reste la seule source pour la saisie du mot. `query`, `pathParams` et `stateReadAt` sont dans `displayHash`.
+- Création imbriquée : le parent est lu (GET) pour renseigner `target` ; parent illisible : plan refusé.
+- Sensibilité élargie (mots, suites de mots, statut d'un bail, corps sur routes de comptes) ; une écriture non classée
+  reste à l'accord simple.
+- Liste du corps plus courte que l'état : changement de niveau liste, avertissement « Liste remplacée », mot exigé
+  (signé dans le jeton : `args.requireConfirmation`).
+- `POST /ai/actions/reject` : le refus consomme le jeton ; audit `AI_PROPOSAL_REJECTED` ; idempotent (200
+  `{ rejected: false }` si déjà utilisé ou expiré).
+- `resultPreview` sans chemins disque ; champ secret écrit : avertissement « Champ protégé : valeur non affichée ».
+
 Décisions de l'étape 4 :
 
 | Sujet                          | Décision                                                                                                                                                                                                   |

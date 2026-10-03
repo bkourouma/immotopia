@@ -99,5 +99,18 @@ async function executeProposal(tenantId: string, proposalToken: string): Promise
   return (await executeAction(tenantId, proposalToken)) as ActionExecutedPayload;
 }
 
-export const copilotService = { getStatus, streamChat, executeAction, executeProposal };
+/**
+ * Signale au serveur qu'un plan a été refusé (invalide le jeton). MEILLEUR EFFORT :
+ * ne lève jamais, renvoie `false` en cas d'échec ; l'interface n'en dépend pas.
+ */
+async function rejectAction(tenantId: string, proposalToken: string): Promise<boolean> {
+  try {
+    const response = await apiClient.post(`/tenants/${tenantId}/ai/actions/reject`, { proposalToken });
+    return unwrap<{ rejected?: boolean } | undefined>(response.data)?.rejected === true;
+  } catch {
+    return false;
+  }
+}
+
+export const copilotService = { getStatus, streamChat, executeAction, executeProposal, rejectAction };
 export default copilotService;

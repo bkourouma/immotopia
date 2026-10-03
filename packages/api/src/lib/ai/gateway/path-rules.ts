@@ -31,7 +31,8 @@ export function isDestructive(method: string, path: string): boolean {
 
 // --- Écritures sensibles (étape 4) -------------------------------------------
 
-export type WriteSensitivityCategory = 'payment' | 'sending' | 'signature' | 'accounting' | 'access' | 'bulk';
+export type WriteSensitivityCategory =
+  'payment' | 'sending' | 'signature' | 'accounting' | 'access' | 'bulk' | 'lifecycle';
 
 /**
  * Mots de chemin qui font d'une écriture une écriture SENSIBLE : plan en rouge et
@@ -45,10 +46,31 @@ export type WriteSensitivityCategory = 'payment' | 'sending' | 'signature' | 'ac
  * - signature  : signature
  * - accounting : validation, clôture ou annulation comptable (valider, approuver, clôturer, verrouiller, facturer, annuler/void)
  * - access     : comptes et droits (rôles, permissions, invitation, activation, suspension, mot de passe)
- * - bulk       : imports et opérations en masse
+ * - bulk       : imports, opérations en masse, générations en lot (appels de fonds, manquantes)
+ * - lifecycle  : changement d'état difficile à annuler (résiliation, annulation, archivage, cession,
+ *                publication, clôture d'une opération, statut d'un bail)
+ *
+ * Une écriture NON classée n'est pas pour autant sûre : elle reste soumise à l'accord simple (carte,
+ * changements calculés par le serveur, bouton d'approbation) sans mot à saisir ; la route réelle garde
+ * la permission. La liste est volontairement large (faux positifs acceptés : un mot de plus à saisir),
+ * et complétée par `bodySensitivity` (clés du corps) et `SENSITIVE_PHRASES` (suites de mots).
  */
 const SENSITIVE_WRITE_WORDS: Record<WriteSensitivityCategory, readonly string[]> = {
-  payment: ['pay', 'payment', 'payout', 'refund', 'transfer', 'paiement', 'remboursement', 'virement'],
+  payment: [
+    'pay',
+    'payment',
+    'payout',
+    'refund',
+    'transfer',
+    'paiement',
+    'remboursement',
+    'virement',
+    'deposit',
+    'movement',
+    'remise',
+    'upgrade',
+    'release'
+  ],
   sending: [
     'send',
     'sending',
@@ -62,7 +84,11 @@ const SENSITIVE_WRITE_WORDS: Record<WriteSensitivityCategory, readonly string[]>
     'reminder',
     'relance',
     'campaign',
-    'newsletter'
+    'newsletter',
+    'envoi',
+    'convocation',
+    'renvoyer',
+    'resend'
   ],
   signature: ['sign', 'signing', 'signature'],
   accounting: [
@@ -77,11 +103,56 @@ const SENSITIVE_WRITE_WORDS: Record<WriteSensitivityCategory, readonly string[]>
     'invoice',
     'facture',
     'void',
-    'annulation'
+    'annulation',
+    'verrouiller',
+    'ajustement',
+    'billing',
+    'issue',
+    'ecriture'
   ],
-  access: ['role', 'permission', 'invite', 'activate', 'activation', 'suspend', 'password'],
-  bulk: ['import', 'bulk', 'batch']
+  access: [
+    'role',
+    'permission',
+    'invite',
+    'activate',
+    'activation',
+    'suspend',
+    'password',
+    'users',
+    'user',
+    'disable',
+    'enable',
+    'revoke'
+  ],
+  bulk: ['import', 'bulk', 'batch'],
+  lifecycle: [
+    'resiliation',
+    'termination',
+    'terminate',
+    'cancel',
+    'dispose',
+    'archive',
+    'unarchive',
+    'publish',
+    'unpublish',
+    'complete'
+  ]
 };
+
+/**
+ * Suites de mots consécutifs (après découpage) qui rendent une écriture sensible alors que chaque
+ * mot, seul, serait trop banal : `external-access` (accès de tiers), `generer-appels` et
+ * `generer-manquantes` (générations en lot).
+ */
+const SENSITIVE_PHRASES: ReadonlyArray<{ words: readonly string[]; category: WriteSensitivityCategory }> = [
+  { words: ['external', 'access'], category: 'access' },
+  { words: ['generer', 'appels'], category: 'bulk' },
+  { words: ['generer', 'manquantes'], category: 'bulk' },
+  { words: ['billing', 'runs'], category: 'accounting' }
+];
+
+/** `status` ne rend sensible que le statut d'un BAIL (`/leases/:id/status`) : ailleurs c'est un champ banal. */
+const LEASE_WORDS = new Set(['lease', 'leases', 'bail', 'baux']);
 
 const WORD_TO_CATEGORY: ReadonlyMap<string, WriteSensitivityCategory> = new Map(
   (Object.entries(SENSITIVE_WRITE_WORDS) as Array<[WriteSensitivityCategory, readonly string[]]>).flatMap(
@@ -105,9 +176,53 @@ export function pathWords(path: string): string[] {
 
 /** Catégorie sensible d'une écriture selon son chemin, ou null. Première correspondance dans l'ordre du chemin. */
 export function writeSensitivity(path: string): { category: WriteSensitivityCategory; word: string } | null {
-  for (const word of pathWords(path)) {
+  const words = pathWords(path);
+  for (const word of words) {
     const category = WORD_TO_CATEGORY.get(word);
     if (category) return { category, word };
+  }
+  for (const { words: phrase, category } of SENSITIVE_PHRASES) {
+    for (let index = 0; index + phrase.length <= words.length; index += 1) {
+      if (phrase.every((word, offset) => words[index + offset] === word)) {
+        return { category, word: phrase.join('-') };
+      }
+    }
+  }
+  if (words.includes('status') && words.some(word => LEASE_WORDS.has(word))) {
+    return { category: 'lifecycle', word: 'status' };
+  }
+  return null;
+}
+
+/** Routes de comptes : utilisateurs, adhésions, collaborateurs (mots du chemin, singulier ou pluriel). */
+const ACCOUNT_WORDS = new Set(['user', 'users', 'membership', 'memberships', 'collaborator', 'collaborators']);
+/** Clés du corps (n'importe quelle profondeur) qui changent droits, état ou identité de connexion d'un compte. */
+const ACCOUNT_BODY_KEYS = new Set(['roles', 'role', 'permissions', 'isactive', 'status', 'password', 'email']);
+
+/**
+ * Sensibilité par le CORPS : sur une route de comptes (users, memberships, collaborators), une clé
+ * `roles`, `role`, `permissions`, `isActive`, `status`, `password` ou `email` rend l'écriture sensible
+ * même si le chemin est banal (`PATCH /users/:userId` avec `{ roles: [...] }`). Fonction pure,
+ * recalculée à l'identique à l'exécution depuis le corps signé.
+ */
+export function bodySensitivity(
+  path: string,
+  body: Record<string, unknown> | null
+): { category: WriteSensitivityCategory; word: string } | null {
+  if (!body || !pathWords(path).some(word => ACCOUNT_WORDS.has(word))) return null;
+  const stack: unknown[] = [body];
+  let visited = 0;
+  while (stack.length > 0 && visited < 5000) {
+    const node = stack.pop();
+    visited += 1;
+    if (Array.isArray(node)) {
+      stack.push(...node);
+    } else if (node !== null && typeof node === 'object') {
+      for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+        if (ACCOUNT_BODY_KEYS.has(key.toLowerCase())) return { category: 'access', word: key };
+        stack.push(child);
+      }
+    }
   }
   return null;
 }

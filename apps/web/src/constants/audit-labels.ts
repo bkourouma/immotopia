@@ -170,6 +170,7 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   AI_TOOL_DENIED: t("Outil refusé à l'assistant IA (droits insuffisants)"),
   AI_PROPOSAL_ISSUED: t("Proposition d'action émise par l'assistant IA"),
   AI_PROPOSAL_REDEEMED: t("Proposition de l'assistant IA acceptée"),
+  AI_PROPOSAL_REJECTED: t("Proposition de l'assistant IA refusée"),
   AI_ACTION_EXECUTED: t("Action de l'assistant IA exécutée"),
   AI_ACTION_REJECTED: t("Action de l'assistant IA rejetée"),
 

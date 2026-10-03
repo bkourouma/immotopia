@@ -1558,5 +1558,9 @@
   "Vous n'avez pas la permission d'effectuer cette écriture.": "ليست لديك صلاحية تنفيذ هذه الكتابة.",
   "Vous n'avez pas la permission de générer ce document.": "ليست لديك صلاحية إنشاء هذا المستند.",
   "Vous n'avez pas la permission de lire cet enregistrement, donc de le modifier : plan refusé.": "ليست لديك صلاحية قراءة هذا السجل، وبالتالي تعديله: تم رفض الخطة.",
-  "Vous n'avez plus la permission d'effectuer cette écriture.": "لم تعد لديك صلاحية تنفيذ هذه الكتابة."
+  "Vous n'avez plus la permission d'effectuer cette écriture.": "لم تعد لديك صلاحية تنفيذ هذه الكتابة.",
+  "Champ protégé : valeur non affichée ({{fields}}).": "حقل محمي: القيمة غير معروضة ({{fields}}).",
+  "Changement d’état difficile à annuler (résiliation, annulation, archivage, cession, publication, statut d’un bail).": "تغيير في الحالة يصعب التراجع عنه (فسخ، إلغاء، أرشفة، تفويت، نشر، حالة عقد الإيجار).",
+  "Liste remplacée : {{removed}} éléments retirés ({{field}}).": "تم استبدال القائمة: إزالة {{removed}} عناصر ({{field}}).",
+  "Paramètres envoyés à la route : {{params}}.": "المعاملات المرسلة إلى المسار: {{params}}."
 }

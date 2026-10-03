@@ -7,12 +7,15 @@ import {
   chatRequestSchema,
   COPILOT_MAX_MESSAGE_CHARS,
   COPILOT_MAX_MESSAGES,
-  executeRequestSchema
+  executeRequestSchema,
+  rejectRequestSchema
 } from '../lib/ai/contracts';
 import type { CopilotStatus, CopilotToolDefinition } from '../lib/ai/contracts';
 import { executeCapability } from '../lib/ai/actions/execute-capability';
 import { executeRentalDocument } from '../lib/ai/actions/execute-rental-document';
-import { peekProposalAction } from '../lib/ai/proposal-token';
+import { ProposalError, peekProposalAction, redeemProposal, verifyAnyProposal } from '../lib/ai/proposal-token';
+import { logAuditEvent } from '../services/audit-service';
+import { AuditActionKey } from '../types/audit-types';
 import { runChat } from '../lib/ai/orchestrator';
 import { resolvePageContext } from '../lib/ai/page-context';
 import { getLlmProvider } from '../lib/ai/providers';
@@ -212,4 +215,42 @@ export const executeActionHandler = asyncHandler(async (req: Request, res: Respo
   await assertRentalWritable(tenantId);
   const { payload } = await executeRentalDocument({ token: proposalToken, userId, tenantId });
   res.status(201).json({ success: true, data: payload });
+});
+
+/**
+ * POST /ai/actions/reject — l'humain REFUSE un plan : le jeton est CONSOMMÉ (même mécanisme d'usage
+ * unique que l'exécution), pour qu'un plan refusé ne puisse plus jamais être confirmé (jeton volé ou
+ * conservé). Mêmes middlewares que `execute`, sans permission de génération : refuser n'écrit rien.
+ *
+ * Signature, utilisateur et agence vérifiés (`PROPOSAL_INVALID` 400 sinon). Idempotent : un jeton déjà
+ * utilisé ou expiré répond 200 `{ rejected: false }`, sans erreur. Audit `AI_PROPOSAL_REJECTED`
+ * (identifiant du plan seulement, jamais le jeton ni le corps).
+ */
+export const rejectActionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { tenantId, userId } = requireContext(req);
+  const { proposalToken } = rejectRequestSchema.parse(req.body ?? {});
+
+  let rejected = false;
+  try {
+    const claims = verifyAnyProposal(proposalToken, { userId, tenantId });
+    await redeemProposal(claims);
+    rejected = true;
+    logAuditEvent({
+      actorUserId: userId,
+      tenantId,
+      actionKey: AuditActionKey.AI_PROPOSAL_REJECTED,
+      entityType: 'AI_PROPOSAL',
+      entityId: claims.jti,
+      payload: {
+        act: claims.act,
+        ...(claims.act === 'EXECUTE_CAPABILITY' ? { capabilityId: claims.args.capabilityId } : {})
+      }
+    });
+  } catch (error) {
+    // Déjà utilisé ou expiré : rien à révoquer. Toute autre erreur (signature, utilisateur, agence) reste une erreur.
+    const idempotent =
+      error instanceof ProposalError && (error.code === 'PROPOSAL_ALREADY_USED' || error.code === 'PROPOSAL_EXPIRED');
+    if (!idempotent) throw error;
+  }
+  res.json({ success: true, data: { rejected } });
 });

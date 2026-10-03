@@ -290,6 +290,81 @@ describe('POST /ai/actions/execute — plan d’écriture', () => {
   });
 });
 
+describe('POST /ai/actions/reject — refus d’un plan', () => {
+  const auditKeys = () => mockLogAudit.mock.calls.map(([event]) => event.actionKey);
+
+  it('consomme le jeton : 200 { rejected: true }, audit AI_PROPOSAL_REJECTED, puis l’exécution est refusée (409), rien d’écrit', async () => {
+    const token = plan();
+    const res = await post(`${base()}/actions/reject`, { proposalToken: token });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: { rejected: true } });
+    expect(auditKeys()).toContain('AI_PROPOSAL_REJECTED');
+    const rejectedEvent = mockLogAudit.mock.calls.find(([event]) => event.actionKey === 'AI_PROPOSAL_REJECTED')![0];
+    expect(JSON.stringify(rejectedEvent)).not.toContain(token);
+    expect(rejectedEvent.payload).toEqual({ act: 'EXECUTE_CAPABILITY', capabilityId: PATCH_CONTACT });
+    const exec = await post(`${base()}/actions/execute`, { proposalToken: token });
+    expect(exec.status).toBe(409);
+    expect(exec.body.code).toBe('PROPOSAL_ALREADY_USED');
+    expect(received).toHaveLength(0);
+  });
+
+  it('idempotent : un jeton déjà refusé, déjà exécuté ou expiré répond 200 { rejected: false } sans erreur', async () => {
+    const token = plan();
+    await post(`${base()}/actions/reject`, { proposalToken: token });
+    const again = await post(`${base()}/actions/reject`, { proposalToken: token });
+    expect(again.status).toBe(200);
+    expect(again.body.data).toEqual({ rejected: false });
+
+    const executed = plan({ body: { city: 'Autre' } });
+    expect((await post(`${base()}/actions/execute`, { proposalToken: executed })).status).toBe(201);
+    const after = await post(`${base()}/actions/reject`, { proposalToken: executed });
+    expect(after.status).toBe(200);
+    expect(after.body.data).toEqual({ rejected: false });
+
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'clearTimeout'] });
+    try {
+      const old = plan({ body: { city: 'Vieux' } });
+      jest.setSystemTime(Date.now() + 2 * 3600 * 1000);
+      const expired = await post(`${base()}/actions/reject`, { proposalToken: old });
+      expect(expired.status).toBe(200);
+      expect(expired.body.data).toEqual({ rejected: false });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('jeton d’un autre utilisateur, d’une autre agence, forgé ou illisible : 400 PROPOSAL_INVALID, jeton NON consommé', async () => {
+    const token = plan();
+    const otherTenant = await post(`${base(TENANT_B)}/actions/reject`, { proposalToken: token });
+    expect(otherTenant.status).toBe(400);
+    expect(otherTenant.body.code).toBe('PROPOSAL_INVALID');
+    const otherUser = await post(`${base()}/actions/reject`, { proposalToken: plan({}, 'autre-utilisateur') });
+    expect(otherUser.status).toBe(400);
+    const [v, payload] = token.split('.');
+    expect(
+      (await post(`${base()}/actions/reject`, { proposalToken: `${v}.${payload}.AAAA${'A'.repeat(40)}` })).status
+    ).toBe(400);
+    expect((await post(`${base()}/actions/reject`, { proposalToken: 'x'.repeat(30) })).status).toBe(400);
+    expect(auditKeys()).not.toContain('AI_PROPOSAL_REJECTED');
+    // Le jeton valide de l'utilisateur légitime reste utilisable.
+    expect((await post(`${base()}/actions/execute`, { proposalToken: token })).status).toBe(201);
+  });
+
+  it('corps strict (clé inconnue refusée) et limiteur d’action partagé (429)', async () => {
+    expect((await post(`${base()}/actions/reject`, { proposalToken: plan(), tenantId: 'x' })).status).toBe(400);
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) statuses.push((await post(`${base()}/actions/reject`, {})).status);
+    expect(statuses[10]).toBe(429);
+  });
+
+  it('ne demande aucune permission de génération (collaborateur sans documents:generate)', async () => {
+    mockHasPermission.mockResolvedValue(false);
+    const res = await post(`${base()}/actions/reject`, { proposalToken: plan() });
+    expect(res.status).toBe(200);
+    expect(mockHasPermission).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /ai/actions/execute — quittance : permissions inchangées', () => {
   const statement = () =>
     signProposal({

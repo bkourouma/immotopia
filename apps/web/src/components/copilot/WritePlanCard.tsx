@@ -10,9 +10,11 @@ import { t } from '../../i18n/t';
 import type { WritePlan, WritePlanState, CapabilityExecutedPayload } from '../../types/copilot';
 import { requiredConfirmationWord } from '../../utils/copilot-write-plan';
 import { WritePlanChangesTable } from './WritePlanChangesTable';
+import { WritePlanPathParams, WritePlanQuery } from './WritePlanRouteParams';
 import {
   formatCountdown,
   formatDecisionTime,
+  formatStateReadTime,
   methodLabel,
   planModuleLabel,
   recordKindLabel,
@@ -73,6 +75,7 @@ function SourceTag({ server }: { server: boolean }): React.ReactElement {
 function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
   const stepsId = useId();
   const dataId = useId();
+  const stateReadTime = formatStateReadTime(plan.stateReadAt);
   return (
     <>
       <section aria-labelledby={stepsId} style={sectionStyle}>
@@ -104,6 +107,11 @@ function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
             {plan.target.resolved ? null : <span style={mutedStyle}> ({t('non retrouvé par le serveur')})</span>}
           </p>
         ) : null}
+        {stateReadTime ? (
+          <p style={{ ...mutedStyle, margin: '6px 0', fontSize: 12 }}>
+            {t('État lu à {{time}}', { time: stateReadTime })}. {t('Les données ont pu changer depuis.')}
+          </p>
+        ) : null}
         {plan.changes.length > 0 ? (
           <WritePlanChangesTable changes={plan.changes} />
         ) : (
@@ -115,6 +123,8 @@ function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
           </p>
         ) : null}
       </section>
+      <WritePlanPathParams pathParams={plan.pathParams} hasTarget={plan.target !== null} />
+      <WritePlanQuery query={plan.query} />
     </>
   );
 }
@@ -297,6 +307,9 @@ export function WritePlanCard({
                 style={{ maxWidth: 240 }}
               />
             </div>
+          ) : null}
+          {state === 'pending' && error ? (
+            <Alert type="warning" showIcon style={sectionStyle} title={error.message} />
           ) : null}
           <Space style={{ marginBlockStart: 12 }} wrap>
             <Button

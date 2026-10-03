@@ -144,6 +144,72 @@ describe('WritePlanCard : rendu', () => {
   });
 });
 
+describe('WritePlanCard : contrat serveur étendu', () => {
+  it('affiche paramètres de requête, éléments visés (monospace) et heure de lecture', () => {
+    setup(
+      makePlan({
+        query: [
+          { key: 'notify', value: 'true' },
+          { key: 'token', value: '[masqué]' }
+        ],
+        pathParams: [{ name: 'id', value: 'c0ffee-123' }],
+        stateReadAt: '2026-03-01T10:05:00Z'
+      })
+    );
+    const query = screen.getByTestId('write-plan-query');
+    expect(within(query).getByText('Paramètres envoyés à la route')).toBeInTheDocument();
+    expect(within(query).getByRole('columnheader', { name: 'Clé' })).toBeInTheDocument();
+    expect(within(query).getByRole('columnheader', { name: 'Valeur' })).toBeInTheDocument();
+    expect(within(query).getAllByTestId('write-plan-query-row')).toHaveLength(2);
+    expect(within(query).getByText('[masqué]')).toBeInTheDocument();
+    expect(within(query).getByText(/champ protégé/)).toBeInTheDocument();
+    const ids = screen.getByTestId('write-plan-path-params');
+    expect(within(ids).getByText('Éléments visés')).toBeInTheDocument();
+    expect(within(ids).getByText('c0ffee-123').tagName).toBe('CODE');
+    expect(within(ids).queryByText(/parent/)).toBeNull();
+    expect(screen.getByText(/État lu à/)).toHaveTextContent('Les données ont pu changer depuis.');
+    // Les avertissements serveur restent affichés.
+    expect(screen.getByText('Le contact est lié à 2 baux.')).toBeInTheDocument();
+  });
+
+  it('sans cible : mention « parent : » devant les identifiants', () => {
+    setup(makePlan({ target: null, pathParams: [{ name: 'contactId', value: 'abc' }] }));
+    expect(within(screen.getByTestId('write-plan-path-params')).getByText(/parent/)).toBeInTheDocument();
+  });
+
+  it('champ protégé dans le tableau : icône et texte accessible, pas la seule valeur', () => {
+    setup(makePlan());
+    const row = screen.getAllByTestId('write-plan-change')[3];
+    expect(within(row).getAllByText(/champ protégé/)).toHaveLength(2);
+    expect(row.querySelectorAll('[aria-hidden="true"]').length).toBeGreaterThan(0);
+  });
+
+  it('sections absentes quand le serveur ne les fournit pas', () => {
+    setup(makePlan({ query: [], pathParams: undefined }));
+    expect(screen.queryByTestId('write-plan-query')).toBeNull();
+    expect(screen.queryByTestId('write-plan-path-params')).toBeNull();
+    expect(screen.queryByText(/État lu à/)).toBeNull();
+  });
+
+  it('sensible=false mais requiresTypedConfirmation=true : mot exigé', async () => {
+    const { onApprove } = setup(makePlan({ sensitive: false, requiresTypedConfirmation: true }));
+    const approve = screen.getByRole('button', { name: 'Approuver et exécuter' });
+    expect(approve).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/saisissez le mot CONFIRMER/), 'CONFIRMER');
+    expect(approve).toBeEnabled();
+    await userEvent.click(approve);
+    expect(onApprove).toHaveBeenCalledWith('wp1', 'CONFIRMER');
+  });
+
+  it('en attente avec erreur de confirmation : message visible, boutons actifs', () => {
+    setup(makePlan({ requiresTypedConfirmation: true }), {
+      error: { code: 'CONFIRMATION_REQUIRED', message: 'Saisissez le mot de confirmation' }
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Saisissez le mot de confirmation');
+    expect(screen.getByRole('button', { name: 'Refuser' })).toBeEnabled();
+  });
+});
+
 describe('WritePlanCard : décision', () => {
   it("Approuver appelle le rappel avec l'identifiant, sans confirmation", async () => {
     const { onApprove, onRefuse } = setup(makePlan());

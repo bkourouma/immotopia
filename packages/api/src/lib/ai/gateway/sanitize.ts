@@ -35,6 +35,22 @@ export function redactSecrets(value: unknown, depth = 0): unknown {
   return out;
 }
 
+/** Clés qui portent un chemin de fichier sur le disque du serveur (jamais montré à l'humain ni au modèle). */
+const DISK_PATH_KEYS = new Set(['filepath', 'path']);
+
+/** Retire récursivement les clés `file_path`, `filePath` et `path` (chemins disque) d'une réponse. */
+export function stripDiskPaths(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (depth > MAX_REDACTION_DEPTH) return REDACTED;
+  if (Array.isArray(value)) return value.map(item => stripDiskPaths(item, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (DISK_PATH_KEYS.has(key.toLowerCase().replace(/[_\-\s]/g, ''))) continue;
+    out[key] = stripDiskPaths(child, depth + 1);
+  }
+  return out;
+}
+
 export interface ReduceLimits {
   maxArrayItems: number;
   maxStringChars: number;

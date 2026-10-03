@@ -159,7 +159,8 @@ beforeEach(() => {
 describe('exécution d’un plan confirmé', () => {
   it('appelle la route avec le bon verbe, le bon chemin, le corps signé et les en-têtes du confirmeur', async () => {
     const { token, claims } = issue(argsFor({ query: { notify: false } }));
-    const { payload } = await run(token);
+    // Une requête avec paramètres de requête exige le mot de confirmation (audit : query montrée à l'humain).
+    const { payload } = await run(token, { confirmation: 'CONFIRMER' });
 
     expect(writes()).toHaveLength(1);
     const call = received[0]!;
@@ -208,6 +209,24 @@ describe('exécution d’un plan confirmé', () => {
     expect(text).toContain('[masqué]');
     expect(text).not.toContain('x'.repeat(501));
     expect(text.length).toBeLessThanOrEqual(12000);
+  });
+
+  it('resultPreview : retire récursivement file_path / filePath / path (chemins disque)', async () => {
+    handler = (_req, res) =>
+      json(res, 200, {
+        success: true,
+        data: {
+          id: CONTACT_ID,
+          file_path: '/srv/uploads/private/a.pdf',
+          doc: { filePath: '/srv/uploads/b.pdf', name: 'b', files: [{ path: '/srv/uploads/c.pdf', size: 3 }] }
+        }
+      });
+    const { payload } = await run(issue().token);
+    const text = JSON.stringify(payload.resultPreview);
+    expect(text).not.toContain('/srv/uploads');
+    expect(text).not.toMatch(/file_path|filePath|"path"/);
+    expect(text).toContain('"size":3');
+    expect(text).toContain('"name":"b"');
   });
 
   it('une réponse d’erreur de la route (403, 422) devient { ok:false, status, message } ; le jeton est consommé', async () => {
@@ -455,6 +474,40 @@ describe('permissions et confirmation', () => {
     expect(writes()).toHaveLength(1);
     expect(received[0]!.url).toContain('/finance/salary-notes/');
     expect(received[0]!.url).toContain('/validate');
+  });
+
+  it('requête avec paramètres de requête : le mot est exigé (le plan ne reproduit pas la requête dans les changements)', async () => {
+    const { token } = issue(argsFor({ query: { dryRun: true } }));
+    await expect(run(token)).rejects.toMatchObject({ code: 'CONFIRMATION_REQUIRED' });
+    expect(writes()).toHaveLength(0);
+    await expect(run(token, { confirmation: 'CONFIRMER' })).resolves.toBeDefined();
+    expect(received[0]!.url).toContain('dryRun=true');
+  });
+
+  it('corps sensible sur une route de comptes (roles sur PATCH /users/:userId) : le mot est exigé', async () => {
+    const { token } = issue(
+      argsFor({
+        capabilityId: 'PATCH /api/tenants/:tenantId/users/:userId',
+        pathParams: { userId: CONTACT_ID },
+        body: { roles: ['ADMIN'] }
+      })
+    );
+    await expect(run(token)).rejects.toMatchObject({ code: 'CONFIRMATION_REQUIRED' });
+    await expect(run(token, { confirmation: 'CONFIRMER' })).resolves.toBeDefined();
+  });
+
+  it('requireConfirmation signé (liste remplacée) : exigé à l’exécution ; retirer le drapeau change l’empreinte, refusé', async () => {
+    const withFlag = { ...argsFor(), requireConfirmation: true as const };
+    const flagged = issue({
+      ...withFlag,
+      planHash: computePlanHash(withFlag)
+    });
+    await expect(run(flagged.token)).rejects.toMatchObject({ code: 'CONFIRMATION_REQUIRED' });
+    await expect(run(flagged.token, { confirmation: 'CONFIRMER' })).resolves.toBeDefined();
+    // Jeton re-signé SANS le drapeau mais avec l'empreinte du plan à drapeau : empreinte incohérente.
+    const stripped = issue({ ...argsFor(), planHash: computePlanHash(withFlag) });
+    await expect(run(stripped.token)).rejects.toMatchObject({ code: 'PROPOSAL_INVALID' });
+    expect(computePlanHash(argsFor())).not.toBe(computePlanHash(withFlag));
   });
 
   it('plan non sensible : la confirmation est ignorée', async () => {

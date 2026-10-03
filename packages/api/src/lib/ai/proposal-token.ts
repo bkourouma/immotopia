@@ -137,6 +137,7 @@ const capabilityArgsSchema = z
     pathParams: pathParamsSchema,
     query: querySchema,
     body: z.union([z.null(), planBodySchema]),
+    requireConfirmation: z.literal(true).optional(),
     planHash: z.string().regex(/^[0-9a-f]{64}$/)
   })
   .strict();
@@ -284,6 +285,14 @@ export function verifyCapabilityProposal(
   const claims = verifyAny(token, expected);
   if (claims.act !== 'EXECUTE_CAPABILITY') throw invalid('BAD_CLAIMS', claims.jti);
   return claims;
+}
+
+/**
+ * Vérifie un jeton de n'importe quelle action (signature, expiration, utilisateur, agence) sans en
+ * contrôler l'action : sert au refus d'un plan (`POST /ai/actions/reject`), qui consomme le jeton.
+ */
+export function verifyAnyProposal(token: string, expected: { userId: string; tenantId: string }): AnyProposalClaims {
+  return verifyAny(token, expected);
 }
 
 // --- Usage unique ----------------------------------------------------------

@@ -10,7 +10,7 @@ import { findWritableEntry, isPermittedByCatalog } from '../gateway/catalog';
 import { isDestructive } from '../gateway/path-rules';
 import { LoopbackTimeoutError, loopbackWrite, type LoopbackResponse } from '../gateway/loopback';
 import { buildPath, buildQueryString, extractErrorMessage } from '../gateway/request-utils';
-import { redactSecrets, reduceForModel } from '../gateway/sanitize';
+import { redactSecrets, reduceForModel, stripDiskPaths } from '../gateway/sanitize';
 import { computePlanHash } from '../plan-hash';
 import { ProposalError, redeemProposal, verifyCapabilityProposal } from '../proposal-token';
 import { assessWrite, CONFIRMATION_WORD } from '../write-plan';
@@ -82,7 +82,7 @@ function writeMessage(status: number, text: string): string {
 function preview(response: LoopbackResponse): unknown {
   if (response.tooLarge || !/json/i.test(response.contentType)) return null;
   try {
-    return reduceForModel(redactSecrets(JSON.parse(response.text))).data;
+    return reduceForModel(stripDiskPaths(redactSecrets(JSON.parse(response.text)))).data;
   } catch {
     return null;
   }
@@ -122,7 +122,8 @@ async function revalidate(
   return {
     method: entry.method as 'POST' | 'PUT' | 'PATCH',
     pathAndQuery: `${path}${buildQueryString(args.query)}`,
-    requiresConfirmation: assessWrite(entry, args.body).requiresTypedConfirmation
+    requiresConfirmation:
+      assessWrite(entry, args.body, args.query).requiresTypedConfirmation || args.requireConfirmation === true
   };
 }
 

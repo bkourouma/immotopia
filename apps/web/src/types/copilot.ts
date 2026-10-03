@@ -154,6 +154,22 @@ export interface WritePlan {
   sensitiveReason?: string;
   requiresTypedConfirmation: boolean;
   confirmationWord?: 'CONFIRMER';
+  /** Paramètres de requête réellement envoyés à la route (calculés par le serveur). */
+  query?: WritePlanQueryParam[];
+  /** Identifiants bruts des éléments visés dans le chemin de la route (serveur). */
+  pathParams?: WritePlanPathParam[];
+  /** Instant (ISO) où le serveur a lu l'état affiché ; les données ont pu changer depuis. */
+  stateReadAt?: string;
+}
+
+export interface WritePlanQueryParam {
+  key: string;
+  value: string;
+}
+
+export interface WritePlanPathParam {
+  name: string;
+  value: string;
 }
 
 /** Résultat de POST /actions/execute pour un jeton de plan d'écriture. */

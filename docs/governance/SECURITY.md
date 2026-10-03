@@ -370,7 +370,7 @@ Plan de réalisation : [PLAN_IMMOCOPILOT.md](../architecture/PLAN_IMMOCOPILOT.md
 
 **Désactivé par défaut.** `AI_PROVIDER=disabled` : `GET /ai/status` répond
 `enabled: false`, le bouton est masqué, `POST /ai/chat` et
-`POST /ai/actions/execute` répondent 503 `AI_DISABLED`. Le faux fournisseur
+`POST /ai/actions/execute` (comme `/reject`) répondent 503 `AI_DISABLED`. Le faux fournisseur
 (`fake`) n'est accepté que si la variable **brute** `NODE_ENV` vaut
 explicitement `development` ou `test` (`config/env.ts`) : `NODE_ENV` absent,
 `production` ou `staging` le refuse au démarrage (un déploiement qui oublie
@@ -561,10 +561,34 @@ d'agence du catalogue (POST, PUT, PATCH) ; il n'écrit jamais : seule la route d
 - **Corps borné.** Objet JSON de 8 Ko au plus (sérialisé), 4 niveaux d'imbrication, clés `__proto__`,
   `constructor`, `prototype` refusées (validé sur la valeur d'origine : Zod écarterait `__proto__` en
   silence). Paramètres de chemin et de requête comme `call_read`. `:tenantId` est imposé par le serveur.
+- **Ce que l'humain voit de la requête (audit étape 4).** Tout ce qui part à la route est montré, calculé
+  par le serveur depuis la requête signée, jamais par le modèle :
+  `pathParams` (`{ name, value }[]`, identifiants bruts hors `tenantId`), `query` (`{ key, value }[]`, valeur
+  `[masqué]` si la clé évoque un secret) et `stateReadAt` (ISO, instant de la lecture de l'état « avant »,
+  pour juger de sa fraîcheur). Une `query` non vide ajoute l'avertissement « Paramètres envoyés à la route : … »
+  ET force `requiresTypedConfirmation` (elle ne figure pas dans les changements). `query`, `pathParams` et
+  `stateReadAt` sont dans `displayHash`. `requiresTypedConfirmation` reste la SEULE source pour la saisie du mot
+  côté interface ; l'exécuteur le recalcule (chemin, corps, query) et le plan signé le complète (voir
+  `requireConfirmation` plus bas).
+- **Parent visé par une création imbriquée.** `POST /syndics/:syndicId/charges/batch`, ou une action
+  (`/x/:id/verbe`) : le serveur lit par GET loopback la ressource qui porte le dernier paramètre de chemin
+  (`lastParamAncestorPath`, ou `parentResourcePath` pour une action) et renseigne `target` (libellé lisible).
+  Parent illisible (403, 404, autre erreur, délai) : plan refusé, comme pour une mise à jour. Sans route de lecture
+  connue pour ce parent (3 routes du catalogue sur 26 créations imbriquées) : plan accepté, `target` = identifiant
+  brut, `resolved: false`, avertissement « n'a pas pu être vérifié ».
+- **Liste remplacée.** Le corps remplace un tableau en entier ; comparés par indice, les éléments retirés
+  n'apparaîtraient pas. Si un tableau du corps est plus court que celui de l'état, le plan émet un changement de
+  niveau liste (`before` « [N éléments] », `after` « [M éléments] »), l'avertissement « Liste remplacée : N éléments
+  retirés » et exige le mot. Seul l'état lu à l'émission le sait : le drapeau est donc SIGNÉ
+  (`args.requireConfirmation`, inclus dans `planHash` seulement s'il est vrai) et l'exécuteur l'applique ; le retirer
+  d'un jeton re-signé rend l'empreinte incohérente.
+- **Champ protégé.** Un champ écrit dont le nom évoque un secret : valeur jamais affichée, avertissement
+  « Champ protégé : valeur non affichée ».
 - **Masquage.** Toute clé évoquant un secret (`password`, `secret`, `token`, `apiKey`, `hash`…) est
   affichée `[masqué]` avant ET après, jamais comparée ; un JWT ou un `Bearer` perdu dans une valeur
   aussi ; les valeurs de plus de 300 caractères sont tronquées à l'AFFICHAGE seulement (avertissement),
-  la requête signée reste exacte. `resultPreview` à l'exécution est masqué et réduit comme `call_read`.
+  la requête signée reste exacte. `resultPreview` à l'exécution est masqué et réduit comme `call_read`, et les clés `file_path`, `filePath` et `path`
+  (chemins disque) en sont retirées à toute profondeur (`stripDiskPaths`).
   Le corps complet voyage dans le jeton, que seul le navigateur de l'utilisateur reçoit : c'est son
   propre contenu, mais ne jamais mettre de secret dans un plan.
 - **Plan > 30 changements** : 30 affichés, `changesTruncated`, avertissement, et le mot de confirmation
@@ -572,19 +596,32 @@ d'agence du catalogue (POST, PUT, PATCH) ; il n'écrit jamais : seule la route d
 - **Écritures sensibles** (plan en rouge, `sensitive`, `sensitiveReason`, mot `CONFIRMER` à saisir). Test par
   MOT de chemin (segment découpé sur `-`, `_`, majuscules ; singulier ou pluriel ; un paramètre n'est pas
   un mot), liste dans `SENSITIVE_WRITE_WORDS` (`gateway/path-rules.ts`) : paiement (pay, payment, payout,
-  refund, transfer, paiement, virement), envois (send, email, mail, sms, whatsapp, notify, notification,
-  remind, relance, campaign, newsletter), signature (sign, signature), validation ou clôture comptable
-  (validate, approve, close, cloture, lock, invoice, facture, void, annulation), comptes et droits (role,
-  permission, invite, activate, suspend, password), imports et masse (import, bulk, batch). Ce n'est pas
-  une liste blanche : une écriture hors liste n'est pas inoffensive, son plan montre les changements
-  et la route réelle garde la permission. Les chemins évoquant un secret ou un jeton (`reset-password`,
-  passerelle de paiement, liens sécurisés, invitations) restent **interdits**, pas seulement renforcés.
+  refund, transfer, paiement, remboursement, virement, deposit, movement, remise, upgrade, release), envois
+  (send, email, mail, sms, whatsapp, notify, notification, remind, relance, campaign, newsletter, envoi,
+  convocation, renvoyer, resend), signature (sign, signature), comptabilité (validate, approve, close, cloture,
+  lock, verrouiller, invoice, facture, void, annulation, ajustement, billing, issue, ecriture), comptes et droits
+  (role, permission, invite, activate, suspend, password, users, disable, enable, revoke), imports et masse (import,
+  bulk, batch), changements d'état difficiles à annuler (`lifecycle` : resiliation, termination, terminate, cancel,
+  dispose, archive, publish, complete). Suites de mots : `external-access`, `generer-appels`, `generer-manquantes`,
+  `billing-runs` ; `status` seulement sur un bail (`/leases/:id/status`). **Sensibilité par le CORPS**
+  (`bodySensitivity`) : sur une route `users`, `memberships` ou `collaborators`, une clé `roles`, `role`,
+  `permissions`, `isActive`, `status`, `password` ou `email` (à toute profondeur) rend l'écriture sensible même si le
+  chemin est banal. `assessWrite` combine chemin, corps et query, à l'identique à l'émission et à l'exécution. Un
+  test porte la liste explicite de routes réelles du catalogue (`PATCH /users/:userId`, `…/disable`,
+  `…/revoke-sessions`, `external-access`, `deposits/:id/movements`, `billing-runs`, `subscription/upgrade`,
+  `…/envoi`, `…/convocation`, `…/verrouiller`, `…/events/termination`, `leases/:id/status`, `…/cancel`, `…/dispose`,
+  `…/publish`) et vérifie qu'aucune écriture du catalogue contenant un mot de la liste n'y échappe. **Ce n'est pas
+  une liste blanche** : une écriture non classée reste soumise à l'ACCORD SIMPLE (carte, changements calculés par le
+  serveur, bouton d'approbation, sans mot à saisir) et la route réelle garde la permission ; un nom de route
+  inattendu peut donc passer entre les mailles, d'où la liste large (faux positifs acceptés : un mot de plus à
+  saisir). Les chemins évoquant un secret ou un jeton (`reset-password`, passerelle de paiement, liens sécurisés,
+  invitations) restent **interdits**, pas seulement renforcés.
 - **Jeton `EXECUTE_CAPABILITY`.** Claims `args = { capabilityId, pathParams, query, body, planHash }`,
   liés à `sub`, `tid`, `jti` à usage unique (table mémoire puis `AuditLog` sous verrou consultatif, comme
   les quittances), expiration `AI_WRITE_PLAN_TTL_SECONDS` = 900 s : il faut lire le plan, ses changements et
   saisir un mot (300 s suffisaient pour une carte de quittance, pas pour ceci ; plancher 300 s).
   `planHash` = SHA-256 de la forme canonique de la requête approuvée `{ capabilityId, pathParams, query,
-body }` : les `changes` affichés sont une fonction déterministe de ce corps et de l'état lu, c'est donc
+body[, requireConfirmation] }` : les `changes` affichés sont une fonction déterministe de ce corps et de l'état lu, c'est donc
   bien la requête que l'accord autorise. Il est recalculable à partir des seuls arguments : toute
   incohérence (jeton forgé) est refusée avant l'écriture. L'empreinte de ce que l'humain a VU (`displayHash`,
   plan sans jeton) est journalisée à l'émission.
@@ -607,6 +644,14 @@ body }` : les `changes` affichés sont une fonction déterministe de ce corps et
   qui, agence, capabilityId, `planHash`, statut HTTP, `ok`, `requestId`. `AI_ACTION_REJECTED` : motif
   (`PLAN_HASH_MISMATCH`, `CAPABILITY_NOT_ALLOWED`, `PERMISSION_REVOKED`, `CONFIRMATION_REQUIRED`, `NO_AUTH_HEADERS`,
   motifs du jeton). Jamais le corps brut, ni une valeur, ni un jeton d'accès.
+- **Refus d'un plan** (`POST /ai/actions/reject`, `{ proposalToken }`, `rejectActionHandler`). Mêmes middlewares que
+  `execute` (authentification, agence, collaborateur, garde de l'assistant, limiteur d'action), sans permission de
+  génération : refuser n'écrit rien. Vérifie signature, `sub`, `tid`, puis CONSOMME le jeton par le même mécanisme
+  d'usage unique (`redeemProposal`) : un plan refusé ne peut plus être confirmé, même volé. Audit
+  `AI_PROPOSAL_REJECTED` (action et `capabilityId`, jamais le jeton ni le corps). Idempotent : jeton déjà utilisé ou
+  expiré, réponse 200 `{ rejected: false }` sans erreur ; signature, utilisateur ou agence incorrects :
+  `PROPOSAL_INVALID` (400), jeton non consommé. La route n'est pas au catalogue (`/ai/` exclu) ; `route-features` la
+  classe CORE et lecture-like (`READ_LIKE_POSTS`) : un abonnement en lecture seule ne bloque pas un refus.
 - **Abonnement.** `/ai/actions` passe de RENTAL à CORE dans `lib/subscription/route-features.ts` : sinon une
   agence sans module location ne pourrait pas confirmer une écriture générique. Le module RENTAL reste exigé pour
   confirmer une quittance (contrôleur) et la route appelée par loopback porte son propre module.
@@ -621,6 +666,11 @@ body }` : les `changes` affichés sont une fonction déterministe de ce corps et
 | Suppression                                                                           | Absente du catalogue, refusée à l'émission, dans les claims et à l'exécution ; test avec jeton forgé signé                                                                                                                                                                                    |
 | Effets externes (paiement, envoi, signature, clôture)                                 | Plan sensible, mot `CONFIRMER`, raison affichée ; chemins secrets interdits                                                                                                                                                                                                                   |
 | Jeton volé                                                                            | Lié à l'utilisateur et à l'agence, usage unique, 900 s, jamais renvoyé au modèle ni journalisé ; il faut aussi les en-têtes d'authentification de la requête                                                                                                                                  |
+| Paramètres de requête cachés à l'humain (ex. `?force=true`)                           | `query` calculé depuis la requête signée et montré (secrets masqués), avertissement serveur, mot de confirmation obligatoire, dans `displayHash`                                                                                                                                              |
+| Création ou action dont le parent visé est ignoré de l'humain                         | Parent lu par GET loopback : `target` lisible et `pathParams` bruts affichés ; parent illisible : plan refusé                                                                                                                                                                                 |
+| Écriture sensible non reconnue par son chemin                                         | Liste de mots élargie, suites de mots, détection par le corps sur les routes de comptes ; une écriture non classée reste à l'accord simple (documenté, pas de liste blanche)                                                                                                                  |
+| Liste remplacée qui efface des éléments sans le montrer                               | Changement de niveau liste, avertissement, mot exigé et signé dans le jeton (`requireConfirmation`)                                                                                                                                                                                           |
+| Jeton d'un plan refusé réutilisé (volé, conservé)                                     | `POST /ai/actions/reject` consomme le jeton (usage unique) ; l'exécution répond ensuite 409                                                                                                                                                                                                   |
 | Fuite de secret dans un plan ou un résultat                                           | Masquage avant/après et de `resultPreview`, valeurs longues tronquées à l'affichage, audit sans corps                                                                                                                                                                                         |
 
 Limites connues de l'étape 4 : le catalogue ne porte pas le schéma des corps (le modèle devine les champs ; la
@@ -661,6 +711,7 @@ consomme pas le budget commun.
 | `POST /ai/chat`            | agence seule          | `AI_TENANT_MINUTE_LIMIT` par minute (100 par défaut) |
 | `POST /ai/chat`            | agence seule          | `AI_TENANT_DAILY_LIMIT` par jour (3000 par défaut)   |
 | `POST /ai/actions/execute` | utilisateur et agence | 10 par minute (quittances et plans d'écriture)       |
+| `POST /ai/actions/reject`  | utilisateur et agence | 10 par minute (limiteur d'action partagé)            |
 
 Une IA qui chaîne des écritures reste bornée : au plus 3 plans d'écriture par requête de chat (donc
 au plus 3 cartes d'accord à lire), 4 tours d'outils et 8 appels d'outils par requête, 20 requêtes de
@@ -677,7 +728,7 @@ texte : fournisseur, issue, nombre de tours et d'outils ; son `entityId` est le
 `requestId` **généré par le serveur** : le `conversationId` du client n'est
 qu'un écho pour l'interface, jamais une clé d'audit), `AI_TOOL_CALLED`,
 `AI_TOOL_DENIED`, `AI_PROPOSAL_ISSUED`, `AI_PROPOSAL_REDEEMED`,
-`AI_ACTION_EXECUTED`, `AI_ACTION_REJECTED` (voir « Écritures génériques » pour le contenu des
+`AI_ACTION_EXECUTED`, `AI_ACTION_REJECTED`, `AI_PROPOSAL_REJECTED` (refus humain d'un plan ; voir « Écritures génériques » pour le contenu des
 événements d'un plan). Sauf la réclamation du jeton
 (synchrone, sous verrou), l'écriture passe par la file asynchrone `logAuditEvent`.
 

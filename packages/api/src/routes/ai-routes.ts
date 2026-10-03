@@ -9,7 +9,7 @@ import {
   aiTenantChatRateLimiter,
   aiTenantDailyLimiter
 } from '../middleware/rate-limit-middleware';
-import { chatHandler, executeActionHandler, getStatusHandler } from '../controllers/ai-controller';
+import { chatHandler, executeActionHandler, getStatusHandler, rejectActionHandler } from '../controllers/ai-controller';
 
 /**
  * Assistant ImmoCopilot, monté sur `/api/tenants/:tenantId/ai`.
@@ -44,5 +44,9 @@ router.post(
 // écriture générique : la route réelle appelée par loopback sous l'identité de l'utilisateur qui confirme.
 // Limiteur partagé : 10 confirmations par minute et par utilisateur.
 router.post('/actions/execute', requireAiAssistantAccess, aiActionRateLimiter, executeActionHandler);
+
+// Refus d'un plan : consomme le jeton (il ne pourra plus être exécuté). Mêmes gardes que la confirmation,
+// sans permission de génération (refuser n'écrit rien) ; même limiteur d'action.
+router.post('/actions/reject', requireAiAssistantAccess, aiActionRateLimiter, rejectActionHandler);
 
 export default router;

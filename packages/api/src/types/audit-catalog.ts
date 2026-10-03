@@ -166,6 +166,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.AI_PROPOSAL_REDEEMED]: tenant('AI'),
   [AuditActionKey.AI_ACTION_EXECUTED]: tenant('AI', { critical: true }),
   [AuditActionKey.AI_ACTION_REJECTED]: tenant('AI'),
+  [AuditActionKey.AI_PROPOSAL_REJECTED]: tenant('AI'),
   [AuditActionKey.AI_SETTINGS_UPDATED]: internal('AI', { critical: true }),
 
   // CRM (clés historiques, longtemps passées en chaîne libre)
