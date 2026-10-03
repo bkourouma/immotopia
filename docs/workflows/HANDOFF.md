@@ -18,15 +18,17 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
-## Branche `feat/immocopilot-o9nygz` — 2026-10-03
+## Branche `feat/donnees-test-packs` — 2026-10-03
 
-**État :** étapes 1 à 4 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` dans la PR #107 (fusion à l'utilisateur) ; audit de sécurité fait (0 bloquant, 5 importants corrigés).
+**État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Éprouvé de bout en bout sur une base PostgreSQL jetable (conteneur `immotopia-donnees-test`, port 5447) : 12 agences créées, code de sortie 0, aucun échec d'audit, relance sans doublon (~12 min).
 
-**Fait :** page `/tenant/:tenantId/assistant` + dictée ; panneau artefact (`show_artifact`, tableau/Markdown/graphique, export CSV/XLSX/MD/PNG) ; passerelle générique en lecture (catalogue `catalog.generated.json` sans DELETE, `list_capabilities`, `call_read` par loopback sous l'identité de l'utilisateur, masquage et plafonds) ; écritures (`plan_write` : avant/après calculés par le serveur, jeton `EXECUTE_CAPABILITY` 900 s à usage unique, exécution par `/ai/actions/execute`, refus par `/ai/actions/reject`, mot « CONFIRMER » pour les actions sensibles, requête/paramètres de chemin/listes remplacées affichés). Vérifié : tests API ciblés (664 + 17) et web (369), tsc des deux côtés, check:architecture, build et budget d'entrée web.
+**Fait :** deux agences par pack (« · 6 mois » reprend l'agence et l'e-mail d'origine, renommée ; « · 3 ans », e-mail `<pack>-3ans@packs.immotopia.test`), historique par module dans `packages/api/prisma/seeds/pack-history/` (agence, syndic, promoteur, patrimoine ; INTEGRE = agence+syndic+promoteur), `disable-outbound.ts` importé en premier (SMTP/SMS coupés), menu de connexion à 12 groupes, doc DEPLOIEMENT. Correctif produit : `rental-deposit-service` mettait un Decimal Prisma dans la charge d'audit (`Number(...)`), ce qui faisait échouer tout le lot d'audit.
 
-**Reste à faire :** recette navigateur réelle (dictée, PNG, RTL, carte d'accord) avec un vrai fournisseur ; `npm run test:isolation` (base dédiée) ; décisions : liste des anciennes conversations (stockage serveur), schémas Zod dans le catalogue, lever la dépendance à `PROPERTIES_VIEW`, refuser les créations imbriquées sans GET parent (3 sur 26 aujourd'hui : acceptées avec avertissement).
+**Reste :** après fusion, sur le serveur : `git pull`, `./infra/scripts/deploy.sh staging` (menu), `./infra/scripts/seed-pack-tests.sh staging`. Non éprouvé : le seed dans l'image `migrate` du staging, l'affichage des écrans sur ces données (aucune recette navigateur).
 
-**Pièges :** `npm run ai:catalog` à relancer à chaque route ajoutée (le test échoue sinon) ; `npx prisma generate` si le client est périmé ; `i18n:extract` réécrit tout (web comme API) : restaurer les catalogues sans rapport et ne garder que ses clés ; `/ai/actions/reject` est dans `READ_LIKE_POSTS` ; limiteurs en mémoire par instance ; POST de lecture (search/export) passent par un plan lourd ; routes multipart non gérées ; un échec après réclamation du jeton consomme le plan ; test web `copilot-root` parfois en timeout sous charge.
+**Pièges :** le module Promoteur n'a ni ventes ni acquéreurs (le code ne les connaît pas). Un seed d'historique interrompu laisse une agence partielle que la relance ne complète pas (garde « déjà des données ») : la purger. Les documents patrimoine/syndic n'ont pas de fichier réel (téléchargement 404). `prisma generate` dans le worktree modifie le client partagé via la jonction `node_modules`. L'EmailService retombe sur smtp.hostinger.com sans variable : d'où `disable-outbound`. Wiki non mis à jour : outillage de staging.
+
+---
 
 ## Branche `feat/comptes-test-packs` — 2026-10-01
 
@@ -110,6 +112,16 @@ Pièges et décisions :
 ```
 
 ---
+
+## Branche `feat/immocopilot-o9nygz` — 2026-10-03
+
+**État :** étapes 1 à 4 de `docs/architecture/PLAN_IMMOCOPILOT_V2.md` dans la PR #107 (fusion à l'utilisateur) ; audit de sécurité fait (0 bloquant, 5 importants corrigés).
+
+**Fait :** page `/tenant/:tenantId/assistant` + dictée ; panneau artefact (`show_artifact`, tableau/Markdown/graphique, export CSV/XLSX/MD/PNG) ; passerelle générique en lecture (catalogue `catalog.generated.json` sans DELETE, `list_capabilities`, `call_read` par loopback sous l'identité de l'utilisateur, masquage et plafonds) ; écritures (`plan_write` : avant/après calculés par le serveur, jeton `EXECUTE_CAPABILITY` 900 s à usage unique, exécution par `/ai/actions/execute`, refus par `/ai/actions/reject`, mot « CONFIRMER » pour les actions sensibles, requête/paramètres de chemin/listes remplacées affichés). Vérifié : tests API ciblés (664 + 17) et web (369), tsc des deux côtés, check:architecture, build et budget d'entrée web.
+
+**Reste à faire :** recette navigateur réelle (dictée, PNG, RTL, carte d'accord) avec un vrai fournisseur ; `npm run test:isolation` (base dédiée) ; décisions : liste des anciennes conversations (stockage serveur), schémas Zod dans le catalogue, lever la dépendance à `PROPERTIES_VIEW`, refuser les créations imbriquées sans GET parent (3 sur 26 aujourd'hui : acceptées avec avertissement).
+
+**Pièges :** `npm run ai:catalog` à relancer à chaque route ajoutée (le test échoue sinon) ; `npx prisma generate` si le client est périmé ; `i18n:extract` réécrit tout (web comme API) : restaurer les catalogues sans rapport et ne garder que ses clés ; `/ai/actions/reject` est dans `READ_LIKE_POSTS` ; limiteurs en mémoire par instance ; POST de lecture (search/export) passent par un plan lourd ; routes multipart non gérées ; un échec après réclamation du jeton consomme le plan ; test web `copilot-root` parfois en timeout sous charge.
 
 ## Branche `integration/multi-actifs` — 2026-10-02
 

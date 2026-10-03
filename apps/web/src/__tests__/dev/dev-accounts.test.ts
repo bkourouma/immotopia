@@ -4,7 +4,7 @@ import { DEV_TENANT_ACCOUNTS, PACK_EMAIL_DOMAIN, PACK_PASSWORD } from '../../dev
 /**
  * Cohérence des comptes de démonstration du staging.
  *
- * Le contrat (six agences de test, un administrateur chacune, mot de passe
+ * Le contrat (douze agences de test, un administrateur chacune, mot de passe
  * commun) est partagé avec le seed du staging côté API : ce test échoue si
  * l'un des deux côtés dérive.
  */
@@ -12,25 +12,25 @@ import { DEV_TENANT_ACCOUNTS, PACK_EMAIL_DOMAIN, PACK_PASSWORD } from '../../dev
 const PACK_GROUPS = DEV_TENANT_ACCOUNTS.filter(group => group.id.startsWith('pack-'));
 const LEGACY_GROUPS = DEV_TENANT_ACCOUNTS.filter(group => !group.id.startsWith('pack-'));
 
+const PACKS: Array<[string, string, string, string]> = [
+  ['agence', 'Pack Agence', 'Admin Test Agence', 'agence'],
+  ['syndic', 'Pack Syndic', 'Admin Test Syndic', 'syndic'],
+  ['promoteur', 'Pack Promoteur', 'Admin Test Promoteur', 'promoteur'],
+  ['integre', 'Pack Opérateur intégré', 'Admin Test Intégré', 'integre'],
+  ['patrimoine-essentiel', 'Pack Patrimoine Essentiel', 'Admin Test Patrimoine Essentiel', 'patrimoine-essentiel'],
+  ['patrimoine-pro', 'Pack Patrimoine Pro', 'Admin Test Patrimoine Pro', 'patrimoine-pro']
+];
+
 describe('comptes de démonstration par pack', () => {
-  it('expose les six packs, en tête, dans l’ordre attendu', () => {
-    expect(PACK_GROUPS.map(group => group.id)).toEqual([
-      'pack-agence',
-      'pack-syndic',
-      'pack-promoteur',
-      'pack-integre',
-      'pack-patrimoine-essentiel',
-      'pack-patrimoine-pro'
-    ]);
-    expect(DEV_TENANT_ACCOUNTS.slice(0, 6)).toEqual(PACK_GROUPS);
-    expect(PACK_GROUPS.map(group => group.label)).toEqual([
-      'Pack Agence',
-      'Pack Syndic',
-      'Pack Promoteur',
-      'Pack Opérateur intégré',
-      'Pack Patrimoine Essentiel',
-      'Pack Patrimoine Pro'
-    ]);
+  it('expose douze groupes (6 packs x 6 mois / 3 ans), en tête, dans l’ordre attendu', () => {
+    expect(PACK_GROUPS.map(group => group.id)).toEqual(
+      PACKS.flatMap(([slug]) => [`pack-${slug}-6m`, `pack-${slug}-3a`])
+    );
+    expect(PACK_GROUPS).toHaveLength(12);
+    expect(DEV_TENANT_ACCOUNTS.slice(0, 12)).toEqual(PACK_GROUPS);
+    expect(PACK_GROUPS.map(group => group.label)).toEqual(
+      PACKS.flatMap(([, label]) => [`${label} · 6 mois`, `${label} · 3 ans`])
+    );
     expect(PACK_GROUPS.map(group => group.name)).toEqual(PACK_GROUPS.map(group => `Test — ${group.label}`));
   });
 
@@ -44,18 +44,18 @@ describe('comptes de démonstration par pack', () => {
       expect(admin.persona).toBe('Collaborateur');
       expect(admin.email.endsWith('@packs.immotopia.test')).toBe(true);
     }
+    const emails = PACK_GROUPS.map(group => group.accounts[0].email);
+    expect(new Set(emails).size).toBe(12);
   });
 
   it('respecte les adresses et noms du contrat avec l’API', () => {
     const rows = PACK_GROUPS.map(group => [group.accounts[0].fullName, group.accounts[0].email]);
-    expect(rows).toEqual([
-      ['Admin Test Agence', 'agence@packs.immotopia.test'],
-      ['Admin Test Syndic', 'syndic@packs.immotopia.test'],
-      ['Admin Test Promoteur', 'promoteur@packs.immotopia.test'],
-      ['Admin Test Intégré', 'integre@packs.immotopia.test'],
-      ['Admin Test Patrimoine Essentiel', 'patrimoine-essentiel@packs.immotopia.test'],
-      ['Admin Test Patrimoine Pro', 'patrimoine-pro@packs.immotopia.test']
-    ]);
+    expect(rows).toEqual(
+      PACKS.flatMap(([, , name, local]) => [
+        [`${name} (6 mois)`, `${local}@packs.immotopia.test`],
+        [`${name} (3 ans)`, `${local}-3ans@packs.immotopia.test`]
+      ])
+    );
   });
 
   it('garde les comptes historiques, sans doublon d’adresse ni d’identifiant', () => {
