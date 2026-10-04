@@ -261,9 +261,12 @@ SITE`) est actif. Chaque identifiant passe par `assertBelongsToTenant`
   `PATCH …/registrations/{id}`.
 - **W3-R6. Code d'activation.** Six chiffres tirés par `crypto.randomInt`, rendus
   **une seule fois** dans la réponse de création (et de régénération). Stocké
-  sous forme d'empreinte : `hashToken(code + ':' + registrationId)`
-  (`src/lib/secure-links/token.ts:16-18`). Valable 72 heures, 5 essais. Comparé
-  par `hashesMatch` (`:21-26`). `POST …/registrations/{id}/regenerate-code`
+  sous forme d'empreinte HMAC-SHA256 **à clé serveur** de
+  `code + ':' + registrationId` ; la clé est dérivée de `JWT_SECRET` par une
+  étiquette propre (`registrations/activation.ts`). Une copie de la base ne
+  suffit donc pas à retrouver le code. Valable 72 heures, 5 essais. Comparé
+  par `hashesMatch` (`src/lib/secure-links/token.ts:21-26`). Changer
+  `JWT_SECRET` invalide les codes en attente : régénérer le code. `POST …/registrations/{id}/regenerate-code`
   remet le compteur d'essais à zéro et invalide l'ancien code.
 - **W3-R7. Activation.** Le chef envoie au numéro officiel un message texte
   dont les seuls chiffres forment le code (« 482 913 », « Code 482913 »
@@ -271,7 +274,11 @@ SITE`) est actif. Chaque identifiant passe par `assertBelongsToTenant`
   l'inscription en attente. Succès : statut `ACTIVE`, `activatedAt`, empreinte
   effacée, audit `STOCK_WHATSAPP_REGISTRATION_ACTIVATED`, le bot répond M02.
   Échec : `activationAttempts + 1`, M03 ; au 5e échec ou après 72 h, M04 et
-  audit `STOCK_WHATSAPP_ACTIVATION_LOCKED` (sécurité).
+  audit `STOCK_WHATSAPP_ACTIVATION_LOCKED` (sécurité). L'essai est **réservé
+  avant toute comparaison**, dans une transaction (`activationAttempts + 1`
+  sous condition `< 5`) : dix codes simultanés ne comptent que cinq essais.
+  Le message entrant d'une inscription en attente ou révoquée est journalisé
+  sans son texte (seul son type) : le code n'est jamais conservé en clair.
 - **W3-R8. Consentement.** L'envoi du code par le chef vaut consentement à
   recevoir les réponses du bot. Aucun message n'est envoyé à un numéro qui n'a
   pas écrit le premier (W1-R6).
@@ -383,7 +390,10 @@ SITE`) est actif. Chaque identifiant passe par `assertBelongsToTenant`
   (`kind = REGULAR`, `countedAt` = jour UTC du serveur, `createdByUserId` = chef)
   puis `source = WHATSAPP`. Si le lieu porte un inventaire `COUNTED` (clos, non
   validé) : refus M29, capture `CANCELLED`, aucune écriture (l'index unique du
-  lot 040 empêche un second inventaire ouvert, data-model 040 §5).
+  lot 040 empêche un second inventaire ouvert, data-model 040 §5). Une photo
+  reçue alors que le lieu porte déjà un inventaire `COUNTED` reçoit M29
+  **avant** l'analyse : aucune capture, aucune place du quota, aucun appel à
+  l'IA.
 - **W5-R3. Ligne.** `setStockCountLineTx(tx, tenantId, countId, { itemId,
 countedQuantity, countedByUserId: chef })`. La capture reçoit `countId`,
   `countLineId`, `confirmedQuantity`, `outcome`, `confirmedAt` dans la même
@@ -466,8 +476,9 @@ WHATSAPP`, il a au moins une ligne, et `counterUserIds` ne contient que le
   production : en-tête `X-Hub-Signature-256: sha256=<hex>` ; HMAC-SHA256 du
   corps brut avec `META_WA_APP_SECRET`, comparé à temps constant. Absente ou
   fausse : `401`, rien n'est écrit, avertissement au journal sans le corps.
-- **W6-R5. Limiteur.** `webhookRateLimiter`
-  (`src/middleware/rate-limit-middleware.ts:127-136`) avant la signature.
+- **W6-R5. Limiteur.** `whatsappCloudWebhookRateLimiter`
+  (`src/middleware/rate-limit-middleware.ts`), propre à ce webhook : 600
+  requêtes par minute et par IP, clé `wa-cloud:<ip>`, avant la signature.
 - **W6-R6. Lecture du corps.** `object = whatsapp_business_account`, puis
   `entry[].changes[].value` où `field = messages`. `value.metadata.phone_number_id`
   doit valoir `META_WA_PHONE_NUMBER_ID` (sinon ignoré). `value.messages[]` :
@@ -476,7 +487,10 @@ WHATSAPP`, il a au moins une ligne, et `counterUserIds` ne contient que le
   et `title` ; `document`). `value.statuses[]` : journalisés comme événements
   `STATUS` et ignorés ([exemples Meta](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples),
   [interactif](https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/reference/messages/interactive)).
-  `value.contacts[].profile.name` n'est pas conservé (minimisation).
+  `value.contacts[].profile.name` n'est pas conservé (minimisation). Un message
+  dont le `timestamp` Meta a plus de 7 jours à la réception est ignoré
+  (`MAX_MESSAGE_AGE_MS`) : la purge à 30 jours aurait effacé sa ligne
+  d'unicité, un corps signé rejoué serait sinon retraité.
 - **W6-R7. Accusé immédiat, traitement fiable.** Pour chaque message, une ligne
   `WhatsappCloudEvent` est **insérée avant** la réponse (`metaMessageId` unique :
   un renvoi de Meta bute sur l'unicité et n'est pas retraité). Puis réponse
@@ -581,7 +595,7 @@ false`, message utilisateur en deux parties (`text`, puis `image_url` dont
   `quality` (`OK`, `TOO_DARK`, `BLURRY`, `NOT_STOCK`) ; `itemId` (un identifiant
   de la liste, ou `null`) ; `itemConfidence` (0 à 1) ; `visibleUnits` (entier
   ≥ 0) ; `layers`, `columns`, `depthRows` (entiers ≥ 1 ou `null`) ;
-  `proposedTotal` (≥ 0, ≤ 1 000 000, 4 décimales) ; `confidence` (0 à 1) ;
+  `proposedTotal` (≥ 0, ≤ 1 000 000, arrondi à 4 décimales) ; `confidence` (0 à 1) ;
   `method` (`SACKS_STACKED`, `BARS_BUNDLE`, `BLOCKS_PALLET`, `OTHER`) ;
   `explanation` (300 caractères au plus). Un `itemId` hors liste vaut `null`.
   Une sortie invalide vaut échec (`INVALID_OUTPUT`).
@@ -655,8 +669,10 @@ false`, message utilisateur en deux parties (`text`, puis `image_url` dont
 **Règles**
 
 - **W10-R1.** `src/jobs/stock-whatsapp-job.ts` (`node-cron`, chaque minute),
-  démarrée dans `src/index.ts` quand le transport n'est pas `disabled`, jamais
-  en test.
+  démarrée dans `src/index.ts` **quel que soit le transport**, jamais en test.
+  Avec `disabled`, seules les minuteries de session et la reprise des
+  événements (qui envoient des messages) s'arrêtent ; l'effacement des
+  `payload` et les purges nocturnes continuent (W6-R8, W14-R6).
 - **W10-R2.** Lecture transverse assumée hors contexte (sessions ouvertes dont
   l'échéance est passée, événements à reprendre), puis chaque session traitée
   dans `runWithTenantContext({ tenantId })` et `runWithLanguage(langue du chef)`
@@ -710,6 +726,11 @@ WHERE tenant_id = $1 AND month = $2 AND used < $3 RETURNING used` (ligne créée
   - `off` : quota de secours, sans avertissement.
 - **W11-R5. Quota atteint** : M07, audit `STOCK_WHATSAPP_QUOTA_REACHED` une fois
   par agence et par mois, photo non téléchargée.
+- **W11-R6. Plafond des appels à l'IA.** Une analyse en échec rend sa place au
+  quota, mais l'appel a pu être facturé. Avant chaque appel : refus M22 si
+  l'inscription compte 5 analyses en échec dans l'heure ; refus M07 si les
+  appels du mois de l'agence atteignent deux fois le quota
+  (`checkWhatsappAnalysisBudget`, `src/lib/stock-whatsapp/quota.ts`).
 
 **Critères d'acceptation**
 
@@ -757,7 +778,11 @@ WHERE tenant_id = $1 AND month = $2 AND used < $3 RETURNING used` (ligne créée
   ou réponse de bouton ou de liste (`replyId`). Le message passe par le **même**
   moteur que le webhook (`handleInboundMessage`), avec `via = SIMULATOR`. La
   photo est déposée dans le magasin de médias du transport `log` et lue par
-  `fetchMedia`.
+  `fetchMedia`. **Filtré par agence** : un numéro libre qui porte une
+  inscription d'une autre agence (tout statut) est refusé, une inscription
+  révoquée dont le numéro est vivant ailleurs aussi, sans dire où ; le moteur
+  reçoit l'agence de l'appelant (`expectedTenantId`) et abandonne, sans réponse
+  ni journal, un message dont l'inscription résolue est d'une autre agence.
 - **W13-R4. Conversation.** `GET …/simulator/conversation?registrationId=` rend
   les messages entrants et sortants de l'inscription (ou du numéro libre, tant
   que le processus vit), boutons et listes compris.
