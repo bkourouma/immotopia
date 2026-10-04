@@ -33,7 +33,12 @@ async function getStatus(tenantId: string): Promise<CopilotStatus> {
     const status = unwrap<CopilotStatus | undefined>(response.data);
     if (!status || typeof status.enabled !== 'boolean') return DISABLED_STATUS;
     return { ...DISABLED_STATUS, ...status, tools: status.tools ?? [] };
-  } catch {
+  } catch (error) {
+    // Le statut HTTP distingue « refusé pour ce compte » (403) d'« agence introuvable » (404) ;
+    // dans tous les cas l'assistant reste désactivé.
+    const httpStatus = (error as { response?: { status?: number } } | null)?.response?.status;
+    if (httpStatus === 401 || httpStatus === 403) return { ...DISABLED_STATUS, reason: 'FORBIDDEN' };
+    if (httpStatus === 404) return { ...DISABLED_STATUS, reason: 'NOT_FOUND' };
     return DISABLED_STATUS;
   }
 }

@@ -419,7 +419,11 @@ de `api-demo` de `.claude/launch.json` (comme `PORT` ou `FRONTEND_URL`), avec
 dans un `.env` commité, puis relancer l'API. Le faux fournisseur répond par
 règles sur mots-clés (biens et commune, « quittance » avec un numéro de bail
 `L-…` et une période, « documents », « tableau » ou « graphique » des biens ou
-des baux, « synthèse »), sans réseau ni clé. Les trois derniers appellent
+des baux, « synthèse »), sans réseau ni clé. Deux mots-clés d'écriture ne font que
+PLANIFIER (jamais d'écriture : seule la confirmation humaine écrit) : « modifie le
+contact » (plan non sensible) et « désactive le collaborateur » (aussi « membre » ou
+« utilisateur » : plan SENSIBLE sur `POST /users/:userId/disable`, dernier
+collaborateur listé, pour exercer le mot de confirmation de bout en bout). Les trois derniers appellent
 `show_artifact` et émettent l'événement SSE `artifact` (panneau latéral du web). La quittance exige un
 paiement encaissé pour la période et un modèle `RENT_RECEIPT` actif ; le relevé
 un modèle `RENT_STATEMENT` (le seed ne sème que la quittance). `TENANT_AGENT` n'a

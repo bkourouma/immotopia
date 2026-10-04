@@ -16,7 +16,7 @@ import {
 } from 'recharts';
 import { t } from '../../../i18n/t';
 import type { CopilotArtifact } from '../../../types/copilot';
-import { formatArtifactCell } from '../../../utils/copilot-artifact';
+import { chartXLabel, formatArtifactCell } from '../../../utils/copilot-artifact';
 
 type ChartArtifact = Extract<CopilotArtifact, { kind: 'chart' }>;
 
@@ -51,7 +51,7 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
         <thead>
           <tr>
             <th scope="col" style={{ textAlign: 'start' }}>
-              {artifact.xKey}
+              {chartXLabel(artifact)}
             </th>
             {artifact.series.map(s => (
               <th key={s.key} scope="col" style={{ textAlign: 'start' }}>
@@ -64,7 +64,7 @@ const DataFallback: React.FC<{ artifact: ChartArtifact }> = ({ artifact }) => (
           {artifact.data.map((row, i) => (
             <tr key={i}>
               <th scope="row" style={{ textAlign: 'start', fontWeight: 'normal' }}>
-                {String(row[artifact.xKey] ?? '')}
+                <bdi>{String(row[artifact.xKey] ?? '')}</bdi>
               </th>
               {artifact.series.map(s => (
                 <td key={s.key}>{formatArtifactCell(row[s.key] ?? null, 'number')}</td>

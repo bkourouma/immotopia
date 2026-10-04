@@ -46,6 +46,40 @@ describe('getStatus', () => {
   });
 });
 
+describe('getStatus — motif du refus', () => {
+  it.each([
+    [401, 'FORBIDDEN'],
+    [403, 'FORBIDDEN'],
+    [404, 'NOT_FOUND']
+  ])('HTTP %i -> enabled:false, reason %s', async (status, reason) => {
+    mockedGet.mockRejectedValue({ response: { status } });
+    const s = await copilotService.getStatus('t1');
+    expect(s.enabled).toBe(false);
+    expect(s.reason).toBe(reason);
+  });
+
+  it('réseau ou 5xx : désactivé sans motif de refus', async () => {
+    mockedGet.mockRejectedValue({ response: { status: 500 } });
+    expect((await copilotService.getStatus('t1')).reason).toBeUndefined();
+  });
+
+  it("garde le motif envoyé par l'API (désactivé côté serveur)", async () => {
+    mockedGet.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          enabled: false,
+          reason: 'NOT_CONFIGURED',
+          provider: null,
+          tools: [],
+          limits: { maxMessages: 1, maxMessageChars: 1 }
+        }
+      }
+    });
+    expect((await copilotService.getStatus('t1')).reason).toBe('NOT_CONFIGURED');
+  });
+});
+
 describe('streamChat', () => {
   it('type les événements, ignore inconnus et JSON illisible', async () => {
     mockedStream.mockImplementation(async (_p, _b, opts) => {

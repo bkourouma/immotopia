@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
+import { useLocation } from 'react-router-dom';
 import { t } from '../../i18n/t';
 import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
@@ -27,6 +28,16 @@ export interface CopilotRootProps {
   isDesktop?: boolean;
 }
 
+/** Page plein écran de l'assistant : le tiroir et son bouton n'y ont plus de raison d'être. */
+export const isAssistantPagePath = (pathname: string): boolean => /\/assistant\/?$/.test(pathname);
+
+/** Zone de saisie de la page plein écran (voir `CopilotComposer`). */
+function focusPageComposer(): boolean {
+  const input = document.querySelector<HTMLTextAreaElement>('#main textarea[aria-label]');
+  input?.focus();
+  return Boolean(input);
+}
+
 /**
  * Point d'entrée d'ImmoCopilot dans la coquille : lit l'état de l'assistant,
  * affiche le bouton flottant (masqué si désactivé ou en erreur) et le
@@ -39,6 +50,8 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
   hasAction = false,
   isDesktop = true
 }) => {
+  const { pathname } = useLocation();
+  const onAssistantPage = isAssistantPagePath(pathname);
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
 
@@ -57,12 +70,14 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
         event.preventDefault();
-        openDrawer();
+        // Sur la page plein écran : on met le curseur dans la saisie au lieu d'ouvrir un tiroir par-dessus.
+        if (onAssistantPage && focusPageComposer()) return;
+        if (!onAssistantPage) openDrawer();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [enabled, openDrawer]);
+  }, [enabled, onAssistantPage, openDrawer]);
 
   if (!status?.enabled) return null;
 
@@ -75,7 +90,7 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
 
   return (
     <>
-      {!open && (
+      {!open && !onAssistantPage && (
         <Button
           type="primary"
           shape="circle"

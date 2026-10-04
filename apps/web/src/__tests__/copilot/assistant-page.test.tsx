@@ -11,7 +11,7 @@ vi.mock('../../services/copilot-service', () => {
 });
 
 import copilotService from '../../services/copilot-service';
-import AssistantPage from '../../pages/assistant/AssistantPage';
+import AssistantPage, { pageHeight, unavailableMessage } from '../../pages/assistant/AssistantPage';
 
 const getStatus = vi.mocked(copilotService.getStatus);
 const streamChat = vi.mocked(copilotService.streamChat);
@@ -188,5 +188,40 @@ describe('AssistantPage', () => {
     Fake.last.onresult?.({ resultIndex: 0, results: [final] });
     await waitFor(() => expect(input).toHaveValue('bonjour'));
     expect(streamChat).not.toHaveBeenCalled();
+  });
+});
+
+describe('AssistantPage — hauteur', () => {
+  it('retranche la barre d’onglets au lieu de l’ajouter (bas parenthésé)', () => {
+    expect(pageHeight(true)).toBe(
+      'calc(100dvh - 64px - var(--page-padding) - (var(--control-h-lg) + var(--space-6) + env(safe-area-inset-bottom, 0px)))'
+    );
+    expect(pageHeight(false)).toBe('calc(100dvh - 64px - var(--page-padding) - var(--page-padding))');
+  });
+});
+
+describe('AssistantPage — messages d’accès', () => {
+  it('désactivé pour l’agence', () => {
+    expect(unavailableMessage(DISABLED, true).title).toBe("L'assistant n'est pas activé pour cette agence.");
+    expect(unavailableMessage({ ...DISABLED, reason: 'NOT_CONFIGURED' }, true).title).toBe(
+      "L'assistant n'est pas activé pour cette agence."
+    );
+  });
+  it('refusé pour ce compte (403)', () => {
+    const m = unavailableMessage({ ...DISABLED, reason: 'FORBIDDEN' }, true);
+    expect(m.title).toBe("L'assistant n'est pas disponible pour ce compte.");
+    expect(m.subTitle).toMatch(/collaborateurs/);
+  });
+  it('aucune agence rattachée (pas d’identifiant ou 404)', () => {
+    expect(unavailableMessage(null, false).title).toBe("Aucune agence n'est rattachée à cette page.");
+    expect(unavailableMessage({ ...DISABLED, reason: 'NOT_FOUND' }, true).title).toBe(
+      "Aucune agence n'est rattachée à cette page."
+    );
+  });
+  it('la page affiche le message du refus', async () => {
+    getStatus.mockResolvedValue({ ...DISABLED, reason: 'FORBIDDEN' });
+    renderPage();
+    expect(await screen.findByText("L'assistant n'est pas disponible pour ce compte.")).toBeInTheDocument();
+    expect(screen.queryByText("L'assistant n'est pas activé pour cette agence.")).not.toBeInTheDocument();
   });
 });
