@@ -17,7 +17,18 @@ const SENSITIVE_SEGMENT =
   /(secret|token|credential|password|passwd|api-?key|webhook|jwt|invitation|payment-gateway|payment-link|secure-link|private-key|otp)/i;
 const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso', 'oauth']);
 
+/**
+ * Suites de segments sensibles : les inscriptions WhatsApp de l'inventaire
+ * (lot 041) portent le numéro des chefs de chantier et, à la création ou à la
+ * régénération, le code d'activation en clair.
+ */
+const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [['whatsapp', 'registrations']];
+
 export function isSensitivePath(path: string): boolean {
+  const segments = path.split('/').map(segment => segment.toLowerCase());
+  for (const [first, second] of SENSITIVE_SEGMENT_PAIRS) {
+    if (segments.some((segment, index) => segment === first && segments[index + 1] === second)) return true;
+  }
   return path.split('/').some(segment => {
     const bare = segment.replace(/^:/, '').toLowerCase();
     if (segment.startsWith(':')) return false; // un paramètre n'est pas un mot du chemin

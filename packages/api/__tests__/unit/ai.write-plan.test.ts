@@ -628,6 +628,27 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
     expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
   });
 
+  // Lot 041 : inscriptions des chefs de chantier et retrait d'une photo de preuve.
+  it.each([
+    'POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/revoke',
+    'POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/regenerate-code'
+  ])('%s : inscription WhatsApp, sensible et hors de portée de l’assistant', id => {
+    const entry = getCatalogEntries().find(candidate => candidate.id === id);
+    expect(entry).toBeDefined();
+    expect(entry!.sensitive).toBe(true);
+    expect(writeSensitivity(entry!.path)).not.toBeNull();
+    expect(findWritableEntry(id)).toBeUndefined();
+  });
+
+  it('stock WhatsApp : le retrait d’une photo de comptage est une écriture sensible à mot saisi', () => {
+    const entry = findWritableEntry(
+      'POST /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo'
+    );
+    expect(entry).toBeDefined();
+    expect(writeSensitivity(entry!.path)).not.toBeNull();
+    expect(assessWrite(entry!, {})).toMatchObject({ sensitive: true, requiresTypedConfirmation: true });
+  });
+
   it('`status` n’est sensible que sur un bail ; une création banale reste non sensible', () => {
     expect(writeSensitivity('/api/tenants/:tenantId/maintenance/tickets/:id/status')).toBeNull();
     expect(writeSensitivity('/api/tenants/:tenantId/rental/leases/:id/status')).not.toBeNull();

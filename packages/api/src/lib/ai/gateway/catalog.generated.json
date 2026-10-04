@@ -1069,6 +1069,138 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/captures",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/captures",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / captures",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId",
+      "pathParams": ["captureId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / captures / {captureId}",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/file",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/file",
+      "pathParams": ["captureId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / captures / {captureId} / file",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/counts/:countId/captures",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/counts/:countId/captures",
+      "pathParams": ["countId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / counts / {countId} / captures",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/eligible-members",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/eligible-members",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / eligible-members",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/eligible-sites",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/eligible-sites",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / eligible-sites",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/field-counts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/field-counts",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / field-counts",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/overview",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/overview",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / overview",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/registrations",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / registrations",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId",
+      "pathParams": ["registrationId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / registrations / {registrationId}",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/sessions",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/sessions",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / sessions",
+      "permissions": null,
+      "anyOfPermissions": [["FINANCE_SETTINGS_MANAGE", "STOCK_COUNT_VALIDATE"]],
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/whatsapp/sessions/:sessionId/messages",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:sessionId/messages",
+      "pathParams": ["sessionId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / sessions / {sessionId} / messages",
+      "permissions": null,
+      "anyOfPermissions": [["FINANCE_SETTINGS_MANAGE", "STOCK_COUNT_VALIDATE"]],
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/supplier-invoices/:invoiceId",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/supplier-invoices/:invoiceId",
@@ -3411,6 +3543,17 @@
       "sensitive": false
     },
     {
+      "id": "PATCH /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId",
+      "pathParams": ["registrationId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / registrations / {registrationId}",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "PATCH /api/tenants/:tenantId/maintenance/admin/tickets/:ticketId",
       "method": "PATCH",
       "path": "/api/tenants/:tenantId/maintenance/admin/tickets/:ticketId",
@@ -4874,6 +5017,50 @@
       "permissions": ["STOCK_TRANSFER"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo",
+      "pathParams": ["captureId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / captures / {captureId} / remove-photo",
+      "permissions": ["STOCK_DISPOSE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / registrations",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/regenerate-code",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/regenerate-code",
+      "pathParams": ["registrationId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / registrations / {registrationId} / regenerate-code",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/revoke",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/revoke",
+      "pathParams": ["registrationId"],
+      "module": "finance",
+      "summary": "finance / stock / whatsapp / registrations / {registrationId} / revoke",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/finance/supplier-invoices/:invoiceId/purchase-order",

@@ -135,7 +135,7 @@ export interface PackTestMember {
   fullName: string;
   email: string;
   /** Rôle d'agence attribué (rôles plateforme). */
-  roleKey: 'TENANT_STOREKEEPER' | 'TENANT_ACCOUNTANT' | 'TENANT_ADMIN';
+  roleKey: 'TENANT_STOREKEEPER' | 'TENANT_ACCOUNTANT' | 'TENANT_ADMIN' | 'TENANT_SITE_MANAGER';
 }
 
 const PROMOTEUR_6M = `Test — Pack Promoteur · ${PACK_TEST_PROFILE_LABEL['6m']}`;
@@ -165,8 +165,54 @@ export const PACK_TEST_MEMBERS: readonly PackTestMember[] = [
     fullName: 'Responsable Test Intégré',
     email: `responsable-integre@${PACK_TEST_EMAIL_DOMAIN}`,
     roleKey: 'TENANT_ADMIN'
+  },
+  // Lot 041 (inventaire par WhatsApp, plan §7.6) : un Chef de chantier par
+  // agence, inscrit au bot (PACK_TEST_WHATSAPP_REGISTRATIONS ci-dessous).
+  {
+    tenantName: PROMOTEUR_6M,
+    fullName: 'Chef de chantier Test Promoteur',
+    email: `chef-promoteur@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_SITE_MANAGER'
+  },
+  {
+    tenantName: INTEGRE_6M,
+    fullName: 'Chef de chantier Test Intégré',
+    email: `chef-integre@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_SITE_MANAGER'
   }
 ];
+
+/**
+ * Inscriptions WhatsApp de recette (lot 041, plan §7.6), ACTIVES d'emblée :
+ * le staging tourne en transport `log` avec le simulateur, aucun message ne
+ * part. Numéros FICTIFS, dans la plage de recette `+225 01 00 00 01 xx`
+ * (jamais un vrai numéro). Chacune est affectée à un chantier dédié, basculé au
+ * stock par le seed (`PACK_TEST_WHATSAPP_SITE_NAME`).
+ */
+export interface PackTestWhatsappRegistration {
+  tenantName: string;
+  /** E-mail du Chef de chantier inscrit (`PACK_TEST_MEMBERS`). */
+  memberEmail: string;
+  phoneE164: string;
+}
+
+/** Plage des numéros fictifs de recette : `+22501000001` suivi de deux chiffres. */
+export const PACK_TEST_WHATSAPP_PHONE_PATTERN = /^\+22501000001\d{2}$/;
+
+/** Chantier de recette créé (et basculé au stock) par le seed dans chaque agence inscrite. */
+export const PACK_TEST_WHATSAPP_SITE_NAME = 'Chantier de recette — inventaire WhatsApp';
+
+export const PACK_TEST_WHATSAPP_REGISTRATIONS: readonly PackTestWhatsappRegistration[] = [
+  { tenantName: PROMOTEUR_6M, memberEmail: `chef-promoteur@${PACK_TEST_EMAIL_DOMAIN}`, phoneE164: '+2250100000101' },
+  { tenantName: INTEGRE_6M, memberEmail: `chef-integre@${PACK_TEST_EMAIL_DOMAIN}`, phoneE164: '+2250100000102' }
+];
+
+/**
+ * Agences qui reçoivent un bloc `EXT_INVENTAIRE_WHATSAPP` (500 photos par
+ * mois) : le Promoteur seulement, pour jouer « option absente » (M06b) sur
+ * l'Opérateur intégré (plan §9, R14).
+ */
+export const PACK_TEST_WHATSAPP_OPTION_TENANTS: readonly string[] = [PROMOTEUR_6M];
 
 /** Seule origine publique autorisée en production : le staging. */
 export const STAGING_ORIGIN = 'https://app.immotopia.cloud';

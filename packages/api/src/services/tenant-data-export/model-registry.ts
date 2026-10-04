@@ -99,6 +99,11 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   StockClientRequest:
     "Cle d'idempotence technique du stock (empreinte d'un envoi rejoue), sans valeur pour l'agence ; " +
     'les operations elles-memes sont exportees.',
+  // Lot 041 (data-model §2.9, §6) : modele GLOBAL, sans `tenantId`.
+  WhatsappCloudEvent:
+    "Événement du webhook WhatsApp Cloud, reçu avant que l'agence soit connue : aucune donnée d'agence durable " +
+    "(empreinte d'expéditeur, copie du message effacée au traitement, purge à 30 jours). Les conversations et " +
+    "les photos de l'agence sont exportées (StockWhatsappMessage, StockFieldCapture).",
   // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
   // fiscal de la plateforme, commun à toutes les agences.
   TaxParameter: 'Référentiel fiscal de la plateforme, commun à toutes les agences.',
