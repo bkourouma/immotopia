@@ -28,9 +28,17 @@ export interface RoleMenuAccessEntry {
   enabled: boolean;
 }
 
-/** Toutes les décisions enregistrées, indexées par rôle puis par menu. */
-export async function getAllMenuAccess(): Promise<Record<string, Record<string, boolean>>> {
+/**
+ * Périmètre d'une décision : une agence (`tenantId`) ou la plateforme
+ * (`null`, rôles de scope PLATFORM). Aucun héritage entre les deux : une
+ * ligne `null` ne s'applique jamais à une agence, et inversement.
+ */
+export type MenuAccessScope = string | null;
+
+/** Décisions enregistrées pour un périmètre, indexées par rôle puis par menu. */
+export async function getMenuAccess(tenantId: MenuAccessScope): Promise<Record<string, Record<string, boolean>>> {
   const rows = await prisma.roleMenuAccess.findMany({
+    where: { tenantId },
     select: { roleKey: true, menuKey: true, enabled: true }
   });
 
@@ -42,10 +50,13 @@ export async function getAllMenuAccess(): Promise<Record<string, Record<string, 
   return byRole;
 }
 
-/** Décisions enregistrées pour un rôle donné. */
-export async function getMenuAccessForRole(roleKey: string): Promise<Record<string, boolean>> {
+/** Décisions enregistrées pour un rôle donné, dans un périmètre. */
+export async function getMenuAccessForRole(
+  roleKey: string,
+  tenantId: MenuAccessScope
+): Promise<Record<string, boolean>> {
   const rows = await prisma.roleMenuAccess.findMany({
-    where: { roleKey },
+    where: { roleKey, tenantId },
     select: { menuKey: true, enabled: true }
   });
 
@@ -56,24 +67,27 @@ export async function getMenuAccessForRole(roleKey: string): Promise<Record<stri
 }
 
 /**
- * Remplace l'intégralité des décisions d'un rôle.
+ * Remplace l'intégralité des décisions d'un rôle dans UN périmètre.
  *
  * L'appelant envoie la carte complète telle qu'affichée, y compris les `true` :
  * sans cela, réactiver un menu précédemment coupé demanderait de distinguer
  * « remis par défaut » de « explicitement autorisé », distinction sans objet
- * ici. On écrase donc, dans une transaction, plutôt que de fusionner.
+ * ici. On écrase donc, dans une transaction, plutôt que de fusionner. Seules
+ * les lignes de ce périmètre sont effacées : les autres agences ne bougent pas.
  */
 export async function replaceMenuAccessForRole(
   roleKey: string,
-  menus: Record<string, boolean>
+  menus: Record<string, boolean>,
+  tenantId: MenuAccessScope
 ): Promise<Record<string, boolean>> {
   const entries = Object.entries(menus);
 
   await prisma.$transaction(async tx => {
-    await tx.roleMenuAccess.deleteMany({ where: { roleKey } });
+    await tx.roleMenuAccess.deleteMany({ where: { roleKey, tenantId } });
     if (entries.length > 0) {
       await tx.roleMenuAccess.createMany({
         data: entries.map(([menuKey, enabled]) => ({
+          tenantId,
           roleKey,
           menuKey,
           enabled: Boolean(enabled)
@@ -82,7 +96,7 @@ export async function replaceMenuAccessForRole(
     }
   });
 
-  return getMenuAccessForRole(roleKey);
+  return getMenuAccessForRole(roleKey, tenantId);
 }
 
 /**
@@ -124,13 +138,16 @@ export async function resolveRoleKeysForUser(userId: string, tenantId?: string):
  * Un compte qui cumule plusieurs rôles garde le menu dès qu'**un seul** de ses
  * rôles l'autorise : le cumul de rôles élargit les droits, il ne les restreint
  * pas. Un menu n'est donc coupé que si tous ses rôles le coupent.
+ *
+ * Seules les décisions du périmètre demandé comptent : celles de l'agence, ou
+ * celles de la plateforme (`null`) quand aucune agence n'est fournie.
  */
 export async function getDisabledMenusForUser(userId: string, tenantId?: string): Promise<string[]> {
   const roleKeys = await resolveRoleKeysForUser(userId, tenantId);
   if (roleKeys.length === 0) return [];
 
   const rows = await prisma.roleMenuAccess.findMany({
-    where: { roleKey: { in: roleKeys } },
+    where: { roleKey: { in: roleKeys }, tenantId: tenantId ?? null },
     select: { menuKey: true, enabled: true }
   });
 

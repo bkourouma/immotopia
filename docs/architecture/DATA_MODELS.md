@@ -146,6 +146,35 @@ le bien n'existe pas ou appartient à une autre agence — la même erreur dans
 les deux cas, pour ne jamais confirmer l'existence d'un bien d'une agence
 tierce.
 
+### `RoleMenuAccess` — menus coupés par agence
+
+Table `role_menu_access`. Les rôles (`Role.key`) sont globaux, mais les
+décisions de menu sont propres à chaque agence : couper un menu pour
+`TENANT_ADMIN` dans l'agence A ne le coupe pas dans l'agence B.
+
+| Champ                              | Sens                                                                                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenantId` (nullable, FK `Tenant`) | Agence concernée (`onDelete: Cascade`). **null = périmètre plateforme** (rôles de scope `PLATFORM`, menu du super-admin hors agence). |
+| `roleKey`                          | Clé de rôle ou pseudo-rôle de portail (`PORTAL_OWNER`, `PORTAL_RENTER`), sans FK.                                                     |
+| `menuKey`, `enabled`               | Clé de menu opaque (catalogue côté web) ; seul `enabled = false` masque.                                                              |
+
+Règles :
+
+- **Aucun héritage** entre null et une agence : une ligne null ne s'applique
+  jamais à une agence, et une ligne d'agence jamais à la plateforme.
+- Unicité : `@@unique([tenantId, roleKey, menuKey])`, plus un index unique
+  partiel SQL `ON role_menu_access(role_key, menu_key) WHERE tenant_id IS NULL`
+  (Postgres tient les NULL pour distincts). Prisma ne sait pas exprimer ce
+  second index : il vit dans la migration `..._role_menu_access_par_agence`.
+- Écriture : un rôle `TENANT` ou de portail exige un `tenantId` ; un rôle
+  `PLATFORM` l'interdit (`PUT /api/roles/menu-access/:roleKey?tenantId=`).
+- `tenantId` est nullable par conception : le modèle est dans `EXEMPT_MODELS`
+  de `prisma-tenant-guard-extension.ts`, comme `UserRole` ; les requêtes
+  nomment toujours explicitement le périmètre.
+- Migration : les lignes existantes des rôles non `PLATFORM` ont été copiées
+  pour chaque agence existante (comportement conservé à l'identique), puis les
+  lignes null correspondantes supprimées.
+
 ### Précision monétaire
 
 Tous les montants sont typés `Decimal` avec une échelle explicite —

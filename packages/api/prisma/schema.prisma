@@ -597,6 +597,7 @@ model Tenant {
   documentStampPath     String?      @map("document_stamp_path")
 
   // Relationships
+  roleMenuAccess RoleMenuAccess[]
   clients TenantClient[]
 
   // New relationships for multi-tenant RBAC
@@ -5900,16 +5901,29 @@ model PatrimonyDocument {
 /// des personas de l'interface — le propriétaire et le locataire — sont
 /// déduits de `tenant_clients.client_type` et n'ont aucune ligne dans `roles`.
 /// Les clés pseudo-rôles `PORTAL_OWNER` et `PORTAL_RENTER` les représentent.
+///
+/// Les décisions sont PROPRES À CHAQUE AGENCE : les rôles sont globaux, mais
+/// couper un menu pour `TENANT_ADMIN` ne doit pas le couper chez les autres.
+/// `tenantId` renseigné = décision valable pour cette agence seulement ;
+/// `tenantId` null = périmètre plateforme (rôles de scope PLATFORM, menu du
+/// super-admin hors agence). AUCUN héritage entre null et une agence.
+/// Unicité : (tenantId, roleKey, menuKey), plus un index unique partiel SQL
+/// sur (roleKey, menuKey) quand tenantId est null (Postgres tient les NULL
+/// pour distincts ; voir la migration `role_menu_access_par_agence`).
 model RoleMenuAccess {
   id        String   @id @default(uuid())
+  tenantId  String?  @map("tenant_id")
   roleKey   String   @map("role_key")
   menuKey   String   @map("menu_key")
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@unique([roleKey, menuKey])
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, roleKey, menuKey])
   @@index([roleKey])
+  @@index([tenantId, roleKey])
   @@map("role_menu_access")
 }
 

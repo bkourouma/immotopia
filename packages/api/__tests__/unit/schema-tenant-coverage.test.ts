@@ -68,7 +68,6 @@ const GLOBAL_MODELS = new Set([
   'Role', // Catalogue de roles (scope plateforme ou tenant, mais le modele Role lui-meme est global).
   'Permission', // Catalogue de permissions, plateforme.
   'RolePermission', // Table de jonction Role<->Permission, plateforme.
-  'RoleMenuAccess', // Acces aux menus par role, plateforme (role-controller.ts).
   'Country', // Referentiel geographique public.
   'Region', // Referentiel geographique public.
   'Commune', // Referentiel geographique public.

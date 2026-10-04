@@ -3,6 +3,14 @@ import { Request, Response } from 'express';
 import { prisma } from '../utils/database';
 import { RoleScope } from '@prisma/client';
 import { userHasTenantAccess } from '../utils/tenant-access';
+import { z } from 'zod';
+import {
+  asyncHandler,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError
+} from '../middleware/error-middleware';
 
 /**
  * List roles
@@ -274,19 +282,47 @@ export async function updateRolePermissionsHandler(req: Request, res: Response):
 }
 
 /**
- * Accès aux menus par rôle
- * GET /api/roles/menu-access
+ * Périmètre demandé en query (`?tenantId=`) : absent ou vide = plateforme.
+ * Le contrôle de forme passe par zod ; l'existence de l'agence est vérifiée
+ * par l'appelant, qui lève `NotFoundError` sinon.
  */
-export async function listMenuAccessHandler(_req: Request, res: Response): Promise<void> {
-  try {
-    const { getAllMenuAccess } = await import('../services/role-menu-service');
-    const data = await getAllMenuAccess();
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+const menuAccessQuerySchema = z.object({
+  tenantId: z.string().trim().min(1).max(100).optional()
+});
+
+function readScopeTenantId(req: Request): string | null {
+  const raw = Array.isArray(req.query.tenantId) ? req.query.tenantId[0] : req.query.tenantId;
+  const value = typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined;
+  const parsed = menuAccessQuerySchema.safeParse({ tenantId: value });
+  if (!parsed.success) {
+    throw new BadRequestError('tenantId invalide.');
+  }
+  return parsed.data.tenantId ?? null;
+}
+
+async function assertTenantExists(tenantId: string): Promise<void> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  if (!tenant) {
+    throw new NotFoundError('Agence introuvable.');
   }
 }
+
+/**
+ * Accès aux menus par rôle, pour une agence (ou pour la plateforme)
+ * GET /api/roles/menu-access?tenantId=<id>
+ *
+ * Sans `tenantId` : périmètre plateforme. Avec : l'agence doit exister.
+ */
+export const listMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = readScopeTenantId(req);
+  if (tenantId) {
+    await assertTenantExists(tenantId);
+  }
+
+  const { getMenuAccess } = await import('../services/role-menu-service');
+  const data = await getMenuAccess(tenantId);
+  res.status(200).json({ success: true, data });
+});
 
 /**
  * Menus coupés pour l'utilisateur courant
@@ -296,112 +332,111 @@ export async function listMenuAccessHandler(_req: Request, res: Response): Promi
  * pour masquer une entrée : elle a besoin de savoir quelles entrées masquer.
  * On renvoie donc ces clés, plus les permissions effectives dans l'agence
  * (l'interface masque aussi les entrées que le rôle ne peut pas ouvrir).
+ * Seules les coupures de l'agence demandée s'appliquent.
  */
-export async function getMyMenuAccessHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const rawTenantId = Array.isArray(req.query.tenantId) ? req.query.tenantId[0] : req.query.tenantId;
-    const queryTenantId =
-      typeof rawTenantId === 'string' && rawTenantId.trim().length > 0 ? rawTenantId.trim() : undefined;
-
-    // Un tenantId fourni en query n'est pas garanti par un middleware de route
-    // (cette route est accessible sans agence, pour un utilisateur plateforme) :
-    // s'il en fournit un, on vérifie ici qu'il y appartient réellement, sinon
-    // n'importe quel utilisateur authentifié pourrait lire les menus coupés
-    // d'une autre agence.
-    if (queryTenantId) {
-      const hasAccess = await userHasTenantAccess(req.user.userId, queryTenantId, req.user.globalRole);
-      if (!hasAccess) {
-        res.status(403).json({ success: false, message: 'Accès refusé à cette agence.' });
-        return;
-      }
-    }
-
-    const tenantId = queryTenantId ?? req.tenantContext?.tenantId;
-
-    const { getDisabledMenusForUser } = await import('../services/role-menu-service');
-    const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);
-
-    // Permissions effectives dans l'agence : l'interface en déduit les entrées
-    // que le rôle ne peut de toute façon pas ouvrir (BUG-2026-10-02-010). Sans
-    // agence (utilisateur plateforme), le champ est absent : rien n'est déduit.
-    let permissions: string[] | undefined;
-    if (tenantId) {
-      const { getUserPermissions } = await import('../services/permission-service');
-      permissions = await getUserPermissions(req.user.userId, tenantId);
-    }
-
-    res.status(200).json({ success: true, data: { disabledMenuKeys, ...(permissions ? { permissions } : {}) } });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const getMyMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError('Authentification requise.');
   }
-}
+
+  const rawTenantId = Array.isArray(req.query.tenantId) ? req.query.tenantId[0] : req.query.tenantId;
+  const queryTenantId =
+    typeof rawTenantId === 'string' && rawTenantId.trim().length > 0 ? rawTenantId.trim() : undefined;
+
+  // Un tenantId fourni en query n'est pas garanti par un middleware de route
+  // (cette route est accessible sans agence, pour un utilisateur plateforme) :
+  // s'il en fournit un, on vérifie ici qu'il y appartient réellement, sinon
+  // n'importe quel utilisateur authentifié pourrait lire les menus coupés
+  // d'une autre agence.
+  if (queryTenantId) {
+    const hasAccess = await userHasTenantAccess(req.user.userId, queryTenantId, req.user.globalRole);
+    if (!hasAccess) {
+      throw new ForbiddenError('Accès refusé à cette agence.');
+    }
+  }
+
+  const tenantId = queryTenantId ?? req.tenantContext?.tenantId;
+
+  const { getDisabledMenusForUser } = await import('../services/role-menu-service');
+  const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);
+
+  // Permissions effectives dans l'agence : l'interface en déduit les entrées
+  // que le rôle ne peut de toute façon pas ouvrir (BUG-2026-10-02-010). Sans
+  // agence (utilisateur plateforme), le champ est absent : rien n'est déduit.
+  let permissions: string[] | undefined;
+  if (tenantId) {
+    const { getUserPermissions } = await import('../services/permission-service');
+    permissions = await getUserPermissions(req.user.userId, tenantId);
+  }
+
+  res.status(200).json({ success: true, data: { disabledMenuKeys, ...(permissions ? { permissions } : {}) } });
+});
+
+const updateMenuAccessBodySchema = z.object({
+  menus: z.record(z.string(), z.boolean(), {
+    invalid_type_error: 'menus doit être un objet { clé de menu: booléen }.',
+    required_error: 'menus doit être un objet { clé de menu: booléen }.'
+  })
+});
 
 /**
- * Remplace les accès aux menus d'un rôle
- * PUT /api/roles/menu-access/:roleKey
+ * Remplace les accès aux menus d'un rôle, pour UNE agence
+ * PUT /api/roles/menu-access/:roleKey?tenantId=<id>
  *
  * `roleKey` et non `id` : deux des personas de l'interface — propriétaire et
  * locataire — n'ont pas de ligne dans `roles`, donc pas d'identifiant. Les
  * pseudo-clés `PORTAL_OWNER` / `PORTAL_RENTER` les désignent.
+ *
+ * Périmètre : un rôle d'agence ou de portail exige `tenantId` (la coupure ne
+ * vaut que pour cette agence) ; un rôle plateforme l'interdit (périmètre null).
  */
-export async function updateMenuAccessHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const { roleKey } = req.params;
-    const { menus } = req.body;
-
-    if (!roleKey || roleKey.trim().length === 0) {
-      res.status(400).json({ success: false, message: 'Clé de rôle manquante.' });
-      return;
-    }
-
-    if (!menus || typeof menus !== 'object' || Array.isArray(menus)) {
-      res.status(400).json({
-        success: false,
-        message: 'menus doit être un objet { clé de menu: booléen }.'
-      });
-      return;
-    }
-
-    const invalid = Object.entries(menus).find(
-      ([menuKey, enabled]) => typeof menuKey !== 'string' || typeof enabled !== 'boolean'
-    );
-    if (invalid) {
-      res.status(400).json({
-        success: false,
-        message: `Entrée de menu invalide: ${invalid[0]}. Un booléen est attendu.`
-      });
-      return;
-    }
-
-    const { PORTAL_OWNER_ROLE_KEY, PORTAL_RENTER_ROLE_KEY, replaceMenuAccessForRole } =
-      await import('../services/role-menu-service');
-
-    // Un rôle inexistant n'est accepté que s'il s'agit d'un pseudo-rôle connu :
-    // sinon une faute de frappe créerait silencieusement des lignes orphelines.
-    const isPortalRole = roleKey === PORTAL_OWNER_ROLE_KEY || roleKey === PORTAL_RENTER_ROLE_KEY;
-    if (!isPortalRole) {
-      const role = await prisma.role.findUnique({ where: { key: roleKey }, select: { id: true } });
-      if (!role) {
-        res.status(404).json({ success: false, message: `Rôle inconnu: ${roleKey}.` });
-        return;
-      }
-    }
-
-    const data = await replaceMenuAccessForRole(roleKey, menus as Record<string, boolean>);
-
-    res.status(200).json({
-      success: true,
-      data,
-      message: 'Menus mis à jour avec succès.'
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const updateMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
+  const roleKey = (req.params.roleKey ?? '').trim();
+  if (roleKey.length === 0) {
+    throw new BadRequestError('Clé de rôle manquante.');
   }
-}
+
+  const body = updateMenuAccessBodySchema.safeParse(req.body ?? {});
+  if (!body.success) {
+    throw new BadRequestError(
+      body.error.issues[0]?.message ?? 'menus doit être un objet { clé de menu: booléen }.',
+      body.error.issues.map(issue => ({ field: issue.path.join('.') || 'menus', message: issue.message }))
+    );
+  }
+  const { menus } = body.data;
+
+  const tenantId = readScopeTenantId(req);
+
+  const { PORTAL_OWNER_ROLE_KEY, PORTAL_RENTER_ROLE_KEY, replaceMenuAccessForRole } =
+    await import('../services/role-menu-service');
+
+  // Un rôle inexistant n'est accepté que s'il s'agit d'un pseudo-rôle connu :
+  // sinon une faute de frappe créerait silencieusement des lignes orphelines.
+  const isPortalRole = roleKey === PORTAL_OWNER_ROLE_KEY || roleKey === PORTAL_RENTER_ROLE_KEY;
+  let isPlatformRole = false;
+  if (!isPortalRole) {
+    const role = await prisma.role.findUnique({ where: { key: roleKey }, select: { scope: true } });
+    if (!role) {
+      throw new NotFoundError(`Rôle inconnu: ${roleKey}.`);
+    }
+    isPlatformRole = role.scope === RoleScope.PLATFORM;
+  }
+
+  if (isPlatformRole && tenantId) {
+    throw new BadRequestError('Un rôle plateforme ne se règle pas par agence : retirez tenantId.');
+  }
+  if (!isPlatformRole && !tenantId) {
+    throw new BadRequestError("tenantId est obligatoire pour un rôle d'agence ou de portail.");
+  }
+  if (tenantId) {
+    await assertTenantExists(tenantId);
+  }
+
+  const data = await replaceMenuAccessForRole(roleKey, menus, tenantId);
+
+  res.status(200).json({
+    success: true,
+    data,
+    message: 'Menus mis à jour avec succès.'
+  });
+});
