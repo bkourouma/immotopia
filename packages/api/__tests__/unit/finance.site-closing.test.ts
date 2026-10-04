@@ -121,7 +121,8 @@ const mockPrisma: Row = {
         .filter(row => (status?.in ? status.in.includes(row.status) : row.status === status))
         .sort((a, b) => (b.validatedAt?.getTime?.() ?? 0) - (a.validatedAt?.getTime?.() ?? 0));
       return rows[0] ?? null;
-    })
+    }),
+    findMany: jest.fn(async ({ where }: Row) => stockStore.counts.filter(row => matches(row, where)))
   },
   stockBalance: {
     count: jest.fn(async ({ where }: Row) => {
@@ -298,6 +299,7 @@ import {
   createSiteLotTx,
   deleteSiteLotTx,
   getSiteClosureBlockers,
+  getSiteClosureBlockersForCaller,
   getSiteCostBreakdown,
   listSiteLots,
   reopenSiteTx,
@@ -1071,6 +1073,38 @@ describe('closeSiteTx — bloqueurs de stock du lot 040', () => {
         }
       ]);
     }
+  });
+
+  it('§8.2 : un compteur sans STOCK_COUNT_VALIDATE ne lit pas le nombre d’articles d’un lieu en comptage', async () => {
+    const site = seedSite();
+    const lieu = seedSiteLocation(site.id);
+    stockStore.balances.push({ tenantId: TENANT, locationId: lieu.id, itemId: 'ciment', quantity: 12 });
+    stockStore.balances.push({ tenantId: TENANT, locationId: lieu.id, itemId: 'fer', quantity: 3 });
+    stockStore.counts.push({
+      id: 'inventaire-draft',
+      tenantId: TENANT,
+      locationId: lieu.id,
+      kind: 'REGULAR',
+      status: 'DRAFT'
+    });
+    const compteur: any = { userId: USER, canValidateCount: false, valuesVisible: false };
+    const valideur: any = { userId: USER, canValidateCount: true, valuesVisible: true };
+
+    const masques = await getSiteClosureBlockersForCaller(TENANT, site.id, compteur);
+    expect(masques.find(blocker => blocker.documentType === 'STOCK_RESIDUAL')).toMatchObject({
+      count: null,
+      documentIds: [lieu.id]
+    });
+    // Le bloqueur d'inventaire en cours reste compté : il ne révèle rien du stock.
+    expect(masques.find(blocker => blocker.documentType === 'STOCK_COUNT')).toMatchObject({ count: 1 });
+
+    const complets = await getSiteClosureBlockersForCaller(TENANT, site.id, valideur);
+    expect(complets.find(blocker => blocker.documentType === 'STOCK_RESIDUAL')).toMatchObject({ count: 2 });
+
+    // Inventaire COUNTED : les écarts sont révélés, plus rien n'est aveugle.
+    stockStore.counts[stockStore.counts.length - 1].status = 'COUNTED';
+    const apresComptage = await getSiteClosureBlockersForCaller(TENANT, site.id, compteur);
+    expect(apresComptage.find(blocker => blocker.documentType === 'STOCK_RESIDUAL')).toMatchObject({ count: 2 });
   });
 
   it('un chantier sans lieu de stockage n’a aucun bloqueur de stock', async () => {

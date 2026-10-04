@@ -1694,10 +1694,22 @@ const DetailValide: React.FC<DetailProps> = ({ tenantId, contexte, comptage, val
   const actives = comptage.lines.filter(ligne => !ligne.setAside && !ligne.notCounted);
   const ecartees = comptage.lines.filter(ligne => ligne.setAside !== null);
   const nonComptees = comptage.lines.filter(ligne => ligne.notCounted && ligne.setAside === null);
-  const valeur = (label: string, montant: number | null, hint?: string) =>
-    valuesVisible && montant !== null ? (
-      <StatCard label={label} value={<MoneyValue value={montant} />} hint={hint ?? t('Figé à la validation.')} />
-    ) : null;
+  // Un inventaire validé avant le lot 040 n'a rien figé (`countedValue` vide,
+  // comme le lisent les indicateurs) : ne jamais lui prêter « Figé à la
+  // validation ». Une valeur absente le dit, plutôt que de disparaître.
+  const fige = comptage.countedValue !== null;
+  const NON_FIGEE = t('Non figée (inventaire antérieur au lot)');
+  const valeur = (label: string, montant: number | null, hint?: string) => {
+    if (!valuesVisible) return null;
+    if (montant === null) return <StatCard label={label} value={<Text type="secondary">{NON_FIGEE}</Text>} />;
+    return (
+      <StatCard
+        label={label}
+        value={<MoneyValue value={montant} />}
+        hint={fige ? (hint ?? t('Figé à la validation.')) : NON_FIGEE}
+      />
+    );
+  };
 
   return (
     <>

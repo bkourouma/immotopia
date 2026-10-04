@@ -256,12 +256,22 @@ const mockPrisma: Row = {
   $executeRaw: jest.fn(async (strings: TemplateStringsArray, ...values: any[]) => {
     const sql = strings.join('?');
     if (sql.includes('stock_client_requests')) {
-      const [resultType, resultId, id] = values;
-      const row = db.stockClientRequest.find(r => r.id === id);
+      const [resultType, resultId, id, tenantId] = values;
+      const row = db.stockClientRequest.find(
+        r => r.id === id && (!sql.includes('"tenant_id"') || r.tenantId === tenantId)
+      );
       if (row) Object.assign(row, { resultType, resultId });
-      return 1;
+      return row ? 1 : 0;
     }
-    const kind = sql.includes("'stock-site'") ? 'site' : sql.includes("'stock-balance'") ? 'balance' : 'slip';
+    const kind = sql.includes("'stock-site'")
+      ? 'site'
+      : sql.includes("'stock-balance'")
+        ? 'balance'
+        : sql.includes("'stock-invoice'")
+          ? 'invoice'
+          : sql.includes("'stock-scrap-month'")
+            ? 'scrap-month'
+            : 'slip';
     locks.push(`${kind}:${values[0]}`);
     return 0;
   })
@@ -304,6 +314,7 @@ import {
   recordStockSupplierReturn,
   recordStockSupplierReturnTx
 } from '../../src/lib/finance/stock-mouvements';
+import { hashRequestBody } from '../../src/lib/finance/stock-controles';
 import { sumSiteActualCost } from '../../src/lib/finance/site-cost';
 import type { StockCallerContext } from '../../src/lib/finance/types-040-controle';
 
@@ -502,6 +513,30 @@ describe('recordStockReceiptTx — bon BR, un mouvement par ligne, aucune écrit
       expect(movements[0]).toMatchObject({ unitCost: 5_200, valuationSource: 'AVERAGE_COST' });
     });
 
+    it('lieu en stock mais à VALEUR NULLE (inventaire d’ouverture à 0) : dernier prix de réception → LAST_RECEIPT, pas AVERAGE_COST', async () => {
+      const ciment = seedItem();
+      await receive(seedLocation(), seedInvoice(), [{ itemId: ciment.id, quantity: 10, unitCost: 6_100 }]);
+      const location = seedLocation();
+      seedBalance(location, ciment, 50, 0);
+      const result = await receive(location, seedInvoice(), [{ itemId: ciment.id, quantity: 5 }]);
+      expect(result.movements[0]).toMatchObject({
+        unitCost: 6_100,
+        totalValue: 30_500,
+        valuationSource: 'LAST_RECEIPT'
+      });
+      expect(result.controls).toEqual([]);
+    });
+
+    it('lieu en stock à valeur nulle et aucun prix connu → NONE et contrôle RECEIPT_UNVALUED', async () => {
+      const ciment = seedItem();
+      const location = seedLocation();
+      seedBalance(location, ciment, 50, 0);
+      const result = await receive(location, seedInvoice(), [{ itemId: ciment.id, quantity: 5 }]);
+      expect(result.movements[0]).toMatchObject({ unitCost: 0, totalValue: 0, valuationSource: 'NONE' });
+      expect(result.controls).toEqual([expect.objectContaining({ code: 'RECEIPT_UNVALUED', itemIds: [ciment.id] })]);
+      expect(db.stockAlert).toEqual([expect.objectContaining({ kind: 'RECEIPT_UNVALUED' })]);
+    });
+
     it('lieu vide : dernier prix de réception de l’agence → LAST_RECEIPT', async () => {
       const ciment = seedItem();
       await receive(seedLocation(), seedInvoice(), [{ itemId: ciment.id, quantity: 10, unitCost: 6_100 }]);
@@ -584,16 +619,22 @@ describe('recordStockReceiptTx — bon BR, un mouvement par ligne, aucune écrit
       expect(db.stockMovement).toHaveLength(0);
     });
 
-    it('sur le lieu d’un chantier OUVERT : site, puis soldes triés, puis numérotation', async () => {
+    it('sur le lieu d’un chantier OUVERT : site, puis facture, puis soldes triés, puis numérotation (A10-R2)', async () => {
       const site = seedSite();
       const location = seedLocation({ kind: 'SITE', siteId: site.id });
+      const invoice = seedInvoice();
       const [b, a] = [seedItem(), seedItem()];
-      await receive(location, seedInvoice(), [
+      await receive(location, invoice, [
         { itemId: b.id, quantity: 1, unitCost: 1 },
         { itemId: a.id, quantity: 1, unitCost: 1 }
       ]);
       const balanceKeys = [`${TENANT_ID}:${b.id}:${location.id}`, `${TENANT_ID}:${a.id}:${location.id}`].sort();
-      expect(locks).toEqual([`site:${site.id}`, ...balanceKeys.map(k => `balance:${k}`), `slip:${TENANT_ID}`]);
+      expect(locks).toEqual([
+        `site:${site.id}`,
+        `invoice:${TENANT_ID}:${invoice.id}`,
+        ...balanceKeys.map(k => `balance:${k}`),
+        `slip:${TENANT_ID}`
+      ]);
     });
 
     it('refuse une ligne invalide AVANT d’écrire quoi que ce soit', async () => {
@@ -1241,6 +1282,15 @@ describe('recordStockSupplierReturnTx', () => {
     expect(view.supplierCreditValue).toBe(50_000);
   });
 
+  it('verrou de facture AVANT le verrou de solde : le plafond « reçu − déjà retourné » est sérialisé par facture (A10-R2)', async () => {
+    const env = setupReturn();
+    await returnOf(env, 10, { supplierInvoiceLineId: env.line.id });
+    expect(locks).toEqual([
+      `invoice:${TENANT_ID}:${env.invoice.id}`,
+      `balance:${TENANT_ID}:${env.ciment.id}:${env.location.id}`
+    ]);
+  });
+
   it('120 sacs pour 100 reçus → 409 STOCK_RETURN_EXCEEDS_RECEIVED (critère A6-2)', async () => {
     const env = setupReturn();
     await expect(returnOf(env, 120, { supplierInvoiceLineId: env.line.id })).rejects.toMatchObject({
@@ -1381,6 +1431,45 @@ describe('recordStockScrapTx', () => {
     ]);
     await expect(scrap(location, ciment, 20)).resolves.toMatchObject({ type: 'SCRAP' });
     expect(db.stockAlert).toHaveLength(1);
+  });
+
+  it('verrou du cumul mensuel du lieu AVANT le verrou de solde (B7-R1, A10-R2)', async () => {
+    const location = seedLocation();
+    const ciment = seedItem();
+    seedBalance(location, ciment, 10, 10_000);
+    await scrap(location, ciment, 1);
+    const month = `${YEAR}-${String(TODAY.getUTCMonth() + 1).padStart(2, '0')}`;
+    expect(locks).toEqual([
+      `scrap-month:${TENANT_ID}:${location.id}:${month}`,
+      `balance:${TENANT_ID}:${ciment.id}:${location.id}`
+    ]);
+  });
+
+  it('même clé et même corps, mais enregistrée pour une AUTRE opération → 409 STOCK_IDEMPOTENCY_MISMATCH, rien n’est écrit', async () => {
+    const location = seedLocation();
+    const ciment = seedItem();
+    seedBalance(location, ciment, 10, 10_000);
+    const input = {
+      locationId: location.id,
+      itemId: ciment.id,
+      quantity: 1,
+      scrapDate: TODAY,
+      reasonCode: 'DETERIORATION' as const,
+      clientRequestId: '5f1d2c3b-4a5e-4f60-8a71-b2c3d4e5f607'
+    };
+    seed('stockClientRequest', {
+      clientRequestId: input.clientRequestId,
+      operation: 'ISSUE',
+      bodyHash: hashRequestBody(input),
+      createdByUserId: USER_ID,
+      resultType: 'StockSlip',
+      resultId: 'bon-autre-operation'
+    });
+    await expect(recordStockScrap(TENANT_ID, ADMIN, input)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_IDEMPOTENCY_MISMATCH'
+    });
+    expect(db.stockMovement).toHaveLength(0);
   });
 
   it('motif hors colonne « Rebut » → 400 STOCK_REASON_NOT_ALLOWED ; stock insuffisant → 409', async () => {

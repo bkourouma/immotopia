@@ -202,6 +202,7 @@ import {
 import { getStockControls, updateStockControlsTx } from '../../src/lib/finance/stock-reglages';
 import { raiseStockAlertTx, alertKeys } from '../../src/lib/finance/stock-alertes';
 import type { StockCallerContext } from '../../src/lib/finance/types-040-controle';
+import { updateStockControlsSchema } from '../../src/lib/finance/schemas-stock-pilotage';
 
 const TENANT = 'tenant-1';
 const OTHER_TENANT = 'tenant-2';
@@ -578,5 +579,30 @@ describe('réglages de contrôle', () => {
   it('rien ne change réellement : aucune trace', async () => {
     await updateStockControlsTx(db as any, TENANT, ADMIN, { requireTaker: false });
     expect(recordAuditEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('réglages de contrôle — validation des seuils (B7-R3)', () => {
+  it('un seuil à 0 ou négatif est refusé ; null désactive ; un seuil positif passe', () => {
+    for (const key of [
+      'issueAlertAmount',
+      'countVarianceAlertAmount',
+      'cashMaterialAlertAmount',
+      'countVarianceAlertPercent'
+    ]) {
+      for (const value of [0, -1]) {
+        const result = updateStockControlsSchema.safeParse({ [key]: value });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0]).toMatchObject({
+            path: [key],
+            message: "Un seuil d'alerte doit être supérieur à zéro. Laissez-le vide pour désactiver l'alerte."
+          });
+        }
+      }
+      expect(updateStockControlsSchema.safeParse({ [key]: null }).success).toBe(true);
+      expect(updateStockControlsSchema.safeParse({ [key]: 0.5 }).success).toBe(true);
+    }
+    expect(updateStockControlsSchema.safeParse({ countVarianceAlertPercent: 101 }).success).toBe(false);
   });
 });

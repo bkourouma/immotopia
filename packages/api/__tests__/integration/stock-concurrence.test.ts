@@ -13,7 +13,11 @@
  * - B7-5 : deux rebuts simultanés qui atteignent tous deux le cumul du mois
  *   passent sans `P2002` et n'ouvrent qu'UNE alerte de cumul ;
  * - B3-R2 : deux envois simultanés de la même sortie (même `clientRequestId`)
- *   n'écrivent qu'un mouvement et rendent le même bon.
+ *   n'écrivent qu'un mouvement et rendent le même bon ;
+ * - A6 / A10-R2 : deux retours fournisseur simultanés du même article d'une
+ *   facture, depuis DEUX lieux, qui dépasseraient ensemble le reçu → un seul
+ *   passe (verrou `stock-invoice`, que les verrous de solde par couple ne
+ *   remplacent pas).
  *
  * La course clôture / transfert entrant (A7, critère 9) est couverte par
  * `stock-cloture-concurrence.test.ts` (territoire API-2).
@@ -27,7 +31,13 @@
 import { randomUUID } from 'crypto';
 
 import { prisma } from '../../src/utils/database';
-import { recordStockIssue, recordStockScrap } from '../../src/lib/finance/stock-mouvements';
+import {
+  recordStockIssue,
+  recordStockReceipt,
+  recordStockScrap,
+  recordStockSupplierReturn
+} from '../../src/lib/finance/stock-mouvements';
+import { createSupplierTx } from '../../src/lib/finance/suppliers';
 import { recordStockTransfer } from '../../src/lib/finance/stock-transferts';
 import type { StockCallerContext } from '../../src/lib/finance/types-040-controle';
 import { cleanupTenants, createTenantAdminUser, createTestTenant, TestTenant, TestUser } from '../helpers/fixtures';
@@ -128,6 +138,10 @@ maybeDescribe('Stock — concurrence sur base réelle (A10, B3-R2, B7)', () => {
       () => prisma.journalEntryLine.deleteMany({ where: { entry: { tenantId } } }),
       () => prisma.journalEntry.deleteMany({ where: { tenantId } }),
       () => prisma.stockSlip.deleteMany({ where: { tenantId } }),
+      () => prisma.thirdPartyMovement.deleteMany({ where: { tenantId } }),
+      () => prisma.supplierInvoice.deleteMany({ where: { tenantId } }),
+      () => prisma.supplier.deleteMany({ where: { tenantId } }),
+      () => prisma.thirdPartyAccount.deleteMany({ where: { tenantId } }),
       () => prisma.stockBalance.deleteMany({ where: { tenantId } }),
       () => prisma.stockClientRequest.deleteMany({ where: { tenantId } }),
       () => prisma.stockItem.deleteMany({ where: { tenantId } }),
@@ -198,6 +212,63 @@ maybeDescribe('Stock — concurrence sur base réelle (A10, B3-R2, B7)', () => {
     });
     expect(alerts).toHaveLength(1);
     expect(alerts[0].dedupeKey.startsWith(`SCRAP_CUMUL:${locationId}:`)).toBe(true);
+  });
+
+  it('A6 / A10-R2 : deux retours simultanés du même article depuis deux lieux, au-delà du reçu → un seul passe', async () => {
+    const itemId = await newItem();
+    const recu = await newLocation('Magasin réception');
+    const autre = await newLocation('Magasin second');
+    const supplier = await prisma.$transaction(tx =>
+      createSupplierTx(tx, tenant.id, {
+        name: `Fournisseur concurrence ${randomUUID().slice(0, 6)}`,
+        kind: 'MATERIALS' as any
+      })
+    );
+    const invoice = await prisma.supplierInvoice.create({
+      data: {
+        tenantId: tenant.id,
+        supplierId: supplier.id,
+        invoiceDate: TODAY,
+        reference: `FAC-RET-${randomUUID().slice(0, 6)}`,
+        amount: 100_000,
+        status: 'VALIDATED',
+        createdByUserId: user.id,
+        validatedByUserId: user.id,
+        validatedAt: new Date()
+      }
+    });
+    // 10 sacs reçus sur la facture, au premier lieu seulement ; le second lieu
+    // a du stock d'une autre provenance : chaque retour de 8 tient dans son
+    // solde et dans le reçu, mais pas les deux ensemble (8 + 8 > 10).
+    await recordStockReceipt(tenant.id, ctx, {
+      locationId: recu,
+      supplierInvoiceId: invoice.id,
+      receiptDate: TODAY,
+      lines: [{ itemId, quantity: 10, unitCost: 5_000 }]
+    });
+    await seedBalance(itemId, autre, 20, 100_000);
+    const returnOf = (locationId: string) =>
+      recordStockSupplierReturn(tenant.id, ctx, {
+        locationId,
+        supplierInvoiceId: invoice.id,
+        itemId,
+        quantity: 8,
+        returnDate: TODAY,
+        reasonCode: 'NON_CONFORMING'
+      });
+
+    const results = await Promise.allSettled([returnOf(recu), returnOf(autre)]);
+
+    const fulfilled = results.filter(r => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({ statusCode: 409, code: 'STOCK_RETURN_EXCEEDS_RECEIVED' });
+    expect(
+      await prisma.stockMovement.count({
+        where: { tenantId: tenant.id, itemId, supplierInvoiceId: invoice.id, type: 'SUPPLIER_RETURN' }
+      })
+    ).toBe(1);
   });
 
   it('B3-R2 : deux envois simultanés de la même sortie → un seul mouvement, le même bon, 201 puis 200', async () => {

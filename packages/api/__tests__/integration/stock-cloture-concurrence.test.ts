@@ -11,7 +11,11 @@
  *   d'inventaire de clôture validé depuis sa dernière entrée ;
  * - A1-R3 : la dérogation se lit dans les tables (`Membership`, `User`,
  *   `UserRole`, `RolePermission`), jamais dans le cache des permissions —
- *   un autre validateur actif l'interdit, désactivé il l'ouvre.
+ *   un autre validateur actif l'interdit, désactivé il l'ouvre ; un
+ *   validateur qui a compté ne la ferme pas ;
+ * - verrou de la ligne `stock_counts` (`SELECT … FOR UPDATE`) : une saisie et
+ *   une clôture, une mise à l'écart et une validation du même inventaire se
+ *   suivent au lieu de se croiser.
  *
  * Base : DÉDIÉE aux tests, via `DATABASE_URL_TEST` (env.example), exactement
  * comme `isolation.test.ts` : absente, ou exécution hors du lanceur
@@ -27,6 +31,8 @@ import {
   closeStockCountTx,
   createStockCountTx,
   hasOtherActiveCountValidator,
+  justifyStockCountLineTx,
+  setAsideStockCountLineTx,
   setStockCountLineTx,
   validateStockCountTx
 } from '../../src/lib/finance/stock-inventaire';
@@ -252,5 +258,81 @@ maybeDescribe('Stock — clôture de chantier et inventaire sur base réelle (A7
       await prisma.userRole.deleteMany({ where: { tenantId: isolated.id } }).catch(() => undefined);
       await cleanupTenants([isolated.id]);
     }
+  });
+
+  /** Un inventaire courant compté (DRAFT → COUNTED) par `counter` sur un magasin de 100 sacs. */
+  async function countedRegular(counter: string, counted: number) {
+    const itemId = await newItem();
+    const locationId = await newWarehouse();
+    await seedBalance(itemId, locationId, 100, 500_000);
+    const count = await prisma.$transaction(tx =>
+      createStockCountTx(tx, tenant.id, { locationId, countedAt: TODAY, createdByUserId: counter })
+    );
+    await prisma.$transaction(tx =>
+      setStockCountLineTx(tx, tenant.id, count.id, { itemId, countedQuantity: counted, countedByUserId: counter })
+    );
+    return { count, itemId, locationId };
+  }
+
+  it('A1-R3 : deux validateurs qui ont tous deux compté → l’un valide avec motif', async () => {
+    const isolated = await createTestTenant('Stock quatre yeux');
+    try {
+      const awa = await newValidator('awa', isolated.id);
+      const koffi = await newValidator('koffi', isolated.id);
+      await expect(hasOtherActiveCountValidator(prisma, isolated.id, awa, [awa, koffi])).resolves.toBe(false);
+      await expect(hasOtherActiveCountValidator(prisma, isolated.id, awa, [awa])).resolves.toBe(true);
+    } finally {
+      await prisma.userRole.deleteMany({ where: { tenantId: isolated.id } }).catch(() => undefined);
+      await cleanupTenants([isolated.id]);
+    }
+  });
+
+  it('verrou de l’inventaire : saisie et clôture en parallèle → aucune ligne modifiée après la clôture', async () => {
+    const counter = await newValidator('compteur-a');
+    const { count, itemId } = await countedRegular(counter, 92);
+
+    const results = await Promise.allSettled([
+      prisma.$transaction(tx => closeStockCountTx(tx, tenant.id, count.id, counter)),
+      prisma.$transaction(tx =>
+        setStockCountLineTx(tx, tenant.id, count.id, { itemId, countedQuantity: 80, countedByUserId: counter })
+      )
+    ]);
+
+    expect(results[0].status).toBe('fulfilled');
+    const row = await prisma.stockCount.findFirst({ where: { id: count.id, tenantId: tenant.id } });
+    const line = await prisma.stockCountLine.findFirst({ where: { countId: count.id, itemId } });
+    expect(row?.status).toBe('COUNTED');
+    // Jamais une saisie postérieure à la clôture du comptage.
+    expect(line!.countedAtServer!.getTime()).toBeLessThanOrEqual(row!.closedAt!.getTime());
+    if (results[1].status === 'rejected') {
+      expect(results[1].reason).toMatchObject({ code: 'STOCK_COUNT_WRONG_STATUS' });
+      expect(Number(line!.countedQuantity)).toBe(92);
+    }
+  });
+
+  it('verrou de l’inventaire : mise à l’écart et validation en parallèle → une ligne écartée n’est jamais ajustée', async () => {
+    const counter = await newValidator('compteur-b');
+    const { count, itemId } = await countedRegular(counter, 92);
+    await prisma.$transaction(tx => closeStockCountTx(tx, tenant.id, count.id, counter));
+    await prisma.$transaction(tx =>
+      justifyStockCountLineTx(tx, tenant.id, count.id, itemId, { reasonCode: 'BREAKAGE', justifiedByUserId: counter })
+    );
+
+    await Promise.allSettled([
+      prisma.$transaction(tx =>
+        setAsideStockCountLineTx(tx, tenant.id, count.id, itemId, {
+          reason: 'Comptage douteux',
+          setAsideByUserId: admin.id
+        })
+      ),
+      prisma.$transaction(tx => validateStockCountTx(tx, tenant.id, count.id, admin.id))
+    ]);
+
+    const line = await prisma.stockCountLine.findFirst({ where: { countId: count.id, itemId } });
+    const adjustments = await prisma.stockMovement.count({
+      where: { tenantId: tenant.id, stockCountId: count.id, type: 'ADJUSTMENT' }
+    });
+    // Soit écartée (avant la validation : pas d'ajustement), soit ajustée (validée d'abord : plus d'écart possible).
+    expect(Boolean(line?.setAsideAt) && adjustments > 0).toBe(false);
   });
 });

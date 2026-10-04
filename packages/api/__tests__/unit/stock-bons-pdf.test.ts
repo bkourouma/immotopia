@@ -401,6 +401,22 @@ describe('Procès-verbal d’inventaire (B4-R2)', () => {
     expect(model.totals.map(total => total.value)).toEqual(['559 500 XOF', '10 500 XOF', '-10 500 XOF', '40 000 XOF']);
   });
 
+  it('A7-R2 : un surplus d’inventaire d’ouverture s’imprime à valeur 0 ; un manquant garde son coût figé', () => {
+    const [base] = countInput().lines;
+    const lines = [
+      { ...base, itemId: 'surplus', reference: 'CIM-OUV', expectedQuantity: 0, countedQuantity: 12, reasonLabel: null },
+      { ...base, itemId: 'manquant', reference: 'FER-OUV', expectedQuantity: 10, countedQuantity: 8, reasonLabel: null }
+    ];
+    const model = buildCountReportPdfModel(countInput({ kind: 'OPENING', lines, ctx: COMPTABLE }));
+    const [surplus, manquant] = model.sections[0].rows.map(row => row.cells);
+    expect(surplus.slice(3, 8)).toEqual(['0', '12', '12', '0 XOF', '0 XOF']);
+    expect(manquant.slice(3, 8)).toEqual(['10', '8', '-2', '5 250 XOF', '-10 500 XOF']);
+
+    // Le même surplus dans un inventaire courant garde sa valeur au coût figé.
+    const regular = buildCountReportPdfModel(countInput({ kind: 'REGULAR', lines, ctx: COMPTABLE }));
+    expect(regular.sections[0].rows[0].cells.slice(6, 8)).toEqual(['5 250 XOF', '63 000 XOF']);
+  });
+
   it('mention de dérogation quand le validateur a aussi compté (A1-R3)', () => {
     const model = buildCountReportPdfModel(
       countInput({ selfValidated: true, selfValidationReason: 'Seul sur le chantier ce jour-là' })

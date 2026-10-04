@@ -43,7 +43,7 @@ import {
 } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
+import { activeLocale, formatNumber } from '../../i18n/format';
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
@@ -243,6 +243,25 @@ function ordonnerBloqueurs(liste: SiteClosureBlocker[]): SiteClosureBlocker[] {
       return rangA - rangB || a.index - b.index;
     })
     .map(entree => entree.bloqueur);
+}
+
+/**
+ * Ce qui reste sur le lieu du chantier (`STOCK_RESIDUAL`, `count` = nombre
+ * d'articles), dit après le message du serveur — ou rien pour un autre
+ * bloqueur.
+ *
+ * `count` vaut `null` quand le lieu est en comptage à l'aveugle pour
+ * l'appelant (lot 040, spec §8.2) : ce nombre lui dirait combien d'articles il
+ * reste à trouver. Le bloqueur se lit alors sans nombre.
+ */
+function detailDuReste(bloqueur: SiteClosureBlocker): string | null {
+  if (bloqueur.documentType !== 'STOCK_RESIDUAL') return null;
+  if (bloqueur.count === null) return t('Nombre d’articles masqué (comptage en cours).');
+  if (bloqueur.count === 1) return t('1 article encore en stock.');
+  if (bloqueur.count > 1) {
+    return t('{{nombre}} articles encore en stock.', { nombre: formatNumber(bloqueur.count) });
+  }
+  return null;
 }
 
 /** Le lien d'action d'un bloqueur de stock (ecrans §10.3), ou rien. */
@@ -522,7 +541,7 @@ export const ClotureChantier: React.FC = () => {
   // un lieu, pas des pièces — il n'entre pas dans le total des pièces.
   const totalPiecesBloquantes = listeBloqueurs
     .filter(bloqueur => !estBloqueurDeStock(bloqueur))
-    .reduce((somme, bloqueur) => somme + bloqueur.count, 0);
+    .reduce((somme, bloqueur) => somme + (bloqueur.count ?? 0), 0);
   const parcoursDeStock =
     listeBloqueurs.some(bloqueur => bloqueur.documentType === 'STOCK_CLOSING_COUNT_MISSING') &&
     listeBloqueurs.some(bloqueur => bloqueur.documentType === 'STOCK_RESIDUAL');
@@ -965,12 +984,21 @@ export const ClotureChantier: React.FC = () => {
                   <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
                     {/* Le message du serveur est affiché TEL QUEL : il est écrit
                         pour être lu, et le réécrire ici le ferait diverger. Un
-                        bloqueur de stock reçoit en plus un lien d'action. */}
+                        bloqueur de stock reçoit en plus un lien d'action, et
+                        le reste du lieu son nombre d'articles (ou rien, en
+                        comptage à l'aveugle). */}
                     {listeBloqueurs.map(bloqueur => {
                       const action = actionDeBloqueur(tenantId, bloqueur);
+                      const detail = detailDuReste(bloqueur);
                       return (
                         <li key={`${bloqueur.documentType ?? 'piece'}-${bloqueur.message}`}>
                           {bloqueur.message}
+                          {detail ? (
+                            <>
+                              {' '}
+                              <Text type="secondary">{detail}</Text>
+                            </>
+                          ) : null}
                           {action ? (
                             <>
                               {' '}

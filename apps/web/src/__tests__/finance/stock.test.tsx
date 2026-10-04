@@ -587,7 +587,7 @@ beforeEach(() => {
 
 function monter(url = `/tenant/${TENANT}/finance/stock`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(
+  const rendu = render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
@@ -599,6 +599,7 @@ function monter(url = `/tenant/${TENANT}/finance/stock`) {
       </AntApp>
     </QueryClientProvider>
   );
+  return Object.assign(rendu, { queryClient });
 }
 
 // ---------------------------------------------------------------------------
@@ -895,6 +896,49 @@ describe('Le journal des mouvements', () => {
     expect(await screen.findByText('BR-2026-00007', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(appelsGet(/stock\/movements\?.*cursor=page-2/).length).toBe(1);
     expect(screen.getByText('BR-2026-00042')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Charger plus' })).not.toBeInTheDocument();
+  }, 45000);
+
+  it('une première page relue après « Charger plus » ne perd ni ne double aucun mouvement', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet();
+    const routeDeBase = get.getMockImplementation() as (url: string) => Promise<unknown>;
+    const meta = (nextCursor: string | null): StockMeta => ({
+      valuesVisible: true,
+      blindLocationIds: [],
+      nextCursor
+    });
+    const bon = (numero: number, id: string) =>
+      mouvement({ id, type: 'RECEIPT', slipNumber: `BR-2026-${String(numero).padStart(5, '0')}`, slipId: `bon-${id}` });
+    // Avant : [42, 41] puis [40]. Une réception arrive en tête (43) :
+    // la première page devient [43, 42], la suivante [41, 40].
+    let apres = false;
+    get.mockImplementation(async (url: string) => {
+      if (/\/finance\/stock\/movements(\?|$)/.test(url)) {
+        if (!apres) {
+          if (/cursor=c-avant/.test(url)) return { data: { data: [bon(40, 'm40')], meta: meta(null) } };
+          return { data: { data: [MOUVEMENTS[0], bon(41, 'm41')], meta: meta('c-avant') } };
+        }
+        if (/cursor=c-apres/.test(url)) return { data: { data: [bon(41, 'm41'), bon(40, 'm40')], meta: meta(null) } };
+        if (/cursor=/.test(url)) return { data: { data: [], meta: meta(null) } };
+        return { data: { data: [bon(43, 'm43'), MOUVEMENTS[0]], meta: meta('c-apres') } };
+      }
+      return routeDeBase(url);
+    });
+    const { queryClient } = monter();
+    await ouvrirJournal();
+    await user.click(screen.getByRole('button', { name: 'Charger plus' }));
+    expect(await screen.findByText('BR-2026-00040', {}, { timeout: 8000 })).toBeInTheDocument();
+
+    // Une écriture invalide le journal : la première page est relue.
+    apres = true;
+    await queryClient.invalidateQueries({ queryKey: ['stock-movements'] });
+
+    expect(await screen.findByText('BR-2026-00043', {}, { timeout: 8000 })).toBeInTheDocument();
+    await waitFor(() => expect(appelsGet(/cursor=c-apres/).length).toBe(1));
+    for (const numero of ['BR-2026-00043', 'BR-2026-00042', 'BR-2026-00041', 'BR-2026-00040']) {
+      await waitFor(() => expect(screen.getAllByText(numero)).toHaveLength(1));
+    }
     expect(screen.queryByRole('button', { name: 'Charger plus' })).not.toBeInTheDocument();
   }, 45000);
 
@@ -1232,6 +1276,42 @@ describe('Un réessai après une coupure ne double rien (B3-R2)', () => {
     const second = (post.mock.calls[1][1] as Record<string, unknown>).clientRequestId;
     expect(String(premier)).toMatch(UUID);
     expect(second).toBe(premier);
+  }, 60000);
+});
+
+describe('Une réponse incertaine garde l’identifiant de requête ; un refus définitif le renouvelle', () => {
+  it('503 et 429 : même `clientRequestId` ; après un 409, un nouveau', async () => {
+    const user = userEvent.setup({ delay: null });
+    post
+      .mockRejectedValueOnce({ response: { status: 503, data: { message: 'Service momentanément indisponible.' } } })
+      .mockRejectedValueOnce({ response: { status: 429, data: { message: 'Trop de demandes, patientez.' } } })
+      .mockRejectedValueOnce({
+        response: { status: 409, data: { code: 'STOCK_INSUFFICIENT', message: 'Stock insuffisant dans ce lieu.' } }
+      })
+      .mockResolvedValueOnce(reponseEcriture({ slip: BON_SORTIE, movements: [SORTIE_RENDUE] }));
+    monter();
+    await ouvrirSortie();
+    await remplirSortie();
+
+    // Après un envoi, l'icône de chargement d'Ant Design reste dans le nom
+    // accessible (« loading … ») sous jsdom : le bouton se cherche par motif.
+    const enregistrer = async () =>
+      user.click(await screen.findByRole('button', { name: /Enregistrer la sortie/ }, { timeout: 8000 }));
+    await enregistrer();
+    expect(await screen.findByText('Service momentanément indisponible.', {}, { timeout: 8000 })).toBeInTheDocument();
+    await enregistrer();
+    expect(await screen.findByText('Trop de demandes, patientez.', {}, { timeout: 8000 })).toBeInTheDocument();
+    await enregistrer();
+    expect(await screen.findByText('Stock insuffisant dans ce lieu.', {}, { timeout: 8000 })).toBeInTheDocument();
+    await enregistrer();
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(4));
+
+    const ids = post.mock.calls.map((appel: unknown[]) => (appel[1] as Record<string, unknown>).clientRequestId);
+    expect(String(ids[0])).toMatch(UUID);
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).toBe(ids[0]);
+    expect(String(ids[3])).toMatch(UUID);
+    expect(ids[3]).not.toBe(ids[2]);
   }, 60000);
 });
 

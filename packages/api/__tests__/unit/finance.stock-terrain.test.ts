@@ -751,6 +751,19 @@ describe('getInvoiceReceipts (A8-R1)', () => {
     await expect(getInvoiceReceipts(TENANT, context(), 'facture-1')).rejects.toBeInstanceOf(NotFoundError);
     await expect(getInvoiceReceipts(TENANT, context(), 'inexistante')).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it('une facture non validée (brouillon, annulée) répond 404, comme dans la liste des factures à réceptionner', async () => {
+    for (const status of ['DRAFT', 'VOIDED']) {
+      store.invoices = [];
+      seedInvoice({ status });
+      await expect(getInvoiceReceipts(TENANT, context(), 'facture-1')).rejects.toBeInstanceOf(NotFoundError);
+    }
+    store.invoices = [];
+    seedInvoice();
+    await expect(getInvoiceReceipts(TENANT, context(), 'facture-1')).resolves.toMatchObject({
+      view: expect.any(Object)
+    });
+  });
 });
 
 describe('groupReceiptOperations', () => {

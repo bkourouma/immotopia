@@ -86,6 +86,19 @@ interface ErreurServeur {
   status?: number;
   code?: string;
   message?: string;
+  /** Détail d'un refus de validation (`errors[{ field, message }]` d'un `400`), par champ. */
+  champs: Record<string, string>;
+}
+
+function lireChamps(errors: unknown): Record<string, string> {
+  const champs: Record<string, string> = {};
+  if (!Array.isArray(errors)) return champs;
+  for (const detail of errors as Array<{ field?: unknown; message?: unknown }>) {
+    if (typeof detail?.field === 'string' && typeof detail.message === 'string' && !(detail.field in champs)) {
+      champs[detail.field] = detail.message;
+    }
+  }
+  return champs;
 }
 
 function lireErreur(error: unknown): ErreurServeur {
@@ -93,14 +106,15 @@ function lireErreur(error: unknown): ErreurServeur {
     error as {
       response?: {
         status?: number;
-        data?: { code?: unknown; message?: unknown; data?: { existingTakerId?: unknown } };
+        data?: { code?: unknown; message?: unknown; errors?: unknown; data?: { existingTakerId?: unknown } };
       };
     } | null
   )?.response;
   return {
     status: response?.status,
     code: typeof response?.data?.code === 'string' ? (response.data.code as string) : undefined,
-    message: typeof response?.data?.message === 'string' ? (response.data.message as string) : undefined
+    message: typeof response?.data?.message === 'string' ? (response.data.message as string) : undefined,
+    champs: lireChamps(response?.data?.errors)
   };
 }
 
@@ -959,7 +973,11 @@ function brouillonDe(reglages: StockControlsSettings): Brouillon {
   };
 }
 
-/** Les SEULS champs modifiés ; « Désactiver » envoie `null` (contrat `ControlsSettingsPatch`). */
+/**
+ * Les SEULS champs modifiés ; « Désactiver » envoie `null` (contrat
+ * `ControlsSettingsPatch`), comme un seuil laissé vide : l'API refuse un seuil
+ * à zéro et attend `null` pour désactiver une alerte.
+ */
 function patchDe(reglages: StockControlsSettings, brouillon: Brouillon): ControlsSettingsPatch {
   const patch: ControlsSettingsPatch = {};
   if (brouillon.backdatingLimitDays !== null && brouillon.backdatingLimitDays !== reglages.backdatingLimitDays) {
@@ -976,10 +994,22 @@ function patchDe(reglages: StockControlsSettings, brouillon: Brouillon): Control
   return patch;
 }
 
-/** Un seuil actif doit porter une valeur ; la borne d'antériorité aussi. */
+/**
+ * Un seuil saisi à zéro (ou moins) : refusé par l'API, qui ferait sinon
+ * sonner l'alerte à chaque opération. Vide, il désactive l'alerte.
+ */
+function seuilNonPositif(brouillon: Brouillon, seuil: Seuil): boolean {
+  const valeur = brouillon.valeurs[seuil];
+  return !brouillon.desactive[seuil] && valeur !== null && valeur <= 0;
+}
+
+const seuilPositifTexte = (): string =>
+  t("Un seuil d'alerte doit être supérieur à zéro. Laissez-le vide pour désactiver l'alerte.");
+
+/** La borne d'antériorité doit porter une valeur ; un seuil saisi doit être strictement positif. */
 function brouillonValide(brouillon: Brouillon): boolean {
   if (brouillon.backdatingLimitDays === null) return false;
-  return SEUILS.every(seuil => brouillon.desactive[seuil] || brouillon.valeurs[seuil] !== null);
+  return SEUILS.every(seuil => !seuilNonPositif(brouillon, seuil));
 }
 
 function lectureSeuleTexte(): string {
@@ -1032,16 +1062,29 @@ const FormulaireReglages: React.FC<FormulaireReglagesProps> = ({ tenantId, champ
   const [brouillon, setBrouillon] = useState<Brouillon>(() => brouillonDe(reglages));
   const [refuse, setRefuse] = useState(false);
   const [envoi, setEnvoi] = useState(false);
+  // Le refus `400` du serveur, champ par champ, effacé dès qu'on retouche le seuil.
+  const [refusParSeuil, setRefusParSeuil] = useState<Partial<Record<Seuil, string>>>({});
   const lectureSeule = !peutModifier || refuse;
 
   const patch = patchDe(reglages, brouillon);
   const modifie = Object.keys(patch).length > 0;
   const libellePoste = (id: string) => champ.costCategories.find(poste => poste.id === id)?.label ?? id;
 
-  const changerValeur = (seuil: Seuil, valeur: number | null) =>
+  const oublierRefus = (seuil: Seuil) =>
+    setRefusParSeuil(courant => {
+      if (!(seuil in courant)) return courant;
+      const reste = { ...courant };
+      delete reste[seuil];
+      return reste;
+    });
+  const changerValeur = (seuil: Seuil, valeur: number | null) => {
+    oublierRefus(seuil);
     setBrouillon(courant => ({ ...courant, valeurs: { ...courant.valeurs, [seuil]: valeur } }));
-  const changerDesactive = (seuil: Seuil, desactive: boolean) =>
+  };
+  const changerDesactive = (seuil: Seuil, desactive: boolean) => {
+    oublierRefus(seuil);
     setBrouillon(courant => ({ ...courant, desactive: { ...courant.desactive, [seuil]: desactive } }));
+  };
 
   const enregistrer = async () => {
     setEnvoi(true);
@@ -1058,57 +1101,87 @@ const FormulaireReglages: React.FC<FormulaireReglagesProps> = ({ tenantId, champ
         setRefuse(true);
         message.error(lectureSeuleTexte());
       } else {
-        message.error(erreur.message || t('Les réglages n’ont pas pu être enregistrés.'));
+        // Un `400` de validation porte sa raison champ par champ : la montrer
+        // sous le seuil visé, et dans le message plutôt que « données invalides ».
+        const refusSeuils: Partial<Record<Seuil, string>> = {};
+        for (const seuil of SEUILS) {
+          if (erreur.champs[seuil]) refusSeuils[seuil] = erreur.champs[seuil];
+        }
+        setRefusParSeuil(refusSeuils);
+        const details = [...new Set(Object.values(erreur.champs))];
+        message.error(
+          details.length > 0 ? details.join(' ') : erreur.message || t('Les réglages n’ont pas pu être enregistrés.')
+        );
       }
     } finally {
       setEnvoi(false);
     }
   };
 
-  const champSeuil = (seuil: Seuil, libelle: string, aide: string, pourcentage = false) => (
-    <div style={{ marginBlockEnd: 'var(--space-4)' }}>
-      <label htmlFor={`seuil-${seuil}`} style={{ display: 'block', fontWeight: 600, marginBlockEnd: 4 }}>
-        {libelle}
-      </label>
-      <Space wrap>
-        {pourcentage ? (
-          <InputNumber<number>
-            id={`seuil-${seuil}`}
-            min={0}
-            max={100}
-            suffix="%"
-            disabled={lectureSeule || brouillon.desactive[seuil]}
-            value={brouillon.desactive[seuil] ? null : brouillon.valeurs[seuil]}
-            onChange={valeur => changerValeur(seuil, valeur ?? null)}
-          />
-        ) : (
-          <InputNumber
-            id={`seuil-${seuil}`}
-            {...montantSaisiProps}
-            min={0}
-            suffix="FCFA"
-            style={{ minWidth: 180 }}
-            disabled={lectureSeule || brouillon.desactive[seuil]}
-            value={brouillon.desactive[seuil] ? null : brouillon.valeurs[seuil]}
-            onChange={valeur => {
-              const nombre = valeur === null || valeur === undefined || valeur === '' ? null : Number(valeur);
-              changerValeur(seuil, nombre !== null && Number.isFinite(nombre) ? nombre : null);
-            }}
-          />
-        )}
-        <Checkbox
-          checked={brouillon.desactive[seuil]}
-          disabled={lectureSeule}
-          onChange={event => changerDesactive(seuil, event.target.checked)}
-        >
-          {t('Désactiver cette alerte')}
-        </Checkbox>
-      </Space>
-      <Text type="secondary" style={{ display: 'block' }}>
-        {aide}
-      </Text>
-    </div>
-  );
+  /**
+   * Un seuil : strictement positif, ou vide pour désactiver l'alerte (comme la
+   * case). Zéro n'est pas ramené en silence à une petite valeur — une alerte à
+   * 1 FCFA sonnerait à chaque opération : le champ le refuse en clair et
+   * l'enregistrement attend une correction.
+   */
+  const champSeuil = (seuil: Seuil, libelle: string, aide: string, pourcentage = false) => {
+    const refusLocal = seuilNonPositif(brouillon, seuil);
+    const erreur = refusLocal ? seuilPositifTexte() : brouillon.desactive[seuil] ? undefined : refusParSeuil[seuil];
+    const idAide = `seuil-${seuil}-aide`;
+    const idErreur = `seuil-${seuil}-erreur`;
+    const commun = {
+      id: `seuil-${seuil}`,
+      min: 0,
+      status: erreur ? ('error' as const) : undefined,
+      'aria-invalid': erreur ? true : undefined,
+      'aria-describedby': erreur ? `${idErreur} ${idAide}` : idAide,
+      disabled: lectureSeule || brouillon.desactive[seuil],
+      value: brouillon.desactive[seuil] ? null : brouillon.valeurs[seuil]
+    };
+    return (
+      <div style={{ marginBlockEnd: 'var(--space-4)' }}>
+        <label htmlFor={`seuil-${seuil}`} style={{ display: 'block', fontWeight: 600, marginBlockEnd: 4 }}>
+          {libelle}
+        </label>
+        <Space wrap>
+          {pourcentage ? (
+            <InputNumber<number>
+              {...commun}
+              max={100}
+              suffix="%"
+              onChange={valeur => changerValeur(seuil, valeur ?? null)}
+            />
+          ) : (
+            <InputNumber
+              {...commun}
+              {...montantSaisiProps}
+              suffix="FCFA"
+              style={{ minWidth: 180 }}
+              onChange={valeur => {
+                const nombre = valeur === null || valeur === undefined || valeur === '' ? null : Number(valeur);
+                changerValeur(seuil, nombre !== null && Number.isFinite(nombre) ? nombre : null);
+              }}
+            />
+          )}
+          <Checkbox
+            checked={brouillon.desactive[seuil]}
+            disabled={lectureSeule}
+            onChange={event => changerDesactive(seuil, event.target.checked)}
+          >
+            {t('Désactiver cette alerte')}
+          </Checkbox>
+        </Space>
+        {erreur ? (
+          <Text type="danger" id={idErreur} style={{ display: 'block' }}>
+            {erreur}
+          </Text>
+        ) : null}
+        <Text type="secondary" id={idAide} style={{ display: 'block' }}>
+          {aide}
+        </Text>
+      </div>
+    );
+  };
 
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%', maxWidth: 760 }}>
@@ -1159,6 +1232,12 @@ const FormulaireReglages: React.FC<FormulaireReglagesProps> = ({ tenantId, champ
             )}
           </Text>
         </div>
+
+        <Paragraph type="secondary" style={{ marginBlockEnd: 'var(--space-3)' }}>
+          {t(
+            'Un seuil saisi doit être supérieur à zéro. Un seuil laissé vide désactive son alerte, comme la case « Désactiver cette alerte ».'
+          )}
+        </Paragraph>
 
         {champSeuil(
           'issueAlertAmount',

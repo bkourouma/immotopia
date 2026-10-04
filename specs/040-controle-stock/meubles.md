@@ -382,7 +382,7 @@ quantity === null`. Ordre des contrôles dans `finalizeInspection`
   entryQuantity   = kind FURNITURE ? entrée.quantity ?? null : null
   exitQuantity    = kind FURNITURE et élément en sortie ?
                       (sortie.condition == MISSING ? 0 : sortie.quantity ?? null) : null
-  missing         = exitCondition == MISSING et entryCondition != MISSING
+  missing         = élément présent à l'entrée et exitCondition == MISSING et entryCondition != MISSING
   quantityDecrease= !missing et entryQuantity, exitQuantity non nuls ?
                       max(0, entryQuantity − exitQuantity) : 0
   missingQuantity = missing ? (entryQuantity ?? 1) : quantityDecrease

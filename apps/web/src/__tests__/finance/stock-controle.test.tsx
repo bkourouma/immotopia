@@ -552,6 +552,90 @@ describe('Contrôle — onglet Réglages de contrôle', () => {
     expect(screen.getByText(/Modifié le .* par Awa Traoré\./)).toBeInTheDocument();
   }, 15000);
 
+  const SEUIL_POSITIF = "Un seuil d'alerte doit être supérieur à zéro. Laissez-le vide pour désactiver l'alerte.";
+
+  it('un seuil à zéro est refusé dans le formulaire : message sous le champ, rien n’est envoyé', async () => {
+    const user = userEvent.setup();
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=reglages`);
+    const sortie = await screen.findByLabelText('Sortie importante', {}, { timeout: 8000 });
+    expect(
+      screen.getByText(
+        'Un seuil saisi doit être supérieur à zéro. Un seuil laissé vide désactive son alerte, comme la case « Désactiver cette alerte ».'
+      )
+    ).toBeInTheDocument();
+
+    await user.clear(sortie);
+    await user.type(sortie, '0');
+
+    expect(await screen.findByText(SEUIL_POSITIF)).toBeInTheDocument();
+    expect(sortie).toHaveAttribute('aria-invalid', 'true');
+    const enregistrer = screen.getByRole('button', { name: 'Enregistrer les réglages' });
+    expect(enregistrer).toBeDisabled();
+    await user.click(enregistrer);
+    expect(patch).not.toHaveBeenCalled();
+
+    // Le pourcentage obéit à la même règle.
+    const taux = screen.getByLabelText('Écart d’inventaire — taux');
+    await user.clear(taux);
+    await user.type(taux, '0');
+    await waitFor(() => expect(screen.getAllByText(SEUIL_POSITIF)).toHaveLength(2));
+    expect(taux).toHaveAttribute('aria-invalid', 'true');
+  }, 40000);
+
+  it('un seuil laissé vide désactive son alerte : null est envoyé', async () => {
+    const user = userEvent.setup();
+    patch.mockResolvedValue({
+      data: { success: true, data: reglages({ countVarianceAlertPercent: null }) }
+    });
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=reglages`);
+    const taux = await screen.findByLabelText('Écart d’inventaire — taux', {}, { timeout: 8000 });
+    await user.clear(taux);
+
+    expect(screen.queryByText(SEUIL_POSITIF)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enregistrer les réglages' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const [, corps] = patch.mock.calls[0] as [string, Record<string, unknown>];
+    expect(corps).toEqual({ countVarianceAlertPercent: null });
+  }, 40000);
+
+  it('refus 400 du serveur : sa raison s’affiche sous le seuil visé, pas « données invalides »', async () => {
+    const user = userEvent.setup();
+    patch.mockRejectedValue(
+      Object.assign(new Error('Refusé'), {
+        response: {
+          status: 400,
+          data: {
+            success: false,
+            code: 'VALIDATION_ERROR',
+            message: 'Les données fournies sont invalides.',
+            errors: [{ field: 'issueAlertAmount', message: SEUIL_POSITIF }]
+          }
+        }
+      })
+    );
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=reglages`);
+    const borne = await screen.findByLabelText('Antériorité maximale d’une date de mouvement', {}, { timeout: 8000 });
+    await user.clear(borne);
+    await user.type(borne, '3');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer les réglages' }));
+
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    // Sous le champ, et dans le message d'erreur.
+    await waitFor(() => expect(screen.getAllByText(SEUIL_POSITIF).length).toBeGreaterThanOrEqual(2));
+    expect(screen.queryByText('Les données fournies sont invalides.')).not.toBeInTheDocument();
+    const sortie = screen.getByLabelText('Sortie importante');
+    expect(sortie).toHaveAttribute('aria-invalid', 'true');
+    // Le formulaire reste modifiable : ce n'est pas un refus de droit.
+    expect(borne).not.toBeDisabled();
+    // Le nom porte encore « loading » le temps que l'icône de chargement s'efface.
+    expect(screen.getByRole('button', { name: /Enregistrer les réglages/ })).toBeInTheDocument();
+
+    // Retoucher le seuil efface le refus du serveur.
+    await user.clear(sortie);
+    await user.type(sortie, '250000');
+    await waitFor(() => expect(sortie).not.toHaveAttribute('aria-invalid'));
+  }, 40000);
+
   it('postes « matériaux » vides : les postes retenus faute de choix sont nommés', async () => {
     monter(`/tenant/${TENANT}/finance/stock/controle?onglet=reglages`);
     expect(

@@ -16,6 +16,8 @@ import request from 'supertest';
  */
 
 const guardsHit: string[] = [];
+/** Gardes qui refusent (403), pour simuler un appelant sans le droit. */
+const deniedGuards = new Set<string>();
 
 jest.mock('../../src/middleware/auth-middleware', () => ({
   authenticate: (req: any, _res: any, next: any) => {
@@ -32,8 +34,12 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
 }));
 
 jest.mock('../../src/middleware/stock-rbac-middleware', () => {
-  const guard = (name: string) => (_req: any, _res: any, next: any) => {
+  const guard = (name: string) => (_req: any, res: any, next: any) => {
     guardsHit.push(name);
+    if (deniedGuards.has(name)) {
+      res.status(403).json({ success: false, code: 'FORBIDDEN' });
+      return;
+    }
     next();
   };
   return {
@@ -91,9 +97,13 @@ jest.mock('../../src/services/audit-service', () => ({
   recordAuditEvent: jest.fn()
 }));
 
+const transactionOptions: any[] = [];
 jest.mock('../../src/utils/database', () => ({
   prisma: {
-    $transaction: (callback: any) => callback({})
+    $transaction: (callback: any, options?: any) => {
+      transactionOptions.push(options);
+      return callback({});
+    }
   }
 }));
 
@@ -138,7 +148,9 @@ const blindLine = {
 beforeEach(() => {
   jest.clearAllMocks();
   guardsHit.length = 0;
+  deniedGuards.clear();
   loggedAudit.length = 0;
+  transactionOptions.length = 0;
   controls.resolveStockCallerContext.mockResolvedValue(CALLER);
   controls.loadBlindLocationIds.mockResolvedValue(new Set([LOCATION_A]));
   controls.findClientRequestReplay.mockResolvedValue(null);
@@ -175,6 +187,8 @@ describe('POST /stock/counts', () => {
     expect(domain.getStockCountView).toHaveBeenCalledWith(TENANT_A, COUNT_A, CALLER);
     // L'événement non critique est écrit APRÈS la transaction (B6-R5).
     expect(loggedAudit).toEqual([{ actionKey: 'STOCK_COUNT_OPENED' }]);
+    // Délais des écritures alignés sur les mouvements : 30 s, pas les 5 s par défaut.
+    expect(transactionOptions).toEqual([{ maxWait: 10_000, timeout: 30_000 }]);
   });
 
   it('refuse un corps qui porterait des lignes, un statut, un tenantId ou une nature inconnue', async () => {
@@ -275,7 +289,16 @@ describe('PUT /stock/counts/:countId/lines', () => {
       expect.anything(),
       'cle-1',
       'StockCountLine',
-      'ligne-1'
+      'ligne-1',
+      TENANT_A
+    );
+    // La relecture de la clé est bornée à l'opération réservée (même clé, autre route → 409).
+    expect(controls.findClientRequestReplay).toHaveBeenCalledWith(
+      TENANT_A,
+      REQUEST_A,
+      'user-1',
+      expect.any(String),
+      'COUNT_LINE'
     );
 
     controls.findClientRequestReplay.mockResolvedValue({ resultType: 'StockCountLine', resultId: 'ligne-1' });
@@ -399,6 +422,14 @@ describe('écritures sur un inventaire', () => {
     const res = await request(app).post(`${BASE}/${COUNT_A}/validate`).send({});
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('STOCK_COUNT_SELF_VALIDATION_FORBIDDEN');
+  });
+
+  it('POST …/cancel sans STOCK_COUNT_VALIDATE → 403, le domaine n’est pas appelé', async () => {
+    deniedGuards.add('STOCK_COUNT_VALIDATE');
+    const res = await request(app).post(`${BASE}/${COUNT_A}/cancel`).send({ reason: 'Sortie après comptage' });
+    expect(res.status).toBe(403);
+    expect(guardsHit).toEqual(['STOCK_COUNT_VALIDATE']);
+    expect(domain.cancelStockCountTx).not.toHaveBeenCalled();
   });
 
   it('POST …/cancel : STOCK_COUNT_VALIDATE, motif exigé', async () => {

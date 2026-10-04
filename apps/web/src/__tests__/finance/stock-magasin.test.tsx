@@ -6,6 +6,7 @@ import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StockMagasin } from '../../pages/finance/StockMagasin';
 import { nouvelIdentifiantDeRequete } from '../../utils/stock-client-request-id';
+import { reponseIncertaine } from '../../components/finance/stock/magasin/useEnvoiTerrain';
 import type { StockCount, StockCountLine } from '../../types/finance-stock-inventaire-types';
 import type {
   StockBalanceView,
@@ -548,6 +549,42 @@ describe('Recevoir', () => {
     expect(envois[0][1].clientRequestId).toBe(envois[1][1].clientRequestId);
     expect(envois[0][1].lines).toEqual([{ itemId: CIMENT, quantity: 50 }]);
   }, 60000);
+
+  it('503 puis 408 : le même identifiant repart (réponse incertaine) ; un refus 4xx en tire un nouveau', async () => {
+    let appels = 0;
+    const refus = (status: number, message: string) =>
+      Object.assign(new Error(message), { response: { status, data: { message } } });
+    post.mockImplementation(async (url: string) => {
+      if (/\/stock\/receipts$/.test(url)) {
+        appels += 1;
+        if (appels === 1) throw refus(503, 'Service momentanément indisponible.');
+        if (appels === 2) throw refus(408, 'Le serveur a mis trop de temps à répondre.');
+        if (appels === 3) throw refus(400, 'Réception refusée par le serveur.');
+        return { status: 201, data: { data: { slip: BR, movements: [], controls: [] }, meta: {} } };
+      }
+      return { data: { data: null } };
+    });
+    monter();
+    // Après un envoi, l'icône de chargement d'Ant Design reste dans le nom
+    // accessible (« loading … ») sous jsdom : le bouton se cherche par motif.
+    await recevoirJusquAVerifier({ ligneFacture: false });
+
+    await cliquer(/Enregistrer la réception/);
+    expect(await screen.findByText('Service momentanément indisponible.', {}, TIMEOUT)).toBeInTheDocument();
+    await cliquer(/Enregistrer la réception/);
+    expect(await screen.findByText('Le serveur a mis trop de temps à répondre.', {}, TIMEOUT)).toBeInTheDocument();
+    await cliquer(/Enregistrer la réception/);
+    expect(await screen.findByText('Réception refusée par le serveur.', {}, TIMEOUT)).toBeInTheDocument();
+    await cliquer(/Enregistrer la réception/);
+    await waitFor(() => expect(postsVers(/\/stock\/receipts$/)).toHaveLength(4), TIMEOUT);
+
+    const ids = postsVers(/\/stock\/receipts$/).map(envoi => envoi[1].clientRequestId);
+    expect(String(ids[0])).toMatch(UUID);
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).toBe(ids[0]);
+    expect(String(ids[3])).toMatch(UUID);
+    expect(ids[3]).not.toBe(ids[2]);
+  }, 60000);
 });
 
 // ===========================================================================
@@ -796,5 +833,15 @@ describe('nouvelIdentifiantDeRequete', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('reponseIncertaine', () => {
+  it('garde l’identifiant sur une coupure, un 5xx, un 408 ou un 429 ; pas sur un refus 4xx', () => {
+    expect(reponseIncertaine({ reseau: true, status: null })).toBe(true);
+    for (const status of [500, 502, 503, 504, 408, 429])
+      expect(reponseIncertaine({ reseau: false, status })).toBe(true);
+    expect(reponseIncertaine({ reseau: false, status: null })).toBe(true);
+    for (const status of [400, 403, 404, 409, 422]) expect(reponseIncertaine({ reseau: false, status })).toBe(false);
   });
 });

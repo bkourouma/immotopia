@@ -870,23 +870,34 @@ pas de valeurs figées (B8-R2).
 
 ## 6. Verrous et concurrence (A10)
 
-Ordre unique, toujours (spec A10-R2) : verrou de chantier, puis verrous de
-solde triés, puis verrou de numérotation. La clé d'idempotence est la première
+Ordre unique, toujours (spec A10-R2, révision 3 après relecture) : verrou
+d'inventaire (ligne `stock_counts` en `FOR UPDATE`), verrou de chantier, verrou
+de facture, verrou du cumul mensuel des rebuts, puis verrous de solde triés,
+puis verrou de numérotation. La clé d'idempotence est la première
 écriture ; les verrous se prennent juste après elle, avant toute lecture de
 solde.
 
-| Opération                       | Verrou(s), dans cet ordre                                                                                                                           |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Réception                       | `stock-site` du chantier si le lieu est celui d'un chantier ; un `stock-balance` par couple (article, lieu) distinct, triés ; `stock-slip`          |
-| Sortie multi-lignes             | un `stock-balance` par couple distinct, triés ; `stock-slip`                                                                                        |
-| Transfert                       | `stock-site` du chantier d'arrivée si le lieu d'arrivée est celui d'un chantier ; deux `stock-balance` (origine, arrivée), triés                    |
-| Rebut, retour                   | un `stock-balance`                                                                                                                                  |
-| Clôture du comptage (A2-R8)     | un `stock-balance` par article de solde non nul du lieu et par ligne, triés (le solde lu pour créer les lignes non comptées est celui de l'instant) |
-| Validation d'inventaire         | un `stock-balance` par ligne non écartée, triés ; `stock-slip` (PVI)                                                                                |
-| Clôture de chantier (A7-R3 bis) | `stock-site` du chantier, avant `collectClosureBlockers`                                                                                            |
-| Tirage d'un numéro de bon       | `pg_advisory_xact_lock(hashtext('stock-slip'), hashtext(tenantId))`                                                                                 |
+| Opération                       | Verrou(s), dans cet ordre                                                                                                                                                  |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Réception                       | `stock-site` du chantier si le lieu est celui d'un chantier ; `stock-invoice` de la facture ; un `stock-balance` par couple (article, lieu) distinct, triés ; `stock-slip` |
+| Sortie multi-lignes             | un `stock-balance` par couple distinct, triés ; `stock-slip`                                                                                                               |
+| Transfert                       | `stock-site` du chantier d'arrivée si le lieu d'arrivée est celui d'un chantier ; deux `stock-balance` (origine, arrivée), triés                                           |
+| Rebut                           | `stock-scrap-month` (agence, lieu, mois du rebut) ; un `stock-balance`                                                                                                     |
+| Retour fournisseur              | `stock-invoice` de la facture ; un `stock-balance`                                                                                                                         |
+| Saisie d'une ligne d'inventaire | ligne `stock_counts` en `FOR UPDATE` ; un `stock-balance` (article, lieu), puis lecture du solde et de l'heure de la base                                                  |
+| Clôture du comptage (A2-R8)     | un `stock-balance` par article de solde non nul du lieu et par ligne, triés (le solde lu pour créer les lignes non comptées est celui de l'instant)                        |
+| Validation d'inventaire         | un `stock-balance` par ligne non écartée, triés ; `stock-slip` (PVI)                                                                                                       |
+| Clôture de chantier (A7-R3 bis) | `stock-site` du chantier, avant `collectClosureBlockers`                                                                                                                   |
+| Tirage d'un numéro de bon       | `pg_advisory_xact_lock(hashtext('stock-slip'), hashtext(tenantId))`                                                                                                        |
 
 Clé de chantier : `pg_advisory_xact_lock(hashtext('stock-site'), hashtext(siteId))`.
+
+Clé de facture : `pg_advisory_xact_lock(hashtext('stock-invoice'), hashtext(tenantId || ':' || invoiceId))`
+(`lockStockInvoiceTx`) : sérialise le plafond « reçu − déjà retourné » et les
+contrôles de réception d'une même facture.
+
+Clé du cumul des rebuts : `stock-scrap-month`, sur `tenantId:locationId:aaaa-mm`
+(`lockStockScrapMonthTx`).
 
 Clé de solde : `pg_advisory_xact_lock(hashtext('stock-balance'), hashtext(tenantId || ':' || itemId || ':' || locationId))`
 par `$executeRaw`. Une collision de `hashtext` ne coûte qu'une attente, jamais

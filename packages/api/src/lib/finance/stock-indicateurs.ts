@@ -13,8 +13,11 @@
  * Les agrégations par mois passent par `$queryRaw`, que la garde Prisma
  * (`prisma-tenant-guard-extension.ts`) ne contrôle pas : CHAQUE requête porte
  * `tenant_id = ${tenantId}` en paramètre lié — jamais concaténé — et une
- * jointure ne lit que les inventaires de l'agence. Le bloc « Stock » de
- * `__tests__/integration/isolation.test.ts` le vérifie de bout en bout.
+ * jointure ne lit que les inventaires de l'agence. La forme des requêtes est
+ * vérifiée par `__tests__/unit/stock-indicateurs.test.ts` ; l'étanchéité réelle
+ * contre PostgreSQL, par le bloc « Stock — étanchéité entre agences (lot 040) »
+ * de `__tests__/integration/isolation.test.ts` (`npm run test:isolation`, base
+ * dédiée) : les indicateurs de l'agence A n'y portent aucune trace de B.
  *
  * ---------------------------------------------------------------------------
  * Définitions (B8)
@@ -25,6 +28,9 @@
  *   inventaires validés avant le lot (valeurs nulles) en sont exclus et
  *   comptés à part (`countsWithoutFrozenValues`, B8-R2). Les surplus
  *   d'ouverture sont exclus de `variance_value_gross` à sa naissance (A7-R2).
+ *   La part validée par une autre personne (`otherValidatorShare`) exclut les
+ *   mêmes inventaires : avant le lot, `self_validated` n'était pas renseigné
+ *   (défaut `false`) et les compter gonflerait la part.
  * - Lignes non comptées : `counted_quantity IS NULL` (A2-R8). Part à
  *   l'aveugle : `counted_blind = true` ÷ lignes où `counted_blind` est
  *   renseigné (lignes comptées après le lot, A2-R9).
@@ -168,7 +174,7 @@ export function buildIndicatorQueries(
            COALESCE(SUM(c.counted_value) FILTER (WHERE c.counted_value IS NOT NULL), 0) AS "countedValue",
            COALESCE(SUM(c.variance_value_gross) FILTER (WHERE c.counted_value IS NOT NULL), 0) AS "varianceValueGross",
            COALESCE(SUM(c.set_aside_variance_value) FILTER (WHERE c.counted_value IS NOT NULL), 0) AS "setAsideVarianceValue",
-           COUNT(*) FILTER (WHERE c.self_validated = false) AS "countsValidatedByOther"
+           COUNT(*) FILTER (WHERE c.self_validated = false AND c.counted_value IS NOT NULL) AS "countsValidatedByOther"
       FROM stock_counts c
      WHERE c.tenant_id = ${tenantId}
        AND c.status = 'VALIDATED'
@@ -352,7 +358,8 @@ function toRow(month: string, totals: Totals, location: { id: string; label: str
     issuesWithTaker: totals.issuesWithTaker,
     takerShare: share(totals.issuesWithTaker, totals.issuesCount),
     countsValidatedByOther: totals.countsValidatedByOther,
-    otherValidatorShare: share(totals.countsValidatedByOther, totals.countsValidated),
+    // Sur les seuls inventaires validés depuis le lot (valeurs figées), comme le taux d'écart (B8-R2).
+    otherValidatorShare: share(totals.countsValidatedByOther, frozenCounts),
     scrapValue: money(totals.scrapValue),
     scrapShare: share(totals.scrapValue, scrapBase),
     movementsCount: totals.movementsCount,

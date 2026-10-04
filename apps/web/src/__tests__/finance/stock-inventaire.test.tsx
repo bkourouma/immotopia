@@ -943,4 +943,26 @@ describe('L’inventaire validé', () => {
     expect(screen.queryByRole('button', { name: 'Valider l’inventaire' })).not.toBeInTheDocument();
     attendreVocabulaireNeutre();
   }, 40000);
+
+  it('dit « Figé à la validation » sur les valeurs figées par la validation', async () => {
+    configurerGet({ liste: [valide()] });
+    monterDetail(VALIDE);
+    expect((await screen.findAllByText('Figé à la validation.', {}, TIMEOUT)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Non figée (inventaire antérieur au lot)')).not.toBeInTheDocument();
+  }, 40000);
+
+  it('un inventaire antérieur au lot, sans valeur figée, le dit et ne prétend jamais l’avoir figé', async () => {
+    configurerGet({
+      liste: [
+        valide({ countedValue: null, varianceValueGross: null, varianceValueNet: null, setAsideVarianceValue: null })
+      ]
+    });
+    monterDetail(VALIDE);
+    expect(
+      await screen.findByRole('button', { name: /Télécharger le procès-verbal \(PDF\)/ }, TIMEOUT)
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Non figée (inventaire antérieur au lot)')).toHaveLength(4);
+    expect(screen.getByText('Écart net')).toBeInTheDocument();
+    expect(screen.queryByText(/Figé à la validation/)).not.toBeInTheDocument();
+  }, 40000);
 });

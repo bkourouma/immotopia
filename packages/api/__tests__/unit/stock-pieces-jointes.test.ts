@@ -7,7 +7,8 @@
  * 1. Les aides PURES du contrat du lot 041 (plan §11) : type par les octets,
  *    filtre des métadonnées, empreinte. Les images sont de vrais petits
  *    fichiers construits ici (JPEG avec un segment EXIF portant des
- *    coordonnées GPS, PNG avec `eXIf`, WebP avec `EXIF`) ; on vérifie que
+ *    coordonnées GPS, un profil ICC, un commentaire et de l'IPTC ; PNG avec
+ *    `eXIf` et des blocs texte ; WebP avec `EXIF`) ; on vérifie que
  *    les métadonnées partent ET que la structure reste valide (pdf-lib relit
  *    le JPEG et décode le PNG).
  * 2. Le service, sans base : client Prisma doublé, fichiers écrits dans un
@@ -63,6 +64,7 @@ import {
   uploadStockAttachment
 } from '../../src/lib/finance/stock-pieces-jointes';
 import type { StockCallerContext } from '../../src/lib/finance/types-040-controle';
+import { logger } from '../../src/utils/logger';
 
 const TENANT = 'tenant-1';
 const MOVEMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -127,6 +129,15 @@ function buildJpeg() {
     0xe1,
     Buffer.from(`http://ns.adobe.com/xap/1.0/\0<x:xmpmeta><exif:GPS>${GPS_MARKER}</exif:GPS></x:xmpmeta>`, 'latin1')
   );
+  // Profil ICC (APP2) : gardé, il porte les couleurs de l'image.
+  const app2Icc = jpegSegment(
+    0xe2,
+    Buffer.concat([Buffer.from('ICC_PROFILE\0', 'latin1'), Buffer.from([1, 1]), Buffer.alloc(16, 7)])
+  );
+  // Commentaire libre, IPTC (APP13) et Adobe (APP14) : retirés.
+  const com = jpegSegment(0xfe, Buffer.from(`Photo de Awa Kone ${GPS_MARKER}`, 'latin1'));
+  const app13Iptc = jpegSegment(0xed, Buffer.from(`Photoshop 3.0\0 8BIM ${GPS_MARKER}`, 'latin1'));
+  const app14Adobe = jpegSegment(0xee, Buffer.from([0x41, 0x64, 0x6f, 0x62, 0x65, 0, 100, 0, 0, 0, 0, 1]));
   const dqt = jpegSegment(0xdb, Buffer.concat([Buffer.from([0]), Buffer.alloc(64, 1)]));
   const sof0 = jpegSegment(0xc0, Buffer.from([8, 0, 16, 0, 16, 1, 1, 0x11, 0]));
   const dht = jpegSegment(0xc4, Buffer.concat([Buffer.from([0x00, 1]), Buffer.alloc(15, 0), Buffer.from([0])]));
@@ -135,8 +146,24 @@ function buildJpeg() {
   const eoi = Buffer.from([0xff, 0xd9]);
   const trailer = Buffer.from(`trailer ${GPS_MARKER}`, 'latin1');
   return {
-    withMetadata: Buffer.concat([soi, app0, app1Exif, dqt, app1Xmp, sof0, dht, sos, scan, eoi, trailer]),
-    expectedClean: Buffer.concat([soi, app0, dqt, sof0, dht, sos, scan, eoi])
+    withMetadata: Buffer.concat([
+      soi,
+      app0,
+      app1Exif,
+      app2Icc,
+      com,
+      dqt,
+      app1Xmp,
+      app13Iptc,
+      app14Adobe,
+      sof0,
+      dht,
+      sos,
+      scan,
+      eoi,
+      trailer
+    ]),
+    expectedClean: Buffer.concat([soi, app0, app2Icc, dqt, sof0, dht, sos, scan, eoi])
   };
 }
 
@@ -170,6 +197,11 @@ function buildPng() {
   const ihdr = pngChunk('IHDR', Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0]));
   const exif = pngChunk('eXIf', Buffer.concat([Buffer.from('MM\0*', 'latin1'), Buffer.from(GPS_MARKER, 'latin1')]));
   const comment = pngChunk('tEXt', Buffer.from('Comment\0photo du chantier', 'latin1'));
+  const author = pngChunk(
+    'zTXt',
+    Buffer.concat([Buffer.from('Author\0\0', 'latin1'), deflateSync(Buffer.from('Awa Kone', 'latin1'))])
+  );
+  const gamma = pngChunk('gAMA', Buffer.from([0, 0, 0xb1, 0x8f]));
   const xmp = pngChunk(
     'iTXt',
     Buffer.from(`XML:com.adobe.xmp\0\0\0\0\0<x:xmpmeta>${GPS_MARKER}</x:xmpmeta>`, 'latin1')
@@ -177,8 +209,8 @@ function buildPng() {
   const idat = pngChunk('IDAT', deflateSync(Buffer.from([0, 255, 0, 0])));
   const iend = pngChunk('IEND', Buffer.alloc(0));
   return {
-    withMetadata: Buffer.concat([signature, ihdr, exif, comment, xmp, idat, iend]),
-    expectedClean: Buffer.concat([signature, ihdr, comment, idat, iend])
+    withMetadata: Buffer.concat([signature, ihdr, gamma, exif, comment, author, xmp, idat, iend]),
+    expectedClean: Buffer.concat([signature, ihdr, gamma, idat, iend])
   };
 }
 
@@ -253,7 +285,7 @@ describe('detectStockFileKind — type lu dans les octets (B5-R2)', () => {
 });
 
 describe('stripImageMetadata — EXIF et position retirés, image lisible (B5-R3)', () => {
-  it('JPEG : segments APP1 (EXIF avec GPS, XMP) retirés, le reste recopié à l’octet près', async () => {
+  it('JPEG : seuls APP0, APP2 (ICC) et les segments d’image restent ; APP1, APP13, APP14 et COM partent', async () => {
     const { withMetadata, expectedClean } = buildJpeg();
     expect(withMetadata.includes(Buffer.from('Exif\0\0', 'latin1'))).toBe(true);
 
@@ -261,6 +293,10 @@ describe('stripImageMetadata — EXIF et position retirés, image lisible (B5-R3
     expect(cleaned.equals(expectedClean)).toBe(true);
     expect(cleaned.includes(Buffer.from('Exif', 'latin1'))).toBe(false);
     expect(cleaned.includes(Buffer.from('GPS', 'latin1'))).toBe(false);
+    expect(cleaned.includes(Buffer.from('Awa Kone', 'latin1'))).toBe(false);
+    expect(cleaned.includes(Buffer.from('Photoshop', 'latin1'))).toBe(false);
+    expect(cleaned.includes(Buffer.from('Adobe', 'latin1'))).toBe(false);
+    expect(cleaned.includes(Buffer.from('ICC_PROFILE', 'latin1'))).toBe(true);
 
     // Lisible : pdf-lib relit les segments jusqu'au SOF et y trouve les dimensions.
     const pdf = await PDFDocument.create();
@@ -283,13 +319,17 @@ describe('stripImageMetadata — EXIF et position retirés, image lisible (B5-R3
     expect(stripImageMetadata(expectedClean, 'jpeg').equals(expectedClean)).toBe(true);
   });
 
-  it('PNG : bloc eXIf et XMP retirés, autres blocs gardés, image décodable', async () => {
+  it('PNG : eXIf et tous les blocs texte (tEXt, zTXt, iTXt) retirés, blocs d’image gardés, image décodable', async () => {
     const { withMetadata, expectedClean } = buildPng();
     const cleaned = stripImageMetadata(withMetadata, 'png');
     expect(cleaned.equals(expectedClean)).toBe(true);
     expect(cleaned.includes(Buffer.from('eXIf', 'latin1'))).toBe(false);
     expect(cleaned.includes(Buffer.from('GPS', 'latin1'))).toBe(false);
-    expect(cleaned.includes(Buffer.from('photo du chantier', 'latin1'))).toBe(true);
+    expect(cleaned.includes(Buffer.from('photo du chantier', 'latin1'))).toBe(false);
+    for (const type of ['tEXt', 'zTXt', 'iTXt']) {
+      expect(cleaned.includes(Buffer.from(type, 'latin1'))).toBe(false);
+    }
+    expect(cleaned.includes(Buffer.from('gAMA', 'latin1'))).toBe(true);
 
     // Décodé entièrement (zlib, filtres) par pdf-lib.
     const pdf = await PDFDocument.create();
@@ -526,8 +566,26 @@ describe('uploadStockAttachment', () => {
       db.stockAttachment.create.mock.invocationCallOrder[0]
     );
     expect(db.$executeRaw).toHaveBeenCalled();
+    // Le résultat s'inscrit sur la clé de l'agence seulement.
+    const update = db.$executeRaw.mock.calls[db.$executeRaw.mock.calls.length - 1];
+    expect((update[0] as TemplateStringsArray).join('?')).toContain('"tenant_id" =');
+    expect(update.slice(1)).toContain(TENANT);
+
+    // Une clé réservée par une autre opération ne se rejoue pas en pièce jointe.
+    db.stockClientRequest.findFirst.mockResolvedValueOnce({
+      operation: 'ISSUE',
+      bodyHash: claimed.bodyHash,
+      createdByUserId: 'user-1',
+      resultType: 'StockMovement',
+      resultId: MOVEMENT_ID
+    });
+    await expect(upload(file, { clientRequestId: REQUEST_ID })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_IDEMPOTENCY_MISMATCH'
+    });
 
     db.stockClientRequest.findFirst.mockResolvedValue({
+      operation: 'ATTACHMENT',
       bodyHash: claimed.bodyHash,
       createdByUserId: 'user-1',
       resultType: 'StockAttachment',
@@ -605,6 +663,32 @@ describe('Retrait (B5-R5)', () => {
       })
     );
     await expect(fs.access(path.join(folder, 'f.jpg'))).rejects.toThrow();
+  });
+
+  it('un fichier qui ne s’efface pas est journalisé en warn avec l’identifiant, sans chemin ; le retrait tient', async () => {
+    // Un dossier à la place du fichier : `unlink` échoue (EISDIR / EPERM), pas ENOENT.
+    const blocked = path.join(tmpRoot, 'uploads', 'stock', TENANT, '2026', 'f.jpg');
+    await fs.rm(blocked, { recursive: true, force: true });
+    await fs.mkdir(blocked, { recursive: true });
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    db.stockAttachment.findFirst.mockResolvedValue(attachmentRow());
+    db.stockAttachment.updateMany.mockResolvedValue({ count: 1 });
+    const within = new Date(CREATED_AT.getTime() + 60_000);
+
+    await expect(removeStockAttachment(TENANT, ctx(), ATTACHMENT_ID, 'Mauvaise photo', within)).resolves.toBeDefined();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [, meta] = warn.mock.calls[0] as unknown as [string, Record<string, unknown>];
+    expect(meta).toEqual({ attachmentId: ATTACHMENT_ID, errorCode: expect.any(String) });
+    expect(JSON.stringify(warn.mock.calls[0])).not.toContain(TENANT);
+    expect(JSON.stringify(warn.mock.calls[0])).not.toContain('f.jpg');
+
+    // Un fichier déjà absent n'est pas une erreur : rien n'est journalisé.
+    warn.mockClear();
+    await fs.rm(blocked, { recursive: true, force: true });
+    await removeStockAttachment(TENANT, ctx(), ATTACHMENT_ID, 'Mauvaise photo', within);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('le dépositaire retire dans les 15 minutes ; une pièce déjà retirée → 409', async () => {

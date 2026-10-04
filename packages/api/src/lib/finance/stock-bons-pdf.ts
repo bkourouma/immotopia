@@ -427,12 +427,12 @@ export function buildCountReportPdfModel(input: CountReportPdfInput): StockPdfMo
       variance === null ? MASKED : formatPdfQuantity(variance)
     ];
     if (ctx.valuesVisible) {
-      cells.push(line.unitCostAtValidation === null ? MASKED : formatPdfUnitCost(line.unitCostAtValidation, currency));
-      cells.push(
-        variance === null || line.unitCostAtValidation === null
-          ? MASKED
-          : formatPdfMoney(variance * line.unitCostAtValidation, currency)
-      );
+      // Un surplus d'inventaire d'ouverture est entré à valeur nulle (A7-R2) :
+      // il s'imprime à 0, comme l'écriture d'ajustement et la vue de l'inventaire.
+      const openingSurplus = input.kind === 'OPENING' && variance !== null && variance > 0;
+      const unitCost = openingSurplus ? 0 : line.unitCostAtValidation;
+      cells.push(unitCost === null ? MASKED : formatPdfUnitCost(unitCost, currency));
+      cells.push(variance === null || unitCost === null ? MASKED : formatPdfMoney(variance * unitCost, currency));
     }
     cells.push(line.movementsSinceCapture === null ? 'non mesuré' : String(line.movementsSinceCapture));
     return cells;

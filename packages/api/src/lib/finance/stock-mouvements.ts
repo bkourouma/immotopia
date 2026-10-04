@@ -86,6 +86,8 @@ import {
   isUniqueViolation,
   loadBlindLocationIds,
   lockStockBalancesTx,
+  lockStockInvoiceTx,
+  lockStockScrapMonthTx,
   lockStockSiteTx,
   maskBalanceView,
   maskMovementView,
@@ -707,7 +709,8 @@ export interface StockWriteRun<R> {
  * Exécute une écriture du stock dans UNE transaction, idempotente (B3-R2) :
  *
  * - clé déjà présente, même utilisateur et même corps → le résultat d'origine
- *   (`replay`), sans rien réécrire ; autre corps ou autre utilisateur →
+ *   (`replay`), sans rien réécrire ; autre corps, autre utilisateur ou autre
+ *   opération →
  *   `409 STOCK_IDEMPOTENCY_MISMATCH` (levé par `findClientRequestReplay`) ;
  * - sinon la clé est la PREMIÈRE écriture de la transaction ; un rejeu
  *   concurrent bute sur l'unicité (`P2002`), sa transaction est annulée, et
@@ -729,7 +732,13 @@ export async function runStockWrite<R>(input: {
   const clientRequestId = input.clientRequestId ?? null;
   const bodyHash = clientRequestId ? hashRequestBody(input.body) : null;
   const findReplay = () =>
-    findClientRequestReplay(input.tenantId, clientRequestId as string, input.ctx.userId, bodyHash as string);
+    findClientRequestReplay(
+      input.tenantId,
+      clientRequestId as string,
+      input.ctx.userId,
+      bodyHash as string,
+      input.operation
+    );
 
   if (clientRequestId) {
     const found = await findReplay();
@@ -751,7 +760,7 @@ export async function runStockWrite<R>(input: {
         : null;
       const run = await input.execute(tx);
       if (keyId) {
-        await completeClientRequestTx(tx, keyId, run.resultType, run.resultId);
+        await completeClientRequestTx(tx, keyId, run.resultType, run.resultId, input.tenantId);
       }
       return run.result;
     }, WRITE_TRANSACTION_OPTIONS);
@@ -941,6 +950,12 @@ async function lastReceiptUnitCostTx(
  * Prix d'une ligne reçue, pour TOUT appelant (A8-R3) : prix déclaré, ligne de
  * facture, coût moyen du lieu, dernier prix de l'agence, zéro. Les lignes sont
  * traitées EN SÉQUENCE : deux lignes du même article se cumulent dans l'ordre.
+ *
+ * Le coût moyen n'est retenu que si le lieu a du stock ET une valeur > 0 : un
+ * lieu dont la quantité est positive mais la valeur nulle (inventaire
+ * d'ouverture à valeur nulle, par exemple) donnerait un coût moyen de zéro et
+ * une réception valorisée à 0 sans alerte. On passe alors au dernier prix de
+ * réception, puis à `NONE` (alerte `RECEIPT_UNVALUED`).
  */
 async function priceReceiptLinesTx(
   tx: PrismaTransactionClient,
@@ -962,7 +977,7 @@ async function priceReceiptLinesTx(
       [unitCost, valuationSource] = [roundQuantity(Number(line.unitCost)), 'DECLARED'];
     } else if (invoiceLine && invoiceLine.unitPrice !== null) {
       [unitCost, valuationSource] = [roundQuantity(invoiceLine.unitPrice), 'INVOICE_LINE'];
-    } else if (previous.quantity > 0) {
+    } else if (previous.quantity > 0 && previous.value > 0) {
       [unitCost, valuationSource] = [
         roundQuantity(averageUnitCostOf(previous.quantity, previous.value)),
         'AVERAGE_COST'
@@ -1205,6 +1220,9 @@ export async function recordStockReceiptTx(
 
   const location = await requireActiveLocationTx(tx, tenantId, params.locationId);
   const site = await lockSiteForEntryTx(tx, tenantId, location);
+  // A10-R2 : `stock-site`, puis `stock-invoice` (les contrôles A8-R2 cumulent
+  // sur tous les lieux de la facture), puis les soldes.
+  await lockStockInvoiceTx(tx, tenantId, params.supplierInvoiceId);
   await lockStockBalancesTx(
     tx,
     tenantId,
@@ -1984,6 +2002,10 @@ export async function recordStockSupplierReturnTx(
   const quantity = requirePositiveQuantity(params.quantity, 'La quantité retournée doit être strictement positive.');
   const reason = requireReason('SUPPLIER_RETURN', params.reasonCode, params.reason);
 
+  // A10-R2 : `stock-invoice` avant le solde — le plafond « reçu − déjà
+  // retourné » cumule sur tous les lieux de la facture, que le verrou du seul
+  // couple (article, lieu) ne sérialise pas.
+  await lockStockInvoiceTx(tx, tenantId, params.supplierInvoiceId);
   await lockStockBalancesTx(tx, tenantId, [{ itemId: params.itemId, locationId: params.locationId }]);
 
   const location = await requireActiveLocationTx(tx, tenantId, params.locationId);
@@ -2233,6 +2255,9 @@ export async function recordStockScrapTx(
   );
   const reason = requireReason('SCRAP', params.reasonCode, params.reason);
 
+  // A10-R2 : le cumul mensuel du lieu (B7-R1) avant le solde — deux rebuts
+  // d'articles différents sur le même lieu ne partagent aucun verrou de solde.
+  await lockStockScrapMonthTx(tx, tenantId, params.locationId, toYearMonthUtc(params.scrapDate));
   await lockStockBalancesTx(tx, tenantId, [{ itemId: params.itemId, locationId: params.locationId }]);
 
   const location = await requireActiveLocationTx(tx, tenantId, params.locationId);

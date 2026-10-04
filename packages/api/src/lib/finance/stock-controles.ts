@@ -15,9 +15,19 @@
  *   1. le verrou de chantier `stock-site` (`lockStockSiteTx`), quand
  *      l'opération fait entrer de la marchandise sur le lieu d'un chantier ou
  *      clôture un chantier ;
+ *   1 bis. le verrou de facture `stock-invoice` (`lockStockInvoiceTx`), par la
+ *      réception et le retour fournisseur : il sérialise le plafond « reçu −
+ *      déjà retourné » (A6) et les contrôles de réception (A8-R2), qui
+ *      cumulent sur TOUS les lieux de la facture ;
+ *   1 ter. le verrou de cumul mensuel des rebuts `stock-scrap-month`
+ *      (`lockStockScrapMonthTx`), par le rebut : il sérialise la lecture du
+ *      cumul du mois du lieu (B7-R1, A6-R6) ;
  *   2. les verrous de solde `stock-balance` (`lockStockBalancesTx`), triés ;
  *   3. le verrou de numérotation `stock-slip`, pris par `createStockSlipTx`
  *      (`stock-bons.ts`), en dernier.
+ *
+ * Une opération ne prend jamais à la fois `stock-invoice` et
+ * `stock-scrap-month` : leur ordre relatif est sans objet.
  *
  * Aucun verrou après une écriture de solde. Les verrous passent par
  * `$executeRaw` et non `$queryRaw` : `pg_advisory_xact_lock` renvoie `void`,
@@ -236,6 +246,42 @@ export async function lockStockSiteTx(tx: PrismaTransactionClient, siteId: strin
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('stock-site'), hashtext(${siteId}))`;
 }
 
+/**
+ * Verrou de facture fournisseur : `pg_advisory_xact_lock(hashtext('stock-invoice'),
+ * hashtext(tenantId || ':' || invoiceId))`. Pris par la réception et le retour
+ * fournisseur APRÈS `stock-site` et AVANT les verrous de solde (A10-R2) : les
+ * verrous de solde ne couvrent qu'un couple (article, lieu), alors que le
+ * plafond « reçu − déjà retourné » et les contrôles `RECEIPT_REPEATED` /
+ * `RECEIPT_OVER_INVOICE` cumulent sur tous les lieux de la facture. Deux
+ * retours (ou deux réceptions) simultanés de la même facture passent ainsi
+ * l'un après l'autre et le second lit ce que le premier a écrit.
+ */
+export async function lockStockInvoiceTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  invoiceId: string
+): Promise<void> {
+  const key = `${tenantId}:${invoiceId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('stock-invoice'), hashtext(${key}))`;
+}
+
+/**
+ * Verrou du cumul mensuel des rebuts d'un lieu :
+ * `pg_advisory_xact_lock(hashtext('stock-scrap-month'), hashtext(tenantId || ':' || locationId || ':' || yyyyMm))`.
+ * Pris par le rebut AVANT les verrous de solde (A10-R2) : deux rebuts
+ * simultanés d'articles différents sur le même lieu ne partagent aucun verrou
+ * de solde, et chacun manquerait le rebut de l'autre dans le cumul du mois.
+ */
+export async function lockStockScrapMonthTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  locationId: string,
+  yyyyMm: string
+): Promise<void> {
+  const key = `${tenantId}:${locationId}:${yyyyMm}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('stock-scrap-month'), hashtext(${key}))`;
+}
+
 /** La clé d'un verrou de solde : `tenantId:itemId:locationId`. */
 export function stockBalanceLockKey(tenantId: string, itemId: string, locationId: string): string {
   return `${tenantId}:${itemId}:${locationId}`;
@@ -389,37 +435,57 @@ export async function claimClientRequestTx(
  * SQL, parce que la garde Prisma exige l'agence dans tout `where` et que la
  * signature du contrat (§3.3) ne la porte pas — l'identifiant vient de
  * `claimClientRequestTx`, jamais d'une requête.
+ *
+ * `tenantId` (facultatif, pour ne pas casser les appelants existants) ajoute
+ * `AND "tenant_id" = tenantId` : défense en profondeur, une clé d'une autre
+ * agence n'est jamais touchée. Tout nouvel appelant le passe.
  */
 export async function completeClientRequestTx(
   tx: PrismaTransactionClient,
   keyId: string,
   resultType: string,
-  resultId: string
+  resultId: string,
+  tenantId?: string
 ): Promise<void> {
+  if (tenantId !== undefined) {
+    await tx.$executeRaw`UPDATE "stock_client_requests" SET "result_type" = ${resultType}, "result_id" = ${resultId} WHERE "id" = ${keyId}::uuid AND "tenant_id" = ${tenantId}`;
+    return;
+  }
   await tx.$executeRaw`UPDATE "stock_client_requests" SET "result_type" = ${resultType}, "result_id" = ${resultId} WHERE "id" = ${keyId}::uuid`;
 }
 
 /**
  * Relit une clé d'idempotence avant (ou après l'échec d') une écriture :
- * `null` si elle n'existe pas ; le résultat d'origine si même utilisateur et
- * même corps ; `409 STOCK_IDEMPOTENCY_MISMATCH` si l'empreinte ou
- * l'utilisateur diffèrent. Le contrôleur relit ensuite le résultat et le
- * MASQUE pour l'appelant (§8.1, §8.2 à l'instant du rejeu).
+ * `null` si elle n'existe pas ; le résultat d'origine si même utilisateur,
+ * même corps et même opération ; `409 STOCK_IDEMPOTENCY_MISMATCH` si
+ * l'empreinte, l'utilisateur ou l'opération diffèrent — la même clé envoyée
+ * à une autre route ne rejoue jamais le résultat d'une autre opération.
+ * `operation` est facultatif pour ne pas casser les appelants existants ;
+ * tout nouvel appelant le passe. Le contrôleur relit ensuite le résultat et
+ * le MASQUE pour l'appelant (§8.1, §8.2 à l'instant du rejeu).
  */
 export async function findClientRequestReplay(
   tenantId: string,
   clientRequestId: string,
   userId: string,
-  bodyHash: string
+  bodyHash: string,
+  operation?: StockClientOperation
 ): Promise<{ resultType: string; resultId: string } | null> {
   const row = await prisma.stockClientRequest.findFirst({
     where: { tenantId, clientRequestId },
-    select: { bodyHash: true, createdByUserId: true, resultType: true, resultId: true }
+    select: { operation: true, bodyHash: true, createdByUserId: true, resultType: true, resultId: true }
   });
   if (!row) {
     return null;
   }
-  if (row.createdByUserId !== userId || row.bodyHash !== bodyHash || !row.resultType || !row.resultId) {
+  const operationDiffers = operation !== undefined && row.operation !== operation;
+  if (
+    operationDiffers ||
+    row.createdByUserId !== userId ||
+    row.bodyHash !== bodyHash ||
+    !row.resultType ||
+    !row.resultId
+  ) {
     throw stockError(
       409,
       ErrorCode.STOCK_IDEMPOTENCY_MISMATCH,

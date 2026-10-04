@@ -181,7 +181,10 @@ d'API ou d'isolation). « Compteur » désigne l'auteur d'une ligne de comptage.
 - **A1-R2.** La validation est refusée (`403`, code `STOCK_COUNT_SELF_VALIDATION_FORBIDDEN`)
   quand le validateur est l'un des compteurs.
 - **A1-R3. Dérogation.** Elle est permise seulement quand **aucun autre membre
-  actif** de l'agence ne détient `STOCK_COUNT_VALIDATE`. Le test interroge la
+  actif** de l'agence ne détient `STOCK_COUNT_VALIDATE` **sans être lui-même
+  compteur de cet inventaire** (révision 3 : si tous les validateurs ont compté,
+  l'un d'eux valide par dérogation, sinon l'inventaire resterait bloqué). Un
+  inventaire sans ligne a pour compteur la personne qui a clos son comptage. Le test interroge la
   **base**, jamais `getUserPermissions` (cache de 5 minutes par instance, §5) :
   existe-t-il un utilisateur autre que l'appelant avec `Membership.status =
 ACTIVE` dans l'agence, `User.isActive = true` (`prisma/schema.prisma:461`),
@@ -267,7 +270,11 @@ STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED` ; avec un motif, alors
   avoir écarté des lignes, A2-R7). Les routes de lecture ne révèlent jamais les
   attendus d'un inventaire abandonné ; en revanche l'événement d'audit
   `STOCK_COUNT_CANCELLED` porte, **ligne par ligne, l'attendu figé et le
-  compté** (le journal d'activité n'est lisible qu'avec `TENANT_AUDIT_VIEW`), et
+  compté**. **Exception (révision 3)** : un inventaire `OPENING` ou `CLOSING` en
+  `COUNTED` s'abandonne (mêmes droit, motif, audit et alerte), puisqu'il ne
+  s'écarte pas (A2-R7) : si un mouvement postérieur empêche sa validation
+  (`STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS`), il s'abandonne et se recompte. Le
+  journal d'activité n'est lisible qu'avec `TENANT_AUDIT_VIEW`, et
   l'abandon d'un inventaire qui a **au moins une ligne** lève l'alerte
   d'information `COUNT_CANCELLED` (B7). Raison : le validateur voit pendant le
   comptage les quantités comptées et les soldes ; abandonner un comptage qui
@@ -759,10 +766,15 @@ contrôle de quantité par ligne).
   consultatif de transaction par couple (article, lieu) :
   `pg_advisory_xact_lock(hashtext('stock-balance'), hashtext(tenantId || ':' || itemId || ':' || locationId))`,
   par `$executeRaw` (piège documenté `src/lib/finance/cash.ts:150-161`).
-- **A10-R2. Ordre des verrous, toujours le même** (exclut l'interblocage) :
+- **A10-R2. Ordre des verrous, toujours le même** (exclut l'interblocage) : 0. le verrou de la ligne d'inventaire (`stock_counts` en `FOR UPDATE`) pour
+  toute opération d'inventaire (révision 3), statut et lignes relus après lui ;
   1. le verrou de chantier `stock-site:<siteId>` (A7-R3 bis), quand
      l'opération fait entrer de la marchandise sur le lieu d'un chantier ou
      clôture un chantier ;
+     1 bis. le verrou de facture `stock-invoice` (réception et retour
+     fournisseur, révision 3 : plafond « reçu − déjà retourné » et contrôles de
+     réception sérialisés) ; 1 ter. le verrou du cumul mensuel des rebuts
+     `stock-scrap-month` (agence, lieu, mois) ;
   2. les verrous de solde `stock-balance` de tous les couples (article, lieu)
      de l'opération, **triés** par ordre lexicographique de
      `tenantId:itemId:locationId` (transfert, réception et sortie multi-lignes,
@@ -1040,9 +1052,12 @@ STOCK_COUNT_WRONG_STATUS` (le numéro naît à la validation) ; celui d'un
   (`src/middleware/uploads-access-middleware.ts:63`), relu par
   `privateUploadPath` / `readPrivateUpload` / `sendPrivateFile`
   (`src/lib/files/private-files.ts:53, 75, 102`) après contrôle de l'agence.
-- **B5-R3. Pas de géolocalisation** : les blocs EXIF (dont la position GPS) sont
-  retirés des JPEG (segments APP1), PNG (`eXIf`) et WebP (`EXIF`) **avant**
-  écriture, par un filtre d'octets sans dépendance nouvelle.
+- **B5-R3. Pas de géolocalisation** : les métadonnées (dont la position GPS) sont
+  retirées **avant** écriture : un JPEG ne garde que APP0, APP2 (profil ICC) et
+  les segments d'image (APP1, APP13, COM et autres APPn retirés) ; un PNG perd
+  `eXIf` et tous les blocs texte (`tEXt`, `zTXt`, `iTXt`) ; un WebP perd `EXIF`
+  et `XMP ` (drapeaux VP8X et taille RIFF recalculés), par un filtre d'octets sans dépendance nouvelle. Les PDF sont
+  stockés tels quels : leurs métadonnées (auteur, logiciel) ne sont pas retirées.
 - **B5-R4. Preuve** : empreinte SHA-256 du fichier **stocké**, taille, heure
   serveur (`createdAt`), auteur (`uploadedByUserId`, obligatoire). L'empreinte est
   rendue par l'API et imprimée sur le bon quand la pièce est un `SIGNED_SLIP`.
@@ -1276,7 +1291,7 @@ plus un total ; période de 1 à 24 mois) :
 | Lignes non comptées                                 | Nombre de lignes non comptées (A2-R8) des inventaires validés du mois.                                                                                                                                                                                                                                                                                                               |
 | Part des lignes comptées à l'aveugle                | Lignes avec `countedBlind = true` ÷ lignes comptées après le lot, des inventaires validés du mois (A2-R9).                                                                                                                                                                                                                                                                           |
 | Part des sorties avec preneur identifié             | Sorties avec `takerId` ÷ sorties du mois.                                                                                                                                                                                                                                                                                                                                            |
-| Part des inventaires validés par une autre personne | Inventaires validés avec `selfValidated = false` ÷ inventaires validés du mois.                                                                                                                                                                                                                                                                                                      |
+| Part des inventaires validés par une autre personne | Inventaires validés à valeurs figées avec `selfValidated = false` ÷ inventaires validés à valeurs figées du mois (ceux d'avant le lot sont exclus).                                                                                                                                                                                                                                  |
 | Rebuts du mois                                      | Valeur des rebuts du mois, et part de la valeur sortie du lieu (rebuts ÷ (sorties + rebuts + retours)) (A6-R6).                                                                                                                                                                                                                                                                      |
 | Délai moyen de saisie                               | Moyenne de `entryLagDays` des réceptions, sorties, transferts (moitié sortante), rebuts et retours du mois ; plus la part saisie le jour même.                                                                                                                                                                                                                                       |
 

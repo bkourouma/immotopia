@@ -13,10 +13,17 @@
  * STOCK_COUNT_VALIDATE) et un test épingle la forme exacte de la requête ; la
  * preuve en base réelle est dans `__tests__/integration/stock-cloture-concurrence.test.ts`.
  *
+ * Verrou de l'inventaire : `$queryRaw … FOR UPDATE` est noté dans `store.locks`
+ * (`stock-count:<id>`), et `onCountLock` simule une transaction concurrente
+ * VALIDÉE pendant l'attente du verrou : ce que l'opération lit ensuite doit
+ * être l'état d'après. `clock_timestamp()` rend `store.dbClock`.
+ *
  * Cas inversés délibérément (spec §11) : l'ancien test « l'ajustement ramène
  * au compté » attendait une entrée de 10 et un solde de 90 ; l'ajustement
  * applique désormais l'ÉCART au solde courant (A3) : diminution de 10, solde 70.
  */
+
+import { randomUUID } from 'crypto';
 
 const postDocumentEntryTx = jest.fn();
 
@@ -189,10 +196,30 @@ const lineFields = (data: Row): Row => ({
 
 const userQueries: Row[] = [];
 
+/** Actions jouées une fois, chacune au prochain verrou d'inventaire (transaction concurrente validée). */
+const onCountLock: Array<(countId: string) => void> = [];
+/** L'horloge de la base (`clock_timestamp()`) ; `null` = l'heure courante. */
+let dbClock: Date | null = null;
+
 const mockPrisma: Row = {
   $executeRaw: jest.fn(async (_strings: TemplateStringsArray, ...values: any[]) => {
     store.locks.push(values.map(String).join(':'));
     return 0;
+  }),
+
+  $queryRaw: jest.fn(async (strings: TemplateStringsArray, ...values: any[]) => {
+    const sql = strings.join('?');
+    if (sql.includes('clock_timestamp()')) {
+      return [{ now: dbClock ?? new Date() }];
+    }
+    if (sql.includes('FOR UPDATE') && sql.includes('"stock_counts"')) {
+      const [countId, tenantId] = values;
+      store.locks.push(`stock-count:${countId}`);
+      const hook = onCountLock.shift();
+      if (hook) hook(countId);
+      return store.counts.filter(c => c.id === countId && c.tenantId === tenantId).map(c => ({ id: c.id }));
+    }
+    throw new Error(`$queryRaw inattendu : ${sql}`);
   }),
 
   stockItem: {
@@ -274,7 +301,8 @@ const mockPrisma: Row = {
         .map(enrichCount)
     ),
     create: jest.fn(async ({ data }: Row) => {
-      const created = countFields({ id: nextId('inventaire'), ...data });
+      // Un vrai UUID : le verrou de l'inventaire refuse un identifiant mal formé.
+      const created = countFields({ id: randomUUID(), ...data });
       store.counts.push(created);
       return created;
     }),
@@ -360,7 +388,7 @@ const mockPrisma: Row = {
       return (
         store.users.find(
           u =>
-            u.id !== where.id.not &&
+            (where.id.notIn ? !where.id.notIn.includes(u.id) : u.id !== where.id.not) &&
             u.isActive !== false &&
             u.globalRole !== 'SUPER_ADMIN' &&
             (u.memberships ?? []).some((m: Row) => m.tenantId === tenantId && m.status === 'ACTIVE') &&
@@ -427,6 +455,8 @@ import { sumSiteActualCost } from '../../src/lib/finance/site-cost';
 import type { StockCallerContext } from '../../src/lib/finance/types-040-controle';
 
 const TENANT_ID = 'tenant-1';
+/** Inventaire d'avant le lot, posé à la main dans le magasin. */
+const ANCIEN = '00000000-0000-4000-8000-0000000000a1';
 const AWA = 'user-awa';
 const KOFFI = 'user-koffi';
 const MOUSSA = 'user-moussa';
@@ -611,6 +641,8 @@ beforeEach(() => {
   }
   store.seq = 0;
   userQueries.length = 0;
+  onCountLock.length = 0;
+  dbClock = null;
   permissionsByUser.clear();
   seedUser(AWA, 'Awa Koné', { validator: true });
   seedUser(KOFFI, 'Koffi Yao', { validator: true });
@@ -833,8 +865,9 @@ describe('A2 — inventaire à l’aveugle', () => {
 
     expect(adjustments()).toHaveLength(0);
     expect(Number(soldeDe(magasin, ciment)!.quantity)).toBe(100);
+    // Ensembles disjoints : la ligne non comptée écartée n'est pas aussi une « ligne écartée ».
     expect(store.alerts.find(a => a.kind === 'COUNT_LINE_SET_ASIDE')!.details).toEqual({
-      setAsideLines: 1,
+      setAsideLines: 0,
       uncountedLines: 1
     });
     const view = await getStockCountView(TENANT_ID, count.id, ctxFor(AWA));
@@ -914,6 +947,10 @@ describe('A2 — inventaire à l’aveugle', () => {
     );
     const audit = store.audits.find(a => a.actionKey === 'STOCK_COUNT_LINE_SET_ASIDE')!;
     expect(audit.payload.items).toEqual([{ itemId: ciment.id, expectedQuantity: 100, countedQuantity: 92 }]);
+    expect(store.alerts.find(a => a.kind === 'COUNT_LINE_SET_ASIDE')!.details).toEqual({
+      setAsideLines: 1,
+      uncountedLines: 0
+    });
   });
 
   it('A2-12 : la ligne saisie par un détenteur de STOCK_COUNT_VALIDATE porte countedBlind = false', async () => {
@@ -1007,7 +1044,7 @@ describe('A1 — quatre yeux', () => {
     const ciment = seedItem();
     seedBalance(magasin, ciment, 10, 50_000);
     const count = countFields({
-      id: 'ancien',
+      id: ANCIEN,
       tenantId: TENANT_ID,
       locationId: magasin.id,
       countedAt: TODAY,
@@ -1018,13 +1055,13 @@ describe('A1 — quatre yeux', () => {
     store.countLines.push(
       lineFields({
         id: 'ligne-ancienne',
-        countId: 'ancien',
+        countId: ANCIEN,
         itemId: ciment.id,
         expectedQuantity: 10,
         countedQuantity: 10
       })
     );
-    await expect(validate('ancien', AWA)).rejects.toMatchObject({ code: 'STOCK_COUNT_SELF_VALIDATION_FORBIDDEN' });
+    await expect(validate(ANCIEN, AWA)).rejects.toMatchObject({ code: 'STOCK_COUNT_SELF_VALIDATION_FORBIDDEN' });
   });
 
   it('A1-6 : Awa reste compteur après la ressaisie de sa ligne par Moussa', async () => {
@@ -1044,6 +1081,64 @@ describe('A1 — quatre yeux', () => {
     const view = await getStockCountView(TENANT_ID, count.id, ctxFor(AWA));
     expect(view.validation).toEqual({ callerIsCounter: true, selfValidationAllowed: false });
     expect(view.counters).toEqual([{ userId: AWA, label: 'Awa Koné' }]);
+  });
+
+  it('A1-R3 : tous les validateurs actifs ont compté → la dérogation s’ouvre, avec motif', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    const sable = seedItem();
+    seedBalance(magasin, ciment, 10, 50_000);
+    seedBalance(magasin, sable, 10, 20_000);
+    const count = await openCount(magasin, { by: AWA });
+    await setLine(count.id, ciment, 10, AWA);
+    await setLine(count.id, sable, 10, KOFFI);
+    await close(count.id, MOUSSA);
+
+    // Koffi a compté : il ne peut pas valider, il ne ferme donc pas la dérogation d'Awa.
+    const view = await getStockCountView(TENANT_ID, count.id, ctxFor(AWA));
+    expect(view.validation).toEqual({ callerIsCounter: true, selfValidationAllowed: true });
+    await expect(validate(count.id, AWA)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED'
+    });
+    await expect(validate(count.id, AWA, 'Les deux responsables ont compté ce jour-là')).resolves.toMatchObject({
+      status: 'VALIDATED',
+      selfValidated: true
+    });
+    expect(store.audits.map(a => a.actionKey)).toContain('STOCK_COUNT_SELF_VALIDATED');
+    expect(store.alerts.map(a => a.kind)).toContain('COUNT_SELF_VALIDATED');
+    expect(userQueries.at(-1)!.id).toEqual({ notIn: expect.arrayContaining([AWA, KOFFI]) });
+  });
+
+  it('A1-R3 : un validateur actif resté hors du comptage interdit toujours la dérogation', async () => {
+    seedUser('user-fanta', 'Fanta Diallo', { validator: true });
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    const sable = seedItem();
+    seedBalance(magasin, ciment, 10, 50_000);
+    seedBalance(magasin, sable, 10, 20_000);
+    const count = await openCount(magasin, { by: AWA });
+    await setLine(count.id, ciment, 10, AWA);
+    await setLine(count.id, sable, 10, KOFFI);
+    await close(count.id, MOUSSA);
+    await expect(validate(count.id, AWA, 'Les deux responsables ont compté ce jour-là')).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'STOCK_COUNT_SELF_VALIDATION_FORBIDDEN'
+    });
+    await expect(validate(count.id, 'user-fanta')).resolves.toMatchObject({ selfValidated: false });
+  });
+
+  it('un CLOSING vide a pour compteur celui qui a clos son comptage (A1 s’applique)', async () => {
+    const lieu = seedSiteLocation(seedSite());
+    const count = await openCount(lieu, { kind: 'CLOSING', by: AWA });
+    await close(count.id, AWA);
+    await expect(validate(count.id, AWA)).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'STOCK_COUNT_SELF_VALIDATION_FORBIDDEN'
+    });
+    const view = await getStockCountView(TENANT_ID, count.id, ctxFor(AWA));
+    expect(view.validation).toEqual({ callerIsCounter: true, selfValidationAllowed: false });
+    await expect(validate(count.id, KOFFI)).resolves.toMatchObject({ status: 'VALIDATED', selfValidated: false });
   });
 
   it('épingle la requête de la dérogation : lue en base, jamais dans le cache des permissions', async () => {
@@ -1184,7 +1279,7 @@ describe('A4 — justification', () => {
     seedBalance(magasin, ciment, 10, 50_000);
     store.counts.push(
       countFields({
-        id: 'ancien',
+        id: ANCIEN,
         tenantId: TENANT_ID,
         locationId: magasin.id,
         countedAt: TODAY,
@@ -1195,18 +1290,18 @@ describe('A4 — justification', () => {
     store.countLines.push(
       lineFields({
         id: 'ligne-ancienne',
-        countId: 'ancien',
+        countId: ANCIEN,
         itemId: ciment.id,
         expectedQuantity: 10,
         countedQuantity: 8,
         reason: 'casse'
       })
     );
-    await close('ancien');
-    await validate('ancien', KOFFI);
+    await close(ANCIEN);
+    await validate(ANCIEN, KOFFI);
     expect(store.countLines[0].movementsSinceCapture).toBeNull();
     expect(adjustments()[0]).toMatchObject({ reasonCode: null, reason: 'casse', quantity: 2 });
-    const view = await getStockCountView(TENANT_ID, 'ancien', ctxFor(KOFFI));
+    const view = await getStockCountView(TENANT_ID, ANCIEN, ctxFor(KOFFI));
     expect(view.lines[0]).toMatchObject({ justified: true, movementsSinceCapture: null });
   });
 });
@@ -1358,5 +1453,288 @@ describe('listStockCountViews', () => {
   it('refuse un inventaire d’une autre agence (404)', async () => {
     const count = await openCount(seedLocation());
     await expect(getStockCountView('tenant-2', count.id, ctxFor(KOFFI))).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Verrou de l'inventaire et relecture après le verrou (A10-R2)
+// ---------------------------------------------------------------------------
+
+describe('verrou de l’inventaire — chaque transition relit sous verrou', () => {
+  const countLockIndex = (countId: string) => store.locks.indexOf(`stock-count:${countId}`);
+
+  it('chaque opération qui modifie un inventaire verrouille sa ligne, avant les verrous de solde', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 100, 500_000);
+    const count = await openCount(magasin);
+    const balanceKey = `${TENANT_ID}:${ciment.id}:${magasin.id}`;
+
+    const operations: Array<[string, () => Promise<unknown>]> = [
+      ['saisie', () => setLine(count.id, ciment, 92)],
+      ['clôture', () => close(count.id)],
+      ['justification', () => justify(count.id, ciment)],
+      ['validation', () => validate(count.id)]
+    ];
+    for (const [, run] of operations) {
+      store.locks = [];
+      await run();
+      expect(countLockIndex(count.id)).toBe(0);
+      if (store.locks.includes(balanceKey)) {
+        expect(store.locks.indexOf(balanceKey)).toBeGreaterThan(countLockIndex(count.id));
+      }
+    }
+
+    const second = await openCount(magasin);
+    await setLine(second.id, ciment, 1);
+    for (const run of [
+      () => runTransaction((tx: any) => removeStockCountLineTx(tx, TENANT_ID, second.id, ciment.id, MOUSSA)),
+      () =>
+        runTransaction((tx: any) =>
+          cancelStockCountTx(tx, TENANT_ID, second.id, { reason: 'Comptage interrompu', cancelledByUserId: KOFFI })
+        )
+    ]) {
+      store.locks = [];
+      await run();
+      expect(store.locks[0]).toBe(`stock-count:${second.id}`);
+    }
+
+    const third = await countedInventory(magasin, [[ciment, 90]]);
+    for (const run of [
+      () => setAside(third.id, ciment),
+      () =>
+        runTransaction((tx: any) =>
+          setAsideUncountedStockCountLinesTx(tx, TENANT_ID, third.id, {
+            reason: 'Inventaire tournant',
+            setAsideByUserId: KOFFI
+          })
+        )
+    ]) {
+      store.locks = [];
+      await run();
+      expect(store.locks[0]).toBe(`stock-count:${third.id}`);
+    }
+  });
+
+  it('une validation n’ajuste pas une ligne écartée pendant qu’elle attendait le verrou', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 100, 500_000);
+    const count = await countedInventory(magasin, [[ciment, 92]]);
+    await justify(count.id, ciment);
+
+    // La mise à l'écart concurrente est validée pendant que la validation attend le verrou.
+    onCountLock.push(() => {
+      Object.assign(
+        store.countLines.find(l => l.itemId === ciment.id)!,
+        {
+          setAsideAt: new Date(),
+          setAsideByUserId: AWA,
+          setAsideReason: 'Comptage douteux'
+        }
+      );
+    });
+    await validate(count.id);
+
+    expect(adjustments()).toHaveLength(0);
+    expect(Number(soldeDe(magasin, ciment)!.quantity)).toBe(100);
+    expect(store.counts.find(c => c.id === count.id)).toMatchObject({
+      status: 'VALIDATED',
+      setAsideVarianceValue: 40_000
+    });
+  });
+
+  it('une ressaisie ne modifie plus une ligne après la clôture du comptage', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 100, 500_000);
+    const count = await openCount(magasin);
+    await setLine(count.id, ciment, 92);
+
+    // La clôture concurrente est validée pendant que la ressaisie attend le verrou.
+    onCountLock.push(countId => {
+      Object.assign(
+        store.counts.find(c => c.id === countId)!,
+        { status: 'COUNTED', closedAt: new Date() }
+      );
+    });
+    await expect(setLine(count.id, ciment, 80)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_COUNT_WRONG_STATUS'
+    });
+    expect(store.countLines.find(l => l.itemId === ciment.id)!.countedQuantity).toBe(92);
+  });
+
+  it('un identifiant mal formé ou d’une autre agence répond 404, sans rien écrire', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    const count = await openCount(magasin);
+    await expect(setLine('pas-un-uuid', ciment, 1)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      runTransaction((tx: any) =>
+        setStockCountLineTx(tx, 'tenant-2', count.id, {
+          itemId: ciment.id,
+          countedQuantity: 1,
+          countedByUserId: MOUSSA
+        })
+      )
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(store.countLines).toHaveLength(0);
+  });
+
+  it('la saisie lit l’attendu sous le verrou du solde et le date à l’horloge de la base', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 100, 500_000);
+    const count = await openCount(magasin);
+    dbClock = new Date('2026-10-04T08:00:00.000Z');
+
+    store.locks = [];
+    await setLine(count.id, ciment, 92);
+
+    expect(store.locks).toEqual([`stock-count:${count.id}`, `${TENANT_ID}:${ciment.id}:${magasin.id}`]);
+    expect(store.countLines[0]).toMatchObject({
+      expectedQuantity: 100,
+      expectedCapturedAt: dbClock,
+      countedAtServer: dbClock
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ouvertures simultanées, mise à l'écart d'un OPENING/CLOSING, valeurs non figées
+// ---------------------------------------------------------------------------
+
+describe('cas limites relevés en relecture', () => {
+  it('deux ouvertures simultanées : le P2002 de l’index unique répond STOCK_COUNT_ALREADY_OPEN', async () => {
+    const magasin = seedLocation();
+    mockPrisma.stockCount.create.mockRejectedValueOnce(
+      Object.assign(new Error('unique'), { code: 'P2002', meta: { target: 'stock_counts_one_open_per_location' } })
+    );
+    await expect(openCount(magasin)).rejects.toMatchObject({ statusCode: 409, code: 'STOCK_COUNT_ALREADY_OPEN' });
+  });
+
+  it('deux OPENING simultanés : le P2002 de l’index d’ouverture répond STOCK_OPENING_COUNT_EXISTS', async () => {
+    const lieu = seedSiteLocation(seedSite({ stockEnabledAt: TODAY }));
+    mockPrisma.stockCount.create.mockRejectedValueOnce(
+      Object.assign(new Error('unique'), { code: 'P2002', meta: { target: 'stock_counts_one_opening_per_location' } })
+    );
+    await expect(openCount(lieu, { kind: 'OPENING' })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_OPENING_COUNT_EXISTS'
+    });
+  });
+
+  it('une ligne d’un OPENING ou d’un CLOSING ne s’écarte pas, ni seule ni avec les non comptés', async () => {
+    const message =
+      "Un inventaire d'ouverture ou de clôture se compte en entier : justifiez l'écart, ou abandonnez l'inventaire et recomptez.";
+    for (const kind of ['OPENING', 'CLOSING']) {
+      const lieu = seedSiteLocation(seedSite({ stockEnabledAt: TODAY }));
+      const ciment = seedItem({ label: 'Ciment' });
+      seedBalance(lieu, ciment, 10, 50_000);
+      const count = await countedInventory(lieu, [[ciment, 8]], kind);
+
+      await expect(setAside(count.id, ciment)).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'STOCK_COUNT_INCOMPLETE',
+        message,
+        data: { items: [{ itemId: ciment.id, itemLabel: 'Ciment' }] }
+      });
+      await expect(
+        runTransaction((tx: any) =>
+          setAsideUncountedStockCountLinesTx(tx, TENANT_ID, count.id, {
+            reason: 'Inventaire tournant',
+            setAsideByUserId: KOFFI
+          })
+        )
+      ).rejects.toMatchObject({ statusCode: 409, code: 'STOCK_COUNT_INCOMPLETE', message });
+      expect(store.countLines.find(l => l.countId === count.id)!.setAsideAt).toBeNull();
+    }
+  });
+
+  it('un inventaire validé avant le lot : aucune valeur recalculée au coût moyen courant', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 100, 500_000);
+    store.counts.push(
+      countFields({
+        id: ANCIEN,
+        tenantId: TENANT_ID,
+        locationId: magasin.id,
+        countedAt: TODAY,
+        status: 'VALIDATED',
+        validatedAt: TODAY,
+        validatedByUserId: KOFFI,
+        createdByUserId: MOUSSA
+      })
+    );
+    store.countLines.push(
+      lineFields({
+        id: 'ligne-ancienne',
+        countId: ANCIEN,
+        itemId: ciment.id,
+        expectedQuantity: 100,
+        countedQuantity: 92,
+        reason: 'casse'
+      })
+    );
+
+    const view = await getStockCountView(TENANT_ID, ANCIEN, ctxFor(KOFFI));
+    expect(view).toMatchObject({
+      countedValue: null,
+      varianceValueGross: null,
+      varianceValueNet: null,
+      setAsideVarianceValue: null
+    });
+    expect(view.lines[0]).toMatchObject({ variance: -8, varianceValue: null });
+  });
+});
+
+describe('abandon d’un OPENING ou d’un CLOSING clos (arbitrage du Pilote, dérogation à A2-R6)', () => {
+  const cancel = (countId: string, reason: string) =>
+    runTransaction((tx: any) => cancelStockCountTx(tx, TENANT_ID, countId, { reason, cancelledByUserId: KOFFI }));
+
+  it('un CLOSING COUNTED s’abandonne avec un motif : CANCELLED, audit critique, alerte', async () => {
+    const lieu = seedSiteLocation(seedSite());
+    const ciment = seedItem();
+    seedBalance(lieu, ciment, 10, 50_000);
+    const count = await countedInventory(lieu, [[ciment, 5]], 'CLOSING');
+    moveOut(lieu, ciment, 8);
+    await justify(count.id, ciment);
+    await expect(validate(count.id)).rejects.toMatchObject({
+      code: 'STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS',
+      message: expect.stringContaining('abandonnez cet inventaire')
+    });
+
+    await expect(cancel(count.id, 'Sortie après comptage')).resolves.toEqual({ id: count.id, status: 'CANCELLED' });
+    expect(store.counts.find(c => c.id === count.id)).toMatchObject({
+      status: 'CANCELLED',
+      cancelReason: 'Sortie après comptage'
+    });
+    const audit = store.audits.find(a => a.actionKey === 'STOCK_COUNT_CANCELLED')!;
+    expect(audit.payload.lines).toEqual([{ itemId: ciment.id, expectedQuantity: 10, countedQuantity: 5 }]);
+    expect(store.alerts.map(a => a.kind)).toContain('COUNT_CANCELLED');
+    // Le lieu est libéré : on recompte.
+    await expect(openCount(lieu, { kind: 'CLOSING' })).resolves.toMatchObject({ status: 'DRAFT' });
+  });
+
+  it('sans motif → 400, rien ne change', async () => {
+    const lieu = seedSiteLocation(seedSite());
+    const ciment = seedItem();
+    seedBalance(lieu, ciment, 10, 50_000);
+    const count = await countedInventory(lieu, [[ciment, 10]], 'CLOSING');
+    await expect(cancel(count.id, ' ')).rejects.toMatchObject({ statusCode: 400 });
+    expect(store.counts.find(c => c.id === count.id)!.status).toBe('COUNTED');
+  });
+
+  it('un REGULAR COUNTED reste non abandonnable', async () => {
+    const magasin = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 10, 50_000);
+    const count = await countedInventory(magasin, [[ciment, 10]]);
+    await expect(cancel(count.id, 'Erreur de comptage')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_COUNT_WRONG_STATUS'
+    });
   });
 });

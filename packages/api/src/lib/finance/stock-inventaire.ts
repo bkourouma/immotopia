@@ -10,8 +10,9 @@
  *     └─ close ─► COUNTED (quantités figées, écarts révélés, à justifier)
  *                    └─ validate ─► VALIDATED (écarts appliqués au solde)
  *   DRAFT ─ cancel ─► CANCELLED (reste aveugle à jamais)
+ *   COUNTED d'un OPENING/CLOSING ─ cancel ─► CANCELLED (dérogation à A2-R6)
  *
- * Pas de retour de COUNTED à DRAFT, pas d'abandon d'un COUNTED : ses écarts
+ * Pas de retour de COUNTED à DRAFT, pas d'abandon d'un COUNTED courant : ses écarts
  * ont été vus, il se valide (au besoin après avoir écarté des lignes).
  *
  * ---------------------------------------------------------------------------
@@ -75,8 +76,13 @@
  * Ordre des verrous (A10-R2) et lecture avant écriture
  * ---------------------------------------------------------------------------
  *
- * Verrous de solde triés (`lockStockBalancesTx`), puis verrou de numérotation
- * (`createStockSlipTx`, en dernier), puis seulement les écritures. En
+ * Chaque opération qui modifie un inventaire existant ou ses lignes verrouille
+ * d'abord SA LIGNE `stock_counts` (`lockCountRowTx`, `SELECT … FOR UPDATE`),
+ * puis relit statut et lignes : deux transitions du même inventaire (saisie
+ * et clôture, mise à l'écart et validation…) se suivent au lieu de se croiser.
+ * Ordre complet : clé d'idempotence (posée par l'appelant), ligne de
+ * l'inventaire, verrous de solde triés (`lockStockBalancesTx`), puis verrou de
+ * numérotation (`createStockSlipTx`, en dernier), puis seulement les écritures. En
  * PostgreSQL une commande en échec condamne toute la transaction : tout ce qui
  * peut refuser une opération est vérifié AVANT la première écriture, et les
  * ajustements s'écrivent en séquence, jamais en `Promise.all`.
@@ -99,6 +105,7 @@ import {
   assertMovementDateAllowed,
   assertReasonForContext,
   isOpeningCountSuggested,
+  isUniqueViolation,
   loadItemsToRecount,
   lockStockBalancesTx,
   maskValue,
@@ -324,6 +331,7 @@ const COUNT_SELECT = {
   createdByUserId: true,
   createdAt: true,
   closedAt: true,
+  closedByUserId: true,
   validatedAt: true,
   cancelledAt: true,
   cancelReason: true,
@@ -376,6 +384,7 @@ interface CountRow {
   createdByUserId: string;
   createdAt: Date;
   closedAt: Date | null;
+  closedByUserId: string | null;
   validatedAt: Date | null;
   cancelledAt: Date | null;
   cancelReason: string | null;
@@ -441,6 +450,40 @@ async function loadCountHeadTx(
   return row;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Verrouille la ligne `stock_counts` de l'inventaire (`SELECT … FOR UPDATE`,
+ * filtrée par `id` ET `tenant_id`) jusqu'à la fin de la transaction. Premier
+ * verrou de toute opération qui modifie un inventaire existant ou ses lignes,
+ * avant les verrous de solde (A10-R2) ; l'appelant relit statut et lignes
+ * APRÈS lui. Un identifiant mal formé ou d'une autre agence répond 404, comme
+ * un inventaire inexistant.
+ */
+async function lockCountRowTx(tx: PrismaTransactionClient, tenantId: string, countId: string): Promise<void> {
+  if (typeof countId !== 'string' || !UUID_PATTERN.test(countId)) {
+    throw new NotFoundError('Inventaire introuvable.');
+  }
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"::text AS "id" FROM "stock_counts"
+    WHERE "id" = ${countId}::uuid AND "tenant_id" = ${tenantId}
+    FOR UPDATE`;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new NotFoundError('Inventaire introuvable.');
+  }
+}
+
+/**
+ * L'heure de la BASE (`clock_timestamp()`, l'instant de l'appel et non le début
+ * de la transaction), lue après les verrous : c'est l'horloge à laquelle
+ * `movementsSinceCapture` compare l'heure de figeage de l'attendu.
+ */
+async function readDatabaseClockTx(tx: PrismaTransactionClient): Promise<Date> {
+  const rows = await tx.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS "now"`;
+  const value = Array.isArray(rows) ? rows[0]?.now : undefined;
+  return value instanceof Date ? value : new Date(value ?? Date.now());
+}
+
 // ---------------------------------------------------------------------------
 // Règles sur une ligne
 // ---------------------------------------------------------------------------
@@ -500,12 +543,19 @@ function needsJustification(kind: StockCountKind, line: LineRow, facts: LineFact
 /**
  * Les compteurs effectifs (A1-R1) : `counterUserIds`, plus le créateur si une
  * ligne d'avant le lot (comptée, sans auteur) existe — seule information
- * disponible, rien n'est écrit en base.
+ * disponible, rien n'est écrit en base. Un inventaire SANS LIGNE (clôture d'un
+ * lieu vide, A2-R4) a pour compteur celui qui a clos son comptage : c'est lui
+ * qui atteste le lieu vide, il ne valide donc pas seul son propre constat (A1).
  */
-function effectiveCounterIds(count: Pick<CountRow, 'counterUserIds' | 'createdByUserId' | 'lines'>): string[] {
+function effectiveCounterIds(
+  count: Pick<CountRow, 'counterUserIds' | 'createdByUserId' | 'lines'> & { closedByUserId?: string | null }
+): string[] {
   const ids = new Set(count.counterUserIds ?? []);
   if (count.lines.some(line => lineFacts(line).legacy)) {
     ids.add(count.createdByUserId);
+  }
+  if (count.lines.length === 0 && count.closedByUserId) {
+    ids.add(count.closedByUserId);
   }
   return [...ids];
 }
@@ -523,11 +573,22 @@ function itemLabelOf(line: { item?: { label: string } | null }): string {
  * (`Membership.status = ACTIVE`, `User.isActive`, hors personnel de la
  * plateforme) dont un rôle de cette agence porte STOCK_COUNT_VALIDATE.
  * Lecture en base, jamais `getUserPermissions` (cache de 5 minutes, §5).
+ *
+ * `excludedUserIds` (les compteurs de l'inventaire) sont écartés eux aussi :
+ * un validateur qui a compté ne peut pas valider (A1-R2), il ne compte donc
+ * pas comme « autre validateur ». Sans cela, un inventaire compté par TOUS
+ * les validateurs actifs ne pourrait plus être validé par personne.
  */
-export async function hasOtherActiveCountValidator(db: PrismaLike, tenantId: string, userId: string): Promise<boolean> {
+export async function hasOtherActiveCountValidator(
+  db: PrismaLike,
+  tenantId: string,
+  userId: string,
+  excludedUserIds: string[] = []
+): Promise<boolean> {
+  const excluded = [...new Set([userId, ...excludedUserIds])];
   const other = await db.user.findFirst({
     where: {
-      id: { not: userId },
+      id: excluded.length === 1 ? { not: userId } : { notIn: excluded },
       isActive: true,
       globalRole: { not: 'SUPER_ADMIN' },
       memberships: { some: { tenantId, status: 'ACTIVE' } },
@@ -613,6 +674,57 @@ async function assertKindAllowedTx(
   }
 }
 
+/** Vrai si le `P2002` vient de l'index unique partiel « un OPENING par lieu ». */
+function isOpeningIndexViolation(error: unknown): boolean {
+  const target = (error as { meta?: { target?: unknown } })?.meta?.target;
+  const text = Array.isArray(target) ? target.join(',') : String(target ?? '');
+  return text.includes('one_opening_per_location');
+}
+
+/**
+ * Insère l'inventaire. Deux ouvertures simultanées passent toutes deux les
+ * lectures préalables ; la seconde bute sur un index unique partiel (`P2002`)
+ * et reçoit le même refus typé que si elle était arrivée après la première,
+ * jamais un `CONFLICT` générique.
+ */
+async function insertStockCountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  locationId: string,
+  params: CreateStockCountParams,
+  kind: StockCountKind
+): Promise<{ id: string }> {
+  try {
+    return await tx.stockCount.create({
+      data: {
+        tenantId,
+        locationId,
+        countedAt: params.countedAt,
+        status: 'DRAFT',
+        kind,
+        createdByUserId: params.createdByUserId
+      },
+      select: { id: true }
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) {
+      throw error;
+    }
+    if (kind === 'OPENING' && isOpeningIndexViolation(error)) {
+      throw stockError(
+        409,
+        ErrorCode.STOCK_OPENING_COUNT_EXISTS,
+        "Ce lieu a déjà un inventaire d'ouverture : faites un inventaire courant."
+      );
+    }
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_ALREADY_OPEN,
+      'Un inventaire est déjà en cours sur ce lieu de stockage.'
+    );
+  }
+}
+
 /**
  * Ouvre un inventaire en DRAFT, sans ligne. Contrat FIGÉ (plan §11) : 409 si
  * un inventaire est déjà ouvert (DRAFT ou COUNTED) sur le lieu.
@@ -662,17 +774,7 @@ export async function createStockCountTx(
     );
   }
 
-  const created = await tx.stockCount.create({
-    data: {
-      tenantId,
-      locationId: location.id,
-      countedAt: params.countedAt,
-      status: 'DRAFT',
-      kind,
-      createdByUserId: params.createdByUserId
-    },
-    select: { id: true }
-  });
+  const created = await insertStockCountTx(tx, tenantId, location.id, params, kind);
 
   await emitAudit(
     tx,
@@ -725,14 +827,20 @@ export async function setStockCountLineTx(
   options?: StockCountWriteOptions
 ): Promise<SetStockCountLineResult> {
   const countedQuantity = assertCountedQuantity(params.countedQuantity);
+  // Verrou de l'inventaire d'abord : une saisie et une clôture du même
+  // inventaire se suivent ; le statut relu ensuite est celui de l'instant.
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountHeadTx(tx, tenantId, countId);
   assertCountStatus(count, 'DRAFT');
   await assertBelongsToTenant(tx, 'stockItem', params.itemId, tenantId, { message: 'Article de stock introuvable.' });
 
+  // L'attendu se lit sous le verrou du solde (A10-R1) et se date à l'horloge
+  // de la base, lue après ce verrou (A3-R4).
+  await lockStockBalancesTx(tx, tenantId, [{ itemId: params.itemId, locationId: count.locationId }]);
   const balance = await readBalanceTx(tx, tenantId, params.itemId, count.locationId);
+  const now = await readDatabaseClockTx(tx);
   const permissions = await getUserPermissions(params.countedByUserId, tenantId);
   const countedBlind = !permissions.includes(COUNT_VALIDATE_PERMISSION);
-  const now = new Date();
 
   const existing = await tx.stockCountLine.findFirst({
     where: { countId: count.id, itemId: params.itemId },
@@ -794,6 +902,7 @@ export async function removeStockCountLineTx(
   removedByUserId: string,
   options?: StockCountWriteOptions
 ): Promise<{ id: string }> {
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountHeadTx(tx, tenantId, countId);
   assertCountStatus(count, 'DRAFT');
 
@@ -868,6 +977,9 @@ export async function closeStockCountTx(
   countId: string,
   closedByUserId: string
 ): Promise<ClosedStockCount> {
+  // Verrou de l'inventaire avant tout : aucune saisie ni retrait ne passe
+  // entre la lecture des lignes et le passage en COUNTED.
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountHeadTx(tx, tenantId, countId);
   assertCountStatus(count, 'DRAFT');
 
@@ -900,7 +1012,7 @@ export async function closeStockCountTx(
     );
   }
 
-  const now = new Date();
+  const now = await readDatabaseClockTx(tx);
   if (missing.length > 0) {
     await tx.stockCountLine.createMany({
       data: missing.map(row => ({
@@ -944,6 +1056,7 @@ async function loadCountedLineTx(
   countId: string,
   itemId: string
 ): Promise<{ count: Awaited<ReturnType<typeof loadCountHeadTx>>; line: LineRow }> {
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountHeadTx(tx, tenantId, countId);
   assertCountStatus(count, 'COUNTED');
   const line = await tx.stockCountLine.findFirst({ where: { countId: count.id, itemId }, select: LINE_SELECT });
@@ -1017,6 +1130,26 @@ function normalizeSetAsideReason(reason: string): string {
   return trimmed;
 }
 
+/**
+ * Arbitrage du Pilote (trou de la spec, lot 040) : une ligne d'un inventaire
+ * d'OUVERTURE ou de CLÔTURE ne s'écarte pas, ni une par une ni « tous les non
+ * comptés ». Ces deux natures doivent couvrir tout le lieu (A2-R8, A7) :
+ * écarter une ligne y ferait disparaître un article du constat sans
+ * ajustement, exactement ce que `STOCK_COUNT_INCOMPLETE` refuse à la clôture
+ * du comptage — d'où le même code. On ressaisit la quantité ou on justifie
+ * l'écart.
+ */
+function assertSetAsideAllowed(kind: StockCountKind, items: Array<{ itemId: string; itemLabel: string }>): void {
+  if (kind === 'OPENING' || kind === 'CLOSING') {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_INCOMPLETE,
+      "Un inventaire d'ouverture ou de clôture se compte en entier : justifiez l'écart, ou abandonnez l'inventaire et recomptez.",
+      { items }
+    );
+  }
+}
+
 /** Écarte une ligne (A2-R7) : elle reste en base, n'est pas ajustée et devient « à recompter ». */
 export async function setAsideStockCountLineTx(
   tx: PrismaTransactionClient,
@@ -1027,6 +1160,7 @@ export async function setAsideStockCountLineTx(
 ): Promise<{ lineId: string }> {
   const reason = normalizeSetAsideReason(params.reason);
   const { count, line } = await loadCountedLineTx(tx, tenantId, countId, itemId);
+  assertSetAsideAllowed(count.kind, [{ itemId, itemLabel: itemLabelOf(line) }]);
   const facts = lineFacts(line);
   if (facts.setAside) {
     throw new AppError('Cette ligne est déjà écartée.', 409, ErrorCode.CONFLICT);
@@ -1058,13 +1192,18 @@ export async function setAsideUncountedStockCountLinesTx(
   params: SetAsideParams
 ): Promise<{ setAsideCount: number }> {
   const reason = normalizeSetAsideReason(params.reason);
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountHeadTx(tx, tenantId, countId);
   assertCountStatus(count, 'COUNTED');
 
   const uncounted = await tx.stockCountLine.findMany({
     where: { countId: count.id, countedQuantity: null, setAsideAt: null },
-    select: { id: true, itemId: true, expectedQuantity: true }
+    select: { id: true, itemId: true, expectedQuantity: true, item: { select: { label: true } } }
   });
+  assertSetAsideAllowed(
+    count.kind,
+    uncounted.map(line => ({ itemId: line.itemId, itemLabel: line.item?.label ?? 'Article inconnu' }))
+  );
   if (uncounted.length === 0) {
     return { setAsideCount: 0 };
   }
@@ -1089,7 +1228,7 @@ export async function setAsideUncountedStockCountLinesTx(
 }
 
 // ---------------------------------------------------------------------------
-// G. Abandonner (DRAFT → CANCELLED) — A2-R6
+// G. Abandonner (DRAFT → CANCELLED, et COUNTED d'un OPENING/CLOSING) — A2-R6
 // ---------------------------------------------------------------------------
 
 export interface CancelStockCountParams {
@@ -1102,6 +1241,20 @@ export interface CancelStockCountParams {
  * figé et le compté ; avec au moins une ligne, l'alerte COUNT_CANCELLED naît.
  * Les lectures ne révèlent jamais ses attendus.
  */
+/**
+ * Arbitrage du Pilote (dérogation à A2-R6) : un inventaire d'OUVERTURE ou de
+ * CLÔTURE en COUNTED s'abandonne. Ces deux natures doivent couvrir tout le
+ * lieu et ne s'écartent pas (`assertSetAsideAllowed`) ; si un mouvement
+ * postérieur au comptage empêche la validation
+ * (`STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS`), le seul chemin est d'abandonner et
+ * de recompter. L'abandon reste tracé (audit critique avec attendus et
+ * comptés, alerte COUNT_CANCELLED). Un COUNTED courant (REGULAR) ne
+ * s'abandonne toujours pas : il écarte ses lignes douteuses et se valide.
+ */
+function isCountedCancellable(count: { status: StockCountStatus; kind: StockCountKind }): boolean {
+  return count.status === 'COUNTED' && (count.kind === 'OPENING' || count.kind === 'CLOSING');
+}
+
 export async function cancelStockCountTx(
   tx: PrismaTransactionClient,
   tenantId: string,
@@ -1109,15 +1262,18 @@ export async function cancelStockCountTx(
   params: CancelStockCountParams
 ): Promise<{ id: string; status: 'CANCELLED' }> {
   const reason = normalizeSetAsideReason(params.reason);
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountHeadTx(tx, tenantId, countId);
-  assertCountStatus(count, 'DRAFT');
+  if (!isCountedCancellable(count)) {
+    assertCountStatus(count, 'DRAFT');
+  }
 
   const lines = await tx.stockCountLine.findMany({
     where: { countId: count.id },
     select: { itemId: true, expectedQuantity: true, countedQuantity: true }
   });
   const updated = await tx.stockCount.updateMany({
-    where: { id: count.id, tenantId, status: 'DRAFT' },
+    where: { id: count.id, tenantId, status: count.status },
     data: {
       status: 'CANCELLED',
       cancelledAt: new Date(),
@@ -1190,7 +1346,9 @@ async function resolveSelfValidationTx(
     }
     return { selfValidated: false, reason: null };
   }
-  if (await hasOtherActiveCountValidator(tx, tenantId, validatedByUserId)) {
+  // A1-R3 : la dérogation s'ouvre quand aucun AUTRE validateur actif n'est
+  // resté hors du comptage — les compteurs ne peuvent pas valider (A1-R2).
+  if (await hasOtherActiveCountValidator(tx, tenantId, validatedByUserId, effectiveCounterIds(count))) {
     throw stockError(
       403,
       ErrorCode.STOCK_COUNT_SELF_VALIDATION_FORBIDDEN,
@@ -1343,10 +1501,14 @@ async function planValidationTx(tx: PrismaTransactionClient, tenantId: string, c
 
   const negatives = plans.filter(plan => plan.adjustment && plan.adjustment.quantityAfter < 0);
   if (negatives.length > 0) {
+    // Un OPENING/CLOSING ne s'écarte pas : il s'abandonne et se recompte (arbitrage du Pilote).
+    const wholeLocation = count.kind === 'OPENING' || count.kind === 'CLOSING';
     throw stockError(
       409,
       ErrorCode.STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS,
-      'Des sorties enregistrées depuis le comptage dépassent ce qui a été compté : écartez ces lignes et faites-les recompter.',
+      wholeLocation
+        ? 'Des sorties enregistrées depuis le comptage dépassent ce qui a été compté : abandonnez cet inventaire et recomptez le lieu.'
+        : 'Des sorties enregistrées depuis le comptage dépassent ce qui a été compté : écartez ces lignes et faites-les recompter.',
       { items: negatives.map(plan => ({ itemId: plan.line.itemId, itemLabel: itemLabelOf(plan.line) })) }
     );
   }
@@ -1548,18 +1710,18 @@ async function raiseValidationAlertsTx(
     });
   }
 
-  const setAsideLines = plans.filter(plan => plan.facts.setAside);
-  if (setAsideLines.length > 0) {
+  // Deux ensembles disjoints, que le message d'alerte additionne : les lignes
+  // comptées puis écartées, et les lignes non comptées écartées (A2-R8).
+  const setAsideLines = plans.filter(plan => plan.facts.setAside && !plan.facts.notCounted).length;
+  const uncountedLines = plans.filter(plan => plan.facts.setAside && plan.facts.notCounted).length;
+  if (setAsideLines + uncountedLines > 0) {
     await raiseStockAlertTx(tx, {
       ...common,
       kind: 'COUNT_LINE_SET_ASIDE',
       severity: 'INFO',
       dedupeKey: alertKeys.countLineSetAside(count.id),
       // Clés lues par les messages d'alerte (territoire API-5).
-      details: {
-        setAsideLines: setAsideLines.length,
-        uncountedLines: setAsideLines.filter(plan => plan.facts.notCounted).length
-      }
+      details: { setAsideLines, uncountedLines }
     });
   }
 
@@ -1586,6 +1748,9 @@ export async function validateStockCountTx(
   validatedByUserId: string,
   params: ValidateStockCountParams = {}
 ): Promise<ValidatedStockCount> {
+  // Verrou de l'inventaire, puis relecture : une mise à l'écart ou une
+  // justification concurrente est vue (ou attend), jamais écrasée.
+  await lockCountRowTx(tx, tenantId, countId);
   const count = await loadCountRowTx(tx, tenantId, countId);
   assertCountStatus(count, 'COUNTED');
   assertLinesReadyForValidation(count);
@@ -1692,7 +1857,12 @@ function isBlindStatus(status: StockCountStatus): boolean {
   return status === 'DRAFT' || status === 'CANCELLED';
 }
 
-/** Valeur d'écart d'une ligne : figée en VALIDATED, estimée en COUNTED, `null` sinon. */
+/**
+ * Valeur d'écart d'une ligne : figée en VALIDATED, estimée en COUNTED, `null`
+ * sinon. Une ligne VALIDÉE sans coût figé (inventaire validé avant le lot 040)
+ * vaut `null` : la recalculer au coût moyen d'aujourd'hui inventerait une
+ * valeur que personne n'a validée.
+ */
 function lineVarianceValue(line: LineRow, facts: LineFacts, ctx: LineViewContext): number | null {
   if (isBlindStatus(ctx.status) || facts.variance === null) {
     return null;
@@ -1700,9 +1870,11 @@ function lineVarianceValue(line: LineRow, facts: LineFacts, ctx: LineViewContext
   if (isOpeningSurplus(ctx.kind, facts)) {
     return 0;
   }
-  const frozen = ctx.status === 'VALIDATED' ? toAmount(line.unitCostAtValidation as Decimalish) : null;
-  const unitCost = frozen ?? ctx.averageCost(line.itemId);
-  return roundMoneyXof(facts.variance * unitCost);
+  if (ctx.status === 'VALIDATED') {
+    const frozen = toAmount(line.unitCostAtValidation as Decimalish);
+    return frozen === null ? null : roundMoneyXof(facts.variance * frozen);
+  }
+  return roundMoneyXof(facts.variance * ctx.averageCost(line.itemId));
 }
 
 function toLineView(line: LineRow, ctx: LineViewContext): CountLineView {
@@ -1745,7 +1917,8 @@ interface ViewExtras {
   averageCosts: Map<string, number>;
   users: Map<string, string>;
   toRecount: Map<string, Array<{ itemId: string; itemLabel: string }>>;
-  otherValidatorExists: boolean | null;
+  /** Par inventaire COUNTED : existe-t-il un autre validateur actif qui n'a pas compté ? */
+  otherValidatorExists: Map<string, boolean>;
 }
 
 function costKey(locationId: string, itemId: string): string {
@@ -1774,9 +1947,17 @@ async function loadViewExtras(tenantId: string, rows: CountRow[], ctx: StockCall
       tenantId,
       open.map(row => row.locationId)
     ),
-    rows.some(row => row.status === 'COUNTED')
-      ? hasOtherActiveCountValidator(prisma, tenantId, ctx.userId)
-      : Promise.resolve(null)
+    Promise.all(
+      rows
+        .filter(row => row.status === 'COUNTED')
+        .map(
+          async row =>
+            [
+              row.id,
+              await hasOtherActiveCountValidator(prisma, tenantId, ctx.userId, effectiveCounterIds(row))
+            ] as const
+        )
+    )
   ]);
 
   const averageCosts = new Map<string, number>();
@@ -1797,7 +1978,7 @@ async function loadViewExtras(tenantId: string, rows: CountRow[], ctx: StockCall
     averageCosts,
     users: new Map(users.map(user => [user.id, toUserLabel(user)])),
     toRecount,
-    otherValidatorExists: otherValidator
+    otherValidatorExists: new Map(otherValidator)
   };
 }
 
@@ -1814,7 +1995,11 @@ function toSlipSummary(slip: CountRow['slip']): SlipSummary | null {
   };
 }
 
-/** Totaux de valeur d'un inventaire : figés en VALIDATED, estimés en COUNTED, `null` à l'aveugle. */
+/**
+ * Totaux de valeur d'un inventaire : figés en VALIDATED, estimés en COUNTED,
+ * `null` à l'aveugle — et `null` pour un inventaire validé avant le lot 040,
+ * dont rien n'a été figé (aucun recalcul au coût moyen courant).
+ */
 function countValues(
   row: CountRow,
   lines: CountLineView[],
@@ -1828,7 +2013,10 @@ function countValues(
   const estimate = roundMoneyXof(
     lines.filter(line => !line.setAside).reduce((sum, line) => sum + (line.varianceValue ?? 0), 0)
   );
-  if (row.status === 'VALIDATED' && frozenNet !== null) {
+  if (row.status === 'VALIDATED') {
+    if (frozenNet === null) {
+      return none;
+    }
     return {
       countedValue: maskValue(toAmount(row.countedValue as Decimalish), ctx),
       varianceValueGross: maskValue(toAmount(row.varianceValueGross as Decimalish), ctx),
@@ -1884,7 +2072,7 @@ function toCountView(row: CountRow, extras: ViewExtras, ctx: StockCallerContext,
       row.status === 'COUNTED'
         ? {
             callerIsCounter: counterIds.includes(ctx.userId),
-            selfValidationAllowed: extras.otherValidatorExists === false
+            selfValidationAllowed: extras.otherValidatorExists.get(row.id) === false
           }
         : null,
     toRecount: open ? (extras.toRecount.get(row.locationId) ?? []) : []

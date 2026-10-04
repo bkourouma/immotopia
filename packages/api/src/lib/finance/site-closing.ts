@@ -69,7 +69,8 @@ import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
 import { AppError, ErrorCode } from '../../middleware/error-middleware';
-import { lockStockSiteTx } from './stock-controles';
+import { loadBlindLocationIds, lockStockSiteTx } from './stock-controles';
+import type { StockCallerContext } from './types-040-controle';
 import { assertCapacityTx, syncLotActivationsTx } from '../../services/lot-registry-service';
 import { roundMoneyXof, roundPercent } from './money';
 import type { FinanceReadClient } from './site-cost';
@@ -852,6 +853,41 @@ export const getSiteClosureBlockers: GetSiteClosureBlockers = async (tenantId, s
   await loadSiteOrThrow(prisma, tenantId, siteId);
   return collectClosureBlockers(prisma, tenantId, siteId);
 };
+
+/**
+ * Un bloqueur tel que le voit l'appelant : `count` vaut `null` quand il
+ * trahirait un lieu en comptage aveugle (spec §8.2).
+ */
+export type SiteClosureBlockerView = Omit<SiteClosureBlocker, 'count'> & { count: number | null };
+
+/**
+ * Masque, pour un appelant sans STOCK_COUNT_VALIDATE, le nombre d'articles en
+ * stock du bloqueur `STOCK_RESIDUAL` quand le lieu du chantier est en comptage
+ * (inventaire DRAFT, §8.2) : ce nombre dirait au compteur combien d'articles
+ * il lui reste à trouver. Le bloqueur lui-même reste listé — la clôture est de
+ * toute façon refusée tant que l'inventaire est en cours.
+ */
+export function maskClosureBlockersForCaller(
+  blockers: SiteClosureBlocker[],
+  blindLocationIds: ReadonlySet<string>
+): SiteClosureBlockerView[] {
+  return blockers.map(blocker =>
+    blocker.documentType === 'STOCK_RESIDUAL' && (blocker.documentIds ?? []).some(id => blindLocationIds.has(id))
+      ? { ...blocker, count: null }
+      : blocker
+  );
+}
+
+/** `getSiteClosureBlockers`, masqué pour l'appelant (`GET sites/:siteId/closure-blockers`). */
+export async function getSiteClosureBlockersForCaller(
+  tenantId: string,
+  siteId: string,
+  ctx: StockCallerContext
+): Promise<SiteClosureBlockerView[]> {
+  const blockers = await getSiteClosureBlockers(tenantId, siteId);
+  const blind = await loadBlindLocationIds(prisma, tenantId, ctx);
+  return maskClosureBlockersForCaller(blockers, blind);
+}
 
 async function buildClosureRecord(
   client: FinanceReadClient,

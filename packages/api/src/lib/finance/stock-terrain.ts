@@ -358,7 +358,9 @@ function toReceiptEntry(
 
 /**
  * `GET /stock/supplier-invoices/{invoiceId}/receipts`. Une facture d'une autre
- * agence répond 404, comme une facture inexistante.
+ * agence répond 404, comme une facture inexistante. Seule une facture validée
+ * se lit ici, comme dans `listReceivableInvoices` : un brouillon (ou une
+ * facture annulée) répond 404 aussi.
  */
 export async function getInvoiceReceipts(
   tenantId: string,
@@ -366,7 +368,7 @@ export async function getInvoiceReceipts(
   invoiceId: string
 ): Promise<{ view: InvoiceReceiptsView; meta: StockMeta }> {
   const invoice = await prisma.supplierInvoice.findFirst({
-    where: { id: invoiceId, tenantId },
+    where: { id: invoiceId, tenantId, status: 'VALIDATED' },
     select: {
       id: true,
       reference: true,

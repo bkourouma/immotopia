@@ -107,6 +107,14 @@ async function metaFor(scope: CallerScope): Promise<StockMeta> {
 }
 
 /**
+ * Délais de la transaction d'écriture, alignés sur les mouvements
+ * (`stock-mouvements.ts`) : la validation d'un inventaire écrit un ajustement
+ * et une écriture comptable par ligne, sous des verrous qui peuvent attendre ;
+ * le délai Prisma par défaut (5 s) l'interromprait à mi-chemin.
+ */
+const COUNT_WRITE_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
+
+/**
  * Une écriture dans sa transaction, puis les événements non critiques
  * collectés, écrits après le commit (B6-R5) : une transaction annulée n'en
  * laisse aucun.
@@ -115,7 +123,7 @@ async function runCountWrite<T>(
   work: (tx: PrismaTransactionClient, options: StockCountWriteOptions) => Promise<T>
 ): Promise<T> {
   const deferredAudit: AuditLogEntry[] = [];
-  const result = await prisma.$transaction(tx => work(tx, { deferredAudit }));
+  const result = await prisma.$transaction(tx => work(tx, { deferredAudit }), COUNT_WRITE_TRANSACTION_OPTIONS);
   for (const entry of deferredAudit) {
     logAuditEvent(entry);
   }
@@ -170,7 +178,7 @@ export const setStockCountLineHandler = asyncHandler(async (req: Request, res: R
     if (!clientRequestId) {
       return false;
     }
-    const replay = await findClientRequestReplay(scope.tenantId, clientRequestId, scope.userId, bodyHash);
+    const replay = await findClientRequestReplay(scope.tenantId, clientRequestId, scope.userId, bodyHash, 'COUNT_LINE');
     if (!replay) {
       return false;
     }
@@ -202,7 +210,7 @@ export const setStockCountLineHandler = asyncHandler(async (req: Request, res: R
         options
       );
       if (keyId) {
-        await completeClientRequestTx(tx, keyId, 'StockCountLine', saved.lineId);
+        await completeClientRequestTx(tx, keyId, 'StockCountLine', saved.lineId, scope.tenantId);
       }
       return saved;
     });

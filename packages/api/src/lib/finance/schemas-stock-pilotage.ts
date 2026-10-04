@@ -65,7 +65,14 @@ export const stockIndicatorsQuerySchema = z.object({
   locationId: z.string().uuid().optional()
 });
 
-const amount = z.number().finite().min(0).nullable();
+/**
+ * Un seuil d'alerte : strictement positif, ou `null` pour désactiver l'alerte.
+ * Un seuil à 0 ferait sonner l'alerte à chaque opération (B7-R3) : il est
+ * refusé plutôt que de noyer les vraies alertes.
+ */
+const THRESHOLD_POSITIVE_MESSAGE =
+  "Un seuil d'alerte doit être supérieur à zéro. Laissez-le vide pour désactiver l'alerte.";
+const amount = z.number().finite().positive(THRESHOLD_POSITIVE_MESSAGE).nullable();
 
 /** `PATCH /stock/settings/controls` (contrat `ControlsSettingsPatch`, data-model §2.2). */
 export const updateStockControlsSchema = z
@@ -74,7 +81,7 @@ export const updateStockControlsSchema = z
     requireTaker: z.boolean().optional(),
     issueAlertAmount: amount.optional(),
     countVarianceAlertAmount: amount.optional(),
-    countVarianceAlertPercent: z.number().finite().min(0).max(100).nullable().optional(),
+    countVarianceAlertPercent: z.number().finite().positive(THRESHOLD_POSITIVE_MESSAGE).max(100).nullable().optional(),
     cashMaterialAlertAmount: amount.optional(),
     materialCostCategoryIds: z.array(z.string().uuid()).max(100).optional()
   })

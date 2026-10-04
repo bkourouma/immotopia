@@ -13,6 +13,10 @@
  * 2. **Le service** : dépôt (droit propre à la cible, B5-R6 ; idempotence,
  *    B5-R7), liste, lecture du fichier et retrait (B5-R5).
  *
+ * Limite assumée : les PDF sont stockés tels quels. Leurs métadonnées (auteur,
+ * logiciel, dates du dictionnaire `Info` ou du flux XMP) ne sont pas retirées —
+ * les réécrire demanderait une bibliothèque PDF complète (spec B5-R3).
+ *
  * Le fichier est PRIVÉ : écrit sous `uploads/stock/<tenantId>/<aaaa>/<uuid>.<ext>`,
  * jamais servi en statique (`uploads-access-middleware.ts` ne laisse passer
  * que les médias publics), relu par `private-files.ts` après contrôle de
@@ -30,6 +34,7 @@ import { logAuditEvent, recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
+import { logger } from '../../utils/logger';
 import { getUploadsRoot } from '../../utils/project-root';
 import { privateUploadPath, readPrivateUpload, type PrivateFile } from '../files/private-files';
 import { detectProviderInvoiceFileKind } from '../syndics/provider-invoice-files';
@@ -90,16 +95,18 @@ function unreadableImage(): AppError {
 
 /**
  * Retire les métadonnées d'une image AVANT écriture (B5-R3) : EXIF, dont la
- * position GPS, et blocs XMP qui peuvent la répéter.
+ * position GPS, blocs XMP qui peuvent la répéter, commentaires et textes libres.
  *
- * - JPEG : segments APP1 (EXIF, XMP) et APP13 (IPTC) retirés ; le reste des
- *   segments et les données d'image recopiés tels quels ; tout octet après la
- *   fin d'image (EOI) est abandonné (certains appareils y accolent des données).
- * - PNG : bloc `eXIf` retiré, ainsi que les blocs texte qui transportent de
- *   l'EXIF ou du XMP (`XML:com.adobe.xmp`, `Raw profile type exif|xmp|iptc`).
+ * - JPEG : liste blanche. Ne restent que APP0 (JFIF), APP2 (profil de couleur
+ *   ICC) et les segments d'image (tables, en-tête de trame, balayages) ; COM
+ *   (`0xFE`) et tous les autres APPn (APP1 EXIF/XMP, APP13 IPTC, APP14…)
+ *   partent. Tout octet après la fin d'image (EOI) est abandonné (certains
+ *   appareils y accolent des données).
+ * - PNG : bloc `eXIf` et TOUS les blocs texte (`tEXt`, `zTXt`, `iTXt`) retirés,
+ *   quel que soit leur mot-clé ; les blocs d'image et de couleur sont gardés.
  * - WebP : blocs `EXIF` et `XMP ` retirés, drapeaux EXIF et XMP du bloc
  *   `VP8X` remis à zéro, taille RIFF recalculée.
- * - PDF : inchangé.
+ * - PDF : inchangé (limite assumée, voir l'en-tête du module).
  *
  * Une image dont la structure est cassée lève `400 STOCK_ATTACHMENT_TYPE` :
  * on ne stocke jamais une image qu'on n'a pas su nettoyer.
@@ -122,8 +129,16 @@ function isStandaloneJpegMarker(marker: number): boolean {
   return (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01;
 }
 
-/** APP1 (EXIF, XMP) et APP13 (Photoshop / IPTC). */
-const JPEG_METADATA_MARKERS = new Set([0xe1, 0xed]);
+/** APP0 (JFIF) et APP2 (profil ICC) : les seuls segments d'application gardés. */
+const JPEG_KEPT_APP_MARKERS = new Set([0xe0, 0xe2]);
+/** Commentaire libre (COM). */
+const JPEG_COMMENT_MARKER = 0xfe;
+
+/** Un segment de métadonnée : tout APPn (`0xE0`–`0xEF`) hors APP0 et APP2, et COM. */
+function isJpegMetadataMarker(marker: number): boolean {
+  if (marker === JPEG_COMMENT_MARKER) return true;
+  return marker >= 0xe0 && marker <= 0xef && !JPEG_KEPT_APP_MARKERS.has(marker);
+}
 
 function stripJpegMetadata(buffer: Buffer): Buffer {
   const n = buffer.length;
@@ -158,7 +173,7 @@ function stripJpegMetadata(buffer: Buffer): Buffer {
     const segmentLength = buffer.readUInt16BE(i);
     const segmentEnd = i + segmentLength;
     if (segmentLength < 2 || segmentEnd > n) throw unreadableImage();
-    if (!JPEG_METADATA_MARKERS.has(marker)) {
+    if (!isJpegMetadataMarker(marker)) {
       out.push(Buffer.from([0xff, marker]), buffer.subarray(i, segmentEnd));
     }
     i = segmentEnd;
@@ -191,15 +206,11 @@ function stripJpegMetadata(buffer: Buffer): Buffer {
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const PNG_TEXT_CHUNKS = new Set(['tEXt', 'zTXt', 'iTXt']);
-const PNG_METADATA_KEYWORD = /^(XML:com\.adobe\.xmp|Raw profile type (exif|xmp|iptc|APP1))$/i;
+/** `eXIf` et les trois blocs texte : un texte libre peut porter un nom, un lieu ou un XMP. */
+const PNG_METADATA_CHUNKS = new Set(['eXIf', 'tEXt', 'zTXt', 'iTXt']);
 
-function isPngMetadataChunk(type: string, data: Buffer): boolean {
-  if (type === 'eXIf') return true;
-  if (!PNG_TEXT_CHUNKS.has(type)) return false;
-  const nul = data.indexOf(0);
-  const keyword = data.subarray(0, nul >= 0 ? nul : Math.min(data.length, 79)).toString('latin1');
-  return PNG_METADATA_KEYWORD.test(keyword);
+function isPngMetadataChunk(type: string): boolean {
+  return PNG_METADATA_CHUNKS.has(type);
 }
 
 function stripPngMetadata(buffer: Buffer): Buffer {
@@ -215,8 +226,7 @@ function stripPngMetadata(buffer: Buffer): Buffer {
     const type = buffer.subarray(i + 4, i + 8).toString('latin1');
     const chunkEnd = i + 12 + length;
     if (!/^[A-Za-z]{4}$/.test(type) || chunkEnd > n) throw unreadableImage();
-    const data = buffer.subarray(i + 8, i + 8 + length);
-    if (!isPngMetadataChunk(type, data)) out.push(buffer.subarray(i, chunkEnd));
+    if (!isPngMetadataChunk(type)) out.push(buffer.subarray(i, chunkEnd));
     i = chunkEnd;
     if (type === 'IEND') {
       sawEnd = true;
@@ -533,14 +543,29 @@ async function unlinkQuietly(absolute: string): Promise<void> {
   await fs.unlink(absolute).catch(() => undefined);
 }
 
-/** Efface du disque le fichier d'une pièce retirée (au mieux : un fichier déjà absent n'est pas une erreur). */
-async function deleteStoredFile(tenantId: string, fileUrl: string | null): Promise<void> {
+/**
+ * Efface du disque le fichier d'une pièce retirée, au mieux : un fichier déjà
+ * absent n'est pas une erreur. Tout autre échec est journalisé en `warn` avec
+ * l'identifiant de la pièce et le code d'erreur système, jamais le chemin
+ * (qui porte l'agence et l'arborescence du serveur) — le retrait reste acquis,
+ * le fichier orphelin se retrouve par l'identifiant.
+ */
+async function deleteStoredFile(tenantId: string, attachmentId: string, fileUrl: string | null): Promise<void> {
   const relative = stockAttachmentRelativePath(tenantId, fileUrl);
   if (!relative) return;
   const root = path.resolve(getUploadsRoot(env.UPLOADS_DIR));
   const absolute = path.resolve(root, relative);
   if (!absolute.startsWith(root + path.sep)) return;
-  await unlinkQuietly(absolute);
+  try {
+    await fs.unlink(absolute);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === 'ENOENT') return;
+    logger.warn('[stock] Fichier d’une pièce jointe retirée non effacé du disque', {
+      attachmentId,
+      errorCode: code ?? 'UNKNOWN'
+    });
+  }
 }
 
 async function readAttachmentView(
@@ -618,7 +643,7 @@ export async function uploadStockAttachment(
     : null;
 
   if (clientRequestId && bodyHash) {
-    const replay = await findClientRequestReplay(tenantId, clientRequestId, ctx.userId, bodyHash);
+    const replay = await findClientRequestReplay(tenantId, clientRequestId, ctx.userId, bodyHash, 'ATTACHMENT');
     if (replay) {
       return { attachment: await readAttachmentView(tenantId, replay.resultId, ctx, now), replayed: true };
     }
@@ -657,14 +682,14 @@ export async function uploadStockAttachment(
         },
         select: { id: true }
       });
-      if (keyId) await completeClientRequestTx(tx, keyId, 'StockAttachment', created.id);
+      if (keyId) await completeClientRequestTx(tx, keyId, 'StockAttachment', created.id, tenantId);
       return created.id;
     });
   } catch (error) {
     await unlinkQuietly(written.absolute);
     if (clientRequestId && bodyHash && isUniqueViolation(error)) {
       // Rejeu concurrent : l'autre envoi a gagné, on rend sa pièce.
-      const replay = await findClientRequestReplay(tenantId, clientRequestId, ctx.userId, bodyHash);
+      const replay = await findClientRequestReplay(tenantId, clientRequestId, ctx.userId, bodyHash, 'ATTACHMENT');
       if (replay) {
         return { attachment: await readAttachmentView(tenantId, replay.resultId, ctx, now), replayed: true };
       }
@@ -777,6 +802,6 @@ export async function removeStockAttachment(
     });
   });
 
-  await deleteStoredFile(tenantId, row.fileUrl);
+  await deleteStoredFile(tenantId, attachmentId, row.fileUrl);
   return readAttachmentView(tenantId, attachmentId, ctx, now);
 }

@@ -127,6 +127,27 @@ describe('assembleIndicators (B8)', () => {
     expect(onlyOld.rows[0].varianceRate).toBeNull();
   });
 
+  it('B8-R2 : la part validée par une autre personne exclut les inventaires sans valeurs figées', () => {
+    // 3 inventaires validés, dont 1 d'avant le lot (sans valeurs figées) ; des 2 autres, 1 validé par un tiers.
+    const view = assembleIndicators('2026-09', '2026-09', ['2026-09'], locations, {
+      counts: [count({ countsValidated: 3, countsWithoutFrozenValues: 1, countsValidatedByOther: 1 })],
+      lines: NO_LINES,
+      movements: []
+    });
+    expect(view.rows[0].otherValidatorShare).toBe(0.5);
+    expect(view.totals[0].otherValidatorShare).toBe(0.5);
+
+    // Seulement des inventaires d'avant le lot : aucune part, comme le taux d'écart.
+    const onlyOld = assembleIndicators('2026-09', '2026-09', ['2026-09'], locations, {
+      counts: [
+        count({ countsWithoutFrozenValues: 1, countsValidatedByOther: 0, countedValue: 0, varianceValueGross: 0 })
+      ],
+      lines: NO_LINES,
+      movements: []
+    });
+    expect(onlyOld.rows[0]).toMatchObject({ otherValidatorShare: null, varianceRate: null });
+  });
+
   it('mois sans activité à zéro ; parts du total recalculées sur les sommes ; rebuts et délai', () => {
     const view = assembleIndicators(
       '2026-08',
@@ -188,6 +209,8 @@ describe('buildIndicatorQueries (B8-R1, B8-R3)', () => {
       new Date('2026-10-01T00:00:00.000Z'),
       LOC
     );
+    // La part validée par un tiers ne compte que les inventaires à valeurs figées (B8-R2).
+    expect(queries.counts.sql).toMatch(/self_validated = false AND c\.counted_value IS NOT NULL/);
     for (const query of [queries.counts, queries.lines, queries.movements]) {
       expect(query.text).toMatch(/tenant_id = \$\d/);
       expect(query.sql).not.toContain("tenant-1'");

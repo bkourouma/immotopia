@@ -8,7 +8,8 @@ import type { StockErrorCode, StockErrorData } from '../../../../types/finance-s
  * avec un texte de secours ; le code (`err.response.data.code`) déclenche le
  * comportement d'écran prévu. Une erreur **sans réponse** est une coupure
  * réseau : le formulaire reste rempli et l'identifiant de requête est gardé,
- * pour qu'un réessai ne crée jamais une seconde opération.
+ * pour qu'un réessai ne crée jamais une seconde opération. Le renouvellement
+ * de l'identifiant suit `reponseIncertaine` (`useEnvoiTerrain.ts`).
  */
 export interface StockErreurLue {
   /** Aucune réponse du serveur : coupure réseau, délai dépassé. */
@@ -44,16 +45,6 @@ export function lireErreurStock(err: unknown, secours: string): StockErreurLue {
     items,
     existingTakerId: body.data?.existingTakerId ? String(body.data.existingTakerId) : null
   };
-}
-
-/**
- * Faut-il tirer un nouvel identifiant de requête après cette erreur ? Oui
- * après toute réponse du serveur (un `4xx` oblige à modifier le formulaire,
- * et réutiliser l'identifiant avec un autre corps donnerait
- * `409 STOCK_IDEMPOTENCY_MISMATCH`) ; non après une coupure réseau.
- */
-export function faitTirerNouvelIdentifiant(erreur: StockErreurLue): boolean {
-  return !erreur.reseau;
 }
 
 /** Les codes qui mettent en erreur le choix du preneur ou du demandeur. */

@@ -21,7 +21,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, DownOutlined, DownloadOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
   listStockBalances,
@@ -62,6 +62,7 @@ import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { useStockFieldContext, STOCK_FIELD_CONTEXT_ENTITY } from '../../hooks/useStockFieldContext';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { nouvelIdentifiantDeRequete } from '../../utils/stock-client-request-id';
+import { reponseIncertaine } from '../../components/finance/stock/magasin/useEnvoiTerrain';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
@@ -131,8 +132,9 @@ const { Text, Paragraph, Title } = Typography;
  * ---------------------------------------------------------------------------
  *
  * Tiré à l'ouverture du formulaire, gardé tant que l'envoi n'a pas réussi —
- * y compris après une coupure sans réponse —, jeté après un succès ou après
- * un refus qui oblige à modifier le formulaire. Un réessai ne crée donc
+ * y compris après une coupure sans réponse, un `5xx`, un `408` ou un `429`
+ * (réponse incertaine) —, jeté après un succès ou après un refus `4xx`
+ * définitif qui oblige à modifier le formulaire. Un réessai ne crée donc
  * jamais une seconde réception ou sortie ; un rejeu (`200`) dit « déjà
  * enregistrée ».
  *
@@ -511,7 +513,8 @@ function FenetreReception(props: {
         return;
       }
       setCoupure(false);
-      renouvelerIdentifiant();
+      // 5xx, 408, 429 : l'API a pu valider. Même identifiant au prochain essai.
+      if (!reponseIncertaine(lue)) renouvelerIdentifiant();
       if (lue.code === 'STOCK_IDEMPOTENCY_MISMATCH') {
         setErreur(
           t("Cette opération a déjà été envoyée avec d'autres données. Vérifiez le journal avant de recommencer.")
@@ -1062,7 +1065,8 @@ function FenetreSortie(props: {
         return;
       }
       setCoupure(false);
-      renouvelerIdentifiant();
+      // 5xx, 408, 429 : l'API a pu valider. Même identifiant au prochain essai.
+      if (!reponseIncertaine(lue)) renouvelerIdentifiant();
       const texte = lue.message || t("La sortie n'a pas pu être enregistrée.");
       if (lue.code === 'STOCK_IDEMPOTENCY_MISMATCH') {
         setErreur(
@@ -1441,7 +1445,8 @@ function FenetreRebut(props: {
         return;
       }
       setCoupure(false);
-      renouvelerIdentifiant();
+      // 5xx, 408, 429 : l'API a pu valider. Même identifiant au prochain essai.
+      if (!reponseIncertaine(lue)) renouvelerIdentifiant();
       const texte = lue.message || t("Le rebut n'a pas pu être enregistré.");
       if (lue.code === 'STOCK_IDEMPOTENCY_MISMATCH') {
         setErreur(
@@ -1667,7 +1672,8 @@ function FenetreRetour(props: {
         return;
       }
       setCoupure(false);
-      renouvelerIdentifiant();
+      // 5xx, 408, 429 : l'API a pu valider. Même identifiant au prochain essai.
+      if (!reponseIncertaine(lue)) renouvelerIdentifiant();
       const texte = lue.message || t("Le retour n'a pas pu être enregistré.");
       if (lue.code === 'STOCK_IDEMPOTENCY_MISMATCH') {
         setErreur(
@@ -2104,45 +2110,41 @@ function OngletJournal(props: {
       ? { requestedBy: demandeur.trim() || undefined, takerId: preneurFiltre, createdByUserId: auteur }
       : {})
   };
-  const cle = JSON.stringify(filtres);
-
-  const journal = useQuery({
-    queryKey: queryKey('stock-movements', tenantId, filtres as Record<string, string | undefined>),
-    queryFn: () => listStockMovements(tenantId, { ...filtres, limit: PAGE_DU_JOURNAL }),
+  // Le journal se lit par pages (curseur). `useInfiniteQuery` garde les pages
+  // dans une seule entrée du cache : quand la première page est relue (écriture
+  // qui invalide `stock-movements`, retour sur l'onglet), TanStack relit les
+  // pages suivantes une à une à partir des curseurs fraîchement rendus. Un
+  // mouvement arrivé en tête décale donc la suite sans qu'aucune ligne ne soit
+  // perdue ni doublée. Changer un filtre change la clé : on repart de la
+  // première page.
+  const journal = useInfiniteQuery({
+    queryKey: queryKey('stock-movements', tenantId, {
+      ...(filtres as Record<string, string | undefined>),
+      vue: 'journal'
+    }),
+    queryFn: ({ pageParam }) =>
+      listStockMovements(tenantId, {
+        ...filtres,
+        ...(pageParam ? { cursor: pageParam } : {}),
+        limit: PAGE_DU_JOURNAL
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: derniere => derniere.meta.nextCursor ?? undefined,
     staleTime: STALE_TIME.list
   });
 
-  // Les pages suivantes s'accumulent ici ; changer un filtre repart de la première.
-  const [suite, setSuite] = useState<{ cle: string; mouvements: StockMovementView[]; curseur: string | null }>({
-    cle: '',
-    mouvements: [],
-    curseur: null
-  });
-  const [suiteEnCours, setSuiteEnCours] = useState(false);
-  const [suiteEchouee, setSuiteEchouee] = useState(false);
-  const suiteValable = suite.cle === cle && suite.mouvements.length > 0;
-  const curseur = suiteValable ? suite.curseur : (journal.data?.meta.nextCursor ?? null);
-  const mouvements = [...(journal.data?.data ?? []), ...(suiteValable ? suite.mouvements : [])];
-  const meta = journal.data?.meta;
+  const mouvements = useMemo(() => (journal.data?.pages ?? []).flatMap(page => page.data), [journal.data]);
+  const meta = journal.data?.pages[0]?.meta;
   const valeursVisibles = meta?.valuesVisible ?? abilities.valuesVisible;
   const aveugles = lieuxAveugles(meta, contexte);
+  const suiteEchouee = journal.isFetchNextPageError;
+  // Une suite qui échoue n'efface pas les lignes déjà lues : seul un échec de
+  // la première lecture (ou de sa relecture) remplace la liste par l'erreur.
+  const erreurJournal = journal.error && !journal.isFetchNextPageError ? journal.error : null;
 
-  const chargerPlus = async () => {
-    if (!curseur) return;
-    setSuiteEnCours(true);
-    setSuiteEchouee(false);
-    try {
-      const lu = await listStockMovements(tenantId, { ...filtres, cursor: curseur, limit: PAGE_DU_JOURNAL });
-      setSuite({
-        cle,
-        mouvements: [...(suiteValable ? suite.mouvements : []), ...lu.data],
-        curseur: lu.meta.nextCursor ?? null
-      });
-    } catch {
-      setSuiteEchouee(true);
-    } finally {
-      setSuiteEnCours(false);
-    }
+  const chargerPlus = () => {
+    if (!journal.hasNextPage || journal.isFetchingNextPage) return;
+    void journal.fetchNextPage();
   };
 
   const preneurs = useQuery({
@@ -2511,8 +2513,8 @@ function OngletJournal(props: {
         pageSize={Math.max(mouvements.length, 1)}
         onPageChange={() => {}}
         loading={journal.isPending}
-        isReloading={journal.isFetching && !journal.isPending}
-        error={journal.error ? t('Impossible de charger le journal des mouvements.') : null}
+        isReloading={journal.isFetching && !journal.isPending && !journal.isFetchingNextPage}
+        error={erreurJournal ? t('Impossible de charger le journal des mouvements.') : null}
         onRetry={() => journal.refetch()}
         isFiltered={nbFiltres > 0 || Boolean(filtreBon) || Boolean(mouvementId)}
         onClearFilters={() => {
@@ -2541,13 +2543,13 @@ function OngletJournal(props: {
           />
         )}
       />
-      {nbFiltres > 0 && !journal.isPending && mouvements.length === 0 && !journal.error ? (
+      {nbFiltres > 0 && !journal.isPending && mouvements.length === 0 && !erreurJournal ? (
         <Text type="secondary">{t('Aucun mouvement pour ces filtres.')}</Text>
       ) : null}
 
-      {curseur ? (
+      {journal.hasNextPage ? (
         <div style={{ marginTop: 'var(--space-3)' }}>
-          <Button onClick={() => void chargerPlus()} loading={suiteEnCours}>
+          <Button onClick={chargerPlus} loading={journal.isFetchingNextPage}>
             {t('Charger plus')}
           </Button>
           {suiteEchouee ? (
