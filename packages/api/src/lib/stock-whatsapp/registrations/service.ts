@@ -33,8 +33,6 @@ import { ACTIVATION_MAX_ATTEMPTS, ACTIVATION_VALIDITY_MS, activationCodeHash } f
 
 export const MAX_SITES_PER_REGISTRATION = 10;
 const REVOKE_REASON_MAX = 500;
-const PHONE_UNAVAILABLE_MESSAGE = 'Ce numéro ne peut pas être inscrit.';
-
 type RegistrationStatusValue = 'PENDING_ACTIVATION' | 'ACTIVE' | 'REVOKED';
 
 /** Contrat `RegistrationView`. */
@@ -192,7 +190,8 @@ async function assertEligibleMember(tenantId: string, userId: unknown): Promise<
 }
 
 function phoneUnavailable(): AppError {
-  return new AppError(PHONE_UNAVAILABLE_MESSAGE, 409, ErrorCode.STOCK_WHATSAPP_PHONE_UNAVAILABLE);
+  // Littéral en place : l'extraction des traductions (`npm run i18n:extract`) le recense.
+  return new AppError('Ce numéro ne peut pas être inscrit.', 409, ErrorCode.STOCK_WHATSAPP_PHONE_UNAVAILABLE);
 }
 
 function memberAlreadyRegistered(): AppError {

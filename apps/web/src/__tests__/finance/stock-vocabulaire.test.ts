@@ -12,6 +12,10 @@ import ts from 'typescript';
  * d'audit, ainsi que les catalogues `finance.json` et les traductions des
  * textes du stock rangés dans `common.json`. Les commentaires ne sont pas lus :
  * ils doivent pouvoir citer les mots que la règle écarte.
+ *
+ * Lot 041 : les écrans WhatsApp et Comptages terrain, les composants de
+ * `components/finance/stock/whatsapp/`, leurs types et leur service suivent la
+ * même règle.
  */
 
 const SRC = resolve(__dirname, '..', '..');
@@ -51,7 +55,9 @@ function stockFiles(): string[] {
     .filter(name => /^finance-stock-.*\.ts$/.test(name))
     .map(name => join(SRC, 'types', name));
   const constants = ['permissions-labels.ts', 'audit-labels.ts'].map(name => join(SRC, 'constants', name));
-  return [...pages, ...components, ...types, ...constants];
+  // Lot 041 : le service de l'inventaire par WhatsApp (messages d'erreur relayés).
+  const services = [join(SRC, 'services', 'finance-stock-whatsapp-service.ts')];
+  return [...pages, ...components, ...types, ...constants, ...services];
 }
 
 function stringLiterals(file: string): string[] {
@@ -91,7 +97,15 @@ describe('vocabulaire du stock (ecrans §11)', () => {
       expect.arrayContaining([
         'pages/finance/StockInventaire.tsx',
         'pages/finance/StockMagasin.tsx',
-        'components/finance/stock/magasin/GesteRecevoir.tsx'
+        'components/finance/stock/magasin/GesteRecevoir.tsx',
+        // Lot 041
+        'pages/finance/StockWhatsapp.tsx',
+        'pages/finance/StockComptagesTerrain.tsx',
+        'components/finance/stock/whatsapp/FieldCaptureDrawer.tsx',
+        'components/finance/stock/whatsapp/WhatsappSimulator.tsx',
+        'components/finance/stock/whatsapp/whatsapp-labels.ts',
+        'types/finance-stock-whatsapp-types.ts',
+        'services/finance-stock-whatsapp-service.ts'
       ])
     );
   });

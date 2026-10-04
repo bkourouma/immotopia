@@ -32,9 +32,10 @@ export type { StockVisionResult };
  * `additionalProperties`, `description`) ; le mode strict d'OpenRouter exige en
  * plus que toutes les propriétés soient requises et `additionalProperties:
  * false`, ce qui est le cas : une valeur absente s'écrit `null`. Les bornes que
- * ce sous-ensemble ne sait pas dire (300 caractères, quatre décimales, `itemId`
- * pris dans la liste) restent à la validation Zod, qui fait seule autorité : le
- * respect du schéma varie selon le fournisseur.
+ * ce sous-ensemble ne sait pas dire (300 caractères, `itemId` pris dans la
+ * liste) restent à la validation Zod, qui fait seule autorité : le respect du
+ * schéma varie selon le fournisseur. Un `proposedTotal` plus précis que quatre
+ * décimales n'est pas rejeté : la validation l'arrondit (`types.ts`).
  */
 export const STOCK_VISION_JSON_SCHEMA = {
   type: 'object',
