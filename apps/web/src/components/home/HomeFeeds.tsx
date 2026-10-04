@@ -5,6 +5,7 @@ import {
   ClockCircleOutlined,
   FileDoneOutlined,
   HomeOutlined,
+  InboxOutlined,
   ToolOutlined,
   TransactionOutlined,
   UserOutlined
@@ -49,7 +50,9 @@ function ligneSecondaire(montant: number | null, complement: string): string {
 const ICONE_TACHE: Record<DashboardTaskKind, React.ReactNode> = {
   OVERDUE_INSTALLMENT: <ClockCircleOutlined />,
   PENDING_DECLARATION: <FileDoneOutlined />,
-  URGENT_TICKET: <ToolOutlined />
+  URGENT_TICKET: <ToolOutlined />,
+  // Lot 040 : une alerte de stock à regarder (spec B7-R5).
+  STOCK_ALERT: <InboxOutlined />
 };
 
 export interface WorkQueueProps {

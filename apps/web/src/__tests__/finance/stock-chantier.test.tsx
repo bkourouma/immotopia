@@ -83,6 +83,10 @@ function ligne(
     transferredInValue: 0,
     issuedValue: 0,
     remainingValue: 0,
+    returnedToSupplierQuantity: 0,
+    returnedToSupplierValue: 0,
+    scrappedQuantity: 0,
+    scrappedValue: 0,
     currency: 'XOF',
     ...partielle
   };
@@ -220,6 +224,7 @@ function statut(overrides: Partial<SiteStockStatus> = {}): SiteStockStatus {
     stockEnabledAt: '2026-06-01T08:00:00.000Z',
     stockLocationId: 'lieu-plateau-11',
     stockLocationLabel: 'Chantier Immeuble du Plateau',
+    openingCountSuggested: false,
     ...overrides
   };
 }
@@ -635,4 +640,107 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   }, 15000);
+});
+
+// ---------------------------------------------------------------------------
+// Lot 040 — inventaire d'ouverture, colonnes descriptives, comptage à l'aveugle
+// ---------------------------------------------------------------------------
+
+describe('Lot 040 — inventaire d’ouverture (A7-R1)', () => {
+  it('propose l’inventaire d’ouverture et son lien quand le serveur le suggère', async () => {
+    configurerGet({ statut: statut({ openingCountSuggested: true }) });
+    monter();
+
+    expect(
+      await screen.findByText('Faites l’inventaire d’ouverture de ce lieu', {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+    const lien = screen.getByRole('link', { name: 'Faire l’inventaire d’ouverture' });
+    expect(lien).toHaveAttribute(
+      'href',
+      `/tenant/${TENANT}/finance/stock/inventaire?ouvrir=OPENING&lieu=lieu-plateau-11`
+    );
+  });
+
+  it('ne dit rien de l’inventaire d’ouverture quand il n’est pas suggéré', async () => {
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(screen.queryByText('Faites l’inventaire d’ouverture de ce lieu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Faire l’inventaire d’ouverture' })).not.toBeInTheDocument();
+  });
+
+  it('rappelle l’inventaire d’ouverture après la bascule', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({ rapprochement: rapprochementNonBascule(), statut: statutNonBascule() });
+    monter();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Faire passer ce chantier au stock' }, { timeout: 8000 })
+    );
+    await user.click(await screen.findByRole('button', { name: 'Confirmer le passage au stock' }));
+
+    expect(await screen.findByText(/Pensez à faire l’inventaire d’ouverture\./)).toBeInTheDocument();
+  }, 15000);
+});
+
+describe('Lot 040 — retours au fournisseur et rebuts, colonnes descriptives', () => {
+  it('affiche « Retourné au fournisseur » et « Mis au rebut » avec les quantités du serveur', async () => {
+    configurerGet({
+      rapprochement: rapprochement({
+        lines: [
+          ligne({
+            itemId: 'article-ciment-01',
+            itemReference: 'CIM-42',
+            itemLabel: 'Ciment CPJ 42,5',
+            itemUnit: 'sac',
+            receivedQuantity: 800,
+            issuedQuantity: 700,
+            remainingQuantity: 70,
+            returnedToSupplierQuantity: 17,
+            returnedToSupplierValue: 170_000,
+            scrappedQuantity: 13,
+            scrappedValue: 130_000
+          })
+        ]
+      })
+    });
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(screen.getByRole('columnheader', { name: 'Retourné au fournisseur' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Mis au rebut' })).toBeInTheDocument();
+    expect(screen.getByText('17 sac')).toBeInTheDocument();
+    expect(screen.getByText('13 sac')).toBeInTheDocument();
+    expect(screen.getByText(/Ces colonnes ne se soustraient pas entre elles/)).toBeInTheDocument();
+  });
+});
+
+describe('Lot 040 — le restant pendant un comptage du lieu (aveugle)', () => {
+  it('affiche « Comptage en cours » à la place du restant masqué, sans rien recalculer', async () => {
+    configurerGet({
+      rapprochement: rapprochement({
+        remainingValue: null,
+        lines: [
+          ligne({
+            itemId: 'article-ciment-01',
+            itemReference: 'CIM-42',
+            itemLabel: 'Ciment CPJ 42,5',
+            itemUnit: 'sac',
+            receivedQuantity: 800,
+            issuedQuantity: 700,
+            remainingQuantity: null,
+            remainingValue: null
+          })
+        ]
+      })
+    });
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    // Une pastille dans la colonne « Restant », une dans la carte du total.
+    expect(screen.getAllByText('Comptage en cours').length).toBeGreaterThanOrEqual(2);
+    expect(within(carte('Restant sur le chantier')).getByText('Comptage en cours')).toBeInTheDocument();
+    // Ni « 100 sac » (800 − 700), ni zéro.
+    expect(screen.queryByText('100 sac')).not.toBeInTheDocument();
+  });
 });

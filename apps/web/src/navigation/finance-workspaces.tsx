@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  AlertOutlined,
   AppstoreOutlined,
   AuditOutlined,
   BankOutlined,
@@ -12,6 +13,7 @@ import {
   IdcardOutlined,
   ImportOutlined,
   InboxOutlined,
+  MobileOutlined,
   PercentageOutlined,
   ProfileOutlined,
   ShopOutlined,
@@ -190,17 +192,42 @@ export const FINANCE_WORKSPACES: Record<FinanceWorkspaceFamily, FinanceWorkspace
       }
     ]
   },
-  // Le quotidien (réceptions, sorties), le contrôle (transferts, comptage),
-  // puis le référentiel qu'on ne touche qu'à l'installation.
+  // Le quotidien (réceptions, sorties), le terrain (le Magasin, au
+  // téléphone), le comptage, le carnet des preneurs, le contrôle, puis le
+  // référentiel qu'on ne touche qu'à l'installation (lot 040, ecrans §2.2).
+  //
+  // Liste DÉCLARATIVE : un onglet de plus (le lot 041 en ajoutera deux,
+  // « WhatsApp » et « Comptages terrain ») est une ligne de plus ici, rien
+  // d'autre. L'entrée de menu « Gestion du stock » s'allume d'elle-même sur
+  // chacun (`financeWorkspaceActiveFor`), et l'onglet actif reste le préfixe
+  // le plus long : `/stock/magasin` allume « Magasin », pas « Stock ».
   'gestion-stock': {
     label: () => t('Gestion du stock'),
     tabs: [
       { key: 'stock', label: () => t('Stock'), href: `${FINANCE}/stock`, icon: <InboxOutlined /> },
       {
+        key: 'stock-magasin',
+        label: () => t('Magasin'),
+        href: `${FINANCE}/stock/magasin`,
+        icon: <MobileOutlined />
+      },
+      {
         key: 'stock-inventaire',
         label: () => t('Inventaire'),
         href: `${FINANCE}/stock/inventaire`,
         icon: <CarryOutOutlined />
+      },
+      {
+        key: 'stock-preneurs',
+        label: () => t('Preneurs'),
+        href: `${FINANCE}/stock/preneurs`,
+        icon: <TeamOutlined />
+      },
+      {
+        key: 'stock-controle',
+        label: () => t('Contrôle'),
+        href: `${FINANCE}/stock/controle`,
+        icon: <AlertOutlined />
       },
       {
         key: 'stock-parametrage',

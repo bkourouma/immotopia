@@ -285,6 +285,48 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
   COMMUNICATION_VIEW: {
     label: t('Accès au module Communication'),
     description: t('Voir et gérer la communication : modèles, règles, historique, préférences, analytiques.')
+  },
+
+  // --- Stock de chantier (lot 040, ecrans §10.5) ---
+  STOCK_VIEW: {
+    label: t('Consulter le stock'),
+    description: t('Articles, lieux, quantités, mouvements, inventaires, preneurs et bons. Sans les valeurs.')
+  },
+  STOCK_VALUES_VIEW: {
+    label: t('Voir les valeurs du stock'),
+    description: t('Coûts, valeurs, écarts valorisés, indicateurs et filtres du journal par personne.')
+  },
+  STOCK_RECEIVE: {
+    label: t('Recevoir'),
+    description: t('Enregistrer une réception sur une facture validée.')
+  },
+  STOCK_ISSUE: {
+    label: t('Sortir'),
+    description: t('Enregistrer une sortie vers un chantier.')
+  },
+  STOCK_TRANSFER: {
+    label: t('Transférer'),
+    description: t('Déplacer du stock d’un lieu à un autre.')
+  },
+  STOCK_COUNT: {
+    label: t('Compter'),
+    description: t('Ouvrir, compter, clore et justifier un inventaire.')
+  },
+  STOCK_TAKERS_MANAGE: {
+    label: t('Tenir le carnet des preneurs'),
+    description: t('Ajouter, corriger et désactiver des preneurs.')
+  },
+  STOCK_COUNT_VALIDATE: {
+    label: t('Valider les inventaires'),
+    description: t('Valider ou abandonner un inventaire, écarter une ligne ; voir les quantités pendant un comptage.')
+  },
+  STOCK_DISPOSE: {
+    label: t('Rebuts et retours'),
+    description: t('Enregistrer un rebut ou un retour au fournisseur, retirer une pièce jointe.')
+  },
+  STOCK_ALERTS_VIEW: {
+    label: t('Alertes de stock'),
+    description: t('Consulter et traiter les alertes, et les recevoir par e-mail.')
   }
 };
 
@@ -298,7 +340,8 @@ export const PERMISSION_GROUP_LABELS_FR: Record<string, string> = {
   PROPERTIES: t('Biens immobiliers'),
   RENTAL: t('Location (baux, loyers, documents)'),
   MAINTENANCE: 'Maintenance',
-  COMMUNICATION: 'Communication'
+  COMMUNICATION: 'Communication',
+  STOCK: t('Stock de chantier')
 };
 
 /** Noms et descriptions en français des rôles (clé technique → libellé) */
@@ -326,6 +369,14 @@ export const ROLE_LABELS_FR: Record<string, { name: string; description: string 
   TENANT_ACCOUNTANT: {
     name: 'Comptable tenant',
     description: t('Accès à la facturation et aux informations comptables du tenant.')
+  },
+  // Lot 040 (ecrans §10.5). Les écrans d'invitation et de fiche collaborateur
+  // lisent les rôles de l'API et ces libellés : rien d'autre à câbler.
+  TENANT_STOREKEEPER: {
+    name: t('Magasinier'),
+    description: t(
+      'Reçoit, sort, transfère et compte le stock, et tient le carnet des preneurs. Ne voit ni les valeurs du stock ni la comptabilité.'
+    )
   }
 };
 

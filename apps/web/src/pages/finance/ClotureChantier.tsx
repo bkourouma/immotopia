@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Alert, App, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,7 +23,12 @@ import {
   PropertyOwnershipType,
   PropertyType
 } from '../../types/finance-site-closing-types';
-import type { SiteClosure, SiteLot, SiteLotAllocationMethod } from '../../types/finance-site-closing-types';
+import type {
+  SiteClosure,
+  SiteClosureBlocker,
+  SiteLot,
+  SiteLotAllocationMethod
+} from '../../types/finance-site-closing-types';
 import { detailKey, STALE_TIME } from '../../lib/query-keys';
 import {
   ConfirmAction,
@@ -204,6 +209,61 @@ function formulaireBienVide(): FormulaireBien {
     acquisitionDate: dayjs(),
     address: ''
   };
+}
+
+const BLOQUEURS_DE_STOCK: ReadonlyArray<SiteClosureBlocker['documentType']> = [
+  'STOCK_COUNT',
+  'STOCK_RESIDUAL',
+  'STOCK_CLOSING_COUNT_MISSING'
+];
+
+/** Lot 040 (A7-R3) : un bloqueur porté par le stock du chantier, pas par une pièce. */
+function estBloqueurDeStock(bloqueur: SiteClosureBlocker): boolean {
+  return BLOQUEURS_DE_STOCK.includes(bloqueur.documentType);
+}
+
+/** Rang dans l'ordre du parcours : l'inventaire en cours, l'inventaire de clôture, puis le transfert du reste. */
+const RANG_DU_PARCOURS: Partial<Record<NonNullable<SiteClosureBlocker['documentType']>, number>> = {
+  STOCK_COUNT: 1,
+  STOCK_CLOSING_COUNT_MISSING: 2,
+  STOCK_RESIDUAL: 3
+};
+
+/**
+ * Les bloqueurs dans l'ordre du parcours (spec A7-R3) : les pièces d'abord,
+ * dans l'ordre du serveur, puis les bloqueurs de stock — l'inventaire de
+ * clôture avant le transfert de ce qui reste.
+ */
+function ordonnerBloqueurs(liste: SiteClosureBlocker[]): SiteClosureBlocker[] {
+  return liste
+    .map((bloqueur, index) => ({ bloqueur, index }))
+    .sort((a, b) => {
+      const rangA = (a.bloqueur.documentType && RANG_DU_PARCOURS[a.bloqueur.documentType]) || 0;
+      const rangB = (b.bloqueur.documentType && RANG_DU_PARCOURS[b.bloqueur.documentType]) || 0;
+      return rangA - rangB || a.index - b.index;
+    })
+    .map(entree => entree.bloqueur);
+}
+
+/** Le lien d'action d'un bloqueur de stock (ecrans §10.3), ou rien. */
+function actionDeBloqueur(
+  tenantId: string | undefined,
+  bloqueur: SiteClosureBlocker
+): { label: string; to: string } | null {
+  const cible = bloqueur.documentIds?.[0];
+  if (!tenantId || !cible) return null;
+  const inventaire = `/tenant/${tenantId}/finance/stock/inventaire`;
+  const id = encodeURIComponent(cible);
+  switch (bloqueur.documentType) {
+    case 'STOCK_COUNT':
+      return { label: t('Ouvrir l’inventaire'), to: `${inventaire}?inventaire=${id}` };
+    case 'STOCK_RESIDUAL':
+      return { label: t('Transférer le reste vers un magasin'), to: `${inventaire}?onglet=transfert&origine=${id}` };
+    case 'STOCK_CLOSING_COUNT_MISSING':
+      return { label: t('Faire l’inventaire de clôture'), to: `${inventaire}?ouvrir=CLOSING&lieu=${id}` };
+    default:
+      return null;
+  }
 }
 
 export const ClotureChantier: React.FC = () => {
@@ -456,9 +516,16 @@ export const ClotureChantier: React.FC = () => {
   }
 
   const clos = repartition.isClosed;
-  const listeBloqueurs = bloqueurs ?? [];
+  const listeBloqueurs = ordonnerBloqueurs(bloqueurs ?? []);
   const nombreBloqueurs = listeBloqueurs.length;
-  const totalPiecesBloquantes = listeBloqueurs.reduce((somme, bloqueur) => somme + bloqueur.count, 0);
+  // Lot 040 : un bloqueur de stock compte des articles (`STOCK_RESIDUAL`) ou
+  // un lieu, pas des pièces — il n'entre pas dans le total des pièces.
+  const totalPiecesBloquantes = listeBloqueurs
+    .filter(bloqueur => !estBloqueurDeStock(bloqueur))
+    .reduce((somme, bloqueur) => somme + bloqueur.count, 0);
+  const parcoursDeStock =
+    listeBloqueurs.some(bloqueur => bloqueur.documentType === 'STOCK_CLOSING_COUNT_MISSING') &&
+    listeBloqueurs.some(bloqueur => bloqueur.documentType === 'STOCK_RESIDUAL');
 
   const colonnesLots: ColumnsType<SiteLot> = [
     { title: t('Lot'), key: 'lot', render: (_, lot) => lot.name },
@@ -867,25 +934,54 @@ export const ClotureChantier: React.FC = () => {
               type="warning"
               showIcon
               style={{ marginBottom: 'var(--space-3)' }}
-              message={t(
-                '{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier ({{totalPiecesBloquantes}} pièce{{value3}} concernée{{value4}}).',
-                {
-                  nombreBloqueurs: nombreBloqueurs,
-                  value: nombreBloqueurs > 1 ? 's' : '',
-                  value2: nombreBloqueurs > 1 ? 'nt' : '',
-                  totalPiecesBloquantes: totalPiecesBloquantes,
-                  value3: totalPiecesBloquantes > 1 ? 's' : '',
-                  value4: totalPiecesBloquantes > 1 ? 's' : ''
-                }
-              )}
+              message={
+                totalPiecesBloquantes > 0
+                  ? t(
+                      '{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier ({{totalPiecesBloquantes}} pièce{{value3}} concernée{{value4}}).',
+                      {
+                        nombreBloqueurs: nombreBloqueurs,
+                        value: nombreBloqueurs > 1 ? 's' : '',
+                        value2: nombreBloqueurs > 1 ? 'nt' : '',
+                        totalPiecesBloquantes: totalPiecesBloquantes,
+                        value3: totalPiecesBloquantes > 1 ? 's' : '',
+                        value4: totalPiecesBloquantes > 1 ? 's' : ''
+                      }
+                    )
+                  : t('{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier.', {
+                      nombreBloqueurs: nombreBloqueurs,
+                      value: nombreBloqueurs > 1 ? 's' : '',
+                      value2: nombreBloqueurs > 1 ? 'nt' : ''
+                    })
+              }
               description={
-                <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
-                  {/* Le message du serveur est affiché TEL QUEL : il est écrit
-                      pour être lu, et le réécrire ici le ferait diverger. */}
-                  {listeBloqueurs.map(bloqueur => (
-                    <li key={bloqueur.message}>{bloqueur.message}</li>
-                  ))}
-                </ul>
+                <>
+                  {parcoursDeStock ? (
+                    <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
+                      {t(
+                        'Faites d’abord l’inventaire de clôture du lieu de stockage, puis transférez ce qui reste vers un magasin.'
+                      )}
+                    </Paragraph>
+                  ) : null}
+                  <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
+                    {/* Le message du serveur est affiché TEL QUEL : il est écrit
+                        pour être lu, et le réécrire ici le ferait diverger. Un
+                        bloqueur de stock reçoit en plus un lien d'action. */}
+                    {listeBloqueurs.map(bloqueur => {
+                      const action = actionDeBloqueur(tenantId, bloqueur);
+                      return (
+                        <li key={`${bloqueur.documentType ?? 'piece'}-${bloqueur.message}`}>
+                          {bloqueur.message}
+                          {action ? (
+                            <>
+                              {' '}
+                              <Link to={action.to}>{action.label}</Link>
+                            </>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
               }
             />
           ) : (
@@ -895,7 +991,7 @@ export const ClotureChantier: React.FC = () => {
               style={{ marginBottom: 'var(--space-3)' }}
               message={t("Rien n'empêche de clôturer ce chantier.")}
               description={t(
-                'Aucune pièce en brouillon ne le vise. Ce sont exactement les vérifications que le serveur appliquera.'
+                'Aucune pièce en brouillon ni aucun stock ne le vise. Ce sont exactement les vérifications que le serveur appliquera.'
               )}
             />
           )}

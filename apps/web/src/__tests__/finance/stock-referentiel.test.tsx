@@ -7,6 +7,7 @@ import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import StockReferentiel from '../../pages/finance/StockReferentiel';
 import type { StockItem, StockLocation, StockSettings } from '../../types/finance-stock-referentiel-types';
+import type { StockAbilities, StockFieldContext, StockLocationView } from '../../types/finance-stock-controle-types';
 
 /**
  * Paramétrage du stock — lot 5, premier sous-lot (PRD E9, besoins S1, S4, S5 ;
@@ -178,19 +179,55 @@ function decisionArretee(overrides: Partial<StockSettings> = {}): StockSettings 
   };
 }
 
+/**
+ * Le contexte terrain (lot 040) : l'écran n'y lit que `abilities`. Par défaut,
+ * l'appelant paramètre le stock (FINANCE_SETTINGS_MANAGE).
+ */
+function contexteTerrain(abilities: Partial<StockAbilities> = {}): StockFieldContext {
+  return {
+    locations: [],
+    sites: [],
+    costCategories: [],
+    items: [],
+    takers: [],
+    receivableInvoices: [],
+    reasonCodes: { count: [], scrap: [], supplierReturn: [], transfer: [] },
+    settings: { requireTaker: false, backdatingLimitDays: 7 },
+    abilities: {
+      canReceive: true,
+      canIssue: true,
+      canTransfer: true,
+      canCount: true,
+      canValidateCount: true,
+      canDispose: true,
+      canManageTakers: true,
+      valuesVisible: true,
+      canViewAlerts: true,
+      canManageSettings: true,
+      ...abilities
+    },
+    people: []
+  };
+}
+
 /** Route les GET par motif d'URL, comme le ferait le vrai serveur. */
 function configurerGet(
   options: {
     articles?: StockItem[];
-    lieux?: StockLocation[];
+    lieux?: Array<StockLocation | StockLocationView>;
     reglages?: StockSettings;
+    abilities?: Partial<StockAbilities>;
   } = {}
 ) {
   const articles = options.articles ?? [ciment(), sable()];
   const lieux = options.lieux ?? [magasin(), depotRiviera()];
   const reglages = options.reglages ?? decisionArretee();
+  const contexte = contexteTerrain(options.abilities);
 
   get.mockImplementation(async (url: string) => {
+    if (/\/finance\/stock\/field-context(\?|$)/.test(url)) {
+      return { data: { data: contexte, meta: { valuesVisible: true, blindLocationIds: [] } } };
+    }
     if (/\/finance\/stock\/settings(\?|$)/.test(url)) {
       return { data: { data: reglages } };
     }
@@ -1034,5 +1071,123 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(screen.queryByText(CHANTIER_RIVIERA)).not.toBeInTheDocument();
     // Le nom du chantier, lui, est bien là.
     expect(screen.getAllByText('Villa de la Riviera').length).toBeGreaterThanOrEqual(1);
+  }, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// 10. Lot 040 — droits d'écriture, inventaires en cours, unité (E6)
+// ---------------------------------------------------------------------------
+
+describe('Lot 040 — les gestes d’écriture suivent `canManageSettings`', () => {
+  it('sans le droit de paramétrer, aucun bouton d’écriture, et aucune lecture financière', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({ abilities: { canManageSettings: false } });
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(screen.queryByRole('button', { name: /Nouvel article/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Corriger' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Désactiver' })).not.toBeInTheDocument();
+
+    await ouvrirOngletLieux(user);
+    expect(screen.queryByRole('button', { name: /Nouveau lieu de stockage/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Corriger le libellé' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Méthode de valorisation' }));
+    expect(await screen.findByText('La décision en vigueur')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enregistrer la décision' })).not.toBeInTheDocument();
+
+    // Les postes et les chantiers ne servent qu'aux formulaires d'écriture :
+    // un magasinier les recevrait en 403.
+    const adresses = get.mock.calls.map(appel => String(appel[0]));
+    expect(adresses.some(adresse => /\/finance\/cost-categories/.test(adresse))).toBe(false);
+    expect(adresses.some(adresse => /\/finance\/sites(\?|$)/.test(adresse))).toBe(false);
+  }, 30000);
+
+  it('avec le droit de paramétrer, les boutons d’écriture sont là', async () => {
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    expect(screen.getAllByRole('button', { name: /Nouvel article/ }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: 'Corriger' }).length).toBeGreaterThanOrEqual(1);
+  }, 15000);
+});
+
+describe('Lot 040 — un lieu en cours d’inventaire', () => {
+  it('porte la pastille « Comptage en cours » ou « Comptage clos »', async () => {
+    const user = userEvent.setup({ delay: null });
+    configurerGet({
+      lieux: [
+        {
+          ...magasin(),
+          countInProgress: { countId: 'inv-1', status: 'DRAFT', kind: 'REGULAR' },
+          siteClosed: false,
+          openingCountSuggested: false,
+          toRecount: []
+        },
+        {
+          ...depotRiviera(),
+          countInProgress: { countId: 'inv-2', status: 'COUNTED', kind: 'CLOSING' },
+          siteClosed: false,
+          openingCountSuggested: false,
+          toRecount: []
+        }
+      ]
+    });
+    monter();
+
+    await ouvrirOngletLieux(user);
+    const ligneMagasin = screen.getByText("Magasin central d'Angré").closest('tr') as HTMLElement;
+    expect(within(ligneMagasin).getByText('Comptage en cours')).toBeInTheDocument();
+    const ligneDepot = screen.getByText('Dépôt de la Villa Riviera').closest('tr') as HTMLElement;
+    expect(within(ligneDepot).getByText('Comptage clos')).toBeInTheDocument();
+  }, 30000);
+
+  it('relaie le refus de désactiver un lieu qui porte un inventaire en cours', async () => {
+    const user = userEvent.setup({ delay: null });
+    patch.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          code: 'STOCK_COUNT_IN_PROGRESS',
+          message: 'Un inventaire est en cours sur ce lieu : terminez-le ou abandonnez-le avant de le désactiver.'
+        }
+      }
+    });
+    monter();
+
+    await ouvrirOngletLieux(user);
+    const ligne = screen.getByText("Magasin central d'Angré").closest('tr') as HTMLElement;
+    await user.click(within(ligne).getByRole('button', { name: 'Désactiver' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmer la désactivation' }));
+
+    expect(
+      await screen.findByText(
+        'Un inventaire est en cours sur ce lieu : terminez-le ou abandonnez-le avant de le désactiver.',
+        {},
+        { timeout: 8000 }
+      )
+    ).toBeInTheDocument();
+  }, 30000);
+});
+
+describe('Lot 040 — changer l’unité ne convertit rien', () => {
+  it('le dit sous le champ, seulement quand l’unité change', async () => {
+    const user = userEvent.setup({ delay: null });
+    monter();
+
+    await screen.findByText('CIM-42', {}, { timeout: 8000 });
+    const ligne = screen.getByText('CIM-42').closest('tr') as HTMLElement;
+    await user.click(within(ligne).getByRole('button', { name: 'Corriger' }));
+
+    const dialogue = await screen.findByRole('dialog');
+    const phrase = 'Changer l’unité ne convertit pas les quantités déjà en stock. Vérifiez par un inventaire.';
+    expect(within(dialogue).queryByText(phrase)).not.toBeInTheDocument();
+
+    const unite = within(dialogue).getByLabelText('Unité');
+    await user.clear(unite);
+    await user.type(unite, 'tonne');
+
+    expect(await within(dialogue).findByText(phrase)).toBeInTheDocument();
   }, 30000);
 });
