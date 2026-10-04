@@ -3,6 +3,7 @@ import { CheckCircleOutlined, LockOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { t } from '../../i18n/t';
 import type { WritePlanChange } from '../../types/copilot';
+import { humanizeFieldName } from '../../utils/copilot-artifact';
 import { formatPlanValue, LONG_VALUE_CHARS } from './write-plan-format';
 
 const cellStyle: React.CSSProperties = {
@@ -43,7 +44,13 @@ export function MaskedValue(): React.ReactElement {
 export function Value({ text }: { text: string }): React.ReactElement {
   const [open, setOpen] = useState(false);
   if (text === MASKED_VALUE) return <MaskedValue />;
-  if (text.length <= LONG_VALUE_CHARS) return <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>;
+  if (text.length <= LONG_VALUE_CHARS) {
+    return (
+      <bdi>
+        <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>
+      </bdi>
+    );
+  }
   return (
     <span>
       <span style={{ whiteSpace: 'pre-wrap' }}>{open ? text : `${text.slice(0, LONG_VALUE_CHARS)}…`}</span>{' '}
@@ -79,7 +86,10 @@ export function WritePlanChangesTable({ changes }: { changes: WritePlanChange[] 
           {changes.map((c, index) => (
             <tr key={`${c.field}-${index}`} data-testid="write-plan-change">
               <th scope="row" style={{ ...cellStyle, fontWeight: 600 }}>
-                {c.field}
+                {/* Le nom technique reste en infobulle ; l'affichage est lisible. */}
+                <span title={c.field}>
+                  <bdi>{humanizeFieldName(c.field)}</bdi>
+                </span>
               </th>
               <td style={{ ...cellStyle, color: 'var(--ant-color-text-secondary, #666)' }}>
                 {c.before === undefined ? (

@@ -4,6 +4,7 @@ import { requireTenantAccess, requireTenantCollaborator } from '../middleware/te
 import { requireAiAssistantAccess, requireAiStatusAccess } from '../middleware/ai-access-middleware';
 import {
   aiActionRateLimiter,
+  aiRejectRateLimiter,
   aiChatDailyLimiter,
   aiChatRateLimiter,
   aiTenantChatRateLimiter,
@@ -42,11 +43,12 @@ router.post(
 // Pas de permission fixe sur la route : elle dépend de l'action du jeton, vérifiée par le contrôleur —
 // quittance : RENTAL_DOCUMENTS_GENERATE ET RENTAL_DOCUMENTS_VIEW (la carte renvoie vers le téléchargement) ;
 // écriture générique : la route réelle appelée par loopback sous l'identité de l'utilisateur qui confirme.
-// Limiteur partagé : 10 confirmations par minute et par utilisateur.
+// Limiteur : 10 confirmations par minute et par utilisateur (jetons invalides compris).
 router.post('/actions/execute', requireAiAssistantAccess, aiActionRateLimiter, executeActionHandler);
 
 // Refus d'un plan : consomme le jeton (il ne pourra plus être exécuté). Mêmes gardes que la confirmation,
-// sans permission de génération (refuser n'écrit rien) ; même limiteur d'action.
-router.post('/actions/reject', requireAiAssistantAccess, aiActionRateLimiter, rejectActionHandler);
+// sans permission de génération (refuser n'écrit rien) ; limiteur PROPRE (30 par minute) : un lot de refus
+// ne consomme pas le quota des confirmations.
+router.post('/actions/reject', requireAiAssistantAccess, aiRejectRateLimiter, rejectActionHandler);
 
 export default router;

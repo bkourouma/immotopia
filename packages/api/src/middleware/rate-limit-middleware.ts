@@ -453,6 +453,27 @@ export const aiActionRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/**
+ * ImmoCopilot : refus d'une proposition. Compteur SÉPARÉ de `aiActionRateLimiter` (clé préfixée) : refuser
+ * n'écrit rien, et un lot de refus ne doit pas bloquer une confirmation légitime. Plafond plus souple
+ * (30 par minute) ; toute requête compte, jeton invalide compris, pour que la route ne serve pas à tester
+ * des jetons sans limite.
+ */
+export const aiRejectRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => `ai-reject:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de refus en peu de temps. Réessayez dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /** Export du journal d'audit de la plateforme (ADR-006, phase 4) : lourd, réservé au super-admin. 5 par 10 minutes. */
 export const auditExportRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,

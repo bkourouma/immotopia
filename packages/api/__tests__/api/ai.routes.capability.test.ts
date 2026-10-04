@@ -350,11 +350,13 @@ describe('POST /ai/actions/reject — refus d’un plan', () => {
     expect((await post(`${base()}/actions/execute`, { proposalToken: token })).status).toBe(201);
   });
 
-  it('corps strict (clé inconnue refusée) et limiteur d’action partagé (429)', async () => {
+  it('corps strict (clé inconnue refusée) et limiteur de refus PROPRE (30 par minute, 429)', async () => {
     expect((await post(`${base()}/actions/reject`, { proposalToken: plan(), tenantId: 'x' })).status).toBe(400);
     const statuses: number[] = [];
-    for (let i = 0; i < 11; i += 1) statuses.push((await post(`${base()}/actions/reject`, {})).status);
-    expect(statuses[10]).toBe(429);
+    for (let i = 0; i < 31; i += 1) statuses.push((await post(`${base()}/actions/reject`, {})).status);
+    expect(statuses[30]).toBe(429);
+    // Les refus (jetons invalides compris) n'ont pas consommé le quota des confirmations (10 par minute).
+    expect((await post(`${base()}/actions/execute`, { proposalToken: plan() })).status).not.toBe(429);
   });
 
   it('ne demande aucune permission de génération (collaborateur sans documents:generate)', async () => {

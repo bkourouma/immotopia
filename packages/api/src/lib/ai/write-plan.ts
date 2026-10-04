@@ -165,21 +165,24 @@ export function computeChanges(body: Record<string, unknown> | null, state: unkn
 
 // --- Enregistrement lu -------------------------------------------------------
 
-const LABEL_KEYS = [
-  'name',
-  'title',
-  'label',
-  'fullName',
-  'displayName',
+/** Clés de libellé d'un enregistrement, par ordre de préférence (le nom de la personne est composé à part). */
+const LABEL_KEYS_BEFORE_PERSON = ['name', 'title', 'label', 'displayName', 'fullName'] as const;
+const LABEL_KEYS_AFTER_PERSON = [
+  'legalName',
+  'companyName',
   'number',
   'reference',
-  'internalReference',
-  'lease_number',
   'leaseNumber',
+  'lease_number',
+  'internalReference',
   'documentNumber',
   'document_number',
-  'code'
+  'code',
+  'email'
 ] as const;
+/** Sous-objets où une réponse enveloppée peut porter l'enregistrement. */
+const LABEL_WRAPPER_KEYS = ['data', 'contact', 'item', 'record', 'result', 'property', 'lease'] as const;
+const MAX_LABEL_CHARS = 120;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -200,18 +203,58 @@ export function unwrapRecord(parsed: unknown): Record<string, unknown> | null {
   return record;
 }
 
-/** Libellé lisible d'un enregistrement (nom, titre, numéro, référence…), ou null. */
-export function readableLabel(record: Record<string, unknown> | null): string | null {
-  if (!record) return null;
-  for (const key of LABEL_KEYS) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim() !== '' && !isSecretKey(key)) {
-      const masked = redactSecrets(value) as string;
-      return masked.length > 120 ? `${masked.slice(0, 120)}…` : masked;
-    }
-    if (typeof value === 'number') return String(value);
+function textOf(record: Record<string, unknown>, key: string): string | null {
+  if (isSecretKey(key)) return null;
+  const value = record[key];
+  if (typeof value === 'string' && value.trim() !== '') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function clampLabel(text: string): string {
+  const masked = redactSecrets(text) as string;
+  return masked.length > MAX_LABEL_CHARS ? `${masked.slice(0, MAX_LABEL_CHARS)}…` : masked;
+}
+
+/** Libellé d'UN niveau d'enregistrement, sans descendre. */
+function labelOfLevel(record: Record<string, unknown>): string | null {
+  // Contact personne morale : la raison sociale prime sur le prénom/nom (représentant).
+  const company = record.contactType === 'COMPANY' ? textOf(record, 'legalName') : null;
+  if (company) return clampLabel(company);
+  for (const key of LABEL_KEYS_BEFORE_PERSON) {
+    const text = textOf(record, key);
+    if (text) return clampLabel(text);
+  }
+  const person = [textOf(record, 'firstName'), textOf(record, 'lastName')].filter(Boolean).join(' ');
+  if (person) return clampLabel(person);
+  for (const key of LABEL_KEYS_AFTER_PERSON) {
+    const text = textOf(record, key);
+    if (text) return clampLabel(text);
   }
   return null;
+}
+
+/**
+ * Libellé lisible d'un enregistrement (nom, titre, numéro, référence, e-mail…), ou null. Si le niveau
+ * courant n'en porte aucun, cherche une fois dans un sous-objet d'enveloppe (`data`, `contact`, `item`…).
+ */
+export function readableLabel(record: Record<string, unknown> | null): string | null {
+  if (!record) return null;
+  const own = labelOfLevel(record);
+  if (own) return own;
+  for (const key of LABEL_WRAPPER_KEYS) {
+    const child = record[key];
+    if (isRecord(child)) {
+      const found = labelOfLevel(child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** Id abrégé (8 premiers caractères) : dernier recours quand l'enregistrement ne porte aucun libellé lisible. */
+export function shortRecordId(id: string): string {
+  return id.length > 12 ? `${id.slice(0, 8)}…` : id;
 }
 
 // --- Nature de l'écriture ------------------------------------------------------
