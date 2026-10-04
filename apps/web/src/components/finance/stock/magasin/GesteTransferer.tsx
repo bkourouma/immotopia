@@ -7,7 +7,15 @@ import { StockPhotoCapture } from '../StockPhotoCapture';
 import { StockQuantityInput } from '../StockQuantityInput';
 import { StockReasonPicker, isStockReasonComplete, type StockReasonValue } from '../StockReasonPicker';
 import { StockTakerSelect } from '../StockTakerSelect';
-import { AlerteCoupure, EtapeGeste, LigneRecap, ListeChoix, useConfirmerAbandon } from './MagasinBriques';
+import {
+  AlerteCoupure,
+  AvisPhotosEnEchec,
+  EtapeGeste,
+  LigneRecap,
+  ListeChoix,
+  useConfirmerAbandon,
+  usePhotosEnEchec
+} from './MagasinBriques';
 import { DisponibiliteTexte, useDisponibiliteLieu } from './SaisieArticles';
 import { DateDuGeste } from './DateMouvement';
 import { useEnvoiTerrain } from './useEnvoiTerrain';
@@ -58,6 +66,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
   const [erreurDate, setErreurDate] = useState<string | null>(null);
   const [erreurEnvoi, setErreurEnvoi] = useState<string | null>(null);
   const [resultat, setResultat] = useState<StockWrite<StockTransferResult> | null>(null);
+  const photosEnEchec = usePhotosEnEchec();
 
   const disponibilite = useDisponibiliteLieu(tenantId, contexte, lieuCourantId, etape === 'quantite');
   const origine = contexte.locations.find(lieu => lieu.id === lieuCourantId) ?? null;
@@ -118,7 +127,12 @@ export const GesteTransferer: React.FC<GesteProps> = ({
   const cible = sortante ? { type: 'MOVEMENT' as const, id: sortante.id } : undefined;
   const photos = photoVue ? (
     <div hidden={!(etape === 'photo' || etape === 'fait')} style={{ marginBlockEnd: 'var(--space-4)' }}>
-      <StockPhotoCapture tenantId={tenantId} target={cible} purposes={['GOODS_PHOTO']} />
+      <StockPhotoCapture
+        tenantId={tenantId}
+        target={cible}
+        purposes={['GOODS_PHOTO']}
+        onFailedCountChange={photosEnEchec.signaler('marchandise')}
+      />
     </div>
   ) : null;
 
@@ -340,6 +354,7 @@ export const GesteTransferer: React.FC<GesteProps> = ({
               message={t('Cette opération était déjà enregistrée.')}
             />
           ) : null}
+          <AvisPhotosEnEchec total={photosEnEchec.total} />
           <Text style={{ display: 'block', fontSize: 16, marginBlockEnd: 'var(--space-3)' }}>
             {t('{{quantite}} de « {{article}} », de « {{depuis}} » vers « {{vers}} ».', {
               quantite: formatQuantity(resultat.data.quantity, sortante?.itemUnit ?? article?.unit),

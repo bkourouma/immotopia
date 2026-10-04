@@ -52,7 +52,13 @@ import { createSupplierTx, createSupplierInvoiceTx, validateSupplierInvoiceTx } 
 import { createStockItemTx, createStockLocationTx } from '../src/lib/finance/stock-referentiel';
 import { recordStockReceiptTx, recordStockIssueTx, listStockBalances } from '../src/lib/finance/stock-mouvements';
 import { recordStockTransferTx } from '../src/lib/finance/stock-transferts';
-import { createStockCountTx, setStockCountLineTx, validateStockCountTx } from '../src/lib/finance/stock-inventaire';
+import {
+  closeStockCountTx,
+  createStockCountTx,
+  justifyStockCountLineTx,
+  setStockCountLineTx,
+  validateStockCountTx
+} from '../src/lib/finance/stock-inventaire';
 import { enableStockOnSiteTx, getSiteStockReconciliation } from '../src/lib/finance/stock-rapprochement';
 
 const RUN_ID = uuidv4().slice(0, 8);
@@ -101,11 +107,19 @@ async function nettoyer(tenantId: string): Promise<string | null> {
     const ecritures = await prisma.journalEntry.findMany({ where: { tenantId }, select: { id: true } });
     const comptages = await prisma.stockCount.findMany({ where: { tenantId }, select: { id: true } });
 
+    // Lot 040 : pieces jointes, bons et alertes tiennent les mouvements, les
+    // lignes et les inventaires par une cle `Restrict` ; ils partent d'abord,
+    // les bons apres les mouvements et avant les inventaires (le PVI tient
+    // son inventaire).
+    await prisma.stockAttachment.deleteMany({ where: { tenantId } });
+    await prisma.stockAlert.deleteMany({ where: { tenantId } });
     await prisma.stockMovement.deleteMany({ where: { tenantId } });
     if (comptages.length) {
       await prisma.stockCountLine.deleteMany({ where: { countId: { in: comptages.map(c => c.id) } } });
     }
+    await prisma.stockSlip.deleteMany({ where: { tenantId } });
     await prisma.stockCount.deleteMany({ where: { tenantId } });
+    await prisma.stockTaker.deleteMany({ where: { tenantId } });
     await prisma.stockBalance.deleteMany({ where: { tenantId } });
     await prisma.stockLocation.deleteMany({ where: { tenantId } });
     await prisma.stockItem.deleteMany({ where: { tenantId } });
@@ -330,6 +344,8 @@ async function main(): Promise<void> {
     // -----------------------------------------------------------------------
     console.log('\nLa sortie');
 
+    // Lot 040 : la sortie rend `{ slip, movements }` (un bon, une ligne par
+    // article) ; sa valeur est la somme de ses mouvements.
     const sortie = await prisma.$transaction(tx =>
       recordStockIssueTx(tx, tid, {
         locationId: magasin.id,
@@ -343,7 +359,11 @@ async function main(): Promise<void> {
       })
     );
 
-    constater('la sortie vaut quarante sacs au cout moyen', 400_000, sortie.totalValue);
+    constater(
+      'la sortie vaut quarante sacs au cout moyen',
+      400_000,
+      sortie.movements.reduce((somme, mouvement) => somme + (mouvement.totalValue ?? 0), 0)
+    );
     // C'EST L'AUTRE MOITIE DU CONSTAT CENTRAL. Le cout vient de la sortie, et
     // de la sortie seulement.
     constater(
@@ -370,6 +390,9 @@ async function main(): Promise<void> {
         itemId: ciment.id,
         quantity: 20,
         transferDate: new Date('2026-07-16T00:00:00.000Z'),
+        // Lot 040 : le transfert exige un motif et un demandeur (A11).
+        reasonCode: 'SITE_SUPPLY',
+        requestedBy: 'Chef de chantier Camara',
         createdByUserId: gestionnaire.id
       })
     );
@@ -402,10 +425,25 @@ async function main(): Promise<void> {
       setStockCountLineTx(tx, tid, comptage.id, {
         itemId: ciment.id,
         countedQuantity: 38,
-        reason: 'Casse au dechargement'
+        countedByUserId: gestionnaire.id
       })
     );
-    await prisma.$transaction(tx => validateStockCountTx(tx, tid, comptage.id, gestionnaire.id));
+    // Lot 040 : le comptage se clot, l'ecart se justifie par un motif, puis
+    // l'inventaire se valide. Le gestionnaire a compte lui-meme et il est le
+    // seul validateur de l'agence jetable : la derogation motivee s'applique.
+    await prisma.$transaction(tx => closeStockCountTx(tx, tid, comptage.id, gestionnaire.id));
+    await prisma.$transaction(tx =>
+      justifyStockCountLineTx(tx, tid, comptage.id, ciment.id, {
+        reasonCode: 'BREAKAGE',
+        reason: 'Casse au dechargement',
+        justifiedByUserId: gestionnaire.id
+      })
+    );
+    await prisma.$transaction(tx =>
+      validateStockCountTx(tx, tid, comptage.id, gestionnaire.id, {
+        selfValidationReason: 'Seul validateur de cette agence jetable de bout en bout.'
+      })
+    );
 
     constater(
       'un ecart ne s impute a aucun chantier',

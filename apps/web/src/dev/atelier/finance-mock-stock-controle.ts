@@ -5,15 +5,8 @@
  * Même modèle que les autres bancs du stock : il renvoie `null` quand l'URL ne
  * le concerne pas, et `mock-api.ts` passe alors au gestionnaire suivant.
  *
- * **Non câblé dans `mock-api.ts`** (hors du territoire WEB-3 du plan 040). À
- * ajouter par l'intégration, dans la liste `for (const repondre of [...])`,
- * APRÈS les quatre bancs du lot 5 :
- *
- * ```ts
- * import { repondreStockControle } from './finance-mock-stock-controle';
- * // …
- * repondreStockControle
- * ```
+ * Câblé dans `mock-api.ts`, dans la liste `for (const repondre of [...])`,
+ * APRÈS les quatre bancs du lot 5.
  *
  * Les identifiants d'articles et de lieux sont ceux de
  * `finance-mock-stock-referentiel.ts` : quel que soit l'ordre d'inscription,

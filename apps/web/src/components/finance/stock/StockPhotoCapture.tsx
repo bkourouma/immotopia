@@ -31,6 +31,12 @@ export interface StockPhotoCaptureProps {
   purposes: StockAttachmentPurpose[];
   /** Appelé pour chaque pièce enregistrée par le serveur. */
   onUploaded?: (attachment: StockAttachmentView) => void;
+  /**
+   * Appelé quand le nombre de pièces en échec change (0 compris, au retour
+   * d'un réessai réussi) : l'écran appelant en tire un message groupé
+   * (ecrans §6.7) sans retirer le « Réessayer » de chaque pièce.
+   */
+  onFailedCountChange?: (failedCount: number) => void;
   disabled?: boolean;
 }
 
@@ -68,6 +74,7 @@ export const StockPhotoCapture: React.FC<StockPhotoCaptureProps> = ({
   target,
   purposes,
   onUploaded,
+  onFailedCountChange,
   disabled
 }) => {
   const [items, setItems] = useState<PendingItem[]>([]);
@@ -115,6 +122,15 @@ export const StockPhotoCapture: React.FC<StockPhotoCaptureProps> = ({
       setItems(previous => [...previous]);
     });
   }, [target, items, send]);
+
+  // Le compte des échecs, remonté seulement quand il change.
+  const failedCount = items.filter(item => item.status === 'failed').length;
+  const lastReportedRef = useRef(0);
+  useEffect(() => {
+    if (failedCount === lastReportedRef.current) return;
+    lastReportedRef.current = failedCount;
+    onFailedCountChange?.(failedCount);
+  }, [failedCount, onFailedCountChange]);
 
   const addFile = async (file: File) => {
     const reduced = file.type.startsWith('image/')

@@ -8,7 +8,15 @@ import { StockPhotoCapture } from '../StockPhotoCapture';
 import { StockSlipPdfButton } from '../StockSlipPdfButton';
 import { StockTakerForm } from '../StockTakerForm';
 import { STOCK_REQUESTER_MAX_LENGTH } from '../StockTakerSelect';
-import { AlerteCoupure, EtapeGeste, LigneRecap, ListeChoix, useConfirmerAbandon } from './MagasinBriques';
+import {
+  AlerteCoupure,
+  AvisPhotosEnEchec,
+  EtapeGeste,
+  LigneRecap,
+  ListeChoix,
+  useConfirmerAbandon,
+  usePhotosEnEchec
+} from './MagasinBriques';
 import { SaisieArticles, useDisponibiliteLieu, type LigneSaisie } from './SaisieArticles';
 import { DateDuGeste } from './DateMouvement';
 import { useEnvoiTerrain } from './useEnvoiTerrain';
@@ -67,6 +75,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
   const [erreurEnvoi, setErreurEnvoi] = useState<string | null>(null);
   const [erreurDate, setErreurDate] = useState<string | null>(null);
   const [resultat, setResultat] = useState<StockWrite<StockSlipResult> | null>(null);
+  const photosEnEchec = usePhotosEnEchec();
 
   const entame = Boolean(siteId) || lignes.length > 0;
   const site = chantiers.find(candidat => candidat.id === siteId) ?? null;
@@ -149,7 +158,12 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
       <Text strong style={{ display: 'block', fontSize: 16 }}>
         {t('Photographier la marchandise remise')}
       </Text>
-      <StockPhotoCapture tenantId={tenantId} target={cibleBon} purposes={['GOODS_PHOTO']} />
+      <StockPhotoCapture
+        tenantId={tenantId}
+        target={cibleBon}
+        purposes={['GOODS_PHOTO']}
+        onFailedCountChange={photosEnEchec.signaler('marchandise')}
+      />
     </div>
   ) : null;
 
@@ -400,6 +414,7 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
         <Title level={2} style={{ marginBlock: 'var(--space-2)', textAlign: 'center' }}>
           {resultat.data.slip.number}
         </Title>
+        <AvisPhotosEnEchec total={photosEnEchec.total} />
         <Text strong style={{ display: 'block', fontSize: 16, marginBlockEnd: 'var(--space-3)' }}>
           {t('Faites signer le bon par le preneur.')}
         </Text>
@@ -408,7 +423,12 @@ export const GesteSortir: React.FC<GesteProps> = ({ tenantId, contexte, lieuCour
           <Text strong style={{ fontSize: 16 }}>
             {t('Photographier le bon signé')}
           </Text>
-          <StockPhotoCapture tenantId={tenantId} target={cibleBon} purposes={['SIGNED_SLIP']} />
+          <StockPhotoCapture
+            tenantId={tenantId}
+            target={cibleBon}
+            purposes={['SIGNED_SLIP']}
+            onFailedCountChange={photosEnEchec.signaler('bon-signe')}
+          />
         </Space>
         <Space direction="vertical" style={{ width: '100%', marginBlockStart: 'var(--space-4)' }}>
           <Button type="primary" block onClick={onRecommencer} style={{ minHeight: 48, fontSize: 16 }}>

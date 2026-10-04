@@ -322,6 +322,53 @@ export const AlerteCoupure: React.FC<{ onReessayer: () => void; disabled?: boole
   />
 );
 
+// ---------------------------------------------------------------------------
+// Photos en échec après l'enregistrement
+// ---------------------------------------------------------------------------
+
+/**
+ * Additionne les échecs de plusieurs `StockPhotoCapture` d'un même geste
+ * (bon de livraison, marchandise, bon signé) : chaque prise de vue reçoit son
+ * rappel par `signaler(cle)`, `total` donne le compte groupé.
+ */
+export function usePhotosEnEchec(): { total: number; signaler: (cle: string) => (n: number) => void } {
+  const [parCle, setParCle] = useState<Record<string, number>>({});
+  const rappels = useMemo(() => new Map<string, (n: number) => void>(), []);
+  const signaler = useCallback(
+    (cle: string) => {
+      let rappel = rappels.get(cle);
+      if (!rappel) {
+        rappel = (n: number) => setParCle(precedent => (precedent[cle] === n ? precedent : { ...precedent, [cle]: n }));
+        rappels.set(cle, rappel);
+      }
+      return rappel;
+    },
+    [rappels]
+  );
+  const total = Object.values(parCle).reduce((somme, n) => somme + n, 0);
+  return { total, signaler };
+}
+
+/**
+ * Un échec d'envoi de photo ne remet pas l'opération en cause (ecrans §6.7) :
+ * message groupé ; chaque photo garde son « Réessayer ».
+ */
+export const AvisPhotosEnEchec: React.FC<{ total: number }> = ({ total }) =>
+  total > 0 ? (
+    <Alert
+      type="warning"
+      showIcon
+      role="status"
+      style={{ marginBlockEnd: 'var(--space-3)' }}
+      message={
+        total === 1
+          ? t('L’opération est enregistrée. 1 photo n’a pas pu être envoyée.')
+          : t('L’opération est enregistrée. {{n}} photos n’ont pas pu être envoyées.', { n: total })
+      }
+      description={t('Utilisez « Réessayer » à côté de chaque photo : elle ne sera pas déposée deux fois.')}
+    />
+  ) : null;
+
 /**
  * Quitter un geste commencé demande confirmation (ecrans §6.7) : rien n'a
  * encore été enregistré, et le brouillon ne vit qu'en mémoire de page.

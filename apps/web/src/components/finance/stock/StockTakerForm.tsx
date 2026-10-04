@@ -16,6 +16,11 @@ export interface StockTakerFormProps {
   tenantId?: string;
   /** Doublon refusé par le serveur (409 STOCK_TAKER_DUPLICATE) : propose de choisir le preneur existant. */
   onDuplicate?: (existingTakerId: string) => void;
+  /**
+   * Libellé du bouton proposé sur un doublon : « Choisir ce preneur » dans un
+   * sélecteur (ecrans §3), « Voir ce preneur » dans le carnet (ecrans §9).
+   */
+  duplicateActionLabel?: string;
   onCancel?: () => void;
 }
 
@@ -42,6 +47,7 @@ export const StockTakerForm: React.FC<StockTakerFormProps> = ({
   people,
   tenantId: tenantIdProp,
   onDuplicate,
+  duplicateActionLabel,
   onCancel
 }) => {
   const params = useParams<{ tenantId: string }>();
@@ -121,11 +127,11 @@ export const StockTakerForm: React.FC<StockTakerFormProps> = ({
           type="warning"
           showIcon
           style={{ marginBlockEnd: 12 }}
-          message={t('Ce preneur existe déjà dans le carnet.')}
+          message={t('Un preneur actif porte déjà ce nom dans cette équipe.')}
           action={
             onDuplicate ? (
               <Button size="small" onClick={() => onDuplicate(duplicateId)}>
-                {t('Choisir ce preneur')}
+                {duplicateActionLabel ?? t('Choisir ce preneur')}
               </Button>
             ) : undefined
           }

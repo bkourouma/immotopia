@@ -72,7 +72,6 @@ import { syncWorkProgramCostTx } from './cost-allocation';
 import { appendThirdPartyMovementTx } from './ledger';
 import { roundMoneyXof, roundQuantity } from './money';
 import { toAmountOrZero } from './types';
-import type { FinanceSourceType } from './types';
 import { alertKeys, raiseStockAlertTx, readStockAlertSettings, toYearMonthUtc } from './stock-alertes';
 import { createStockSlipTx, formatSlipNumber } from './stock-bons';
 import {
@@ -2066,7 +2065,7 @@ export async function recordStockSupplierReturnTx(
       type: 'ADJUSTMENT',
       settled: supplierCreditValue,
       label: `Retour de marchandise — facture ${invoice.reference}`,
-      sourceType: 'STOCK_SUPPLIER_RETURN' as unknown as FinanceSourceType,
+      sourceType: 'STOCK_SUPPLIER_RETURN',
       sourceId: movement.id,
       movementDate: params.returnDate
     });

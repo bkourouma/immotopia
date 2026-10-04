@@ -226,7 +226,10 @@ describe('Carnet des preneurs — les écritures', () => {
     await user.type(within(fenetre).getByLabelText('Nom complet'), 'Yao Serge');
     await user.click(within(fenetre).getByRole('button', { name: 'Ajouter le preneur' }));
 
-    const choisir = await within(fenetre).findByRole('button', { name: 'Choisir ce preneur' });
+    expect(
+      await within(fenetre).findByText('Un preneur actif porte déjà ce nom dans cette équipe.')
+    ).toBeInTheDocument();
+    const choisir = within(fenetre).getByRole('button', { name: 'Voir ce preneur' });
     await user.click(choisir);
     await waitFor(() => expect(screen.queryByText('Koné Ibrahim')).not.toBeInTheDocument());
     expect(screen.getByText('Yao Serge')).toBeInTheDocument();

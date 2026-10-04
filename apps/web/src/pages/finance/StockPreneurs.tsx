@@ -510,6 +510,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
             message.success(t('{{nom}} est ajouté au carnet.', { nom: taker.fullName }));
             await recharger();
           }}
+          duplicateActionLabel={t('Voir ce preneur')}
           onDuplicate={existingTakerId => {
             // « Voir ce preneur » : le carnet se restreint au preneur existant.
             setCreation(false);

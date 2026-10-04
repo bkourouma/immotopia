@@ -926,6 +926,16 @@ production (garde `ALLOW_PACK_TEST_TENANTS=1`).
 **Attention : mot de passe public, staging seulement.** Il figure dans le bundle
 du staging ; ne jamais réutiliser ces comptes ni ce mot de passe ailleurs.
 
+Les agences « 6 mois » Promoteur et Opérateur intégré portent en plus quatre
+comptes de recette du contrôle du stock (lot 040), au même mot de passe :
+`magasinier-promoteur@`, `comptable-promoteur@`, `magasinier-integre@` et
+`responsable-integre@packs.immotopia.test` (Magasinier, Comptable, second
+administrateur qui valide l'inventaire compté par un autre). Liste et rôles :
+`PACK_TEST_MEMBERS` dans `prisma/seeds/pack-test-tenants.ts`, reprise dans la
+connexion rapide du staging (`apps/web/src/dev/dev-accounts.ts`). Après le
+déploiement du lot, **relancer le seed** (`./infra/scripts/seed-pack-tests.sh
+staging`) pour les créer : il est idempotent et ne recrée pas les agences.
+
 Pour les retirer, suspendre chaque agence avec l'outil d'exploitation
 (`docker exec immotopia-saas-api node dist/scripts/provision-subscription.js suspend --tenant <slug> [--dry-run]`,
 voir le [RUNBOOK](RUNBOOK.md)). Les relancer ne les réactive pas : le seed ne
@@ -991,6 +1001,44 @@ seul le journal dit ce qui aurait été refusé. `make-env.sh` livre `warn` dans
 deux environnements : tant que la bascule n'est pas faite, le filet
 multi-tenant et les quotas d'abonnement de la production ne bloquent rien (voir
 les [points ouverts](#points-ouverts)).
+
+### Lot 040 — contrôle du stock de chantier
+
+À relire avant le premier déploiement du lot (détail :
+`specs/040-controle-stock/data-model.md` §5.3).
+
+- **Le retour arrière est un correctif en avant.** Les migrations ajoutent des
+  valeurs d'enum (`ALTER TYPE … ADD VALUE`, irréversible) ; dès qu'une ligne
+  porte une valeur nouvelle (inventaire `COUNTED` ou `CANCELLED`, mouvement
+  `SCRAP` ou `SUPPLIER_RETURN`, écriture `STOCK_SCRAP`…), l'ancienne image ne
+  sait plus lire la liste des inventaires, le journal ni le grand livre. Le
+  retour arrière de la section précédente ne vaut donc que dans les minutes qui
+  suivent la mise en ligne, avant toute écriture du stock ; ensuite, on corrige
+  et on redéploie le code du lot, les migrations restent.
+- **API et web partent ensemble** (ce que fait `deploy.sh`) : les formes de
+  réponse du stock changent (`POST /stock/receipts`, `POST /stock/issues`,
+  `PUT …/lines`, listes paginées). Un onglet resté ouvert sur l'ancien web se
+  remet d'aplomb en rechargeant la page ; aucun drapeau de fonctionnalité.
+- **`STOCK_ALERT_MAIL_JOB_ENABLED`** (`env.example`, défaut `false`) : envoi,
+  toutes les 10 minutes, de l'e-mail récapitulatif des nouvelles alertes de
+  stock aux responsables du stock de chaque agence. La purge nocturne des clés
+  d'idempotence (3 h UTC) tourne quelle que soit la valeur. L'activer d'abord
+  sur le staging, vérifier la réception, puis sur la production
+  ([modifier une variable](#modifier-une-variable-denvironnement)).
+- **Droits.** La migration `20261008090200_controle_stock_permissions` crée les
+  dix droits `STOCK_*` et le rôle Magasinier (`TENANT_STOREKEEPER`), et reporte
+  les droits financiers existants sur les droits du stock équivalents, pour
+  tous les rôles qui les portent (personne ne perd l'accès qu'il avait). Elle
+  est idempotente. Les droits prennent effet au plus tard 5 minutes après
+  l'attribution d'un rôle (cache par instance).
+- **Couper les menus hors stock du Magasinier, une fois, par la plateforme.**
+  Les clés de menu ne sont connues que du web : la migration n'écrit aucune
+  décision de menu. Après le déploiement, un super-administrateur ouvre
+  l'écran des accès aux menus par rôle (`PUT /roles/menu-access/:roleKey`) et,
+  pour `TENANT_STOREKEEPER`, ne laisse que les menus du stock (le Magasin, les
+  preneurs, le stock). À faire sur le staging, puis sur la production.
+- **Comptes de recette** : relancer le seed des comptes de test par pack sur le
+  staging ([plus haut](#comptes-de-test-par-pack-staging)).
 
 ## Sauvegarde et restauration
 

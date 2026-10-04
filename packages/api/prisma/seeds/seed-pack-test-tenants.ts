@@ -27,9 +27,11 @@ import { hashPassword } from '../../src/utils/password-utils';
 import { flushAuditEvents } from '../../src/services/audit-service';
 import { provisionTenant } from '../../src/services/tenant-provisioning-service';
 import {
+  PACK_TEST_MEMBERS,
   PACK_TEST_PASSWORD,
   PACK_TEST_TENANTS,
   checkPackTestTenantsGuard,
+  type PackTestMember,
   type PackTestTenant
 } from './pack-test-tenants';
 
@@ -140,6 +142,46 @@ async function seedOne(
   return { outcome, tenantId, adminUserId };
 }
 
+/**
+ * Compte de recette supplémentaire (Magasinier, Comptable, second
+ * administrateur) : utilisateur, membership ACTIVE et rôle d'agence, mot de
+ * passe connu. Idempotent : un compte existant est resynchronisé.
+ */
+async function seedMember(member: PackTestMember, tenantId: string, passwordHash: string): Promise<void> {
+  const now = new Date();
+  const role = await prisma.role.findFirst({ where: { key: member.roleKey, scope: 'TENANT' }, select: { id: true } });
+  if (!role) {
+    throw new Error(`Le rôle ${member.roleKey} est introuvable : vérifiez les migrations et le seed des rôles.`);
+  }
+  const existing = await prisma.user.findFirst({
+    where: { email: { equals: member.email, mode: 'insensitive' } },
+    select: { id: true }
+  });
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, emailVerified: true, isActive: true, fullName: member.fullName },
+        select: { id: true }
+      })
+    : await prisma.user.create({
+        data: {
+          email: member.email,
+          passwordHash,
+          fullName: member.fullName,
+          globalRole: GlobalRole.USER,
+          emailVerified: true,
+          isActive: true
+        },
+        select: { id: true }
+      });
+  await prisma.membership.upsert({
+    where: { userId_tenantId: { userId: user.id, tenantId } },
+    update: { status: MembershipStatus.ACTIVE, acceptedAt: now },
+    create: { userId: user.id, tenantId, status: MembershipStatus.ACTIVE, acceptedAt: now, invitedAt: now }
+  });
+  await prisma.userRole.createMany({ data: [{ userId: user.id, roleId: role.id, tenantId }], skipDuplicates: true });
+}
+
 /** Reconstitue 6 mois ou 3 ans d'historique par module du pack (idempotent, voir pack-history/). */
 async function seedHistory(entry: PackTestTenant, tenantId: string, adminUserId: string): Promise<void> {
   const ctx = buildContext(
@@ -187,6 +229,11 @@ async function main(): Promise<number> {
     if (withHistory) {
       // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
       await seedHistory(entry, tenantId, adminUserId);
+    }
+    for (const member of PACK_TEST_MEMBERS.filter(m => m.tenantName === entry.tenantName)) {
+      // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
+      await seedMember(member, tenantId, passwordHash);
+      console.log(`  Compte de recette : ${member.email} (${member.roleKey}).`);
     }
   }
   console.log(`${PACK_TEST_TENANTS.length} agences de test prêtes (idempotent : relançable sans doublon).`);

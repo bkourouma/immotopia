@@ -8,10 +8,12 @@ import { StockPhotoCapture } from '../StockPhotoCapture';
 import { StockSlipPdfButton } from '../StockSlipPdfButton';
 import {
   AlerteCoupure,
+  AvisPhotosEnEchec,
   EtapeGeste,
   LigneRecap,
   ListeChoix,
   useConfirmerAbandon,
+  usePhotosEnEchec,
   type LigneChoix
 } from './MagasinBriques';
 import { SaisieArticles, type LigneSaisie } from './SaisieArticles';
@@ -24,6 +26,7 @@ import { formatQuantity } from '../../../../types/finance-stock-inventaire-types
 import type {
   StockFieldContext,
   StockInvoiceReceiptsView,
+  StockReceiptControl,
   StockReceiptResult,
   StockReceivableInvoice,
   StockWrite
@@ -50,6 +53,17 @@ interface LectureRecus {
   echec: boolean;
   vue: StockInvoiceReceiptsView | null;
 }
+
+/**
+ * Texte fixe de chaque contrôle de réception. L'écran Magasin n'affiche
+ * AUCUNE valeur (ecrans §6) : le `message` du serveur, qui cite les montants
+ * pour un appelant qui voit les valeurs, n'est donc jamais repris ici.
+ */
+const TEXTE_CONTROLE: Record<StockReceiptControl['code'], () => string> = {
+  RECEIPT_REPEATED: () => t('Cette facture avait déjà fait l’objet d’une réception.'),
+  RECEIPT_OVER_INVOICE: () => t('Les réceptions de cette facture dépassent son montant. Un responsable vérifiera.'),
+  RECEIPT_UNVALUED: () => t('Des articles ont été reçus sans prix connu. Un responsable complétera.')
+};
 
 function libelleFacture(facture: StockReceivableInvoice): string {
   return [facture.reference, dayjs(facture.invoiceDate).format(dateFormat('short')), facture.siteName]
@@ -91,6 +105,7 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
   const [erreurEnvoi, setErreurEnvoi] = useState<string | null>(null);
   const [erreurDate, setErreurDate] = useState<string | null>(null);
   const [resultat, setResultat] = useState<StockWrite<StockReceiptResult> | null>(null);
+  const photosEnEchec = usePhotosEnEchec();
 
   const lieu = contexte.locations.find(candidat => candidat.id === lieuId) ?? null;
   const entame = Boolean(facture) || lignes.length > 0;
@@ -204,11 +219,21 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
       <Text strong style={{ display: 'block', fontSize: 16 }}>
         {t('Photographier le bon de livraison')}
       </Text>
-      <StockPhotoCapture tenantId={tenantId} target={cibleBon} purposes={['DELIVERY_NOTE']} />
+      <StockPhotoCapture
+        tenantId={tenantId}
+        target={cibleBon}
+        purposes={['DELIVERY_NOTE']}
+        onFailedCountChange={photosEnEchec.signaler('livraison')}
+      />
       <Text strong style={{ display: 'block', fontSize: 16, marginBlockStart: 'var(--space-3)' }}>
         {t('Photographier la marchandise')}
       </Text>
-      <StockPhotoCapture tenantId={tenantId} target={cibleBon} purposes={['GOODS_PHOTO']} />
+      <StockPhotoCapture
+        tenantId={tenantId}
+        target={cibleBon}
+        purposes={['GOODS_PHOTO']}
+        onFailedCountChange={photosEnEchec.signaler('marchandise')}
+      />
     </div>
   ) : null;
 
@@ -428,15 +453,21 @@ export const GesteRecevoir: React.FC<GesteProps> = ({
             type={controle.severity === 'WARNING' ? 'warning' : 'info'}
             showIcon
             style={{ marginBlockEnd: 'var(--space-2)' }}
-            message={controle.message}
+            message={TEXTE_CONTROLE[controle.code]()}
           />
         ))}
+        <AvisPhotosEnEchec total={photosEnEchec.total} />
         <Space direction="vertical" style={{ width: '100%', marginBlockStart: 'var(--space-3)' }}>
           <StockSlipPdfButton tenantId={tenantId} slipId={resultat.data.slip.id} number={resultat.data.slip.number} />
           <Text strong style={{ fontSize: 16 }}>
             {t('Photographier le bon signé')}
           </Text>
-          <StockPhotoCapture tenantId={tenantId} target={cibleBon} purposes={['SIGNED_SLIP']} />
+          <StockPhotoCapture
+            tenantId={tenantId}
+            target={cibleBon}
+            purposes={['SIGNED_SLIP']}
+            onFailedCountChange={photosEnEchec.signaler('bon-signe')}
+          />
         </Space>
         <Space direction="vertical" style={{ width: '100%', marginBlockStart: 'var(--space-4)' }}>
           <Button type="primary" block onClick={onRecommencer} style={{ minHeight: 48, fontSize: 16 }}>
