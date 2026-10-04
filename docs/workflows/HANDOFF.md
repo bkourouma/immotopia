@@ -113,6 +113,18 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/menus-coupes-par-agence` — 2026-10-04
+
+**État :** PR ouverte vers `main` (fusion à l'utilisateur), worktree `.claude/worktrees/menus-agence`. Rien de déployé.
+
+**Fait :** `role_menu_access.tenant_id` (null = rôles PLATFORM, aucun héritage) ; migration `20261008100000_role_menu_access_par_agence` qui copie les coupures existantes dans chaque agence (rôles non PLATFORM) puis supprime les lignes null ; `GET/PUT /api/roles/menu-access?tenantId=` (obligatoire pour rôle d'agence/portail, interdit pour PLATFORM), `/me` ne lit que l'agence ; écran « Rôles et permissions » > Menus avec sélecteur d'agence (`components/admin/MenuTenantSelect.tsx`) ; garde-fous de la relecture de sécurité (périmètre `undefined` refusé, carte bornée à 500 entrées) ; classeur des fonctionnalités mis à jour. Vérifié : Jest 84 tests ciblés verts, Vitest 23 verts, typecheck web 0 / API 1 erreur préexistante (`archiver`), `check:architecture`, `wiki:check`, migration rejouée sur base jetable (copie par agence, unicités, cascade, `migrate diff` vide).
+
+**Reste :** recette navigateur de l'écran Menus (non faite) ; après fusion, déployer le staging (la migration recopie les 9 coupures TENANT_AGENT dans chaque agence ; TENANT_ADMIN n'en a plus depuis le 2026-10-03).
+
+**Pièges :** une agence créée après la migration n'a aucune coupure (voulu, documenté dans DATA_MODELS). L'écran enregistre la carte complète (y compris les défauts déduits des permissions) : une sauvegarde fige ces défauts en lignes explicites. `npm run i18n:extract` réécrit 30 catalogues en retard sur `main` : ne garder que ses clés. Staging : `SUBSCRIPTION_ENFORCEMENT=enforce` posé le 2026-10-03 (sauvegarde `immotopia-saas.env.avant-enforce-20261003`), coupures TENANT_ADMIN levées le même jour (sauvegarde `/home/deployer/role_menu_access_tenant_admin_avant_20261003.csv`).
+
+---
+
 ## Branche `integration/multi-actifs` — 2026-10-02
 
 **État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).
