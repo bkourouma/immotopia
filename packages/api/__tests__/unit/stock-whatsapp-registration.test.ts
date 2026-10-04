@@ -14,7 +14,14 @@ import {
   revokeRegistration,
   updateRegistrationSites
 } from '../../src/lib/stock-whatsapp/registrations/service';
-import { activationCodeHash } from '../../src/lib/stock-whatsapp/registrations/activation';
+import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
+import {
+  ACTIVATION_MAX_ATTEMPTS,
+  activationCodeHash,
+  handlePendingRegistrationMessage,
+  type PendingRegistration
+} from '../../src/lib/stock-whatsapp/registrations/activation';
 
 // ---------------------------------------------------------------------------
 // Base Prisma en mémoire (recopiée dans chaque suite du lot 041 : un fichier
@@ -101,6 +108,7 @@ function mockScalarMatches(actual: any, filter: any): boolean {
 
 function createMockDb() {
   let store: MockStore = {};
+  let mockTxQueue: Promise<void> = Promise.resolve();
   let seq = 0;
   const table = (model: string): MockRow[] => (store[model] ??= []);
 
@@ -236,9 +244,33 @@ function createMockDb() {
     );
   }
 
+  /**
+   * Index uniques partiels des inscriptions (`WHERE status <> 'REVOKED'`) : la
+   * base réelle lève un P2002 qui nomme l'index ; le service s'y fie (W3-R4).
+   */
+  function violatedPartialIndex(model: string, candidate: MockRow): string | null {
+    if (model !== 'stockWhatsappRegistration' || candidate.status === 'REVOKED') return null;
+    const live = table(model).filter(existing => existing !== candidate && existing.status !== 'REVOKED');
+    if (live.some(existing => existing.tenantId === candidate.tenantId && existing.userId === candidate.userId)) {
+      return 'stock_whatsapp_registrations_one_live_member';
+    }
+    if (live.some(existing => existing.phoneE164 === candidate.phoneE164)) {
+      return 'stock_whatsapp_registrations_one_live_phone';
+    }
+    return null;
+  }
+
   function create(model: string, data: any): MockRow {
     const row: MockRow = { id: data.id ?? `${model}-${++seq}`, createdAt: new Date(), updatedAt: new Date() };
     applyData(row, data);
+    const partialIndex = violatedPartialIndex(model, row);
+    if (partialIndex) {
+      throw new Prisma.PrismaClientKnownRequestError(`Unique constraint failed on ${partialIndex}`, {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: partialIndex }
+      });
+    }
     if (violatesUnique(model, row)) {
       const error: any = new Error(`Unique constraint failed on ${model}`);
       error.code = 'P2002';
@@ -327,12 +359,21 @@ function createMockDb() {
         if (prop === '$transaction') {
           return async (arg: any) => {
             if (Array.isArray(arg)) return Promise.all(arg);
+            // Transactions interactives exécutées l'une après l'autre : la base
+            // réelle sérialise par le verrou de ligne que pose la mise à jour
+            // (réservation d'un essai d'activation, W3-R7).
+            const previous = mockTxQueue;
+            let release!: () => void;
+            mockTxQueue = new Promise<void>(resolve => (release = resolve));
+            await previous;
             const snapshot = structuredClone(store);
             try {
               return await arg(client);
             } catch (error) {
               store = snapshot;
               throw error;
+            } finally {
+              release();
             }
           };
         }
@@ -828,6 +869,22 @@ describe('W3 — inscription d’un chef', () => {
       code: 'STOCK_WHATSAPP_PHONE_UNAVAILABLE',
       message: 'Ce numéro ne peut pas être inscrit.'
     });
+    // Rien n'a été écrit dans l'agence B (transaction annulée).
+    expect(mockDb.rows('stockWhatsappRegistration').filter(r => r.tenantId === OTHER_TENANT)).toHaveLength(0);
+    expect(mockDb.rows('stockWhatsappRegistrationSite').filter(r => r.tenantId === OTHER_TENANT)).toHaveLength(0);
+    // Refus audité dans l'agence qui essaie, sans le numéro ni l'agence détentrice.
+    const denied = mockAudit.filter(a => a.outcome === 'DENIED');
+    expect(denied).toHaveLength(1);
+    expect(denied[0]).toMatchObject({
+      tenantId: OTHER_TENANT,
+      actorUserId: ADMIN,
+      actionKey: 'STOCK_WHATSAPP_REGISTRATION_CREATED',
+      payload: { reason: 'PHONE_UNAVAILABLE', userId: 'user-chef-b' }
+    });
+    const deniedJson = JSON.stringify(denied[0]);
+    expect(deniedJson).not.toContain('0712345678');
+    expect(deniedJson).not.toContain('phone');
+    expect(deniedJson).not.toContain(`"${TENANT}"`);
     // Moussa est inéligible : l'éligibilité passe avant ; le doublon local se teste avec un chef éligible.
     expect(local.code).toBe('STOCK_WHATSAPP_MEMBER_NOT_ELIGIBLE');
     mockDb.rows('stockWhatsappRegistration')[0].status = 'REVOKED';
@@ -998,5 +1055,116 @@ describe('W3 — inscription d’un chef', () => {
     mockDb.rows('stockLocation').find(l => l.id === 'loc-site-2')!.isActive = false;
     const sites = await listEligibleSites(TENANT, ADMIN);
     expect(sites.map(site => site.siteId)).toEqual(['site-1']);
+  });
+});
+
+describe('Garde tenant : aucune lecture d’agence sans `tenantId` en clair', () => {
+  it('création (y compris refus du numéro) : chaque `where` sur une table d’agence nomme `tenantId`', async () => {
+    const seen: Array<{ model: string; where: any }> = [];
+    const spied = ['stockWhatsappRegistration', 'membership', 'userRole', 'constructionSite'];
+    const originals = new Map<string, Record<string, any>>();
+    for (const model of spied) {
+      const delegate = mockDb.client[model];
+      originals.set(model, { ...delegate });
+      for (const op of ['findFirst', 'findMany', 'findUnique', 'count']) {
+        const original = delegate[op];
+        delegate[op] = async (args: any = {}) => {
+          seen.push({ model, where: args.where });
+          return original(args);
+        };
+      }
+    }
+    try {
+      await createAwa();
+      await rejection(
+        createRegistration(OTHER_TENANT, ADMIN, { userId: 'user-chef-b', phone: '0712345678', siteIds: ['site-b'] })
+      );
+    } finally {
+      for (const model of spied) Object.assign(mockDb.client[model], originals.get(model));
+    }
+    expect(seen.length).toBeGreaterThan(0);
+    for (const { model, where } of seen) {
+      expect({ model, hasTenant: Boolean(where && 'tenantId' in where) }).toEqual({ model, hasTenant: true });
+      expect(JSON.stringify(where)).not.toContain('userId_tenantId');
+    }
+  });
+});
+
+describe('W3-R6, W3-R7 — activation : empreinte à clé, essai réservé avant comparaison', () => {
+  const CODE = '482913';
+  const LOCKED_TEXT = "Ce code n'est plus valable. Demandez un nouveau code à votre administrateur.";
+
+  function current(): MockRow {
+    return mockDb.rows('stockWhatsappRegistration').find(r => r.id === 'reg-chef')!;
+  }
+
+  function pending(attempts = 0): PendingRegistration {
+    const row = current();
+    Object.assign(row, {
+      status: 'PENDING_ACTIVATION',
+      activationCodeHash: activationCodeHash(CODE, 'reg-chef'),
+      activationExpiresAt: new Date(Date.now() + 3600 * 1000),
+      activationAttempts: attempts,
+      activatedAt: null
+    });
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      userId: row.userId,
+      phoneE164: row.phoneE164,
+      activationCodeHash: row.activationCodeHash,
+      activationExpiresAt: row.activationExpiresAt,
+      activationAttempts: row.activationAttempts
+    };
+  }
+
+  beforeEach(() => {
+    resetWorld();
+    seedAgency({ siteCount: 1, status: 'PENDING_ACTIVATION' });
+  });
+
+  it('empreinte HMAC-SHA256 à clé serveur : 64 caractères hexadécimaux, différente du SHA-256 sans secret', () => {
+    const hash = activationCodeHash(CODE, 'reg-chef');
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(hash).not.toBe(crypto.createHash('sha256').update(`${CODE}:reg-chef`, 'utf8').digest('hex'));
+    expect(activationCodeHash(CODE, 'reg-autre')).not.toBe(hash);
+  });
+
+  it('dix mauvais codes simultanés : cinq essais consommés au plus, verrou audité une seule fois', async () => {
+    const registration = pending(0);
+    await Promise.all(Array.from({ length: 10 }, () => handlePendingRegistrationMessage(registration, text('000000'))));
+    expect(current().activationAttempts).toBe(ACTIVATION_MAX_ATTEMPTS);
+    expect(current().status).toBe('PENDING_ACTIVATION');
+    expect(mockAudit.filter(a => a.actionKey === 'STOCK_WHATSAPP_ACTIVATION_LOCKED')).toHaveLength(1);
+    const texts = sentTexts();
+    expect(texts.filter(value => value.startsWith('Code incorrect.'))).toHaveLength(ACTIVATION_MAX_ATTEMPTS - 1);
+    expect(texts.filter(value => value === LOCKED_TEXT)).toHaveLength(10 - (ACTIVATION_MAX_ATTEMPTS - 1));
+  });
+
+  it('le bon code après quatre échecs (essai réservé = le 5e) active encore', async () => {
+    const registration = pending(ACTIVATION_MAX_ATTEMPTS - 1);
+    await handlePendingRegistrationMessage(registration, text(`Code ${CODE}`));
+    expect(current()).toMatchObject({ status: 'ACTIVE', activationCodeHash: null });
+    expect(mockAudit.some(a => a.actionKey === 'STOCK_WHATSAPP_REGISTRATION_ACTIVATED' && a.critical)).toBe(true);
+  });
+
+  it('essais épuisés par un message simultané : le bon code n’est même pas comparé → M04', async () => {
+    const registration = pending(ACTIVATION_MAX_ATTEMPTS - 1);
+    // Copie périmée : un autre message a consommé le dernier essai entre-temps.
+    current().activationAttempts = ACTIVATION_MAX_ATTEMPTS;
+    await handlePendingRegistrationMessage(registration, text(CODE));
+    expect(current().status).toBe('PENDING_ACTIVATION');
+    expect(current().activationAttempts).toBe(ACTIVATION_MAX_ATTEMPTS);
+    expect(lastSent().text).toBe(LOCKED_TEXT);
+  });
+
+  it('code régénéré entre la lecture et l’essai : l’empreinte courante fait foi', async () => {
+    const registration = pending(0);
+    current().activationCodeHash = activationCodeHash('111222', 'reg-chef');
+    await handlePendingRegistrationMessage(registration, text(CODE));
+    expect(current().status).toBe('PENDING_ACTIVATION');
+    expect(current().activationAttempts).toBe(1);
+    await handlePendingRegistrationMessage({ ...registration, activationAttempts: 1 }, text('111 222'));
+    expect(current().status).toBe('ACTIVE');
   });
 });

@@ -124,6 +124,9 @@ export async function applySiteChoiceTx(
   return single ? { kind: 'SINGLE', site: single } : { kind: 'MANY', sites: eligible };
 }
 
+/** Inventaire que la session quitte avec son chantier : W5-R5 lui est appliquée après le verrou. */
+export type LeftCount = { countId: string; siteId: string | null };
+
 export type OpenedSession = {
   sessionId: string;
   justOpened: boolean;
@@ -131,6 +134,8 @@ export type OpenedSession = {
   choice: SiteChoice | null;
   /** Nom du chantier devenu inéligible (M32). */
   lostSiteName: string | null;
+  /** Inventaire du chantier perdu, à clore si W5-R5 le permet (`closeSessionCount`). */
+  leftCount: LeftCount | null;
 };
 
 async function createSession(tx: PrismaTransactionClient, target: ChefTarget, now: Date): Promise<OpenedSession> {
@@ -155,36 +160,68 @@ async function createSession(tx: PrismaTransactionClient, target: ChefTarget, no
       : single
         ? { kind: 'SINGLE', site: single }
         : { kind: 'MANY', sites: eligible };
-  return { sessionId: created.id, justOpened: true, choice, lostSiteName: null };
+  return { sessionId: created.id, justOpened: true, choice, lostSiteName: null, leftCount: null };
+}
+
+export type LostSite = { choice: SiteChoice; lostSiteName: string; leftCount: LeftCount | null };
+
+/**
+ * Chantier de la session devenu inéligible (W5-R8), sous verrou : la
+ * proposition en attente est abandonnée, l'inventaire courant est rendu à
+ * l'appelant (W5-R5 s'y applique APRÈS le verrou, comme à `CHANTIER`), puis
+ * nouveau choix (W4-R3). `null` si le chantier est toujours éligible.
+ */
+export async function relocateLostSiteTx(
+  tx: PrismaTransactionClient,
+  target: ChefTarget,
+  session: SessionRow,
+  now: Date
+): Promise<LostSite | null> {
+  if (!session.siteId) return null;
+  const eligible = await loadEligibleSites(tx, target.tenantId, target.registrationId);
+  if (eligible.some(site => site.siteId === session.siteId)) return null;
+  const lost = await tx.constructionSite.findFirst({
+    where: { id: session.siteId, tenantId: target.tenantId },
+    select: { name: true }
+  });
+  const leftCount = session.countId ? { countId: session.countId, siteId: session.siteId } : null;
+  await abandonPendingCapture(tx, session);
+  const choice = await applySiteChoiceTx(tx, session, eligible, now);
+  return { choice, lostSiteName: lost?.name ?? '', leftCount };
+}
+
+/** Même traitement, pour une perte constatée pendant une confirmation (lieu désactivé, W5-R8). */
+export async function relocateFromLostSite(target: ChefTarget, sessionId: string, now: Date): Promise<LostSite | null> {
+  return withRegistrationLock(target.registrationId, async tx => {
+    const session = await tx.stockWhatsappSession.findFirst({
+      where: { id: sessionId, tenantId: target.tenantId, closedAt: null },
+      select: SESSION_SELECT
+    });
+    return session ? relocateLostSiteTx(tx, target, session, now) : null;
+  });
 }
 
 /**
  * Session ouverte de l'inscription, ou nouvelle session (W4-R1). Met à jour
- * `lastInboundAt` et remet la relance à zéro (W4-R5). Vérifie que le chantier
- * de la session est toujours éligible (W5-R8) : sinon M32 et nouveau choix.
+ * `lastInboundAt` (sans jamais le faire reculer : un message traité en retard
+ * ne rajeunit pas la session) et remet la relance à zéro (W4-R5). Vérifie que
+ * le chantier de la session est toujours éligible (W5-R8) : sinon M32 et
+ * nouveau choix.
  */
 export async function openOrResumeSession(target: ChefTarget, now: Date): Promise<OpenedSession> {
   return withRegistrationLock(target.registrationId, async tx => {
     const session = await findOpenSession(tx, target.tenantId, target.registrationId);
     if (!session) return createSession(tx, target, now);
 
+    const lastInboundAt = session.lastInboundAt.getTime() > now.getTime() ? session.lastInboundAt : now;
     await tx.stockWhatsappSession.updateMany({
       where: { id: session.id, tenantId: target.tenantId, closedAt: null },
-      data: { lastInboundAt: now, reminderSentAt: null }
+      data: { lastInboundAt, reminderSentAt: null }
     });
-    if (!session.siteId) return { sessionId: session.id, justOpened: false, choice: null, lostSiteName: null };
-
-    const eligible = await loadEligibleSites(tx, target.tenantId, target.registrationId);
-    if (eligible.some(site => site.siteId === session.siteId)) {
-      return { sessionId: session.id, justOpened: false, choice: null, lostSiteName: null };
-    }
-    const lost = await tx.constructionSite.findFirst({
-      where: { id: session.siteId, tenantId: target.tenantId },
-      select: { name: true }
-    });
-    await abandonPendingCapture(tx, session);
-    const choice = await applySiteChoiceTx(tx, session, eligible, now);
-    return { sessionId: session.id, justOpened: false, choice, lostSiteName: lost?.name ?? '' };
+    const unchanged = { sessionId: session.id, justOpened: false, choice: null, lostSiteName: null, leftCount: null };
+    const lost = await relocateLostSiteTx(tx, target, session, now);
+    if (!lost) return unchanged;
+    return { sessionId: session.id, justOpened: false, ...lost };
   });
 }
 

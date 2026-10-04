@@ -123,10 +123,8 @@ export function StockWhatsapp(): React.ReactElement {
             key: 'simulateur',
             label: t('Simulateur'),
             children: (
-              <WhatsappSimulator
-                tenantId={tenantId}
-                registrations={(registrations.data ?? []).filter(r => r.status !== 'REVOKED')}
-              />
+              // Les inscriptions révoquées restent proposées : la recette joue le refus M06.
+              <WhatsappSimulator tenantId={tenantId} registrations={registrations.data ?? []} />
             )
           }
         ]

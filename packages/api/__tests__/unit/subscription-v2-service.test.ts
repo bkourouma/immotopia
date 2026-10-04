@@ -177,7 +177,7 @@ const fake: Row = {
   // Capacite ACTIFS (lot 4A) : actifs non archives + biens non archives sans actif lie.
   asset: { count: jest.fn(async () => 0) },
   // Capacite PHOTOS_INVENTAIRE (lot 041) : `countInventoryPhotosThisMonth`, 0 sans ligne du mois.
-  stockWhatsappUsage: { findUnique: jest.fn(async () => null) },
+  stockWhatsappUsage: { findFirst: jest.fn(async () => null) },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
 
@@ -207,6 +207,7 @@ import {
   changePack,
   clearSubscriptionManualReadOnly,
   countActiveAssets,
+  countInventoryPhotosThisMonth,
   getUsage,
   monthlyOverageWindow,
   previewNextInvoice,
@@ -723,6 +724,25 @@ describe('capacite ACTIFS (lot 4A, packs Particulier)', () => {
     await expect(addSubscriptionItem(T, { code: 'PARTICULIER_PLUS', quantity: 1 }, 'admin-1')).rejects.toThrow(
       /incompatible/
     );
+  });
+});
+
+describe('capacite PHOTOS_INVENTAIRE (lot 041, W11-R2)', () => {
+  it('countInventoryPhotosThisMonth : findFirst filtre par tenantId et mois UTC au premier niveau (garde tenant en enforce)', async () => {
+    const findFirst = fake.stockWhatsappUsage.findFirst as jest.Mock;
+    const findUnique = jest.fn();
+    (fake.stockWhatsappUsage as Row).findUnique = findUnique;
+    findFirst.mockClear();
+    findFirst.mockResolvedValueOnce({ used: 37 });
+    expect(await countInventoryPhotosThisMonth(fake as any, T, new Date('2026-10-31T23:30:00.000Z'))).toBe(37);
+    expect(findFirst).toHaveBeenCalledWith({ where: { tenantId: T, month: '2026-10' }, select: { used: true } });
+    expect(findUnique).not.toHaveBeenCalled();
+    delete (fake.stockWhatsappUsage as Row).findUnique;
+  });
+
+  it('countInventoryPhotosThisMonth : 0 sans ligne du mois', async () => {
+    (fake.stockWhatsappUsage.findFirst as jest.Mock).mockResolvedValueOnce(null);
+    expect(await countInventoryPhotosThisMonth(fake as any, T, new Date('2026-11-01T00:00:00.000Z'))).toBe(0);
   });
 });
 

@@ -29,6 +29,44 @@ import { userLabelOf } from './sessions';
 
 export const CONFIRMED_OUTCOMES = ['ACCEPTED', 'CORRECTED'] as const;
 
+/** Écart toléré entre la confirmation d'une capture et l'heure serveur de la ligne qu'elle écrit. */
+export const CAPTURE_LINE_TOLERANCE_MS = 2_000;
+
+function quantityOf(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric * 10_000) / 10_000 : null;
+}
+
+/**
+ * Vrai si la capture a écrit la valeur ACTUELLE de la ligne d'inventaire : même
+ * auteur (le chef de la capture est le dernier compteur de la ligne) ET, soit la
+ * même quantité (`lineQuantityAfter`, à défaut `confirmedQuantity`), soit une
+ * confirmation au plus tôt 2 s avant `countedAtServer`.
+ *
+ * Après une ressaisie au bureau (autre auteur, ou même auteur plus tard avec une
+ * autre quantité), la capture n'est plus « la » preuve de la ligne : la ligne
+ * est de source `WEB` et la capture reste dans l'historique de l'inventaire
+ * (`GET …/captures?countId=`). Une ligne non comptée n'a pas de preuve.
+ */
+export function captureWroteLineValue(
+  capture: { userId: string; confirmedAt: Date | null; lineQuantityAfter: unknown; confirmedQuantity: unknown },
+  line: { countedByUserId: string | null; countedQuantity: unknown; countedAtServer: Date | null }
+): boolean {
+  if (!capture.confirmedAt) return false;
+  const lineQuantity = quantityOf(line.countedQuantity);
+  if (lineQuantity === null) return false;
+  if (!line.countedByUserId || line.countedByUserId !== capture.userId) return false;
+
+  const written = quantityOf(capture.lineQuantityAfter) ?? quantityOf(capture.confirmedQuantity);
+  if (written !== null && written === lineQuantity) return true;
+
+  if (!line.countedAtServer) return false;
+  return (
+    new Date(capture.confirmedAt).getTime() >= new Date(line.countedAtServer).getTime() - CAPTURE_LINE_TOLERANCE_MS
+  );
+}
+
 export type CaptureOutcome =
   | 'RECEIVED'
   | 'PENDING'
@@ -449,6 +487,11 @@ export async function removeCapturePhoto(
  * plus récent, `ACCEPTED` ou `CORRECTED`) et le nombre de captures confirmées
  * (additions comprises). Aucun attendu : l'écran Inventaire le lit dans
  * `CountView`, sous les règles du lot 040.
+ *
+ * La capture la plus récente n'est rendue que si elle a écrit la valeur
+ * ACTUELLE de la ligne (`captureWroteLineValue`) : après une ressaisie au
+ * bureau, l'article n'a plus de badge WhatsApp ni de « Voir la photo », et ses
+ * captures restent listées par `GET …/captures?countId=`.
  */
 export async function listCountCaptures(tenantId: string, countId: string): Promise<CountFieldCaptures> {
   if (!isUuid(countId)) throw new NotFoundError('Inventaire introuvable.');
@@ -469,17 +512,29 @@ export async function listCountCaptures(tenantId: string, countId: string): Prom
     orderBy: [{ confirmedAt: 'desc' }, { id: 'desc' }],
     select: {
       id: true,
+      userId: true,
       itemId: true,
       countLineId: true,
       outcome: true,
       mergeMode: true,
       confirmedAt: true,
+      confirmedQuantity: true,
+      lineQuantityAfter: true,
       fileUrl: true,
       photoRemovedAt: true
     }
   });
 
+  // Les lignes de l'inventaire (enfant sans `tenantId` : filtrées par le parent).
+  const countLines = await prisma.stockCountLine.findMany({
+    where: { countId: count.id, count: { tenantId } },
+    select: { id: true, itemId: true, countedQuantity: true, countedByUserId: true, countedAtServer: true }
+  });
+  const lineById = new Map(countLines.map(line => [line.id, line]));
+  const lineByItem = new Map(countLines.map(line => [line.itemId, line]));
+
   const byItem = new Map<string, CountFieldCaptures['lines'][number]>();
+  const latestSeen = new Set<string>();
   for (const capture of captures) {
     if (!capture.itemId || !capture.confirmedAt) continue;
     const existing = byItem.get(capture.itemId);
@@ -487,6 +542,12 @@ export async function listCountCaptures(tenantId: string, countId: string): Prom
       existing.capturesCount += 1;
       continue;
     }
+    // Seule la capture la plus récente de l'article peut être « la » preuve.
+    if (latestSeen.has(capture.itemId)) continue;
+    latestSeen.add(capture.itemId);
+    const line =
+      (capture.countLineId ? lineById.get(capture.countLineId) : undefined) ?? lineByItem.get(capture.itemId);
+    if (!line || !captureWroteLineValue(capture, line)) continue;
     byItem.set(capture.itemId, {
       itemId: capture.itemId,
       countLineId: capture.countLineId,

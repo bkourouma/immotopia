@@ -131,10 +131,12 @@ export const STOCK_VISION_METHODS = ['SACKS_STACKED', 'BARS_BUNDLE', 'BLOCKS_PAL
 export const STOCK_VISION_MAX_TOTAL = 1_000_000;
 export const STOCK_VISION_EXPLANATION_MAX = 300;
 
-/** Vrai si `value` n'a pas plus de quatre décimales. */
-function hasAtMostFourDecimals(value: number): boolean {
-  const scaled = value * 10_000;
-  return Math.abs(scaled - Math.round(scaled)) < 1e-6;
+/**
+ * Arrondi à quatre décimales (précision des quantités de stock, `Decimal(16, 4)`).
+ * Un total plus précis rendu par l'IA est arrondi, pas rejeté (M13).
+ */
+function roundToFourDecimals(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
 }
 
 const ratio = z.number().finite().min(0).max(1);
@@ -143,7 +145,8 @@ const dimension = z.number().int().min(1).nullable();
 /**
  * Validation de la sortie de l'IA (W8-R5) — l'autorité, quel que soit le
  * respect du schéma par le fournisseur. Une sortie qui échoue vaut
- * `INVALID_OUTPUT`. Un `itemId` hors de la liste des candidats n'est PAS
+ * `INVALID_OUTPUT`. `proposedTotal` est arrondi à quatre décimales (le reste
+ * reste strict). Un `itemId` hors de la liste des candidats n'est PAS
  * contrôlé ici (le schéma ne connaît pas la liste) : le fournisseur le ramène à
  * `null` après validation.
  */
@@ -156,12 +159,7 @@ export const stockVisionResultSchema: z.ZodType<StockVisionResult> = z
     layers: dimension,
     columns: dimension,
     depthRows: dimension,
-    proposedTotal: z
-      .number()
-      .finite()
-      .min(0)
-      .max(STOCK_VISION_MAX_TOTAL)
-      .refine(hasAtMostFourDecimals, 'quatre décimales au plus'),
+    proposedTotal: z.number().finite().min(0).max(STOCK_VISION_MAX_TOTAL).transform(roundToFourDecimals),
     confidence: ratio,
     method: z.enum(STOCK_VISION_METHODS),
     explanation: z.string().max(STOCK_VISION_EXPLANATION_MAX)

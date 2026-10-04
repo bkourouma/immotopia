@@ -50,7 +50,13 @@ function mergeMessages(current: ConversationMessage[], incoming: ConversationMes
  */
 export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, registrations }) => {
   const { message } = App.useApp();
-  const [sender, setSender] = useState<string | undefined>(registrations[0]?.id);
+  // Inscriptions révoquées en fin de liste : elles servent à jouer le refus M06.
+  const ordered = [
+    ...registrations.filter(registration => registration.status !== 'REVOKED'),
+    ...registrations.filter(registration => registration.status === 'REVOKED')
+  ];
+  const [sender, setSender] = useState<string | undefined>(ordered[0]?.id);
+  const [sendRefused, setSendRefused] = useState<string | null>(null);
   const [freePhone, setFreePhone] = useState('');
   const [text, setText] = useState('');
   const [caption, setCaption] = useState('');
@@ -67,6 +73,9 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
         ? { registrationId: sender }
         : null;
   const targetKey = target ? (target.registrationId ?? `libre:${target.freePhone}`) : '';
+  const senderRevoked = registrations.some(
+    registration => registration.id === sender && registration.status === 'REVOKED'
+  );
 
   const lastAt = useRef<string | undefined>(undefined);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -116,6 +125,7 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
     lastAt.current = undefined;
     setMessages([]);
     setSession(null);
+    setSendRefused(null);
     if (targetKey) void refresh(true);
   }, [targetKey, refresh, stopPolling]);
 
@@ -131,11 +141,14 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
     try {
       await injectStockWhatsappSimulatorMessage(tenantId, { ...target, ...payload } as
         SimulatorTextOrReply | SimulatorPhotoMessage);
+      setSendRefused(null);
       await refresh();
       startPolling();
       return true;
     } catch (error) {
-      message.error(apiErrorOf(error).message ?? handleApiError(error));
+      // Refus du serveur (numéro inscrit, inscription révoquée dont le numéro
+      // est actif ailleurs…) : affiché sous l'expéditeur, jusqu'au prochain envoi.
+      setSendRefused(apiErrorOf(error).message ?? handleApiError(error));
       return false;
     } finally {
       setSending(false);
@@ -186,7 +199,7 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
             value={sender}
             onChange={value => setSender(value)}
             options={[
-              ...registrations.map(registration => ({
+              ...ordered.map(registration => ({
                 value: registration.id,
                 label: `${registration.userLabel} — ${registrationStatusDisplay(registration.status).label}`
               })),
@@ -205,7 +218,24 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
             />
           </Form.Item>
         )}
+        {senderRevoked && (
+          <Alert
+            type="info"
+            showIcon
+            title={t('Inscription révoquée : le bot doit répondre que l’accès est retiré.')}
+          />
+        )}
       </Form>
+
+      {sendRefused && (
+        <Alert
+          type="error"
+          showIcon
+          closable={{ onClose: () => setSendRefused(null) }}
+          title={t('Message refusé par le serveur')}
+          description={sendRefused}
+        />
+      )}
 
       <Card
         size="small"

@@ -130,10 +130,16 @@ interface Options {
   canManageSettings?: boolean;
   simulatorAvailable?: boolean;
   registrations?: RegistrationView[];
+  conversation?: ConversationMessage[];
 }
 
 function routerGet(options: Options) {
-  const { canManageSettings = true, simulatorAvailable = false, registrations = [KOFFI] } = options;
+  const {
+    canManageSettings = true,
+    simulatorAvailable = false,
+    registrations = [KOFFI],
+    conversation = BOT_MESSAGES
+  } = options;
   get.mockImplementation(async (url: string) => {
     if (url.endsWith('/stock/field-context')) return fieldContext(canManageSettings);
     if (url.includes('/stock/whatsapp/overview'))
@@ -154,7 +160,7 @@ function routerGet(options: Options) {
       return { data: { success: true, data: [{ siteId: CHANTIER, name: 'Villa de la Riviera', eligible: true }] } };
     }
     if (url.includes('/stock/whatsapp/simulator/conversation')) {
-      return { data: { success: true, data: { session: null, messages: BOT_MESSAGES } } };
+      return { data: { success: true, data: { session: null, messages: conversation } } };
     }
     throw new Error(`GET inattendu : ${url}`);
   });
@@ -336,5 +342,66 @@ describe('Onglet WhatsApp — simulateur', () => {
     const [url, corps] = post.mock.calls[0];
     expect(url).toBe(`/tenants/${TENANT}/finance/stock/whatsapp/simulator/messages`);
     expect(corps).toEqual({ registrationId: KOFFI.id, replyId: 'confirm:yes', replyTitle: 'Oui' });
+  });
+
+  it('propose une inscription révoquée, en fin de liste, et affiche le refus M06 de son fil', async () => {
+    const AWA: RegistrationView = {
+      ...KOFFI,
+      id: 'inscription-awa',
+      userId: 'user-awa',
+      userLabel: 'Awa Diallo',
+      status: 'REVOKED'
+    };
+    const M06: ConversationMessage = {
+      id: 'm06',
+      direction: 'OUTBOUND',
+      kind: 'TEXT',
+      text: 'Votre accès à l’inventaire par WhatsApp a été retiré.',
+      createdAt: '2026-10-04T10:00:00.000Z'
+    };
+    routerGet({ simulatorAvailable: true, registrations: [AWA, KOFFI], conversation: [M06] });
+    monter(`/tenant/${TENANT}/finance/stock/whatsapp?onglet=simulateur`);
+    // L'inscription active est choisie d'abord ; la révoquée reste sélectionnable.
+    await screen.findByText('Koffi Yao — Actif');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Expéditeur' }));
+    const options = await waitFor(() => {
+      const items = Array.from(document.querySelectorAll('.ant-select-item-option')).map(item => item.textContent);
+      if (items.length < 3) throw new Error('menu incomplet');
+      return items;
+    });
+    expect(options).toEqual(['Koffi Yao — Actif', 'Awa Diallo — Révoqué', 'Numéro inconnu']);
+    const awa = Array.from(document.querySelectorAll('.ant-select-item-option')).find(
+      item => item.textContent === 'Awa Diallo — Révoqué'
+    );
+    fireEvent.click(awa as Element);
+    expect(
+      await screen.findByText('Inscription révoquée : le bot doit répondre que l’accès est retiré.')
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        get.mock.calls.some(
+          call =>
+            String(call[0]).includes('/simulator/conversation') && JSON.stringify(call).includes('inscription-awa')
+        )
+      ).toBe(true)
+    );
+    expect(await screen.findByText('Votre accès à l’inventaire par WhatsApp a été retiré.')).toBeInTheDocument();
+  });
+
+  it('affiche sous l’expéditeur le refus du serveur pour une inscription révoquée', async () => {
+    const AWA: RegistrationView = { ...KOFFI, id: 'inscription-awa', userLabel: 'Awa Diallo', status: 'REVOKED' };
+    routerGet({ simulatorAvailable: true, registrations: [AWA], conversation: [] });
+    post.mockRejectedValueOnce(
+      apiError(400, 'VALIDATION_ERROR', 'Ce numéro est inscrit : choisissez son inscription, ou un autre numéro libre.')
+    );
+    monter(`/tenant/${TENANT}/finance/stock/whatsapp?onglet=simulateur`);
+    const saisie = await screen.findByRole('textbox', { name: 'Écrire un message' });
+    fireEvent.change(saisie, { target: { value: 'Bonjour' } });
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer$/ }));
+    expect(await screen.findByText('Message refusé par le serveur')).toBeInTheDocument();
+    expect(
+      screen.getByText('Ce numéro est inscrit : choisissez son inscription, ou un autre numéro libre.')
+    ).toBeInTheDocument();
+    expect(post.mock.calls[0][1]).toEqual({ registrationId: 'inscription-awa', text: 'Bonjour' });
   });
 });

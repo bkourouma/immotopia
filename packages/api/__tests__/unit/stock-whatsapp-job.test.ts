@@ -8,12 +8,22 @@ import {
   clearStaleEventPayloads,
   purgeStockWhatsappHistory,
   retryStaleWebhookEvents,
-  runStockWhatsappMinute
+  runStockWhatsappMinute,
+  startStockWhatsappJob,
+  stopStockWhatsappJob
 } from '../../src/jobs/stock-whatsapp-job';
 import { handleInboundMessage, resetEngineMemoryForTests } from '../../src/lib/stock-whatsapp/engine';
 import { runSessionTimers } from '../../src/lib/stock-whatsapp/engine/timers';
 
 const mockProcessed: string[] = [];
+const mockCronTasks: Array<{ expression: string; run: () => Promise<void> }> = [];
+
+jest.mock('node-cron', () => ({
+  schedule: (expression: string, run: () => Promise<void>) => {
+    mockCronTasks.push({ expression, run });
+    return { stop: () => undefined };
+  }
+}));
 
 jest.mock('../../src/lib/stock-whatsapp/webhook/process-event', () => ({
   processWebhookEvent: async (eventId: string) => {
@@ -960,5 +970,67 @@ describe('W6-R7, W10-R3 — reprise et purges (stock-whatsapp-job)', () => {
       mockDb.client.stockWhatsappSession.findMany = findMany;
     }
     expect(mockProcessed).toEqual(['oublie']);
+  });
+});
+
+describe('W14-R6 — purges maintenues avec le transport `disabled`', () => {
+  function staleEvent(id: string, minutesAgo: number) {
+    mockDb.insert('whatsappCloudEvent', {
+      id,
+      kind: 'MESSAGE',
+      status: 'RECEIVED',
+      attempts: 0,
+      receivedAt: new Date(Date.now() - minutesAgo * MINUTE),
+      claimedAt: null,
+      payload: { copie: true }
+    });
+  }
+
+  afterEach(() => {
+    stopStockWhatsappJob();
+    mockCronTasks.length = 0;
+  });
+
+  it('transport inactif : copies `payload` effacées, ni reprise des événements ni minuteries', async () => {
+    staleEvent('vieux', 61);
+    const findMany = mockDb.client.stockWhatsappSession.findMany;
+    let timersRan = false;
+    mockDb.client.stockWhatsappSession.findMany = async (args: any) => {
+      timersRan = true;
+      return findMany(args);
+    };
+    try {
+      await runStockWhatsappMinute(new Date(), { transportActive: false });
+    } finally {
+      mockDb.client.stockWhatsappSession.findMany = findMany;
+    }
+    expect(mockProcessed).toEqual([]);
+    expect(timersRan).toBe(false);
+    expect(mockDb.rows('whatsappCloudEvent').find(e => e.id === 'vieux')!.payload).toBeNull();
+  });
+
+  it('transport actif (défaut) : la reprise des événements tourne', async () => {
+    staleEvent('oublie', 3);
+    await runStockWhatsappMinute(new Date());
+    expect(mockProcessed).toEqual(['oublie']);
+  });
+
+  it('démarrée transport inactif : les deux tâches sont planifiées et la purge nocturne s’exécute', async () => {
+    startStockWhatsappJob({ transportActive: false });
+    expect(mockCronTasks.map(task => task.expression)).toEqual(['* * * * *', '30 3 * * *']);
+    staleEvent('stale', 3);
+    mockDb.insert('whatsappCloudEvent', {
+      id: 'tres-vieux',
+      kind: 'MESSAGE',
+      status: 'PROCESSED',
+      attempts: 1,
+      receivedAt: new Date(Date.now() - 31 * 24 * 60 * MINUTE),
+      claimedAt: null,
+      payload: null
+    });
+    await mockCronTasks[0].run();
+    expect(mockProcessed).toEqual([]);
+    await mockCronTasks[1].run();
+    expect(mockDb.rows('whatsappCloudEvent').map(e => e.id)).toEqual(['stale']);
   });
 });

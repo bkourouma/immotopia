@@ -1,11 +1,12 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
-import { requireAnyPermission } from '../middleware/rbac-middleware';
+import { hasAnyPermission } from '../services/permission-service';
 import { requireSettingsManage } from '../middleware/finance-rbac-middleware';
 import { requireStockDispose, requireStockView, STOCK_PERMISSIONS } from '../middleware/stock-rbac-middleware';
-import { AppError, ErrorCode } from '../middleware/error-middleware';
+import { AppError, ErrorCode, UnauthorizedError } from '../middleware/error-middleware';
 import { CAPTURE_MAX_BYTES } from '../lib/stock-whatsapp/capture-files';
 import {
   advanceSimulatorClockHandler,
@@ -47,12 +48,16 @@ import {
  * - `STOCK_VIEW` : comptages terrain, captures et leur photo ;
  * - `STOCK_DISPOSE` : retrait d'une photo ;
  * - `FINANCE_SETTINGS_MANAGE` ou `STOCK_COUNT_VALIDATE` : conversations
- *   (`requireAnyPermission`).
+ *   (`requireConversationReader`, refus `403 STOCK_WHATSAPP_CONVERSATION_FORBIDDEN`).
  * Un chef de chantier ne porte que `STOCK_COUNT` : aucune de ces routes ne lui
  * est ouverte.
  *
  * Simulateur : `requireSimulatorAvailable` passe EN TÊTE de chaque route, avant
  * la garde de droit et la lecture du fichier (W13-R1).
+ *
+ * Limiteurs (énumération) : `POST …/registrations` et `POST …/simulator/messages`
+ * répondent l'un et l'autre si un numéro est déjà inscrit ailleurs ; ils sont
+ * plafonnés par agence ET par utilisateur, après la garde de droit.
  *
  * Les chemins à segment fixe se déclarent avant les chemins paramétrés de même
  * profondeur.
@@ -64,8 +69,75 @@ const BASE = '/tenants/:tenantId/finance/stock/whatsapp';
 
 router.use(BASE, authenticate, requireTenantAccess);
 
-/** Conversations (W14-R3) : elles contiennent les textes du chef. */
-const requireConversationReader = requireAnyPermission(['FINANCE_SETTINGS_MANAGE', STOCK_PERMISSIONS.COUNT_VALIDATE]);
+// ---------------------------------------------------------------------------
+// Conversations (W14-R3) : elles contiennent les textes du chef
+// ---------------------------------------------------------------------------
+
+const CONVERSATION_PERMISSIONS = ['FINANCE_SETTINGS_MANAGE', STOCK_PERMISSIONS.COUNT_VALIDATE];
+
+/**
+ * Même règle que `requireAnyPermission`, mais le refus porte le code du contrat,
+ * `403 STOCK_WHATSAPP_CONVERSATION_FORBIDDEN`, par le gestionnaire central.
+ * `anyPermissionKeys` reste lisible par le catalogue de la passerelle IA.
+ */
+const requireConversationReader = Object.assign(
+  (req: Request, _res: Response, next: NextFunction): void => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      next(new UnauthorizedError());
+      return;
+    }
+    hasAnyPermission(userId, CONVERSATION_PERMISSIONS, req.tenantContext?.tenantId).then(allowed => {
+      if (allowed) {
+        next();
+        return;
+      }
+      next(
+        new AppError(
+          "Vous n'avez pas accès aux conversations WhatsApp.",
+          403,
+          ErrorCode.STOCK_WHATSAPP_CONVERSATION_FORBIDDEN
+        )
+      );
+    }, next);
+  },
+  { anyPermissionKeys: [...CONVERSATION_PERMISSIONS] }
+);
+
+// ---------------------------------------------------------------------------
+// Limiteurs d'énumération (magasin en mémoire de processus)
+// ---------------------------------------------------------------------------
+
+/** Par agence ET par utilisateur : un collaborateur de deux agences a un budget dans chacune. */
+function tenantUserKey(req: Request): string {
+  return `${req.tenantContext?.tenantId ?? req.params.tenantId ?? 'aucune-agence'}:${req.user?.userId ?? 'anonyme'}`;
+}
+
+function limiterRefusal(_req: Request, _res: Response, next: NextFunction): void {
+  next(new AppError('Trop de requêtes. Réessayez dans quelques minutes.', 429, 'RATE_LIMITED'));
+}
+
+/** Création d'inscriptions : 20 par quart d'heure, bien au-dessus d'une mise en place d'équipe. */
+export const REGISTRATION_CREATE_LIMIT = { windowMs: 15 * 60_000, max: 20 } as const;
+
+/** Messages du simulateur : 30 par minute, le rythme d'une recette menée à la main. */
+export const SIMULATOR_MESSAGE_LIMIT = { windowMs: 60_000, max: 30 } as const;
+
+const registrationCreateLimiter = rateLimit({
+  ...REGISTRATION_CREATE_LIMIT,
+  keyGenerator: req => `wa-registration:${tenantUserKey(req)}`,
+  handler: limiterRefusal,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const simulatorMessageLimiter = rateLimit({
+  ...SIMULATOR_MESSAGE_LIMIT,
+  keyGenerator: req => `wa-simulator:${tenantUserKey(req)}`,
+  handler: limiterRefusal,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // ---------------------------------------------------------------------------
 // Photo du simulateur : mémoire, 10 Mo, JPEG / PNG / WebP déclarés
@@ -124,7 +196,7 @@ router.get(`${BASE}/eligible-members`, requireSettingsManage, listEligibleMember
 router.get(`${BASE}/eligible-sites`, requireSettingsManage, listEligibleSitesHandler);
 
 router.get(`${BASE}/registrations`, requireSettingsManage, listRegistrationsHandler);
-router.post(`${BASE}/registrations`, requireSettingsManage, createRegistrationHandler);
+router.post(`${BASE}/registrations`, requireSettingsManage, registrationCreateLimiter, createRegistrationHandler);
 router.get(`${BASE}/registrations/:registrationId`, requireSettingsManage, getRegistrationHandler);
 router.patch(`${BASE}/registrations/:registrationId`, requireSettingsManage, updateRegistrationSitesHandler);
 router.post(
@@ -166,6 +238,7 @@ router.post(
   `${BASE}/simulator/messages`,
   requireSimulatorAvailable,
   requireSettingsManage,
+  simulatorMessageLimiter,
   readSimulatorPhoto,
   injectSimulatorMessageHandler
 );

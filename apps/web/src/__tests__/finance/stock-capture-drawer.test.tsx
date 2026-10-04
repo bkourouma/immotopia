@@ -309,3 +309,27 @@ describe('Inventaire (point d’accroche) — composants autonomes', () => {
     expect(screen.queryByText('WhatsApp')).not.toBeInTheDocument();
   });
 });
+
+describe('Visualiseur de preuve — quantité indiquée par le chef', () => {
+  it.each<[CaptureOutcome, string]>([
+    ['ACCEPTED', 'Quantité retenue'],
+    ['CORRECTED', 'Quantité retenue'],
+    ['CANCELLED', 'Quantité indiquée, non retenue'],
+    ['EXPIRED', 'Quantité indiquée, non retenue'],
+    ['PENDING', 'Quantité indiquée par le chef']
+  ])('issue %s : la valeur rendue par le serveur est affichée sous « %s »', async (outcome, libelle) => {
+    routerGet(capture({ outcome, confirmedQuantity: 48, countId: null, countStatus: null }));
+    render(wrap(<Harness />));
+    const valeur = await screen.findByTestId('capture-confirmed-quantity');
+    expect(valeur.textContent).toMatch(/48/);
+    expect(screen.getByText(libelle)).toBeInTheDocument();
+    if (libelle !== 'Quantité retenue') expect(screen.queryByText('Quantité retenue')).not.toBeInTheDocument();
+  });
+
+  it('sans valeur rendue, aucune ligne de quantité', async () => {
+    routerGet(capture({ outcome: 'CANCELLED', confirmedQuantity: null }));
+    render(wrap(<Harness />));
+    expect(await screen.findByTestId('capture-outcome')).toBeInTheDocument();
+    expect(screen.queryByTestId('capture-confirmed-quantity')).not.toBeInTheDocument();
+  });
+});

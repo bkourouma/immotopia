@@ -5,7 +5,7 @@ import { parseMetaWebhookPayload } from '../lib/stock-whatsapp/webhook/parse-pay
 import { recordWebhookEvents } from '../lib/stock-whatsapp/webhook/record-event';
 import { verifyMetaSignature, verifyTokenMatches } from '../lib/stock-whatsapp/webhook/signature';
 import { asyncHandler } from '../middleware/error-middleware';
-import { webhookRateLimiter } from '../middleware/rate-limit-middleware';
+import { whatsappCloudWebhookRateLimiter } from '../middleware/rate-limit-middleware';
 import { logger } from '../utils/logger';
 
 /**
@@ -66,7 +66,7 @@ function readRawBody(req: Request, res: Response, next: NextFunction): void {
 }
 
 /** Vérification d'abonnement (W6-R3). */
-router.get('/events', requireMetaTransport, webhookRateLimiter, (req: Request, res: Response) => {
+router.get('/events', requireMetaTransport, whatsappCloudWebhookRateLimiter, (req: Request, res: Response) => {
   const mode = queryString(req, 'hub.mode');
   const token = queryString(req, 'hub.verify_token');
   const challenge = queryString(req, 'hub.challenge');
@@ -87,7 +87,8 @@ router.get('/events', requireMetaTransport, webhookRateLimiter, (req: Request, r
 router.post(
   '/events',
   requireMetaTransport,
-  webhookRateLimiter,
+  // Limiteur propre à ce webhook, AVANT la lecture du corps et la signature.
+  whatsappCloudWebhookRateLimiter,
   readRawBody,
   asyncHandler(async (req: Request, res: Response) => {
     const rawBody: unknown = req.body;
@@ -114,6 +115,12 @@ router.post(
     const parsed = parseMetaWebhookPayload(body, { phoneNumberId: env.META_WA_PHONE_NUMBER_ID, receivedAt });
     // Insertion AVANT la réponse : une erreur de base répond 500 et Meta renverra.
     const recorded = await recordWebhookEvents(parsed, receivedAt);
+    if (parsed.staleMessages > 0) {
+      // Comptes seuls : jamais le corps ni un numéro.
+      logger.warn('Webhook WhatsApp Cloud : messages trop anciens ignorés (rejeu possible)', {
+        staleMessages: parsed.staleMessages
+      });
+    }
     if (parsed.invalidMessages > 0 || parsed.ignoredChanges > 0) {
       logger.info('Webhook WhatsApp Cloud : éléments ignorés', {
         invalidMessages: parsed.invalidMessages,

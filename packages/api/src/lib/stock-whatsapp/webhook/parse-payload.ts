@@ -34,12 +34,34 @@ export type ParsedWebhookPayload = {
   ignoredChanges: number;
   /** Messages sans identifiant ou sans expéditeur lisible. */
   invalidMessages: number;
+  /**
+   * Messages dont l'horodatage Meta dépasse `MAX_MESSAGE_AGE_MS` : ignorés, ni
+   * enregistrés ni traités (rejeu d'un corps signé après la purge des
+   * événements, voir `MAX_MESSAGE_AGE_MS`).
+   */
+  staleMessages: number;
 };
 
 const TEXT_MAX = 4096;
 const CAPTION_MAX = 1024;
 const REPLY_FIELD_MAX = 256;
 const META_ID_MAX = 256;
+
+/**
+ * Âge maximal d'un message entrant, mesuré entre son `timestamp` Meta et
+ * l'heure du serveur à la réception : 7 jours.
+ *
+ * Le dédoublonnage repose sur l'unicité de `metaMessageId`, mais les
+ * événements sont purgés à 30 jours (`EVENT_RETENTION_MS`,
+ * `src/jobs/stock-whatsapp-job.ts`). Sans cette borne, un corps signé capturé
+ * puis rejoué après la purge serait retraité comme neuf. Meta ne renvoie un
+ * événement non acquitté que pendant 36 heures (W6-R7) : 7 jours couvre
+ * largement ses renvois et reste inférieur à la rétention, donc tout message
+ * accepté a encore sa ligne d'unicité. Un horodatage absent ou illisible ne
+ * déclenche pas ce filtre (heure de réception par défaut) : le corps étant
+ * signé, il vient bien de Meta.
+ */
+export const MAX_MESSAGE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Types d'image acceptés pour un document traité comme une photo (W4-R8). */
 const IMAGE_DOCUMENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -146,7 +168,13 @@ export function parseMetaWebhookPayload(
   body: unknown,
   options: { phoneNumberId: string | undefined; receivedAt: Date }
 ): ParsedWebhookPayload {
-  const result: ParsedWebhookPayload = { messages: [], statuses: [], ignoredChanges: 0, invalidMessages: 0 };
+  const result: ParsedWebhookPayload = {
+    messages: [],
+    statuses: [],
+    ignoredChanges: 0,
+    invalidMessages: 0,
+    staleMessages: 0
+  };
   const root = asObject(body);
   if (!root || root.object !== 'whatsapp_business_account') {
     result.ignoredChanges += 1;
@@ -175,6 +203,12 @@ export function parseMetaWebhookPayload(
           result.invalidMessages += 1;
           continue;
         }
+        const sentAt = parseTimestamp(message.timestamp, options.receivedAt);
+        if (options.receivedAt.getTime() - sentAt.getTime() > MAX_MESSAGE_AGE_MS) {
+          // Rejeu probable d'un corps ancien : compté, jamais enregistré.
+          result.staleMessages += 1;
+          continue;
+        }
         const type = asString(message.type) ?? 'unknown';
         const parsedBody = bodyOf(message, type);
         result.messages.push({
@@ -183,7 +217,7 @@ export function parseMetaWebhookPayload(
             metaMessageId,
             fromE164,
             receivedAt: options.receivedAt,
-            sentAt: parseTimestamp(message.timestamp, options.receivedAt),
+            sentAt,
             via: 'META',
             ...parsedBody
           } as InboundMessage

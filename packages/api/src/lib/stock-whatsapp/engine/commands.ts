@@ -32,6 +32,18 @@ export function parseCommand(value: string): BotCommand | null {
   return COMMANDS[normalized] ?? null;
 }
 
+/**
+ * Chiffres arabes orientaux (٠-٩) et persans (۰-۹) ramenés aux chiffres
+ * latins, séparateur décimal arabe (٫) ramené au point : un chef qui écrit en
+ * arabe tape « ٨٤ » pour 84.
+ */
+export function normalizeDigits(value: string): string {
+  return value
+    .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 0x06f0))
+    .replace(/٫/g, '.');
+}
+
 /** Quantité maximale acceptée d'un message (W4-R7). */
 export const MAX_TYPED_QUANTITY = 1_000_000;
 
@@ -46,7 +58,7 @@ export type QuantityAnswer = { kind: 'ACCEPT' } | { kind: 'CANCEL' } | { kind: '
  * « 1 » seul vaut validation ; « 1 sac » est une quantité corrigée à 1.
  */
 export function parseQuantityAnswer(value: string): QuantityAnswer | null {
-  const match = /^\s*(\d{1,7})(?:[.,](\d{1,4}))?(?:\s*([^\d\s.,][^\d]*))?\s*$/u.exec(value);
+  const match = /^\s*(\d{1,7})(?:[.,](\d{1,4}))?(?:\s*([^\d\s.,][^\d]*))?\s*$/u.exec(normalizeDigits(value));
   if (!match) return null;
   const [, whole, decimals, unit] = match;
   const number = Number(`${whole}.${decimals ?? '0'}`);
@@ -59,7 +71,7 @@ export function parseQuantityAnswer(value: string): QuantityAnswer | null {
 
 /** Réponse à M30 (W5-R4) : `1` additionner, `2` remplacer, `0` annuler. */
 export function parseMergeAnswer(value: string): 'ADD' | 'REPLACE' | 'CANCEL' | null {
-  const normalized = value.trim();
+  const normalized = normalizeDigits(value).trim();
   if (normalized === '1') return 'ADD';
   if (normalized === '2') return 'REPLACE';
   if (normalized === '0') return 'CANCEL';
@@ -68,7 +80,7 @@ export function parseMergeAnswer(value: string): 'ADD' | 'REPLACE' | 'CANCEL' | 
 
 /** Vrai pour « 0 » seul (annulation d'une question en attente). */
 export function isZero(value: string): boolean {
-  return /^\s*0+(?:[.,]0+)?\s*$/.test(value);
+  return /^\s*0+(?:[.,]0+)?\s*$/.test(normalizeDigits(value));
 }
 
 /**
@@ -76,6 +88,6 @@ export function isZero(value: string): boolean {
  * → `'482913'`. `null` si le message ne contient aucun chiffre (M05).
  */
 export function extractActivationDigits(value: string): string | null {
-  const digits = value.replace(/\D/g, '');
+  const digits = normalizeDigits(value).replace(/\D/g, '');
   return digits.length > 0 ? digits : null;
 }

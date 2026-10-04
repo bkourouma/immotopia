@@ -1,11 +1,12 @@
 import { recordAuditEvent, logAuditEvent, AuditActionKey } from '../../../services/audit-service';
 import { AppError, ErrorCode } from '../../../middleware/error-middleware';
-import type { PrismaTransactionClient } from '../../../utils/database';
+import type { prisma, PrismaTransactionClient } from '../../../utils/database';
 import { logger } from '../../../utils/logger';
 import { closeStockCountTx, createStockCountTx, setStockCountLineTx } from '../lot040-bridge';
 import { resolveChefAccess } from '../registrations/access';
 import type { ChefAccess } from '../types';
 import { raiseFieldCountClosedAlertTx } from './field-alert';
+import { loadEligibleSites } from './site-choice';
 import {
   abandonPendingCapture,
   closeSessionRow,
@@ -45,7 +46,23 @@ export type ConfirmOutcome =
       mode: ConfirmMode;
       mergeMode: MergeMode | null;
     }
-  | { kind: 'OFFICE_CHANGED' };
+  | { kind: 'OFFICE_CHANGED' }
+  /** Chantier ou lieu devenu inéligible (W5-R8) : capture annulée, l'appelant relance le choix (M32). */
+  | { kind: 'SITE_LOST' };
+
+/**
+ * Mode (`ACCEPTED` ou `CORRECTED`) de la réponse du chef gardé pendant
+ * `AWAITING_MERGE` dans `mergeMode`, préfixé : il est remplacé par `ADD` ou
+ * `REPLACE` à l'écriture, et l'écran ne lit que ces deux valeurs.
+ */
+const PENDING_MERGE_PREFIX = 'PENDING:';
+
+/** Mode d'origine d'une réponse en attente de fusion ; `null` s'il n'a pas été gardé. */
+export function pendingMergeMode(value: unknown): ConfirmMode | null {
+  if (value === `${PENDING_MERGE_PREFIX}ACCEPTED`) return 'ACCEPTED';
+  if (value === `${PENDING_MERGE_PREFIX}CORRECTED`) return 'CORRECTED';
+  return null;
+}
 
 /** Codes du lot 040 qui disent « l'inventaire a changé au bureau » (W5-R7). */
 const OFFICE_CONFLICT_CODES = new Set<string>([
@@ -75,7 +92,7 @@ export function utcDay(now: Date): Date {
 
 /** Inventaire `DRAFT` du lieu, ou présence d'un inventaire `COUNTED` (W5-R2). */
 export async function findLocationCountTx(
-  tx: PrismaTransactionClient,
+  tx: PrismaTransactionClient | typeof prisma,
   tenantId: string,
   locationId: string
 ): Promise<{ kind: 'DRAFT'; countId: string } | { kind: 'COUNTED' } | { kind: 'NONE' }> {
@@ -124,6 +141,13 @@ async function confirmTx(tx: PrismaTransactionClient, input: ConfirmInput): Prom
     return { kind: 'ACCESS_LOST', access };
   }
 
+  const eligible = await loadEligibleSites(tx, input.tenantId, input.registrationId);
+  if (!eligible.some(site => site.siteId === session.siteId && site.locationId === session.locationId)) {
+    // Chantier clos, lieu désactivé ou retiré de l'inscription (W5-R8) : rien n'est écrit.
+    await abandonPendingCapture(tx, session, 'CANCELLED');
+    return { kind: 'SITE_LOST' };
+  }
+
   let countId = session.countId;
   if (countId) {
     const current = await tx.stockCount.findFirst({
@@ -166,7 +190,9 @@ async function confirmTx(tx: PrismaTransactionClient, input: ConfirmInput): Prom
       if (!input.mergeMode) {
         await tx.stockFieldCapture.updateMany({
           where: { id: input.captureId, tenantId: input.tenantId },
-          data: { confirmedQuantity: input.quantity }
+          // Seul support de la quantité du chef entre M30 et sa réponse (aucune
+          // colonne dédiée) : l'écran l'affiche « indiquée », pas « retenue ».
+          data: { confirmedQuantity: input.quantity, mergeMode: `${PENDING_MERGE_PREFIX}${input.mode}` }
         });
         await transitionSession(tx, session, ['AWAITING_CONFIRMATION'], {
           state: 'AWAITING_MERGE',
@@ -218,6 +244,35 @@ async function confirmTx(tx: PrismaTransactionClient, input: ConfirmInput): Prom
   return { kind: 'RECORDED', countId, lineId, quantity: finalQuantity, mode: input.mode, mergeMode: input.mergeMode };
 }
 
+/**
+ * Deux premières confirmations simultanées sur un lieu sans inventaire
+ * (deux chefs, ou le bureau qui en ouvre un) : les deux passent la lecture,
+ * la seconde bute sur l'index unique partiel `stock_counts_one_open_per_location`
+ * (`P2002`, ou `409 STOCK_COUNT_ALREADY_OPEN` rendu par le lot 040).
+ */
+function isOpenCountRace(error: unknown): boolean {
+  if (error instanceof AppError) return error.code === ErrorCode.STOCK_COUNT_ALREADY_OPEN;
+  return (error as { code?: unknown } | null)?.code === 'P2002';
+}
+
+/**
+ * Confirmation, retentée UNE fois après une course d'ouverture : la seconde
+ * transaction relit le lieu et réutilise le `DRAFT` ouvert entre-temps
+ * (W5-R2). M29 ne vient que d'un inventaire bloquant `COUNTED`.
+ */
+async function confirmWithOneRetry(input: ConfirmInput): Promise<ConfirmOutcome> {
+  try {
+    return await withRegistrationLock(input.registrationId, tx => confirmTx(tx, input));
+  } catch (error) {
+    if (!isOpenCountRace(error)) throw error;
+    logger.info('Inventaire WhatsApp : inventaire ouvert entre-temps sur le lieu, confirmation retentée', {
+      tenantId: input.tenantId,
+      sessionId: input.sessionId
+    });
+    return withRegistrationLock(input.registrationId, tx => confirmTx(tx, input));
+  }
+}
+
 /** Rattrapage d'un refus du lot 040 (W5-R7) : capture annulée, session `READY` qui oublie l'inventaire. */
 async function recoverFromRefusal(input: ConfirmInput, error: AppError): Promise<ConfirmOutcome> {
   logger.info('Inventaire WhatsApp : écriture refusée par l’inventaire (modifié au bureau)', {
@@ -228,6 +283,10 @@ async function recoverFromRefusal(input: ConfirmInput, error: AppError): Promise
   return withRegistrationLock(input.registrationId, async tx => {
     const session = await reloadPendingSession(tx, input);
     if (!session) return { kind: 'STALE' };
+    if (error.code === ErrorCode.STOCK_LOCATION_INACTIVE) {
+      await abandonPendingCapture(tx, session, 'CANCELLED');
+      return { kind: 'SITE_LOST' };
+    }
     let awaitingValidation = false;
     if (error.code === ErrorCode.STOCK_COUNT_ALREADY_OPEN && session.locationId) {
       awaitingValidation = (await findLocationCountTx(tx, input.tenantId, session.locationId)).kind === 'COUNTED';
@@ -251,8 +310,18 @@ async function recoverFromRefusal(input: ConfirmInput, error: AppError): Promise
 export async function confirmCapture(input: ConfirmInput): Promise<ConfirmOutcome> {
   let outcome: ConfirmOutcome;
   try {
-    outcome = await withRegistrationLock(input.registrationId, tx => confirmTx(tx, input));
+    outcome = await confirmWithOneRetry(input);
   } catch (error) {
+    if (isOpenCountRace(error)) {
+      return recoverFromRefusal(
+        input,
+        new AppError(
+          'Un inventaire est déjà en cours sur ce lieu de stockage.',
+          409,
+          ErrorCode.STOCK_COUNT_ALREADY_OPEN
+        )
+      );
+    }
     if (!isLot040Refusal(error)) throw error;
     return recoverFromRefusal(input, error);
   }

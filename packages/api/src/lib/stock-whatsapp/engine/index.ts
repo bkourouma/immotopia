@@ -11,9 +11,17 @@ import { getWhatsappTransport } from '../transport';
 import type { ChefAccess, InboundMessage, OutboundMessage } from '../types';
 import { analyzeKeptCapture, reanalyzeWithItem, receivePhoto, type FlowContext } from './capture-flow';
 import { isZero, parseCommand, parseMergeAnswer, parseQuantityAnswer, type BotCommand } from './commands';
-import { closeSessionCount, confirmCapture, type ConfirmMode, type MergeMode } from './count-writer';
+import { closeSessionCount, confirmCapture, pendingMergeMode, type ConfirmMode, type MergeMode } from './count-writer';
 import { loadActiveItems, matchItems } from './item-matching';
-import { applySiteChoiceTx, chooseSite, loadEligibleSites, openOrResumeSession, type SiteChoice } from './site-choice';
+import {
+  applySiteChoiceTx,
+  chooseSite,
+  loadEligibleSites,
+  openOrResumeSession,
+  relocateFromLostSite,
+  type LeftCount,
+  type SiteChoice
+} from './site-choice';
 import {
   abandonPendingCapture,
   closeSessionRow,
@@ -37,7 +45,9 @@ import {
  * 1. Lecture transverse assumée : l'inscription se retrouve par le numéro
  *    (spec §8.2), puis tout le traitement se fait dans
  *    `runWithTenantContext({ tenantId })` et `runWithLanguage(langue du chef)`.
- * 2. Inscription en attente : activation (M02 à M05). Révoquée : M06.
+ * 2. Inscription en attente : activation (M02 à M05). Révoquée : M06. Dans
+ *    les deux cas, le message entrant est journalisé sans son texte (le code
+ *    d'activation n'est jamais conservé en clair), seulement son type.
  *    Aucune : M01 au plus une fois par 24 heures (le webhook le fait lui-même
  *    avant d'appeler le moteur ; le simulateur passe par ici).
  * 3. Inscription active : contrôle d'accès EN BASE (W3-R10) ; refus → session
@@ -144,10 +154,12 @@ function inboundColumns(message: InboundMessage): {
 export async function logInboundMessage(
   registration: { id: string; tenantId: string },
   sessionId: string | null,
-  message: InboundMessage
+  message: InboundMessage,
+  options: { withoutText?: boolean } = {}
 ): Promise<void> {
   try {
-    const columns = inboundColumns(message);
+    const full = inboundColumns(message);
+    const columns = options.withoutText ? { kind: full.kind, text: null } : full;
     await prisma.stockWhatsappMessage.create({
       data: {
         tenantId: registration.tenantId,
@@ -156,7 +168,7 @@ export async function logInboundMessage(
         direction: 'INBOUND',
         kind: columns.kind,
         text: columns.text,
-        ...(columns.interactive !== undefined ? { interactive: columns.interactive } : {}),
+        ...('interactive' in columns && columns.interactive !== undefined ? { interactive: columns.interactive } : {}),
         metaMessageId: message.via === 'META' ? message.metaMessageId : null,
         via: message.via
       }
@@ -190,6 +202,7 @@ type PendingCapture = {
   itemId: string | null;
   proposedTotal: unknown;
   confirmedQuantity: unknown;
+  mergeMode: string | null;
   item: { label: string; reference: string; unit: string } | null;
 };
 
@@ -202,6 +215,7 @@ async function readPendingCapture(ctx: FlowContext, session: SessionRow): Promis
       itemId: true,
       proposedTotal: true,
       confirmedQuantity: true,
+      mergeMode: true,
       item: { select: { label: true, reference: true, unit: true } }
     }
   });
@@ -326,6 +340,8 @@ async function confirmAndReply(
       return say(ctx, session.id, botMessages.countAwaitingValidation(), capture.id);
     case 'OFFICE_CHANGED':
       return say(ctx, session.id, botMessages.countChangedAtOffice(), capture.id);
+    case 'SITE_LOST':
+      return replyToLostSite(ctx, session.id);
     case 'MERGE_NEEDED':
       return say(
         ctx,
@@ -365,8 +381,10 @@ async function answerMerge(ctx: FlowContext, session: SessionRow, choice: 'ADD' 
   if (!capture) return;
   if (choice === 'CANCEL') return cancelPending(ctx, session, 'CANCELLED');
   const quantity = toNumber(capture.confirmedQuantity);
-  // Le mode d'origine se relit : une quantité confirmée égale au total proposé vient de « 1 » (ACCEPTED).
-  const mode: ConfirmMode = quantity === toNumber(capture.proposedTotal) ? 'ACCEPTED' : 'CORRECTED';
+  // Mode décidé à la première réponse, gardé pendant AWAITING_MERGE ; à défaut
+  // (capture d'avant ce marquage), une quantité égale au total proposé vient de « 1 ».
+  const mode: ConfirmMode =
+    pendingMergeMode(capture.mergeMode) ?? (quantity === toNumber(capture.proposedTotal) ? 'ACCEPTED' : 'CORRECTED');
   return confirmAndReply(ctx, session, capture, { quantity, mode, mergeMode: choice });
 }
 
@@ -432,6 +450,24 @@ async function closeCountOf(
     siteId: left.siteId
   });
   return { ...result, site: await siteName(ctx, left.siteId) };
+}
+
+/** Inventaire du chantier perdu (W5-R8) : W5-R5 lui est appliquée, M25 s'il est clos. */
+async function closeLeftCount(ctx: FlowContext, sessionId: string, left: LeftCount | null): Promise<void> {
+  if (!left) return;
+  const closed = await closeCountOf(ctx, sessionId, left);
+  if (closed.outcome === 'COUNTED') {
+    await say(ctx, sessionId, botMessages.closedCounted({ site: closed.site, count: closed.chefLines }));
+  }
+}
+
+/** Chantier ou lieu devenu inéligible pendant une confirmation : M32, W5-R5, nouveau choix. */
+async function replyToLostSite(ctx: FlowContext, sessionId: string): Promise<void> {
+  const lost = await relocateFromLostSite(ctx.target, sessionId, ctx.now);
+  if (!lost) return say(ctx, sessionId, botMessages.countChangedAtOffice());
+  await say(ctx, sessionId, botMessages.siteUnavailable(lost.lostSiteName));
+  await closeLeftCount(ctx, sessionId, lost.leftCount);
+  return sendSiteChoice(ctx, sessionId, lost.choice);
 }
 
 async function commandFin(ctx: FlowContext, sessionId: string): Promise<void> {
@@ -564,7 +600,13 @@ async function handleAfterChoice(
 ) {
   if (choice.kind === 'NONE') return say(ctx, sessionId, botMessages.noSite());
   const command = message.kind === 'TEXT' ? parseCommand(message.text) : null;
-  if (command) return handleCommand(ctx, sessionId, command);
+  if (command) {
+    await handleCommand(ctx, sessionId, command);
+    // AIDE ne répond pas à la question du chantier : elle reste à poser (W4-R3).
+    if (command === 'AIDE' && choice.kind === 'MANY') await say(ctx, sessionId, botMessages.chooseSite(choice.sites));
+    return;
+  }
+  if (message.kind === 'UNSUPPORTED') await say(ctx, sessionId, botMessages.unsupported());
   if (choice.kind === 'SINGLE') {
     if (message.kind === 'TEXT' && justOpened && parseQuantityAnswer(message.text)) {
       return say(ctx, sessionId, botMessages.sendPhoto());
@@ -573,7 +615,7 @@ async function handleAfterChoice(
     if (message.kind === 'IMAGE') await receivePhoto(ctx, sessionId, message);
     return;
   }
-  if (message.kind === 'IMAGE') await receivePhoto(ctx, sessionId, message);
+  if (message.kind === 'IMAGE') await receivePhoto(ctx, sessionId, message, { siteQuestionFollows: true });
   return say(ctx, sessionId, botMessages.chooseSite(choice.sites));
 }
 
@@ -590,7 +632,10 @@ async function handleChefMessage(registration: RegistrationRow, message: Inbound
   const ctx: FlowContext = { target, access, now };
   const opened = await openOrResumeSession(target, now);
   await logInboundMessage(registration, opened.sessionId, message);
-  if (opened.lostSiteName !== null) await say(ctx, opened.sessionId, botMessages.siteUnavailable(opened.lostSiteName));
+  if (opened.lostSiteName !== null) {
+    await say(ctx, opened.sessionId, botMessages.siteUnavailable(opened.lostSiteName));
+    await closeLeftCount(ctx, opened.sessionId, opened.leftCount);
+  }
   if (opened.choice) return handleAfterChoice(ctx, opened.sessionId, opened.choice, message, opened.justOpened);
 
   if (message.kind === 'UNSUPPORTED') return say(ctx, opened.sessionId, botMessages.unsupported());
@@ -601,10 +646,27 @@ async function handleChefMessage(registration: RegistrationRow, message: Inbound
   return handleText(ctx, opened.sessionId, message.text);
 }
 
-async function dispatch(message: InboundMessage): Promise<void> {
+/** Options du point d'entrée (contrat partagé avec le simulateur). */
+export type HandleInboundOptions = {
+  /**
+   * Agence de l'appelant (simulateur) : un message dont l'inscription résolue
+   * pour le numéro appartient à une AUTRE agence est abandonné, sans réponse
+   * ni journal de conversation (défense en profondeur, spec §8.2).
+   */
+  expectedTenantId?: string;
+};
+
+async function dispatch(message: InboundMessage, options: HandleInboundOptions): Promise<void> {
   const now = message.receivedAt instanceof Date ? message.receivedAt : new Date();
   const registration = await findRegistration(message.fromE164);
   if (!registration) return replyToUnknownSender(message, now);
+  if (options.expectedTenantId !== undefined && registration.tenantId !== options.expectedTenantId) {
+    logger.warn('Inventaire WhatsApp : message abandonné, inscription d’une autre agence que l’appelant', {
+      via: message.via,
+      kind: message.kind
+    });
+    return;
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: registration.userId },
@@ -620,14 +682,23 @@ async function dispatch(message: InboundMessage): Promise<void> {
 
   await runWithTenantContext({ tenantId: registration.tenantId, userId: registration.userId }, () =>
     runWithLanguage(language, async () => {
+      // Jamais en arrière : un message traité en retard ne rajeunit pas l'inscription.
       await prisma.stockWhatsappRegistration.updateMany({
-        where: { id: registration.id, tenantId: registration.tenantId },
+        where: {
+          id: registration.id,
+          tenantId: registration.tenantId,
+          OR: [{ lastInboundAt: null }, { lastInboundAt: { lt: now } }]
+        },
         data: { lastInboundAt: now }
       });
       if (registration.status === 'ACTIVE') return handleChefMessage(registration, message, now);
-      await logInboundMessage(registration, null, message);
-      if (registration.status === 'PENDING_ACTIVATION')
+      // En attente, le message porte le code d'activation : jamais journalisé en
+      // clair. Révoquée : le texte d'un ancien chef n'a plus à être conservé.
+      // Dans les deux cas, seul le type du message est gardé.
+      await logInboundMessage(registration, null, message, { withoutText: true });
+      if (registration.status === 'PENDING_ACTIVATION') {
         return handlePendingRegistrationMessage(registration, message, now);
+      }
       return sendToChef(target, null, botMessages.accessLost());
     })
   );
@@ -635,11 +706,12 @@ async function dispatch(message: InboundMessage): Promise<void> {
 
 /**
  * Traite un message entrant (contrat plan §3.3). Ne lève JAMAIS : une erreur
- * est journalisée sans le numéro ni le texte du message.
+ * est journalisée sans le numéro ni le texte du message. `expectedTenantId` :
+ * voir `HandleInboundOptions` (appel sans options inchangé).
  */
-export async function handleInboundMessage(message: InboundMessage): Promise<void> {
+export async function handleInboundMessage(message: InboundMessage, options: HandleInboundOptions = {}): Promise<void> {
   try {
-    await dispatch(message);
+    await dispatch(message, options);
   } catch (error) {
     logger.error('Inventaire WhatsApp : message entrant non traité', {
       via: message.via,

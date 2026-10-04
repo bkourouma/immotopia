@@ -1,4 +1,10 @@
 import { t, currentLanguage } from '../../i18n';
+import {
+  META_BUTTON_TITLE_MAX,
+  META_LIST_ROW_DESCRIPTION_MAX,
+  META_LIST_ROW_TITLE_MAX,
+  truncateLabel
+} from './transport/message-limits';
 import type { OutboundMessage, StockVisionResult } from './types';
 
 /**
@@ -62,6 +68,24 @@ export function formatBotNumber(value: number): string {
   const rounded = Math.round(value * 10_000) / 10_000;
   const text = String(rounded);
   return currentLanguage() === 'fr' ? text.replace('.', ',') : text;
+}
+
+/**
+ * Titres de lignes de liste (24 caractères, comme Meta) tous différents : un
+ * titre déjà pris reçoit un suffixe « (2) », « (3) »…, le nom étant coupé
+ * avant pour que le suffixe reste visible.
+ */
+export function distinctTitles(names: readonly string[], max = META_LIST_ROW_TITLE_MAX): string[] {
+  const used = new Set<string>();
+  return names.map(name => {
+    let title = truncateLabel(name, max);
+    for (let rank = 2; used.has(title); rank += 1) {
+      const suffix = ` (${rank})`;
+      title = truncateLabel(name, max - Array.from(suffix).length) + suffix;
+    }
+    used.add(title);
+    return title;
+  });
 }
 
 function text(value: string): OutboundMessage {
@@ -142,21 +166,39 @@ export const botMessages = {
       )
     ),
 
-  /** M08 — choix du chantier : boutons (2 ou 3 chantiers) ou liste (4 à 10). */
+  /**
+   * M08 — choix du chantier : boutons (2 ou 3 chantiers) ou liste (4 à 10).
+   * Deux noms identiques une fois coupés à 20 caractères (titre de bouton
+   * Meta) passent en liste (24 caractères, nom complet en description), et
+   * des titres encore identiques reçoivent un suffixe : jamais deux choix de
+   * même titre.
+   */
   chooseSite: (sites: Array<{ siteId: string; name: string }>): OutboundMessage => {
     const question = t('Sur quel chantier êtes-vous ?');
-    if (sites.length <= 3) {
+    const shown = sites.slice(0, 10);
+    const buttonTitles = shown.map(site => truncateLabel(site.name, META_BUTTON_TITLE_MAX));
+    if (shown.length <= 3 && new Set(buttonTitles).size === buttonTitles.length) {
       return {
         kind: 'BUTTONS',
         text: question,
-        buttons: sites.map(site => ({ id: REPLY_IDS.site(site.siteId), title: site.name }))
+        buttons: shown.map((site, index) => ({ id: REPLY_IDS.site(site.siteId), title: buttonTitles[index] }))
       };
     }
+    const titles = distinctTitles(shown.map(site => site.name));
     return {
       kind: 'LIST',
       text: question,
       buttonText: t('Choisir'),
-      rows: sites.slice(0, 10).map(site => ({ id: REPLY_IDS.site(site.siteId), title: site.name }))
+      rows: shown.map((site, index) => {
+        const row: { id: string; title: string; description?: string } = {
+          id: REPLY_IDS.site(site.siteId),
+          title: titles[index]
+        };
+        if (titles[index] !== site.name.trim()) {
+          row.description = truncateLabel(site.name, META_LIST_ROW_DESCRIPTION_MAX);
+        }
+        return row;
+      })
     };
   },
 
@@ -273,11 +315,15 @@ export const botMessages = {
     kind: 'LIST',
     text: t('Plusieurs articles correspondent. Lequel est sur la photo ?'),
     buttonText: t('Choisir'),
-    rows: items.slice(0, 10).map(item => ({
-      id: REPLY_IDS.item(captureId, item.id),
-      title: item.label,
-      description: `${item.reference} · ${item.unit}`
-    }))
+    rows: (() => {
+      const shown = items.slice(0, 10);
+      const titles = distinctTitles(shown.map(item => item.label));
+      return shown.map((item, index) => ({
+        id: REPLY_IDS.item(captureId, item.id),
+        title: titles[index],
+        description: `${item.reference} · ${item.unit}`
+      }));
+    })()
   }),
 
   /** M21 — aucun article. */

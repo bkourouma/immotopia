@@ -174,6 +174,7 @@ function mockSqlText(query: any): string {
 const mockPrisma: any = {
   stockFieldCapture: mockDelegate('stockFieldCapture'),
   stockCount: mockDelegate('stockCount'),
+  stockCountLine: mockDelegate('stockCountLine'),
   stockLocation: mockDelegate('stockLocation'),
   stockItem: mockDelegate('stockItem'),
   stockBalance: mockDelegate('stockBalance'),
@@ -182,11 +183,22 @@ const mockPrisma: any = {
   stockWhatsappMessage: mockDelegate('stockWhatsappMessage'),
   stockWhatsappRegistration: mockDelegate('stockWhatsappRegistration'),
   stockWhatsappUsage: mockDelegate('stockWhatsappUsage'),
-  $queryRaw: jest.fn(async (query: any) => {
+  $queryRaw: jest.fn(async (query: any, ...values: any[]) => {
     const text = mockSqlText(query);
     if (text.includes('DISTINCT ON')) return mockRaw.lastLines;
     if (text.includes('percentile_cont')) return mockRaw.measures;
-    if (text.includes('EXISTS')) return [{ taken: mockRaw.phoneTaken }];
+    if (text.includes('EXISTS') && text.includes('stock_whatsapp_registrations')) {
+      // Rejoue la requête sur les inscriptions en mémoire : numéro, puis agence liée.
+      const params = Array.isArray(query) ? values : (query?.values ?? []);
+      const [phone, callerTenant] = params;
+      const otherTenantRule = text.includes('tenant_id <>');
+      const taken = (mockDb.stockWhatsappRegistration ?? []).some(
+        reg =>
+          reg.phoneE164 === phone &&
+          (otherTenantRule ? reg.tenantId !== callerTenant || reg.status !== 'REVOKED' : reg.status !== 'REVOKED')
+      );
+      return [{ taken: mockRaw.phoneTaken || taken }];
+    }
     throw new Error(`Requête SQL inattendue : ${text}`);
   }),
   $transaction: jest.fn(async (callback: any) => callback(mockPrisma))
@@ -474,6 +486,24 @@ function seed(): void {
     { id: REG_B, tenantId: TENANT_B, phoneE164: '+2250799999999', status: 'ACTIVE' }
   ];
   mockDb.stockWhatsappUsage = [{ tenantId: TENANT_A, month: '2026-10', used: 12 }];
+  mockDb.stockCountLine = [
+    {
+      id: LINE_CIMENT,
+      countId: COUNT_DRAFT,
+      itemId: ITEM_CIMENT,
+      countedQuantity: 124,
+      countedByUserId: 'user-chef',
+      countedAtServer: new Date('2026-10-02T09:10:40.000Z')
+    },
+    {
+      id: LINE_SABLE,
+      countId: COUNT_DONE,
+      itemId: ITEM_SABLE,
+      countedQuantity: 3,
+      countedByUserId: 'user-magasinier',
+      countedAtServer: new Date('2026-10-01T15:00:00.000Z')
+    }
+  ];
 
   // Dernière ligne de chaque couple (lieu, article), comme la requête DISTINCT ON.
   mockRaw.lastLines = [
@@ -485,6 +515,7 @@ function seed(): void {
       count_status: 'DRAFT',
       counted_quantity: 124,
       counted_at_server: new Date('2026-10-02T09:10:40.000Z'),
+      counted_by_user_id: 'user-chef',
       line_date: new Date('2026-10-02T09:10:40.000Z'),
       counted_by_full_name: 'Awa Koné',
       counted_by_email: 'awa@exemple.ci'
@@ -497,6 +528,7 @@ function seed(): void {
       count_status: 'COUNTED',
       counted_quantity: 3,
       counted_at_server: new Date('2026-10-01T15:00:00.000Z'),
+      counted_by_user_id: 'user-magasinier',
       line_date: new Date('2026-10-01T15:00:00.000Z'),
       counted_by_full_name: null,
       counted_by_email: 'magasinier@exemple.ci'
@@ -1304,5 +1336,229 @@ describe('simulateur', () => {
     expect(closed.status).toBe(200);
     expect(mockDb.stockWhatsappSession[0].lastInboundAt.toISOString()).toBe('2026-10-02T09:00:00.000Z');
     expect(mockRunSessionTimers).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Constats de relecture du lot 041 (territoire G2)
+// ---------------------------------------------------------------------------
+
+describe('simulateur : jamais au nom d’une autre agence', () => {
+  const PHONE_REVOKED_B = '+2250755555555';
+  const PHONE_SHARED = '+2250766666666';
+  const REG_A_REVOKED = id(72);
+  const REG_B_REVOKED = id(73);
+  const REG_B_SHARED = id(74);
+
+  /** Écritures du moteur simulé, par agence. */
+  let engineWrites: Array<{ tenantId: string; metaMessageId: string }>;
+
+  beforeEach(() => {
+    engineWrites = [];
+    mockDb.stockWhatsappRegistration.push(
+      { id: REG_B_REVOKED, tenantId: TENANT_B, phoneE164: PHONE_REVOKED_B, status: 'REVOKED' },
+      { id: REG_A_REVOKED, tenantId: TENANT_A, phoneE164: PHONE_SHARED, status: 'REVOKED' },
+      { id: REG_B_SHARED, tenantId: TENANT_B, phoneE164: PHONE_SHARED, status: 'ACTIVE' }
+    );
+    // Moteur au contrat de G1a : il résout l'inscription par le numéro (vivante
+    // d'abord) et abandonne, sans réponse, si elle n'est pas de `expectedTenantId`.
+    mockHandleInboundMessage.mockImplementation(async (message: any, options?: any) => {
+      const regs = mockDb.stockWhatsappRegistration.filter(reg => reg.phoneE164 === message.fromE164);
+      const resolved = regs.find(reg => reg.status !== 'REVOKED') ?? regs[0];
+      if (!resolved) return;
+      if (options?.expectedTenantId && resolved.tenantId !== options.expectedTenantId) return;
+      engineWrites.push({ tenantId: resolved.tenantId, metaMessageId: message.metaMessageId });
+    });
+  });
+
+  it('numéro révoqué chez B injecté depuis A comme numéro libre : refusé, rien n’est écrit chez B', async () => {
+    const res = await call('post', '/simulator/messages', { freePhone: '0755555555', text: 'Bonjour' });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).not.toContain(TENANT_B);
+    await flush();
+    expect(mockHandleInboundMessage).not.toHaveBeenCalled();
+    expect(engineWrites.filter(write => write.tenantId === TENANT_B)).toEqual([]);
+
+    // La requête lie l'agence de l'appelant en paramètre.
+    const rawCall = mockPrisma.$queryRaw.mock.calls.find((c: any[]) => mockSqlText(c[0]).includes('tenant_id <>'));
+    expect(rawCall).toBeDefined();
+    expect(rawCall.slice(1)).toEqual([PHONE_REVOKED_B, TENANT_A]);
+  });
+
+  it('inscription révoquée de A dont le numéro est actif chez B : refusée, rien n’est écrit chez B', async () => {
+    const res = await call('post', '/simulator/messages', { registrationId: REG_A_REVOKED, text: 'AIDE' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe(
+      'Cette inscription révoquée ne peut plus servir d’expéditeur. Choisissez une autre inscription ou un numéro libre.'
+    );
+    expect(JSON.stringify(res.body)).not.toContain(TENANT_B);
+    await flush();
+    expect(mockHandleInboundMessage).not.toHaveBeenCalled();
+    expect(engineWrites.filter(write => write.tenantId === TENANT_B)).toEqual([]);
+  });
+
+  it('inscription révoquée de A, numéro libre partout ailleurs : acceptée (refus M06 en recette)', async () => {
+    mockDb.stockWhatsappRegistration = mockDb.stockWhatsappRegistration.filter(reg => reg.id !== REG_B_SHARED);
+    const res = await call('post', '/simulator/messages', { registrationId: REG_A_REVOKED, text: 'AIDE' });
+    expect(res.status).toBe(202);
+    await flush();
+    expect(mockHandleInboundMessage).toHaveBeenCalledTimes(1);
+    expect(mockHandleInboundMessage.mock.calls[0][0]).toMatchObject({ fromE164: PHONE_SHARED });
+  });
+
+  it('un numéro libre seulement révoqué dans l’agence de l’appelant reste utilisable', async () => {
+    mockDb.stockWhatsappRegistration = mockDb.stockWhatsappRegistration.filter(reg => reg.id !== REG_B_SHARED);
+    await call('post', '/simulator/messages', { freePhone: '0766666666', text: 'Bonjour' }).expect(202);
+    await flush();
+    expect(mockHandleInboundMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('le moteur reçoit toujours l’agence de la requête (expectedTenantId)', async () => {
+    await call('post', '/simulator/messages', { registrationId: REG_A, text: 'AIDE' }).expect(202);
+    await call('post', '/simulator/messages', { freePhone: '0100000999', text: 'Bonjour' }).expect(202);
+    await flush();
+    expect(mockHandleInboundMessage).toHaveBeenCalledTimes(2);
+    for (const [, options] of mockHandleInboundMessage.mock.calls as any[]) {
+      expect(options).toEqual({ expectedTenantId: TENANT_A });
+    }
+    expect(engineWrites).toEqual([{ tenantId: TENANT_A, metaMessageId: expect.stringMatching(/^sim-/) }]);
+  });
+});
+
+describe('overview : lecture du quota et dénominateurs', () => {
+  it('lit l’usage du mois par findFirst (tenantId, month), jamais par la clé composée', async () => {
+    mockRaw.measures = [{}];
+    await call('get', '/overview?month=2026-10').expect(200);
+    expect(mockPrisma.stockWhatsappUsage.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.stockWhatsappUsage.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: TENANT_A, month: '2026-10' } })
+    );
+  });
+
+  it('les parts d’échec se divisent par les captures analysées, pas par les reçues, en attente, expirées ou annulées', async () => {
+    mockRaw.measures = [
+      {
+        // 40 captures dont 30 reçues, en attente, expirées ou annulées : hors dénominateur.
+        total: 40,
+        accepted: 5,
+        corrected: 1,
+        unreadable: 2,
+        unrecognized: 1,
+        failed: 1,
+        median_seconds: null,
+        whatsapp_lines: 0,
+        lines_with_photo: 0
+      }
+    ];
+    const res = await call('get', '/overview?month=2026-10');
+    expect(res.body.data.measures).toMatchObject({ unreadableRate: 0.2, unrecognizedRate: 0.1, failedRate: 0.1 });
+  });
+});
+
+describe('field-counts : dernier comptage physique et preuve', () => {
+  function rowOf(body: any, locationId: string, itemId: string) {
+    return body.data.find((row: any) => row.locationId === locationId && row.itemId === itemId);
+  }
+
+  it('une ligne non comptée passe après toute ligne comptée dans le tri du dernier comptage', async () => {
+    await call('get', '/field-counts');
+    const [strings] = mockPrisma.$queryRaw.mock.calls[0];
+    const sql = strings.join('?').replace(/\s+/g, ' ');
+    expect(sql).toMatch(/ORDER BY c\.location_id, l\.item_id, \(l\.counted_quantity IS NULL\) ASC, COALESCE/);
+  });
+
+  it('ressaisie au bureau par un autre auteur : source WEB, pas de capture ni de photo', async () => {
+    Object.assign(mockRaw.lastLines[0], {
+      counted_quantity: 130,
+      counted_by_user_id: 'user-bureau',
+      counted_at_server: new Date('2026-10-02T11:00:00.000Z'),
+      counted_by_full_name: 'Bureau',
+      counted_by_email: 'bureau@exemple.ci'
+    });
+    const res = await call('get', '/field-counts');
+    expect(rowOf(res.body, LOC_BLIND, ITEM_CIMENT).lastCount).toMatchObject({
+      countSource: 'WEB',
+      countedQuantity: 130,
+      captureId: null,
+      hasPhoto: false,
+      outcome: null
+    });
+  });
+
+  it('même auteur, autre quantité saisie plus tard au web : source WEB', async () => {
+    Object.assign(mockRaw.lastLines[0], {
+      counted_quantity: 120,
+      counted_at_server: new Date('2026-10-02T11:00:00.000Z')
+    });
+    const res = await call('get', '/field-counts');
+    expect(rowOf(res.body, LOC_BLIND, ITEM_CIMENT).lastCount).toMatchObject({ countSource: 'WEB', captureId: null });
+  });
+
+  it('même auteur, confirmation à 2 s près de la ligne : source WHATSAPP', async () => {
+    Object.assign(mockRaw.lastLines[0], {
+      counted_quantity: 125,
+      counted_at_server: new Date('2026-10-02T09:10:41.500Z')
+    });
+    const res = await call('get', '/field-counts');
+    expect(rowOf(res.body, LOC_BLIND, ITEM_CIMENT).lastCount).toMatchObject({
+      countSource: 'WHATSAPP',
+      captureId: CAPTURE_A2
+    });
+  });
+
+  it('captures d’un inventaire : après une ressaisie au bureau, plus de preuve pour la ligne, captures toujours listées', async () => {
+    Object.assign(mockDb.stockCountLine[0], {
+      countedQuantity: 130,
+      countedByUserId: 'user-bureau',
+      countedAtServer: new Date('2026-10-02T11:00:00.000Z')
+    });
+    const res = await call('get', `/counts/${COUNT_DRAFT}/captures`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ countId: COUNT_DRAFT, source: 'WHATSAPP', lines: [] });
+
+    const history = await call('get', `/captures?countId=${COUNT_DRAFT}`);
+    expect(history.status).toBe(200);
+    expect(history.body.data.map((capture: any) => capture.id)).toEqual(
+      expect.arrayContaining([CAPTURE_A, CAPTURE_A2])
+    );
+  });
+});
+
+describe('conversations : refus au code du contrat', () => {
+  it('ni FINANCE_SETTINGS_MANAGE ni STOCK_COUNT_VALIDATE : 403 STOCK_WHATSAPP_CONVERSATION_FORBIDDEN', async () => {
+    as(COMPTABLE, 'user-comptable');
+    for (const path of ['/sessions', `/sessions/${SESSION_A}/messages`]) {
+      const res = await call('get', path);
+      expect([path, res.status, res.body.code]).toEqual([path, 403, 'STOCK_WHATSAPP_CONVERSATION_FORBIDDEN']);
+    }
+  });
+});
+
+describe('limiteurs d’énumération', () => {
+  it('POST …/registrations : 20 par quart d’heure, par agence et par utilisateur', async () => {
+    mockRegistrations.createRegistration.mockResolvedValue({ id: REG_A });
+    const body = { userId: 'user-chef', phone: '0712345678', siteIds: [SITE_A] };
+    as(ADMIN, 'user-limite-inscriptions');
+    for (let n = 0; n < 20; n += 1) expect((await call('post', '/registrations', body)).status).toBe(201);
+    const refused = await call('post', '/registrations', body);
+    expect(refused.status).toBe(429);
+    expect(refused.body.code).toBe('RATE_LIMITED');
+    expect(mockRegistrations.createRegistration).toHaveBeenCalledTimes(20);
+
+    // Un autre utilisateur de l'agence garde son budget.
+    as(ADMIN, 'user-limite-autre');
+    expect((await call('post', '/registrations', body)).status).toBe(201);
+  });
+
+  it('POST …/simulator/messages : 30 par minute, par agence et par utilisateur', async () => {
+    as(ADMIN, 'user-limite-simulateur');
+    for (let n = 0; n < 30; n += 1) {
+      expect((await call('post', '/simulator/messages', { registrationId: REG_A, text: 'AIDE' })).status).toBe(202);
+    }
+    const refused = await call('post', '/simulator/messages', { freePhone: '0100000999', text: 'Bonjour' });
+    expect(refused.status).toBe(429);
+    expect(refused.body.code).toBe('RATE_LIMITED');
+    await flush();
+    expect(mockHandleInboundMessage).toHaveBeenCalledTimes(30);
   });
 });

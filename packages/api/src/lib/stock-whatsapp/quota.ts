@@ -182,3 +182,62 @@ export async function noteWhatsappQuotaReached(
     payload: { month, limit }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Plafond des appels à l'IA (coût) — au-delà du quota de photos analysées
+// ---------------------------------------------------------------------------
+
+/** Analyses en échec tolérées par inscription sur la fenêtre glissante. */
+export const ANALYSIS_FAILURE_BURST_MAX = 5;
+export const ANALYSIS_FAILURE_WINDOW_MS = 60 * 60 * 1000;
+/** Appels au fournisseur tolérés par agence et par mois, en multiple du quota. */
+export const ANALYSIS_MONTHLY_CALLS_FACTOR = 2;
+
+export type WhatsappAnalysisBudget = { ok: true } | { ok: false; reason: 'FAILURE_BURST' | 'MONTHLY_CALLS' };
+
+function monthStart(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/**
+ * Une analyse en échec rend sa place au quota (W11-R3) alors que l'appel au
+ * fournisseur a pu être facturé : sans plafond, des photos qui échouent
+ * sans fin coûteraient sans limite. Refus :
+ * - `FAILURE_BURST` : au moins 5 captures de l'inscription en échec
+ *   d'analyse (`FAILED`, quelle qu'en soit la raison, `INVALID_OUTPUT`
+ *   compris) reçues dans la dernière heure ;
+ * - `MONTHLY_CALLS` : les captures de l'agence qui ont donné lieu à un appel
+ *   au fournisseur ce mois-ci (analyse horodatée, hors fournisseur
+ *   désactivé) atteignent deux fois le quota.
+ * Une même photo analysée deux fois (article imposé, W9-R2) compte une fois :
+ * plafond prudent, pas une comptabilité exacte des appels. Lecture seule.
+ */
+export async function checkWhatsappAnalysisBudget(input: {
+  tenantId: string;
+  registrationId: string;
+  limit: number;
+  now?: Date;
+}): Promise<WhatsappAnalysisBudget> {
+  const now = input.now ?? new Date();
+  const failures = await prisma.stockFieldCapture.count({
+    where: {
+      tenantId: input.tenantId,
+      registrationId: input.registrationId,
+      outcome: 'FAILED',
+      receivedAt: { gte: new Date(now.getTime() - ANALYSIS_FAILURE_WINDOW_MS) }
+    }
+  });
+  if (failures >= ANALYSIS_FAILURE_BURST_MAX) return { ok: false, reason: 'FAILURE_BURST' };
+  if (input.limit > 0) {
+    const calls = await prisma.stockFieldCapture.count({
+      where: {
+        tenantId: input.tenantId,
+        receivedAt: { gte: monthStart(now) },
+        analyzedAt: { not: null },
+        OR: [{ failureReason: null }, { failureReason: { not: 'DISABLED' } }]
+      }
+    });
+    if (calls >= ANALYSIS_MONTHLY_CALLS_FACTOR * input.limit) return { ok: false, reason: 'MONTHLY_CALLS' };
+  }
+  return { ok: true };
+}

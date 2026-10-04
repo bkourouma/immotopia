@@ -27,12 +27,15 @@ export class DisabledVisionProvider implements StockVisionProvider {
 
 /**
  * Le faux fournisseur est-il permis sur ce serveur (W8-R9, écart E1) ?
- * `NODE_ENV` vaut `development` ou `test`, ou `WHATSAPP_INVENTORY_SIMULATOR=1`.
- * `env.ts` le refuse déjà au démarrage ; ce second contrôle évite qu'une
- * configuration contournée active des comptages simulés en production.
+ * `NODE_ENV` vaut `development` ou `test`, ou `WHATSAPP_INVENTORY_SIMULATOR=1`
+ * AVEC le transport `log` : jamais de comptages simulés derrière de vrais
+ * messages WhatsApp (transport `meta`). `env.ts` le refuse déjà au démarrage ;
+ * ce second contrôle évite qu'une configuration contournée active des
+ * comptages simulés en production.
  */
 export function fakeVisionAllowed(): boolean {
-  return env.NODE_ENV === 'development' || env.NODE_ENV === 'test' || env.WHATSAPP_INVENTORY_SIMULATOR === '1';
+  if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') return true;
+  return env.WHATSAPP_INVENTORY_SIMULATOR === '1' && env.WHATSAPP_INVENTORY_TRANSPORT === 'log';
 }
 
 let cached: { key: string; provider: StockVisionProvider } | null = null;
@@ -44,7 +47,8 @@ export function getStockVisionProvider(): StockVisionProvider {
     env.STOCK_VISION_MODEL,
     env.STOCK_VISION_TIMEOUT_MS,
     env.NODE_ENV,
-    env.WHATSAPP_INVENTORY_SIMULATOR
+    env.WHATSAPP_INVENTORY_SIMULATOR,
+    env.WHATSAPP_INVENTORY_TRANSPORT
   ].join('|');
   if (cached?.key === key) return cached.provider;
   let provider: StockVisionProvider;

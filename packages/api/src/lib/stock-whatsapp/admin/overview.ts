@@ -67,7 +67,6 @@ function gatewayReadyOf(): boolean {
 }
 
 type MeasureRow = {
-  total: number | bigint | null;
   accepted: number | bigint | null;
   corrected: number | bigint | null;
   unreadable: number | bigint | null;
@@ -93,14 +92,16 @@ function rate(numerator: number, denominator: number): number | null {
 export async function computeWhatsappMeasures(tenantId: string, month: string): Promise<WhatsappOverview['measures']> {
   const { start, end } = utcMonthBounds(month);
 
-  const usage = await prisma.stockWhatsappUsage.findUnique({
-    where: { tenantId_month: { tenantId, month } },
+  // `findFirst` et non `findUnique` sur la clé composée `tenantId_month` : la
+  // garde d'agence (`prisma-tenant-guard-extension`) ne reconnaît que la clé
+  // `tenantId` et refuserait la lecture en mode `enforce`.
+  const usage = await prisma.stockWhatsappUsage.findFirst({
+    where: { tenantId, month },
     select: { used: true }
   });
 
   const rows = await prisma.$queryRaw<MeasureRow[]>`
     SELECT
-      COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE outcome = 'ACCEPTED')::int AS accepted,
       COUNT(*) FILTER (WHERE outcome = 'CORRECTED')::int AS corrected,
       COUNT(*) FILTER (WHERE outcome = 'UNREADABLE')::int AS unreadable,
@@ -124,10 +125,16 @@ export async function computeWhatsappMeasures(tenantId: string, month: string): 
   `;
   const row = rows[0];
 
-  const total = int(row?.total);
   const accepted = int(row?.accepted);
   const corrected = int(row?.corrected);
   const whatsappLines = int(row?.whatsapp_lines);
+  // Dénominateur des parts d'échec : les captures dont l'analyse a ABOUTI à un
+  // résultat (confirmée, illisible, non reconnue, en échec). Une capture encore
+  // reçue ou en attente, expirée ou annulée n'entre pas dans le calcul.
+  const unreadable = int(row?.unreadable);
+  const unrecognized = int(row?.unrecognized);
+  const failed = int(row?.failed);
+  const analyzed = accepted + corrected + unreadable + unrecognized + failed;
   const median = row?.median_seconds === null || row?.median_seconds === undefined ? null : Number(row.median_seconds);
 
   return {
@@ -135,9 +142,9 @@ export async function computeWhatsappMeasures(tenantId: string, month: string): 
     medianSecondsToConfirm: median !== null && Number.isFinite(median) ? Math.round(median * 10) / 10 : null,
     acceptedFirstTimeRate: rate(accepted, accepted + corrected),
     proofCoverageRate: rate(int(row?.lines_with_photo), whatsappLines),
-    unreadableRate: rate(int(row?.unreadable), total),
-    unrecognizedRate: rate(int(row?.unrecognized), total),
-    failedRate: rate(int(row?.failed), total)
+    unreadableRate: rate(unreadable, analyzed),
+    unrecognizedRate: rate(unrecognized, analyzed),
+    failedRate: rate(failed, analyzed)
   };
 }
 

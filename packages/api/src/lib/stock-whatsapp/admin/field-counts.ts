@@ -4,7 +4,7 @@ import { assertBelongsToTenant } from '../../../utils/tenant-ownership';
 import { roundQuantity } from '../../finance/money';
 import { maskValue } from '../../finance/stock-controles';
 import type { StockCallerContext } from '../../finance/types-040-controle';
-import { CONFIRMED_OUTCOMES } from './captures';
+import { captureWroteLineValue, CONFIRMED_OUTCOMES } from './captures';
 import { isUuid, type FieldCountsQuery } from './schemas';
 import { userLabelOf } from './sessions';
 
@@ -15,7 +15,10 @@ import { userLabelOf } from './sessions';
  * Une ligne par couple (lieu, article) qui a un solde non nul OU au moins un
  * comptage (toute source) dans les 180 derniers jours. « Dernier comptage » :
  * la ligne d'inventaire la plus récente du couple (`countedAtServer`, à défaut
- * la création de l'inventaire), quel que soit son statut sauf `CANCELLED`.
+ * la création de l'inventaire), quel que soit son statut sauf `CANCELLED`. Une
+ * ligne « non comptée » (`countedQuantity` nul, A2-R8) passe APRÈS toute ligne
+ * comptée : elle ne masque jamais le dernier comptage physique ; elle n'est
+ * rendue que si le couple n'a aucune ligne comptée.
  *
  * MASQUES (lot 040, §8.1 et §8.2) :
  * - sans `STOCK_VALUES_VIEW`, `theoreticalValue` et `averageUnitCost` valent
@@ -28,8 +31,11 @@ import { userLabelOf } from './sessions';
  *   `onlyInStock`, spec 040 §8.2).
  * - `lastCount` n'est jamais masqué : c'est une quantité comptée.
  *
- * « Source du dernier comptage » : `WHATSAPP` si une capture confirmée
- * (`ACCEPTED` ou `CORRECTED`) a écrit cette ligne, sinon `WEB`.
+ * « Source du dernier comptage » : `WHATSAPP` si la capture confirmée
+ * (`ACCEPTED` ou `CORRECTED`) la plus récente de cette ligne en a écrit la
+ * valeur ACTUELLE (`captureWroteLineValue` : même auteur, même quantité ou
+ * confirmation à 2 s près), sinon `WEB` — une ressaisie au bureau reprend la
+ * ligne et sa capture n'en est plus la preuve.
  */
 
 export const FIELD_COUNT_WINDOW_DAYS = 180;
@@ -69,6 +75,7 @@ type LastLineRow = {
   count_status: string;
   counted_quantity: unknown;
   counted_at_server: Date | null;
+  counted_by_user_id: string | null;
   line_date: Date;
   counted_by_full_name: string | null;
   counted_by_email: string | null;
@@ -188,6 +195,7 @@ export async function listFieldCounts(
       c.status::text AS count_status,
       l.counted_quantity AS counted_quantity,
       l.counted_at_server AS counted_at_server,
+      l.counted_by_user_id AS counted_by_user_id,
       COALESCE(l.counted_at_server, c.created_at) AS line_date,
       u.full_name AS counted_by_full_name,
       u.email AS counted_by_email
@@ -198,7 +206,10 @@ export async function listFieldCounts(
       AND c.status <> 'CANCELLED'
       AND c.location_id = ANY(${locationIds}::uuid[])
       ${itemFilter}
-    ORDER BY c.location_id, l.item_id, COALESCE(l.counted_at_server, c.created_at) DESC, l.id DESC
+    ORDER BY c.location_id, l.item_id,
+      (l.counted_quantity IS NULL) ASC,
+      COALESCE(l.counted_at_server, c.created_at) DESC,
+      l.id DESC
   `;
   const lastLineByPair = new Map<PairKey, LastLineRow>();
   for (const line of lastLines) lastLineByPair.set(pairKey(line.location_id, line.item_id), line);
@@ -244,8 +255,20 @@ export async function listFieldCounts(
             confirmedAt: { not: null }
           },
           orderBy: [{ confirmedAt: 'desc' }, { id: 'desc' }],
-          select: { id: true, countLineId: true, outcome: true, fileUrl: true, photoRemovedAt: true }
+          select: {
+            id: true,
+            userId: true,
+            countLineId: true,
+            outcome: true,
+            confirmedAt: true,
+            confirmedQuantity: true,
+            lineQuantityAfter: true,
+            fileUrl: true,
+            photoRemovedAt: true
+          }
         });
+  // La capture la plus récente de chaque ligne ; elle n'en est la preuve que si
+  // elle en a écrit la valeur actuelle (étape 6).
   const captureByLine = new Map<string, (typeof captures)[number]>();
   for (const capture of captures) {
     if (capture.countLineId && !captureByLine.has(capture.countLineId)) {
@@ -263,7 +286,17 @@ export async function listFieldCounts(
     const isBlind = blind.has(pair.locationId);
     const balance = balanceByPair.get(key) ?? { quantity: 0, value: 0 };
     const line = lastLineByPair.get(key);
-    const capture = line ? captureByLine.get(line.line_id) : undefined;
+    const latestCapture = line ? captureByLine.get(line.line_id) : undefined;
+    const capture =
+      line &&
+      latestCapture &&
+      captureWroteLineValue(latestCapture, {
+        countedByUserId: line.counted_by_user_id,
+        countedQuantity: line.counted_quantity,
+        countedAtServer: line.counted_at_server ? new Date(line.counted_at_server) : null
+      })
+        ? latestCapture
+        : undefined;
 
     const lastCount: FieldCountRow['lastCount'] = line
       ? {

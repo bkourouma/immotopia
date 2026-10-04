@@ -555,10 +555,14 @@ WHATSAPP`, il a au moins une ligne, et `counterUserIds` ne contient que le
 - **W8-R2. Gemini.** `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`,
   en-tête `x-goog-api-key`, `contents[0].parts` = consigne texte puis
   `inlineData { mimeType, data }` (base64), `generationConfig.responseMimeType =
-application/json`, `responseSchema` (schéma de W8-R5), `temperature = 0`
-  ([référence](https://ai.google.dev/api/generate-content)). [À vérifier à la
-  réalisation : `responseSchema` ou `responseJsonSchema`, les deux étant
-  documentés ; nom exact du modèle Flash disponible.]
+application/json`, `responseJsonSchema` (JSON Schema de W8-R5 ; `responseSchema`,
+  sous-ensemble OpenAPI, est déprécié), `temperature = 0`
+  ([référence](https://ai.google.dev/api/generate-content)). Modèle par défaut
+  `gemini-3.8-flash` (Flash stable recommandé pour un nouveau projet ;
+  `gemini-2.5-flash` n'est plus ouvert qu'aux comptes qui l'utilisaient déjà),
+  `google/gemini-3.8-flash` sur OpenRouter
+  ([modèles Gemini](https://ai.google.dev/gemini-api/docs/models), vérifié le
+  04/10/2026).
 - **W8-R3. OpenRouter.** `POST {OPENROUTER_BASE_URL}/chat/completions`, `stream:
 false`, message utilisateur en deux parties (`text`, puis `image_url` dont
   `url` est un URI `data:image/jpeg;base64,…`), `response_format: { type:

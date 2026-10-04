@@ -19,8 +19,11 @@
  * `newsletter-campaign-scheduler.job.ts`) ; chaque session est ensuite traitée
  * dans le contexte de son agence par `runSessionTimers`.
  *
- * Démarrée par `src/index.ts` seulement si le transport n'est pas `disabled`,
- * jamais en test.
+ * Démarrée par `src/index.ts` QUEL QUE SOIT le transport (jamais en test) :
+ * l'effacement des copies `payload` et la purge nocturne sont des obligations
+ * de conservation (W6-R8, W14-R6) qui ne s'arrêtent pas avec le transport
+ * `disabled`. Seules les minuteries de session et la reprise des événements,
+ * qui envoient des messages, exigent un transport actif (`transportActive`).
  */
 import * as cron from 'node-cron';
 import { Prisma } from '@prisma/client';
@@ -117,11 +120,23 @@ export async function purgeStockWhatsappHistory(now: Date = new Date()): Promise
   return { messages, events };
 }
 
+export type StockWhatsappJobOptions = {
+  /** Faux avec `WHATSAPP_INVENTORY_TRANSPORT=disabled` : ni minuteries ni reprise, purges maintenues. */
+  transportActive: boolean;
+};
+
 /** Le travail de chaque minute. Une étape en échec n'empêche pas les suivantes. */
-export async function runStockWhatsappMinute(now: Date = new Date()): Promise<void> {
+export async function runStockWhatsappMinute(
+  now: Date = new Date(),
+  options: StockWhatsappJobOptions = { transportActive: true }
+): Promise<void> {
   const steps: Array<[string, () => Promise<unknown>]> = [
-    ['minuteries', () => runSessionTimers({ now })],
-    ['reprise des événements', () => retryStaleWebhookEvents(now)],
+    ...(options.transportActive
+      ? ([
+          ['minuteries', () => runSessionTimers({ now })],
+          ['reprise des événements', () => retryStaleWebhookEvents(now)]
+        ] as Array<[string, () => Promise<unknown>]>)
+      : []),
     ['effacement des copies', () => clearStaleEventPayloads(now)]
   ];
   for (const [label, step] of steps) {
@@ -135,7 +150,7 @@ export async function runStockWhatsappMinute(now: Date = new Date()): Promise<vo
   }
 }
 
-export function startStockWhatsappJob(): void {
+export function startStockWhatsappJob(options: StockWhatsappJobOptions): void {
   if (minuteJob) {
     logger.warn('Inventaire WhatsApp : la tâche planifiée tourne déjà');
     return;
@@ -146,7 +161,7 @@ export function startStockWhatsappJob(): void {
     if (minuteRunning) return;
     minuteRunning = true;
     try {
-      await runStockWhatsappMinute();
+      await runStockWhatsappMinute(new Date(), options);
     } finally {
       minuteRunning = false;
     }
@@ -165,7 +180,9 @@ export function startStockWhatsappJob(): void {
     },
     { timezone: 'UTC' }
   );
-  logger.info('Inventaire WhatsApp : tâche planifiée démarrée (chaque minute, purge à 3 h 30 UTC)');
+  logger.info('Inventaire WhatsApp : tâche planifiée démarrée (chaque minute, purge à 3 h 30 UTC)', {
+    transportActive: options.transportActive
+  });
 }
 
 export function stopStockWhatsappJob(): void {

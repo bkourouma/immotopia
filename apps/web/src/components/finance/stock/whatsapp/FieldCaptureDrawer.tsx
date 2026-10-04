@@ -26,7 +26,7 @@ import {
   listStockWhatsappSessionMessages,
   removeStockFieldCapturePhoto
 } from '../../../../services/finance-stock-whatsapp-service';
-import type { CaptureView } from '../../../../types/finance-stock-whatsapp-types';
+import type { CaptureOutcome, CaptureView } from '../../../../types/finance-stock-whatsapp-types';
 import { STOCK_COUNT_STATUS_DISPLAY } from '../../../../types/finance-stock-controle-types';
 import { formatQuantity } from '../../../../types/finance-stock-inventaire-types';
 import { StatusTag } from '../../../primitives/StatusTag';
@@ -418,6 +418,18 @@ const AnalysisSection: React.FC<{ capture: CaptureView }> = ({ capture }) => {
 // Ce que le chef a fait (ecrans §4.4)
 // ---------------------------------------------------------------------------
 
+/**
+ * Libellé de `confirmedQuantity` selon l'issue : la quantité n'est « retenue »
+ * que si elle a été écrite dans l'inventaire (`ACCEPTED`, `CORRECTED`). Le chef
+ * peut l'avoir indiquée puis annulé ou laissé expirer la question de fusion :
+ * le serveur rend alors la valeur, affichée sans laisser croire qu'elle compte.
+ */
+function confirmedQuantityLabel(outcome: CaptureOutcome): string {
+  if (outcome === 'ACCEPTED' || outcome === 'CORRECTED') return t('Quantité retenue');
+  if (outcome === 'RECEIVED' || outcome === 'PENDING') return t('Quantité indiquée par le chef');
+  return t('Quantité indiquée, non retenue');
+}
+
 const ChefSection: React.FC<{ tenantId: string; capture: CaptureView }> = ({ tenantId, capture }) => {
   const unite = capture.unit ?? null;
   const statut = capture.countStatus ? STOCK_COUNT_STATUS_DISPLAY[capture.countStatus] : null;
@@ -430,8 +442,8 @@ const ChefSection: React.FC<{ tenantId: string; capture: CaptureView }> = ({ ten
           <span data-testid="capture-outcome">{captureOutcomeLabel(capture.outcome)}</span>
         </Descriptions.Item>
         {capture.confirmedQuantity !== null && capture.confirmedQuantity !== undefined && (
-          <Descriptions.Item label={t('Quantité retenue')}>
-            {formatQuantity(capture.confirmedQuantity, unite)}
+          <Descriptions.Item label={confirmedQuantityLabel(capture.outcome)}>
+            <span data-testid="capture-confirmed-quantity">{formatQuantity(capture.confirmedQuantity, unite)}</span>
           </Descriptions.Item>
         )}
         {capture.mergeMode && (

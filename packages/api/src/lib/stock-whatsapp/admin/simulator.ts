@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto';
 import { AsyncResource } from 'async_hooks';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../../../utils/database';
 import { whatsappInventorySimulatorAvailable } from '../../../config/env';
 import { AppError, ErrorCode, NotFoundError } from '../../../middleware/error-middleware';
@@ -40,9 +39,11 @@ import {
  * l'acteur explicitement à l'audit). La photo est déposée dans le magasin de
  * médias du transport `log` et relue par `fetchMedia`.
  *
- * NUMÉRO LIBRE (W7) : un numéro qui porte une inscription non révoquée, dans
- * cette agence ou une autre, est refusé — sans dire laquelle — pour qu'une
- * agence ne puisse jamais parler au nom du chef d'une autre.
+ * NUMÉRO LIBRE (W7) : un numéro qui porte une inscription d'une autre agence
+ * (tout statut) ou une inscription non révoquée de cette agence est refusé —
+ * sans dire laquelle — pour qu'une agence ne puisse jamais parler au nom du
+ * chef d'une autre. Le moteur reçoit en outre `expectedTenantId` : il abandonne
+ * tout message dont l'inscription résolue n'est pas de cette agence.
  */
 
 // ---------------------------------------------------------------------------
@@ -164,34 +165,74 @@ function freePhoneUnavailable(): AppError {
 }
 
 /**
- * Inscription de l'agence (tout statut : une inscription révoquée sert à jouer
- * le refus M06 en recette), ou `NotFoundError` comme un objet inexistant.
+ * Refus neutre d'une inscription révoquée dont le numéro est vivant ailleurs :
+ * il ne dit pas qu'une autre agence (ou une autre inscription) l'utilise.
+ */
+function revokedRegistrationUnusable(): AppError {
+  return new AppError(
+    'Cette inscription révoquée ne peut plus servir d’expéditeur. Choisissez une autre inscription ou un numéro libre.',
+    400,
+    ErrorCode.VALIDATION_ERROR
+  );
+}
+
+/**
+ * Inscription de l'agence, ou `NotFoundError` comme un objet inexistant.
+ *
+ * Une inscription RÉVOQUÉE sert à jouer le refus M06 en recette, mais elle
+ * n'est acceptée comme expéditeur que si son numéro ne porte AUCUNE inscription
+ * vivante (non révoquée) sur la plateforme : sinon le moteur résoudrait ce
+ * numéro vers l'inscription vivante, peut-être celle d'une autre agence, et
+ * l'administrateur parlerait au nom de son chef. Le refus est neutre
+ * (`revokedRegistrationUnusable`), sans dire où le numéro est utilisé.
  */
 async function registrationPhoneForTenant(tenantId: string, registrationId: string): Promise<string> {
   if (!isUuid(registrationId)) throw new NotFoundError('Inscription introuvable.');
   const registration = await prisma.stockWhatsappRegistration.findFirst({
     where: { id: registrationId, tenantId },
-    select: { phoneE164: true }
+    select: { phoneE164: true, status: true }
   });
   if (!registration) throw new NotFoundError('Inscription introuvable.');
+  if (registration.status === 'REVOKED' && (await phoneHasLiveRegistration(registration.phoneE164))) {
+    throw revokedRegistrationUnusable();
+  }
   return registration.phoneE164;
 }
 
 /**
- * Le numéro libre, normalisé, s'il ne porte AUCUNE inscription non révoquée sur
- * la plateforme. Lecture transverse assumée (même règle que l'unicité W3-R4) :
- * en SQL brut, elle ne rend qu'un booléen, jamais l'agence ni l'inscription.
+ * Vrai si le numéro porte une inscription non révoquée, dans n'importe quelle
+ * agence. Lecture transverse assumée (même règle que l'unicité W3-R4) : en SQL
+ * brut, elle ne rend qu'un booléen, jamais l'agence ni l'inscription.
  */
-async function freePhoneE164(raw: string): Promise<string> {
-  const e164 = normalizePhoneE164(raw);
-  if (!e164) throw phoneInvalid();
-  const rows = await prisma.$queryRaw<Array<{ taken: boolean }>>(Prisma.sql`
+async function phoneHasLiveRegistration(e164: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ taken: boolean }>>`
     SELECT EXISTS (
       SELECT 1 FROM stock_whatsapp_registrations
       WHERE phone_e164 = ${e164} AND status <> 'REVOKED'
     ) AS taken
-  `);
-  if (rows[0]?.taken) throw freePhoneUnavailable();
+  `;
+  return rows[0]?.taken === true;
+}
+
+/**
+ * Le numéro libre, normalisé, s'il ne porte AUCUNE inscription d'une AUTRE
+ * agence (quel que soit son statut : une inscription révoquée chez B reste le
+ * numéro d'un chef de B, que le moteur pourrait encore résoudre vers B) ni
+ * aucune inscription non révoquée de l'agence courante. Une inscription
+ * révoquée de l'agence courante ne le rend pas indisponible. Même lecture
+ * transverse que ci-dessus : un booléen seulement, l'agence liée en paramètre.
+ */
+async function freePhoneE164(tenantId: string, raw: string): Promise<string> {
+  const e164 = normalizePhoneE164(raw);
+  if (!e164) throw phoneInvalid();
+  const rows = await prisma.$queryRaw<Array<{ taken: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1 FROM stock_whatsapp_registrations
+      WHERE phone_e164 = ${e164}
+        AND (tenant_id <> ${tenantId} OR status <> 'REVOKED')
+    ) AS taken
+  `;
+  if (rows[0]?.taken === true) throw freePhoneUnavailable();
   return e164;
 }
 
@@ -214,7 +255,7 @@ export async function injectSimulatorMessage(
 
   const isFree = 'freePhone' in target;
   const fromE164 = isFree
-    ? await freePhoneE164(target.freePhone)
+    ? await freePhoneE164(tenantId, target.freePhone)
     : await registrationPhoneForTenant(tenantId, target.registrationId);
 
   const metaMessageId = `sim-${randomUUID()}`;
@@ -266,7 +307,10 @@ export async function injectSimulatorMessage(
 
   runOutsideRequest(() => {
     setImmediate(() => {
-      handleInboundMessage(message).catch((error: unknown) => {
+      // `expectedTenantId` : le moteur abandonne, sans réponse, un message dont
+      // l'inscription résolue n'est pas de l'agence de la requête (défense en
+      // profondeur derrière les contrôles du numéro ci-dessus).
+      handleInboundMessage(message, { expectedTenantId: tenantId }).catch((error: unknown) => {
         // `handleInboundMessage` ne lève jamais ; défense en profondeur, sans le numéro.
         logger.error('Inventaire WhatsApp : message du simulateur non traité', {
           tenantId,

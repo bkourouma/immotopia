@@ -13,7 +13,8 @@ jest.mock('../../src/config/env', () => ({
     OPENROUTER_API_KEY: 'sk-or-test-key',
     OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
     FRONTEND_URL: 'http://localhost:3000',
-    WHATSAPP_INVENTORY_SIMULATOR: '0'
+    WHATSAPP_INVENTORY_SIMULATOR: '0',
+    WHATSAPP_INVENTORY_TRANSPORT: 'log'
   },
   isProduction: false,
   isTest: true
@@ -32,6 +33,7 @@ import { logger } from '../../src/utils/logger';
 import type { StockVisionCandidate, StockVisionRequest, StockVisionResult } from '../../src/lib/stock-whatsapp/types';
 import {
   DisabledVisionProvider,
+  fakeVisionAllowed,
   getStockVisionProvider,
   resetStockVisionProviderForTests
 } from '../../src/lib/stock-whatsapp/vision';
@@ -148,6 +150,7 @@ beforeEach(() => {
   mutableEnv.GEMINI_API_KEY = 'gemini-test-key';
   mutableEnv.OPENROUTER_API_KEY = 'sk-or-test-key';
   mutableEnv.WHATSAPP_INVENTORY_SIMULATOR = '0';
+  mutableEnv.WHATSAPP_INVENTORY_TRANSPORT = 'log';
   resetStockVisionProviderForTests();
   jest.clearAllMocks();
 });
@@ -190,6 +193,19 @@ describe('schéma de sortie (W8-R5)', () => {
     visit(STOCK_VISION_JSON_SCHEMA as unknown as Record<string, unknown>);
   });
 
+  it('M13 : un total à plus de quatre décimales est arrondi, pas rejeté ; le reste reste strict', () => {
+    const parsed = stockVisionResultSchema.safeParse({ ...VALID, proposedTotal: 84.123456 });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.proposedTotal).toBe(84.1235);
+    expect(finalizeVisionResult({ ...VALID, proposedTotal: 12.00004 }, request())?.proposedTotal).toBe(12);
+    expect(stockVisionResultSchema.safeParse({ ...VALID, proposedTotal: -0.5 }).success).toBe(false);
+    expect(stockVisionResultSchema.safeParse({ ...VALID, proposedTotal: 1_000_001 }).success).toBe(false);
+    expect(stockVisionResultSchema.safeParse({ ...VALID, visibleUnits: 2.5 }).success).toBe(false);
+    expect(stockVisionResultSchema.safeParse({ ...VALID, champ: 1 }).success).toBe(false);
+    // Le JSON Schema envoyé aux fournisseurs ne fixe aucune précision : il reste cohérent.
+    expect(STOCK_VISION_JSON_SCHEMA.properties.proposedTotal).not.toHaveProperty('multipleOf');
+  });
+
   it('un itemId hors de la liste devient null (critère W8-2)', () => {
     const result = finalizeVisionResult({ ...VALID, itemId: 'article-invente' }, request());
     expect(result?.itemId).toBeNull();
@@ -205,7 +221,8 @@ describe('schéma de sortie (W8-R5)', () => {
     const { method: _method, ...withoutMethod } = VALID;
     expect(finalizeVisionResult(withoutMethod, request())).toBeNull();
     expect(finalizeVisionResult({ ...VALID, expectedQuantity: 3 }, request())).toBeNull();
-    expect(finalizeVisionResult({ ...VALID, proposedTotal: 1.23456 }, request())).toBeNull();
+    // Plus de quatre décimales : arrondi, plus rejeté (M13, test dédié ci-dessous).
+    expect(finalizeVisionResult({ ...VALID, proposedTotal: 1.23456 }, request())?.proposedTotal).toBe(1.2346);
     expect(finalizeVisionResult({ ...VALID, confidence: 1.2 }, request())).toBeNull();
     expect(finalizeVisionResult({ ...VALID, explanation: 'x'.repeat(301) }, request())).toBeNull();
     expect(finalizeVisionResult({ ...VALID, layers: 0 }, request())).toBeNull();
@@ -565,6 +582,18 @@ describe('getStockVisionProvider (W8-R1)', () => {
     mutableEnv.NODE_ENV = 'production';
     expect(getStockVisionProvider().id).toBe('disabled');
     mutableEnv.WHATSAPP_INVENTORY_SIMULATOR = '1';
+    expect(getStockVisionProvider().id).toBe('fake');
+  });
+
+  it('avec le simulateur, le faux fournisseur exige le transport log : refusé avec meta (écart E1)', () => {
+    mutableEnv.STOCK_VISION_PROVIDER = 'fake';
+    mutableEnv.NODE_ENV = 'production';
+    mutableEnv.WHATSAPP_INVENTORY_SIMULATOR = '1';
+    mutableEnv.WHATSAPP_INVENTORY_TRANSPORT = 'meta';
+    expect(fakeVisionAllowed()).toBe(false);
+    expect(getStockVisionProvider().id).toBe('disabled');
+    mutableEnv.WHATSAPP_INVENTORY_TRANSPORT = 'log';
+    expect(fakeVisionAllowed()).toBe(true);
     expect(getStockVisionProvider().id).toBe('fake');
   });
 

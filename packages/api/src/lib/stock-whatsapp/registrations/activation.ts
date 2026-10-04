@@ -1,4 +1,6 @@
-import { hashesMatch, hashToken } from '../../secure-links/token';
+import crypto from 'crypto';
+import { env } from '../../../config/env';
+import { hashesMatch } from '../../secure-links/token';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from '../../../services/audit-service';
 import { prisma } from '../../../utils/database';
 import { botMessages } from '../bot-messages';
@@ -12,21 +14,40 @@ import type { InboundMessage } from '../types';
  *
  * Le chef envoie, depuis SON numéro, un message dont les seuls chiffres forment
  * le code (« 482 913 », « Code 482913 »). Le code n'est stocké qu'en empreinte
- * (`hashToken(code + ':' + id)`), comparée à temps constant (`hashesMatch`).
- * 72 heures, 5 essais ; au 5e échec ou après l'échéance : M04 et audit
- * `STOCK_WHATSAPP_ACTIVATION_LOCKED` (une fois, par mise à jour conditionnelle).
+ * HMAC-SHA256 à clé serveur (`activationCodeHash`), comparée à temps constant
+ * (`hashesMatch`). 72 heures, 5 essais ; au 5e échec ou après l'échéance : M04
+ * et audit `STOCK_WHATSAPP_ACTIVATION_LOCKED` (une fois).
  *
- * Toutes les écritures sont conditionnelles : deux messages simultanés ne
- * consomment pas deux fois le même essai et n'activent pas deux fois.
+ * L'essai est RÉSERVÉ avant toute comparaison (`reserveAttempt`) : la limite de
+ * 5 tient même sous des messages simultanés. Toutes les écritures sont
+ * conditionnelles : deux messages simultanés n'activent pas deux fois.
  */
 
 export const ACTIVATION_MAX_ATTEMPTS = 5;
 export const ACTIVATION_VALIDITY_MS = 72 * 60 * 60 * 1000;
 export const ACTIVATION_CODE_LENGTH = 6;
 
-/** Empreinte stockée d'un code (W3-R6). */
+/**
+ * Clé HMAC des codes d'activation, DÉRIVÉE de `JWT_SECRET` (secret serveur
+ * obligatoire, au moins 32 caractères, contrôlé au démarrage par `env.ts`) :
+ * aucune variable de plus. La dérivation par une étiquette propre sépare les
+ * usages : la clé de signature des jetons n'est jamais employée telle quelle.
+ * Une empreinte SHA-256 sans secret se retrouvait en un million d'essais hors
+ * ligne (six chiffres) à partir d'une copie de la base ; avec le HMAC, il faut
+ * aussi le secret du serveur.
+ *
+ * Conséquence assumée : changer `JWT_SECRET` invalide les codes en attente
+ * (l'administrateur régénère le code). De même, une inscription en attente
+ * créée avant ce changement porte une empreinte SHA-256 qui ne correspond plus :
+ * régénérer le code suffit.
+ */
+function activationKey(): Buffer {
+  return crypto.createHmac('sha256', env.JWT_SECRET).update('immotopia:stock-whatsapp:activation-code:v1').digest();
+}
+
+/** Empreinte stockée d'un code (W3-R6) : HMAC-SHA256 hexadécimal (64 caractères). */
 export function activationCodeHash(code: string, registrationId: string): string {
-  return hashToken(`${code}:${registrationId}`);
+  return crypto.createHmac('sha256', activationKey()).update(`${code}:${registrationId}`, 'utf8').digest('hex');
 }
 
 export type PendingRegistration = {
@@ -64,20 +85,56 @@ async function lockExpired(registration: PendingRegistration): Promise<void> {
   if (locked.count === 1) lockedAudit(registration, 'EXPIRED');
 }
 
-/** Code juste : `ACTIVE`, empreinte effacée, audit critique dans la transaction. */
-async function activate(registration: PendingRegistration, now: Date): Promise<boolean> {
+type AttemptOutcome = { kind: 'LOCKED' } | { kind: 'ACTIVATED' } | { kind: 'WRONG'; attempts: number };
+
+/**
+ * Réserve un essai PUIS compare, dans une seule transaction (W3-R7).
+ *
+ * `UPDATE … SET activation_attempts = activation_attempts + 1 WHERE … AND
+ * activation_attempts < 5` : PostgreSQL réévalue la condition sur la ligne à
+ * jour après l'attente du verrou, donc cinq réservations au plus réussissent,
+ * quel que soit le nombre de messages simultanés. Le verrou de ligne posé par
+ * la mise à jour est tenu jusqu'à la fin de la transaction : la relecture qui
+ * suit voit exactement le compteur de CET essai et l'empreinte courante (un
+ * code régénéré entre-temps est pris en compte). Pas de comparaison sans
+ * réservation réussie.
+ */
+async function reserveAndCheck(registration: PendingRegistration, digits: string, now: Date): Promise<AttemptOutcome> {
   return prisma.$transaction(async tx => {
-    const updated = await tx.stockWhatsappRegistration.updateMany({
+    const reserved = await tx.stockWhatsappRegistration.updateMany({
       where: {
         id: registration.id,
         tenantId: registration.tenantId,
         status: 'PENDING_ACTIVATION',
         activationAttempts: { lt: ACTIVATION_MAX_ATTEMPTS },
-        activationCodeHash: registration.activationCodeHash
+        activationExpiresAt: { gt: now }
+      },
+      data: { activationAttempts: { increment: 1 } }
+    });
+    if (reserved.count !== 1) return { kind: 'LOCKED' };
+
+    const current = await tx.stockWhatsappRegistration.findFirst({
+      where: { id: registration.id, tenantId: registration.tenantId },
+      select: { activationAttempts: true, activationCodeHash: true }
+    });
+    if (!current?.activationCodeHash) return { kind: 'LOCKED' };
+
+    const matches =
+      digits.length === ACTIVATION_CODE_LENGTH &&
+      hashesMatch(current.activationCodeHash, activationCodeHash(digits, registration.id));
+    if (!matches) return { kind: 'WRONG', attempts: current.activationAttempts };
+
+    // Code juste : `ACTIVE`, empreinte effacée, audit critique dans la transaction.
+    const updated = await tx.stockWhatsappRegistration.updateMany({
+      where: {
+        id: registration.id,
+        tenantId: registration.tenantId,
+        status: 'PENDING_ACTIVATION',
+        activationCodeHash: current.activationCodeHash
       },
       data: { status: 'ACTIVE', activatedAt: now, activationCodeHash: null, activationExpiresAt: null }
     });
-    if (updated.count !== 1) return false;
+    if (updated.count !== 1) return { kind: 'LOCKED' };
     await recordAuditEvent(tx, {
       tenantId: registration.tenantId,
       actorUserId: registration.userId,
@@ -86,22 +143,8 @@ async function activate(registration: PendingRegistration, now: Date): Promise<b
       entityId: registration.id,
       payload: { registrationId: registration.id }
     });
-    return true;
+    return { kind: 'ACTIVATED' };
   });
-}
-
-/** Code faux : un essai de plus (conditionnel) ; rend le nombre d'essais après, ou `null` si déjà changé. */
-async function countFailedAttempt(registration: PendingRegistration): Promise<number | null> {
-  const updated = await prisma.stockWhatsappRegistration.updateMany({
-    where: {
-      id: registration.id,
-      tenantId: registration.tenantId,
-      status: 'PENDING_ACTIVATION',
-      activationAttempts: registration.activationAttempts
-    },
-    data: { activationAttempts: { increment: 1 } }
-  });
-  return updated.count === 1 ? registration.activationAttempts + 1 : null;
 }
 
 async function welcomeMessage(registration: PendingRegistration) {
@@ -138,28 +181,13 @@ export async function handlePendingRegistrationMessage(
     return send(botMessages.codeLocked());
   }
 
-  const matches =
-    digits.length === ACTIVATION_CODE_LENGTH &&
-    hashesMatch(registration.activationCodeHash, activationCodeHash(digits, registration.id));
-  if (matches) {
-    if (await activate(registration, now)) return send(await welcomeMessage(registration));
+  const outcome = await reserveAndCheck(registration, digits, now);
+  if (outcome.kind === 'ACTIVATED') return send(await welcomeMessage(registration));
+  if (outcome.kind === 'LOCKED') return send(botMessages.codeLocked());
+  // Seule la réservation qui atteint le maximum audite : une seule fois.
+  if (outcome.attempts >= ACTIVATION_MAX_ATTEMPTS) {
+    if (outcome.attempts === ACTIVATION_MAX_ATTEMPTS) lockedAudit(registration, 'ATTEMPTS');
     return send(botMessages.codeLocked());
   }
-
-  let attempts = await countFailedAttempt(registration);
-  if (attempts === null) {
-    // Un autre message a consommé un essai au même instant : relire.
-    const current = await prisma.stockWhatsappRegistration.findFirst({
-      where: { id: registration.id, tenantId: registration.tenantId, status: 'PENDING_ACTIVATION' },
-      select: { activationAttempts: true }
-    });
-    if (!current || current.activationAttempts >= ACTIVATION_MAX_ATTEMPTS) return send(botMessages.codeLocked());
-    attempts = await countFailedAttempt({ ...registration, activationAttempts: current.activationAttempts });
-    if (attempts === null) return send(botMessages.codeLocked());
-  }
-  if (attempts >= ACTIVATION_MAX_ATTEMPTS) {
-    lockedAudit(registration, 'ATTEMPTS');
-    return send(botMessages.codeLocked());
-  }
-  return send(botMessages.wrongCode(ACTIVATION_MAX_ATTEMPTS - attempts));
+  return send(botMessages.wrongCode(ACTIVATION_MAX_ATTEMPTS - outcome.attempts));
 }

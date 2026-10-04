@@ -251,8 +251,11 @@ const usageProviders: Record<CapacityKeyCode, UsageProvider> = {
  */
 export async function countInventoryPhotosThisMonth(db: Db, tenantId: string, now: Date = new Date()): Promise<number> {
   const month = now.toISOString().slice(0, 7);
-  const row = await db.stockWhatsappUsage.findUnique({
-    where: { tenantId_month: { tenantId, month } },
+  // findFirst et non findUnique sur la clé composée `tenantId_month` : la garde
+  // tenant (prisma-tenant-guard-extension, mode enforce) ne lit que `tenantId`
+  // au premier niveau du `where`.
+  const row = await db.stockWhatsappUsage.findFirst({
+    where: { tenantId, month },
     select: { used: true }
   });
   return row?.used ?? 0;

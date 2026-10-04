@@ -10,15 +10,20 @@
  * simulés : aucun appel réseau.
  */
 import { env } from '../../src/config/env';
+import { botMessages } from '../../src/lib/stock-whatsapp/bot-messages';
 import { handleInboundMessage, resetEngineMemoryForTests } from '../../src/lib/stock-whatsapp/engine';
 import {
   extractActivationDigits,
+  isZero,
   parseCommand,
+  parseMergeAnswer,
   parseQuantityAnswer
 } from '../../src/lib/stock-whatsapp/engine/commands';
+import { runSessionTimers } from '../../src/lib/stock-whatsapp/engine/timers';
 import { computeFieldVariance, fieldAlertSeverity } from '../../src/lib/stock-whatsapp/engine/field-alert';
 import { matchItems } from '../../src/lib/stock-whatsapp/engine/item-matching';
-import { resetQuotaWarningsForTests } from '../../src/lib/stock-whatsapp/quota';
+import { checkWhatsappAnalysisBudget, resetQuotaWarningsForTests } from '../../src/lib/stock-whatsapp/quota';
+import { MediaFetchError } from '../../src/lib/stock-whatsapp/types';
 import { activationCodeHash } from '../../src/lib/stock-whatsapp/registrations/activation';
 
 // ---------------------------------------------------------------------------
@@ -341,7 +346,15 @@ function createMockDb() {
             }
           };
         }
-        if (prop === '$executeRaw' || prop === '$executeRawUnsafe') return async () => 0;
+        if (prop === '$executeRaw' || prop === '$executeRawUnsafe') {
+          // Prise du verrou consultatif : point où un test simule ce qu'une
+          // autre requête a fait entre une lecture et le verrou.
+          return async () => {
+            const hook = mockLockHooks.shift();
+            if (hook) hook();
+            return 0;
+          };
+        }
         if (prop === '$queryRaw' || prop === '$queryRawUnsafe') return async () => [];
         if (prop === 'then') return undefined;
         if (!delegates.has(prop)) delegates.set(prop, delegate(prop));
@@ -365,7 +378,10 @@ function createMockDb() {
 // Doublures des modules voisins (transport W1, vision W2, fichiers, lot 040)
 // ---------------------------------------------------------------------------
 
+/** Une fonction par prise de verrou à venir (`undefined` : rien), consommées dans l'ordre. */
+const mockLockHooks: Array<(() => void) | undefined> = [];
 const mockDb = createMockDb();
+let mockMediaFailure: Error | null = null;
 
 type MockSent = { toE164: string; message: any; log: any };
 const mockSent: MockSent[] = [];
@@ -434,6 +450,7 @@ jest.mock('../../src/lib/stock-whatsapp/transport', () => ({
     },
     markRead: async () => undefined,
     fetchMedia: async (mediaId: string) => {
+      if (mockMediaFailure) throw mockMediaFailure;
       const buffer = mockMedia.get(mediaId);
       if (!buffer) throw new Error('média introuvable');
       return { buffer, declaredMimeType: 'image/jpeg', providerSha256: null };
@@ -706,6 +723,8 @@ function resetWorld(): void {
   mockAudit.length = 0;
   mockVisionImpl = async request => mockVisionOk(request);
   mockEntitlements = entitlementsWith(500);
+  mockLockHooks.length = 0;
+  mockMediaFailure = null;
 }
 
 // Aides communes : toutes ne servent pas dans chaque suite.
@@ -1061,7 +1080,7 @@ describe('W5 — écriture dans l’inventaire du lot 040', () => {
     expect(mockDb.rows('stockAlert')[0]).toMatchObject({ severity: 'WARNING', amount: 265000, threshold: 100000 });
   });
 
-  it('W5-5 : lieu portant un inventaire COUNTED → M29, aucune ligne, capture CANCELLED', async () => {
+  it('W5-5 : lieu portant un inventaire COUNTED → M29 dès la photo, sans quota, sans IA ni capture', async () => {
     seedAgency();
     mockDb.insert('stockCount', {
       id: 'count-clos',
@@ -1074,10 +1093,31 @@ describe('W5 — écriture dans l’inventaire du lot 040', () => {
     });
     await countByPhoto();
     expect(mockDb.rows('stockCountLine')).toHaveLength(0);
-    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('CANCELLED');
-    expect(lastSent().text).toBe(
+    expect(mockDb.rows('stockFieldCapture')).toHaveLength(0);
+    expect(mockVisionCalls).toHaveLength(0);
+    expect(usageThisMonth()).toBe(0);
+    expect(sentTexts()).toContain(
       "Un inventaire de ce chantier attend sa validation au bureau. Le comptage par WhatsApp reprendra après cette validation. Rien n'a été enregistré."
     );
+    expect(openSession()!.state).toBe('READY');
+  });
+
+  it('W5-5 : inventaire COUNTED arrivé entre la proposition et la réponse → M29, aucune ligne, capture CANCELLED', async () => {
+    seedAgency();
+    await send(photo());
+    mockDb.insert('stockCount', {
+      id: 'count-clos',
+      tenantId: TENANT,
+      locationId: 'loc-site-1',
+      status: 'COUNTED',
+      source: 'WEB',
+      createdByUserId: MAGASINIER,
+      counterUserIds: [MAGASINIER]
+    });
+    await send(text('1'));
+    expect(mockDb.rows('stockCountLine')).toHaveLength(0);
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('CANCELLED');
+    expect(lastSent().text).toContain('Un inventaire de ce chantier attend sa validation au bureau.');
     expect(openSession()!.state).toBe('READY');
   });
 
@@ -1405,6 +1445,22 @@ describe('W11 — quota et option (moteur)', () => {
 describe('W3 — activation par le code (moteur)', () => {
   const CODE = '482913';
 
+  it('le code d’activation n’est jamais journalisé en clair : seul le type du message est gardé', async () => {
+    seedAgency({ status: 'PENDING_ACTIVATION' });
+    const registration = mockDb.rows('stockWhatsappRegistration')[0];
+    registration.activationCodeHash = activationCodeHash(CODE, registration.id);
+    registration.activationExpiresAt = new Date(Date.now() + 72 * 3600 * 1000);
+    await send(text('111111'));
+    await send(text('Code 482 913'));
+    expect(registration.status).toBe('ACTIVE');
+    const inboundRows = mockDb.rows('stockWhatsappMessage').filter(m => m.direction === 'INBOUND');
+    expect(inboundRows.length).toBeGreaterThan(0);
+    for (const row of inboundRows) expect(row).toMatchObject({ kind: 'TEXT', text: null });
+    const journal = JSON.stringify(mockDb.rows('stockWhatsappMessage'));
+    expect(journal).not.toContain('482');
+    expect(journal).not.toContain('111111');
+  });
+
   function seedPending() {
     seedAgency({ status: 'PENDING_ACTIVATION' });
     const registration = mockDb.rows('stockWhatsappRegistration')[0];
@@ -1533,5 +1589,531 @@ describe('commandes et nombres (commands.ts)', () => {
     expect(extractActivationDigits('482 913')).toBe('482913');
     expect(extractActivationDigits('Code 482913')).toBe('482913');
     expect(extractActivationDigits('Bonjour')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Constats de relecture du lot 041 (moteur et quota)
+// ---------------------------------------------------------------------------
+
+const M22_TEXT =
+  "Désolé, je n'arrive pas à analyser cette photo pour le moment. Elle est conservée. Réessayez dans quelques minutes, ou prévenez le bureau.";
+const M07_TEXT =
+  'Le nombre de photos analysées ce mois-ci pour votre entreprise est atteint. Contactez votre administrateur. Le bureau peut saisir le comptage dans ImmoTopia.';
+
+function insertCapture(data: Record<string, unknown>): MockRow {
+  return mockDb.insert('stockFieldCapture', {
+    tenantId: TENANT,
+    registrationId: 'reg-chef',
+    sessionId: 'session-ancienne',
+    userId: CHEF,
+    via: 'SIMULATOR',
+    mimeType: 'image/jpeg',
+    sizeBytes: 10,
+    sha256: 'a'.repeat(64),
+    fileUrl: '/uploads/stock-whatsapp/tenant-a/2026/x.jpg',
+    receivedAt: new Date(),
+    analyzedAt: null,
+    failureReason: null,
+    quotaCounted: false,
+    ...data
+  });
+}
+
+describe('analyse interrompue (try/finally) et analyse bloquée (minuterie)', () => {
+  it('exception de l’IA → capture FAILED, place rendue, READY, M22', async () => {
+    seedAgency();
+    mockVisionImpl = async () => {
+      throw new Error('panne inattendue');
+    };
+    await send(photo());
+    expect(mockDb.rows('stockFieldCapture')[0]).toMatchObject({ outcome: 'FAILED', quotaCounted: false });
+    expect(usageThisMonth()).toBe(0);
+    expect(openSession()).toMatchObject({ state: 'READY', pendingCaptureId: null });
+    expect(lastSent().text).toBe(M22_TEXT);
+    // La photo suivante repart normalement.
+    mockVisionImpl = async request => mockVisionOk(request);
+    await send(photo());
+    expect(openSession()!.state).toBe('AWAITING_CONFIRMATION');
+  });
+
+  it('exception pendant une nouvelle analyse (article imposé) → FAILED, place de la 1re analyse gardée, M22', async () => {
+    seedAgency();
+    mockVisionImpl = async request => mockVisionOk(request, { itemId: null });
+    await send(photo());
+    expect(openSession()!.state).toBe('AWAITING_ITEM');
+    mockVisionImpl = async () => {
+      throw new Error('panne inattendue');
+    };
+    await send(text('ciment'));
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('FAILED');
+    expect(usageThisMonth()).toBe(1);
+    expect(openSession()!.state).toBe('READY');
+    expect(lastSent().text).toBe(M22_TEXT);
+  });
+
+  function stuckSession(options: { ageMs: number; analyzedAt?: Date | null }) {
+    const session = openSession()!;
+    const now = new Date();
+    const capture = insertCapture({
+      id: 'cap-bloquee',
+      sessionId: session.id,
+      outcome: 'PENDING',
+      quotaCounted: true,
+      analyzedAt: options.analyzedAt ?? null,
+      updatedAt: new Date(now.getTime() - options.ageMs)
+    });
+    Object.assign(session, {
+      state: 'ANALYZING',
+      pendingCaptureId: capture.id,
+      updatedAt: new Date(now.getTime() - options.ageMs)
+    });
+    mockDb.insert('stockWhatsappUsage', { tenantId: TENANT, month: now.toISOString().slice(0, 7), used: 1 });
+    return { session, capture, now };
+  }
+
+  it('session ANALYZING sans mise à jour depuis le délai de l’IA + 60 s → FAILED, quota rendu, READY, M22', async () => {
+    seedAgency();
+    await send(text('Bonjour'));
+    const { session, capture, now } = stuckSession({ ageMs: env.STOCK_VISION_TIMEOUT_MS + 61_000 });
+    clearSent();
+    await runSessionTimers({ now });
+    expect(session).toMatchObject({ state: 'READY', pendingCaptureId: null });
+    expect(session.closedAt ?? null).toBeNull();
+    expect(capture).toMatchObject({ outcome: 'FAILED', quotaCounted: false });
+    expect(usageThisMonth()).toBe(0);
+    expect(sentTexts()).toEqual([M22_TEXT]);
+  });
+
+  it('analyse en cours depuis moins que le délai + 60 s : la minuterie n’y touche pas', async () => {
+    seedAgency();
+    await send(text('Bonjour'));
+    const { session, capture, now } = stuckSession({ ageMs: 30_000 });
+    clearSent();
+    await runSessionTimers({ now });
+    expect(session.state).toBe('ANALYZING');
+    expect(capture.outcome).toBe('PENDING');
+    expect(usageThisMonth()).toBe(1);
+    expect(mockSent).toHaveLength(0);
+  });
+
+  it('nouvelle analyse bloquée (capture déjà analysée une fois) : FAILED, la place n’est pas rendue', async () => {
+    seedAgency();
+    await send(text('Bonjour'));
+    const { capture, now } = stuckSession({
+      ageMs: env.STOCK_VISION_TIMEOUT_MS + 61_000,
+      analyzedAt: new Date(Date.now() - 600_000)
+    });
+    await runSessionTimers({ now });
+    expect(capture).toMatchObject({ outcome: 'FAILED', quotaCounted: true });
+    expect(usageThisMonth()).toBe(1);
+  });
+});
+
+describe('courses de la minuterie avec un message frais', () => {
+  it('expiration : un message arrivé entre la lecture et le verrou → rien n’est fermé', async () => {
+    seedAgency();
+    await send(photo());
+    const session = openSession()!;
+    const now = new Date();
+    session.lastInboundAt = new Date(now.getTime() - 31 * 60 * 1000);
+    mockLockHooks.push(() => {
+      session.lastInboundAt = now;
+    });
+    clearSent();
+    await runSessionTimers({ now });
+    expect(session.closedAt).toBeUndefined();
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('PENDING');
+    expect(mockSent).toHaveLength(0);
+  });
+
+  it('expiration sans message frais → fermée TIMEOUT, M24', async () => {
+    seedAgency();
+    await send(photo());
+    const session = openSession()!;
+    const now = new Date();
+    session.lastInboundAt = new Date(now.getTime() - 31 * 60 * 1000);
+    await runSessionTimers({ now });
+    expect(session.closeReason).toBe('TIMEOUT');
+    expect(lastSent().text).toContain('Session terminée après 30 minutes sans réponse.');
+  });
+
+  it('accès perdu : un message arrivé entre la lecture et le verrou → la minuterie ne ferme pas', async () => {
+    seedAgency();
+    await send(photo());
+    const session = openSession()!;
+    const now = new Date();
+    session.lastInboundAt = new Date(now.getTime() - 11 * 60 * 1000);
+    mockDb.rows('stockWhatsappRegistration')[0].status = 'REVOKED';
+    mockLockHooks.push(() => {
+      session.lastInboundAt = now;
+    });
+    await runSessionTimers({ now });
+    expect(session.closedAt).toBeUndefined();
+  });
+
+  it('accès perdu sans message frais → fermée ACCESS_LOST, sans message', async () => {
+    seedAgency();
+    await send(photo());
+    const session = openSession()!;
+    const now = new Date();
+    session.lastInboundAt = new Date(now.getTime() - 11 * 60 * 1000);
+    mockDb.rows('stockWhatsappRegistration')[0].status = 'REVOKED';
+    clearSent();
+    await runSessionTimers({ now });
+    expect(session.closeReason).toBe('ACCESS_LOST');
+    expect(mockSent).toHaveLength(0);
+  });
+});
+
+describe('AIDE et choix du chantier', () => {
+  it('AIDE en premier message avec trois chantiers → M26 puis M08', async () => {
+    seedAgency({ siteCount: 3 });
+    await send(text('aide'));
+    expect(sentTexts()[0]).toContain('Inventaire par photo :');
+    expect(lastSent().kind).toBe('BUTTONS');
+    expect(lastSent().buttons).toHaveLength(3);
+    expect(openSession()!.state).toBe('AWAITING_SITE');
+  });
+
+  it('chantier perdu (M32) puis AIDE → M32, M26, M08', async () => {
+    seedAgency({ siteCount: 3 });
+    await send(text('Bonjour'));
+    await send(inbound('REPLY', { replyId: 'site:site-1', replyTitle: 'Cocody' }));
+    mockDb.rows('constructionSite').find(s => s.id === 'site-1')!.status = 'CLOSED';
+    clearSent();
+    await send(text('AIDE'));
+    expect(sentTexts()[0]).toBe("Le chantier « Cocody » n'est plus ouvert au comptage par WhatsApp.");
+    expect(sentTexts()[1]).toContain('Inventaire par photo :');
+    expect(lastSent().kind).toBe('BUTTONS');
+    expect(lastSent().buttons.map((b: any) => b.title)).toEqual(['Bingerville', 'Yopougon']);
+  });
+
+  it('photo gardée alors que la question n’a jamais été posée dans la session → M08', async () => {
+    seedAgency({ siteCount: 2 });
+    await send(text('Bonjour'));
+    clearSent();
+    await send(photo());
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('RECEIVED');
+    expect(lastSent().kind).toBe('BUTTONS');
+  });
+
+  it('photo gardée, question déjà posée (journal) → aucune réponse en double', async () => {
+    seedAgency({ siteCount: 2 });
+    await send(text('Bonjour'));
+    mockDb.insert('stockWhatsappMessage', {
+      tenantId: TENANT,
+      registrationId: 'reg-chef',
+      sessionId: openSession()!.id,
+      direction: 'OUTBOUND',
+      kind: 'BUTTONS',
+      text: 'Sur quel chantier êtes-vous ?'
+    });
+    clearSent();
+    await send(photo());
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('RECEIVED');
+    expect(mockSent).toHaveLength(0);
+  });
+
+  it('premier message vocal : M28 puis M10 (un chantier) ou M08 (plusieurs)', async () => {
+    seedAgency({ siteCount: 1 });
+    await send(inbound('UNSUPPORTED', { originalType: 'audio' }));
+    expect(sentTexts()).toEqual([
+      'Je lis seulement les photos et les messages écrits. Envoyez une photo de votre stock, ou tapez AIDE.',
+      'Chantier « Cocody ». Envoyez la photo du premier article.'
+    ]);
+    resetWorld();
+    seedAgency({ siteCount: 2 });
+    await send(inbound('UNSUPPORTED', { originalType: 'audio' }));
+    expect(sentTexts()[0]).toContain('Je lis seulement les photos');
+    expect(lastSent().kind).toBe('BUTTONS');
+  });
+});
+
+describe('titres de boutons et de listes', () => {
+  it('deux noms identiques une fois coupés à 20 caractères → liste aux titres distincts', () => {
+    const message = botMessages.chooseSite([
+      { siteId: 'a', name: 'Résidence Les Palmiers A' },
+      { siteId: 'b', name: 'Résidence Les Palmiers B' }
+    ]) as any;
+    expect(message.kind).toBe('LIST');
+    const titles = message.rows.map((row: any) => row.title);
+    expect(new Set(titles).size).toBe(2);
+    for (const title of titles) expect(Array.from(title as string).length).toBeLessThanOrEqual(24);
+  });
+
+  it('noms identiques même à 24 caractères → suffixe distinctif, nom complet en description', () => {
+    const names = ['Immeuble administratif du centre-ville 1', 'Immeuble administratif du centre-ville 2'];
+    const message = botMessages.chooseSite(names.map((name, index) => ({ siteId: `s${index}`, name }))) as any;
+    expect(message.kind).toBe('LIST');
+    const titles = message.rows.map((row: any) => row.title);
+    expect(new Set(titles).size).toBe(2);
+    expect(titles[1]).toMatch(/\(2\)$/);
+    for (const title of titles) expect(Array.from(title as string).length).toBeLessThanOrEqual(24);
+    expect(message.rows.map((row: any) => row.description)).toEqual(names);
+  });
+
+  it('noms courts et distincts → boutons inchangés', () => {
+    const message = botMessages.chooseSite([
+      { siteId: 'a', name: 'Cocody' },
+      { siteId: 'b', name: 'Yopougon' }
+    ]) as any;
+    expect(message.kind).toBe('BUTTONS');
+    expect(message.buttons.map((b: any) => b.title)).toEqual(['Cocody', 'Yopougon']);
+  });
+
+  it('M20 : deux articles au même libellé → titres distincts', () => {
+    const message = botMessages.severalItems('cap', [
+      { id: 'i1', label: 'Ciment', reference: 'CIM-1', unit: 'sac' },
+      { id: 'i2', label: 'Ciment', reference: 'CIM-2', unit: 'sac' }
+    ]) as any;
+    expect(message.rows.map((row: any) => row.title)).toEqual(['Ciment', 'Ciment (2)']);
+  });
+});
+
+describe('premières confirmations simultanées (index un inventaire ouvert par lieu)', () => {
+  const bridge = jest.requireMock('../../src/lib/stock-whatsapp/lot040-bridge');
+  const { AppError, ErrorCode } = jest.requireActual('../../src/middleware/error-middleware');
+  let original: any;
+  beforeEach(() => {
+    original = bridge.createStockCountTx;
+  });
+  afterEach(() => {
+    bridge.createStockCountTx = original;
+  });
+
+  function countOpenedMeanwhile(status: 'DRAFT' | 'COUNTED', error: () => Error) {
+    bridge.createStockCountTx = async () => {
+      bridge.createStockCountTx = original;
+      // Ouvert par une autre transaction, validée pendant que celle-ci échoue.
+      mockLockHooks.push(() =>
+        mockDb.insert('stockCount', {
+          id: 'count-concurrent',
+          tenantId: TENANT,
+          locationId: 'loc-site-1',
+          status,
+          source: 'WEB',
+          createdByUserId: MAGASINIER,
+          counterUserIds: []
+        })
+      );
+      throw error();
+    };
+  }
+
+  it('P2002 : retentée une fois, le DRAFT ouvert entre-temps est réutilisé, M14', async () => {
+    seedAgency();
+    await send(photo());
+    countOpenedMeanwhile('DRAFT', () => Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }));
+    await send(text('1'));
+    const lines = mockDb.rows('stockCountLine');
+    expect(lines).toHaveLength(1);
+    expect(lines[0].countId).toBe('count-concurrent');
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('ACCEPTED');
+    expect(lastSent().text).toContain('Enregistré : 84 sac de Ciment CPJ 45.');
+  });
+
+  it('409 STOCK_COUNT_ALREADY_OPEN dû à un DRAFT : même réutilisation', async () => {
+    seedAgency();
+    await send(photo());
+    countOpenedMeanwhile('DRAFT', () => new AppError('Refus', 409, ErrorCode.STOCK_COUNT_ALREADY_OPEN));
+    await send(text('1'));
+    expect(mockDb.rows('stockCountLine')[0].countId).toBe('count-concurrent');
+    expect(lastSent().text).toContain('Enregistré :');
+  });
+
+  it('inventaire bloquant COUNTED → M29, capture CANCELLED, aucune ligne', async () => {
+    seedAgency();
+    await send(photo());
+    countOpenedMeanwhile('COUNTED', () => new AppError('Refus', 409, ErrorCode.STOCK_COUNT_ALREADY_OPEN));
+    await send(text('1'));
+    expect(mockDb.rows('stockCountLine')).toHaveLength(0);
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('CANCELLED');
+    expect(lastSent().text).toContain('Un inventaire de ce chantier attend sa validation au bureau.');
+  });
+});
+
+describe('défense en profondeur : agence attendue (simulateur)', () => {
+  it('inscription d’une autre agence que l’appelant → abandon sans réponse ni journal', async () => {
+    seedAgency();
+    await handleInboundMessage(text('Bonjour') as any, { expectedTenantId: OTHER_TENANT });
+    expect(mockSent).toHaveLength(0);
+    expect(mockDb.rows('stockWhatsappMessage')).toHaveLength(0);
+    expect(mockDb.rows('stockWhatsappSession')).toHaveLength(0);
+    const { logger } = jest.requireMock('../../src/utils/logger');
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('0712345678');
+  });
+
+  it('même agence → traitement normal ; sans option → inchangé', async () => {
+    seedAgency();
+    await handleInboundMessage(text('Bonjour') as any, { expectedTenantId: TENANT });
+    expect(lastSent().text).toBe('Chantier « Cocody ». Envoyez la photo du premier article.');
+    await handleInboundMessage(text('aide') as any);
+    expect(lastSent().text).toContain('Inventaire par photo :');
+  });
+});
+
+describe('plafond des appels à l’IA', () => {
+  it('5 analyses en échec dans l’heure → M22 sans appel à l’IA ni quota', async () => {
+    seedAgency();
+    for (let index = 0; index < 5; index += 1) {
+      insertCapture({ outcome: 'FAILED', failureReason: 'INVALID_OUTPUT', receivedAt: new Date(Date.now() - 600_000) });
+    }
+    await send(text('Bonjour'));
+    clearSent();
+    await send(photo());
+    expect(mockVisionCalls).toHaveLength(0);
+    expect(usageThisMonth()).toBe(0);
+    expect(sentTexts()).toEqual([M22_TEXT]);
+    expect(openSession()!.state).toBe('READY');
+  });
+
+  it('4 échecs dans l’heure, ou 5 plus anciens → l’analyse part', async () => {
+    seedAgency();
+    for (let index = 0; index < 4; index += 1) insertCapture({ outcome: 'FAILED' });
+    insertCapture({ outcome: 'FAILED', receivedAt: new Date(Date.now() - 2 * 3600_000) });
+    await send(photo());
+    expect(mockVisionCalls).toHaveLength(1);
+  });
+
+  it('appels du mois ≥ 2 × le quota → M07 sans appel à l’IA', async () => {
+    seedAgency();
+    mockEntitlements = entitlementsWith(3);
+    for (let index = 0; index < 6; index += 1) insertCapture({ outcome: 'FAILED', analyzedAt: new Date() });
+    // Échecs d'une autre inscription : seul le plafond mensuel de l'agence joue.
+    for (const row of mockDb.rows('stockFieldCapture')) row.registrationId = 'reg-autre';
+    await send(photo());
+    expect(mockVisionCalls).toHaveLength(0);
+    expect(lastSent().text).toBe(M07_TEXT);
+  });
+
+  it('checkWhatsappAnalysisBudget : un fournisseur désactivé ne compte pas comme un appel', async () => {
+    seedAgency();
+    for (let index = 0; index < 6; index += 1) {
+      insertCapture({
+        outcome: 'FAILED',
+        analyzedAt: new Date(),
+        failureReason: 'DISABLED',
+        registrationId: 'reg-autre'
+      });
+    }
+    await expect(
+      checkWhatsappAnalysisBudget({ tenantId: TENANT, registrationId: 'reg-chef', limit: 3 })
+    ).resolves.toEqual({ ok: true });
+    insertCapture({ outcome: 'ACCEPTED', analyzedAt: new Date(), registrationId: 'reg-autre' });
+    for (let index = 0; index < 5; index += 1) insertCapture({ outcome: 'ACCEPTED', analyzedAt: new Date() });
+    await expect(
+      checkWhatsappAnalysisBudget({ tenantId: TENANT, registrationId: 'reg-chef', limit: 3 })
+    ).resolves.toEqual({ ok: false, reason: 'MONTHLY_CALLS' });
+    await expect(
+      checkWhatsappAnalysisBudget({ tenantId: OTHER_TENANT, registrationId: 'reg-chef', limit: 3 })
+    ).resolves.toEqual({ ok: true });
+  });
+});
+
+describe('corrections mineures du moteur', () => {
+  it('inscription révoquée : M06, message entrant journalisé sans son texte', async () => {
+    seedAgency();
+    mockDb.rows('stockWhatsappRegistration')[0].status = 'REVOKED';
+    await send(text('texte confidentiel du chef'));
+    expect(lastSent().text).toContain("Votre accès à l'inventaire par WhatsApp n'est plus actif.");
+    const inboundRows = mockDb.rows('stockWhatsappMessage').filter(m => m.direction === 'INBOUND');
+    expect(inboundRows).toHaveLength(1);
+    expect(inboundRows[0]).toMatchObject({ kind: 'TEXT', text: null });
+    expect(JSON.stringify(mockDb.rows('stockWhatsappMessage'))).not.toContain('confidentiel');
+  });
+
+  it('chantier perdu : W5-R5 appliquée à l’inventaire du bot avant de l’oublier (M32, M25, M10)', async () => {
+    seedAgency({ siteCount: 2 });
+    await send(text('Bonjour'));
+    await send(inbound('REPLY', { replyId: 'site:site-1', replyTitle: 'Cocody' }));
+    await countByPhoto();
+    const count = mockDb.rows('stockCount')[0];
+    expect(count).toMatchObject({ status: 'DRAFT', source: 'WHATSAPP' });
+    mockDb.rows('constructionSite').find(s => s.id === 'site-1')!.status = 'CLOSED';
+    clearSent();
+    await send(text('Bonjour'));
+    expect(count.status).toBe('COUNTED');
+    expect(sentTexts()).toEqual([
+      "Le chantier « Cocody » n'est plus ouvert au comptage par WhatsApp.",
+      "Merci. L'inventaire de « Cocody » est transmis au bureau : 1 article(s) compté(s). Le bureau le vérifiera et le validera.",
+      'Chantier « Yopougon ». Envoyez la photo du premier article.'
+    ]);
+    expect(openSession()).toMatchObject({ siteId: 'site-2', countId: null });
+  });
+
+  it('lieu désactivé entre la proposition et l’écriture → M32 et nouveau choix, capture CANCELLED', async () => {
+    seedAgency({ siteCount: 2 });
+    await send(text('Bonjour'));
+    await send(inbound('REPLY', { replyId: 'site:site-1', replyTitle: 'Cocody' }));
+    await send(photo());
+    clearSent();
+    // Verrou 1 : ouverture de session (lieu encore actif) ; verrou 2 : confirmation.
+    mockLockHooks.push(undefined, () => {
+      mockDb.rows('stockLocation').find(l => l.id === 'loc-site-1')!.isActive = false;
+    });
+    await send(text('1'));
+    expect(mockDb.rows('stockCountLine')).toHaveLength(0);
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('CANCELLED');
+    expect(sentTexts()).toEqual([
+      "Le chantier « Cocody » n'est plus ouvert au comptage par WhatsApp.",
+      'Chantier « Yopougon ». Envoyez la photo du premier article.'
+    ]);
+    expect(openSession()).toMatchObject({ siteId: 'site-2', state: 'READY' });
+  });
+
+  it('fusion : le mode CORRECTED décidé avant M30 est gardé (« 84 » tapé pour 84 proposés)', async () => {
+    seedAgency();
+    await countByPhoto({ total: 40 });
+    mockVisionImpl = async request => mockVisionOk(request);
+    await send(photo());
+    await send(text('84'));
+    expect(openSession()!.state).toBe('AWAITING_MERGE');
+    await send(text('2'));
+    expect(mockDb.rows('stockFieldCapture')[1]).toMatchObject({ outcome: 'CORRECTED', mergeMode: 'REPLACE' });
+    expect(lastSent().text).toContain('(quantité corrigée)');
+  });
+
+  it('panne Meta passagère (HTTP, délai, introuvable) → M22, place rendue ; fichier trop lourd → M18c', async () => {
+    seedAgency();
+    for (const reason of ['HTTP', 'TIMEOUT', 'NOT_FOUND'] as const) {
+      mockMediaFailure = new MediaFetchError(reason, 'panne');
+      await send(photo());
+      expect(lastSent().text).toBe(M22_TEXT);
+    }
+    mockMediaFailure = new MediaFetchError('TOO_LARGE', 'trop lourd');
+    await send(photo());
+    expect(lastSent().text).toBe('Je ne peux pas lire ce fichier. Envoyez une photo (JPEG ou PNG) de moins de 10 Mo.');
+    expect(usageThisMonth()).toBe(0);
+    expect(mockDb.rows('stockFieldCapture')).toHaveLength(0);
+    expect(openSession()!.state).toBe('READY');
+  });
+
+  it('lastInboundAt ne recule jamais (message traité en retard)', async () => {
+    seedAgency();
+    const recent = new Date();
+    await send(inbound('TEXT', { text: 'Bonjour', receivedAt: recent }));
+    await send(inbound('TEXT', { text: 'il fait chaud', receivedAt: new Date(recent.getTime() - 5 * 60 * 1000) }));
+    expect(openSession()!.lastInboundAt.getTime()).toBe(recent.getTime());
+    expect(mockDb.rows('stockWhatsappRegistration')[0].lastInboundAt.getTime()).toBe(recent.getTime());
+  });
+
+  it('chiffres arabes orientaux acceptés dans les nombres', () => {
+    expect(parseQuantityAnswer('٨٤')).toEqual({ kind: 'NUMBER', value: 84 });
+    expect(parseQuantityAnswer('٨٤٫٥')).toEqual({ kind: 'NUMBER', value: 84.5 });
+    expect(parseQuantityAnswer('٨٤,٢٥ كيس')).toEqual({ kind: 'NUMBER', value: 84.25 });
+    expect(parseQuantityAnswer('١')).toEqual({ kind: 'ACCEPT' });
+    expect(parseQuantityAnswer('۸۴')).toEqual({ kind: 'NUMBER', value: 84 });
+    expect(isZero('٠')).toBe(true);
+    expect(parseMergeAnswer('٢')).toBe('REPLACE');
+    expect(extractActivationDigits('٤٨٢ ٩١٣')).toBe('482913');
+  });
+
+  it('une réponse « ٨٤ » à une proposition corrige la quantité (M15)', async () => {
+    seedAgency();
+    await send(photo());
+    await send(text('٨٤'));
+    expect(mockDb.rows('stockFieldCapture')[0].outcome).toBe('CORRECTED');
+    expect(lastSent().text).toContain('(quantité corrigée)');
   });
 });

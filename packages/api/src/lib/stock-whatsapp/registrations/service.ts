@@ -203,13 +203,19 @@ function memberAlreadyRegistered(): AppError {
   );
 }
 
-/** Course sur un index unique partiel (numéro ou membre) : même erreur que le contrôle préalable. */
-function mapUniqueViolation(error: unknown): never {
+/**
+ * Violation d'un index unique partiel : `one_live_member` (membre déjà inscrit
+ * dans l'agence, course avec le contrôle préalable) ou `one_live_phone` (numéro
+ * déjà inscrit, ici ou dans une autre agence — W3-R4). Rend l'erreur métier, ou
+ * `null` si l'erreur n'en est pas une.
+ */
+function uniqueViolationError(error: unknown): { error: AppError; phone: boolean } | null {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
     const target = JSON.stringify(error.meta ?? {});
-    throw target.includes('member') || target.includes('user_id') ? memberAlreadyRegistered() : phoneUnavailable();
+    const member = target.includes('member') || target.includes('user_id');
+    return member ? { error: memberAlreadyRegistered(), phone: false } : { error: phoneUnavailable(), phone: true };
   }
-  throw error;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,12 +235,10 @@ export async function createRegistration(
   const userId = await assertEligibleMember(tenantId, input.userId);
   await assertEligibleSites(prisma, tenantId, siteIds);
 
-  // Lecture transverse assumée : l'unicité du numéro vaut pour toute la plateforme (W3-R4).
-  const phoneTaken = await prisma.stockWhatsappRegistration.findFirst({
-    where: { phoneE164, status: { not: 'REVOKED' } },
-    select: { id: true }
-  });
-  if (phoneTaken) throw phoneUnavailable();
+  // L'unicité du numéro vaut pour TOUTE la plateforme (W3-R4) : aucune lecture
+  // transverse ici (la garde tenant la refuserait sous contexte d'agence), c'est
+  // l'index unique partiel `stock_whatsapp_registrations_one_live_phone` qui
+  // tranche à la création, sans rien révéler de l'autre agence.
   const memberTaken = await prisma.stockWhatsappRegistration.findFirst({
     where: { tenantId, userId, status: { not: 'REVOKED' } },
     select: { id: true }
@@ -271,7 +275,22 @@ export async function createRegistration(
       });
     });
   } catch (error) {
-    mapUniqueViolation(error);
+    const violation = uniqueViolationError(error);
+    if (!violation) throw error;
+    if (violation.phone) {
+      // Refus audité pour rendre visible une énumération des numéros ; jamais
+      // le numéro, même masqué, ni l'agence qui le détient.
+      logAuditEvent({
+        tenantId,
+        actorUserId,
+        actionKey: AuditActionKey.STOCK_WHATSAPP_REGISTRATION_CREATED,
+        entityType: 'StockWhatsappRegistration',
+        entityId: id,
+        outcome: 'DENIED',
+        payload: { reason: 'PHONE_UNAVAILABLE', userId }
+      });
+    }
+    throw violation.error;
   }
   return { ...(await loadView(tenantId, id)), activationCode: code, botNumber: botNumber() };
 }

@@ -51,8 +51,10 @@ export async function evaluateMemberAccess(db: Db, tenantId: string, userId: str
   const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { status: true } });
   if (!tenant || tenant.status === 'SUSPENDED') return { ok: false, reason: 'TENANT_SUSPENDED' };
 
-  const membership = await db.membership.findUnique({
-    where: { userId_tenantId: { userId, tenantId } },
+  // `findFirst` sur `tenantId` en clair : la garde tenant ne reconnaît pas la
+  // clé composée `userId_tenantId` sous contexte d'agence.
+  const membership = await db.membership.findFirst({
+    where: { tenantId, userId },
     select: { status: true }
   });
   if (!membership || membership.status !== 'ACTIVE') return { ok: false, reason: 'MEMBERSHIP_NOT_ACTIVE' };

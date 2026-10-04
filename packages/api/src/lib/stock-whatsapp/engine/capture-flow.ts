@@ -4,6 +4,7 @@ import { logger } from '../../../utils/logger';
 import { botMessages } from '../bot-messages';
 import { deleteCapturePhoto, readCapturePhoto, storeCapturePhoto } from '../capture-files';
 import {
+  checkWhatsappAnalysisBudget,
   isWhatsappQuotaExhausted,
   noteWhatsappQuotaReached,
   releaseWhatsappPhoto,
@@ -11,9 +12,18 @@ import {
 } from '../quota';
 import { resolveChefAccess } from '../registrations/access';
 import { getWhatsappTransport } from '../transport';
-import type { ChefAccess, InboundMessage, OutboundMessage, StockVisionOutcome, StockVisionResult } from '../types';
+import {
+  MediaFetchError,
+  type ChefAccess,
+  type InboundMessage,
+  type OutboundMessage,
+  type StockVisionOutcome,
+  type StockVisionResult
+} from '../types';
 import { getStockVisionProvider } from '../vision';
 import { selectStockVisionCandidates } from '../vision/candidates';
+import { findLocationCountTx } from './count-writer';
+import { loadEligibleSites } from './site-choice';
 import {
   abandonPendingCapture,
   closeSessionRow,
@@ -40,6 +50,10 @@ import {
  *    conditionnelle depuis `ANALYZING`. Si la session a changé entre-temps
  *    (`FIN`, expiration, révocation), la capture devient `EXPIRED`, sans
  *    message.
+ * 5. Une exception entre le passage à `ANALYZING` et la décision ne laisse
+ *    jamais la session bloquée : capture `FAILED`, place du quota rendue si
+ *    aucune analyse n'a abouti, retour à `READY`, M22 (`guardAnalysis`). Un
+ *    processus arrêté net est rattrapé par la minuterie (`timers.ts`).
  */
 
 type ActiveAccess = Extract<ChefAccess, { ok: true }>;
@@ -78,19 +92,30 @@ type StoredPhoto = {
   providerSha256: string | null;
 };
 
-/** Télécharge et stocke la photo ; `null` si le fichier est refusé (M18c). */
-async function downloadAndStore(tenantId: string, message: ImageMessage): Promise<StoredPhoto | null> {
+/** Raisons d'un téléchargement qui disent « fichier refusé » (M18c) ; les autres sont passagères (M22). */
+const REFUSED_MEDIA_REASONS = new Set(['TOO_LARGE', 'HOST_NOT_ALLOWED']);
+
+type DownloadResult = { ok: true; photo: StoredPhoto } | { ok: false; reply: OutboundMessage };
+
+/**
+ * Télécharge et stocke la photo. Fichier refusé (type, taille, hôte) : M18c ;
+ * panne passagère de Meta ou du stockage (HTTP, délai, média introuvable) :
+ * M22, le chef peut renvoyer la même photo.
+ */
+async function downloadAndStore(tenantId: string, message: ImageMessage): Promise<DownloadResult> {
   try {
     const media = await getWhatsappTransport().fetchMedia(message.media.mediaId);
     const stored = await storeCapturePhoto(tenantId, media.buffer);
-    if ('refused' in stored) return null;
-    return { ...stored, providerSha256: media.providerSha256 ?? message.media.providerSha256 ?? null };
+    if ('refused' in stored) return { ok: false, reply: botMessages.fileRefused() };
+    return {
+      ok: true,
+      photo: { ...stored, providerSha256: media.providerSha256 ?? message.media.providerSha256 ?? null }
+    };
   } catch (error) {
-    logger.warn('Inventaire WhatsApp : photo non téléchargée', {
-      tenantId,
-      reason: error instanceof Error ? ((error as { reason?: string }).reason ?? error.name) : 'inconnue'
-    });
-    return null;
+    const reason = error instanceof MediaFetchError ? error.reason : error instanceof Error ? error.name : 'inconnue';
+    logger.warn('Inventaire WhatsApp : photo non téléchargée', { tenantId, reason });
+    const refused = error instanceof MediaFetchError && REFUSED_MEDIA_REASONS.has(error.reason);
+    return { ok: false, reply: refused ? botMessages.fileRefused() : botMessages.analysisFailed() };
   }
 }
 
@@ -103,26 +128,148 @@ async function reply(
   await sendToChef(ctx.target, sessionId, message, captureId);
 }
 
+/**
+ * Ce qu'une analyse en cours a déjà engagé, pour la rattraper sur exception :
+ * capture créée, place du quota réservée (et rendue ou non), analyse aboutie,
+ * fichier stocké sans capture.
+ */
+type AnalysisTracker = {
+  captureId: string | null;
+  reservedMonth: string | null;
+  released: boolean;
+  analyzed: boolean;
+  orphanFileUrl: string | null;
+};
+
+function newTracker(captureId: string | null): AnalysisTracker {
+  return { captureId, reservedMonth: null, released: false, analyzed: false, orphanFileUrl: null };
+}
+
+async function releaseOnce(ctx: FlowContext, tracker: AnalysisTracker): Promise<void> {
+  if (!tracker.reservedMonth || tracker.released) return;
+  tracker.released = true;
+  await releaseWhatsappPhoto(ctx.target.tenantId, tracker.reservedMonth);
+}
+
+/**
+ * Exception pendant une analyse (base, stockage, IA…) : capture `FAILED`,
+ * place rendue si aucune analyse n'a abouti, session `ANALYZING → READY`,
+ * M22. Ne lève pas : un rattrapage impossible est laissé à la minuterie.
+ */
+async function recoverInterruptedAnalysis(ctx: FlowContext, sessionId: string, tracker: AnalysisTracker) {
+  try {
+    const giveBack = Boolean(tracker.reservedMonth) && !tracker.released && !tracker.analyzed;
+    const moved = await withRegistrationLock(ctx.target.registrationId, async tx => {
+      if (tracker.captureId) {
+        await tx.stockFieldCapture.updateMany({
+          where: { id: tracker.captureId, tenantId: ctx.target.tenantId, outcome: { in: ['RECEIVED', 'PENDING'] } },
+          data: { outcome: 'FAILED', ...(giveBack ? { quotaCounted: false } : {}) }
+        });
+      }
+      return transitionSession(
+        tx,
+        { id: sessionId, tenantId: ctx.target.tenantId },
+        ['ANALYZING'],
+        { state: 'READY', pendingCaptureId: null, reminderSentAt: null },
+        { pendingCaptureId: tracker.captureId }
+      );
+    });
+    if (giveBack) await releaseOnce(ctx, tracker);
+    if (tracker.orphanFileUrl) await deleteCapturePhoto(tracker.orphanFileUrl).catch(() => undefined);
+    if (moved) await reply(ctx, sessionId, botMessages.analysisFailed(), tracker.captureId);
+  } catch (error) {
+    logger.error('Inventaire WhatsApp : rattrapage d’une analyse interrompue impossible', {
+      tenantId: ctx.target.tenantId,
+      sessionId,
+      error: error instanceof Error ? error.name : 'inconnue'
+    });
+  }
+}
+
+/** Exécute un parcours d'analyse ; toute exception est rattrapée (session jamais bloquée en `ANALYZING`). */
+async function guardAnalysis(
+  ctx: FlowContext,
+  sessionId: string,
+  tracker: AnalysisTracker,
+  run: () => Promise<void>
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    logger.error('Inventaire WhatsApp : analyse interrompue, session rendue au chef', {
+      tenantId: ctx.target.tenantId,
+      sessionId,
+      error: error instanceof Error ? error.name : 'inconnue',
+      code: (error as { code?: unknown })?.code ?? null
+    });
+    await recoverInterruptedAnalysis(ctx, sessionId, tracker);
+  }
+}
+
+/**
+ * Avant tout appel à l'IA : inventaire du lieu en attente de validation (M29,
+ * rien ne pourra s'écrire, aucune place du quota n'est prise) ou plafond des
+ * appels atteint (M22, M07). `null` si l'analyse peut partir.
+ */
+async function refuseBeforeAnalysis(
+  ctx: FlowContext,
+  locationId: string | null,
+  options: { checkCount: boolean }
+): Promise<OutboundMessage | null> {
+  if (options.checkCount && locationId) {
+    const found = await findLocationCountTx(prisma, ctx.target.tenantId, locationId);
+    if (found.kind === 'COUNTED') return botMessages.countAwaitingValidation();
+  }
+  const budget = await checkWhatsappAnalysisBudget({
+    tenantId: ctx.target.tenantId,
+    registrationId: ctx.target.registrationId,
+    limit: ctx.access.quota.limit,
+    now: ctx.now
+  });
+  if (budget.ok) return null;
+  logger.warn('Inventaire WhatsApp : analyse refusée, plafond des appels à l’IA atteint', {
+    tenantId: ctx.target.tenantId,
+    registrationId: ctx.target.registrationId,
+    reason: budget.reason
+  });
+  return budget.reason === 'FAILURE_BURST' ? botMessages.analysisFailed() : botMessages.quotaReached();
+}
+
+export type ReceivePhotoOptions = {
+  /** Vrai si l'appelant envoie lui-même M08 juste après (premier message, chantier perdu). */
+  siteQuestionFollows?: boolean;
+};
+
 /** Photo reçue dans une session ouverte. */
-export async function receivePhoto(ctx: FlowContext, sessionId: string, message: ImageMessage): Promise<void> {
+export async function receivePhoto(
+  ctx: FlowContext,
+  sessionId: string,
+  message: ImageMessage,
+  options: ReceivePhotoOptions = {}
+): Promise<void> {
   const decision = await withRegistrationLock(ctx.target.registrationId, async tx => {
     const session = await tx.stockWhatsappSession.findFirst({
       where: { id: sessionId, tenantId: ctx.target.tenantId, closedAt: null },
       select: SESSION_SELECT
     });
-    if (!session) return 'GONE' as const;
-    if (session.state === 'ANALYZING') return 'BUSY' as const;
-    if (session.state === 'AWAITING_SITE') return session.pendingCaptureId ? ('QUESTION' as const) : ('KEEP' as const);
-    if (session.state !== 'READY' || !session.locationId) return 'QUESTION' as const;
+    if (!session) return { kind: 'GONE' as const };
+    if (session.state === 'ANALYZING') return { kind: 'BUSY' as const };
+    if (session.state === 'AWAITING_SITE') {
+      return session.pendingCaptureId ? { kind: 'QUESTION' as const } : { kind: 'KEEP' as const };
+    }
+    if (session.state !== 'READY' || !session.locationId) return { kind: 'QUESTION' as const };
     const claimed = await transitionSession(tx, session, ['READY'], { state: 'ANALYZING', reminderSentAt: null });
-    return claimed ? ('ANALYZE' as const) : ('BUSY' as const);
+    return claimed ? { kind: 'ANALYZE' as const, locationId: session.locationId } : { kind: 'BUSY' as const };
   });
 
-  if (decision === 'GONE') return;
-  if (decision === 'BUSY') return reply(ctx, sessionId, botMessages.analysisInProgress());
-  if (decision === 'QUESTION') return reply(ctx, sessionId, botMessages.questionPending());
-  if (decision === 'KEEP') return keepPhotoForSiteChoice(ctx, sessionId, message);
-  return analyzeNewPhoto(ctx, sessionId, message);
+  if (decision.kind === 'GONE') return;
+  if (decision.kind === 'BUSY') return reply(ctx, sessionId, botMessages.analysisInProgress());
+  if (decision.kind === 'QUESTION') return reply(ctx, sessionId, botMessages.questionPending());
+  if (decision.kind === 'KEEP') return keepPhotoForSiteChoice(ctx, sessionId, message, options);
+  const tracker = newTracker(null);
+  return guardAnalysis(ctx, sessionId, tracker, () =>
+    analyzeNewPhoto(ctx, sessionId, message, decision.locationId, tracker)
+  );
 }
 
 /** Revient de `ANALYZING` à `READY` (photo non retenue avant toute analyse). */
@@ -152,14 +299,38 @@ function captureData(ctx: FlowContext, sessionId: string, message: ImageMessage,
   } satisfies Prisma.StockFieldCaptureUncheckedCreateInput;
 }
 
-/** Photo reçue avant le choix du chantier : gardée (`RECEIVED`), analysée dès le choix (W4-R3). */
-async function keepPhotoForSiteChoice(ctx: FlowContext, sessionId: string, message: ImageMessage): Promise<void> {
+/** Vrai si une question à choix (M08, boutons ou liste) a déjà été envoyée dans la session. */
+async function siteQuestionAsked(ctx: FlowContext, sessionId: string): Promise<boolean> {
+  const asked = await prisma.stockWhatsappMessage.findFirst({
+    where: {
+      tenantId: ctx.target.tenantId,
+      sessionId,
+      direction: 'OUTBOUND',
+      kind: { in: ['BUTTONS', 'LIST'] }
+    },
+    select: { id: true }
+  });
+  return asked !== null;
+}
+
+/**
+ * Photo reçue avant le choix du chantier : gardée (`RECEIVED`), analysée dès
+ * le choix (W4-R3). Si la question n'a pas encore été posée dans la session
+ * (session ouverte par un message que rien n'a suivi de M08), M08 suit.
+ */
+async function keepPhotoForSiteChoice(
+  ctx: FlowContext,
+  sessionId: string,
+  message: ImageMessage,
+  options: ReceivePhotoOptions
+): Promise<void> {
   if (await isWhatsappQuotaExhausted(ctx.target.tenantId, ctx.access.quota.limit, ctx.now)) {
     await noteWhatsappQuotaReached(ctx.target.tenantId, ctx.target.userId, ctx.access.quota.limit, ctx.now);
     return reply(ctx, sessionId, botMessages.quotaReached());
   }
-  const photo = await downloadAndStore(ctx.target.tenantId, message);
-  if (!photo) return reply(ctx, sessionId, botMessages.fileRefused());
+  const download = await downloadAndStore(ctx.target.tenantId, message);
+  if (!download.ok) return reply(ctx, sessionId, download.reply);
+  const photo = download.photo;
 
   const kept = await withRegistrationLock(ctx.target.registrationId, async tx => {
     const capture = await tx.stockFieldCapture.create({
@@ -184,24 +355,41 @@ async function keepPhotoForSiteChoice(ctx: FlowContext, sessionId: string, messa
     return reply(ctx, sessionId, botMessages.questionPending());
   }
   keepFakeDirective(kept, message.media.caption);
+  if (options.siteQuestionFollows || (await siteQuestionAsked(ctx, sessionId))) return;
+  const sites = await loadEligibleSites(prisma, ctx.target.tenantId, ctx.target.registrationId);
+  if (sites.length > 0) await reply(ctx, sessionId, botMessages.chooseSite(sites));
 }
 
 /** Photo reçue en `READY` (session déjà passée à `ANALYZING`). */
-async function analyzeNewPhoto(ctx: FlowContext, sessionId: string, message: ImageMessage): Promise<void> {
+async function analyzeNewPhoto(
+  ctx: FlowContext,
+  sessionId: string,
+  message: ImageMessage,
+  locationId: string,
+  tracker: AnalysisTracker
+): Promise<void> {
+  const refused = await refuseBeforeAnalysis(ctx, locationId, { checkCount: true });
+  if (refused) {
+    await backToReady(ctx, sessionId);
+    return reply(ctx, sessionId, refused);
+  }
   const reservation = await reserveWhatsappPhoto(ctx.target.tenantId, ctx.access.quota.limit, ctx.now);
   if (!reservation.ok) {
     await backToReady(ctx, sessionId);
     await noteWhatsappQuotaReached(ctx.target.tenantId, ctx.target.userId, ctx.access.quota.limit, ctx.now);
     return reply(ctx, sessionId, botMessages.quotaReached());
   }
-  const photo = await downloadAndStore(ctx.target.tenantId, message);
-  if (!photo) {
-    await releaseWhatsappPhoto(ctx.target.tenantId, reservation.month);
+  tracker.reservedMonth = reservation.month;
+  const download = await downloadAndStore(ctx.target.tenantId, message);
+  if (!download.ok) {
+    await releaseOnce(ctx, tracker);
     await backToReady(ctx, sessionId);
-    return reply(ctx, sessionId, botMessages.fileRefused());
+    return reply(ctx, sessionId, download.reply);
   }
+  const photo = download.photo;
+  tracker.orphanFileUrl = photo.fileUrl;
 
-  const captureId = await withRegistrationLock(ctx.target.registrationId, async tx => {
+  const created = await withRegistrationLock(ctx.target.registrationId, async tx => {
     const session = await tx.stockWhatsappSession.findFirst({
       where: {
         id: sessionId,
@@ -238,15 +426,17 @@ async function analyzeNewPhoto(ctx: FlowContext, sessionId: string, message: Ima
     }
     return { id: capture.id, linked };
   });
-  if (!captureId.linked) {
+  tracker.orphanFileUrl = null;
+  if (!created.linked) {
     // Session fermée pendant le téléchargement : photo gardée, aucune analyse, réservation rendue.
-    await releaseWhatsappPhoto(ctx.target.tenantId, reservation.month);
+    await releaseOnce(ctx, tracker);
     return;
   }
+  tracker.captureId = created.id;
 
-  keepFakeDirective(captureId.id, message.media.caption);
-  await reply(ctx, sessionId, botMessages.photoReceived(), captureId.id);
-  await runAnalysis(ctx, sessionId, captureId.id, { reservedMonth: reservation.month, imposedItemId: null });
+  keepFakeDirective(created.id, message.media.caption);
+  await reply(ctx, sessionId, botMessages.photoReceived(), created.id);
+  await runAnalysis(ctx, sessionId, created.id, { tracker, imposedItemId: null });
 }
 
 /**
@@ -254,21 +444,46 @@ async function analyzeNewPhoto(ctx: FlowContext, sessionId: string, message: Ima
  * déjà en `ANALYZING` ; réservation du quota, puis analyse.
  */
 export async function analyzeKeptCapture(ctx: FlowContext, sessionId: string, captureId: string): Promise<void> {
+  const tracker = newTracker(captureId);
+  return guardAnalysis(ctx, sessionId, tracker, () => analyzeKeptCaptureUnguarded(ctx, sessionId, captureId, tracker));
+}
+
+/** Photo gardée abandonnée avant l'analyse (quota, inventaire en attente, plafond) : `CANCELLED`, `READY`. */
+async function dropKeptCapture(ctx: FlowContext, sessionId: string, captureId: string): Promise<void> {
+  await withRegistrationLock(ctx.target.registrationId, async tx => {
+    await tx.stockFieldCapture.updateMany({
+      where: { id: captureId, tenantId: ctx.target.tenantId, outcome: 'RECEIVED' },
+      data: { outcome: 'CANCELLED' }
+    });
+    await transitionSession(tx, { id: sessionId, tenantId: ctx.target.tenantId }, ['ANALYZING'], {
+      state: 'READY',
+      pendingCaptureId: null
+    });
+  });
+}
+
+async function analyzeKeptCaptureUnguarded(
+  ctx: FlowContext,
+  sessionId: string,
+  captureId: string,
+  tracker: AnalysisTracker
+): Promise<void> {
+  const located = await prisma.stockWhatsappSession.findFirst({
+    where: { id: sessionId, tenantId: ctx.target.tenantId, closedAt: null },
+    select: { locationId: true }
+  });
+  const refused = await refuseBeforeAnalysis(ctx, located?.locationId ?? null, { checkCount: true });
+  if (refused) {
+    await dropKeptCapture(ctx, sessionId, captureId);
+    return reply(ctx, sessionId, refused);
+  }
   const reservation = await reserveWhatsappPhoto(ctx.target.tenantId, ctx.access.quota.limit, ctx.now);
   if (!reservation.ok) {
-    await withRegistrationLock(ctx.target.registrationId, async tx => {
-      await tx.stockFieldCapture.updateMany({
-        where: { id: captureId, tenantId: ctx.target.tenantId, outcome: 'RECEIVED' },
-        data: { outcome: 'CANCELLED' }
-      });
-      await transitionSession(tx, { id: sessionId, tenantId: ctx.target.tenantId }, ['ANALYZING'], {
-        state: 'READY',
-        pendingCaptureId: null
-      });
-    });
+    await dropKeptCapture(ctx, sessionId, captureId);
     await noteWhatsappQuotaReached(ctx.target.tenantId, ctx.target.userId, ctx.access.quota.limit, ctx.now);
     return reply(ctx, sessionId, botMessages.quotaReached());
   }
+  tracker.reservedMonth = reservation.month;
   const ready = await withRegistrationLock(ctx.target.registrationId, async tx => {
     const session = await tx.stockWhatsappSession.findFirst({
       where: {
@@ -288,11 +503,11 @@ export async function analyzeKeptCapture(ctx: FlowContext, sessionId: string, ca
     return updated.count === 1;
   });
   if (!ready) {
-    await releaseWhatsappPhoto(ctx.target.tenantId, reservation.month);
+    await releaseOnce(ctx, tracker);
     return;
   }
   await reply(ctx, sessionId, botMessages.photoReceived(), captureId);
-  await runAnalysis(ctx, sessionId, captureId, { reservedMonth: reservation.month, imposedItemId: null });
+  await runAnalysis(ctx, sessionId, captureId, { tracker, imposedItemId: null });
 }
 
 /** Nouvelle analyse de la MÊME photo avec l'article imposé par le chef (W9-R2), sans quota. */
@@ -302,6 +517,8 @@ export async function reanalyzeWithItem(
   captureId: string,
   itemId: string
 ): Promise<void> {
+  const refused = await refuseBeforeAnalysis(ctx, null, { checkCount: false });
+  if (refused) return reply(ctx, sessionId, refused, captureId);
   const claimed = await withRegistrationLock(ctx.target.registrationId, async tx =>
     transitionSession(
       tx,
@@ -312,8 +529,11 @@ export async function reanalyzeWithItem(
     )
   );
   if (!claimed) return;
-  await reply(ctx, sessionId, botMessages.photoReceived(), captureId);
-  await runAnalysis(ctx, sessionId, captureId, { reservedMonth: null, imposedItemId: itemId });
+  const tracker = newTracker(captureId);
+  return guardAnalysis(ctx, sessionId, tracker, async () => {
+    await reply(ctx, sessionId, botMessages.photoReceived(), captureId);
+    await runAnalysis(ctx, sessionId, captureId, { tracker, imposedItemId: itemId });
+  });
 }
 
 type CaptureForAnalysis = {
@@ -425,19 +645,20 @@ async function runAnalysis(
   ctx: FlowContext,
   sessionId: string,
   captureId: string,
-  options: { reservedMonth: string | null; imposedItemId: string | null }
+  options: { tracker: AnalysisTracker; imposedItemId: string | null }
 ): Promise<void> {
   const capture = await prisma.stockFieldCapture.findFirst({
     where: { id: captureId, tenantId: ctx.target.tenantId },
     select: { id: true, tenantId: true, fileUrl: true, receivedAt: true, locationId: true, mimeType: true }
   });
-  if (!capture) return;
+  if (!capture) throw new Error('Capture introuvable pendant l’analyse');
 
   const { outcome, units } = await callVision(ctx, capture, options.imposedItemId);
+  options.tracker.analyzed = outcome.ok;
   const analyzedAt = new Date();
   const columns = analysisColumns(outcome, analyzedAt);
-  if (!outcome.ok && options.reservedMonth) {
-    await releaseWhatsappPhoto(ctx.target.tenantId, options.reservedMonth);
+  if (!outcome.ok && options.tracker.reservedMonth) {
+    await releaseOnce(ctx, options.tracker);
     columns.quotaCounted = false;
   }
 

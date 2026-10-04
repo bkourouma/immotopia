@@ -18,7 +18,10 @@ const PLACEHOLDER_SECRETS = new Set([
   'your-refresh-token-secret-minimum-256-bits-here',
   'changeme_in_production_secret_key_12345',
   'changeme',
-  'secret'
+  'secret',
+  // Exemples du lot 041 (env.example) : assez longs pour passer le minimum.
+  'cle-secrete-de-l-application-meta-32-caracteres-min',
+  'jeton-de-verification-du-webhook-32-caracteres-min'
 ]);
 
 const MIN_SECRET_LENGTH = 32;
@@ -252,8 +255,9 @@ const envSchema = z
     // arretee. `log` n'envoie rien (developpement, staging, tests) et alimente
     // le simulateur ; `meta` appelle l'API Graph de WhatsApp Cloud.
     WHATSAPP_INVENTORY_TRANSPORT: z.enum(['disabled', 'log', 'meta']).default('disabled'),
-    // '1' autorise le transport `log`, le simulateur et le faux fournisseur de
-    // vision en NODE_ENV=production (staging). Refuse par deploy.sh sur la production.
+    // '1' autorise hors developpement (staging, NODE_ENV=production) le transport
+    // `log`, le simulateur et, avec `log` seulement, le faux fournisseur de vision.
+    // deploy.sh prod refuse ce reglage, le transport `log` et la vision `fake`.
     WHATSAPP_INVENTORY_SIMULATOR: z.enum(['0', '1']).default('0'),
     // Application Meta : cle secrete (signature X-Hub-Signature-256, empreinte
     // des expediteurs), jeton de verification du webhook, jeton d'acces
@@ -283,8 +287,11 @@ const envSchema = z
     WHATSAPP_INVENTORY_WARN_QUOTA: z.coerce.number().int().min(0).max(100000).default(500),
     // Analyse des photos (W8). Independant du reglage ImmoCopilot du super-admin.
     STOCK_VISION_PROVIDER: z.enum(['disabled', 'fake', 'gemini', 'openrouter']).default('disabled'),
-    // [A verifier] : nom exact du modele Flash disponible. `fournisseur/modele` pour openrouter.
-    STOCK_VISION_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+    // Flash stable recommande pour un nouveau projet (gemini-2.5-flash n'est plus
+    // ouvert qu'aux comptes qui l'utilisaient deja) : https://ai.google.dev/gemini-api/docs/models,
+    // verifie le 04/10/2026. `fournisseur/modele` pour openrouter : google/gemini-3.8-flash
+    // (https://openrouter.ai/google/gemini-3.8-flash, meme date).
+    STOCK_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
     GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000)
   })
@@ -345,29 +352,34 @@ const envSchema = z
         }
       }
     }
-    // Écart E1 (spec 041 §13) : `log` en production seulement avec le simulateur.
+    // Écart E1 (spec 041 §13) : `log` seulement si NODE_ENV vaut EXPLICITEMENT
+    // 'development' ou 'test' (valeur brute, comme pour AI_PROVIDER=fake : un
+    // déploiement qui oublie NODE_ENV n'en profite pas), ou avec le simulateur.
     if (
       value.WHATSAPP_INVENTORY_TRANSPORT === 'log' &&
-      value.NODE_ENV === 'production' &&
-      value.WHATSAPP_INVENTORY_SIMULATOR !== '1'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['WHATSAPP_INVENTORY_TRANSPORT'],
-        message: "le transport 'log' n'est accepté en production qu'avec WHATSAPP_INVENTORY_SIMULATOR=1"
-      });
-    }
-    // W8-R9 : faux fournisseur de vision en développement, en test, ou avec le simulateur.
-    if (
-      value.STOCK_VISION_PROVIDER === 'fake' &&
       !fakeProviderAllowed(process.env.NODE_ENV) &&
       value.WHATSAPP_INVENTORY_SIMULATOR !== '1'
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_INVENTORY_TRANSPORT'],
+        message:
+          "le transport 'log' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test', ou avec WHATSAPP_INVENTORY_SIMULATOR=1"
+      });
+    }
+    // W8-R9 : faux fournisseur de vision en développement, en test, ou avec le
+    // simulateur ET le transport `log` : jamais de comptages simulés derrière de
+    // vrais messages WhatsApp (transport `meta`).
+    if (
+      value.STOCK_VISION_PROVIDER === 'fake' &&
+      !fakeProviderAllowed(process.env.NODE_ENV) &&
+      !(value.WHATSAPP_INVENTORY_SIMULATOR === '1' && value.WHATSAPP_INVENTORY_TRANSPORT === 'log')
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
         path: ['STOCK_VISION_PROVIDER'],
         message:
-          "le faux fournisseur de vision 'fake' n'est accepté que si NODE_ENV vaut 'development' ou 'test', ou avec WHATSAPP_INVENTORY_SIMULATOR=1"
+          "le faux fournisseur de vision 'fake' n'est accepté que si NODE_ENV vaut 'development' ou 'test', ou avec WHATSAPP_INVENTORY_SIMULATOR=1 et WHATSAPP_INVENTORY_TRANSPORT=log"
       });
     }
     if (value.STOCK_VISION_PROVIDER === 'gemini' && !value.GEMINI_API_KEY) {
@@ -389,7 +401,7 @@ const envSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['STOCK_VISION_MODEL'],
-          message: 'identifiant OpenRouter requis quand STOCK_VISION_PROVIDER=openrouter (ex. google/gemini-2.5-flash)'
+          message: 'identifiant OpenRouter requis quand STOCK_VISION_PROVIDER=openrouter (ex. google/gemini-3.8-flash)'
         });
       }
     }
@@ -473,9 +485,11 @@ export const paymentGatewaySimulatorAvailable = !isProduction || env.PAYMENT_GAT
 
 /**
  * Le simulateur de l'inventaire par WhatsApp est-il disponible (spec 041,
- * W13-R1) ? Seulement avec le transport `log` ; en production, seulement avec
+ * W13-R1) ? Seulement avec le transport `log`, et seulement si NODE_ENV vaut
+ * explicitement 'development' ou 'test' (valeur brute) ou avec
  * `WHATSAPP_INVENTORY_SIMULATOR=1` (écart E1, refusé par deploy.sh sur la
  * production).
  */
 export const whatsappInventorySimulatorAvailable =
-  env.WHATSAPP_INVENTORY_TRANSPORT === 'log' && (!isProduction || env.WHATSAPP_INVENTORY_SIMULATOR === '1');
+  env.WHATSAPP_INVENTORY_TRANSPORT === 'log' &&
+  (fakeProviderAllowed(process.env.NODE_ENV) || env.WHATSAPP_INVENTORY_SIMULATOR === '1');

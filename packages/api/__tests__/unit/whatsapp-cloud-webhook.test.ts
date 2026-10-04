@@ -31,7 +31,7 @@ jest.mock('../../src/utils/logger', () => ({
 
 const mockLimiterState = { block: false, calls: 0 };
 jest.mock('../../src/middleware/rate-limit-middleware', () => ({
-  webhookRateLimiter: (_req: Request, res: Response, next: NextFunction) => {
+  whatsappCloudWebhookRateLimiter: (_req: Request, res: Response, next: NextFunction) => {
     mockLimiterState.calls += 1;
     if (mockLimiterState.block) {
       res.status(429).end();
@@ -206,8 +206,12 @@ import whatsappCloudWebhookRoutes, {
   WHATSAPP_CLOUD_WEBHOOK_PREFIX
 } from '../../src/routes/whatsapp-cloud-webhook-routes';
 import { processWebhookEvent } from '../../src/lib/stock-whatsapp/webhook/process-event';
-import { parseMetaWebhookPayload } from '../../src/lib/stock-whatsapp/webhook/parse-payload';
+import { MAX_MESSAGE_AGE_MS, parseMetaWebhookPayload } from '../../src/lib/stock-whatsapp/webhook/parse-payload';
 import { hashSender } from '../../src/lib/stock-whatsapp/sender-hash';
+
+/** Horodatage Meta (secondes) d'un message récent : une minute avant le chargement du fichier. */
+const RECENT_SECONDS = Math.floor(Date.now() / 1000) - 60;
+const RECENT_TS = String(RECENT_SECONDS);
 
 const CHEF_WA_ID = '2250712345678';
 const CHEF_E164 = '+2250712345678';
@@ -256,14 +260,14 @@ function messagePayload(
 }
 
 function textMessage(id: string, from = CHEF_WA_ID, body = 'AIDE') {
-  return { from, id, timestamp: '1759575600', type: 'text', text: { body } };
+  return { from, id, timestamp: RECENT_TS, type: 'text', text: { body } };
 }
 
 function imageMessage(id: string, from = CHEF_WA_ID) {
   return {
     from,
     id,
-    timestamp: '1759575600',
+    timestamp: RECENT_TS,
     type: 'image',
     image: { id: 'media-1', mime_type: 'image/jpeg', sha256: 'abc', caption: 'fake:dark' }
   };
@@ -422,6 +426,27 @@ describe('POST /events — signature', () => {
     expect(mockDb.events).toHaveLength(0);
   });
 
+  it('limiteur propre au webhook WhatsApp (clé wa-cloud:, 600/min), distinct de celui de PaySecureHub', async () => {
+    const actual = jest.requireActual<typeof import('../../src/middleware/rate-limit-middleware')>(
+      '../../src/middleware/rate-limit-middleware'
+    );
+    const app = express();
+    app.use(actual.webhookRateLimiter, (_req, res) => res.status(204).end());
+    const waApp = express();
+    waApp.use(actual.whatsappCloudWebhookRateLimiter, (_req, res) => res.status(204).end());
+    const server = waApp.listen(0);
+    try {
+      // 130 requêtes : au-delà des 120/min du limiteur partagé, toutes passent.
+      for (let i = 0; i < 130; i += 1) expect((await request(server).post('/')).status).toBe(204);
+      // Le limiteur partagé garde son propre compteur : il n'a rien vu.
+      expect((await request(app).post('/')).status).toBe(204);
+      for (let i = 130; i < 600; i += 1) expect((await request(server).post('/')).status).toBe(204);
+      expect((await request(server).post('/')).status).toBe(429);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  }, 30_000);
+
   it('corps de plus de 1 Mo → 413, rien n’est écrit', async () => {
     const huge = messagePayload([textMessage('wamid.F', CHEF_WA_ID, 'x'.repeat(1_100_000))]);
     const res = await post(huge);
@@ -463,7 +488,7 @@ describe('POST /events — insertion et traitement', () => {
       kind: 'TEXT',
       text: 'AIDE'
     });
-    expect(mockHandleInboundMessage.mock.calls[0][0].sentAt).toEqual(new Date(1759575600 * 1000));
+    expect(mockHandleInboundMessage.mock.calls[0][0].sentAt).toEqual(new Date(RECENT_SECONDS * 1000));
     expect(mockTransport.markRead).toHaveBeenCalledWith('wamid.OK');
 
     // W6-R8 : la copie transitoire (numéro compris) est effacée dès le traitement.
@@ -531,6 +556,20 @@ describe('POST /events — insertion et traitement', () => {
     expect(res.status).toBe(500);
     await flushProcessing();
     expect(mockHandleInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejeu : message dont l’horodatage Meta a plus de 7 jours → 200, ignoré, rien n’est écrit, journal sans numéro', async () => {
+    const old = String(Math.floor((Date.now() - MAX_MESSAGE_AGE_MS) / 1000) - 3600);
+    const res = await post(messagePayload([{ ...textMessage('wamid.OLD'), timestamp: old }]));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ received: true });
+    await flushProcessing();
+    expect(mockDb.events).toHaveLength(0);
+    expect(mockHandleInboundMessage).not.toHaveBeenCalled();
+    expect(mockTransport.markRead).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('trop anciens'), { staleMessages: 1 });
+    expect(loggedText()).not.toContain(CHEF_WA_ID);
+    expect(loggedText()).not.toContain(CHEF_E164);
   });
 
   it('plusieurs messages d’un même corps : traités un par un, dans l’ordre', async () => {
@@ -679,7 +718,7 @@ describe('numéro inconnu (W7-R1)', () => {
 // ---------------------------------------------------------------------------
 
 describe('parseMetaWebhookPayload (W6-R6)', () => {
-  const receivedAt = new Date('2026-10-04T08:00:00Z');
+  const receivedAt = new Date();
   const parse = (messages: Array<Record<string, unknown>>) =>
     parseMetaWebhookPayload(messagePayload(messages), { phoneNumberId: '1234567890', receivedAt }).messages.map(
       event => event.message
@@ -690,7 +729,7 @@ describe('parseMetaWebhookPayload (W6-R6)', () => {
       {
         from: CHEF_WA_ID,
         id: 'wamid.BTN',
-        timestamp: '1759575600',
+        timestamp: RECENT_TS,
         type: 'interactive',
         context: { from: '2250700000000', id: 'wamid.PROPOSITION' },
         interactive: { type: 'button_reply', button_reply: { id: 'confirm:c1', title: 'Valider' } }
@@ -698,7 +737,7 @@ describe('parseMetaWebhookPayload (W6-R6)', () => {
       {
         from: CHEF_WA_ID,
         id: 'wamid.LIST',
-        timestamp: '1759575600',
+        timestamp: RECENT_TS,
         type: 'interactive',
         interactive: { type: 'list_reply', list_reply: { id: 'site:s1', title: 'Résidence', description: 'x' } }
       }
@@ -717,19 +756,19 @@ describe('parseMetaWebhookPayload (W6-R6)', () => {
       {
         from: CHEF_WA_ID,
         id: 'w1',
-        timestamp: '1',
+        timestamp: RECENT_TS,
         type: 'document',
         document: { id: 'm1', mime_type: 'image/png', filename: 'a.png' }
       },
       {
         from: CHEF_WA_ID,
         id: 'w2',
-        timestamp: '1',
+        timestamp: RECENT_TS,
         type: 'document',
         document: { id: 'm2', mime_type: 'application/pdf' }
       },
-      { from: CHEF_WA_ID, id: 'w3', timestamp: '1', type: 'audio', audio: { id: 'm3', mime_type: 'audio/ogg' } },
-      { from: CHEF_WA_ID, id: 'w4', timestamp: '1', type: 'sticker', sticker: { id: 'm4' } }
+      { from: CHEF_WA_ID, id: 'w3', timestamp: RECENT_TS, type: 'audio', audio: { id: 'm3', mime_type: 'audio/ogg' } },
+      { from: CHEF_WA_ID, id: 'w4', timestamp: RECENT_TS, type: 'sticker', sticker: { id: 'm4' } }
     ]);
     expect(docImage).toMatchObject({ kind: 'IMAGE', media: { mediaId: 'm1', mimeType: 'image/png', caption: null } });
     expect(docPdf).toMatchObject({ kind: 'UNSUPPORTED', originalType: 'document' });
@@ -749,6 +788,22 @@ describe('parseMetaWebhookPayload (W6-R6)', () => {
     expect(parsed.invalidMessages).toBe(2);
     expect(parsed.messages).toHaveLength(1);
     expect(parsed.messages[0].message.sentAt).toEqual(receivedAt);
+  });
+
+  it('rejeu : horodatage de plus de 7 jours → ignoré et compté ; juste sous 7 jours ou dans le futur → gardé', () => {
+    const seconds = (offsetMs: number) => String(Math.floor((receivedAt.getTime() + offsetMs) / 1000));
+    const parsed = parseMetaWebhookPayload(
+      messagePayload([
+        { ...textMessage('w-old'), timestamp: seconds(-MAX_MESSAGE_AGE_MS - 1000) },
+        { ...textMessage('w-limit'), timestamp: seconds(-MAX_MESSAGE_AGE_MS + 1000) },
+        { ...textMessage('w-future'), timestamp: seconds(60_000) }
+      ]),
+      { phoneNumberId: '1234567890', receivedAt }
+    );
+    expect(MAX_MESSAGE_AGE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(parsed.staleMessages).toBe(1);
+    expect(parsed.invalidMessages).toBe(0);
+    expect(parsed.messages.map(event => event.message.metaMessageId)).toEqual(['w-limit', 'w-future']);
   });
 
   it('objet ou champ inattendu : rien', () => {
