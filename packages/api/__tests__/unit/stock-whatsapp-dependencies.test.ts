@@ -101,7 +101,17 @@ describe('W5-R1 — le module WhatsApp n’écrit dans le stock que par les troi
       const source = fs.readFileSync(file, 'utf8');
       return /\b(createStockCountTx|setStockCountLineTx|closeStockCountTx)\s*\(/.test(source);
     }).map(file => path.basename(file));
-    expect(callers.sort()).toEqual(['count-writer.ts', 'lot040-bridge.ts']);
+    expect(callers.sort()).toEqual(['count-writer.ts']);
+  });
+
+  it('le pont `lot040-bridge.ts` ne fait que réexporter les six éléments du lot 040', () => {
+    const source = fs.readFileSync(path.join(MODULE_ROOT, 'lot040-bridge.ts'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+    expect(code.split(/\r?\n/).filter(Boolean)).toEqual([
+      "export { createStockCountTx, setStockCountLineTx, closeStockCountTx } from '../finance/stock-inventaire';",
+      "export { detectStockFileKind, stripImageMetadata, sha256Hex } from '../finance/stock-pieces-jointes';",
+      "export type { StockFileKind } from '../finance/stock-pieces-jointes';"
+    ]);
   });
 
   it('aucun fichier du module ne crée d’article de stock (W9-R3)', () => {

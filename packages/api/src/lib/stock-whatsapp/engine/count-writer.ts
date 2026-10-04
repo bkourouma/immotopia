@@ -387,10 +387,7 @@ async function closeCountTx(
   const onlyChef = counters.size > 0 && [...counters].every(id => id === input.userId);
   if (lines.length === 0 || !onlyChef) return 'LEFT_OPEN';
 
-  const closed = (await closeStockCountTx(tx, input.tenantId, count.id, input.userId)) as {
-    id: string;
-    uncountedLinesCreated?: number;
-  };
+  const closed = await closeStockCountTx(tx, input.tenantId, count.id, input.userId);
   const capturesCount = await tx.stockFieldCapture.count({
     where: { tenantId: input.tenantId, countId: count.id, outcome: { in: ['ACCEPTED', 'CORRECTED'] } }
   });
@@ -400,7 +397,7 @@ async function closeCountTx(
     siteId: input.siteId,
     locationId: count.locationId,
     capturesCount,
-    uncountedLinesCount: closed.uncountedLinesCreated ?? 0
+    uncountedLinesCount: closed.uncountedLinesCreated
   });
   await recordAuditEvent(tx, {
     tenantId: input.tenantId,
@@ -414,7 +411,7 @@ async function closeCountTx(
       linesCount: alert.linesCount,
       chefLines,
       capturesCount,
-      uncountedLinesCount: closed.uncountedLinesCreated ?? 0
+      uncountedLinesCount: closed.uncountedLinesCreated
     }
   });
   return 'COUNTED';
