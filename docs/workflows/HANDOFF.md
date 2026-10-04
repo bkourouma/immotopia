@@ -18,6 +18,30 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Pilote — lots 040 (contrôle du stock) et 041 (inventaire par WhatsApp) — 2026-10-04
+
+**État :** en cours, piloté par la session « Immotopia WhatsApp inventaire stock » (la session « Contrôle de stock et vols d'items » a été arrêtée à la demande de l'utilisateur, son travail repris). Deux PR empilées prévues : `feat/controle-stock` → `main`, puis `feat/inventaire-whatsapp` → `feat/controle-stock`. Aucune PR ouverte à cette heure.
+
+**Décisions de l'utilisateur :** lot 040 D1–D5 (tout inclus, « écart à justifier » jamais « vol », sprints A+B+meublés, pas de SMS) ; lot 041 W-D1–W-D7 (comptage WhatsApp validé au bureau par une autre personne, aveugle strict sans écart ni motif sur WhatsApp, D2 conservé, Meta Cloud API, rôle « Chef de chantier » seul inscriptible, option payante `EXT_INVENTAIRE_WHATSAPP` 25 000 FCFA HT/mois par bloc de 500 photos, deux PR empilées). Pilote : le rôle Chef de chantier ne porte que `STOCK_COUNT` (pas `STOCK_VIEW`).
+
+**Fait :**
+
+- Lot 040 (`feat/controle-stock`, worktree `controle-stock`, npm ci propre) : spec `c03d75f2`, fondations `3786fbe3`, meublés `ed7d37bc` (branche `feat/controle-stock-meubles` fusionnée en `3f020149`), territoires API `9758a34e` et web `a3585574`, intégration `80959b26` (traductions en/ar, isolation 198/198 + concurrence 10/10 sur base dédiée, catalogue IA, wiki +30 lignes, comptes de recette). Poussé.
+- Relectures 040 (sécurité : 0 bloquant, 1 important, 7 mineurs ; correction : 0 bloquant, 6 importants, 12 mineurs) : correctifs F1 (inventaire), F2 (mouvements, FAIT), F3 (divers API), F4 (web), F5 (meublés, FAIT) en cours, NON COMMITÉS ; liste dans le scratchpad de la session (`correctifs-040.md`).
+- Lot 041 (`feat/inventaire-whatsapp`, worktree `inventaire-whatsapp`, npm ci propre) : spec `dbd689d7`, fondations `0001c766`, territoires API `92891b99` et web `7294e06a`. Poussé. Relectures 041 faites (sécurité : 0 bloquant, 4 importants, 11 mineurs ; correction : 2 bloquants d'intégration, 9 importants, 14 mineurs) ; liste `correctifs-041.md` du scratchpad, à faire après fusion du lot 040.
+
+**Reste à faire :** finir F1/F3/F4 → i18n des nouveaux textes → commit → PR 040 ; fusionner `feat/controle-stock` dans `feat/inventaire-whatsapp` (conflits attendus : App.tsx, navigation, constants, env.ts, index.ts, catalogues) et poser aussitôt `FIELD_COUNT_CLOSED` dans `stock-alertes-lecture.ts` (sinon typecheck rouge) ; correctifs 041 ; intégration 041 (pont `lot040-bridge.ts` → imports directs, badge WhatsApp dans `StockInventaire.tsx`, registres routes/catalogue/export, `deploy.sh` refuse simulateur/log/fake en prod, modèle Gemini par défaut à revérifier, traductions, wiki) ; PR 041 ; recette navigateur des deux lots sur la branche 041 avec le simulateur et la vision `fake`.
+
+**Pièges :**
+
+- Base de test dédiée : conteneur Docker `immotopia-stock-test` (127.0.0.1:5461, base `immotopia_stock_test` + `immotopia_wa_test`, `immotopia_stock_iso`, `immotopia_stock_mig`), jetable ; à supprimer à la fin (`docker rm -f immotopia-stock-test`).
+- Worktree `controle-stock-meubles` : jonctions `node_modules` vers `controle-stock` ; retirer les jonctions (`rmdir`) AVANT tout `git worktree remove`.
+- Un filtre Jest `whatsapp` correspond au nom du worktree `inventaire-whatsapp` : il lance toute la suite.
+- `npm run lint` API rouge pour une erreur préexistante (`platform-audit-csv.ts:70`, BOM littéral) ; 4 tests `ai.write-plan` « miroir du front » échouent seulement sur Windows (CRLF).
+- Ne jamais lancer Jest et Vitest en même temps ; sous charge, relancer seul un échec par délai dépassé.
+
+---
+
 ## Branche `feat/donnees-test-packs` — 2026-10-03
 
 **État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Éprouvé de bout en bout sur une base PostgreSQL jetable (conteneur `immotopia-donnees-test`, port 5447) : 12 agences créées, code de sortie 0, aucun échec d'audit, relance sans doublon (~12 min).
