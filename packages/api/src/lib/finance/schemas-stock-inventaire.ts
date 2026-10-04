@@ -56,33 +56,8 @@ export const stockCountStatusSchema = z.enum(['DRAFT', 'VALIDATED'], {
   errorMap: () => ({ message: 'Statut d’inventaire invalide.' })
 });
 
-// ---------------------------------------------------------------------------
-// POST /stock/transfers
-//
-// Les deux lieux sont dans le CORPS, et ce n'est pas une répétition : le
-// chemin ne porte que `tenantId`. AUCUN PRIX n'est reçu — la valeur part au
-// coût moyen du lieu d'origine (principe P-4), et un transfert n'écrit aucune
-// écriture comptable.
-//
-// Le même lieu des deux côtés est refusé par le domaine, pas ici : Zod valide
-// la forme d'un champ, et la relation entre deux champs est une règle métier
-// dont le domaine reste la seule autorité.
-// ---------------------------------------------------------------------------
-
-export const createStockTransferSchema = z
-  .object({
-    fromLocationId: z.string().uuid('Identifiant de lieu d’origine invalide.'),
-    toLocationId: z.string().uuid('Identifiant de lieu d’arrivée invalide.'),
-    itemId: z.string().uuid('Identifiant d’article invalide.'),
-    quantity: z
-      .number({ invalid_type_error: 'La quantité doit être un nombre.' })
-      .finite('La quantité doit être un nombre fini.')
-      .gt(0, 'La quantité transférée doit être strictement positive.'),
-    transferDate: z.coerce.date({ errorMap: () => ({ message: 'Date de transfert invalide.' }) })
-  })
-  .strict();
-
-export type CreateStockTransferInput = z.infer<typeof createStockTransferSchema>;
+// POST /stock/transfers : schéma déplacé dans `schemas-stock-transferts.ts`
+// (lot 040, fondations), sans changement de comportement.
 
 // ---------------------------------------------------------------------------
 // POST /stock/counts

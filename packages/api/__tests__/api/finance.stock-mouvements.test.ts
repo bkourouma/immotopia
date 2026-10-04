@@ -2,8 +2,9 @@ import express from 'express';
 import request from 'supertest';
 
 /**
- * Tests des quatre points d'entrée agence des mouvements de stock — lot 5,
- * deuxième sous-lot.
+ * Tests des points d'entrée agence des mouvements de stock — lot 5, deuxième
+ * sous-lot. Les tests du journal ont été déplacés dans
+ * `finance.stock-journal.test.ts` (lot 040, fondations).
  *
  * Modèle : `__tests__/api/finance.contractors.test.ts` (lot 4, sous-lot 4).
  * Les middlewares d'authentification, de tenant et de droits sont remplacés
@@ -46,13 +47,11 @@ jest.mock('../../src/middleware/finance-rbac-middleware', () => ({
 const recordStockReceiptTx = jest.fn();
 const recordStockIssueTx = jest.fn();
 const listStockBalances = jest.fn();
-const listStockMovements = jest.fn();
 
 jest.mock('../../src/lib/finance/stock-mouvements', () => ({
   recordStockReceiptTx: (...args: any[]) => recordStockReceiptTx(...args),
   recordStockIssueTx: (...args: any[]) => recordStockIssueTx(...args),
-  listStockBalances: (...args: any[]) => listStockBalances(...args),
-  listStockMovements: (...args: any[]) => listStockMovements(...args)
+  listStockBalances: (...args: any[]) => listStockBalances(...args)
 }));
 
 jest.mock('../../src/utils/database', () => ({
@@ -396,52 +395,5 @@ describe('GET /tenants/:tenantId/finance/stock/balances', () => {
 
     expect(res.status).toBe(400);
     expect(listStockBalances).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// D. GET /stock/movements
-// ---------------------------------------------------------------------------
-
-describe('GET /tenants/:tenantId/finance/stock/movements', () => {
-  it('liste les mouvements du tenant de l’URL', async () => {
-    listStockMovements.mockResolvedValue([movementRecord()]);
-
-    const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/movements`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(1);
-    expect(listStockMovements).toHaveBeenCalledWith(TENANT_A, {
-      itemId: undefined,
-      locationId: undefined,
-      siteId: undefined,
-      type: undefined,
-      from: undefined,
-      to: undefined
-    });
-  });
-
-  it('transmet la nature, le chantier et la période', async () => {
-    listStockMovements.mockResolvedValue([]);
-
-    await request(app).get(
-      `/api/tenants/${TENANT_A}/finance/stock/movements?type=ISSUE&siteId=${SITE_A}&from=2026-03-01&to=2026-03-31`
-    );
-
-    expect(listStockMovements).toHaveBeenCalledWith(TENANT_A, {
-      itemId: undefined,
-      locationId: undefined,
-      siteId: SITE_A,
-      type: 'ISSUE',
-      from: new Date('2026-03-01'),
-      to: new Date('2026-03-31')
-    });
-  });
-
-  it('refuse une nature de mouvement inconnue', async () => {
-    const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/movements?type=SORTIE`);
-
-    expect(res.status).toBe(400);
-    expect(listStockMovements).not.toHaveBeenCalled();
   });
 });

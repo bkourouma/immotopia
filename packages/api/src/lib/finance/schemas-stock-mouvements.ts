@@ -146,19 +146,5 @@ export const listStockBalancesQuerySchema = z
 
 export type ListStockBalancesQuery = z.infer<typeof listStockBalancesQuerySchema>;
 
-// ---------------------------------------------------------------------------
-// GET /stock/movements
-// ---------------------------------------------------------------------------
-
-export const listStockMovementsQuerySchema = z
-  .object({
-    itemId: z.string().uuid('Identifiant d’article invalide.').optional(),
-    locationId: z.string().uuid('Identifiant de lieu de stockage invalide.').optional(),
-    siteId: z.string().uuid('Identifiant de chantier invalide.').optional(),
-    type: stockMovementTypeSchema.optional(),
-    from: z.coerce.date({ errorMap: () => ({ message: 'Date de début invalide.' }) }).optional(),
-    to: z.coerce.date({ errorMap: () => ({ message: 'Date de fin invalide.' }) }).optional()
-  })
-  .strict();
-
-export type ListStockMovementsQuery = z.infer<typeof listStockMovementsQuerySchema>;
+// GET /stock/movements : filtres déplacés dans `schemas-stock-journal.ts`
+// (lot 040, fondations), sans changement de comportement.

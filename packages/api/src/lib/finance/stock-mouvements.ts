@@ -78,7 +78,6 @@ import { roundMoneyXof, roundQuantity } from './money';
 import { toAmountOrZero } from './types';
 import type {
   ListStockBalances,
-  ListStockMovements,
   RecordStockIssueTx,
   RecordStockReceiptTx,
   StockBalanceRecord,
@@ -665,40 +664,6 @@ export const listStockBalances: ListStockBalances = async (tenantId, filters) =>
 };
 
 // ---------------------------------------------------------------------------
-// D. Le journal des mouvements
+// D. Le journal des mouvements — déplacé dans `stock-journal.ts` (lot 040,
+//    fondations), sans changement de comportement.
 // ---------------------------------------------------------------------------
-
-/** Voir `ListStockMovements` dans `./types-lot5-mouvements.ts`. */
-export const listStockMovements: ListStockMovements = async (tenantId, filters) => {
-  const from = filters?.from;
-  const to = filters?.to;
-
-  const rows = await prisma.stockMovement.findMany({
-    where: {
-      tenantId,
-      ...(filters?.itemId ? { itemId: filters.itemId } : {}),
-      ...(filters?.locationId ? { locationId: filters.locationId } : {}),
-      ...(filters?.siteId ? { siteId: filters.siteId } : {}),
-      ...(filters?.type ? { type: filters.type as any } : {}),
-      ...(from || to
-        ? {
-            movementDate: {
-              ...(from ? { gte: from } : {}),
-              ...(to ? { lte: to } : {})
-            }
-          }
-        : {})
-    },
-    include: {
-      item: { select: { reference: true, label: true, unit: true } },
-      location: { select: { label: true } },
-      site: { select: { name: true } },
-      costCategory: { select: { label: true } },
-      supplierInvoice: { select: { reference: true } },
-      createdBy: { select: { fullName: true, email: true } }
-    },
-    orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }]
-  });
-
-  return (rows as any[]).map(toMovementRecord);
-};

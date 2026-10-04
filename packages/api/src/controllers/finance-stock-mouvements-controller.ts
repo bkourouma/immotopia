@@ -1,16 +1,10 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
-import {
-  listStockBalances,
-  listStockMovements,
-  recordStockIssueTx,
-  recordStockReceiptTx
-} from '../lib/finance/stock-mouvements';
+import { listStockBalances, recordStockIssueTx, recordStockReceiptTx } from '../lib/finance/stock-mouvements';
 import {
   createStockIssueSchema,
   createStockReceiptSchema,
-  listStockBalancesQuerySchema,
-  listStockMovementsQuerySchema
+  listStockBalancesQuerySchema
 } from '../lib/finance/schemas-stock-mouvements';
 import { prisma } from '../utils/database';
 
@@ -131,22 +125,5 @@ export const listStockBalancesHandler = asyncHandler(async (req: Request, res: R
   res.status(200).json({ success: true, data: balances });
 });
 
-// ---------------------------------------------------------------------------
-// D. GET /stock/movements — le journal des mouvements
-// ---------------------------------------------------------------------------
-
-export const listStockMovementsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
-  const query = listStockMovementsQuerySchema.parse(req.query ?? {});
-
-  const movements = await listStockMovements(tenantId, {
-    itemId: query.itemId,
-    locationId: query.locationId,
-    siteId: query.siteId,
-    type: query.type,
-    from: query.from,
-    to: query.to
-  });
-
-  res.status(200).json({ success: true, data: movements });
-});
+// D. GET /stock/movements : gestionnaire déplacé dans
+// `finance-stock-journal-controller.ts` (lot 040, fondations).

@@ -56,6 +56,7 @@ import type {
   SetStockValuationMethodInput,
   StockItem,
   StockLocation,
+  StockLocationView,
   StockSettings,
   UpdateStockItemInput,
   UpdateStockLocationInput
@@ -172,8 +173,9 @@ export async function getStockItem(tenantId: string, itemId: string): Promise<St
 export async function listStockLocations(
   tenantId: string,
   filters?: ListStockLocationsFilters
-): Promise<StockLocation[]> {
-  const response = await apiClient.get<ApiResponse<StockLocation[]>>(
+): Promise<StockLocationView[]> {
+  // Lot 040 : la liste porte l'état de contrôle de chaque lieu (`LocationView`).
+  const response = await apiClient.get<ApiResponse<StockLocationView[]>>(
     `${base(tenantId)}/stock/locations${toQuery({ onlyActive: filters?.onlyActive, kind: filters?.kind })}`
   );
   return response.data.data;

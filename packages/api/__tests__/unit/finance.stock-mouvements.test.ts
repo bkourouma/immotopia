@@ -253,12 +253,7 @@ jest.mock('../../src/utils/database', () => ({
   )
 }));
 
-import {
-  listStockBalances,
-  listStockMovements,
-  recordStockIssueTx,
-  recordStockReceiptTx
-} from '../../src/lib/finance/stock-mouvements';
+import { listStockBalances, recordStockIssueTx, recordStockReceiptTx } from '../../src/lib/finance/stock-mouvements';
 // Coût réel d'un chantier — VRAI calcul, non mocké (voir l'en-tête) : c'est
 // lui qui prouve qu'une sortie a bien fait monter le coût du chantier.
 import { sumSiteActualCost } from '../../src/lib/finance/site-cost';
@@ -891,46 +886,5 @@ describe('listStockBalances', () => {
     });
 
     expect(await listStockBalances(TENANT_ID, { itemId: ciment.id })).toHaveLength(2);
-  });
-});
-
-describe('listStockMovements', () => {
-  it('filtre par nature, par chantier et par période', async () => {
-    const location = seedLocation();
-    const invoice = seedInvoice();
-    const ciment = seedItem();
-    const site = seedSite();
-    const autre = seedSite();
-    const poste = seedCostCategory();
-
-    await receive(location, invoice, [{ itemId: ciment.id, quantity: 100, unitCost: 5_000 }], new Date('2026-03-01'));
-    await issue(location, ciment, site, poste, 10);
-
-    expect(await listStockMovements(TENANT_ID, {})).toHaveLength(2);
-    expect(await listStockMovements(TENANT_ID, { type: 'ISSUE' })).toHaveLength(1);
-    expect(await listStockMovements(TENANT_ID, { siteId: site.id })).toHaveLength(1);
-    expect(await listStockMovements(TENANT_ID, { siteId: autre.id })).toHaveLength(0);
-    expect(
-      await listStockMovements(TENANT_ID, { from: new Date('2026-03-05'), to: new Date('2026-03-31') })
-    ).toHaveLength(1);
-  });
-
-  it('renvoie le plus récent en tête, avec le demandeur et la facture d’origine', async () => {
-    const location = seedLocation();
-    const invoice = seedInvoice({ reference: 'FAC-2026-014' });
-    const ciment = seedItem();
-    const site = seedSite();
-    const poste = seedCostCategory();
-
-    await receive(location, invoice, [{ itemId: ciment.id, quantity: 100, unitCost: 5_000 }], new Date('2026-03-01'));
-    await issue(location, ciment, site, poste, 10);
-
-    const mouvements = await listStockMovements(TENANT_ID, {});
-    expect(mouvements[0].type).toBe('ISSUE');
-    expect(mouvements[0].requestedBy).toBe('Chef de chantier Camara');
-    expect(mouvements[0].createdByLabel).toBe('Aïssatou Barry');
-    expect(mouvements[1].type).toBe('RECEIPT');
-    expect(mouvements[1].supplierInvoiceReference).toBe('FAC-2026-014');
-    expect(mouvements[1].siteId).toBeNull();
   });
 });
