@@ -5,8 +5,7 @@ import { requireAccountsRead, requireDocumentsCreate } from '../middleware/finan
 import {
   createStockIssueHandler,
   createStockReceiptHandler,
-  listStockBalancesHandler,
-  listStockMovementsHandler
+  listStockBalancesHandler
 } from '../controllers/finance-stock-mouvements-controller';
 
 /**
@@ -51,8 +50,8 @@ router.post('/tenants/:tenantId/finance/stock/issues', requireDocumentsCreate, c
 // C. Soldes par (article, lieu), avec leur valeur et leur coût moyen déduit.
 router.get('/tenants/:tenantId/finance/stock/balances', requireAccountsRead, listStockBalancesHandler);
 
-// D. Journal des mouvements, filtrable par article, lieu, chantier, nature et
-// période.
-router.get('/tenants/:tenantId/finance/stock/movements', requireAccountsRead, listStockMovementsHandler);
+// D. Journal des mouvements : route déplacée dans
+// `finance-stock-journal-routes.ts` (lot 040, fondations), même chemin et
+// même garde.
 
 export default router;

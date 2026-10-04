@@ -8,7 +8,6 @@ import {
 } from '../middleware/finance-rbac-middleware';
 import {
   createStockCountHandler,
-  createStockTransferHandler,
   getStockCountHandler,
   listStockCountsHandler,
   removeStockCountLineHandler,
@@ -44,10 +43,9 @@ const router = Router();
 
 router.use('/tenants/:tenantId/finance', authenticate, requireTenantAccess);
 
-// A. Transfert entre deux lieux. N'écrit AUCUNE écriture comptable et
-// n'impute AUCUN chantier : déplacer n'est pas consommer (contrat, principe
-// P-7). C'est bien une création de pièce, mais une pièce de quantités.
-router.post('/tenants/:tenantId/finance/stock/transfers', requireDocumentsCreate, createStockTransferHandler);
+// A. Transfert entre deux lieux : route déplacée dans
+// `finance-stock-transferts-routes.ts` (lot 040, fondations), même chemin et
+// même garde.
 
 // ────────────────────────────────────────────────────────────────────────────
 // LES CHEMINS LITTÉRAUX SE MONTENT AVANT LES PARAMÉTRÉS, ET L'ORDRE EST LA

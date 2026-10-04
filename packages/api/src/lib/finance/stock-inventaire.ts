@@ -85,20 +85,16 @@
  * écrit une fois.
  */
 
-import { randomUUID } from 'crypto';
-
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
 import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDocumentEntryTx } from './accounting';
 import { roundMoneyXof, roundQuantity } from './money';
 import { toAmountOrZero } from './types';
-import type { StockMovementRecord } from './types-lot5-mouvements';
 import type {
   CreateStockCountTx,
   GetStockCount,
   ListStockCounts,
-  RecordStockTransferTx,
   RemoveStockCountLineTx,
   SetStockCountLineTx,
   StockCountLineRecord,
@@ -260,168 +256,10 @@ function toCreatedByLabel(user?: { fullName?: string | null; email?: string | nu
   return user?.fullName || user?.email || 'Utilisateur inconnu';
 }
 
-function toMovementRecord(row: any): StockMovementRecord {
-  return {
-    id: row.id,
-    type: row.type,
-    itemId: row.itemId,
-    itemReference: row.item?.reference ?? 'Article inconnu',
-    itemLabel: row.item?.label ?? 'Article inconnu',
-    itemUnit: row.item?.unit ?? '',
-    locationId: row.locationId,
-    locationLabel: row.location?.label ?? 'Lieu inconnu',
-    movementDate: row.movementDate,
-    quantity: roundQuantity(toAmountOrZero(row.quantity)),
-    isDecrease: row.isDecrease === true,
-    unitCost: roundQuantity(toAmountOrZero(row.unitCost)),
-    totalValue: roundMoneyXof(toAmountOrZero(row.totalValue)),
-    currency: row.currency ?? DEFAULT_CURRENCY,
-    quantityAfter: roundQuantity(toAmountOrZero(row.quantityAfter)),
-    valueAfter: roundMoneyXof(toAmountOrZero(row.valueAfter)),
-    siteId: row.siteId ?? null,
-    siteLabel: row.site?.name ?? null,
-    costCategoryLabel: row.costCategory?.label ?? null,
-    requestedBy: row.requestedBy ?? null,
-    supplierInvoiceReference: row.supplierInvoice?.reference ?? null,
-    transferGroupId: row.transferGroupId ?? null,
-    createdByLabel: toCreatedByLabel(row.createdBy),
-    createdAt: row.createdAt
-  };
-}
-
 // ---------------------------------------------------------------------------
-// A. Le transfert — deux mouvements, aucune écriture, aucune imputation
+// A. Le transfert — déplacé dans `stock-transferts.ts` (lot 040, fondations),
+//    sans changement de comportement.
 // ---------------------------------------------------------------------------
-
-/**
- * Voir `RecordStockTransferTx` dans `./types-lot5-inventaire.ts`.
- *
- * **N'appelle ni `postDocumentEntryTx`, ni `tx.costAllocation.create`, ni
- * `syncWorkProgramCostTx`, ni `assertSiteOpenTx`.** Aucune de ces absences
- * n'est un oubli : voir l'en-tête.
- */
-export const recordStockTransferTx: RecordStockTransferTx = async (tx, tenantId, params) => {
-  const quantity = roundQuantity(params.quantity);
-  if (!(quantity > 0)) {
-    throw badRequest('La quantité transférée doit être strictement positive');
-  }
-
-  // Refusé AVANT toute lecture : un transfert sur place ne déplace rien, et il
-  // écrirait deux mouvements sur le même solde dont le second annulerait le
-  // premier — une paire de lignes illisibles six mois plus tard.
-  if (params.fromLocationId === params.toLocationId) {
-    throw badRequest("Un transfert relie deux lieux distincts : l'origine et l'arrivée sont identiques");
-  }
-
-  // LECTURE AVANT ÉCRITURE (en-tête) : tout ce qui peut refuser le transfert
-  // est lu et vérifié avant le premier `create`.
-  const from = await requireActiveLocationTx(tx, tenantId, params.fromLocationId);
-  const to = await requireActiveLocationTx(tx, tenantId, params.toLocationId);
-  const item = await requireItemTx(tx, tenantId, params.itemId);
-
-  const source = await readBalanceTx(tx, tenantId, params.itemId, params.fromLocationId);
-
-  // Même interdiction dure qu'à la sortie, et pour la même raison : un stock
-  // négatif n'a pas de coût moyen qui veuille dire quelque chose, et toute la
-  // valorisation qui suit deviendrait fausse. Le geste juste est un inventaire.
-  if (quantity > source.quantity) {
-    throw conflict(
-      `Stock insuffisant à « ${from.label} » : ${source.quantity} ${item.unit} disponible(s) pour ${quantity} demandé(s). ` +
-        'Un inventaire, et non un transfert, corrige un écart de quantité physique.'
-    );
-  }
-
-  const destination = await readBalanceTx(tx, tenantId, params.itemId, params.toLocationId);
-
-  const averageUnitCost = averageUnitCostOf(source.quantity, source.value);
-  const fromQuantityAfter = roundQuantity(source.quantity - quantity);
-
-  // LA VALEUR DÉPLACÉE EST CALCULÉE UNE SEULE FOIS, et les deux mouvements la
-  // portent. C'est ce qui rend l'invariant exact : deux arrondis calculés
-  // séparément se seraient écartés d'un franc, et ce franc se serait créé ou
-  // détruit à chaque transfert.
-  let transferValue: number;
-  let fromValueAfter: number;
-  if (fromQuantityAfter <= 0) {
-    // Quand la quantité tombe à zéro, la valeur aussi : le mouvement emporte
-    // TOUTE la valeur restante, écart d'arrondi compris, et le solde d'origine
-    // retombe à zéro des deux côtés (règle de `stock-mouvements.ts`).
-    transferValue = roundMoneyXof(source.value);
-    fromValueAfter = 0;
-  } else {
-    transferValue = roundMoneyXof(quantity * averageUnitCost);
-    fromValueAfter = Math.max(0, roundMoneyXof(source.value - transferValue));
-  }
-
-  const toQuantityAfter = roundQuantity(destination.quantity + quantity);
-  const toValueAfter = roundMoneyXof(destination.value + transferValue);
-
-  // Les deux moitiés portent le MÊME identifiant de groupe : c'est lui, et lui
-  // seul, qui dit qu'il s'agit d'un déplacement et non d'une perte d'un côté
-  // suivie d'une apparition de l'autre.
-  const transferGroupId = randomUUID();
-
-  const include = {
-    item: { select: { reference: true, label: true, unit: true } },
-    location: { select: { label: true } },
-    createdBy: { select: { fullName: true, email: true } }
-  };
-
-  const donneesCommunes = {
-    tenantId,
-    type: 'TRANSFER' as const,
-    itemId: params.itemId,
-    movementDate: params.transferDate,
-    quantity,
-    // Le coût moyen du lieu d'ORIGINE, pour les deux moitiés : c'est à ce
-    // prix-là que la valeur part, et donc à ce prix-là qu'elle arrive.
-    unitCost: roundQuantity(averageUnitCost),
-    totalValue: transferValue,
-    currency: DEFAULT_CURRENCY,
-    transferGroupId,
-    createdByUserId: params.createdByUserId
-  };
-
-  // LA SORTIE D'ABORD, L'ENTRÉE ENSUITE — l'ordre du contrat, et celui dans
-  // lequel `movements` est rendu.
-  const sortie = await tx.stockMovement.create({
-    data: {
-      ...donneesCommunes,
-      locationId: params.fromLocationId,
-      isDecrease: true,
-      quantityAfter: fromQuantityAfter,
-      valueAfter: fromValueAfter
-    },
-    include
-  });
-
-  const entree = await tx.stockMovement.create({
-    data: {
-      ...donneesCommunes,
-      locationId: params.toLocationId,
-      isDecrease: false,
-      quantityAfter: toQuantityAfter,
-      valueAfter: toValueAfter
-    },
-    include
-  });
-
-  await writeBalanceTx(tx, tenantId, params.itemId, params.fromLocationId, source, fromQuantityAfter, fromValueAfter);
-  await writeBalanceTx(tx, tenantId, params.itemId, params.toLocationId, destination, toQuantityAfter, toValueAfter);
-
-  return {
-    transferGroupId,
-    movements: [
-      toMovementRecord({ ...(sortie as any), item: (sortie as any).item ?? item }),
-      toMovementRecord({ ...(entree as any), item: (entree as any).item ?? item })
-    ],
-    fromLocationLabel: from.label,
-    toLocationLabel: to.label,
-    quantity,
-    value: transferValue,
-    currency: DEFAULT_CURRENCY
-  };
-};
 
 // ---------------------------------------------------------------------------
 // B. L'inventaire — lecture d'un comptage

@@ -4,14 +4,12 @@ import {
   createStockCountTx,
   getStockCount,
   listStockCounts,
-  recordStockTransferTx,
   removeStockCountLineTx,
   setStockCountLineTx,
   validateStockCountTx
 } from '../lib/finance/stock-inventaire';
 import {
   createStockCountSchema,
-  createStockTransferSchema,
   listStockCountsQuerySchema,
   setStockCountLineSchema,
   uuidPathParamSchema,
@@ -72,36 +70,8 @@ function requireActorUserId(req: Request): string {
   return actorUserId;
 }
 
-// ---------------------------------------------------------------------------
-// A. POST /stock/transfers — déplacer d'un lieu vers un autre
-//
-// AUCUN PRIX n'est transmis au domaine, parce qu'aucun n'est reçu : la valeur
-// part au coût moyen du lieu d'origine (principe P-4). Le schéma est
-// `.strict()`, un corps qui porterait `unitCost` a déjà échoué en 400.
-//
-// Le transfert n'écrit aucune écriture comptable et n'impute aucun chantier :
-// déplacer n'est pas consommer. Le contrôleur n'a donc rien de particulier à
-// faire — c'est précisément ce qu'il ne fait PAS qui compte.
-// ---------------------------------------------------------------------------
-
-export const createStockTransferHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
-  const body = createStockTransferSchema.parse(req.body ?? {});
-  const actorUserId = requireActorUserId(req);
-
-  const transfer = await prisma.$transaction(tx =>
-    recordStockTransferTx(tx, tenantId, {
-      fromLocationId: body.fromLocationId,
-      toLocationId: body.toLocationId,
-      itemId: body.itemId,
-      quantity: body.quantity,
-      transferDate: body.transferDate,
-      createdByUserId: actorUserId
-    })
-  );
-
-  res.status(201).json({ success: true, data: transfer });
-});
+// A. POST /stock/transfers : gestionnaire déplacé dans
+// `finance-stock-transferts-controller.ts` (lot 040, fondations).
 
 // ---------------------------------------------------------------------------
 // B. POST /stock/counts — ouvrir un inventaire, en brouillon et sans ligne

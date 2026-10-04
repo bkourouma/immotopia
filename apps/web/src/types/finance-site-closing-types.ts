@@ -192,6 +192,16 @@ export interface SiteClosureBlocker {
   message: string;
   /** Combien de pièces sont concernées. */
   count: number;
+  /** Références des pièces bloquantes, quand la nature de pièce en porte une. */
+  references?: string[];
+  /**
+   * Identifiants des objets bloquants, pour un lien vers chacun : l'inventaire
+   * (`STOCK_COUNT`) ou le lieu de stockage (`STOCK_RESIDUAL`,
+   * `STOCK_CLOSING_COUNT_MISSING`) — lot 040, A7-R3.
+   */
+  documentIds?: string[];
+  /** Nature du bloqueur (contrat `ClosureBlocker`). */
+  documentType?: 'SUPPLIER_INVOICE' | 'STOCK_COUNT' | 'STOCK_RESIDUAL' | 'STOCK_CLOSING_COUNT_MISSING';
 }
 
 /**

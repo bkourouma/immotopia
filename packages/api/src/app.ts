@@ -43,6 +43,10 @@ import financeStockReferentielRoutes from './routes/finance-stock-referentiel-ro
 import financeStockMouvementsRoutes from './routes/finance-stock-mouvements-routes';
 import financeStockInventaireRoutes from './routes/finance-stock-inventaire-routes';
 import financeStockRapprochementRoutes from './routes/finance-stock-rapprochement-routes';
+import financeStockTransfertsRoutes from './routes/finance-stock-transferts-routes';
+import financeStockJournalRoutes from './routes/finance-stock-journal-routes';
+import financeStockPreuvesRoutes from './routes/finance-stock-preuves-routes';
+import financeStockPilotageRoutes from './routes/finance-stock-pilotage-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -276,6 +280,10 @@ app.use('/api', financeStockReferentielRoutes); // Finance lot 5 : articles, lie
 app.use('/api', financeStockMouvementsRoutes); // Finance lot 5 : receptions, sorties, soldes
 app.use('/api', financeStockInventaireRoutes); // Finance lot 5 : transferts et inventaire
 app.use('/api', financeStockRapprochementRoutes); // Finance lot 5 : bascule et rapprochement
+app.use('/api', financeStockTransfertsRoutes); // Lot 040 : transferts entre lieux (extraits de l'inventaire)
+app.use('/api', financeStockJournalRoutes); // Lot 040 : journal, contexte terrain, preneurs
+app.use('/api', financeStockPreuvesRoutes); // Lot 040 : bons PDF et pieces jointes
+app.use('/api', financeStockPilotageRoutes); // Lot 040 : alertes, indicateurs, reglages de controle
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)
