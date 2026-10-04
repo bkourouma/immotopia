@@ -10,12 +10,15 @@ import {
   InspectionPhoto,
   InspectionRoom,
   LeaseInspection,
+  RemovedInspectionItem,
+  UnevaluatedInspectionItem,
   updateInspection,
   uploadInspectionPhoto
 } from '../../../services/lease-inspections-service';
 import { RoomsAccordion, EntryItemLookup } from './RoomsAccordion';
 import { DeductionsSection } from './DeductionsSection';
-import { isDegraded } from './inspection-constants';
+import { countItems, countUnevaluated, unevaluatedReason } from './inspection-constants';
+import { countMissingWithoutDeduction, proposeDeductions } from './deduction-proposals';
 import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from './local-draft-storage';
 import { t } from '../../../i18n/t';
 
@@ -39,6 +42,57 @@ interface MetersState {
   water: string;
   gas: string;
 }
+
+/** Nombre d'éléments listés avant « et {{nombre}} autres » (CA-M3.6). */
+const MAX_LISTED_ITEMS = 10;
+
+/** Liste d'éléments mise en avant par un refus (non évalués, ou retirés de l'entrée). */
+interface FlaggedItems {
+  message: string;
+  items: Array<{ itemId: string; text: string }>;
+}
+
+function unevaluatedFromRooms(rooms: InspectionRoom[]): UnevaluatedInspectionItem[] {
+  const result: UnevaluatedInspectionItem[] = [];
+  for (const room of rooms) {
+    for (const item of room.items) {
+      const missing = unevaluatedReason(item);
+      if (missing) {
+        result.push({ roomId: room.id, roomName: room.name, itemId: item.id, label: item.label, missing });
+      }
+    }
+  }
+  return result;
+}
+
+const FlaggedItemsAlert: React.FC<{ flagged: FlaggedItems; onClose: () => void }> = ({ flagged, onClose }) => {
+  const listed = flagged.items.slice(0, MAX_LISTED_ITEMS);
+  const others = flagged.items.length - listed.length;
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      closable
+      onClose={onClose}
+      message={flagged.message}
+      description={
+        <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+          {listed.map(entry => (
+            <li key={entry.itemId}>{entry.text}</li>
+          ))}
+          {others > 0 && <li>{t('et {{nombre}} autres', { nombre: others })}</li>}
+        </ul>
+      }
+    />
+  );
+};
+
+/** Rappel, sous un champ de la sortie, de la valeur relevée à l'entrée (CA-M4.11). */
+const EntryValueHint: React.FC<{ value: string | number | null | undefined }> = ({ value }) => (
+  <Text type="secondary" style={{ display: 'block', fontSize: 'var(--font-size-sm)', marginTop: 2 }}>
+    {t('Entrée : {{valeur}}', { valeur: value === null || value === undefined || value === '' ? '—' : value })}
+  </Text>
+);
 
 /**
  * Saisie d'un état des lieux en brouillon.
@@ -80,6 +134,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
   const [finalizing, setFinalizing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [flagged, setFlagged] = useState<FlaggedItems | null>(null);
+  const [highlightUnevaluated, setHighlightUnevaluated] = useState<Set<string> | undefined>(undefined);
 
   // Brouillon local : tant que la copie plus récente trouvée dans
   // `localStorage` n'a pas été traitée (restaurée ou ignorée), on ne
@@ -164,6 +220,15 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     deductions
   });
 
+  /** Met en avant les éléments à évaluer : liste, pièces ouvertes, bordure orange (CA-M3.6). */
+  const showUnevaluated = (items: UnevaluatedInspectionItem[]) => {
+    setFlagged({
+      message: t('{{nombre}} éléments ne sont pas encore évalués.', { nombre: items.length }),
+      items: items.map(item => ({ itemId: item.itemId, text: `${item.roomName} — ${item.label}` }))
+    });
+    setHighlightUnevaluated(new Set(items.map(item => item.itemId)));
+  };
+
   const handleSave = async (): Promise<LeaseInspection | null> => {
     setFormError(null);
     setSaving(true);
@@ -177,6 +242,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
       // Le §400/409 s'affiche tel quel, sans reformulation.
       const serverMessage = error?.response?.data?.message;
       setFormError(serverMessage || t('Erreur lors de l’enregistrement'));
+      const removedItems: RemovedInspectionItem[] | undefined = error?.response?.data?.data?.removedItems;
+      if (Array.isArray(removedItems) && removedItems.length > 0) {
+        setFlagged({
+          message: t("Indiquez « Manquant » plutôt que de retirer un élément de l'entrée."),
+          items: removedItems.map(item => ({ itemId: item.itemId, text: item.label }))
+        });
+      }
       return null;
     } finally {
       setSaving(false);
@@ -187,9 +259,32 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     const saved = await handleSave();
     if (!saved) return;
 
+    // Pré-contrôle M3 : la route de finalisation n'est pas appelée tant qu'un
+    // élément reste à évaluer ; le brouillon, lui, vient d'être enregistré.
+    const unevaluated = unevaluatedFromRooms(rooms);
+    if (countItems(rooms) > 0 && unevaluated.length > 0) {
+      showUnevaluated(unevaluated);
+      return;
+    }
+    setFlagged(null);
+    setHighlightUnevaluated(undefined);
+
+    const withoutDeduction = isExit ? countMissingWithoutDeduction(rooms, entryItemsById, deductions) : 0;
+
     modal.confirm({
       title: t('Finaliser l’état des lieux ?'),
-      content: t('Une fois finalisé, l’état des lieux ne peut plus être modifié.'),
+      content: (
+        <>
+          <p style={{ margin: 0 }}>{t('Une fois finalisé, l’état des lieux ne peut plus être modifié.')}</p>
+          {withoutDeduction > 0 && (
+            <p style={{ marginBlockStart: 8, marginBlockEnd: 0 }}>
+              {t("{{nombre}} éléments manquants n'ont pas de retenue. Vous pouvez finaliser quand même.", {
+                nombre: withoutDeduction
+              })}
+            </p>
+          )}
+        </>
+      ),
       okText: t('Finaliser'),
       cancelText: t('Annuler'),
       onOk: async () => {
@@ -201,6 +296,12 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           message.success(t('État des lieux finalisé'));
           onFinalized(response.data);
         } catch (error: any) {
+          const unevaluatedItems: UnevaluatedInspectionItem[] | undefined =
+            error?.response?.data?.data?.unevaluatedItems;
+          if (Array.isArray(unevaluatedItems) && unevaluatedItems.length > 0) {
+            showUnevaluated(unevaluatedItems);
+            return;
+          }
           const serverMessage = error?.response?.data?.message;
           setFormError(serverMessage || t('Erreur lors de la finalisation'));
         } finally {
@@ -244,33 +345,24 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
   };
 
   const handleProposeFromDamages = () => {
-    if (!entryItemsById) return;
-    const existingItemIds = new Set(deductions.map(deduction => deduction.itemId).filter(Boolean));
-    const proposals: InspectionDeduction[] = [];
-
-    for (const room of rooms) {
-      for (const item of room.items) {
-        const entryLookup = entryItemsById.get(item.id);
-        if (!entryLookup) continue;
-        if (!isDegraded(entryLookup.item.condition, item.condition)) continue;
-        if (existingItemIds.has(item.id)) continue;
-
-        proposals.push({
-          id: crypto.randomUUID(),
-          label: t('{{piece}} — {{element}} (dégradé)', { piece: room.name, element: item.label }),
-          amount: 0,
-          roomId: room.id,
-          itemId: item.id
-        });
-      }
-    }
-
+    const proposals = proposeDeductions({
+      rooms,
+      entryItemsById,
+      entryKeysCount: entryInspection?.keysCount,
+      exitKeysCount: keysCount,
+      existing: deductions
+    });
     if (proposals.length === 0) {
-      message.info(t('Aucune dégradation détectée pour le moment.'));
+      message.info(t('Aucune dégradation ni aucun manquant détecté pour le moment.'));
       return;
     }
     setDeductions(prev => [...prev, ...proposals]);
   };
+
+  const totalItems = countItems(rooms);
+  const evaluatedItems = totalItems - countUnevaluated(rooms);
+  const entryMeters = isExit ? entryInspection?.meters : undefined;
+  const showEntryValues = isExit && Boolean(entryInspection);
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="large">
@@ -294,6 +386,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
       {formError && <Alert type="error" showIcon message={formError} closable onClose={() => setFormError(null)} />}
 
+      {flagged && <FlaggedItemsAlert flagged={flagged} onClose={() => setFlagged(null)} />}
+
       <Card>
         <Space direction="vertical" size="small" style={{ width: '100%' }}>
           <Title level={5}>{isExit ? t('État des lieux de sortie') : t("État des lieux d'entrée")}</Title>
@@ -307,7 +401,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         </Space>
       </Card>
 
-      <Card title={t('Pièces')}>
+      <Card
+        title={t('Pièces')}
+        extra={
+          <Text type={evaluatedItems < totalItems ? 'warning' : 'secondary'}>
+            {t('{{evalues}} éléments évalués sur {{total}}', { evalues: evaluatedItems, total: totalItems })}
+          </Text>
+        }
+      >
         <RoomsAccordion
           tenantId={tenantId}
           leaseId={leaseId}
@@ -315,6 +416,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
           rooms={rooms}
           readOnly={false}
           showEntryReminder={isExit}
+          isExit={isExit}
+          highlightUnevaluated={highlightUnevaluated}
           entryItemsById={entryItemsById}
           photos={photos}
           onRoomsChange={setRooms}
@@ -332,6 +435,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
               onChange={e => setMeters(prev => ({ ...prev, electricity: e.target.value }))}
               placeholder={t('Relevé du compteur électrique')}
             />
+            {showEntryValues && <EntryValueHint value={entryMeters?.electricity} />}
           </div>
           <div>
             <Text>{t('Eau')}</Text>
@@ -340,6 +444,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
               onChange={e => setMeters(prev => ({ ...prev, water: e.target.value }))}
               placeholder={t('Relevé du compteur d’eau')}
             />
+            {showEntryValues && <EntryValueHint value={entryMeters?.water} />}
           </div>
           <div>
             <Text>{t('Gaz')}</Text>
@@ -348,6 +453,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
               onChange={e => setMeters(prev => ({ ...prev, gas: e.target.value }))}
               placeholder={t('Relevé du compteur de gaz')}
             />
+            {showEntryValues && <EntryValueHint value={entryMeters?.gas} />}
           </div>
           <div>
             <Text>{t('Nombre de clés')}</Text>
@@ -357,6 +463,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
               value={keysCount ?? undefined}
               onChange={value => setKeysCount(value == null ? null : Number(value))}
             />
+            {showEntryValues && <EntryValueHint value={entryInspection?.keysCount} />}
           </div>
         </Space>
       </Card>

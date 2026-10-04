@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, App, Button, Col, Row, Space, Spin } from 'antd';
 import {
   createInspection,
+  InspectionTemplate,
   InspectionType,
   LeaseInspection,
   listInspections
@@ -16,6 +17,15 @@ import { t } from '../../../i18n/t';
 interface LeaseInspectionsPanelProps {
   tenantId: string;
   leaseId: string;
+  /** Ameublement du bien loué : présélectionne le modèle mobilier (spec 040, M1). */
+  propertyFurnishingStatus?: 'FURNISHED' | 'UNFURNISHED' | 'PARTIALLY_FURNISHED' | null;
+}
+
+/** Modèle présélectionné : mobilier pour un bien meublé ou partiellement meublé. */
+function defaultTemplateFor(
+  furnishingStatus: LeaseInspectionsPanelProps['propertyFurnishingStatus']
+): InspectionTemplate {
+  return furnishingStatus === 'FURNISHED' || furnishingStatus === 'PARTIALLY_FURNISHED' ? 'FURNISHED' : 'STANDARD';
 }
 
 type PanelView =
@@ -27,7 +37,11 @@ type PanelView =
  * Destiné à être intégré comme onglet « États des lieux » de la fiche du bail
  * (fait par ailleurs — ce composant ne touche pas `LeaseDetailPage.tsx`).
  */
-export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({ tenantId, leaseId }) => {
+export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({
+  tenantId,
+  leaseId,
+  propertyFurnishingStatus
+}) => {
   const { message } = App.useApp();
 
   const [inspections, setInspections] = useState<LeaseInspection[] | null>(null);
@@ -70,11 +84,18 @@ export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({ te
     });
   };
 
-  const handleConfirmStart = async (inspectionDate: string) => {
+  // Une sortie dont l'entrée existe reprend ses pièces : pas de choix de modèle.
+  const showTemplateChoice = !(startType === 'EXIT' && entry);
+
+  const handleConfirmStart = async (inspectionDate: string, template: InspectionTemplate) => {
     if (!startType) return;
     setCreating(true);
     try {
-      const response = await createInspection(tenantId, leaseId, { type: startType, inspectionDate });
+      const response = await createInspection(tenantId, leaseId, {
+        type: startType,
+        inspectionDate,
+        ...(showTemplateChoice ? { template } : {})
+      });
       replaceInspection(response.data);
       setStartType(null);
       setView({ mode: 'edit', inspection: response.data });
@@ -173,6 +194,8 @@ export const LeaseInspectionsPanel: React.FC<LeaseInspectionsPanelProps> = ({ te
         confirmLoading={creating}
         onCancel={() => setStartType(null)}
         onConfirm={handleConfirmStart}
+        defaultTemplate={defaultTemplateFor(propertyFurnishingStatus)}
+        showTemplateChoice={showTemplateChoice}
       />
 
       <InspectionCompareModal
