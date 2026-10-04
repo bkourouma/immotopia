@@ -73,7 +73,8 @@ export interface ParsedReference {
  * reglement d'abonnement), property-media/document-service,
  * syndics/document-files, rental-penalty-service, images de marque du lot S1
  * (`branding/<tenantId>/mandants|syndics|agence/...` — code hors de cette
- * branche, seul le format de la cle est repris ici).
+ * branche, seul le format de la cle est repris ici), pieces jointes du stock
+ * de chantier (`stock/<tenantId>/<aaaa>/...`, lot 040).
  * L'ordre compte : `properties/agency-logos` avant `properties`.
  */
 export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tenant' | OwnerModel }> = [
@@ -84,6 +85,9 @@ export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tena
   { prefix: ['properties', 'agency-logos'], owner: 'tenant' },
   { prefix: ['platform', 'invoice-payments'], owner: 'tenant' },
   { prefix: ['branding'], owner: 'tenant' },
+  // Lot 040 (spec B5-R9) : pieces jointes du stock de chantier,
+  // `stock/<tenantId>/<aaaa>/<uuid>.<ext>` (lib/finance/stock-pieces-jointes.ts).
+  { prefix: ['stock'], owner: 'tenant' },
   { prefix: ['properties'], owner: 'Property' },
   { prefix: ['syndics'], owner: 'Syndicate' },
   { prefix: ['rental', 'penalties'], owner: 'RentalPenalty' }

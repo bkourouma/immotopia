@@ -3,22 +3,17 @@ import request from 'supertest';
 
 /**
  * Tests des points d'entrée agence des mouvements de stock — lot 5, deuxième
- * sous-lot. Les tests du journal ont été déplacés dans
- * `finance.stock-journal.test.ts` (lot 040, fondations).
+ * sous-lot, étendus par le lot 040 (réceptions, sorties multi-lignes, retours
+ * fournisseur, rebuts, soldes masqués). Le journal est testé dans
+ * `finance.stock-journal.test.ts`.
  *
- * Modèle : `__tests__/api/finance.contractors.test.ts` (lot 4, sous-lot 4).
- * Les middlewares d'authentification, de tenant et de droits sont remplacés
- * par des passe-plats ; le domaine (`lib/finance/stock-mouvements.ts`) est
- * simulé par des espions Jest, pour vérifier que le contrôleur transmet la
- * bonne forme de requête (tenantId de l'URL, aucun identifiant de chemin
- * répété dans le corps, utilisateur authentifié) sans reformuler la logique
- * métier, déjà couverte par les tests unitaires.
- *
- * **Le corps exact de chaque création est épinglé ici**, et c'est le but de ce
- * fichier : quatre créations des lots 2 et 3 échouaient en 400 contre le vrai
- * serveur parce que leur corps répétait un identifiant déjà porté par le
- * chemin, ou portait un champ dérivé. Les schémas sont `.strict()`, et ces
- * tests le prouvent de l'extérieur.
+ * Modèle : `__tests__/api/finance.suppliers.test.ts`. Authentification et
+ * agence sont des passe-plats ; les gardes `STOCK_*` sont des espions qui
+ * notent la permission exigée (et peuvent refuser) ; le domaine
+ * (`lib/finance/stock-mouvements.ts`) et le contexte de l'appelant sont
+ * simulés. Ce fichier épingle la FORME : corps exacts transmis, `.strict()`,
+ * statuts 201/200, `meta`, gardes de chaque route — la logique métier est
+ * couverte par les tests unitaires.
  */
 
 jest.mock('../../src/middleware/auth-middleware', () => ({
@@ -35,33 +30,68 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
   }
 }));
 
-jest.mock('../../src/middleware/finance-rbac-middleware', () => ({
-  requireAccountsRead: (_req: any, _res: any, next: any) => next(),
-  requireReportsRead: (_req: any, _res: any, next: any) => next(),
-  requireDocumentsCreate: (_req: any, _res: any, next: any) => next(),
-  requireDocumentsValidate: (_req: any, _res: any, next: any) => next(),
-  requireSitesManage: (_req: any, _res: any, next: any) => next(),
-  requireSettingsManage: (_req: any, _res: any, next: any) => next()
+const guardsHit: string[] = [];
+const deniedPermissions = new Set<string>();
+
+jest.mock('../../src/middleware/stock-rbac-middleware', () => {
+  const guard = (permission: string) => (_req: any, res: any, next: any) => {
+    guardsHit.push(permission);
+    if (deniedPermissions.has(permission)) {
+      res.status(403).json({ success: false, message: 'Permission refusée.', code: 'FORBIDDEN' });
+      return;
+    }
+    next();
+  };
+  return {
+    requireStockView: guard('STOCK_VIEW'),
+    requireStockValuesView: guard('STOCK_VALUES_VIEW'),
+    requireStockReceive: guard('STOCK_RECEIVE'),
+    requireStockIssue: guard('STOCK_ISSUE'),
+    requireStockTransfer: guard('STOCK_TRANSFER'),
+    requireStockCount: guard('STOCK_COUNT'),
+    requireStockTakersManage: guard('STOCK_TAKERS_MANAGE'),
+    requireStockCountValidate: guard('STOCK_COUNT_VALIDATE'),
+    requireStockDispose: guard('STOCK_DISPOSE'),
+    requireStockAlertsView: guard('STOCK_ALERTS_VIEW'),
+    requireStockCountOrValidate: guard('STOCK_COUNT|STOCK_COUNT_VALIDATE'),
+    requireStockAttachmentDeposit: guard('STOCK_ATTACHMENT_DEPOSIT')
+  };
+});
+
+const CALLER = {
+  userId: 'user-1',
+  valuesVisible: false,
+  canValidateCount: false,
+  canReceive: true,
+  canIssue: true,
+  canTransfer: true,
+  canCount: true,
+  canDispose: false,
+  canManageTakers: true,
+  canViewAlerts: false,
+  canManageSettings: false
+};
+const resolveStockCallerContext = jest.fn();
+
+jest.mock('../../src/lib/finance/stock-controles', () => ({
+  resolveStockCallerContext: (...args: any[]) => resolveStockCallerContext(...args)
 }));
 
-const recordStockReceiptTx = jest.fn();
-const recordStockIssueTx = jest.fn();
-const listStockBalances = jest.fn();
+const recordStockReceipt = jest.fn();
+const recordStockIssue = jest.fn();
+const recordStockSupplierReturn = jest.fn();
+const recordStockScrap = jest.fn();
+const listStockBalancesForCaller = jest.fn();
 
 jest.mock('../../src/lib/finance/stock-mouvements', () => ({
-  recordStockReceiptTx: (...args: any[]) => recordStockReceiptTx(...args),
-  recordStockIssueTx: (...args: any[]) => recordStockIssueTx(...args),
-  listStockBalances: (...args: any[]) => listStockBalances(...args)
+  recordStockReceipt: (...args: any[]) => recordStockReceipt(...args),
+  recordStockIssue: (...args: any[]) => recordStockIssue(...args),
+  recordStockSupplierReturn: (...args: any[]) => recordStockSupplierReturn(...args),
+  recordStockScrap: (...args: any[]) => recordStockScrap(...args),
+  listStockBalancesForCaller: (...args: any[]) => listStockBalancesForCaller(...args)
 }));
 
-jest.mock('../../src/utils/database', () => ({
-  prisma: {
-    $transaction: (callback: any) => callback({})
-  }
-}));
-
-import { errorHandler } from '../../src/middleware/error-middleware';
-import { conflict, notFound } from '../../src/lib/errors';
+import { AppError, errorHandler, NotFoundError } from '../../src/middleware/error-middleware';
 import financeStockMouvementsRoutes from '../../src/routes/finance-stock-mouvements-routes';
 
 const TENANT_A = 'tenant-A';
@@ -70,60 +100,26 @@ const ITEM_A = '22222222-2222-4222-8222-222222222222';
 const INVOICE_A = '33333333-3333-4333-8333-333333333333';
 const SITE_A = '44444444-4444-4444-8444-444444444444';
 const CATEGORY_A = '55555555-5555-4555-8555-555555555555';
-const MOVEMENT_A = '66666666-6666-4666-8666-666666666666';
+const TAKER_A = '66666666-6666-4666-8666-666666666666';
+const LINE_A = '77777777-7777-4777-8777-777777777777';
+const REQUEST_A = '88888888-8888-4888-8888-888888888888';
+
+const META = { valuesVisible: false, blindLocationIds: [] };
 
 const app = express();
 app.use(express.json());
 app.use('/api', financeStockMouvementsRoutes);
 app.use(errorHandler);
 
-function movementRecord(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    id: MOVEMENT_A,
-    type: 'RECEIPT',
-    itemId: ITEM_A,
-    itemReference: 'CIM-45',
-    itemLabel: 'Ciment CPJ 45',
-    itemUnit: 'sac',
-    locationId: LOCATION_A,
-    locationLabel: 'Magasin central',
-    movementDate: new Date('2026-03-01'),
-    quantity: 100,
-    isDecrease: false,
-    unitCost: 5_000,
-    totalValue: 500_000,
-    currency: 'XOF',
-    quantityAfter: 100,
-    valueAfter: 500_000,
-    siteId: null,
-    siteLabel: null,
-    costCategoryLabel: null,
-    requestedBy: null,
-    supplierInvoiceReference: 'FAC-2026-014',
-    createdByLabel: 'Aïssatou Barry',
-    createdAt: new Date('2026-03-01'),
-    ...overrides
-  };
-}
-
-function balanceRecord(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    itemId: ITEM_A,
-    itemReference: 'CIM-45',
-    itemLabel: 'Ciment CPJ 45',
-    itemUnit: 'sac',
-    locationId: LOCATION_A,
-    locationLabel: 'Magasin central',
-    quantity: 100,
-    value: 500_000,
-    averageUnitCost: 5_000,
-    currency: 'XOF',
-    ...overrides
-  };
+function writeResponse(data: unknown, status: 200 | 201 = 201) {
+  return { status, data, meta: META };
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  guardsHit.length = 0;
+  deniedPermissions.clear();
+  resolveStockCallerContext.mockResolvedValue(CALLER);
 });
 
 // ---------------------------------------------------------------------------
@@ -134,101 +130,78 @@ describe('POST /tenants/:tenantId/finance/stock/receipts', () => {
   const corpsValide = {
     locationId: LOCATION_A,
     supplierInvoiceId: INVOICE_A,
-    receiptDate: '2026-03-01',
-    lines: [{ itemId: ITEM_A, quantity: 100, unitCost: 5000 }]
+    receiptDate: '2026-10-01',
+    lines: [{ itemId: ITEM_A, quantity: 100, supplierInvoiceLineId: LINE_A }],
+    clientRequestId: REQUEST_A
   };
 
-  it('enregistre une réception et renvoie UN MOUVEMENT PAR LIGNE', async () => {
-    recordStockReceiptTx.mockResolvedValue([movementRecord(), movementRecord({ id: 'autre' })]);
+  it('garde STOCK_RECEIVE ; transmet le corps exact et le contexte de l’appelant ; 201 + meta', async () => {
+    recordStockReceipt.mockResolvedValue(writeResponse({ slip: { id: 's' }, movements: [], controls: [] }));
 
     const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/receipts`).send(corpsValide);
 
     expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toHaveLength(2);
-    expect(recordStockReceiptTx).toHaveBeenCalledWith(
-      expect.anything(),
-      TENANT_A,
-      expect.objectContaining({
-        locationId: LOCATION_A,
-        supplierInvoiceId: INVOICE_A,
-        receiptDate: new Date('2026-03-01'),
-        lines: [{ itemId: ITEM_A, quantity: 100, unitCost: 5000 }],
-        createdByUserId: 'user-1'
-      })
-    );
+    expect(res.body).toEqual({ success: true, data: { slip: { id: 's' }, movements: [], controls: [] }, meta: META });
+    expect(guardsHit).toEqual(['STOCK_RECEIVE']);
+    expect(resolveStockCallerContext).toHaveBeenCalledWith('user-1', TENANT_A);
+    const [tenantId, ctx, input] = recordStockReceipt.mock.calls[0];
+    expect(tenantId).toBe(TENANT_A);
+    expect(ctx).toBe(CALLER);
+    expect(input).toEqual({ ...corpsValide, receiptDate: new Date('2026-10-01') });
   });
 
-  it('accepte un prix unitaire nul', async () => {
-    recordStockReceiptTx.mockResolvedValue([movementRecord({ unitCost: 0, totalValue: 0 })]);
+  it('répond 200 pour un rejeu idempotent', async () => {
+    recordStockReceipt.mockResolvedValue(writeResponse({ slip: { id: 's' }, movements: [], controls: [] }, 200));
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/receipts`).send(corpsValide);
+    expect(res.status).toBe(200);
+  });
 
+  it('accepte une ligne SANS prix (chaîne A8-R3) et une quantité à quatre décimales', async () => {
+    recordStockReceipt.mockResolvedValue(writeResponse({ slip: {}, movements: [], controls: [] }));
     const res = await request(app)
       .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-      .send({ ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 20, unitCost: 0 }] });
-
+      .send({ ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 12.5025 }] });
     expect(res.status).toBe(201);
+    expect(recordStockReceipt.mock.calls[0][2].lines[0]).toEqual({ itemId: ITEM_A, quantity: 12.5025 });
   });
 
-  it('accepte une quantité à quatre décimales — une quantité n’est pas un montant', async () => {
-    recordStockReceiptTx.mockResolvedValue([movementRecord({ quantity: 12.5 })]);
-
-    const res = await request(app)
-      .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-      .send({ ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 12.5025, unitCost: 8000 }] });
-
-    expect(res.status).toBe(201);
-    expect(recordStockReceiptTx.mock.calls[0][2].lines[0].quantity).toBe(12.5025);
-  });
-
-  it('refuse un corps qui répète le tenantId déjà porté par le chemin', async () => {
-    const res = await request(app)
-      .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-      .send({ ...corpsValide, tenantId: TENANT_A });
-
-    expect(res.status).toBe(400);
-    expect(recordStockReceiptTx).not.toHaveBeenCalled();
-  });
-
-  it('refuse une quantité nulle ou négative', async () => {
-    for (const quantity of [0, -1]) {
-      const res = await request(app)
-        .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-        .send({ ...corpsValide, lines: [{ itemId: ITEM_A, quantity, unitCost: 5000 }] });
+  it('refuse le tenantId dans le corps, une quantité nulle, un prix négatif, aucune ligne, plus de 50 lignes', async () => {
+    const corps = [
+      { ...corpsValide, tenantId: TENANT_A },
+      { ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 0 }] },
+      { ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 1, unitCost: -1 }] },
+      { ...corpsValide, lines: [] },
+      { ...corpsValide, lines: Array.from({ length: 51 }, () => ({ itemId: ITEM_A, quantity: 1 })) },
+      { ...corpsValide, clientRequestId: 'pas-un-uuid' }
+    ];
+    for (const body of corps) {
+      const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/receipts`).send(body);
       expect(res.status).toBe(400);
     }
-    expect(recordStockReceiptTx).not.toHaveBeenCalled();
+    expect(recordStockReceipt).not.toHaveBeenCalled();
   });
 
-  it('refuse un prix unitaire négatif', async () => {
-    const res = await request(app)
+  it('laisse remonter les codes du domaine (403 STOCK_VALUE_FIELD_FORBIDDEN, 409 STOCK_SITE_CLOSED) avec leur code', async () => {
+    recordStockReceipt.mockRejectedValueOnce(
+      new AppError('Vous ne pouvez pas saisir de prix.', 403, 'STOCK_VALUE_FIELD_FORBIDDEN')
+    );
+    const forbidden = await request(app)
       .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-      .send({ ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 10, unitCost: -1 }] });
+      .send({ ...corpsValide, lines: [{ itemId: ITEM_A, quantity: 1, unitCost: 10 }] });
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body.code).toBe('STOCK_VALUE_FIELD_FORBIDDEN');
 
-    expect(res.status).toBe(400);
+    recordStockReceipt.mockRejectedValueOnce(new AppError('Chantier clôturé.', 409, 'STOCK_SITE_CLOSED'));
+    const closed = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/receipts`).send(corpsValide);
+    expect(closed.status).toBe(409);
+    expect(closed.body.code).toBe('STOCK_SITE_CLOSED');
   });
 
-  it('refuse une réception sans ligne, et une réception sans facture', async () => {
-    const sansLigne = await request(app)
-      .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-      .send({ ...corpsValide, lines: [] });
-    expect(sansLigne.status).toBe(400);
-
-    const sansFacture = await request(app)
-      .post(`/api/tenants/${TENANT_A}/finance/stock/receipts`)
-      .send({
-        locationId: LOCATION_A,
-        receiptDate: '2026-03-01',
-        lines: [{ itemId: ITEM_A, quantity: 10, unitCost: 100 }]
-      });
-    expect(sansFacture.status).toBe(400);
-  });
-
-  it('laisse remonter le 409 du domaine sur une facture non validée', async () => {
-    recordStockReceiptTx.mockRejectedValue(conflict("Cette facture n'est pas validée"));
-
+  it('sans STOCK_RECEIVE : 403, le domaine n’est pas appelé', async () => {
+    deniedPermissions.add('STOCK_RECEIVE');
     const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/receipts`).send(corpsValide);
-
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(403);
+    expect(recordStockReceipt).not.toHaveBeenCalled();
   });
 });
 
@@ -237,133 +210,194 @@ describe('POST /tenants/:tenantId/finance/stock/receipts', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /tenants/:tenantId/finance/stock/issues', () => {
-  const corpsValide = {
+  const corpsMultiLignes = {
     locationId: LOCATION_A,
-    itemId: ITEM_A,
-    quantity: 50,
     siteId: SITE_A,
-    costCategoryId: CATEGORY_A,
-    requestedBy: 'Chef de chantier Camara',
-    issueDate: '2026-03-10'
+    issueDate: '2026-10-02',
+    takerId: TAKER_A,
+    lines: [
+      { itemId: ITEM_A, quantity: 10, costCategoryId: CATEGORY_A },
+      { itemId: ITEM_A, quantity: 5, costCategoryId: CATEGORY_A }
+    ]
   };
 
-  it('enregistre une sortie avec le corps exact attendu', async () => {
-    recordStockIssueTx.mockResolvedValue(
-      movementRecord({ type: 'ISSUE', isDecrease: true, siteId: SITE_A, totalValue: 300_000 })
-    );
-
-    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsValide);
-
+  it('garde STOCK_ISSUE ; corps multi-lignes transmis tel quel ; 201 + meta', async () => {
+    recordStockIssue.mockResolvedValue(writeResponse({ slip: { number: 'BS-2026-00001' }, movements: [] }));
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsMultiLignes);
     expect(res.status).toBe(201);
-    expect(res.body.data.totalValue).toBe(300_000);
-    expect(recordStockIssueTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, {
+    expect(res.body.data.slip.number).toBe('BS-2026-00001');
+    expect(res.body.meta).toEqual(META);
+    expect(guardsHit).toEqual(['STOCK_ISSUE']);
+    expect(recordStockIssue.mock.calls[0][2]).toEqual({ ...corpsMultiLignes, issueDate: new Date('2026-10-02') });
+  });
+
+  it('convertit la forme à un article (lot 5) en une ligne', async () => {
+    recordStockIssue.mockResolvedValue(writeResponse({ slip: {}, movements: [] }));
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send({
       locationId: LOCATION_A,
       itemId: ITEM_A,
       quantity: 50,
       siteId: SITE_A,
       costCategoryId: CATEGORY_A,
       requestedBy: 'Chef de chantier Camara',
-      issueDate: new Date('2026-03-10'),
-      createdByUserId: 'user-1'
+      issueDate: '2026-10-02'
+    });
+    expect(res.status).toBe(201);
+    expect(recordStockIssue.mock.calls[0][2]).toEqual({
+      locationId: LOCATION_A,
+      siteId: SITE_A,
+      requestedBy: 'Chef de chantier Camara',
+      issueDate: new Date('2026-10-02'),
+      lines: [{ itemId: ITEM_A, quantity: 50, costCategoryId: CATEGORY_A }]
     });
   });
 
-  it('REFUSE un corps qui porterait un prix : il est dérivé, jamais saisi (P-4)', async () => {
-    for (const champDerive of [{ unitCost: 6000 }, { totalValue: 300_000 }, { averageUnitCost: 6000 }]) {
-      const res = await request(app)
-        .post(`/api/tenants/${TENANT_A}/finance/stock/issues`)
-        .send({ ...corpsValide, ...champDerive });
+  it('REFUSE un prix (dérivé, jamais saisi, P-4), un poste absent, une quantité nulle, un demandeur vide', async () => {
+    const corps = [
+      { ...corpsMultiLignes, lines: [{ itemId: ITEM_A, quantity: 1, costCategoryId: CATEGORY_A, unitCost: 10 }] },
+      { ...corpsMultiLignes, lines: [{ itemId: ITEM_A, quantity: 1 }] },
+      { ...corpsMultiLignes, lines: [{ itemId: ITEM_A, quantity: 0, costCategoryId: CATEGORY_A }] },
+      { ...corpsMultiLignes, requestedBy: '   ' },
+      {
+        ...corpsMultiLignes,
+        lines: Array.from({ length: 51 }, () => ({ itemId: ITEM_A, quantity: 1, costCategoryId: CATEGORY_A }))
+      }
+    ];
+    for (const body of corps) {
+      const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(body);
       expect(res.status).toBe(400);
     }
-    expect(recordStockIssueTx).not.toHaveBeenCalled();
+    expect(recordStockIssue).not.toHaveBeenCalled();
   });
 
-  it('exige le demandeur, et refuse une chaîne vide', async () => {
-    const { requestedBy, ...sansDemandeur } = corpsValide;
-    expect(requestedBy).toBeDefined();
-
-    const absent = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(sansDemandeur);
-    expect(absent.status).toBe(400);
-
-    const vide = await request(app)
+  it('laisse remonter 409 STOCK_INSUFFICIENT avec data, 400 STOCK_REQUESTER_REQUIRED, 404', async () => {
+    recordStockIssue.mockRejectedValueOnce(
+      new AppError('Stock insuffisant sur ce lieu pour la quantité demandée.', 409, 'STOCK_INSUFFICIENT', undefined, {
+        items: [{ itemId: ITEM_A, itemLabel: 'Ciment', requestedQuantity: 150 }]
+      })
+    );
+    const insufficient = await request(app)
       .post(`/api/tenants/${TENANT_A}/finance/stock/issues`)
-      .send({ ...corpsValide, requestedBy: '   ' });
-    expect(vide.status).toBe(400);
+      .send(corpsMultiLignes);
+    expect(insufficient.status).toBe(409);
+    expect(insufficient.body).toMatchObject({ code: 'STOCK_INSUFFICIENT', data: { items: [{ itemId: ITEM_A }] } });
 
-    expect(recordStockIssueTx).not.toHaveBeenCalled();
-  });
+    recordStockIssue.mockRejectedValueOnce(
+      new AppError('Indiquez le preneur ou le demandeur.', 400, 'STOCK_REQUESTER_REQUIRED')
+    );
+    const requester = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/stock/issues`)
+      .send({ ...corpsMultiLignes, takerId: undefined });
+    expect(requester.body.code).toBe('STOCK_REQUESTER_REQUIRED');
 
-  it('exige le poste de dépense — jamais deviné depuis l’article', async () => {
-    const { costCategoryId, ...sansPoste } = corpsValide;
-    expect(costCategoryId).toBeDefined();
-
-    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(sansPoste);
-
-    expect(res.status).toBe(400);
-    expect(recordStockIssueTx).not.toHaveBeenCalled();
-  });
-
-  it('refuse une quantité nulle ou négative', async () => {
-    for (const quantity of [0, -3]) {
-      const res = await request(app)
-        .post(`/api/tenants/${TENANT_A}/finance/stock/issues`)
-        .send({ ...corpsValide, quantity });
-      expect(res.status).toBe(400);
-    }
-  });
-
-  it('laisse remonter le 409 du domaine sur un stock insuffisant', async () => {
-    recordStockIssueTx.mockRejectedValue(conflict('Stock insuffisant'));
-
-    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsValide);
-
-    expect(res.status).toBe(409);
-    expect(res.body.success).toBe(false);
-  });
-
-  it('laisse remonter le 409 du domaine sur un chantier clos', async () => {
-    recordStockIssueTx.mockRejectedValue(conflict('Le chantier « Kaloum » est clôturé'));
-
-    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsValide);
-
-    expect(res.status).toBe(409);
-  });
-
-  it('laisse remonter le 404 du domaine sur un chantier introuvable', async () => {
-    recordStockIssueTx.mockRejectedValue(notFound('Chantier introuvable'));
-
-    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsValide);
-
-    expect(res.status).toBe(404);
+    recordStockIssue.mockRejectedValueOnce(new NotFoundError('Preneur introuvable.'));
+    const notFound = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsMultiLignes);
+    expect(notFound.status).toBe(404);
   });
 
   it('ne renvoie AUCUN libellé comptable (principe P-1)', async () => {
-    recordStockIssueTx.mockResolvedValue(movementRecord({ type: 'ISSUE', isDecrease: true, siteId: SITE_A }));
-
-    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsValide);
-
-    const charge = JSON.stringify(res.body).toLowerCase();
-    expect(charge).not.toContain('débit');
-    expect(charge).not.toContain('debit');
-    expect(charge).not.toContain('crédit');
-    expect(charge).not.toContain('credit');
-    expect(charge).not.toContain('311');
+    recordStockIssue.mockResolvedValue(
+      writeResponse({ slip: { number: 'BS-2026-00001' }, movements: [{ type: 'ISSUE' }] })
+    );
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/issues`).send(corpsMultiLignes);
+    expect(JSON.stringify(res.body)).not.toMatch(/débit|crédit|debit|credit/i);
   });
 });
 
 // ---------------------------------------------------------------------------
-// C. GET /stock/balances
+// C. POST /stock/supplier-returns et /stock/scraps
+// ---------------------------------------------------------------------------
+
+describe('POST /tenants/:tenantId/finance/stock/supplier-returns', () => {
+  const corps = {
+    locationId: LOCATION_A,
+    supplierInvoiceId: INVOICE_A,
+    supplierInvoiceLineId: LINE_A,
+    itemId: ITEM_A,
+    quantity: 10,
+    returnDate: '2026-10-02',
+    reasonCode: 'NON_CONFORMING'
+  };
+
+  it('garde STOCK_DISPOSE ; corps exact ; 201', async () => {
+    recordStockSupplierReturn.mockResolvedValue(writeResponse({ id: 'm', type: 'SUPPLIER_RETURN' }));
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/supplier-returns`).send(corps);
+    expect(res.status).toBe(201);
+    expect(guardsHit).toEqual(['STOCK_DISPOSE']);
+    expect(recordStockSupplierReturn.mock.calls[0][2]).toEqual({ ...corps, returnDate: new Date('2026-10-02') });
+  });
+
+  it('le magasinier (sans STOCK_DISPOSE) reçoit 403 (critère A6-4)', async () => {
+    deniedPermissions.add('STOCK_DISPOSE');
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/supplier-returns`).send(corps);
+    expect(res.status).toBe(403);
+    expect(recordStockSupplierReturn).not.toHaveBeenCalled();
+  });
+
+  it('refuse un prix, un motif hors liste fermée ; laisse remonter 409 STOCK_RETURN_UNVALUED', async () => {
+    for (const body of [
+      { ...corps, unitCost: 10 },
+      { ...corps, reasonCode: 'PERDU' }
+    ]) {
+      expect(
+        (await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/supplier-returns`).send(body)).status
+      ).toBe(400);
+    }
+    recordStockSupplierReturn.mockRejectedValueOnce(
+      new AppError('Indiquez la ligne de la facture.', 409, 'STOCK_RETURN_UNVALUED')
+    );
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/supplier-returns`).send(corps);
+    expect(res.body.code).toBe('STOCK_RETURN_UNVALUED');
+  });
+});
+
+describe('POST /tenants/:tenantId/finance/stock/scraps', () => {
+  const corps = {
+    locationId: LOCATION_A,
+    itemId: ITEM_A,
+    quantity: 5,
+    scrapDate: '2026-10-02',
+    reasonCode: 'BREAKAGE'
+  };
+
+  it('garde STOCK_DISPOSE ; corps exact ; 201', async () => {
+    recordStockScrap.mockResolvedValue(writeResponse({ id: 'm', type: 'SCRAP' }));
+    const res = await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/scraps`).send(corps);
+    expect(res.status).toBe(201);
+    expect(guardsHit).toEqual(['STOCK_DISPOSE']);
+    expect(recordStockScrap.mock.calls[0][2]).toEqual({ ...corps, scrapDate: new Date('2026-10-02') });
+  });
+
+  it('refuse un chantier ou un prix dans le corps : un rebut n’impute aucun chantier', async () => {
+    for (const body of [
+      { ...corps, siteId: SITE_A },
+      { ...corps, unitCost: 1 }
+    ]) {
+      expect((await request(app).post(`/api/tenants/${TENANT_A}/finance/stock/scraps`).send(body)).status).toBe(400);
+    }
+    expect(recordStockScrap).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D. GET /stock/balances
 // ---------------------------------------------------------------------------
 
 describe('GET /tenants/:tenantId/finance/stock/balances', () => {
-  it('liste les soldes du tenant de l’URL', async () => {
-    listStockBalances.mockResolvedValue([balanceRecord()]);
-
+  it('garde STOCK_VIEW ; data reste un tableau, meta s’ajoute', async () => {
+    listStockBalancesForCaller.mockResolvedValue({
+      data: [{ itemId: ITEM_A, quantity: null }],
+      meta: { ...META, blindLocationIds: [LOCATION_A] }
+    });
     const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/balances`);
-
     expect(res.status).toBe(200);
-    expect(res.body.data[0].averageUnitCost).toBe(5_000);
-    expect(listStockBalances).toHaveBeenCalledWith(TENANT_A, {
+    expect(guardsHit).toEqual(['STOCK_VIEW']);
+    expect(res.body).toEqual({
+      success: true,
+      data: [{ itemId: ITEM_A, quantity: null }],
+      meta: { valuesVisible: false, blindLocationIds: [LOCATION_A] }
+    });
+    expect(listStockBalancesForCaller).toHaveBeenCalledWith(TENANT_A, CALLER, {
       locationId: undefined,
       itemId: undefined,
       onlyInStock: undefined
@@ -371,29 +405,19 @@ describe('GET /tenants/:tenantId/finance/stock/balances', () => {
   });
 
   it('transmet les filtres, et ne prend pas « false » pour « true »', async () => {
-    listStockBalances.mockResolvedValue([]);
-
+    listStockBalancesForCaller.mockResolvedValue({ data: [], meta: META });
     await request(app).get(
-      `/api/tenants/${TENANT_A}/finance/stock/balances?locationId=${LOCATION_A}&itemId=${ITEM_A}&onlyInStock=true`
+      `/api/tenants/${TENANT_A}/finance/stock/balances?locationId=${LOCATION_A}&itemId=${ITEM_A}&onlyInStock=false`
     );
-    expect(listStockBalances).toHaveBeenCalledWith(TENANT_A, {
+    expect(listStockBalancesForCaller.mock.calls[0][2]).toEqual({
       locationId: LOCATION_A,
       itemId: ITEM_A,
-      onlyInStock: true
-    });
-
-    await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/balances?onlyInStock=false`);
-    expect(listStockBalances).toHaveBeenLastCalledWith(TENANT_A, {
-      locationId: undefined,
-      itemId: undefined,
       onlyInStock: false
     });
   });
 
-  it('refuse un filtre inconnu plutôt que de l’ignorer en silence', async () => {
-    const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/balances?depot=Kaloum`);
-
+  it('refuse un filtre inconnu', async () => {
+    const res = await request(app).get(`/api/tenants/${TENANT_A}/finance/stock/balances?siteId=${SITE_A}`);
     expect(res.status).toBe(400);
-    expect(listStockBalances).not.toHaveBeenCalled();
   });
 });

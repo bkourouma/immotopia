@@ -1,130 +1,176 @@
 /**
- * Transferts entre lieux et inventaire physique — lot 5, troisième sous-lot
- * (`types-lot5-inventaire.ts`, contrat gelé, PRD E9, besoins S4 et S6).
- *
- * Gabarit suivi : `stock-mouvements.ts` (deuxième sous-lot), dont la mécanique
- * de solde — lecture du couple `StockBalance` / `quantityAfter`, coût moyen
- * pondéré déduit de `value / quantity`, valeur forcée à zéro quand la quantité
- * tombe à zéro — est reprise **à l'identique**. Un transfert et un ajustement
- * d'inventaire sont des mouvements comme les autres : ils n'ont pas le droit
- * d'avoir leur propre arithmétique.
+ * Inventaire physique — lot 5 (troisième sous-lot), refondu par le lot 040
+ * « Contrôle du stock de chantier » (spec 040 A1 à A4, A7, B4, B6, B7).
  *
  * ---------------------------------------------------------------------------
- * Transférer ne crée ni ne détruit de valeur
+ * Cycle (A2-R1)
  * ---------------------------------------------------------------------------
  *
- * La valeur part au coût moyen du lieu d'**origine** et recalcule celui du lieu
- * d'**arrivée** : les deux mouvements portent le **même** `totalValue`, si bien
- * que la somme des valeurs des deux lieux ne bouge pas d'un franc. C'est
- * l'invariant du transfert, et il tient y compris sur un coût moyen qui ne
- * tombe pas rond, parce que la sortie emporte exactement ce que l'entrée
- * reçoit — jamais deux arrondis calculés séparément.
+ *   DRAFT (comptage en cours, À L'AVEUGLE)
+ *     └─ close ─► COUNTED (quantités figées, écarts révélés, à justifier)
+ *                    └─ validate ─► VALIDATED (écarts appliqués au solde)
+ *   DRAFT ─ cancel ─► CANCELLED (reste aveugle à jamais)
+ *
+ * Pas de retour de COUNTED à DRAFT, pas d'abandon d'un COUNTED : ses écarts
+ * ont été vus, il se valide (au besoin après avoir écarté des lignes).
  *
  * ---------------------------------------------------------------------------
- * Un transfert n'impute rien et n'écrit aucune écriture
+ * Aveugle (A2-R2)
  * ---------------------------------------------------------------------------
  *
- * **C'est le piège de ce sous-lot.** Livrer du ciment sur un chantier
- * *ressemble* à une dépense, et la compter comme telle ferait monter le coût de
- * matériaux qui dorment encore sous la bâche. Le 311 ne bouge pas — la matière
- * est toujours à l'actif, simplement ailleurs — et `sumSiteActualCost` ne bouge
- * pas non plus. Seule la **sortie** impute (principe P-7, `stock-mouvements.ts`).
- *
- * Conséquence directe : `assertSiteOpenTx` n'est **pas** appelé ici, et son
- * absence est un choix, pas un oubli. Un transfert vers le lieu d'un chantier
- * clos est accepté : y déposer du matériel n'impute rien, et un chantier clos
- * peut légitimement servir de lieu de stockage le temps qu'on l'évacue. C'est
- * la sortie qui est refusée, pas la livraison. Un test le documente pour que
- * personne ne le « corrige ».
+ * En DRAFT (et en CANCELLED), AUCUNE route d'inventaire ne livre l'attendu,
+ * l'écart, le nombre de lignes en écart ni une valeur d'écart — à personne,
+ * détenteurs de STOCK_COUNT_VALIDATE compris. La saisie d'une ligne ne rend
+ * que la ligne saisie. L'aveugle des routes HORS inventaire (soldes, journal…)
+ * est celui de `stock-controles.ts` (§8.2), pas celui-ci.
  *
  * ---------------------------------------------------------------------------
- * Deux mouvements, une transaction
+ * L'attendu est FIGÉ à la saisie, l'écart s'APPLIQUE à la validation (A3)
  * ---------------------------------------------------------------------------
  *
- * Une sortie du lieu d'origine, une entrée au lieu d'arrivée, liées par un même
- * `transferGroupId`, écrites dans **une seule** transaction : sans cela, une
- * panne entre les deux ferait disparaître de la matière.
- *
- * ---------------------------------------------------------------------------
- * L'inventaire : la quantité attendue est FIGÉE à la saisie
- * ---------------------------------------------------------------------------
- *
- * `expectedQuantity` **n'est pas un paramètre d'entrée** (principe P-4) : le
- * service la lit dans le stock au moment où la ligne est saisie, et ne la relit
- * jamais à la validation. La laisser saisir permettrait de fabriquer un écart
- * nul ; la relire comparerait le comptage d'hier au stock d'aujourd'hui.
- *
- * Conséquence assumée (contrat) : si du stock bouge entre le comptage et la
- * validation, l'ajustement ramène le solde à ce qui a été **compté**, en
- * écrasant ce mouvement. Le comptage physique fait foi.
+ * `expectedQuantity` n'est jamais un paramètre d'entrée (principe P-4) : le
+ * service la lit dans le solde à l'instant de la saisie (et de chaque
+ * ressaisie) et la fige avec `expectedCapturedAt`. À la validation,
+ * l'ajustement applique l'ÉCART (compté − attendu figé) au solde COURANT : un
+ * mouvement enregistré entre le comptage et la validation n'est plus écrasé.
+ * Si le solde deviendrait négatif, la validation est refusée en entier
+ * (`STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS`) : on écarte la ligne et on recompte.
  *
  * ---------------------------------------------------------------------------
  * Où passe l'argent d'un écart
  * ---------------------------------------------------------------------------
  *
- * ```
- * on a trouvé MOINS    débit  603 (variations de stock)   crédit 311
- * on a trouvé PLUS     débit  311                          crédit 603
- * ```
+ *   on a trouvé MOINS    débit  603 (variations de stock)   crédit 311
+ *   on a trouvé PLUS     débit  311                          crédit 603
  *
- * Le 603 va dans les deux sens, et c'est pourquoi c'est lui plutôt qu'un compte
- * de charge : un compte de charge seul ne saurait pas dire le second cas. Un
- * écart n'est **jamais** imputé à un chantier — personne n'a décidé de
- * consommer ce qui a disparu, et aucune `CostAllocation` ne naît ici.
+ * Un écart n'est JAMAIS imputé à un chantier : aucune `CostAllocation` ne naît
+ * ici. Aucune écriture pour un ajustement de valeur nulle (A6-R4) — c'est le
+ * cas d'un surplus d'inventaire d'ouverture, qui entre à valeur nulle (A7-R2) :
+ * la matière présente avant la bascule a déjà été imputée par ses factures.
  *
  * ---------------------------------------------------------------------------
- * Lecture avant écriture, toujours
+ * Celui qui compte ne valide pas (A1)
  * ---------------------------------------------------------------------------
  *
- * En PostgreSQL une commande en échec **condamne toute la transaction** :
- * chaque commande suivante est refusée jusqu'au rollback. On valide donc
- * l'intégralité d'un inventaire — toutes ses lignes en écart ont un motif —
- * **avant** d'écrire le premier ajustement, et les ajustements se traitent
- * **en séquence**, jamais en `Promise.all` : deux lignes pourraient viser le
- * même solde, et un solde lu en parallèle serait lu deux fois avant d'être
- * écrit une fois.
+ * Les compteurs sont accumulés dans `counterUserIds` à chaque saisie, jamais
+ * retirés. La dérogation (aucun autre membre actif ne peut valider) se lit EN
+ * BASE (`hasOtherActiveCountValidator`), jamais par `getUserPermissions`, dont
+ * le cache de cinq minutes rendrait la règle contournable.
+ *
+ * ---------------------------------------------------------------------------
+ * Appelants hors requête HTTP (lot 041, plan §11)
+ * ---------------------------------------------------------------------------
+ *
+ * `createStockCountTx`, `setStockCountLineTx` et `closeStockCountTx` ont des
+ * signatures FIGÉES : le lot 041 (inventaire par WhatsApp) les appelle hors de
+ * toute requête. Aucune fonction d'écriture de ce fichier ne lit l'utilisateur
+ * ni l'agence dans un contexte de requête : l'un et l'autre arrivent en
+ * paramètre, et chaque événement d'audit porte `tenantId` et `actorUserId`
+ * explicitement. Les événements non critiques sont différés après la
+ * transaction quand l'appelant fournit `options.deferredAudit` (le contrôleur
+ * HTTP les écrit par `logAuditEvent`, B6-R5) ; sans ce collecteur, ils
+ * s'écrivent dans la transaction, ce qui ne perd rien.
+ *
+ * ---------------------------------------------------------------------------
+ * Ordre des verrous (A10-R2) et lecture avant écriture
+ * ---------------------------------------------------------------------------
+ *
+ * Verrous de solde triés (`lockStockBalancesTx`), puis verrou de numérotation
+ * (`createStockSlipTx`, en dernier), puis seulement les écritures. En
+ * PostgreSQL une commande en échec condamne toute la transaction : tout ce qui
+ * peut refuser une opération est vérifié AVANT la première écriture, et les
+ * ajustements s'écrivent en séquence, jamais en `Promise.all`.
  */
+
+import type { StockCountKind, StockCountStatus, StockReasonCode } from '@prisma/client';
 
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
-import { badRequest, conflict, notFound } from '../errors';
+import { assertBelongsToTenant } from '../../utils/tenant-ownership';
+import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
+import { recordAuditEvent } from '../../services/audit-service';
+import { getUserPermissions } from '../../services/permission-service';
+import { AuditActionKey } from '../../types/audit-types';
+import type { AuditLogEntry } from '../../types/audit-types';
 import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDocumentEntryTx } from './accounting';
 import { roundMoneyXof, roundQuantity } from './money';
-import { toAmountOrZero } from './types';
+import { toAmount, toAmountOrZero } from './types';
+import {
+  assertMovementDateAllowed,
+  assertReasonForContext,
+  isOpeningCountSuggested,
+  loadItemsToRecount,
+  lockStockBalancesTx,
+  maskValue,
+  stockError
+} from './stock-controles';
+import { createStockSlipTx, formatSlipNumber } from './stock-bons';
+import { alertKeys, raiseStockAlertTx, readStockAlertSettings } from './stock-alertes';
 import type {
-  CreateStockCountTx,
-  GetStockCount,
-  ListStockCounts,
-  RemoveStockCountLineTx,
-  SetStockCountLineTx,
-  StockCountLineRecord,
-  StockCountRecord,
-  ValidateStockCountTx
-} from './types-lot5-inventaire';
+  CountLineView,
+  CountView,
+  PrismaLike,
+  SlipSummary,
+  StockCallerContext,
+  StockControlsSettingsValues,
+  StockSlipSnapshot
+} from './types-040-controle';
 
 /** Devise unique du module (décision D9 du plan, actée au lot 1). */
 const DEFAULT_CURRENCY = 'XOF';
 
-/** `Decimal(16,4)` : la précision des quantités, qui n'est pas celle des montants. */
+/** La permission qui valide un inventaire (et qui voit le stock pendant un comptage). */
+const COUNT_VALIDATE_PERMISSION = 'STOCK_COUNT_VALIDATE';
+
+// ---------------------------------------------------------------------------
+// Options communes des écritures
+// ---------------------------------------------------------------------------
 
 /**
- * Arrondit une QUANTITÉ, à quatre décimales.
- *
- * Jumelle de la fonction du même nom dans `stock-mouvements.ts`, qui ne
- * l'exporte pas. La recopier était le moindre mal : l'alternative était
- * d'écrire dans un fichier livré et vert, hors du territoire de cet agent.
- * Signalé au superviseur — sa place est dans `money.ts`, à côté de
- * `roundMoneyXof` et `roundPercent`.
- *
- * Ce n'est **pas** `roundMoneyXof`, et ce ne doit jamais le devenir : le franc
- * CFA n'a pas de subdivision, une tonne de ciment en a quatre.
+ * Options d'une écriture d'inventaire. `deferredAudit` collecte les
+ * événements NON critiques pour qu'ils soient écrits après la transaction
+ * (`logAuditEvent`, B6-R5). Sans collecteur, ils s'écrivent dans la
+ * transaction (appelant hors requête, lot 041).
  */
+export interface StockCountWriteOptions {
+  deferredAudit?: AuditLogEntry[];
+}
+
+/** Un événement non critique : différé si l'appelant le collecte, écrit dans la transaction sinon. */
+async function emitAudit(
+  tx: PrismaTransactionClient,
+  entry: AuditLogEntry,
+  options?: StockCountWriteOptions
+): Promise<void> {
+  if (options?.deferredAudit) {
+    options.deferredAudit.push(entry);
+    return;
+  }
+  await recordAuditEvent(tx, entry);
+}
+
+/** Un événement critique : toujours dans la transaction (B6-R2). */
+async function emitCriticalAudit(tx: PrismaTransactionClient, entry: AuditLogEntry): Promise<void> {
+  await recordAuditEvent(tx, entry);
+}
+
+function countAuditEntry(
+  tenantId: string,
+  countId: string,
+  actorUserId: string,
+  actionKey: AuditActionKey,
+  payload: Record<string, unknown>
+): AuditLogEntry {
+  return { tenantId, actorUserId, actionKey, entityType: 'StockCount', entityId: countId, payload };
+}
+
+// ---------------------------------------------------------------------------
+// Petites aides
+// ---------------------------------------------------------------------------
 
 /**
- * Le coût moyen pondéré d'un emplacement. **Calculé, jamais stocké.**
- *
- * Vaut zéro quand la quantité est nulle — et non `null` : la quantité dit déjà
- * qu'il n'y a rien. Même règle et même code que `stock-mouvements.ts`.
+ * Le coût moyen pondéré d'un emplacement. Calculé, jamais stocké. Vaut zéro
+ * quand la quantité est nulle ou négative (même règle que `stock-mouvements.ts`).
  */
 function averageUnitCostOf(quantity: number, value: number): number {
   if (quantity <= 0) {
@@ -133,8 +179,38 @@ function averageUnitCostOf(quantity: number, value: number): number {
   return value / quantity;
 }
 
+function toUserLabel(user?: { fullName?: string | null; email?: string | null } | null): string {
+  return user?.fullName || user?.email || 'Utilisateur inconnu';
+}
+
+function toNullableUserLabel(user?: { fullName?: string | null; email?: string | null } | null): string | null {
+  return user ? toUserLabel(user) : null;
+}
+
+function quantityOrNull(value: Parameters<typeof toAmount>[0]): number | null {
+  const amount = toAmount(value);
+  return amount === null ? null : roundQuantity(amount);
+}
+
+function wrongStatus(message: string): AppError {
+  return stockError(409, ErrorCode.STOCK_COUNT_WRONG_STATUS, message);
+}
+
+const STATUS_MESSAGES: Record<StockCountStatus, string> = {
+  DRAFT: "Cet inventaire est en cours de comptage : clôturez d'abord le comptage.",
+  COUNTED: 'Le comptage de cet inventaire est clos : ses quantités sont figées.',
+  VALIDATED: 'Cet inventaire est déjà validé : un comptage erroné se corrige par un second comptage.',
+  CANCELLED: 'Cet inventaire a été abandonné.'
+};
+
+function assertCountStatus(count: { status: StockCountStatus }, expected: StockCountStatus): void {
+  if (count.status !== expected) {
+    throw wrongStatus(STATUS_MESSAGES[count.status]);
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Le solde d'un emplacement — lu avant toute écriture
+// Le solde d'un emplacement
 // ---------------------------------------------------------------------------
 
 interface BalanceState {
@@ -144,11 +220,7 @@ interface BalanceState {
   value: number;
 }
 
-/**
- * Lit le solde (article, lieu). Jamais `findUnique` sur la clé composée : le
- * `tenantId` doit entrer dans le filtre, sans quoi une agence lirait le stock
- * d'une autre si jamais un identifiant fuitait.
- */
+/** Lit le solde (article, lieu), `tenantId` toujours dans le filtre. */
 async function readBalanceTx(
   tx: PrismaTransactionClient,
   tenantId: string,
@@ -159,11 +231,9 @@ async function readBalanceTx(
     where: { tenantId, itemId, locationId },
     select: { id: true, quantity: true, value: true }
   });
-
   if (!row) {
     return { id: null, quantity: 0, value: 0 };
   }
-
   return {
     id: row.id,
     quantity: roundQuantity(toAmountOrZero(row.quantity)),
@@ -171,7 +241,31 @@ async function readBalanceTx(
   };
 }
 
-/** Écrit le nouvel état du solde : mise à jour si la ligne existe, création sinon. */
+/** Les soldes d'un lieu pour un ensemble d'articles, en une requête. */
+async function readBalancesTx(
+  db: PrismaLike,
+  tenantId: string,
+  locationId: string,
+  itemIds: string[]
+): Promise<Map<string, BalanceState>> {
+  const result = new Map<string, BalanceState>();
+  if (itemIds.length === 0) {
+    return result;
+  }
+  const rows = await db.stockBalance.findMany({
+    where: { tenantId, locationId, itemId: { in: [...new Set(itemIds)] } },
+    select: { id: true, itemId: true, quantity: true, value: true }
+  });
+  for (const row of rows) {
+    result.set(row.itemId, {
+      id: row.id,
+      quantity: roundQuantity(toAmountOrZero(row.quantity)),
+      value: roundMoneyXof(toAmountOrZero(row.value))
+    });
+  }
+  return result;
+}
+
 async function writeBalanceTx(
   tx: PrismaTransactionClient,
   tenantId: string,
@@ -182,530 +276,1684 @@ async function writeBalanceTx(
   value: number
 ): Promise<void> {
   if (previous.id) {
-    await tx.stockBalance.update({
-      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
-      where: { id: previous.id, tenantId },
-      data: { quantity, value }
-    });
+    await tx.stockBalance.update({ where: { id: previous.id, tenantId }, data: { quantity, value } });
     return;
   }
-
   await tx.stockBalance.create({
     data: { tenantId, itemId, locationId, quantity, value, currency: DEFAULT_CURRENCY }
   });
 }
 
 // ---------------------------------------------------------------------------
-// Gardes communes — lieu et article
+// Lecture d'un inventaire (forme brute)
 // ---------------------------------------------------------------------------
 
-/**
- * Le lieu, lu **directement par le client Prisma**, comme dans
- * `stock-mouvements.ts` : importer `stock-referentiel.ts` ferait dépendre deux
- * territoires l'un de l'autre.
- *
- * Refus délibéré sur un lieu désactivé : désactiver un lieu est un geste de
- * paramétrage voulu, pas un état à contourner en silence.
- */
-async function requireActiveLocationTx(
-  tx: PrismaTransactionClient,
-  tenantId: string,
-  locationId: string
-): Promise<{ id: string; label: string }> {
-  const location = await tx.stockLocation.findFirst({
-    where: { id: locationId, tenantId },
-    select: { id: true, label: true, isActive: true }
-  });
-  if (!location) {
-    throw notFound('Lieu de stockage introuvable');
-  }
-  if (!location.isActive) {
-    throw conflict('Ce lieu de stockage est désactivé');
-  }
-  return { id: location.id, label: location.label };
-}
+const USER_LABEL = { select: { fullName: true, email: true } } as const;
 
-/**
- * L'article. **Un article désactivé reste transférable et reste comptable.**
- *
- * L'asymétrie est celle déjà arbitrée au sous-lot des mouvements : désactiver
- * un article veut dire « on n'en achète plus », jamais « abandonnez ce qui est
- * en magasin ». Refuser de déplacer ou de compter un stock réel
- * l'emprisonnerait, et l'agence devrait tricher pour s'en défaire.
- */
-async function requireItemTx(
-  tx: PrismaTransactionClient,
-  tenantId: string,
-  itemId: string
-): Promise<{ id: string; reference: string; label: string; unit: string }> {
-  const item = await tx.stockItem.findFirst({
-    where: { id: itemId, tenantId },
-    select: { id: true, reference: true, label: true, unit: true }
-  });
-  if (!item) {
-    throw notFound('Article de stock introuvable');
-  }
-  return item;
-}
-
-// ---------------------------------------------------------------------------
-// Conversions Prisma -> contrat
-// ---------------------------------------------------------------------------
-
-function toCreatedByLabel(user?: { fullName?: string | null; email?: string | null } | null): string {
-  return user?.fullName || user?.email || 'Utilisateur inconnu';
-}
-
-// ---------------------------------------------------------------------------
-// A. Le transfert — déplacé dans `stock-transferts.ts` (lot 040, fondations),
-//    sans changement de comportement.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// B. L'inventaire — lecture d'un comptage
-// ---------------------------------------------------------------------------
-
-/** L'inclusion unique de toutes les lectures d'inventaire. Une seule forme, un seul convertisseur. */
-const COUNT_INCLUDE = {
-  location: { select: { label: true } },
-  createdBy: { select: { fullName: true, email: true } },
-  lines: {
-    include: { item: { select: { reference: true, label: true, unit: true } } }
-  }
+const LINE_SELECT = {
+  id: true,
+  countId: true,
+  itemId: true,
+  expectedQuantity: true,
+  countedQuantity: true,
+  reason: true,
+  expectedCapturedAt: true,
+  countedByUserId: true,
+  countedAtServer: true,
+  countedBlind: true,
+  reasonCode: true,
+  justifiedAt: true,
+  setAsideAt: true,
+  setAsideReason: true,
+  unitCostAtValidation: true,
+  movementsSinceCapture: true,
+  item: { select: { reference: true, label: true, unit: true } },
+  countedBy: USER_LABEL,
+  justifiedBy: USER_LABEL,
+  setAsideBy: USER_LABEL,
+  _count: { select: { attachments: { where: { removedAt: null } } } }
 } as const;
 
-/** Clé d'index d'un solde : le coût moyen est par (article, LIEU). */
-function balanceKey(locationId: string, itemId: string): string {
-  return `${locationId}|${itemId}`;
+const COUNT_SELECT = {
+  id: true,
+  tenantId: true,
+  locationId: true,
+  countedAt: true,
+  status: true,
+  kind: true,
+  createdByUserId: true,
+  createdAt: true,
+  closedAt: true,
+  validatedAt: true,
+  cancelledAt: true,
+  cancelReason: true,
+  selfValidated: true,
+  selfValidationReason: true,
+  counterUserIds: true,
+  countedValue: true,
+  varianceValueGross: true,
+  varianceValueNet: true,
+  setAsideVarianceValue: true,
+  location: { select: { label: true, kind: true, siteId: true, site: { select: { name: true } } } },
+  createdBy: USER_LABEL,
+  closedBy: USER_LABEL,
+  validatedBy: USER_LABEL,
+  slip: { select: { id: true, kind: true, year: true, number: true, documentDate: true, createdAt: true } },
+  lines: { select: LINE_SELECT }
+} as const;
+
+/** Une ligne telle que lue (forme minimale sur laquelle travaillent les règles). */
+interface LineRow {
+  id: string;
+  itemId: string;
+  expectedQuantity: unknown;
+  countedQuantity: unknown;
+  reason: string | null;
+  expectedCapturedAt: Date | null;
+  countedByUserId: string | null;
+  countedAtServer: Date | null;
+  countedBlind: boolean | null;
+  reasonCode: StockReasonCode | null;
+  justifiedAt: Date | null;
+  setAsideAt: Date | null;
+  setAsideReason: string | null;
+  unitCostAtValidation: unknown;
+  movementsSinceCapture: number | null;
+  item?: { reference: string; label: string; unit: string } | null;
+  countedBy?: { fullName: string | null; email: string } | null;
+  justifiedBy?: { fullName: string | null; email: string } | null;
+  setAsideBy?: { fullName: string | null; email: string } | null;
+  _count?: { attachments?: number } | null;
 }
 
-/**
- * Convertit un inventaire lu en base.
- *
- * `varianceValue` est valorisée au **coût moyen courant** de chaque article à
- * l'endroit compté (contrat) : c'est une estimation tant que l'inventaire est
- * en brouillon, et elle est négative quand il manque.
- */
-function toCountRecord(row: any, averageCosts: Map<string, number>): StockCountRecord {
-  const lignes = ((row.lines ?? []) as any[]).map((line): StockCountLineRecord => {
-    const expectedQuantity = roundQuantity(toAmountOrZero(line.expectedQuantity));
-    const countedQuantity = roundQuantity(toAmountOrZero(line.countedQuantity));
-    return {
-      id: line.id,
-      itemId: line.itemId,
-      itemReference: line.item?.reference ?? 'Article inconnu',
-      itemLabel: line.item?.label ?? 'Article inconnu',
-      itemUnit: line.item?.unit ?? '',
-      expectedQuantity,
-      countedQuantity,
-      // Négatif quand il manque. Calculé, jamais stocké : une colonne de plus
-      // serait un troisième chiffre à tenir d'accord avec les deux autres.
-      variance: roundQuantity(countedQuantity - expectedQuantity),
-      reason: line.reason ?? null
-    };
-  });
-
-  lignes.sort((a, b) => a.itemReference.localeCompare(b.itemReference));
-
-  const enEcart = lignes.filter(ligne => ligne.variance !== 0);
-  const varianceValue = roundMoneyXof(
-    enEcart.reduce(
-      (total, ligne) => total + ligne.variance * (averageCosts.get(balanceKey(row.locationId, ligne.itemId)) ?? 0),
-      0
-    )
-  );
-
-  return {
-    id: row.id,
-    tenantId: row.tenantId,
-    locationId: row.locationId,
-    locationLabel: row.location?.label ?? 'Lieu inconnu',
-    countedAt: row.countedAt,
-    status: row.status,
-    lines: lignes,
-    varianceCount: enEcart.length,
-    varianceValue,
-    currency: DEFAULT_CURRENCY,
-    createdByLabel: toCreatedByLabel(row.createdBy),
-    validatedAt: row.validatedAt ?? null
-  };
+interface CountRow {
+  id: string;
+  tenantId: string;
+  locationId: string;
+  countedAt: Date;
+  status: StockCountStatus;
+  kind: StockCountKind;
+  createdByUserId: string;
+  createdAt: Date;
+  closedAt: Date | null;
+  validatedAt: Date | null;
+  cancelledAt: Date | null;
+  cancelReason: string | null;
+  selfValidated: boolean;
+  selfValidationReason: string | null;
+  counterUserIds: string[];
+  countedValue: unknown;
+  varianceValueGross: unknown;
+  varianceValueNet: unknown;
+  setAsideVarianceValue: unknown;
+  location?: { label: string; kind: string; siteId: string | null; site?: { name: string } | null } | null;
+  createdBy?: { fullName: string | null; email: string } | null;
+  closedBy?: { fullName: string | null; email: string } | null;
+  validatedBy?: { fullName: string | null; email: string } | null;
+  slip?: {
+    id: string;
+    kind: SlipSummary['kind'];
+    year: number;
+    number: number;
+    documentDate: Date;
+    createdAt: Date;
+  } | null;
+  lines: LineRow[];
 }
 
-/**
- * Les coûts moyens courants des articles comptés, en **une seule** requête
- * pour tous les inventaires demandés — jamais une lecture par ligne, la
- * discipline du banc de charge du lot 0.
- */
-async function readAverageCostsTx(
-  client: PrismaTransactionClient,
-  tenantId: string,
-  rows: any[]
-): Promise<Map<string, number>> {
-  const locationIds = [...new Set(rows.map(row => row.locationId))];
-  const itemIds = [...new Set(rows.flatMap(row => ((row.lines ?? []) as any[]).map(line => line.itemId)))];
+type Decimalish = Parameters<typeof toAmount>[0];
 
-  if (locationIds.length === 0 || itemIds.length === 0) {
-    return new Map();
+async function loadCountRowTx(db: PrismaLike, tenantId: string, countId: string): Promise<CountRow> {
+  const row = await db.stockCount.findFirst({ where: { id: countId, tenantId }, select: COUNT_SELECT });
+  if (!row) {
+    throw new NotFoundError('Inventaire introuvable.');
   }
-
-  const balances = await client.stockBalance.findMany({
-    where: { tenantId, locationId: { in: locationIds }, itemId: { in: itemIds } },
-    select: { itemId: true, locationId: true, quantity: true, value: true }
-  });
-
-  const costs = new Map<string, number>();
-  for (const balance of balances as any[]) {
-    const quantity = roundQuantity(toAmountOrZero(balance.quantity));
-    const value = roundMoneyXof(toAmountOrZero(balance.value));
-    costs.set(balanceKey(balance.locationId, balance.itemId), averageUnitCostOf(quantity, value));
-  }
-  return costs;
+  return row as unknown as CountRow;
 }
 
-/** Relit un inventaire dans sa transaction et le rend au format du contrat. */
-async function reloadCountTx(
+/** L'en-tête seul d'un inventaire, pour les gardes d'état des écritures. */
+async function loadCountHeadTx(
   tx: PrismaTransactionClient,
   tenantId: string,
   countId: string
-): Promise<StockCountRecord> {
+): Promise<{
+  id: string;
+  status: StockCountStatus;
+  kind: StockCountKind;
+  locationId: string;
+  counterUserIds: string[];
+  location: { siteId: string | null } | null;
+}> {
   const row = await tx.stockCount.findFirst({
     where: { id: countId, tenantId },
-    include: COUNT_INCLUDE
+    select: {
+      id: true,
+      status: true,
+      kind: true,
+      locationId: true,
+      counterUserIds: true,
+      location: { select: { siteId: true } }
+    }
   });
   if (!row) {
-    throw notFound('Inventaire introuvable');
+    throw new NotFoundError('Inventaire introuvable.');
   }
-  const costs = await readAverageCostsTx(tx, tenantId, [row]);
-  return toCountRecord(row, costs);
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// Règles sur une ligne
+// ---------------------------------------------------------------------------
+
+interface LineFacts {
+  expected: number;
+  counted: number | null;
+  notCounted: boolean;
+  /** compté − attendu ; `null` pour une ligne non comptée. */
+  variance: number | null;
+  setAside: boolean;
+  /** Ligne d'avant le lot : comptée, sans auteur. */
+  legacy: boolean;
+}
+
+function lineFacts(line: LineRow): LineFacts {
+  const expected = roundQuantity(toAmountOrZero(line.expectedQuantity as Decimalish));
+  const counted = quantityOrNull(line.countedQuantity as Decimalish);
+  return {
+    expected,
+    counted,
+    notCounted: counted === null,
+    variance: counted === null ? null : roundQuantity(counted - expected),
+    setAside: line.setAsideAt !== null && line.setAsideAt !== undefined,
+    legacy: counted !== null && !line.countedByUserId
+  };
+}
+
+/** Surplus d'un inventaire d'ouverture : entre à valeur nulle, sans justification (A7-R2). */
+function isOpeningSurplus(kind: StockCountKind, facts: LineFacts): boolean {
+  return kind === 'OPENING' && facts.variance !== null && facts.variance > 0;
 }
 
 /**
- * L'inventaire brut, avec la garde d'état commune aux trois écritures de
- * lignes et à la validation.
- *
- * **Un inventaire validé ne se rouvre pas** (contrat) : ses ajustements sont
- * des mouvements comme les autres, et les défaire demanderait de rejouer tout
- * ce qui a suivi. Un comptage erroné se corrige par un second comptage.
+ * Règle UNIQUE de justification (A4-R2) : un `reasonCode` de la liste fermée,
+ * ou une ligne d'avant le lot qui porte un motif libre non vide. Le surplus
+ * d'ouverture est justifié par le système (A7-R2).
  */
-async function requireDraftCountTx(tx: PrismaTransactionClient, tenantId: string, countId: string): Promise<any> {
-  const row = await tx.stockCount.findFirst({
-    where: { id: countId, tenantId },
-    include: COUNT_INCLUDE
+function hasJustification(kind: StockCountKind, line: LineRow, facts: LineFacts): boolean {
+  if (line.reasonCode) {
+    return true;
+  }
+  if (facts.legacy && typeof line.reason === 'string' && line.reason.trim().length > 0) {
+    return true;
+  }
+  return isOpeningSurplus(kind, facts);
+}
+
+/** Une ligne qui bloque la validation faute de justification. */
+function needsJustification(kind: StockCountKind, line: LineRow, facts: LineFacts): boolean {
+  if (facts.notCounted || facts.setAside || facts.variance === null || facts.variance === 0) {
+    return false;
+  }
+  return !hasJustification(kind, line, facts);
+}
+
+/**
+ * Les compteurs effectifs (A1-R1) : `counterUserIds`, plus le créateur si une
+ * ligne d'avant le lot (comptée, sans auteur) existe — seule information
+ * disponible, rien n'est écrit en base.
+ */
+function effectiveCounterIds(count: Pick<CountRow, 'counterUserIds' | 'createdByUserId' | 'lines'>): string[] {
+  const ids = new Set(count.counterUserIds ?? []);
+  if (count.lines.some(line => lineFacts(line).legacy)) {
+    ids.add(count.createdByUserId);
+  }
+  return [...ids];
+}
+
+function itemLabelOf(line: { item?: { label: string } | null }): string {
+  return line.item?.label ?? 'Article inconnu';
+}
+
+// ---------------------------------------------------------------------------
+// A1-R3 : la dérogation se lit EN BASE
+// ---------------------------------------------------------------------------
+
+/**
+ * Vrai s'il existe, dans l'agence, un membre ACTIF autre que `userId`
+ * (`Membership.status = ACTIVE`, `User.isActive`, hors personnel de la
+ * plateforme) dont un rôle de cette agence porte STOCK_COUNT_VALIDATE.
+ * Lecture en base, jamais `getUserPermissions` (cache de 5 minutes, §5).
+ */
+export async function hasOtherActiveCountValidator(db: PrismaLike, tenantId: string, userId: string): Promise<boolean> {
+  const other = await db.user.findFirst({
+    where: {
+      id: { not: userId },
+      isActive: true,
+      globalRole: { not: 'SUPER_ADMIN' },
+      memberships: { some: { tenantId, status: 'ACTIVE' } },
+      userRoles: {
+        some: {
+          tenantId,
+          role: { permissions: { some: { permission: { key: COUNT_VALIDATE_PERMISSION } } } }
+        }
+      }
+    },
+    select: { id: true }
   });
-  if (!row) {
-    throw notFound('Inventaire introuvable');
-  }
-  if ((row as any).status !== 'DRAFT') {
-    throw conflict('Cet inventaire est déjà validé : un comptage erroné se corrige par un second comptage');
-  }
-  return row;
+  return other !== null;
 }
 
 // ---------------------------------------------------------------------------
 // C. Ouvrir un inventaire
 // ---------------------------------------------------------------------------
 
-/** Voir `CreateStockCountTx` dans `./types-lot5-inventaire.ts`. */
-export const createStockCountTx: CreateStockCountTx = async (tx, tenantId, params) => {
-  // Le lieu désactivé est refusé ici comme partout ailleurs dans le module. Le
-  // contrat ne tranchait que pour le transfert ; le choix est signalé.
-  await requireActiveLocationTx(tx, tenantId, params.locationId);
+export interface CreateStockCountParams {
+  locationId: string;
+  countedAt: Date;
+  createdByUserId: string;
+  kind?: StockCountKind;
+}
 
-  // LECTURE AVANT ÉCRITURE : deux comptages simultanés du même dépôt
-  // produiraient deux vérités, et le second validé écraserait le premier sans
-  // que personne ne le voie.
-  const dejaEnCours = await tx.stockCount.findFirst({
-    where: { tenantId, locationId: params.locationId, status: 'DRAFT' },
+export interface CreatedStockCount {
+  id: string;
+  locationId: string;
+  kind: StockCountKind;
+  status: 'DRAFT';
+}
+
+interface LocationForCount {
+  id: string;
+  label: string;
+  kind: string;
+  isActive: boolean;
+  siteId: string | null;
+  site: { stockEnabledAt: Date | null } | null;
+}
+
+/** A7-R1 : OPENING et CLOSING seulement sur le lieu d'un chantier, OPENING dans sa fenêtre. */
+async function assertKindAllowedTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  location: LocationForCount,
+  kind: StockCountKind
+): Promise<void> {
+  if (kind === 'REGULAR') {
+    return;
+  }
+  if (location.kind !== 'SITE' || !location.siteId) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_OPENING_COUNT_NOT_ALLOWED,
+      kind === 'OPENING'
+        ? "Un inventaire d'ouverture se fait sur le lieu de stockage d'un chantier, jamais sur un magasin."
+        : "Un inventaire de clôture se fait sur le lieu de stockage d'un chantier."
+    );
+  }
+  if (kind === 'CLOSING') {
+    return;
+  }
+  const existing = await tx.stockCount.findFirst({
+    where: { tenantId, locationId: location.id, kind: 'OPENING', status: { not: 'CANCELLED' } },
     select: { id: true }
   });
-  if (dejaEnCours) {
-    throw conflict('Un inventaire est déjà en cours sur ce lieu de stockage');
+  if (existing) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_OPENING_COUNT_EXISTS,
+      "Ce lieu a déjà un inventaire d'ouverture : faites un inventaire courant.",
+      { countId: existing.id }
+    );
+  }
+  if (!isOpeningCountSuggested({ stockEnabledAt: location.site?.stockEnabledAt ?? null }, false)) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_OPENING_COUNT_NOT_ALLOWED,
+      "L'inventaire d'ouverture se fait dans les 30 jours qui suivent le passage du chantier au stock."
+    );
+  }
+}
+
+/**
+ * Ouvre un inventaire en DRAFT, sans ligne. Contrat FIGÉ (plan §11) : 409 si
+ * un inventaire est déjà ouvert (DRAFT ou COUNTED) sur le lieu.
+ */
+export async function createStockCountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  params: CreateStockCountParams,
+  options?: StockCountWriteOptions
+): Promise<CreatedStockCount> {
+  const kind: StockCountKind = params.kind ?? 'REGULAR';
+  await assertBelongsToTenant(tx, 'stockLocation', params.locationId, tenantId, {
+    message: 'Lieu de stockage introuvable.'
+  });
+  const location = (await tx.stockLocation.findFirst({
+    where: { id: params.locationId, tenantId },
+    select: {
+      id: true,
+      label: true,
+      kind: true,
+      isActive: true,
+      siteId: true,
+      site: { select: { stockEnabledAt: true } }
+    }
+  })) as LocationForCount | null;
+  if (!location) {
+    throw new NotFoundError('Lieu de stockage introuvable.');
+  }
+  if (!location.isActive) {
+    throw stockError(409, ErrorCode.STOCK_LOCATION_INACTIVE, 'Ce lieu de stockage est désactivé.');
+  }
+
+  const settings = await readStockAlertSettings(tx, tenantId);
+  assertMovementDateAllowed(params.countedAt, settings.backdatingLimitDays);
+  await assertKindAllowedTx(tx, tenantId, location, kind);
+
+  const open = await tx.stockCount.findFirst({
+    where: { tenantId, locationId: location.id, status: { in: ['DRAFT', 'COUNTED'] } },
+    select: { id: true }
+  });
+  if (open) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_ALREADY_OPEN,
+      'Un inventaire est déjà en cours sur ce lieu de stockage.',
+      { countId: open.id }
+    );
   }
 
   const created = await tx.stockCount.create({
     data: {
       tenantId,
-      locationId: params.locationId,
+      locationId: location.id,
       countedAt: params.countedAt,
       status: 'DRAFT',
+      kind,
       createdByUserId: params.createdByUserId
     },
     select: { id: true }
   });
 
-  return reloadCountTx(tx, tenantId, (created as any).id);
-};
+  await emitAudit(
+    tx,
+    countAuditEntry(tenantId, created.id, params.createdByUserId, AuditActionKey.STOCK_COUNT_OPENED, {
+      locationId: location.id,
+      kind,
+      countedAt: params.countedAt
+    }),
+    options
+  );
 
-// ---------------------------------------------------------------------------
-// D. Saisir une ligne — c'est ICI que la quantité attendue est figée
-// ---------------------------------------------------------------------------
-
-/** Voir `SetStockCountLineTx` dans `./types-lot5-inventaire.ts`. */
-export const setStockCountLineTx: SetStockCountLineTx = async (tx, tenantId, countId, params) => {
-  const countedQuantity = roundQuantity(params.countedQuantity);
-  // Le zéro est ACCEPTÉ — « on a compté, il n'y a rien » est un résultat de
-  // comptage, et le plus fréquent des écarts. Seul le négatif est refusé : on
-  // ne peut pas compter moins que rien.
-  if (!(countedQuantity >= 0)) {
-    throw badRequest('La quantité comptée ne peut pas être négative');
-  }
-
-  const count = await requireDraftCountTx(tx, tenantId, countId);
-  await requireItemTx(tx, tenantId, params.itemId);
-
-  // LA QUANTITÉ ATTENDUE EST FIGÉE ICI, ET NULLE PART AILLEURS (principe P-4).
-  // Elle n'est pas un paramètre : la laisser saisir permettrait de fabriquer un
-  // écart nul. Elle n'est pas relue à la validation : ce serait comparer le
-  // comptage d'hier au stock d'aujourd'hui.
-  const solde = await readBalanceTx(tx, tenantId, params.itemId, count.locationId);
-  const expectedQuantity = solde.quantity;
-
-  const motif = typeof params.reason === 'string' ? params.reason.trim() : '';
-  const reason = motif.length > 0 ? motif : null;
-
-  // Rappeler le même article REMPLACE son comptage : on se reprend en comptant,
-  // et une seconde ligne pour le même article rendrait l'écart ambigu.
-  const existante = await tx.stockCountLine.findFirst({
-    where: { countId: count.id, itemId: params.itemId },
-    select: { id: true }
-  });
-
-  if (existante) {
-    await tx.stockCountLine.update({
-      where: { id: (existante as any).id },
-      // `expectedQuantity` est refigée : une correction de comptage est une
-      // NOUVELLE saisie, et elle se compare au stock de ce moment-là.
-      data: { expectedQuantity, countedQuantity, reason }
-    });
-  } else {
-    await tx.stockCountLine.create({
-      data: { countId: count.id, itemId: params.itemId, expectedQuantity, countedQuantity, reason }
-    });
-  }
-
-  return reloadCountTx(tx, tenantId, count.id);
-};
-
-/** Voir `RemoveStockCountLineTx` dans `./types-lot5-inventaire.ts`. */
-export const removeStockCountLineTx: RemoveStockCountLineTx = async (tx, tenantId, countId, itemId) => {
-  const count = await requireDraftCountTx(tx, tenantId, countId);
-
-  const ligne = await tx.stockCountLine.findFirst({
-    where: { countId: count.id, itemId },
-    select: { id: true }
-  });
-  if (!ligne) {
-    throw notFound('Cet article ne figure pas dans cet inventaire');
-  }
-
-  await tx.stockCountLine.delete({ where: { id: (ligne as any).id } });
-
-  return reloadCountTx(tx, tenantId, count.id);
-};
-
-// ---------------------------------------------------------------------------
-// E. Valider — les écarts deviennent des ajustements
-// ---------------------------------------------------------------------------
-
-interface AjustementAEcrire {
-  itemId: string;
-  itemLabel: string;
-  reason: string;
-  /** La quantité comptée : c'est ELLE que le solde doit atteindre. */
-  countedQuantity: number;
+  return { id: created.id, locationId: location.id, kind, status: 'DRAFT' };
 }
 
-/** Voir `ValidateStockCountTx` dans `./types-lot5-inventaire.ts`. */
-export const validateStockCountTx: ValidateStockCountTx = async (tx, tenantId, countId, validatedByUserId) => {
-  const count = await requireDraftCountTx(tx, tenantId, countId);
-  const lignes = ((count.lines ?? []) as any[]).map(line => ({
-    itemId: line.itemId,
-    itemLabel: line.item?.label ?? 'Article inconnu',
-    expectedQuantity: roundQuantity(toAmountOrZero(line.expectedQuantity)),
-    countedQuantity: roundQuantity(toAmountOrZero(line.countedQuantity)),
-    reason: typeof line.reason === 'string' ? line.reason.trim() : ''
-  }));
+// ---------------------------------------------------------------------------
+// D. Saisir une ligne — l'attendu est FIGÉ ici, et jamais rendu
+// ---------------------------------------------------------------------------
 
-  // Valider un comptage vide ne dit rien, et pourrait se lire comme « tout est
-  // conforme » — la pire des lectures possibles.
-  if (lignes.length === 0) {
-    throw conflict('Cet inventaire ne porte aucune ligne : un comptage vide ne dit rien');
+export interface SetStockCountLineParams {
+  itemId: string;
+  countedQuantity: number;
+  countedByUserId: string;
+}
+
+export interface SetStockCountLineResult {
+  lineId: string;
+  /** La ligne saisie, à l'aveugle : ni attendu, ni écart, ni valeur (A2-R2). */
+  line: CountLineView;
+}
+
+function assertCountedQuantity(value: number): number {
+  const quantity = roundQuantity(value);
+  if (!Number.isFinite(Number(value)) || !(quantity >= 0)) {
+    throw new BadRequestError('La quantité comptée ne peut pas être négative.');
   }
+  return quantity;
+}
 
-  // L'ÉCART SE LIT SUR LA QUANTITÉ ATTENDUE FIGÉE, jamais sur le stock
-  // d'aujourd'hui (contrat, en-tête).
-  const aEcrire: AjustementAEcrire[] = [];
-  for (const ligne of lignes) {
-    const variance = roundQuantity(ligne.countedQuantity - ligne.expectedQuantity);
-    if (variance === 0) {
-      // Une ligne qui tombe juste ne produit RIEN : ni mouvement, ni écriture.
-      continue;
-    }
-    // Besoin S6 : un écart sans motif ne se valide pas. Une validation qui le
-    // laisserait passer transformerait une perte en ligne de tableau que
-    // personne ne relira. Refusé AVANT le premier ajustement écrit, parce
-    // qu'en PostgreSQL un refus au milieu condamne toute la transaction.
-    if (!ligne.reason) {
-      throw conflict(
-        `L'écart constaté sur « ${ligne.itemLabel} » n'a pas de motif : une perte sans explication ne se valide pas`
-      );
-    }
-    aEcrire.push({
-      itemId: ligne.itemId,
-      itemLabel: ligne.itemLabel,
-      reason: ligne.reason,
-      countedQuantity: ligne.countedQuantity
+/**
+ * Saisit (ou ressaisit) le comptage d'un article. Contrat FIGÉ (plan §11).
+ * L'auteur de la ligne est `countedByUserId` (A4-R1) ; il entre dans les
+ * compteurs de l'inventaire et n'en sort jamais (A1-R1). `countedBlind` est
+ * faux s'il détient STOCK_COUNT_VALIDATE à cet instant (A2-R9).
+ */
+export async function setStockCountLineTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  params: SetStockCountLineParams,
+  options?: StockCountWriteOptions
+): Promise<SetStockCountLineResult> {
+  const countedQuantity = assertCountedQuantity(params.countedQuantity);
+  const count = await loadCountHeadTx(tx, tenantId, countId);
+  assertCountStatus(count, 'DRAFT');
+  await assertBelongsToTenant(tx, 'stockItem', params.itemId, tenantId, { message: 'Article de stock introuvable.' });
+
+  const balance = await readBalanceTx(tx, tenantId, params.itemId, count.locationId);
+  const permissions = await getUserPermissions(params.countedByUserId, tenantId);
+  const countedBlind = !permissions.includes(COUNT_VALIDATE_PERMISSION);
+  const now = new Date();
+
+  const existing = await tx.stockCountLine.findFirst({
+    where: { countId: count.id, itemId: params.itemId },
+    select: { id: true, countedQuantity: true, countedByUserId: true }
+  });
+  const data = {
+    expectedQuantity: balance.quantity,
+    expectedCapturedAt: now,
+    countedQuantity,
+    countedByUserId: params.countedByUserId,
+    countedAtServer: now,
+    countedBlind
+  };
+  const lineId = existing
+    ? (await tx.stockCountLine.update({ where: { id: existing.id }, data, select: { id: true } })).id
+    : (
+        await tx.stockCountLine.create({
+          data: { countId: count.id, itemId: params.itemId, ...data },
+          select: { id: true }
+        })
+      ).id;
+
+  if (!(count.counterUserIds ?? []).includes(params.countedByUserId)) {
+    await tx.stockCount.update({
+      where: { id: count.id, tenantId },
+      data: { counterUserIds: { push: params.countedByUserId } }
     });
   }
 
-  if (aEcrire.length > 0) {
-    const [journalId, comptes] = await Promise.all([
-      ensureOperationalJournalTx(tx, tenantId, (count.countedAt as Date).getUTCFullYear()),
-      ensureOperationalChartOfAccountsTx(tx, tenantId)
-    ]);
-    const stockAccountId = comptes.get('311');
-    const variationAccountId = comptes.get('603');
-    if (!stockAccountId || !variationAccountId) {
-      throw new Error('Comptes opérationnels 311 ou 603 absents après amorçage du plan de comptes.');
-    }
+  await emitAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, params.countedByUserId, AuditActionKey.STOCK_COUNT_LINE_RECORDED, {
+      itemId: params.itemId,
+      previousQuantity: existing ? quantityOrNull(existing.countedQuantity) : null,
+      quantity: countedQuantity,
+      previousCountedByUserId: existing?.countedByUserId ?? null
+    }),
+    options
+  );
 
-    // EN SÉQUENCE, jamais en parallèle : un solde lu en parallèle serait lu
-    // deux fois avant d'être écrit une fois.
-    for (const ajustement of aEcrire) {
-      const previous = await readBalanceTx(tx, tenantId, ajustement.itemId, count.locationId);
+  const line = await loadLineRowTx(tx, lineId);
+  return { lineId, line: toLineView(line, blindLineContext()) };
+}
 
-      // L'ajustement RAMÈNE LE SOLDE À LA QUANTITÉ COMPTÉE. Il se mesure donc
-      // sur l'état d'aujourd'hui, pas sur l'écart figé : si du stock a bougé
-      // depuis le comptage, le comptage physique fait foi et l'écrase.
-      const delta = roundQuantity(ajustement.countedQuantity - previous.quantity);
-      if (delta === 0) {
-        // Le solde est déjà à la quantité comptée : il n'y a rien à ramener.
-        // Écrire un mouvement de zéro ne dirait rien et salirait le journal.
-        continue;
-      }
+async function loadLineRowTx(db: PrismaLike, lineId: string): Promise<LineRow> {
+  const row = await db.stockCountLine.findFirst({ where: { id: lineId }, select: LINE_SELECT });
+  if (!row) {
+    throw new NotFoundError('Ligne d’inventaire introuvable.');
+  }
+  return row as unknown as LineRow;
+}
 
-      const isDecrease = delta < 0;
-      const quantity = roundQuantity(Math.abs(delta));
-      // Valorisé au COÛT MOYEN COURANT DU LIEU, jamais à un prix saisi
-      // (contrat, principe P-4). Sur un stock à quantité nulle il vaut zéro, et
-      // l'entrée vaut zéro : c'est consigné, pas caché.
-      const averageUnitCost = averageUnitCostOf(previous.quantity, previous.value);
-      const quantityAfter = ajustement.countedQuantity;
+/** Retire une ligne d'un inventaire en DRAFT ; son auteur reste compteur (A1-R1). */
+export async function removeStockCountLineTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  itemId: string,
+  removedByUserId: string,
+  options?: StockCountWriteOptions
+): Promise<{ id: string }> {
+  const count = await loadCountHeadTx(tx, tenantId, countId);
+  assertCountStatus(count, 'DRAFT');
 
-      let totalValue: number;
-      let valueAfter: number;
-      if (isDecrease && quantityAfter <= 0) {
-        // Quand la quantité tombe à zéro, la valeur aussi.
-        totalValue = roundMoneyXof(previous.value);
-        valueAfter = 0;
-      } else if (isDecrease) {
-        totalValue = roundMoneyXof(quantity * averageUnitCost);
-        valueAfter = Math.max(0, roundMoneyXof(previous.value - totalValue));
-      } else {
-        totalValue = roundMoneyXof(quantity * averageUnitCost);
-        valueAfter = roundMoneyXof(previous.value + totalValue);
-      }
-
-      const movement = await tx.stockMovement.create({
-        data: {
-          tenantId,
-          type: 'ADJUSTMENT',
-          itemId: ajustement.itemId,
-          locationId: count.locationId,
-          movementDate: count.countedAt,
-          quantity,
-          // Le signe ne dit jamais le sens : c'est `isDecrease` qui le porte,
-          // et c'est pour l'ajustement qu'il a été mis au schéma.
-          isDecrease,
-          unitCost: roundQuantity(averageUnitCost),
-          totalValue,
-          currency: DEFAULT_CURRENCY,
-          quantityAfter,
-          valueAfter,
-          stockCountId: count.id,
-          reason: ajustement.reason,
-          createdByUserId: validatedByUserId
-        },
-        select: { id: true }
-      });
-
-      // LE 603 VA DANS LES DEUX SENS, et c'est pourquoi c'est lui : un compte
-      // de charge seul ne saurait pas dire qu'on a trouvé PLUS que prévu.
-      const lines = isDecrease
-        ? [
-            { accountId: variationAccountId, debit: totalValue, label: `Écart d'inventaire — ${ajustement.itemLabel}` },
-            { accountId: stockAccountId, credit: totalValue, label: `Stock — ${ajustement.itemLabel}` }
-          ]
-        : [
-            { accountId: stockAccountId, debit: totalValue, label: `Stock — ${ajustement.itemLabel}` },
-            { accountId: variationAccountId, credit: totalValue, label: `Écart d'inventaire — ${ajustement.itemLabel}` }
-          ];
-
-      const entry = await postDocumentEntryTx(tx, {
-        tenantId,
-        journalId,
-        entryDate: count.countedAt,
-        reference: `INV-${(movement as any).id}`,
-        description: `Écart d'inventaire — ${ajustement.itemLabel}`,
-        // La nature en clair, jamais un transtypage : l'union la connaît.
-        documentType: 'STOCK_ADJUSTMENT',
-        documentId: (movement as any).id,
-        lines
-      });
-
-      await tx.stockMovement.update({
-        // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
-        where: { id: (movement as any).id, tenantId },
-        data: { journalEntryId: entry.entryId }
-      });
-
-      // AUCUNE `CostAllocation`, et c'est le point du contrat : personne n'a
-      // décidé de consommer ce qui a disparu. Un écart n'est jamais imputé à un
-      // chantier, et le coût réel d'un chantier ne bouge pas d'un franc ici.
-
-      await writeBalanceTx(tx, tenantId, ajustement.itemId, count.locationId, previous, quantityAfter, valueAfter);
-    }
+  const line = await tx.stockCountLine.findFirst({
+    where: { countId: count.id, itemId },
+    select: { id: true, countedQuantity: true, _count: { select: { attachments: true } } }
+  });
+  if (!line) {
+    throw new NotFoundError('Cet article ne figure pas dans cet inventaire.');
+  }
+  if ((line._count?.attachments ?? 0) > 0) {
+    throw new AppError(
+      'Cette ligne porte une pièce jointe : ressaisissez sa quantité plutôt que de la retirer.',
+      409,
+      ErrorCode.CONFLICT
+    );
   }
 
-  await tx.stockCount.update({
-    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
-    where: { id: count.id, tenantId },
-    data: { status: 'VALIDATED', validatedAt: new Date(), validatedByUserId }
+  await tx.stockCountLine.delete({ where: { id: line.id } });
+  await emitAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, removedByUserId, AuditActionKey.STOCK_COUNT_LINE_REMOVED, {
+      itemId,
+      removedQuantity: quantityOrNull(line.countedQuantity)
+    }),
+    options
+  );
+  return { id: count.id };
+}
+
+// ---------------------------------------------------------------------------
+// E. Clore le comptage (DRAFT → COUNTED) — A2-R4, A2-R8
+// ---------------------------------------------------------------------------
+
+export interface ClosedStockCount {
+  id: string;
+  status: 'COUNTED';
+  /** Lignes « non comptées » créées par le système (A2-R8). */
+  uncountedLinesCreated: number;
+}
+
+/** Les soldes non nuls d'un lieu, avec le libellé de l'article. */
+async function readNonZeroBalancesTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  locationId: string
+): Promise<Array<{ itemId: string; quantity: number; itemLabel: string }>> {
+  const rows = await tx.stockBalance.findMany({
+    where: { tenantId, locationId, quantity: { not: 0 } },
+    select: { itemId: true, quantity: true, item: { select: { label: true } } }
+  });
+  return rows
+    .map(row => ({
+      itemId: row.itemId,
+      quantity: roundQuantity(toAmountOrZero(row.quantity)),
+      itemLabel: row.item?.label ?? 'Article inconnu'
+    }))
+    .filter(row => row.quantity !== 0);
+}
+
+/**
+ * Clôt le comptage. Contrat FIGÉ (plan §11). Sous les verrous de solde de tous
+ * les articles du lieu (solde non nul) et de toutes les lignes, crée en lot une
+ * ligne « non comptée » pour chaque article de solde non nul sans ligne
+ * (A2-R8) ; pour un OPENING ou un CLOSING, refuse plutôt
+ * (`STOCK_COUNT_INCOMPLETE`). Sans ligne : `STOCK_COUNT_EMPTY`, sauf un
+ * CLOSING d'un lieu vide, qui atteste ce lieu vide (A2-R4).
+ */
+export async function closeStockCountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  closedByUserId: string
+): Promise<ClosedStockCount> {
+  const count = await loadCountHeadTx(tx, tenantId, countId);
+  assertCountStatus(count, 'DRAFT');
+
+  const lines = await tx.stockCountLine.findMany({ where: { countId: count.id }, select: { itemId: true } });
+  const lineItemIds = new Set(lines.map(line => line.itemId));
+  const before = await readNonZeroBalancesTx(tx, tenantId, count.locationId);
+  const pairs = [...new Set([...lineItemIds, ...before.map(row => row.itemId)])].map(itemId => ({
+    itemId,
+    locationId: count.locationId
+  }));
+  await lockStockBalancesTx(tx, tenantId, pairs);
+
+  // Relu APRÈS les verrous : c'est le solde de l'instant qui se fige (data-model §6).
+  const nonZero = await readNonZeroBalancesTx(tx, tenantId, count.locationId);
+  const missing = nonZero.filter(row => !lineItemIds.has(row.itemId));
+
+  if (lines.length === 0 && !(count.kind === 'CLOSING' && nonZero.length === 0)) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_EMPTY,
+      'Cet inventaire ne porte aucune ligne : comptez au moins un article.'
+    );
+  }
+  if ((count.kind === 'OPENING' || count.kind === 'CLOSING') && missing.length > 0) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_INCOMPLETE,
+      "Cet inventaire doit couvrir tout le lieu : des articles en stock n'ont pas été comptés.",
+      { items: missing.map(row => ({ itemId: row.itemId, itemLabel: row.itemLabel })) }
+    );
+  }
+
+  const now = new Date();
+  if (missing.length > 0) {
+    await tx.stockCountLine.createMany({
+      data: missing.map(row => ({
+        countId: count.id,
+        itemId: row.itemId,
+        expectedQuantity: row.quantity,
+        expectedCapturedAt: now,
+        countedQuantity: null
+      }))
+    });
+  }
+
+  const updated = await tx.stockCount.updateMany({
+    where: { id: count.id, tenantId, status: 'DRAFT' },
+    data: { status: 'COUNTED', closedAt: now, closedByUserId }
+  });
+  if (updated.count !== 1) {
+    throw wrongStatus("Cet inventaire vient de changer d'état : relisez-le.");
+  }
+
+  await emitCriticalAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, closedByUserId, AuditActionKey.STOCK_COUNT_CLOSED, {
+      locationId: count.locationId,
+      kind: count.kind,
+      linesCount: lines.length + missing.length,
+      uncountedLinesCreated: missing.length
+    })
+  );
+
+  return { id: count.id, status: 'COUNTED', uncountedLinesCreated: missing.length };
+}
+
+// ---------------------------------------------------------------------------
+// F. Justifier, écarter (COUNTED) — A2-R5, A2-R7, A2-R8
+// ---------------------------------------------------------------------------
+
+async function loadCountedLineTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  itemId: string
+): Promise<{ count: Awaited<ReturnType<typeof loadCountHeadTx>>; line: LineRow }> {
+  const count = await loadCountHeadTx(tx, tenantId, countId);
+  assertCountStatus(count, 'COUNTED');
+  const line = await tx.stockCountLine.findFirst({ where: { countId: count.id, itemId }, select: LINE_SELECT });
+  if (!line) {
+    throw new NotFoundError('Cet article ne figure pas dans cet inventaire.');
+  }
+  return { count, line: line as unknown as LineRow };
+}
+
+export interface JustifyStockCountLineParams {
+  reasonCode: StockReasonCode;
+  reason?: string | null;
+  justifiedByUserId: string;
+}
+
+/** Justifie l'écart d'une ligne (A2-R5). Une ligne non comptée ou écartée ne se justifie pas. */
+export async function justifyStockCountLineTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  itemId: string,
+  params: JustifyStockCountLineParams,
+  options?: StockCountWriteOptions
+): Promise<{ lineId: string }> {
+  const { count, line } = await loadCountedLineTx(tx, tenantId, countId, itemId);
+  const facts = lineFacts(line);
+  if (facts.notCounted) {
+    throw new AppError('Une ligne non comptée ne se justifie pas : écartez-la avec un motif.', 409, ErrorCode.CONFLICT);
+  }
+  if (facts.setAside) {
+    throw new AppError(
+      "Cette ligne est écartée : elle n'est pas ajustée et n'a pas à être justifiée.",
+      409,
+      ErrorCode.CONFLICT
+    );
+  }
+  assertReasonForContext('COUNT', params.reasonCode, params.reason);
+  const reason = typeof params.reason === 'string' && params.reason.trim().length > 0 ? params.reason.trim() : null;
+
+  await tx.stockCountLine.update({
+    where: { id: line.id },
+    data: {
+      reasonCode: params.reasonCode,
+      reason,
+      justifiedByUserId: params.justifiedByUserId,
+      justifiedAt: new Date()
+    }
+  });
+  await emitAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, params.justifiedByUserId, AuditActionKey.STOCK_COUNT_LINE_JUSTIFIED, {
+      itemId,
+      reasonCode: params.reasonCode,
+      reason
+    }),
+    options
+  );
+  return { lineId: line.id };
+}
+
+export interface SetAsideParams {
+  reason: string;
+  setAsideByUserId: string;
+}
+
+function normalizeSetAsideReason(reason: string): string {
+  const trimmed = typeof reason === 'string' ? reason.trim() : '';
+  if (trimmed.length < 3 || trimmed.length > 500) {
+    throw new BadRequestError('Le motif de mise à l’écart compte de 3 à 500 caractères.');
+  }
+  return trimmed;
+}
+
+/** Écarte une ligne (A2-R7) : elle reste en base, n'est pas ajustée et devient « à recompter ». */
+export async function setAsideStockCountLineTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  itemId: string,
+  params: SetAsideParams
+): Promise<{ lineId: string }> {
+  const reason = normalizeSetAsideReason(params.reason);
+  const { count, line } = await loadCountedLineTx(tx, tenantId, countId, itemId);
+  const facts = lineFacts(line);
+  if (facts.setAside) {
+    throw new AppError('Cette ligne est déjà écartée.', 409, ErrorCode.CONFLICT);
+  }
+
+  await tx.stockCountLine.update({
+    where: { id: line.id },
+    data: { setAsideAt: new Date(), setAsideByUserId: params.setAsideByUserId, setAsideReason: reason }
+  });
+  await emitCriticalAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, params.setAsideByUserId, AuditActionKey.STOCK_COUNT_LINE_SET_ASIDE, {
+      reason,
+      items: [{ itemId, expectedQuantity: facts.expected, countedQuantity: facts.counted }]
+    })
+  );
+  return { lineId: line.id };
+}
+
+/**
+ * Écarte d'un coup toutes les lignes non comptées non encore écartées, avec un
+ * motif commun (A2-R8) ; une seule ligne d'audit liste les articles. Sans ligne
+ * non comptée : rien ne change.
+ */
+export async function setAsideUncountedStockCountLinesTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  params: SetAsideParams
+): Promise<{ setAsideCount: number }> {
+  const reason = normalizeSetAsideReason(params.reason);
+  const count = await loadCountHeadTx(tx, tenantId, countId);
+  assertCountStatus(count, 'COUNTED');
+
+  const uncounted = await tx.stockCountLine.findMany({
+    where: { countId: count.id, countedQuantity: null, setAsideAt: null },
+    select: { id: true, itemId: true, expectedQuantity: true }
+  });
+  if (uncounted.length === 0) {
+    return { setAsideCount: 0 };
+  }
+
+  await tx.stockCountLine.updateMany({
+    where: { countId: count.id, id: { in: uncounted.map(line => line.id) } },
+    data: { setAsideAt: new Date(), setAsideByUserId: params.setAsideByUserId, setAsideReason: reason }
+  });
+  await emitCriticalAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, params.setAsideByUserId, AuditActionKey.STOCK_COUNT_LINE_SET_ASIDE, {
+      reason,
+      uncounted: true,
+      items: uncounted.map(line => ({
+        itemId: line.itemId,
+        expectedQuantity: roundQuantity(toAmountOrZero(line.expectedQuantity)),
+        countedQuantity: null
+      }))
+    })
+  );
+  return { setAsideCount: uncounted.length };
+}
+
+// ---------------------------------------------------------------------------
+// G. Abandonner (DRAFT → CANCELLED) — A2-R6
+// ---------------------------------------------------------------------------
+
+export interface CancelStockCountParams {
+  reason: string;
+  cancelledByUserId: string;
+}
+
+/**
+ * Abandonne un inventaire DRAFT. L'audit porte, ligne par ligne, l'attendu
+ * figé et le compté ; avec au moins une ligne, l'alerte COUNT_CANCELLED naît.
+ * Les lectures ne révèlent jamais ses attendus.
+ */
+export async function cancelStockCountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  params: CancelStockCountParams
+): Promise<{ id: string; status: 'CANCELLED' }> {
+  const reason = normalizeSetAsideReason(params.reason);
+  const count = await loadCountHeadTx(tx, tenantId, countId);
+  assertCountStatus(count, 'DRAFT');
+
+  const lines = await tx.stockCountLine.findMany({
+    where: { countId: count.id },
+    select: { itemId: true, expectedQuantity: true, countedQuantity: true }
+  });
+  const updated = await tx.stockCount.updateMany({
+    where: { id: count.id, tenantId, status: 'DRAFT' },
+    data: {
+      status: 'CANCELLED',
+      cancelledAt: new Date(),
+      cancelledByUserId: params.cancelledByUserId,
+      cancelReason: reason
+    }
+  });
+  if (updated.count !== 1) {
+    throw wrongStatus("Cet inventaire vient de changer d'état : relisez-le.");
+  }
+
+  await emitCriticalAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, params.cancelledByUserId, AuditActionKey.STOCK_COUNT_CANCELLED, {
+      reason,
+      locationId: count.locationId,
+      lines: lines.map(line => ({
+        itemId: line.itemId,
+        expectedQuantity: roundQuantity(toAmountOrZero(line.expectedQuantity)),
+        countedQuantity: quantityOrNull(line.countedQuantity)
+      }))
+    })
+  );
+
+  if (lines.length > 0) {
+    await raiseStockAlertTx(tx, {
+      tenantId,
+      kind: 'COUNT_CANCELLED',
+      severity: 'INFO',
+      dedupeKey: alertKeys.countCancelled(count.id),
+      siteId: count.location?.siteId ?? null,
+      locationId: count.locationId,
+      subjectType: 'StockCount',
+      subjectId: count.id,
+      details: { linesCount: lines.length }
+    });
+  }
+  return { id: count.id, status: 'CANCELLED' };
+}
+
+// ---------------------------------------------------------------------------
+// H. Valider (COUNTED → VALIDATED) — A1, A3, A4, A7-R2, B4, B7
+// ---------------------------------------------------------------------------
+
+export interface ValidateStockCountParams {
+  /** Exigé seulement en dérogation (A1-R3), de 10 à 500 caractères. */
+  selfValidationReason?: string | null;
+}
+
+export interface ValidatedStockCount {
+  id: string;
+  status: 'VALIDATED';
+  selfValidated: boolean;
+  slip: { id: string; number: string };
+}
+
+/** A1-R2/R3 : refus, dérogation exigeant un motif, ou validation ordinaire. */
+async function resolveSelfValidationTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  count: CountRow,
+  validatedByUserId: string,
+  rawReason: string | null | undefined
+): Promise<{ selfValidated: boolean; reason: string | null }> {
+  const reason = typeof rawReason === 'string' ? rawReason.trim() : '';
+  const isCounter = effectiveCounterIds(count).includes(validatedByUserId);
+  if (!isCounter) {
+    if (reason.length > 0) {
+      throw new BadRequestError("La dérogation ne s'applique pas : vous n'avez compté aucune ligne de cet inventaire.");
+    }
+    return { selfValidated: false, reason: null };
+  }
+  if (await hasOtherActiveCountValidator(tx, tenantId, validatedByUserId)) {
+    throw stockError(
+      403,
+      ErrorCode.STOCK_COUNT_SELF_VALIDATION_FORBIDDEN,
+      "Vous avez compté cet inventaire : une autre personne de l'agence doit le valider."
+    );
+  }
+  if (reason.length < 10 || reason.length > 500) {
+    throw stockError(
+      400,
+      ErrorCode.STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED,
+      "Vous êtes la seule personne de l'agence à pouvoir valider : indiquez pourquoi vous validez votre propre comptage (10 à 500 caractères)."
+    );
+  }
+  return { selfValidated: true, reason };
+}
+
+/** Les refus qui ne dépendent que des lignes : non comptées non écartées, écarts non justifiés. */
+function assertLinesReadyForValidation(count: CountRow): void {
+  const uncounted = count.lines.filter(line => {
+    const facts = lineFacts(line);
+    return facts.notCounted && !facts.setAside;
+  });
+  if (uncounted.length > 0) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_UNCOUNTED_LINES,
+      "Des articles en stock n'ont pas été comptés : écartez ces lignes avec un motif avant de valider.",
+      { items: uncounted.map(line => ({ itemId: line.itemId, itemLabel: itemLabelOf(line) })) }
+    );
+  }
+  const unjustified = count.lines.filter(line => needsJustification(count.kind, line, lineFacts(line)));
+  if (unjustified.length > 0) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_UNJUSTIFIED_VARIANCE,
+      'Des écarts ne sont pas justifiés : choisissez un motif pour chacun avant de valider.',
+      { items: unjustified.map(line => ({ itemId: line.itemId, itemLabel: itemLabelOf(line) })) }
+    );
+  }
+}
+
+/** Ce que la validation écrira pour une ligne. */
+interface LinePlan {
+  line: LineRow;
+  facts: LineFacts;
+  balance: BalanceState;
+  averageUnitCost: number;
+  movementsSinceCapture: number | null;
+  adjustment: {
+    isDecrease: boolean;
+    quantity: number;
+    quantityAfter: number;
+    totalValue: number;
+    valueAfter: number;
+    unitCost: number;
+    reasonCode: StockReasonCode | null;
+    reason: string | null;
+  } | null;
+}
+
+/** Mouvements de chaque article du lieu depuis l'heure de figeage de sa ligne (A3-R4), en une requête. */
+async function countMovementsSinceCaptureTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  locationId: string,
+  lines: LineRow[]
+): Promise<Map<string, number>> {
+  const captured = lines.filter(line => line.expectedCapturedAt);
+  const result = new Map<string, number>();
+  if (captured.length === 0) {
+    return result;
+  }
+  const since = new Date(Math.min(...captured.map(line => (line.expectedCapturedAt as Date).getTime())));
+  const movements = await tx.stockMovement.findMany({
+    where: { tenantId, locationId, itemId: { in: captured.map(line => line.itemId) }, createdAt: { gt: since } },
+    select: { itemId: true, createdAt: true }
+  });
+  for (const line of captured) {
+    const at = (line.expectedCapturedAt as Date).getTime();
+    result.set(
+      line.id,
+      movements.filter(movement => movement.itemId === line.itemId && movement.createdAt.getTime() > at).length
+    );
+  }
+  return result;
+}
+
+function planAdjustment(
+  kind: StockCountKind,
+  line: LineRow,
+  facts: LineFacts,
+  balance: BalanceState,
+  averageUnitCost: number
+): LinePlan['adjustment'] {
+  if (facts.setAside || facts.variance === null || facts.variance === 0) {
+    return null;
+  }
+  const isDecrease = facts.variance < 0;
+  const quantity = roundQuantity(Math.abs(facts.variance));
+  const quantityAfter = roundQuantity(balance.quantity + facts.variance);
+  const openingSurplus = isOpeningSurplus(kind, facts);
+  let totalValue: number;
+  let valueAfter: number;
+  if (isDecrease && quantityAfter <= 0) {
+    totalValue = roundMoneyXof(balance.value);
+    valueAfter = 0;
+  } else if (isDecrease) {
+    totalValue = roundMoneyXof(quantity * averageUnitCost);
+    valueAfter = Math.max(0, roundMoneyXof(balance.value - totalValue));
+  } else {
+    totalValue = openingSurplus ? 0 : roundMoneyXof(quantity * averageUnitCost);
+    valueAfter = roundMoneyXof(balance.value + totalValue);
+  }
+  return {
+    isDecrease,
+    quantity,
+    quantityAfter,
+    totalValue,
+    valueAfter,
+    unitCost: openingSurplus ? 0 : roundQuantity(averageUnitCost),
+    reasonCode: openingSurplus ? 'OPENING_BALANCE' : line.reasonCode,
+    reason: line.reason ?? null
+  };
+}
+
+/** Lit les soldes, prévoit les ajustements et refuse un solde négatif (A3-R3) — sans rien écrire. */
+async function planValidationTx(tx: PrismaTransactionClient, tenantId: string, count: CountRow): Promise<LinePlan[]> {
+  const counted = count.lines.filter(line => !lineFacts(line).notCounted);
+  const balances = await readBalancesTx(
+    tx,
+    tenantId,
+    count.locationId,
+    counted.map(line => line.itemId)
+  );
+  const sinceCapture = await countMovementsSinceCaptureTx(tx, tenantId, count.locationId, count.lines);
+
+  const plans = count.lines.map(line => {
+    const facts = lineFacts(line);
+    const balance = balances.get(line.itemId) ?? { id: null, quantity: 0, value: 0 };
+    const averageUnitCost = averageUnitCostOf(balance.quantity, balance.value);
+    return {
+      line,
+      facts,
+      balance,
+      averageUnitCost,
+      movementsSinceCapture: line.expectedCapturedAt ? (sinceCapture.get(line.id) ?? 0) : null,
+      adjustment: planAdjustment(count.kind, line, facts, balance, averageUnitCost)
+    };
   });
 
-  return reloadCountTx(tx, tenantId, count.id);
-};
+  const negatives = plans.filter(plan => plan.adjustment && plan.adjustment.quantityAfter < 0);
+  if (negatives.length > 0) {
+    throw stockError(
+      409,
+      ErrorCode.STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS,
+      'Des sorties enregistrées depuis le comptage dépassent ce qui a été compté : écartez ces lignes et faites-les recompter.',
+      { items: negatives.map(plan => ({ itemId: plan.line.itemId, itemLabel: itemLabelOf(plan.line) })) }
+    );
+  }
+  return plans;
+}
+
+interface FrozenValues {
+  countedValue: number;
+  varianceValueGross: number;
+  varianceValueNet: number;
+  setAsideVarianceValue: number;
+}
+
+/** Valeurs figées à la validation (B8, A2-R7) ; le surplus d'ouverture vaut zéro (A7-R2). */
+function computeFrozenValues(plans: LinePlan[]): FrozenValues {
+  let countedValue = 0;
+  let gross = 0;
+  let net = 0;
+  let setAside = 0;
+  for (const plan of plans) {
+    if (plan.facts.counted !== null) {
+      countedValue += roundMoneyXof(plan.facts.counted * plan.averageUnitCost);
+    }
+    if (plan.adjustment) {
+      gross += plan.adjustment.totalValue;
+      net += plan.adjustment.isDecrease ? -plan.adjustment.totalValue : plan.adjustment.totalValue;
+    }
+    if (plan.facts.setAside && plan.facts.variance !== null) {
+      setAside += roundMoneyXof(Math.abs(plan.facts.variance) * plan.averageUnitCost);
+    }
+  }
+  return {
+    countedValue: roundMoneyXof(countedValue),
+    varianceValueGross: roundMoneyXof(gross),
+    varianceValueNet: roundMoneyXof(net),
+    setAsideVarianceValue: roundMoneyXof(setAside)
+  };
+}
+
+/** Libellés figés du procès-verbal (B4-R3) : aucun montant. */
+async function buildReportSnapshotTx(
+  tx: PrismaTransactionClient,
+  count: CountRow,
+  counterIds: string[],
+  validatedByUserId: string
+): Promise<StockSlipSnapshot> {
+  const users = await tx.user.findMany({
+    where: { id: { in: [...new Set([...counterIds, validatedByUserId])] } },
+    select: { id: true, fullName: true, email: true }
+  });
+  const labelOf = (id: string): string => toUserLabel(users.find(user => user.id === id));
+  const validator = labelOf(validatedByUserId);
+  return {
+    location: count.location?.label ?? 'Lieu inconnu',
+    site: count.location?.site?.name ?? null,
+    taker: null,
+    requestedBy: null,
+    invoice: null,
+    author: validator,
+    lines: count.lines.map(line => ({
+      itemId: line.itemId,
+      reference: line.item?.reference ?? 'Article inconnu',
+      label: itemLabelOf(line),
+      unit: line.item?.unit ?? ''
+    })),
+    counters: counterIds.map(labelOf),
+    validator
+  };
+}
+
+/** Écrit un ajustement, son écriture si sa valeur n'est pas nulle (A6-R4), et le solde. */
+async function writeAdjustmentTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  count: CountRow,
+  plan: LinePlan,
+  slipId: string,
+  validatedByUserId: string,
+  accounts: { journalId: string; stockAccountId: string; variationAccountId: string } | null
+): Promise<void> {
+  const adjustment = plan.adjustment!;
+  const label = itemLabelOf(plan.line);
+  const movement = await tx.stockMovement.create({
+    data: {
+      tenantId,
+      type: 'ADJUSTMENT',
+      itemId: plan.line.itemId,
+      locationId: count.locationId,
+      movementDate: count.countedAt,
+      quantity: adjustment.quantity,
+      isDecrease: adjustment.isDecrease,
+      unitCost: adjustment.unitCost,
+      totalValue: adjustment.totalValue,
+      currency: DEFAULT_CURRENCY,
+      quantityAfter: adjustment.quantityAfter,
+      valueAfter: adjustment.valueAfter,
+      stockCountId: count.id,
+      slipId,
+      reasonCode: adjustment.reasonCode,
+      reason: adjustment.reason,
+      createdByUserId: validatedByUserId
+    },
+    select: { id: true }
+  });
+
+  if (adjustment.totalValue > 0 && accounts) {
+    const value = adjustment.totalValue;
+    const lines = adjustment.isDecrease
+      ? [
+          { accountId: accounts.variationAccountId, debit: value, label: `Écart d'inventaire — ${label}` },
+          { accountId: accounts.stockAccountId, credit: value, label: `Stock — ${label}` }
+        ]
+      : [
+          { accountId: accounts.stockAccountId, debit: value, label: `Stock — ${label}` },
+          { accountId: accounts.variationAccountId, credit: value, label: `Écart d'inventaire — ${label}` }
+        ];
+    const entry = await postDocumentEntryTx(tx, {
+      tenantId,
+      journalId: accounts.journalId,
+      entryDate: count.countedAt,
+      reference: `INV-${movement.id}`,
+      description: `Écart d'inventaire — ${label}`,
+      documentType: 'STOCK_ADJUSTMENT',
+      documentId: movement.id,
+      lines
+    });
+    await tx.stockMovement.update({ where: { id: movement.id, tenantId }, data: { journalEntryId: entry.entryId } });
+  }
+
+  await writeBalanceTx(
+    tx,
+    tenantId,
+    plan.line.itemId,
+    count.locationId,
+    plan.balance,
+    adjustment.quantityAfter,
+    adjustment.valueAfter
+  );
+}
+
+async function resolveAccountsTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  count: CountRow,
+  plans: LinePlan[]
+): Promise<{ journalId: string; stockAccountId: string; variationAccountId: string } | null> {
+  if (!plans.some(plan => plan.adjustment && plan.adjustment.totalValue > 0)) {
+    return null;
+  }
+  const [journalId, comptes] = await Promise.all([
+    ensureOperationalJournalTx(tx, tenantId, count.countedAt.getUTCFullYear()),
+    ensureOperationalChartOfAccountsTx(tx, tenantId)
+  ]);
+  const stockAccountId = comptes.get('311');
+  const variationAccountId = comptes.get('603');
+  if (!stockAccountId || !variationAccountId) {
+    throw new Error('Comptes opérationnels 311 ou 603 absents après amorçage du plan de comptes.');
+  }
+  return { journalId, stockAccountId, variationAccountId };
+}
+
+/** Alertes de la validation (B7) : COUNT_VARIANCE, COUNT_LINE_SET_ASIDE, COUNT_SELF_VALIDATED. */
+async function raiseValidationAlertsTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  count: CountRow,
+  plans: LinePlan[],
+  frozen: FrozenValues,
+  selfValidated: boolean,
+  settings: StockControlsSettingsValues
+): Promise<void> {
+  const common = {
+    tenantId,
+    currency: DEFAULT_CURRENCY,
+    siteId: count.location?.siteId ?? null,
+    locationId: count.locationId,
+    subjectType: 'StockCount' as const,
+    subjectId: count.id
+  };
+  const amount = roundMoneyXof(frozen.varianceValueGross + frozen.setAsideVarianceValue);
+  const rate = frozen.countedValue > 0 ? amount / frozen.countedValue : null;
+  const amountHit = settings.countVarianceAlertAmount !== null && amount >= settings.countVarianceAlertAmount;
+  const rateHit =
+    settings.countVarianceAlertPercent !== null && (rate === null || rate * 100 >= settings.countVarianceAlertPercent);
+  if (amount > 0 && (amountHit || rateHit)) {
+    await raiseStockAlertTx(tx, {
+      ...common,
+      kind: 'COUNT_VARIANCE',
+      severity: 'WARNING',
+      dedupeKey: alertKeys.countVariance(count.id),
+      amount,
+      threshold: settings.countVarianceAlertAmount,
+      details: {
+        countedValue: frozen.countedValue,
+        rate,
+        percentThreshold: settings.countVarianceAlertPercent,
+        setAsideVarianceValue: frozen.setAsideVarianceValue
+      }
+    });
+  }
+
+  const setAsideLines = plans.filter(plan => plan.facts.setAside);
+  if (setAsideLines.length > 0) {
+    await raiseStockAlertTx(tx, {
+      ...common,
+      kind: 'COUNT_LINE_SET_ASIDE',
+      severity: 'INFO',
+      dedupeKey: alertKeys.countLineSetAside(count.id),
+      // Clés lues par les messages d'alerte (territoire API-5).
+      details: {
+        setAsideLines: setAsideLines.length,
+        uncountedLines: setAsideLines.filter(plan => plan.facts.notCounted).length
+      }
+    });
+  }
+
+  if (selfValidated) {
+    await raiseStockAlertTx(tx, {
+      ...common,
+      kind: 'COUNT_SELF_VALIDATED',
+      severity: 'INFO',
+      dedupeKey: alertKeys.countSelfValidated(count.id)
+    });
+  }
+}
+
+/**
+ * Valide un inventaire COUNTED. Ordre : refus sans écriture (statut, lignes
+ * non comptées, dérogation, justification), verrous de solde des lignes non
+ * écartées, lectures et refus d'un solde négatif, numéro PVI (verrou
+ * `stock-slip`, en dernier), puis écritures, alertes et audit critique.
+ */
+export async function validateStockCountTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  countId: string,
+  validatedByUserId: string,
+  params: ValidateStockCountParams = {}
+): Promise<ValidatedStockCount> {
+  const count = await loadCountRowTx(tx, tenantId, countId);
+  assertCountStatus(count, 'COUNTED');
+  assertLinesReadyForValidation(count);
+  const self = await resolveSelfValidationTx(tx, tenantId, count, validatedByUserId, params.selfValidationReason);
+
+  const activeLines = count.lines.filter(line => !lineFacts(line).setAside);
+  await lockStockBalancesTx(
+    tx,
+    tenantId,
+    activeLines.map(line => ({ itemId: line.itemId, locationId: count.locationId }))
+  );
+  const plans = await planValidationTx(tx, tenantId, count);
+  const frozen = computeFrozenValues(plans);
+  const settings = await readStockAlertSettings(tx, tenantId);
+  const counterIds = effectiveCounterIds(count);
+  const accounts = await resolveAccountsTx(tx, tenantId, count, plans);
+
+  const slip = await createStockSlipTx(tx, {
+    tenantId,
+    kind: 'COUNT_REPORT',
+    documentDate: count.countedAt,
+    locationId: count.locationId,
+    siteId: count.location?.siteId ?? null,
+    stockCountId: count.id,
+    createdByUserId: validatedByUserId,
+    snapshot: await buildReportSnapshotTx(tx, count, counterIds, validatedByUserId)
+  });
+
+  for (const plan of plans) {
+    if (plan.adjustment) {
+      await writeAdjustmentTx(tx, tenantId, count, plan, slip.id, validatedByUserId, accounts);
+    }
+    await tx.stockCountLine.update({
+      where: { id: plan.line.id },
+      data: {
+        unitCostAtValidation: plan.facts.notCounted ? null : roundQuantity(plan.averageUnitCost),
+        movementsSinceCapture: plan.movementsSinceCapture
+      }
+    });
+  }
+
+  const validatedAt = new Date();
+  const updated = await tx.stockCount.updateMany({
+    where: { id: count.id, tenantId, status: 'COUNTED' },
+    data: {
+      status: 'VALIDATED',
+      validatedAt,
+      validatedByUserId,
+      selfValidated: self.selfValidated,
+      selfValidationReason: self.reason,
+      ...frozen
+    }
+  });
+  if (updated.count !== 1) {
+    throw wrongStatus("Cet inventaire vient de changer d'état : relisez-le.");
+  }
+
+  await raiseValidationAlertsTx(tx, tenantId, count, plans, frozen, self.selfValidated, settings);
+  await emitCriticalAudit(
+    tx,
+    countAuditEntry(tenantId, count.id, validatedByUserId, AuditActionKey.STOCK_COUNT_VALIDATED, {
+      slipNumber: slip.number,
+      kind: count.kind,
+      locationId: count.locationId,
+      adjustmentsCount: plans.filter(plan => plan.adjustment).length,
+      setAsideCount: plans.filter(plan => plan.facts.setAside).length,
+      uncountedCount: plans.filter(plan => plan.facts.notCounted).length,
+      counterUserIds: counterIds,
+      selfValidated: self.selfValidated,
+      ...frozen
+    })
+  );
+  if (self.selfValidated) {
+    await emitCriticalAudit(
+      tx,
+      countAuditEntry(tenantId, count.id, validatedByUserId, AuditActionKey.STOCK_COUNT_SELF_VALIDATED, {
+        reason: self.reason,
+        slipNumber: slip.number
+      })
+    );
+  }
+
+  return { id: count.id, status: 'VALIDATED', selfValidated: self.selfValidated, slip };
+}
 
 // ---------------------------------------------------------------------------
-// F. Les lectures
+// I. Les vues (contrat `CountView`, `CountLineView`)
 // ---------------------------------------------------------------------------
 
-/** Voir `ListStockCounts` dans `./types-lot5-inventaire.ts`. */
-export const listStockCounts: ListStockCounts = async (tenantId, filters) => {
-  const rows = await prisma.stockCount.findMany({
+interface LineViewContext {
+  status: StockCountStatus;
+  kind: StockCountKind;
+  valuesVisible: boolean;
+  /** Coût moyen courant de l'article au lieu (estimation en COUNTED). */
+  averageCost: (itemId: string) => number;
+}
+
+/** Contexte d'une ligne rendue à l'aveugle (réponse d'une saisie en DRAFT). */
+function blindLineContext(): LineViewContext {
+  return { status: 'DRAFT', kind: 'REGULAR', valuesVisible: false, averageCost: () => 0 };
+}
+
+function isBlindStatus(status: StockCountStatus): boolean {
+  return status === 'DRAFT' || status === 'CANCELLED';
+}
+
+/** Valeur d'écart d'une ligne : figée en VALIDATED, estimée en COUNTED, `null` sinon. */
+function lineVarianceValue(line: LineRow, facts: LineFacts, ctx: LineViewContext): number | null {
+  if (isBlindStatus(ctx.status) || facts.variance === null) {
+    return null;
+  }
+  if (isOpeningSurplus(ctx.kind, facts)) {
+    return 0;
+  }
+  const frozen = ctx.status === 'VALIDATED' ? toAmount(line.unitCostAtValidation as Decimalish) : null;
+  const unitCost = frozen ?? ctx.averageCost(line.itemId);
+  return roundMoneyXof(facts.variance * unitCost);
+}
+
+function toLineView(line: LineRow, ctx: LineViewContext): CountLineView {
+  const facts = lineFacts(line);
+  const blind = isBlindStatus(ctx.status);
+  const validated = ctx.status === 'VALIDATED';
+  const varianceValue = lineVarianceValue(line, facts, ctx);
+  return {
+    id: line.id,
+    itemId: line.itemId,
+    itemReference: line.item?.reference ?? 'Article inconnu',
+    itemLabel: itemLabelOf(line),
+    itemUnit: line.item?.unit ?? '',
+    countedQuantity: facts.counted,
+    notCounted: facts.notCounted,
+    countedBlind: line.countedBlind ?? null,
+    countedByUserId: line.countedByUserId ?? null,
+    countedByLabel: toNullableUserLabel(line.countedBy),
+    countedAtServer: line.countedAtServer ?? null,
+    expectedQuantity: blind ? null : facts.expected,
+    variance: blind ? null : facts.variance,
+    varianceValue: ctx.valuesVisible ? varianceValue : null,
+    unitCostAtValidation:
+      validated && ctx.valuesVisible ? quantityOrNull(line.unitCostAtValidation as Decimalish) : null,
+    reasonCode: line.reasonCode ?? null,
+    reason: line.reason ?? null,
+    justified: !blind && hasJustification(ctx.kind, line, facts),
+    justifiedByLabel: toNullableUserLabel(line.justifiedBy),
+    justifiedAt: line.justifiedAt ?? null,
+    setAside: line.setAsideAt
+      ? { at: line.setAsideAt, byLabel: toUserLabel(line.setAsideBy), reason: line.setAsideReason ?? '' }
+      : null,
+    movementsSinceCapture: validated ? (line.movementsSinceCapture ?? null) : null,
+    attachmentsCount: line._count?.attachments ?? 0
+  };
+}
+
+/** Ce qu'il faut lire en plus des lignes pour rendre une liste d'inventaires. */
+interface ViewExtras {
+  averageCosts: Map<string, number>;
+  users: Map<string, string>;
+  toRecount: Map<string, Array<{ itemId: string; itemLabel: string }>>;
+  otherValidatorExists: boolean | null;
+}
+
+function costKey(locationId: string, itemId: string): string {
+  return `${locationId}|${itemId}`;
+}
+
+async function loadViewExtras(tenantId: string, rows: CountRow[], ctx: StockCallerContext): Promise<ViewExtras> {
+  const counted = rows.filter(row => row.status === 'COUNTED' || row.status === 'VALIDATED');
+  const open = rows.filter(row => row.status === 'DRAFT' || row.status === 'COUNTED');
+  const itemIds = [...new Set(counted.flatMap(row => row.lines.map(line => line.itemId)))];
+  const locationIds = [...new Set(counted.map(row => row.locationId))];
+  const userIds = [...new Set(rows.flatMap(row => effectiveCounterIds(row)))];
+
+  const [balances, users, recount, otherValidator] = await Promise.all([
+    itemIds.length
+      ? prisma.stockBalance.findMany({
+          where: { tenantId, locationId: { in: locationIds }, itemId: { in: itemIds } },
+          select: { itemId: true, locationId: true, quantity: true, value: true }
+        })
+      : Promise.resolve([]),
+    userIds.length
+      ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true, email: true } })
+      : Promise.resolve([]),
+    loadItemsToRecount(
+      prisma,
+      tenantId,
+      open.map(row => row.locationId)
+    ),
+    rows.some(row => row.status === 'COUNTED')
+      ? hasOtherActiveCountValidator(prisma, tenantId, ctx.userId)
+      : Promise.resolve(null)
+  ]);
+
+  const averageCosts = new Map<string, number>();
+  for (const balance of balances) {
+    averageCosts.set(
+      costKey(balance.locationId, balance.itemId),
+      averageUnitCostOf(roundQuantity(toAmountOrZero(balance.quantity)), roundMoneyXof(toAmountOrZero(balance.value)))
+    );
+  }
+  const toRecount = new Map<string, Array<{ itemId: string; itemLabel: string }>>();
+  for (const [locationId, items] of recount) {
+    toRecount.set(
+      locationId,
+      items.map(item => ({ itemId: item.itemId, itemLabel: item.itemLabel }))
+    );
+  }
+  return {
+    averageCosts,
+    users: new Map(users.map(user => [user.id, toUserLabel(user)])),
+    toRecount,
+    otherValidatorExists: otherValidator
+  };
+}
+
+function toSlipSummary(slip: CountRow['slip']): SlipSummary | null {
+  if (!slip) {
+    return null;
+  }
+  return {
+    id: slip.id,
+    kind: slip.kind,
+    number: formatSlipNumber(slip.kind, slip.year, slip.number),
+    documentDate: slip.documentDate,
+    createdAt: slip.createdAt
+  };
+}
+
+/** Totaux de valeur d'un inventaire : figés en VALIDATED, estimés en COUNTED, `null` à l'aveugle. */
+function countValues(
+  row: CountRow,
+  lines: CountLineView[],
+  ctx: StockCallerContext
+): Pick<CountView, 'countedValue' | 'varianceValueGross' | 'varianceValueNet' | 'setAsideVarianceValue'> {
+  const none = { countedValue: null, varianceValueGross: null, varianceValueNet: null, setAsideVarianceValue: null };
+  if (isBlindStatus(row.status) || !ctx.valuesVisible) {
+    return none;
+  }
+  const frozenNet = toAmount(row.varianceValueNet as Decimalish);
+  const estimate = roundMoneyXof(
+    lines.filter(line => !line.setAside).reduce((sum, line) => sum + (line.varianceValue ?? 0), 0)
+  );
+  if (row.status === 'VALIDATED' && frozenNet !== null) {
+    return {
+      countedValue: maskValue(toAmount(row.countedValue as Decimalish), ctx),
+      varianceValueGross: maskValue(toAmount(row.varianceValueGross as Decimalish), ctx),
+      varianceValueNet: frozenNet,
+      setAsideVarianceValue: maskValue(toAmount(row.setAsideVarianceValue as Decimalish), ctx)
+    };
+  }
+  return { ...none, varianceValueNet: estimate };
+}
+
+function toCountView(row: CountRow, extras: ViewExtras, ctx: StockCallerContext, withLines: boolean): CountView {
+  const lineCtx: LineViewContext = {
+    status: row.status,
+    kind: row.kind,
+    valuesVisible: ctx.valuesVisible,
+    averageCost: itemId => extras.averageCosts.get(costKey(row.locationId, itemId)) ?? 0
+  };
+  const lines = row.lines
+    .map(line => toLineView(line, lineCtx))
+    .sort((a, b) => a.itemReference.localeCompare(b.itemReference) || a.itemLabel.localeCompare(b.itemLabel));
+  const blind = isBlindStatus(row.status);
+  const counterIds = effectiveCounterIds(row);
+  const open = row.status === 'DRAFT' || row.status === 'COUNTED';
+
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    locationId: row.locationId,
+    locationLabel: row.location?.label ?? 'Lieu inconnu',
+    kind: row.kind,
+    status: row.status,
+    blind,
+    countedAt: row.countedAt,
+    createdByUserId: row.createdByUserId,
+    createdByLabel: toUserLabel(row.createdBy),
+    closedAt: row.closedAt ?? null,
+    closedByLabel: toNullableUserLabel(row.closedBy),
+    validatedAt: row.validatedAt ?? null,
+    validatedByLabel: toNullableUserLabel(row.validatedBy),
+    cancelledAt: row.cancelledAt ?? null,
+    cancelReason: row.cancelReason ?? null,
+    selfValidated: row.selfValidated === true,
+    selfValidationReason: row.selfValidationReason ?? null,
+    counters: counterIds.map(userId => ({ userId, label: extras.users.get(userId) ?? 'Utilisateur inconnu' })),
+    lines: withLines ? lines : [],
+    linesCount: lines.length,
+    uncountedLinesCount: lines.filter(line => line.notCounted).length,
+    varianceCount: blind ? null : lines.filter(line => line.variance !== null && line.variance !== 0).length,
+    ...countValues(row, lines, ctx),
+    currency: DEFAULT_CURRENCY,
+    slip: toSlipSummary(row.slip),
+    validation:
+      row.status === 'COUNTED'
+        ? {
+            callerIsCounter: counterIds.includes(ctx.userId),
+            selfValidationAllowed: extras.otherValidatorExists === false
+          }
+        : null,
+    toRecount: open ? (extras.toRecount.get(row.locationId) ?? []) : []
+  };
+}
+
+/** Le détail d'un inventaire, masqué pour l'appelant (A2-R2, §8.1). */
+export async function getStockCountView(
+  tenantId: string,
+  countId: string,
+  ctx: StockCallerContext
+): Promise<CountView> {
+  const row = await loadCountRowTx(prisma, tenantId, countId);
+  const extras = await loadViewExtras(tenantId, [row], ctx);
+  return toCountView(row, extras, ctx, true);
+}
+
+export interface ListStockCountsFilters {
+  locationId?: string;
+  status?: StockCountStatus;
+  kind?: StockCountKind;
+  /** Faux par défaut : chaque inventaire est rendu avec `lines = []`. */
+  withLines?: boolean;
+}
+
+/** La liste des inventaires, le plus récent en tête ; lignes rendues seulement sur demande. */
+export async function listStockCountViews(
+  tenantId: string,
+  ctx: StockCallerContext,
+  filters: ListStockCountsFilters = {}
+): Promise<CountView[]> {
+  const rows = (await prisma.stockCount.findMany({
     where: {
       tenantId,
-      ...(filters?.locationId ? { locationId: filters.locationId } : {}),
-      ...(filters?.status ? { status: filters.status } : {})
+      ...(filters.locationId ? { locationId: filters.locationId } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.kind ? { kind: filters.kind } : {})
     },
-    include: COUNT_INCLUDE,
+    select: COUNT_SELECT,
     orderBy: [{ countedAt: 'desc' }, { createdAt: 'desc' }]
-  });
+  })) as unknown as CountRow[];
+  const extras = await loadViewExtras(tenantId, rows, ctx);
+  return rows.map(row => toCountView(row, extras, ctx, filters.withLines === true));
+}
 
-  const costs = await readAverageCostsTx(prisma as any, tenantId, rows as any[]);
-  return (rows as any[]).map(row => toCountRecord(row, costs));
-};
-
-/** Voir `GetStockCount` dans `./types-lot5-inventaire.ts`. */
-export const getStockCount: GetStockCount = async (tenantId, countId) => {
-  const row = await prisma.stockCount.findFirst({
-    where: { id: countId, tenantId },
-    include: COUNT_INCLUDE
+/**
+ * Une ligne rendue comme la réponse de sa saisie (rejeu idempotent, B3-R2) :
+ * relue dans l'agence, rendue selon l'état ACTUEL de son inventaire.
+ */
+export async function getStockCountLineView(
+  tenantId: string,
+  lineId: string,
+  ctx: StockCallerContext
+): Promise<CountLineView> {
+  const row = await prisma.stockCountLine.findFirst({
+    where: { id: lineId, count: { tenantId } },
+    select: { ...LINE_SELECT, count: { select: { status: true, kind: true, locationId: true } } }
   });
   if (!row) {
-    throw notFound('Inventaire introuvable');
+    throw new NotFoundError('Ligne d’inventaire introuvable.');
   }
-
-  const costs = await readAverageCostsTx(prisma as any, tenantId, [row as any]);
-  return toCountRecord(row, costs);
-};
+  const line = row as unknown as LineRow & {
+    count: { status: StockCountStatus; kind: StockCountKind; locationId: string };
+  };
+  const balance = await readBalanceTx(prisma, tenantId, line.itemId, line.count.locationId);
+  return toLineView(line, {
+    status: line.count.status,
+    kind: line.count.kind,
+    valuesVisible: ctx.valuesVisible,
+    averageCost: () => averageUnitCostOf(balance.quantity, balance.value)
+  });
+}

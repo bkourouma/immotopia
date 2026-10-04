@@ -15,6 +15,7 @@ import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
 import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
+import { startStockMaintenanceJob } from './jobs/stock-maintenance-job';
 import { logger } from './utils/logger';
 
 /**
@@ -71,6 +72,9 @@ app.listen(PORT, () => {
     startLotReconciliationJob();
     // Journal d'audit (ADR-006, phase 5) : scellement quotidien, purge (opt-in), verification.
     startAuditMaintenanceJob();
+    // Lot 040 : purge nocturne des cles d'idempotence du stock ; recapitulatif
+    // e-mail des alertes de stock seulement si STOCK_ALERT_MAIL_JOB_ENABLED.
+    startStockMaintenanceJob({ mailEnabled: env.STOCK_ALERT_MAIL_JOB_ENABLED });
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.
     recoverTenantDataExports().catch(error =>

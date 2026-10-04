@@ -1,37 +1,39 @@
 import { z } from 'zod';
 
+import {
+  clientRequestIdSchema,
+  requesterFieldsSchema,
+  stockQuantitySchema,
+  stockReasonCodeSchema,
+  stockReasonTextSchema
+} from './schemas-stock-mouvements';
+
 /**
  * Validation Zod du transfert entre lieux — extraite de
- * `schemas-stock-inventaire.ts` (lot 040, étape des fondations) **sans
- * changement de comportement**.
+ * `schemas-stock-inventaire.ts` (lot 040, fondations), étendue par le lot 040
+ * (A11 : demandeur et motif ; B3-R2 : idempotence).
  *
- * `.strict()`, pour la raison du lot 5 : un corps ne répète jamais un
- * identifiant que le chemin porte déjà (le chemin porte `tenantId`), et un
- * champ inconnu — un prix, par exemple — reçoit un 400 explicite plutôt que
- * d'être jeté en silence.
+ * `.strict()` : un corps ne répète jamais un identifiant que le chemin porte
+ * déjà, et un champ inconnu — un prix, par exemple — reçoit un 400 explicite.
+ * AUCUN PRIX n'est reçu : la valeur part au coût moyen du lieu d'origine
+ * (principe P-4).
  *
- * Les deux lieux sont dans le CORPS, et ce n'est pas une répétition : le
- * chemin ne porte que `tenantId`. AUCUN PRIX n'est reçu — la valeur part au
- * coût moyen du lieu d'origine (principe P-4), et un transfert n'écrit aucune
- * écriture comptable.
- *
- * Le même lieu des deux côtés est refusé par le domaine, pas ici : Zod valide
- * la forme d'un champ, et la relation entre deux champs est une règle métier
- * dont le domaine reste la seule autorité.
- *
- * La quantité **transférée** est strictement positive : déplacer zéro n'est
- * pas un geste, et un négatif serait un transfert à l'envers déguisé.
+ * Le motif et le demandeur sont FACULTATIFS ici : leur absence répond par un
+ * code stable du contrat (`STOCK_REASON_REQUIRED`, `STOCK_REQUESTER_REQUIRED`),
+ * levé par le service, seule autorité. Le même lieu des deux côtés est aussi
+ * refusé par le service.
  */
 export const createStockTransferSchema = z
   .object({
     fromLocationId: z.string().uuid('Identifiant de lieu d’origine invalide.'),
     toLocationId: z.string().uuid('Identifiant de lieu d’arrivée invalide.'),
     itemId: z.string().uuid('Identifiant d’article invalide.'),
-    quantity: z
-      .number({ invalid_type_error: 'La quantité doit être un nombre.' })
-      .finite('La quantité doit être un nombre fini.')
-      .gt(0, 'La quantité transférée doit être strictement positive.'),
-    transferDate: z.coerce.date({ errorMap: () => ({ message: 'Date de transfert invalide.' }) })
+    quantity: stockQuantitySchema,
+    transferDate: z.coerce.date({ errorMap: () => ({ message: 'Date de transfert invalide.' }) }),
+    reasonCode: stockReasonCodeSchema,
+    reason: stockReasonTextSchema,
+    ...requesterFieldsSchema,
+    clientRequestId: clientRequestIdSchema
   })
   .strict();
 

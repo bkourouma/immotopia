@@ -133,6 +133,14 @@ const envSchema = z
       .default('false')
       .transform(value => value === 'true' || value === '1'),
 
+    // Lot 040 (B7-R6) : envoi par e-mail des alertes de stock (recapitulatif
+    // par agence, toutes les 10 minutes). Coupe par defaut ; la purge
+    // nocturne des cles d'idempotence du stock tourne, elle, toujours.
+    STOCK_ALERT_MAIL_JOB_ENABLED: z
+      .enum(['true', 'false', '1', '0'])
+      .default('false')
+      .transform(value => value === 'true' || value === '1'),
+
     // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
     // `warn` logs unscoped queries on tenant-owned models without blocking
     // them; `enforce` throws. See env.example for the warn → enforce sequence.

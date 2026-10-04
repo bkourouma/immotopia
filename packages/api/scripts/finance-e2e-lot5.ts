@@ -51,12 +51,8 @@ import { sumSiteActualCost } from '../src/lib/finance/site-cost';
 import { createSupplierTx, createSupplierInvoiceTx, validateSupplierInvoiceTx } from '../src/lib/finance/suppliers';
 import { createStockItemTx, createStockLocationTx } from '../src/lib/finance/stock-referentiel';
 import { recordStockReceiptTx, recordStockIssueTx, listStockBalances } from '../src/lib/finance/stock-mouvements';
-import {
-  recordStockTransferTx,
-  createStockCountTx,
-  setStockCountLineTx,
-  validateStockCountTx
-} from '../src/lib/finance/stock-inventaire';
+import { recordStockTransferTx } from '../src/lib/finance/stock-transferts';
+import { createStockCountTx, setStockCountLineTx, validateStockCountTx } from '../src/lib/finance/stock-inventaire';
 import { enableStockOnSiteTx, getSiteStockReconciliation } from '../src/lib/finance/stock-rapprochement';
 
 const RUN_ID = uuidv4().slice(0, 8);

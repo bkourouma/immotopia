@@ -1,57 +1,57 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
-import { requireAccountsRead, requireDocumentsCreate } from '../middleware/finance-rbac-middleware';
+import {
+  requireStockDispose,
+  requireStockIssue,
+  requireStockReceive,
+  requireStockView
+} from '../middleware/stock-rbac-middleware';
 import {
   createStockIssueHandler,
   createStockReceiptHandler,
+  createStockScrapHandler,
+  createStockSupplierReturnHandler,
   listStockBalancesHandler
 } from '../controllers/finance-stock-mouvements-controller';
 
 /**
- * Routes agence du module financier opérationnel — lot 5, deuxième sous-lot :
- * réceptions, sorties et valorisation (`lib/finance/types-lot5-mouvements.ts`).
+ * Routes agence des mouvements de stock — lot 5, deuxième sous-lot, étendues
+ * par le lot 040 : réceptions, sorties, retours fournisseur, rebuts, soldes.
  *
- * **Ce fichier ne se monte pas lui-même** : c'est le rôle de `src/index.ts`,
- * fichier-registre hors du territoire de cet agent, monté à l'intégration.
- * Modèle : `routes/finance-retentions-routes.ts` (lot 4, sous-lot 5).
+ * Monté par `src/app.ts`.
  *
- * **Gardes posés AVEC leur chemin**, jamais en `router.use(authenticate)` nu.
- * Un garde posé sans chemin sur un routeur monté sur `/api` tout entier
+ * **Gardes posés AVEC leur chemin**, jamais en `router.use(authenticate)` nu :
+ * un garde posé sans chemin sur un routeur monté sur `/api` tout entier
  * traverserait toute requête `/api/*`, y compris une route publique montée
- * après lui — l'incident du lot 1, documenté dans `finance-routes.ts`. Ici
- * comme là-bas, le garde ne s'applique qu'au préfixe que ce routeur sert
- * réellement : `/tenants/:tenantId/finance`.
+ * après lui (incident du lot 1, `finance-routes.ts`).
  *
- * **Aucune permission neuve** : deux droits déjà posés aux lots 1 et 2
- * (`requireAccountsRead`, `requireDocumentsCreate`) couvrent les quatre
- * routes — exactement le tableau donné à cet agent.
+ * **Droits du stock** (lot 040, spec B1-R2) : chaque route passe sur sa garde
+ * `STOCK_*` ; la migration de données a reporté ces droits sur tous les rôles
+ * qui portaient les droits financiers, personne ne perd un accès.
  *
- * **Aucune route ne porte de paramètre de chemin autre que `tenantId`.** Le
- * piège d'ordre d'Express (`/summary` capturé par `/:id`) qui s'est produit
- * aux sous-lots 3 et 5 du lot 4 ne peut donc pas se produire ici — et si une
- * route `/stock/movements/:movementId` s'ajoute un jour, elle devra être
- * déclarée APRÈS `/stock/movements`.
+ * Aucune route ne porte de paramètre de chemin autre que `tenantId`.
  */
 
 const router = Router();
 
 router.use('/tenants/:tenantId/finance', authenticate, requireTenantAccess);
 
-// A. Réception. N'écrit AUCUNE écriture comptable ni aucune imputation : la
-// facture a déjà porté la valeur au 311 (contrat, en-tête). C'est donc bien
-// une création de pièce, mais une pièce de quantités.
-router.post('/tenants/:tenantId/finance/stock/receipts', requireDocumentsCreate, createStockReceiptHandler);
+// Réception : bon BR, aucune écriture comptable (la facture a porté la valeur au 311).
+router.post('/tenants/:tenantId/finance/stock/receipts', requireStockReceive, createStockReceiptHandler);
 
-// B. Sortie vers un chantier. C'est LE geste du lot : celui qui fait entrer le
-// matériau dans le coût réel du chantier, à la place de la facture (P-7).
-router.post('/tenants/:tenantId/finance/stock/issues', requireDocumentsCreate, createStockIssueHandler);
+// Sortie vers un chantier : LE geste qui impute (P-7). Bon BS, 1 à 50 lignes.
+router.post('/tenants/:tenantId/finance/stock/issues', requireStockIssue, createStockIssueHandler);
 
-// C. Soldes par (article, lieu), avec leur valeur et leur coût moyen déduit.
-router.get('/tenants/:tenantId/finance/stock/balances', requireAccountsRead, listStockBalancesHandler);
+// Retour fournisseur (A6) : C311 / D401 / écart 603, compte du fournisseur réglé.
+router.post('/tenants/:tenantId/finance/stock/supplier-returns', requireStockDispose, createStockSupplierReturnHandler);
 
-// D. Journal des mouvements : route déplacée dans
-// `finance-stock-journal-routes.ts` (lot 040, fondations), même chemin et
-// même garde.
+// Rebut (A6) : D603 / C311, jamais imputé à un chantier.
+router.post('/tenants/:tenantId/finance/stock/scraps', requireStockDispose, createStockScrapHandler);
+
+// Soldes par (article, lieu), masqués pour l'appelant (§8.1, §8.2).
+router.get('/tenants/:tenantId/finance/stock/balances', requireStockView, listStockBalancesHandler);
+
+// Journal des mouvements : `finance-stock-journal-routes.ts` (territoire API-3).
 
 export default router;

@@ -39,6 +39,15 @@ const store = {
   seq: 0
 };
 
+/** Lot 040 : le stock du lieu du chantier (bloqueurs A7-R3) et les verrous pris. */
+const stockStore = {
+  locations: [] as Row[],
+  counts: [] as Row[],
+  balances: [] as Row[],
+  movements: [] as Row[],
+  locks: [] as string[]
+};
+
 function nextId(prefix: string): string {
   store.seq += 1;
   return `${prefix}-${String(store.seq).padStart(3, '0')}`;
@@ -96,6 +105,41 @@ function sortByCreatedAtThenId(rows: Row[]): Row[] {
 }
 
 const mockPrisma: Row = {
+  // Lot 040 : verrou consultatif (`lockStockSiteTx`) et lectures des bloqueurs de stock.
+  $executeRaw: jest.fn(async (strings: TemplateStringsArray, ...values: any[]) => {
+    stockStore.locks.push(`${strings.join('?')}|${values.join(',')}`);
+    return 0;
+  }),
+  stockLocation: {
+    findFirst: jest.fn(async ({ where }: Row) => stockStore.locations.find(row => matches(row, where)) ?? null)
+  },
+  stockCount: {
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const { status, ...rest } = where;
+      const rows = stockStore.counts
+        .filter(row => matches(row, rest))
+        .filter(row => (status?.in ? status.in.includes(row.status) : row.status === status))
+        .sort((a, b) => (b.validatedAt?.getTime?.() ?? 0) - (a.validatedAt?.getTime?.() ?? 0));
+      return rows[0] ?? null;
+    })
+  },
+  stockBalance: {
+    count: jest.fn(async ({ where }: Row) => {
+      const { quantity, ...rest } = where;
+      return stockStore.balances.filter(row => matches(row, rest) && row.quantity > quantity.gt).length;
+    })
+  },
+  stockMovement: {
+    findFirst: jest.fn(async ({ where }: Row) => {
+      const { type, OR, ...rest } = where;
+      const rows = stockStore.movements
+        .filter(row => matches(row, rest) && type.in.includes(row.type))
+        .filter(row => !OR || OR.some((branch: Row) => matches(row, branch)))
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return rows[0] ?? null;
+    })
+  },
+
   constructionSite: {
     findFirst: jest.fn(async ({ where, select }: Row) => {
       const row = store.sites.find(site => matches(site, where));
@@ -280,6 +324,11 @@ function resetStore(): void {
   store.valuations = [];
   store.assets = [];
   store.seq = 0;
+  stockStore.locations = [];
+  stockStore.counts = [];
+  stockStore.balances = [];
+  stockStore.movements = [];
+  stockStore.locks = [];
 }
 
 function seedSite(overrides: Row = {}): Row {
@@ -814,11 +863,12 @@ describe('closeSiteTx applique EXACTEMENT les bloqueurs que getSiteClosureBlocke
 
     const refus: any = await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER }).catch(error => error);
 
-    expect(refus.status).toBe(409);
+    expect(refus.statusCode).toBe(409);
+    expect(refus.code).toBe('CONFLICT');
     // Les bloqueurs appliqués sont les bloqueurs listés — mêmes messages,
     // mêmes comptes, même ordre. Ce serait cruel d'en lister puis d'en
     // appliquer d'autres (contrat).
-    expect(refus.details.blockers).toEqual(listes);
+    expect(refus.data.blockers).toEqual(listes);
     expect(store.sites.find(row => row.id === site.id)!.closedAt).toBeNull();
   });
 
@@ -840,7 +890,7 @@ describe('closeSiteTx applique EXACTEMENT les bloqueurs que getSiteClosureBlocke
     const refus: any = await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER }).catch(error => error);
 
     expect(listes).toHaveLength(1);
-    expect(refus.details.blockers).toEqual(listes);
+    expect(refus.data.blockers).toEqual(listes);
   });
 });
 
@@ -903,6 +953,142 @@ describe('closeSiteTx', () => {
     await expect(closeSiteTx(tx, TENANT, 'chantier-fantome', { closedByUserId: USER })).rejects.toMatchObject({
       status: 404
     });
+  });
+});
+
+// ===========================================================================
+// G bis. Lot 040 — les trois bloqueurs de stock (A7-R3) et le verrou (A7-R3 bis)
+// ===========================================================================
+
+describe('closeSiteTx — bloqueurs de stock du lot 040', () => {
+  const MINUTE = 60_000;
+
+  function seedSiteLocation(siteId: string): Row {
+    const location = { id: nextId('lieu'), tenantId: TENANT, siteId, kind: 'SITE' };
+    stockStore.locations.push(location);
+    return location;
+  }
+
+  function seedMovement(locationId: string, overrides: Row): Row {
+    const movement = {
+      id: nextId('mouvement'),
+      tenantId: TENANT,
+      locationId,
+      isDecrease: false,
+      stockCountId: null,
+      createdAt: new Date(),
+      ...overrides
+    };
+    stockStore.movements.push(movement);
+    return movement;
+  }
+
+  function seedValidatedClosing(locationId: string, validatedAt: Date): Row {
+    const count = {
+      id: nextId('inventaire'),
+      tenantId: TENANT,
+      locationId,
+      kind: 'CLOSING',
+      status: 'VALIDATED',
+      validatedAt
+    };
+    stockStore.counts.push(count);
+    return count;
+  }
+
+  const kinds = (blockers: Array<{ documentType?: string }>) => blockers.map(blocker => blocker.documentType);
+
+  it('A7-6 : 12 sacs sur le lieu → STOCK_RESIDUAL et STOCK_CLOSING_COUNT_MISSING ; la clôture est refusée', async () => {
+    const site = seedSite();
+    const lieu = seedSiteLocation(site.id);
+    stockStore.balances.push({ tenantId: TENANT, locationId: lieu.id, itemId: 'ciment', quantity: 12 });
+    seedMovement(lieu.id, { type: 'RECEIPT', createdAt: new Date(Date.now() - 10 * MINUTE) });
+
+    const blockers = await getSiteClosureBlockers(TENANT, site.id);
+    expect(kinds(blockers)).toEqual(['STOCK_RESIDUAL', 'STOCK_CLOSING_COUNT_MISSING']);
+    expect(blockers[0]).toEqual({
+      message:
+        "Le lieu de stockage du chantier porte encore du stock : faites l'inventaire de clôture, puis transférez le reste vers un magasin.",
+      count: 1,
+      documentIds: [lieu.id],
+      documentType: 'STOCK_RESIDUAL'
+    });
+    expect(blockers[1]).toMatchObject({
+      message:
+        "Le lieu de stockage du chantier n'a pas d'inventaire de clôture validé depuis sa dernière entrée de marchandise.",
+      documentIds: [lieu.id]
+    });
+
+    const refus: any = await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER }).catch(error => error);
+    expect(refus).toMatchObject({ statusCode: 409, code: 'CONFLICT' });
+    expect(refus.data.blockers).toEqual(blockers);
+
+    // Inventaire de clôture validé (qui constate 10 sacs), puis transfert des 10 vers un magasin.
+    const closing = seedValidatedClosing(lieu.id, new Date(Date.now() - 2 * MINUTE));
+    seedMovement(lieu.id, { type: 'ADJUSTMENT', isDecrease: true, stockCountId: closing.id });
+    seedMovement(lieu.id, { type: 'TRANSFER', isDecrease: true });
+    stockStore.balances[0].quantity = 0;
+
+    await expect(getSiteClosureBlockers(TENANT, site.id)).resolves.toEqual([]);
+    await expect(closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER })).resolves.toMatchObject({
+      siteId: site.id
+    });
+  });
+
+  it('A7-7 : une réception APRÈS l’inventaire de clôture fait revenir STOCK_CLOSING_COUNT_MISSING', async () => {
+    const site = seedSite();
+    const lieu = seedSiteLocation(site.id);
+    seedValidatedClosing(lieu.id, new Date(Date.now() - 10 * MINUTE));
+    seedMovement(lieu.id, { type: 'RECEIPT', createdAt: new Date(Date.now() - 5 * MINUTE) });
+    seedMovement(lieu.id, { type: 'ISSUE', isDecrease: true, createdAt: new Date(Date.now() - 4 * MINUTE) });
+
+    expect(kinds(await getSiteClosureBlockers(TENANT, site.id))).toEqual(['STOCK_CLOSING_COUNT_MISSING']);
+  });
+
+  it('l’ajustement en hausse écrit par l’inventaire de clôture lui-même ne compte pas comme une entrée', async () => {
+    const site = seedSite();
+    const lieu = seedSiteLocation(site.id);
+    const closing = seedValidatedClosing(lieu.id, new Date(Date.now() - MINUTE));
+    seedMovement(lieu.id, { type: 'ADJUSTMENT', isDecrease: false, stockCountId: closing.id, createdAt: new Date() });
+
+    expect(await getSiteClosureBlockers(TENANT, site.id)).toEqual([]);
+  });
+
+  it('STOCK_COUNT : un inventaire DRAFT ou COUNTED sur le lieu bloque, son identifiant est rendu', async () => {
+    const site = seedSite();
+    const lieu = seedSiteLocation(site.id);
+    for (const status of ['DRAFT', 'COUNTED']) {
+      stockStore.counts = [
+        { id: `inventaire-${status}`, tenantId: TENANT, locationId: lieu.id, kind: 'REGULAR', status }
+      ];
+      const blockers = await getSiteClosureBlockers(TENANT, site.id);
+      expect(blockers).toEqual([
+        {
+          message: 'Un inventaire est en cours sur le lieu de stockage du chantier : terminez-le avant de clôturer.',
+          count: 1,
+          documentIds: [`inventaire-${status}`],
+          documentType: 'STOCK_COUNT'
+        }
+      ]);
+    }
+  });
+
+  it('un chantier sans lieu de stockage n’a aucun bloqueur de stock', async () => {
+    const site = seedSite();
+    expect(await getSiteClosureBlockers(TENANT, site.id)).toEqual([]);
+  });
+
+  it('A7-R3 bis : le verrou `stock-site` du chantier est pris AVANT la lecture du chantier et des bloqueurs', async () => {
+    const site = seedSite();
+    await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER });
+
+    expect(stockStore.locks).toEqual([expect.stringMatching(/hashtext\('stock-site'\).*\|chantier-/)]);
+    expect(stockStore.locks[0].endsWith(`|${site.id}`)).toBe(true);
+    const lockOrder = (mockPrisma.$executeRaw as jest.Mock).mock.invocationCallOrder[0];
+    const firstSiteRead = (mockPrisma.constructionSite.findFirst as jest.Mock).mock.invocationCallOrder[0];
+    const firstBlockerRead = (mockPrisma.stockLocation.findFirst as jest.Mock).mock.invocationCallOrder[0];
+    expect(lockOrder).toBeLessThan(firstSiteRead);
+    expect(lockOrder).toBeLessThan(firstBlockerRead);
   });
 });
 

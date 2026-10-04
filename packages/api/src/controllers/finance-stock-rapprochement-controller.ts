@@ -11,6 +11,7 @@ import {
   siteStockQuerySchema,
   uuidPathParamSchema
 } from '../lib/finance/schemas-stock-rapprochement';
+import { loadBlindLocationIds, resolveStockCallerContext } from '../lib/finance/stock-controles';
 import { prisma } from '../utils/database';
 
 /**
@@ -75,7 +76,9 @@ export const enableSiteStockHandler = asyncHandler(async (req: Request, res: Res
   const siteId = requireUuidParam(req, 'siteId');
   enableSiteStockSchema.parse(req.body ?? {});
 
-  const status = await prisma.$transaction(tx => enableStockOnSiteTx(tx, tenantId, siteId, { enabledAt: new Date() }));
+  const status = await prisma.$transaction(tx =>
+    enableStockOnSiteTx(tx, tenantId, siteId, { enabledAt: new Date(), enabledByUserId: req.user?.userId ?? null })
+  );
 
   res.status(200).json({ success: true, data: status });
 });
@@ -114,7 +117,21 @@ export const getSiteStockReconciliationHandler = asyncHandler(async (req: Reques
   const siteId = requireUuidParam(req, 'siteId');
   siteStockQuerySchema.parse(req.query ?? {});
 
-  const reconciliation = await getSiteStockReconciliation(tenantId, siteId);
+  // Lot 040 (§8.2) : pendant un comptage du lieu du chantier, le restant est
+  // masqué à qui ne détient pas STOCK_COUNT_VALIDATE ; la réponse porte `meta`.
+  // Les montants restent ceux d'une route FINANCE_* (B1-R3) : aucun n'est
+  // masqué ici, d'où `valuesVisible: true`.
+  const userId = req.user?.userId;
+  if (!userId) {
+    throw new BadRequestError('Utilisateur authentifié requis pour cette opération financière.');
+  }
+  const ctx = await resolveStockCallerContext(userId, tenantId);
+  const blind = await loadBlindLocationIds(prisma, tenantId, ctx);
+  const reconciliation = await getSiteStockReconciliation(tenantId, siteId, { blindLocationIds: blind });
 
-  res.status(200).json({ success: true, data: reconciliation });
+  res.status(200).json({
+    success: true,
+    data: reconciliation,
+    meta: { valuesVisible: true, blindLocationIds: [...blind].sort() }
+  });
 });
