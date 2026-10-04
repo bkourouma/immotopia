@@ -36,7 +36,7 @@ import {
 } from '../../src/lib/ai/contracts';
 import { findWritableEntry, getCatalogEntries } from '../../src/lib/ai/gateway/catalog';
 import { setLoopbackBaseUrlForTests } from '../../src/lib/ai/gateway/loopback';
-import { bodySensitivity, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
+import { bodySensitivity, isDestructive, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
 import { validatePlanBody } from '../../src/lib/ai/gateway/write-input';
 import { computePlanHash, canonicalJson } from '../../src/lib/ai/plan-hash';
 import { verifyCapabilityProposal } from '../../src/lib/ai/proposal-token';
@@ -640,13 +640,10 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
     expect(findWritableEntry(id)).toBeUndefined();
   });
 
-  it('stock WhatsApp : le retrait d’une photo de comptage est une écriture sensible à mot saisi', () => {
-    const entry = findWritableEntry(
-      'POST /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo'
-    );
-    expect(entry).toBeDefined();
-    expect(writeSensitivity(entry!.path)).not.toBeNull();
-    expect(assessWrite(entry!, {})).toMatchObject({ sensitive: true, requiresTypedConfirmation: true });
+  it('stock WhatsApp : le retrait d’une photo de comptage efface une preuve, exclu du catalogue comme destructeur', () => {
+    const path = '/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo';
+    expect(isDestructive('POST', path)).toBe(true);
+    expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
   });
 
   it('`status` n’est sensible que sur un bail ; une création banale reste non sensible', () => {

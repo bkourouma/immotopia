@@ -68,6 +68,24 @@ describe('catalogue de la passerelle IA', () => {
       'POST /api/tenants/:tenantId/maintenance/admin/vendors/:vendorId/delete'
     );
     expect(built.entries.some(entry => /\/(delete|remove|destroy|purge)$/i.test(entry.path))).toBe(false);
+    // Verbe en tête d'un dernier segment composé (lot 041) : effacement d'une photo de preuve.
+    expect(built.excludedDestructive.map(entry => entry.id)).toContain(
+      'POST /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo'
+    );
+  });
+
+  it('repère le verbe destructeur en tête du dernier segment, seul ou composé', () => {
+    expect(
+      isDestructive('POST', '/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo')
+    ).toBe(true);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/delete-all')).toBe(true);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/:id/purge_cache')).toBe(true);
+    expect(isDestructive('PATCH', '/api/tenants/:tenantId/x/:id/DESTROY')).toBe(true);
+    // Témoins : le verbe au milieu d'un segment, ou hors du dernier segment, ne suffit pas.
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/auto-remove')).toBe(false);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/removed')).toBe(false);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/remove-requests/:id/approve')).toBe(false);
+    expect(isDestructive('GET', '/api/tenants/:tenantId/x/:id')).toBe(false);
   });
 
   it('ne contient aucune route /auth, /admin, /platform, /portal, /ai, webhook', () => {
@@ -97,6 +115,14 @@ describe('catalogue de la passerelle IA', () => {
     const fieldCounts = built.entries.find(entry => entry.path.endsWith('/finance/stock/whatsapp/field-counts'));
     expect(fieldCounts?.sensitive).toBe(false);
     expect(isSensitivePath('/api/tenants/:tenantId/whatsapp-notifications')).toBe(false);
+  });
+
+  it('marque sensibles les sessions et conversations du bot WhatsApp (numéro et messages du chef)', () => {
+    expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:id')).toBe(true);
+    expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:sessionId/messages')).toBe(true);
+    const sessions = built.entries.filter(entry => entry.path.includes('/finance/stock/whatsapp/sessions'));
+    expect(sessions.length).toBeGreaterThanOrEqual(2);
+    expect(sessions.every(entry => entry.sensitive)).toBe(true);
   });
 
   it('toute route d’agence non DELETE, non destructrice, non exclue a une entrée', () => {

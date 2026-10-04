@@ -249,13 +249,15 @@ export async function listStockFieldCaptures(
 
 /** `GET /captures/{captureId}` — détail pour le visualiseur de preuve. */
 export async function getStockFieldCapture(tenantId: string, captureId: string): Promise<CaptureView> {
-  const response = await apiClient.get<ApiResponse<CaptureView>>(`${base(tenantId)}/captures/${captureId}`);
+  const response = await apiClient.get<ApiResponse<CaptureView>>(
+    `${base(tenantId)}/captures/${encodeURIComponent(captureId)}`
+  );
   return response.data.data;
 }
 
 /** `GET /captures/{captureId}/file` — la photo, en blob (lecture tracée par le serveur). */
 export async function getStockFieldCaptureFile(tenantId: string, captureId: string): Promise<Blob> {
-  const response = await apiClient.get<Blob>(`${base(tenantId)}/captures/${captureId}/file`, {
+  const response = await apiClient.get<Blob>(`${base(tenantId)}/captures/${encodeURIComponent(captureId)}/file`, {
     responseType: 'blob'
   });
   return response.data;
@@ -269,7 +271,7 @@ export async function removeStockFieldCapturePhoto(
 ): Promise<CaptureView> {
   const corps: RemoveCapturePhotoRequest = { reason: request.reason.trim() };
   const response = await apiClient.post<ApiResponse<CaptureView>>(
-    `${base(tenantId)}/captures/${captureId}/remove-photo`,
+    `${base(tenantId)}/captures/${encodeURIComponent(captureId)}/remove-photo`,
     corps
   );
   return response.data.data;
@@ -277,7 +279,9 @@ export async function removeStockFieldCapturePhoto(
 
 /** `GET /counts/{countId}/captures` — source de l'inventaire et capture de chaque ligne (aucun attendu). */
 export async function listStockCountFieldCaptures(tenantId: string, countId: string): Promise<CountFieldCaptures> {
-  const response = await apiClient.get<ApiResponse<CountFieldCaptures>>(`${base(tenantId)}/counts/${countId}/captures`);
+  const response = await apiClient.get<ApiResponse<CountFieldCaptures>>(
+    `${base(tenantId)}/counts/${encodeURIComponent(countId)}/captures`
+  );
   return response.data.data;
 }
 

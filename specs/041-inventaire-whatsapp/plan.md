@@ -367,9 +367,11 @@ fichiers d'audit, `catalog.ts` (fondations).
 3. **Vocabulaire** : étendre les deux tests de vocabulaire du lot 040.
 4. **Assistant** : exclure le segment `simulator` dans
    `src/lib/ai/gateway/catalog-builder.ts` (`isExcludedPath`, `:57-62`) avec son
-   test ; `npm run ai:catalog` ; vérifier que `revoke`, `regenerate-code`,
-   `remove-photo` sortent sensibles (le segment `whatsapp` les classe déjà
-   « sending », `src/lib/ai/gateway/path-rules.ts:66-73`).
+   test ; `npm run ai:catalog` ; vérifier que `revoke` et `regenerate-code`
+   sortent sensibles (le segment `whatsapp` les classe déjà « sending »,
+   `src/lib/ai/gateway/path-rules.ts:66-73`). `remove-photo` efface une preuve :
+   il est exclu du catalogue comme destructeur (le dernier segment commence par
+   `remove`), jamais proposé par l'assistant.
 5. **Isolation et inventaires de routes** : `routes-inventory.test.ts` (deux
    entrées de liste blanche, raison : « Webhook Meta WhatsApp Cloud (lot 041) :
    signature X-Hub-Signature-256 toujours vérifiée, aucune session par

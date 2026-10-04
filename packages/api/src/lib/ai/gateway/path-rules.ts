@@ -5,8 +5,13 @@
  * revérifie à l'exécution ce que le catalogue a déjà exclu (défense en profondeur).
  */
 
-/** Écriture destructrice déguisée en POST (ou autre méthode) : suffixe du chemin. */
-const DESTRUCTIVE_SUFFIX = /\/(delete|remove|destroy|purge)$/i;
+/**
+ * Écriture destructrice déguisée en POST (ou autre méthode) : dernier segment du chemin qui
+ * COMMENCE par le verbe, seul ou suivi de mots liés par `-` ou `_` (`/delete`, `/remove-photo`,
+ * `/delete-all`, `/purge_cache`). Un segment qui contient le verbe sans commencer par lui
+ * (`/auto-remove`) n'est pas visé ; un paramètre `:id` en dernière position non plus.
+ */
+const DESTRUCTIVE_SUFFIX = /\/(delete|remove|destroy|purge)(?:[-_][A-Za-z0-9]+)*$/i;
 
 /**
  * Chemin évoquant un secret, un jeton ou un identifiant de connexion. Testé par
@@ -18,11 +23,17 @@ const SENSITIVE_SEGMENT =
 const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso', 'oauth']);
 
 /**
- * Suites de segments sensibles : les inscriptions WhatsApp de l'inventaire
- * (lot 041) portent le numéro des chefs de chantier et, à la création ou à la
- * régénération, le code d'activation en clair.
+ * Suites de segments sensibles (lot 041, inventaire par WhatsApp) :
+ * - `whatsapp/registrations` : inscriptions des chefs de chantier, avec leur numéro et, à la
+ *   création ou à la régénération, le code d'activation en clair ;
+ * - `whatsapp/sessions` : sessions et conversations du bot, avec le numéro et les messages du
+ *   chef de chantier. Le mot générique `sessions` (`SENSITIVE_EXACT_SEGMENTS`) les couvre
+ *   déjà ; la paire les garde sensibles s'il quitte un jour cette liste.
  */
-const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [['whatsapp', 'registrations']];
+const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['whatsapp', 'registrations'],
+  ['whatsapp', 'sessions']
+];
 
 export function isSensitivePath(path: string): boolean {
   const segments = path.split('/').map(segment => segment.toLowerCase());

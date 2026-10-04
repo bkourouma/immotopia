@@ -5019,17 +5019,6 @@
       "sensitive": false
     },
     {
-      "id": "POST /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo",
-      "method": "POST",
-      "path": "/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo",
-      "pathParams": ["captureId"],
-      "module": "finance",
-      "summary": "finance / stock / whatsapp / captures / {captureId} / remove-photo",
-      "permissions": ["STOCK_DISPOSE"],
-      "anyOfPermissions": null,
-      "sensitive": false
-    },
-    {
       "id": "POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations",
       "method": "POST",
       "path": "/api/tenants/:tenantId/finance/stock/whatsapp/registrations",
