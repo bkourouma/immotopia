@@ -4,6 +4,7 @@ import {
   AuditOutlined,
   BankOutlined,
   BuildOutlined,
+  CameraOutlined,
   CarryOutOutlined,
   DashboardOutlined,
   EnvironmentOutlined,
@@ -17,7 +18,8 @@ import {
   ShopOutlined,
   ShoppingCartOutlined,
   TeamOutlined,
-  WalletOutlined
+  WalletOutlined,
+  WhatsAppOutlined
 } from '@ant-design/icons';
 import type { WorkspaceTabItem } from '../components/navigation/WorkspaceTabs';
 import { t } from '../i18n/t';
@@ -201,6 +203,19 @@ export const FINANCE_WORKSPACES: Record<FinanceWorkspaceFamily, FinanceWorkspace
         label: () => t('Inventaire'),
         href: `${FINANCE}/stock/inventaire`,
         icon: <CarryOutOutlined />
+      },
+      // Lot 041 — après « Contrôle » du lot 040, avant « Articles et lieux ».
+      {
+        key: 'stock-comptages-terrain',
+        label: () => t('Comptages terrain'),
+        href: `${FINANCE}/stock/comptages-terrain`,
+        icon: <CameraOutlined />
+      },
+      {
+        key: 'stock-whatsapp',
+        label: () => t('WhatsApp'),
+        href: `${FINANCE}/stock/whatsapp`,
+        icon: <WhatsAppOutlined />
       },
       {
         key: 'stock-parametrage',

@@ -322,6 +322,17 @@ const StockChantier = lazy(() =>
     default: m.StockChantier
   }))
 );
+// Lot 041 — inventaire de chantier par WhatsApp.
+const StockWhatsapp = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockWhatsapp').then(m => ({
+    default: m.StockWhatsapp
+  }))
+);
+const StockComptagesTerrain = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockComptagesTerrain').then(m => ({
+    default: m.StockComptagesTerrain
+  }))
+);
 const RetenuesDeGarantie = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/RetenuesDeGarantie').then(m => ({
     default: m.RetenuesDeGarantie
@@ -1198,6 +1209,11 @@ function App() {
                             <Route path="/tenant/:tenantId/finance/stock" element={<Stock />} />
                             <Route path="/tenant/:tenantId/finance/stock/inventaire" element={<StockInventaire />} />
                             <Route path="/tenant/:tenantId/finance/stock/parametrage" element={<StockReferentiel />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/stock/comptages-terrain"
+                              element={<StockComptagesTerrain />}
+                            />
+                            <Route path="/tenant/:tenantId/finance/stock/whatsapp" element={<StockWhatsapp />} />
                           </Route>
                           <Route path="/tenant/:tenantId/finance/salaires" element={<Salaires />} />
                           <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />

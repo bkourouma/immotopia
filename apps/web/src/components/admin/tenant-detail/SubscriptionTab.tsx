@@ -76,7 +76,8 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   COPROPRIETES: t('Copropriétés'),
   CHANTIERS: t('Chantiers'),
   BIENS_DETENUS: t('Biens détenus'),
-  ACTIFS: t('Actifs')
+  ACTIFS: t('Actifs'),
+  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)')
 };
 
 /**
@@ -289,7 +290,8 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }
               { value: 'COPROPRIETES', label: t('Copropriétés') },
               { value: 'CHANTIERS', label: t('Chantiers') },
               { value: 'BIENS_DETENUS', label: t('Biens détenus') },
-              { value: 'ACTIFS', label: t('Actifs') }
+              { value: 'ACTIFS', label: t('Actifs') },
+              { value: 'PHOTOS_INVENTAIRE', label: t('Photos d’inventaire analysées (par mois)') }
             ]}
           />
         </Form.Item>

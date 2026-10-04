@@ -61,3 +61,25 @@ describe('onglets des espaces Finance par pack', () => {
     expect(keys('fournisseurs-commandes', { MODULE_AGENCY: 'FULL', MODULE_PROMOTER: 'READ_ONLY' })).toHaveLength(3);
   });
 });
+
+describe('Gestion du stock — onglets du lot 041', () => {
+  it('« Comptages terrain » puis « WhatsApp », juste avant « Articles et lieux » qui reste le dernier', () => {
+    const cles = FINANCE_WORKSPACES['gestion-stock'].tabs.map(tab => tab.key);
+    const terrain = cles.indexOf('stock-comptages-terrain');
+    const whatsapp = cles.indexOf('stock-whatsapp');
+    expect(terrain).toBeGreaterThan(-1);
+    expect(whatsapp).toBe(terrain + 1);
+    expect(cles[cles.length - 1]).toBe('stock-parametrage');
+    expect(cles.indexOf('stock-parametrage')).toBe(whatsapp + 1);
+  });
+
+  it('routes sous finance/stock : suivent la fonctionnalité CONSTRUCTION comme les autres onglets du stock', () => {
+    const hrefs = financeWorkspaceTabs('gestion-stock', 't1').map(tab => tab.href);
+    expect(hrefs).toContain('/tenant/t1/finance/stock/comptages-terrain');
+    expect(hrefs).toContain('/tenant/t1/finance/stock/whatsapp');
+    expect(keys('gestion-stock', { MODULE_AGENCY: 'FULL' })).toEqual([]);
+    expect(keys('gestion-stock', { MODULE_PROMOTER: 'FULL' })).toEqual(
+      expect.arrayContaining(['stock-comptages-terrain', 'stock-whatsapp'])
+    );
+  });
+});

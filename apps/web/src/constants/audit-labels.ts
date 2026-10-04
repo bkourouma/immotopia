@@ -164,6 +164,18 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   SYNDIC_PROVIDER_INVOICE_FILE_REPLACED: t("Remplacement du fichier d'une facture de prestataire"),
   SYNDIC_PROVIDER_INVOICE_FILE_REMOVED: t("Retrait du fichier d'une facture de prestataire"),
 
+  // Stock — inventaire de chantier par WhatsApp (lot 041)
+  STOCK_WHATSAPP_REGISTRATION_CREATED: t("Inscription d'un chef de chantier à l'inventaire par WhatsApp"),
+  STOCK_WHATSAPP_REGISTRATION_UPDATED: t("Modification des chantiers d'un chef de chantier inscrit"),
+  STOCK_WHATSAPP_ACTIVATION_CODE_REGENERATED: t("Nouveau code d'activation pour un chef de chantier"),
+  STOCK_WHATSAPP_REGISTRATION_ACTIVATED: t('Activation par WhatsApp du numéro d’un chef de chantier'),
+  STOCK_WHATSAPP_ACTIVATION_LOCKED: t("Code d'activation bloqué après trop d'essais"),
+  STOCK_WHATSAPP_REGISTRATION_REVOKED: t("Révocation de l'accès WhatsApp d'un chef de chantier"),
+  STOCK_WHATSAPP_COUNT_RECORDED: t('Comptage du stock enregistré par photo WhatsApp'),
+  STOCK_WHATSAPP_COUNT_CLOSED: t('Inventaire de chantier clos par WhatsApp'),
+  STOCK_WHATSAPP_QUOTA_REACHED: t('Quota mensuel de photos analysées atteint'),
+  STOCK_WHATSAPP_PHOTO_REMOVED: t("Retrait de la photo d'un comptage par WhatsApp"),
+
   // Assistant IA
   AI_CHAT_TURN: t("Échange avec l'assistant IA"),
   AI_TOOL_CALLED: t("Outil utilisé par l'assistant IA"),
@@ -233,7 +245,11 @@ export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
   WorkProgram: t('Programme de travaux'),
   AI_PROPOSAL: t("Proposition de l'assistant IA"),
   AI_TOOL: t("Outil de l'assistant IA"),
-  AI_CONVERSATION: t("Conversation avec l'assistant IA")
+  AI_CONVERSATION: t("Conversation avec l'assistant IA"),
+  // Lot 041
+  StockWhatsappRegistration: t('Inscription WhatsApp d’un chef de chantier'),
+  StockFieldCapture: t('Comptage par photo WhatsApp'),
+  StockWhatsappUsage: t('Quota de photos du mois')
 };
 
 /** Libellé français de chaque catégorie du journal d'audit. */
