@@ -619,5 +619,13 @@
   "Vérifier l'intégrité": "التحقق من السلامة",
   "Visibilité": "الظهور",
   "Visibles de l'agence": "الظاهرة للوكالة",
-  "Voir toute la requête": "عرض الطلب كاملاً"
+  "Voir toute la requête": "عرض الطلب كاملاً",
+  "Abandonner les modifications ?": "التخلي عن التعديلات؟",
+  "Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre.": "لم يتم حفظ القوائم المعدلة: سيؤدي تغيير الوكالة إلى فقدانها.",
+  "Changer d'agence": "تغيير الوكالة",
+  "Rester": "البقاء",
+  "Ces réglages ne s'appliquent qu'à l'agence choisie.": "لا تسري هذه الإعدادات إلا على الوكالة المختارة.",
+  "Ces réglages s'appliquent à la plateforme.": "تسري هذه الإعدادات على المنصة.",
+  "Choisissez une agence pour régler ses menus.": "اختر وكالة لضبط قوائمها.",
+  "Choisir une agence": "اختر وكالة"
 }

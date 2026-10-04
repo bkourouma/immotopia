@@ -8,6 +8,7 @@ import {
   Col,
   Empty,
   List,
+  Modal,
   Popconfirm,
   Row,
   Space,
@@ -47,6 +48,7 @@ import type { MenuCatalogEntry } from '../../navigation/menu-catalog';
 import type { PersonaId } from '../../navigation/model';
 import { getNavigation } from '../../navigation/model';
 import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
+import { MenuTenantSelect } from '../../components/admin/MenuTenantSelect';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -110,6 +112,10 @@ export const RolesPermissions: React.FC = () => {
   const [rolePermissionKeys, setRolePermissionKeys] = useState<Set<string> | null>(null);
   const [loadingRole, setLoadingRole] = useState(false);
 
+  /** Agence dont on règle les menus (rôles d'agence et portails). */
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [loadingMenuAccess, setLoadingMenuAccess] = useState(false);
+
   const [menuDraft, setMenuDraft] = useState<Record<string, boolean>>({});
 
   const [loading, setLoading] = useState(true);
@@ -164,15 +170,10 @@ export const RolesPermissions: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const [rolesData, permissionsData, menuAccessData] = await Promise.all([
-          listRoles(),
-          listPermissions(),
-          listMenuAccess().catch(() => ({}) as MenuAccessMap)
-        ]);
+        const [rolesData, permissionsData] = await Promise.all([listRoles(), listPermissions()]);
         if (cancelled) return;
         setRoles(rolesData);
         setPermissions(permissionsData);
-        setMenuAccess(menuAccessData);
         setSelectedKey(current => current ?? rolesData[0]?.key ?? getPortalPseudoRoles()[0].key);
       } catch (err: any) {
         if (!cancelled) setError(err.response?.data?.message || t('Erreur lors du chargement des données'));
@@ -185,6 +186,35 @@ export const RolesPermissions: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  /** Les rôles de plateforme se règlent sans agence ; tous les autres exigent une agence. */
+  const needsTenant = !!selectedRole && selectedRole.scope !== 'PLATFORM';
+  const scopeTenantId = needsTenant ? tenantId : null;
+  const awaitingTenant = needsTenant && !tenantId;
+
+  /** Recharge les coupures du périmètre affiché (plateforme, ou agence choisie). */
+  useEffect(() => {
+    setMenuAccess({});
+    if (awaitingTenant) {
+      setLoadingMenuAccess(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingMenuAccess(true);
+    listMenuAccess(scopeTenantId)
+      .then(data => {
+        if (!cancelled) setMenuAccess(data);
+      })
+      .catch(() => {
+        if (!cancelled) setMenuAccess({});
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingMenuAccess(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [awaitingTenant, scopeTenantId]);
 
   /** Charge les permissions du rôle sélectionné — source des états par défaut. */
   useEffect(() => {
@@ -248,6 +278,21 @@ export const RolesPermissions: React.FC = () => {
     return { enabled: keys.filter(key => menuDraft[key]).length, total: keys.length };
   }, [menuDraft]);
 
+  const handleSelectTenant = (next: string | null) => {
+    if (next === tenantId) return;
+    if (!menusDirty) {
+      setTenantId(next);
+      return;
+    }
+    Modal.confirm({
+      title: t('Abandonner les modifications ?'),
+      content: t("Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre."),
+      okText: t("Changer d'agence"),
+      cancelText: t('Rester'),
+      onOk: () => setTenantId(next)
+    });
+  };
+
   const handleSelectRole = (role: ManagedRole) => {
     setSelectedKey(role.key);
     setSuccess(null);
@@ -285,7 +330,7 @@ export const RolesPermissions: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const saved = await updateMenuAccess(selectedRole.key, menuDraft);
+      const saved = await updateMenuAccess(selectedRole.key, menuDraft, scopeTenantId);
       setMenuAccess(prev => ({ ...prev, [selectedRole.key]: saved }));
       setSuccess(t('Menus de « {{name}} » enregistrés.', { name: selectedRole.name }));
     } catch (err: any) {
@@ -466,7 +511,7 @@ export const RolesPermissions: React.FC = () => {
             icon={<SaveOutlined />}
             onClick={handleSaveMenus}
             loading={savingMenus}
-            disabled={!menusDirty}
+            disabled={!menusDirty || awaitingTenant}
           >
             {t('Enregistrer')}
           </Button>
@@ -488,7 +533,16 @@ export const RolesPermissions: React.FC = () => {
           }
         />
 
-        {loadingRole ? (
+        <Text type="secondary">
+          {needsTenant
+            ? t("Ces réglages ne s'appliquent qu'à l'agence choisie.")
+            : t("Ces réglages s'appliquent à la plateforme.")}
+        </Text>
+        {needsTenant && <MenuTenantSelect value={tenantId} onChange={handleSelectTenant} />}
+
+        {awaitingTenant ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Choisissez une agence pour régler ses menus.')} />
+        ) : loadingRole || loadingMenuAccess ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
             <Spin />
           </div>
@@ -650,7 +704,8 @@ export const RolesPermissions: React.FC = () => {
               dataSource={managedRoles}
               renderItem={role => {
                 const isSelected = selectedKey === role.key;
-                const overrideCount = Object.values(menuAccess[role.key] ?? {}).length;
+                const sameScope = (role.scope !== 'PLATFORM') === needsTenant;
+                const overrideCount = sameScope ? Object.values(menuAccess[role.key] ?? {}).length : 0;
                 return (
                   <List.Item
                     key={role.key}

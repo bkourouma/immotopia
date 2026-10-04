@@ -619,5 +619,13 @@
   "Vérifier l'intégrité": "Verify integrity",
   "Visibilité": "Visibility",
   "Visibles de l'agence": "Visible to the agency",
-  "Voir toute la requête": "See the whole request"
+  "Voir toute la requête": "See the whole request",
+  "Abandonner les modifications ?": "Discard changes?",
+  "Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre.": "The edited menus are not saved: switching agency will discard them.",
+  "Changer d'agence": "Switch agency",
+  "Rester": "Stay",
+  "Ces réglages ne s'appliquent qu'à l'agence choisie.": "These settings only apply to the selected agency.",
+  "Ces réglages s'appliquent à la plateforme.": "These settings apply to the platform.",
+  "Choisissez une agence pour régler ses menus.": "Choose an agency to set its menus.",
+  "Choisir une agence": "Choose an agency"
 }
