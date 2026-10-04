@@ -149,6 +149,13 @@ describe('service — périmètre par agence', () => {
     await replaceMenuAccessForRole('SUPER_ADMIN', { plateforme: false }, null);
     expect(store).toEqual([{ tenantId: null, roleKey: 'SUPER_ADMIN', menuKey: 'plateforme', enabled: false }]);
   });
+
+  it('un périmètre undefined est refusé : jamais de requête sur toutes les agences', async () => {
+    store = [{ tenantId: 'tenant-B', roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false }];
+    await expect(replaceMenuAccessForRole('TENANT_ADMIN', {}, undefined as any)).rejects.toThrow();
+    await expect(getMenuAccess(undefined as any)).rejects.toThrow();
+    expect(store).toHaveLength(1);
+  });
 });
 
 describe('GET /api/roles/menu-access', () => {
@@ -208,6 +215,13 @@ describe('PUT /api/roles/menu-access/:roleKey', () => {
   it('agence inexistante : NotFoundError', async () => {
     const { error } = await put('TENANT_ADMIN', { tenantId: 'inconnue' });
     expect(error).toMatchObject({ name: 'NotFoundError', statusCode: 404 });
+    expect(store).toEqual([]);
+  });
+
+  it('carte de menus trop longue : 400', async () => {
+    const menus = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`menu-${i}`, false]));
+    const { error } = await put('TENANT_ADMIN', { tenantId: 'tenant-A' }, menus);
+    expect(error).toMatchObject({ statusCode: 400 });
     expect(store).toEqual([]);
   });
 

@@ -372,11 +372,19 @@ export const getMyMenuAccessHandler = asyncHandler(async (req: Request, res: Res
   res.status(200).json({ success: true, data: { disabledMenuKeys, ...(permissions ? { permissions } : {}) } });
 });
 
+/** Bornes de la carte de menus : le catalogue en compte une centaine par persona. */
+const MAX_MENU_ENTRIES = 500;
+const MAX_MENU_KEY_LENGTH = 200;
+
 const updateMenuAccessBodySchema = z.object({
-  menus: z.record(z.string(), z.boolean(), {
-    invalid_type_error: 'menus doit être un objet { clé de menu: booléen }.',
-    required_error: 'menus doit être un objet { clé de menu: booléen }.'
-  })
+  menus: z
+    .record(z.string().min(1).max(MAX_MENU_KEY_LENGTH), z.boolean(), {
+      invalid_type_error: 'menus doit être un objet { clé de menu: booléen }.',
+      required_error: 'menus doit être un objet { clé de menu: booléen }.'
+    })
+    .refine(menus => Object.keys(menus).length <= MAX_MENU_ENTRIES, {
+      message: `menus ne peut pas dépasser ${MAX_MENU_ENTRIES} entrées.`
+    })
 });
 
 /**

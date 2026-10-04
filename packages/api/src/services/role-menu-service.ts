@@ -35,8 +35,20 @@ export interface RoleMenuAccessEntry {
  */
 export type MenuAccessScope = string | null;
 
+/**
+ * Le modèle est exempté de la garde tenant (`tenantId` nullable par
+ * conception) : un `undefined` arrivé par erreur ferait ignorer le filtre par
+ * Prisma et toucherait TOUTES les agences. On le refuse donc à l'exécution.
+ */
+function assertExplicitScope(tenantId: MenuAccessScope | undefined): asserts tenantId is MenuAccessScope {
+  if (tenantId === undefined) {
+    throw new Error('Périmètre des menus non précisé : passer un tenantId ou null.');
+  }
+}
+
 /** Décisions enregistrées pour un périmètre, indexées par rôle puis par menu. */
 export async function getMenuAccess(tenantId: MenuAccessScope): Promise<Record<string, Record<string, boolean>>> {
+  assertExplicitScope(tenantId);
   const rows = await prisma.roleMenuAccess.findMany({
     where: { tenantId },
     select: { roleKey: true, menuKey: true, enabled: true }
@@ -55,6 +67,7 @@ export async function getMenuAccessForRole(
   roleKey: string,
   tenantId: MenuAccessScope
 ): Promise<Record<string, boolean>> {
+  assertExplicitScope(tenantId);
   const rows = await prisma.roleMenuAccess.findMany({
     where: { roleKey, tenantId },
     select: { menuKey: true, enabled: true }
@@ -80,6 +93,7 @@ export async function replaceMenuAccessForRole(
   menus: Record<string, boolean>,
   tenantId: MenuAccessScope
 ): Promise<Record<string, boolean>> {
+  assertExplicitScope(tenantId);
   const entries = Object.entries(menus);
 
   await prisma.$transaction(async tx => {

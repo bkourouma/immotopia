@@ -166,6 +166,11 @@ Règles :
   partiel SQL `ON role_menu_access(role_key, menu_key) WHERE tenant_id IS NULL`
   (Postgres tient les NULL pour distincts). Prisma ne sait pas exprimer ce
   second index : il vit dans la migration `..._role_menu_access_par_agence`.
+- **Une agence créée après la migration part sans aucune coupure** (tous ses
+  menus ouverts, sous réserve des défauts déduits des permissions) : c'est
+  voulu, une décision prise pour une agence ne doit plus en atteindre une
+  autre. Le super-admin règle la nouvelle agence dans « Rôles et
+  permissions ».
 - Écriture : un rôle `TENANT` ou de portail exige un `tenantId` ; un rôle
   `PLATFORM` l'interdit (`PUT /api/roles/menu-access/:roleKey?tenantId=`).
 - `tenantId` est nullable par conception : le modèle est dans `EXEMPT_MODELS`
