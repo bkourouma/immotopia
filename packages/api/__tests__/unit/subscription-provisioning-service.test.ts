@@ -193,6 +193,8 @@ function buildFakePrisma() {
     // Capacite ACTIFS (lot 4A) : `countActiveAssets` (subscription-v2-service) compte les actifs non archives.
     asset: { count: jest.fn(async () => 0) },
     property: { count: jest.fn(async () => 0) },
+    // Capacite PHOTOS_INVENTAIRE (lot 041) : `countInventoryPhotosThisMonth`, 0 sans ligne du mois.
+    stockWhatsappUsage: { findUnique: jest.fn(async () => null) },
     lotActivation: {
       findMany: jest.fn(async ({ where }: Row) =>
         store.lotActivations.filter(a => a.tenantId === where.tenantId && a.deactivatedAt === null)

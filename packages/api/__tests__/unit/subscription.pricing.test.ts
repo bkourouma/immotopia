@@ -92,12 +92,15 @@ describe('Catalogue par defaut = grille du site', () => {
     );
     // Les offres Patrimoine (lot P1) ne viennent pas de cette migration-ci
     // mais de 20261001101600_patrimoine_pack_catalogue, celles du lot 4A de
-    // 20261004220100_particulier_catalogue (verifies ci-dessous).
+    // 20261004220100_particulier_catalogue (verifies ci-dessous). L'option
+    // Inventaire WhatsApp (lot 041) ne vient pas du site mais de la decision
+    // du fondateur du 04/10/2026 : 20261009090200_inventaire_whatsapp_catalogue.
     for (const item of DEFAULT_CATALOG) {
       if (
         PATRIMOINE_PACKS.includes(item.code) ||
         PARTICULIER_PACKS.includes(item.code) ||
         item.code === EXTENSION.BIENS_10 ||
+        item.code === EXTENSION.INVENTAIRE_WHATSAPP ||
         item.code.startsWith('SETUP_PATRIMOINE_')
       ) {
         continue;
@@ -130,6 +133,29 @@ describe('Catalogue par defaut = grille du site', () => {
       expect(sql).toContain(`'{"tierGroup":"PARTICULIER"}'::jsonb`);
       expect(sql).toContain(`'ACTIFS', ${item.capacities.ACTIFS} FROM "catalog_items" WHERE "code" = '${item.code}'`);
     }
+  });
+
+  it('la migration Inventaire WhatsApp amorce l’option a 25 000 pour 500 photos (PHOTOS_INVENTAIRE), Promoteur ou Integre', () => {
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../../prisma/migrations/20261009090200_inventaire_whatsapp_catalogue/migration.sql'),
+      'utf8'
+    );
+    const item = DEFAULT_CATALOG.find(c => c.code === EXTENSION.INVENTAIRE_WHATSAPP)!;
+    expect(item).toMatchObject({
+      code: 'EXT_INVENTAIRE_WHATSAPP',
+      kind: 'EXTENSION',
+      monthlyPrice: 25_000,
+      setupPrice: 0,
+      capacities: { PHOTOS_INVENTAIRE: 500 }
+    });
+    // Nom et description tiennent chacun sur leur ligne, avant les prix.
+    expect(sql).toMatch(
+      new RegExp(`'${item.code}', '${item.kind}', '[^']*',\\s*'[^']*',\\s*${item.monthlyPrice}, ${item.setupPrice},`)
+    );
+    expect(sql).toContain(`'${JSON.stringify(item.rules)}'::jsonb`);
+    expect(sql).toContain(
+      `'PHOTOS_INVENTAIRE', ${item.capacities.PHOTOS_INVENTAIRE} FROM "catalog_items" WHERE "code" = '${item.code}'`
+    );
   });
 
   it('packs Particulier : gratuit a 0 pour 10 actifs, Plus a 2 900 pour 100 actifs, meme palier, module Patrimoine', () => {

@@ -176,6 +176,8 @@ const fake: Row = {
   lotActivation: { findMany: jest.fn(async () => []) },
   // Capacite ACTIFS (lot 4A) : actifs non archives + biens non archives sans actif lie.
   asset: { count: jest.fn(async () => 0) },
+  // Capacite PHOTOS_INVENTAIRE (lot 041) : `countInventoryPhotosThisMonth`, 0 sans ligne du mois.
+  stockWhatsappUsage: { findUnique: jest.fn(async () => null) },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
 
@@ -692,7 +694,14 @@ describe('capacite ACTIFS (lot 4A, packs Particulier)', () => {
   it('getUsage renvoie ACTIFS a cote des autres capacites, BIENS_DETENUS inchange', async () => {
     (fake.asset.count as jest.Mock).mockResolvedValueOnce(3);
     const usage = await getUsage(T, fake as any);
-    expect(Object.keys(usage).sort()).toEqual(['ACTIFS', 'BIENS_DETENUS', 'CHANTIERS', 'COPROPRIETES', 'LOTS']);
+    expect(Object.keys(usage).sort()).toEqual([
+      'ACTIFS',
+      'BIENS_DETENUS',
+      'CHANTIERS',
+      'COPROPRIETES',
+      'LOTS',
+      'PHOTOS_INVENTAIRE'
+    ]);
     expect(usage.ACTIFS).toBe(3);
   });
 

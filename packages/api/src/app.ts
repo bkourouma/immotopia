@@ -47,12 +47,14 @@ import financeStockTransfertsRoutes from './routes/finance-stock-transferts-rout
 import financeStockJournalRoutes from './routes/finance-stock-journal-routes';
 import financeStockPreuvesRoutes from './routes/finance-stock-preuves-routes';
 import financeStockPilotageRoutes from './routes/finance-stock-pilotage-routes';
+import financeStockWhatsappRoutes from './routes/finance-stock-whatsapp-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
 import newsletterRoutes from './routes/newsletter-routes';
 import newsletterPublicRoutes from './routes/newsletter-public-routes';
 import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
+import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './routes/whatsapp-cloud-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
@@ -130,7 +132,14 @@ app.use(compressionMiddleware);
 // no-store, sans journaliser le message du parseur) : les parseurs globaux ne
 // retraitent pas ce prefixe. Meme regle pour l'acces des tiers de confiance
 // (lot B3). Tout le reste de l'app est inchange.
-const PUBLIC_TOKEN_PREFIXES = [PUBLIC_SECURE_LINKS_PREFIX, PUBLIC_EXTERNAL_ACCESS_PREFIX];
+// Lot 041 (W6-R2) : le webhook Meta WhatsApp Cloud lit son corps BRUT
+// (express.raw dans son routeur) pour verifier X-Hub-Signature-256 sur les
+// octets recus ; les parseurs globaux ne doivent pas le consommer avant.
+const PUBLIC_TOKEN_PREFIXES = [
+  PUBLIC_SECURE_LINKS_PREFIX,
+  PUBLIC_EXTERNAL_ACCESS_PREFIX,
+  WHATSAPP_CLOUD_WEBHOOK_PREFIX
+];
 const skipSecureLinkPublic =
   (parser: express.RequestHandler): express.RequestHandler =>
   (req, res, next) =>
@@ -220,6 +229,11 @@ app.get('/health', (_req, res) => {
 });
 
 // Routes
+// Lot 041 (W6-R1) : webhook Meta WhatsApp Cloud (inventaire de chantier),
+// public et signe. Monte AVANT whatsappWebhookRoutes, dont le
+// router.use(express.urlencoded...) traverse toute requete /api/* : le corps
+// doit arriver brut jusqu'a la verification de signature.
+app.use(WHATSAPP_CLOUD_WEBHOOK_PREFIX, whatsappCloudWebhookRoutes);
 // WhatsApp incoming webhook must be mounted before any /api router
 // that applies auth middleware globally (router.use(authenticate)).
 app.use('/api', whatsappWebhookRoutes);
@@ -284,6 +298,7 @@ app.use('/api', financeStockTransfertsRoutes); // Lot 040 : transferts entre lie
 app.use('/api', financeStockJournalRoutes); // Lot 040 : journal, contexte terrain, preneurs
 app.use('/api', financeStockPreuvesRoutes); // Lot 040 : bons PDF et pieces jointes
 app.use('/api', financeStockPilotageRoutes); // Lot 040 : alertes, indicateurs, reglages de controle
+app.use('/api', financeStockWhatsappRoutes); // Lot 041 : inventaire de chantier par WhatsApp
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)

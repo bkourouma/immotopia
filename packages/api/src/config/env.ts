@@ -43,6 +43,55 @@ const secretSchema = z
 const optionalUrl = z.string().url().optional();
 
 /**
+ * Variable facultative (lot 041) : une valeur vide (`KEY=""` dans le `.env`)
+ * vaut une variable absente, au lieu de faire échouer le démarrage.
+ */
+function emptyAsUndefined<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(value => (typeof value === 'string' && value.trim() === '' ? undefined : value), schema);
+}
+
+/**
+ * Secret facultatif (lot 041) : absent, ou d'au moins 32 caractères et jamais
+ * une valeur d'exemple. Son caractère requis dépend du transport choisi
+ * (`superRefine` plus bas).
+ */
+const optionalSecretSchema = emptyAsUndefined(
+  z
+    .string()
+    .optional()
+    .refine(value => value === undefined || value.length >= MIN_SECRET_LENGTH, {
+      message: `doit faire au moins ${MIN_SECRET_LENGTH} caractères`
+    })
+    .refine(value => value === undefined || !PLACEHOLDER_SECRETS.has(value.trim()), {
+      message: "valeur d'exemple détectée : générez un secret avec `openssl rand -base64 48`"
+    })
+);
+
+/** Nom d'hôte seul (sans schéma, port ni chemin), en minuscules. */
+const HOSTNAME_PATTERN = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/**
+ * Hôtes autorisés pour le téléchargement des médias WhatsApp (garde SSRF,
+ * spec 041 W6-R9) : liste séparée par des virgules, rendue en tableau.
+ */
+const mediaHostsSchema = z
+  .string()
+  .default('lookaside.fbsbx.com')
+  .transform(value =>
+    value
+      .split(',')
+      .map(host => host.trim().toLowerCase())
+      .filter(host => host.length > 0)
+  )
+  .pipe(
+    z
+      .array(
+        z.string().regex(HOSTNAME_PATTERN, "nom d'hôte seul attendu, sans schéma ni port (ex. lookaside.fbsbx.com)")
+      )
+      .min(1, 'au moins un hôte')
+  );
+
+/**
  * Clé de chiffrement des clés API des agrégateurs de paiement (lot 7).
  *
  * Optionnelle : une agence ne peut alors pas enregistrer de clé API
@@ -188,7 +237,48 @@ const envSchema = z
     // Plafonds PAR AGENCE (tous collaborateurs confondus) sur POST /ai/chat, en
     // plus des limites par utilisateur (rate-limit-middleware.ts).
     AI_TENANT_MINUTE_LIMIT: z.coerce.number().int().min(1).max(100000).default(100),
-    AI_TENANT_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000000).default(3000)
+    AI_TENANT_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000000).default(3000),
+
+    // Inventaire de chantier par WhatsApp et IA (lot 041, spec 041 W1, W8, W11 ;
+    // data-model §7). Transport `disabled` par defaut : webhook en 404, tache
+    // arretee. `log` n'envoie rien (developpement, staging, tests) et alimente
+    // le simulateur ; `meta` appelle l'API Graph de WhatsApp Cloud.
+    WHATSAPP_INVENTORY_TRANSPORT: z.enum(['disabled', 'log', 'meta']).default('disabled'),
+    // '1' autorise le transport `log`, le simulateur et le faux fournisseur de
+    // vision en NODE_ENV=production (staging). Refuse par deploy.sh sur la production.
+    WHATSAPP_INVENTORY_SIMULATOR: z.enum(['0', '1']).default('0'),
+    // Application Meta : cle secrete (signature X-Hub-Signature-256, empreinte
+    // des expediteurs), jeton de verification du webhook, jeton d'acces
+    // permanent d'un utilisateur systeme, identifiant du numero. Requis si `meta`.
+    META_WA_APP_SECRET: optionalSecretSchema,
+    META_WA_VERIFY_TOKEN: optionalSecretSchema,
+    META_WA_ACCESS_TOKEN: emptyAsUndefined(z.string().min(1).optional()),
+    META_WA_PHONE_NUMBER_ID: emptyAsUndefined(
+      z.string().regex(/^\d+$/, 'chiffres seulement (phone_number_id de Meta)').optional()
+    ),
+    META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
+    // [A verifier au deploiement] : derniere version stable de l'API Graph.
+    META_WA_GRAPH_VERSION: z
+      .string()
+      .regex(/^v\d+\.\d+$/, 'forme vNN.N attendue (ex. v23.0)')
+      .default('v23.0'),
+    META_WA_MEDIA_HOSTS: emptyAsUndefined(mediaHostsSchema),
+    // Numero officiel du bot, affiche a l'ecran d'inscription. E.164 (+225...).
+    WHATSAPP_INVENTORY_PUBLIC_NUMBER: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^\+[0-9]{8,15}$/, 'numéro E.164 attendu (ex. +2250700000000)')
+        .optional()
+    ),
+    // Quota de secours (photos par agence et par mois) sans option souscrite,
+    // en SUBSCRIPTION_ENFORCEMENT=warn ou off (W11-R4).
+    WHATSAPP_INVENTORY_WARN_QUOTA: z.coerce.number().int().min(0).max(100000).default(500),
+    // Analyse des photos (W8). Independant du reglage ImmoCopilot du super-admin.
+    STOCK_VISION_PROVIDER: z.enum(['disabled', 'fake', 'gemini', 'openrouter']).default('disabled'),
+    // [A verifier] : nom exact du modele Flash disponible. `fournisseur/modele` pour openrouter.
+    STOCK_VISION_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+    GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000)
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
@@ -227,6 +317,73 @@ const envSchema = z
         path: ['AI_PROVIDER'],
         message: "le faux fournisseur 'fake' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
       });
+    }
+
+    // Lot 041 — inventaire par WhatsApp (data-model §7).
+    if (value.WHATSAPP_INVENTORY_TRANSPORT === 'meta') {
+      const requis = [
+        ['META_WA_APP_SECRET', value.META_WA_APP_SECRET],
+        ['META_WA_VERIFY_TOKEN', value.META_WA_VERIFY_TOKEN],
+        ['META_WA_ACCESS_TOKEN', value.META_WA_ACCESS_TOKEN],
+        ['META_WA_PHONE_NUMBER_ID', value.META_WA_PHONE_NUMBER_ID]
+      ] as const;
+      for (const [name, present] of requis) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'variable requise quand WHATSAPP_INVENTORY_TRANSPORT=meta'
+          });
+        }
+      }
+    }
+    // Écart E1 (spec 041 §13) : `log` en production seulement avec le simulateur.
+    if (
+      value.WHATSAPP_INVENTORY_TRANSPORT === 'log' &&
+      value.NODE_ENV === 'production' &&
+      value.WHATSAPP_INVENTORY_SIMULATOR !== '1'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_INVENTORY_TRANSPORT'],
+        message: "le transport 'log' n'est accepté en production qu'avec WHATSAPP_INVENTORY_SIMULATOR=1"
+      });
+    }
+    // W8-R9 : faux fournisseur de vision en développement, en test, ou avec le simulateur.
+    if (
+      value.STOCK_VISION_PROVIDER === 'fake' &&
+      !fakeProviderAllowed(process.env.NODE_ENV) &&
+      value.WHATSAPP_INVENTORY_SIMULATOR !== '1'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STOCK_VISION_PROVIDER'],
+        message:
+          "le faux fournisseur de vision 'fake' n'est accepté que si NODE_ENV vaut 'development' ou 'test', ou avec WHATSAPP_INVENTORY_SIMULATOR=1"
+      });
+    }
+    if (value.STOCK_VISION_PROVIDER === 'gemini' && !value.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEY'],
+        message: 'variable requise quand STOCK_VISION_PROVIDER=gemini'
+      });
+    }
+    if (value.STOCK_VISION_PROVIDER === 'openrouter') {
+      if (!value.OPENROUTER_API_KEY) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['OPENROUTER_API_KEY'],
+          message: 'variable requise quand STOCK_VISION_PROVIDER=openrouter'
+        });
+      }
+      if (!value.STOCK_VISION_MODEL.includes('/')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STOCK_VISION_MODEL'],
+          message: 'identifiant OpenRouter requis quand STOCK_VISION_PROVIDER=openrouter (ex. google/gemini-2.5-flash)'
+        });
+      }
     }
   });
 
@@ -305,3 +462,12 @@ export const isTest = env.NODE_ENV === 'test';
  * (`PAYMENT_GATEWAY_SIMULATOR=1`).
  */
 export const paymentGatewaySimulatorAvailable = !isProduction || env.PAYMENT_GATEWAY_SIMULATOR === '1';
+
+/**
+ * Le simulateur de l'inventaire par WhatsApp est-il disponible (spec 041,
+ * W13-R1) ? Seulement avec le transport `log` ; en production, seulement avec
+ * `WHATSAPP_INVENTORY_SIMULATOR=1` (écart E1, refusé par deploy.sh sur la
+ * production).
+ */
+export const whatsappInventorySimulatorAvailable =
+  env.WHATSAPP_INVENTORY_TRANSPORT === 'log' && (!isProduction || env.WHATSAPP_INVENTORY_SIMULATOR === '1');
