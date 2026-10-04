@@ -39,14 +39,17 @@ describe('onglets des espaces Finance par pack', () => {
     expect(keys('fournisseurs-commandes', m)).toHaveLength(3);
     expect(keys('reversements-commissions', m)).toEqual(['associations']);
     expect(keys('suivi-chantiers', m)).toHaveLength(3);
-    // Lot 040 : les six onglets du stock, tous sous `finance/stock`, donc
-    // classés CONSTRUCTION sans rien déclarer de plus.
+    // Lot 040 : les six onglets du stock, plus les deux du lot 041 après
+    // « Contrôle », tous sous `finance/stock`, donc classés CONSTRUCTION sans
+    // rien déclarer de plus.
     expect(keys('gestion-stock', m)).toEqual([
       'stock',
       'stock-magasin',
       'stock-inventaire',
       'stock-preneurs',
       'stock-controle',
+      'stock-comptages-terrain',
+      'stock-whatsapp',
       'stock-parametrage'
     ]);
   });
@@ -73,11 +76,12 @@ describe('onglets des espaces Finance par pack', () => {
 });
 
 describe('Gestion du stock — onglets du lot 041', () => {
-  it('« Comptages terrain » puis « WhatsApp », juste avant « Articles et lieux » qui reste le dernier', () => {
+  it('« Comptages terrain » puis « WhatsApp », juste après « Contrôle » et avant « Articles et lieux », le dernier', () => {
     const cles = FINANCE_WORKSPACES['gestion-stock'].tabs.map(tab => tab.key);
     const terrain = cles.indexOf('stock-comptages-terrain');
     const whatsapp = cles.indexOf('stock-whatsapp');
     expect(terrain).toBeGreaterThan(-1);
+    expect(terrain).toBe(cles.indexOf('stock-controle') + 1);
     expect(whatsapp).toBe(terrain + 1);
     expect(cles[cles.length - 1]).toBe('stock-parametrage');
     expect(cles.indexOf('stock-parametrage')).toBe(whatsapp + 1);

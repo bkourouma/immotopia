@@ -5,19 +5,11 @@
  * Même modèle que `finance-mock-stock-inventaire.ts` : renvoie `null` quand
  * l'URL ne le concerne pas, `mock-api.ts` passe alors au gestionnaire suivant.
  *
- * **Non câblé dans `mock-api.ts` ni dans `Atelier.tsx`** (propriétaire : lot
- * 040, WEB-3). Pour l'y ajouter :
+ * Inscrit dans `mock-api.ts` (`repondreStockWhatsapp`, après les bancs du lot
+ * 040) ; `repondreStockWhatsappFieldContext` ne l'est pas : le banc du lot 040
+ * répond déjà à `/stock/field-context`.
  *
- * ```ts
- * import { repondreStockWhatsapp, repondreStockWhatsappFieldContext } from './finance-mock-stock-whatsapp';
- * // dans la liste `for (const repondre of [...])`, AVANT tout gestionnaire
- * // générique de `/finance/stock/…` :
- * repondreStockWhatsapp,
- * // seulement si aucun mock du lot 040 ne répond déjà à `/stock/field-context` :
- * repondreStockWhatsappFieldContext
- * ```
- *
- * Scènes proposées :
+ * Scènes de `Atelier.tsx` :
  *
  * - « WhatsApp, administrateur » : `tenant/:tenantId/finance/stock/whatsapp`,
  *   passerelle `log` (simulateur présent), quota à 83 % (ton `warning`), trois

@@ -78,7 +78,7 @@ describe('FinanceWorkspaceLayout', () => {
     expect(await screen.findByRole('tab', { name: 'Inventaire' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('Gestion du stock : six onglets dans l’ordre du flux (lot 040, ecrans §2.2)', async () => {
+  it('Gestion du stock : huit onglets dans l’ordre du flux (lot 040, ecrans §2.2 ; lot 041 après « Contrôle »)', async () => {
     renderFinance('gestion-stock', `/tenant/${TENANT}/finance/stock`);
     await screen.findByRole('tablist', { name: 'Gestion du stock' });
     const tabs = screen.getAllByRole('tab');
@@ -88,6 +88,8 @@ describe('FinanceWorkspaceLayout', () => {
       'Inventaire',
       'Preneurs',
       'Contrôle',
+      'Comptages terrain',
+      'WhatsApp',
       'Articles et lieux'
     ]);
     expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
@@ -96,6 +98,8 @@ describe('FinanceWorkspaceLayout', () => {
       `/tenant/${TENANT}/finance/stock/inventaire`,
       `/tenant/${TENANT}/finance/stock/preneurs`,
       `/tenant/${TENANT}/finance/stock/controle`,
+      `/tenant/${TENANT}/finance/stock/comptages-terrain`,
+      `/tenant/${TENANT}/finance/stock/whatsapp`,
       `/tenant/${TENANT}/finance/stock/parametrage`
     ]);
   });

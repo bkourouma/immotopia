@@ -72,6 +72,11 @@ import {
   CODES_PRENEUR,
   lireErreurStock
 } from '../../components/finance/stock/magasin/stock-erreurs';
+import { FieldCaptureDrawer } from '../../components/finance/stock/whatsapp/FieldCaptureDrawer';
+import { FieldCapturePhotoLink } from '../../components/finance/stock/whatsapp/FieldCapturePhotoLink';
+import { WhatsappCountBadge } from '../../components/finance/stock/whatsapp/WhatsappCountBadge';
+import { useCaptureDrawerParam, useCountFieldCaptures } from '../../components/finance/stock/whatsapp/useFieldCaptures';
+import type { CountCaptureLine } from '../../types/finance-stock-whatsapp-types';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -120,7 +125,10 @@ const { Title, Text, Paragraph } = Typography;
  * (`InventaireLigneArticle`, pastilles et liens par `pastillesDeLigne`) sont
  * des composants à part : une pastille « Ouvert par WhatsApp » ou un badge
  * « WhatsApp » avec le lien de la photo de preuve s'y ajoutent sans toucher
- * aux tableaux.
+ * aux tableaux. Le lot 041 les remplit : `DetailInventaire` lit les captures
+ * de l'inventaire (`useCountFieldCaptures`) et les passe aux cellules par
+ * `CapturesDeLInventaireContext` ; le visualiseur de preuve
+ * (`FieldCaptureDrawer`, `?capture=`) est posé en bas de page.
  */
 
 // ===========================================================================
@@ -214,21 +222,48 @@ export function pastillesDeLigne(ligne: StockCountLine, comptage: StockCount): R
   return pastilles;
 }
 
+/**
+ * Captures WhatsApp de l'inventaire affiché (lot 041, ecrans §6), posées par
+ * `DetailInventaire` pour toutes les cellules d'article de ses tableaux et
+ * cartes. Absent (ou `lineByItemId` vide : `403`/`404` des captures, ligne
+ * saisie au web) : la cellule reste celle du lot 040.
+ */
+interface CapturesDeLInventaire {
+  lineByItemId: Map<string, CountCaptureLine>;
+  openCapture: (captureId: string) => void;
+}
+
+const CapturesDeLInventaireContext = React.createContext<CapturesDeLInventaire | null>(null);
+
+/** Badge « WhatsApp » puis lien de la photo de preuve d'une ligne comptée par le bot. */
+function pastillesWhatsappDeLigne(ligne: StockCountLine, captures: CapturesDeLInventaire | null): React.ReactNode[] {
+  const capture = captures?.lineByItemId.get(ligne.itemId);
+  if (!captures || !capture) return [];
+  return [
+    <WhatsappCountBadge key="whatsapp" variant="line" line={capture} />,
+    <FieldCapturePhotoLink key="whatsapp-photo" line={capture} onOpen={captures.openCapture} />
+  ];
+}
+
 export const InventaireLigneArticle: React.FC<{
   ligne: StockCountLine;
   comptage: StockCount;
   pastilles?: React.ReactNode[];
-}> = ({ ligne, comptage, pastilles }) => (
-  <div>
-    <span>
-      {ligne.itemReference} — {ligne.itemLabel}
-    </span>
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-      {pastillesDeLigne(ligne, comptage)}
-      {pastilles ?? null}
+}> = ({ ligne, comptage, pastilles }) => {
+  const captures = React.useContext(CapturesDeLInventaireContext);
+  return (
+    <div>
+      <span>
+        {ligne.itemReference} — {ligne.itemLabel}
+      </span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {pastillesDeLigne(ligne, comptage)}
+        {pastillesWhatsappDeLigne(ligne, captures)}
+        {pastilles ?? null}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /** Le motif d'une ligne, tel qu'il s'affiche (ecrans §7.5). */
 function MotifDeLigne({ ligne }: { ligne: StockCountLine }): React.ReactElement {
@@ -1847,6 +1882,14 @@ const DetailInventaire: React.FC<{
     queryFn: () => getStockCount(tenantId, countId),
     staleTime: STALE_TIME.list
   });
+  // Lot 041 : captures WhatsApp de l'inventaire ; un 403 ou un 404 rend `null`
+  // et l'écran reste celui du lot 040.
+  const { captures, lineByItemId } = useCountFieldCaptures(tenantId, countId);
+  const { openCapture } = useCaptureDrawerParam();
+  const capturesDeLInventaire = useMemo<CapturesDeLInventaire>(
+    () => ({ lineByItemId, openCapture }),
+    [lineByItemId, openCapture]
+  );
 
   const relire = async () => {
     await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-counts', tenantId) });
@@ -1867,13 +1910,19 @@ const DetailInventaire: React.FC<{
 
   const props: DetailProps = { tenantId, contexte, comptage, valuesVisible, relire };
   return (
-    <div style={{ marginBlockStart: 'var(--space-6)' }}>
-      <InventaireEnTete comptage={comptage} onFermer={onFermer} />
-      {comptage.status === 'DRAFT' ? <DetailBrouillon {...props} /> : null}
-      {comptage.status === 'COUNTED' ? <DetailClos {...props} /> : null}
-      {comptage.status === 'VALIDATED' ? <DetailValide {...props} /> : null}
-      {comptage.status === 'CANCELLED' ? <DetailAbandonne {...props} /> : null}
-    </div>
+    <CapturesDeLInventaireContext.Provider value={capturesDeLInventaire}>
+      <div style={{ marginBlockStart: 'var(--space-6)' }}>
+        <InventaireEnTete
+          comptage={comptage}
+          onFermer={onFermer}
+          pastilles={[<WhatsappCountBadge key="whatsapp" variant="count" source={captures?.source} />]}
+        />
+        {comptage.status === 'DRAFT' ? <DetailBrouillon {...props} /> : null}
+        {comptage.status === 'COUNTED' ? <DetailClos {...props} /> : null}
+        {comptage.status === 'VALIDATED' ? <DetailValide {...props} /> : null}
+        {comptage.status === 'CANCELLED' ? <DetailAbandonne {...props} /> : null}
+      </div>
+    </CapturesDeLInventaireContext.Provider>
   );
 };
 
@@ -2132,6 +2181,8 @@ export const StockInventaire: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const contexte = useStockFieldContext(tenantId);
+  // Visualiseur de preuve du lot 041 (`?capture=<captureId>`), en bas de page.
+  const { captureId, closeCapture } = useCaptureDrawerParam();
 
   const countId = searchParams.get('inventaire');
   const ouvrir = searchParams.get('ouvrir');
@@ -2253,6 +2304,7 @@ export const StockInventaire: React.FC = () => {
         </Text>
       ) : null}
       <Tabs activeKey={onglet} onChange={cle => majParametres({ onglet: cle })} items={onglets} />
+      <FieldCaptureDrawer tenantId={tenantId} captureId={captureId} onClose={closeCapture} />
     </>
   );
 };
