@@ -15,6 +15,7 @@ import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
 import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
+import { startStockWhatsappJob } from './jobs/stock-whatsapp-job';
 import { logger } from './utils/logger';
 
 /**
@@ -71,6 +72,9 @@ app.listen(PORT, () => {
     startLotReconciliationJob();
     // Journal d'audit (ADR-006, phase 5) : scellement quotidien, purge (opt-in), verification.
     startAuditMaintenanceJob();
+    // Lot 041 : inventaire de chantier par WhatsApp (relances, expirations,
+    // reprise du webhook, purges). Arretee avec le transport `disabled`.
+    if (env.WHATSAPP_INVENTORY_TRANSPORT !== 'disabled') startStockWhatsappJob();
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.
     recoverTenantDataExports().catch(error =>
