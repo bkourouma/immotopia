@@ -423,7 +423,11 @@ des baux, « synthèse »), sans réseau ni clé. Deux mots-clés d'écriture ne
 PLANIFIER (jamais d'écriture : seule la confirmation humaine écrit) : « modifie le
 contact » (plan non sensible) et « désactive le collaborateur » (aussi « membre » ou
 « utilisateur » : plan SENSIBLE sur `POST /users/:userId/disable`, dernier
-collaborateur listé, pour exercer le mot de confirmation de bout en bout). Les trois derniers appellent
+collaborateur listé, pour exercer le mot de confirmation de bout en bout). Quand un outil est
+refusé (permission manquante, y compris un 401/403 de la route réelle derrière `call_read`), il répond
+« Je n'ai pas la permission d'accéder à cette donnée. », distinct de « Aucun résultat à afficher. ».
+Attention : « désactive le collaborateur » vise le dernier collaborateur listé ; si c'est le dernier
+administrateur actif, ou vous-même, la route refuse désormais (409) lors de la confirmation. Les trois derniers appellent
 `show_artifact` et émettent l'événement SSE `artifact` (panneau latéral du web). La quittance exige un
 paiement encaissé pour la période et un modèle `RENT_RECEIPT` actif ; le relevé
 un modèle `RENT_STATEMENT` (le seed ne sème que la quittance). `TENANT_AGENT` n'a

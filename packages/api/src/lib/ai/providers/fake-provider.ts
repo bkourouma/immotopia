@@ -535,6 +535,13 @@ export class FakeProvider implements LlmProvider {
             : t("Je n'ai pas pu préparer ce plan d'écriture.")
       };
     }
+    // Refus de permission (outil refusé, ou route réelle 401/403 convertie en ForbiddenError par l'outil).
+    const permissionDenied = results.some(
+      result =>
+        result.isError &&
+        ['FORBIDDEN', 'TOOL_FORBIDDEN'].includes(String((result.data as { error?: unknown } | null)?.error ?? ''))
+    );
+    if (permissionDenied) return { text: t("Je n'ai pas la permission d'accéder à cette donnée.") };
     if (results.some(result => result.isError)) {
       return { text: t("Je n'ai pas pu terminer cette recherche : un outil a renvoyé une erreur.") };
     }

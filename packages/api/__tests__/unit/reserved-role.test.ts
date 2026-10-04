@@ -10,7 +10,12 @@ const mockPrisma: any = {
   user: { findFirst: jest.fn() },
   role: { findMany: jest.fn() },
   membership: { findUnique: jest.fn() },
-  userRole: { deleteMany: jest.fn(async () => ({})), createMany: jest.fn(async () => ({})) },
+  userRole: {
+    deleteMany: jest.fn(async () => ({})),
+    createMany: jest.fn(async () => ({})),
+    // Garde-fou « dernier administrateur » : la cible n'est pas administrateur.
+    count: jest.fn(async () => 0)
+  },
   // updateMemberRoles réécrit les rôles et écrit sa trace d'audit dans une même transaction.
   $transaction: jest.fn(async (cb: (tx: unknown) => unknown): Promise<unknown> => cb(mockPrisma))
 };

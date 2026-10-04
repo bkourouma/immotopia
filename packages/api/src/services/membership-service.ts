@@ -6,7 +6,35 @@ import { hashPassword, validatePasswordStrength } from '../utils/password-utils'
 import { recordAuditEvent, AuditActionKey } from './audit-service';
 import { invalidateAllUserPermissionCache } from './permission-service';
 import { emailService } from './email-service';
+import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 import crypto from 'crypto';
+
+/** Rôle d'administrateur d'agence (voir `types/rbac-types.ts`). */
+const TENANT_ADMIN_ROLE_KEY = 'TENANT_ADMIN';
+
+/**
+ * Refuse l'opération si `userId` est administrateur de l'agence et qu'aucun autre
+ * administrateur ACTIF (membre actif, compte actif) ne resterait : l'agence se
+ * retrouverait sans personne pour la gérer. Sans effet pour un non-administrateur.
+ */
+async function assertNotLastActiveAdmin(userId: string, tenantId: string, message: string): Promise<void> {
+  const targetIsAdmin = await prisma.userRole.count({
+    where: { userId, tenantId, role: { key: TENANT_ADMIN_ROLE_KEY } }
+  });
+  if (targetIsAdmin === 0) return;
+
+  const otherActiveAdmins = await prisma.userRole.count({
+    where: {
+      tenantId,
+      userId: { not: userId },
+      role: { key: TENANT_ADMIN_ROLE_KEY },
+      user: { isActive: true, memberships: { some: { tenantId, status: MembershipStatus.ACTIVE } } }
+    }
+  });
+  if (otherActiveAdmins === 0) {
+    throw new ConflictError(message);
+  }
+}
 
 /**
  * Revoke every active refresh token of a user inside the caller's transaction,
@@ -239,7 +267,7 @@ export async function updateMemberRoles(
   });
 
   if (!membership) {
-    throw new Error('Membre introuvable.');
+    throw new NotFoundError('Membre introuvable.');
   }
 
   // Verify all roles exist and are tenant-scoped
@@ -252,7 +280,16 @@ export async function updateMemberRoles(
   });
 
   if (roles.length !== data.roleIds.length) {
-    throw new Error('Un ou plusieurs roles sont invalides ou ne sont pas des roles tenant.');
+    throw new BadRequestError('Un ou plusieurs roles sont invalides ou ne sont pas des roles tenant.');
+  }
+
+  // Retirer le rôle d'administrateur au dernier administrateur actif laisserait l'agence sans gestionnaire.
+  if (!roles.some(role => role.key === TENANT_ADMIN_ROLE_KEY)) {
+    await assertNotLastActiveAdmin(
+      userId,
+      tenantId,
+      "Impossible de retirer le rôle d'administrateur au dernier administrateur actif de l'agence."
+    );
   }
 
   // Critical action: roles swap and audit trace commit together or not at all.
@@ -310,6 +347,10 @@ export async function updateMemberRoles(
  * @returns Updated membership
  */
 export async function disableMember(userId: string, tenantId: string, actorUserId: string) {
+  if (userId === actorUserId) {
+    throw new ConflictError('Vous ne pouvez pas désactiver votre propre compte.');
+  }
+
   const membership = await prisma.membership.findUnique({
     where: {
       userId_tenantId: {
@@ -320,12 +361,18 @@ export async function disableMember(userId: string, tenantId: string, actorUserI
   });
 
   if (!membership) {
-    throw new Error('Membre introuvable.');
+    throw new NotFoundError('Membre introuvable.');
   }
 
   if (membership.status === MembershipStatus.DISABLED) {
-    throw new Error('Ce membre est deja desactive.');
+    throw new ConflictError('Ce membre est deja desactive.');
   }
+
+  await assertNotLastActiveAdmin(
+    userId,
+    tenantId,
+    "Impossible de désactiver le dernier administrateur actif de l'agence."
+  );
 
   // Update membership status (critical action: audit trace in the same transaction)
   const updated = await prisma.$transaction(async tx => {

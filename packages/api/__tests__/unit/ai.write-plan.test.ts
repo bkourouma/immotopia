@@ -671,6 +671,47 @@ describe('sensibilité par le corps (routes de comptes)', () => {
   });
 });
 
+describe('plan sur un utilisateur : libellé et avertissement serveur', () => {
+  const DISABLE_USER = 'POST /api/tenants/:tenantId/users/:userId/disable';
+  const USER_ID = '6bfb9206-0000-4000-8000-000000000000';
+  // Forme réelle de GET /users/:userId : membership + roles + user imbriqué (nom et e-mail).
+  const memberState = {
+    success: true,
+    data: {
+      id: 'm1',
+      userId: USER_ID,
+      tenantId: TENANT,
+      status: 'ACTIVE',
+      roles: [{ id: 'r1', key: 'TENANT_AGENT', name: 'Agent' }],
+      user: { id: USER_ID, email: 'fatou@example.com', fullName: 'Fatou Diallo', isActive: true }
+    }
+  };
+
+  it('disable : la cible porte le nom de la personne, pas « Enregistrement 6bfb9206… », et le serveur avertit', async () => {
+    handler = (_req, res) => json(res, 200, memberState);
+    const p = planOf(await plan({ capabilityId: DISABLE_USER, pathParams: { userId: USER_ID }, body: {} }));
+    expect(p.target).toEqual({ label: 'Fatou Diallo', resolved: true });
+    expect(p.warnings).toContain("Cette action modifie l'accès de Fatou Diallo.");
+    expect(p.warnings.filter(w => w.startsWith("Cette action modifie l'accès"))).toHaveLength(1);
+    expect(p.sensitive).toBe(true);
+    nothingWritten();
+  });
+
+  it('sans nom : prénom + nom puis e-mail (member.user)', async () => {
+    handler = (_req, res) =>
+      json(res, 200, { success: true, data: { member: { user: { firstName: 'Awa', lastName: 'Koné' } }, id: 'm1' } });
+    const p = planOf(await plan({ capabilityId: DISABLE_USER, pathParams: { userId: USER_ID }, body: {} }));
+    expect(p.target?.label).toBe('Awa Koné');
+  });
+
+  it('pas d’avertissement d’accès pour une action qui ne vise pas un utilisateur', async () => {
+    const p = planOf(
+      await plan({ capabilityId: PATCH_CONTACT, pathParams: { contactId: CONTACT_ID }, body: { city: 'X' } })
+    );
+    expect(p.warnings.some(w => w.startsWith("Cette action modifie l'accès"))).toBe(false);
+  });
+});
+
 describe('remplacement d’une liste', () => {
   it('computeChanges : tableau plus court que l’état -> changement de niveau liste, replacedLists', () => {
     const { changes, replacedLists } = computeChanges(
@@ -962,6 +1003,29 @@ describe('write-plan (fonctions pures)', () => {
     expect(readableLabel({ id: 'x', password: 'secret' })).toBeNull();
     expect(readableLabel(null)).toBeNull();
     expect(readableLabel({ name: 'n'.repeat(200) })!.length).toBe(121);
+  });
+
+  it('readableLabel : forme réelle de GET /users/:userId (nom imbriqué dans user), member.user, membership.user', () => {
+    // GET /api/tenants/:tenantId/users/:userId -> { success, data: { ...membership, roles, user: { fullName, email, … } } }
+    const real = {
+      success: true,
+      data: {
+        id: 'm1',
+        userId: '6bfb9206-0000-4000-8000-000000000000',
+        tenantId: 't1',
+        status: 'ACTIVE',
+        roles: [{ id: 'r1', key: 'TENANT_AGENT', name: 'Agent' }],
+        user: { id: 'u1', email: 'fatou@example.com', fullName: 'Fatou Diallo', isActive: true }
+      }
+    };
+    expect(readableLabel(unwrapRecord(real))).toBe('Fatou Diallo');
+    expect(readableLabel({ data: { user: { email: 'fatou@example.com' } } })).toBe('fatou@example.com');
+    expect(readableLabel({ id: 'x', member: { user: { firstName: 'Awa', lastName: 'Koné', email: 'a@b.c' } } })).toBe(
+      'Awa Koné'
+    );
+    expect(readableLabel({ id: 'x', membership: { user: { fullName: 'Moussa Traoré' } } })).toBe('Moussa Traoré');
+    // Sans nom ni e-mail : toujours null (le repli sur l'id est décidé par l'appelant).
+    expect(readableLabel({ id: 'm1', status: 'ACTIVE', user: { id: 'u1' } })).toBeNull();
   });
 
   it('shortRecordId : UUID abrégé, id court intact', () => {

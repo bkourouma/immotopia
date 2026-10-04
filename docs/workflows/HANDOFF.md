@@ -113,6 +113,16 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/immocopilot-o9nygz` — 2026-10-04
+
+**État :** correctifs du passage 2 de la recette navigateur d'ImmoCopilot (PR #113, fusion à l'utilisateur ; elle contient aussi le retrait de l'ancienne section HANDOFF). Passage 2 : 0 bloquant, 3 importants (corrigés ici), mineurs restants listés ci-dessous.
+
+**Fait :** désactiver un membre refuse l'auto-désactivation et le dernier administrateur actif (409), idem retirer TENANT_ADMIN au dernier admin (`membership-service.ts`) ; la carte d'accord lit le nom de la personne visée dans `GET /users/:userId` et ajoute l'avertissement « Cette action modifie l'accès de … » ; un 401/403 de la route réelle dans `call_read` / lecture « avant » de `plan_write` devient un refus de l'assistant (`tool_status` forbidden, audit `AI_TOOL_DENIED`) ; le faux fournisseur dit « pas la permission » sur un refus. Vérifié : `tsc` API sans erreur, jest API ciblé 720 + 17 (catalogue, inventaire), `wiki:check`.
+
+**Reste à faire :** mineurs de la recette : statuts non retraduits après un changement de langue à chaud (`STATUS_MAP` de `StatusTag.tsx` figé au chargement du module), libellés techniques non traduits dans la carte (« Internal notes », module en clé brute), nom de fichier PNG accentué à revérifier dans un vrai Chrome ; non testés : vrai micro, avertissements « liste remplacée » / « requête non vide » affichés (le faux fournisseur ne les produit pas), `npm run test:isolation`. Décisions en attente : liste des anciennes conversations (stockage serveur), refuser les 3 créations imbriquées sans GET parent. Course théorique sur le dernier admin (contrôle hors transaction, SECURITY §13).
+
+**Pièges :** `npm run ai:catalog` à relancer si un handler change de nom/forme (les deux handlers membres sont passés en `asyncHandler`) ; « agence sans RENTAL » est impossible par construction (MODULE_AGENCY inclut RENTAL) : le cas testable est le pack PROMOTEUR ; les serveurs de recette peuvent tourner (API 8001, vite 3000, PostgreSQL 16 `immotopia_recette`, dump de référence dans le scratchpad) ; test web `import-patrimoine-page` parfois en dépassement de délai sous charge de CI.
+
 ## Branche `integration/multi-actifs` — 2026-10-02
 
 **État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).
