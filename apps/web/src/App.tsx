@@ -322,6 +322,23 @@ const StockChantier = lazy(() =>
     default: m.StockChantier
   }))
 );
+// Lot 040 : les trois écrans nouveaux de l'espace « Gestion du stock », dans
+// le même chunk que leurs voisins, sur leurs exports NOMMÉS.
+const StockMagasin = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockMagasin').then(m => ({
+    default: m.StockMagasin
+  }))
+);
+const StockPreneurs = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockPreneurs').then(m => ({
+    default: m.StockPreneurs
+  }))
+);
+const StockControle = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockControle').then(m => ({
+    default: m.StockControle
+  }))
+);
 // Lot 041 — inventaire de chantier par WhatsApp.
 const StockWhatsapp = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/StockWhatsapp').then(m => ({
@@ -1207,7 +1224,10 @@ function App() {
                           </Route>
                           <Route element={<FinanceWorkspaceLayout family="gestion-stock" />}>
                             <Route path="/tenant/:tenantId/finance/stock" element={<Stock />} />
+                            <Route path="/tenant/:tenantId/finance/stock/magasin" element={<StockMagasin />} />
                             <Route path="/tenant/:tenantId/finance/stock/inventaire" element={<StockInventaire />} />
+                            <Route path="/tenant/:tenantId/finance/stock/preneurs" element={<StockPreneurs />} />
+                            <Route path="/tenant/:tenantId/finance/stock/controle" element={<StockControle />} />
                             <Route path="/tenant/:tenantId/finance/stock/parametrage" element={<StockReferentiel />} />
                             <Route
                               path="/tenant/:tenantId/finance/stock/comptages-terrain"

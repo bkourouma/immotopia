@@ -1,180 +1,92 @@
 /**
- * Transferts entre lieux — extrait de `stock-inventaire.ts` (lot 040, étape des
- * fondations, plan.md §3.1) **sans changement de comportement**.
- *
- * Le code ci-dessous est celui du lot 5, troisième sous-lot
- * (`types-lot5-inventaire.ts`, contrat gelé, PRD E9, besoin S4), déplacé tel
- * quel pour que le transfert et l'inventaire aient chacun leur fichier : le
- * lot 040 les fait évoluer par deux territoires distincts (API-1 pour le
- * transfert, API-2 pour l'inventaire). Les aides privées de lecture et
- * d'écriture du solde sont **recopiées** plutôt que partagées, pour la même
- * raison : aucun des deux fichiers ne dépend de l'autre.
+ * Transferts entre lieux — extrait de `stock-inventaire.ts` (lot 040,
+ * fondations), puis étendu par le lot 040 (spec A5-R4, A7-R3 bis, A7-R4, A10,
+ * A11, B2-R3, B3-R2, B6).
  *
  * ---------------------------------------------------------------------------
  * Transférer ne crée ni ne détruit de valeur
  * ---------------------------------------------------------------------------
  *
  * La valeur part au coût moyen du lieu d'**origine** et recalcule celui du lieu
- * d'**arrivée** : les deux mouvements portent le **même** `totalValue`, si bien
- * que la somme des valeurs des deux lieux ne bouge pas d'un franc. C'est
- * l'invariant du transfert, et il tient y compris sur un coût moyen qui ne
- * tombe pas rond, parce que la sortie emporte exactement ce que l'entrée
- * reçoit — jamais deux arrondis calculés séparément.
+ * d'**arrivée** : les deux mouvements portent le **même** `totalValue`,
+ * calculé une seule fois — jamais deux arrondis calculés séparément.
  *
- * ---------------------------------------------------------------------------
- * Un transfert n'impute rien et n'écrit aucune écriture
- * ---------------------------------------------------------------------------
- *
- * Livrer du ciment sur un chantier *ressemble* à une dépense, et la compter
- * comme telle ferait monter le coût de matériaux qui dorment encore sous la
- * bâche. Le 311 ne bouge pas — la matière est toujours à l'actif, simplement
- * ailleurs — et `sumSiteActualCost` ne bouge pas non plus. Seule la **sortie**
+ * Un transfert n'impute rien et n'écrit aucune écriture : le 311 ne bouge pas,
+ * la matière est toujours à l'actif, simplement ailleurs. Seule la **sortie**
  * impute (principe P-7, `stock-mouvements.ts`).
  *
- * Comportement du lot 5 conservé à cette étape : `assertSiteOpenTx` n'est pas
- * appelé ici, et un transfert vers le lieu d'un chantier clos est accepté. Le
- * lot 040 (A7-R4) le refusera ; ce changement appartient au territoire API-1,
- * pas à l'extraction.
- *
  * ---------------------------------------------------------------------------
- * Deux mouvements, une transaction
+ * Ce que le lot 040 ajoute
  * ---------------------------------------------------------------------------
  *
- * Une sortie du lieu d'origine, une entrée au lieu d'arrivée, liées par un même
- * `transferGroupId`, écrites dans **une seule** transaction : sans cela, une
- * panne entre les deux ferait disparaître de la matière.
- *
- * ---------------------------------------------------------------------------
- * Lecture avant écriture, toujours
- * ---------------------------------------------------------------------------
- *
- * En PostgreSQL une commande en échec **condamne toute la transaction** :
- * chaque commande suivante est refusée jusqu'au rollback. Tout ce qui peut
- * refuser le transfert est donc lu et vérifié avant le premier `create`.
+ * - **Demandeur et motif obligatoires** (A11) : preneur du carnet ou demandeur
+ *   en texte, motif de la colonne « Transfert », porté par les DEUX moitiés.
+ * - **Chantier clos** (A7-R4) : un transfert VERS le lieu d'un chantier clos
+ *   est refusé (`409 STOCK_SITE_CLOSED`) ; DEPUIS ce lieu, il reste permis —
+ *   c'est l'évacuation du reste avant la clôture.
+ * - **Verrous** (A10-R2, A7-R3 bis) : `stock-site` du chantier d'arrivée s'il
+ *   y en a un, AVANT de vérifier qu'il est ouvert ; puis les deux verrous de
+ *   solde (origine, arrivée), triés — deux transferts croisés A→B et B→A les
+ *   prennent dans le même ordre et ne s'interbloquent jamais.
+ * - **Dates bornées** (A5-R4), **idempotence** (B3-R2), **audit critique**
+ *   `STOCK_TRANSFER_RECORDED` sur la moitié sortante (B6).
  */
 
 import { randomUUID } from 'crypto';
 
+import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
-import { badRequest, conflict, notFound } from '../errors';
+import { BadRequestError, NotFoundError } from '../../middleware/error-middleware';
+import { recordAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import { roundMoneyXof, roundQuantity } from './money';
-import { toAmountOrZero } from './types';
-import type { StockMovementRecord } from './types-lot5-mouvements';
-import type { RecordStockTransferTx } from './types-lot5-inventaire';
+import {
+  assertMovementDateAllowed,
+  buildStockMeta,
+  lockStockBalancesTx,
+  maskMovementView,
+  maskValue
+} from './stock-controles';
+import {
+  MOVEMENT_VIEW_INCLUDE,
+  buildMovementView,
+  decreaseValuation,
+  insufficientStockError,
+  loadCallerBlind,
+  lockSiteForEntryTx,
+  readBalanceTx,
+  readControlsTx,
+  readUserLabelTx,
+  requireActiveLocationTx,
+  requirePositiveQuantity,
+  requireReason,
+  resolveRequesterTx,
+  runStockWrite,
+  toMovementViewFromRow,
+  writeBalanceTx
+} from './stock-mouvements';
+import type { StockWriteOptions, StockWriteResponse } from './stock-mouvements';
+import type { StockCallerContext, StockReasonCode, TransferResult } from './types-040-controle';
 
 /** Devise unique du module (décision D9 du plan, actée au lot 1). */
 const DEFAULT_CURRENCY = 'XOF';
 
-/**
- * Le coût moyen pondéré d'un emplacement. **Calculé, jamais stocké.**
- *
- * Vaut zéro quand la quantité est nulle — et non `null` : la quantité dit déjà
- * qu'il n'y a rien. Même règle et même code que `stock-mouvements.ts`.
- */
-function averageUnitCostOf(quantity: number, value: number): number {
-  if (quantity <= 0) {
-    return 0;
-  }
-  return value / quantity;
-}
-
-// ---------------------------------------------------------------------------
-// Le solde d'un emplacement — lu avant toute écriture
-// ---------------------------------------------------------------------------
-
-interface BalanceState {
-  /** Nul quand l'emplacement n'a encore jamais rien reçu. */
-  id: string | null;
+export interface RecordStockTransferParams {
+  fromLocationId: string;
+  toLocationId: string;
+  itemId: string;
   quantity: number;
-  value: number;
+  transferDate: Date;
+  /** Motif de la colonne « Transfert » (A11-R2) ; `reason` obligatoire pour `OTHER`. */
+  reasonCode?: StockReasonCode | null;
+  reason?: string | null;
+  /** Preneur du carnet, ou demandeur en texte : au moins l'un des deux (A11-R1). */
+  takerId?: string | null;
+  requestedBy?: string | null;
+  createdByUserId: string;
 }
 
-/**
- * Lit le solde (article, lieu). Jamais `findUnique` sur la clé composée : le
- * `tenantId` doit entrer dans le filtre, sans quoi une agence lirait le stock
- * d'une autre si jamais un identifiant fuitait.
- */
-async function readBalanceTx(
-  tx: PrismaTransactionClient,
-  tenantId: string,
-  itemId: string,
-  locationId: string
-): Promise<BalanceState> {
-  const row = await tx.stockBalance.findFirst({
-    where: { tenantId, itemId, locationId },
-    select: { id: true, quantity: true, value: true }
-  });
-
-  if (!row) {
-    return { id: null, quantity: 0, value: 0 };
-  }
-
-  return {
-    id: row.id,
-    quantity: roundQuantity(toAmountOrZero(row.quantity)),
-    value: roundMoneyXof(toAmountOrZero(row.value))
-  };
-}
-
-/** Écrit le nouvel état du solde : mise à jour si la ligne existe, création sinon. */
-async function writeBalanceTx(
-  tx: PrismaTransactionClient,
-  tenantId: string,
-  itemId: string,
-  locationId: string,
-  previous: BalanceState,
-  quantity: number,
-  value: number
-): Promise<void> {
-  if (previous.id) {
-    await tx.stockBalance.update({
-      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
-      where: { id: previous.id, tenantId },
-      data: { quantity, value }
-    });
-    return;
-  }
-
-  await tx.stockBalance.create({
-    data: { tenantId, itemId, locationId, quantity, value, currency: DEFAULT_CURRENCY }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Gardes communes — lieu et article
-// ---------------------------------------------------------------------------
-
-/**
- * Le lieu, lu **directement par le client Prisma** : importer
- * `stock-referentiel.ts` ferait dépendre deux territoires l'un de l'autre.
- *
- * Refus délibéré sur un lieu désactivé : désactiver un lieu est un geste de
- * paramétrage voulu, pas un état à contourner en silence.
- */
-async function requireActiveLocationTx(
-  tx: PrismaTransactionClient,
-  tenantId: string,
-  locationId: string
-): Promise<{ id: string; label: string }> {
-  const location = await tx.stockLocation.findFirst({
-    where: { id: locationId, tenantId },
-    select: { id: true, label: true, isActive: true }
-  });
-  if (!location) {
-    throw notFound('Lieu de stockage introuvable');
-  }
-  if (!location.isActive) {
-    throw conflict('Ce lieu de stockage est désactivé');
-  }
-  return { id: location.id, label: location.label };
-}
-
-/**
- * L'article. **Un article désactivé reste transférable.**
- *
- * Désactiver un article veut dire « on n'en achète plus », jamais « abandonnez
- * ce qui est en magasin ». Refuser de déplacer un stock réel l'emprisonnerait.
- */
+/** L'article : un article désactivé reste transférable (on n'emprisonne pas un stock réel). */
 async function requireItemTx(
   tx: PrismaTransactionClient,
   tenantId: string,
@@ -185,178 +97,196 @@ async function requireItemTx(
     select: { id: true, reference: true, label: true, unit: true }
   });
   if (!item) {
-    throw notFound('Article de stock introuvable');
+    throw new NotFoundError('Article de stock introuvable.');
   }
   return item;
 }
 
-// ---------------------------------------------------------------------------
-// Conversions Prisma -> contrat
-// ---------------------------------------------------------------------------
-
-function toCreatedByLabel(user?: { fullName?: string | null; email?: string | null } | null): string {
-  return user?.fullName || user?.email || 'Utilisateur inconnu';
-}
-
-function toMovementRecord(row: any): StockMovementRecord {
-  return {
-    id: row.id,
-    type: row.type,
-    itemId: row.itemId,
-    itemReference: row.item?.reference ?? 'Article inconnu',
-    itemLabel: row.item?.label ?? 'Article inconnu',
-    itemUnit: row.item?.unit ?? '',
-    locationId: row.locationId,
-    locationLabel: row.location?.label ?? 'Lieu inconnu',
-    movementDate: row.movementDate,
-    quantity: roundQuantity(toAmountOrZero(row.quantity)),
-    isDecrease: row.isDecrease === true,
-    unitCost: roundQuantity(toAmountOrZero(row.unitCost)),
-    totalValue: roundMoneyXof(toAmountOrZero(row.totalValue)),
-    currency: row.currency ?? DEFAULT_CURRENCY,
-    quantityAfter: roundQuantity(toAmountOrZero(row.quantityAfter)),
-    valueAfter: roundMoneyXof(toAmountOrZero(row.valueAfter)),
-    siteId: row.siteId ?? null,
-    siteLabel: row.site?.name ?? null,
-    costCategoryLabel: row.costCategory?.label ?? null,
-    requestedBy: row.requestedBy ?? null,
-    supplierInvoiceReference: row.supplierInvoice?.reference ?? null,
-    transferGroupId: row.transferGroupId ?? null,
-    createdByLabel: toCreatedByLabel(row.createdBy),
-    createdAt: row.createdAt
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Le transfert — deux mouvements, aucune écriture, aucune imputation
-// ---------------------------------------------------------------------------
-
 /**
- * Voir `RecordStockTransferTx` dans `./types-lot5-inventaire.ts`.
- *
- * **N'appelle ni `postDocumentEntryTx`, ni `tx.costAllocation.create`, ni
- * `syncWorkProgramCostTx`, ni `assertSiteOpenTx`.** Aucune de ces absences
- * n'est un oubli : voir l'en-tête.
+ * Déplace un article d'un lieu vers un autre : deux mouvements liés par
+ * `transferGroupId`, la sortie d'abord, l'entrée ensuite ; aucune écriture
+ * comptable, aucune imputation. Tout ce qui peut refuser le transfert est lu et
+ * vérifié avant le premier `create`.
  */
-export const recordStockTransferTx: RecordStockTransferTx = async (tx, tenantId, params) => {
-  const quantity = roundQuantity(params.quantity);
-  if (!(quantity > 0)) {
-    throw badRequest('La quantité transférée doit être strictement positive');
-  }
-
-  // Refusé AVANT toute lecture : un transfert sur place ne déplace rien, et il
-  // écrirait deux mouvements sur le même solde dont le second annulerait le
-  // premier — une paire de lignes illisibles six mois plus tard.
+export async function recordStockTransferTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  params: RecordStockTransferParams,
+  options: StockWriteOptions = {}
+): Promise<TransferResult> {
+  const quantity = requirePositiveQuantity(params.quantity, 'La quantité transférée doit être strictement positive.');
   if (params.fromLocationId === params.toLocationId) {
-    throw badRequest("Un transfert relie deux lieux distincts : l'origine et l'arrivée sont identiques");
+    throw new BadRequestError("Un transfert relie deux lieux distincts : l'origine et l'arrivée sont identiques.");
   }
+  const reason = requireReason('TRANSFER', params.reasonCode, params.reason);
 
-  // LECTURE AVANT ÉCRITURE (en-tête) : tout ce qui peut refuser le transfert
-  // est lu et vérifié avant le premier `create`.
-  const from = await requireActiveLocationTx(tx, tenantId, params.fromLocationId);
+  // 1. Verrou de chantier de l'ARRIVÉE, avant de vérifier qu'il est ouvert.
   const to = await requireActiveLocationTx(tx, tenantId, params.toLocationId);
+  await lockSiteForEntryTx(tx, tenantId, to);
+  // 2. Verrous de solde des deux couples, triés, avant toute lecture de solde.
+  await lockStockBalancesTx(tx, tenantId, [
+    { itemId: params.itemId, locationId: params.fromLocationId },
+    { itemId: params.itemId, locationId: params.toLocationId }
+  ]);
+
+  // 3. Lectures et contrôles.
+  const from = await requireActiveLocationTx(tx, tenantId, params.fromLocationId);
+  const settings = await readControlsTx(tx, tenantId);
+  assertMovementDateAllowed(params.transferDate, settings.backdatingLimitDays, options.now);
+  const requester = await resolveRequesterTx(tx, tenantId, params, settings.requireTaker);
   const item = await requireItemTx(tx, tenantId, params.itemId);
-
-  const source = await readBalanceTx(tx, tenantId, params.itemId, params.fromLocationId);
-
-  // Même interdiction dure qu'à la sortie, et pour la même raison : un stock
-  // négatif n'a pas de coût moyen qui veuille dire quelque chose, et toute la
-  // valorisation qui suit deviendrait fausse. Le geste juste est un inventaire.
+  const source = await readBalanceTx(tx, tenantId, item.id, from.id);
   if (quantity > source.quantity) {
-    throw conflict(
-      `Stock insuffisant à « ${from.label} » : ${source.quantity} ${item.unit} disponible(s) pour ${quantity} demandé(s). ` +
-        'Un inventaire, et non un transfert, corrige un écart de quantité physique.'
-    );
+    throw insufficientStockError({
+      locationId: from.id,
+      itemId: item.id,
+      itemLabel: item.label,
+      requested: quantity,
+      available: source.quantity,
+      blindLocationIds: options.blindLocationIds
+    });
   }
-
-  const destination = await readBalanceTx(tx, tenantId, params.itemId, params.toLocationId);
-
-  const averageUnitCost = averageUnitCostOf(source.quantity, source.value);
-  const fromQuantityAfter = roundQuantity(source.quantity - quantity);
-
-  // LA VALEUR DÉPLACÉE EST CALCULÉE UNE SEULE FOIS, et les deux mouvements la
-  // portent. C'est ce qui rend l'invariant exact : deux arrondis calculés
-  // séparément se seraient écartés d'un franc, et ce franc se serait créé ou
-  // détruit à chaque transfert.
-  let transferValue: number;
-  let fromValueAfter: number;
-  if (fromQuantityAfter <= 0) {
-    // Quand la quantité tombe à zéro, la valeur aussi : le mouvement emporte
-    // TOUTE la valeur restante, écart d'arrondi compris, et le solde d'origine
-    // retombe à zéro des deux côtés (règle de `stock-mouvements.ts`).
-    transferValue = roundMoneyXof(source.value);
-    fromValueAfter = 0;
-  } else {
-    transferValue = roundMoneyXof(quantity * averageUnitCost);
-    fromValueAfter = Math.max(0, roundMoneyXof(source.value - transferValue));
-  }
-
+  const destination = await readBalanceTx(tx, tenantId, item.id, to.id);
+  const outgoing = decreaseValuation(source, quantity);
   const toQuantityAfter = roundQuantity(destination.quantity + quantity);
-  const toValueAfter = roundMoneyXof(destination.value + transferValue);
+  const toValueAfter = roundMoneyXof(destination.value + outgoing.totalValue);
+  const authorLabel = await readUserLabelTx(tx, params.createdByUserId);
 
-  // Les deux moitiés portent le MÊME identifiant de groupe : c'est lui, et lui
-  // seul, qui dit qu'il s'agit d'un déplacement et non d'une perte d'un côté
-  // suivie d'une apparition de l'autre.
+  // 4. Écritures : les deux moitiés portent le MÊME groupe, le même motif, le même demandeur.
   const transferGroupId = randomUUID();
-
-  const include = {
-    item: { select: { reference: true, label: true, unit: true } },
-    location: { select: { label: true } },
-    createdBy: { select: { fullName: true, email: true } }
-  };
-
-  const donneesCommunes = {
+  const common = {
     tenantId,
     type: 'TRANSFER' as const,
-    itemId: params.itemId,
+    itemId: item.id,
     movementDate: params.transferDate,
     quantity,
-    // Le coût moyen du lieu d'ORIGINE, pour les deux moitiés : c'est à ce
-    // prix-là que la valeur part, et donc à ce prix-là qu'elle arrive.
-    unitCost: roundQuantity(averageUnitCost),
-    totalValue: transferValue,
+    // Le coût moyen du lieu d'ORIGINE, pour les deux moitiés.
+    unitCost: outgoing.unitCost,
+    totalValue: outgoing.totalValue,
     currency: DEFAULT_CURRENCY,
     transferGroupId,
+    reasonCode: reason.reasonCode,
+    reason: reason.reason,
+    takerId: requester.takerId,
+    requestedBy: requester.requestedBy,
     createdByUserId: params.createdByUserId
   };
-
-  // LA SORTIE D'ABORD, L'ENTRÉE ENSUITE — l'ordre du contrat, et celui dans
-  // lequel `movements` est rendu.
   const sortie = await tx.stockMovement.create({
     data: {
-      ...donneesCommunes,
-      locationId: params.fromLocationId,
+      ...common,
+      locationId: from.id,
       isDecrease: true,
-      quantityAfter: fromQuantityAfter,
-      valueAfter: fromValueAfter
-    },
-    include
+      quantityAfter: outgoing.quantityAfter,
+      valueAfter: outgoing.valueAfter
+    }
   });
-
   const entree = await tx.stockMovement.create({
-    data: {
-      ...donneesCommunes,
-      locationId: params.toLocationId,
-      isDecrease: false,
-      quantityAfter: toQuantityAfter,
-      valueAfter: toValueAfter
-    },
-    include
+    data: { ...common, locationId: to.id, isDecrease: false, quantityAfter: toQuantityAfter, valueAfter: toValueAfter }
+  });
+  await writeBalanceTx(tx, tenantId, item.id, from.id, source, outgoing.quantityAfter, outgoing.valueAfter);
+  await writeBalanceTx(tx, tenantId, item.id, to.id, destination, toQuantityAfter, toValueAfter);
+
+  // 5. Audit critique, sur la moitié sortante.
+  await recordAuditEvent(tx, {
+    tenantId,
+    actorUserId: params.createdByUserId,
+    actionKey: AuditActionKey.STOCK_TRANSFER_RECORDED,
+    entityType: 'StockMovement',
+    entityId: sortie.id,
+    payload: {
+      transferGroupId,
+      itemId: item.id,
+      quantity,
+      fromLocationId: from.id,
+      toLocationId: to.id,
+      reasonCode: reason.reasonCode,
+      reason: reason.reason,
+      takerId: requester.takerId,
+      requestedBy: requester.requestedBy,
+      value: outgoing.totalValue
+    }
   });
 
-  await writeBalanceTx(tx, tenantId, params.itemId, params.fromLocationId, source, fromQuantityAfter, fromValueAfter);
-  await writeBalanceTx(tx, tenantId, params.itemId, params.toLocationId, destination, toQuantityAfter, toValueAfter);
-
+  const labels = { item, createdByLabel: authorLabel, takerLabel: requester.takerLabel };
   return {
     transferGroupId,
     movements: [
-      toMovementRecord({ ...(sortie as any), item: (sortie as any).item ?? item }),
-      toMovementRecord({ ...(entree as any), item: (entree as any).item ?? item })
+      buildMovementView(sortie, { ...labels, locationLabel: from.label }),
+      buildMovementView(entree, { ...labels, locationLabel: to.label })
     ],
     fromLocationLabel: from.label,
     toLocationLabel: to.label,
     quantity,
-    value: transferValue,
+    value: outgoing.totalValue,
     currency: DEFAULT_CURRENCY
   };
-};
+}
+
+/** Relit un transfert par son groupe (rejeu idempotent). */
+export async function loadTransferResult(tenantId: string, transferGroupId: string): Promise<TransferResult> {
+  const rows = await prisma.stockMovement.findMany({
+    where: { tenantId, transferGroupId, type: 'TRANSFER' },
+    include: MOVEMENT_VIEW_INCLUDE
+  });
+  const views = rows.map(toMovementViewFromRow).sort((a, b) => Number(b.isDecrease) - Number(a.isDecrease));
+  const [sortie, entree] = views;
+  if (!sortie || !entree) {
+    throw new NotFoundError('Transfert introuvable.');
+  }
+  return {
+    transferGroupId,
+    movements: [sortie, entree],
+    fromLocationLabel: sortie.locationLabel,
+    toLocationLabel: entree.locationLabel,
+    quantity: sortie.quantity,
+    value: sortie.totalValue,
+    currency: sortie.currency
+  };
+}
+
+/** Un transfert, masqué pour l'appelant : `value` suit le lieu d'origine (§8.2). */
+export function maskTransferResult(
+  result: TransferResult,
+  ctx: StockCallerContext,
+  blind: Set<string>
+): TransferResult {
+  const originId = result.movements[0]?.locationId;
+  return {
+    ...result,
+    movements: result.movements.map(movement => maskMovementView(movement, ctx, blind)),
+    value: originId && blind.has(originId) ? null : maskValue(result.value, ctx)
+  };
+}
+
+/** `POST /stock/transfers` : transfert idempotent, masqué pour l'appelant. */
+export async function recordStockTransfer(
+  tenantId: string,
+  ctx: StockCallerContext,
+  input: Omit<RecordStockTransferParams, 'createdByUserId'> & { clientRequestId?: string | null },
+  body: unknown = input
+): Promise<StockWriteResponse<TransferResult>> {
+  const blind = await loadCallerBlind(tenantId, ctx);
+  const { replayed, result } = await runStockWrite({
+    tenantId,
+    ctx,
+    operation: 'TRANSFER',
+    clientRequestId: input.clientRequestId,
+    body,
+    blind,
+    execute: async tx => {
+      const out = await recordStockTransferTx(
+        tx,
+        tenantId,
+        { ...input, createdByUserId: ctx.userId },
+        { blindLocationIds: blind }
+      );
+      return { result: out, resultType: 'StockMovement', resultId: out.transferGroupId };
+    },
+    replay: ref => loadTransferResult(tenantId, ref.resultId)
+  });
+  return {
+    status: replayed ? 200 : 201,
+    data: maskTransferResult(result, ctx, blind),
+    meta: buildStockMeta(ctx, blind)
+  };
+}

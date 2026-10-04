@@ -23,6 +23,10 @@ import { BonDeCommande } from '../../pages/finance/BonDeCommande';
 import { TableauDeBordChantiers } from '../../pages/finance/TableauDeBordChantiers';
 import { BauxDeTerrain } from '../../pages/finance/BauxDeTerrain';
 import { BailDeTerrain } from '../../pages/finance/BailDeTerrain';
+import { StockMagasin } from '../../pages/finance/StockMagasin';
+import { StockInventaire } from '../../pages/finance/StockInventaire';
+import { StockPreneurs } from '../../pages/finance/StockPreneurs';
+import { StockControle } from '../../pages/finance/StockControle';
 import { Documents } from '../../pages/rental/Documents';
 import { DocumentTemplates } from '../../pages/documents/DocumentTemplates';
 import { CalendarPage } from '../../pages/crm/Calendar';
@@ -123,8 +127,84 @@ const TABLEAU_DE_BORD_CHANTIERS = 'tenant/' + AGENCE + '/finance/tableau-de-bord
 const BAUX_DE_TERRAIN = 'tenant/' + AGENCE + '/finance/baux-terrain';
 const BAIL_DE_TERRAIN = BAUX_DE_TERRAIN + '/bail-riviera-01';
 const SIDEBAR = 'coquille/sidebar';
+// Lot 040, contrôle du stock. Les bancs : `finance-mock-stock-controle.ts`
+// (contexte terrain, preneurs, alertes, indicateurs, réglages) et
+// `finance-mock-stock-inventaire.ts` (Magasin et inventaires). Le scénario
+// `partiel` y figure un magasinier, sans alertes ni valeurs.
+const STOCK = 'tenant/' + AGENCE + '/finance/stock';
+const STOCK_MAGASIN = STOCK + '/magasin';
+const STOCK_INVENTAIRE_CLOS = STOCK + '/inventaire?inventaire=comptage-clos-03';
+const STOCK_PRENEURS = STOCK + '/preneurs';
+const STOCK_CONTROLE = STOCK + '/controle';
 
 const SCENES: Scene[] = [
+  {
+    id: 'stock-magasin-magasinier',
+    titre: 'Magasin, téléphone, magasinier sans valeurs',
+    description:
+      'À regarder à 375 px. Les gestes permis au magasinier seulement, aucun montant, aucune quantité attendue pendant un comptage.',
+    scenario: 'partiel',
+    chemin: STOCK_MAGASIN
+  },
+  {
+    id: 'stock-inventaire-clos',
+    titre: 'Inventaire clos à justifier',
+    description:
+      'Comptage clos : les écarts apparaissent, chacun attend son motif ; les non comptés se mettent à l’écart avant la validation.',
+    scenario: 'nominal',
+    chemin: STOCK_INVENTAIRE_CLOS
+  },
+  {
+    id: 'stock-controle',
+    titre: 'Contrôle du stock — alertes à traiter',
+    description:
+      'Trois alertes ouvertes, dont un cumul du mois ; chaque objet mène à son écran. Titre et message viennent du serveur.',
+    scenario: 'nominal',
+    chemin: STOCK_CONTROLE
+  },
+  {
+    id: 'stock-controle-alerte',
+    titre: 'Contrôle du stock — alerte ouverte depuis l’accueil',
+    description: 'Le lien de la file « À traiter » : l’alerte est mise en évidence et défilée en vue.',
+    scenario: 'nominal',
+    chemin: STOCK_CONTROLE + '?alerte=alerte-sortie-02'
+  },
+  {
+    id: 'stock-controle-indicateurs',
+    titre: 'Contrôle du stock — indicateurs',
+    description: 'Six mois, par mois puis par lieu ; un mois sans inventaire validé affiche « — », jamais 0 %.',
+    scenario: 'nominal',
+    chemin: STOCK_CONTROLE + '?onglet=indicateurs'
+  },
+  {
+    id: 'stock-controle-reglages',
+    titre: 'Contrôle du stock — réglages de contrôle',
+    description: 'Un seuil désactivé, des postes « matériaux » retenus faute de choix, la date de modification.',
+    scenario: 'nominal',
+    chemin: STOCK_CONTROLE + '?onglet=reglages'
+  },
+  {
+    id: 'stock-controle-magasinier',
+    titre: 'Contrôle du stock — magasinier',
+    description:
+      'Ni alertes ni valeurs : l’écran réservé, et le chemin vers le Magasin. Aucune route d’alertes appelée.',
+    scenario: 'partiel',
+    chemin: STOCK_CONTROLE
+  },
+  {
+    id: 'stock-preneurs',
+    titre: 'Carnet des preneurs',
+    description: 'Trois preneurs, dont un désactivé et un sans téléphone ; l’encadré sur les données personnelles.',
+    scenario: 'nominal',
+    chemin: STOCK_PRENEURS
+  },
+  {
+    id: 'stock-preneurs-vide',
+    titre: 'Carnet des preneurs — vide',
+    description: 'Le carnet invite à ajouter les chefs d’équipe et les tâcherons.',
+    scenario: 'vide',
+    chemin: STOCK_PRENEURS
+  },
   {
     id: 'bail-de-terrain',
     titre: 'Bail de terrain — le mecanisme des douze mois',
@@ -1040,6 +1120,42 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <WorkProgramsPage />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/stock/magasin"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <StockMagasin />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/stock/inventaire"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <StockInventaire />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/stock/preneurs"
+      element={
+        <Scene>
+          <StockPreneurs />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/stock/controle"
+      element={
+        <Scene>
+          <StockControle />
         </Scene>
       }
     />

@@ -101,6 +101,17 @@ describe('Export agence — classement des modeles du schema', () => {
     expect(EXCLUDED_MODELS).toHaveProperty('SecureLink');
   });
 
+  it('stock de chantier (lot 040, B5-R9) : cle d’idempotence exclue, bons et pieces jointes exportes', () => {
+    expect(planOf('StockClientRequest')).toBeUndefined();
+    expect(EXCLUDED_MODELS).toHaveProperty('StockClientRequest');
+    for (const model of ['StockSlip', 'StockAttachment', 'StockTaker', 'StockAlert', 'StockMovement', 'StockCount']) {
+      expect(planOf(model)).toMatchObject({ kind: 'DIRECT', path: ['tenantId'] });
+    }
+    // Le chemin du fichier sort dans le CSV (et le fichier dans l'archive) ; l'empreinte aussi.
+    const attachmentFields = exportableFields(models.find(m => m.name === 'StockAttachment') as DmmfModel);
+    expect(attachmentFields).toEqual(expect.arrayContaining(['fileUrl', 'sha256', 'uploadedByUserId']));
+  });
+
   it('chaque modele exporte a une cle d’identifiant pour la pagination', () => {
     for (const plan of plans) {
       const model = models.find(m => m.name === plan.model) as DmmfModel;

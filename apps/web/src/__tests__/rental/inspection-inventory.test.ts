@@ -185,4 +185,31 @@ describe('proposeDeductions (M5)', () => {
     const withTv = [{ id: 'd', label: 'x', amount: 1, itemId: 'tv' }];
     expect(countMissingWithoutDeduction(exitRooms, lookup(entryRooms), withTv)).toBe(2);
   });
+
+  it('ignore un élément ajouté seulement à la sortie et marqué Manquant, comme la synthèse de l’API', () => {
+    const exitWithAddition: InspectionRoom[] = [
+      {
+        ...exitRooms[0],
+        items: [
+          ...exitRooms[0].items,
+          furniture('micro', {
+            label: 'Four à micro-ondes',
+            condition: 'MISSING',
+            quantity: 0,
+            replacementValue: 40000
+          }),
+          item('store', { label: 'Store', condition: 'MISSING' })
+        ]
+      }
+    ];
+    const proposals = proposeDeductions({
+      rooms: exitWithAddition,
+      entryItemsById: lookup(entryRooms),
+      entryKeysCount: 3,
+      exitKeysCount: 3,
+      existing: []
+    });
+    expect(proposals.map(line => line.itemId)).toEqual(['tv', 'ch', 'lampe', 'sol']);
+    expect(countMissingWithoutDeduction(exitWithAddition, lookup(entryRooms), [])).toBe(3);
+  });
 });

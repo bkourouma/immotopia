@@ -53,6 +53,15 @@ execSync(
   { stdio: 'inherit', env }
 );
 
+// Stock (lot 040) : concurrence des ecritures, de la cloture d'inventaire et
+// des alertes. Lancees SEPAREMENT et en serie : chacune fait courir des
+// transactions simultanees sur la meme base et compte ce qui a ete ecrit.
+console.log('Execution des suites de concurrence du stock...');
+execSync(
+  'npx jest --runInBand __tests__/integration/stock-concurrence.test.ts __tests__/integration/stock-cloture-concurrence.test.ts __tests__/integration/stock-alertes-concurrence.test.ts',
+  { stdio: 'inherit', env }
+);
+
 // Journal d'audit (phase 5) : scellement, verification, purge. Lance APRES et
 // SEPAREMENT : certains cas desactivent un declencheur de `audit_logs` le temps
 // d'une alteration simulee, ce qui ne doit jamais croiser une autre suite.

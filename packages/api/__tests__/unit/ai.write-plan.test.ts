@@ -51,6 +51,8 @@ import {
   displayQuery,
   flattenLeaves,
   lastParamAncestorPath,
+  readableLabel,
+  shortRecordId,
   unwrapRecord
 } from '../../src/lib/ai/write-plan';
 import { formatSseEvent } from '../../src/lib/ai/sse';
@@ -537,7 +539,7 @@ describe('plan_write — parent d’une création imbriquée', () => {
       await plan({ capabilityId: orphan, pathParams: { syndicId: SYNDIC_ID, lotId: CONTACT_ID }, body: { montant: 5 } })
     );
     expect(received).toHaveLength(0);
-    expect(p.target).toEqual({ label: CONTACT_ID, resolved: false });
+    expect(p.target).toEqual({ label: 'Enregistrement 55555555…', resolved: false });
     expect(p.warnings.join(' | ')).toContain("n'a pas pu être vérifié");
   });
 
@@ -604,6 +606,26 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
     ['/api/tenants/:tenantId/bail/:id/status', 'lifecycle']
   ])('%s -> %s', (path, category) => {
     expect(writeSensitivity(path)?.category).toBe(category);
+  });
+
+  // Lot 040 : les écritures du stock qui sortent de la marchandise ou une preuve.
+  it.each([
+    'POST /api/tenants/:tenantId/finance/stock/scraps',
+    'POST /api/tenants/:tenantId/finance/stock/supplier-returns',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/set-aside',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/set-aside-uncounted',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/cancel'
+  ])('%s : stock, écriture du catalogue classée sensible (lifecycle)', id => {
+    const entry = findWritableEntry(id);
+    expect(entry).toBeDefined();
+    expect(writeSensitivity(entry!.path)?.category).toBe('lifecycle');
+    expect(assessWrite(entry!, {})).toMatchObject({ sensitive: true, requiresTypedConfirmation: true });
+  });
+
+  it('stock : le retrait d’une pièce jointe est classé sensible, et exclu du catalogue comme destructeur', () => {
+    const path = '/api/tenants/:tenantId/finance/stock/attachments/:attachmentId/remove';
+    expect(writeSensitivity(path)?.category).toBe('lifecycle');
+    expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
   });
 
   it('`status` n’est sensible que sur un bail ; une création banale reste non sensible', () => {
@@ -921,6 +943,52 @@ describe('write-plan (fonctions pures)', () => {
     expect(unwrapRecord([1])).toBeNull();
   });
 
+  it('readableLabel : forme réelle d’un contact CRM (prénom + nom, e-mail), jamais l’id', () => {
+    // GET /crm/contacts/:id -> { success, data: <CrmContact + relations> } : ni name ni fullName au premier niveau.
+    const contact = {
+      id: CONTACT_ID,
+      contactType: 'PERSON',
+      firstName: 'Awa',
+      lastName: 'Koné',
+      email: 'awa@example.com',
+      assignedTo: { id: 'u1', email: 'x@y.z', fullName: 'Agent' },
+      tags: []
+    };
+    expect(readableLabel(unwrapRecord({ success: true, data: contact }))).toBe('Awa Koné');
+    expect(readableLabel({ id: CONTACT_ID, email: 'awa@example.com' })).toBe('awa@example.com');
+    expect(
+      readableLabel({
+        id: CONTACT_ID,
+        contactType: 'COMPANY',
+        legalName: 'SCI Palmiers',
+        firstName: 'A',
+        lastName: 'B'
+      })
+    ).toBe('SCI Palmiers');
+  });
+
+  it('readableLabel : ordre des clés, sous-objet d’enveloppe, numéros, repli sur null', () => {
+    expect(readableLabel({ title: 'Villa', name: 'Nom', label: 'L' })).toBe('Nom');
+    expect(readableLabel({ title: 'Villa', label: 'L' })).toBe('Villa');
+    expect(readableLabel({ displayName: 'D', fullName: 'F' })).toBe('D');
+    expect(readableLabel({ id: 'x', leaseNumber: 'BAIL-2025-0042' })).toBe('BAIL-2025-0042');
+    expect(readableLabel({ id: 'x', internalReference: 'REF-9' })).toBe('REF-9');
+    expect(readableLabel({ id: 'x', number: 12 })).toBe('12');
+    expect(readableLabel({ id: 'x', documentNumber: 'DOC-1', email: 'a@b.c' })).toBe('DOC-1');
+    expect(readableLabel({ id: 'x', meta: { name: 'caché' } })).toBeNull();
+    expect(readableLabel({ id: 'x', item: { title: 'Dans item' } })).toBe('Dans item');
+    expect(readableLabel({ id: 'x', contact: { firstName: 'Awa', lastName: 'Koné' } })).toBe('Awa Koné');
+    expect(readableLabel({ id: 'x', data: { name: 'Enveloppé' } })).toBe('Enveloppé');
+    expect(readableLabel({ id: 'x', password: 'secret' })).toBeNull();
+    expect(readableLabel(null)).toBeNull();
+    expect(readableLabel({ name: 'n'.repeat(200) })!.length).toBe(121);
+  });
+
+  it('shortRecordId : UUID abrégé, id court intact', () => {
+    expect(shortRecordId(CONTACT_ID)).toBe('55555555…');
+    expect(shortRecordId('L-42')).toBe('L-42');
+  });
+
   it('classifyRecord et assessWrite', () => {
     const entry = (id: string) => findWritableEntry(id)!;
     expect(classifyRecord(entry(PATCH_CONTACT))).toBe('update');
@@ -1080,6 +1148,46 @@ describe('orchestrateur + fournisseur fake — écritures', () => {
     expect(requests.join('')).not.toContain('"token"');
     expect(JSON.stringify(mockLogAudit.mock.calls)).not.toContain(planEvent.plan.token);
     expect(received).toHaveLength(0);
+  });
+
+  it('« désactive le collaborateur » : plan SENSIBLE (mot exigé) sur .../users/:userId/disable, aucune écriture', async () => {
+    const USER_ID = '77777777-7777-4777-8777-777777777777';
+    handler = (req, res) =>
+      req.url!.includes('?')
+        ? json(res, 200, {
+            success: true,
+            data: {
+              members: [
+                { id: 'm1', user: { id: '88888888-8888-4888-8888-888888888888', fullName: 'Moi' } },
+                { id: 'm2', user: { id: USER_ID, fullName: 'Collègue' } }
+              ],
+              pagination: { page: 1 }
+            }
+          })
+        : json(res, 200, { success: true, data: { id: USER_ID, fullName: 'Collègue' } });
+    const { events } = await run('Désactive le collaborateur');
+    expect(statuses(events)).toEqual([
+      'call_read:started',
+      'call_read:succeeded',
+      'plan_write:started',
+      'plan_write:succeeded'
+    ]);
+    const planEvent = events.find(e => e.type === 'write_plan') as Extract<CopilotSseEvent, { type: 'write_plan' }>;
+    expect(planEvent.plan.capabilityId).toBe('POST /api/tenants/:tenantId/users/:userId/disable');
+    expect(planEvent.plan.pathParams).toEqual([{ name: 'userId', value: USER_ID }]);
+    expect(planEvent.plan.sensitive).toBe(true);
+    expect(planEvent.plan.requiresTypedConfirmation).toBe(true);
+    expect(planEvent.plan.confirmationWord).toBe('CONFIRMER');
+    expect(planEvent.plan.target).toEqual({ label: 'Collègue', resolved: true });
+    expect(received.every(r => r.method === 'GET')).toBe(true);
+    nothingWritten();
+  });
+
+  it('« désactive le collaborateur » sans collaborateur listé : aucun plan', async () => {
+    handler = (_req, res) => json(res, 200, { success: true, data: { members: [] } });
+    const { events } = await run('Désactive un membre');
+    expect(events.some(e => e.type === 'write_plan')).toBe(false);
+    expect(textOf(events)).toMatch(/aucun collaborateur/);
   });
 
   it('« modifie le contact » : lecture de la liste, lecture de l’état, plan PATCH, aucune écriture', async () => {

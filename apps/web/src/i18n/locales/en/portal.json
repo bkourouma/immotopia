@@ -18,6 +18,7 @@
   "Acte notarié": "Notarial deed",
   "Acteur": "Actor",
   "Actif": "Active",
+  "Actifs": "Assets",
   "Action": "Action",
   "Actions": "Actions",
   "Activer": "Activate",
@@ -873,6 +874,5 @@
   "Vous recevrez les newsletters.": "You will receive the newsletters.",
   "Vue d'ensemble de votre portefeuille immobilier": "Overview of your property portfolio",
   "Vue d'ensemble de votre situation locative": "Overview of your rental position",
-  "Vue indisponible": "View unavailable",
-  "Actifs": "Assets"
+  "Vue indisponible": "View unavailable"
 }

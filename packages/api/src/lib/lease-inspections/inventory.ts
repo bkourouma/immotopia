@@ -413,7 +413,10 @@ function buildRow(
   const entryQuantity = kind === 'FURNITURE' ? (entryItem?.quantity ?? null) : null;
   const exitQuantity =
     kind === 'FURNITURE' && exitItem ? (exitItem.condition === 'MISSING' ? 0 : (exitItem.quantity ?? null)) : null;
-  const missing = exitCondition === 'MISSING' && entryCondition !== 'MISSING';
+  // Un élément ajouté seulement à la sortie n'est pas un manquant : on ne peut
+  // pas manquer ce qui n'était pas là. Ni compté, ni valorisé dans la synthèse,
+  // comme les retenues proposées qui l'ignorent (deduction-proposals.ts).
+  const missing = entryItem !== null && exitCondition === 'MISSING' && entryCondition !== 'MISSING';
   const quantityDecrease =
     !missing && entryQuantity !== null && exitQuantity !== null ? Math.max(0, entryQuantity - exitQuantity) : 0;
   const missingQuantity = missing ? (entryQuantity ?? 1) : quantityDecrease;

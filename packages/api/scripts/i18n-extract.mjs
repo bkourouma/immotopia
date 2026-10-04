@@ -62,6 +62,19 @@ const ERROR_FACTORIES = new Set([
   'tenantIsolationError'
 ]);
 
+/**
+ * Fabriques dont le message n'est PAS le premier argument, ou aides locales
+ * qui le relaient : nom -> position du message. Lot 040 : `stockError(statut,
+ * code, message, data)` porte tous les refus du stock ; `wrongStatus` et
+ * `targetNotAllowed` le relaient. Sans elles, ces messages n'etaient jamais
+ * recenses et sortaient en francais dans toutes les langues.
+ */
+const MESSAGE_ARGUMENT_FACTORIES = new Map([
+  ['stockError', 2],
+  ['wrongStatus', 0],
+  ['targetNotAllowed', 0]
+]);
+
 const SKIP_DIRS = new Set(['node_modules', 'i18n', '__tests__', 'dist']);
 
 function collectFiles(dir, out = []) {
@@ -119,6 +132,18 @@ for (const file of collectFiles(SRC)) {
       const [first] = node.arguments;
       if (first && (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first))) {
         record(first.text);
+      }
+    }
+
+    // `throw stockError(409, ErrorCode.X, 'Message.')`
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      MESSAGE_ARGUMENT_FACTORIES.has(node.expression.text)
+    ) {
+      const message = node.arguments[MESSAGE_ARGUMENT_FACTORIES.get(node.expression.text)];
+      if (message && (ts.isStringLiteral(message) || ts.isNoSubstitutionTemplateLiteral(message))) {
+        record(message.text);
       }
     }
 

@@ -1,37 +1,39 @@
 import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
-import { listStockBalances, recordStockIssueTx, recordStockReceiptTx } from '../lib/finance/stock-mouvements';
 import {
-  createStockIssueSchema,
+  listStockBalancesForCaller,
+  recordStockIssue,
+  recordStockReceipt,
+  recordStockScrap,
+  recordStockSupplierReturn
+} from '../lib/finance/stock-mouvements';
+import type { StockWriteResponse } from '../lib/finance/stock-mouvements';
+import {
   createStockReceiptSchema,
-  listStockBalancesQuerySchema
+  createStockScrapSchema,
+  createStockSupplierReturnSchema,
+  listStockBalancesQuerySchema,
+  parseStockIssueBody
 } from '../lib/finance/schemas-stock-mouvements';
-import { prisma } from '../utils/database';
+import { resolveStockCallerContext } from '../lib/finance/stock-controles';
+import type { StockCallerContext } from '../lib/finance/types-040-controle';
 
 /**
- * Contrôleur des quatre points d'entrée des mouvements de stock — lot 5,
- * deuxième sous-lot (`lib/finance/types-lot5-mouvements.ts`).
+ * Contrôleur des mouvements de stock — lot 5, deuxième sous-lot, étendu par le
+ * lot 040 : réceptions, sorties, retours fournisseur, rebuts, soldes.
  *
- * Modèle : `controllers/finance-retentions-controller.ts` (lot 4, sous-lot 5).
- * Chaque handler est enveloppé dans `asyncHandler` et laisse le middleware
- * central (`middleware/error-middleware.ts`) traduire les erreurs — celles du
- * domaine (`lib/finance/stock-mouvements.ts`, typées par `lib/errors.ts`)
- * comme celles levées ici (`BadRequestError`). Aucun `try/catch` ne devine de
- * statut HTTP depuis un message.
+ * Chaque gestionnaire est enveloppé dans `asyncHandler` et laisse le middleware
+ * central traduire les erreurs (`AppError` à code stable, `ZodError`). Aucun
+ * `try/catch` ne devine de statut HTTP depuis un message.
  *
  * Isolation multi-tenant : `tenantId` vient toujours de l'URL (posé par
- * `requireTenantAccess` en amont), jamais du corps ni d'une query.
+ * `requireTenantAccess`), jamais du corps. Le contexte de l'appelant
+ * (`resolveStockCallerContext`) décide de ce qu'il voit : les réponses sont
+ * masquées par le domaine (spec §8.1, §8.2) et portent `meta`.
  *
- * **Une seule transaction par écriture.** La réception comme la sortie
- * passent par `prisma.$transaction` : la sortie écrit un mouvement, une
- * écriture, une imputation, une resynchronisation de programme et un solde —
- * cinq gestes qui n'ont de sens qu'ensemble. Une sortie à moitié écrite
- * laisserait un stock diminué sans que le chantier en porte le coût.
- *
- * **Aucun libellé comptable ne sort d'ici** (principe P-1 du PRD) : les mots
- * « débit » et « crédit » n'apparaissent dans aucun message ni aucun champ
- * renvoyé. Le passage du 311 au compte de charge est une mécanique interne ;
- * l'écran ne voit qu'une quantité, une valeur et un chantier.
+ * Une écriture répond `201` ; le rejeu idempotent d'une écriture déjà faite
+ * (même `clientRequestId`, même corps, même utilisateur) répond `200` avec le
+ * résultat d'origine, masqué pour l'appelant (B3-R2).
  */
 
 function requireTenantId(req: Request): string {
@@ -50,80 +52,56 @@ function requireActorUserId(req: Request): string {
   return actorUserId;
 }
 
-// ---------------------------------------------------------------------------
-// A. POST /stock/receipts — enregistrer une réception
-//
-// Un mouvement PAR LIGNE est renvoyé, jamais un objet unique : le coût moyen
-// se recalcule article par article, et l'écran a besoin de voir chacun.
-// ---------------------------------------------------------------------------
+/** Agence et appelant d'une requête du stock. */
+export async function stockRequestContext(req: Request): Promise<{ tenantId: string; ctx: StockCallerContext }> {
+  const tenantId = requireTenantId(req);
+  const ctx = await resolveStockCallerContext(requireActorUserId(req), tenantId);
+  return { tenantId, ctx };
+}
 
+/** Envoie la réponse d'une écriture : `201` neuve, `200` rejeu. */
+export function sendStockWrite<T>(res: Response, response: StockWriteResponse<T>): void {
+  res.status(response.status).json({ success: true, data: response.data, meta: response.meta });
+}
+
+// POST /stock/receipts — bon BR, un mouvement par ligne, contrôles A8-R2.
 export const createStockReceiptHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const body = createStockReceiptSchema.parse(req.body ?? {});
-  const actorUserId = requireActorUserId(req);
-
-  const movements = await prisma.$transaction(tx =>
-    recordStockReceiptTx(tx, tenantId, {
-      locationId: body.locationId,
-      supplierInvoiceId: body.supplierInvoiceId,
-      receiptDate: body.receiptDate,
-      lines: body.lines.map(line => ({
-        itemId: line.itemId,
-        quantity: line.quantity,
-        unitCost: line.unitCost
-      })),
-      createdByUserId: actorUserId
-    })
-  );
-
-  res.status(201).json({ success: true, data: movements });
+  const { tenantId, ctx } = await stockRequestContext(req);
+  sendStockWrite(res, await recordStockReceipt(tenantId, ctx, body, body));
 });
 
-// ---------------------------------------------------------------------------
-// B. POST /stock/issues — sortir vers un chantier
-//
-// AUCUN PRIX n'est transmis au domaine, parce qu'aucun n'est reçu : il se
-// dérive du coût moyen du lieu AVANT la sortie (principe P-4). Le schéma est
-// `.strict()`, un corps qui porterait `unitCost` a déjà échoué en 400.
-// ---------------------------------------------------------------------------
-
+// POST /stock/issues — bon BS, 1 à 50 lignes (ou la forme à un article).
 export const createStockIssueHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
-  const body = createStockIssueSchema.parse(req.body ?? {});
-  const actorUserId = requireActorUserId(req);
-
-  const movement = await prisma.$transaction(tx =>
-    recordStockIssueTx(tx, tenantId, {
-      locationId: body.locationId,
-      itemId: body.itemId,
-      quantity: body.quantity,
-      siteId: body.siteId,
-      costCategoryId: body.costCategoryId,
-      requestedBy: body.requestedBy,
-      issueDate: body.issueDate,
-      createdByUserId: actorUserId
-    })
-  );
-
-  res.status(201).json({ success: true, data: movement });
+  const body = parseStockIssueBody(req.body);
+  const { tenantId, ctx } = await stockRequestContext(req);
+  sendStockWrite(res, await recordStockIssue(tenantId, ctx, body, body));
 });
 
-// ---------------------------------------------------------------------------
-// C. GET /stock/balances — ce qu'il reste, et ce que ça vaut (besoin S4)
-// ---------------------------------------------------------------------------
+// POST /stock/supplier-returns — retour fournisseur (A6).
+export const createStockSupplierReturnHandler = asyncHandler(async (req: Request, res: Response) => {
+  const body = createStockSupplierReturnSchema.parse(req.body ?? {});
+  const { tenantId, ctx } = await stockRequestContext(req);
+  sendStockWrite(res, await recordStockSupplierReturn(tenantId, ctx, body, body));
+});
 
+// POST /stock/scraps — rebut (A6).
+export const createStockScrapHandler = asyncHandler(async (req: Request, res: Response) => {
+  const body = createStockScrapSchema.parse(req.body ?? {});
+  const { tenantId, ctx } = await stockRequestContext(req);
+  sendStockWrite(res, await recordStockScrap(tenantId, ctx, body, body));
+});
+
+// GET /stock/balances — soldes masqués pour l'appelant ; `data` reste un tableau, `meta` s'ajoute.
 export const listStockBalancesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const query = listStockBalancesQuerySchema.parse(req.query ?? {});
-
-  const balances = await listStockBalances(tenantId, {
+  const { tenantId, ctx } = await stockRequestContext(req);
+  const { data, meta } = await listStockBalancesForCaller(tenantId, ctx, {
     locationId: query.locationId,
     itemId: query.itemId,
     onlyInStock: query.onlyInStock
   });
-
-  res.status(200).json({ success: true, data: balances });
+  res.status(200).json({ success: true, data, meta });
 });
 
-// D. GET /stock/movements : gestionnaire déplacé dans
-// `finance-stock-journal-controller.ts` (lot 040, fondations).
+// GET /stock/movements : gestionnaire dans `finance-stock-journal-controller.ts` (territoire API-3).

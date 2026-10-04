@@ -78,6 +78,42 @@ describe('FinanceWorkspaceLayout', () => {
     expect(await screen.findByRole('tab', { name: 'Inventaire' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('Gestion du stock : six onglets dans l’ordre du flux (lot 040, ecrans §2.2)', async () => {
+    renderFinance('gestion-stock', `/tenant/${TENANT}/finance/stock`);
+    await screen.findByRole('tablist', { name: 'Gestion du stock' });
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map(tab => tab.textContent)).toEqual([
+      'Stock',
+      'Magasin',
+      'Inventaire',
+      'Preneurs',
+      'Contrôle',
+      'Articles et lieux'
+    ]);
+    expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
+      `/tenant/${TENANT}/finance/stock`,
+      `/tenant/${TENANT}/finance/stock/magasin`,
+      `/tenant/${TENANT}/finance/stock/inventaire`,
+      `/tenant/${TENANT}/finance/stock/preneurs`,
+      `/tenant/${TENANT}/finance/stock/controle`,
+      `/tenant/${TENANT}/finance/stock/parametrage`
+    ]);
+  });
+
+  it('allume « Magasin » et non « Stock » sur /finance/stock/magasin', async () => {
+    renderFinance('gestion-stock', `/tenant/${TENANT}/finance/stock/magasin`);
+    expect(await screen.findByRole('tab', { name: 'Magasin' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Stock' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('allume « Contrôle » sur /finance/stock/controle et « Preneurs » sur /finance/stock/preneurs', async () => {
+    const { unmount } = renderFinance('gestion-stock', `/tenant/${TENANT}/finance/stock/controle?alerte=a1`);
+    expect(await screen.findByRole('tab', { name: 'Contrôle' })).toHaveAttribute('aria-selected', 'true');
+    unmount();
+    renderFinance('gestion-stock', `/tenant/${TENANT}/finance/stock/preneurs`);
+    expect(await screen.findByRole('tab', { name: 'Preneurs' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('rattache les factures d’un fournisseur à l’onglet Fournisseurs', async () => {
     renderFinance('fournisseurs-commandes', `/tenant/${TENANT}/finance/factures-fournisseurs?fournisseur=f1`);
     expect(await screen.findByRole('tab', { name: 'Fournisseurs' })).toHaveAttribute('aria-selected', 'true');

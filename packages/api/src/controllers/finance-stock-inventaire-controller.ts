@@ -1,48 +1,67 @@
 import { Request, Response } from 'express';
+import type { StockReasonCode } from '@prisma/client';
+
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import {
+  cancelStockCountTx,
+  closeStockCountTx,
   createStockCountTx,
-  getStockCount,
-  listStockCounts,
+  getStockCountLineView,
+  getStockCountView,
+  justifyStockCountLineTx,
+  listStockCountViews,
   removeStockCountLineTx,
+  setAsideStockCountLineTx,
+  setAsideUncountedStockCountLinesTx,
   setStockCountLineTx,
   validateStockCountTx
 } from '../lib/finance/stock-inventaire';
+import type { StockCountWriteOptions } from '../lib/finance/stock-inventaire';
 import {
+  closeStockCountSchema,
   createStockCountSchema,
+  justifyStockCountLineSchema,
   listStockCountsQuerySchema,
+  reasonOnlySchema,
   setStockCountLineSchema,
   uuidPathParamSchema,
   validateStockCountSchema
 } from '../lib/finance/schemas-stock-inventaire';
+import {
+  buildStockMeta,
+  claimClientRequestTx,
+  completeClientRequestTx,
+  findClientRequestReplay,
+  hashRequestBody,
+  isUniqueViolation,
+  loadBlindLocationIds,
+  resolveStockCallerContext
+} from '../lib/finance/stock-controles';
+import type { StockCallerContext, StockMeta } from '../lib/finance/types-040-controle';
+import { logAuditEvent } from '../services/audit-service';
+import type { AuditLogEntry } from '../types/audit-types';
 import { prisma } from '../utils/database';
+import type { PrismaTransactionClient } from '../utils/database';
 
 /**
- * Contrôleur des sept points d'entrée des transferts et de l'inventaire
- * physique — lot 5, troisième sous-lot (`lib/finance/types-lot5-inventaire.ts`).
+ * Contrôleur de l'inventaire physique — lot 5, refondu par le lot 040 (spec
+ * A1 à A4, A7 ; contrat `contracts/openapi.yaml` 2.0.0, tag « Inventaires »).
  *
- * Modèle : `controllers/finance-stock-mouvements-controller.ts` (sous-lot 2).
- * Chaque handler est enveloppé dans `asyncHandler` et laisse le middleware
- * central (`middleware/error-middleware.ts`) traduire les erreurs — celles du
- * domaine (`lib/finance/stock-inventaire.ts`, typées par `lib/errors.ts`)
- * comme celles levées ici (`BadRequestError`). Aucun `try/catch` ne devine de
- * statut HTTP depuis un message.
+ * Chaque handler est enveloppé dans `asyncHandler` : les erreurs typées du
+ * domaine (`AppError` avec code, `lib/finance/stock-inventaire.ts`) passent
+ * telles quelles par le middleware central. Aucun `try/catch` ne devine de
+ * statut — le seul `catch` est celui du rejeu idempotent concurrent (`P2002`
+ * sur la clé, B3-R2), qui relit la clé et renvoie le résultat d'origine.
  *
- * Isolation multi-tenant : `tenantId` vient toujours de l'URL (posé par
- * `requireTenantAccess` en amont), jamais du corps ni d'une query. `countId` et
- * `itemId` viennent toujours du chemin, pour les mêmes raisons.
+ * **L'utilisateur vient du jeton** (`req.user.userId`), l'agence de l'URL
+ * (posée par `requireTenantAccess`) : le domaine les reçoit en paramètre, et
+ * le lot 041 appelle les mêmes fonctions hors requête avec l'utilisateur
+ * rattaché au numéro WhatsApp.
  *
- * **Une seule transaction par écriture.** Le transfert écrit deux mouvements
- * et deux soldes ; sans la transaction, une panne entre les deux ferait
- * disparaître de la matière. La validation d'un inventaire écrit un mouvement,
- * une écriture et un solde par ligne en écart, puis change l'état du comptage :
- * un inventaire à moitié validé laisserait des écarts ajustés dans un comptage
- * encore en brouillon, qu'une seconde validation rejouerait.
- *
- * **Aucun libellé comptable ne sort d'ici** (principe P-1 du PRD) : les mots
- * « débit » et « crédit » n'apparaissent dans aucun message ni aucun champ
- * renvoyé. Le passage du 603 au 311 est une mécanique interne ; l'écran ne voit
- * qu'une quantité attendue, une quantité comptée et un motif.
+ * **Les écritures rendent l'inventaire relu après la transaction**, masqué
+ * pour l'appelant (aveugle A2-R2 des routes d'inventaire, valeurs §8.1), avec
+ * `meta`. Les événements d'audit non critiques sont écrits après la
+ * transaction (`logAuditEvent`, B6-R5) ; les critiques le sont dedans.
  */
 
 function requireTenantId(req: Request): string {
@@ -70,119 +89,294 @@ function requireActorUserId(req: Request): string {
   return actorUserId;
 }
 
-// A. POST /stock/transfers : gestionnaire déplacé dans
-// `finance-stock-transferts-controller.ts` (lot 040, fondations).
+interface CallerScope {
+  tenantId: string;
+  userId: string;
+  ctx: StockCallerContext;
+}
+
+async function resolveCaller(req: Request): Promise<CallerScope> {
+  const tenantId = requireTenantId(req);
+  const userId = requireActorUserId(req);
+  return { tenantId, userId, ctx: await resolveStockCallerContext(userId, tenantId) };
+}
+
+async function metaFor(scope: CallerScope): Promise<StockMeta> {
+  const blind = await loadBlindLocationIds(prisma, scope.tenantId, scope.ctx);
+  return buildStockMeta(scope.ctx, blind);
+}
+
+/**
+ * Délais de la transaction d'écriture, alignés sur les mouvements
+ * (`stock-mouvements.ts`) : la validation d'un inventaire écrit un ajustement
+ * et une écriture comptable par ligne, sous des verrous qui peuvent attendre ;
+ * le délai Prisma par défaut (5 s) l'interromprait à mi-chemin.
+ */
+const COUNT_WRITE_TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
+
+/**
+ * Une écriture dans sa transaction, puis les événements non critiques
+ * collectés, écrits après le commit (B6-R5) : une transaction annulée n'en
+ * laisse aucun.
+ */
+async function runCountWrite<T>(
+  work: (tx: PrismaTransactionClient, options: StockCountWriteOptions) => Promise<T>
+): Promise<T> {
+  const deferredAudit: AuditLogEntry[] = [];
+  const result = await prisma.$transaction(tx => work(tx, { deferredAudit }), COUNT_WRITE_TRANSACTION_OPTIONS);
+  for (const entry of deferredAudit) {
+    logAuditEvent(entry);
+  }
+  return result;
+}
+
+/** Répond l'inventaire relu et masqué pour l'appelant, avec `meta`. */
+async function sendCount(res: Response, scope: CallerScope, countId: string, status = 200): Promise<void> {
+  const [data, meta] = await Promise.all([getStockCountView(scope.tenantId, countId, scope.ctx), metaFor(scope)]);
+  res.status(status).json({ success: true, data, meta });
+}
 
 // ---------------------------------------------------------------------------
-// B. POST /stock/counts — ouvrir un inventaire, en brouillon et sans ligne
+// POST /stock/counts — ouvrir un inventaire (DRAFT, à l'aveugle)
 // ---------------------------------------------------------------------------
 
 export const createStockCountHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const body = createStockCountSchema.parse(req.body ?? {});
-  const actorUserId = requireActorUserId(req);
+  const scope = await resolveCaller(req);
 
-  const count = await prisma.$transaction(tx =>
-    createStockCountTx(tx, tenantId, {
-      locationId: body.locationId,
-      countedAt: body.countedAt,
-      createdByUserId: actorUserId
-    })
+  const created = await runCountWrite((tx, options) =>
+    createStockCountTx(
+      tx,
+      scope.tenantId,
+      {
+        locationId: body.locationId,
+        countedAt: body.countedAt,
+        createdByUserId: scope.userId,
+        ...(body.kind ? { kind: body.kind } : {})
+      },
+      options
+    )
   );
 
-  res.status(201).json({ success: true, data: count });
+  await sendCount(res, scope, created.id, 201);
 });
 
 // ---------------------------------------------------------------------------
-// C. PUT /stock/counts/:countId/lines — saisir ou corriger un comptage
+// PUT /stock/counts/:countId/lines — saisir ou ressaisir (idempotent, B3-R2)
 //
-// PUT, et non POST : rappeler le même article REMPLACE son comptage (contrat).
-// On se reprend en comptant, et une seconde ligne pour le même article rendrait
-// l'écart ambigu.
-//
-// `expectedQuantity` n'est pas reçue et n'est donc pas transmise : le service
-// la lit dans le stock au moment de la saisie et la fige (principe P-4).
+// La réponse ne contient QUE la ligne saisie, sans attendu ni écart (A2-R2).
 // ---------------------------------------------------------------------------
 
 export const setStockCountLineHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const countId = requireUuidParam(req, 'countId');
   const body = setStockCountLineSchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
+  const clientRequestId = body.clientRequestId;
+  const bodyHash = hashRequestBody({ countId, itemId: body.itemId, countedQuantity: body.countedQuantity });
 
-  const count = await prisma.$transaction(tx =>
-    setStockCountLineTx(tx, tenantId, countId, {
-      itemId: body.itemId,
-      countedQuantity: body.countedQuantity,
-      reason: body.reason ?? null
-    })
-  );
+  const replayed = async (): Promise<boolean> => {
+    if (!clientRequestId) {
+      return false;
+    }
+    const replay = await findClientRequestReplay(scope.tenantId, clientRequestId, scope.userId, bodyHash, 'COUNT_LINE');
+    if (!replay) {
+      return false;
+    }
+    const line = await getStockCountLineView(scope.tenantId, replay.resultId, scope.ctx);
+    res.status(200).json({ success: true, data: line });
+    return true;
+  };
 
-  res.status(200).json({ success: true, data: count });
+  if (await replayed()) {
+    return;
+  }
+
+  try {
+    const result = await runCountWrite(async (tx, options) => {
+      const keyId = clientRequestId
+        ? await claimClientRequestTx(tx, {
+            tenantId: scope.tenantId,
+            clientRequestId,
+            operation: 'COUNT_LINE',
+            bodyHash,
+            userId: scope.userId
+          })
+        : null;
+      const saved = await setStockCountLineTx(
+        tx,
+        scope.tenantId,
+        countId,
+        { itemId: body.itemId, countedQuantity: body.countedQuantity, countedByUserId: scope.userId },
+        options
+      );
+      if (keyId) {
+        await completeClientRequestTx(tx, keyId, 'StockCountLine', saved.lineId, scope.tenantId);
+      }
+      return saved;
+    });
+    res.status(200).json({ success: true, data: result.line });
+  } catch (error) {
+    // Rejeu concurrent : la clé vient d'être réclamée par l'autre envoi.
+    if (clientRequestId && isUniqueViolation(error) && (await replayed())) {
+      return;
+    }
+    throw error;
+  }
 });
 
 // ---------------------------------------------------------------------------
-// D. DELETE /stock/counts/:countId/lines/:itemId — retirer une ligne
-//
-// Les deux identifiants viennent du CHEMIN, et aucun corps n'est lu : une
-// suppression n'a rien à négocier.
+// DELETE /stock/counts/:countId/lines/:itemId — retirer une ligne (DRAFT)
 // ---------------------------------------------------------------------------
 
 export const removeStockCountLineHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const countId = requireUuidParam(req, 'countId');
   const itemId = requireUuidParam(req, 'itemId');
+  const scope = await resolveCaller(req);
 
-  const count = await prisma.$transaction(tx => removeStockCountLineTx(tx, tenantId, countId, itemId));
+  await runCountWrite((tx, options) =>
+    removeStockCountLineTx(tx, scope.tenantId, countId, itemId, scope.userId, options)
+  );
 
-  res.status(200).json({ success: true, data: count });
+  await sendCount(res, scope, countId);
 });
 
 // ---------------------------------------------------------------------------
-// E. POST /stock/counts/:countId/validate — les écarts deviennent des ajustements
-//
-// Porte le droit de VALIDATION (`requireDocumentsValidate`), distinct de la
-// création (décision D7, comme depuis le lot 2) : acter une perte est la
-// décision de quelqu'un, pas une saisie courante.
+// POST /stock/counts/:countId/close — clore le comptage (DRAFT → COUNTED)
+// ---------------------------------------------------------------------------
+
+export const closeStockCountHandler = asyncHandler(async (req: Request, res: Response) => {
+  const countId = requireUuidParam(req, 'countId');
+  closeStockCountSchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
+
+  await runCountWrite(tx => closeStockCountTx(tx, scope.tenantId, countId, scope.userId));
+
+  await sendCount(res, scope, countId);
+});
+
+// ---------------------------------------------------------------------------
+// PUT /stock/counts/:countId/lines/:itemId/justification (COUNTED)
+// ---------------------------------------------------------------------------
+
+export const justifyStockCountLineHandler = asyncHandler(async (req: Request, res: Response) => {
+  const countId = requireUuidParam(req, 'countId');
+  const itemId = requireUuidParam(req, 'itemId');
+  const body = justifyStockCountLineSchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
+
+  const saved = await runCountWrite((tx, options) =>
+    justifyStockCountLineTx(
+      tx,
+      scope.tenantId,
+      countId,
+      itemId,
+      { reasonCode: body.reasonCode as StockReasonCode, reason: body.reason ?? null, justifiedByUserId: scope.userId },
+      options
+    )
+  );
+
+  const [data, meta] = await Promise.all([
+    getStockCountLineView(scope.tenantId, saved.lineId, scope.ctx),
+    metaFor(scope)
+  ]);
+  res.status(200).json({ success: true, data, meta });
+});
+
+// ---------------------------------------------------------------------------
+// POST /stock/counts/:countId/lines/:itemId/set-aside (COUNTED)
+// POST /stock/counts/:countId/set-aside-uncounted (COUNTED)
+// ---------------------------------------------------------------------------
+
+export const setAsideStockCountLineHandler = asyncHandler(async (req: Request, res: Response) => {
+  const countId = requireUuidParam(req, 'countId');
+  const itemId = requireUuidParam(req, 'itemId');
+  const body = reasonOnlySchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
+
+  await runCountWrite(tx =>
+    setAsideStockCountLineTx(tx, scope.tenantId, countId, itemId, {
+      reason: body.reason,
+      setAsideByUserId: scope.userId
+    })
+  );
+
+  await sendCount(res, scope, countId);
+});
+
+export const setAsideUncountedHandler = asyncHandler(async (req: Request, res: Response) => {
+  const countId = requireUuidParam(req, 'countId');
+  const body = reasonOnlySchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
+
+  await runCountWrite(tx =>
+    setAsideUncountedStockCountLinesTx(tx, scope.tenantId, countId, {
+      reason: body.reason,
+      setAsideByUserId: scope.userId
+    })
+  );
+
+  await sendCount(res, scope, countId);
+});
+
+// ---------------------------------------------------------------------------
+// POST /stock/counts/:countId/validate (COUNTED → VALIDATED)
 // ---------------------------------------------------------------------------
 
 export const validateStockCountHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const countId = requireUuidParam(req, 'countId');
-  // Parsé bien qu'attendu vide : c'est ce qui refuse un corps qui répéterait
-  // `countId`, plutôt que de le jeter en silence.
-  validateStockCountSchema.parse(req.body ?? {});
-  const actorUserId = requireActorUserId(req);
+  const body = validateStockCountSchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
 
-  const count = await prisma.$transaction(tx => validateStockCountTx(tx, tenantId, countId, actorUserId));
+  await runCountWrite(tx =>
+    validateStockCountTx(tx, scope.tenantId, countId, scope.userId, {
+      selfValidationReason: body.selfValidationReason ?? null
+    })
+  );
 
-  res.status(200).json({ success: true, data: count });
+  await sendCount(res, scope, countId);
 });
 
 // ---------------------------------------------------------------------------
-// F. GET /stock/counts — la liste des comptages
+// POST /stock/counts/:countId/cancel (DRAFT → CANCELLED)
+// ---------------------------------------------------------------------------
+
+export const cancelStockCountHandler = asyncHandler(async (req: Request, res: Response) => {
+  const countId = requireUuidParam(req, 'countId');
+  const body = reasonOnlySchema.parse(req.body ?? {});
+  const scope = await resolveCaller(req);
+
+  await runCountWrite(tx =>
+    cancelStockCountTx(tx, scope.tenantId, countId, { reason: body.reason, cancelledByUserId: scope.userId })
+  );
+
+  await sendCount(res, scope, countId);
+});
+
+// ---------------------------------------------------------------------------
+// GET /stock/counts — la liste (sans lignes par défaut)
+// GET /stock/counts/:countId — le détail
 // ---------------------------------------------------------------------------
 
 export const listStockCountsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const query = listStockCountsQuerySchema.parse(req.query ?? {});
+  const scope = await resolveCaller(req);
 
-  const counts = await listStockCounts(tenantId, {
-    locationId: query.locationId,
-    status: query.status
-  });
+  const [data, meta] = await Promise.all([
+    listStockCountViews(scope.tenantId, scope.ctx, {
+      locationId: query.locationId,
+      status: query.status,
+      kind: query.kind,
+      withLines: query.withLines
+    }),
+    metaFor(scope)
+  ]);
 
-  res.status(200).json({ success: true, data: counts });
+  res.status(200).json({ success: true, data, meta });
 });
 
-// ---------------------------------------------------------------------------
-// G. GET /stock/counts/:countId — le détail d'un comptage
-// ---------------------------------------------------------------------------
-
 export const getStockCountHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = requireTenantId(req);
   const countId = requireUuidParam(req, 'countId');
+  const scope = await resolveCaller(req);
 
-  const count = await getStockCount(tenantId, countId);
-
-  res.status(200).json({ success: true, data: count });
+  await sendCount(res, scope, countId);
 });

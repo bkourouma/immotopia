@@ -211,7 +211,56 @@ describe('ArtifactPanel — téléchargements', () => {
     fireEvent.click(await screen.findByText('Données (.csv)'));
     await waitFor(() => expect(save).toHaveBeenCalled());
     const text = await blobText(save.mock.calls[0][0]);
-    expect(text).toContain('mois;Valeur');
+    expect(text).toContain('Mois;Valeur');
     expect(text).toContain('Jan;10');
+  });
+});
+
+describe('ArtifactPanel — cellules du tableau', () => {
+  const statuses: CopilotArtifact = {
+    kind: 'table',
+    id: 't2',
+    title: 'Biens',
+    columns: [
+      { key: 'ref', label: 'Référence' },
+      { key: 'status', label: 'Statut' },
+      { key: 'rent', label: 'Loyer', type: 'currency' }
+    ],
+    rows: [
+      { ref: '-5 Villa', status: 'AVAILABLE', rent: 90000.5 },
+      { ref: 'AVAILABLE soon', status: 'RENTED', rent: 120000 }
+    ]
+  };
+
+  it('traduit un statut exact, laisse les autres textes, isole chaque valeur avec <bdi>', () => {
+    renderPanel([statuses]);
+    expect(screen.getByText('Disponible')).toBeInTheDocument();
+    expect(screen.getByText('Loué')).toBeInTheDocument();
+    expect(screen.queryByText('AVAILABLE')).not.toBeInTheDocument();
+    // Une phrase qui contient un code n'est pas traduite.
+    expect(screen.getByText('AVAILABLE soon')).toBeInTheDocument();
+    expect(screen.getByText('-5 Villa').tagName).toBe('BDI');
+  });
+
+  it('montants avec 0 ou 2 décimales', () => {
+    renderPanel([statuses]);
+    expect(screen.getByText(/^90\D?000,50$/)).toBeInTheDocument();
+    expect(screen.getByText(/^120\D?000$/)).toBeInTheDocument();
+  });
+
+  it("l'infobulle de tri ne s'ouvre pas au survol d'un en-tête triable", async () => {
+    renderPanel([statuses]);
+    const header = screen.getAllByText('Loyer')[0].closest('th')!;
+    for (const target of [header, header.firstElementChild!, header.querySelector('.ant-table-column-sorters')!]) {
+      fireEvent.mouseEnter(target);
+      fireEvent.mouseOver(target);
+    }
+    await new Promise(r => setTimeout(r, 400));
+    expect(document.querySelector('.ant-tooltip')).toBeNull();
+  });
+
+  it("le repli du graphique porte un libellé lisible pour l'abscisse", () => {
+    renderPanel([{ ...chart, id: 'c9', xKey: 'monthName' } as CopilotArtifact]);
+    return waitFor(() => expect(screen.getByText('Month name')).toBeInTheDocument());
   });
 });

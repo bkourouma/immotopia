@@ -285,6 +285,48 @@ describe('compareInspections — manquants et quantités (M4)', () => {
     expect(rows[0]).toMatchObject({ itemId: 'lampe', entryCondition: 'GOOD', exitCondition: 'POOR', degraded: true });
     expect(rows[0].absentFromExit).toBe(false);
   });
+
+  it('un élément ajouté seulement à la sortie et marqué Manquant n’est pas un manquant', () => {
+    const rows = compareInspections(
+      { rooms: [room('r', [item('sol', { condition: 'GOOD' })])] },
+      {
+        rooms: [
+          room('r', [
+            item('sol', { condition: 'GOOD' }),
+            furniture('micro', { condition: 'MISSING', quantity: 0, replacementValue: 40000 }),
+            item('store', { condition: 'MISSING' })
+          ])
+        ]
+      }
+    );
+    expect(rows.map(r => r.itemId)).toEqual(['sol', 'micro', 'store']);
+    for (const row of rows.slice(1)) {
+      expect(row).toMatchObject({
+        entryCondition: null,
+        exitCondition: 'MISSING',
+        missing: false,
+        quantityDecrease: 0,
+        missingQuantity: 0,
+        missingValue: null,
+        degraded: false,
+        absentFromExit: false
+      });
+    }
+    expect(rows[1].replacementValue).toBe(40000);
+  });
+
+  it('sans état d’entrée, aucun élément de la sortie n’est manquant', () => {
+    const rows = compareInspections(null, { rooms: [room('r', [furniture('tv', { condition: 'MISSING' })])] });
+    expect(rows[0]).toMatchObject({ missing: false, missingQuantity: 0, missingValue: null });
+  });
+
+  it('un élément de l’entrée sans état, manquant à la sortie, reste manquant', () => {
+    const rows = compareInspections(
+      { rooms: [room('r', [furniture('tv', { quantity: 1, replacementValue: 150000 })])] },
+      { rooms: [room('r', [furniture('tv', { condition: 'MISSING' })])] }
+    );
+    expect(rows[0]).toMatchObject({ missing: true, missingQuantity: 1, missingValue: 150000 });
+  });
 });
 
 describe('compareSummary (R7)', () => {
@@ -343,6 +385,27 @@ describe('compareSummary (R7)', () => {
       absentFromExitCount: 1,
       missingValueTotal: 150000,
       missingWithoutValueCount: 1
+    });
+  });
+
+  it('ne compte ni ne valorise un élément ajouté seulement à la sortie et marqué Manquant', () => {
+    const rows = compareInspections(
+      { rooms: [room('r', [furniture('tv', { condition: 'GOOD', quantity: 1, replacementValue: 150000 })])] },
+      {
+        rooms: [
+          room('r', [
+            furniture('tv', { condition: 'MISSING' }),
+            furniture('micro', { condition: 'MISSING', quantity: 0, replacementValue: 40000 }),
+            furniture('bouilloire', { condition: 'MISSING' })
+          ])
+        ]
+      }
+    );
+    expect(compareSummary(null, null, rows)).toMatchObject({
+      missingCount: 1,
+      quantityDecreaseCount: 0,
+      missingValueTotal: 150000,
+      missingWithoutValueCount: 0
     });
   });
 });

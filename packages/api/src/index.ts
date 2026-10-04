@@ -15,6 +15,7 @@ import { startDocumentExpiryAlertJob } from './jobs/document-expiry-alert-job';
 import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
+import { startStockMaintenanceJob } from './jobs/stock-maintenance-job';
 import { startStockWhatsappJob } from './jobs/stock-whatsapp-job';
 import { logger } from './utils/logger';
 
@@ -72,6 +73,9 @@ app.listen(PORT, () => {
     startLotReconciliationJob();
     // Journal d'audit (ADR-006, phase 5) : scellement quotidien, purge (opt-in), verification.
     startAuditMaintenanceJob();
+    // Lot 040 : purge nocturne des cles d'idempotence du stock ; recapitulatif
+    // e-mail des alertes de stock seulement si STOCK_ALERT_MAIL_JOB_ENABLED.
+    startStockMaintenanceJob({ mailEnabled: env.STOCK_ALERT_MAIL_JOB_ENABLED });
     // Lot 041 : inventaire de chantier par WhatsApp (relances, expirations,
     // reprise du webhook, purges). Arretee avec le transport `disabled`.
     if (env.WHATSAPP_INVENTORY_TRANSPORT !== 'disabled') startStockWhatsappJob();

@@ -4,8 +4,8 @@ import React from 'react';
  * Rendu Markdown minimal et sûr pour les réponses d'ImmoCopilot.
  *
  * Prend en charge : paragraphes, **gras**, *italique*, `code`, blocs de code
- * (```), listes à puces et numérotées. Tout le reste (liens, images, HTML,
- * titres) est rendu comme texte brut : la sortie est composée uniquement de
+ * (```), listes à puces et numérotées, titres `#` à `###` (rendus en h3 à h5 :
+ * la page porte déjà un h1/h2). Tout le reste (liens, images, HTML) est rendu comme texte brut : la sortie est composée uniquement de
  * nœuds React, donc React échappe chaque caractère. Aucun
  * `dangerouslySetInnerHTML`.
  */
@@ -37,8 +37,13 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   return nodes;
 }
 
-type Block = { type: 'p'; lines: string[] } | { type: 'ul' | 'ol'; items: string[] } | { type: 'code'; text: string };
+type Block =
+  | { type: 'h'; level: 3 | 4 | 5; text: string }
+  | { type: 'p'; lines: string[] }
+  | { type: 'ul' | 'ol'; items: string[] }
+  | { type: 'code'; text: string };
 
+const HEADING = /^\s{0,3}(#{1,3})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const ORDERED = /^\s*\d+[.)]\s+(.*)$/;
 
@@ -60,6 +65,12 @@ function parseBlocks(source: string): Block[] {
       blocks.push({ type: 'code', text: code.join('\n') });
       continue;
     }
+    const heading = HEADING.exec(line);
+    if (heading) {
+      blocks.push({ type: 'h', level: (heading[1].length + 2) as 3 | 4 | 5, text: heading[2] });
+      i++;
+      continue;
+    }
     const bullet = BULLET.exec(line);
     const ordered = ORDERED.exec(line);
     if (bullet || ordered) {
@@ -79,6 +90,7 @@ function parseBlocks(source: string): Block[] {
       i < lines.length &&
       lines[i].trim() !== '' &&
       !lines[i].trim().startsWith('```') &&
+      !HEADING.test(lines[i]) &&
       !BULLET.test(lines[i]) &&
       !ORDERED.test(lines[i])
     ) {
@@ -107,9 +119,22 @@ export function SafeMarkdown({ text }: SafeMarkdownProps): React.ReactElement {
             </pre>
           );
         }
+        if (block.type === 'h') {
+          const Heading = `h${block.level}` as 'h3' | 'h4' | 'h5';
+          const size = { 3: 18, 4: 16, 5: 14 }[block.level];
+          return (
+            <Heading
+              key={key}
+              dir="auto"
+              style={{ margin: '12px 0 6px', fontSize: size, fontWeight: 600, lineHeight: 1.35 }}
+            >
+              {renderInline(block.text, key)}
+            </Heading>
+          );
+        }
         if (block.type === 'p') {
           return (
-            <p key={key} style={{ margin: '0 0 8px' }}>
+            <p key={key} dir="auto" style={{ margin: '0 0 8px' }}>
               {block.lines.map((l, n) => (
                 <React.Fragment key={`${key}-${n}`}>
                   {n > 0 && <br />}
@@ -121,9 +146,18 @@ export function SafeMarkdown({ text }: SafeMarkdownProps): React.ReactElement {
         }
         const List = block.type;
         return (
-          <List key={key} style={{ margin: '0 0 8px', paddingInlineStart: 20 }}>
+          <List
+            key={key}
+            style={{
+              margin: '0 0 8px',
+              paddingInlineStart: 20,
+              listStyleType: block.type === 'ul' ? 'disc' : 'decimal'
+            }}
+          >
             {block.items.map((item, n) => (
-              <li key={`${key}-${n}`}>{renderInline(item, `${key}-${n}`)}</li>
+              <li key={`${key}-${n}`} dir="auto">
+                {renderInline(item, `${key}-${n}`)}
+              </li>
             ))}
           </List>
         );

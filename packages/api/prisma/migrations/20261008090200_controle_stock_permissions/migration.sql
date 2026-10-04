@@ -57,14 +57,6 @@ JOIN "permissions" np ON (
 )
 ON CONFLICT ("role_id", "permission_id") DO NOTHING;
 
--- 5. Administrateur d'agence et super-admin : les dix, meme si un droit
---    financier leur avait ete retire a la main.
-INSERT INTO "role_permissions" ("id", "role_id", "permission_id", "created_at")
-SELECT gen_random_uuid()::text, r."id", p."id", NOW()
-FROM "roles" r
-JOIN "permissions" p ON p."key" IN (
-  'STOCK_VIEW', 'STOCK_VALUES_VIEW', 'STOCK_RECEIVE', 'STOCK_ISSUE', 'STOCK_TRANSFER',
-  'STOCK_COUNT', 'STOCK_TAKERS_MANAGE', 'STOCK_COUNT_VALIDATE', 'STOCK_DISPOSE', 'STOCK_ALERTS_VIEW'
-)
-WHERE r."key" IN ('TENANT_ADMIN', 'PLATFORM_SUPER_ADMIN')
-ON CONFLICT ("role_id", "permission_id") DO NOTHING;
+-- Pas d'attribution inconditionnelle aux administrateurs : l'etape 4 suffit.
+-- Un role qui n'a plus un droit financier (retire a la main) n'obtient pas son
+-- equivalent du stock ; personne n'obtient plus qu'avant (spec B1-R2).

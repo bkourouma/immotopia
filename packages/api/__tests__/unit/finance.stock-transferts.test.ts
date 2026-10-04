@@ -1,267 +1,275 @@
 /**
- * Tests des transferts entre lieux (`lib/finance/stock-transferts.ts`) —
- * déplacés de `finance.stock-inventaire.test.ts` par l'étape des fondations du
- * lot 040, avec le banc de données en mémoire qui les porte, sans changement
- * de résultat. Le code testé est celui du lot 5, troisième sous-lot.
+ * Tests du transfert entre lieux (`lib/finance/stock-transferts.ts`) — lot 5,
+ * troisième sous-lot, extrait par les fondations du lot 040 et étendu par le
+ * territoire API-1 (spec 040 : A5-R4, A7-R3 bis, A7-R4, A10, A11, B2-R3,
+ * B3-R2, B6).
  *
- * Modèle : `__tests__/unit/finance.stock-mouvements.test.ts` (sous-lot 2).
+ * Le test du lot 5 qui épinglait « un transfert vers le lieu d'un chantier
+ * clos est accepté » (`finance.stock-inventaire.test.ts:608-626`, déplacé ici
+ * par les fondations) est INVERSÉ délibérément : décision du fondateur (A7-R4).
  *
- * `accounting.ts` (moteur comptable général) est mocké, même geste qu'aux
- * sous-lots précédents : ce fichier ne teste pas comment une écriture
- * s'équilibre, seulement comment `stock-transferts.ts` l'appelle — et surtout
- * **quand il ne l'appelle pas du tout**.
- *
- * **`site-cost.ts` (`sumSiteActualCost`) N'EST PAS mocké.** C'est le VRAI
- * calcul qui doit prouver le critère le plus piégeux du sous-lot : un transfert
- * vers le lieu d'un chantier n'impute rien, et le coût réel du chantier ne
- * bouge pas d'un franc. Une doublure qui l'affirmerait à sa place ne
- * prouverait rien.
- *
- * `site-closing.ts` n'est pas mocké non plus, et pour cause : ce fichier ne
- * l'appelle jamais. Le test « un transfert vers un chantier CLOS est accepté »
- * documente ce choix, pour que personne ne le « corrige ».
+ * Même magasin en mémoire générique que `finance.stock-mouvements.test.ts`
+ * (recopié : aucun fichier d'aide partagé n'appartient à ce territoire).
  */
 
 const postDocumentEntryTx = jest.fn();
-
 const COMPTES_OPERATIONNELS = new Map<string, string>([
   ['311', 'compte-311'],
+  ['401', 'compte-401'],
   ['603', 'compte-603'],
   ['605', 'compte-605']
 ]);
+const COMPTES_PAR_POSTE = new Map<string, string>();
 
 jest.mock('../../src/lib/finance/accounting', () => ({
   postDocumentEntryTx: (...args: any[]) => postDocumentEntryTx(...args),
   ensureOperationalJournalTx: async () => 'journal-operationnel',
-  ensureOperationalChartOfAccountsTx: async () => COMPTES_OPERATIONNELS
+  ensureOperationalChartOfAccountsTx: async () => COMPTES_OPERATIONNELS,
+  resolveExpenseAccountsByCostCategoryTx: async (_tx: unknown, _tenantId: string, ids: string[], parDefaut: string) =>
+    new Map(ids.map(id => [id, COMPTES_PAR_POSTE.get(id) ?? parDefaut]))
+}));
+
+const syncWorkProgramCostTx = jest.fn();
+jest.mock('../../src/lib/finance/cost-allocation', () => ({
+  syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
+}));
+
+const appendThirdPartyMovementTx = jest.fn();
+jest.mock('../../src/lib/finance/ledger', () => ({
+  appendThirdPartyMovementTx: (...args: any[]) => appendThirdPartyMovementTx(...args)
+}));
+
+const recordAuditEvent = jest.fn();
+const logAuditEvent = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  recordAuditEvent: (...args: any[]) => recordAuditEvent(...args),
+  logAuditEvent: (...args: any[]) => logAuditEvent(...args)
 }));
 
 // ---------------------------------------------------------------------------
-// Magasin en mémoire
+// Magasin en mémoire, générique
 // ---------------------------------------------------------------------------
 
 type Row = Record<string, any>;
 
-const store = {
-  sites: [] as Row[],
-  items: [] as Row[],
-  locations: [] as Row[],
-  balances: [] as Row[],
-  movements: [] as Row[],
-  counts: [] as Row[],
-  countLines: [] as Row[],
-  allocations: [] as Row[],
-  users: [] as Row[],
-  seq: 0
+const TABLES = [
+  'constructionSite',
+  'costCategory',
+  'stockItem',
+  'stockLocation',
+  'supplier',
+  'supplierInvoice',
+  'supplierInvoiceLine',
+  'stockBalance',
+  'stockMovement',
+  'costAllocation',
+  'stockSettings',
+  'stockTaker',
+  'stockSlip',
+  'stockAlert',
+  'stockClientRequest',
+  'stockCount',
+  'user'
+] as const;
+
+let db: Record<string, Row[]> = {};
+let seq = 0;
+const locks: string[] = [];
+
+const RELATIONS: Record<string, Record<string, [string, string]>> = {
+  stockMovement: {
+    item: ['stockItem', 'itemId'],
+    location: ['stockLocation', 'locationId'],
+    site: ['constructionSite', 'siteId'],
+    costCategory: ['costCategory', 'costCategoryId'],
+    supplierInvoice: ['supplierInvoice', 'supplierInvoiceId'],
+    createdBy: ['user', 'createdByUserId'],
+    taker: ['stockTaker', 'takerId'],
+    slip: ['stockSlip', 'slipId']
+  },
+  stockBalance: { item: ['stockItem', 'itemId'], location: ['stockLocation', 'locationId'] },
+  supplierInvoice: { supplier: ['supplier', 'supplierId'] }
 };
 
-function nextId(prefix: string): string {
-  store.seq += 1;
-  return `${prefix}-${store.seq}`;
+const UNIQUE: Record<string, string[][]> = {
+  stockClientRequest: [['tenantId', 'clientRequestId']],
+  stockAlert: [['tenantId', 'dedupeKey']],
+  stockSlip: [['tenantId', 'kind', 'year', 'number']]
+};
+
+const DEFAULTS: Record<string, () => Row> = {
+  stockMovement: () => ({
+    journalEntryId: null,
+    siteId: null,
+    costCategoryId: null,
+    requestedBy: null,
+    supplierInvoiceId: null,
+    transferGroupId: null,
+    stockCountId: null,
+    reason: null,
+    reasonCode: null,
+    takerId: null,
+    slipId: null,
+    valuationSource: null,
+    supplierInvoiceLineId: null,
+    supplierCreditValue: null,
+    currency: 'XOF'
+  }),
+  stockAlert: () => ({ status: 'OPEN', details: null }),
+  stockClientRequest: () => ({ resultType: null, resultId: null })
+};
+
+function comparable(value: any): any {
+  return value instanceof Date ? value.getTime() : typeof value === 'string' ? value : Number(value);
 }
 
-function enrichMovement(row: Row, include?: Row): Row {
-  if (!include) {
-    return row;
+function matchValue(value: any, cond: any): boolean {
+  if (cond === undefined) return true;
+  if (cond === null) return value === null || value === undefined;
+  if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
+  if (typeof cond === 'object' && !Array.isArray(cond)) {
+    let ok = true;
+    if ('in' in cond) ok = ok && cond.in.includes(value);
+    if ('gt' in cond) ok = ok && comparable(value) > comparable(cond.gt);
+    if ('gte' in cond) ok = ok && comparable(value) >= comparable(cond.gte);
+    if ('lt' in cond) ok = ok && comparable(value) < comparable(cond.lt);
+    if ('lte' in cond) ok = ok && comparable(value) <= comparable(cond.lte);
+    if ('not' in cond) ok = ok && (cond.not === null ? value !== null && value !== undefined : value !== cond.not);
+    return ok;
   }
-  const enriched: Row = { ...row };
-  if (include.item) enriched.item = store.items.find(i => i.id === row.itemId) ?? null;
-  if (include.location) enriched.location = store.locations.find(l => l.id === row.locationId) ?? null;
-  if (include.createdBy) enriched.createdBy = store.users.find(u => u.id === row.createdByUserId) ?? null;
-  return enriched;
+  return value === cond;
 }
 
-/** Les lignes d'un inventaire, enrichies de leur article. */
-function linesOf(countId: string): Row[] {
-  return store.countLines
-    .filter(line => line.countId === countId)
-    .map(line => ({ ...line, item: store.items.find(i => i.id === line.itemId) ?? null }));
+function matches(row: Row, where?: Row): boolean {
+  if (!where) return true;
+  return Object.entries(where).every(([key, cond]) => {
+    if (key === 'OR') return (cond as Row[]).some(sub => matches(row, sub));
+    if (key === 'AND') return (cond as Row[]).every(sub => matches(row, sub));
+    return matchValue(row[key], cond);
+  });
 }
 
-function enrichCount(row: Row, include?: Row): Row {
-  if (!include) {
-    return row;
+function sortRows(rows: Row[], orderBy?: Row | Row[]): Row[] {
+  const list = orderBy ? (Array.isArray(orderBy) ? orderBy : [orderBy]) : [];
+  return [...rows].sort((a, b) => {
+    for (const order of list) {
+      const [key, dir] = Object.entries(order)[0];
+      const [av, bv] = [comparable(a[key]), comparable(b[key])];
+      if (av !== bv) return (av < bv ? -1 : 1) * (dir === 'desc' ? -1 : 1);
+    }
+    return 0;
+  });
+}
+
+function project(table: string, row: Row | undefined | null, args?: Row): Row | null {
+  if (!row) return null;
+  const relations = RELATIONS[table] ?? {};
+  const resolve = (key: string, spec: any) => {
+    if (key === '_count') return { attachments: 0 };
+    const relation = relations[key];
+    if (!relation) return row[key];
+    const target = db[relation[0]].find(r => r.id === row[relation[1]]) ?? null;
+    return spec === true ? target : project(relation[0], target, spec);
+  };
+  if (args?.select) {
+    const out: Row = {};
+    for (const [key, spec] of Object.entries(args.select)) if (spec) out[key] = resolve(key, spec);
+    return out;
   }
-  const enriched: Row = { ...row };
-  if (include.location) enriched.location = store.locations.find(l => l.id === row.locationId) ?? null;
-  if (include.createdBy) enriched.createdBy = store.users.find(u => u.id === row.createdByUserId) ?? null;
-  if (include.lines) enriched.lines = linesOf(row.id);
-  return enriched;
+  const out: Row = { ...row };
+  if (args?.include) for (const [key, spec] of Object.entries(args.include)) if (spec) out[key] = resolve(key, spec);
+  return out;
 }
 
-/** `{ in: [...] }` ou valeur scalaire : les deux formes du filtre Prisma. */
-function matchesFilter(value: any, filter: any): boolean {
-  if (filter === undefined) return true;
-  if (filter && typeof filter === 'object' && Array.isArray(filter.in)) return filter.in.includes(value);
-  return value === filter;
+function uniqueViolation(): Error {
+  return Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+}
+
+function violates(table: string, data: Row): boolean {
+  return (UNIQUE[table] ?? []).some(cols => db[table].some(row => cols.every(col => row[col] === data[col])));
+}
+
+function insert(table: string, data: Row): Row {
+  seq += 1;
+  const row = { id: `${table}-${seq}`, createdAt: new Date(Date.now() + seq), ...(DEFAULTS[table]?.() ?? {}), ...data };
+  db[table].push(row);
+  return row;
+}
+
+function delegate(table: string): Row {
+  const find = (args: Row = {}) =>
+    sortRows(
+      db[table].filter(row => matches(row, args.where)),
+      args.orderBy
+    );
+  return {
+    findFirst: jest.fn(async (args: Row = {}) => project(table, find(args)[0], args)),
+    findUnique: jest.fn(async (args: Row = {}) => project(table, find(args)[0], args)),
+    findMany: jest.fn(async (args: Row = {}) => find(args).map(row => project(table, row, args))),
+    create: jest.fn(async (args: Row) => {
+      if (violates(table, args.data)) throw uniqueViolation();
+      return project(table, insert(table, args.data), args);
+    }),
+    createMany: jest.fn(async ({ data, skipDuplicates }: Row) => {
+      let count = 0;
+      for (const entry of data as Row[]) {
+        if (violates(table, entry)) {
+          if (skipDuplicates) continue;
+          throw uniqueViolation();
+        }
+        insert(table, entry);
+        count += 1;
+      }
+      return { count };
+    }),
+    update: jest.fn(async (args: Row) => {
+      const row = db[table].find(r => matches(r, args.where));
+      if (!row) throw new Error(`${table} introuvable`);
+      Object.assign(row, args.data);
+      return project(table, row, args);
+    }),
+    aggregate: jest.fn(async ({ where, _max, _sum }: Row) => {
+      const list = db[table].filter(row => matches(row, where));
+      const out: Row = {};
+      if (_max) {
+        out._max = {};
+        for (const key of Object.keys(_max))
+          out._max[key] = list.length ? Math.max(...list.map(r => Number(r[key]))) : null;
+      }
+      if (_sum) {
+        out._sum = {};
+        for (const key of Object.keys(_sum))
+          out._sum[key] = list.length ? list.reduce((s, r) => s + Number(r[key]), 0) : null;
+      }
+      return out;
+    })
+  };
 }
 
 const mockPrisma: Row = {
-  stockItem: {
-    findFirst: jest.fn(
-      async ({ where }: Row) => store.items.find(i => i.id === where.id && i.tenantId === where.tenantId) ?? null
-    )
-  },
-
-  stockLocation: {
-    findFirst: jest.fn(
-      async ({ where }: Row) => store.locations.find(l => l.id === where.id && l.tenantId === where.tenantId) ?? null
-    )
-  },
-
-  stockBalance: {
-    findFirst: jest.fn(
-      async ({ where }: Row) =>
-        store.balances.find(
-          b => b.tenantId === where.tenantId && b.itemId === where.itemId && b.locationId === where.locationId
-        ) ?? null
-    ),
-    findMany: jest.fn(async ({ where }: Row) =>
-      store.balances.filter(
-        b =>
-          b.tenantId === where.tenantId &&
-          matchesFilter(b.locationId, where.locationId) &&
-          matchesFilter(b.itemId, where.itemId)
-      )
-    ),
-    create: jest.fn(async ({ data }: Row) => {
-      const created = { id: nextId('solde'), updatedAt: new Date(), ...data };
-      store.balances.push(created);
-      return created;
-    }),
-    update: jest.fn(async ({ where, data }: Row) => {
-      const row = store.balances.find(b => b.id === where.id)!;
-      Object.assign(row, data);
-      return row;
-    })
-  },
-
-  stockMovement: {
-    create: jest.fn(async ({ data, include }: Row) => {
-      const created = {
-        id: nextId('mouvement'),
-        journalEntryId: null,
-        siteId: null,
-        costCategoryId: null,
-        requestedBy: null,
-        supplierInvoiceId: null,
-        transferGroupId: null,
-        stockCountId: null,
-        reason: null,
-        createdAt: new Date(Date.now() + store.movements.length),
-        ...data
-      };
-      store.movements.push(created);
-      return enrichMovement(created, include);
-    }),
-    update: jest.fn(async ({ where, data, include }: Row) => {
-      const row = store.movements.find(m => m.id === where.id)!;
-      Object.assign(row, data);
-      return enrichMovement(row, include);
-    })
-  },
-
-  stockCount: {
-    findFirst: jest.fn(async ({ where, include }: Row) => {
-      const row = store.counts.find(
-        c =>
-          c.tenantId === where.tenantId &&
-          (where.id === undefined || c.id === where.id) &&
-          (where.locationId === undefined || c.locationId === where.locationId) &&
-          (where.status === undefined || c.status === where.status)
-      );
-      return row ? enrichCount(row, include) : null;
-    }),
-    findMany: jest.fn(async ({ where, include }: Row) => {
-      const rows = store.counts.filter(
-        c =>
-          c.tenantId === where.tenantId &&
-          (where.locationId === undefined || c.locationId === where.locationId) &&
-          (where.status === undefined || c.status === where.status)
-      );
-      return [...rows]
-        .sort((a, b) => b.countedAt.getTime() - a.countedAt.getTime() || b.createdAt.getTime() - a.createdAt.getTime())
-        .map(row => enrichCount(row, include));
-    }),
-    create: jest.fn(async ({ data }: Row) => {
-      const created = {
-        id: nextId('inventaire'),
-        validatedAt: null,
-        validatedByUserId: null,
-        createdAt: new Date(Date.now() + store.counts.length),
-        updatedAt: new Date(),
-        ...data
-      };
-      store.counts.push(created);
-      return created;
-    }),
-    update: jest.fn(async ({ where, data }: Row) => {
-      const row = store.counts.find(c => c.id === where.id)!;
-      Object.assign(row, data);
-      return row;
-    })
-  },
-
-  stockCountLine: {
-    findFirst: jest.fn(
-      async ({ where }: Row) =>
-        store.countLines.find(l => l.countId === where.countId && l.itemId === where.itemId) ?? null
-    ),
-    create: jest.fn(async ({ data }: Row) => {
-      const created = { id: nextId('ligne'), reason: null, ...data };
-      store.countLines.push(created);
-      return created;
-    }),
-    update: jest.fn(async ({ where, data }: Row) => {
-      const row = store.countLines.find(l => l.id === where.id)!;
-      Object.assign(row, data);
-      return row;
-    }),
-    delete: jest.fn(async ({ where }: Row) => {
-      const index = store.countLines.findIndex(l => l.id === where.id);
-      const [removed] = store.countLines.splice(index, 1);
-      return removed;
-    })
-  },
-
-  costAllocation: {
-    create: jest.fn(async ({ data }: Row) => {
-      const created = { id: nextId('imputation'), voidedAt: null, createdAt: new Date(), ...data };
-      store.allocations.push(created);
-      return created;
-    }),
-    aggregate: jest.fn(async ({ where }: Row) => {
-      let rows = store.allocations.filter(a => a.tenantId === where.tenantId && a.siteId === where.siteId);
-      if (where.validatedAt && where.validatedAt.not === null) rows = rows.filter(a => a.validatedAt !== null);
-      if (where.voidedAt === null) rows = rows.filter(a => a.voidedAt === null);
-      const sum = rows.reduce(
-        (total, row) => total + (typeof row.amount === 'number' ? row.amount : Number(row.amount)),
-        0
-      );
-      return { _sum: { amount: rows.length ? sum : null } };
-    })
-  }
+  $executeRaw: jest.fn(async (strings: TemplateStringsArray, ...values: any[]) => {
+    const sql = strings.join('?');
+    if (sql.includes('stock_client_requests')) {
+      const [resultType, resultId, id] = values;
+      const row = db.stockClientRequest.find(r => r.id === id);
+      if (row) Object.assign(row, { resultType, resultId });
+      return 1;
+    }
+    const kind = sql.includes("'stock-site'") ? 'site' : sql.includes("'stock-balance'") ? 'balance' : 'slip';
+    locks.push(`${kind}:${values[0]}`);
+    return 0;
+  })
 };
+for (const table of TABLES) mockPrisma[table] = delegate(table);
 
-/** Rollback par copie profonde en cas d'erreur — même esprit qu'aux sous-lots précédents. */
 async function runTransaction<T>(callback: (tx: Row) => Promise<T>): Promise<T> {
-  const snapshot = {
-    balances: structuredClone(store.balances),
-    movements: structuredClone(store.movements),
-    counts: structuredClone(store.counts),
-    countLines: structuredClone(store.countLines),
-    allocations: structuredClone(store.allocations),
-    seq: store.seq
-  };
+  const snapshot = structuredClone(db);
+  const seqBefore = seq;
   try {
     return await callback(mockPrisma);
   } catch (error) {
-    store.balances = snapshot.balances;
-    store.movements = snapshot.movements;
-    store.counts = snapshot.counts;
-    store.countLines = snapshot.countLines;
-    store.allocations = snapshot.allocations;
-    store.seq = snapshot.seq;
+    db = snapshot;
+    seq = seqBefore;
     throw error;
   }
 }
@@ -271,398 +279,381 @@ jest.mock('../../src/utils/database', () => ({
     {},
     {
       get(_target, prop) {
-        if (prop === '$transaction') {
-          return (callback: any) => runTransaction(callback);
-        }
+        if (prop === '$transaction') return (callback: any) => runTransaction(callback);
         return (mockPrisma as any)[prop];
       }
     }
   )
 }));
 
-import { recordStockTransferTx } from '../../src/lib/finance/stock-transferts';
-// Coût réel d'un chantier — VRAI calcul, non mocké (voir l'en-tête).
+import { recordStockTransfer, recordStockTransferTx } from '../../src/lib/finance/stock-transferts';
 import { sumSiteActualCost } from '../../src/lib/finance/site-cost';
+import type { StockCallerContext } from '../../src/lib/finance/types-040-controle';
+
+// ---------------------------------------------------------------------------
+// Jeu de données
+// ---------------------------------------------------------------------------
 
 const TENANT_ID = 'tenant-1';
-const MAGASINIER_ID = 'user-magasinier';
-const VALIDATEUR_ID = 'user-validateur';
+const USER_ID = 'user-magasinier';
+const OTHER_USER_ID = 'user-comptable';
+const DAY_MS = 86_400_000;
+const TODAY = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
 
-function seedSite(overrides: Partial<Row> = {}): Row {
-  const site = {
-    id: nextId('chantier'),
-    tenantId: TENANT_ID,
-    name: `Chantier ${store.sites.length + 1}`,
-    status: 'IN_PROGRESS',
-    closedAt: null,
-    finalCost: null,
-    ...overrides
-  };
-  store.sites.push(site);
-  return site;
+function daysAgo(n: number): Date {
+  return new Date(TODAY.getTime() - n * DAY_MS);
 }
 
-function seedItem(overrides: Partial<Row> = {}): Row {
-  const item = {
-    id: nextId('article'),
-    tenantId: TENANT_ID,
-    reference: `ART-${String(store.items.length + 1).padStart(3, '0')}`,
-    label: 'Ciment CPJ 45',
-    unit: 'sac',
-    category: 'Ciment',
-    defaultCostCategoryId: null,
-    isActive: true,
+function ctxOf(overrides: Partial<StockCallerContext> = {}): StockCallerContext {
+  return {
+    userId: USER_ID,
+    valuesVisible: true,
+    canValidateCount: false,
+    canReceive: true,
+    canIssue: true,
+    canTransfer: true,
+    canCount: true,
+    canDispose: true,
+    canManageTakers: true,
+    canViewAlerts: false,
+    canManageSettings: false,
     ...overrides
   };
-  store.items.push(item);
-  return item;
 }
 
-function seedLocation(overrides: Partial<Row> = {}): Row {
-  const location = {
-    id: nextId('lieu'),
-    tenantId: TENANT_ID,
-    kind: 'WAREHOUSE',
-    label: `Magasin ${store.locations.length + 1}`,
-    siteId: null,
-    isActive: true,
-    ...overrides
-  };
-  store.locations.push(location);
-  return location;
+const ADMIN = ctxOf({ canValidateCount: true, canViewAlerts: true });
+const MAGASINIER = ctxOf({ valuesVisible: false, canDispose: false });
+const COMPTABLE = ctxOf({ userId: OTHER_USER_ID });
+
+function seed(table: string, data: Row): Row {
+  return insert(table, { tenantId: TENANT_ID, ...data });
 }
 
-/**
- * Pose un solde tel qu'il serait après des réceptions — `stock-mouvements.ts`
- * n'est pas rejoué ici, il est livré et vert. Ce qui est testé, c'est ce que
- * transferts et ajustements FONT d'un solde, pas comment il est né.
- */
+const seedSite = (o: Row = {}) => seed('constructionSite', { name: `Chantier ${seq}`, closedAt: null, ...o });
+const seedItem = (o: Row = {}) =>
+  seed('stockItem', { reference: `ART-${seq}`, label: 'Ciment CPJ 45', unit: 'sac', isActive: true, ...o });
+const seedLocation = (o: Row = {}) =>
+  seed('stockLocation', { kind: 'WAREHOUSE', label: `Magasin ${seq}`, siteId: null, isActive: true, ...o });
+const seedTaker = (o: Row = {}) =>
+  seed('stockTaker', { fullName: 'Koné Ibrahim', teamOrCompany: 'Équipe maçonnerie', isActive: true, ...o });
+
 function seedBalance(location: Row, item: Row, quantity: number, value: number): Row {
-  const balance = {
-    id: nextId('solde'),
-    tenantId: TENANT_ID,
-    itemId: item.id,
-    locationId: location.id,
-    quantity,
-    value,
-    currency: 'XOF',
-    updatedAt: new Date()
-  };
-  store.balances.push(balance);
-  return balance;
+  return seed('stockBalance', { itemId: item.id, locationId: location.id, quantity, value, currency: 'XOF' });
 }
 
-function soldeDe(location: Row, item: Row): Row | undefined {
-  return store.balances.find(b => b.locationId === location.id && b.itemId === item.id);
-}
-
-function valeurDe(location: Row, item: Row): number {
-  return Number(soldeDe(location, item)?.value ?? 0);
-}
-
-async function transfer(from: Row, to: Row, item: Row, quantity: number, transferDate = new Date('2026-04-05')) {
-  return runTransaction((tx: any) =>
-    recordStockTransferTx(tx, TENANT_ID, {
-      fromLocationId: from.id,
-      toLocationId: to.id,
-      itemId: item.id,
-      quantity,
-      transferDate,
-      createdByUserId: MAGASINIER_ID
-    })
-  );
+function openDraftCount(location: Row): Row {
+  return seed('stockCount', { locationId: location.id, status: 'DRAFT' });
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  store.sites = [];
-  store.items = [];
-  store.locations = [];
-  store.balances = [];
-  store.movements = [];
-  store.counts = [];
-  store.countLines = [];
-  store.allocations = [];
-  store.users = [
-    { id: MAGASINIER_ID, fullName: 'Aïssatou Barry', email: 'a.barry@example.gn' },
-    { id: VALIDATEUR_ID, fullName: 'Mamadou Diallo', email: 'm.diallo@example.gn' }
-  ];
-  store.seq = 0;
-
-  postDocumentEntryTx.mockImplementation(async () => ({ entryId: nextId('ecriture'), totalDebit: 0, totalCredit: 0 }));
+  db = Object.fromEntries(TABLES.map(table => [table, [] as Row[]]));
+  seq = 0;
+  locks.length = 0;
+  COMPTES_PAR_POSTE.clear();
+  db.user.push(
+    { id: USER_ID, fullName: 'Aïssatou Barry', email: 'a.barry@example.ci' },
+    { id: OTHER_USER_ID, fullName: 'Moussa Traoré', email: 'm.traore@example.ci' }
+  );
+  postDocumentEntryTx.mockImplementation(async () => ({ entryId: `ecriture-${++seq}`, totalDebit: 0, totalCredit: 0 }));
+  appendThirdPartyMovementTx.mockImplementation(async () => ({ id: 'mouvement-tiers' }));
+  recordAuditEvent.mockResolvedValue(undefined);
 });
 
-// ---------------------------------------------------------------------------
-// A. Le transfert — l'invariant, et le piège
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Transferts
+// ===========================================================================
+
+function transfer(from: Row, to: Row, item: Row, quantity: number, overrides: Row = {}, options: Row = {}) {
+  return runTransaction(tx =>
+    recordStockTransferTx(
+      tx as any,
+      TENANT_ID,
+      {
+        fromLocationId: from.id,
+        toLocationId: to.id,
+        itemId: item.id,
+        quantity,
+        transferDate: TODAY,
+        reasonCode: 'SITE_SUPPLY',
+        requestedBy: 'Chef de chantier Camara',
+        createdByUserId: USER_ID,
+        ...overrides
+      } as any,
+      options
+    )
+  );
+}
+
+function valueOf(location: Row, item: Row): number {
+  return Number(db.stockBalance.find(b => b.locationId === location.id && b.itemId === item.id)?.value ?? 0);
+}
 
 describe('recordStockTransferTx — transférer ne crée ni ne détruit de valeur', () => {
   it('LE TEST LE PLUS IMPORTANT : la somme des valeurs des deux lieux ne bouge pas d’un franc, sur un coût moyen qui ne tombe pas rond', async () => {
-    const magasin = seedLocation({ label: 'Magasin central' });
-    const depot = seedLocation({ label: 'Dépôt de Kaloum' });
-    const ciment = seedItem();
-
-    // 7 sacs pour 3 004 XOF : coût moyen 429,142857… — volontairement
-    // indivisible. En face, 10 sacs à 5 000, un coût moyen tout autre : le
-    // transfert doit réconcilier les deux sans rien créer ni rien perdre.
-    seedBalance(magasin, ciment, 7, 3_004);
-    seedBalance(depot, ciment, 10, 50_000);
-
-    const totalAvant = valeurDe(magasin, ciment) + valeurDe(depot, ciment);
-    expect(totalAvant).toBe(53_004);
-
-    const resultat = await transfer(magasin, depot, ciment, 3);
-
-    // 3 x 429,142857… = 1 287,42857 -> 1 287.
-    expect(resultat.value).toBe(1_287);
-    expect(valeurDe(magasin, ciment)).toBe(1_717);
-    expect(valeurDe(depot, ciment)).toBe(51_287);
-
-    // L'INVARIANT. Pas un franc de plus, pas un franc de moins.
-    expect(valeurDe(magasin, ciment) + valeurDe(depot, ciment)).toBe(totalAvant);
-
-    // Les quantités suivent, elles aussi, sans perte.
-    expect(Number(soldeDe(magasin, ciment)!.quantity)).toBe(4);
-    expect(Number(soldeDe(depot, ciment)!.quantity)).toBe(13);
-  });
-
-  it('tient l’invariant quand le transfert VIDE le lieu d’origine — la valeur résiduelle part avec', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
-    const ciment = seedItem();
-
-    seedBalance(magasin, ciment, 7, 3_004);
-    seedBalance(depot, ciment, 2, 1_000);
-
-    const resultat = await transfer(magasin, depot, ciment, 7);
-
-    // Le mouvement emporte TOUTE la valeur restante, écart d'arrondi compris,
-    // et le solde d'origine retombe à zéro des deux côtés.
-    expect(resultat.value).toBe(3_004);
-    expect(Number(soldeDe(magasin, ciment)!.quantity)).toBe(0);
-    expect(valeurDe(magasin, ciment)).toBe(0);
-    expect(valeurDe(depot, ciment)).toBe(4_004);
-    expect(valeurDe(magasin, ciment) + valeurDe(depot, ciment)).toBe(3_004 + 1_000);
-  });
-
-  it('crée le solde d’arrivée quand le lieu n’avait encore jamais rien reçu', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
-    const ciment = seedItem();
-    seedBalance(magasin, ciment, 100, 500_000);
-
-    await transfer(magasin, depot, ciment, 40);
-
-    expect(Number(soldeDe(depot, ciment)!.quantity)).toBe(40);
-    expect(valeurDe(depot, ciment)).toBe(200_000);
-    expect(valeurDe(magasin, ciment) + valeurDe(depot, ciment)).toBe(500_000);
-  });
-
-  it('conserve les quatre décimales d’une quantité — une quantité n’est pas un montant', async () => {
     const magasin = seedLocation();
     const chantier = seedLocation();
-    const sable = seedItem({ label: 'Sable', unit: 'm3' });
-    seedBalance(magasin, sable, 12.5, 100_000);
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 7, 3_004);
+    seedBalance(chantier, ciment, 3, 1_000);
 
-    const resultat = await transfer(magasin, chantier, sable, 0.25);
+    await transfer(magasin, chantier, ciment, 2);
 
-    expect(resultat.quantity).toBe(0.25);
-    expect(Number(soldeDe(magasin, sable)!.quantity)).toBe(12.25);
-    expect(Number(soldeDe(chantier, sable)!.quantity)).toBe(0.25);
+    expect(valueOf(magasin, ciment) + valueOf(chantier, ciment)).toBe(4_004);
+    expect(valueOf(magasin, ciment)).toBe(2_146);
+    expect(valueOf(chantier, ciment)).toBe(1_858);
   });
-});
 
-describe('recordStockTransferTx — deux mouvements, une transaction, un groupe', () => {
-  it('écrit DEUX mouvements liés par un même `transferGroupId`, la sortie d’abord', async () => {
+  it('vide le lieu d’origine : la valeur résiduelle part avec, et crée le solde d’arrivée', async () => {
+    const magasin = seedLocation();
+    const chantier = seedLocation();
+    const ciment = seedItem();
+    seedBalance(magasin, ciment, 3, 1_001);
+
+    const result = await transfer(magasin, chantier, ciment, 3);
+
+    expect(result.value).toBe(1_001);
+    expect(db.stockBalance.find(b => b.locationId === magasin.id)).toMatchObject({ quantity: 0, value: 0 });
+    expect(db.stockBalance.find(b => b.locationId === chantier.id)).toMatchObject({ quantity: 3, value: 1_001 });
+  });
+
+  it('écrit DEUX mouvements liés par un même groupe, la sortie d’abord, la même valeur des deux côtés', async () => {
     const magasin = seedLocation({ label: 'Magasin central' });
-    const depot = seedLocation({ label: 'Dépôt de Kaloum' });
+    const chantier = seedLocation({ label: 'Lieu du chantier' });
     const ciment = seedItem();
     seedBalance(magasin, ciment, 100, 500_000);
 
-    const resultat = await transfer(magasin, depot, ciment, 30);
+    const result = await transfer(magasin, chantier, ciment, 20);
 
-    expect(resultat.movements).toHaveLength(2);
-    const [sortie, entree] = resultat.movements;
-
-    expect(sortie.type).toBe('TRANSFER');
-    expect(sortie.isDecrease).toBe(true);
-    expect(sortie.locationId).toBe(magasin.id);
-    expect(sortie.quantityAfter).toBe(70);
-    expect(sortie.valueAfter).toBe(350_000);
-
-    expect(entree.type).toBe('TRANSFER');
-    expect(entree.isDecrease).toBe(false);
-    expect(entree.locationId).toBe(depot.id);
-    expect(entree.quantityAfter).toBe(30);
-    expect(entree.valueAfter).toBe(150_000);
-
-    // Le signe ne dit jamais le sens : les deux quantités sont positives.
-    expect(sortie.quantity).toBe(30);
-    expect(entree.quantity).toBe(30);
-
-    // LE MÊME identifiant de groupe : c'est lui, et lui seul, qui dit qu'il
-    // s'agit d'un déplacement et non d'une perte suivie d'une apparition.
-    const groupes = store.movements.map(m => m.transferGroupId);
-    expect(groupes[0]).toBe(resultat.transferGroupId);
-    expect(groupes[1]).toBe(resultat.transferGroupId);
-    expect(resultat.transferGroupId).toEqual(expect.any(String));
-
-    expect(resultat.fromLocationLabel).toBe('Magasin central');
-    expect(resultat.toLocationLabel).toBe('Dépôt de Kaloum');
-    expect(resultat.currency).toBe('XOF');
+    expect(result.movements).toHaveLength(2);
+    const [sortie, entree] = result.movements;
+    expect(sortie).toMatchObject({ isDecrease: true, locationId: magasin.id, quantityAfter: 80, totalValue: 100_000 });
+    expect(entree).toMatchObject({
+      isDecrease: false,
+      locationId: chantier.id,
+      quantityAfter: 20,
+      totalValue: 100_000
+    });
+    expect(sortie.transferGroupId).toBe(result.transferGroupId);
+    expect(entree.transferGroupId).toBe(result.transferGroupId);
+    expect(result).toMatchObject({
+      fromLocationLabel: 'Magasin central',
+      toLocationLabel: 'Lieu du chantier',
+      quantity: 20,
+      value: 100_000
+    });
   });
 
-  it('les deux moitiés portent la MÊME valeur — c’est ce qui rend l’invariant exact', async () => {
+  it('N’IMPUTE RIEN ET N’ÉCRIT AUCUNE ÉCRITURE, même vers le lieu d’un chantier', async () => {
+    const site = seedSite();
     const magasin = seedLocation();
-    const depot = seedLocation();
+    const chantier = seedLocation({ kind: 'SITE', siteId: site.id });
     const ciment = seedItem();
-    seedBalance(magasin, ciment, 7, 3_004);
+    seedBalance(magasin, ciment, 100, 500_000);
 
-    const resultat = await transfer(magasin, depot, ciment, 3);
+    await transfer(magasin, chantier, ciment, 20);
 
-    expect(resultat.movements[0].totalValue).toBe(resultat.movements[1].totalValue);
-    expect(resultat.movements[0].totalValue).toBe(resultat.value);
-  });
-
-  it('n’écrit AUCUNE moitié quand le transfert est refusé', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
-    const ciment = seedItem();
-    seedBalance(magasin, ciment, 10, 50_000);
-
-    await expect(transfer(magasin, depot, ciment, 11)).rejects.toMatchObject({ status: 409 });
-
-    // Sans la transaction, une panne entre les deux mouvements ferait
-    // disparaître de la matière.
-    expect(store.movements).toHaveLength(0);
-    expect(valeurDe(magasin, ciment)).toBe(50_000);
-    expect(soldeDe(depot, ciment)).toBeUndefined();
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
+    expect(db.costAllocation).toHaveLength(0);
+    expect(syncWorkProgramCostTx).not.toHaveBeenCalled();
+    expect(await sumSiteActualCost(mockPrisma as any, TENANT_ID, site.id)).toBe(0);
   });
 });
 
-describe('recordStockTransferTx — LE PIÈGE : déplacer n’est pas consommer', () => {
-  it('N’IMPUTE RIEN ET N’ÉCRIT AUCUNE ÉCRITURE, même vers le lieu d’un chantier', async () => {
-    const magasin = seedLocation({ label: 'Magasin central' });
-    const chantier = seedSite({ name: 'Résidence Kipé' });
-    const lieuDuChantier = seedLocation({ kind: 'SITE', label: 'Chantier Kipé', siteId: chantier.id });
+describe('recordStockTransferTx — chantier clos (A7-R4), inversion délibérée du test du lot 5', () => {
+  it('REFUSE un transfert VERS le lieu d’un chantier clos (409 STOCK_SITE_CLOSED) — décision du fondateur (critère A7-8)', async () => {
+    const clos = seedSite({ closedAt: daysAgo(2) });
+    const magasin = seedLocation();
+    const chantier = seedLocation({ kind: 'SITE', siteId: clos.id });
     const ciment = seedItem();
-    seedBalance(magasin, ciment, 200, 1_200_000);
+    seedBalance(magasin, ciment, 100, 500_000);
 
-    // Le chantier porte déjà un coût réel, venu d'une sortie antérieure : le
-    // test doit montrer qu'il ne bouge pas, pas seulement qu'il reste nul.
-    store.allocations.push({
-      id: nextId('imputation'),
-      tenantId: TENANT_ID,
-      siteId: chantier.id,
-      costCategoryId: 'poste-gros-oeuvre',
-      sourceType: 'STOCK_ISSUE',
-      sourceId: 'mouvement-anterieur',
-      amount: 1_200_000,
-      validatedAt: new Date('2026-04-01'),
-      voidedAt: null
+    await expect(transfer(magasin, chantier, ciment, 10)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_SITE_CLOSED'
     });
-
-    // Le VRAI `sumSiteActualCost` (`site-cost.ts`), jamais une doublure.
-    const avant = await sumSiteActualCost(mockPrisma as any, TENANT_ID, chantier.id);
-    expect(avant).toBe(1_200_000);
-
-    await transfer(magasin, lieuDuChantier, ciment, 100);
-
-    const apres = await sumSiteActualCost(mockPrisma as any, TENANT_ID, chantier.id);
-
-    // LIVRER SUR UN CHANTIER RESSEMBLE À UNE DÉPENSE, ET N'EN EST PAS UNE.
-    // Compter la livraison ferait monter le coût de matériaux qui dorment
-    // encore sous la bâche. Seule la SORTIE impute (principe P-7).
-    expect(apres).toBe(avant);
-    expect(store.allocations).toHaveLength(1);
-    expect(mockPrisma.costAllocation.create).not.toHaveBeenCalled();
-    expect(postDocumentEntryTx).not.toHaveBeenCalled();
-
-    // Le 311 ne bouge pas non plus : la matière est toujours à l'actif,
-    // simplement ailleurs. La valeur totale du stock est inchangée.
-    expect(valeurDe(magasin, ciment) + valeurDe(lieuDuChantier, ciment)).toBe(1_200_000);
+    expect(db.stockMovement).toHaveLength(0);
+    // Verrou de chantier pris AVANT de vérifier l'ouverture, et avant tout verrou de solde (A7-R3 bis).
+    expect(locks).toEqual([`site:${clos.id}`]);
   });
 
-  it('ACCEPTE un transfert vers le lieu d’un chantier CLOS — et ce test existe pour qu’on ne le « corrige » pas', async () => {
+  it('ACCEPTE un transfert DEPUIS le lieu d’un chantier clos vers un magasin (évacuation)', async () => {
+    const clos = seedSite({ closedAt: daysAgo(2) });
+    const chantier = seedLocation({ kind: 'SITE', siteId: clos.id });
     const magasin = seedLocation();
-    const clos = seedSite({ name: 'Villa Coyah', closedAt: new Date('2026-02-28'), finalCost: 4_000_000 });
-    const lieuDuChantierClos = seedLocation({ kind: 'SITE', label: 'Chantier Coyah', siteId: clos.id });
     const ciment = seedItem();
-    seedBalance(magasin, ciment, 50, 250_000);
+    seedBalance(chantier, ciment, 10, 50_000);
 
-    // `assertSiteOpenTx` n'est PAS appelé ici, et son absence est un choix :
-    // y déposer du matériel n'impute rien, et un chantier clos peut
-    // légitimement servir de lieu de stockage le temps qu'on l'évacue. C'est
-    // la SORTIE qui est refusée, pas la livraison (contrat).
-    const resultat = await transfer(magasin, lieuDuChantierClos, ciment, 20);
+    const result = await transfer(chantier, magasin, ciment, 10, { reasonCode: 'SITE_EVACUATION' });
+    expect(result.movements).toHaveLength(2);
+    expect(locks.some(lock => lock.startsWith('site:'))).toBe(false);
+  });
 
-    expect(resultat.movements).toHaveLength(2);
-    expect(Number(soldeDe(lieuDuChantierClos, ciment)!.quantity)).toBe(20);
-    expect(await sumSiteActualCost(mockPrisma as any, TENANT_ID, clos.id)).toBe(0);
-    expect(postDocumentEntryTx).not.toHaveBeenCalled();
+  it('verrous : site d’arrivée, puis les deux soldes TRIÉS — A→B et B→A prennent le même ordre (A10-R2)', async () => {
+    const site = seedSite();
+    const a = seedLocation();
+    const b = seedLocation({ kind: 'SITE', siteId: site.id });
+    const ciment = seedItem();
+    seedBalance(a, ciment, 10, 10);
+    seedBalance(b, ciment, 10, 10);
+
+    await transfer(a, b, ciment, 1);
+    const aller = [...locks];
+    locks.length = 0;
+    await transfer(b, a, ciment, 1);
+    const retour = [...locks];
+
+    const keys = [`${TENANT_ID}:${ciment.id}:${a.id}`, `${TENANT_ID}:${ciment.id}:${b.id}`]
+      .sort()
+      .map(k => `balance:${k}`);
+    expect(aller).toEqual([`site:${site.id}`, ...keys]);
+    expect(retour).toEqual(keys);
+  });
+});
+
+describe('recordStockTransferTx — demandeur et motif obligatoires (A11)', () => {
+  it('sans demandeur → 400 STOCK_REQUESTER_REQUIRED ; sans motif → 400 STOCK_REASON_REQUIRED (critère A11-1)', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 10);
+    await expect(transfer(from, to, ciment, 1, { requestedBy: undefined })).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'STOCK_REQUESTER_REQUIRED'
+    });
+    await expect(transfer(from, to, ciment, 1, { reasonCode: undefined })).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'STOCK_REASON_REQUIRED'
+    });
+    await expect(transfer(from, to, ciment, 1, { reasonCode: 'OTHER' })).rejects.toMatchObject({
+      code: 'STOCK_REASON_REQUIRED'
+    });
+    await expect(transfer(from, to, ciment, 1, { reasonCode: 'BREAKAGE' })).rejects.toMatchObject({
+      code: 'STOCK_REASON_NOT_ALLOWED'
+    });
+  });
+
+  it('le demandeur et le motif sont portés par la sortie COMME par l’entrée (critère A11-2)', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 10);
+    const taker = seedTaker();
+    const result = await transfer(from, to, ciment, 1, {
+      takerId: taker.id,
+      reasonCode: 'OTHER',
+      reason: 'Prêt au voisin'
+    });
+    for (const movement of result.movements) {
+      expect(movement).toMatchObject({
+        reasonCode: 'OTHER',
+        reason: 'Prêt au voisin',
+        takerId: taker.id,
+        requestedBy: 'Koné Ibrahim — Équipe maçonnerie'
+      });
+    }
+  });
+
+  it('requireTaker : un demandeur en texte ne suffit plus (400 STOCK_TAKER_REQUIRED)', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 10);
+    seed('stockSettings', { backdatingLimitDays: 7, requireTaker: true, issueAlertAmount: 500_000 });
+    await expect(transfer(from, to, ciment, 1)).rejects.toMatchObject({ code: 'STOCK_TAKER_REQUIRED' });
+  });
+
+  it('date de demain → 400 STOCK_DATE_IN_FUTURE (A5-R4)', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 10);
+    await expect(transfer(from, to, ciment, 1, { transferDate: daysAgo(-1) })).rejects.toMatchObject({
+      code: 'STOCK_DATE_IN_FUTURE'
+    });
+  });
+
+  it('écrit STOCK_TRANSFER_RECORDED sur la moitié sortante, dans la transaction', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 10);
+    const result = await transfer(from, to, ciment, 1);
+    expect(recordAuditEvent).toHaveBeenCalledWith(
+      mockPrisma,
+      expect.objectContaining({
+        actionKey: 'STOCK_TRANSFER_RECORDED',
+        entityType: 'StockMovement',
+        entityId: result.movements[0].id
+      })
+    );
   });
 });
 
 describe('recordStockTransferTx — les refus', () => {
-  it('refuse un transfert vers LE MÊME lieu', async () => {
-    const magasin = seedLocation();
-    const ciment = seedItem();
-    seedBalance(magasin, ciment, 100, 500_000);
-
-    await expect(transfer(magasin, magasin, ciment, 10)).rejects.toMatchObject({ status: 400 });
-    expect(store.movements).toHaveLength(0);
+  it('refuse le même lieu des deux côtés, une quantité nulle, un stock insuffisant, sans rien écrire', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 5, 50);
+    await expect(transfer(from, from, ciment, 1)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(transfer(from, to, ciment, 0)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(transfer(from, to, ciment, 6, {}, { blindLocationIds: new Set() })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_INSUFFICIENT',
+      data: { items: [expect.objectContaining({ availableQuantity: 5 })] }
+    });
+    expect(db.stockMovement).toHaveLength(0);
   });
 
-  it('refuse une quantité nulle ou négative', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
+  it('refuse un lieu désactivé (409 STOCK_LOCATION_INACTIVE), un lieu ou un article d’une autre agence (404)', async () => {
     const ciment = seedItem();
-    seedBalance(magasin, ciment, 100, 500_000);
+    const from = seedLocation();
+    seedBalance(from, ciment, 5, 50);
+    await expect(transfer(from, seedLocation({ isActive: false }), ciment, 1)).rejects.toMatchObject({
+      code: 'STOCK_LOCATION_INACTIVE'
+    });
+    await expect(transfer(from, seedLocation({ tenantId: 'tenant-2' }), ciment, 1)).rejects.toMatchObject({
+      statusCode: 404
+    });
+    await expect(transfer(from, seedLocation(), seedItem({ tenantId: 'tenant-2' }), 1)).rejects.toMatchObject({
+      statusCode: 404
+    });
+  });
+});
 
-    await expect(transfer(magasin, depot, ciment, 0)).rejects.toMatchObject({ status: 400 });
-    await expect(transfer(magasin, depot, ciment, -5)).rejects.toMatchObject({ status: 400 });
-    expect(store.movements).toHaveLength(0);
+describe('recordStockTransfer — idempotence et masquage', () => {
+  const CLIENT_REQUEST = '3a0e8b2c-1111-4d6c-9e61-6a0f4c2c9a10';
+
+  it('rejeu : 200 et le même transfert, deux mouvements en tout', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 1_000);
+    const input = {
+      fromLocationId: from.id,
+      toLocationId: to.id,
+      itemId: ciment.id,
+      quantity: 2,
+      transferDate: TODAY,
+      reasonCode: 'REBALANCING' as const,
+      requestedBy: 'Camara',
+      clientRequestId: CLIENT_REQUEST
+    };
+    const first = await recordStockTransfer(TENANT_ID, ADMIN, input);
+    const second = await recordStockTransfer(TENANT_ID, ADMIN, input);
+    expect([first.status, second.status]).toEqual([201, 200]);
+    expect(second.data.transferGroupId).toBe(first.data.transferGroupId);
+    expect(second.data.movements.map(m => m.isDecrease)).toEqual([true, false]);
+    expect(db.stockMovement).toHaveLength(2);
   });
 
-  it('REFUSE une quantité supérieure au stock d’origine — un stock négatif n’a pas de coût moyen', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
-    const ciment = seedItem();
-    seedBalance(magasin, ciment, 30, 150_000);
+  it('origine en comptage : value et quantités masquées pour le comptable ; magasinier sans valeurs', async () => {
+    const [from, to, ciment] = [seedLocation(), seedLocation(), seedItem()];
+    seedBalance(from, ciment, 10, 1_000);
+    openDraftCount(from);
+    const input = {
+      fromLocationId: from.id,
+      toLocationId: to.id,
+      itemId: ciment.id,
+      quantity: 2,
+      transferDate: TODAY,
+      reasonCode: 'REBALANCING' as const,
+      requestedBy: 'Camara'
+    };
+    const comptable = await recordStockTransfer(TENANT_ID, COMPTABLE, input);
+    expect(comptable.data.value).toBeNull();
+    expect(comptable.data.movements[0]).toMatchObject({ quantityAfter: null, unitCost: null });
+    expect(comptable.data.movements[1]).toMatchObject({ quantityAfter: 2, totalValue: 200 });
+    expect(comptable.meta.blindLocationIds).toEqual([from.id]);
 
-    await expect(transfer(magasin, depot, ciment, 31)).rejects.toThrow(/inventaire/);
-    await expect(transfer(magasin, depot, ciment, 31)).rejects.toMatchObject({ status: 409 });
-  });
-
-  it('refuse un transfert depuis un lieu jamais approvisionné', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
-    const ciment = seedItem();
-
-    await expect(transfer(magasin, depot, ciment, 1)).rejects.toMatchObject({ status: 409 });
-  });
-
-  it('refuse un lieu désactivé, à l’origine comme à l’arrivée', async () => {
-    const actif = seedLocation();
-    const inactif = seedLocation({ isActive: false });
-    const ciment = seedItem();
-    seedBalance(actif, ciment, 100, 500_000);
-    seedBalance(inactif, ciment, 100, 500_000);
-
-    await expect(transfer(inactif, actif, ciment, 10)).rejects.toMatchObject({ status: 409 });
-    await expect(transfer(actif, inactif, ciment, 10)).rejects.toMatchObject({ status: 409 });
-    expect(store.movements).toHaveLength(0);
-  });
-
-  it('refuse un article introuvable, et un lieu d’une autre agence', async () => {
-    const magasin = seedLocation();
-    const depot = seedLocation();
-    const etranger = seedLocation({ tenantId: 'tenant-2' });
-    const ciment = seedItem();
-    const inconnu = seedItem({ tenantId: 'tenant-2' });
-    seedBalance(magasin, ciment, 100, 500_000);
-
-    await expect(transfer(magasin, depot, inconnu, 1)).rejects.toMatchObject({ status: 404 });
-    await expect(transfer(magasin, etranger, ciment, 1)).rejects.toMatchObject({ status: 404 });
+    const magasinier = await recordStockTransfer(TENANT_ID, MAGASINIER, input);
+    expect(magasinier.data.movements[1]).toMatchObject({ quantityAfter: 4, totalValue: null, valueAfter: null });
   });
 });

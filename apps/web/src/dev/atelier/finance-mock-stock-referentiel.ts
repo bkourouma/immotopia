@@ -67,7 +67,7 @@
  * (`__tests__/finance/stock-referentiel.test.tsx`).
  */
 
-import type { StockItem, StockLocation, StockSettings } from '../../types/finance-stock-referentiel-types';
+import type { StockItem, StockLocationView, StockSettings } from '../../types/finance-stock-referentiel-types';
 import type { Scenario } from './mock-api';
 
 const AGENCE = 'agence-1';
@@ -144,7 +144,15 @@ const MAGASIN = 'lieu-magasin-01';
 const DEPOT_RIVIERA = 'lieu-riviera-02';
 const DEPOT_COCODY = 'lieu-cocody-03';
 
-const LIEUX: StockLocation[] = [
+/** Lot 040 : les champs de `LocationView` qu'un lieu sans inventaire en cours porte. */
+const SANS_INVENTAIRE = {
+  countInProgress: null,
+  siteClosed: false,
+  openingCountSuggested: false,
+  toRecount: []
+} satisfies Pick<StockLocationView, 'countInProgress' | 'siteClosed' | 'openingCountSuggested' | 'toRecount'>;
+
+const LIEUX: StockLocationView[] = [
   {
     id: MAGASIN,
     tenantId: AGENCE,
@@ -154,7 +162,8 @@ const LIEUX: StockLocation[] = [
     // cette nature plutôt que de l'ignorer.
     siteId: null,
     siteLabel: null,
-    isActive: true
+    isActive: true,
+    ...SANS_INVENTAIRE
   },
   {
     id: DEPOT_RIVIERA,
@@ -163,7 +172,12 @@ const LIEUX: StockLocation[] = [
     label: 'Dépôt de la Villa Riviera',
     siteId: 'chantier-riviera',
     siteLabel: 'Villa de la Riviera',
-    isActive: true
+    isActive: true,
+    ...SANS_INVENTAIRE,
+    // Lot 040 : un inventaire est en cours sur ce dépôt — la liste porte la
+    // pastille « Comptage en cours », et le désactiver serait refusé (409
+    // STOCK_COUNT_IN_PROGRESS).
+    countInProgress: { countId: 'inventaire-riviera-01', status: 'DRAFT', kind: 'REGULAR' }
   },
   {
     id: DEPOT_COCODY,
@@ -174,7 +188,8 @@ const LIEUX: StockLocation[] = [
     siteLabel: 'Résidence Cocody',
     // Désactivé, et il occupe pourtant toujours son chantier : un second lieu
     // y serait refusé.
-    isActive: false
+    isActive: false,
+    ...SANS_INVENTAIRE
   }
 ];
 

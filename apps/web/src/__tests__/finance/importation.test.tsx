@@ -57,7 +57,9 @@ vi.mock('../../services/finance-contractors-service', () => ({
 vi.mock('../../services/finance-stock-mouvements-service', () => ({
   recordStockReceipt: vi.fn(),
   recordStockIssue: vi.fn(),
-  listStockMovements: vi.fn().mockResolvedValue([]),
+  listStockMovements: vi
+    .fn()
+    .mockResolvedValue({ data: [], meta: { valuesVisible: true, blindLocationIds: [], nextCursor: null } }),
   listStockItems: vi.fn().mockResolvedValue([]),
   listStockLocations: vi.fn().mockResolvedValue([]),
   listSupplierInvoicesForReceipt: vi.fn().mockResolvedValue([])
@@ -74,6 +76,11 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 }));
 
 import { createCashVoucher, listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
+import {
+  listStockMovements,
+  recordStockIssue,
+  recordStockReceipt
+} from '../../services/finance-stock-mouvements-service';
 import {
   champsObligatoiresManquants,
   chargerReferentiel,
@@ -595,5 +602,161 @@ describe('L’écran d’importation', () => {
 
     await waitFor(() => expect(screen.queryByText('Choisir un chantier')).not.toBeInTheDocument());
     expect(listConstructionSites).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Lot 040 — réception et sortie de stock (E12)
+// ---------------------------------------------------------------------------
+
+describe('Lot 040 — l’import des réceptions et des sorties de stock', () => {
+  const recevoir = recordStockReceipt as unknown as ReturnType<typeof vi.fn>;
+  const sortir = recordStockIssue as unknown as ReturnType<typeof vi.fn>;
+  const lireJournal = listStockMovements as unknown as ReturnType<typeof vi.fn>;
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const COUPURE = Object.assign(new Error('Network Error'), { isAxiosError: true, request: {} });
+
+  const reception = () => trouverDescripteur('reception-de-stock') as DescripteurNature;
+  const sortie = () => trouverDescripteur('sortie-de-stock') as DescripteurNature;
+
+  function valeursReception(surcharges: Record<string, string | number | null> = {}) {
+    return {
+      locationId: 'lieu-1',
+      supplierInvoiceId: 'facture-1',
+      receiptDate: '2026-09-18',
+      itemId: 'article-1',
+      quantity: 40,
+      unitCost: null,
+      ...surcharges
+    };
+  }
+
+  function valeursSortie(surcharges: Record<string, string | number | null> = {}) {
+    return {
+      locationId: 'lieu-1',
+      itemId: 'article-1',
+      quantity: 12,
+      costCategoryId: 'poste-1',
+      requestedBy: 'Koné Ibrahim',
+      issueDate: '2026-09-18',
+      ...surcharges
+    };
+  }
+
+  function resultat(numero: string) {
+    return { data: { slip: { id: 'bon-1', kind: 'RECEIPT', number: numero }, movements: [], controls: [] } };
+  }
+
+  it('une réception porte un `clientRequestId`, et pas de prix quand la cellule est vide', async () => {
+    recevoir.mockResolvedValue(resultat('BR-2026-00001'));
+
+    const detail = await reception().enregistrer(valeursReception(), contexte());
+
+    expect(detail).toBe('BR-2026-00001');
+    const [tenant, corps] = recevoir.mock.calls[0];
+    expect(tenant).toBe(TENANT);
+    expect(corps.lines).toEqual([{ itemId: 'article-1', quantity: 40 }]);
+    expect(corps.clientRequestId).toMatch(UUID);
+  });
+
+  it('le prix unitaire est facultatif, et part quand il est donné', async () => {
+    recevoir.mockResolvedValue(resultat('BR-2026-00002'));
+    const champ = reception().champs.find(c => c.cle === 'unitCost');
+    expect(champ?.obligatoire).toBe(false);
+
+    await reception().enregistrer(valeursReception({ unitCost: 2500 }), contexte());
+
+    expect(recevoir.mock.calls[0][1].lines).toEqual([{ itemId: 'article-1', quantity: 40, unitCost: 2500 }]);
+  });
+
+  it('garde le même `clientRequestId` pour une même ligne relancée après une coupure', async () => {
+    recevoir.mockRejectedValueOnce(COUPURE).mockResolvedValueOnce(resultat('BR-2026-00003'));
+    const valeurs = valeursReception({ quantity: 41 });
+
+    await expect(reception().enregistrer({ ...valeurs }, contexte())).rejects.toBe(COUPURE);
+    await reception().enregistrer({ ...valeurs }, contexte());
+
+    const premier = recevoir.mock.calls[0][1].clientRequestId;
+    const second = recevoir.mock.calls[1][1].clientRequestId;
+    expect(premier).toMatch(UUID);
+    expect(second).toBe(premier);
+  });
+
+  it('tire un nouvel identifiant une fois la ligne enregistrée : deux lignes identiques font deux réceptions', async () => {
+    recevoir.mockResolvedValue(resultat('BR-2026-00004'));
+    const valeurs = valeursReception({ quantity: 42 });
+
+    await reception().enregistrer({ ...valeurs }, contexte());
+    await reception().enregistrer({ ...valeurs }, contexte());
+
+    expect(recevoir.mock.calls[0][1].clientRequestId).not.toBe(recevoir.mock.calls[1][1].clientRequestId);
+  });
+
+  it('une sortie part en forme multi-lignes à une ligne, avec le demandeur saisi et son identifiant', async () => {
+    sortir.mockResolvedValue({
+      data: { slip: { id: 'bon-2', kind: 'ISSUE', number: 'BS-2026-00009' }, movements: [] }
+    });
+
+    const detail = await sortie().enregistrer(valeursSortie(), contexte());
+
+    expect(detail).toBe('BS-2026-00009');
+    const corps = sortir.mock.calls[0][1];
+    expect(corps).toEqual({
+      locationId: 'lieu-1',
+      siteId: CHANTIER,
+      issueDate: '2026-09-18',
+      lines: [{ itemId: 'article-1', quantity: 12, costCategoryId: 'poste-1' }],
+      requestedBy: 'Koné Ibrahim',
+      clientRequestId: expect.stringMatching(UUID)
+    });
+    expect(corps).not.toHaveProperty('takerId');
+    expect(sortie().description).toContain('enregistrez les sorties depuis l’écran Stock');
+  });
+
+  it('les empreintes parcourent TOUTES les pages du journal, 200 par page, sur une période bornée', async () => {
+    const mouvement = (id: string, quantite: number) => ({
+      id,
+      type: 'RECEIPT',
+      itemId: 'article-1',
+      locationId: 'lieu-1',
+      movementDate: '2026-09-18T00:00:00.000Z',
+      quantity: quantite,
+      siteId: null
+    });
+    lireJournal
+      .mockResolvedValueOnce({
+        data: [mouvement('m-1', 40)],
+        meta: { valuesVisible: true, blindLocationIds: [], nextCursor: 'page-2' }
+      })
+      .mockResolvedValueOnce({
+        data: [mouvement('m-2', 55)],
+        meta: { valuesVisible: true, blindLocationIds: [], nextCursor: null }
+      });
+
+    const empreintes = await reception().chargerEmpreintes?.(contexte());
+
+    expect(lireJournal).toHaveBeenCalledTimes(2);
+    const [, premiere] = lireJournal.mock.calls[0];
+    const [, seconde] = lireJournal.mock.calls[1];
+    expect(premiere).toMatchObject({ type: 'RECEIPT', limit: 200 });
+    expect(premiere.cursor).toBeUndefined();
+    expect(premiere.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(premiere.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(seconde).toMatchObject({ type: 'RECEIPT', limit: 200, cursor: 'page-2' });
+    expect(empreintes).toEqual([
+      'reception|lieu-1|article-1|2026-09-18|40',
+      'reception|lieu-1|article-1|2026-09-18|55'
+    ]);
+  });
+
+  it('les empreintes des sorties sont lues sur le chantier choisi, toutes pages comprises', async () => {
+    lireJournal.mockResolvedValueOnce({
+      data: [],
+      meta: { valuesVisible: true, blindLocationIds: [], nextCursor: null }
+    });
+
+    await sortie().chargerEmpreintes?.(contexte());
+
+    expect(lireJournal.mock.calls[0][1]).toMatchObject({ type: 'ISSUE', siteId: CHANTIER, limit: 200 });
   });
 });

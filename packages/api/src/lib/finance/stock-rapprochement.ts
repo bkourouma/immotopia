@@ -97,18 +97,23 @@
 
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
+import { recordAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import { conflict, notFound } from '../errors';
 import { roundMoneyXof, roundQuantity } from './money';
 import { assertSiteOpenTx } from './site-closing';
+import { isOpeningCountSuggested } from './stock-controles';
 import { toAmountOrZero } from './types';
 import type {
-  EnableStockOnSiteTx,
-  GetSiteStockReconciliation,
-  GetSiteStockStatus,
   IsSiteStockEnabledTx,
   SiteStockReconciliationLine,
   SiteStockStatusRecord
 } from './types-lot5-rapprochement';
+import type {
+  SiteStockReconciliationLineView,
+  SiteStockReconciliationView,
+  SiteStockStatusView
+} from './types-040-controle';
 
 /** Devise unique du module (décision D9 du plan, actée au lot 1). */
 const DEFAULT_CURRENCY = 'XOF';
@@ -166,6 +171,30 @@ function toStatusRecord(site: SiteShape, location: { id: string; label: string }
   };
 }
 
+/**
+ * Lot 040 (A7-R1) : l'inventaire d'ouverture est proposé tant que le chantier
+ * a basculé depuis 30 jours au plus et que son lieu n'a aucun inventaire
+ * OPENING non abandonné (en cours ou validé). La règle de la fenêtre a une
+ * seule définition, `isOpeningCountSuggested` (`stock-controles.ts`).
+ */
+async function toStatusView(
+  client: PrismaTransactionClient,
+  tenantId: string,
+  site: SiteShape,
+  location: { id: string; label: string } | null
+): Promise<SiteStockStatusView> {
+  const liveOpening = location
+    ? await client.stockCount.findFirst({
+        where: { tenantId, locationId: location.id, kind: 'OPENING', status: { not: 'CANCELLED' } },
+        select: { id: true }
+      })
+    : null;
+  return {
+    ...toStatusRecord(site, location),
+    openingCountSuggested: location !== null && isOpeningCountSuggested(site, liveOpening !== null)
+  };
+}
+
 // ---------------------------------------------------------------------------
 // A. La bascule — explicite, par chantier, IRRÉVERSIBLE
 // ---------------------------------------------------------------------------
@@ -215,7 +244,16 @@ async function resolveFreeLocationLabel(
  * factures déjà imputées le restent — les défaire ferait baisser le coût d'un
  * chantier sans qu'aucune dépense n'ait été annulée.
  */
-export const enableStockOnSiteTx: EnableStockOnSiteTx = async (tx, tenantId, siteId, params) => {
+export async function enableStockOnSiteTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  siteId: string,
+  params: {
+    enabledAt: Date;
+    /** Auteur de la bascule, porté par l'audit `STOCK_SITE_ENABLED` (lot 040, B6). */
+    enabledByUserId?: string | null;
+  }
+): Promise<SiteStockStatusView> {
   const site = await loadSiteOrThrow(tx, tenantId, siteId);
 
   // Refus d'une seconde bascule : redater changerait, RÉTROACTIVEMENT, quelles
@@ -252,18 +290,31 @@ export const enableStockOnSiteTx: EnableStockOnSiteTx = async (tx, tenantId, sit
     location = { id: created.id as string, label: created.label as string };
   }
 
-  return toStatusRecord({ ...site, stockEnabledAt: params.enabledAt }, location);
-};
+  // Lot 040 (B6-R1) : événement critique, dans la transaction de la bascule.
+  await recordAuditEvent(tx, {
+    tenantId,
+    ...(params.enabledByUserId !== undefined ? { actorUserId: params.enabledByUserId } : {}),
+    actionKey: AuditActionKey.STOCK_SITE_ENABLED,
+    entityType: 'ConstructionSite',
+    entityId: siteId,
+    payload: { enabledAt: params.enabledAt, stockLocationId: location.id }
+  });
 
-/** Voir `GetSiteStockStatus` dans `./types-lot5-rapprochement.ts`. */
-export const getSiteStockStatus: GetSiteStockStatus = async (tenantId, siteId) => {
+  return toStatusView(tx, tenantId, { ...site, stockEnabledAt: params.enabledAt }, location);
+}
+
+/**
+ * Le statut de stock d'un chantier, plus `openingCountSuggested` (lot 040,
+ * A7-R1). Voir `GetSiteStockStatus` dans `./types-lot5-rapprochement.ts`.
+ */
+export async function getSiteStockStatus(tenantId: string, siteId: string): Promise<SiteStockStatusView> {
   const site = await loadSiteOrThrow(prisma, tenantId, siteId);
   // Le lieu est rendu DÈS QU'IL EXISTE, même sur un chantier qui n'a pas
   // basculé : le référentiel permet d'en créer un à la main, et le taire
   // laisserait un écran affirmer qu'il n'y en a pas alors qu'on peut y recevoir.
   const location = await findSiteLocation(prisma, tenantId, siteId);
-  return toStatusRecord(site, location);
-};
+  return toStatusView(prisma, tenantId, site, location);
+}
 
 /**
  * Voir `IsSiteStockEnabledTx` dans `./types-lot5-rapprochement.ts`.
@@ -348,6 +399,11 @@ interface LineAccumulator {
   issuedValue: number;
   remainingQuantity: number;
   remainingValue: number;
+  /** Lot 040 : retours fournisseur et rebuts depuis le lieu du chantier. */
+  returnedToSupplierQuantity: number;
+  returnedToSupplierValue: number;
+  scrappedQuantity: number;
+  scrappedValue: number;
 }
 
 function emptyAccumulator(): LineAccumulator {
@@ -359,8 +415,29 @@ function emptyAccumulator(): LineAccumulator {
     issuedQuantity: 0,
     issuedValue: 0,
     remainingQuantity: 0,
-    remainingValue: 0
+    remainingValue: 0,
+    returnedToSupplierQuantity: 0,
+    returnedToSupplierValue: 0,
+    scrappedQuantity: 0,
+    scrappedValue: 0
   };
+}
+
+/** Les quatre champs descriptifs ajoutés à chaque ligne (lot 040). */
+type ReconciliationAdditions = Pick<
+  SiteStockReconciliationLineView,
+  'returnedToSupplierQuantity' | 'returnedToSupplierValue' | 'scrappedQuantity' | 'scrappedValue'
+>;
+
+/** Options de lecture du rapprochement (lot 040). */
+export interface SiteStockReconciliationOptions {
+  /**
+   * Lieux en comptage masqués pour l'appelant (spec §8.2,
+   * `loadBlindLocationIds`). Si le lieu du chantier en fait partie, le restant
+   * de chaque ligne et son total valent `null` : il livrerait l'attendu de
+   * l'inventaire en cours.
+   */
+  blindLocationIds?: ReadonlySet<string>;
 }
 
 /**
@@ -383,8 +460,20 @@ function emptyAccumulator(): LineAccumulator {
  *
  * C'est la correction portée au contrat après le premier jet de ce fichier,
  * qui prenait « tout y vaut zéro » à la lettre.
+ *
+ * ### Lot 040 : deux couples descriptifs, et l'aveugle
+ *
+ * Chaque ligne reçoit `returnedToSupplierQuantity`/`Value` et
+ * `scrappedQuantity`/`Value` (sorties du lieu du chantier, même période que
+ * les autres flux). Ils EXPLIQUENT le restant sans l'interpréter : la formule
+ * de l'écart ne change pas. Pendant un comptage du lieu, le restant est masqué
+ * pour un appelant sans STOCK_COUNT_VALIDATE (`options.blindLocationIds`).
  */
-export const getSiteStockReconciliation: GetSiteStockReconciliation = async (tenantId, siteId) => {
+export async function getSiteStockReconciliation(
+  tenantId: string,
+  siteId: string,
+  options: SiteStockReconciliationOptions = {}
+): Promise<SiteStockReconciliationView> {
   const site = await loadSiteOrThrow(prisma, tenantId, siteId);
 
   const stockEnabledAt = site.stockEnabledAt ?? null;
@@ -433,7 +522,17 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
         }) as Promise<Array<Record<string, any>>>)
       : Promise.resolve([] as Array<Record<string, any>>);
 
-  const [invoiced, receipts, transfersIn, issues, balances] = await Promise.all([
+  /** Lot 040 : les sorties du lieu d'une nature (retour fournisseur, rebut), groupées par article. */
+  const sortiesDuLieu = (type: 'SUPPLIER_RETURN' | 'SCRAP'): Promise<Array<Record<string, any>>> =>
+    location
+      ? (prisma.stockMovement.groupBy({
+          by: ['itemId'],
+          where: { tenantId, locationId: location.id, type, ...depuisLaBascule },
+          _sum: { quantity: true, totalValue: true }
+        }) as Promise<Array<Record<string, any>>>)
+      : Promise.resolve([] as Array<Record<string, any>>);
+
+  const [invoiced, receipts, transfersIn, issues, balances, returns, scraps] = await Promise.all([
     // LES QUATRE CONDITIONS, et pas trois : validée, non annulée, rattachée au
     // chantier, POSTÉRIEURE à la bascule. `status: 'VALIDATED'` porte les deux
     // premières — `VOIDED` est un statut, pas une colonne à part. La date
@@ -496,7 +595,13 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
           where: { tenantId, locationId: location.id },
           select: { itemId: true, quantity: true, value: true }
         })
-      : Promise.resolve([] as Array<Record<string, any>>)
+      : Promise.resolve([] as Array<Record<string, any>>),
+
+    // Lot 040 : ce qui est reparti chez le fournisseur et ce qui a été mis au
+    // rebut depuis le lieu du chantier. Descriptif : ces chiffres expliquent
+    // le restant, ils ne qualifient rien.
+    sortiesDuLieu('SUPPLIER_RETURN'),
+    sortiesDuLieu('SCRAP')
   ]);
 
   const byItem = new Map<string, LineAccumulator>();
@@ -537,6 +642,26 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     accumulator.remainingValue = roundMoneyXof(accumulator.remainingValue + toAmountOrZero(row.value));
   }
 
+  for (const row of returns as Array<Record<string, any>>) {
+    const accumulator = accumulatorFor(row.itemId as string);
+    accumulator.returnedToSupplierQuantity = roundQuantity(
+      accumulator.returnedToSupplierQuantity + toAmountOrZero(row._sum?.quantity)
+    );
+    accumulator.returnedToSupplierValue = roundMoneyXof(
+      accumulator.returnedToSupplierValue + toAmountOrZero(row._sum?.totalValue)
+    );
+  }
+
+  for (const row of scraps as Array<Record<string, any>>) {
+    const accumulator = accumulatorFor(row.itemId as string);
+    accumulator.scrappedQuantity = roundQuantity(accumulator.scrappedQuantity + toAmountOrZero(row._sum?.quantity));
+    accumulator.scrappedValue = roundMoneyXof(accumulator.scrappedValue + toAmountOrZero(row._sum?.totalValue));
+  }
+
+  // Lot 040 (§8.2) : pendant un comptage du lieu, le restant livrerait
+  // l'attendu de l'inventaire en cours à qui ne peut pas le valider.
+  const remainingHidden = location !== null && (options.blindLocationIds?.has(location.id) ?? false);
+
   // Le référentiel est résolu PAR LOT, jamais une requête par article : le
   // nombre de requêtes de cette fonction ne doit dépendre que du nombre de
   // sources, jamais du nombre de lignes rendues.
@@ -551,7 +676,7 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     (items as Array<Record<string, any>>).map(item => [item.id as string, item])
   );
 
-  const lines: SiteStockReconciliationLine[] = itemIds
+  const fullLines: Array<SiteStockReconciliationLine & ReconciliationAdditions> = itemIds
     .map(itemId => {
       const accumulator = byItem.get(itemId)!;
       const item = itemsById.get(itemId);
@@ -568,16 +693,25 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
         transferredInValue: accumulator.transferredInValue,
         issuedValue: accumulator.issuedValue,
         remainingValue: accumulator.remainingValue,
-        currency: DEFAULT_CURRENCY
+        currency: DEFAULT_CURRENCY,
+        returnedToSupplierQuantity: accumulator.returnedToSupplierQuantity,
+        returnedToSupplierValue: accumulator.returnedToSupplierValue,
+        scrappedQuantity: accumulator.scrappedQuantity,
+        scrappedValue: accumulator.scrappedValue
       };
     })
     .sort((a, b) => a.itemReference.localeCompare(b.itemReference) || a.itemLabel.localeCompare(b.itemLabel));
 
   const invoicedAmount = roundMoneyXof(toAmountOrZero((invoiced as Record<string, any>)?._sum?.amount));
-  const receivedValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.receivedValue, 0));
-  const transferredInValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.transferredInValue, 0));
-  const issuedValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.issuedValue, 0));
-  const remainingValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.remainingValue, 0));
+  const receivedValue = roundMoneyXof(fullLines.reduce((sum, line) => sum + line.receivedValue, 0));
+  const transferredInValue = roundMoneyXof(fullLines.reduce((sum, line) => sum + line.transferredInValue, 0));
+  const issuedValue = roundMoneyXof(fullLines.reduce((sum, line) => sum + line.issuedValue, 0));
+  const remainingValue = remainingHidden
+    ? null
+    : roundMoneyXof(fullLines.reduce((sum, line) => sum + line.remainingValue, 0));
+  const lines: SiteStockReconciliationLineView[] = fullLines.map(line =>
+    remainingHidden ? { ...line, remainingQuantity: null, remainingValue: null } : line
+  );
 
   return {
     siteId: site.id,
@@ -608,4 +742,4 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     currency: DEFAULT_CURRENCY,
     lines
   };
-};
+}

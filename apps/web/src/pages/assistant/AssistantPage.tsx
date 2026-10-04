@@ -21,13 +21,38 @@ const ARTIFACT_MAX_WIDTH = 680;
 /**
  * Hauteur de la page : la fenêtre moins l'en-tête de la coquille (64 px) et les
  * marges de son contenu, pour que seul le fil des messages défile. Sous 992 px
- * la barre d'onglets basse prend sa place (voir `AppShell`).
+ * la barre d'onglets basse prend sa place (voir `AppShell`, qui réserve
+ * `--control-h-lg + --space-6 + zone sûre` sous le contenu). Le bas est
+ * parenthésé : sans cela, `a - b + c` AJOUTAIT la réserve au lieu de la retrancher.
  */
-function pageHeight(hasTabs: boolean): string {
+export function pageHeight(hasTabs: boolean): string {
   const bottom = hasTabs
-    ? 'var(--control-h-lg) + var(--space-6) + env(safe-area-inset-bottom, 0px)'
+    ? '(var(--control-h-lg) + var(--space-6) + env(safe-area-inset-bottom, 0px))'
     : 'var(--page-padding)';
   return `calc(100dvh - 64px - var(--page-padding) - ${bottom})`;
+}
+
+/** Pourquoi l'assistant est indisponible, d'après l'état renvoyé par l'API. */
+export function unavailableMessage(
+  status: CopilotStatus | null,
+  hasTenant: boolean
+): { title: string; subTitle: string } {
+  if (!hasTenant || status?.reason === 'NOT_FOUND') {
+    return {
+      title: t("Aucune agence n'est rattachée à cette page."),
+      subTitle: t("Choisissez une agence pour utiliser l'assistant.")
+    };
+  }
+  if (status?.reason === 'FORBIDDEN') {
+    return {
+      title: t("L'assistant n'est pas disponible pour ce compte."),
+      subTitle: t("Il est réservé aux collaborateurs d'une agence.")
+    };
+  }
+  return {
+    title: t("L'assistant n'est pas activé pour cette agence."),
+    subTitle: t("Demandez à un administrateur de l'activer.")
+  };
 }
 
 const ChatPane: React.FC<{ tenantId: string; status: CopilotStatus; hasTabs: boolean; showArtifact: boolean }> = ({
@@ -181,16 +206,9 @@ const AssistantPage: React.FC = () => {
   const { isDesktop } = useBreakpoint();
   const status = useCopilotStatus(tenantId);
 
-  if (!tenantId || !status) return <Skeleton active aria-label={t("Chargement de l'écran")} />;
-  if (!status.enabled) {
-    return (
-      <Result
-        status="info"
-        title={t("L'assistant n'est pas activé pour cette agence.")}
-        subTitle={t("Demandez à un administrateur de l'activer.")}
-      />
-    );
-  }
+  if (!tenantId) return <Result status="info" {...unavailableMessage(null, false)} />;
+  if (!status) return <Skeleton active aria-label={t("Chargement de l'écran")} />;
+  if (!status.enabled) return <Result status="info" {...unavailableMessage(status, true)} />;
   return <ChatPane tenantId={tenantId} status={status} hasTabs={!isDesktop} showArtifact={isDesktop} />;
 };
 

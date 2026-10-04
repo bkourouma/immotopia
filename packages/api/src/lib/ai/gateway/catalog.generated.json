@@ -827,13 +827,46 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/stock/alerts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/alerts",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / alerts",
+      "permissions": ["STOCK_ALERTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/attachments",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/attachments",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / attachments",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/attachments/:attachmentId/file",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/attachments/:attachmentId/file",
+      "pathParams": ["attachmentId"],
+      "module": "finance",
+      "summary": "finance / stock / attachments / {attachmentId} / file",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/stock/balances",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/stock/balances",
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / balances",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -844,7 +877,7 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / counts",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -855,7 +888,40 @@
       "pathParams": ["countId"],
       "module": "finance",
       "summary": "finance / stock / counts / {countId}",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/counts/:countId/report.pdf",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/counts/:countId/report.pdf",
+      "pathParams": ["countId"],
+      "module": "finance",
+      "summary": "finance / stock / counts / {countId} / report.pdf",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/field-context",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/field-context",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / field-context",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/indicators",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/indicators",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / indicators",
+      "permissions": ["STOCK_VALUES_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -866,7 +932,7 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / items",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -877,7 +943,7 @@
       "pathParams": ["itemId"],
       "module": "finance",
       "summary": "finance / stock / items / {itemId}",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -888,7 +954,7 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / locations",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -899,7 +965,40 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / movements",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/movements/authors",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/movements/authors",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / movements / authors",
+      "permissions": ["STOCK_VALUES_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/movements/export.csv",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/movements/export.csv",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / movements / export.csv",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/receivable-invoices",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/receivable-invoices",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / receivable-invoices",
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -910,7 +1009,62 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / settings",
-      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/settings/controls",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/settings/controls",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / settings / controls",
+      "permissions": ["STOCK_VALUES_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/slips/:slipId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/slips/:slipId",
+      "pathParams": ["slipId"],
+      "module": "finance",
+      "summary": "finance / stock / slips / {slipId}",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/slips/:slipId/pdf",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/slips/:slipId/pdf",
+      "pathParams": ["slipId"],
+      "module": "finance",
+      "summary": "finance / stock / slips / {slipId} / pdf",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/supplier-invoices/:invoiceId/receipts",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/supplier-invoices/:invoiceId/receipts",
+      "pathParams": ["invoiceId"],
+      "module": "finance",
+      "summary": "finance / stock / supplier-invoices / {invoiceId} / receipts",
+      "permissions": ["STOCK_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/finance/stock/takers",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/stock/takers",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / takers",
+      "permissions": ["STOCK_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3235,6 +3389,28 @@
       "sensitive": false
     },
     {
+      "id": "PATCH /api/tenants/:tenantId/finance/stock/settings/controls",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/finance/stock/settings/controls",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / settings / controls",
+      "permissions": ["FINANCE_SETTINGS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/finance/stock/takers/:takerId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/finance/stock/takers/:takerId",
+      "pathParams": ["takerId"],
+      "module": "finance",
+      "summary": "finance / stock / takers / {takerId}",
+      "permissions": ["STOCK_TAKERS_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "PATCH /api/tenants/:tenantId/maintenance/admin/tickets/:ticketId",
       "method": "PATCH",
       "path": "/api/tenants/:tenantId/maintenance/admin/tickets/:ticketId",
@@ -4522,13 +4698,81 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/finance/stock/alerts/:alertId/acknowledge",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/alerts/:alertId/acknowledge",
+      "pathParams": ["alertId"],
+      "module": "finance",
+      "summary": "finance / stock / alerts / {alertId} / acknowledge",
+      "permissions": ["STOCK_ALERTS_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/attachments",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/attachments",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / attachments",
+      "permissions": null,
+      "anyOfPermissions": [
+        ["STOCK_COUNT", "STOCK_COUNT_VALIDATE", "STOCK_DISPOSE", "STOCK_ISSUE", "STOCK_RECEIVE", "STOCK_TRANSFER"]
+      ],
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/finance/stock/counts",
       "method": "POST",
       "path": "/api/tenants/:tenantId/finance/stock/counts",
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / counts",
-      "permissions": ["FINANCE_DOCUMENTS_CREATE"],
+      "permissions": ["STOCK_COUNT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/counts/:countId/cancel",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/counts/:countId/cancel",
+      "pathParams": ["countId"],
+      "module": "finance",
+      "summary": "finance / stock / counts / {countId} / cancel",
+      "permissions": ["STOCK_COUNT_VALIDATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/counts/:countId/close",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/counts/:countId/close",
+      "pathParams": ["countId"],
+      "module": "finance",
+      "summary": "finance / stock / counts / {countId} / close",
+      "permissions": ["STOCK_COUNT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/set-aside",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/set-aside",
+      "pathParams": ["countId", "itemId"],
+      "module": "finance",
+      "summary": "finance / stock / counts / {countId} / lines / {itemId} / set-aside",
+      "permissions": ["STOCK_COUNT_VALIDATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/counts/:countId/set-aside-uncounted",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/counts/:countId/set-aside-uncounted",
+      "pathParams": ["countId"],
+      "module": "finance",
+      "summary": "finance / stock / counts / {countId} / set-aside-uncounted",
+      "permissions": ["STOCK_COUNT_VALIDATE"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -4539,7 +4783,7 @@
       "pathParams": ["countId"],
       "module": "finance",
       "summary": "finance / stock / counts / {countId} / validate",
-      "permissions": ["FINANCE_DOCUMENTS_VALIDATE"],
+      "permissions": ["STOCK_COUNT_VALIDATE"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -4550,7 +4794,7 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / issues",
-      "permissions": ["FINANCE_DOCUMENTS_CREATE"],
+      "permissions": ["STOCK_ISSUE"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -4583,7 +4827,40 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / receipts",
-      "permissions": ["FINANCE_DOCUMENTS_CREATE"],
+      "permissions": ["STOCK_RECEIVE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/scraps",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/scraps",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / scraps",
+      "permissions": ["STOCK_DISPOSE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/supplier-returns",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/supplier-returns",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / supplier-returns",
+      "permissions": ["STOCK_DISPOSE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/finance/stock/takers",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/finance/stock/takers",
+      "pathParams": [],
+      "module": "finance",
+      "summary": "finance / stock / takers",
+      "permissions": ["STOCK_TAKERS_MANAGE"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -4594,7 +4871,7 @@
       "pathParams": [],
       "module": "finance",
       "summary": "finance / stock / transfers",
-      "permissions": ["FINANCE_DOCUMENTS_CREATE"],
+      "permissions": ["STOCK_TRANSFER"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -6574,8 +6851,19 @@
       "pathParams": ["countId"],
       "module": "finance",
       "summary": "finance / stock / counts / {countId} / lines",
-      "permissions": ["FINANCE_DOCUMENTS_CREATE"],
+      "permissions": ["STOCK_COUNT"],
       "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/justification",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/justification",
+      "pathParams": ["countId", "itemId"],
+      "module": "finance",
+      "summary": "finance / stock / counts / {countId} / lines / {itemId} / justification",
+      "permissions": null,
+      "anyOfPermissions": [["STOCK_COUNT", "STOCK_COUNT_VALIDATE"]],
       "sensitive": false
     },
     {

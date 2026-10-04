@@ -38,6 +38,8 @@ import {
   loadBlindLocationIds,
   loadItemsToRecount,
   lockStockBalancesTx,
+  lockStockInvoiceTx,
+  lockStockScrapMonthTx,
   lockStockSiteTx,
   maskBalanceView,
   maskMovementView,
@@ -257,6 +259,26 @@ describe('lockStockSiteTx', () => {
   });
 });
 
+describe('lockStockInvoiceTx', () => {
+  it('pose le verrou de facture à deux entiers, clé agence:facture', async () => {
+    const { tx, raw } = fakeTx();
+    await lockStockInvoiceTx(tx, TENANT, 'facture-1');
+    expect(raw).toHaveLength(1);
+    expect(raw[0].sql).toContain("pg_advisory_xact_lock(hashtext('stock-invoice'), hashtext(");
+    expect(raw[0].values).toEqual(['tenant-1:facture-1']);
+  });
+});
+
+describe('lockStockScrapMonthTx', () => {
+  it('pose le verrou du cumul mensuel des rebuts, clé agence:lieu:mois', async () => {
+    const { tx, raw } = fakeTx();
+    await lockStockScrapMonthTx(tx, TENANT, 'lieu-1', '2026-10');
+    expect(raw).toHaveLength(1);
+    expect(raw[0].sql).toContain("pg_advisory_xact_lock(hashtext('stock-scrap-month'), hashtext(");
+    expect(raw[0].values).toEqual(['tenant-1:lieu-1:2026-10']);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Idempotence (B3-R2)
 // ---------------------------------------------------------------------------
@@ -309,6 +331,14 @@ describe('claimClientRequestTx et completeClientRequestTx', () => {
     expect(raw[0].sql).toContain('UPDATE "stock_client_requests"');
     expect(raw[0].values).toEqual(['StockSlip', 'slip-1', 'key-1']);
   });
+
+  it('avec l’agence, borne la mise à jour à la clé de CETTE agence', async () => {
+    const { tx, raw } = fakeTx();
+    await completeClientRequestTx(tx, 'key-1', 'StockSlip', 'slip-1', TENANT);
+    expect(raw[0].sql).toContain('UPDATE "stock_client_requests"');
+    expect(raw[0].sql).toContain('AND "tenant_id" = ?');
+    expect(raw[0].values).toEqual(['StockSlip', 'slip-1', 'key-1', TENANT]);
+  });
 });
 
 describe('findClientRequestReplay', () => {
@@ -348,6 +378,27 @@ describe('findClientRequestReplay', () => {
       statusCode: 409,
       code: 'STOCK_IDEMPOTENCY_MISMATCH'
     });
+  });
+
+  it('refuse en 409 STOCK_IDEMPOTENCY_MISMATCH la même clé envoyée pour une AUTRE opération', async () => {
+    findFirstClientRequest.mockResolvedValue({
+      operation: 'ISSUE',
+      bodyHash: 'h',
+      createdByUserId: 'user-1',
+      resultType: 'StockSlip',
+      resultId: 'slip-1'
+    });
+    await expect(findClientRequestReplay(TENANT, 'cr-1', 'user-1', 'h', 'SCRAP')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'STOCK_IDEMPOTENCY_MISMATCH'
+    });
+    await expect(findClientRequestReplay(TENANT, 'cr-1', 'user-1', 'h', 'ISSUE')).resolves.toEqual({
+      resultType: 'StockSlip',
+      resultId: 'slip-1'
+    });
+    expect(findFirstClientRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ operation: true }) })
+    );
   });
 
   it('reconnaît une violation d’unicité Prisma', () => {
