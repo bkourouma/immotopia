@@ -113,16 +113,6 @@ Pièges et décisions :
 
 ---
 
-## Branche `feat/immocopilot-o9nygz` — 2026-10-03
-
-**État :** correctifs de la recette navigateur d'ImmoCopilot v2 (PR ouverte, fusion à l'utilisateur). Recette jouée sur base PostgreSQL 16 locale jetable (`immotopia_recette`, `AI_PROVIDER=fake`, Chromium via playwright-core) : 0 bloquant, 3 importants et 8 mineurs, tous corrigés ici.
-
-**Fait :** page assistant sans dépassement à 375/768/1440 px et composeur atteignable, bouton flottant masqué sur `/assistant`, PNG de graphique correct, en-tête du tiroir sans chevauchement, cache partagé de `/ai/status`, isolation bidi en arabe, carte d'accord (libellé lisible, champs humanisés, statuts traduits), formats d'artefact, titres Markdown, messages d'accès distincts, quota séparé pour `/ai/actions/reject` (30/min), mot-clé « désactive le collaborateur » du faux fournisseur (plan sensible de test). Vérifié : tests API ciblés (672 + 17), web (422), tsc des deux côtés, check:architecture, wiki:check ; marge du budget d'entrée web 454 o.
-
-**Reste à faire :** recette avec un vrai fournisseur LLM et le vrai micro ; abonnement sans module Location (aucune agence de test adaptée) ; refus propre d'un `call_read` sans permission ; `npm run test:isolation` (base dédiée) ; vérifier en recette l'identifiant utilisé par « désactive » (utilisateur ou membre) ; décisions : liste des anciennes conversations (stockage serveur), refuser les 3 créations imbriquées sans GET parent.
-
-**Pièges :** la base `immotopia_recette` demande `prisma migrate deploy` + `prisma generate` si le code a avancé ; Chromium expose déjà `webkitSpeechRecognition` (le micro s'affiche sans injection) ; noms de fichier accentués téléchargés sous `download` dans Playwright (artefact du navigateur de test) ; marge du budget d'entrée web très faible (454 o) : tout nouveau code dans les chunks lazy ; `i18n:extract` réécrit tout, restaurer les catalogues sans rapport ; les serveurs de recette peuvent encore tourner (API 8001, vite 3000).
-
 ## Branche `integration/multi-actifs` — 2026-10-02
 
 **État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).
