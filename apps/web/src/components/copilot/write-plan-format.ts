@@ -1,5 +1,6 @@
 import { activeLocale, formatNumber } from '../../i18n/format';
 import { t } from '../../i18n/t';
+import { looksLikeUuid } from '../../utils/copilot-artifact';
 import type { CapabilityExecutedPayload, PlanScalar, WritePlan } from '../../types/copilot';
 
 /** Au-delà, une valeur est repliée derrière « Voir plus ». */
@@ -31,6 +32,11 @@ export function formatPlanValue(value: PlanScalar | undefined): string {
     }
   }
   return value;
+}
+
+/** Enregistrement visé : un identifiant brut n'est jamais affiché seul, il est qualifié. */
+export function targetLabelText(label: string): string {
+  return looksLikeUuid(label) ? t('Enregistrement (identifiant {{id}})', { id: label.trim() }) : label;
 }
 
 export function formatDecisionTime(iso: string | undefined): string {

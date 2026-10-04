@@ -645,7 +645,8 @@ body[, requireConfirmation] }` : les `changes` affichés sont une fonction déte
   (`PLAN_HASH_MISMATCH`, `CAPABILITY_NOT_ALLOWED`, `PERMISSION_REVOKED`, `CONFIRMATION_REQUIRED`, `NO_AUTH_HEADERS`,
   motifs du jeton). Jamais le corps brut, ni une valeur, ni un jeton d'accès.
 - **Refus d'un plan** (`POST /ai/actions/reject`, `{ proposalToken }`, `rejectActionHandler`). Mêmes middlewares que
-  `execute` (authentification, agence, collaborateur, garde de l'assistant, limiteur d'action), sans permission de
+  `execute` (authentification, agence, collaborateur, garde de l'assistant, limiteur PROPRE au refus : 30 par minute, compteur séparé de celui des
+  confirmations), sans permission de
   génération : refuser n'écrit rien. Vérifie signature, `sub`, `tid`, puis CONSOMME le jeton par le même mécanisme
   d'usage unique (`redeemProposal`) : un plan refusé ne peut plus être confirmé, même volé. Audit
   `AI_PROPOSAL_REJECTED` (action et `capabilityId`, jamais le jeton ni le corps). Idempotent : jeton déjà utilisé ou
@@ -704,14 +705,14 @@ confondus (sinon N collaborateurs consommeraient N fois le quota) ; il est posé
 après les limiteurs par utilisateur, pour qu'un utilisateur déjà bloqué ne
 consomme pas le budget commun.
 
-| Route                      | Clé                   | Limite                                               |
-| -------------------------- | --------------------- | ---------------------------------------------------- |
-| `POST /ai/chat`            | utilisateur et agence | 20 par minute                                        |
-| `POST /ai/chat`            | utilisateur et agence | 300 par jour                                         |
-| `POST /ai/chat`            | agence seule          | `AI_TENANT_MINUTE_LIMIT` par minute (100 par défaut) |
-| `POST /ai/chat`            | agence seule          | `AI_TENANT_DAILY_LIMIT` par jour (3000 par défaut)   |
-| `POST /ai/actions/execute` | utilisateur et agence | 10 par minute (quittances et plans d'écriture)       |
-| `POST /ai/actions/reject`  | utilisateur et agence | 10 par minute (limiteur d'action partagé)            |
+| Route                      | Clé                   | Limite                                                    |
+| -------------------------- | --------------------- | --------------------------------------------------------- |
+| `POST /ai/chat`            | utilisateur et agence | 20 par minute                                             |
+| `POST /ai/chat`            | utilisateur et agence | 300 par jour                                              |
+| `POST /ai/chat`            | agence seule          | `AI_TENANT_MINUTE_LIMIT` par minute (100 par défaut)      |
+| `POST /ai/chat`            | agence seule          | `AI_TENANT_DAILY_LIMIT` par jour (3000 par défaut)        |
+| `POST /ai/actions/execute` | utilisateur et agence | 10 par minute (quittances et plans d'écriture)            |
+| `POST /ai/actions/reject`  | utilisateur et agence | 30 par minute (compteur propre, jetons invalides compris) |
 
 Une IA qui chaîne des écritures reste bornée : au plus 3 plans d'écriture par requête de chat (donc
 au plus 3 cartes d'accord à lire), 4 tours d'outils et 8 appels d'outils par requête, 20 requêtes de

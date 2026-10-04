@@ -18,7 +18,8 @@ import {
   methodLabel,
   planModuleLabel,
   recordKindLabel,
-  resultPreviewText
+  resultPreviewText,
+  targetLabelText
 } from './write-plan-format';
 
 export interface WritePlanCardProps {
@@ -103,7 +104,9 @@ function PlanContent({ plan }: { plan: WritePlan }): React.ReactElement {
         {plan.target ? (
           <p style={{ margin: '6px 0' }}>
             <span style={mutedStyle}>{t('Enregistrement visé')} : </span>
-            <strong>{plan.target.label}</strong>
+            <strong>
+              <bdi>{targetLabelText(plan.target.label)}</bdi>
+            </strong>
             {plan.target.resolved ? null : <span style={mutedStyle}> ({t('non retrouvé par le serveur')})</span>}
           </p>
         ) : null}

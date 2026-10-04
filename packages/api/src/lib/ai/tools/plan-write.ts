@@ -30,6 +30,7 @@ import {
   MAX_DISPLAYED_CHANGES,
   parentResourcePath,
   readableLabel,
+  shortRecordId,
   unwrapRecord,
   type RecordKind
 } from '../write-plan';
@@ -365,7 +366,8 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
 
     let target: WritePlan['target'] = null;
     if (kind !== 'create' || nestedCreate) {
-      const fallback = lastParamValue(entry, pathParams);
+      const rawId = lastParamValue(entry, pathParams);
+      const fallback = rawId ? t('Enregistrement {{id}}', { id: shortRecordId(rawId) }) : null;
       const label = readableLabel(state?.record ?? null) ?? fallback;
       target = label ? { label, resolved: state !== null } : null;
     }

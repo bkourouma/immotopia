@@ -99,6 +99,7 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
       title,
       chartType,
       xKey,
+      ...(str(raw.xLabel) ? { xLabel: str(raw.xLabel) } : {}),
       series,
       data: cleanRows(raw.data, [xKey, ...series.map(s => s.key)], ARTIFACT_MAX_CHART_POINTS)
     };
@@ -106,13 +107,49 @@ export function sanitizeArtifact(raw: unknown): CopilotArtifact | null {
   return null;
 }
 
+// --- Libellés -----------------------------------------------------------------
+
+const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.[\]-]*$/;
+
+/**
+ * Nom technique d'un champ rendu lisible : `internalNotes` -> « Internal notes »,
+ * `owner_name` -> « Owner name », `address.city` -> « Address city ». Un texte qui
+ * n'est pas un identifiant (déjà un libellé, accents, espaces) reste tel quel.
+ */
+export function humanizeFieldName(name: string): string {
+  if (!IDENTIFIER.test(name)) return name;
+  const words = name
+    .replace(/\[(\d+)\]/g, ' $1 ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/[_.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const looksLikeUuid = (text: string): boolean => UUID.test(text.trim());
+
 // --- Affichage ---------------------------------------------------------------
+
+/** Montant : 0 décimale pour un entier, sinon toujours 2 (« 90 000 » et « 90 000,50 », jamais « 90 000,5 »). */
+export function formatArtifactAmount(value: number): string {
+  const decimals = Number.isInteger(value) ? 0 : 2;
+  return new Intl.NumberFormat(activeLocale(), {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(value);
+}
 
 /** Cellule formatée pour l'écran (nombre, devise, date selon la langue active). */
 export function formatArtifactCell(value: ArtifactCell, type?: 'text' | 'number' | 'currency' | 'date'): string {
   if (value === null || value === undefined) return '';
   if ((type === 'number' || type === 'currency') && typeof value === 'number') {
-    return new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: type === 'currency' ? 2 : 6 }).format(value);
+    if (type === 'currency') return formatArtifactAmount(value);
+    return new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: 6 }).format(value);
   }
   if (type === 'date') {
     const text = String(value);
@@ -176,6 +213,11 @@ export function toCsv(
   return lines.join('\r\n');
 }
 
+/** Libellé de l'axe des abscisses : celui du serveur s'il existe, sinon la clé rendue lisible. */
+export function chartXLabel(artifact: Extract<CopilotArtifact, { kind: 'chart' }>): string {
+  return artifact.xLabel || humanizeFieldName(artifact.xKey);
+}
+
 /** Colonnes et lignes à exporter pour un tableau ou les données d'un graphique. */
 export function exportableTable(
   artifact: CopilotArtifact
@@ -184,7 +226,7 @@ export function exportableTable(
   if (artifact.kind === 'chart') {
     return {
       columns: [
-        { key: artifact.xKey, label: artifact.xKey },
+        { key: artifact.xKey, label: chartXLabel(artifact) },
         ...artifact.series.map(s => ({ key: s.key, label: s.label }))
       ],
       rows: artifact.data

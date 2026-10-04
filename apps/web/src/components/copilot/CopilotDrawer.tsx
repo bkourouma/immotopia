@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ClearOutlined, ExpandOutlined } from '@ant-design/icons';
-import { Button, Drawer, Space } from 'antd';
+import { Button, Drawer, Space, Tooltip } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -75,20 +75,27 @@ const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ tenantId, status, open, o
         if (visible) inputRef.current?.focus();
       }}
       extra={
-        <Space size="small">
+        // Icônes seules : trois libellés à côté du titre débordaient du tiroir (440 px, mobile).
+        <Space size={4}>
           {!onAssistantPage && (
-            <Button type="text" icon={<ExpandOutlined />} onClick={openFullPage}>
-              {t('Ouvrir en pleine page')}
-            </Button>
+            <Tooltip title={t('Ouvrir en pleine page')}>
+              <Button
+                type="text"
+                icon={<ExpandOutlined aria-hidden />}
+                aria-label={t('Ouvrir en pleine page')}
+                onClick={openFullPage}
+              />
+            </Tooltip>
           )}
-          <Button
-            type="text"
-            icon={<ClearOutlined />}
-            disabled={chat.messages.length === 0}
-            onClick={() => chat.reset()}
-          >
-            {t('Nouvelle conversation')}
-          </Button>
+          <Tooltip title={t('Nouvelle conversation')}>
+            <Button
+              type="text"
+              icon={<ClearOutlined aria-hidden />}
+              aria-label={t('Nouvelle conversation')}
+              disabled={chat.messages.length === 0}
+              onClick={() => chat.reset()}
+            />
+          </Tooltip>
         </Space>
       }
       styles={{ body: { display: 'flex', flexDirection: 'column', padding: 0 } }}

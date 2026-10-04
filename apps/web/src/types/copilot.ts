@@ -191,7 +191,11 @@ export function isCapabilityExecuted(r: ExecuteActionResult | undefined): r is C
 
 export interface CopilotStatus {
   enabled: boolean;
-  reason?: 'NOT_CONFIGURED' | 'NO_TOOLS';
+  /**
+   * `NOT_CONFIGURED` / `NO_TOOLS` : renvoyés par l'API. `FORBIDDEN` / `NOT_FOUND` : posés par
+   * le client quand l'état est refusé (401/403) ou que l'agence est introuvable (404).
+   */
+  reason?: 'NOT_CONFIGURED' | 'NO_TOOLS' | 'FORBIDDEN' | 'NOT_FOUND';
   provider: 'fake' | 'anthropic' | 'openrouter' | null;
   tools: CopilotToolName[];
   limits: { maxMessages: number; maxMessageChars: number };
@@ -217,6 +221,8 @@ export type CopilotArtifact =
       title: string;
       chartType: 'bar' | 'line' | 'pie';
       xKey: string;
+      /** Libellé de l'axe des abscisses, si le serveur en fournit un ; sinon la clé rendue lisible. */
+      xLabel?: string;
       series: { key: string; label: string }[];
       data: Record<string, ArtifactCell>[];
     };
