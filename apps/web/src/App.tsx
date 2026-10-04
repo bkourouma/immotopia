@@ -175,21 +175,12 @@ const BalanceClients = lazy(() =>
 const BalanceAgee = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/BalanceAgee').then(m => ({ default: m.BalanceAgee }))
 );
-const CommissionsAgents = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/CommissionsAgents').then(m => ({
-    default: m.CommissionsAgents
-  }))
-);
-const ComptesProprietaires = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/ComptesProprietaires').then(m => ({
-    default: m.ComptesProprietaires
-  }))
-);
-const CompteProprietaire = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/CompteProprietaire').then(m => ({
-    default: m.CompteProprietaire
-  }))
-);
+// Espace « Reversements et commissions » : même relais que le stock, voir
+// `pages/finance/reversement-pages.ts` (budget §8.1 du chunk d'entrée).
+const reversementPages = () => import(/* webpackChunkName: "finance" */ './pages/finance/reversement-pages');
+const CommissionsAgents = lazy(() => reversementPages().then(m => m.loadCommissionsAgents()));
+const ComptesProprietaires = lazy(() => reversementPages().then(m => m.loadComptesProprietaires()));
+const CompteProprietaire = lazy(() => reversementPages().then(m => m.loadCompteProprietaire()));
 const Releve = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Releve').then(m => ({ default: m.Releve }))
 );
@@ -227,63 +218,27 @@ const Facturation = lazy(() =>
 // Module financier, lot 2 — meme morceau que le lot 1 : les ecrans se
 // consultent a la suite (une balance fournisseurs, puis la facture qu'elle
 // ouvre), et les separer ferait payer un aller-retour reseau a chaque clic.
-const Fournisseurs = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/Fournisseurs').then(m => ({ default: m.Fournisseurs }))
-);
-const BalanceFournisseurs = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/BalanceFournisseurs').then(m => ({
-    default: m.BalanceFournisseurs
-  }))
-);
-const FactureFournisseur = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/FactureFournisseur').then(m => ({
-    default: m.FactureFournisseur
-  }))
-);
-const Chantiers = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/Chantiers').then(m => ({ default: m.Chantiers }))
-);
-const ChantierDetail = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/ChantierDetail').then(m => ({ default: m.ChantierDetail }))
-);
+// Espace « Fournisseurs et commandes » : même relais que le stock, voir
+// `pages/finance/fournisseur-pages.ts` (budget §8.1 du chunk d'entrée).
+const fournisseurPages = () => import(/* webpackChunkName: "finance" */ './pages/finance/fournisseur-pages');
+const Fournisseurs = lazy(() => fournisseurPages().then(m => m.loadFournisseurs()));
+const BalanceFournisseurs = lazy(() => fournisseurPages().then(m => m.loadBalanceFournisseurs()));
+const FactureFournisseur = lazy(() => fournisseurPages().then(m => m.loadFactureFournisseur()));
+// Espace « Suivi des chantiers » : même relais que le stock, voir
+// `pages/finance/chantier-pages.ts` (budget §8.1 du chunk d'entrée).
+const chantierPages = () => import(/* webpackChunkName: "finance" */ './pages/finance/chantier-pages');
+const Chantiers = lazy(() => chantierPages().then(m => m.loadChantiers()));
+const ChantierDetail = lazy(() => chantierPages().then(m => m.loadChantierDetail()));
 const PieceDeCaisse = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/PieceDeCaisse').then(m => ({ default: m.PieceDeCaisse }))
 );
-const BudgetChantier = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/BudgetChantier').then(m => ({
-    default: m.BudgetChantier
-  }))
-);
-const BonsDeCommande = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/BonsDeCommande').then(m => ({
-    default: m.BonsDeCommande
-  }))
-);
-const BonDeCommande = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/BonDeCommande').then(m => ({
-    default: m.BonDeCommande
-  }))
-);
-const BauxDeTerrain = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/BauxDeTerrain').then(m => ({
-    default: m.BauxDeTerrain
-  }))
-);
-const BailDeTerrain = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/BailDeTerrain').then(m => ({
-    default: m.BailDeTerrain
-  }))
-);
-const Associations = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/Associations').then(m => ({
-    default: m.Associations
-  }))
-);
-const Association = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/Association').then(m => ({
-    default: m.Association
-  }))
-);
+const BudgetChantier = lazy(() => chantierPages().then(m => m.loadBudgetChantier()));
+const BonsDeCommande = lazy(() => fournisseurPages().then(m => m.loadBonsDeCommande()));
+const BonDeCommande = lazy(() => fournisseurPages().then(m => m.loadBonDeCommande()));
+const BauxDeTerrain = lazy(() => chantierPages().then(m => m.loadBauxDeTerrain()));
+const BailDeTerrain = lazy(() => chantierPages().then(m => m.loadBailDeTerrain()));
+const Associations = lazy(() => reversementPages().then(m => m.loadAssociations()));
+const Association = lazy(() => reversementPages().then(m => m.loadAssociation()));
 const Salaires = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Salaires').then(m => ({
     default: m.Salaires
@@ -304,67 +259,28 @@ const Tacheron = lazy(() =>
     default: m.Tacheron
   }))
 );
-const Stock = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/Stock').then(m => ({ default: m.Stock }))
-);
-const StockReferentiel = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockReferentiel').then(m => ({
-    default: m.StockReferentiel
-  }))
-);
-const StockInventaire = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockInventaire').then(m => ({
-    default: m.StockInventaire
-  }))
-);
-const StockChantier = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockChantier').then(m => ({
-    default: m.StockChantier
-  }))
-);
-// Lot 040 : les trois écrans nouveaux de l'espace « Gestion du stock », dans
-// le même chunk que leurs voisins, sur leurs exports NOMMÉS.
-const StockMagasin = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockMagasin').then(m => ({
-    default: m.StockMagasin
-  }))
-);
-const StockPreneurs = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockPreneurs').then(m => ({
-    default: m.StockPreneurs
-  }))
-);
-const StockControle = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockControle').then(m => ({
-    default: m.StockControle
-  }))
-);
-// Lot 041 — inventaire de chantier par WhatsApp.
-const StockWhatsapp = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockWhatsapp').then(m => ({
-    default: m.StockWhatsapp
-  }))
-);
-const StockComptagesTerrain = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/StockComptagesTerrain').then(m => ({
-    default: m.StockComptagesTerrain
-  }))
-);
+// Espace « Gestion du stock » : un seul import() ici, vers le relais
+// `stock-pages`, qui porte ceux des écrans et leurs listes de préchargement hors
+// du chunk d'entrée (budget §8.1). Un nouvel écran du stock s'ajoute dans ce
+// relais, pas ici.
+const stockPages = () => import(/* webpackChunkName: "finance" */ './pages/finance/stock-pages');
+const Stock = lazy(() => stockPages().then(m => m.loadStock()));
+const StockReferentiel = lazy(() => stockPages().then(m => m.loadStockReferentiel()));
+const StockInventaire = lazy(() => stockPages().then(m => m.loadStockInventaire()));
+const StockChantier = lazy(() => stockPages().then(m => m.loadStockChantier()));
+const StockMagasin = lazy(() => stockPages().then(m => m.loadStockMagasin()));
+const StockPreneurs = lazy(() => stockPages().then(m => m.loadStockPreneurs()));
+const StockControle = lazy(() => stockPages().then(m => m.loadStockControle()));
+// Lot 041 — inventaire de chantier par WhatsApp, par le même relais.
+const StockWhatsapp = lazy(() => stockPages().then(m => m.loadStockWhatsapp()));
+const StockComptagesTerrain = lazy(() => stockPages().then(m => m.loadStockComptagesTerrain()));
 const RetenuesDeGarantie = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/RetenuesDeGarantie').then(m => ({
     default: m.RetenuesDeGarantie
   }))
 );
-const ClotureChantier = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/ClotureChantier').then(m => ({
-    default: m.ClotureChantier
-  }))
-);
-const TableauDeBordChantiers = lazy(() =>
-  import(/* webpackChunkName: "finance" */ './pages/finance/TableauDeBordChantiers').then(m => ({
-    default: m.TableauDeBordChantiers
-  }))
-);
+const ClotureChantier = lazy(() => chantierPages().then(m => m.loadClotureChantier()));
+const TableauDeBordChantiers = lazy(() => chantierPages().then(m => m.loadTableauDeBordChantiers()));
 const FileDeValidation = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/FileDeValidation').then(m => ({
     default: m.FileDeValidation
