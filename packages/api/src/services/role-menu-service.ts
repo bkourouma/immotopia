@@ -15,6 +15,12 @@ import { prisma } from '../utils/database';
  *      ne doit pas vider l'application de sa navigation.
  *
  * Conséquence directe : seul un `enabled = false` explicite masque un menu.
+ *
+ * Défaut + surcharge par agence : une décision porte un `tenantId` nullable.
+ * `null` sur un rôle d'agence ou de portail = défaut valable pour TOUTES les
+ * agences ; `null` sur un rôle PLATFORM = périmètre plateforme ; un `tenantId`
+ * = surcharge pour cette agence. Pour chaque (rôle, menu), la ligne de l'agence
+ * l'emporte, à défaut la ligne `null`, à défaut rien (= autorisé).
  */
 
 /** Pseudo-rôle du portail propriétaire (aucune ligne dans `roles`). */
@@ -28,9 +34,31 @@ export interface RoleMenuAccessEntry {
   enabled: boolean;
 }
 
-/** Toutes les décisions enregistrées, indexées par rôle puis par menu. */
-export async function getAllMenuAccess(): Promise<Record<string, Record<string, boolean>>> {
+/**
+ * Périmètre d'une ligne enregistrée : une agence (`tenantId`, surcharge) ou
+ * `null` (défaut de toutes les agences pour un rôle d'agence ou de portail,
+ * périmètre plateforme pour un rôle PLATFORM). Les fonctions de lecture et
+ * d'écriture ci-dessous manipulent les lignes EXACTES d'un périmètre ; la
+ * résolution défaut/surcharge n'a lieu que dans `getDisabledMenusForUser`.
+ */
+export type MenuAccessScope = string | null;
+
+/**
+ * Le modèle est exempté de la garde tenant (`tenantId` nullable par
+ * conception) : un `undefined` arrivé par erreur ferait ignorer le filtre par
+ * Prisma et toucherait TOUTES les agences. On le refuse donc à l'exécution.
+ */
+function assertExplicitScope(tenantId: MenuAccessScope | undefined): asserts tenantId is MenuAccessScope {
+  if (tenantId === undefined) {
+    throw new Error('Périmètre des menus non précisé : passer un tenantId ou null.');
+  }
+}
+
+/** Décisions enregistrées pour un périmètre, indexées par rôle puis par menu. */
+export async function getMenuAccess(tenantId: MenuAccessScope): Promise<Record<string, Record<string, boolean>>> {
+  assertExplicitScope(tenantId);
   const rows = await prisma.roleMenuAccess.findMany({
+    where: { tenantId },
     select: { roleKey: true, menuKey: true, enabled: true }
   });
 
@@ -42,10 +70,14 @@ export async function getAllMenuAccess(): Promise<Record<string, Record<string, 
   return byRole;
 }
 
-/** Décisions enregistrées pour un rôle donné. */
-export async function getMenuAccessForRole(roleKey: string): Promise<Record<string, boolean>> {
+/** Décisions enregistrées pour un rôle donné, dans un périmètre. */
+export async function getMenuAccessForRole(
+  roleKey: string,
+  tenantId: MenuAccessScope
+): Promise<Record<string, boolean>> {
+  assertExplicitScope(tenantId);
   const rows = await prisma.roleMenuAccess.findMany({
-    where: { roleKey },
+    where: { roleKey, tenantId },
     select: { menuKey: true, enabled: true }
   });
 
@@ -56,24 +88,28 @@ export async function getMenuAccessForRole(roleKey: string): Promise<Record<stri
 }
 
 /**
- * Remplace l'intégralité des décisions d'un rôle.
+ * Remplace l'intégralité des décisions d'un rôle dans UN périmètre.
  *
  * L'appelant envoie la carte complète telle qu'affichée, y compris les `true` :
  * sans cela, réactiver un menu précédemment coupé demanderait de distinguer
  * « remis par défaut » de « explicitement autorisé », distinction sans objet
- * ici. On écrase donc, dans une transaction, plutôt que de fusionner.
+ * ici. On écrase donc, dans une transaction, plutôt que de fusionner. Seules
+ * les lignes de ce périmètre sont effacées : les autres agences ne bougent pas.
  */
 export async function replaceMenuAccessForRole(
   roleKey: string,
-  menus: Record<string, boolean>
+  menus: Record<string, boolean>,
+  tenantId: MenuAccessScope
 ): Promise<Record<string, boolean>> {
+  assertExplicitScope(tenantId);
   const entries = Object.entries(menus);
 
   await prisma.$transaction(async tx => {
-    await tx.roleMenuAccess.deleteMany({ where: { roleKey } });
+    await tx.roleMenuAccess.deleteMany({ where: { roleKey, tenantId } });
     if (entries.length > 0) {
       await tx.roleMenuAccess.createMany({
         data: entries.map(([menuKey, enabled]) => ({
+          tenantId,
           roleKey,
           menuKey,
           enabled: Boolean(enabled)
@@ -82,7 +118,7 @@ export async function replaceMenuAccessForRole(
     }
   });
 
-  return getMenuAccessForRole(roleKey);
+  return getMenuAccessForRole(roleKey, tenantId);
 }
 
 /**
@@ -121,23 +157,42 @@ export async function resolveRoleKeysForUser(userId: string, tenantId?: string):
 /**
  * Menus coupés pour un utilisateur.
  *
- * Un compte qui cumule plusieurs rôles garde le menu dès qu'**un seul** de ses
- * rôles l'autorise : le cumul de rôles élargit les droits, il ne les restreint
- * pas. Un menu n'est donc coupé que si tous ses rôles le coupent.
+ * Étape 1 : pour chaque rôle, valeur effective par menu. Avec une agence, la
+ * ligne de l'agence l'emporte sur la ligne `null` (défaut) ; sans agence, seules
+ * les lignes `null` comptent.
+ *
+ * Étape 2 : un compte qui cumule plusieurs rôles garde le menu dès qu'**un
+ * seul** de ses rôles l'autorise : le cumul de rôles élargit les droits, il ne
+ * les restreint pas. Un menu n'est donc coupé que si au moins un rôle le coupe
+ * (valeur effective) et qu'aucun ne l'autorise.
  */
 export async function getDisabledMenusForUser(userId: string, tenantId?: string): Promise<string[]> {
   const roleKeys = await resolveRoleKeysForUser(userId, tenantId);
   if (roleKeys.length === 0) return [];
 
   const rows = await prisma.roleMenuAccess.findMany({
-    where: { roleKey: { in: roleKeys } },
-    select: { menuKey: true, enabled: true }
+    where: {
+      roleKey: { in: roleKeys },
+      ...(tenantId ? { OR: [{ tenantId }, { tenantId: null }] } : { tenantId: null })
+    },
+    select: { roleKey: true, menuKey: true, enabled: true, tenantId: true }
   });
+
+  // Valeur effective par (rôle, menu) : la ligne d'agence écrase la ligne null.
+  const effective = new Map<string, { menuKey: string; enabled: boolean; fromTenant: boolean }>();
+  for (const row of rows) {
+    const key = `${row.roleKey}|${row.menuKey}`;
+    const fromTenant = row.tenantId !== null;
+    const current = effective.get(key);
+    if (!current || (fromTenant && !current.fromTenant)) {
+      effective.set(key, { menuKey: row.menuKey, enabled: row.enabled, fromTenant });
+    }
+  }
 
   const allowedSomewhere = new Set<string>();
   const deniedSomewhere = new Set<string>();
-  for (const row of rows) {
-    (row.enabled ? allowedSomewhere : deniedSomewhere).add(row.menuKey);
+  for (const { menuKey, enabled } of effective.values()) {
+    (enabled ? allowedSomewhere : deniedSomewhere).add(menuKey);
   }
 
   return Array.from(deniedSomewhere).filter(menuKey => !allowedSomewhere.has(menuKey));

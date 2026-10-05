@@ -193,6 +193,20 @@ Pièges et décisions :
 
 **Pièges :** `npx prisma generate` après tout `git merge main` qui change le schéma (sinon ~300 erreurs tsc et 9 suites en échec) ; `git checkout --theirs` pendant une fusion = version de main ; les modifs d'un agent non indexées avant `git commit` ne sont pas dans le commit (réindexer) ; `npm run ai:catalog` après tout changement de routes ; le hook bloque une commande combinant `git fetch origin main` et un push ; test d'import patrimoine : le sous-test (1 bis) porte le parcours complet.
 
+## Branche `feat/menus-coupes-par-agence` — 2026-10-05
+
+**État :** PR #112 ouverte vers `main` (fusion à l'utilisateur), worktree `.claude/worktrees/menus-agence`, correction automatique de la CI active. Rien de déployé.
+
+**Fait :** décision utilisateur du 2026-10-05 « défaut + surcharge par agence » (les lots 040/041 coupent une fois, pour toutes les agences, les menus hors stock des rôles Magasinier et Chef de chantier). `role_menu_access.tenant_id` : NULL = défaut de toutes les agences pour un rôle d'agence/portail, périmètre plateforme pour un rôle PLATFORM ; agence = surcharge. Résolution par (rôle, menu) : agence > défaut > rien. Migration `20261010100000_role_menu_access_par_agence` : colonne, FK en cascade, unicités (dont index partiel NULL), sans copie : les décisions existantes deviennent le défaut. PUT sans `tenantId` = défaut (rôle d'agence) ou plateforme ; avec = surcharge (interdit pour PLATFORM) ; `{}` avec `tenantId` = « Revenir au défaut ». Écran Menus : choix « Toutes les agences (défaut) » ou une agence, tags « Hérite du défaut » / « Réglage propre à l'agence », bouton « Revenir au défaut ». DEPLOIEMENT.md (lots 040/041) et classeur à jour.
+
+**Vérifié :** Jest 89 tests ciblés, Vitest 292 (admin, navigation), typecheck web 0 / API 1 préexistante (`archiver`), `wiki:check`. Recette navigateur faite le 2026-10-04 sur la version « strictement par agence » (non rejouée sur la version défaut + surcharge).
+
+**Reste :** rejouer la recette navigateur sur la version défaut + surcharge ; après fusion, déployer le staging puis appliquer les étapes 040/041 (couper les menus hors stock des rôles stock avec « Toutes les agences (défaut) »).
+
+**Pièges :** une sauvegarde au niveau d'une agence écrit sa carte complète et fige ses valeurs jusqu'à « Revenir au défaut ». Modifier le défaut touche toutes les agences sans réglage propre (alerte à l'écran). `npm run i18n:extract` réécrit 30 catalogues en retard sur `main` : ajouter ses clés à la main. Le test « Importer mon patrimoine » dépasse parfois 30 s en CI (passe seul). L'instance démo n'a pas sa base migrée (service `postgresql-x64-18` arrêté). Staging : `SUBSCRIPTION_ENFORCEMENT=enforce` depuis le 2026-10-03 (sauvegarde `immotopia-saas.env.avant-enforce-20261003`), coupures TENANT_ADMIN levées le même jour (sauvegarde `/home/deployer/role_menu_access_tenant_admin_avant_20261003.csv`).
+
+---
+
 ## Branche `integration/multi-actifs` — 2026-10-02
 
 **État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).

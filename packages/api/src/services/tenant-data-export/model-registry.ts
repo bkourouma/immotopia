@@ -74,7 +74,8 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
   Role: 'Catalogue de roles de la plateforme (sans agence).',
   Permission: 'Catalogue de permissions de la plateforme.',
   RolePermission: 'Jonction role/permission du catalogue plateforme.',
-  RoleMenuAccess: 'Acces aux menus par role, reglage plateforme.',
+  RoleMenuAccess:
+    "Acces aux menus par role : reglage de l'agence ou de la plateforme (tenantId nullable), non exporte.",
   Country: 'Referentiel geographique public.',
   Region: 'Referentiel geographique public.',
   Commune: 'Referentiel geographique public.',
