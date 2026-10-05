@@ -25,7 +25,7 @@ Modèle de section :
 - bkourouma/immotopia#114 (lot 040), commit de fusion `73616da3` ;
 - bkourouma/immotopia#115 (lot 041, redirigée vers `main` après la #114), commit de fusion `757771e8`.
 
-CI verte sur les deux. **Rien n'est déployé.** Les branches distantes `feat/controle-stock` et `feat/inventaire-whatsapp` existent encore, sans suppression automatique à la fusion. Les worktrees `controle-stock` et `inventaire-whatsapp` sont aussi encore présents ; le second fait tourner l'instance de recette.
+CI verte sur les deux. **Rien n'est déployé** : le checkout du serveur (`/home/deployer/immotopia-saas`) a été avancé en avance rapide de `24ea2062` à `757771e8` (arbre propre), mais `deploy.sh staging` n'a pas été lancé (refusé par la protection automatique de l'outil) ; staging et production tournent sur leurs anciennes images. Le prochain `deploy.sh`, staging ou production, construira `757771e8`. Les branches distantes `feat/controle-stock` et `feat/inventaire-whatsapp` existent encore, sans suppression automatique à la fusion. Les worktrees `controle-stock` et `inventaire-whatsapp` sont aussi encore présents ; le second fait tourner l'instance de recette.
 
 **Décisions de l'utilisateur :**
 
