@@ -266,13 +266,46 @@ type Utilisateur = ReturnType<typeof userEvent.setup>;
 // (.xlsm), pour vérifier que la page les refuse elle-même.
 const nouvelUtilisateur = (): Utilisateur => userEvent.setup({ delay: null, applyAccept: false });
 
-const titreEtape = (nom: string) => screen.findByRole('heading', { name: nom }, { timeout: 30000 });
+/*
+ * Les helpers de pilotage ne passent pas par `*ByRole` sur tout le document. Cette requête calcule le nom
+ * accessible de CHAQUE élément du rôle demandé, et ce calcul appelle `getComputedStyle` sur chaque nœud
+ * descendant, que jsdom résout contre toutes les feuilles injectées par antd ; `findBy*` et `waitFor` la
+ * rejouent à chaque mutation du DOM et toutes les 50 ms. Avec la table de l'aperçu (des boutons par ligne),
+ * ces requêtes pesaient près de la moitié du parcours nominal au profil CPU, et bloquaient la boucle
+ * d'événements pendant le rendu de la page : sous la charge de la CI, le parcours nominal expirait.
+ *
+ * On localise donc l'élément par son texte ou son libellé (sans calcul de style), puis on vérifie sur lui
+ * seul son rôle (`toHaveRole`, sans calcul de style non plus) et qu'aucun `aria-label`/`aria-labelledby`
+ * ne remplace son texte : son nom accessible est alors ce texte, déjà vérifié.
+ */
+function verifierRole<T extends HTMLElement>(element: T, role: string): T {
+  expect(element).toHaveRole(role);
+  expect(element).not.toHaveAttribute('aria-label');
+  expect(element).not.toHaveAttribute('aria-labelledby');
+  return element;
+}
+
+async function titreEtape(nom: string): Promise<HTMLElement> {
+  const titre = await screen.findByText(nom, { selector: 'h1, h2, h3, h4, h5, h6' }, { timeout: 30000 });
+  return verifierRole(titre, 'heading');
+}
+
+/** Le bouton dont le texte correspond au motif. */
+const boutonParTexte = (motif: RegExp): HTMLButtonElement | undefined =>
+  Array.from(document.querySelectorAll('button')).find(candidat => motif.test((candidat.textContent ?? '').trim()));
+
+async function bouton(motif: RegExp): Promise<HTMLButtonElement> {
+  await waitFor(() => expect(boutonParTexte(motif)).toBeDefined());
+  return verifierRole(boutonParTexte(motif) as HTMLButtonElement, 'button');
+}
 
 async function choisirNature(user: Utilisateur, nature: 'Biens' | 'Valorisations') {
-  await user.click(await screen.findByRole('radio', { name: new RegExp(`^${nature}`) }));
-  // Pendant le chargement des listes, le bouton porte son icône : « loading Continuer ».
-  await waitFor(() => expect(screen.getByRole('button', { name: /Continuer/ })).toBeEnabled());
-  await user.click(screen.getByRole('button', { name: /Continuer/ }));
+  const choix = await screen.findByLabelText(new RegExp(`^${nature}`));
+  expect(choix).toHaveRole('radio');
+  await user.click(choix);
+  // Pendant le chargement des listes, le bouton est désactivé et porte son icône de chargement.
+  await waitFor(() => expect(boutonParTexte(/Continuer/)).toBeEnabled());
+  await user.click(await bouton(/Continuer/));
   await titreEtape('Le fichier');
 }
 
@@ -288,9 +321,7 @@ async function ouvrirApercu(user: Utilisateur, nature: 'Biens' | 'Valorisations'
 }
 
 const boutonImporter = (nombre?: number) =>
-  screen.findByRole('button', {
-    name: nombre === undefined ? /^Importer \d+ ligne\(s\)$/ : `Importer ${nombre} ligne(s)`
-  });
+  bouton(nombre === undefined ? /^Importer \d+ ligne\(s\)$/ : new RegExp(`^Importer ${nombre} ligne\\(s\\)$`));
 
 async function lancerImport(user: Utilisateur) {
   await user.click(await boutonImporter());
@@ -365,7 +396,7 @@ describe('Importer mon patrimoine — la page', () => {
     await choisirNature(user, 'Biens');
 
     // Gabarit : un .xlsx part au téléchargement.
-    await user.click(screen.getByRole('button', { name: /Télécharger le gabarit Excel/ }));
+    await user.click(await bouton(/Télécharger le gabarit Excel/));
     await waitFor(() => expect(saveBlob).toHaveBeenCalledTimes(1));
     const [gabarit, nomGabarit] = saveBlob.mock.calls[0] as [Blob, string];
     expect(nomGabarit).toMatch(/\.xlsx$/);
@@ -931,7 +962,7 @@ describe('Importer mon patrimoine — la page', () => {
     await choisirNature(user, 'Biens');
 
     // Le gabarit réel, rendu tel quel : il ne contient que la ligne d'exemple.
-    await user.click(screen.getByRole('button', { name: /Télécharger le gabarit Excel/ }));
+    await user.click(await bouton(/Télécharger le gabarit Excel/));
     await waitFor(() => expect(saveBlob).toHaveBeenCalledTimes(1));
     const [gabarit, nom] = saveBlob.mock.calls[0] as [Blob, string];
     await deposer(user, new File([gabarit], nom));
