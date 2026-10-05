@@ -110,6 +110,11 @@ export const callReadTool: CopilotToolDefinition<typeof inputSchema> = {
     if (response.tooLarge) {
       return fail(413, t('Réponse trop volumineuse : ajoutez des filtres ou une pagination (page, limit).'));
     }
+    // Refus de la route réelle (permission, abonnement) : refus de l'assistant, pas un résultat ordinaire.
+    // L'orchestrateur le reconnaît (tool_status `forbidden`, audit AI_TOOL_DENIED) ; message fixe, sans détail serveur.
+    if (response.status === 401 || response.status === 403) {
+      throw new ForbiddenError(t("Vous n'avez pas la permission de consulter cette ressource."));
+    }
     if (response.status >= 300) return fail(response.status, httpErrorMessage(response.status, response.text));
     if (!/json/i.test(response.contentType)) {
       return fail(response.status, t('contenu non textuel, non affiché'));

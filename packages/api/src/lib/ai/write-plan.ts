@@ -181,7 +181,19 @@ const LABEL_KEYS_AFTER_PERSON = [
   'email'
 ] as const;
 /** Sous-objets où une réponse enveloppée peut porter l'enregistrement. */
-const LABEL_WRAPPER_KEYS = ['data', 'contact', 'item', 'record', 'result', 'property', 'lease'] as const;
+const LABEL_WRAPPER_KEYS = [
+  'data',
+  'contact',
+  'item',
+  'record',
+  'result',
+  'property',
+  'lease',
+  // Membre d'agence : `GET /users/:userId` renvoie `{ data: { ...membership, user: { fullName, email } } }`.
+  'member',
+  'membership',
+  'user'
+] as const;
 const MAX_LABEL_CHARS = 120;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -236,16 +248,19 @@ function labelOfLevel(record: Record<string, unknown>): string | null {
 
 /**
  * Libellé lisible d'un enregistrement (nom, titre, numéro, référence, e-mail…), ou null. Si le niveau
- * courant n'en porte aucun, cherche une fois dans un sous-objet d'enveloppe (`data`, `contact`, `item`…).
+ * courant n'en porte aucun, cherche dans un sous-objet d'enveloppe (`data`, `contact`, `item`, `member`,
+ * `membership`, `user`…), sur deux niveaux au plus : `data.user`, `member.user`, `membership.user`.
+ * Une personne se nomme par `fullName`, sinon prénom + nom, sinon e-mail.
  */
-export function readableLabel(record: Record<string, unknown> | null): string | null {
+export function readableLabel(record: Record<string, unknown> | null, depth = 0): string | null {
   if (!record) return null;
   const own = labelOfLevel(record);
   if (own) return own;
+  if (depth >= 2) return null;
   for (const key of LABEL_WRAPPER_KEYS) {
     const child = record[key];
     if (isRecord(child)) {
-      const found = labelOfLevel(child);
+      const found = readableLabel(child, depth + 1);
       if (found) return found;
     }
   }

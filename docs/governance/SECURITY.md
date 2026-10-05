@@ -470,6 +470,11 @@ permet de consulter sans un outil par route.
   paramètres de chemin sont un UUID ou un jeton simple (`^[A-Za-z0-9_-]{1,64}$`),
   encodés ; la requête est limitée à 20 clés de valeurs primitives. L'URL de base ne se
   change que par `setLoopbackBaseUrlForTests`, refusé hors `NODE_ENV=test`.
+  **Refus de la route réelle** : un 401 ou 403 du loopback (`call_read`, et la lecture de l'état « avant »
+  de `plan_write`) est un refus de l'assistant, pas un résultat ordinaire : l'outil lève `ForbiddenError` (message
+  fixe, sans détail ni jeton du serveur), l'orchestrateur émet `tool_status: forbidden`, écrit `AI_TOOL_DENIED`
+  (`reason: PERMISSION`) et renvoie au modèle un `tool_result` d'erreur ; le chat continue. 404, 5xx et délai
+  gardent leur traitement (résultat `ok: false` ou plan refusé).
 - **Données sensibles.** Les chemins évoquant un secret (secret, token, credential,
   password, api-key, webhook, jwt, invitation, session de connexion, passerelle de
   paiement, lien sécurisé…) sont marqués `sensitive` : absents de `list_capabilities`,
@@ -582,6 +587,10 @@ d'agence du catalogue (POST, PUT, PATCH) ; il n'écrit jamais : seule la route d
   retirés » et exige le mot. Seul l'état lu à l'émission le sait : le drapeau est donc SIGNÉ
   (`args.requireConfirmation`, inclus dans `planHash` seulement s'il est vrai) et l'exécuteur l'applique ; le retirer
   d'un jeton re-signé rend l'empreinte incohérente.
+- **Libellé et avertissement d'accès sur un utilisateur.** Pour `GET /users/:userId` (membership + `user`
+  imbriqué), `readableLabel` descend dans `data`, `member`, `membership`, `user` (deux niveaux) : nom complet, sinon
+  prénom + nom, sinon e-mail, jamais l'identifiant tant qu'un nom existe. Une écriture non-création dont la route
+  contient `users/:param` ajoute, côté serveur, « Cette action modifie l'accès de <libellé>. » (sans doublon).
 - **Champ protégé.** Un champ écrit dont le nom évoque un secret : valeur jamais affichée, avertissement
   « Champ protégé : valeur non affichée ».
 - **Masquage.** Toute clé évoquant un secret (`password`, `secret`, `token`, `apiKey`, `hash`…) est
@@ -1086,6 +1095,11 @@ ailleurs dans le dépôt — à ne pas présenter comme résolu :
   raison (un jeton à usage unique de vérification d'e-mail ou de
   désinscription newsletter y transite) ; `requestLogger` ne fait pas la
   même exclusion. À vérifier avant de considérer ce risque clos.
+- **Dernier administrateur d'agence.** `disableMember` refuse (409) l'auto-désactivation et la désactivation du
+  dernier administrateur actif (`TENANT_ADMIN`, membre ACTIF, compte actif) ; `updateMemberRoles` refuse de lui retirer
+  le rôle. Contrôle avant la transaction, sans verrou : deux désactivations simultanées des deux seuls
+  administrateurs peuvent théoriquement passer. Les autres chemins qui suppriment un administrateur (désactivation
+  du compte utilisateur au niveau plateforme, suspension de l'agence) ne sont pas couverts par cette règle.
 - **Procédure formelle de réponse à incident** (astreinte, notification
   aux agences, obligations réglementaires locales) — aucun document dédié
   trouvé dans le dépôt ; la section 11 ci-dessus est une conduite par
