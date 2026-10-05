@@ -56,4 +56,14 @@ describe('role-menu-service', () => {
       { params: {} }
     );
   });
+
+  it("updateMenuAccess avec {} et tenantId efface la surcharge de l'agence", async () => {
+    await updateMenuAccess('TENANT_ADMIN', {}, 'tenant-1');
+
+    expect(mockApiClient.put).toHaveBeenCalledWith(
+      '/roles/menu-access/TENANT_ADMIN',
+      { menus: {} },
+      { params: { tenantId: 'tenant-1' } }
+    );
+  });
 });

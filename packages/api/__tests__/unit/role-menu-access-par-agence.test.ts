@@ -1,9 +1,10 @@
 /**
  * Accès aux menus par agence.
  *
- * Les rôles sont globaux, mais une coupure de menu ne doit valoir que pour
- * l'agence qui l'a décidée : couper un menu de TENANT_ADMIN chez A ne touche
- * pas B. `tenantId` null = périmètre plateforme, sans héritage vers les agences.
+ * Défaut + surcharge : `tenantId` null sur un rôle d'agence ou de portail est le
+ * défaut de toutes les agences (null sur un rôle PLATFORM = plateforme) ; une
+ * ligne d'agence est une surcharge qui n'atteint jamais une autre agence. Par
+ * (rôle, menu) : agence > null > rien (autorisé).
  *
  * Prisma est remplacé par un magasin en mémoire qui applique réellement les
  * filtres `where` utilisés par le service, pour prouver l'étanchéité.
@@ -23,6 +24,7 @@ let userRoleKeys: string[] = [];
 function matches(row: Row, where: any): boolean {
   if (!where) return true;
   if ('tenantId' in where && row.tenantId !== where.tenantId) return false;
+  if (where.OR && !where.OR.some((c: any) => row.tenantId === c.tenantId)) return false;
   if (where.roleKey !== undefined) {
     if (typeof where.roleKey === 'string' && row.roleKey !== where.roleKey) return false;
     if (where.roleKey?.in && !where.roleKey.in.includes(row.roleKey)) return false;
@@ -109,11 +111,76 @@ describe('service — périmètre par agence', () => {
     );
   });
 
-  it("avec une agence, les lignes null (plateforme) n'héritent pas", async () => {
+  it("défaut (ligne null) appliqué à une agence qui n'a pas de ligne propre", async () => {
     store = [{ tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false }];
     userRoleKeys = ['TENANT_ADMIN'];
 
+    expect(await getDisabledMenusForUser('u1', 'tenant-A')).toEqual(['finance']);
+    expect(await getDisabledMenusForUser('u1', 'tenant-B')).toEqual(['finance']);
+  });
+
+  it("la ligne d'agence lève une coupure du défaut", async () => {
+    store = [
+      { tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false },
+      { tenantId: 'tenant-A', roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: true }
+    ];
+    userRoleKeys = ['TENANT_ADMIN'];
+
     expect(await getDisabledMenusForUser('u1', 'tenant-A')).toEqual([]);
+    expect(await getDisabledMenusForUser('u1', 'tenant-B')).toEqual(['finance']);
+  });
+
+  it("la ligne d'agence ajoute une coupure absente du défaut", async () => {
+    store = [
+      { tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: true },
+      { tenantId: 'tenant-A', roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false },
+      { tenantId: 'tenant-A', roleKey: 'TENANT_ADMIN', menuKey: 'crm', enabled: false }
+    ];
+    userRoleKeys = ['TENANT_ADMIN'];
+
+    expect((await getDisabledMenusForUser('u1', 'tenant-A')).sort()).toEqual(['crm', 'finance']);
+    expect(await getDisabledMenusForUser('u1', 'tenant-B')).toEqual([]);
+  });
+
+  it('une surcharge de A est sans effet sur B, qui garde le défaut', async () => {
+    store = [{ tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false }];
+    await replaceMenuAccessForRole('TENANT_ADMIN', { finance: true, crm: false }, 'tenant-A');
+    userRoleKeys = ['TENANT_ADMIN'];
+
+    expect(await getDisabledMenusForUser('u1', 'tenant-A')).toEqual(['crm']);
+    expect(await getDisabledMenusForUser('u1', 'tenant-B')).toEqual(['finance']);
+  });
+
+  it("replace d'agence avec {} efface la surcharge : retour au défaut", async () => {
+    store = [{ tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false }];
+    await replaceMenuAccessForRole('TENANT_ADMIN', { finance: true }, 'tenant-A');
+    userRoleKeys = ['TENANT_ADMIN'];
+    expect(await getDisabledMenusForUser('u1', 'tenant-A')).toEqual([]);
+
+    const result = await replaceMenuAccessForRole('TENANT_ADMIN', {}, 'tenant-A');
+
+    expect(result).toEqual({});
+    expect(await getDisabledMenusForUser('u1', 'tenant-A')).toEqual(['finance']);
+    expect(store).toEqual([{ tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false }]);
+  });
+
+  it('cumul de rôles : valeurs effectives (agence > défaut) puis un rôle qui autorise suffit', async () => {
+    store = [
+      // TENANT_ADMIN : le défaut coupe finance et crm ; l'agence A rouvre crm.
+      { tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false },
+      { tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'crm', enabled: false },
+      { tenantId: 'tenant-A', roleKey: 'TENANT_ADMIN', menuKey: 'crm', enabled: true },
+      // AGENT : le défaut autorise finance, l'agence A le coupe ; stock coupé par défaut.
+      { tenantId: null, roleKey: 'AGENT', menuKey: 'finance', enabled: true },
+      { tenantId: 'tenant-A', roleKey: 'AGENT', menuKey: 'finance', enabled: false },
+      { tenantId: null, roleKey: 'AGENT', menuKey: 'stock', enabled: false }
+    ];
+    userRoleKeys = ['TENANT_ADMIN', 'AGENT'];
+
+    // Chez A : finance coupé par les deux, crm autorisé, stock coupé.
+    expect((await getDisabledMenusForUser('u1', 'tenant-A')).sort()).toEqual(['finance', 'stock']);
+    // Chez B (défauts seuls) : finance autorisé par AGENT, crm et stock coupés.
+    expect((await getDisabledMenusForUser('u1', 'tenant-B')).sort()).toEqual(['crm', 'stock']);
   });
 
   it('un menu reste visible si un autre rôle de la personne le garde (règle inchangée)', async () => {
@@ -190,15 +257,17 @@ describe('PUT /api/roles/menu-access/:roleKey', () => {
   const put = (roleKey: string, query: any, menus: any = { finance: false }) =>
     run(updateMenuAccessHandler, { params: { roleKey }, query, body: { menus } });
 
-  it('rôle TENANT sans tenantId : 400', async () => {
-    const { error } = await put('TENANT_ADMIN', {});
-    expect(error).toMatchObject({ statusCode: 400 });
-    expect(store).toEqual([]);
+  it('rôle TENANT sans tenantId : 200, écrit le défaut (null)', async () => {
+    const { res, error } = await put('TENANT_ADMIN', {});
+    expect(error).toBeUndefined();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(store).toEqual([{ tenantId: null, roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false }]);
   });
 
-  it('pseudo-rôle de portail sans tenantId : 400', async () => {
+  it('pseudo-rôle de portail sans tenantId : 200, écrit le défaut (null)', async () => {
     const { error } = await put('PORTAL_OWNER', {});
-    expect(error).toMatchObject({ statusCode: 400 });
+    expect(error).toBeUndefined();
+    expect(store).toEqual([{ tenantId: null, roleKey: 'PORTAL_OWNER', menuKey: 'finance', enabled: false }]);
   });
 
   it('rôle PLATFORM avec tenantId : 400', async () => {

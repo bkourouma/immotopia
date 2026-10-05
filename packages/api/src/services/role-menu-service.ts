@@ -15,6 +15,12 @@ import { prisma } from '../utils/database';
  *      ne doit pas vider l'application de sa navigation.
  *
  * Conséquence directe : seul un `enabled = false` explicite masque un menu.
+ *
+ * Défaut + surcharge par agence : une décision porte un `tenantId` nullable.
+ * `null` sur un rôle d'agence ou de portail = défaut valable pour TOUTES les
+ * agences ; `null` sur un rôle PLATFORM = périmètre plateforme ; un `tenantId`
+ * = surcharge pour cette agence. Pour chaque (rôle, menu), la ligne de l'agence
+ * l'emporte, à défaut la ligne `null`, à défaut rien (= autorisé).
  */
 
 /** Pseudo-rôle du portail propriétaire (aucune ligne dans `roles`). */
@@ -29,9 +35,11 @@ export interface RoleMenuAccessEntry {
 }
 
 /**
- * Périmètre d'une décision : une agence (`tenantId`) ou la plateforme
- * (`null`, rôles de scope PLATFORM). Aucun héritage entre les deux : une
- * ligne `null` ne s'applique jamais à une agence, et inversement.
+ * Périmètre d'une ligne enregistrée : une agence (`tenantId`, surcharge) ou
+ * `null` (défaut de toutes les agences pour un rôle d'agence ou de portail,
+ * périmètre plateforme pour un rôle PLATFORM). Les fonctions de lecture et
+ * d'écriture ci-dessous manipulent les lignes EXACTES d'un périmètre ; la
+ * résolution défaut/surcharge n'a lieu que dans `getDisabledMenusForUser`.
  */
 export type MenuAccessScope = string | null;
 
@@ -149,26 +157,42 @@ export async function resolveRoleKeysForUser(userId: string, tenantId?: string):
 /**
  * Menus coupés pour un utilisateur.
  *
- * Un compte qui cumule plusieurs rôles garde le menu dès qu'**un seul** de ses
- * rôles l'autorise : le cumul de rôles élargit les droits, il ne les restreint
- * pas. Un menu n'est donc coupé que si tous ses rôles le coupent.
+ * Étape 1 : pour chaque rôle, valeur effective par menu. Avec une agence, la
+ * ligne de l'agence l'emporte sur la ligne `null` (défaut) ; sans agence, seules
+ * les lignes `null` comptent.
  *
- * Seules les décisions du périmètre demandé comptent : celles de l'agence, ou
- * celles de la plateforme (`null`) quand aucune agence n'est fournie.
+ * Étape 2 : un compte qui cumule plusieurs rôles garde le menu dès qu'**un
+ * seul** de ses rôles l'autorise : le cumul de rôles élargit les droits, il ne
+ * les restreint pas. Un menu n'est donc coupé que si au moins un rôle le coupe
+ * (valeur effective) et qu'aucun ne l'autorise.
  */
 export async function getDisabledMenusForUser(userId: string, tenantId?: string): Promise<string[]> {
   const roleKeys = await resolveRoleKeysForUser(userId, tenantId);
   if (roleKeys.length === 0) return [];
 
   const rows = await prisma.roleMenuAccess.findMany({
-    where: { roleKey: { in: roleKeys }, tenantId: tenantId ?? null },
-    select: { menuKey: true, enabled: true }
+    where: {
+      roleKey: { in: roleKeys },
+      ...(tenantId ? { OR: [{ tenantId }, { tenantId: null }] } : { tenantId: null })
+    },
+    select: { roleKey: true, menuKey: true, enabled: true, tenantId: true }
   });
+
+  // Valeur effective par (rôle, menu) : la ligne d'agence écrase la ligne null.
+  const effective = new Map<string, { menuKey: string; enabled: boolean; fromTenant: boolean }>();
+  for (const row of rows) {
+    const key = `${row.roleKey}|${row.menuKey}`;
+    const fromTenant = row.tenantId !== null;
+    const current = effective.get(key);
+    if (!current || (fromTenant && !current.fromTenant)) {
+      effective.set(key, { menuKey: row.menuKey, enabled: row.enabled, fromTenant });
+    }
+  }
 
   const allowedSomewhere = new Set<string>();
   const deniedSomewhere = new Set<string>();
-  for (const row of rows) {
-    (row.enabled ? allowedSomewhere : deniedSomewhere).add(row.menuKey);
+  for (const { menuKey, enabled } of effective.values()) {
+    (enabled ? allowedSomewhere : deniedSomewhere).add(menuKey);
   }
 
   return Array.from(deniedSomewhere).filter(menuKey => !allowedSomewhere.has(menuKey));

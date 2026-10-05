@@ -311,7 +311,8 @@ async function assertTenantExists(tenantId: string): Promise<void> {
  * Accès aux menus par rôle, pour une agence (ou pour la plateforme)
  * GET /api/roles/menu-access?tenantId=<id>
  *
- * Sans `tenantId` : périmètre plateforme. Avec : l'agence doit exister.
+ * Sans `tenantId` : lignes null (défauts des rôles d'agence et de portail,
+ * plus rôles plateforme). Avec : surcharges de l'agence, qui doit exister.
  */
 export const listMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = readScopeTenantId(req);
@@ -332,7 +333,7 @@ export const listMenuAccessHandler = asyncHandler(async (req: Request, res: Resp
  * pour masquer une entrée : elle a besoin de savoir quelles entrées masquer.
  * On renvoie donc ces clés, plus les permissions effectives dans l'agence
  * (l'interface masque aussi les entrées que le rôle ne peut pas ouvrir).
- * Seules les coupures de l'agence demandée s'appliquent.
+ * Les surcharges de l'agence demandée l'emportent sur les défauts (lignes null).
  */
 export const getMyMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user?.userId) {
@@ -388,15 +389,17 @@ const updateMenuAccessBodySchema = z.object({
 });
 
 /**
- * Remplace les accès aux menus d'un rôle, pour UNE agence
+ * Remplace les accès aux menus d'un rôle, pour UN périmètre
  * PUT /api/roles/menu-access/:roleKey?tenantId=<id>
  *
  * `roleKey` et non `id` : deux des personas de l'interface — propriétaire et
  * locataire — n'ont pas de ligne dans `roles`, donc pas d'identifiant. Les
  * pseudo-clés `PORTAL_OWNER` / `PORTAL_RENTER` les désignent.
  *
- * Périmètre : un rôle d'agence ou de portail exige `tenantId` (la coupure ne
- * vaut que pour cette agence) ; un rôle plateforme l'interdit (périmètre null).
+ * Périmètre : sans `tenantId`, un rôle d'agence ou de portail écrit le DÉFAUT
+ * valable pour toutes les agences (ligne null) ; avec `tenantId`, il écrit la
+ * SURCHARGE de cette agence (une carte `{}` l'efface : l'agence retombe sur le
+ * défaut). Un rôle plateforme interdit `tenantId` (périmètre plateforme, null).
  */
 export const updateMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
   const roleKey = (req.params.roleKey ?? '').trim();
@@ -432,9 +435,6 @@ export const updateMenuAccessHandler = asyncHandler(async (req: Request, res: Re
 
   if (isPlatformRole && tenantId) {
     throw new BadRequestError('Un rôle plateforme ne se règle pas par agence : retirez tenantId.');
-  }
-  if (!isPlatformRole && !tenantId) {
-    throw new BadRequestError("tenantId est obligatoire pour un rôle d'agence ou de portail.");
   }
   if (tenantId) {
     await assertTenantExists(tenantId);
