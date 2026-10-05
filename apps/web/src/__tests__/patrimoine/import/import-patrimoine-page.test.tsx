@@ -356,7 +356,10 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Importer mon patrimoine — la page', () => {
-  it('(1) parcours nominal Biens : gabarit, aperçu, import, corps des requêtes et rapport', async () => {
+  // Le parcours nominal était un seul test de ~13 s à vide sous charge parallèle (4 coeurs saturés), donc au-delà
+  // de 30 s sur un runner de CI partagé. Il est scindé en deux tests de même portée, chacun deux fois plus court :
+  // le gabarit d'une part, l'aperçu / l'import / le rapport d'autre part.
+  it('(1) gabarit Biens : un classeur .xlsx part au téléchargement', async () => {
     const user = nouvelUtilisateur();
     monter();
     await choisirNature(user, 'Biens');
@@ -369,6 +372,12 @@ describe('Importer mon patrimoine — la page', () => {
     expect(gabarit.type).toContain('spreadsheetml');
     const signature = await lireOctets(gabarit);
     expect([signature[0], signature[1]]).toEqual([0x50, 0x4b]);
+  });
+
+  it('(1 bis) parcours nominal Biens : aperçu, import, corps des requêtes et rapport', async () => {
+    const user = nouvelUtilisateur();
+    monter();
+    await choisirNature(user, 'Biens');
 
     // Un CSV de 3 lignes valides, en-têtes du gabarit : l'étape colonnes est sautée.
     await deposer(
@@ -455,7 +464,7 @@ describe('Importer mon patrimoine — la page', () => {
     expect(await screen.findByText('3 ligne(s) importée(s).')).toBeInTheDocument();
     expect(valeurRapport('Importées')).toBe('3');
     expect(valeurRapport('En erreur')).toBe('0');
-  }, 30000);
+  });
 
   it('(2) rapproche les colonnes à la main quand les en-têtes ne sont pas reconnus', async () => {
     const user = nouvelUtilisateur();

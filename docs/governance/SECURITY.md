@@ -579,8 +579,9 @@ d'agence du catalogue (POST, PUT, PATCH) ; il n'écrit jamais : seule la route d
   (`/x/:id/verbe`) : le serveur lit par GET loopback la ressource qui porte le dernier paramètre de chemin
   (`lastParamAncestorPath`, ou `parentResourcePath` pour une action) et renseigne `target` (libellé lisible).
   Parent illisible (403, 404, autre erreur, délai) : plan refusé, comme pour une mise à jour. Sans route de lecture
-  connue pour ce parent (3 routes du catalogue sur 26 créations imbriquées) : plan accepté, `target` = identifiant
-  brut, `resolved: false`, avertissement « n'a pas pu être vérifié ».
+  connue pour ce parent (3 routes du catalogue sur 26 créations imbriquées) : plan REFUSÉ (`ValidationError`,
+  « Impossible de vérifier la ressource parente visée… »), avant toute lecture, sans jeton ni événement `write_plan` ;
+  un test du catalogue échoue si une nouvelle création imbriquée n'a pas de parent lisible et n'est pas déclarée.
 - **Liste remplacée.** Le corps remplace un tableau en entier ; comparés par indice, les éléments retirés
   n'apparaîtraient pas. Si un tableau du corps est plus court que celui de l'état, le plan émet un changement de
   niveau liste (`before` « [N éléments] », `after` « [M éléments] »), l'avertissement « Liste remplacée : N éléments

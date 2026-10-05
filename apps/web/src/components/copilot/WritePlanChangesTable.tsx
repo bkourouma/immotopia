@@ -3,7 +3,7 @@ import { CheckCircleOutlined, LockOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { t } from '../../i18n/t';
 import type { WritePlanChange } from '../../types/copilot';
-import { humanizeFieldName } from '../../utils/copilot-artifact';
+import { planFieldLabel } from './copilot-labels';
 import { formatPlanValue, LONG_VALUE_CHARS } from './write-plan-format';
 
 const cellStyle: React.CSSProperties = {
@@ -88,7 +88,7 @@ export function WritePlanChangesTable({ changes }: { changes: WritePlanChange[] 
               <th scope="row" style={{ ...cellStyle, fontWeight: 600 }}>
                 {/* Le nom technique reste en infobulle ; l'affichage est lisible. */}
                 <span title={c.field}>
-                  <bdi>{humanizeFieldName(c.field)}</bdi>
+                  <bdi>{planFieldLabel(c.field)}</bdi>
                 </span>
               </th>
               <td style={{ ...cellStyle, color: 'var(--ant-color-text-secondary, #666)' }}>

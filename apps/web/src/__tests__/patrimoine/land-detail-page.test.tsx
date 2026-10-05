@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -59,6 +59,20 @@ function monter() {
   );
 }
 
+// Sans délai entre les actions : le délai par défaut (un `setTimeout` par frappe) laisse des rendus s'intercaler
+// sous la charge de la CI.
+const nouvelUtilisateur = () => userEvent.setup({ delay: null });
+
+/**
+ * Pose le texte d'un champ en un seul évènement `change`. `user.type` saisit caractère par caractère : quand
+ * le tiroir ou la modale (focus, animation) re-rend le champ pendant la frappe, des caractères se perdent
+ * (« Pièce contestée » arrivait en « e contestée »). Un `change` unique ne dépend ni du focus ni du rythme.
+ */
+async function saisir(champ: HTMLElement, texte: string) {
+  fireEvent.change(champ, { target: { value: texte } });
+  await waitFor(() => expect(champ).toHaveValue(texte));
+}
+
 async function ouvrirEtape(user: ReturnType<typeof userEvent.setup>, libelle: string) {
   await user.click(await screen.findByRole('button', { name: "Ouvrir l'étape " + libelle }));
   return screen.findByRole('dialog');
@@ -97,7 +111,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('construit les boutons de statut uniquement depuis allowedTransitions', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     monter();
 
     const tiroir = await ouvrirEtape(user, 'Dossier technique du géomètre');
@@ -115,7 +129,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('la réouverture d’une étape exige un motif', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     changeLandStepStatus.mockResolvedValue(detail());
     monter();
 
@@ -123,8 +137,8 @@ describe('<LandRegularizationDetailPage>', () => {
     const bouton = within(tiroir).getByRole('button', { name: "Rouvrir l'étape" });
     expect(bouton).toBeDisabled();
 
-    await user.type(within(tiroir).getByLabelText('Motif de la réouverture (obligatoire)'), 'Pièce contestée');
-    expect(bouton).toBeEnabled();
+    await saisir(within(tiroir).getByLabelText('Motif de la réouverture (obligatoire)'), 'Pièce contestée');
+    await waitFor(() => expect(bouton).toBeEnabled());
     await user.click(bouton);
 
     await waitFor(() =>
@@ -133,7 +147,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('téléverse un nouveau fichier avec le type suggéré puis rattache la pièce', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     uploadDocument.mockResolvedValue({ id: 'doc-new' });
     updateLandStep.mockResolvedValue(detail());
     monter();
@@ -149,7 +163,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('rattache un document existant du même bien', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     updateLandStep.mockResolvedValue(detail());
     monter();
 
@@ -164,7 +178,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('télécharge la pièce rattachée par l’endpoint de fichier existant', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     getLandRegularization.mockResolvedValue(
       detail({
         steps: [
@@ -189,7 +203,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('terminer le dossier : le refus 409 du serveur est affiché', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     changeLandRegularizationStatus.mockRejectedValue({
       response: { status: 409, data: { error: 'Toutes les étapes obligatoires doivent être terminées.' } }
     });
@@ -203,7 +217,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('rouvrir un dossier terminé exige un motif', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     getLandRegularization.mockResolvedValue(detail({ status: 'TERMINEE' }));
     changeLandRegularizationStatus.mockResolvedValue(detail());
     monter();
@@ -213,7 +227,7 @@ describe('<LandRegularizationDetailPage>', () => {
     const confirmer = within(dialogue).getByRole('button', { name: 'Confirmer' });
     expect(confirmer).toBeDisabled();
 
-    await user.type(within(dialogue).getByLabelText('Motif (obligatoire)'), 'Nouvelle pièce exigée');
+    await saisir(within(dialogue).getByLabelText('Motif (obligatoire)'), 'Nouvelle pièce exigée');
     await user.click(confirmer);
 
     await waitFor(() =>
@@ -227,7 +241,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('dossier clos : lecture seule (notes désactivées, pas d’ajout d’étape, pas de bouton de statut)', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     getLandRegularization.mockResolvedValue(detailClos());
     monter();
 
@@ -257,7 +271,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('affiche le détail de validation (message) avant error', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     changeLandStepStatus.mockRejectedValue({
       response: { status: 400, data: { error: 'Erreur de validation', message: 'Le champ reason est requis.' } }
     });
@@ -271,7 +285,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('téléversement réussi mais rattachement refusé : message distinct et liste des documents rafraîchie', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     uploadDocument.mockResolvedValue({ id: 'doc-new' });
     updateLandStep.mockRejectedValue({ response: { status: 409, data: { message: 'Dossier clos.' } } });
     monter();
@@ -286,7 +300,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('étape personnalisée : « Enregistrer l’étape » est désactivé sans libellé', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     getLandRegularization.mockResolvedValue(detail({ track: 'PERSONNALISEE', validationStatus: 'NON_APPLICABLE' }));
     monter();
 
@@ -295,7 +309,7 @@ describe('<LandRegularizationDetailPage>', () => {
     expect(within(tiroir).getByRole('button', { name: "Enregistrer l'étape" })).toBeDisabled();
   });
   it('étape personnalisée : décocher « Étape obligatoire » envoie required: false', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     getLandRegularization.mockResolvedValue(detail({ track: 'PERSONNALISEE', validationStatus: 'NON_APPLICABLE' }));
     updateLandStep.mockResolvedValue(detail());
     monter();
@@ -311,7 +325,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('étape personnalisée : sans changement, required n’est pas renvoyé', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     getLandRegularization.mockResolvedValue(detail({ track: 'PERSONNALISEE', validationStatus: 'NON_APPLICABLE' }));
     updateLandStep.mockResolvedValue(detail());
     monter();
@@ -324,7 +338,7 @@ describe('<LandRegularizationDetailPage>', () => {
   });
 
   it('filière CI_ACD : aucune case « Étape obligatoire » (réservée aux dossiers personnalisés)', async () => {
-    const user = userEvent.setup();
+    const user = nouvelUtilisateur();
     monter();
     const tiroir = await ouvrirEtape(user, 'Dossier technique du géomètre');
     expect(within(tiroir).queryByRole('checkbox', { name: 'Étape obligatoire' })).not.toBeInTheDocument();

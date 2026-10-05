@@ -183,6 +183,16 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/immocopilot-o9nygz` — 2026-10-05
+
+**État :** suite des recettes d'ImmoCopilot (PR ouverte, fusion à l'utilisateur). Décisions de l'utilisateur appliquées : refuser les créations imbriquées sans parent lisible, rendre déterministes les deux tests web instables, corriger deux mineurs de la recette.
+
+**Fait :** `plan_write` refuse une création imbriquée dont le parent n'a pas de route GET (3 routes du catalogue : `…/deals/:dealId/properties/:propertyId/status/legacy`, `…/syndics/:syndicId/lots/:lotId/compte/ajustements`, `…/lots/:lotId/paiements/apercu`) ; garde-fou de test `KNOWN_UNPLANNABLE_NESTED_CREATES` ; libellés de `StatusTag` résolus au rendu (changement de langue à chaud) ; carte d'accord : ~60 champs et noms de module traduits ; `land-detail-page` et `import-patrimoine-page` rendus déterministes (saisie d'un coup, test d'import scindé en deux, plus de délai explicite de 30 s). Vérifié : tsc API/web 0 erreur, API ciblé 731 + 21, web ciblé 1108, check:architecture, wiki:check.
+
+**Reste à faire :** liste des anciennes conversations (décision : OUI, stockage serveur) : plan écrit, migration Prisma, routes, rétention, revue de sécurité, UI en PR séparée ; même défaut `t()` au chargement du module ailleurs (`home/dashboard-viz.ts`, tables de statuts maintenance/portails/finance : à confirmer) ; ajouter `GET …/syndics/:syndicId/lots/:lotId` ou classer `paiements/apercu` en lecture ; rejouer en navigateur les correctifs de désactivation (auto-désactivation, dernier admin) et le nom de fichier PNG accentué dans un vrai Chrome ; vrai micro (à la charge de l'utilisateur) ; `npm run test:isolation`.
+
+**Pièges :** `npx prisma generate` après tout `git merge main` qui change le schéma (sinon ~300 erreurs tsc et 9 suites en échec) ; `git checkout --theirs` pendant une fusion = version de main ; les modifs d'un agent non indexées avant `git commit` ne sont pas dans le commit (réindexer) ; `npm run ai:catalog` après tout changement de routes ; le hook bloque une commande combinant `git fetch origin main` et un push ; test d'import patrimoine : le sous-test (1 bis) porte le parcours complet.
+
 ## Branche `integration/multi-actifs` — 2026-10-02
 
 **État :** grappe « multi-actifs patrimoine » assemblée depuis `origin/main` (86da95c6) : PR #52, #67, #74, #69, #70 fusionnées dans cet ordre (une fusion `--no-ff` par PR), poussée. Pas de PR ouverte (le Pilote décide).

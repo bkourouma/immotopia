@@ -833,6 +833,7 @@
   "L'écriture n'est pas disponible dans ce contexte.": "الكتابة غير متاحة في هذا السياق.",
   "L'enregistrement visé est introuvable (identifiant erroné ou autre agence) : plan refusé.": "السجل المستهدف غير موجود (معرّف خاطئ أو وكالة أخرى): تم رفض الخطة.",
   "L'enregistrement visé n'a pas pu être vérifié (aucune route de lecture connue).": "تعذّر التحقق من السجل المستهدف (لا يوجد مسار قراءة معروف).",
+  "Impossible de vérifier la ressource parente visée : l'assistant ne peut pas proposer cette écriture.": "تعذّر التحقق من المورد الأب المستهدف: لا يمكن للمساعد اقتراح هذه الكتابة.",
   "L'envoi de l'e-mail a échoué. Réessayez plus tard.": "تعذّر إرسال البريد الإلكتروني. يُرجى المحاولة لاحقًا.",
   "L'étape a déjà ce statut.": "المرحلة لها هذه الحالة بالفعل.",
   "L'état actuel de l'enregistrement n'a pas pu être lu dans le délai : plan refusé.": "تعذّرت قراءة الحالة الحالية للسجل في الوقت المحدد: تم رفض الخطة.",
