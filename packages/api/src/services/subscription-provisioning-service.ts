@@ -558,6 +558,10 @@ function overageWarnings(capacities: Record<CapacityKeyCode, { overBy: number; l
   for (const key of Object.keys(capacities) as CapacityKeyCode[]) {
     // ACTIFS : compteur des packs Particulier ; sans pack Particulier (plafond 0), les actifs d'une agence ne comptent pas.
     if (key === 'ACTIFS' && capacities[key].limit <= 0) continue;
+    // PHOTOS_INVENTAIRE (lot 041, data-model §4) : une consommation qui n'est
+    // JAMAIS facturée en dépassement (le quota refuse au-delà) ; aucun
+    // avertissement de facturation, avec ou sans option souscrite.
+    if (key === 'PHOTOS_INVENTAIRE') continue;
     const overBy = capacities[key].overBy;
     if (overBy > 0) {
       warnings.push(
@@ -577,7 +581,10 @@ function quotaThresholdWarnings(capacities: Record<CapacityKeyCode, { used: numb
   const warnings: string[] = [];
   for (const key of Object.keys(capacities) as CapacityKeyCode[]) {
     const cap = capacities[key];
-    if (key === 'ACTIFS' && cap.limit <= 0) continue; // voir overageWarnings
+    // Capacités facultatives sans plafond (ACTIFS hors pack Particulier,
+    // PHOTOS_INVENTAIRE sans option) : la tâche horaire n'alerte pas
+    // (OPTIONAL_CAPACITIES, subscription-usage-job.ts).
+    if ((key === 'ACTIFS' || key === 'PHOTOS_INVENTAIRE') && cap.limit <= 0) continue;
     const crossed = crossedThresholds(cap.used, cap.limit);
     if (crossed.length === 0) continue;
     warnings.push(

@@ -27,3 +27,7 @@ export const loadStockControle = (): LazyPage => import('./StockControle').then(
 export const loadStockReferentiel = (): LazyPage =>
   import('./StockReferentiel').then(m => ({ default: m.StockReferentiel }));
 export const loadStockChantier = (): LazyPage => import('./StockChantier').then(m => ({ default: m.StockChantier }));
+// Lot 041 — inventaire de chantier par WhatsApp.
+export const loadStockWhatsapp = (): LazyPage => import('./StockWhatsapp').then(m => ({ default: m.StockWhatsapp }));
+export const loadStockComptagesTerrain = (): LazyPage =>
+  import('./StockComptagesTerrain').then(m => ({ default: m.StockComptagesTerrain }));

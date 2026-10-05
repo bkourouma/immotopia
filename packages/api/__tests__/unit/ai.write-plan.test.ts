@@ -36,7 +36,7 @@ import {
 } from '../../src/lib/ai/contracts';
 import { findWritableEntry, getCatalogEntries } from '../../src/lib/ai/gateway/catalog';
 import { setLoopbackBaseUrlForTests } from '../../src/lib/ai/gateway/loopback';
-import { bodySensitivity, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
+import { bodySensitivity, isDestructive, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
 import { validatePlanBody } from '../../src/lib/ai/gateway/write-input';
 import { computePlanHash, canonicalJson } from '../../src/lib/ai/plan-hash';
 import { verifyCapabilityProposal } from '../../src/lib/ai/proposal-token';
@@ -625,6 +625,24 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
   it('stock : le retrait d’une pièce jointe est classé sensible, et exclu du catalogue comme destructeur', () => {
     const path = '/api/tenants/:tenantId/finance/stock/attachments/:attachmentId/remove';
     expect(writeSensitivity(path)?.category).toBe('lifecycle');
+    expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
+  });
+
+  // Lot 041 : inscriptions des chefs de chantier et retrait d'une photo de preuve.
+  it.each([
+    'POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/revoke',
+    'POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/regenerate-code'
+  ])('%s : inscription WhatsApp, sensible et hors de portée de l’assistant', id => {
+    const entry = getCatalogEntries().find(candidate => candidate.id === id);
+    expect(entry).toBeDefined();
+    expect(entry!.sensitive).toBe(true);
+    expect(writeSensitivity(entry!.path)).not.toBeNull();
+    expect(findWritableEntry(id)).toBeUndefined();
+  });
+
+  it('stock WhatsApp : le retrait d’une photo de comptage efface une preuve, exclu du catalogue comme destructeur', () => {
+    const path = '/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo';
+    expect(isDestructive('POST', path)).toBe(true);
     expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
   });
 

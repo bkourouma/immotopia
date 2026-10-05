@@ -85,6 +85,18 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
       'Webhook entrant WhatsApp (Twilio/WaSender) : verifie par signature applicative, pas par session utilisateur.'
   },
   {
+    method: 'GET',
+    test: exact('/api/webhooks/whatsapp-cloud/events'),
+    reason:
+      'Webhook Meta WhatsApp Cloud (lot 041) : signature X-Hub-Signature-256 toujours vérifiée, aucune session par nature.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/webhooks/whatsapp-cloud/events'),
+    reason:
+      'Webhook Meta WhatsApp Cloud (lot 041) : signature X-Hub-Signature-256 toujours vérifiée, aucune session par nature.'
+  },
+  {
     method: 'POST',
     test: exact('/api/payment-gateway/paysecurehub/ipn'),
     reason:

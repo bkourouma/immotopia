@@ -3,6 +3,9 @@ import path from 'node:path';
 import ts from 'typescript';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../src/constants/email-notification-default-templates';
 import { EMAIL_NOTIFICATION_META } from '../../src/constants/email-notification-keys';
+import { runWithLanguage } from '../../src/i18n';
+import { botMessages } from '../../src/lib/stock-whatsapp/bot-messages';
+import { buildStockVisionPrompt } from '../../src/lib/stock-whatsapp/vision/prompt';
 
 /**
  * Vocabulaire du contrôle du stock (lot 040, spec §4 et §11).
@@ -13,6 +16,11 @@ import { EMAIL_NOTIFICATION_META } from '../../src/constants/email-notification-
  * contrôleurs, routes, gardes, tâche, bons PDF), le gabarit de l'e-mail
  * d'alerte et les catalogues de traduction, et refuse chaque mot interdit, à
  * frontière de mot, en trois langues.
+ *
+ * Lot 041 : le module de l'inventaire par WhatsApp (`lib/stock-whatsapp/`,
+ * tous ses sous-dossiers, y compris la consigne envoyée à l'IA de vision), sa
+ * tâche et son webhook suivent la même règle ; les messages du bot sont en
+ * outre rendus en trois langues.
  *
  * Les commentaires ne sont pas lus : ils expliquent la règle, et doivent
  * pouvoir citer les mots qu'elle écarte.
@@ -51,6 +59,16 @@ function stockSourceFiles(): string[] {
   add('routes', name => /^finance-stock-/.test(name));
   add('middleware', name => name === 'stock-rbac-middleware.ts');
   add('jobs', name => /^stock-/.test(name));
+  // Lot 041 : le module WhatsApp entier (moteur, transport, vision, inscriptions…).
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(path.join(SRC, dir), { withFileTypes: true })) {
+      const relative = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(relative);
+      else if (entry.name.endsWith('.ts')) files.push(relative);
+    }
+  };
+  walk('lib/stock-whatsapp');
+  add('routes', name => name === 'whatsapp-cloud-webhook-routes.ts');
   return files;
 }
 
@@ -84,7 +102,17 @@ describe('vocabulaire du contrôle du stock (spec §4)', () => {
     const files = stockSourceFiles();
     expect(files.length).toBeGreaterThan(30);
     expect(files.map(file => file.replace(/\\/g, '/'))).toEqual(
-      expect.arrayContaining(['lib/finance/stock-bons-pdf.ts', 'lib/finance/stock-alertes-lecture.ts'])
+      expect.arrayContaining([
+        'lib/finance/stock-bons-pdf.ts',
+        'lib/finance/stock-alertes-lecture.ts',
+        'lib/stock-whatsapp/bot-messages.ts',
+        'lib/stock-whatsapp/vision/prompt.ts',
+        'lib/stock-whatsapp/engine/index.ts',
+        'jobs/stock-whatsapp-job.ts',
+        'controllers/finance-stock-whatsapp-controller.ts',
+        'routes/finance-stock-whatsapp-routes.ts',
+        'routes/whatsapp-cloud-webhook-routes.ts'
+      ])
     );
   });
 
@@ -98,6 +126,62 @@ describe('vocabulaire du contrôle du stock (spec §4)', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it("aucun mot interdit dans la consigne envoyée à l'IA de vision (lot 041)", () => {
+    const candidates = [
+      { id: 'a1', reference: 'CIM-42', label: 'Ciment CPJ 42,5', unit: 'sac', category: 'Liants' },
+      { id: 'a2', reference: 'FER-12', label: 'Fer à béton HA 12', unit: 'barre', category: null }
+    ];
+    for (const imposedItemId of [null, 'a1']) {
+      expect(forbiddenIn(buildStockVisionPrompt({ candidates, imposedItemId }))).toEqual([]);
+    }
+  });
+
+  for (const language of ['fr', 'en', 'ar'] as const) {
+    it(`aucun mot interdit dans les messages du bot rendus en ${language} (lot 041)`, () => {
+      const texts = runWithLanguage(language, () => {
+        const messages = [
+          botMessages.unknownNumber(),
+          botMessages.activated({ name: 'Koffi', agency: 'Agence' }),
+          botMessages.wrongCode(3),
+          botMessages.codeLocked(),
+          botMessages.activationPending(),
+          botMessages.accessLost(),
+          botMessages.optionMissing(),
+          botMessages.quotaReached(),
+          botMessages.noSite(),
+          botMessages.siteChosen('Chantier'),
+          botMessages.photoReceived(),
+          botMessages.analysisInProgress(),
+          botMessages.questionPending(),
+          botMessages.recorded({ quantity: 84, unit: 'sac', item: 'Ciment' }),
+          botMessages.recordedCorrected({ quantity: 80, unit: 'sac', item: 'Ciment' }),
+          botMessages.cancelled(),
+          botMessages.notUnderstood({ total: 84, unit: 'sac' }),
+          botMessages.tooDark(),
+          botMessages.notStock(),
+          botMessages.fileRefused(),
+          botMessages.itemUnknown(),
+          botMessages.noItem('fer'),
+          botMessages.analysisFailed(),
+          botMessages.reminder(),
+          botMessages.expired({ pendingDropped: true, closed: { site: 'Chantier', count: 2 } }),
+          botMessages.closedCounted({ site: 'Chantier', count: 2 }),
+          botMessages.closedLeftOpen({ site: 'Chantier', count: 2 }),
+          botMessages.closedNothing(),
+          botMessages.help(),
+          botMessages.unsupported(),
+          botMessages.countAwaitingValidation(),
+          botMessages.countChangedAtOffice(),
+          botMessages.siteUnavailable('Chantier'),
+          botMessages.sendPhoto()
+        ];
+        return messages.map(message => message.text);
+      });
+      expect(texts.length).toBeGreaterThan(30);
+      expect(texts.flatMap(text => forbiddenIn(text))).toEqual([]);
+    });
+  }
 
   it("aucun mot interdit dans l'e-mail d'alerte du stock", () => {
     const template = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.STOCK_ALERT_AGENCY;

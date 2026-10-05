@@ -106,6 +106,9 @@ enum CapacityKey {
   CHANTIERS // Chantiers actifs (PLANNED, IN_PROGRESS, SUSPENDED)
   BIENS_DETENUS // Biens detenus en propre (pack Patrimoine), loues ou non
   ACTIFS // Actifs Asset non archives (packs Particulier) ; pas d'extension ni de depassement facture
+  /// Lot 041 (W11). Photos analysees par l'IA dans le MOIS CIVIL UTC
+  /// (consommation, pas stock). Sans facturation de depassement.
+  PHOTOS_INVENTAIRE
 }
 
 enum SubscriptionItemStatus {
@@ -561,6 +564,12 @@ model User {
   stockAttachmentsUploaded      StockAttachment[]       @relation("StockAttachmentUploadedBy")
   stockAttachmentsRemoved       StockAttachment[]       @relation("StockAttachmentRemovedBy")
   stockAlertsAcknowledged       StockAlert[]            @relation("StockAlertAcknowledgedBy")
+  // Lot 041 : inventaire de chantier par WhatsApp.
+  stockWhatsappRegistrations        StockWhatsappRegistration[] @relation("StockWhatsappRegistrationUser")
+  stockWhatsappRegistrationsCreated StockWhatsappRegistration[] @relation("StockWhatsappRegistrationCreatedBy")
+  stockWhatsappRegistrationsRevoked StockWhatsappRegistration[] @relation("StockWhatsappRegistrationRevokedBy")
+  stockFieldCaptures                StockFieldCapture[]         @relation("StockFieldCaptureUser")
+  stockFieldCapturePhotosRemoved    StockFieldCapture[]         @relation("StockFieldCapturePhotoRemovedBy")
   voidedDocuments               VoidDocument[]
   leasesManaged                 LeaseManagementTerms[]  @relation("LeaseManagementAgent")
   agentCommissionRates          AgentCommissionRate[]
@@ -773,6 +782,13 @@ model Tenant {
   stockAttachments         StockAttachment[]
   stockAlerts              StockAlert[]
   stockClientRequests      StockClientRequest[]
+  // Lot 041 : inventaire de chantier par WhatsApp.
+  stockWhatsappRegistrations     StockWhatsappRegistration[]
+  stockWhatsappRegistrationSites StockWhatsappRegistrationSite[]
+  stockWhatsappSessions          StockWhatsappSession[]
+  stockWhatsappMessages          StockWhatsappMessage[]
+  stockFieldCaptures             StockFieldCapture[]
+  stockWhatsappUsages            StockWhatsappUsage[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts          ChartOfAccount[]
@@ -6394,6 +6410,10 @@ model ConstructionSite {
   // Lot 040 : bons et alertes rattaches au chantier.
   stockSlips     StockSlip[]
   stockAlerts    StockAlert[]
+  // Lot 041 : inventaire de chantier par WhatsApp.
+  stockWhatsappRegistrationSites StockWhatsappRegistrationSite[]
+  stockWhatsappSessions          StockWhatsappSession[]
+  stockFieldCaptures             StockFieldCapture[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -7696,6 +7716,9 @@ enum StockAlertKind {
   RECEIPT_UNVALUED
   CASH_MATERIAL_PURCHASE
   COUNT_SELF_VALIDATED
+  /// Lot 041 (W5-R6). Inventaire de chantier clos par WhatsApp : a justifier
+  /// et a valider au bureau. INFO, ou WARNING au-dela des seuils d'ecart.
+  FIELD_COUNT_CLOSED
 }
 
 enum StockAlertSeverity {
@@ -7778,6 +7801,8 @@ model StockItem {
   balances            StockBalance[]
   movements           StockMovement[]
   countLines          StockCountLine[]
+  // Lot 041 : captures WhatsApp qui ont retenu cet article.
+  fieldCaptures       StockFieldCapture[]
 
   @@unique([tenantId, reference])
   @@index([tenantId])
@@ -7809,6 +7834,9 @@ model StockLocation {
   // Lot 040 : bons emis sur ce lieu, alertes qui le visent.
   slips     StockSlip[]
   alerts    StockAlert[]
+  // Lot 041 : sessions et captures WhatsApp sur ce lieu.
+  whatsappSessions StockWhatsappSession[]
+  fieldCaptures    StockFieldCapture[]
 
   @@unique([tenantId, label])
   @@index([tenantId])
@@ -8003,6 +8031,9 @@ model StockCount {
   /// ECARTEES (lignes non comptees exclues : leur ecart est inconnu), au cout
   /// moyen du lieu a la validation. Entre dans COUNT_VARIANCE et dans le taux.
   setAsideVarianceValue Decimal?       @map("set_aside_variance_value") @db.Decimal(16, 2)
+  /// Lot 041 (W5-R2). WHATSAPP : ouvert par le bot. Un inventaire WEB peut
+  /// recevoir des lignes par WhatsApp ; il n'est alors jamais clos par le bot.
+  source                StockCountSource @default(WEB)
 
   tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   location    StockLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -8013,6 +8044,9 @@ model StockCount {
   closedBy    User?            @relation("StockCountClosedBy", fields: [closedByUserId], references: [id])
   cancelledBy User?            @relation("StockCountCancelledBy", fields: [cancelledByUserId], references: [id])
   slip        StockSlip?       @relation("StockCountReport")
+  // Lot 041 : captures et sessions WhatsApp rattachees a cet inventaire.
+  fieldCaptures    StockFieldCapture[]
+  whatsappSessions StockWhatsappSession[]
 
   @@index([tenantId])
   @@index([locationId])
@@ -8068,6 +8102,8 @@ model StockCountLine {
   justifiedBy User?             @relation("StockCountLineJustifiedBy", fields: [justifiedByUserId], references: [id])
   setAsideBy  User?             @relation("StockCountLineSetAsideBy", fields: [setAsideByUserId], references: [id])
   attachments StockAttachment[]
+  /// Lot 041 : captures WhatsApp qui ont fixe la quantite de cette ligne.
+  fieldCaptures StockFieldCapture[]
 
   @@unique([countId, itemId])
   @@index([countId])
@@ -9582,4 +9618,388 @@ model SignupAttempt {
   @@index([ipHash, createdAt])
   @@index([createdAt])
   @@map("signup_attempts")
+}
+
+// ============================================================================
+// Lot 041 — Inventaire de chantier par WhatsApp et IA
+// (specs/041-inventaire-whatsapp/data-model.md)
+//
+// Contraintes posees en SQL par la migration `…_inventaire_whatsapp` (Prisma
+// ne sait pas les exprimer) :
+// - stock_whatsapp_registrations_one_live_phone : UN numero, UNE inscription
+//   non revoquee sur toute la plateforme (unique partiel, W3-R4) ;
+// - stock_whatsapp_registrations_one_live_member : un membre, une inscription
+//   non revoquee dans l'agence (unique partiel, W3-R4) ;
+// - stock_whatsapp_registrations_pending_has_code : un code en attente porte
+//   son empreinte et son echeance (CHECK, W3-R6) ;
+// - stock_whatsapp_registrations_phone_e164 : format E.164 (CHECK, W3-R6) ;
+// - stock_whatsapp_sessions_one_open : une session ouverte par inscription
+//   (unique partiel, W4-R1) ;
+// - whatsapp_cloud_events_one_message : un message Meta traite une fois
+//   (unique partiel sur kind = MESSAGE, W6-R7) ;
+// - stock_whatsapp_usages_used_non_negative : compteur >= 0 (CHECK, W11-R3) ;
+// - stock_field_captures_removed_has_no_file : photo retiree = plus de
+//   fichier, empreinte gardee (CHECK, W14-R5).
+// ============================================================================
+
+/// Lot 041. Canal d'ouverture d'un inventaire.
+enum StockCountSource {
+  WEB
+  WHATSAPP
+}
+
+enum StockWhatsappRegistrationStatus {
+  /// Code d'activation remis, pas encore envoye par le chef.
+  PENDING_ACTIVATION
+  ACTIVE
+  REVOKED
+}
+
+enum StockWhatsappSessionState {
+  AWAITING_SITE
+  ANALYZING
+  AWAITING_ITEM
+  AWAITING_CONFIRMATION
+  /// Ecart E3 : l'article a deja une ligne dans l'inventaire.
+  AWAITING_MERGE
+  READY
+  CLOSED
+}
+
+enum StockWhatsappSessionCloseReason {
+  FIN
+  SITE_CHANGE
+  TIMEOUT
+  ACCESS_LOST
+  REVOKED
+  NO_SITE
+}
+
+enum StockWhatsappMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum StockWhatsappMessageKind {
+  TEXT
+  IMAGE
+  BUTTONS
+  LIST
+  REPLY
+  UNSUPPORTED
+}
+
+/// Lot 041 (T10). Ce qu'est devenue une photo.
+enum StockFieldCaptureOutcome {
+  /// Recue, en attente du choix du chantier (W4-R3).
+  RECEIVED
+  /// Analyse en cours ou proposition en attente de reponse.
+  PENDING
+  ACCEPTED
+  CORRECTED
+  CANCELLED
+  EXPIRED
+  UNREADABLE
+  UNRECOGNIZED
+  FAILED
+}
+
+enum StockVisionQuality {
+  OK
+  TOO_DARK
+  BLURRY
+  NOT_STOCK
+}
+
+enum StockVisionMethod {
+  SACKS_STACKED
+  BARS_BUNDLE
+  BLOCKS_PALLET
+  OTHER
+}
+
+enum WhatsappCloudEventKind {
+  MESSAGE
+  STATUS
+  OTHER
+}
+
+enum WhatsappCloudEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum WhatsappInboundVia {
+  META
+  SIMULATOR
+}
+
+/// Lot 041 (W3). Lien entre un chef de chantier, son numero WhatsApp et ses
+/// chantiers. UN numero = UNE inscription non revoquee sur TOUTE la plateforme
+/// (index unique partiel `stock_whatsapp_registrations_one_live_phone`). Un
+/// membre = une inscription non revoquee dans l'agence (`..._one_live_member`).
+/// Le code d'activation n'est stocke qu'en empreinte
+/// (hashToken(code + ':' + id)) et efface a l'activation ; CHECK
+/// `..._pending_has_code` et `..._phone_e164` en SQL.
+/// `user` en Restrict : un compte ne se supprime pas tant qu'il a une
+/// inscription (les comptes se desactivent, User.isActive).
+model StockWhatsappRegistration {
+  id                  String                          @id @default(uuid()) @db.Uuid
+  tenantId            String                          @map("tenant_id")
+  userId              String                          @map("user_id")
+  /// E.164 avec le « + » (normalizePhoneE164). Masque partout sauf a l'inscription.
+  phoneE164           String                          @map("phone_e164")
+  status              StockWhatsappRegistrationStatus @default(PENDING_ACTIVATION)
+  activationCodeHash  String?                         @map("activation_code_hash") @db.Char(64)
+  activationExpiresAt DateTime?                       @map("activation_expires_at")
+  activationAttempts  Int                             @default(0) @map("activation_attempts")
+  activatedAt         DateTime?                       @map("activated_at")
+  createdByUserId     String                          @map("created_by_user_id")
+  revokedAt           DateTime?                       @map("revoked_at")
+  revokedByUserId     String?                         @map("revoked_by_user_id")
+  revokeReason        String?                         @map("revoke_reason")
+  lastInboundAt       DateTime?                       @map("last_inbound_at")
+  createdAt           DateTime                        @default(now()) @map("created_at")
+  updatedAt           DateTime                        @updatedAt @map("updated_at")
+
+  tenant    Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User                            @relation("StockWhatsappRegistrationUser", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy User                            @relation("StockWhatsappRegistrationCreatedBy", fields: [createdByUserId], references: [id])
+  revokedBy User?                           @relation("StockWhatsappRegistrationRevokedBy", fields: [revokedByUserId], references: [id])
+  sites     StockWhatsappRegistrationSite[]
+  sessions  StockWhatsappSession[]
+  messages  StockWhatsappMessage[]
+  captures  StockFieldCapture[]
+
+  @@index([tenantId, status])
+  @@index([phoneE164])
+  @@map("stock_whatsapp_registrations")
+}
+
+/// Lot 041 (W3-R5). 1 a 10 chantiers par inscription (borne de la liste Meta).
+/// L'eligibilite (ouvert, bascule au stock, lieu actif) est controlee a
+/// l'ecriture ET a chaque message : un chantier clos reste affecte mais n'est
+/// plus propose (W5-R8).
+model StockWhatsappRegistrationSite {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id")
+  registrationId String   @map("registration_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registration StockWhatsappRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  site         ConstructionSite          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([registrationId, siteId])
+  @@index([tenantId, siteId])
+  @@map("stock_whatsapp_registration_sites")
+}
+
+/// Lot 041 (W4). Au plus UNE session ouverte (closed_at nul) par inscription
+/// (index unique partiel `stock_whatsapp_sessions_one_open`). Les transitions
+/// sont des mises a jour conditionnelles sur `state` (W4-R4). L'index
+/// (closed_at, last_inbound_at) sert la tache : sessions ouvertes dont
+/// l'echeance est passee (lecture transverse, W10-R2).
+model StockWhatsappSession {
+  id               String                           @id @default(uuid()) @db.Uuid
+  tenantId         String                           @map("tenant_id")
+  registrationId   String                           @map("registration_id") @db.Uuid
+  state            StockWhatsappSessionState
+  siteId           String?                          @map("site_id") @db.Uuid
+  locationId       String?                          @map("location_id") @db.Uuid
+  /// Inventaire courant de la session sur ce lieu (W5-R2).
+  countId          String?                          @map("count_id") @db.Uuid
+  /// Capture en cours (analyse, proposition, fusion).
+  pendingCaptureId String?                          @unique @map("pending_capture_id") @db.Uuid
+  lastInboundAt    DateTime                         @map("last_inbound_at")
+  reminderSentAt   DateTime?                        @map("reminder_sent_at")
+  openedAt         DateTime                         @default(now()) @map("opened_at")
+  closedAt         DateTime?                        @map("closed_at")
+  closeReason      StockWhatsappSessionCloseReason? @map("close_reason")
+  /// Ce que la cloture a fait de l'inventaire : COUNTED | LEFT_OPEN | NONE.
+  countOutcome     String?                          @map("count_outcome")
+  updatedAt        DateTime                         @updatedAt @map("updated_at")
+
+  tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registration   StockWhatsappRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  site           ConstructionSite?         @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location       StockLocation?            @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  count          StockCount?               @relation(fields: [countId], references: [id], onDelete: SetNull)
+  pendingCapture StockFieldCapture?        @relation("StockWhatsappSessionPendingCapture", fields: [pendingCaptureId], references: [id], onDelete: SetNull)
+  captures       StockFieldCapture[]       @relation("StockFieldCaptureSession")
+  messages       StockWhatsappMessage[]
+
+  @@index([tenantId, closedAt])
+  @@index([closedAt, lastInboundAt])
+  @@map("stock_whatsapp_sessions")
+}
+
+/// Lot 041 (T9). Messages entrants et sortants d'une inscription. Texte tronque
+/// a 1 000 caracteres. Purge a 180 jours (tache stock-whatsapp-job). Jamais le
+/// numero : il est sur l'inscription.
+model StockWhatsappMessage {
+  id             String                        @id @default(uuid()) @db.Uuid
+  tenantId       String                        @map("tenant_id")
+  registrationId String                        @map("registration_id") @db.Uuid
+  sessionId      String?                       @map("session_id") @db.Uuid
+  captureId      String?                       @map("capture_id") @db.Uuid
+  direction      StockWhatsappMessageDirection
+  kind           StockWhatsappMessageKind
+  /// Texte, ou corps d'un message interactif. Tronque a 1 000.
+  text           String?                       @db.VarChar(1000)
+  /// Boutons ou lignes de liste proposes, ou reponse choisie : { id, title }[].
+  interactive    Json?
+  /// Identifiant Meta (wamid) ; nul pour le transport log.
+  metaMessageId  String?                       @map("meta_message_id")
+  via            WhatsappInboundVia?
+  sendError      String?                       @map("send_error") @db.VarChar(500)
+  createdAt      DateTime                      @default(now()) @map("created_at")
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registration StockWhatsappRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  session      StockWhatsappSession?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  capture      StockFieldCapture?        @relation(fields: [captureId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, registrationId, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([createdAt])
+  @@map("stock_whatsapp_messages")
+}
+
+/// Lot 041 (T10). Une photo recue, son analyse et ce que le chef en a fait.
+/// PREUVE : empreinte SHA-256 du fichier STOCKE (EXIF retire), heure serveur.
+/// Le stock theorique n'est JAMAIS recopie ici (il est fige sur la ligne
+/// d'inventaire, lot 040). Fichier prive sous uploads/stock-whatsapp/.
+/// CHECK `stock_field_captures_removed_has_no_file` en SQL : une photo retiree
+/// n'a plus de fichier, mais garde son empreinte (W14-R5).
+/// `countLine` en SetNull : une ligne supprimee en DRAFT ne doit pas etre
+/// bloquee par sa capture, qui garde countId, itemId et sa preuve.
+model StockFieldCapture {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  tenantId             String                   @map("tenant_id")
+  registrationId       String                   @map("registration_id") @db.Uuid
+  sessionId            String                   @map("session_id") @db.Uuid
+  /// Le chef (auteur de la photo et de la ligne).
+  userId               String                   @map("user_id")
+  siteId               String?                  @map("site_id") @db.Uuid
+  locationId           String?                  @map("location_id") @db.Uuid
+  countId              String?                  @map("count_id") @db.Uuid
+  countLineId          String?                  @map("count_line_id") @db.Uuid
+  /// Article retenu (propose par l'IA, impose par le chef, ou nul).
+  itemId               String?                  @map("item_id") @db.Uuid
+  itemImposed          Boolean                  @default(false) @map("item_imposed")
+  outcome              StockFieldCaptureOutcome @default(RECEIVED)
+  via                  WhatsappInboundVia
+  metaMessageId        String?                  @map("meta_message_id")
+  // --- Fichier ---
+  /// `/uploads/stock-whatsapp/<tenantId>/<aaaa>/<uuid>.<ext>`. Nul apres retrait.
+  fileUrl              String?                  @map("file_url")
+  mimeType             String                   @map("mime_type")
+  sizeBytes            Int                      @map("size_bytes")
+  sha256               String                   @db.Char(64)
+  /// Empreinte annoncee par Meta (fichier recu, avant retrait de l'EXIF).
+  providerSha256       String?                  @map("provider_sha256")
+  receivedAt           DateTime                 @default(now()) @map("received_at")
+  // --- Analyse ---
+  visionProvider       String?                  @map("vision_provider")
+  visionModel          String?                  @map("vision_model")
+  analyzedAt           DateTime?                @map("analyzed_at")
+  analysisMs           Int?                     @map("analysis_ms")
+  quality              StockVisionQuality?
+  method               StockVisionMethod?
+  proposedTotal        Decimal?                 @map("proposed_total") @db.Decimal(16, 4)
+  confidence           Decimal?                 @db.Decimal(4, 3)
+  /// Sortie validee complete (stockVisionResultSchema), jamais la reponse brute.
+  analysis             Json?
+  /// TIMEOUT | PROVIDER_ERROR | INVALID_OUTPUT | DISABLED.
+  failureReason        String?                  @map("failure_reason")
+  /// Vrai si une photo analysee a ete decomptee du quota (W11-R3).
+  quotaCounted         Boolean                  @default(false) @map("quota_counted")
+  // --- Reponse du chef ---
+  confirmedQuantity    Decimal?                 @map("confirmed_quantity") @db.Decimal(16, 4)
+  /// Quantite ecrite sur la ligne (differente de confirmedQuantity apres une addition, W5-R4).
+  lineQuantityAfter    Decimal?                 @map("line_quantity_after") @db.Decimal(16, 4)
+  /// ADD | REPLACE apres AWAITING_MERGE, nul sinon.
+  mergeMode            String?                  @map("merge_mode")
+  confirmedAt          DateTime?                @map("confirmed_at")
+  // --- Retrait de la photo (W14-R5) ---
+  photoRemovedAt       DateTime?                @map("photo_removed_at")
+  photoRemovedByUserId String?                  @map("photo_removed_by_user_id")
+  photoRemovalReason   String?                  @map("photo_removal_reason")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registration   StockWhatsappRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  session        StockWhatsappSession      @relation("StockFieldCaptureSession", fields: [sessionId], references: [id], onDelete: Restrict)
+  user           User                      @relation("StockFieldCaptureUser", fields: [userId], references: [id])
+  site           ConstructionSite?         @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  location       StockLocation?            @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  count          StockCount?               @relation(fields: [countId], references: [id], onDelete: Restrict)
+  countLine      StockCountLine?           @relation(fields: [countLineId], references: [id], onDelete: SetNull)
+  item           StockItem?                @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  photoRemovedBy User?                     @relation("StockFieldCapturePhotoRemovedBy", fields: [photoRemovedByUserId], references: [id])
+  pendingFor     StockWhatsappSession?     @relation("StockWhatsappSessionPendingCapture")
+  messages       StockWhatsappMessage[]
+
+  @@index([tenantId, locationId, confirmedAt(sort: Desc)])
+  @@index([tenantId, countId])
+  @@index([countLineId])
+  @@index([tenantId, outcome, receivedAt])
+  @@map("stock_field_captures")
+}
+
+/// Lot 041 (W11-R3). Photos analysees par agence et par mois civil UTC.
+/// Incrementee par UPDATE ... WHERE used < quota RETURNING (jamais lue puis
+/// reecrite). Rendue (used - 1) si l'IA echoue. CHECK
+/// `stock_whatsapp_usages_used_non_negative` en SQL.
+model StockWhatsappUsage {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id")
+  /// « AAAA-MM ».
+  month          String    @db.Char(7)
+  used           Int       @default(0)
+  quotaReachedAt DateTime? @map("quota_reached_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@map("stock_whatsapp_usages")
+}
+
+/// Lot 041 (W6-R7, W6-R8). Evenement recu du webhook Meta. MODELE GLOBAL : a
+/// la reception, l'agence n'est pas connue (elle se deduit de l'inscription).
+/// Ne porte JAMAIS durablement le numero d'un expediteur : `senderHash` est un
+/// HMAC-SHA256 (cle META_WA_APP_SECRET) du numero E.164 ; `payload` (copie du
+/// message) est efface des le traitement et au plus tard apres 1 heure.
+/// Purge a 30 jours. Unique partiel `whatsapp_cloud_events_one_message` sur
+/// meta_message_id quand kind = MESSAGE : un renvoi de Meta n'est pas retraite.
+model WhatsappCloudEvent {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  kind               WhatsappCloudEventKind
+  status             WhatsappCloudEventStatus @default(RECEIVED)
+  /// wamid du message (MESSAGE) ou du message vise (STATUS).
+  metaMessageId      String?                  @map("meta_message_id")
+  senderHash         String?                  @map("sender_hash") @db.Char(64)
+  messageType        String?                  @map("message_type") @db.VarChar(40)
+  /// STATUS : sent | delivered | read | failed.
+  deliveryStatus     String?                  @map("delivery_status") @db.VarChar(20)
+  payload            Json?
+  via                WhatsappInboundVia       @default(META)
+  receivedAt         DateTime                 @default(now()) @map("received_at")
+  claimedAt          DateTime?                @map("claimed_at")
+  processedAt        DateTime?                @map("processed_at")
+  attempts           Int                      @default(0)
+  /// Reponse M01 envoyee a cet expediteur inconnu (W7-R1).
+  unknownReplySentAt DateTime?                @map("unknown_reply_sent_at")
+  error              String?                  @db.VarChar(500)
+
+  @@index([status, receivedAt])
+  @@index([senderHash, unknownReplySentAt])
+  @@index([receivedAt])
+  @@map("whatsapp_cloud_events")
 }

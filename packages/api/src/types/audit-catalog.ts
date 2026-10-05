@@ -25,6 +25,9 @@ export interface AuditCatalogEntry {
 
 type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 
+/** Lot 041 : le numero du chef de chantier n'apparait jamais en clair dans l'audit. */
+const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
+
 /** Visible de l'agence concernée. */
 const tenant = (category: AuditCategoryValue, extra: Extra = {}): AuditCatalogEntry => ({
   category,
@@ -245,6 +248,29 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.STOCK_ITEM_UPDATED]: tenant('ADMIN'),
   [AuditActionKey.STOCK_LOCATION_CREATED]: tenant('ADMIN'),
   [AuditActionKey.STOCK_LOCATION_UPDATED]: tenant('ADMIN'),
+
+  // Inventaire de chantier par WhatsApp (spec 041). Toutes masquent le numero.
+  // Critiques : ecrites par recordAuditEvent DANS la transaction. Hors requete
+  // (moteur, tache), l'acteur et l'agence sont passes explicitement.
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_CREATED]: tenant('ADMIN', {
+    critical: true,
+    redact: STOCK_WHATSAPP_REDACT
+  }),
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_UPDATED]: tenant('ADMIN', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_ACTIVATION_CODE_REGENERATED]: tenant('SECURITY', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_ACTIVATED]: tenant('SECURITY', {
+    critical: true,
+    redact: STOCK_WHATSAPP_REDACT
+  }),
+  [AuditActionKey.STOCK_WHATSAPP_ACTIVATION_LOCKED]: tenant('SECURITY', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_REVOKED]: tenant('SECURITY', {
+    critical: true,
+    redact: STOCK_WHATSAPP_REDACT
+  }),
+  [AuditActionKey.STOCK_WHATSAPP_COUNT_RECORDED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_COUNT_CLOSED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_QUOTA_REACHED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_PHOTO_REMOVED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
 
   // Divers
   [AuditActionKey.LOT_REGISTRY_RECONCILED]: internal('SYSTEM'),

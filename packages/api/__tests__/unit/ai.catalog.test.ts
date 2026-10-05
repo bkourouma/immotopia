@@ -20,6 +20,7 @@ import {
   buildCatalog,
   isDestructive,
   isSensitivePath,
+  EXCLUDED_ANY_SEGMENTS,
   isTenantScoped,
   serializeCatalog,
   EXCLUDED_ABSOLUTE_PREFIXES
@@ -67,6 +68,24 @@ describe('catalogue de la passerelle IA', () => {
       'POST /api/tenants/:tenantId/maintenance/admin/vendors/:vendorId/delete'
     );
     expect(built.entries.some(entry => /\/(delete|remove|destroy|purge)$/i.test(entry.path))).toBe(false);
+    // Verbe en tête d'un dernier segment composé (lot 041) : effacement d'une photo de preuve.
+    expect(built.excludedDestructive.map(entry => entry.id)).toContain(
+      'POST /api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo'
+    );
+  });
+
+  it('repère le verbe destructeur en tête du dernier segment, seul ou composé', () => {
+    expect(
+      isDestructive('POST', '/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo')
+    ).toBe(true);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/delete-all')).toBe(true);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/:id/purge_cache')).toBe(true);
+    expect(isDestructive('PATCH', '/api/tenants/:tenantId/x/:id/DESTROY')).toBe(true);
+    // Témoins : le verbe au milieu d'un segment, ou hors du dernier segment, ne suffit pas.
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/auto-remove')).toBe(false);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/x/removed')).toBe(false);
+    expect(isDestructive('POST', '/api/tenants/:tenantId/remove-requests/:id/approve')).toBe(false);
+    expect(isDestructive('GET', '/api/tenants/:tenantId/x/:id')).toBe(false);
   });
 
   it('ne contient aucune route /auth, /admin, /platform, /portal, /ai, webhook', () => {
@@ -78,6 +97,34 @@ describe('catalogue de la passerelle IA', () => {
     }
   });
 
+  it('exclut le simulateur WhatsApp (lot 041, W13-R6) : il parle au nom d’un chef de chantier', () => {
+    const inApp = routes.filter(route => isTenantScoped(route) && route.path.split('/').includes('simulator'));
+    expect(inApp.length).toBeGreaterThanOrEqual(3);
+    expect(EXCLUDED_ANY_SEGMENTS.has('simulator')).toBe(true);
+    expect(built.entries.some(entry => entry.path.split('/').includes('simulator'))).toBe(false);
+  });
+
+  it('marque sensibles les inscriptions WhatsApp (numéro du chef, code d’activation)', () => {
+    const registrations = built.entries.filter(entry => entry.path.includes('/whatsapp/registrations'));
+    expect(registrations.length).toBeGreaterThanOrEqual(4);
+    expect(registrations.every(entry => entry.sensitive)).toBe(true);
+    expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/revoke')).toBe(
+      true
+    );
+    // Les autres lectures du lot restent ouvertes à l'assistant (aucun numéro en clair).
+    const fieldCounts = built.entries.find(entry => entry.path.endsWith('/finance/stock/whatsapp/field-counts'));
+    expect(fieldCounts?.sensitive).toBe(false);
+    expect(isSensitivePath('/api/tenants/:tenantId/whatsapp-notifications')).toBe(false);
+  });
+
+  it('marque sensibles les sessions et conversations du bot WhatsApp (numéro et messages du chef)', () => {
+    expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:id')).toBe(true);
+    expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:sessionId/messages')).toBe(true);
+    const sessions = built.entries.filter(entry => entry.path.includes('/finance/stock/whatsapp/sessions'));
+    expect(sessions.length).toBeGreaterThanOrEqual(2);
+    expect(sessions.every(entry => entry.sensitive)).toBe(true);
+  });
+
   it('toute route d’agence non DELETE, non destructrice, non exclue a une entrée', () => {
     const ids = new Set(built.entries.map(entry => entry.id));
     const missing: string[] = [];
@@ -86,6 +133,7 @@ describe('catalogue de la passerelle IA', () => {
       if (isDestructive(route.method, route.path)) continue;
       if (!['GET', 'POST', 'PUT', 'PATCH'].includes(route.method)) continue;
       if (/webhook/i.test(route.path) || route.path.startsWith('/api/tenants/:tenantId/ai')) continue;
+      if (route.path.split('/').includes('simulator')) continue;
       if (!ids.has(`${route.method} ${route.path}`)) missing.push(`${route.method} ${route.path}`);
     }
     expect(missing).toEqual([]);

@@ -10,6 +10,9 @@ import {
   PACK_TEST_MEMBERS,
   PACK_TEST_PASSWORD,
   PACK_TEST_TENANTS,
+  PACK_TEST_WHATSAPP_OPTION_TENANTS,
+  PACK_TEST_WHATSAPP_PHONE_PATTERN,
+  PACK_TEST_WHATSAPP_REGISTRATIONS,
   STAGING_ORIGIN,
   checkPackTestTenantsGuard
 } from '../../prisma/seeds/pack-test-tenants';
@@ -73,9 +76,11 @@ describe('comptes de recette du contrôle du stock (lot 040)', () => {
     }
   });
 
-  it('porte exactement les quatre comptes attendus, au domaine .test', () => {
+  it('porte exactement les six comptes attendus (dont deux chefs de chantier du lot 041), au domaine .test', () => {
     expect(PACK_TEST_MEMBERS.map(m => `${m.email}:${m.roleKey}`).sort()).toEqual(
       [
+        `chef-integre@${PACK_TEST_EMAIL_DOMAIN}:TENANT_SITE_MANAGER`,
+        `chef-promoteur@${PACK_TEST_EMAIL_DOMAIN}:TENANT_SITE_MANAGER`,
         `comptable-promoteur@${PACK_TEST_EMAIL_DOMAIN}:TENANT_ACCOUNTANT`,
         `magasinier-integre@${PACK_TEST_EMAIL_DOMAIN}:TENANT_STOREKEEPER`,
         `magasinier-promoteur@${PACK_TEST_EMAIL_DOMAIN}:TENANT_STOREKEEPER`,
@@ -93,6 +98,41 @@ describe('comptes de recette du contrôle du stock (lot 040)', () => {
       validate(loginSchema)(req, {} as Response, next);
       expect(next).toHaveBeenCalledWith();
     }
+  });
+});
+
+describe('inscriptions WhatsApp de recette (lot 041, plan §7.6)', () => {
+  const PROMOTEUR_6M = PACK_TEST_TENANTS.find(t => t.pack === PACK.PROMOTEUR && t.profile === '6m')!.tenantName;
+  const INTEGRE_6M = PACK_TEST_TENANTS.find(t => t.pack === PACK.INTEGRE && t.profile === '6m')!.tenantName;
+
+  it('inscrit le chef de chantier de chacune des deux agences 6 mois, aux numéros fictifs attendus', () => {
+    expect(PACK_TEST_WHATSAPP_REGISTRATIONS.map(r => `${r.tenantName}|${r.memberEmail}|${r.phoneE164}`).sort()).toEqual(
+      [
+        `${PROMOTEUR_6M}|chef-promoteur@${PACK_TEST_EMAIL_DOMAIN}|+2250100000101`,
+        `${INTEGRE_6M}|chef-integre@${PACK_TEST_EMAIL_DOMAIN}|+2250100000102`
+      ].sort()
+    );
+  });
+
+  it('chaque inscription vise un Chef de chantier de la même agence', () => {
+    for (const registration of PACK_TEST_WHATSAPP_REGISTRATIONS) {
+      const member = PACK_TEST_MEMBERS.find(m => m.email === registration.memberEmail);
+      expect(member).toBeDefined();
+      expect(member!.roleKey).toBe('TENANT_SITE_MANAGER');
+      expect(member!.tenantName).toBe(registration.tenantName);
+    }
+  });
+
+  it('numéros dans la plage fictive de recette, distincts, jamais un vrai numéro', () => {
+    const phones = PACK_TEST_WHATSAPP_REGISTRATIONS.map(r => r.phoneE164);
+    expect(new Set(phones).size).toBe(phones.length);
+    for (const phone of phones) expect(phone).toMatch(PACK_TEST_WHATSAPP_PHONE_PATTERN);
+    expect(PACK_TEST_WHATSAPP_PHONE_PATTERN.test('+2250712345678')).toBe(false);
+  });
+
+  it('le bloc EXT_INVENTAIRE_WHATSAPP va au Promoteur seul (option absente sur l’Intégré)', () => {
+    expect([...PACK_TEST_WHATSAPP_OPTION_TENANTS]).toEqual([PROMOTEUR_6M]);
+    expect(PACK_TEST_WHATSAPP_OPTION_TENANTS).not.toContain(INTEGRE_6M);
   });
 });
 
