@@ -620,5 +620,20 @@
   "Voir": "عرض",
   "Voir les détails": "عرض التفاصيل",
   "Voir toute la requête": "عرض الطلب كاملاً",
-  "Vue d'ensemble": "نظرة عامة"
+  "Vue d'ensemble": "نظرة عامة",
+  "Abandonner les modifications ?": "التخلي عن التعديلات؟",
+  "Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre.": "لم يتم حفظ القوائم المعدلة: سيؤدي تغيير الوكالة إلى فقدانها.",
+  "Changer d'agence": "تغيير الوكالة",
+  "Rester": "البقاء",
+  "Ces réglages s'appliquent à la plateforme.": "تسري هذه الإعدادات على المنصة.",
+  "Choisissez une agence pour régler ses menus.": "اختر وكالة لضبط قوائمها.",
+  "Choisir une agence": "اختر وكالة",
+  "Toutes les agences (défaut)": "جميع الوكالات (الافتراضي)",
+  "Ces réglages s'appliquent à toutes les agences qui n'ont pas leur propre réglage.": "تسري هذه الإعدادات على كل وكالة ليس لها إعداد خاص بها.",
+  "Ces réglages remplacent le défaut pour cette agence seulement.": "تحل هذه الإعدادات محل الافتراضي لهذه الوكالة فقط.",
+  "Réglage propre à l'agence": "إعداد خاص بالوكالة",
+  "Hérite du défaut": "يرث الإعداد الافتراضي",
+  "Revenir au défaut": "العودة إلى الافتراضي",
+  "Revenir au défaut ?": "العودة إلى الافتراضي؟",
+  "Cette agence reprendra le réglage par défaut : son réglage propre sera supprimé.": "ستستعيد هذه الوكالة الإعداد الافتراضي وسيُحذف إعدادها الخاص."
 }

@@ -620,5 +620,20 @@
   "Voir": "View",
   "Voir les détails": "View details",
   "Voir toute la requête": "See the whole request",
-  "Vue d'ensemble": "Overview"
+  "Vue d'ensemble": "Overview",
+  "Abandonner les modifications ?": "Discard changes?",
+  "Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre.": "The edited menus are not saved: switching agency will discard them.",
+  "Changer d'agence": "Switch agency",
+  "Rester": "Stay",
+  "Ces réglages s'appliquent à la plateforme.": "These settings apply to the platform.",
+  "Choisissez une agence pour régler ses menus.": "Choose an agency to set its menus.",
+  "Choisir une agence": "Choose an agency",
+  "Toutes les agences (défaut)": "All agencies (default)",
+  "Ces réglages s'appliquent à toutes les agences qui n'ont pas leur propre réglage.": "These settings apply to every agency that has no setting of its own.",
+  "Ces réglages remplacent le défaut pour cette agence seulement.": "These settings replace the default for this agency only.",
+  "Réglage propre à l'agence": "Agency-specific setting",
+  "Hérite du défaut": "Inherits the default",
+  "Revenir au défaut": "Revert to default",
+  "Revenir au défaut ?": "Revert to default?",
+  "Cette agence reprendra le réglage par défaut : son réglage propre sera supprimé.": "This agency will use the default setting again: its own setting will be deleted."
 }

@@ -60,10 +60,11 @@ import { AppError, ErrorCode } from '../middleware/error-middleware';
  * - `Tenant`, `User`, `Role`, `Permission` carry no `tenantId`/`tenant_id`
  *   field at all (they are platform-wide models): they never appear in the
  *   derived map, nothing to special-case.
- * - `UserRole.tenantId` and `AuditLog.tenantId` are nullable **by design**: a
+ * - `UserRole.tenantId`, `AuditLog.tenantId` and `RoleMenuAccess.tenantId` are nullable **by design**: a
  *   platform-scope role (`UserRole.tenantId = null`) or a platform action
- *   (`AuditLog` written outside any agency, e.g. a super-admin login) is a
- *   legitimate, expected case, not a forgotten filter. Both models are listed
+ *   (`AuditLog` written outside any agency, e.g. a super-admin login) or a
+ *   platform-scope menu setting (`RoleMenuAccess.tenantId = null`) is a
+ *   legitimate, expected case, not a forgotten filter. These models are listed
  *   in `EXEMPT_MODELS` and are never checked, even with a tenant context
  *   active.
  * - `DocumentTemplate.tenant_id` is nullable too (a `null` row is a global
@@ -122,6 +123,9 @@ import { AppError, ErrorCode } from '../middleware/error-middleware';
 const EXEMPT_MODELS = new Set([
   'UserRole', // tenantId null = platform-scope role.
   'AuditLog', // tenantId null = action logged outside any agency context.
+  // tenantId null = menu des rôles PLATFORM (super-admin hors agence), distinct de
+  // toute agence et sans héritage ; les routes lisent toujours un périmètre explicite.
+  'RoleMenuAccess',
   // Name collision: here `tenantId` is the RENTER (a CrmContact), not the
   // agency. The model is scoped through its lot's syndicate instead.
   'LotTenantAssignment'
@@ -158,8 +162,7 @@ function deriveTenantFieldMap(): TenantFieldMap {
   const childrenWithoutTenantField: string[] = [];
 
   try {
-    const models = (Prisma as unknown as { dmmf?: { datamodel?: { models?: DmmfModel[] } } })?.dmmf?.datamodel
-      ?.models;
+    const models = (Prisma as unknown as { dmmf?: { datamodel?: { models?: DmmfModel[] } } })?.dmmf?.datamodel?.models;
 
     if (Array.isArray(models)) {
       for (const model of models) {

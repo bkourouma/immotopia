@@ -1043,8 +1043,11 @@ les [points ouverts](#points-ouverts)).
   Les clés de menu ne sont connues que du web : la migration n'écrit aucune
   décision de menu. Après le déploiement, un super-administrateur ouvre
   l'écran des accès aux menus par rôle (`PUT /roles/menu-access/:roleKey`) et,
-  pour `TENANT_STOREKEEPER`, ne laisse que les menus du stock (le Magasin, les
-  preneurs, le stock). À faire sur le staging, puis sur la production.
+  pour `TENANT_STOREKEEPER`, choisit **« Toutes les agences (défaut) »** puis ne
+  laisse que les menus du stock (le Magasin, les preneurs, le stock). Ce défaut
+  vaut pour toutes les agences, y compris celles créées ensuite, tant qu'une
+  agence n'a pas son propre réglage pour ce rôle. À faire sur le staging, puis
+  sur la production.
 - **Comptes de recette** : relancer le seed des comptes de test par pack sur le
   staging ([plus haut](#comptes-de-test-par-pack-staging)).
 
@@ -1110,8 +1113,9 @@ chantier, leurs inscriptions et le bloc d'option du Promoteur.
 9. Vision : `STOCK_VISION_PROVIDER=gemini` et `GEMINI_API_KEY` (ou `openrouter`
    et sa clé), `STOCK_VISION_MODEL`.
 10. Couper les menus hors stock du rôle « Chef de chantier »
-    (`TENANT_SITE_MANAGER`) par l'écran des accès aux menus par rôle, comme pour
-    le Magasinier du lot 040. Le rôle ne porte que `STOCK_COUNT` : sans
+    (`TENANT_SITE_MANAGER`) par l'écran des accès aux menus par rôle, en
+    choisissant « Toutes les agences (défaut) », comme pour le Magasinier du
+    lot 040. Le rôle ne porte que `STOCK_COUNT` : sans
     `STOCK_VIEW`, la Gestion du stock lui est de toute façon fermée.
 11. **Retour arrière** : `WHATSAPP_INVENTORY_TRANSPORT=disabled` coupe la
     fonction sans redéployer (webhook en `404`, minuteries et reprise des

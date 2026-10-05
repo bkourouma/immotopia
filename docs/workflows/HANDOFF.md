@@ -183,6 +183,20 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/menus-coupes-par-agence` — 2026-10-05
+
+**État :** PR #112 ouverte vers `main` (fusion à l'utilisateur), worktree `.claude/worktrees/menus-agence`, correction automatique de la CI active. Rien de déployé.
+
+**Fait :** décision utilisateur du 2026-10-05 « défaut + surcharge par agence » (les lots 040/041 coupent une fois, pour toutes les agences, les menus hors stock des rôles Magasinier et Chef de chantier). `role_menu_access.tenant_id` : NULL = défaut de toutes les agences pour un rôle d'agence/portail, périmètre plateforme pour un rôle PLATFORM ; agence = surcharge. Résolution par (rôle, menu) : agence > défaut > rien. Migration `20261010100000_role_menu_access_par_agence` : colonne, FK en cascade, unicités (dont index partiel NULL), sans copie : les décisions existantes deviennent le défaut. PUT sans `tenantId` = défaut (rôle d'agence) ou plateforme ; avec = surcharge (interdit pour PLATFORM) ; `{}` avec `tenantId` = « Revenir au défaut ». Écran Menus : choix « Toutes les agences (défaut) » ou une agence, tags « Hérite du défaut » / « Réglage propre à l'agence », bouton « Revenir au défaut ». DEPLOIEMENT.md (lots 040/041) et classeur à jour.
+
+**Vérifié :** Jest 89 tests ciblés, Vitest 292 (admin, navigation), typecheck web 0 / API 1 préexistante (`archiver`), `wiki:check`. Recette navigateur faite le 2026-10-04 sur la version « strictement par agence » (non rejouée sur la version défaut + surcharge).
+
+**Reste :** rejouer la recette navigateur sur la version défaut + surcharge ; après fusion, déployer le staging puis appliquer les étapes 040/041 (couper les menus hors stock des rôles stock avec « Toutes les agences (défaut) »).
+
+**Pièges :** une sauvegarde au niveau d'une agence écrit sa carte complète et fige ses valeurs jusqu'à « Revenir au défaut ». Modifier le défaut touche toutes les agences sans réglage propre (alerte à l'écran). `npm run i18n:extract` réécrit 30 catalogues en retard sur `main` : ajouter ses clés à la main. Le test « Importer mon patrimoine » dépasse parfois 30 s en CI (passe seul). L'instance démo n'a pas sa base migrée (service `postgresql-x64-18` arrêté). Staging : `SUBSCRIPTION_ENFORCEMENT=enforce` depuis le 2026-10-03 (sauvegarde `immotopia-saas.env.avant-enforce-20261003`), coupures TENANT_ADMIN levées le même jour (sauvegarde `/home/deployer/role_menu_access_tenant_admin_avant_20261003.csv`).
+
+---
+
 ## Branche `feat/immocopilot-o9nygz` — 2026-10-04
 
 **État :** correctifs du passage 2 de la recette navigateur d'ImmoCopilot (PR #113, fusion à l'utilisateur ; elle contient aussi le retrait de l'ancienne section HANDOFF). Passage 2 : 0 bloquant, 3 importants (corrigés ici), mineurs restants listés ci-dessous.
@@ -192,6 +206,8 @@ Pièges et décisions :
 **Reste à faire :** mineurs de la recette : statuts non retraduits après un changement de langue à chaud (`STATUS_MAP` de `StatusTag.tsx` figé au chargement du module), libellés techniques non traduits dans la carte (« Internal notes », module en clé brute), nom de fichier PNG accentué à revérifier dans un vrai Chrome ; non testés : vrai micro, avertissements « liste remplacée » / « requête non vide » affichés (le faux fournisseur ne les produit pas), `npm run test:isolation`. Décisions en attente : liste des anciennes conversations (stockage serveur), refuser les 3 créations imbriquées sans GET parent. Course théorique sur le dernier admin (contrôle hors transaction, SECURITY §13).
 
 **Pièges :** `npm run ai:catalog` à relancer si un handler change de nom/forme (les deux handlers membres sont passés en `asyncHandler`) ; « agence sans RENTAL » est impossible par construction (MODULE_AGENCY inclut RENTAL) : le cas testable est le pack PROMOTEUR ; les serveurs de recette peuvent tourner (API 8001, vite 3000, PostgreSQL 16 `immotopia_recette`, dump de référence dans le scratchpad) ; test web `import-patrimoine-page` parfois en dépassement de délai sous charge de CI.
+
+---
 
 ## Branche `integration/multi-actifs` — 2026-10-02
 
