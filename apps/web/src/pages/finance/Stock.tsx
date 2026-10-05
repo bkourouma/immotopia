@@ -768,8 +768,11 @@ function FenetreReception(props: {
         )}
 
         {/* Les photos restent montées d'un écran à l'autre : prises avant
-            l'enregistrement, elles partent dès que le bon existe. */}
-        <div>
+            l'enregistrement, elles partent dès que le bon existe. La clé est
+            indispensable : `Space` aplatit le fragment du formulaire et place
+            chaque enfant sur une clé d'index ; sans elle, le passage au succès
+            décale cet index, remonte le bloc et vide sa file (rec040-03). */}
+        <div key="photos-avant-enregistrement">
           <Text strong>{t('Photos (facultatif)')}</Text>
           <StockPhotoCapture
             tenantId={tenantId}
@@ -1362,7 +1365,8 @@ function FenetreSortie(props: {
             {erreur ? <Alert type="error" showIcon message={erreur} /> : null}
           </>
         )}
-        <div>
+        {/* Clé stable : voir la fenêtre de réception (rec040-03). */}
+        <div key="photos-avant-enregistrement">
           <Text strong>{t('Photo de la marchandise (facultatif)')}</Text>
           <StockPhotoCapture
             tenantId={tenantId}
@@ -1580,7 +1584,9 @@ function FenetreRebut(props: {
             {erreur ? <Alert type="error" showIcon message={erreur} /> : null}
           </>
         )}
-        <div>
+        {/* Clé stable : la photo choisie avant l'enregistrement part sur le
+            mouvement créé au lieu d'être perdue au remontage (rec040-03). */}
+        <div key="photos-avant-enregistrement">
           <Text strong>{t('Photo de la marchandise (facultatif)')}</Text>
           <StockPhotoCapture
             tenantId={tenantId}
@@ -1855,7 +1861,9 @@ function FenetreRetour(props: {
             {erreur ? <Alert type="error" showIcon message={erreur} /> : null}
           </>
         )}
-        <div>
+        {/* Clé stable : la photo choisie avant l'enregistrement part sur le
+            mouvement créé au lieu d'être perdue au remontage (rec040-03). */}
+        <div key="photos-avant-enregistrement">
           <Text strong>{t('Photo de la marchandise (facultatif)')}</Text>
           <StockPhotoCapture
             tenantId={tenantId}

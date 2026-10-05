@@ -333,6 +333,23 @@ describe('Contrôle — onglet Alertes', () => {
     await waitFor(() => expect(appelsGet(/\/stock\/alerts/).some(url => !url.includes('status='))).toBe(true));
   }, 15000);
 
+  it('rec040-05 : ?alerte=<id> introuvable partout (autre agence) — « Cette alerte est introuvable. », pas un problème de filtre', async () => {
+    poserMonde({ alertes: [] });
+    monter(`/tenant/${TENANT}/finance/stock/controle?alerte=alerte-autre-agence`);
+    expect(await screen.findByText('Cette alerte est introuvable.', {}, { timeout: 8000 })).toBeInTheDocument();
+    // La liste a bien été élargie à « Toutes » avant de conclure.
+    expect(appelsGet(/\/stock\/alerts/).some(url => !url.includes('status='))).toBe(true);
+    expect(screen.queryByText('Aucune alerte pour ces filtres.')).toBeNull();
+    expect(screen.queryByText('Aucune alerte à traiter.')).toBeNull();
+  }, 15000);
+
+  it('rec040-05 : une alerte trouvée dans « Toutes » ne se dit pas introuvable', async () => {
+    poserMonde({ alertes: [alerte({ id: 'alerte-traitee', status: 'ACKNOWLEDGED', title: 'Rebut ancien' })] });
+    monter(`/tenant/${TENANT}/finance/stock/controle?alerte=alerte-traitee`);
+    await screen.findByText('Rebut ancien', {}, { timeout: 8000 });
+    expect(screen.queryByText('Cette alerte est introuvable.')).toBeNull();
+  }, 15000);
+
   it('mène chaque objet à son écran : bon, inventaire, fiche du chantier pour une pièce de caisse', async () => {
     poserMonde({
       alertes: [
@@ -457,7 +474,7 @@ describe('Contrôle — onglet Indicateurs', () => {
         rows: [],
         totals: [
           ligne('2026-09', { varianceRate: 0.042, countsWithoutFrozenValues: 2 }),
-          ligne('2026-10', { varianceRate: null })
+          ligne('2026-10', { varianceRate: null, countsValidated: 0, countsValidatedByOther: 0 })
         ]
       }
     });
@@ -475,6 +492,52 @@ describe('Contrôle — onglet Indicateurs', () => {
     expect(document.body.textContent).not.toContain('Awa Traoré');
     const urls = appelsGet(/\/stock\/indicators/);
     expect(urls[0]).toMatch(/from=\d{4}-\d{2}&to=\d{4}-\d{2}/);
+  }, 15000);
+
+  it('rec040-04 : des inventaires validés sur une valeur comptée nulle — « non calculable », jamais « aucun inventaire »', async () => {
+    poserMonde({
+      indicateurs: {
+        from: '2026-05',
+        to: '2026-10',
+        rows: [],
+        totals: [
+          ligne('2026-10', {
+            countsValidated: 5,
+            countsValidatedByOther: 1,
+            countedValue: 0,
+            varianceValueGross: 0,
+            varianceRate: null
+          })
+        ]
+      }
+    });
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=indicateurs`);
+    expect(
+      await screen.findByText('Taux non calculable : valeur comptée nulle.', {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Aucun inventaire validé ce mois-ci.')).toBeNull();
+  }, 15000);
+
+  it('rec040-04 : des inventaires tous validés avant le suivi des valeurs — taux non calculable, et dit pourquoi', async () => {
+    poserMonde({
+      indicateurs: {
+        from: '2026-05',
+        to: '2026-10',
+        rows: [],
+        totals: [
+          ligne('2026-10', { countsValidated: 3, countsWithoutFrozenValues: 3, countedValue: 0, varianceRate: null })
+        ]
+      }
+    });
+    monter(`/tenant/${TENANT}/finance/stock/controle?onglet=indicateurs`);
+    expect(
+      await screen.findByText(
+        'Taux non calculable : inventaires validés avant le suivi des valeurs.',
+        {},
+        { timeout: 8000 }
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Aucun inventaire validé ce mois-ci.')).toBeNull();
   }, 15000);
 
   it('ferme « Afficher » au-delà de 24 mois', async () => {

@@ -24,7 +24,17 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+const ecran = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock('../../hooks/useBreakpoint', () => ({
+  useBreakpoint: () =>
+    ecran.mobile
+      ? { screens: {}, active: 'xs', isMobile: true, isTablet: false, isDesktop: false }
+      : { screens: { lg: true }, active: 'lg', isMobile: false, isTablet: false, isDesktop: true }
+}));
+
 import apiClient from '../../utils/api-client';
+import { StockQuantityInput } from '../../components/finance/stock/StockQuantityInput';
 import {
   StockReasonPicker,
   isStockReasonComplete,
@@ -141,6 +151,32 @@ describe('StockReasonPicker — motif d’une liste fermée', () => {
 // ---------------------------------------------------------------------------
 // StockQuantityCell et StockBlindBanner
 // ---------------------------------------------------------------------------
+
+describe('StockQuantityInput — une cible de 48 px sur téléphone (rec040-06)', () => {
+  afterEach(() => {
+    ecran.mobile = false;
+  });
+
+  it('sous 768 px : champ en grande taille, zone de saisie de 46 px dans un cadre de 48 px', () => {
+    ecran.mobile = true;
+    render(<StockQuantityInput id="quantite" unit="sac" value={3} onChange={() => undefined} />);
+    const saisie = document.getElementById('quantite') as HTMLInputElement;
+    expect(saisie.style.minHeight).toBe('46px');
+    const cadre = saisie.closest('.ant-input-number') as HTMLElement;
+    expect(cadre.className).toMatch(/ant-input-number-lg/);
+    expect(cadre.style.minHeight).toBe('48px');
+    expect(cadre.style.fontSize).toBe('16px');
+  });
+
+  it('sur bureau : la taille par défaut des formulaires est gardée', () => {
+    render(<StockQuantityInput id="quantite-bureau" value={3} onChange={() => undefined} />);
+    const saisie = document.getElementById('quantite-bureau') as HTMLInputElement;
+    expect(saisie.style.minHeight).toBe('');
+    const cadre = saisie.closest('.ant-input-number') as HTMLElement;
+    expect(cadre.className).not.toMatch(/ant-input-number-lg/);
+    expect(cadre.style.fontSize).toBe('16px');
+  });
+});
 
 describe('StockQuantityCell — une quantité masquée n’est jamais un zéro', () => {
   it('affiche « Comptage en cours » quand le serveur rend null', () => {
