@@ -12,7 +12,8 @@
  *   `pack-*`), avec un administrateur chacune et un mot de passe commun (`PACK_PASSWORD`) ;
  *   les agences « 6 mois » Promoteur et Opérateur intégré portent en plus les
  *   comptes de recette du contrôle du stock (Magasinier, Comptable, second
- *   administrateur : `PACK_TEST_MEMBERS` côté API) ;
+ *   administrateur) et un Chef de chantier inscrit au bot WhatsApp du lot 041
+ *   (`PACK_TEST_MEMBERS` côté API) ;
  *   le contrat des données est partagé avec le seed du staging côté API ;
  * - les comptes historiques (plateforme, Ivoire Résidences).
  *
@@ -56,8 +57,9 @@ const PACK_PROFILES = [
 ] as const;
 
 /**
- * Comptes de recette du contrôle du stock (lot 040), après l'administrateur de
- * l'agence « 6 mois » : contrat partagé avec `PACK_TEST_MEMBERS` (API).
+ * Comptes de recette du contrôle du stock (lot 040) et du Chef de chantier
+ * inscrit au bot WhatsApp (lot 041), après l'administrateur de l'agence
+ * « 6 mois » : contrat partagé avec `PACK_TEST_MEMBERS` (API).
  */
 const STOCK_RECETTE_ACCOUNTS: Record<string, DevAccount[]> = {
   promoteur: [
@@ -74,6 +76,13 @@ const STOCK_RECETTE_ACCOUNTS: Record<string, DevAccount[]> = {
       fullName: 'Comptable Test Promoteur',
       // Rôle TENANT_ACCOUNTANT.
       persona: 'Collaborateur'
+    },
+    {
+      email: `chef-promoteur@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Chef de chantier Test Promoteur',
+      // Rôle TENANT_SITE_MANAGER (lot 041) : compte par WhatsApp, sans « Gestion du stock » au web.
+      persona: 'Collaborateur'
     }
   ],
   integre: [
@@ -89,6 +98,13 @@ const STOCK_RECETTE_ACCOUNTS: Record<string, DevAccount[]> = {
       password: PACK_PASSWORD,
       fullName: 'Responsable Test Intégré',
       // Second TENANT_ADMIN : valide l'inventaire compté par un autre.
+      persona: 'Collaborateur'
+    },
+    {
+      email: `chef-integre@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Chef de chantier Test Intégré',
+      // Rôle TENANT_SITE_MANAGER (lot 041), agence sans l'option Inventaire WhatsApp.
       persona: 'Collaborateur'
     }
   ]

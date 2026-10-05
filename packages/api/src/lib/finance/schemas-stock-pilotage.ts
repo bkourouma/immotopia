@@ -16,6 +16,8 @@ const ALERT_KINDS = [
   'COUNT_LINE_SET_ASIDE',
   'COUNT_CANCELLED',
   'COUNT_SELF_VALIDATED',
+  // Lot 041 : inventaire de chantier clos par WhatsApp.
+  'FIELD_COUNT_CLOSED',
   'LARGE_ISSUE',
   'LARGE_SCRAP',
   'RECEIPT_REPEATED',

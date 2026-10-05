@@ -130,6 +130,16 @@ import {
   listStockLocations as listStockLocationsReferentiel,
   setStockValuationMethod
 } from '../../services/finance-stock-referentiel-service';
+// Lot 041 : l'inventaire de chantier par WhatsApp (bloc en fin de fichier).
+import {
+  advanceStockWhatsappSimulatorClock,
+  createStockWhatsappRegistration,
+  injectStockWhatsappSimulatorMessage,
+  regenerateStockWhatsappActivationCode,
+  removeStockFieldCapturePhoto,
+  revokeStockWhatsappRegistration,
+  updateStockWhatsappRegistrationSites
+} from '../../services/finance-stock-whatsapp-service';
 
 const TENANT = 'agence-1';
 const SITE = 'chantier-1';
@@ -1473,5 +1483,90 @@ describe('Pièce de caisse — le bénéficiaire survit à l’aller-retour', ()
 
     expect(piece.beneficiary).toBe('Mamadou Diallo, chef d’équipe');
     expect(piece.number).toBe('2026-0001');
+  });
+});
+
+describe('Inventaire par WhatsApp — aucun corps ne répète tenantId, l’inscription n’envoie que trois champs', () => {
+  const patch = apiClient.patch as unknown as ReturnType<typeof vi.fn>;
+  const BASE = `/tenants/${TENANT}/finance/stock/whatsapp`;
+
+  beforeEach(() => {
+    patch.mockClear();
+    patch.mockResolvedValue({ data: { data: {} } });
+  });
+
+  it('inscription : userId, phone, siteIds — et rien d’autre', async () => {
+    const saisie = {
+      userId: 'user-1',
+      phone: ' 07 12 34 56 78 ',
+      siteIds: ['chantier-1', 'chantier-2'],
+      // Ce qu'un formulaire pourrait traîner avec lui : rien de cela ne part.
+      tenantId: TENANT,
+      status: 'ACTIVE'
+    } as unknown as Parameters<typeof createStockWhatsappRegistration>[1];
+    await createStockWhatsappRegistration(TENANT, saisie);
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`${BASE}/registrations`);
+    expect(corps).toEqual({ userId: 'user-1', phone: '07 12 34 56 78', siteIds: ['chantier-1', 'chantier-2'] });
+  });
+
+  it('modification des chantiers : siteIds seul, l’inscription reste dans le chemin', async () => {
+    await updateStockWhatsappRegistrationSites(TENANT, 'inscription-1', { siteIds: ['chantier-1'] });
+    const [adresse, corps] = patch.mock.calls[patch.mock.calls.length - 1] as [string, Record<string, unknown>];
+    expect(adresse).toBe(`${BASE}/registrations/inscription-1`);
+    expect(corps).toEqual({ siteIds: ['chantier-1'] });
+  });
+
+  it('régénération : corps vide ; révocation : motif seul, omis s’il est vide', async () => {
+    await regenerateStockWhatsappActivationCode(TENANT, 'inscription-1');
+    expect(dernierAppel()).toEqual({ adresse: `${BASE}/registrations/inscription-1/regenerate-code`, corps: {} });
+
+    await revokeStockWhatsappRegistration(TENANT, 'inscription-1', { reason: '  Fin de mission ' });
+    expect(dernierAppel()).toEqual({
+      adresse: `${BASE}/registrations/inscription-1/revoke`,
+      corps: { reason: 'Fin de mission' }
+    });
+
+    await revokeStockWhatsappRegistration(TENANT, 'inscription-1', { reason: '   ' });
+    expect(dernierAppel().corps).toEqual({});
+  });
+
+  it('retrait de photo : le motif seul', async () => {
+    await removeStockFieldCapturePhoto(TENANT, 'capture-1', { reason: ' Visage visible ' });
+    expect(dernierAppel()).toEqual({
+      adresse: `${BASE}/captures/capture-1/remove-photo`,
+      corps: { reason: 'Visage visible' }
+    });
+  });
+
+  it('simulateur : une seule cible, un seul contenu ; avance d’horloge : minutes seules', async () => {
+    await injectStockWhatsappSimulatorMessage(TENANT, {
+      registrationId: 'inscription-1',
+      freePhone: '0700',
+      text: 'FIN'
+    });
+    expect(dernierAppel()).toEqual({
+      adresse: `${BASE}/simulator/messages`,
+      corps: { registrationId: 'inscription-1', text: 'FIN' }
+    });
+
+    await injectStockWhatsappSimulatorMessage(TENANT, {
+      freePhone: ' 0700000000 ',
+      replyId: 'confirm:yes',
+      replyTitle: 'Oui',
+      text: 'ignoré'
+    });
+    expect(dernierAppel().corps).toEqual({ freePhone: '0700000000', replyId: 'confirm:yes', replyTitle: 'Oui' });
+
+    await advanceStockWhatsappSimulatorClock(TENANT, 'session-1', { minutes: 30 });
+    expect(dernierAppel()).toEqual({ adresse: `${BASE}/simulator/sessions/session-1/advance`, corps: { minutes: 30 } });
+  });
+
+  it('aucun corps d’écriture WhatsApp ne porte tenantId', () => {
+    for (const [, corps] of post.mock.calls as Array<[string, unknown]>) {
+      if (corps && typeof corps === 'object' && !(corps instanceof FormData)) {
+        expect(Object.keys(corps as Record<string, unknown>)).not.toContain('tenantId');
+      }
+    }
   });
 });

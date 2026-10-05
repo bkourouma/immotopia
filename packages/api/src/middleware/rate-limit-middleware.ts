@@ -136,6 +136,28 @@ export const webhookRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook Meta WhatsApp Cloud de l'inventaire (lot 041, W6-R5) : 600 requêtes
+ * par minute et par IP, clé préfixée `wa-cloud:`, distincte de
+ * `webhookRateLimiter` (partagé avec les IPN PaySecureHub). Chaque envoi du
+ * bot fait revenir jusqu'à trois statuts (`sent`, `delivered`, `read`) en plus
+ * des messages entrants, et Meta émet depuis un nombre restreint d'adresses :
+ * 120/min saturerait au premier pic de chantiers. Le plafond borne une
+ * inondation sans gêner ce trafic. Appliqué AVANT la lecture du corps et la
+ * vérification de la signature, qui reste toujours exigée.
+ */
+export const whatsappCloudWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 600,
+  keyGenerator: req => `wa-cloud:${req.ip ?? 'inconnue'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Routes publiques des liens securises (lib/secure-links) : 30 requetes par
  * minute et par IP, appliquees AVANT toute verification du jeton. La reponse
  * 429 est la meme quel que soit le jeton ; elle porte les memes en-tetes

@@ -142,6 +142,24 @@ export const ALERT_TEXTS: Record<StockAlertKind, AlertText> = {
         objet: subjectOf(parts)
       })
   },
+  // Lot 041 (spec W5-R6) : inventaire ouvert par WhatsApp, clos par le chef de
+  // chantier (FIN) ou à l'expiration de sa session ; à justifier et valider au
+  // bureau. `details.linesCount` : lignes comptées par WhatsApp.
+  FIELD_COUNT_CLOSED: {
+    title: () => t('Inventaire de chantier clos par WhatsApp'),
+    message: parts => {
+      const lines = countOf(parts.details, 'linesCount') ?? 0;
+      return parts.amount !== null
+        ? t(
+            'Comptage terrain de {{lieu}} clos : {{n}} article(s) à justifier et valider. Écart brut valorisé : {{montant}}.',
+            { lieu: placeOf(parts), n: lines, montant: parts.amount }
+          )
+        : t('Comptage terrain de {{lieu}} clos : {{n}} article(s) à justifier et valider.', {
+            lieu: placeOf(parts),
+            n: lines
+          });
+    }
+  },
   LARGE_ISSUE: {
     title: () => t('Sortie importante'),
     message: parts =>

@@ -185,7 +185,9 @@ function capacities(
     COPROPRIETES: cap(copro),
     CHANTIERS: cap({ used: 0, limit: 0 }),
     BIENS_DETENUS: cap({ used: 0, limit: 0 }),
-    ACTIFS: cap(actifs)
+    ACTIFS: cap(actifs),
+    // Lot 041 : sans l'option Inventaire WhatsApp, plafond nul (capacite ignoree).
+    PHOTOS_INVENTAIRE: cap({ used: 0, limit: 0 })
   };
 }
 

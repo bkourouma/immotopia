@@ -281,6 +281,21 @@ if [[ "$ENV_NAME" == "prod" ]]; then
   fi
   ok "simulateur de paiement non active"
 
+  # Lot 041 (ecart E1) : le simulateur de l'inventaire par WhatsApp, le transport
+  # `log` (aucun message envoye) et le faux fournisseur de vision (comptages
+  # simules) sont reserves au staging. Meme expression tolerante (export,
+  # guillemets, espaces) que pour le simulateur de paiement.
+  if grep -Eq "^[[:space:]]*(export[[:space:]]+)?WHATSAPP_INVENTORY_SIMULATOR[[:space:]]*=[[:space:]]*[\"']?1" "$ENV_FILE"; then
+    fail "WHATSAPP_INVENTORY_SIMULATOR=1 dans $ENV_FILE : le simulateur de l'inventaire par WhatsApp est interdit en production."
+  fi
+  if grep -Eq "^[[:space:]]*(export[[:space:]]+)?WHATSAPP_INVENTORY_TRANSPORT[[:space:]]*=[[:space:]]*[\"']?log" "$ENV_FILE"; then
+    fail "WHATSAPP_INVENTORY_TRANSPORT=log dans $ENV_FILE : le transport sans envoi est interdit en production (meta ou disabled)."
+  fi
+  if grep -Eq "^[[:space:]]*(export[[:space:]]+)?STOCK_VISION_PROVIDER[[:space:]]*=[[:space:]]*[\"']?fake" "$ENV_FILE"; then
+    fail "STOCK_VISION_PROVIDER=fake dans $ENV_FILE : le faux fournisseur de vision est interdit en production."
+  fi
+  ok "simulateur de l'inventaire WhatsApp, transport log et vision fake non actives"
+
   # Fichier d'environnement du staging : deduit UNIQUEMENT de staging.conf (lu dans
   # un sous-shell sans IMMOTOPIA_ENV_FILE, sinon := garderait celui de la prod),
   # jamais d'une variable de l'appelant.

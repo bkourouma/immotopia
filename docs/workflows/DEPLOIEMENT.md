@@ -936,6 +936,14 @@ connexion rapide du staging (`apps/web/src/dev/dev-accounts.ts`). Après le
 déploiement du lot, **relancer le seed** (`./infra/scripts/seed-pack-tests.sh
 staging`) pour les créer : il est idempotent et ne recrée pas les agences.
 
+Lot 041 : ces deux agences portent aussi un Chef de chantier
+(`chef-promoteur@` et `chef-integre@packs.immotopia.test`, rôle
+`TENANT_SITE_MANAGER`), inscrit au bot WhatsApp et déjà actif, aux numéros
+**fictifs** `+2250100000101` et `+2250100000102`, sur un chantier « Chantier de
+recette — inventaire WhatsApp » basculé au stock. Seul le Promoteur reçoit un
+bloc `EXT_INVENTAIRE_WHATSAPP` : l'Opérateur intégré joue « option absente ».
+Liste : `PACK_TEST_WHATSAPP_REGISTRATIONS` dans le même fichier.
+
 Pour les retirer, suspendre chaque agence avec l'outil d'exploitation
 (`docker exec immotopia-saas-api node dist/scripts/provision-subscription.js suspend --tenant <slug> [--dry-run]`,
 voir le [RUNBOOK](RUNBOOK.md)). Les relancer ne les réactive pas : le seed ne
@@ -1039,6 +1047,84 @@ les [points ouverts](#points-ouverts)).
   preneurs, le stock). À faire sur le staging, puis sur la production.
 - **Comptes de recette** : relancer le seed des comptes de test par pack sur le
   staging ([plus haut](#comptes-de-test-par-pack-staging)).
+
+### Lot 041 — Inventaire WhatsApp
+
+Comptage du stock de chantier par photo WhatsApp et IA (`specs/041-inventaire-whatsapp/`).
+À relire avant le premier déploiement du lot.
+
+**Variables** (`packages/api/env.example`, contrôlées au démarrage par
+`src/config/env.ts`) :
+
+| Variable                                                                           | Staging              | Production                                                                                          |
+| ---------------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
+| `WHATSAPP_INVENTORY_TRANSPORT`                                                     | `log` (rien ne part) | `meta`, ou `disabled` (défaut) tant que la mise en service n'est pas faite                          |
+| `WHATSAPP_INVENTORY_SIMULATOR`                                                     | `1`                  | absent (`0`)                                                                                        |
+| `STOCK_VISION_PROVIDER`                                                            | `fake`               | `gemini` ou `openrouter`                                                                            |
+| `STOCK_VISION_MODEL`, `GEMINI_API_KEY` (ou `OPENROUTER_API_KEY`)                   | —                    | requis par le fournisseur choisi                                                                    |
+| `META_WA_APP_SECRET`, `META_WA_VERIFY_TOKEN` (32 caractères au moins)              | —                    | requis avec `meta`                                                                                  |
+| `META_WA_ACCESS_TOKEN`, `META_WA_PHONE_NUMBER_ID`                                  | —                    | requis avec `meta`                                                                                  |
+| `META_WA_GRAPH_VERSION`, `META_WA_MEDIA_HOSTS`, `WHATSAPP_INVENTORY_PUBLIC_NUMBER` | facultatif           | défauts `v23.0`, `lookaside.fbsbx.com` [à vérifier au déploiement] ; numéro affiché à l'inscription |
+| `WHATSAPP_INVENTORY_WARN_QUOTA`                                                    | `500`                | `500` (quota de secours hors `enforce`)                                                             |
+
+**Refus de `deploy.sh prod`.** Le script refuse la production si le fichier de
+secrets porte `WHATSAPP_INVENTORY_SIMULATOR=1`, `WHATSAPP_INVENTORY_TRANSPORT=log`
+ou `STOCK_VISION_PROVIDER=fake`, quelle que soit l'écriture (`export`,
+guillemets, espaces), comme `PAYMENT_GATEWAY_SIMULATOR`. `env.ts` refuse en plus
+au démarrage `log` en production sans simulateur et `fake` hors développement,
+test ou simulateur.
+
+**Staging.** `WHATSAPP_INVENTORY_TRANSPORT=log`, `WHATSAPP_INVENTORY_SIMULATOR=1`,
+`STOCK_VISION_PROVIDER=fake` : aucun message WhatsApp ne part, aucune IA n'est
+appelée. La recette se joue dans l'onglet Gestion du stock › WhatsApp ›
+Simulateur, avec les directives `fake:…` en légende des photos. Après le
+déploiement du lot, **relancer le seed des comptes de test**
+([plus haut](#comptes-de-test-par-pack-staging)) : il crée les deux chefs de
+chantier, leurs inscriptions et le bloc d'option du Promoteur.
+
+**Mise en service Meta, pas à pas** (production, une fois) :
+
+1. Business Manager vérifié ; application Meta de type « Business » ; produit
+   WhatsApp ajouté.
+2. Numéro officiel ajouté et vérifié (SMS ou appel), nom d'affichage approuvé ;
+   noter le `phone_number_id` → `META_WA_PHONE_NUMBER_ID`.
+3. Utilisateur système avec un jeton **permanent** (droits
+   `whatsapp_business_messaging` et `whatsapp_business_management`) →
+   `META_WA_ACCESS_TOKEN`. Jamais le jeton temporaire de 24 heures.
+4. Clé secrète de l'application → `META_WA_APP_SECRET` ; jeton de vérification
+   généré (`openssl rand -base64 48`) → `META_WA_VERIFY_TOKEN`. Les deux restent
+   propres à la production.
+5. Déployer avec `WHATSAPP_INVENTORY_TRANSPORT=meta`
+   ([modifier une variable](#modifier-une-variable-denvironnement)). Puis, dans
+   l'application Meta : URL de rappel
+   `https://<api>/api/webhooks/whatsapp-cloud/events` et jeton de vérification ;
+   « Vérifier et enregistrer » (le `GET` doit rendre le challenge). Le webhook
+   répond `404` tant que le transport n'est pas `meta`, `401` à un corps sans
+   signature `X-Hub-Signature-256` valide.
+6. Abonner le compte WhatsApp Business au champ `messages`.
+7. Moyen de paiement du compte : les réponses dans la fenêtre de 24 heures sont
+   gratuites, mais le compte l'exige [à vérifier].
+8. Essai : inscrire un numéro de test, envoyer son code, puis une photo ;
+   vérifier dans le journal l'hôte de téléchargement des médias et ajuster
+   `META_WA_MEDIA_HOSTS` si besoin (refus `HOST_NOT_ALLOWED` sinon).
+9. Vision : `STOCK_VISION_PROVIDER=gemini` et `GEMINI_API_KEY` (ou `openrouter`
+   et sa clé), `STOCK_VISION_MODEL`.
+10. Couper les menus hors stock du rôle « Chef de chantier »
+    (`TENANT_SITE_MANAGER`) par l'écran des accès aux menus par rôle, comme pour
+    le Magasinier du lot 040. Le rôle ne porte que `STOCK_COUNT` : sans
+    `STOCK_VIEW`, la Gestion du stock lui est de toute façon fermée.
+11. **Retour arrière** : `WHATSAPP_INVENTORY_TRANSPORT=disabled` coupe la
+    fonction sans redéployer (webhook en `404`, minuteries et reprise des
+    événements arrêtées ; l'effacement des copies et les purges nocturnes
+    continuent). Schéma : les migrations ajoutent des valeurs d'enum
+    (`PHOTOS_INVENTAIRE`, `FIELD_COUNT_CLOSED`), irréversibles ; le retour
+    arrière du schéma est un correctif en avant
+    (`specs/041-inventaire-whatsapp/data-model.md` §5.3).
+
+**Données personnelles.** Le numéro d'un chef n'apparaît jamais en clair dans un
+journal ; celui d'un expéditeur inconnu n'est gardé qu'en empreinte HMAC. Les
+photos sont des fichiers privés (`uploads/stock-whatsapp/<agence>/…`), jamais
+servis en statique, et partent avec l'export d'agence.
 
 ## Sauvegarde et restauration
 

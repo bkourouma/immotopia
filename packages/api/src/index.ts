@@ -16,6 +16,7 @@ import { startOwnerMonthlyReportJob } from './jobs/owner-monthly-report-job';
 import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
 import { startStockMaintenanceJob } from './jobs/stock-maintenance-job';
+import { startStockWhatsappJob } from './jobs/stock-whatsapp-job';
 import { logger } from './utils/logger';
 
 /**
@@ -75,6 +76,11 @@ app.listen(PORT, () => {
     // Lot 040 : purge nocturne des cles d'idempotence du stock ; recapitulatif
     // e-mail des alertes de stock seulement si STOCK_ALERT_MAIL_JOB_ENABLED.
     startStockMaintenanceJob({ mailEnabled: env.STOCK_ALERT_MAIL_JOB_ENABLED });
+    // Lot 041 : inventaire de chantier par WhatsApp. Les purges (copies
+    // `payload` a une heure, historique a 180/30 jours) tournent toujours ;
+    // relances, expirations et reprise du webhook seulement si le transport
+    // n'est pas `disabled`.
+    startStockWhatsappJob({ transportActive: env.WHATSAPP_INVENTORY_TRANSPORT !== 'disabled' });
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.
     recoverTenantDataExports().catch(error =>

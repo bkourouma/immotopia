@@ -12,6 +12,7 @@ import type {
   StockLocationView,
   StockMovementView
 } from '../../types/finance-stock-controle-types';
+import type { CountFieldCaptures } from '../../types/finance-stock-whatsapp-types';
 
 /**
  * E3 — Transferts et inventaire physique (ecrans §7, §11.2, §11.3).
@@ -405,6 +406,13 @@ interface Config {
   soldes?: StockBalanceView[];
   blindLocationIds?: string[];
   valuesVisible?: boolean;
+  /** Captures WhatsApp de l'inventaire (lot 041) ; absentes : la route répond 404. */
+  captures?: CountFieldCaptures;
+}
+
+/** Une erreur d'`apiClient` telle qu'axios la lève. */
+function erreurHttp(status: number, code: string, message: string) {
+  return Object.assign(new Error(message), { response: { status, data: { code, message } } });
 }
 
 function configurerGet(config: Config = {}) {
@@ -416,6 +424,11 @@ function configurerGet(config: Config = {}) {
   };
   get.mockImplementation(async (url: string) => {
     if (/\/stock\/field-context$/.test(url)) return { data: { data: ctx, meta } };
+    if (/\/stock\/whatsapp\/counts\/[^/?]+\/captures$/.test(url)) {
+      if (config.captures) return { data: { data: config.captures } };
+      throw erreurHttp(404, 'NOT_FOUND', 'Inventaire introuvable.');
+    }
+    if (/\/stock\/whatsapp\/captures\//.test(url)) throw erreurHttp(404, 'NOT_FOUND', 'Capture introuvable.');
     if (/\/stock\/balances(\?|$)/.test(url)) {
       return { data: { data: config.soldes ?? [solde(CIMENT, MAGASIN, 420), solde(SABLE, MAGASIN, 0.25)], meta } };
     }
@@ -964,5 +977,77 @@ describe('L’inventaire validé', () => {
     expect(screen.getAllByText('Non figée (inventaire antérieur au lot)')).toHaveLength(4);
     expect(screen.getByText('Écart net')).toBeInTheDocument();
     expect(screen.queryByText(/Figé à la validation/)).not.toBeInTheDocument();
+  }, 40000);
+});
+
+// ===========================================================================
+// Lot 041 — inventaire par WhatsApp (ecrans §6, point d'accroche W-E4)
+// ===========================================================================
+
+describe('Les captures WhatsApp de l’inventaire (lot 041)', () => {
+  const CAPTURES: CountFieldCaptures = {
+    countId: CLOS,
+    source: 'WHATSAPP',
+    lines: [
+      {
+        itemId: FER,
+        countLineId: 'l-fer',
+        captureId: 'capture-fer-01',
+        outcome: 'ACCEPTED',
+        mergeMode: 'ADD',
+        confirmedAt: '2026-09-25T15:40:00.000Z',
+        hasPhoto: true,
+        capturesCount: 2
+      }
+    ]
+  };
+
+  it('pastilles « Ouvert par WhatsApp » et « WhatsApp », lien photo qui ouvre le visualiseur', async () => {
+    configurerGet({ liste: [clos()], captures: CAPTURES });
+    monterDetail(CLOS);
+    expect(await screen.findByTestId('whatsapp-count-badge', {}, TIMEOUT)).toHaveTextContent('Ouvert par WhatsApp');
+    const badges = await screen.findAllByTestId('whatsapp-line-badge', {}, TIMEOUT);
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveTextContent('WhatsApp');
+    expect(screen.getByText('2 photos')).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/whatsapp/counts/${CLOS}/captures`);
+
+    // Aucune photo n'est lue avant le clic (la lecture d'un fichier est tracée).
+    expect(get.mock.calls.some(([url]) => /\/whatsapp\/captures\//.test(String(url)))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Photo' }));
+    await waitFor(
+      () => expect(get.mock.calls.some(([url]) => /\/whatsapp\/captures\/capture-fer-01/.test(String(url)))).toBe(true),
+      TIMEOUT
+    );
+    // Rien d'autre ne change : l'écart reste celui du lot 040, à justifier.
+    expect(screen.getAllByText('Écart à justifier').length).toBeGreaterThan(0);
+    attendreVocabulaireNeutre();
+  }, 40000);
+
+  it('un 404 de la route des captures laisse l’écran du lot 040 tel quel', async () => {
+    configurerGet({ liste: [clos()] });
+    monterDetail(CLOS);
+    expect((await screen.findAllByText('Écart à justifier', {}, TIMEOUT)).length).toBeGreaterThan(0);
+    await waitFor(
+      () => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/whatsapp/counts/${CLOS}/captures`),
+      TIMEOUT
+    );
+    expect(screen.queryByTestId('whatsapp-count-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('whatsapp-line-badge')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Photo' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Impossible de charger cet inventaire.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeInTheDocument();
+  }, 40000);
+
+  it('un inventaire saisi au web n’a ni pastille ni lien photo', async () => {
+    configurerGet({ liste: [clos()], captures: { countId: CLOS, source: 'WEB', lines: [] } });
+    monterDetail(CLOS);
+    expect((await screen.findAllByText('Écart à justifier', {}, TIMEOUT)).length).toBeGreaterThan(0);
+    await waitFor(
+      () => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/whatsapp/counts/${CLOS}/captures`),
+      TIMEOUT
+    );
+    expect(screen.queryByTestId('whatsapp-count-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('whatsapp-line-badge')).not.toBeInTheDocument();
   }, 40000);
 });

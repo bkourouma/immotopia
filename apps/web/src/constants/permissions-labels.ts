@@ -377,6 +377,13 @@ export const ROLE_LABELS_FR: Record<string, { name: string; description: string 
     description: t(
       'Reçoit, sort, transfère et compte le stock, et tient le carnet des preneurs. Ne voit ni les valeurs du stock ni la comptabilité.'
     )
+  },
+  // Lot 041 — rôle posé par `prisma/seeds/site-manager-role-seed.ts` (STOCK_COUNT seul).
+  TENANT_SITE_MANAGER: {
+    name: t('Chef de chantier'),
+    description: t(
+      'Compte le stock de ses chantiers, notamment par WhatsApp, sans valider l’inventaire ni voir les valeurs.'
+    )
   }
 };
 

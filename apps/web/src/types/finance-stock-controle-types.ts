@@ -63,7 +63,9 @@ export type StockAlertKind =
   | 'RECEIPT_OVER_INVOICE'
   | 'RECEIPT_UNVALUED'
   | 'CASH_MATERIAL_PURCHASE'
-  | 'COUNT_SELF_VALIDATED';
+  | 'COUNT_SELF_VALIDATED'
+  // Lot 041 (point d'accroche) : inventaire de chantier clos par WhatsApp.
+  | 'FIELD_COUNT_CLOSED';
 export type StockAlertSeverity = 'INFO' | 'WARNING';
 export type StockAlertStatus = 'OPEN' | 'ACKNOWLEDGED';
 export type StockAlertSubjectType = 'StockSlip' | 'StockCount' | 'StockMovement' | 'SupplierInvoice' | 'CashVoucher';
@@ -976,5 +978,6 @@ export const STOCK_ALERT_KIND_LABELS: Record<StockAlertKind, string> = {
   RECEIPT_OVER_INVOICE: t('Valeur reçue supérieure à la facture'),
   RECEIPT_UNVALUED: t('Réception sans prix connu'),
   CASH_MATERIAL_PURCHASE: t('Achat de matériaux en espèces'),
-  COUNT_SELF_VALIDATED: t('Inventaire validé par son compteur')
+  COUNT_SELF_VALIDATED: t('Inventaire validé par son compteur'),
+  FIELD_COUNT_CLOSED: t('Inventaire de chantier clos par WhatsApp')
 };

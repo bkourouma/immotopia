@@ -27,6 +27,8 @@ import { StockMagasin } from '../../pages/finance/StockMagasin';
 import { StockInventaire } from '../../pages/finance/StockInventaire';
 import { StockPreneurs } from '../../pages/finance/StockPreneurs';
 import { StockControle } from '../../pages/finance/StockControle';
+import { StockWhatsapp } from '../../pages/finance/StockWhatsapp';
+import { StockComptagesTerrain } from '../../pages/finance/StockComptagesTerrain';
 import { Documents } from '../../pages/rental/Documents';
 import { DocumentTemplates } from '../../pages/documents/DocumentTemplates';
 import { CalendarPage } from '../../pages/crm/Calendar';
@@ -136,6 +138,11 @@ const STOCK_MAGASIN = STOCK + '/magasin';
 const STOCK_INVENTAIRE_CLOS = STOCK + '/inventaire?inventaire=comptage-clos-03';
 const STOCK_PRENEURS = STOCK + '/preneurs';
 const STOCK_CONTROLE = STOCK + '/controle';
+// Lot 041, inventaire par WhatsApp. Le banc : `finance-mock-stock-whatsapp.ts`
+// (le contexte terrain reste celui du lot 040). Le lieu de la Riviera y est en
+// comptage : les comptages terrain le masquent pour un comptable.
+const STOCK_WHATSAPP = STOCK + '/whatsapp';
+const STOCK_COMPTAGES_TERRAIN = STOCK + '/comptages-terrain?lieu=lieu-riviera-02';
 
 const SCENES: Scene[] = [
   {
@@ -197,6 +204,22 @@ const SCENES: Scene[] = [
     description: 'Trois preneurs, dont un désactivé et un sans téléphone ; l’encadré sur les données personnelles.',
     scenario: 'nominal',
     chemin: STOCK_PRENEURS
+  },
+  {
+    id: 'stock-whatsapp-administrateur',
+    titre: 'WhatsApp, administrateur',
+    description:
+      'Passerelle de recette (journal et simulateur), quota à 83 % ; trois inscriptions : en attente, active avec un chantier devenu inéligible, révoquée. Aucun numéro en clair.',
+    scenario: 'nominal',
+    chemin: STOCK_WHATSAPP
+  },
+  {
+    id: 'stock-comptages-terrain-comptable',
+    titre: 'Comptages terrain, comptable pendant un comptage',
+    description:
+      'Le lieu de la Riviera est en comptage : « Comptage en cours » à la place du stock théorique, aucune valeur ni écart ; rappel des non comptés, une photo retirée.',
+    scenario: 'nominal',
+    chemin: STOCK_COMPTAGES_TERRAIN
   },
   {
     id: 'stock-preneurs-vide',
@@ -1156,6 +1179,22 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <StockControle />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/stock/whatsapp"
+      element={
+        <Scene>
+          <StockWhatsapp />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/stock/comptages-terrain"
+      element={
+        <Scene>
+          <StockComptagesTerrain />
         </Scene>
       }
     />
