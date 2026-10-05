@@ -277,6 +277,8 @@ import { errorHandler, NotFoundError } from '../../src/middleware/error-middlewa
 import { getTenantContext } from '../../src/utils/tenant-context';
 import { resetSimulatorMemoryForTests } from '../../src/lib/stock-whatsapp/admin/simulator';
 import financeStockWhatsappRoutes from '../../src/routes/finance-stock-whatsapp-routes';
+import { env } from '../../src/config/env';
+import { resetStockVisionProviderForTests } from '../../src/lib/stock-whatsapp/vision';
 
 const app = express();
 app.use(express.json());
@@ -766,7 +768,8 @@ describe('overview', () => {
       gatewayReady: true,
       botNumber: '+2250700000000',
       simulatorAvailable: true,
-      vision: { provider: 'fake', model: 'fake-vision' },
+      // Modèle du fournisseur actif, pas `STOCK_VISION_MODEL` (recette 041).
+      vision: { provider: 'fake', model: 'fake-vision-1' },
       quota: { month: '2026-10', used: 12, limit: 500, source: 'OPTION', blocks: 1 },
       measures: {
         photosAnalyzed: 12,
@@ -797,6 +800,47 @@ describe('overview', () => {
 
   it('refuse un mois mal formé', async () => {
     expect((await call('get', '/overview?month=2026-13')).status).toBe(400);
+  });
+
+  describe('fournisseur de vision actif', () => {
+    const mutableEnv = env as unknown as Record<string, unknown>;
+    const saved = { ...mutableEnv };
+
+    afterEach(() => {
+      Object.assign(mutableEnv, saved);
+      resetStockVisionProviderForTests();
+    });
+
+    async function visionWith(overrides: Record<string, unknown>) {
+      Object.assign(mutableEnv, overrides);
+      resetStockVisionProviderForTests();
+      mockRaw.measures = [{ total: 0 }];
+      return (await call('get', '/overview')).body.data.vision;
+    }
+
+    it('disabled : aucun modèle', async () => {
+      expect(await visionWith({ STOCK_VISION_PROVIDER: 'disabled' })).toEqual({ provider: 'disabled', model: null });
+    });
+
+    it('gemini et openrouter : le modèle configuré', async () => {
+      expect(await visionWith({ STOCK_VISION_PROVIDER: 'gemini', STOCK_VISION_MODEL: 'gemini-3.8-flash' })).toEqual({
+        provider: 'gemini',
+        model: 'gemini-3.8-flash'
+      });
+      expect(
+        await visionWith({ STOCK_VISION_PROVIDER: 'openrouter', STOCK_VISION_MODEL: 'google/gemini-3.8-flash' })
+      ).toEqual({ provider: 'openrouter', model: 'google/gemini-3.8-flash' });
+    });
+
+    it('fake non permis sur ce serveur : rend le fournisseur coupé réellement actif', async () => {
+      expect(
+        await visionWith({
+          STOCK_VISION_PROVIDER: 'fake',
+          NODE_ENV: 'production',
+          WHATSAPP_INVENTORY_SIMULATOR: '0'
+        })
+      ).toEqual({ provider: 'disabled', model: null });
+    });
   });
 });
 

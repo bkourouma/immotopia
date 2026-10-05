@@ -46,9 +46,12 @@ export const RegistrationSitesModal: React.FC<RegistrationSitesModalProps> = ({
     staleTime: STALE_TIME.list
   });
 
-  useEffect(() => {
-    if (registration) form.setFieldsValue({ siteIds: registration.sites.map(site => site.siteId) });
-  }, [registration, form]);
+  // Chantiers déjà affectés : valeurs INITIALES du formulaire, posées à son
+  // montage (rec041-01). Un `setFieldsValue` lancé pendant le chargement des
+  // chantiers visait un formulaire pas encore monté et se perdait : la fenêtre
+  // s'ouvrait vide et l'enregistrer retirait les chantiers affectés.
+  const currentSiteIds = registration?.sites.map(site => site.siteId) ?? [];
+  const ready = open && !chantiers.isPending;
 
   const mutation = useMutation({
     mutationFn: (siteIds: string[]) =>
@@ -82,9 +85,11 @@ export const RegistrationSitesModal: React.FC<RegistrationSitesModalProps> = ({
       title={t('Modifier les chantiers')}
       okText={t('Enregistrer')}
       cancelText={t('Annuler')}
-      okButtonProps={{ loading: mutation.isPending }}
+      // Fermé tant que les chantiers actuels ne sont pas posés dans le champ.
+      okButtonProps={{ loading: mutation.isPending, disabled: !ready }}
       onCancel={onClose}
       onOk={() => {
+        if (!ready) return;
         void form
           .validateFields()
           .then(values => mutation.mutate(values.siteIds))
@@ -95,7 +100,7 @@ export const RegistrationSitesModal: React.FC<RegistrationSitesModalProps> = ({
       {chantiers.isPending ? (
         <Spin />
       ) : (
-        <Form form={form} layout="vertical" preserve={false}>
+        <Form form={form} layout="vertical" preserve={false} initialValues={{ siteIds: currentSiteIds }}>
           <Form.Item
             name="siteIds"
             label={t('Chantiers')}

@@ -1197,7 +1197,7 @@
   "Inventaire du lieu": "Location stocktake",
   "inventaire en cours": "stocktake in progress",
   "Inventaire ouvert sur « {{locationLabel}} ».": "Stocktake opened at « {{locationLabel}} ».",
-  "Inventaire par WhatsApp": "WhatsApp stocktakeing",
+  "Inventaire par WhatsApp": "WhatsApp stocktaking",
   "Inventaire physique": "Physical stocktake",
   "Inventaire validé : les écarts sont devenus des ajustements de stock.": "Stocktake approved: the variances have become stock adjustments.",
   "Inventaire validé le {{date}} par {{nom}}. Les écarts sont devenus des ajustements de stock.": "Stocktake approved on {{date}} by {{nom}}. The differences have become stock adjustments.",

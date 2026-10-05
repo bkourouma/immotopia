@@ -284,7 +284,9 @@ dans ce lot : territoire W5, retouche limitée à ce qui suit).
   `403` ou `404` ignorés : l'écran reste celui du lot 040).
 - `source = WHATSAPP` : pastille « Ouvert par WhatsApp » à côté du statut.
 - Ligne dont l'article figure dans `lines` : pastille « WhatsApp » dans la
-  colonne « Compté par », et bouton icône « Photo » (`hasPhoto`) qui ouvre W-E3
+  cellule de l'article (point d'extension `InventaireLigneArticle` du lot 040 ;
+  la colonne « Compté par » du lot 040 reste inchangée et porte déjà le nom du
+  chef), et bouton icône « Photo » (`hasPhoto`) qui ouvre W-E3
   (`?capture=<captureId>`). `capturesCount > 1` : « {{n}} photos ».
 - Rien d'autre ne change : attendus, écarts, justification, validation suivent
   le lot 040.

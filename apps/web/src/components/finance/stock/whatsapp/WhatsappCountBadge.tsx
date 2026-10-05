@@ -7,7 +7,7 @@ import { t } from '../../../../i18n/t';
 export type WhatsappCountBadgeProps =
   /** À côté du statut de l'inventaire : « Ouvert par WhatsApp » si `source = WHATSAPP`. */
   | { variant: 'count'; source: StockCountSource | null | undefined }
-  /** Dans la colonne « Compté par » d'une ligne : « WhatsApp » si la ligne a une capture. */
+  /** Dans la cellule de l'article d'une ligne (point d'extension du lot 040) : « WhatsApp » si la ligne a une capture. */
   | { variant: 'line'; line: CountCaptureLine | null | undefined };
 
 /**

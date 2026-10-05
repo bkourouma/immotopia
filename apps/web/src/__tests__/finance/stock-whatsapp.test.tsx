@@ -318,6 +318,47 @@ describe('Onglet WhatsApp — inscriptions', () => {
   });
 });
 
+describe('Onglet WhatsApp — modifier les chantiers (rec041-01)', () => {
+  it('première ouverture, chantiers chargés en différé : les chantiers affectés sont cochés', async () => {
+    routerGet({});
+    const routeur = get.getMockImplementation() as (url: string) => Promise<unknown>;
+    let livrer: () => void = () => undefined;
+    const chantiersDifferes = new Promise<void>(resolve => {
+      livrer = resolve;
+    });
+    get.mockImplementation(async (url: string) => {
+      if (url.includes('/stock/whatsapp/eligible-sites')) {
+        await chantiersDifferes;
+        return {
+          data: {
+            success: true,
+            data: [
+              { siteId: CHANTIER, name: 'Villa de la Riviera', eligible: true },
+              { siteId: 'chantier-cocody', name: 'Résidence Cocody', eligible: true }
+            ]
+          }
+        };
+      }
+      return routeur(url);
+    });
+    monter();
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions de Koffi Yao' }));
+    fireEvent.click(await screen.findByText('Modifier les chantiers'));
+    const dialog = await screen.findByRole('dialog', { name: 'Modifier les chantiers' });
+    // Tant que les chantiers actuels ne sont pas posés, « Enregistrer » reste fermé.
+    expect(within(dialog).getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+
+    livrer();
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Enregistrer' })).not.toBeDisabled());
+    const choisis = await waitFor(() => {
+      const items = Array.from(dialog.querySelectorAll('.ant-select-selection-item')).map(item => item.textContent);
+      if (items.length === 0) throw new Error('aucun chantier coché');
+      return items;
+    });
+    expect(choisis).toEqual(['Villa de la Riviera']);
+  });
+});
+
 describe('Onglet WhatsApp — simulateur', () => {
   it('est absent quand le serveur ne le déclare pas disponible', async () => {
     routerGet({ simulatorAvailable: false });
@@ -362,16 +403,20 @@ describe('Onglet WhatsApp — simulateur', () => {
     routerGet({ simulatorAvailable: true, registrations: [AWA, KOFFI], conversation: [M06] });
     monter(`/tenant/${TENANT}/finance/stock/whatsapp?onglet=simulateur`);
     // L'inscription active est choisie d'abord ; la révoquée reste sélectionnable.
-    await screen.findByText('Koffi Yao — Actif');
+    await screen.findByText('Koffi Yao · +225 07 •• •• •• 01 — Actif');
     fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Expéditeur' }));
     const options = await waitFor(() => {
       const items = Array.from(document.querySelectorAll('.ant-select-item-option')).map(item => item.textContent);
       if (items.length < 3) throw new Error('menu incomplet');
       return items;
     });
-    expect(options).toEqual(['Koffi Yao — Actif', 'Awa Diallo — Révoqué', 'Numéro inconnu']);
+    expect(options).toEqual([
+      'Koffi Yao · +225 07 •• •• •• 01 — Actif',
+      'Awa Diallo · +225 07 •• •• •• 01 — Révoqué',
+      'Numéro inconnu'
+    ]);
     const awa = Array.from(document.querySelectorAll('.ant-select-item-option')).find(
-      item => item.textContent === 'Awa Diallo — Révoqué'
+      item => item.textContent === 'Awa Diallo · +225 07 •• •• •• 01 — Révoqué'
     );
     fireEvent.click(awa as Element);
     expect(
@@ -386,6 +431,47 @@ describe('Onglet WhatsApp — simulateur', () => {
       ).toBe(true)
     );
     expect(await screen.findByText('Votre accès à l’inventaire par WhatsApp a été retiré.')).toBeInTheDocument();
+  });
+
+  it('distingue deux inscriptions d’un même chef par le numéro masqué et le statut de chacune', async () => {
+    const ANCIENNE: RegistrationView = {
+      ...KOFFI,
+      id: 'inscription-koffi-ancienne',
+      phoneE164: '+2250500000009',
+      phoneMasked: '+225 05 •• •• •• 09',
+      status: 'REVOKED'
+    };
+    routerGet({ simulatorAvailable: true, registrations: [ANCIENNE, KOFFI], conversation: [] });
+    monter(`/tenant/${TENANT}/finance/stock/whatsapp?onglet=simulateur`);
+    await screen.findByText('Koffi Yao · +225 07 •• •• •• 01 — Actif');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Expéditeur' }));
+    const options = await waitFor(() => {
+      const items = Array.from(document.querySelectorAll('.ant-select-item-option')).map(item => item.textContent);
+      if (items.length < 3) throw new Error('menu incomplet');
+      return items;
+    });
+    expect(options).toEqual([
+      'Koffi Yao · +225 07 •• •• •• 01 — Actif',
+      'Koffi Yao · +225 05 •• •• •• 09 — Révoqué',
+      'Numéro inconnu'
+    ]);
+    expect(document.body.textContent ?? '').not.toContain('+2250700000001');
+    expect(document.body.textContent ?? '').not.toContain('+2250500000009');
+  });
+
+  it('relit la vue d’ensemble (quota du mois) après un envoi', async () => {
+    routerGet({ simulatorAvailable: true });
+    post.mockResolvedValue({ data: { success: true, data: { metaMessageId: 'sim-1' } } });
+    monter(`/tenant/${TENANT}/finance/stock/whatsapp?onglet=simulateur`);
+    const saisie = await screen.findByRole('textbox', { name: 'Écrire un message' });
+    const lecturesVue = () =>
+      get.mock.calls.filter(call => String(call[0]).includes('/stock/whatsapp/overview')).length;
+    await waitFor(() => expect(lecturesVue()).toBeGreaterThan(0));
+    const avant = lecturesVue();
+    fireEvent.change(saisie, { target: { value: 'AIDE' } });
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer$/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(lecturesVue()).toBeGreaterThan(avant));
   });
 
   it('affiche sous l’expéditeur le refus du serveur pour une inscription révoquée', async () => {

@@ -145,7 +145,7 @@ export interface WhatsappOverview {
   gatewayReady?: boolean;
   botNumber?: string | null;
   simulatorAvailable: boolean;
-  vision: { provider?: StockVisionProviderId; model?: string };
+  vision: { provider?: StockVisionProviderId; model?: string | null };
   quota: WhatsappQuota;
   measures: WhatsappMeasures;
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../../../utils/database';
 import { env, whatsappInventorySimulatorAvailable } from '../../../config/env';
 import { getWhatsappQuotaState } from '../quota';
+import { getStockVisionProvider } from '../vision';
 
 /**
  * Passerelle, quota et mesures de l'inventaire par WhatsApp (lot 041, W1,
@@ -19,7 +20,12 @@ export type WhatsappOverview = {
   gatewayReady: boolean;
   botNumber: string | null;
   simulatorAvailable: boolean;
-  vision: { provider: 'disabled' | 'fake' | 'gemini' | 'openrouter'; model: string };
+  /**
+   * Fournisseur ACTIF (celui qui analyse vraiment : `fake` non permis sur ce
+   * serveur rend `disabled`) et modèle qu'il emploie — `fake-vision-1` pour le
+   * faux fournisseur, aucun pour `disabled`, `STOCK_VISION_MODEL` sinon.
+   */
+  vision: { provider: 'disabled' | 'fake' | 'gemini' | 'openrouter'; model: string | null };
   quota: {
     month: string;
     used: number;
@@ -156,13 +162,14 @@ export async function getWhatsappOverview(
 ): Promise<WhatsappOverview> {
   const quota = await getWhatsappQuotaState(tenantId, now);
   const measures = await computeWhatsappMeasures(tenantId, month ?? utcMonthOf(now));
+  const vision = getStockVisionProvider();
 
   return {
     transport: env.WHATSAPP_INVENTORY_TRANSPORT,
     gatewayReady: gatewayReadyOf(),
     botNumber: env.WHATSAPP_INVENTORY_PUBLIC_NUMBER ?? null,
     simulatorAvailable: whatsappInventorySimulatorAvailable,
-    vision: { provider: env.STOCK_VISION_PROVIDER, model: env.STOCK_VISION_MODEL },
+    vision: { provider: vision.id, model: vision.id === 'disabled' ? null : vision.model },
     quota: {
       month: quota.month,
       used: quota.used,

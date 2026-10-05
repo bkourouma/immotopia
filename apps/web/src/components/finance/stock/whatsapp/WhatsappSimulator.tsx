@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Card, Form, Input, Select, Space, Typography, Upload } from 'antd';
 import { CameraOutlined, ClockCircleOutlined, SendOutlined } from '@ant-design/icons';
+import { useQueryClient } from '@tanstack/react-query';
+import { entityKeyPrefix } from '../../../../lib/query-keys';
 import {
   advanceStockWhatsappSimulatorClock,
   getStockWhatsappSimulatorConversation,
@@ -17,6 +19,8 @@ import { handleApiError } from '../../../../utils/error-handler';
 import { t } from '../../../../i18n/t';
 import { ConversationThread } from './ConversationThread';
 import { apiErrorOf, registrationStatusDisplay, sessionStateLabel } from './whatsapp-labels';
+import { STOCK_WHATSAPP_OVERVIEW_ENTITY } from './WhatsappMeasures';
+import { STOCK_WHATSAPP_REGISTRATIONS_ENTITY } from './WhatsappRegistrationsTab';
 
 /** Valeur du choix « Numéro inconnu » dans la liste des expéditeurs. */
 const FREE_PHONE = '__numero_libre__';
@@ -50,6 +54,7 @@ function mergeMessages(current: ConversationMessage[], incoming: ConversationMes
  */
 export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, registrations }) => {
   const { message } = App.useApp();
+  const queryClient = useQueryClient();
   // Inscriptions révoquées en fin de liste : elles servent à jouer le refus M06.
   const ordered = [
     ...registrations.filter(registration => registration.status !== 'REVOKED'),
@@ -131,6 +136,19 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
 
   useEffect(() => stopPolling, [stopPolling]);
 
+  // Vue d'ensemble (quota « Photos analysées ce mois-ci », mesures) relue
+  // quand le fil affiché change : la réponse du bot à une photo arrive après
+  // l'envoi, avec l'analyse qui consomme le quota. Les inscriptions aussi : un
+  // code d'activation envoyé ici fait passer l'inscription à « Actif ».
+  const invalidateOverview = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: entityKeyPrefix(STOCK_WHATSAPP_OVERVIEW_ENTITY, tenantId) });
+    void queryClient.invalidateQueries({ queryKey: entityKeyPrefix(STOCK_WHATSAPP_REGISTRATIONS_ENTITY, tenantId) });
+  }, [queryClient, tenantId]);
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+  useEffect(() => {
+    if (lastMessageId) invalidateOverview();
+  }, [lastMessageId, invalidateOverview]);
+
   const send = async (
     payload:
       | Omit<SimulatorTextOrReply, 'registrationId' | 'freePhone'>
@@ -142,6 +160,7 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
       await injectStockWhatsappSimulatorMessage(tenantId, { ...target, ...payload } as
         SimulatorTextOrReply | SimulatorPhotoMessage);
       setSendRefused(null);
+      invalidateOverview();
       await refresh();
       startPolling();
       return true;
@@ -199,9 +218,14 @@ export const WhatsappSimulator: React.FC<WhatsappSimulatorProps> = ({ tenantId, 
             value={sender}
             onChange={value => setSender(value)}
             options={[
+              // Numéro MASQUÉ et statut propre à chaque inscription : deux
+              // inscriptions d'un même chef (une active, une révoquée) restent
+              // distinctes. Jamais `phoneE164` dans un libellé.
               ...ordered.map(registration => ({
                 value: registration.id,
-                label: `${registration.userLabel} — ${registrationStatusDisplay(registration.status).label}`
+                label: `${registration.userLabel} · ${registration.phoneMasked} — ${
+                  registrationStatusDisplay(registration.status).label
+                }`
               })),
               { value: FREE_PHONE, label: t('Numéro inconnu') }
             ]}

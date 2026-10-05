@@ -1295,10 +1295,14 @@ components:
         simulatorAvailable: { type: boolean }
         vision:
           type: object
+          description: >
+            Fournisseur réellement actif (fake non permis sur ce serveur rend
+            disabled) et modèle qu'il emploie : fake-vision-1 pour fake, null
+            pour disabled, STOCK_VISION_MODEL pour gemini et openrouter.
           properties:
             provider:
               { type: string, enum: [disabled, fake, gemini, openrouter] }
-            model: { type: string }
+            model: { type: string, nullable: true, example: fake-vision-1 }
         quota:
           type: object
           required: [month, used, limit, source]
