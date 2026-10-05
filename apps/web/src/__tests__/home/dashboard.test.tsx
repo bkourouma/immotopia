@@ -264,6 +264,34 @@ describe('Tableau de bord — les chiffres mènent quelque part', () => {
     );
   });
 
+  it('affiche une alerte de stock dans la file, avec son icône et le lien du serveur (lot 040)', async () => {
+    const utilisateur = userEvent.setup();
+    const base = `/tenant/${TENANT}`;
+    monter(
+      tableau({
+        workQueue: [
+          {
+            id: 'stock-alert:a-1',
+            kind: 'STOCK_ALERT',
+            title: 'Sortie importante',
+            description: 'Villa de la Riviera',
+            amount: null,
+            occurredAt: '2026-10-01T09:40:00.000Z',
+            severity: 'warning',
+            href: `${base}/finance/stock/controle?alerte=a-1`
+          }
+        ]
+      })
+    );
+
+    const ligne = await screen.findByRole('link', { name: /Sortie importante/ });
+    expect(ligne.querySelector('.anticon-inbox')).not.toBeNull();
+    await utilisateur.click(ligne);
+    await waitFor(() =>
+      expect(screen.getByTestId('url')).toHaveTextContent(`${base}/finance/stock/controle?alerte=a-1`)
+    );
+  });
+
   it('écrit une seule devise dans la file, quelle que soit celle stockée', async () => {
     // Le défaut corrigé : l'API composait la phrase de la ligne en recopiant le
     // code devise STOCKÉ. Deux baux, deux codes (« XOF » pour ceux du jeu de

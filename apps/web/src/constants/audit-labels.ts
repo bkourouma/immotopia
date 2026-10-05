@@ -164,6 +164,34 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   SYNDIC_PROVIDER_INVOICE_FILE_REPLACED: t("Remplacement du fichier d'une facture de prestataire"),
   SYNDIC_PROVIDER_INVOICE_FILE_REMOVED: t("Retrait du fichier d'une facture de prestataire"),
 
+  // Stock de chantier (lot 040, spec B6-R1, ecrans §10.6)
+  STOCK_RECEIPT_RECORDED: t("Enregistrement d'une réception de stock (bon de réception)"),
+  STOCK_ISSUE_RECORDED: t("Enregistrement d'une sortie de stock (bon de sortie)"),
+  STOCK_TRANSFER_RECORDED: t("Enregistrement d'un transfert de stock entre deux lieux"),
+  STOCK_SUPPLIER_RETURN_RECORDED: t("Enregistrement d'un retour de marchandise au fournisseur"),
+  STOCK_SCRAP_RECORDED: t("Enregistrement d'un rebut de stock"),
+  STOCK_COUNT_OPENED: t("Ouverture d'un inventaire"),
+  STOCK_COUNT_LINE_RECORDED: t("Saisie ou correction d'une ligne d'inventaire"),
+  STOCK_COUNT_LINE_REMOVED: t("Retrait d'une ligne d'inventaire"),
+  STOCK_COUNT_CLOSED: t("Clôture du comptage d'un inventaire"),
+  STOCK_COUNT_LINE_JUSTIFIED: t("Justification de l'écart d'une ligne d'inventaire"),
+  STOCK_COUNT_LINE_SET_ASIDE: t("Mise à l'écart d'une ligne d'inventaire"),
+  STOCK_COUNT_VALIDATED: t("Validation d'un inventaire"),
+  STOCK_COUNT_SELF_VALIDATED: t("Validation d'un inventaire par une personne qui l'a aussi compté"),
+  STOCK_COUNT_CANCELLED: t("Abandon d'un inventaire"),
+  STOCK_BLIND_INSUFFICIENT_REFUSED: t('Sortie ou transfert refusé faute de stock sur un lieu en cours de comptage'),
+  STOCK_TAKER_CREATED: t("Ajout d'un preneur au carnet"),
+  STOCK_TAKER_UPDATED: t("Correction d'un preneur du carnet"),
+  STOCK_ATTACHMENT_ADDED: t("Ajout d'une pièce jointe au stock (photo ou document)"),
+  STOCK_ATTACHMENT_REMOVED: t("Retrait d'une pièce jointe du stock (fichier effacé, empreinte conservée)"),
+  STOCK_ALERT_ACKNOWLEDGED: t("Traitement d'une alerte de stock"),
+  STOCK_CONTROLS_UPDATED: t('Modification des réglages de contrôle du stock'),
+  STOCK_SITE_ENABLED: t("Mise en service du stock d'un chantier"),
+  STOCK_ITEM_CREATED: t("Création d'un article de stock"),
+  STOCK_ITEM_UPDATED: t("Modification d'un article de stock"),
+  STOCK_LOCATION_CREATED: t("Création d'un lieu de stockage"),
+  STOCK_LOCATION_UPDATED: t("Modification d'un lieu de stockage"),
+
   // Assistant IA
   AI_CHAT_TURN: t("Échange avec l'assistant IA"),
   AI_TOOL_CALLED: t("Outil utilisé par l'assistant IA"),
@@ -233,7 +261,18 @@ export const AUDIT_ENTITY_TYPE_LABELS_FR: Record<string, string> = {
   WorkProgram: t('Programme de travaux'),
   AI_PROPOSAL: t("Proposition de l'assistant IA"),
   AI_TOOL: t("Outil de l'assistant IA"),
-  AI_CONVERSATION: t("Conversation avec l'assistant IA")
+  AI_CONVERSATION: t("Conversation avec l'assistant IA"),
+  // Stock de chantier (lot 040, ecrans §10.6)
+  StockSlip: t('Bon de stock'),
+  StockCount: t('Inventaire'),
+  StockMovement: t('Mouvement de stock'),
+  StockTaker: t('Preneur'),
+  StockAttachment: t('Pièce jointe de stock'),
+  StockAlert: t('Alerte de stock'),
+  StockSettings: t('Réglages du stock'),
+  StockItem: t('Article de stock'),
+  StockLocation: t('Lieu de stockage'),
+  ConstructionSite: t('Chantier')
 };
 
 /** Libellé français de chaque catégorie du journal d'audit. */

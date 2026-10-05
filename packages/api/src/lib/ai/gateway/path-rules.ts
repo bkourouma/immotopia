@@ -48,7 +48,8 @@ export type WriteSensitivityCategory =
  * - access     : comptes et droits (rôles, permissions, invitation, activation, suspension, mot de passe)
  * - bulk       : imports, opérations en masse, générations en lot (appels de fonds, manquantes)
  * - lifecycle  : changement d'état difficile à annuler (résiliation, annulation, archivage, cession,
- *                publication, clôture d'une opération, statut d'un bail)
+ *                publication, clôture d'une opération, statut d'un bail, rebut, retour au fournisseur,
+ *                mise à l'écart, retrait)
  *
  * Une écriture NON classée n'est pas pour autant sûre : elle reste soumise à l'accord simple (carte,
  * changements calculés par le serveur, bouton d'approbation) sans mot à saisir ; la route réelle garde
@@ -135,7 +136,14 @@ const SENSITIVE_WRITE_WORDS: Record<WriteSensitivityCategory, readonly string[]>
     'unarchive',
     'publish',
     'unpublish',
-    'complete'
+    'complete',
+    // Lot 040, le stock : un rebut, un retour au fournisseur, une mise à
+    // l'écart de ligne d'inventaire et un retrait de pièce jointe sortent de la
+    // marchandise ou une preuve, et ne se défont pas d'un clic.
+    'scrap',
+    'return',
+    'aside',
+    'remove'
   ]
 };
 

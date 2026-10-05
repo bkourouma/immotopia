@@ -61,6 +61,7 @@ export interface LeaseDetail extends RentalLease {
     id: string;
     reference: string;
     address?: string;
+    furnishingStatus?: 'FURNISHED' | 'UNFURNISHED' | 'PARTIALLY_FURNISHED' | null;
   };
   primaryRenter?: {
     id: string;

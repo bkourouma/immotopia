@@ -95,6 +95,11 @@ export const EXCLUDED_MODELS: Readonly<Record<string, string>> = {
     "Scelles de hachage du journal d'audit (phase 5) : empreintes techniques, sans donnee metier ; " +
     "conserves par ImmoTopia, pas remis a l'agence.",
   TenantDataExport: "Historique des exports eux-memes : chemins disque internes, sans donnee metier de l'agence.",
+  // Lot 040 (spec B5-R9) : cle d'idempotence des envois du terrain (B3-R2),
+  // purgee chaque nuit ; le resultat (bon, mouvement, piece jointe) est exporte.
+  StockClientRequest:
+    "Cle d'idempotence technique du stock (empreinte d'un envoi rejoue), sans valeur pour l'agence ; " +
+    'les operations elles-memes sont exportees.',
   // Lot P4 (Patrimoine — entités détentrices et fiscalité) : référentiel
   // fiscal de la plateforme, commun à toutes les agences.
   TaxParameter: 'Référentiel fiscal de la plateforme, commun à toutes les agences.',

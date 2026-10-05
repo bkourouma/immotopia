@@ -550,6 +550,17 @@ model User {
   stockMovementsCreated         StockMovement[]         @relation("StockMovementCreatedBy")
   stockCountsCreated            StockCount[]            @relation("StockCountCreatedBy")
   stockCountsValidated          StockCount[]            @relation("StockCountValidatedBy")
+  // Lot 040 : controle du stock de chantier.
+  stockCountsClosed             StockCount[]            @relation("StockCountClosedBy")
+  stockCountsCancelled          StockCount[]            @relation("StockCountCancelledBy")
+  stockCountLinesCounted        StockCountLine[]        @relation("StockCountLineCountedBy")
+  stockCountLinesJustified      StockCountLine[]        @relation("StockCountLineJustifiedBy")
+  stockCountLinesSetAside       StockCountLine[]        @relation("StockCountLineSetAsideBy")
+  stockTakersCreated            StockTaker[]            @relation("StockTakerCreatedBy")
+  stockSlipsCreated             StockSlip[]             @relation("StockSlipCreatedBy")
+  stockAttachmentsUploaded      StockAttachment[]       @relation("StockAttachmentUploadedBy")
+  stockAttachmentsRemoved       StockAttachment[]       @relation("StockAttachmentRemovedBy")
+  stockAlertsAcknowledged       StockAlert[]            @relation("StockAlertAcknowledgedBy")
   voidedDocuments               VoidDocument[]
   leasesManaged                 LeaseManagementTerms[]  @relation("LeaseManagementAgent")
   agentCommissionRates          AgentCommissionRate[]
@@ -756,6 +767,12 @@ model Tenant {
   stockBalances            StockBalance[]
   stockMovements           StockMovement[]
   stockCounts              StockCount[]
+  // Lot 040 : controle du stock de chantier.
+  stockTakers              StockTaker[]
+  stockSlips               StockSlip[]
+  stockAttachments         StockAttachment[]
+  stockAlerts              StockAlert[]
+  stockClientRequests      StockClientRequest[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts          ChartOfAccount[]
@@ -3831,6 +3848,10 @@ enum SourceType {
   STOCK_RECEIPT
   STOCK_ISSUE
   STOCK_ADJUSTMENT
+  // Lot 040 : retour fournisseur et rebut. Sans elles, l'ecriture tomberait
+  // sur MANUAL (accounting.ts:70-115) et le grand livre deviendrait illisible.
+  STOCK_SUPPLIER_RETURN
+  STOCK_SCRAP
   // Gestion locative, lot 3 : le compte des proprietaires mandants.
   OWNER_RENT_COLLECTED
   OWNER_MANAGEMENT_FEE
@@ -6225,6 +6246,8 @@ model SupplierInvoice {
   // explicite sur ce couple, jamais par une jointure declaree ici.
 
   stockReceipts StockMovement[] @relation("StockReceiptInvoice")
+  // Lot 040 (B4) : bons de reception emis sur cette facture.
+  stockSlips    StockSlip[]     @relation("StockSlipInvoice")
 
   @@unique([tenantId, supplierId, reference])
   @@index([tenantId, status])
@@ -6255,6 +6278,10 @@ model SupplierInvoiceLine {
   createdAt DateTime @default(now()) @map("created_at")
 
   invoice SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  /// Lot 040 (A8-R3, A6-R3 bis) : receptions et retours valorises au prix de
+  /// cette ligne.
+  stockReceipts StockMovement[] @relation("StockReceiptInvoiceLine")
 
   @@index([invoiceId])
   @@map("supplier_invoice_lines")
@@ -6364,6 +6391,9 @@ model ConstructionSite {
 
   stockLocation  StockLocation?
   stockMovements StockMovement[]
+  // Lot 040 : bons et alertes rattaches au chantier.
+  stockSlips     StockSlip[]
+  stockAlerts    StockAlert[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -7103,6 +7133,9 @@ model Employee {
   salaryNotes       SalaryNote[]
   salaryPayments    SalaryPayment[]
 
+  // Lot 040 (B2) : preneurs du carnet lies a cette personne.
+  stockTakers StockTaker[]
+
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@map("employees")
@@ -7226,6 +7259,9 @@ model Contractor {
   thirdPartyAccount ThirdPartyAccount    @relation(fields: [thirdPartyAccountId], references: [id], onDelete: Restrict)
   contracts         ContractorContract[]
   payments          ContractorPayment[]
+
+  // Lot 040 (B2) : preneurs du carnet lies a cette personne.
+  stockTakers StockTaker[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -7552,6 +7588,13 @@ enum StockMovementType {
   TRANSFER
   /// Ecart d'inventaire : casse, perte, vol (besoin S6).
   ADJUSTMENT
+  /// Lot 040 (A6). Retour au fournisseur d'une marchandise recue sur une
+  /// facture validee. Diminue le stock ; credite le 311 au cout moyen du lieu,
+  /// debite le 401 au prix fournisseur du retour (data-model §4).
+  SUPPLIER_RETURN
+  /// Lot 040 (A6). Matiere detruite ou inutilisable. Diminue le stock ;
+  /// 603 contre 311 ; jamais imputee a un chantier.
+  SCRAP
 }
 
 enum StockValuationMethod {
@@ -7566,8 +7609,103 @@ enum StockValuationMethod {
 }
 
 enum StockCountStatus {
+  /// Comptage en cours. A L'AVEUGLE : ni attendu ni ecart ne sortent de l'API.
   DRAFT
+  /// Lot 040 (A2). Comptage clos : quantites figees, ecarts reveles, a justifier.
+  COUNTED
   VALIDATED
+  /// Lot 040 (A2-R6). Abandonne en brouillon. Jamais apres la cloture.
+  CANCELLED
+}
+
+/// Lot 040 (A7). Nature d'un inventaire.
+enum StockCountKind {
+  REGULAR
+  /// Inventaire d'ouverture d'un lieu : un surplus entre a valeur nulle.
+  OPENING
+  /// Inventaire de cloture d'un chantier : leve le bloqueur de stock residuel.
+  CLOSING
+}
+
+/// Lot 040 (A4, A6, A11). Liste FERMEE des motifs. L'applicabilite par contexte
+/// (inventaire, rebut, retour, transfert) est portee par les schemas Zod, voir
+/// spec.md §4. Aucune valeur ne qualifie une intention : c'est l'humain qui
+/// qualifie un ecart (decision D2).
+enum StockReasonCode {
+  BREAKAGE
+  DETERIORATION
+  COUNTING_ERROR
+  ENTRY_ERROR
+  UNIT_CONFUSION
+  UNRECORDED_ISSUE
+  UNRECORDED_RECEIPT
+  UNEXPLAINED_DISAPPEARANCE
+  OPENING_BALANCE
+  NON_CONFORMING
+  DAMAGED_ON_DELIVERY
+  EXCESS_DELIVERY
+  SITE_SUPPLY
+  RETURN_TO_WAREHOUSE
+  SITE_EVACUATION
+  REBALANCING
+  OTHER
+}
+
+/// Lot 040 (A8-R3). D'ou vient le prix d'une ligne recue.
+enum StockValuationSource {
+  DECLARED
+  INVOICE_LINE
+  AVERAGE_COST
+  LAST_RECEIPT
+  NONE
+}
+
+/// Lot 040 (B4). Prefixes imprimes : BR, BS, PVI.
+enum StockSlipKind {
+  RECEIPT
+  ISSUE
+  COUNT_REPORT
+}
+
+/// Lot 040 (B5). Cible d'une piece jointe.
+enum StockAttachmentTarget {
+  MOVEMENT
+  SLIP
+  COUNT_LINE
+}
+
+/// Lot 040 (B5). Finalite d'une piece jointe.
+enum StockAttachmentPurpose {
+  GOODS_PHOTO
+  DELIVERY_NOTE
+  SIGNED_SLIP
+  OTHER
+}
+
+/// Lot 040 (B7). Natures d'alerte du stock.
+enum StockAlertKind {
+  COUNT_VARIANCE
+  /// Revision 2 (A2-R7, A2-R8) : inventaire valide avec lignes ecartees ou non comptees.
+  COUNT_LINE_SET_ASIDE
+  /// Revision 2 (A2-R6) : abandon d'un inventaire qui avait au moins une ligne.
+  COUNT_CANCELLED
+  LARGE_ISSUE
+  LARGE_SCRAP
+  RECEIPT_REPEATED
+  RECEIPT_OVER_INVOICE
+  RECEIPT_UNVALUED
+  CASH_MATERIAL_PURCHASE
+  COUNT_SELF_VALIDATED
+}
+
+enum StockAlertSeverity {
+  INFO
+  WARNING
+}
+
+enum StockAlertStatus {
+  OPEN
+  ACKNOWLEDGED
 }
 
 /// La methode de valorisation de l'agence, figee et datee (besoin S5).
@@ -7586,6 +7724,26 @@ model StockSettings {
   decisionNote    String?              @map("decision_note")
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  // Lot 040 : reglages de controle. Les defauts SQL valent pour les lignes
+  // existantes et futures ; l'alerte de caisse (A9) applique les MEMES defauts
+  // en memoire (`STOCK_CONTROLS_DEFAULTS`, lib/finance/stock-controles.ts) sans
+  // jamais creer de ligne.
+
+  /// Lot 040 (A5-R4). Anteriorite maximale d'une date de mouvement, en jours.
+  backdatingLimitDays       Int       @default(7) @map("backdating_limit_days")
+  /// Lot 040 (B2-R3). Vrai : une sortie ou un transfert exige un preneur du carnet.
+  requireTaker              Boolean   @default(false) @map("require_taker")
+  /// Lot 040 (B7). Seuils d'alerte. Nul = nature desactivee. Defauts = hypotheses.
+  issueAlertAmount          Decimal?  @default(500000) @map("issue_alert_amount") @db.Decimal(16, 2)
+  countVarianceAlertAmount  Decimal?  @default(100000) @map("count_variance_alert_amount") @db.Decimal(16, 2)
+  countVarianceAlertPercent Decimal?  @default(5) @map("count_variance_alert_percent") @db.Decimal(5, 2)
+  cashMaterialAlertAmount   Decimal?  @default(100000) @map("cash_material_alert_amount") @db.Decimal(16, 2)
+  /// Lot 040 (A9-R1). Postes « materiaux ». Vide : deduits des postes proposes
+  /// par les articles actifs. Chaque identifiant est verifie (assertBelongsToTenant).
+  materialCostCategoryIds   String[]  @default([]) @map("material_cost_category_ids") @db.Uuid
+  controlsUpdatedAt         DateTime? @map("controls_updated_at")
+  controlsUpdatedByUserId   String?   @map("controls_updated_by_user_id")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -7648,6 +7806,9 @@ model StockLocation {
   balances  StockBalance[]
   movements StockMovement[]
   counts    StockCount[]
+  // Lot 040 : bons emis sur ce lieu, alertes qui le visent.
+  slips     StockSlip[]
+  alerts    StockAlert[]
 
   @@unique([tenantId, label])
   @@index([tenantId])
@@ -7685,6 +7846,10 @@ model StockBalance {
   @@map("stock_balances")
 }
 
+// Lot 040 - contrainte SQL hors Prisma (migration 20261008090100_controle_stock) :
+//   stock_movements_reason_code_required : CHECK (type NOT IN ('SUPPLIER_RETURN',
+//   'SCRAP') OR reason_code IS NOT NULL). TRANSFER n'y figure pas (les anciens
+//   transferts n'ont pas de motif) : son motif est garanti par le service.
 /// Un mouvement de stock. Table unique, typee.
 ///
 /// Chaque mouvement ne touche QU'UN lieu. Un transfert s'ecrit donc en deux
@@ -7739,6 +7904,27 @@ model StockMovement {
   /// Pourquoi, pour un ajustement : casse, perte, vol. Exige.
   reason            String?
 
+  /// Lot 040 (A4, A6, A11). Motif type. Obligatoire pour SUPPLIER_RETURN, SCRAP
+  /// (contrainte CHECK, voir au-dessus du modele), TRANSFER (les deux moities,
+  /// controle applicatif) et pour un ADJUSTMENT ecrit apres ce lot (sauf ligne
+  /// d'avant le lot, A4-R5). `reason` (existant) porte la precision libre.
+  reasonCode            StockReasonCode?      @map("reason_code")
+  /// Lot 040 (B2). Le preneur du carnet. `requestedBy` (existant) recoit un
+  /// INSTANTANE de son libelle : renommer le preneur ne reecrit pas l'histoire.
+  takerId               String?               @map("taker_id") @db.Uuid
+  /// Lot 040 (B4). Le bon qui porte ce mouvement (reception, sortie).
+  slipId                String?               @map("slip_id") @db.Uuid
+  /// Lot 040 (A8-R3). Reception seulement.
+  valuationSource       StockValuationSource? @map("valuation_source")
+  /// Lot 040 (A8-R3, A6-R3 bis). Ligne de facture d'ou vient le prix : prix
+  /// d'entree d'une reception, prix fournisseur d'un retour.
+  supplierInvoiceLineId String?               @map("supplier_invoice_line_id") @db.Uuid
+  /// Lot 040 (A6). Retour fournisseur : valeur portee au 401, au prix
+  /// fournisseur (ligne de facture, ou cout de reception si toutes les
+  /// receptions de l'article sur la facture ont un prix DECLARED/INVOICE_LINE).
+  /// `totalValue` reste la valeur sortie du 311.
+  supplierCreditValue   Decimal?              @map("supplier_credit_value") @db.Decimal(16, 2)
+
   journalEntryId  String?  @map("journal_entry_id") @db.Uuid
   createdByUserId String   @map("created_by_user_id")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -7753,13 +7939,31 @@ model StockMovement {
   journalEntry    JournalEntry?     @relation("StockMovementEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
   createdBy       User              @relation("StockMovementCreatedBy", fields: [createdByUserId], references: [id])
 
+  taker               StockTaker?          @relation(fields: [takerId], references: [id], onDelete: Restrict)
+  slip                StockSlip?           @relation(fields: [slipId], references: [id], onDelete: Restrict)
+  supplierInvoiceLine SupplierInvoiceLine? @relation("StockReceiptInvoiceLine", fields: [supplierInvoiceLineId], references: [id], onDelete: SetNull)
+  attachments         StockAttachment[]
+
   @@index([tenantId])
   @@index([itemId, locationId, createdAt])
   @@index([siteId])
   @@index([transferGroupId])
+  // Lot 040 : journal pagine (A5-R1) et filtres (A5-R2).
+  @@index([tenantId, movementDate(sort: Desc), createdAt(sort: Desc), id(sort: Desc)])
+  @@index([tenantId, type, movementDate])
+  @@index([tenantId, createdByUserId])
+  @@index([tenantId, takerId])
+  // Lot 040 : cumul recu / retourne par facture (A6-R1, A8-R2).
+  @@index([supplierInvoiceId])
+  @@index([slipId])
   @@map("stock_movements")
 }
 
+// Lot 040 - index uniques partiels hors Prisma (migration 20261008090100_controle_stock) :
+//   stock_counts_one_open_per_location : UNIQUE (location_id) WHERE status IN
+//   ('DRAFT', 'COUNTED') - un seul inventaire ouvert par lieu (A2) ;
+//   stock_counts_one_opening_per_location : UNIQUE (location_id) WHERE kind =
+//   'OPENING' AND status <> 'CANCELLED' - un seul inventaire d'ouverture (A7-R1).
 /// Un inventaire physique (besoin S6).
 model StockCount {
   id                String           @id @default(uuid()) @db.Uuid
@@ -7773,15 +7977,47 @@ model StockCount {
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
+  kind                  StockCountKind @default(REGULAR)
+  /// Lot 040 (A2-R4). Cloture du comptage (DRAFT -> COUNTED).
+  closedAt              DateTime?      @map("closed_at")
+  closedByUserId        String?        @map("closed_by_user_id")
+  /// Lot 040 (A2-R6).
+  cancelledAt           DateTime?      @map("cancelled_at")
+  cancelledByUserId     String?        @map("cancelled_by_user_id")
+  cancelReason          String?        @map("cancel_reason")
+  /// Lot 040 (A1-R3). Derogation du validateur unique.
+  selfValidated         Boolean        @default(false) @map("self_validated")
+  selfValidationReason  String?        @map("self_validation_reason")
+  /// Lot 040 (A1-R1, revision 2). Toutes les personnes qui ont saisi au moins
+  /// une ligne, meme remplacee, retiree ou ecartee ensuite. Alimente a chaque
+  /// saisie, jamais diminue. Vide pour un inventaire d'avant le lot (le
+  /// createur fait alors office de compteur, sans ecriture en base).
+  counterUserIds        String[]       @default([]) @map("counter_user_ids")
+  /// Lot 040 (B8). Valeurs FIGEES a la validation. Nulles avant le lot 040 et
+  /// tant que l'inventaire n'est pas valide. Remplacent la valeur d'ecart
+  /// recalculee au cout moyen courant pour un inventaire valide.
+  countedValue          Decimal?       @map("counted_value") @db.Decimal(16, 2)
+  varianceValueGross    Decimal?       @map("variance_value_gross") @db.Decimal(16, 2)
+  varianceValueNet      Decimal?       @map("variance_value_net") @db.Decimal(16, 2)
+  /// Lot 040 (A2-R7, revision 2). Somme des |ecart| valorises des lignes
+  /// ECARTEES (lignes non comptees exclues : leur ecart est inconnu), au cout
+  /// moyen du lieu a la validation. Entre dans COUNT_VARIANCE et dans le taux.
+  setAsideVarianceValue Decimal?       @map("set_aside_variance_value") @db.Decimal(16, 2)
+
   tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   location    StockLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
   createdBy   User             @relation("StockCountCreatedBy", fields: [createdByUserId], references: [id])
   validatedBy User?            @relation("StockCountValidatedBy", fields: [validatedByUserId], references: [id])
   lines       StockCountLine[]
   adjustments StockMovement[]
+  closedBy    User?            @relation("StockCountClosedBy", fields: [closedByUserId], references: [id])
+  cancelledBy User?            @relation("StockCountCancelledBy", fields: [cancelledByUserId], references: [id])
+  slip        StockSlip?       @relation("StockCountReport")
 
   @@index([tenantId])
   @@index([locationId])
+  @@index([tenantId, status])
+  @@index([tenantId, validatedAt])
   @@map("stock_counts")
 }
 
@@ -7796,18 +8032,260 @@ model StockCountLine {
   /// comptage d'hier au stock d'aujourd'hui, et l'ecart ne voudrait plus rien
   /// dire.
   expectedQuantity Decimal @map("expected_quantity") @db.Decimal(16, 4)
-  /// Ce qu'on a compte.
-  countedQuantity  Decimal @map("counted_quantity") @db.Decimal(16, 4)
+  /// Ce qu'on a compte. NUL = ligne « non comptee » creee par le systeme a la
+  /// cloture du comptage (lot 040, A2-R8) : elle ne s'ajuste pas, elle s'ecarte.
+  countedQuantity  Decimal? @map("counted_quantity") @db.Decimal(16, 4)
   /// Pourquoi l'ecart. Exige des qu'il y en a un : un ecart sans motif est
   /// une perte que personne n'expliquera.
   reason           String?
 
+  /// Lot 040 (A3-R1). Heure serveur du figeage de `expectedQuantity`.
+  expectedCapturedAt    DateTime?        @map("expected_captured_at")
+  /// Lot 040 (A4-R1). Auteur de la derniere saisie. Nul pour une ligne d'avant
+  /// le lot : aucune valeur n'est inventee ; A1-R1 retombe alors sur le
+  /// createur. Nul aussi pour une ligne non comptee (aucun compteur).
+  countedByUserId       String?          @map("counted_by_user_id")
+  countedAtServer       DateTime?        @map("counted_at_server")
+  /// Lot 040 (A2-R9). Faux si l'auteur detenait STOCK_COUNT_VALIDATE a la
+  /// saisie (il voyait le stock) ; nul pour une ligne d'avant le lot ou non comptee.
+  countedBlind          Boolean?         @map("counted_blind")
+  /// Lot 040 (A4-R2). Justification, en COUNTED seulement. `reason` = precision.
+  reasonCode            StockReasonCode? @map("reason_code")
+  justifiedByUserId     String?          @map("justified_by_user_id")
+  justifiedAt           DateTime?        @map("justified_at")
+  /// Lot 040 (A2-R7). Ligne ecartee : non ajustee, imprimee au PV.
+  setAsideAt            DateTime?        @map("set_aside_at")
+  setAsideByUserId      String?          @map("set_aside_by_user_id")
+  setAsideReason        String?          @map("set_aside_reason")
+  /// Lot 040 (A3-R4, B8). Figes a la validation.
+  unitCostAtValidation  Decimal?         @map("unit_cost_at_validation") @db.Decimal(16, 4)
+  movementsSinceCapture Int?             @map("movements_since_capture")
+
   count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
   item  StockItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  countedBy   User?             @relation("StockCountLineCountedBy", fields: [countedByUserId], references: [id])
+  justifiedBy User?             @relation("StockCountLineJustifiedBy", fields: [justifiedByUserId], references: [id])
+  setAsideBy  User?             @relation("StockCountLineSetAsideBy", fields: [setAsideByUserId], references: [id])
+  attachments StockAttachment[]
 
   @@unique([countId, itemId])
   @@index([countId])
   @@map("stock_count_lines")
+}
+
+// =============================================================
+// CONTROLE DU STOCK DE CHANTIER — Lot 040 (spec 040, data-model §2.5 a §2.9)
+// =============================================================
+//
+// Toute table neuve porte `tenantId` : elle tombe dans la categorie
+// « cloisonne » de `__tests__/unit/schema-tenant-coverage.test.ts` et sous la
+// garde Prisma (`prisma-tenant-guard-extension.ts`).
+//
+// Contraintes SQL hors Prisma (migration 20261008090100_controle_stock) :
+//   stock_takers_single_link : CHECK (employee_id IS NULL OR contractor_id IS
+//   NULL) — un preneur est lie a un employe OU a un tacheron, jamais aux deux ;
+//   stock_attachments_single_target : exactement une cible, coherente avec
+//   target_type ;
+//   stock_attachments_removed_has_no_file : CHECK (removed_at IS NULL OR
+//   file_url IS NULL) — une piece retiree n'a plus de fichier, mais garde son
+//   empreinte.
+
+/// Lot 040 (B2). La personne qui emporte la marchandise. Elle n'a pas de compte.
+///
+/// Minimal a dessein (spec.md §10) : ni piece d'identite, ni photo, ni note
+/// libre. Ne se supprime pas : il se desactive, ses sorties restent lisibles.
+model StockTaker {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  fullName        String   @map("full_name")
+  /// Minuscules, sans accents, espaces reduits : anti-doublon (B2-R5).
+  normalizedName  String   @map("normalized_name")
+  teamOrCompany   String?  @map("team_or_company")
+  /// Facultatif, effacable a tout moment.
+  phone           String?
+  employeeId      String?  @map("employee_id") @db.Uuid
+  contractorId    String?  @map("contractor_id") @db.Uuid
+  isActive        Boolean  @default(true) @map("is_active")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee?       @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  contractor Contractor?     @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  createdBy  User            @relation("StockTakerCreatedBy", fields: [createdByUserId], references: [id])
+  movements  StockMovement[]
+  slips      StockSlip[]
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, normalizedName])
+  @@map("stock_takers")
+}
+
+/// Lot 040 (B4). Bon de reception (BR), de sortie (BS), proces-verbal
+/// d'inventaire (PVI). Numero continu par (agence, nature, annee), tire sous
+/// verrou consultatif dans la transaction de l'operation (A10-R3) : une
+/// operation annulee ne consomme rien. Le PDF se regenere, rien n'est stocke.
+model StockSlip {
+  id                String        @id @default(uuid()) @db.Uuid
+  tenantId          String        @map("tenant_id")
+  kind              StockSlipKind
+  /// Annee de `documentDate` (meme regle que les pieces de caisse, cash.ts:292-295).
+  year              Int
+  number            Int
+  /// Date declaree du document (date du mouvement ou de l'inventaire).
+  documentDate      DateTime      @map("document_date")
+  locationId        String        @map("location_id") @db.Uuid
+  siteId            String?       @map("site_id") @db.Uuid
+  takerId           String?       @map("taker_id") @db.Uuid
+  /// Instantane du demandeur imprime sur le bon.
+  requestedBy       String?       @map("requested_by")
+  supplierInvoiceId String?       @map("supplier_invoice_id") @db.Uuid
+  stockCountId      String?       @unique @map("stock_count_id") @db.Uuid
+  /// B4-R3 (revision 2). Libelles metier imprimes, FIGES a l'emission :
+  /// { location, site, taker, requestedBy, invoice: { reference, supplierName },
+  ///   author, lines: [{ movementId?, itemId, reference, label, unit }],
+  ///   counters?: string[], validator?: string }. Aucun montant (les montants
+  /// se relisent sur les mouvements, et seulement avec STOCK_VALUES_VIEW).
+  snapshot          Json          @default("{}")
+  createdByUserId   String        @map("created_by_user_id")
+  /// Heure serveur d'enregistrement, imprimee.
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location        StockLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  site            ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  taker           StockTaker?       @relation(fields: [takerId], references: [id], onDelete: Restrict)
+  supplierInvoice SupplierInvoice?  @relation("StockSlipInvoice", fields: [supplierInvoiceId], references: [id], onDelete: SetNull)
+  stockCount      StockCount?       @relation("StockCountReport", fields: [stockCountId], references: [id], onDelete: Restrict)
+  createdBy       User              @relation("StockSlipCreatedBy", fields: [createdByUserId], references: [id])
+  movements       StockMovement[]
+  attachments     StockAttachment[]
+
+  @@unique([tenantId, kind, year, number])
+  @@index([tenantId, kind, documentDate])
+  @@index([supplierInvoiceId])
+  @@map("stock_slips")
+}
+
+/// Lot 040 (B5). Photo ou scan d'une marchandise ou d'un bon. Fichier PRIVE :
+/// jamais servi en statique, relu par private-files.ts apres controle de
+/// l'agence. EXIF retire avant ecriture ; empreinte du fichier STOCKE.
+model StockAttachment {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  targetType       StockAttachmentTarget  @map("target_type")
+  movementId       String?                @map("movement_id") @db.Uuid
+  slipId           String?                @map("slip_id") @db.Uuid
+  countLineId      String?                @map("count_line_id") @db.Uuid
+  purpose          StockAttachmentPurpose @default(GOODS_PHOTO)
+  caption          String?
+  /// Nom d'affichage nettoye, jamais utilise comme chemin.
+  fileName         String                 @map("file_name")
+  /// `/uploads/stock/<tenantId>/<aaaa>/<uuid>.<ext>`. Nul apres retrait.
+  fileUrl          String?                @map("file_url")
+  mimeType         String                 @map("mime_type")
+  sizeBytes        Int                    @map("size_bytes")
+  /// SHA-256 hexadecimal du fichier stocke. Conserve apres retrait.
+  sha256           String                 @db.Char(64)
+  uploadedByUserId String                 @map("uploaded_by_user_id")
+  /// Heure serveur, seule heure qui fasse foi.
+  createdAt        DateTime               @default(now()) @map("created_at")
+  removedAt        DateTime?              @map("removed_at")
+  removedByUserId  String?                @map("removed_by_user_id")
+  removalReason    String?                @map("removal_reason")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  movement   StockMovement?  @relation(fields: [movementId], references: [id], onDelete: Restrict)
+  slip       StockSlip?      @relation(fields: [slipId], references: [id], onDelete: Restrict)
+  countLine  StockCountLine? @relation(fields: [countLineId], references: [id], onDelete: Restrict)
+  uploadedBy User            @relation("StockAttachmentUploadedBy", fields: [uploadedByUserId], references: [id])
+  removedBy  User?           @relation("StockAttachmentRemovedBy", fields: [removedByUserId], references: [id])
+
+  @@index([tenantId, targetType])
+  @@index([movementId])
+  @@index([slipId])
+  @@index([countLineId])
+  @@map("stock_attachments")
+}
+
+/// Lot 040 (B7). Point « a traiter » pour le dirigeant. Informe, n'interdit
+/// rien, ne designe personne. Titre et message se CONSTRUISENT a la lecture
+/// depuis `kind` et `details` (traduisibles par t()), jamais stockes en texte.
+model StockAlert {
+  id                   String             @id @default(uuid()) @db.Uuid
+  tenantId             String             @map("tenant_id")
+  kind                 StockAlertKind
+  severity             StockAlertSeverity
+  status               StockAlertStatus   @default(OPEN)
+  /// Anti-doublon : liste des cles dans spec.md B7-R1 (ex. `LARGE_ISSUE:<slipId>`,
+  /// `CASH_MATERIAL_CUMUL:<siteId>:2026-10`). Naissance par INSERT ... ON
+  /// CONFLICT DO NOTHING uniquement (B7-R2, `raiseStockAlertTx`).
+  dedupeKey            String             @map("dedupe_key")
+  /// Montant constate et seuil, FIGES a la naissance.
+  amount               Decimal?           @db.Decimal(16, 2)
+  threshold            Decimal?           @db.Decimal(16, 2)
+  currency             String             @default("XOF")
+  siteId               String?            @map("site_id") @db.Uuid
+  locationId           String?            @map("location_id") @db.Uuid
+  /// Objet vise, sans cle etrangere (meme parti pris que CostAllocation.sourceId) :
+  /// StockSlip | StockCount | StockMovement | SupplierInvoice | CashVoucher.
+  subjectType          String             @map("subject_type")
+  subjectId            String             @map("subject_id") @db.Uuid
+  /// Elements du message : numero de bon, reference de facture, article,
+  /// `mode` (SINGLE | MONTHLY_CUMUL), nombre de lignes ecartees... Aucun nom de personne.
+  details              Json?
+  raisedAt             DateTime           @default(now()) @map("raised_at")
+  /// B7-R6. Reclamation par la tache d'envoi (mise a jour conditionnelle) ;
+  /// expire au bout de 30 minutes si l'envoi n'a pas abouti.
+  emailClaimedAt       DateTime?          @map("email_claimed_at")
+  /// B7-R6. Ecrit APRES le succes de l'envoi, ou quand l'envoi est sans objet.
+  emailSentAt          DateTime?          @map("email_sent_at")
+  /// B7-R6. DISABLED | NO_FEATURE | NO_RECIPIENT quand aucun e-mail n'est parti.
+  emailSkippedReason   String?            @map("email_skipped_reason")
+  acknowledgedAt       DateTime?          @map("acknowledged_at")
+  acknowledgedByUserId String?            @map("acknowledged_by_user_id")
+  acknowledgeNote      String?            @map("acknowledge_note")
+
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site           ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location       StockLocation?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  acknowledgedBy User?             @relation("StockAlertAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, raisedAt(sort: Desc)])
+  @@index([emailSentAt, tenantId])
+  @@map("stock_alerts")
+}
+
+/// Lot 040 (B3-R2). Cle d'idempotence d'une ecriture terrain. PREMIERE ecriture
+/// de la transaction de l'operation : un rejeu concurrent echoue sur l'unicite,
+/// la transaction perdante est annulee et le controleur relit la cle pour
+/// renvoyer le resultat de la gagnante, masque pour l'appelant. Un rejeu par un
+/// autre utilisateur (createdByUserId different) repond 409. Purgee apres 30
+/// jours par stock-maintenance-job.ts.
+model StockClientRequest {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  clientRequestId String   @map("client_request_id") @db.Uuid
+  /// RECEIPT | ISSUE | TRANSFER | SCRAP | SUPPLIER_RETURN | COUNT_LINE | ATTACHMENT
+  operation       String
+  /// SHA-256 du corps canonique (cles triees, sans clientRequestId).
+  bodyHash        String   @map("body_hash") @db.Char(64)
+  /// StockSlip | StockMovement (transferGroupId pour un transfert) | StockCountLine | StockAttachment.
+  /// NULS a l'insertion (la cle est la premiere ecriture, le resultat n'existe
+  /// pas encore), renseignes par une mise a jour en fin de transaction.
+  resultType      String?  @map("result_type")
+  resultId        String?  @map("result_id")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, clientRequestId])
+  @@index([createdAt])
+  @@map("stock_client_requests")
 }
 
 // =============================================================
@@ -7930,12 +8408,16 @@ enum LeaseInspectionStatus {
 /// Brouillon tant qu'on le remplit ; fige une fois finalise, parce qu'il fait
 /// foi entre le bailleur et le locataire. Un par type et par bail.
 ///
-/// `rooms` : `[{ id, name, items: [{ id, label, condition, comment }] }]`,
-/// `condition` parmi NEW, GOOD, FAIR, POOR, BROKEN. Les identifiants de piece
-/// et d'element sont stables : la comparaison entree/sortie et les photos s'y
-/// accrochent. `deductions` (sortie seulement) :
-/// `[{ id, label, amount, roomId?, itemId? }]`, les retenues proposees sur le
-/// depot de garantie.
+/// `rooms` : `[{ id, name, items: [{ id, label, condition, comment, kind?,
+/// quantity?, replacementValue? }] }]`, `condition` parmi NEW, GOOD, FAIR,
+/// POOR, BROKEN, MISSING ; `kind` (FIXTURE ou FURNITURE), `quantity` et
+/// `replacementValue` facultatifs (lot 040, gabarit mobilier). Les
+/// identifiants de piece et d'element sont stables : la comparaison
+/// entree/sortie et les photos s'y accrochent. `deductions` (sortie
+/// seulement) : `[{ id, label, amount, roomId?, itemId?, source?,
+/// proposedAmount? }]`, les retenues proposees sur le depot de garantie ;
+/// `source` et `proposedAmount` facultatifs. La reference de la forme est
+/// l'en-tete de `lib/lease-inspections/inventory.ts`.
 model LeaseInspection {
   id                  String                @id @default(uuid()) @db.Uuid
   tenantId            String                @map("tenant_id")

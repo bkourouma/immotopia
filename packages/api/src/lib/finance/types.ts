@@ -99,7 +99,13 @@ export type FinanceSourceType =
   | 'PROGRESS_STATEMENT'
   | 'CONTRACTOR_PAYMENT'
   | 'RETENTION_HELD'
-  | 'RETENTION_RELEASED';
+  | 'RETENTION_RELEASED'
+  // Lot 040 : le retour fournisseur rend la marchandise ET reduit la dette
+  // envers le fournisseur, donc il ecrit un mouvement de compte de tiers. Le
+  // rebut n'en ecrit aucun aujourd'hui, mais il porte la meme nature de piece
+  // (`accounting.ts`) : le nommer ici evite le prochain transtypage.
+  | 'STOCK_SUPPLIER_RETURN'
+  | 'STOCK_SCRAP';
 
 // ---------------------------------------------------------------------------
 // Grand livre des comptes de tiers

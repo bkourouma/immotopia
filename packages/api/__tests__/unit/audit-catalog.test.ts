@@ -104,7 +104,34 @@ describe('catalogue d’audit', () => {
       'CRM_DEAL_UPDATED',
       'CRM_DEAL_STAGE_CHANGED',
       // Refus d'un plan d'écriture de l'assistant (POST /ai/actions/reject).
-      'AI_PROPOSAL_REJECTED'
+      'AI_PROPOSAL_REJECTED',
+      // Contrôle du stock de chantier (spec 040, B6-R4).
+      'STOCK_RECEIPT_RECORDED',
+      'STOCK_ISSUE_RECORDED',
+      'STOCK_TRANSFER_RECORDED',
+      'STOCK_SUPPLIER_RETURN_RECORDED',
+      'STOCK_SCRAP_RECORDED',
+      'STOCK_COUNT_OPENED',
+      'STOCK_COUNT_LINE_RECORDED',
+      'STOCK_COUNT_LINE_REMOVED',
+      'STOCK_COUNT_CLOSED',
+      'STOCK_COUNT_LINE_JUSTIFIED',
+      'STOCK_COUNT_LINE_SET_ASIDE',
+      'STOCK_COUNT_VALIDATED',
+      'STOCK_COUNT_SELF_VALIDATED',
+      'STOCK_COUNT_CANCELLED',
+      'STOCK_BLIND_INSUFFICIENT_REFUSED',
+      'STOCK_TAKER_CREATED',
+      'STOCK_TAKER_UPDATED',
+      'STOCK_ATTACHMENT_ADDED',
+      'STOCK_ATTACHMENT_REMOVED',
+      'STOCK_ALERT_ACKNOWLEDGED',
+      'STOCK_CONTROLS_UPDATED',
+      'STOCK_SITE_ENABLED',
+      'STOCK_ITEM_CREATED',
+      'STOCK_ITEM_UPDATED',
+      'STOCK_LOCATION_CREATED',
+      'STOCK_LOCATION_UPDATED'
     ];
     const fromCatalog = Object.fromEntries(
       Object.entries(AUDIT_CATALOG)

@@ -96,13 +96,27 @@ import {
   recordStockReceipt
 } from '../../services/finance-stock-mouvements-service';
 import {
+  cancelStockCount,
+  closeStockCount,
   createStockCount,
   createStockTransfer,
   getStockCount,
+  justifyStockCountLine,
   listStockCounts,
+  setAsideStockCountLine,
   setStockCountLine,
   validateStockCount
 } from '../../services/finance-stock-inventaire-service';
+import {
+  acknowledgeStockAlert,
+  createStockTaker,
+  recordStockScrap,
+  recordSupplierReturn,
+  searchReceivableInvoices,
+  setAsideUncountedLines,
+  updateStockControls,
+  updateStockTaker
+} from '../../services/finance-stock-controle-service';
 import { PropertyOwnershipType, PropertyType } from '../../types/finance-site-closing-types';
 // Lot 5, premier sous-lot : le référentiel du stock (bloc en fin de fichier).
 // Les deux listes sont renommées : le sous-lot des mouvements expose des
@@ -502,22 +516,19 @@ describe('Retenues de garantie — le corps ne répète jamais un identifiant, e
 });
 
 /**
- * Lot 5, deuxième sous-lot : réceptions, sorties et valorisation du stock.
+ * Lot 5, deuxième sous-lot, aligné sur le contrat du lot 040 : réceptions,
+ * sorties et valorisation du stock.
  *
- * Les schémas Zod du serveur
- * (`packages/api/src/lib/finance/schemas-stock-mouvements.ts`) sont `.strict()`
- * et ne déclarent **pas** `tenantId` : il vient du chemin, et lui seul. Deux
- * risques distincts sont épinglés ici :
+ * Les schémas Zod du serveur sont `.strict()` et ne déclarent **pas**
+ * `tenantId` : il vient du chemin, et lui seul. Les risques épinglés ici :
  *
- * - **la sortie ne doit envoyer AUCUN prix**, sous aucun nom. Le prix est
- *   dérivé du coût moyen du lieu avant la sortie (principe P-4), et
- *   `createStockIssueSchema` ne déclare ni `unitCost`, ni `totalValue`, ni
- *   `averageUnitCost`. Étant strict, il répond 400 à un corps qui en porterait
- *   un — bruyamment, plutôt que de laisser croire qu'un prix saisi a compté ;
- * - **la réception, elle, PORTE `supplierInvoiceId` dans son corps**, et ce
- *   n'est pas une répétition : le chemin ne le porte nulle part, et c'est lui
- *   qui valorise l'entrée (besoin S2, principe P-2). Un test qui l'interdirait
- *   « par symétrie » casserait la seule création correcte du lot.
+ * - **la sortie n'envoie AUCUN prix**, sous aucun nom : il est dérivé du coût
+ *   moyen du lieu avant la sortie (principe P-4). Elle part en lignes (lot
+ *   040, B3-R3), avec son preneur (`takerId`) OU son demandeur
+ *   (`requestedBy`), et son identifiant de requête ;
+ * - **la réception PORTE `supplierInvoiceId`**, que le chemin ne porte pas ;
+ *   chaque ligne n'envoie son prix que s'il a été saisi (lot 040, A8-R3), et
+ *   sa ligne de facture quand elle est choisie.
  */
 describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps d’une réception', () => {
   const LIEU = 'lieu-magasin-01';
@@ -525,39 +536,44 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
   const SABLE = 'article-sable-03';
   const FACTURE = 'facture-0142';
   const FOURNISSEUR = 'frs-1';
+  const REQUETE = '0f8fad5b-d9cb-469f-a165-70867728950e';
   const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
 
-  it('sortie : les sept champs du schéma, et AUCUN prix sous aucun nom', async () => {
+  it('sortie multi-lignes : lieu, chantier, date, lignes, preneur et identifiant — AUCUN prix', async () => {
     await recordStockIssue(TENANT, {
       locationId: LIEU,
-      itemId: ARTICLE,
-      quantity: 12,
       siteId: SITE,
-      costCategoryId: 'poste-gros-oeuvre',
-      requestedBy: 'Mamadou Kouassi',
-      issueDate: '2026-09-19'
+      issueDate: '2026-09-19',
+      takerId: 'preneur-1',
+      lines: [
+        { itemId: ARTICLE, quantity: 12, costCategoryId: 'poste-gros-oeuvre' },
+        { itemId: SABLE, quantity: 2.5, costCategoryId: 'poste-gros-oeuvre' }
+      ],
+      clientRequestId: REQUETE
     });
 
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/issues`);
     expect(Object.keys(corps).sort()).toEqual([
-      'costCategoryId',
+      'clientRequestId',
       'issueDate',
-      'itemId',
+      'lines',
       'locationId',
-      'quantity',
-      'requestedBy',
-      'siteId'
+      'siteId',
+      'takerId'
     ]);
-
+    expect(corps.lines).toEqual([
+      { itemId: ARTICLE, quantity: 12, costCategoryId: 'poste-gros-oeuvre' },
+      { itemId: SABLE, quantity: 2.5, costCategoryId: 'poste-gros-oeuvre' }
+    ]);
     // Le prix est DÉRIVÉ du coût moyen du lieu, jamais transmis.
-    expect(corps).not.toHaveProperty('unitCost');
-    expect(corps).not.toHaveProperty('totalValue');
-    expect(corps).not.toHaveProperty('averageUnitCost');
+    expect(JSON.stringify(corps)).not.toMatch(/unitCost|totalValue|averageUnitCost/);
     expect(corps).not.toHaveProperty('tenantId');
+    // Avec un preneur, le serveur fige lui-même son libellé : pas de demandeur.
+    expect(corps).not.toHaveProperty('requestedBy');
   });
 
-  it('sortie : le demandeur part sans ses espaces de bord, que le serveur refuserait', async () => {
+  it('sortie à un article : envoyée en une ligne, demandeur détouré, sans preneur', async () => {
     await recordStockIssue(TENANT, {
       locationId: LIEU,
       itemId: ARTICLE,
@@ -569,59 +585,92 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
     });
 
     const { corps } = dernierAppel();
+    expect(Object.keys(corps).sort()).toEqual(['issueDate', 'lines', 'locationId', 'requestedBy', 'siteId']);
     expect(corps.requestedBy).toBe('Mamadou Kouassi');
+    expect(corps.lines).toEqual([{ itemId: ARTICLE, quantity: 1, costCategoryId: 'poste-gros-oeuvre' }]);
+    expect(corps).not.toHaveProperty('takerId');
   });
 
-  it('réception : quatre champs, `supplierInvoiceId` compris — le chemin ne le porte pas', async () => {
+  it('réception : `supplierInvoiceId` dans le corps, le prix seulement s’il est saisi, la ligne de facture si elle est choisie', async () => {
     await recordStockReceipt(TENANT, {
       locationId: LIEU,
       supplierInvoiceId: FACTURE,
       receiptDate: '2026-09-02',
       lines: [
         { itemId: ARTICLE, quantity: 400, unitCost: 4_700 },
-        // Le zéro est accepté : un don, une reprise, une chute récupérée
-        // entrent en stock à valeur nulle. Seul le négatif est refusé.
-        { itemId: SABLE, quantity: 24.5, unitCost: 0 }
-      ]
+        // Ni prix ni ligne : le serveur applique sa chaîne de repli (A8-R3).
+        { itemId: SABLE, quantity: 24.5 },
+        { itemId: 'article-fer', quantity: 10, supplierInvoiceLineId: 'ligne-facture-3' }
+      ],
+      clientRequestId: REQUETE
     });
 
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/receipts`);
-    expect(Object.keys(corps).sort()).toEqual(['lines', 'locationId', 'receiptDate', 'supplierInvoiceId']);
+    expect(Object.keys(corps).sort()).toEqual([
+      'clientRequestId',
+      'lines',
+      'locationId',
+      'receiptDate',
+      'supplierInvoiceId'
+    ]);
     expect(corps).not.toHaveProperty('tenantId');
-    // UNE LIGNE PAR ARTICLE, et chaque ligne ne porte que ses trois champs :
-    // le schéma de ligne est lui aussi `.strict()`.
     expect(corps.lines).toEqual([
       { itemId: ARTICLE, quantity: 400, unitCost: 4_700 },
-      { itemId: SABLE, quantity: 24.5, unitCost: 0 }
+      { itemId: SABLE, quantity: 24.5 },
+      { itemId: 'article-fer', quantity: 10, supplierInvoiceLineId: 'ligne-facture-3' }
     ]);
   });
 
-  it('soldes : les trois filtres partent en requête, et `onlyInStock` faux est OMIS', async () => {
-    await listStockBalances(TENANT, { locationId: LIEU, itemId: ARTICLE, onlyInStock: true });
+  it('réception rejouée : `replayed` vaut vrai sur une réponse 200, faux sur 201', async () => {
+    post.mockResolvedValueOnce({ status: 200, data: { data: { slip: {}, movements: [], controls: [] } } });
+    const rejeu = await recordStockReceipt(TENANT, {
+      locationId: LIEU,
+      supplierInvoiceId: FACTURE,
+      receiptDate: '2026-09-02',
+      lines: [{ itemId: ARTICLE, quantity: 1 }]
+    });
+    expect(rejeu.replayed).toBe(true);
+
+    post.mockResolvedValueOnce({ status: 201, data: { data: { slip: {}, movements: [], controls: [] } } });
+    const creation = await recordStockReceipt(TENANT, {
+      locationId: LIEU,
+      supplierInvoiceId: FACTURE,
+      receiptDate: '2026-09-02',
+      lines: [{ itemId: ARTICLE, quantity: 1 }]
+    });
+    expect(creation.replayed).toBe(false);
+  });
+
+  it('soldes : les trois filtres partent en requête, `onlyInStock` faux est OMIS, et `meta` est rendu', async () => {
+    getMock.mockResolvedValueOnce({
+      data: { data: [], meta: { valuesVisible: false, blindLocationIds: [LIEU] } }
+    });
+    const soldes = await listStockBalances(TENANT, { locationId: LIEU, itemId: ARTICLE, onlyInStock: true });
     expect(getMock).toHaveBeenCalledWith(
       `/tenants/${TENANT}/finance/stock/balances?locationId=${LIEU}&itemId=${ARTICLE}&onlyInStock=true`
     );
+    expect(soldes.meta).toEqual({ valuesVisible: false, blindLocationIds: [LIEU] });
 
-    // `onlyInStock: false` partirait « false », que `z.coerce.boolean()` aurait
-    // lu comme vrai côté serveur : l'écran l'omet, et l'URL redevient celle du
-    // premier chargement — même clé de cache.
     await listStockBalances(TENANT, { onlyInStock: undefined });
     expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/stock/balances`);
   });
 
-  it('journal : les cinq filtres partent en requête, jamais dans le chemin', async () => {
+  it('journal : filtres, curseur et limite en requête, jamais dans le chemin', async () => {
     await listStockMovements(TENANT, {
       itemId: ARTICLE,
       locationId: LIEU,
       siteId: SITE,
-      type: 'ISSUE',
+      type: 'SCRAP',
+      slipId: 'bon-1',
       from: '2026-09-01',
-      to: '2026-09-30'
+      to: '2026-09-30',
+      cursor: 'curseur-opaque',
+      limit: 50
     });
 
     expect(getMock).toHaveBeenCalledWith(
-      `/tenants/${TENANT}/finance/stock/movements?itemId=${ARTICLE}&locationId=${LIEU}&siteId=${SITE}&type=ISSUE&from=2026-09-01&to=2026-09-30`
+      `/tenants/${TENANT}/finance/stock/movements?itemId=${ARTICLE}&locationId=${LIEU}&siteId=${SITE}&type=SCRAP&slipId=bon-1&from=2026-09-01&to=2026-09-30&cursor=curseur-opaque&limit=50`
     );
   });
 
@@ -633,10 +682,7 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?onlyActive=true&kind=WAREHOUSE`);
   });
 
-  it('factures réceptionnables : composées depuis les factures VALIDÉES du fournisseur', async () => {
-    // Aucune route ne liste les factures « sans réception » : le détour est
-    // isolé dans cette seule fonction, et il écarte ce que le serveur
-    // refuserait plutôt que de le proposer.
+  it('factures réceptionnables : composées depuis les factures VALIDÉES du fournisseur (repli)', async () => {
     getMock.mockResolvedValueOnce({
       data: {
         data: [
@@ -650,6 +696,13 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
 
     expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/suppliers/${FOURNISSEUR}/invoices`);
     expect(factures.map(f => f.id)).toEqual([FACTURE]);
+  });
+
+  it('recherche de factures réceptionnables : la recherche détourée, 20 par page', async () => {
+    await searchReceivableInvoices(TENANT, { search: '  F-2026  ', cursor: 'c1' });
+    expect(getMock).toHaveBeenLastCalledWith(
+      `/tenants/${TENANT}/finance/stock/receivable-invoices?search=F-2026&cursor=c1&limit=20`
+    );
   });
 });
 
@@ -706,47 +759,56 @@ describe('Stock du chantier — la bascule ne porte AUCUN corps, et surtout pas 
 });
 
 /**
- * Lot 5, sous-lot « transferts et inventaire physique ». Quatre écritures, et
- * chacune porte un risque distinct contre les schémas `.strict()` du serveur
- * (`packages/api/src/lib/finance/schemas-stock-inventaire.ts`) :
+ * Lot 5, sous-lot « transferts et inventaire physique », aligné sur le contrat
+ * du lot 040. Les risques épinglés contre les schémas `.strict()` du serveur :
  *
- * - **le transfert** porte ses DEUX lieux dans le corps, et ce n'est pas une
- *   répétition : le chemin ne porte que `tenantId`. Il ne porte en revanche
- *   aucun prix — la valeur part au coût moyen du lieu d'origine (principe P-4)
- *   — et aucun chantier : un transfert n'impute rien, seule la sortie impute
- *   (principe P-7). Un corps qui porterait l'un ou l'autre recevrait un 400.
- * - **la ligne de comptage** ne porte JAMAIS `expectedQuantity`. Le serveur la
- *   lit dans le stock au moment de la saisie et la fige ;
- *   `setStockCountLineSchema` ne la déclare pas, et la laisser entrer
- *   permettrait de fabriquer un écart nul — exactement ce que le besoin S6
- *   empêche. `variance` et `varianceValue`, tout aussi dérivées, sont refusées
- *   pour la même raison. `countId`, lui, est dans le CHEMIN.
- * - **le motif vide** est OMIS plutôt qu'envoyé en chaîne vide : le contrôleur
- *   pose `reason ?? null`, si bien que l'absence efface le motif. Une chaîne
- *   vide enregistrerait un motif qui n'en est pas un, et la validation le
- *   laisserait passer alors que le besoin S6 l'exige.
- * - **la validation** envoie un corps VIDE. Son schéma est
- *   `z.object({}).strict()` : `countId` est dans le chemin, et l'auteur vient
- *   du jeton d'authentification — un corps qui le porterait permettrait de
- *   valider une perte au nom de quelqu'un d'autre.
+ * - **le transfert** porte ses DEUX lieux, son demandeur et son motif (A11),
+ *   mais aucun prix ni chantier : déplacer n'est pas consommer ;
+ * - **la ligne de comptage** ne porte JAMAIS `expectedQuantity`, ni aucun
+ *   motif : le motif se saisit après la clôture du comptage (A2-R5), et le
+ *   serveur répond 400 à une saisie qui en porterait un ;
+ * - **la justification** porte le motif type et sa précision non vide ;
+ * - **la validation** envoie un corps VIDE, ou la seule raison d'une
+ *   dérogation (A1-R3) : l'auteur vient du jeton d'authentification.
  */
 describe('Transferts et inventaire — aucun identifiant répété, aucun attendu saisi', () => {
   const COMPTAGE = 'comptage-1';
   const ARTICLE = 'article-1';
+  const REQUETE = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
   const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+  const put = apiClient.put as unknown as ReturnType<typeof vi.fn>;
 
-  it('transfert : les cinq champs du schéma, sans prix ni chantier', async () => {
+  beforeEach(() => {
+    put.mockClear();
+    put.mockResolvedValue({ data: { data: {} } });
+  });
+
+  it('transfert : lieux, article, quantité, date, demandeur, motif et identifiant — sans prix ni chantier', async () => {
     await createStockTransfer(TENANT, {
       fromLocationId: 'lieu-magasin-1',
       toLocationId: 'lieu-chantier-1',
       itemId: ARTICLE,
       quantity: 50,
-      transferDate: '2026-09-19'
+      transferDate: '2026-09-19',
+      requestedBy: '  Chef de chantier Camara ',
+      reasonCode: 'SITE_SUPPLY',
+      reason: '   ',
+      clientRequestId: REQUETE
     });
 
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/transfers`);
-    expect(Object.keys(corps).sort()).toEqual(['fromLocationId', 'itemId', 'quantity', 'toLocationId', 'transferDate']);
+    expect(Object.keys(corps).sort()).toEqual([
+      'clientRequestId',
+      'fromLocationId',
+      'itemId',
+      'quantity',
+      'reasonCode',
+      'requestedBy',
+      'toLocationId',
+      'transferDate'
+    ]);
+    expect(corps.requestedBy).toBe('Chef de chantier Camara');
     // Aucun prix : la valeur part au coût moyen du lieu d'origine.
     expect(corps).not.toHaveProperty('unitCost');
     expect(corps).not.toHaveProperty('value');
@@ -756,84 +818,221 @@ describe('Transferts et inventaire — aucun identifiant répété, aucun attend
     expect(corps).not.toHaveProperty('tenantId');
   });
 
-  it('ouverture d’un comptage : le lieu et la date, rien de plus', async () => {
-    await createStockCount(TENANT, { locationId: 'lieu-magasin-1', countedAt: '2026-09-18' });
+  it('transfert « Autre » avec un preneur : la précision voyage, le nom saisi non', async () => {
+    await createStockTransfer(TENANT, {
+      fromLocationId: 'lieu-chantier-1',
+      toLocationId: 'lieu-magasin-1',
+      itemId: ARTICLE,
+      quantity: 5,
+      transferDate: '2026-09-19',
+      takerId: 'preneur-2',
+      requestedBy: 'ignoré',
+      reasonCode: 'OTHER',
+      reason: ' Prêt au chantier voisin '
+    });
 
+    const { corps } = dernierAppel();
+    expect(corps.takerId).toBe('preneur-2');
+    expect(corps).not.toHaveProperty('requestedBy');
+    expect(corps.reason).toBe('Prêt au chantier voisin');
+  });
+
+  it('ouverture d’un comptage : le lieu et la date, et la nature si elle n’est pas courante', async () => {
+    await createStockCount(TENANT, { locationId: 'lieu-magasin-1', countedAt: '2026-09-18' });
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts`);
     expect(Object.keys(corps).sort()).toEqual(['countedAt', 'locationId']);
-    expect(corps).not.toHaveProperty('tenantId');
-    // Le comptage s'ouvre SANS ligne : on compte une allée après l'autre.
     expect(corps).not.toHaveProperty('lines');
+
+    await createStockCount(TENANT, { locationId: 'lieu-chantier-1', countedAt: '2026-09-18', kind: 'CLOSING' });
+    expect(dernierAppel().corps).toEqual({ locationId: 'lieu-chantier-1', countedAt: '2026-09-18', kind: 'CLOSING' });
   });
 
-  it('ligne de comptage : ni `countId`, et surtout AUCUNE quantité attendue', async () => {
-    const put = apiClient.put as unknown as ReturnType<typeof vi.fn>;
-    put.mockClear();
-    put.mockResolvedValue({ data: { data: {} } });
-
-    await setStockCountLine(TENANT, COMPTAGE, {
-      itemId: ARTICLE,
-      countedQuantity: 188,
-      reason: '  Vol constaté  '
-    });
+  it('ligne de comptage : l’article, la quantité et l’identifiant — ni attendu, ni motif, ni `countId`', async () => {
+    await setStockCountLine(TENANT, COMPTAGE, { itemId: ARTICLE, countedQuantity: 0, clientRequestId: REQUETE });
 
     const [adresse, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/lines`);
-    expect(Object.keys(corps).sort()).toEqual(['countedQuantity', 'itemId', 'reason']);
-    // Le motif part détouré : le serveur le `trim()` de son côté, et une
-    // chaîne d'espaces n'est pas un motif.
-    expect(corps.reason).toBe('Vol constaté');
-    // Le cœur de ce sous-lot. Le serveur lit l'attendu et le FIGE ; l'envoyer
-    // vaudrait un 400, et le laisser entrer permettrait de fabriquer un écart
-    // nul — ce que le besoin S6 empêche.
+    expect(Object.keys(corps).sort()).toEqual(['clientRequestId', 'countedQuantity', 'itemId']);
+    // Le ZÉRO voyage : « on a compté, il n'y a rien » est un résultat.
+    expect(corps.countedQuantity).toBe(0);
+    expect(corps).not.toHaveProperty('reason');
     expect(corps).not.toHaveProperty('expectedQuantity');
     expect(corps).not.toHaveProperty('variance');
-    expect(corps).not.toHaveProperty('varianceValue');
     expect(corps).not.toHaveProperty('countId');
     expect(corps).not.toHaveProperty('tenantId');
   });
 
-  it('ligne de comptage : un motif vide est OMIS, jamais envoyé en chaîne vide', async () => {
-    const put = apiClient.put as unknown as ReturnType<typeof vi.fn>;
-    put.mockClear();
-    put.mockResolvedValue({ data: { data: {} } });
+  it('justification : le motif type et la précision non vide, sur le chemin de la ligne', async () => {
+    await justifyStockCountLine(TENANT, COMPTAGE, ARTICLE, { reasonCode: 'BREAKAGE', reason: '  ' });
+    const [adresse, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/lines/${ARTICLE}/justification`);
+    expect(corps).toEqual({ reasonCode: 'BREAKAGE' });
 
-    await setStockCountLine(TENANT, COMPTAGE, { itemId: ARTICLE, countedQuantity: 0, reason: '   ' });
-
-    const [, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
-    // L'absence efface le motif ; la chaîne vide en enregistrerait un faux,
-    // que la validation laisserait passer.
-    expect(Object.keys(corps).sort()).toEqual(['countedQuantity', 'itemId']);
-    // Le ZÉRO voyage : « on a compté, il n'y a rien » est un résultat.
-    expect(corps.countedQuantity).toBe(0);
+    await justifyStockCountLine(TENANT, COMPTAGE, ARTICLE, { reasonCode: 'OTHER', reason: ' Sac éventré ' });
+    const [, corpsAutre] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
+    expect(corpsAutre).toEqual({ reasonCode: 'OTHER', reason: 'Sac éventré' });
   });
 
-  it('validation : le corps est VIDE — `countId` est dans le chemin, l’auteur dans le jeton', async () => {
-    await validateStockCount(TENANT, COMPTAGE);
+  it('clôture, mise à l’écart et abandon : un corps minimal, le motif détouré', async () => {
+    await closeStockCount(TENANT, COMPTAGE);
+    expect(dernierAppel()).toEqual({ adresse: `/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/close`, corps: {} });
 
+    await setAsideStockCountLine(TENANT, COMPTAGE, ARTICLE, '  Comptage douteux ');
+    expect(dernierAppel()).toEqual({
+      adresse: `/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/lines/${ARTICLE}/set-aside`,
+      corps: { reason: 'Comptage douteux' }
+    });
+
+    await setAsideUncountedLines(TENANT, COMPTAGE, 'Inventaire tournant : allée 3 seulement');
+    expect(dernierAppel()).toEqual({
+      adresse: `/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/set-aside-uncounted`,
+      corps: { reason: 'Inventaire tournant : allée 3 seulement' }
+    });
+
+    await cancelStockCount(TENANT, COMPTAGE, 'Ouvert sur le mauvais lieu');
+    expect(dernierAppel()).toEqual({
+      adresse: `/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/cancel`,
+      corps: { reason: 'Ouvert sur le mauvais lieu' }
+    });
+  });
+
+  it('validation : corps VIDE, ou la seule raison de la dérogation', async () => {
+    await validateStockCount(TENANT, COMPTAGE);
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/validate`);
     expect(corps).toEqual({});
-    expect(corps).not.toHaveProperty('countId');
-    expect(corps).not.toHaveProperty('validatedByUserId');
-    expect(corps).not.toHaveProperty('validatedAt');
+
+    await validateStockCount(TENANT, COMPTAGE, '  Seule validatrice de l’agence ce mois-ci  ');
+    expect(dernierAppel().corps).toEqual({ selfValidationReason: 'Seule validatrice de l’agence ce mois-ci' });
+    expect(dernierAppel().corps).not.toHaveProperty('validatedByUserId');
   });
 
-  it('liste des comptages : les filtres partent en requête, jamais dans le chemin', async () => {
-    await listStockCounts(TENANT, { locationId: 'lieu-magasin-1', status: 'DRAFT' });
+  it('liste des comptages : les filtres partent en requête, jamais `withLines`', async () => {
+    await listStockCounts(TENANT, { locationId: 'lieu-magasin-1', status: 'COUNTED' });
 
     expect(getMock).toHaveBeenLastCalledWith(
-      `/tenants/${TENANT}/finance/stock/counts?locationId=lieu-magasin-1&status=DRAFT`
+      `/tenants/${TENANT}/finance/stock/counts?locationId=lieu-magasin-1&status=COUNTED`
     );
   });
 
   it('détail d’un comptage : un chemin propre, et rien après lui sous `/stock/counts/`', async () => {
-    // Côté serveur, `/stock/counts/:countId` est déclarée EN DERNIER : un
-    // chemin littéral monté après elle serait avalé par le paramètre.
     await getStockCount(TENANT, COMPTAGE);
 
     expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}`);
+  });
+});
+
+/**
+ * Lot 040 : les écritures nouvelles du contrôle du stock. Aucune ne répète
+ * `tenantId`, aucune ne porte un prix.
+ */
+describe('Contrôle du stock — rebut, retour, preneurs, alertes, réglages', () => {
+  const LIEU = 'lieu-magasin-01';
+  const ARTICLE = 'article-ciment-01';
+  const patch = apiClient.patch as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    patch.mockClear();
+    patch.mockResolvedValue({ data: { data: {} } });
+  });
+
+  function dernierPatch(): { adresse: string; corps: Record<string, unknown> } {
+    const [adresse, corps] = patch.mock.calls[patch.mock.calls.length - 1] as [string, Record<string, unknown>];
+    return { adresse, corps };
+  }
+
+  it('rebut : lieu, article, quantité, date, motif — sans prix', async () => {
+    await recordStockScrap(TENANT, {
+      locationId: LIEU,
+      itemId: ARTICLE,
+      quantity: 5,
+      scrapDate: '2026-10-01',
+      reasonCode: 'BREAKAGE'
+    });
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/scraps`);
+    expect(corps).toEqual({
+      locationId: LIEU,
+      itemId: ARTICLE,
+      quantity: 5,
+      scrapDate: '2026-10-01',
+      reasonCode: 'BREAKAGE'
+    });
+  });
+
+  it('retour au fournisseur : la facture et sa ligne si elle est choisie, jamais un prix', async () => {
+    await recordSupplierReturn(TENANT, {
+      locationId: LIEU,
+      supplierInvoiceId: 'facture-1',
+      supplierInvoiceLineId: 'ligne-2',
+      itemId: ARTICLE,
+      quantity: 10,
+      returnDate: '2026-10-01',
+      reasonCode: 'OTHER',
+      reason: ' Mauvaise référence '
+    });
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/supplier-returns`);
+    expect(corps).toEqual({
+      locationId: LIEU,
+      supplierInvoiceId: 'facture-1',
+      supplierInvoiceLineId: 'ligne-2',
+      itemId: ARTICLE,
+      quantity: 10,
+      returnDate: '2026-10-01',
+      reasonCode: 'OTHER',
+      reason: 'Mauvaise référence'
+    });
+    expect(JSON.stringify(corps)).not.toMatch(/unitCost|totalValue|supplierCreditValue/);
+  });
+
+  it('preneur : les cinq champs du contrat, les vides à null', async () => {
+    await createStockTaker(TENANT, {
+      fullName: '  Koné Ibrahim ',
+      teamOrCompany: 'Équipe maçonnerie',
+      phone: '  ',
+      employeeId: 'employe-1'
+    });
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/takers`);
+    expect(corps).toEqual({
+      fullName: 'Koné Ibrahim',
+      teamOrCompany: 'Équipe maçonnerie',
+      phone: null,
+      employeeId: 'employe-1',
+      contractorId: null
+    });
+  });
+
+  it('correction d’un preneur : seuls les champs fournis, `phone: null` efface le numéro', async () => {
+    await updateStockTaker(TENANT, 'preneur-1', { phone: null });
+    expect(dernierPatch()).toEqual({
+      adresse: `/tenants/${TENANT}/finance/stock/takers/preneur-1`,
+      corps: { phone: null }
+    });
+
+    await updateStockTaker(TENANT, 'preneur-1', { isActive: false });
+    expect(dernierPatch().corps).toEqual({ isActive: false });
+  });
+
+  it('alerte traitée : la note seulement si elle n’est pas vide', async () => {
+    await acknowledgeStockAlert(TENANT, 'alerte-1');
+    expect(dernierAppel()).toEqual({
+      adresse: `/tenants/${TENANT}/finance/stock/alerts/alerte-1/acknowledge`,
+      corps: {}
+    });
+
+    await acknowledgeStockAlert(TENANT, 'alerte-1', ' Recompté, erreur de saisie ');
+    expect(dernierAppel().corps).toEqual({ note: 'Recompté, erreur de saisie' });
+  });
+
+  it('réglages de contrôle : seulement les champs modifiés, `null` désactive un seuil', async () => {
+    await updateStockControls(TENANT, { issueAlertAmount: null, backdatingLimitDays: 14 });
+    expect(dernierPatch()).toEqual({
+      adresse: `/tenants/${TENANT}/finance/stock/settings/controls`,
+      corps: { backdatingLimitDays: 14, issueAlertAmount: null }
+    });
   });
 });
 

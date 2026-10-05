@@ -62,19 +62,36 @@
 import apiClient from '../utils/api-client';
 import type { SupplierInvoice } from '../types/finance-lot2-types';
 import type {
-  CreateStockIssueInput,
-  CreateStockReceiptInput,
   ListStockBalancesFilters,
   ListStockItemsFilters,
   ListStockLocationsFilters,
-  ListStockMovementsFilters,
-  StockBalance,
   StockItemRef,
-  StockLocationRef,
-  StockMovement
+  StockLocationRef
 } from '../types/finance-stock-mouvements-types';
+import type {
+  IssueRequest,
+  IssueRequestSingle,
+  ReceiptRequest,
+  StockBalanceView,
+  StockMeta,
+  StockMovementsFilters,
+  StockMovementView,
+  StockRead,
+  StockReceiptResult,
+  StockSlipResult,
+  StockWrite
+} from '../types/finance-stock-controle-types';
 
 type ApiResponse<T> = { success: boolean; data: T };
+type ApiResponseWithMeta<T> = { success: boolean; data: T; meta?: StockMeta };
+
+/**
+ * Le `meta` d'une réponse du stock (lot 040). Absent, on ne suppose rien de
+ * favorable : valeurs non visibles, aucun lieu masqué déclaré.
+ */
+function metaOf(body: { meta?: StockMeta }): StockMeta {
+  return body.meta ?? { valuesVisible: false, blindLocationIds: [] };
+}
 
 function base(tenantId: string): string {
   return `/tenants/${tenantId}/finance`;
@@ -97,33 +114,44 @@ function toQuery(filters?: Record<string, string | number | boolean | undefined>
 // ---------------------------------------------------------------------------
 
 /**
- * Les soldes par (article, lieu), avec leur valeur et leur coût moyen déduit.
+ * Les soldes par (article, lieu), avec leur valeur et leur coût moyen déduit,
+ * lus avec leur `meta` (lot 040) : sans STOCK_VALUES_VIEW, `value` et
+ * `averageUnitCost` valent `null` ; sur un lieu en comptage
+ * (`meta.blindLocationIds`), la quantité aussi.
  *
  * Les trois filtres partent en paramètres de REQUÊTE, jamais dans le chemin.
- * `onlyInStock` masque les lignes à quantité nulle ; il est **omis** quand il
- * est faux plutôt qu'envoyé `false`, pour que la clé de cache et l'URL soient
- * les mêmes qu'au premier chargement.
+ * `onlyInStock` est **omis** quand il est faux plutôt qu'envoyé `false`, pour
+ * que la clé de cache et l'URL soient les mêmes qu'au premier chargement.
  */
-export async function listStockBalances(tenantId: string, filters?: ListStockBalancesFilters): Promise<StockBalance[]> {
-  const response = await apiClient.get<ApiResponse<StockBalance[]>>(
+export async function listStockBalances(
+  tenantId: string,
+  filters?: ListStockBalancesFilters
+): Promise<StockRead<StockBalanceView[]>> {
+  const response = await apiClient.get<ApiResponseWithMeta<StockBalanceView[]>>(
     `${base(tenantId)}/stock/balances${toQuery(filters as Record<string, string | boolean | undefined>)}`
   );
-  return response.data.data;
+  return { data: response.data.data, meta: metaOf(response.data) };
 }
 
 // ---------------------------------------------------------------------------
 // Route D. Le journal des mouvements
 // ---------------------------------------------------------------------------
 
-/** Filtrable par article, lieu, chantier, nature et période. Tout en requête. */
+/**
+ * Le journal, paginé par curseur (lot 040, A5-R1) et lu avec son `meta`
+ * (`meta.nextCursor` nul à la dernière page). Tous les filtres partent en
+ * requête ; les trois filtres par personne (`takerId`, `createdByUserId`,
+ * `requestedBy`) ne s'envoient qu'avec les valeurs visibles — le serveur les
+ * refuse sinon (403).
+ */
 export async function listStockMovements(
   tenantId: string,
-  filters?: ListStockMovementsFilters
-): Promise<StockMovement[]> {
-  const response = await apiClient.get<ApiResponse<StockMovement[]>>(
-    `${base(tenantId)}/stock/movements${toQuery(filters as Record<string, string | undefined>)}`
+  filters?: StockMovementsFilters
+): Promise<StockRead<StockMovementView[]>> {
+  const response = await apiClient.get<ApiResponseWithMeta<StockMovementView[]>>(
+    `${base(tenantId)}/stock/movements${toQuery(filters as Record<string, string | number | undefined>)}`
   );
-  return response.data.data;
+  return { data: response.data.data, meta: metaOf(response.data) };
 }
 
 // ---------------------------------------------------------------------------
@@ -132,15 +160,19 @@ export async function listStockMovements(
 
 /**
  * Enregistre une réception : un ou plusieurs articles entrent dans un lieu,
- * adossés à une facture fournisseur validée.
+ * adossés à une facture fournisseur validée. Rend le bon de réception, les
+ * mouvements et les contrôles (lot 040, A8-R2).
  *
- * Rend **un mouvement par ligne**, jamais un objet unique : le coût moyen se
- * recalcule article par article.
- *
- * Le corps porte exactement les quatre champs du schéma serveur. Le
- * `tenantId` reste dans le chemin.
+ * Le corps est recomposé champ par champ. Par ligne : l'article, la quantité,
+ * la ligne de facture si elle est choisie, et le prix **seulement s'il a été
+ * saisi** — absent, le serveur applique sa chaîne de repli (A8-R3), et le
+ * magasinier, qui ne voit aucune valeur, n'en envoie jamais. Le `tenantId`
+ * reste dans le chemin.
  */
-export async function recordStockReceipt(tenantId: string, params: CreateStockReceiptInput): Promise<StockMovement[]> {
+export async function recordStockReceipt(
+  tenantId: string,
+  params: ReceiptRequest
+): Promise<StockWrite<StockReceiptResult>> {
   const corps = {
     locationId: params.locationId,
     supplierInvoiceId: params.supplierInvoiceId,
@@ -148,12 +180,17 @@ export async function recordStockReceipt(tenantId: string, params: CreateStockRe
     lines: params.lines.map(ligne => ({
       itemId: ligne.itemId,
       quantity: ligne.quantity,
-      unitCost: ligne.unitCost
-    }))
+      ...(typeof ligne.unitCost === 'number' ? { unitCost: ligne.unitCost } : {}),
+      ...(ligne.supplierInvoiceLineId ? { supplierInvoiceLineId: ligne.supplierInvoiceLineId } : {})
+    })),
+    ...(params.clientRequestId ? { clientRequestId: params.clientRequestId } : {})
   };
 
-  const response = await apiClient.post<ApiResponse<StockMovement[]>>(`${base(tenantId)}/stock/receipts`, corps);
-  return response.data.data;
+  const response = await apiClient.post<ApiResponseWithMeta<StockReceiptResult>>(
+    `${base(tenantId)}/stock/receipts`,
+    corps
+  );
+  return { data: response.data.data, meta: metaOf(response.data), replayed: response.status === 200 };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,31 +198,42 @@ export async function recordStockReceipt(tenantId: string, params: CreateStockRe
 // ---------------------------------------------------------------------------
 
 /**
- * Sort un article vers un chantier, et l'impute à son coût.
+ * Sort un ou plusieurs articles vers un chantier (lot 040, B3-R3 : 1 à 50
+ * lignes, un seul bon), et les impute à son coût.
  *
  * **Le corps est recomposé champ par champ**, et non passé en bloc : c'est la
- * seule façon de garantir qu'aucun prix ne s'y glisse jamais, même si
- * l'appelant en ajoutait un à son objet d'entrée. Le schéma serveur est
- * `.strict()` et refuse `unitCost`, `totalValue` et `averageUnitCost` ; la
- * valorisation se fait au coût moyen du lieu **avant** la sortie.
+ * seule façon de garantir qu'aucun prix ne s'y glisse jamais. La forme à un
+ * article est encore acceptée en entrée et envoyée en une ligne.
  *
- * `requestedBy` est envoyé sans espaces de bord : le serveur `.trim()` puis
- * refuse la chaîne vide, autant ne pas lui faire refuser une saisie qui
- * n'était qu'un espace.
+ * Le demandeur : `takerId` (preneur du carnet) quand il est choisi — le
+ * serveur fige alors son libellé dans `requestedBy` —, sinon `requestedBy`
+ * sans ses espaces de bord, que le serveur refuserait.
  */
-export async function recordStockIssue(tenantId: string, params: CreateStockIssueInput): Promise<StockMovement> {
+export async function recordStockIssue(
+  tenantId: string,
+  params: IssueRequest | IssueRequestSingle
+): Promise<StockWrite<StockSlipResult>> {
+  const lignes =
+    'lines' in params
+      ? params.lines.map(ligne => ({
+          itemId: ligne.itemId,
+          quantity: ligne.quantity,
+          costCategoryId: ligne.costCategoryId
+        }))
+      : [{ itemId: params.itemId, quantity: params.quantity, costCategoryId: params.costCategoryId }];
+  const demandeur = params.takerId ? { takerId: params.takerId } : { requestedBy: (params.requestedBy ?? '').trim() };
+
   const corps = {
     locationId: params.locationId,
-    itemId: params.itemId,
-    quantity: params.quantity,
     siteId: params.siteId,
-    costCategoryId: params.costCategoryId,
-    requestedBy: params.requestedBy.trim(),
-    issueDate: params.issueDate
+    issueDate: params.issueDate,
+    lines: lignes,
+    ...demandeur,
+    ...(params.clientRequestId ? { clientRequestId: params.clientRequestId } : {})
   };
 
-  const response = await apiClient.post<ApiResponse<StockMovement>>(`${base(tenantId)}/stock/issues`, corps);
-  return response.data.data;
+  const response = await apiClient.post<ApiResponseWithMeta<StockSlipResult>>(`${base(tenantId)}/stock/issues`, corps);
+  return { data: response.data.data, meta: metaOf(response.data), replayed: response.status === 200 };
 }
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,9 @@ import {
   recordStockReceipt
 } from '../../services/finance-stock-mouvements-service';
 import { listLandLeaseAccruals, recordLandLeaseAccrual } from '../../services/finance-lot4-service';
+import type { StockMovementType } from '../../types/finance-stock-mouvements-types';
+import type { StockMovementView } from '../../types/finance-stock-controle-types';
+import { nouvelIdentifiantDeRequete } from '../../utils/stock-client-request-id';
 import { t } from '../../i18n/t';
 import { decouperPeriode } from './valeurs';
 import type { ContexteImportation, DescripteurNature, ValeursLigne } from './types';
@@ -80,6 +83,89 @@ function chantierExige(contexte: ContexteImportation): string {
 function empreinteDe(parties: Array<string | number | null>): string | null {
   if (parties.some(partie => partie === null || partie === '' || partie === undefined)) return null;
   return parties.join('|');
+}
+
+// ---------------------------------------------------------------------------
+// Le stock (lot 040) : identifiant de requête stable, journal parcouru en entier
+// ---------------------------------------------------------------------------
+
+/**
+ * Les identifiants de requête d'écritures de stock dont le succès n'est pas
+ * encore confirmé, par contenu de ligne (spec B3-R2, ecrans §10.8).
+ *
+ * L'exécution de l'import ne transmet que les valeurs de la ligne, pas son
+ * numéro : l'identifiant est donc rattaché au CONTENU (agence, nature,
+ * chantier, valeurs). Une même ligne relancée après une coupure réutilise son
+ * identifiant — le serveur rejoue l'écriture au lieu de la doubler — et un
+ * identifiant est jeté dès que l'écriture a réussi : deux lignes identiques du
+ * même fichier, ou une ligne réimportée plus tard, créent bien deux pièces.
+ */
+const IDENTIFIANTS_EN_ATTENTE = new Map<string, string[]>();
+
+function cleDeContenu(nature: string, valeurs: ValeursLigne, contexte: ContexteImportation): string {
+  const champs = Object.keys(valeurs)
+    .sort()
+    .map(cle => `${cle}=${valeurs[cle] === null || valeurs[cle] === undefined ? '' : String(valeurs[cle])}`);
+  return [contexte.tenantId, nature, contexte.siteId ?? '', ...champs].join('|');
+}
+
+/**
+ * Envoie une écriture de stock avec un `clientRequestId` stable pour cette
+ * ligne : tiré au premier essai, gardé tant que l'envoi n'a pas réussi, jeté
+ * après le succès.
+ */
+export async function avecIdentifiantStable<T>(
+  nature: string,
+  valeurs: ValeursLigne,
+  contexte: ContexteImportation,
+  envoi: (clientRequestId: string) => Promise<T>
+): Promise<T> {
+  const cle = cleDeContenu(nature, valeurs, contexte);
+  const enAttente = IDENTIFIANTS_EN_ATTENTE.get(cle) ?? [];
+  const identifiant = enAttente[0] ?? nouvelIdentifiantDeRequete();
+  if (enAttente.length === 0) IDENTIFIANTS_EN_ATTENTE.set(cle, [identifiant]);
+  const resultat = await envoi(identifiant);
+  const restants = (IDENTIFIANTS_EN_ATTENTE.get(cle) ?? []).filter(id => id !== identifiant);
+  if (restants.length > 0) {
+    IDENTIFIANTS_EN_ATTENTE.set(cle, restants);
+  } else {
+    IDENTIFIANTS_EN_ATTENTE.delete(cle);
+  }
+  return resultat;
+}
+
+/** 200 par page : le plafond du contrat (`GET /stock/movements`, `limit` 1 à 200). */
+const PAGE_DU_JOURNAL = 200;
+/** Garde-fou : 100 pages, soit 20 000 mouvements, au-delà desquelles on s'arrête. */
+const PAGES_MAXIMUM = 100;
+/** Le réglage `backdatingLimitDays` ne dépasse jamais 365 jours (contrat `ControlsSettingsPatch`). */
+const RECUL_MAXIMUM_JOURS = 365;
+
+/**
+ * Les mouvements d'une nature, TOUTES pages lues (journal paginé par curseur,
+ * lot 040, A5-R1) : sans cela, les empreintes ne verraient que la première
+ * page et laisseraient passer des doublons.
+ *
+ * La lecture est bornée à la seule période qu'une ligne importée peut encore
+ * viser : le serveur refuse une date plus ancienne que la limite de saisie a
+ * posteriori (au plus 365 jours) ou postérieure à aujourd'hui.
+ */
+async function tousLesMouvements(
+  tenantId: string,
+  filtres: { type: StockMovementType; siteId?: string }
+): Promise<StockMovementView[]> {
+  const aujourdhui = new Date();
+  const from = new Date(aujourdhui.getTime() - RECUL_MAXIMUM_JOURS * 86_400_000).toISOString().slice(0, 10);
+  const to = aujourdhui.toISOString().slice(0, 10);
+  const mouvements: StockMovementView[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < PAGES_MAXIMUM; page += 1) {
+    const lu = await listStockMovements(tenantId, { ...filtres, from, to, limit: PAGE_DU_JOURNAL, cursor });
+    mouvements.push(...lu.data);
+    if (!lu.meta.nextCursor) break;
+    cursor = lu.meta.nextCursor;
+  }
+  return mouvements;
 }
 
 // ---------------------------------------------------------------------------
@@ -548,7 +634,8 @@ const RECEPTION_DE_STOCK: DescripteurNature = {
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de livraison', 'livraison'],
-      valeurParDefaut: contexte => contexte.dateParDefaut
+      valeurParDefaut: contexte => contexte.dateParDefaut,
+      aide: 'Une date plus ancienne que la limite fixée dans les réglages de contrôle du stock est refusée par le serveur.'
     },
     {
       cle: 'itemId',
@@ -562,25 +649,34 @@ const RECEPTION_DE_STOCK: DescripteurNature = {
     {
       cle: 'unitCost',
       libelle: 'Prix unitaire',
-      obligatoire: true,
+      // Lot 040 (A8-R3) : facultatif. Laissé vide, le serveur reprend le prix
+      // de la facture, sinon le coût moyen du lieu, sinon le dernier prix reçu.
+      obligatoire: false,
       type: 'montant',
       entetes: ['pu', 'p.u.', 'coût unitaire', 'prix'],
-      aide: 'Le zéro est accepté : un don, une chute récupérée entrent à valeur nulle.'
+      aide: 'Facultatif : laissé vide, le prix est repris de la facture ou, à défaut, du coût moyen du lieu. Le zéro est accepté : un don, une chute récupérée entrent à valeur nulle.'
     }
   ],
   enregistrer: async (valeurs, contexte) => {
-    await recordStockReceipt(contexte.tenantId, {
-      locationId: texte(valeurs, 'locationId'),
-      supplierInvoiceId: texte(valeurs, 'supplierInvoiceId'),
-      receiptDate: texte(valeurs, 'receiptDate'),
-      lines: [
-        {
-          itemId: texte(valeurs, 'itemId'),
-          quantity: nombre(valeurs, 'quantity'),
-          unitCost: nombre(valeurs, 'unitCost')
-        }
-      ]
-    });
+    const prix = nombreOuNul(valeurs, 'unitCost');
+    // Une ligne de classeur = une réception, avec son identifiant de requête
+    // stable : une relance après une coupure ne la doublera pas.
+    const lu = await avecIdentifiantStable('reception-de-stock', valeurs, contexte, clientRequestId =>
+      recordStockReceipt(contexte.tenantId, {
+        locationId: texte(valeurs, 'locationId'),
+        supplierInvoiceId: texte(valeurs, 'supplierInvoiceId'),
+        receiptDate: texte(valeurs, 'receiptDate'),
+        lines: [
+          {
+            itemId: texte(valeurs, 'itemId'),
+            quantity: nombre(valeurs, 'quantity'),
+            ...(prix === null ? {} : { unitCost: prix })
+          }
+        ],
+        clientRequestId
+      })
+    );
+    return lu.data.slip?.number ?? undefined;
   },
   empreinte: valeurs =>
     empreinteDe([
@@ -591,7 +687,7 @@ const RECEPTION_DE_STOCK: DescripteurNature = {
       nombre(valeurs, 'quantity').toString()
     ]),
   chargerEmpreintes: async contexte => {
-    const mouvements = await listStockMovements(contexte.tenantId, { type: 'RECEIPT' });
+    const mouvements = await tousLesMouvements(contexte.tenantId, { type: 'RECEIPT' });
     return mouvements
       .map(mouvement =>
         empreinteDe([
@@ -614,7 +710,7 @@ const SORTIE_DE_STOCK: DescripteurNature = {
   cle: 'sortie-de-stock',
   libelle: 'Sortie de stock',
   description:
-    'Un article sort d’un lieu vers le chantier choisi, et s’y impute. Aucun prix n’est saisi : la valeur vient du coût moyen du lieu.',
+    'Un article sort d’un lieu vers le chantier choisi, et s’y impute. Aucun prix n’est saisi : la valeur vient du coût moyen du lieu. Si votre agence exige un preneur du carnet, enregistrez les sorties depuis l’écran Stock.',
   chantier: 'exige',
   referentiels: ['articles', 'lieux', 'postes'],
   champs: [
@@ -657,19 +753,31 @@ const SORTIE_DE_STOCK: DescripteurNature = {
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de sortie'],
-      valeurParDefaut: contexte => contexte.dateParDefaut
+      valeurParDefaut: contexte => contexte.dateParDefaut,
+      aide: 'Une date plus ancienne que la limite fixée dans les réglages de contrôle du stock est refusée par le serveur.'
     }
   ],
   enregistrer: async (valeurs, contexte) => {
-    await recordStockIssue(contexte.tenantId, {
-      locationId: texte(valeurs, 'locationId'),
-      itemId: texte(valeurs, 'itemId'),
-      quantity: nombre(valeurs, 'quantity'),
-      siteId: chantierExige(contexte),
-      costCategoryId: texte(valeurs, 'costCategoryId'),
-      requestedBy: texte(valeurs, 'requestedBy'),
-      issueDate: texte(valeurs, 'issueDate')
-    });
+    // Lot 040 (B3-R3) : la forme multi-lignes, à une ligne ; le demandeur reste
+    // un nom saisi. Un classeur importé dans une agence qui exige un preneur
+    // du carnet échoue ligne par ligne (400 STOCK_TAKER_REQUIRED).
+    const lu = await avecIdentifiantStable('sortie-de-stock', valeurs, contexte, clientRequestId =>
+      recordStockIssue(contexte.tenantId, {
+        locationId: texte(valeurs, 'locationId'),
+        siteId: chantierExige(contexte),
+        issueDate: texte(valeurs, 'issueDate'),
+        lines: [
+          {
+            itemId: texte(valeurs, 'itemId'),
+            quantity: nombre(valeurs, 'quantity'),
+            costCategoryId: texte(valeurs, 'costCategoryId')
+          }
+        ],
+        requestedBy: texte(valeurs, 'requestedBy'),
+        clientRequestId
+      })
+    );
+    return lu.data.slip?.number ?? undefined;
   },
   empreinte: (valeurs, contexte) =>
     empreinteDe([
@@ -681,7 +789,7 @@ const SORTIE_DE_STOCK: DescripteurNature = {
       nombre(valeurs, 'quantity').toString()
     ]),
   chargerEmpreintes: async contexte => {
-    const mouvements = await listStockMovements(contexte.tenantId, {
+    const mouvements = await tousLesMouvements(contexte.tenantId, {
       type: 'ISSUE',
       ...(contexte.siteId ? { siteId: contexte.siteId } : {})
     });

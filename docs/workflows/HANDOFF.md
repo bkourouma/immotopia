@@ -18,6 +18,76 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Pilote — lots 040 (contrôle du stock) et 041 (inventaire par WhatsApp) — 2026-10-05
+
+**État :** livré en deux PR empilées, CI verte, recette navigateur faite et rejouée. **Fusion à décider par l'utilisateur** : d'abord bkourouma/immotopia#114 (`feat/controle-stock` → `main`), puis bkourouma/immotopia#115 (`feat/inventaire-whatsapp` → `feat/controle-stock`).
+
+| Branche                    | Dernier commit                                 | Worktree                                |
+| -------------------------- | ---------------------------------------------- | --------------------------------------- |
+| `feat/controle-stock`      | `6298a1e9` (correctifs de recette 040)         | `.claude/worktrees/controle-stock`      |
+| `feat/inventaire-whatsapp` | fusion de `feat/controle-stock` puis passation | `.claude/worktrees/inventaire-whatsapp` |
+
+**Décisions de l'utilisateur :**
+
+- **Lot 040, D1 à D5.**
+  - Tout est inclus dans les packs standard.
+  - On parle d'« écart à justifier » ou de « disparition non expliquée », jamais de « vol ».
+  - Livrés : sprints A et B, et le gabarit mobilier des états des lieux.
+  - Pas de sanction automatique, pas de géolocalisation, pas de SMS.
+- **Lot 041, W-D1 à W-D7.**
+  - Le comptage WhatsApp remplit un inventaire normal, validé au bureau par une autre personne.
+  - Aveugle strict : le bot ne montre ni stock attendu ni écart, et ne demande aucun motif.
+  - D2 est conservé.
+  - Passerelle Meta Cloud API.
+  - Seul le rôle « Chef de chantier » s'inscrit. Il ne porte que `STOCK_COUNT`, sans `STOCK_VIEW`.
+  - Option payante `EXT_INVENTAIRE_WHATSAPP` : 25 000 FCFA HT par mois et par bloc de 500 photos.
+
+**Fait (2026-10-05) :**
+
+- Intégration 041 :
+  - pont vers le lot 040 réduit à des réexports ;
+  - test de bout en bout sur base réelle ;
+  - pastilles dans l'écran Inventaire ;
+  - registres, assistant et export d'agence ;
+  - comptes de recette `chef-promoteur@` et `chef-integre@` ;
+  - traductions en et ar ;
+  - `DEPLOIEMENT.md` (mise en service Meta) et wiki (906 lignes).
+- Relecture de sécurité de l'intégration : un constat moyen, corrigé dans `0a47428d`. Le catalogue de l'assistant proposait `remove-photo` ; tout segment qui commence par delete, remove, destroy ou purge est désormais destructeur.
+- Recette navigateur sur une instance dédiée (base `immotopia_recette_wa`, API 8810, web 3410) :
+  - lot 040 : 9 scénarios réussis, 9 partiels, 1 non joué, 6 anomalies ;
+  - lot 041 : 15 réussis sur 20, 2 anomalies ;
+  - correctifs `c34e87ef` (reporté sur `feat/controle-stock` en `6298a1e9`) et `6c509137` ;
+  - re-test : 9 corrections sur 9 confirmées.
+
+**Reste à faire :**
+
+- **rec040-01**, chantier transverse non fait. Un magasinier qui saisit l'URL d'une page financière voit une erreur générique au lieu d'un refus. Le web ne connaît pas les permissions, et `DataView` ne reçoit qu'un texte. Deux pistes :
+  - exposer les permissions au web ;
+  - faire passer l'erreur 403 jusqu'aux blocs d'erreur des 37 pages financières.
+- Cosmétique : sous « Cette alerte est introuvable. », l'écran ajoute « Rien à afficher pour le moment. ».
+- R8.3, non vérifié : la file « À traiter » de l'Accueil ne prend que 4 alertes par source, WARNING d'abord. L'alerte `FIELD_COUNT_CLOSED` sans écart (INFO) peut ne pas y figurer.
+- Après fusion et déploiement :
+  - reseeder les comptes de test du staging (`./infra/scripts/seed-pack-tests.sh staging`) ;
+  - couper les menus hors stock des rôles Magasinier et Chef de chantier ;
+  - mise en service Meta et choix de la vision (Gemini ou OpenRouter et sa clé), par le fondateur.
+- Nettoyage :
+  - conteneur `immotopia-stock-test`, avec les bases `immotopia_recette_wa`, `immotopia_wa_iso` et autres ;
+  - worktree `controle-stock-meubles` : retirer ses jonctions avec `rmdir` AVANT `git worktree remove`.
+
+**Pièges :**
+
+- Recette locale :
+  - lanceur sans `.env` dans le scratchpad de la session (`rec-wa/rec-wa.cjs`). `DOTENV_CONFIG_PATH` pointe vers un fichier vide et les secrets sont générés ;
+  - entrées `rec-wa-api` et `rec-wa-web` ajoutées en local dans `.claude/launch.json`, fichier suivi par git : ne pas les commiter ;
+  - seed : rbac, gabarits, puis super-admin AVANT `seed-pack-test-tenants`, qui l'exige. `OPENROUTER_API_KEY` vide est refusé par `env.ts` : ne pas poser la variable.
+- Un filtre Jest `whatsapp` correspond au nom du worktree `inventaire-whatsapp` et lance toute la suite.
+- `npm run lint` de l'API est rouge pour une erreur préexistante (`platform-audit-csv.ts:70`). Les 4 tests `ai.write-plan` « miroir du front » n'échouent que sous Windows (CRLF).
+- L'extraction des traductions de l'API rend orphelines à chaque passage 32 clés préexistantes : les remettre depuis une sauvegarde.
+- `Space` d'Ant Design 6 donne aux enfants d'un fragment une clé par position. Un bloc qui change de place est remonté et perd son état (rec040-03) : lui donner une `key` fixe.
+- Ne jamais lancer Jest et Vitest en même temps.
+
+---
+
 ## Branche `feat/donnees-test-packs` — 2026-10-03
 
 **État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Éprouvé de bout en bout sur une base PostgreSQL jetable (conteneur `immotopia-donnees-test`, port 5447) : 12 agences créées, code de sortie 0, aucun échec d'audit, relance sans doublon (~12 min).
