@@ -20,12 +20,12 @@ Modèle de section :
 ```markdown
 ## Pilote — lots 040 (contrôle du stock) et 041 (inventaire par WhatsApp) — 2026-10-05
 
-**État :** livré en deux PR empilées, CI verte, recette navigateur faite et rejouée. **Fusion à décider par l'utilisateur** : d'abord bkourouma/immotopia#114 (`feat/controle-stock` → `main`), puis bkourouma/immotopia#115 (`feat/inventaire-whatsapp` → `feat/controle-stock`).
+**État :** **fusionné dans `main`** le 2026-10-05, à la demande de l'utilisateur :
 
-| Branche                    | Dernier commit                                 | Worktree                                |
-| -------------------------- | ---------------------------------------------- | --------------------------------------- |
-| `feat/controle-stock`      | `6298a1e9` (correctifs de recette 040)         | `.claude/worktrees/controle-stock`      |
-| `feat/inventaire-whatsapp` | fusion de `feat/controle-stock` puis passation | `.claude/worktrees/inventaire-whatsapp` |
+- bkourouma/immotopia#114 (lot 040), commit de fusion `73616da3` ;
+- bkourouma/immotopia#115 (lot 041, redirigée vers `main` après la #114), commit de fusion `757771e8`.
+
+CI verte sur les deux. **Rien n'est déployé** : le checkout du serveur (`/home/deployer/immotopia-saas`) a été avancé en avance rapide de `24ea2062` à `757771e8` (arbre propre), mais `deploy.sh staging` n'a pas été lancé (refusé par la protection automatique de l'outil) ; staging et production tournent sur leurs anciennes images. Le prochain `deploy.sh`, staging ou production, construira `757771e8`. Les branches distantes `feat/controle-stock` et `feat/inventaire-whatsapp` existent encore, sans suppression automatique à la fusion. Les worktrees `controle-stock` et `inventaire-whatsapp` sont aussi encore présents ; le second fait tourner l'instance de recette.
 
 **Décisions de l'utilisateur :**
 
