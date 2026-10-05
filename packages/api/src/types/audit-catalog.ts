@@ -25,6 +25,9 @@ export interface AuditCatalogEntry {
 
 type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 
+/** Lot 041 : le numero du chef de chantier n'apparait jamais en clair dans l'audit. */
+const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
+
 /** Visible de l'agence concernée. */
 const tenant = (category: AuditCategoryValue, extra: Extra = {}): AuditCatalogEntry => ({
   category,
@@ -217,6 +220,57 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.RENTAL_PENALTY_UPDATED]: tenant('DATA'),
   [AuditActionKey.RENTAL_PENALTY_DELETED]: tenant('DATA', { critical: true }),
   [AuditActionKey.RENTAL_PENALTY_JUSTIFICATION_UPLOADED]: tenant('DATA'),
+
+  // Contrôle du stock de chantier (spec 040, B6-R1) : visibles de l'agence.
+  [AuditActionKey.STOCK_RECEIPT_RECORDED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_ISSUE_RECORDED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_TRANSFER_RECORDED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_SUPPLIER_RETURN_RECORDED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_SCRAP_RECORDED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_COUNT_OPENED]: tenant('DATA'),
+  [AuditActionKey.STOCK_COUNT_LINE_RECORDED]: tenant('DATA'),
+  [AuditActionKey.STOCK_COUNT_LINE_REMOVED]: tenant('DATA'),
+  [AuditActionKey.STOCK_COUNT_CLOSED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_COUNT_LINE_JUSTIFIED]: tenant('DATA'),
+  [AuditActionKey.STOCK_COUNT_LINE_SET_ASIDE]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_COUNT_VALIDATED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_COUNT_SELF_VALIDATED]: tenant('SECURITY', { critical: true }),
+  [AuditActionKey.STOCK_COUNT_CANCELLED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_BLIND_INSUFFICIENT_REFUSED]: tenant('DATA'),
+  [AuditActionKey.STOCK_TAKER_CREATED]: tenant('DATA', { redact: ['phone'] }),
+  [AuditActionKey.STOCK_TAKER_UPDATED]: tenant('DATA', { redact: ['phone'] }),
+  [AuditActionKey.STOCK_ATTACHMENT_ADDED]: tenant('DATA'),
+  [AuditActionKey.STOCK_ATTACHMENT_REMOVED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.STOCK_ALERT_ACKNOWLEDGED]: tenant('DATA'),
+  [AuditActionKey.STOCK_CONTROLS_UPDATED]: tenant('ADMIN', { critical: true }),
+  [AuditActionKey.STOCK_SITE_ENABLED]: tenant('ADMIN', { critical: true }),
+  [AuditActionKey.STOCK_ITEM_CREATED]: tenant('ADMIN'),
+  [AuditActionKey.STOCK_ITEM_UPDATED]: tenant('ADMIN'),
+  [AuditActionKey.STOCK_LOCATION_CREATED]: tenant('ADMIN'),
+  [AuditActionKey.STOCK_LOCATION_UPDATED]: tenant('ADMIN'),
+
+  // Inventaire de chantier par WhatsApp (spec 041). Toutes masquent le numero.
+  // Critiques : ecrites par recordAuditEvent DANS la transaction. Hors requete
+  // (moteur, tache), l'acteur et l'agence sont passes explicitement.
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_CREATED]: tenant('ADMIN', {
+    critical: true,
+    redact: STOCK_WHATSAPP_REDACT
+  }),
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_UPDATED]: tenant('ADMIN', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_ACTIVATION_CODE_REGENERATED]: tenant('SECURITY', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_ACTIVATED]: tenant('SECURITY', {
+    critical: true,
+    redact: STOCK_WHATSAPP_REDACT
+  }),
+  [AuditActionKey.STOCK_WHATSAPP_ACTIVATION_LOCKED]: tenant('SECURITY', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_REGISTRATION_REVOKED]: tenant('SECURITY', {
+    critical: true,
+    redact: STOCK_WHATSAPP_REDACT
+  }),
+  [AuditActionKey.STOCK_WHATSAPP_COUNT_RECORDED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_COUNT_CLOSED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_QUOTA_REACHED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
+  [AuditActionKey.STOCK_WHATSAPP_PHOTO_REMOVED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
 
   // Divers
   [AuditActionKey.LOT_REGISTRY_RECONCILED]: internal('SYSTEM'),

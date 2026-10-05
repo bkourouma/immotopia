@@ -193,6 +193,8 @@ function buildFakePrisma() {
     // Capacite ACTIFS (lot 4A) : `countActiveAssets` (subscription-v2-service) compte les actifs non archives.
     asset: { count: jest.fn(async () => 0) },
     property: { count: jest.fn(async () => 0) },
+    // Capacite PHOTOS_INVENTAIRE (lot 041) : `countInventoryPhotosThisMonth`, 0 sans ligne du mois.
+    stockWhatsappUsage: { findFirst: jest.fn(async () => null) },
     lotActivation: {
       findMany: jest.fn(async ({ where }: Row) =>
         store.lotActivations.filter(a => a.tenantId === where.tenantId && a.deactivatedAt === null)
@@ -511,6 +513,25 @@ describe('provisionSubscription — consommation projetee en dry-run (dependance
     expect(caps.COPROPRIETES.limit).toBe(2); // SYNDIC seul : 2 inclus
     expect(caps.COPROPRIETES.overBy).toBe(2);
     expect((dry as Row).warnings.some((w: string) => w.includes('COPROPRIETES'))).toBe(true);
+  });
+
+  it('PHOTOS_INVENTAIRE consommées sans option (après création) : aucun avertissement de dépassement facturé ni de seuil (data-model 041 §4)', async () => {
+    const tenant = addTenant();
+    (fakePrisma.stockWhatsappUsage.findFirst as jest.Mock).mockResolvedValue({ used: 120 });
+    // Avertissements calculés sur les droits RÉELS (getEntitlements) après création :
+    // la consommation du mois y est lue, sans option la capacité est à 0.
+    const result = await provisionSubscription({
+      tenantRef: tenant.id,
+      items: [{ code: 'AGENCE' }],
+      setupWaived: true,
+      now: OUT_OF_WINDOW_NOW
+    });
+    expect(result.outcome).toBe('created');
+    const caps = (result as Row).entitlements.capacities;
+    expect(caps.PHOTOS_INVENTAIRE.used).toBe(120);
+    expect(caps.PHOTOS_INVENTAIRE.limit).toBe(0);
+    expect(caps.PHOTOS_INVENTAIRE.overBy).toBe(120); // l'ancien code annonçait ici un dépassement « facturé »
+    expect((result as Row).warnings.some((w: string) => w.includes('PHOTOS_INVENTAIRE'))).toBe(false);
   });
 });
 

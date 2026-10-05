@@ -36,7 +36,7 @@ import {
 } from '../../src/lib/ai/contracts';
 import { findWritableEntry, getCatalogEntries } from '../../src/lib/ai/gateway/catalog';
 import { setLoopbackBaseUrlForTests } from '../../src/lib/ai/gateway/loopback';
-import { bodySensitivity, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
+import { bodySensitivity, isDestructive, pathWords, writeSensitivity } from '../../src/lib/ai/gateway/path-rules';
 import { validatePlanBody } from '../../src/lib/ai/gateway/write-input';
 import { computePlanHash, canonicalJson } from '../../src/lib/ai/plan-hash';
 import { verifyCapabilityProposal } from '../../src/lib/ai/proposal-token';
@@ -606,6 +606,44 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
     ['/api/tenants/:tenantId/bail/:id/status', 'lifecycle']
   ])('%s -> %s', (path, category) => {
     expect(writeSensitivity(path)?.category).toBe(category);
+  });
+
+  // Lot 040 : les écritures du stock qui sortent de la marchandise ou une preuve.
+  it.each([
+    'POST /api/tenants/:tenantId/finance/stock/scraps',
+    'POST /api/tenants/:tenantId/finance/stock/supplier-returns',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/set-aside',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/set-aside-uncounted',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/cancel'
+  ])('%s : stock, écriture du catalogue classée sensible (lifecycle)', id => {
+    const entry = findWritableEntry(id);
+    expect(entry).toBeDefined();
+    expect(writeSensitivity(entry!.path)?.category).toBe('lifecycle');
+    expect(assessWrite(entry!, {})).toMatchObject({ sensitive: true, requiresTypedConfirmation: true });
+  });
+
+  it('stock : le retrait d’une pièce jointe est classé sensible, et exclu du catalogue comme destructeur', () => {
+    const path = '/api/tenants/:tenantId/finance/stock/attachments/:attachmentId/remove';
+    expect(writeSensitivity(path)?.category).toBe('lifecycle');
+    expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
+  });
+
+  // Lot 041 : inscriptions des chefs de chantier et retrait d'une photo de preuve.
+  it.each([
+    'POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/revoke',
+    'POST /api/tenants/:tenantId/finance/stock/whatsapp/registrations/:registrationId/regenerate-code'
+  ])('%s : inscription WhatsApp, sensible et hors de portée de l’assistant', id => {
+    const entry = getCatalogEntries().find(candidate => candidate.id === id);
+    expect(entry).toBeDefined();
+    expect(entry!.sensitive).toBe(true);
+    expect(writeSensitivity(entry!.path)).not.toBeNull();
+    expect(findWritableEntry(id)).toBeUndefined();
+  });
+
+  it('stock WhatsApp : le retrait d’une photo de comptage efface une preuve, exclu du catalogue comme destructeur', () => {
+    const path = '/api/tenants/:tenantId/finance/stock/whatsapp/captures/:captureId/remove-photo';
+    expect(isDestructive('POST', path)).toBe(true);
+    expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
   });
 
   it('`status` n’est sensible que sur un bail ; une création banale reste non sensible', () => {

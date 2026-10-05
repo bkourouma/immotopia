@@ -921,8 +921,10 @@
   "Régulier": "منتظم",
   "Rejetée": "مرفوضة",
   "Relance créée": "تم إنشاء التذكير",
+  "Relance enregistrée, envoi échoué": "تم حفظ التذكير لكن فشل إرساله",
   "Relance manuelle": "تذكير يدوي",
   "Relances": "التذكيرات",
+  "Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué": "تم حفظ التذكيرات: {{remindersCreated}} تم إنشاؤها، منها {{failed}} فشل إرسالها",
   "Relances groupées envoyées : {{remindersCreated}} relance(s) créée(s)": "تم إرسال التذكيرات الجماعية: تم إنشاء {{remindersCreated}} تذكير(ات)",
   "Remise": "خصم",
   "Remise appliquée": "تم تطبيق الخصم",
@@ -1124,7 +1126,5 @@
   "Vote enregistré": "تم تسجيل التصويت",
   "Vote impossible": "تعذّر التصويت",
   "Votes (lots) :": "الأصوات (الوحدات):",
-  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "يمكنك المزج بين مبنى وفيلا ومكتب ومحل تجاري وغيرها.",
-  "Relance enregistrée, envoi échoué": "تم حفظ التذكير لكن فشل إرساله",
-  "Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué": "تم حفظ التذكيرات: {{remindersCreated}} تم إنشاؤها، منها {{failed}} فشل إرسالها"
+  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "يمكنك المزج بين مبنى وفيلا ومكتب ومحل تجاري وغيرها."
 }

@@ -487,6 +487,7 @@ describe('sanitize', () => {
       Authorization: 7,
       contentHash: 8,
       credentials: 9,
+      activationCode: '482913',
       iban: 'IBAN',
       rib: 'RIB',
       label: 'Libellé',
@@ -501,7 +502,8 @@ describe('sanitize', () => {
       'refreshToken',
       'Authorization',
       'contentHash',
-      'credentials'
+      'credentials',
+      'activationCode'
     ]) {
       expect(out[key]).toBe(REDACTED);
     }

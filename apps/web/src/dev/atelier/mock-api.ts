@@ -43,6 +43,17 @@ import { repondreStockReferentiel } from './finance-mock-stock-referentiel';
 import { repondreStockMouvements } from './finance-mock-stock-mouvements';
 import { repondreStockInventaire } from './finance-mock-stock-inventaire';
 import { repondreStockRapprochement } from './finance-mock-stock-rapprochement';
+// Lot 040 : contexte terrain, preneurs, alertes, indicateurs et reglages du
+// controle du stock. Inscrit APRES les quatre bancs du lot 5 : ses routes ne
+// recouvrent aucune des leurs, et le referentiel garde la main sur les
+// articles et les lieux.
+import { repondreStockControle } from './finance-mock-stock-controle';
+// Lot 041 : inventaire par WhatsApp (onglet WhatsApp, comptages terrain,
+// visualiseur de preuve). Ses routes vivent toutes sous `/stock/whatsapp/` et
+// ne recouvrent aucune des precedentes. Le contexte terrain
+// (`repondreStockWhatsappFieldContext`) n'est PAS inscrit : celui du lot 040
+// y repond deja, ce serait un doublon.
+import { repondreStockWhatsapp } from './finance-mock-stock-whatsapp';
 
 /**
  * Fausse API de l'atelier.
@@ -340,7 +351,9 @@ export function installerFausseApi(scenario: Scenario) {
       repondreStockReferentiel,
       repondreStockMouvements,
       repondreStockInventaire,
-      repondreStockRapprochement
+      repondreStockRapprochement,
+      repondreStockControle,
+      repondreStockWhatsapp
     ]) {
       const reponse = repondre(url.pathname, scenario);
       if (reponse !== null) {

@@ -12,7 +12,8 @@
 export const REDACTED = '[masqué]';
 
 /** Nom de clé normalisé (sans `_`, `-`, casse) évoquant un secret. */
-const SECRET_KEY = /(password|passwd|secret|token|apikey|authorization|hash|credential|privatekey|cookie)/;
+const SECRET_KEY =
+  /(password|passwd|secret|token|apikey|authorization|hash|credential|privatekey|cookie|activationcode)/;
 
 export function isSecretKey(key: string): boolean {
   return SECRET_KEY.test(key.toLowerCase().replace(/[_\-\s]/g, ''));

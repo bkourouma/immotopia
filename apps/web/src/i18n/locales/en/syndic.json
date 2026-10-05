@@ -921,8 +921,10 @@
   "Régulier": "Regular",
   "Rejetée": "Rejected",
   "Relance créée": "Reminder created",
+  "Relance enregistrée, envoi échoué": "Reminder saved, sending failed",
   "Relance manuelle": "Manual reminder",
   "Relances": "Reminders",
+  "Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué": "Reminders saved: {{remindersCreated}} created, {{failed}} of them could not be sent",
   "Relances groupées envoyées : {{remindersCreated}} relance(s) créée(s)": "Bulk reminders sent: {{remindersCreated}} reminder(s) created",
   "Remise": "Discount",
   "Remise appliquée": "Discount applied",
@@ -1124,7 +1126,5 @@
   "Vote enregistré": "Vote recorded",
   "Vote impossible": "The vote failed",
   "Votes (lots) :": "Votes (units):",
-  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "You can mix BUILDING, villa, office, retail unit, and so on.",
-  "Relance enregistrée, envoi échoué": "Reminder saved, sending failed",
-  "Relances enregistrées : {{remindersCreated}} créée(s), dont {{failed}} dont l’envoi a échoué": "Reminders saved: {{remindersCreated}} created, {{failed}} of them could not be sent"
+  "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "You can mix BUILDING, villa, office, retail unit, and so on."
 }

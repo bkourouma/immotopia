@@ -1,5 +1,16 @@
 import { t } from '../i18n/t';
 import { activeLocale } from '../i18n/format';
+import type {
+  CreateCountRequest,
+  SetCountLineRequest,
+  StockBalanceView,
+  StockCountLineView,
+  StockCountsFilters,
+  StockCountView,
+  StockMovementView,
+  StockTransferResult,
+  TransferRequest
+} from './finance-stock-controle-types';
 /**
  * Contrat gelé de la frontière réseau — lot 5, troisième sous-lot : les
  * transferts entre lieux et l'inventaire physique (PRD E9, besoins S4 et S6).
@@ -52,10 +63,15 @@ import { activeLocale } from '../i18n/format';
  *    corrige par un SECOND comptage. Aucun type de ce fichier ne décrit une
  *    annulation, et l'écran n'en offre aucun bouton.
  *
- * 5. **Un inventaire ramène le stock à ce qui a été COMPTÉ.** Si de la matière
- *    a bougé entre le comptage et la validation, l'ajustement écrase ce
- *    mouvement : le comptage physique fait foi. C'est voulu, mais il faut le
- *    savoir, et l'écran le dit au moment de valider.
+ * 5. **Un inventaire applique l'ÉCART au stock courant** (lot 040, A3). Si de
+ *    la matière a bougé entre le comptage et la validation, ce mouvement est
+ *    conservé : l'ajustement vaut « compté − attendu figé », il ne ramène plus
+ *    le solde à la quantité comptée.
+ *
+ * Lot 040 : les formes de ce fichier sont alignées sur le contrat 2.0.0
+ * (`finance-stock-controle-types.ts`) — comptage à l'aveugle (attendu et écart
+ * `null` en DRAFT), lignes non comptées, justification calculée par le
+ * serveur.
  *
  * ---------------------------------------------------------------------------
  * Une quantité n'est pas un montant
@@ -124,188 +140,80 @@ export interface StockLocationRef {
  * transférer, pour ne pas envoyer une quantité que le serveur refusera. Ce
  * n'est pas une autorité — c'est le serveur qui refuse, l'écran prévient.
  */
-export interface StockBalanceRef {
-  itemId: string;
-  itemReference: string;
-  itemLabel: string;
-  itemUnit: string;
-  locationId: string;
-  locationLabel: string;
-  quantity: number;
-  value: number;
-  /** `value / quantity`, calculé par le serveur. Zéro quand il n'y a rien. */
-  averageUnitCost: number;
-  currency: string;
-}
+export type StockBalanceRef = StockBalanceView;
 
 // ---------------------------------------------------------------------------
 // Le transfert
 // ---------------------------------------------------------------------------
 
 /**
- * Les natures de mouvement que ce sous-lot peut recevoir en réponse.
- *
- * Un transfert en produit deux — `TRANSFER_OUT` puis `TRANSFER_IN` — et la
- * validation d'un inventaire un `ADJUSTMENT` par ligne en écart. Les autres
- * natures appartiennent au sous-lot 2 et ne transitent pas par cet écran.
+ * Les natures de mouvement, alignées sur le contrat (`MovementType`). Un
+ * transfert en produit deux, de nature `TRANSFER` toutes les deux — le sens se
+ * lit sur `isDecrease` ; l'ancienne déclaration `TRANSFER_OUT | TRANSFER_IN`
+ * ne correspondait à rien de ce que l'API émet.
  */
-export type StockMovementType = 'RECEIPT' | 'ISSUE' | 'TRANSFER_OUT' | 'TRANSFER_IN' | 'ADJUSTMENT';
+export type { StockMovementType } from './finance-stock-mouvements-types';
 
-/**
- * Une moitié de transfert, telle que le serveur la rend.
- *
- * Sous-ensemble LU de `StockMovementRecord` (sous-lot 2) : seuls les champs que
- * cet écran affiche après un transfert sont déclarés.
- */
-export interface StockTransferMovement {
-  id: string;
-  type: StockMovementType;
-  itemId: string;
-  itemReference: string;
-  itemLabel: string;
-  itemUnit: string;
-  locationId: string;
-  locationLabel: string;
-  movementDate: string;
-  /** Toujours positive. C'est `isDecrease` qui dit le sens. */
-  quantity: number;
-  isDecrease: boolean;
-  unitCost: number;
-  totalValue: number;
-  currency: string;
-  quantityAfter: number;
-  valueAfter: number;
-}
+/** Une moitié de transfert, telle que le serveur la rend (contrat `MovementView`). */
+export type StockTransferMovement = StockMovementView;
 
 /**
  * Un transfert, tel qu'on le relit : **deux** mouvements liés par un même
- * `transferGroupId`, la sortie d'abord, l'entrée ensuite.
- *
- * `value` est la valeur DÉPLACÉE, au coût moyen du lieu d'origine. Transférer
- * ne crée ni ne détruit de valeur : la somme des deux lieux ne bouge pas.
- * **Ce n'est pas une dépense**, et l'écran ne doit surtout pas la présenter
- * comme telle.
+ * `transferGroupId`, la sortie d'abord, l'entrée ensuite. `value` est la
+ * valeur DÉPLACÉE, `null` sans STOCK_VALUES_VIEW. **Ce n'est pas une dépense.**
  */
-export interface StockTransfer {
-  transferGroupId: string;
-  movements: StockTransferMovement[];
-  fromLocationLabel: string;
-  toLocationLabel: string;
-  quantity: number;
-  value: number;
-  currency: string;
-}
+export type StockTransfer = StockTransferResult;
 
 /**
- * Le corps de `POST /stock/transfers`, champ pour champ.
- *
- * Les deux lieux sont dans le CORPS, et ce n'est pas une répétition : le chemin
- * ne porte que `tenantId`. **Aucun prix** n'y figure — la valeur part au coût
- * moyen du lieu d'origine (principe P-4) — et aucun chantier non plus : un
- * transfert n'impute rien.
+ * Le corps de `POST /stock/transfers` (contrat `TransferRequest`) : deux
+ * lieux, l'article, la quantité, la date, le demandeur (`takerId` ou
+ * `requestedBy`), le motif et l'identifiant de requête. **Aucun prix**, aucun
+ * chantier.
  */
-export interface CreateStockTransferInput {
-  fromLocationId: string;
-  toLocationId: string;
-  itemId: string;
-  quantity: number;
-  /** `YYYY-MM-DD`. Le serveur la coerce en date. */
-  transferDate: string;
-}
+export type CreateStockTransferInput = TransferRequest;
 
 // ---------------------------------------------------------------------------
 // L'inventaire
 // ---------------------------------------------------------------------------
 
-export type StockCountStatus = 'DRAFT' | 'VALIDATED';
+export type StockCountStatus = 'DRAFT' | 'COUNTED' | 'VALIDATED' | 'CANCELLED';
 
 /**
- * Libellés des deux états.
- *
- * `DRAFT` et `VALIDATED` figurent tous deux dans la table de `<StatusTag>`
- * (« Brouillon », « Validé ») ; ces libellés sont repris ici pour les endroits
- * qui affichent l'état en texte courant — un filtre, une phrase — sans poser
- * d'étiquette.
+ * Libellés des quatre états (ecrans §3.6), pour le texte courant. Sur une
+ * étiquette, toujours les passer en `label` à `<StatusTag>` : son libellé par
+ * défaut de `DRAFT` est « Brouillon ».
  */
 export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validé')
+  DRAFT: t('Comptage en cours'),
+  COUNTED: t('Comptage clos'),
+  VALIDATED: t('Validé'),
+  CANCELLED: t('Abandonné')
 };
 
 /**
- * Une ligne de comptage.
- *
- * `expectedQuantity` est **figée à la saisie** : c'est ce que le système disait
- * au moment où l'on a compté, pas ce qu'il dit aujourd'hui. Relire à la
- * validation comparerait le comptage d'hier au stock d'aujourd'hui, et une
- * sortie enregistrée entre-temps se lirait comme une perte.
- *
- * `variance` vaut `countedQuantity − expectedQuantity`, **calculée par le
- * serveur**, négative quand il manque. L'écran l'affiche, il ne la refait pas.
+ * Une ligne de comptage (contrat `CountLineView`). En DRAFT, `expectedQuantity`
+ * et `variance` valent `null` pour tous : le comptage est à l'aveugle. Une
+ * ligne non comptée (`notCounted`) a `countedQuantity = null`. Le motif
+ * (`reasonCode`, précision dans `reason`) se saisit après la clôture du
+ * comptage ; `justified` dit, selon la règle du serveur, si l'écart est
+ * justifié.
  */
-export interface StockCountLine {
-  id: string;
-  itemId: string;
-  itemReference: string;
-  itemLabel: string;
-  itemUnit: string;
-  expectedQuantity: number;
-  countedQuantity: number;
-  variance: number;
-  /** Casse, perte, vol. Exigé à la validation dès qu'il y a un écart (S6). */
-  reason: string | null;
-}
+export type StockCountLine = StockCountLineView;
 
-export interface StockCount {
-  id: string;
-  tenantId: string;
-  locationId: string;
-  locationLabel: string;
-  countedAt: string;
-  status: StockCountStatus;
-  lines: StockCountLine[];
-  /** Nombre de lignes en écart. Calculé par le serveur. */
-  varianceCount: number;
-  /**
-   * La valeur de l'écart total, au coût moyen courant de chaque article.
-   * **Négative quand il manque.** Estimée tant que l'inventaire est en
-   * brouillon : le coût moyen peut bouger d'ici la validation.
-   */
-  varianceValue: number;
-  currency: string;
-  createdByLabel: string;
-  validatedAt: string | null;
-}
+/** Un inventaire (contrat `CountView`). */
+export type StockCount = StockCountView;
 
-/** Le corps de `POST /stock/counts`. Le lieu y est, le tenant est dans le chemin. */
-export interface CreateStockCountInput {
-  locationId: string;
-  /** `YYYY-MM-DD`. */
-  countedAt: string;
-}
+/** Le corps de `POST /stock/counts` (contrat `CreateCountRequest`). */
+export type CreateStockCountInput = CreateCountRequest;
 
 /**
- * Le corps de `PUT /stock/counts/:countId/lines`.
- *
- * **Ni `countId` — il est dans le chemin — ni `expectedQuantity`** : le serveur
- * la lit et la fige (voir l'en-tête, point 2). `variance` et `varianceValue`
- * sont refusées pour la même raison et n'apparaissent pas non plus.
- *
- * La quantité comptée accepte le ZÉRO : « on a compté, il n'y a rien » est un
- * résultat de comptage, et le plus fréquent des écarts. Seul le négatif est
- * refusé.
+ * Le corps de `PUT /stock/counts/:countId/lines` (contrat `SetCountLineRequest`).
+ * **Ni `countId`, ni `expectedQuantity`, ni motif** : le motif se saisit après
+ * la clôture du comptage (A2-R5).
  */
-export interface SetStockCountLineInput {
-  itemId: string;
-  countedQuantity: number;
-  /** Facultatif à la saisie, exigé à la validation quand il y a un écart. */
-  reason?: string | null;
-}
+export type SetStockCountLineInput = SetCountLineRequest;
 
-export interface ListStockCountsFilters {
-  locationId?: string;
-  status?: StockCountStatus;
-}
+export type ListStockCountsFilters = StockCountsFilters;
 
 // ---------------------------------------------------------------------------
 // Affichage
@@ -333,26 +241,35 @@ export function formatQuantity(value: number | null | undefined, unit?: string |
  * positif et un écart négatif ne veulent pas dire la même chose, et « 3 » sans
  * signe ne dit pas lequel des deux on lit.
  */
-export function formatVariance(value: number, unit?: string | null): string {
-  if (!Number.isFinite(value)) return '—';
+export function formatVariance(value: number | null | undefined, unit?: string | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   if (value === 0) return formatQuantity(0, unit);
   const signe = value > 0 ? '+' : '−';
   return `${signe}${formatQuantity(Math.abs(value), unit)}`;
 }
 
-/** Une ligne est en écart dès que le serveur y a calculé une variance non nulle. */
+/**
+ * Une ligne est en écart quand le serveur y a calculé une variance non nulle
+ * (jamais en DRAFT, où elle vaut `null`), qu'elle n'est pas écartée et qu'elle
+ * a été comptée.
+ */
 export function estEnEcart(ligne: StockCountLine): boolean {
-  return ligne.variance !== 0;
+  return typeof ligne.variance === 'number' && ligne.variance !== 0 && ligne.setAside === null && !ligne.notCounted;
 }
 
 /**
- * Les lignes qui empêchent de valider : en écart, et sans motif (besoin S6).
- *
- * Calculée à l'écran pour **prévenir avant l'envoi**, jamais pour remplacer le
- * refus du serveur — qui reste la seule autorité et dont le message est relayé
- * tel quel s'il tombe quand même.
+ * Les lignes qui empêchent de valider : en écart et non justifiées. « Non
+ * justifiée » se lit dans `justified`, calculé par le serveur (règle unique
+ * A4-R2) : l'écran n'a pas sa propre règle. Calculée pour prévenir avant
+ * l'envoi, jamais pour remplacer le refus du serveur.
  */
 export function lignesSansMotif(count: StockCount | null | undefined): StockCountLine[] {
   if (!count) return [];
-  return count.lines.filter(ligne => estEnEcart(ligne) && !(ligne.reason ?? '').trim());
+  return count.lines.filter(ligne => estEnEcart(ligne) && !ligne.justified);
+}
+
+/** Les lignes non comptées (A2-R8) pas encore écartées : à écarter avant de valider. */
+export function lignesNonComptees(count: StockCount | null | undefined): StockCountLine[] {
+  if (!count) return [];
+  return count.lines.filter(ligne => ligne.notCounted && ligne.setAside === null);
 }

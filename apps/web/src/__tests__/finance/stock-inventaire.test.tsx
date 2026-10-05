@@ -1,48 +1,38 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StockInventaire } from '../../pages/finance/StockInventaire';
+import type { StockCount, StockCountLine, StockTransfer } from '../../types/finance-stock-inventaire-types';
 import type {
-  StockBalanceRef,
-  StockCount,
-  StockCountLine,
-  StockItemRef,
-  StockLocationRef,
-  StockTransfer
-} from '../../types/finance-stock-inventaire-types';
+  StockBalanceView,
+  StockFieldContext,
+  StockLocationView,
+  StockMovementView
+} from '../../types/finance-stock-controle-types';
+import type { CountFieldCaptures } from '../../types/finance-stock-whatsapp-types';
 
 /**
- * Transferts et inventaire physique — lot 5, troisième sous-lot (PRD E9,
- * besoins S4 et S6 ; contrat gelé
- * `packages/api/src/lib/finance/types-lot5-inventaire.ts`).
+ * E3 — Transferts et inventaire physique (ecrans §7, §11.2, §11.3).
  *
- * Comme `cloture-chantier.test.tsx`, ce fichier monte l'écran par-dessus un
- * `apiClient` simulé — **jamais le service doublé**. Les garanties d'adresse et
- * de corps valent donc pour ce que l'écran envoie réellement, geste par geste,
- * et non pour ce qu'un mock du service aurait laissé passer sans le voir.
+ * L'écran est monté par-dessus un `apiClient` simulé — jamais le service
+ * doublé : les garanties d'adresse et de corps valent pour ce que l'écran
+ * envoie réellement.
  *
- * Les six garanties qui comptent plus que les autres :
+ * Ce qui compte plus que le reste :
  *
- * 1. **Un transfert n'impute rien, et l'écran le dit.** C'est le piège du
- *    sous-lot : livrer sur un chantier *ressemble* à une dépense, et quelqu'un
- *    qui le croirait se tromperait sur ses chiffres.
- * 2. **`expectedQuantity` ne part jamais dans le corps d'une ligne.** Le
- *    serveur la lit et la fige (principe P-4) ; son schéma est `.strict()` et
- *    la refuserait en 400.
- * 3. **L'écart vient du serveur.** Les fixtures portent volontairement une
- *    `variance` qu'aucune soustraction ne produit : un écran qui recalculerait
- *    tomberait ici.
- * 4. **Un écart sans motif ne se valide pas** (besoin S6), et l'écran le dit
- *    AVANT l'envoi en nommant les lignes fautives.
- * 5. **Une quantité n'est pas un montant** : quatre décimales, et un quart de
- *    mètre cube ne s'affiche pas « 0 ».
- * 6. **Aucun « débit » ni « crédit »** (principe P-1), balayé sur le rendu.
+ * 1. **Pendant le comptage, rien ne dit l'attendu** : aucun « Le système dit »,
+ *    aucune colonne d'attendu ni d'écart, aucune lecture des soldes du lieu
+ *    compté, aucun motif à la saisie (A2, A2-R5).
+ * 2. **La justification se fait après la clôture**, par motif d'une liste
+ *    fermée ; « justifié » vient du serveur (`justified`).
+ * 3. **La validation est prévenue par le serveur** (`CountView.validation`) et
+ *    conserve les mouvements postérieurs (A3).
+ * 4. **Aucun mot interdit** (D2), et un écart n'est jamais rouge.
  *
- * `useBreakpoint` est figé en desktop pour un `<ConfirmAction>` déterministe
- * (`Popconfirm`), comme dans `cloture-chantier.test.tsx`.
+ * `useBreakpoint` est figé en desktop pour un `<ConfirmAction>` déterministe.
  */
 
 vi.mock('../../utils/api-client', () => ({
@@ -64,203 +54,331 @@ import apiClient from '../../utils/api-client';
 const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
 const post = apiClient.post as unknown as ReturnType<typeof vi.fn>;
 const put = apiClient.put as unknown as ReturnType<typeof vi.fn>;
-const del = apiClient.delete as unknown as ReturnType<typeof vi.fn>;
 
 const TENANT = 'agence-1';
 const MAGASIN = 'lieu-magasin-01';
 const DEPOT = 'lieu-riviera-02';
+const DEPOT_CLOS = 'lieu-cocody-03';
 const CIMENT = 'article-ciment-01';
 const FER = 'article-fer-02';
 const SABLE = 'article-sable-03';
-const BROUILLON = 'comptage-brouillon-01';
-const VALIDE = 'comptage-valide-02';
-
-/** Le signe moins typographique de `formatVariance`, jamais le trait d'union. */
+const TOLE = 'article-tole-04';
+const EN_COURS = 'comptage-en-cours-01';
+const CLOS = 'comptage-clos-02';
+const VALIDE = 'comptage-valide-03';
+const PRENEUR = 'preneur-01';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MOINS = '−';
+const TIMEOUT = { timeout: 8000 };
 
-const ARTICLES: StockItemRef[] = [
-  { id: CIMENT, reference: 'CIM-42', label: 'Ciment CPJ 42,5', unit: 'sac', isActive: true },
-  { id: FER, reference: 'FER-12', label: 'Fer à béton HA 12', unit: 'barre', isActive: true },
-  { id: SABLE, reference: 'SAB-00', label: 'Sable lavé', unit: 'm³', isActive: true }
-];
+const ARTICLES = {
+  [CIMENT]: { reference: 'CIM-42', label: 'Ciment CPJ 42,5', unit: 'sac' },
+  [FER]: { reference: 'FER-12', label: 'Fer à béton HA 12', unit: 'barre' },
+  [SABLE]: { reference: 'SAB-00', label: 'Sable lavé', unit: 'm³' },
+  [TOLE]: { reference: 'TOL-BA', label: 'Tôle bac alu 6 m', unit: 'tôle' }
+} as const;
 
-const LIEUX: StockLocationRef[] = [
-  { id: MAGASIN, kind: 'WAREHOUSE', label: "Magasin central d'Angré", siteId: null, siteLabel: null, isActive: true },
-  {
-    id: DEPOT,
-    kind: 'SITE',
-    label: 'Dépôt de la Villa Riviera',
-    siteId: 'chantier-riviera',
-    siteLabel: 'Villa de la Riviera',
-    isActive: true
-  }
-];
-
-/** Le sable porte un quart de mètre cube : la quantité qui s'afficherait « 0 ». */
-const SOLDES: StockBalanceRef[] = [
-  {
-    itemId: CIMENT,
-    itemReference: 'CIM-42',
-    itemLabel: 'Ciment CPJ 42,5',
-    itemUnit: 'sac',
-    locationId: MAGASIN,
-    locationLabel: "Magasin central d'Angré",
-    quantity: 420,
-    value: 33_600_000,
-    averageUnitCost: 80_000,
-    currency: 'XOF'
-  },
-  {
-    itemId: SABLE,
-    itemReference: 'SAB-00',
-    itemLabel: 'Sable lavé',
-    itemUnit: 'm³',
-    locationId: MAGASIN,
-    locationLabel: "Magasin central d'Angré",
-    quantity: 0.25,
-    value: 75_000,
-    averageUnitCost: 300_000,
-    currency: 'XOF'
-  }
-];
-
-function ligne(partiel: Partial<StockCountLine> & Pick<StockCountLine, 'id' | 'itemId'>): StockCountLine {
+function lieu(
+  partiel: Partial<StockLocationView> & Pick<StockLocationView, 'id' | 'label' | 'kind'>
+): StockLocationView {
   return {
-    itemReference: 'CIM-42',
-    itemLabel: 'Ciment CPJ 42,5',
-    itemUnit: 'sac',
-    expectedQuantity: 0,
-    countedQuantity: 0,
-    variance: 0,
-    reason: null,
+    tenantId: TENANT,
+    siteId: null,
+    siteLabel: null,
+    isActive: true,
+    countInProgress: null,
+    siteClosed: false,
+    openingCountSuggested: false,
+    toRecount: [],
     ...partiel
   };
 }
 
-/**
- * Comptage en BROUILLON.
- *
- * Trois lignes, et des `variance` volontairement INCOHÉRENTES avec la
- * soustraction : 188 − 200 ne fait pas −7. Un écran qui recalculerait au lieu
- * d'afficher ce que le serveur envoie tomberait ici.
- */
-function brouillon(overrides: Partial<StockCount> = {}): StockCount {
+function contexte(partiel: Partial<StockFieldContext> = {}, abilities: Partial<StockFieldContext['abilities']> = {}) {
+  const ctx: StockFieldContext = {
+    locations: [
+      lieu({ id: MAGASIN, label: "Magasin central d'Angré", kind: 'WAREHOUSE' }),
+      lieu({ id: DEPOT, label: 'Dépôt de la Villa Riviera', kind: 'SITE', siteId: 'chantier-riviera' }),
+      lieu({ id: DEPOT_CLOS, label: 'Dépôt de Cocody', kind: 'SITE', siteId: 'chantier-cocody', siteClosed: true })
+    ],
+    sites: [],
+    costCategories: [],
+    items: Object.entries(ARTICLES).map(([id, a]) => ({ id, ...a, category: null, defaultCostCategoryId: null })),
+    takers: [
+      {
+        id: PRENEUR,
+        label: 'Koné Ibrahim — Équipe maçonnerie',
+        fullName: 'Koné Ibrahim',
+        teamOrCompany: 'Équipe maçonnerie',
+        phone: null,
+        employeeId: null,
+        contractorId: null,
+        linkedPersonLabel: null,
+        isActive: true,
+        createdAt: '2026-09-01T00:00:00.000Z'
+      }
+    ],
+    receivableInvoices: [],
+    reasonCodes: {
+      count: ['BREAKAGE', 'UNEXPLAINED_DISAPPEARANCE', 'OPENING_BALANCE', 'OTHER'],
+      scrap: ['BREAKAGE', 'OTHER'],
+      supplierReturn: ['NON_CONFORMING', 'OTHER'],
+      transfer: ['SITE_SUPPLY', 'RETURN_TO_WAREHOUSE', 'REBALANCING', 'OTHER']
+    },
+    settings: { requireTaker: false, backdatingLimitDays: 7 },
+    abilities: {
+      canReceive: true,
+      canIssue: true,
+      canTransfer: true,
+      canCount: true,
+      canValidateCount: true,
+      canDispose: false,
+      canManageTakers: false,
+      valuesVisible: true,
+      canViewAlerts: true,
+      canManageSettings: false,
+      ...abilities
+    },
+    people: [],
+    ...partiel
+  };
+  return ctx;
+}
+
+function ligne(id: string, itemId: keyof typeof ARTICLES, partiel: Partial<StockCountLine> = {}): StockCountLine {
+  const article = ARTICLES[itemId];
   return {
-    id: BROUILLON,
+    id,
+    itemId,
+    itemReference: article.reference,
+    itemLabel: article.label,
+    itemUnit: article.unit,
+    countedQuantity: 0,
+    notCounted: false,
+    countedBlind: true,
+    countedByUserId: 'user-1',
+    countedByLabel: 'Awa Traoré',
+    countedAtServer: '2026-09-18T08:40:00.000Z',
+    expectedQuantity: null,
+    variance: null,
+    varianceValue: null,
+    unitCostAtValidation: null,
+    reasonCode: null,
+    reason: null,
+    justified: false,
+    justifiedByLabel: null,
+    justifiedAt: null,
+    setAside: null,
+    movementsSinceCapture: null,
+    attachmentsCount: 0,
+    ...partiel
+  };
+}
+
+function comptage(partiel: Partial<StockCount> & Pick<StockCount, 'id' | 'status' | 'lines'>): StockCount {
+  return {
     tenantId: TENANT,
     locationId: MAGASIN,
     locationLabel: "Magasin central d'Angré",
+    kind: 'REGULAR',
+    blind: false,
     countedAt: '2026-09-18T00:00:00.000Z',
-    status: 'DRAFT',
-    lines: [
-      // Conforme : aucun écart, aucun motif à donner.
-      ligne({ id: 'l-ciment', itemId: CIMENT, expectedQuantity: 420, countedQuantity: 420, variance: 0 }),
-      // Il manque, et c'est justifié.
-      ligne({
-        id: 'l-fer',
-        itemId: FER,
-        itemReference: 'FER-12',
-        itemLabel: 'Fer à béton HA 12',
-        itemUnit: 'barre',
-        expectedQuantity: 200,
-        countedQuantity: 188,
-        variance: -7,
-        reason: 'Vol constaté sur le dépôt.'
-      }),
-      // Écart SANS motif : c'est lui qui bloque la validation (besoin S6), et
-      // c'est le quart de mètre cube qui ne doit pas s'afficher « 0 ».
-      ligne({
-        id: 'l-sable',
-        itemId: SABLE,
-        itemReference: 'SAB-00',
-        itemLabel: 'Sable lavé',
-        itemUnit: 'm³',
-        expectedQuantity: 12.5,
-        countedQuantity: 12.25,
-        variance: -0.25,
-        reason: null
-      })
-    ],
-    varianceCount: 2,
-    varianceValue: -565_000,
-    currency: 'XOF',
-    createdByLabel: 'Mariama Kouassi',
+    createdByUserId: 'user-1',
+    createdByLabel: 'Awa Traoré',
+    closedAt: null,
+    closedByLabel: null,
     validatedAt: null,
-    ...overrides
+    validatedByLabel: null,
+    cancelledAt: null,
+    cancelReason: null,
+    selfValidated: false,
+    selfValidationReason: null,
+    counters: [{ userId: 'user-1', label: 'Awa Traoré' }],
+    linesCount: partiel.lines.length,
+    uncountedLinesCount: 0,
+    varianceCount: null,
+    countedValue: null,
+    varianceValueGross: null,
+    varianceValueNet: null,
+    setAsideVarianceValue: null,
+    currency: 'XOF',
+    slip: null,
+    validation: null,
+    toRecount: [],
+    ...partiel
   };
 }
 
-/** Le même comptage, mais tous les écarts justifiés : la validation est possible. */
-function brouillonJustifie(): StockCount {
-  const base = brouillon();
-  return {
-    ...base,
-    lines: base.lines.map(l => (l.variance === 0 ? l : { ...l, reason: l.reason ?? 'Casse au déchargement.' }))
-  };
+/** En cours : attendu et écart à `null`, pour tous. */
+function enCours(): StockCount {
+  return comptage({
+    id: EN_COURS,
+    status: 'DRAFT',
+    blind: true,
+    lines: [ligne('l-ciment', CIMENT, { countedQuantity: 418 }), ligne('l-sable', SABLE, { countedQuantity: 12.25 })]
+  });
 }
 
-function valide(): StockCount {
-  return brouillon({
-    id: VALIDE,
+/**
+ * Clos : un écart à justifier (−7 annoncé, 188 − 200 ferait −12), un écart
+ * justifié, une ligne d'avant le lot à motif libre, une ligne non comptée.
+ */
+function clos(partiel: Partial<StockCount> = {}): StockCount {
+  return comptage({
+    id: CLOS,
+    status: 'COUNTED',
     locationId: DEPOT,
     locationLabel: 'Dépôt de la Villa Riviera',
-    status: 'VALIDATED',
-    validatedAt: '2026-09-01T09:15:00.000Z',
+    closedAt: '2026-09-25T16:10:00.000Z',
+    closedByLabel: 'Awa Traoré',
+    varianceCount: 3,
+    varianceValueNet: -612_500,
+    uncountedLinesCount: 1,
+    validation: { callerIsCounter: false, selfValidationAllowed: false },
     lines: [
-      ligne({
-        id: 'l-valide',
-        itemId: CIMENT,
+      ligne('l-fer', FER, { expectedQuantity: 200, countedQuantity: 188, variance: -7, varianceValue: -490_000 }),
+      ligne('l-ciment', CIMENT, {
         expectedQuantity: 80,
         countedQuantity: 75,
         variance: -5,
-        reason: 'Casse au déchargement.'
+        reasonCode: 'BREAKAGE',
+        justified: true
+      }),
+      ligne('l-tole', TOLE, {
+        expectedQuantity: 57,
+        countedQuantity: 60,
+        variance: 3,
+        reason: 'Trois tôles retrouvées derrière la réserve.',
+        justified: true
+      }),
+      ligne('l-sable', SABLE, {
+        countedQuantity: null,
+        notCounted: true,
+        countedByLabel: null,
+        countedAtServer: null,
+        expectedQuantity: 4.5
       })
     ],
-    varianceCount: 1,
-    varianceValue: -400_000
+    ...partiel
   });
+}
+
+/** Clos et prêt à valider : tout est justifié, rien n'est non compté. */
+function closPret(partiel: Partial<StockCount> = {}): StockCount {
+  const base = clos();
+  return {
+    ...base,
+    uncountedLinesCount: 0,
+    lines: base.lines
+      .filter(l => !l.notCounted)
+      .map(l => ({ ...l, justified: true, reasonCode: l.reasonCode ?? (l.reason ? null : 'BREAKAGE') })),
+    ...partiel
+  };
+}
+
+function valide(partiel: Partial<StockCount> = {}): StockCount {
+  return comptage({
+    id: VALIDE,
+    status: 'VALIDATED',
+    locationId: DEPOT,
+    locationLabel: 'Dépôt de la Villa Riviera',
+    validatedAt: '2026-09-01T09:15:00.000Z',
+    validatedByLabel: 'Ibrahima Kouadio',
+    varianceCount: 1,
+    countedValue: 6_000_000,
+    varianceValueGross: 400_000,
+    varianceValueNet: -400_000,
+    setAsideVarianceValue: 0,
+    slip: {
+      id: 'bon-pvi-01',
+      kind: 'COUNT_REPORT',
+      number: 'PVI-2026-00007',
+      documentDate: '2026-09-01',
+      createdAt: '2026-09-01T09:15:00.000Z'
+    },
+    lines: [
+      ligne('l-v-ciment', CIMENT, {
+        expectedQuantity: 80,
+        countedQuantity: 75,
+        variance: -5,
+        reasonCode: 'BREAKAGE',
+        justified: true,
+        movementsSinceCapture: 2
+      }),
+      ligne('l-v-fer', FER, {
+        expectedQuantity: 40,
+        countedQuantity: 40,
+        variance: 0,
+        justified: false,
+        countedBlind: false,
+        movementsSinceCapture: null
+      })
+    ],
+    ...partiel
+  });
+}
+
+function solde(itemId: keyof typeof ARTICLES, locationId: string, quantity: number | null): StockBalanceView {
+  const article = ARTICLES[itemId];
+  return {
+    itemId,
+    itemReference: article.reference,
+    itemLabel: article.label,
+    itemUnit: article.unit,
+    locationId,
+    locationLabel: '',
+    quantity,
+    value: quantity === null ? null : quantity * 1000,
+    averageUnitCost: quantity === null ? null : 1000,
+    currency: 'XOF'
+  };
+}
+
+function moitie(id: string, isDecrease: boolean): StockMovementView {
+  return {
+    id,
+    type: 'TRANSFER',
+    itemId: CIMENT,
+    itemReference: 'CIM-42',
+    itemLabel: 'Ciment CPJ 42,5',
+    itemUnit: 'sac',
+    locationId: isDecrease ? MAGASIN : DEPOT,
+    locationLabel: isDecrease ? "Magasin central d'Angré" : 'Dépôt de la Villa Riviera',
+    movementDate: '2026-09-19',
+    quantity: 50,
+    isDecrease,
+    unitCost: null,
+    totalValue: null,
+    currency: 'XOF',
+    quantityAfter: isDecrease ? 370 : null,
+    valueAfter: null,
+    siteId: null,
+    siteLabel: null,
+    costCategoryLabel: null,
+    requestedBy: null,
+    takerId: PRENEUR,
+    takerLabel: null,
+    supplierInvoiceId: null,
+    supplierInvoiceReference: null,
+    transferGroupId: 'transfert-01',
+    stockCountId: null,
+    slipId: null,
+    slipNumber: null,
+    reasonCode: 'SITE_SUPPLY',
+    reason: null,
+    valuationSource: null,
+    supplierCreditValue: null,
+    createdByUserId: 'user-1',
+    createdByLabel: 'Awa Traoré',
+    createdAt: '2026-09-19T10:00:00.000Z',
+    entryLagDays: 0,
+    attachmentsCount: 0
+  };
 }
 
 const TRANSFERT: StockTransfer = {
   transferGroupId: 'transfert-01',
-  movements: [
-    {
-      id: 'm-out',
-      type: 'TRANSFER_OUT',
-      itemId: CIMENT,
-      itemReference: 'CIM-42',
-      itemLabel: 'Ciment CPJ 42,5',
-      itemUnit: 'sac',
-      locationId: MAGASIN,
-      locationLabel: "Magasin central d'Angré",
-      movementDate: '2026-09-19T00:00:00.000Z',
-      quantity: 50,
-      isDecrease: true,
-      unitCost: 80_000,
-      totalValue: 4_000_000,
-      currency: 'XOF',
-      quantityAfter: 370,
-      valueAfter: 29_600_000
-    },
-    {
-      id: 'm-in',
-      type: 'TRANSFER_IN',
-      itemId: CIMENT,
-      itemReference: 'CIM-42',
-      itemLabel: 'Ciment CPJ 42,5',
-      itemUnit: 'sac',
-      locationId: DEPOT,
-      locationLabel: 'Dépôt de la Villa Riviera',
-      movementDate: '2026-09-19T00:00:00.000Z',
-      quantity: 50,
-      isDecrease: false,
-      unitCost: 80_000,
-      totalValue: 4_000_000,
-      currency: 'XOF',
-      quantityAfter: 125,
-      valueAfter: 10_000_000
-    }
-  ],
+  movements: [moitie('m-out', true), moitie('m-in', false)],
   fromLocationLabel: "Magasin central d'Angré",
   toLocationLabel: 'Dépôt de la Villa Riviera',
   quantity: 50,
@@ -268,31 +386,73 @@ const TRANSFERT: StockTransfer = {
   currency: 'XOF'
 };
 
-/** Nettoie casse et accents, pour une vérification insensible aux deux. */
 function normaliser(texte: string): string {
   return texte.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
-function configurerGet(options: { comptages?: StockCount[]; detail?: StockCount } = {}) {
-  const liste = options.comptages ?? [brouillon(), valide()];
-  const detail = options.detail ?? liste[0];
+/** Aucun mot interdit (D2) dans le rendu. */
+function attendreVocabulaireNeutre() {
+  const texte = normaliser(document.body.textContent ?? '');
+  expect(texte).not.toMatch(/\bvols?\b/);
+  expect(texte).not.toMatch(/\bvoleurs?\b/);
+  expect(texte).not.toMatch(/\bfraud/);
+  expect(texte).not.toMatch(/\bdetourn/);
+}
 
+interface Config {
+  ctx?: StockFieldContext;
+  liste?: StockCount[];
+  detail?: StockCount;
+  soldes?: StockBalanceView[];
+  blindLocationIds?: string[];
+  valuesVisible?: boolean;
+  /** Captures WhatsApp de l'inventaire (lot 041) ; absentes : la route répond 404. */
+  captures?: CountFieldCaptures;
+}
+
+/** Une erreur d'`apiClient` telle qu'axios la lève. */
+function erreurHttp(status: number, code: string, message: string) {
+  return Object.assign(new Error(message), { response: { status, data: { code, message } } });
+}
+
+function configurerGet(config: Config = {}) {
+  const ctx = config.ctx ?? contexte();
+  const liste = config.liste ?? [enCours(), clos(), valide()];
+  const meta = {
+    valuesVisible: config.valuesVisible ?? ctx.abilities.valuesVisible,
+    blindLocationIds: config.blindLocationIds ?? []
+  };
   get.mockImplementation(async (url: string) => {
-    if (/\/stock\/items(\?|$)/.test(url)) return { data: { data: ARTICLES } };
-    if (/\/stock\/locations(\?|$)/.test(url)) return { data: { data: LIEUX } };
-    if (/\/stock\/balances(\?|$)/.test(url)) return { data: { data: SOLDES } };
-    if (/\/stock\/counts\/[^/?]+$/.test(url)) return { data: { data: detail } };
-    if (/\/stock\/counts(\?|$)/.test(url)) return { data: { data: liste } };
-    return { data: { data: null } };
+    if (/\/stock\/field-context$/.test(url)) return { data: { data: ctx, meta } };
+    if (/\/stock\/whatsapp\/counts\/[^/?]+\/captures$/.test(url)) {
+      if (config.captures) return { data: { data: config.captures } };
+      throw erreurHttp(404, 'NOT_FOUND', 'Inventaire introuvable.');
+    }
+    if (/\/stock\/whatsapp\/captures\//.test(url)) throw erreurHttp(404, 'NOT_FOUND', 'Capture introuvable.');
+    if (/\/stock\/balances(\?|$)/.test(url)) {
+      return { data: { data: config.soldes ?? [solde(CIMENT, MAGASIN, 420), solde(SABLE, MAGASIN, 0.25)], meta } };
+    }
+    const detail = /\/stock\/counts\/([^/?]+)$/.exec(url);
+    if (detail) {
+      const trouve = config.detail ?? liste.find(c => c.id === detail[1]) ?? liste[0];
+      return { data: { data: trouve } };
+    }
+    if (/\/stock\/counts(\?|$)/.test(url)) {
+      return { data: { data: liste.map(c => ({ ...c, lines: [] })), meta } };
+    }
+    if (/\/stock\/attachments(\?|$)/.test(url)) return { data: { data: [] } };
+    return { data: { data: [] } };
   });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   configurerGet();
-  post.mockResolvedValue({ data: { data: TRANSFERT } });
-  put.mockResolvedValue({ data: { data: brouillon() } });
-  del.mockResolvedValue({ data: { data: brouillon() } });
+  post.mockResolvedValue({
+    status: 201,
+    data: { data: TRANSFERT, meta: { valuesVisible: true, blindLocationIds: [] } }
+  });
+  put.mockResolvedValue({ data: { data: ligne('l-ciment', CIMENT) } });
 });
 
 function monter(url = `/tenant/${TENANT}/finance/stock/inventaire`) {
@@ -310,412 +470,584 @@ function monter(url = `/tenant/${TENANT}/finance/stock/inventaire`) {
   );
 }
 
-/**
- * Ouvre une liste déroulante AntD et choisit l'option dont le texte est donné.
- *
- * La recherche est confinée au panneau de CE sélecteur : rc-select duplique le
- * libellé d'une option dans l'élément de sélection et dans son miroir
- * d'accessibilité, et deux sélecteurs de cet écran partagent la même liste de
- * lieux. Un `findByText` global en trouverait trois.
- */
-async function choisir(etiquette: RegExp, texteOption: RegExp) {
-  const select = await screen.findByLabelText(etiquette, {}, { timeout: 8000 });
+function monterDetail(countId: string) {
+  return monter(`/tenant/${TENANT}/finance/stock/inventaire?inventaire=${countId}`);
+}
+
+/** Les options du menu déroulant ouvert pour ce sélecteur. */
+async function optionsDe(etiquette: RegExp): Promise<HTMLElement[]> {
+  const select = await screen.findByLabelText(etiquette, {}, TIMEOUT);
   fireEvent.mouseDown(select);
-
-  const option = await waitFor(
-    () => {
-      const liste = document.getElementById(`${select.id}_list`);
-      const panneau = liste?.closest('.ant-select-dropdown');
-      const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []);
-      const trouve = items.find(item => texteOption.test(item.textContent ?? ''));
-      if (!trouve) throw new Error(`Option introuvable pour ${String(texteOption)}`);
-      return trouve as HTMLElement;
-    },
-    { timeout: 8000 }
-  );
-
-  fireEvent.click(option);
+  return waitFor(() => {
+    const liste = document.getElementById(`${select.id}_list`);
+    const panneau = liste?.closest('.ant-select-dropdown');
+    const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []) as HTMLElement[];
+    if (items.length === 0) throw new Error(`Aucune option pour ${String(etiquette)}`);
+    return items;
+  }, TIMEOUT);
 }
 
-/** Passe à l'onglet de l'inventaire physique. */
+/** Les options d'un sélecteur désigné par son identifiant (deux champs portent le même libellé). */
+async function optionsDeId(id: string): Promise<HTMLElement[]> {
+  const select = await waitFor(() => {
+    const trouve = document.getElementById(id);
+    if (!trouve) throw new Error(`Sélecteur ${id} introuvable`);
+    return trouve;
+  }, TIMEOUT);
+  fireEvent.mouseDown(select);
+  return waitFor(() => {
+    const liste = document.getElementById(`${id}_list`);
+    const panneau = liste?.closest('.ant-select-dropdown');
+    const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []) as HTMLElement[];
+    if (items.length === 0) throw new Error(`Aucune option pour ${id}`);
+    return items;
+  }, TIMEOUT);
+}
+
+async function choisir(etiquette: RegExp, texteOption: RegExp) {
+  const items = await optionsDe(etiquette);
+  const trouve = items.find(item => texteOption.test(item.textContent ?? ''));
+  if (!trouve) throw new Error(`Option introuvable pour ${String(texteOption)}`);
+  fireEvent.click(trouve);
+}
+
 async function ongletInventaire() {
-  fireEvent.click(await screen.findByRole('tab', { name: 'Inventaire physique' }, { timeout: 8000 }));
+  fireEvent.click(await screen.findByRole('tab', { name: 'Inventaire physique' }, TIMEOUT));
 }
 
-/** Ouvre le comptage en brouillon depuis la liste. */
-async function ouvrirBrouillon() {
-  await ongletInventaire();
-  fireEvent.click((await screen.findAllByRole('button', { name: 'Poursuivre le comptage' }, { timeout: 8000 }))[0]);
-  return screen.findByText(/Comptage de « Magasin central d'Angré »/, {}, { timeout: 8000 });
+/** Remplit un transfert complet : lieux, article, quantité, demandeur, motif. */
+async function remplirTransfert() {
+  await choisir(/Lieu d’origine/, /Magasin central d'Angré/);
+  await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera/);
+  await choisir(/Article transféré/, /CIM-42/);
+  fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '50' } });
+  await choisir(/^Preneur$/, /Koné Ibrahim/);
+  fireEvent.click(screen.getByRole('radio', { name: /Approvisionnement/ }));
 }
 
 // ===========================================================================
-// 1. Le piège du sous-lot : un transfert n'impute rien
+// 1. Le transfert (ecrans §7.1)
 // ===========================================================================
 
-describe('Un transfert n’impute rien, et l’écran le dit', () => {
-  it('l’annonce avant le formulaire, en nommant la sortie comme seule imputation', async () => {
+describe('Le transfert entre lieux', () => {
+  it('dit, avant le formulaire, qu’un transfert n’impute rien', async () => {
     monter();
-
     expect(
-      await screen.findByText(/Un transfert n’impute rien : ce n’est pas une dépense/, {}, { timeout: 8000 })
+      await screen.findByText(/Un transfert n’impute rien : ce n’est pas une dépense/, {}, TIMEOUT)
     ).toBeInTheDocument();
-    expect(screen.getByText(/le coût du chantier ne bouge pas/i)).toBeInTheDocument();
-    expect(screen.getByText(/Seule la sortie de stock impute un chantier/i)).toBeInTheDocument();
+    expect(screen.getByText(/Seule la sortie de stock impute un chantier/)).toBeInTheDocument();
   });
 
-  it('présente la valeur d’un transfert comme DÉPLACÉE, jamais comme une charge', async () => {
+  it('poste demandeur, motif et identifiant de requête — ni agence, ni prix, ni chantier', async () => {
     monter();
-
-    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
-    await choisir(/Article transféré/, /CIM-42/);
-    fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '50' } });
-
+    await remplirTransfert();
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le transfert' }));
 
-    expect(await screen.findByText('Valeur déplacée', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/Ce n’est pas une dépense, et aucun chantier n’a été imputé/)).toBeInTheDocument();
-    // Les deux moitiés du transfert, et l'invariant qu'elles portent.
-    expect(screen.getByText(/La somme des valeurs des deux lieux ne bouge pas/)).toBeInTheDocument();
-  }, 40000);
-});
-
-// ===========================================================================
-// 2. Le corps du transfert
-// ===========================================================================
-
-describe('Le transfert', () => {
-  it('poste cinq champs et rien d’autre : ni agence, ni prix, ni chantier', async () => {
-    monter();
-
-    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
-    await choisir(/Article transféré/, /CIM-42/);
-    fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '50' } });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le transfert' }));
-
-    await waitFor(() => expect(post).toHaveBeenCalled(), { timeout: 8000 });
-    const [adresse, corps] = post.mock.calls[post.mock.calls.length - 1] as [string, Record<string, unknown>];
-
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    const [adresse, corps] = post.mock.calls[0] as [string, Record<string, unknown>];
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/transfers`);
-    expect(Object.keys(corps).sort()).toEqual(['fromLocationId', 'itemId', 'quantity', 'toLocationId', 'transferDate']);
-    expect(corps.fromLocationId).toBe(MAGASIN);
-    expect(corps.toLocationId).toBe(DEPOT);
-    expect(corps.itemId).toBe(CIMENT);
-    expect(corps.quantity).toBe(50);
-    expect(String(corps.transferDate)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // L'agence est dans le CHEMIN. Le prix ne se saisit pas — la valeur part au
-    // coût moyen du lieu d'origine. Et aucun chantier : un transfert n'impute rien.
+    expect(Object.keys(corps).sort()).toEqual(
+      [
+        'clientRequestId',
+        'fromLocationId',
+        'itemId',
+        'quantity',
+        'reasonCode',
+        'takerId',
+        'toLocationId',
+        'transferDate'
+      ].sort()
+    );
+    expect(corps.takerId).toBe(PRENEUR);
+    expect(corps.reasonCode).toBe('SITE_SUPPLY');
+    expect(String(corps.clientRequestId)).toMatch(UUID);
     expect(corps).not.toHaveProperty('tenantId');
     expect(corps).not.toHaveProperty('unitCost');
     expect(corps).not.toHaveProperty('siteId');
-    expect(corps).not.toHaveProperty('costCategoryId');
   }, 40000);
 
-  it('annonce ce qu’il reste au lieu d’origine avec ses décimales, pas « 0 »', async () => {
+  it('envoie la précision quand le motif est « Autre », et ferme l’envoi tant qu’elle manque', async () => {
     monter();
+    await remplirTransfert();
+    fireEvent.click(screen.getByRole('radio', { name: /Autre/ }));
+    expect(screen.getByRole('button', { name: 'Enregistrer le transfert' })).toBeDisabled();
 
-    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
-    await choisir(/Article transféré/, /SAB-00/);
+    fireEvent.change(screen.getByLabelText(/Précision/), { target: { value: 'Prêt au chantier voisin' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le transfert' }));
 
-    // Un quart de mètre cube. `formatMoney` afficherait « 0 ».
-    expect(await screen.findByText('0,25 m³', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/c’est le serveur qui refuse une quantité supérieure au stock/)).toBeInTheDocument();
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    const [, corps] = post.mock.calls[0] as [string, Record<string, unknown>];
+    expect(corps.reasonCode).toBe('OTHER');
+    expect(corps.reason).toBe('Prêt au chantier voisin');
   }, 40000);
 
-  it('retire le lieu d’origine choisi de la liste des destinations, et inversement', async () => {
+  it('désactive le lieu d’un chantier clos dans les destinations', async () => {
     monter();
-
-    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
-
-    // Le lieu d'origine ne doit plus figurer dans la liste des destinations :
-    // un transfert vers soi-même ne veut rien dire, autant ne pas le proposer
-    // plutôt que de le laisser sélectionner puis le rejeter après coup.
-    const arrivee = await screen.findByLabelText(/Lieu d’arrivée/, {}, { timeout: 8000 });
-    fireEvent.mouseDown(arrivee);
-    await waitFor(() => {
-      const liste = document.getElementById(`${arrivee.id}_list`);
-      const panneau = liste?.closest('.ant-select-dropdown');
-      const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []);
-      expect(items.some(item => /Magasin central d'Angré/.test(item.textContent ?? ''))).toBe(false);
-      expect(items.some(item => /Dépôt de la Villa Riviera/.test(item.textContent ?? ''))).toBe(true);
-    });
-    fireEvent.keyDown(arrivee, { key: 'Escape' });
-
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
-
-    // Et symétriquement : la destination choisie disparaît de la liste des origines.
-    const origine = await screen.findByLabelText(/Lieu d’origine/, {}, { timeout: 8000 });
-    fireEvent.mouseDown(origine);
-    await waitFor(() => {
-      const liste = document.getElementById(`${origine.id}_list`);
-      const panneau = liste?.closest('.ant-select-dropdown');
-      const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []);
-      expect(items.some(item => /Dépôt de la Villa Riviera/.test(item.textContent ?? ''))).toBe(false);
-    });
-    fireEvent.keyDown(origine, { key: 'Escape' });
-
-    expect(post).not.toHaveBeenCalled();
+    const items = await optionsDe(/Lieu d’arrivée/);
+    const clos = items.find(item => /Dépôt de Cocody/.test(item.textContent ?? ''));
+    expect(clos?.textContent).toMatch(/\(chantier clos\)/);
+    expect(clos?.className).toMatch(/ant-select-item-option-disabled/);
   }, 40000);
 
-  it('prévient quand la quantité dépasse le stock, sans se substituer au serveur', async () => {
+  it('lieu d’origine en comptage : ni quantité, ni avertissement de dépassement', async () => {
+    configurerGet({ soldes: [solde(SABLE, MAGASIN, null)], blindLocationIds: [MAGASIN] });
     monter();
-
-    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
+    await choisir(/Lieu d’origine/, /Magasin central d'Angré/);
     await choisir(/Article transféré/, /SAB-00/);
     fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '9' } });
 
-    expect(
-      await screen.findByText(/La quantité dépasse ce qu’il reste au lieu d’origine/, {}, { timeout: 8000 })
-    ).toBeInTheDocument();
-    // L'écran prévient, il n'interdit pas : la liste des soldes peut être en
-    // retard d'un mouvement, et c'est le serveur qui refuse.
-    expect(screen.getByRole('button', { name: 'Enregistrer le transfert' })).not.toBeDisabled();
+    expect(await screen.findByText(/la quantité disponible n’est pas affichée/, {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.queryByText(/La quantité dépasse/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/il reste/)).not.toBeInTheDocument();
+  }, 40000);
+
+  it('n’affiche pas la valeur déplacée sans les valeurs', async () => {
+    configurerGet({ ctx: contexte({}, { valuesVisible: false }), valuesVisible: false });
+    post.mockResolvedValue({
+      status: 201,
+      data: { data: { ...TRANSFERT, value: null }, meta: { valuesVisible: false, blindLocationIds: [] } }
+    });
+    monter();
+    await remplirTransfert();
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le transfert' }));
+
+    expect(await screen.findByText('Dernier transfert enregistré', {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.queryByText('Valeur déplacée')).not.toBeInTheDocument();
+    expect(screen.getByText(/Les valeurs du stock ne sont pas affichées pour votre rôle/)).toBeInTheDocument();
+    // « il y reste » d'un lieu en comptage : masqué, pas « 0 ».
+    expect(screen.getByText('Masqué (comptage en cours)')).toBeInTheDocument();
   }, 40000);
 });
 
 // ===========================================================================
-// 3. L'inventaire — la liste et l'ouverture
+// 2. La liste et l'ouverture (ecrans §7.2, §7.3)
 // ===========================================================================
 
-describe('L’inventaire', () => {
-  it('liste les comptages avec leur état et le nombre de lignes en écart', async () => {
+describe('La liste des inventaires', () => {
+  it('affiche les quatre états par leur libellé, et « Masqué » pour un comptage en cours', async () => {
     monter();
     await ongletInventaire();
 
-    expect(await screen.findByText('Brouillon', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText('Validé')).toBeInTheDocument();
+    expect(await screen.findByText('Comptage en cours', {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByText('Comptage clos')).toBeInTheDocument();
+    expect(screen.queryByText('Brouillon')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Masqué').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Justifier les écarts' })).toBeInTheDocument();
   }, 40000);
 
-  it('ouvre un comptage : le corps porte le lieu et la date, jamais l’agence', async () => {
-    post.mockResolvedValue({ data: { data: brouillon() } });
+  it('ouvre un inventaire courant : le lieu et la date, jamais l’agence', async () => {
+    post.mockResolvedValue({ data: { data: enCours() } });
     monter();
     await ongletInventaire();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir un inventaire' }, TIMEOUT));
+    await choisir(/Lieu à compter/, /Magasin central d'Angré/);
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir l’inventaire' }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir un comptage' }, { timeout: 8000 }));
-    await choisir(/Lieu à compter/, /Magasin central d'Angré \(Magasin\)/);
-    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le comptage' }));
-
-    await waitFor(() => expect(post).toHaveBeenCalled(), { timeout: 8000 });
-    const [adresse, corps] = post.mock.calls[post.mock.calls.length - 1] as [string, Record<string, unknown>];
-
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    const [adresse, corps] = post.mock.calls[0] as [string, Record<string, unknown>];
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts`);
     expect(Object.keys(corps).sort()).toEqual(['countedAt', 'locationId']);
-    expect(corps.locationId).toBe(MAGASIN);
-    expect(corps).not.toHaveProperty('tenantId');
+  }, 40000);
+
+  it('?ouvrir=OPENING&lieu= préremplit l’inventaire d’ouverture quand le lieu le porte', async () => {
+    const ctx = contexte();
+    ctx.locations = ctx.locations.map(l => (l.id === DEPOT ? { ...l, openingCountSuggested: true } : l));
+    configurerGet({ ctx });
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?ouvrir=OPENING&lieu=${DEPOT}`);
+
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    expect(within(fenetre).getByText('Inventaire d’ouverture')).toBeInTheDocument();
+    expect(within(fenetre).getByText(/Un surplus y entre sans valeur/)).toBeInTheDocument();
+    const natures = await optionsDeId('comptage-nature');
+    expect(natures.map(n => n.textContent)).toEqual([
+      'Inventaire courant',
+      'Inventaire d’ouverture',
+      'Inventaire de clôture'
+    ]);
+  }, 40000);
+
+  it('n’offre pas « Inventaire d’ouverture » quand openingCountSuggested est faux', async () => {
+    monter(`/tenant/${TENANT}/finance/stock/inventaire?ouvrir=OPENING&lieu=${DEPOT}`);
+
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    expect(within(fenetre).getByText('Inventaire courant')).toBeInTheDocument();
+    const natures = await optionsDeId('comptage-nature');
+    expect(natures.map(n => n.textContent)).toEqual(['Inventaire courant', 'Inventaire de clôture']);
   }, 40000);
 });
 
 // ===========================================================================
-// 4. La saisie d'une ligne — l'attendu ne se saisit jamais
+// 3. Le comptage à l'aveugle (ecrans §7.4)
 // ===========================================================================
 
-describe('La saisie d’une ligne de comptage', () => {
-  it('n’offre aucun champ « quantité attendue », et le dit', async () => {
-    await (monter(), ouvrirBrouillon());
+describe('Le comptage en cours (DRAFT)', () => {
+  it('ne dit jamais l’attendu, et ne lit aucun solde', async () => {
+    monterDetail(EN_COURS);
+    expect(await screen.findByText(/Comptage à l’aveugle/, {}, TIMEOUT)).toBeInTheDocument();
+    await screen.findByText('418 sac', {}, TIMEOUT);
 
-    expect(await screen.findByLabelText('Article compté', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByLabelText('Quantité comptée')).toBeInTheDocument();
-    // Le motif est facultatif à la saisie, exigé à la validation.
-    expect(screen.getByLabelText(/Motif de l’écart/)).toBeInTheDocument();
-    // Et surtout : aucun champ d'attendu.
-    expect(screen.queryByLabelText(/Quantité attendue/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/La quantité attendue ne se saisit pas/)).toBeInTheDocument();
+    expect(screen.queryByText(/Le système dit/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Ce que le système disait')).not.toBeInTheDocument();
+    expect(screen.queryByText('Écart')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Motif/)).not.toBeInTheDocument();
+    for (const [url] of get.mock.calls as [string][]) {
+      expect(url).not.toMatch(/\/stock\/balances/);
+    }
+    attendreVocabulaireNeutre();
   }, 40000);
 
-  it('poste l’article, la quantité comptée et le motif — jamais `expectedQuantity`', async () => {
-    monter();
-    await ouvrirBrouillon();
-
+  it('le PUT ne porte que l’article, la quantité comptée et l’identifiant — jamais de motif', async () => {
+    monterDetail(EN_COURS);
     await choisir(/Article compté/, /FER-12/);
     fireEvent.change(screen.getByLabelText('Quantité comptée'), { target: { value: '188' } });
-    fireEvent.change(screen.getByLabelText(/Motif de l’écart/), { target: { value: '  Vol constaté  ' } });
-
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le comptage' }));
 
-    await waitFor(() => expect(put).toHaveBeenCalled(), { timeout: 8000 });
-    const [adresse, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
-
-    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${BROUILLON}/lines`);
-    expect(Object.keys(corps).sort()).toEqual(['countedQuantity', 'itemId', 'reason']);
-    expect(corps.itemId).toBe(FER);
+    await waitFor(() => expect(put).toHaveBeenCalled(), TIMEOUT);
+    const [adresse, corps] = put.mock.calls[0] as [string, Record<string, unknown>];
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${EN_COURS}/lines`);
+    expect(Object.keys(corps).sort()).toEqual(['clientRequestId', 'countedQuantity', 'itemId']);
     expect(corps.countedQuantity).toBe(188);
-    expect(corps.reason).toBe('Vol constaté');
-    // Le cœur de ce sous-lot : le serveur lit l'attendu et le fige. L'envoyer
-    // vaudrait un 400 (`setStockCountLineSchema` est `.strict()`), et le
-    // laisser entrer permettrait de fabriquer un écart nul.
+    expect(String(corps.clientRequestId)).toMatch(UUID);
+    expect(corps).not.toHaveProperty('reason');
     expect(corps).not.toHaveProperty('expectedQuantity');
-    expect(corps).not.toHaveProperty('variance');
-    expect(corps).not.toHaveProperty('varianceValue');
-    // `countId` est dans le chemin, l'agence aussi.
-    expect(corps).not.toHaveProperty('countId');
-    expect(corps).not.toHaveProperty('tenantId');
   }, 40000);
 
-  it('omet le motif quand il est vide, plutôt que d’envoyer une chaîne vide', async () => {
-    monter();
-    await ouvrirBrouillon();
+  it('« Clore le comptage » poste …/close après confirmation', async () => {
+    post.mockResolvedValue({ data: { data: clos() } });
+    monterDetail(EN_COURS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Clore le comptage' }, TIMEOUT));
+    const boutons = await screen.findAllByRole('button', { name: 'Clore le comptage' }, TIMEOUT);
+    fireEvent.click(boutons[boutons.length - 1]);
 
-    await choisir(/Article compté/, /CIM-42/);
-    fireEvent.change(screen.getByLabelText('Quantité comptée'), { target: { value: '0' } });
-    fireEvent.change(screen.getByLabelText(/Motif de l’écart/), { target: { value: '   ' } });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le comptage' }));
-
-    await waitFor(() => expect(put).toHaveBeenCalled(), { timeout: 8000 });
-    const [, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
-
-    // Un motif en blancs n'est pas un motif : l'absence efface, la chaîne vide
-    // enregistrerait un motif que la validation laisserait passer.
-    expect(Object.keys(corps).sort()).toEqual(['countedQuantity', 'itemId']);
-    // Le ZÉRO est un résultat de comptage : « on a regardé, il n'y a rien ».
-    expect(corps.countedQuantity).toBe(0);
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    expect(post.mock.calls[0][0]).toBe(`/tenants/${TENANT}/finance/stock/counts/${EN_COURS}/close`);
   }, 40000);
 
-  it('retire une ligne sans corps : les deux identifiants sont dans le chemin', async () => {
-    monter();
-    await ouvrirBrouillon();
+  it('relaie STOCK_COUNT_INCOMPLETE en nommant les articles du serveur', async () => {
+    post.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          code: 'STOCK_COUNT_INCOMPLETE',
+          message: 'Incomplet',
+          data: { items: [{ itemId: FER, itemLabel: 'Fer à béton HA 12' }] }
+        }
+      }
+    });
+    monterDetail(EN_COURS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Clore le comptage' }, TIMEOUT));
+    const boutons = await screen.findAllByRole('button', { name: 'Clore le comptage' }, TIMEOUT);
+    fireEvent.click(boutons[boutons.length - 1]);
 
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Retirer' }, { timeout: 8000 }))[0]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmer le retrait' }, { timeout: 8000 }));
+    expect(await screen.findByText(/Il reste à compter : Fer à béton HA 12/, {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Compter Fer à béton HA 12' })).toBeInTheDocument();
+  }, 40000);
 
-    await waitFor(() => expect(del).toHaveBeenCalled(), { timeout: 8000 });
-    expect(del).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/counts/${BROUILLON}/lines/${CIMENT}`);
-    expect(del.mock.calls[0]).toHaveLength(1);
+  it('abandonne avec un motif obligatoire', async () => {
+    post.mockResolvedValue({ data: { data: { ...enCours(), status: 'CANCELLED' } } });
+    monterDetail(EN_COURS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Abandonner l’inventaire' }, TIMEOUT));
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    const ok = within(fenetre).getByRole('button', { name: 'Abandonner l’inventaire' });
+    expect(ok).toBeDisabled();
+
+    fireEvent.change(within(fenetre).getByLabelText('Motif'), { target: { value: 'Mauvais lieu choisi' } });
+    fireEvent.click(ok);
+
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    expect(post.mock.calls[0]).toEqual([
+      `/tenants/${TENANT}/finance/stock/counts/${EN_COURS}/cancel`,
+      { reason: 'Mauvais lieu choisi' }
+    ]);
   }, 40000);
 });
 
 // ===========================================================================
-// 5. L'écart vient du serveur, et les quantités ont quatre décimales
+// 4. Le comptage clos : justifier, écarter (ecrans §7.5)
 // ===========================================================================
 
-describe('L’écart et les quantités', () => {
-  it('affiche l’écart TEL QUE le serveur l’a calculé, sans refaire la soustraction', async () => {
-    monter();
-    await ouvrirBrouillon();
-
-    // 188 − 200 ferait −12. Le serveur dit −7 : c'est lui qui fait autorité.
-    expect(await screen.findByText(`${MOINS}7 barre`, {}, { timeout: 8000 })).toBeInTheDocument();
+describe('Le comptage clos (COUNTED)', () => {
+  it('montre l’écart tel que le serveur le calcule, à justifier en « warning », jamais en rouge', async () => {
+    monterDetail(CLOS);
+    expect(await screen.findByText(`${MOINS}7 barre`, {}, TIMEOUT)).toBeInTheDocument();
     expect(screen.queryByText(`${MOINS}12 barre`)).not.toBeInTheDocument();
+    const aJustifier = screen.getAllByText('Écart à justifier');
+    // Seule la ligne du fer : la ligne d'avant le lot a un motif libre qui vaut justification.
+    expect(aJustifier).toHaveLength(1);
+    expect(screen.getByText(/Motif libre : Trois tôles/)).toBeInTheDocument();
+    expect(document.querySelector('.ant-typography-danger')).toBeNull();
   }, 40000);
 
-  it('rend un quart de mètre cube « 0,25 », jamais « 0 »', async () => {
-    monter();
-    await ouvrirBrouillon();
+  it('justifie un écart : PUT …/justification avec le motif ; « Autre » sans précision reste fermé', async () => {
+    put.mockResolvedValue({ data: { data: ligne('l-fer', FER) } });
+    monterDetail(CLOS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Justifier' }, TIMEOUT));
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    const ok = within(fenetre).getByRole('button', { name: 'Enregistrer le motif' });
 
-    expect(await screen.findByText(`${MOINS}0,25 m³`, {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText('12,25 m³')).toBeInTheDocument();
+    expect(within(fenetre).queryByRole('radio', { name: /Stock d’ouverture/ })).not.toBeInTheDocument();
+    fireEvent.click(within(fenetre).getByRole('radio', { name: /Autre/ }));
+    expect(ok).toBeDisabled();
+
+    fireEvent.click(within(fenetre).getByRole('radio', { name: /Disparition non expliquée/ }));
+    fireEvent.click(ok);
+
+    await waitFor(() => expect(put).toHaveBeenCalled(), TIMEOUT);
+    expect(put.mock.calls[0]).toEqual([
+      `/tenants/${TENANT}/finance/stock/counts/${CLOS}/lines/${FER}/justification`,
+      { reasonCode: 'UNEXPLAINED_DISAPPEARANCE' }
+    ]);
   }, 40000);
 
-  it('nomme l’attendu pour ce qu’il est : ce que le système DISAIT, figé au comptage', async () => {
-    monter();
-    await ouvrirBrouillon();
+  it('écarte une ligne avec un motif : POST …/set-aside', async () => {
+    post.mockResolvedValue({ data: { data: clos() } });
+    monterDetail(CLOS);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Écarter la ligne' }, TIMEOUT))[0]);
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    fireEvent.change(within(fenetre).getByLabelText('Motif'), { target: { value: 'À recompter demain' } });
+    fireEvent.click(within(fenetre).getByRole('button', { name: 'Écarter la ligne' }));
 
-    expect(await screen.findAllByText('Ce que le système disait', {}, { timeout: 8000 })).not.toHaveLength(0);
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    expect(post.mock.calls[0]).toEqual([
+      `/tenants/${TENANT}/finance/stock/counts/${CLOS}/lines/${FER}/set-aside`,
+      { reason: 'À recompter demain' }
+    ]);
+  }, 40000);
+
+  it('écarte tous les non comptés en une fois, et ferme la validation tant qu’il en reste', async () => {
+    post.mockResolvedValue({ data: { data: clos() } });
+    monterDetail(CLOS);
+    expect(
+      await screen.findByText(/1 article\(s\) non compté\(s\) à écarter avant la validation/, {}, TIMEOUT)
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Écarter tous les articles non comptés' }));
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    fireEvent.change(within(fenetre).getByLabelText('Motif'), { target: { value: 'Inventaire tournant' } });
+    fireEvent.click(within(fenetre).getByRole('button', { name: 'Écarter les articles non comptés' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    expect(post.mock.calls[0]).toEqual([
+      `/tenants/${TENANT}/finance/stock/counts/${CLOS}/set-aside-uncounted`,
+      { reason: 'Inventaire tournant' }
+    ]);
+  }, 40000);
+
+  it('n’offre pas le procès-verbal avant la validation, et garde un vocabulaire neutre', async () => {
+    monterDetail(CLOS);
+    await screen.findByText(`${MOINS}7 barre`, {}, TIMEOUT);
+    expect(screen.queryByRole('button', { name: /procès-verbal/ })).not.toBeInTheDocument();
+    attendreVocabulaireNeutre();
   }, 40000);
 });
 
 // ===========================================================================
-// 6. Valider : besoin S6, irréversibilité, écrasement
+// 5. La validation (ecrans §7.6)
 // ===========================================================================
 
-describe('La validation d’un inventaire', () => {
-  it('est impossible tant qu’un écart n’a pas de motif, et les lignes fautives sont nommées', async () => {
-    monter();
-    await ouvrirBrouillon();
+describe('La validation', () => {
+  it('poste un corps vide, et la confirmation dit que les mouvements postérieurs sont conservés', async () => {
+    configurerGet({ liste: [closPret()] });
+    post.mockResolvedValue({ data: { data: { ...closPret(), status: 'VALIDATED' } } });
+    monterDetail(CLOS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, TIMEOUT));
 
     expect(
-      await screen.findByText(/1 ligne en écart reste sans motif : la validation est impossible/, {}, { timeout: 8000 })
+      await screen.findByText(/Les mouvements enregistrés depuis le comptage sont conservés/, {}, TIMEOUT)
     ).toBeInTheDocument();
-    // La ligne fautive est nommée, pas seulement comptée.
-    expect(screen.getAllByText(/SAB-00 — Sable lavé/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/écrasera/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la validation' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    expect(post.mock.calls[0]).toEqual([`/tenants/${TENANT}/finance/stock/counts/${CLOS}/validate`, {}]);
+  }, 40000);
+
+  it('quatre yeux : un compteur sans dérogation voit l’alerte et un bouton fermé', async () => {
+    configurerGet({ liste: [closPret({ validation: { callerIsCounter: true, selfValidationAllowed: false } })] });
+    monterDetail(CLOS);
+    expect(await screen.findByText('Vous avez compté des lignes de cet inventaire', {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByText('Une autre personne habilitée de l’agence doit le valider.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeDisabled();
-    expect(post).not.toHaveBeenCalled();
   }, 40000);
 
-  it('poste un corps VIDE quand tous les écarts sont justifiés', async () => {
-    configurerGet({ comptages: [brouillonJustifie()], detail: brouillonJustifie() });
-    post.mockResolvedValue({ data: { data: { ...brouillonJustifie(), status: 'VALIDATED' } } });
-    monter();
-    await ouvrirBrouillon();
+  it('dérogation permise : le bouton ouvre « Valider sans second regard » et envoie la raison', async () => {
+    configurerGet({ liste: [closPret({ validation: { callerIsCounter: true, selfValidationAllowed: true } })] });
+    post.mockResolvedValue({ data: { data: { ...closPret(), status: 'VALIDATED' } } });
+    monterDetail(CLOS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, TIMEOUT));
+    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    expect(within(fenetre).getByText('Valider sans second regard')).toBeInTheDocument();
+    fireEvent.change(within(fenetre).getByLabelText('Pourquoi validez-vous seul ?'), {
+      target: { value: 'Je suis seul habilité ce mois-ci.' }
+    });
+    fireEvent.click(within(fenetre).getByRole('button', { name: 'Valider l’inventaire' }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, { timeout: 8000 }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmer la validation' }, { timeout: 8000 }));
-
-    await waitFor(() => expect(post).toHaveBeenCalled(), { timeout: 8000 });
-    const [adresse, corps] = post.mock.calls[post.mock.calls.length - 1] as [string, Record<string, unknown>];
-
-    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${BROUILLON}/validate`);
-    expect(corps).toEqual({});
-    // L'auteur vient du jeton, jamais du corps : un corps qui le porterait
-    // permettrait de valider une perte au nom de quelqu'un d'autre.
-    expect(corps).not.toHaveProperty('validatedByUserId');
-    expect(corps).not.toHaveProperty('countId');
+    await waitFor(() => expect(post).toHaveBeenCalled(), TIMEOUT);
+    expect(post.mock.calls[0][1]).toEqual({ selfValidationReason: 'Je suis seul habilité ce mois-ci.' });
   }, 40000);
 
-  it('dit, dans la confirmation, que c’est irréversible et que le comptage écrase ce qui a bougé', async () => {
-    configurerGet({ comptages: [brouillonJustifie()], detail: brouillonJustifie() });
-    monter();
-    await ouvrirBrouillon();
+  it('400 …REASON_REQUIRED ouvre la fenêtre de dérogation (rôle changé entre deux lectures)', async () => {
+    configurerGet({ liste: [closPret()] });
+    post.mockRejectedValueOnce({
+      response: { status: 400, data: { code: 'STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED', message: 'Raison exigée' } }
+    });
+    monterDetail(CLOS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, TIMEOUT));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmer la validation' }, TIMEOUT));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, { timeout: 8000 }));
-
-    expect(await screen.findByText(/Cette opération est irréversible/, {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/l’ajustement écrasera ce mouvement/)).toBeInTheDocument();
-    expect(screen.getByText(/se corrige par un second comptage/)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Pourquoi validez-vous seul ?', {}, TIMEOUT)).toBeInTheDocument();
   }, 40000);
 
-  it('n’offre AUCUN bouton d’annulation sur un inventaire validé', async () => {
-    configurerGet({ comptages: [valide()], detail: valide() });
-    monter();
-    await ongletInventaire();
+  it('409 …NEGATIVE_AFTER_MOVEMENTS liste les articles avec « Écarter la ligne »', async () => {
+    configurerGet({ liste: [closPret()] });
+    post.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          code: 'STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS',
+          message: 'Négatif',
+          data: { items: [{ itemId: CIMENT, itemLabel: 'Ciment CPJ 42,5' }] }
+        }
+      }
+    });
+    monterDetail(CLOS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, TIMEOUT));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmer la validation' }, TIMEOUT));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Consulter' }, { timeout: 8000 }));
-    await screen.findByText(/Comptage de « Dépôt de la Villa Riviera »/, {}, { timeout: 8000 });
+    expect(await screen.findByText(/plus que ce qui a été compté : Ciment CPJ 42,5/, {}, TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Écarter la ligne Ciment CPJ 42,5' })).toBeInTheDocument();
+  }, 40000);
 
-    expect(screen.getByText(/Cet inventaire ne s’annule pas/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Valider l’inventaire' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Annuler l’inventaire/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Enregistrer le comptage/ })).not.toBeInTheDocument();
+  it('403 …SELF_VALIDATION_FORBIDDEN laisse une alerte persistante', async () => {
+    configurerGet({ liste: [closPret()] });
+    post.mockRejectedValueOnce({
+      response: { status: 403, data: { code: 'STOCK_COUNT_SELF_VALIDATION_FORBIDDEN', message: 'Refusé' } }
+    });
+    monterDetail(CLOS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider l’inventaire' }, TIMEOUT));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmer la validation' }, TIMEOUT));
+
+    expect(
+      await screen.findByText(/Vous avez compté cet inventaire : une autre personne habilitée/, {}, TIMEOUT)
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeDisabled();
   }, 40000);
 });
 
 // ===========================================================================
-// 7. Navigation et vocabulaire
+// 6. L'inventaire validé (ecrans §7.7)
 // ===========================================================================
 
-describe('Navigation et vocabulaire', () => {
-  it('lit `tenantId` dans le CHEMIN, pas en paramètre de requête', async () => {
-    monter();
-    await ongletInventaire();
-
-    await screen.findByText('Brouillon', {}, { timeout: 8000 });
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/counts`);
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true`);
-    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?onlyActive=true`);
-    // Aucun appel ne passe l'agence en requête.
-    for (const [url] of get.mock.calls as [string][]) {
-      expect(url).not.toMatch(/[?&]tenantId=/);
-    }
+describe('L’inventaire validé', () => {
+  it('offre le procès-verbal, dit la validation sans second regard et la ligne comptée sans aveugle', async () => {
+    configurerGet({
+      liste: [valide({ selfValidated: true, selfValidationReason: 'Seul habilité en congé' })]
+    });
+    monterDetail(VALIDE);
+    expect(
+      await screen.findByRole('button', { name: /Télécharger le procès-verbal \(PDF\)/ }, TIMEOUT)
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Validé sans second regard').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Motif donné : « Seul habilité en congé »/)).toBeInTheDocument();
+    expect(screen.getByText('Comptée par une personne qui voyait le stock')).toBeInTheDocument();
+    expect(screen.getByText('Non mesuré')).toBeInTheDocument();
+    expect(screen.getByText(/Cet inventaire ne s’annule pas/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Valider l’inventaire' })).not.toBeInTheDocument();
+    attendreVocabulaireNeutre();
   }, 40000);
 
-  it('n’affiche jamais « débit » ni « crédit », onglet du transfert', async () => {
-    monter();
-
-    await screen.findByText(/Un transfert n’impute rien/, {}, { timeout: 8000 });
-    expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
-    expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
+  it('dit « Figé à la validation » sur les valeurs figées par la validation', async () => {
+    configurerGet({ liste: [valide()] });
+    monterDetail(VALIDE);
+    expect((await screen.findAllByText('Figé à la validation.', {}, TIMEOUT)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Non figée (inventaire antérieur au lot)')).not.toBeInTheDocument();
   }, 40000);
 
-  it('n’affiche jamais « débit » ni « crédit », comptage ouvert et validation annoncée', async () => {
-    monter();
-    await ouvrirBrouillon();
+  it('un inventaire antérieur au lot, sans valeur figée, le dit et ne prétend jamais l’avoir figé', async () => {
+    configurerGet({
+      liste: [
+        valide({ countedValue: null, varianceValueGross: null, varianceValueNet: null, setAsideVarianceValue: null })
+      ]
+    });
+    monterDetail(VALIDE);
+    expect(
+      await screen.findByRole('button', { name: /Télécharger le procès-verbal \(PDF\)/ }, TIMEOUT)
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Non figée (inventaire antérieur au lot)')).toHaveLength(4);
+    expect(screen.getByText('Écart net')).toBeInTheDocument();
+    expect(screen.queryByText(/Figé à la validation/)).not.toBeInTheDocument();
+  }, 40000);
+});
 
-    await screen.findByText(/1 ligne en écart reste sans motif/, {}, { timeout: 8000 });
-    expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
-    expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
+// ===========================================================================
+// Lot 041 — inventaire par WhatsApp (ecrans §6, point d'accroche W-E4)
+// ===========================================================================
+
+describe('Les captures WhatsApp de l’inventaire (lot 041)', () => {
+  const CAPTURES: CountFieldCaptures = {
+    countId: CLOS,
+    source: 'WHATSAPP',
+    lines: [
+      {
+        itemId: FER,
+        countLineId: 'l-fer',
+        captureId: 'capture-fer-01',
+        outcome: 'ACCEPTED',
+        mergeMode: 'ADD',
+        confirmedAt: '2026-09-25T15:40:00.000Z',
+        hasPhoto: true,
+        capturesCount: 2
+      }
+    ]
+  };
+
+  it('pastilles « Ouvert par WhatsApp » et « WhatsApp », lien photo qui ouvre le visualiseur', async () => {
+    configurerGet({ liste: [clos()], captures: CAPTURES });
+    monterDetail(CLOS);
+    expect(await screen.findByTestId('whatsapp-count-badge', {}, TIMEOUT)).toHaveTextContent('Ouvert par WhatsApp');
+    const badges = await screen.findAllByTestId('whatsapp-line-badge', {}, TIMEOUT);
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveTextContent('WhatsApp');
+    expect(screen.getByText('2 photos')).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/whatsapp/counts/${CLOS}/captures`);
+
+    // Aucune photo n'est lue avant le clic (la lecture d'un fichier est tracée).
+    expect(get.mock.calls.some(([url]) => /\/whatsapp\/captures\//.test(String(url)))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Photo' }));
+    await waitFor(
+      () => expect(get.mock.calls.some(([url]) => /\/whatsapp\/captures\/capture-fer-01/.test(String(url)))).toBe(true),
+      TIMEOUT
+    );
+    // Rien d'autre ne change : l'écart reste celui du lot 040, à justifier.
+    expect(screen.getAllByText('Écart à justifier').length).toBeGreaterThan(0);
+    attendreVocabulaireNeutre();
+  }, 40000);
+
+  it('un 404 de la route des captures laisse l’écran du lot 040 tel quel', async () => {
+    configurerGet({ liste: [clos()] });
+    monterDetail(CLOS);
+    expect((await screen.findAllByText('Écart à justifier', {}, TIMEOUT)).length).toBeGreaterThan(0);
+    await waitFor(
+      () => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/whatsapp/counts/${CLOS}/captures`),
+      TIMEOUT
+    );
+    expect(screen.queryByTestId('whatsapp-count-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('whatsapp-line-badge')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Photo' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Impossible de charger cet inventaire.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider l’inventaire' })).toBeInTheDocument();
+  }, 40000);
+
+  it('un inventaire saisi au web n’a ni pastille ni lien photo', async () => {
+    configurerGet({ liste: [clos()], captures: { countId: CLOS, source: 'WEB', lines: [] } });
+    monterDetail(CLOS);
+    expect((await screen.findAllByText('Écart à justifier', {}, TIMEOUT)).length).toBeGreaterThan(0);
+    await waitFor(
+      () => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/whatsapp/counts/${CLOS}/captures`),
+      TIMEOUT
+    );
+    expect(screen.queryByTestId('whatsapp-count-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('whatsapp-line-badge')).not.toBeInTheDocument();
   }, 40000);
 });

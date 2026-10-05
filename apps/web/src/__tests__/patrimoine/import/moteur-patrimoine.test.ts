@@ -342,7 +342,8 @@ describe('executerImport — patrimoine', () => {
     expect(rendu.echouees).toEqual([
       {
         numero: 2,
-        motif: 'La réponse du serveur n’est pas parvenue : vérifiez la liste des biens avant de relancer cette ligne.',
+        motif:
+          'La réponse du serveur n’est pas parvenue : vérifiez ce qui a été enregistré avant de relancer cette ligne.',
         code: 'REPONSE_INCERTAINE',
         relancable: false
       }

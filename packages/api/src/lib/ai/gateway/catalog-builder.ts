@@ -51,14 +51,21 @@ const KEPT_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH']);
 export const EXCLUDED_ABSOLUTE_PREFIXES = ['/api/auth', '/api/admin', '/api/platform', '/api/portal'] as const;
 /** Segments d'agence hors périmètre : l'assistant lui-même. */
 const EXCLUDED_TENANT_SEGMENTS = new Set(['ai']);
+/**
+ * Segments exclus où qu'ils se trouvent dans le chemin : le simulateur de
+ * l'inventaire par WhatsApp (lot 041, W13-R6) parle AU NOM d'un chef de
+ * chantier ; l'assistant ne doit jamais pouvoir s'en servir.
+ */
+export const EXCLUDED_ANY_SEGMENTS = new Set(['simulator']);
 
 export { isSensitivePath, isDestructive };
 
 function isExcludedPath(path: string): boolean {
   if (EXCLUDED_ABSOLUTE_PREFIXES.some(prefix => path === prefix || path.startsWith(`${prefix}/`))) return true;
   if (/webhook/i.test(path)) return true;
-  const segment = path.slice(TENANT_PREFIX.length).split('/')[1] ?? '';
-  return EXCLUDED_TENANT_SEGMENTS.has(segment);
+  const segments = path.slice(TENANT_PREFIX.length).split('/');
+  if (segments.some(segment => EXCLUDED_ANY_SEGMENTS.has(segment.toLowerCase()))) return true;
+  return EXCLUDED_TENANT_SEGMENTS.has(segments[1] ?? '');
 }
 
 export function pathParamsOf(path: string): string[] {

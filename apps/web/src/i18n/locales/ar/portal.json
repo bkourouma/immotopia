@@ -18,6 +18,7 @@
   "Acte notarié": "عقد موثق",
   "Acteur": "الفاعل",
   "Actif": "نشط",
+  "Actifs": "الأصول",
   "Action": "الإجراء",
   "Actions": "إجراءات",
   "Activer": "تفعيل",
@@ -630,6 +631,7 @@
   "Période:": "الفترة:",
   "Permis de construire": "رخصة البناء",
   "Photos": "الصور",
+  "Photos d’inventaire analysées (par mois)": "صور الجرد المحلَّلة (شهريًا)",
   "Pièces jointes": "المرفقات",
   "Pièces jointes (optionnel)": "المرفقات (اختياري)",
   "Plan": "مخطط",
@@ -873,6 +875,5 @@
   "Vous recevrez les newsletters.": "ستتلقّى النشرات البريدية.",
   "Vue d'ensemble de votre portefeuille immobilier": "نظرة عامة على محفظتك العقارية",
   "Vue d'ensemble de votre situation locative": "نظرة عامة على وضعك الإيجاري",
-  "Vue indisponible": "الصفحة غير متاحة",
-  "Actifs": "الأصول"
+  "Vue indisponible": "الصفحة غير متاحة"
 }

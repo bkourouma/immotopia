@@ -14,6 +14,11 @@
  * L'envoi de l'e-mail d'invitation (vers un domaine .test inexistant) échoue :
  * le service le tolère, et ni le lien ni le mot de passe ne sont jamais affichés.
  *
+ * Lot 041 : les agences « 6 mois » Promoteur et Opérateur intégré reçoivent un
+ * Chef de chantier inscrit au bot WhatsApp (numéro fictif) sur un chantier de
+ * recette basculé au stock ; le Promoteur seul reçoit un bloc de l'option
+ * Inventaire WhatsApp.
+ *
  * Codes de sortie : 0 succès, 1 refus de la garde ou erreur.
  */
 import './pack-history/disable-outbound';
@@ -26,11 +31,21 @@ import { prisma, disconnectDatabase } from '../../src/utils/database';
 import { hashPassword } from '../../src/utils/password-utils';
 import { flushAuditEvents } from '../../src/services/audit-service';
 import { provisionTenant } from '../../src/services/tenant-provisioning-service';
+import { addSubscriptionItem } from '../../src/services/subscription-v2-service';
+import { enableStockOnSiteTx } from '../../src/lib/finance/stock-rapprochement';
+import { EXTENSION } from '../../src/lib/subscription/catalog';
 import {
+  PACK_TEST_MEMBERS,
   PACK_TEST_PASSWORD,
   PACK_TEST_TENANTS,
+  PACK_TEST_WHATSAPP_OPTION_TENANTS,
+  PACK_TEST_WHATSAPP_PHONE_PATTERN,
+  PACK_TEST_WHATSAPP_REGISTRATIONS,
+  PACK_TEST_WHATSAPP_SITE_NAME,
   checkPackTestTenantsGuard,
-  type PackTestTenant
+  type PackTestMember,
+  type PackTestTenant,
+  type PackTestWhatsappRegistration
 } from './pack-test-tenants';
 
 const FIVE_YEARS_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -140,6 +155,160 @@ async function seedOne(
   return { outcome, tenantId, adminUserId };
 }
 
+/**
+ * Compte de recette supplémentaire (Magasinier, Comptable, second
+ * administrateur) : utilisateur, membership ACTIVE et rôle d'agence, mot de
+ * passe connu. Idempotent : un compte existant est resynchronisé.
+ */
+async function seedMember(member: PackTestMember, tenantId: string, passwordHash: string): Promise<void> {
+  const now = new Date();
+  const role = await prisma.role.findFirst({ where: { key: member.roleKey, scope: 'TENANT' }, select: { id: true } });
+  if (!role) {
+    throw new Error(`Le rôle ${member.roleKey} est introuvable : vérifiez les migrations et le seed des rôles.`);
+  }
+  const existing = await prisma.user.findFirst({
+    where: { email: { equals: member.email, mode: 'insensitive' } },
+    select: { id: true }
+  });
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: { passwordHash, emailVerified: true, isActive: true, fullName: member.fullName },
+        select: { id: true }
+      })
+    : await prisma.user.create({
+        data: {
+          email: member.email,
+          passwordHash,
+          fullName: member.fullName,
+          globalRole: GlobalRole.USER,
+          emailVerified: true,
+          isActive: true
+        },
+        select: { id: true }
+      });
+  await prisma.membership.upsert({
+    where: { userId_tenantId: { userId: user.id, tenantId } },
+    update: { status: MembershipStatus.ACTIVE, acceptedAt: now },
+    create: { userId: user.id, tenantId, status: MembershipStatus.ACTIVE, acceptedAt: now, invitedAt: now }
+  });
+  await prisma.userRole.createMany({ data: [{ userId: user.id, roleId: role.id, tenantId }], skipDuplicates: true });
+}
+
+/**
+ * Chantier de recette de l'inventaire par WhatsApp (lot 041) : créé s'il manque,
+ * basculé au stock par la vraie fonction du lot 5 (lieu de chantier créé avec
+ * lui), jamais rebasculé. Rend son identifiant.
+ */
+async function ensureWhatsappRecetteSite(tenantId: string, adminUserId: string): Promise<string> {
+  const site =
+    (await prisma.constructionSite.findFirst({
+      where: { tenantId, name: PACK_TEST_WHATSAPP_SITE_NAME },
+      select: { id: true, stockEnabledAt: true }
+    })) ??
+    (await prisma.constructionSite.create({
+      data: { tenantId, name: PACK_TEST_WHATSAPP_SITE_NAME, status: 'IN_PROGRESS', managerId: adminUserId },
+      select: { id: true, stockEnabledAt: true }
+    }));
+  if (!site.stockEnabledAt) {
+    await prisma.$transaction(tx =>
+      enableStockOnSiteTx(tx, tenantId, site.id, { enabledAt: new Date(), enabledByUserId: adminUserId })
+    );
+  }
+  return site.id;
+}
+
+/**
+ * Inscription WhatsApp de recette (lot 041, plan §7.6) : ACTIVE, affectée au
+ * chantier de recette. Idempotente : une inscription vivante du même numéro
+ * pour le même chef est resynchronisée ; un numéro vivant ailleurs, ou un chef
+ * déjà inscrit sous un autre numéro, n'est pas touché (journal sans le numéro).
+ */
+async function seedWhatsappRegistration(
+  registration: PackTestWhatsappRegistration,
+  tenantId: string,
+  adminUserId: string
+): Promise<void> {
+  if (!PACK_TEST_WHATSAPP_PHONE_PATTERN.test(registration.phoneE164)) {
+    throw new SeedRefusedError(`Numéro de recette hors de la plage fictive pour ${registration.memberEmail}.`);
+  }
+  const member = await prisma.user.findFirst({
+    where: { email: { equals: registration.memberEmail, mode: 'insensitive' } },
+    select: { id: true }
+  });
+  if (!member) throw new Error(`Chef de chantier introuvable : ${registration.memberEmail}.`);
+  const siteId = await ensureWhatsappRecetteSite(tenantId, adminUserId);
+
+  const live = await prisma.stockWhatsappRegistration.findFirst({
+    where: { phoneE164: registration.phoneE164, status: { not: 'REVOKED' } },
+    select: { id: true, tenantId: true, userId: true }
+  });
+  let registrationId: string;
+  if (live) {
+    if (live.tenantId !== tenantId || live.userId !== member.id) {
+      console.log(
+        `  Inscription WhatsApp ignorée : le numéro de ${registration.memberEmail} est déjà inscrit ailleurs.`
+      );
+      return;
+    }
+    await prisma.stockWhatsappRegistration.update({
+      where: { id: live.id },
+      data: {
+        status: 'ACTIVE',
+        activatedAt: new Date(),
+        activationCodeHash: null,
+        activationExpiresAt: null,
+        activationAttempts: 0
+      }
+    });
+    registrationId = live.id;
+  } else {
+    const memberTaken = await prisma.stockWhatsappRegistration.findFirst({
+      where: { tenantId, userId: member.id, status: { not: 'REVOKED' } },
+      select: { id: true }
+    });
+    if (memberTaken) {
+      console.log(
+        `  Inscription WhatsApp ignorée : ${registration.memberEmail} est déjà inscrit sous un autre numéro.`
+      );
+      return;
+    }
+    registrationId = (
+      await prisma.stockWhatsappRegistration.create({
+        data: {
+          tenantId,
+          userId: member.id,
+          phoneE164: registration.phoneE164,
+          status: 'ACTIVE',
+          activatedAt: new Date(),
+          createdByUserId: adminUserId
+        },
+        select: { id: true }
+      })
+    ).id;
+  }
+  await prisma.stockWhatsappRegistrationSite.createMany({
+    data: [{ tenantId, registrationId, siteId }],
+    skipDuplicates: true
+  });
+  console.log(`  Inscription WhatsApp de recette active : ${registration.memberEmail}.`);
+}
+
+/** Bloc `EXT_INVENTAIRE_WHATSAPP` (500 photos) ajouté par le vrai service s'il manque. */
+async function ensureWhatsappOption(tenantId: string, actorUserId: string): Promise<void> {
+  const held = await prisma.subscriptionItem.findFirst({
+    where: { tenantId, status: { not: 'ENDED' }, catalogItem: { code: EXTENSION.INVENTAIRE_WHATSAPP } },
+    select: { id: true }
+  });
+  if (held) return;
+  await addSubscriptionItem(
+    tenantId,
+    { code: EXTENSION.INVENTAIRE_WHATSAPP, quantity: 1, note: 'Recette du lot 041 (inventaire par WhatsApp).' },
+    actorUserId
+  );
+  console.log(`  Option ${EXTENSION.INVENTAIRE_WHATSAPP} ajoutée (1 bloc).`);
+}
+
 /** Reconstitue 6 mois ou 3 ans d'historique par module du pack (idempotent, voir pack-history/). */
 async function seedHistory(entry: PackTestTenant, tenantId: string, adminUserId: string): Promise<void> {
   const ctx = buildContext(
@@ -187,6 +356,20 @@ async function main(): Promise<number> {
     if (withHistory) {
       // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
       await seedHistory(entry, tenantId, adminUserId);
+    }
+    for (const member of PACK_TEST_MEMBERS.filter(m => m.tenantName === entry.tenantName)) {
+      // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
+      await seedMember(member, tenantId, passwordHash);
+      console.log(`  Compte de recette : ${member.email} (${member.roleKey}).`);
+    }
+    // Lot 041 : option et inscriptions WhatsApp de recette, APRÈS les comptes.
+    if (PACK_TEST_WHATSAPP_OPTION_TENANTS.includes(entry.tenantName)) {
+      // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
+      await ensureWhatsappOption(tenantId, actorUserId);
+    }
+    for (const registration of PACK_TEST_WHATSAPP_REGISTRATIONS.filter(r => r.tenantName === entry.tenantName)) {
+      // eslint-disable-next-line no-await-in-loop -- séquentiel voulu : un journal lisible.
+      await seedWhatsappRegistration(registration, tenantId, adminUserId);
     }
   }
   console.log(`${PACK_TEST_TENANTS.length} agences de test prêtes (idempotent : relançable sans doublon).`);

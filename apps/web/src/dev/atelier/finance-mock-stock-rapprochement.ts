@@ -104,6 +104,11 @@ function ligne(
     transferredInValue: 0,
     issuedValue: 0,
     remainingValue: 0,
+    // Lot 040 (A6) : retours au fournisseur et rebuts, descriptifs.
+    returnedToSupplierQuantity: 0,
+    returnedToSupplierValue: 0,
+    scrappedQuantity: 0,
+    scrappedValue: 0,
     currency: DEVISE,
     ...partielle
   };
@@ -341,7 +346,9 @@ function statutDe(siteId: string): SiteStockStatus {
     siteLabel: rapprochement.siteLabel,
     stockEnabledAt: rapprochement.stockEnabledAt,
     stockLocationId: lieu?.id ?? null,
-    stockLocationLabel: lieu?.label ?? null
+    stockLocationLabel: lieu?.label ?? null,
+    // Lot 040 (A7-R1) : les chantiers du banc ont basculé il y a longtemps.
+    openingCountSuggested: false
   };
 }
 
@@ -362,7 +369,10 @@ function basculeDe(siteId: string): SiteStockStatus {
     // La date vient du serveur, JAMAIS de l'appelant : le corps est vide.
     stockEnabledAt: new Date().toISOString(),
     stockLocationId: lieu?.id ?? `lieu-${rapprochement.siteId}`,
-    stockLocationLabel: lieu?.label ?? `Chantier ${rapprochement.siteLabel}`
+    stockLocationLabel: lieu?.label ?? `Chantier ${rapprochement.siteLabel}`,
+    // Lot 040 (A7-R1) : un chantier qui vient de basculer se voit proposer
+    // l'inventaire d'ouverture de son lieu.
+    openingCountSuggested: true
   };
 }
 
@@ -387,7 +397,9 @@ export function repondreStockRapprochement(chemin: string, scenario: Scenario): 
     // vide de plus.
     return {
       success: true,
-      data: scenario === 'vide' ? RAPPROCHEMENT_NON_BASCULE : rapprochementDe(rapprochementMatch[1])
+      data: scenario === 'vide' ? RAPPROCHEMENT_NON_BASCULE : rapprochementDe(rapprochementMatch[1]),
+      // Lot 040 : la réponse porte son `meta` (spec §8.2).
+      meta: { valuesVisible: true, blindLocationIds: [] }
     };
   }
 

@@ -73,8 +73,12 @@ export interface ParsedReference {
  * reglement d'abonnement), property-media/document-service,
  * syndics/document-files, rental-penalty-service, images de marque du lot S1
  * (`branding/<tenantId>/mandants|syndics|agence/...` — code hors de cette
- * branche, seul le format de la cle est repris ici).
- * L'ordre compte : `properties/agency-logos` avant `properties`.
+ * branche, seul le format de la cle est repris ici), pieces jointes du stock
+ * de chantier (`stock/<tenantId>/<aaaa>/...`, lot 040), photos de comptage
+ * par WhatsApp (`stock-whatsapp/<tenantId>/<aaaa>/...`, lot 041).
+ * L'ordre compte : `properties/agency-logos` avant `properties`. Les regles
+ * comparent des SEGMENTS : `['stock']` ne couvre pas `stock-whatsapp/` ; la
+ * regle du lot 041 est tout de meme placee avant, par prudence.
  */
 export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tenant' | OwnerModel }> = [
   { prefix: ['maintenance'], owner: 'tenant' },
@@ -84,6 +88,12 @@ export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tena
   { prefix: ['properties', 'agency-logos'], owner: 'tenant' },
   { prefix: ['platform', 'invoice-payments'], owner: 'tenant' },
   { prefix: ['branding'], owner: 'tenant' },
+  // Lot 041 (data-model §6) : photos de comptage par WhatsApp,
+  // `stock-whatsapp/<tenantId>/<aaaa>/<uuid>.<ext>` (lib/stock-whatsapp/capture-files.ts).
+  { prefix: ['stock-whatsapp'], owner: 'tenant' },
+  // Lot 040 (spec B5-R9) : pieces jointes du stock de chantier,
+  // `stock/<tenantId>/<aaaa>/<uuid>.<ext>` (lib/finance/stock-pieces-jointes.ts).
+  { prefix: ['stock'], owner: 'tenant' },
   { prefix: ['properties'], owner: 'Property' },
   { prefix: ['syndics'], owner: 'Syndicate' },
   { prefix: ['rental', 'penalties'], owner: 'RentalPenalty' }

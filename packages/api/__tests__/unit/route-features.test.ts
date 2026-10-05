@@ -45,6 +45,10 @@ const OUTSIDE_SUBSCRIPTION: Array<{ prefix: string; exact?: boolean; reason: str
   { prefix: '/api/portal', reason: 'Portails locataire, proprietaire et coproprietaire : jamais bloques (D8).' },
   { prefix: '/api/payment-gateway', reason: 'IPN et simulateur PaySecureHub : jamais bloques.' },
   { prefix: '/api/whatsapp', reason: 'Webhook WhatsApp.' },
+  {
+    prefix: '/api/webhooks',
+    reason: 'Webhooks de fournisseurs (Meta WhatsApp Cloud, lot 041) : signés, sans session ni agence ambiante.'
+  },
   { prefix: '/api/geographic', reason: 'Referentiel public.' },
   { prefix: '/api/public', reason: 'Vitrine publique des biens.' },
   { prefix: '/api/newsletter', reason: 'Newsletter publique (inscription, desinscription).' },
