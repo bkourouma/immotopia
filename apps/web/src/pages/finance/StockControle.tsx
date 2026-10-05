@@ -119,6 +119,24 @@ function lireErreur(error: unknown): ErreurServeur {
 }
 
 /** Une part de 0 à 1, en pourcentage de la langue active (une décimale au plus). */
+/**
+ * L'aide de la carte « Taux d'écart ». Un taux absent n'a pas une seule
+ * cause (rec040-04) : le compteur `countsValidated` et les valeurs figées de
+ * la réponse disent laquelle, sans rien recalculer.
+ */
+function aideTauxEcart(ligne: StockIndicatorRow): string {
+  if (ligne.varianceRate !== null) {
+    return t(
+      'Écarts des inventaires validés rapportés à la valeur comptée. Les surplus d’un inventaire d’ouverture n’y entrent pas.'
+    );
+  }
+  if (ligne.countsValidated === 0) return t('Aucun inventaire validé ce mois-ci.');
+  if (ligne.countsValidated - ligne.countsWithoutFrozenValues <= 0) {
+    return t('Taux non calculable : inventaires validés avant le suivi des valeurs.');
+  }
+  return t('Taux non calculable : valeur comptée nulle.');
+}
+
 function pourcent(part: number | null | undefined): string {
   if (part === null || part === undefined) return '—';
   return formatNumber(part, { style: 'percent', maximumFractionDigits: 1 });
@@ -520,6 +538,23 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
     !filtres.from &&
     !filtres.to;
 
+  // L'alerte du lien n'est nulle part (rec040-05) : ni dans « À traiter », ni
+  // dans « Toutes », sans filtre et sans page restante. Une alerte d'une autre
+  // agence, ou supprimée, se lit comme le « Ce bon est introuvable. » du journal.
+  const alerteIntrouvable =
+    Boolean(alerteId) &&
+    elargi &&
+    filtres.statut === 'ALL' &&
+    !filtres.kind &&
+    !filtres.siteId &&
+    !filtres.locationId &&
+    !filtres.from &&
+    !filtres.to &&
+    !liste.isLoading &&
+    !liste.error &&
+    !liste.hasNextPage &&
+    !alertes.some(alerte => alerte.id === alerteId);
+
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Row gutter={[12, 12]}>
@@ -596,7 +631,9 @@ const OngletAlertes: React.FC<OngletAlertesProps> = ({ tenantId, champ, alerteId
         </Col>
       </Row>
 
-      {!liste.isLoading && !liste.error && alertes.length === 0 ? (
+      {alerteIntrouvable ? <StateBlock variant="empty" title={t('Cette alerte est introuvable.')} /> : null}
+
+      {alerteIntrouvable && alertes.length === 0 ? null : !liste.isLoading && !liste.error && alertes.length === 0 ? (
         <StateBlock
           variant={parDefaut ? 'empty' : 'no-results'}
           title={parDefaut ? t('Aucune alerte à traiter.') : t('Aucune alerte pour ces filtres.')}
@@ -839,11 +876,7 @@ const OngletIndicateurs: React.FC<{ tenantId: string; champ: StockFieldContext }
                 <StatCard
                   label={t('Taux d’écart')}
                   value={pourcent(dernier.varianceRate)}
-                  hint={
-                    dernier.varianceRate === null
-                      ? t('Aucun inventaire validé ce mois-ci.')
-                      : t('Écarts des inventaires validés rapportés à la valeur comptée. Hors inventaires d’ouverture.')
-                  }
+                  hint={aideTauxEcart(dernier)}
                 />
               </Col>
               <Col xs={24} sm={12} lg={6}>

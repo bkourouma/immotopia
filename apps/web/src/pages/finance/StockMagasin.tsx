@@ -82,7 +82,7 @@ export function StockMagasin(): React.ReactElement {
           <span>
             {t('Lieu : {{lieu}}', { lieu: donnees.locations.find(lieu => lieu.id === lieuId)?.label ?? '' })}{' '}
             {vue.kind === 'accueil' ? (
-              <Button type="link" onClick={() => setVue({ kind: 'lieu' })} style={{ paddingInline: 4, minHeight: 44 }}>
+              <Button type="link" onClick={() => setVue({ kind: 'lieu' })} style={{ paddingInline: 4, minHeight: 48 }}>
                 {t('Changer')}
               </Button>
             ) : null}

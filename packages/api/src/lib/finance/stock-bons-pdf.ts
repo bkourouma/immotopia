@@ -357,16 +357,22 @@ const COUNT_KIND_LABEL: Record<StockCountKind, string> = {
   CLOSING: 'Inventaire de clôture'
 };
 
-/** Libellés imprimés des motifs (spec §4) ; le PDF est en français. */
+/**
+ * Libellés imprimés des motifs : ceux de la spec §4, qui sont aussi ceux de
+ * l'écran (`STOCK_REASON_LABELS` côté web). Le PDF est en français. Seules
+ * exceptions, voulues : « Autre » et « Stock d'ouverture » perdent la
+ * parenthèse qui guide la saisie (« précision obligatoire », « posé par le
+ * système ») ; la précision saisie suit le motif entre parenthèses.
+ */
 export const STOCK_REASON_PDF_LABELS: Record<string, string> = {
   BREAKAGE: 'Casse',
-  DETERIORATION: 'Détérioration',
-  COUNTING_ERROR: 'Erreur de comptage',
-  ENTRY_ERROR: 'Erreur de saisie',
+  DETERIORATION: 'Détérioration (humidité, péremption)',
+  COUNTING_ERROR: 'Erreur du comptage précédent',
+  ENTRY_ERROR: "Erreur de saisie d'un mouvement",
   UNIT_CONFUSION: "Confusion d'unité",
   UNRECORDED_ISSUE: 'Sortie non enregistrée',
   UNRECORDED_RECEIPT: 'Réception non enregistrée',
-  UNEXPLAINED_DISAPPEARANCE: 'Disparition inexpliquée',
+  UNEXPLAINED_DISAPPEARANCE: 'Disparition non expliquée',
   OPENING_BALANCE: "Stock d'ouverture",
   OTHER: 'Autre'
 };

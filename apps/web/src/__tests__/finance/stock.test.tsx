@@ -72,6 +72,11 @@ vi.mock('../../utils/save-blob', () => ({
   }
 }));
 
+// Le canvas manque à jsdom : la réduction d'image rend le fichier tel quel.
+vi.mock('../../utils/downscale-image', () => ({
+  downscaleImageFile: vi.fn(async (file: File) => file)
+}));
+
 import apiClient from '../../utils/api-client';
 import { saveBlob } from '../../utils/save-blob';
 
@@ -1517,6 +1522,109 @@ describe('Le retour au fournisseur (A6)', () => {
       quantity: 5,
       reasonCode: 'NON_CONFORMING'
     });
+  }, 60000);
+});
+
+describe('Une photo choisie avant l’enregistrement part sur le mouvement créé (rec040-03)', () => {
+  /** Route les POST : l'écriture du mouvement, puis l'envoi des pièces. */
+  function routerPosts(adresseEcriture: RegExp, mouvementCree: StockMovementView) {
+    post.mockImplementation(async (url: string, corps: unknown) => {
+      if (/\/stock\/attachments$/.test(url)) {
+        const formulaire = corps as FormData;
+        return {
+          status: 201,
+          data: {
+            data: {
+              id: 'piece-1',
+              targetType: formulaire.get('targetType'),
+              targetId: formulaire.get('targetId'),
+              purpose: formulaire.get('purpose'),
+              fileName: 'rebut-avant.jpg'
+            }
+          }
+        };
+      }
+      if (adresseEcriture.test(url)) return reponseEcriture(mouvementCree);
+      throw new Error(`POST inattendu : ${url}`);
+    });
+  }
+
+  function postsPieces(): FormData[] {
+    return post.mock.calls
+      .filter((appel: unknown[]) => /\/stock\/attachments$/.test(String(appel[0])))
+      .map((appel: unknown[]) => appel[1] as FormData);
+  }
+
+  function choisirPhoto(nom: string): void {
+    const fichier = new File(['photo'], nom, { type: 'image/jpeg' });
+    const champFichier = boiteOuverte().querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(champFichier, { target: { files: [fichier] } });
+  }
+
+  it('rebut : la photo « En attente » est envoyée sur le mouvement, puis dite « Envoyée »', async () => {
+    const user = userEvent.setup({ delay: null });
+    routerPosts(
+      /\/finance\/stock\/scraps$/,
+      mouvement({ id: 'mvt-rebut-1', type: 'SCRAP', itemId: FER, isDecrease: true, quantity: 1 })
+    );
+    monter();
+    await attendreEtat();
+    await user.click(screen.getByRole('button', { name: /Autres mouvements/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rebut' }));
+    await screen.findByText(/Un rebut retire du stock une matière détruite/, {}, { timeout: 8000 });
+
+    await choisirOption('rebut-lieu', "Magasin central d'Angré");
+    await choisirOption('rebut-article', /FER-12/);
+    saisirNombre('rebut-quantite', '1');
+    await user.click(screen.getByRole('radio', { name: /Casse/ }));
+    choisirPhoto('rebut-avant.jpg');
+    expect(await within(boiteOuverte()).findByText('En attente', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(postsPieces()).toHaveLength(0);
+
+    const envoyer = screen.getByRole('button', { name: 'Enregistrer le rebut' });
+    await waitFor(() => expect(envoyer).toBeEnabled());
+    await user.click(envoyer);
+
+    await waitFor(() => expect(postsPieces()).toHaveLength(1), { timeout: 8000 });
+    const [piece] = postsPieces();
+    expect(piece.get('targetType')).toBe('MOVEMENT');
+    expect(piece.get('targetId')).toBe('mvt-rebut-1');
+    expect(piece.get('purpose')).toBe('GOODS_PHOTO');
+    expect(await within(boiteOuverte()).findByText('Envoyée', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(within(boiteOuverte()).getByText('rebut-avant.jpg')).toBeInTheDocument();
+  }, 60000);
+
+  it('retour au fournisseur : même chose, la photo part sur le mouvement de retour', async () => {
+    const user = userEvent.setup({ delay: null });
+    routerPosts(
+      /\/finance\/stock\/supplier-returns$/,
+      mouvement({ id: 'mvt-retour-1', type: 'SUPPLIER_RETURN', isDecrease: true, quantity: 5 })
+    );
+    monter();
+    await attendreEtat();
+    await user.click(screen.getByRole('button', { name: /Autres mouvements/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Retour au fournisseur' }));
+    await screen.findByText(/Le retour diminue le stock et le solde dû au fournisseur/, {}, { timeout: 8000 });
+
+    await choisirOption('retour-facture', /F-2026-0142 — Quincaillerie/);
+    await waitFor(() => expect(champ('retour-article')).not.toBeDisabled(), { timeout: 8000 });
+    await choisirOption('retour-article', 'Ciment CPJ 42,5');
+    await choisirOption('retour-lieu', "Magasin central d'Angré");
+    saisirNombre('retour-quantite', '5');
+    await user.click(screen.getByRole('radio', { name: /Non conforme à la commande/ }));
+    await choisirOption('retour-ligne-facture', 'Ciment CPJ 42,5 — 400 sacs');
+    choisirPhoto('retour-avant.jpg');
+    expect(await within(boiteOuverte()).findByText('En attente', {}, { timeout: 8000 })).toBeInTheDocument();
+
+    const envoyer = screen.getByRole('button', { name: 'Enregistrer le retour' });
+    await waitFor(() => expect(envoyer).toBeEnabled());
+    await user.click(envoyer);
+
+    await waitFor(() => expect(postsPieces()).toHaveLength(1), { timeout: 8000 });
+    const [piece] = postsPieces();
+    expect(piece.get('targetType')).toBe('MOVEMENT');
+    expect(piece.get('targetId')).toBe('mvt-retour-1');
+    expect(await within(boiteOuverte()).findByText('Envoyée', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 60000);
 });
 

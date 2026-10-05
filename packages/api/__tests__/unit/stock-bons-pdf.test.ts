@@ -54,6 +54,7 @@ import {
   getStockSlipView,
   PRE_NUMBERING_COUNT_REPORT_TITLE,
   readSlipSnapshot,
+  STOCK_REASON_PDF_LABELS,
   renderStockPdf,
   type CountReportPdfInput,
   type StockPdfModel
@@ -383,6 +384,16 @@ describe('Procès-verbal d’inventaire (B4-R2)', () => {
     expect(model.totals).toEqual([]);
     expect(allText(model)).not.toMatch(/XOF|5 250|559 500/);
     expect(allText(model)).not.toMatch(FORBIDDEN_WORDS);
+  });
+
+  it('rec040-02 : les motifs imprimés reprennent les libellés de la spec et de l’écran', () => {
+    expect(STOCK_REASON_PDF_LABELS).toMatchObject({
+      UNEXPLAINED_DISAPPEARANCE: 'Disparition non expliquée',
+      COUNTING_ERROR: 'Erreur du comptage précédent',
+      ENTRY_ERROR: "Erreur de saisie d'un mouvement",
+      DETERIORATION: 'Détérioration (humidité, péremption)'
+    });
+    expect(Object.values(STOCK_REASON_PDF_LABELS).join(' ')).not.toMatch(/inexpliqu/i);
   });
 
   it('avec STOCK_VALUES_VIEW : coût unitaire, écart valorisé et totaux figés', () => {
