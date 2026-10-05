@@ -168,7 +168,7 @@ async function readCurrentState(
     }
     throw error;
   }
-  if (response.status === 403) {
+  if (response.status === 401 || response.status === 403) {
     throw new ForbiddenError(
       t("Vous n'avez pas la permission de lire cet enregistrement, donc de le modifier : plan refusé.")
     );
@@ -192,6 +192,12 @@ async function readCurrentState(
   } catch {
     return { record: null, readable: false };
   }
+}
+
+/** La route vise un utilisateur : un segment `users` suivi d'un paramètre de chemin. */
+function targetsUserRecord(path: string): boolean {
+  const segments = path.split('/').filter(Boolean);
+  return segments.some((segment, index) => segment === 'users' && segments[index + 1]?.startsWith(':'));
 }
 
 function lastParamValue(entry: CatalogEntry, pathParams: Record<string, string>): string | null {
@@ -370,6 +376,13 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
       const fallback = rawId ? t('Enregistrement {{id}}', { id: shortRecordId(rawId) }) : null;
       const label = readableLabel(state?.record ?? null) ?? fallback;
       target = label ? { label, resolved: state !== null } : null;
+    }
+
+    // Action sur un utilisateur (`.../users/:userId/...`) : le serveur nomme la personne dont l'accès change,
+    // sans doublonner un avertissement qui le dit déjà.
+    if (kind !== 'create' && target && targetsUserRecord(entry.path)) {
+      const accessWarning = t("Cette action modifie l'accès de {{label}}.", { label: target.label });
+      if (!warnings.includes(accessWarning)) warnings.push(accessWarning);
     }
 
     const pathParamsDisplay = entry.pathParams

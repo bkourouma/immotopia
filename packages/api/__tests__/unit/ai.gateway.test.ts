@@ -323,16 +323,16 @@ describe('call_read — appel loopback', () => {
     expect(JSON.stringify({ fn: fromCookie })).not.toContain('cookie-token');
   });
 
-  it('renvoie une erreur HTTP sous forme {status, message}, sans pile', async () => {
+  it('renvoie une erreur HTTP (404) sous forme {status, message}, sans pile', async () => {
     handler = (_req, res) =>
-      json(res, 403, {
+      json(res, 404, {
         success: false,
-        error: 'Forbidden',
-        message: 'Permission denied: FINANCE_ACCOUNTS_READ',
+        error: 'Not found',
+        message: 'Contact introuvable.',
         stack: 'Error at /srv/app/x.ts:1'
       });
     const { modelResult } = await read({ capabilityId: LIST_CONTACTS });
-    expect(modelResult).toEqual({ ok: false, status: 403, message: 'Permission denied: FINANCE_ACCOUNTS_READ' });
+    expect(modelResult).toEqual({ ok: false, status: 404, message: 'Contact introuvable.' });
     expect(JSON.stringify(modelResult)).not.toContain('stack');
 
     handler = (_req, res) => {
@@ -342,6 +342,21 @@ describe('call_read — appel loopback', () => {
     const second = await read({ capabilityId: LIST_CONTACTS });
     expect(second.modelResult).toMatchObject({ ok: false, status: 500 });
     expect(JSON.stringify(second.modelResult)).not.toContain('/srv/app');
+  });
+
+  it('401 et 403 de la route réelle : ForbiddenError (refus de l’assistant), message fixe sans détail serveur', async () => {
+    for (const status of [401, 403]) {
+      handler = (_req, res) =>
+        json(res, status, {
+          success: false,
+          message: 'Permission denied: FINANCE_ACCOUNTS_READ',
+          stack: '/srv/app/x.ts'
+        });
+      const error = await read({ capabilityId: LIST_CONTACTS }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ForbiddenError);
+      expect((error as Error).message).toBe("Vous n'avez pas la permission de consulter cette ressource.");
+      expect((error as Error).message).not.toContain('FINANCE');
+    }
   });
 
   it('ne suit pas une redirection', async () => {
@@ -522,6 +537,8 @@ describe('sanitize', () => {
   });
 });
 
+const textOfEvents = (events: CopilotSseEvent[]) => events.map(e => (e.type === 'text_delta' ? e.text : '')).join('');
+
 // --- de bout en bout : orchestrateur + faux fournisseur ----------------------------
 
 describe('orchestrateur — list_capabilities puis call_read', () => {
@@ -588,6 +605,44 @@ describe('orchestrateur — list_capabilities puis call_read', () => {
       expect(received).toHaveLength(0);
       expect(requests[1]).toContain('isError":true');
     }
+  });
+
+  it('403 de la route réelle : tool_status forbidden, AI_TOOL_DENIED audité, refus propre au modèle, le chat continue', async () => {
+    handler = (_req, res) => json(res, 403, { success: false, message: 'Permission denied: SECRETPERM', stack: 'x' });
+    const { events, requests } = await run(new FakeProvider(), 'Que dit le catalogue sur les contacts ?');
+    const statuses = events
+      .filter((e): e is Extract<CopilotSseEvent, { type: 'tool_status' }> => e.type === 'tool_status')
+      .map(s => `${s.tool}:${s.status}`);
+    expect(statuses).toContain('call_read:forbidden');
+    expect(statuses).not.toContain('call_read:succeeded');
+    const denied = mockLogAudit.mock.calls.map(c => c[0]).filter(e => e.entityType === 'AI_TOOL');
+    expect(denied.map(e => e.actionKey)).toContain('AI_TOOL_DENIED');
+    expect(denied.find(e => e.actionKey === 'AI_TOOL_DENIED').payload).toMatchObject({
+      tool: 'call_read',
+      reason: 'PERMISSION'
+    });
+    expect(denied.some(e => e.actionKey === 'AI_TOOL_CALLED' && e.payload.tool === 'call_read')).toBe(false);
+    // Le modèle reçoit un tool_result d'erreur, sans jeton, sans pile ni détail serveur.
+    const toModel = requests.join('');
+    expect(toModel).toContain('isError":true');
+    expect(toModel).toContain('permission');
+    expect(toModel).not.toContain(SECRET_TOKEN);
+    expect(toModel).not.toContain('SECRETPERM');
+    expect(JSON.stringify(events)).not.toContain(SECRET_TOKEN);
+    // Le fil continue : réponse finale du faux fournisseur, sans erreur fatale.
+    expect(textOfEvents(events)).toBe("Je n'ai pas la permission d'accéder à cette donnée.");
+    expect(events.at(-1)).toEqual({ type: 'done', reason: 'end_turn' });
+  });
+
+  it('404 de la route réelle : traitement inchangé (résultat ok:false, tool_status succeeded)', async () => {
+    handler = (_req, res) => json(res, 404, { success: false, message: 'Introuvable' });
+    const { events } = await run(new FakeProvider(), 'Que dit le catalogue sur les contacts ?');
+    const statuses = events
+      .filter((e): e is Extract<CopilotSseEvent, { type: 'tool_status' }> => e.type === 'tool_status')
+      .map(s => `${s.tool}:${s.status}`);
+    expect(statuses).toContain('call_read:succeeded');
+    expect(statuses).not.toContain('call_read:forbidden');
+    expect(mockLogAudit.mock.calls.some(c => c[0].actionKey === 'AI_TOOL_DENIED')).toBe(false);
   });
 
   it('sans la permission de l’outil, la passerelle n’est pas offerte (refus audité)', async () => {

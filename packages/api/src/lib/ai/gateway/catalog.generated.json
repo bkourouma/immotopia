@@ -4131,7 +4131,7 @@
       "path": "/api/tenants/:tenantId/users/:userId",
       "pathParams": ["userId"],
       "module": "users",
-      "summary": "update member (users / {userId})",
+      "summary": "users / {userId}",
       "permissions": ["USERS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6861,7 +6861,7 @@
       "path": "/api/tenants/:tenantId/users/:userId/disable",
       "pathParams": ["userId"],
       "module": "users",
-      "summary": "disable member (users / {userId} / disable)",
+      "summary": "users / {userId} / disable",
       "permissions": ["USERS_DISABLE"],
       "anyOfPermissions": null,
       "sensitive": false
