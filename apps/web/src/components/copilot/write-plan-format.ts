@@ -79,18 +79,55 @@ export function methodLabel(method: WritePlan['method']): string {
   return labels[method] ?? method;
 }
 
-/** Module technique du catalogue en langage clair ; valeur inconnue : affichée telle quelle. */
+/**
+ * Module technique du catalogue (`CORE`, `CRM`…) ou segment de chemin (`users`,
+ * `contacts`, `properties`, `leases`…) en langage clair ; valeur inconnue :
+ * affichée telle quelle.
+ */
 export function planModuleLabel(module: string): string {
-  const labels: Record<string, string> = {
-    CORE: t('Général'),
-    CRM: t('CRM'),
-    SALES: t('Ventes'),
-    RENTAL: t('Gestion locative'),
-    PATRIMOINE: t('Patrimoine'),
-    SYNDIC: t('Syndic'),
-    CONSTRUCTION: t('Construction')
-  };
-  return labels[module.toUpperCase()] ?? module;
+  switch (module.trim().toLowerCase()) {
+    case 'core':
+      return t('Général');
+    case 'crm':
+      return t('CRM');
+    case 'sales':
+      return t('Ventes');
+    case 'rental':
+      return t('Gestion locative');
+    case 'patrimoine':
+      return t('Patrimoine');
+    case 'syndic':
+    case 'syndics':
+      return t('Syndic');
+    case 'construction':
+      return t('Construction');
+    case 'users':
+      return t('Utilisateurs');
+    case 'contacts':
+      return t('Contacts');
+    case 'properties':
+      return t('Biens');
+    case 'leases':
+      return t('Baux');
+    case 'finance':
+      return t('Finance');
+    case 'maintenance':
+      return t('Maintenance');
+    case 'documents':
+      return t('Documents');
+    case 'newsletter':
+      return t('Lettre d’information');
+    case 'settings':
+      return t('Paramètres');
+    case 'subscription':
+      return t('Abonnement');
+    case 'treasury':
+      return t('Trésorerie');
+    case 'agence':
+      return t('Agence');
+    default:
+      return module;
+  }
 }
 
 /** Aperçu du résultat en TEXTE BRUT (jamais interprété comme HTML), borné. */

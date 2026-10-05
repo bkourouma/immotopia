@@ -183,6 +183,16 @@ Pièges et décisions :
 
 ---
 
+## Branche `feat/immocopilot-o9nygz` — 2026-10-05
+
+**État :** suite des recettes d'ImmoCopilot (PR ouverte, fusion à l'utilisateur). Décisions de l'utilisateur appliquées : refuser les créations imbriquées sans parent lisible, rendre déterministes les deux tests web instables, corriger deux mineurs de la recette.
+
+**Fait :** `plan_write` refuse une création imbriquée dont le parent n'a pas de route GET (3 routes du catalogue : `…/deals/:dealId/properties/:propertyId/status/legacy`, `…/syndics/:syndicId/lots/:lotId/compte/ajustements`, `…/lots/:lotId/paiements/apercu`) ; garde-fou de test `KNOWN_UNPLANNABLE_NESTED_CREATES` ; libellés de `StatusTag` résolus au rendu (changement de langue à chaud) ; carte d'accord : ~60 champs et noms de module traduits ; `land-detail-page` et `import-patrimoine-page` rendus déterministes (saisie d'un coup, test d'import scindé en deux, plus de délai explicite de 30 s). Vérifié : tsc API/web 0 erreur, API ciblé 731 + 21, web ciblé 1108, check:architecture, wiki:check.
+
+**Reste à faire :** liste des anciennes conversations (décision : OUI, stockage serveur) : plan écrit, migration Prisma, routes, rétention, revue de sécurité, UI en PR séparée ; même défaut `t()` au chargement du module ailleurs (`home/dashboard-viz.ts`, tables de statuts maintenance/portails/finance : à confirmer) ; ajouter `GET …/syndics/:syndicId/lots/:lotId` ou classer `paiements/apercu` en lecture ; rejouer en navigateur les correctifs de désactivation (auto-désactivation, dernier admin) et le nom de fichier PNG accentué dans un vrai Chrome ; vrai micro (à la charge de l'utilisateur) ; `npm run test:isolation`.
+
+**Pièges :** `npx prisma generate` après tout `git merge main` qui change le schéma (sinon ~300 erreurs tsc et 9 suites en échec) ; `git checkout --theirs` pendant une fusion = version de main ; les modifs d'un agent non indexées avant `git commit` ne sont pas dans le commit (réindexer) ; `npm run ai:catalog` après tout changement de routes ; le hook bloque une commande combinant `git fetch origin main` et un push ; test d'import patrimoine : le sous-test (1 bis) porte le parcours complet.
+
 ## Branche `feat/menus-coupes-par-agence` — 2026-10-05
 
 **État :** PR #112 ouverte vers `main` (fusion à l'utilisateur), worktree `.claude/worktrees/menus-agence`, correction automatique de la CI active. Rien de déployé.
@@ -194,18 +204,6 @@ Pièges et décisions :
 **Reste :** rejouer la recette navigateur sur la version défaut + surcharge ; après fusion, déployer le staging puis appliquer les étapes 040/041 (couper les menus hors stock des rôles stock avec « Toutes les agences (défaut) »).
 
 **Pièges :** une sauvegarde au niveau d'une agence écrit sa carte complète et fige ses valeurs jusqu'à « Revenir au défaut ». Modifier le défaut touche toutes les agences sans réglage propre (alerte à l'écran). `npm run i18n:extract` réécrit 30 catalogues en retard sur `main` : ajouter ses clés à la main. Le test « Importer mon patrimoine » dépasse parfois 30 s en CI (passe seul). L'instance démo n'a pas sa base migrée (service `postgresql-x64-18` arrêté). Staging : `SUBSCRIPTION_ENFORCEMENT=enforce` depuis le 2026-10-03 (sauvegarde `immotopia-saas.env.avant-enforce-20261003`), coupures TENANT_ADMIN levées le même jour (sauvegarde `/home/deployer/role_menu_access_tenant_admin_avant_20261003.csv`).
-
----
-
-## Branche `feat/immocopilot-o9nygz` — 2026-10-04
-
-**État :** correctifs du passage 2 de la recette navigateur d'ImmoCopilot (PR #113, fusion à l'utilisateur ; elle contient aussi le retrait de l'ancienne section HANDOFF). Passage 2 : 0 bloquant, 3 importants (corrigés ici), mineurs restants listés ci-dessous.
-
-**Fait :** désactiver un membre refuse l'auto-désactivation et le dernier administrateur actif (409), idem retirer TENANT_ADMIN au dernier admin (`membership-service.ts`) ; la carte d'accord lit le nom de la personne visée dans `GET /users/:userId` et ajoute l'avertissement « Cette action modifie l'accès de … » ; un 401/403 de la route réelle dans `call_read` / lecture « avant » de `plan_write` devient un refus de l'assistant (`tool_status` forbidden, audit `AI_TOOL_DENIED`) ; le faux fournisseur dit « pas la permission » sur un refus. Vérifié : `tsc` API sans erreur, jest API ciblé 720 + 17 (catalogue, inventaire), `wiki:check`.
-
-**Reste à faire :** mineurs de la recette : statuts non retraduits après un changement de langue à chaud (`STATUS_MAP` de `StatusTag.tsx` figé au chargement du module), libellés techniques non traduits dans la carte (« Internal notes », module en clé brute), nom de fichier PNG accentué à revérifier dans un vrai Chrome ; non testés : vrai micro, avertissements « liste remplacée » / « requête non vide » affichés (le faux fournisseur ne les produit pas), `npm run test:isolation`. Décisions en attente : liste des anciennes conversations (stockage serveur), refuser les 3 créations imbriquées sans GET parent. Course théorique sur le dernier admin (contrôle hors transaction, SECURITY §13).
-
-**Pièges :** `npm run ai:catalog` à relancer si un handler change de nom/forme (les deux handlers membres sont passés en `asyncHandler`) ; « agence sans RENTAL » est impossible par construction (MODULE_AGENCY inclut RENTAL) : le cas testable est le pack PROMOTEUR ; les serveurs de recette peuvent tourner (API 8001, vite 3000, PostgreSQL 16 `immotopia_recette`, dump de référence dans le scratchpad) ; test web `import-patrimoine-page` parfois en dépassement de délai sous charge de CI.
 
 ---
 

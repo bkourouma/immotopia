@@ -28,21 +28,28 @@ const TONE_STYLE: Record<StatusTone, { bg: string; fg: string; border: string }>
 
 /**
  * Statuts effectivement presents dans le depot, avec leur libelle francais.
+ *
+ * Chaque libelle est une FONCTION appelee au rendu : un `t()` evalue au
+ * chargement du module figerait la langue du premier import, et un passage du
+ * francais a l'arabe sans rechargement laisserait « Disponible / Loue / Vendu »
+ * en francais. Les `t('...')` restent des litteraux, reperes par
+ * `npm run i18n:extract`.
+ *
  * Les codes non listes retombent sur `neutral` et sur le code lui-meme : un
  * statut inconnu s'affiche, il ne disparait pas.
  */
-const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
+const STATUS_MAP: Record<string, { tone: StatusTone; label: () => string }> = {
   // Cycle de vie generique
-  DRAFT: { tone: 'neutral', label: t('Brouillon') },
-  ACTIVE: { tone: 'success', label: t('Actif') },
-  INACTIVE: { tone: 'neutral', label: t('Inactif') },
-  SUSPENDED: { tone: 'warning', label: t('Suspendu') },
-  TERMINATED: { tone: 'neutral', label: t('Terminé') },
-  CANCELLED: { tone: 'neutral', label: t('Annulé') },
-  CANCELED: { tone: 'neutral', label: t('Annulé') },
-  ARCHIVED: { tone: 'neutral', label: t('Archivé') },
-  EXPIRED: { tone: 'danger', label: t('Expiré') },
-  REVOKED: { tone: 'danger', label: t('Révoqué') },
+  DRAFT: { tone: 'neutral', label: () => t('Brouillon') },
+  ACTIVE: { tone: 'success', label: () => t('Actif') },
+  INACTIVE: { tone: 'neutral', label: () => t('Inactif') },
+  SUSPENDED: { tone: 'warning', label: () => t('Suspendu') },
+  TERMINATED: { tone: 'neutral', label: () => t('Terminé') },
+  CANCELLED: { tone: 'neutral', label: () => t('Annulé') },
+  CANCELED: { tone: 'neutral', label: () => t('Annulé') },
+  ARCHIVED: { tone: 'neutral', label: () => t('Archivé') },
+  EXPIRED: { tone: 'danger', label: () => t('Expiré') },
+  REVOKED: { tone: 'danger', label: () => t('Révoqué') },
 
   // Cycle de vie d'un bien.
   //
@@ -51,36 +58,36 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // et « RENTED » en clair a l'utilisateur. Defaut trouve a l'ecran, dans
   // l'atelier — aucun test ne le voyait, puisque `<StatusTag>` rend fidelement
   // le code qu'on lui donne quand il ne le connait pas.
-  AVAILABLE: { tone: 'success', label: t('Disponible') },
-  UNDER_REVIEW: { tone: 'warning', label: t('En révision') },
-  RESERVED: { tone: 'warning', label: t('Réservé') },
-  UNDER_OFFER: { tone: 'warning', label: t('Sous offre') },
-  RENTED: { tone: 'info', label: t('Loué') },
+  AVAILABLE: { tone: 'success', label: () => t('Disponible') },
+  UNDER_REVIEW: { tone: 'warning', label: () => t('En révision') },
+  RESERVED: { tone: 'warning', label: () => t('Réservé') },
+  UNDER_OFFER: { tone: 'warning', label: () => t('Sous offre') },
+  RENTED: { tone: 'info', label: () => t('Loué') },
   // Neutre et non « succes » : le bien sort du portefeuille, ce n'est pas un
   // etat a mettre en avant dans une liste de gestion.
-  SOLD: { tone: 'neutral', label: t('Vendu') },
+  SOLD: { tone: 'neutral', label: () => t('Vendu') },
 
   // Encaissement
-  PENDING: { tone: 'warning', label: t('En attente') },
-  DUE: { tone: 'info', label: t('À échoir') },
-  PARTIAL: { tone: 'warning', label: t('Partiel') },
-  PAID: { tone: 'success', label: t('Payé') },
-  OVERDUE: { tone: 'danger', label: t('En retard') },
-  LATE: { tone: 'danger', label: t('En retard') },
-  SUCCESS: { tone: 'success', label: t('Réussi') },
-  FAILED: { tone: 'danger', label: t('Échoué') },
-  REFUNDED: { tone: 'neutral', label: t('Remboursé') },
-  PARTIALLY_REFUNDED: { tone: 'warning', label: t('Partiellement remboursé') },
+  PENDING: { tone: 'warning', label: () => t('En attente') },
+  DUE: { tone: 'info', label: () => t('À échoir') },
+  PARTIAL: { tone: 'warning', label: () => t('Partiel') },
+  PAID: { tone: 'success', label: () => t('Payé') },
+  OVERDUE: { tone: 'danger', label: () => t('En retard') },
+  LATE: { tone: 'danger', label: () => t('En retard') },
+  SUCCESS: { tone: 'success', label: () => t('Réussi') },
+  FAILED: { tone: 'danger', label: () => t('Échoué') },
+  REFUNDED: { tone: 'neutral', label: () => t('Remboursé') },
+  PARTIALLY_REFUNDED: { tone: 'warning', label: () => t('Partiellement remboursé') },
 
   // Tickets et travaux
-  NEW: { tone: 'info', label: t('Nouveau') },
-  OPEN: { tone: 'info', label: t('Ouvert') },
-  PLANNED: { tone: 'info', label: t('Planifié') },
-  SCHEDULED: { tone: 'info', label: t('Planifié') },
-  IN_PROGRESS: { tone: 'warning', label: t('En cours') },
-  RESOLVED: { tone: 'success', label: t('Résolu') },
-  COMPLETED: { tone: 'success', label: t('Terminé') },
-  CLOSED: { tone: 'neutral', label: t('Clôturé') },
+  NEW: { tone: 'info', label: () => t('Nouveau') },
+  OPEN: { tone: 'info', label: () => t('Ouvert') },
+  PLANNED: { tone: 'info', label: () => t('Planifié') },
+  SCHEDULED: { tone: 'info', label: () => t('Planifié') },
+  IN_PROGRESS: { tone: 'warning', label: () => t('En cours') },
+  RESOLVED: { tone: 'success', label: () => t('Résolu') },
+  COMPLETED: { tone: 'success', label: () => t('Terminé') },
+  CLOSED: { tone: 'neutral', label: () => t('Clôturé') },
 
   // Documents, baux, visites.
   //
@@ -89,28 +96,28 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // celui des biens. Plutôt qu'un troisième rattrapage, tous les codes de
   // statut déclarés dans les énumérations du dépôt ont été comparés à cette
   // table, et un test vérifie désormais qu'aucun n'y manque.
-  VOID: { tone: 'danger', label: t('Annulé') },
-  ENDED: { tone: 'neutral', label: t('Terminé') },
-  CONFIRMED: { tone: 'success', label: t('Confirmé') },
-  DONE: { tone: 'success', label: t('Effectué') },
-  NO_SHOW: { tone: 'danger', label: t('Absent') },
+  VOID: { tone: 'danger', label: () => t('Annulé') },
+  ENDED: { tone: 'neutral', label: () => t('Terminé') },
+  CONFIRMED: { tone: 'success', label: () => t('Confirmé') },
+  DONE: { tone: 'success', label: () => t('Effectué') },
+  NO_SHOW: { tone: 'danger', label: () => t('Absent') },
 
   // Ameublement — ce n'est pas un cycle de vie, mais une qualité du bien.
   // Rendue par le même composant lorsqu'un écran l'affiche comme étiquette.
-  FURNISHED: { tone: 'info', label: t('Meublé') },
-  UNFURNISHED: { tone: 'neutral', label: t('Non meublé') },
-  PARTIALLY_FURNISHED: { tone: 'info', label: t('Partiellement meublé') },
+  FURNISHED: { tone: 'info', label: () => t('Meublé') },
+  UNFURNISHED: { tone: 'neutral', label: () => t('Non meublé') },
+  PARTIALLY_FURNISHED: { tone: 'info', label: () => t('Partiellement meublé') },
 
   // Invitations, validations, affaires
-  SENT: { tone: 'info', label: t('Envoyé') },
-  ACCEPTED: { tone: 'success', label: t('Accepté') },
-  APPROVED: { tone: 'success', label: t('Approuvé') },
-  REJECTED: { tone: 'danger', label: t('Refusé') },
-  VALIDATED: { tone: 'success', label: t('Validé') },
-  FINAL: { tone: 'success', label: t('Final') },
-  PUBLISHED: { tone: 'success', label: t('Publié') },
-  WON: { tone: 'success', label: t('Gagnée') },
-  LOST: { tone: 'danger', label: t('Perdue') },
+  SENT: { tone: 'info', label: () => t('Envoyé') },
+  ACCEPTED: { tone: 'success', label: () => t('Accepté') },
+  APPROVED: { tone: 'success', label: () => t('Approuvé') },
+  REJECTED: { tone: 'danger', label: () => t('Refusé') },
+  VALIDATED: { tone: 'success', label: () => t('Validé') },
+  FINAL: { tone: 'success', label: () => t('Final') },
+  PUBLISHED: { tone: 'success', label: () => t('Publié') },
+  WON: { tone: 'success', label: () => t('Gagnée') },
+  LOST: { tone: 'danger', label: () => t('Perdue') },
 
   // Pieces et engagements du module financier operationnel (lots 2 a 4).
   //
@@ -120,20 +127,20 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // vu parce que sa liste d'enumerations est recopiee a la main et que les
   // statuts financiers sont des unions TypeScript, sans forme executable. La
   // note de ce test dit desormais ce qu'il couvre reellement.
-  VOIDED: { tone: 'danger', label: t('Annulée') },
-  ISSUED: { tone: 'info', label: t('Émis') },
-  HELD: { tone: 'warning', label: t('Détenue') },
-  RELEASED: { tone: 'success', label: t('Libérée') },
+  VOIDED: { tone: 'danger', label: () => t('Annulée') },
+  ISSUED: { tone: 'info', label: () => t('Émis') },
+  HELD: { tone: 'warning', label: () => t('Détenue') },
+  RELEASED: { tone: 'success', label: () => t('Libérée') },
 
   // Ventes immobilières (lot 9) : mandats, offres, compromis, commissions.
-  SUBMITTED: { tone: 'info', label: t('Soumise') },
-  COUNTERED: { tone: 'warning', label: t('Contre-offre') },
-  WITHDRAWN: { tone: 'neutral', label: t('Retirée') },
-  SIGNED: { tone: 'info', label: t('Signé') },
-  MET: { tone: 'success', label: t('Remplie') },
-  WAIVED: { tone: 'neutral', label: t('Levée') },
-  PARTIALLY_PAID: { tone: 'warning', label: t('Partiellement réglée') },
-  POSTED: { tone: 'success', label: t('Enregistré') }
+  SUBMITTED: { tone: 'info', label: () => t('Soumise') },
+  COUNTERED: { tone: 'warning', label: () => t('Contre-offre') },
+  WITHDRAWN: { tone: 'neutral', label: () => t('Retirée') },
+  SIGNED: { tone: 'info', label: () => t('Signé') },
+  MET: { tone: 'success', label: () => t('Remplie') },
+  WAIVED: { tone: 'neutral', label: () => t('Levée') },
+  PARTIALLY_PAID: { tone: 'warning', label: () => t('Partiellement réglée') },
+  POSTED: { tone: 'success', label: () => t('Enregistré') }
 };
 
 export interface StatusTagProps {
@@ -156,7 +163,7 @@ export interface StatusTagProps {
  */
 export function statusLabel(status: string | null | undefined): string | null {
   if (!status) return null;
-  return STATUS_MAP[status.toUpperCase()]?.label ?? null;
+  return STATUS_MAP[status.toUpperCase()]?.label() ?? null;
 }
 
 export function statusTone(status: string | null | undefined): StatusTone {
@@ -168,7 +175,7 @@ export const StatusTag: React.FC<StatusTagProps> = ({ status, tone, label }) => 
   const key = (status ?? '').toUpperCase();
   const entry = STATUS_MAP[key];
   const resolvedTone = tone ?? entry?.tone ?? 'neutral';
-  const resolvedLabel = label ?? entry?.label ?? status ?? '—';
+  const resolvedLabel = label ?? entry?.label() ?? status ?? '—';
   const style = TONE_STYLE[resolvedTone];
 
   return (

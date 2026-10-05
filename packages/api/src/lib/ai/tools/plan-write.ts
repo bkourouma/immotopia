@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { currentLanguage, t } from '../../../i18n';
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../../middleware/error-middleware';
+import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '../../../middleware/error-middleware';
 import { logAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import {
@@ -115,7 +115,7 @@ interface StateSource {
 }
 
 /** Route de lecture de l'enregistrement visé : même chemin (mise à jour), ou ressource parente (action, sous-ressource). */
-function findStateSource(entry: CatalogEntry, kind: RecordKind): StateSource | null {
+export function findStateSource(entry: CatalogEntry, kind: RecordKind): StateSource | null {
   const readable = (path: string): CatalogEntry | undefined => {
     const candidate = findCatalogEntry(`GET ${path}`);
     return candidate && READABLE_METHODS.has(candidate.method) && !candidate.sensitive ? candidate : undefined;
@@ -289,6 +289,14 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
 
     const kind = classifyRecord(entry);
     const source = findStateSource(entry, kind);
+    const nestedCreate = kind === 'create' && entry.pathParams.length > 0;
+    // Création imbriquée dont le parent n'a aucune route de lecture : le serveur ne peut ni le nommer ni
+    // vérifier qu'il existe pour l'utilisateur. Plan refusé, avant toute lecture et sans jeton émis.
+    if (nestedCreate && !source) {
+      throw new ValidationError(
+        t("Impossible de vérifier la ressource parente visée : l'assistant ne peut pas proposer cette écriture.")
+      );
+    }
     const warnings: string[] = [
       t('Le serveur peut modifier d’autres champs (dates, statuts, montants calculés) que ceux listés.')
     ];
@@ -300,7 +308,6 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
       state = await readCurrentState(source, pathParams, ctx, headers);
       stateReadAt = new Date().toISOString();
     }
-    const nestedCreate = kind === 'create' && entry.pathParams.length > 0;
 
     // « Avant » : état de l'enregistrement pour une mise à jour seulement ; une action ou une création n'a pas d'avant.
     const beforeState = kind === 'update' && state?.record ? state.record : undefined;
@@ -321,7 +328,7 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
     if (changeSet.valuesTruncated) {
       warnings.push(t('Certaines valeurs longues sont tronquées à l’affichage ; la requête envoyée est complète.'));
     }
-    if ((kind === 'action' || nestedCreate) && !state) {
+    if (kind === 'action' && !state) {
       warnings.push(t("L'enregistrement visé n'a pas pu être vérifié (aucune route de lecture connue)."));
     }
     if (changeSet.changes.some(change => isSecretField(change.field))) {

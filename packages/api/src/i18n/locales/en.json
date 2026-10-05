@@ -833,6 +833,7 @@
   "L'écriture n'est pas disponible dans ce contexte.": "Writing is not available in this context.",
   "L'enregistrement visé est introuvable (identifiant erroné ou autre agence) : plan refusé.": "The target record was not found (wrong identifier or another agency): plan refused.",
   "L'enregistrement visé n'a pas pu être vérifié (aucune route de lecture connue).": "The target record could not be verified (no known read route).",
+  "Impossible de vérifier la ressource parente visée : l'assistant ne peut pas proposer cette écriture.": "Unable to verify the targeted parent resource: the assistant cannot propose this write.",
   "L'envoi de l'e-mail a échoué. Réessayez plus tard.": "The e-mail could not be sent. Please try again later.",
   "L'étape a déjà ce statut.": "The step already has this status.",
   "L'état actuel de l'enregistrement n'a pas pu être lu dans le délai : plan refusé.": "The current state of the record could not be read in time: plan refused.",

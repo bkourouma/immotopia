@@ -27,7 +27,7 @@ jest.mock('../../src/services/document-generation-service', () => ({ generateDoc
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (...a: unknown[]) => mockLogAudit(...a) }));
 
 import { env } from '../../src/config/env';
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../src/middleware/error-middleware';
+import { BadRequestError, ForbiddenError, NotFoundError, ValidationError } from '../../src/middleware/error-middleware';
 import {
   COPILOT_MAX_WRITE_PLANS_PER_REQUEST,
   type CopilotSseEvent,
@@ -42,7 +42,7 @@ import { computePlanHash, canonicalJson } from '../../src/lib/ai/plan-hash';
 import { verifyCapabilityProposal } from '../../src/lib/ai/proposal-token';
 import { runChat } from '../../src/lib/ai/orchestrator';
 import { FakeProvider } from '../../src/lib/ai/providers';
-import { planWriteTool } from '../../src/lib/ai/tools/plan-write';
+import { findStateSource, planWriteTool } from '../../src/lib/ai/tools/plan-write';
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
 import {
   assessWrite,
@@ -533,14 +533,71 @@ describe('plan_write — parent d’une création imbriquée', () => {
     expect(create.stateReadAt).toBeUndefined();
   });
 
-  it('parent sans route de lecture connue : cible non résolue (id brut) et avertissement', async () => {
+  it('parent sans route de lecture connue : plan refusé (ValidationError), aucun jeton, aucune requête', async () => {
     const orphan = 'POST /api/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/ajustements';
-    const p = planOf(
-      await plan({ capabilityId: orphan, pathParams: { syndicId: SYNDIC_ID, lotId: CONTACT_ID }, body: { montant: 5 } })
-    );
+    const context = ctx();
+    let thrown: unknown;
+    let result: unknown;
+    try {
+      result = await plan(
+        { capabilityId: orphan, pathParams: { syndicId: SYNDIC_ID, lotId: CONTACT_ID }, body: { montant: 5 } },
+        context
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ValidationError);
+    expect((thrown as Error).message).toContain('Impossible de vérifier la ressource parente');
+    // Aucun résultat, donc aucun jeton ni événement write_plan ; ni lecture ni écriture ; compteur intact ; rien d'audité.
+    expect(result).toBeUndefined();
+    expect(context.writePlansIssued ?? 0).toBe(0);
     expect(received).toHaveLength(0);
-    expect(p.target).toEqual({ label: 'Enregistrement 55555555…', resolved: false });
-    expect(p.warnings.join(' | ')).toContain("n'a pas pu être vérifié");
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it('même refus pour les trois créations imbriquées du catalogue sans parent lisible', async () => {
+    const unresolved = nestedCreates().filter(entry => !findStateSource(entry, 'create'));
+    expect(unresolved.length).toBeGreaterThan(0);
+    for (const entry of unresolved) {
+      const pathParams = Object.fromEntries(entry.pathParams.map(name => [name, SYNDIC_ID]));
+      await expect(plan({ capabilityId: entry.id, pathParams, body: { a: 1 } })).rejects.toBeInstanceOf(
+        ValidationError
+      );
+    }
+    expect(received).toHaveLength(0);
+  });
+
+  /** Créations imbriquées du catalogue (POST d'une route avec paramètres de chemin hors tenantId, hors action). */
+  const nestedCreates = () =>
+    getCatalogEntries()
+      .filter(entry => entry.method === 'POST')
+      .map(entry => findWritableEntry(entry.id))
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .filter(entry => classifyRecord(entry) === 'create' && entry.pathParams.length > 0);
+
+  /**
+   * Créations imbriquées connues dont le parent n'a AUCUNE route GET dans le catalogue : `plan_write` les REFUSE
+   * (« Impossible de vérifier la ressource parente… »), l'assistant ne peut donc pas les proposer. Liste d'accusé de
+   * réception : une nouvelle route de ce genre fait échouer le test ci-dessous tant qu'on ne l'a pas soit rendue
+   * lisible (ajouter la route GET du parent), soit inscrite ici avec sa raison. Aucune route n'est ACCEPTÉE sans
+   * parent lisible : le serveur n'a pas d'exception, `plan_write` refuse toujours.
+   */
+  const KNOWN_UNPLANNABLE_NESTED_CREATES: Record<string, string> = {
+    'POST /api/tenants/:tenantId/crm/deals/:dealId/properties/:propertyId/status/legacy':
+      'parent = lien affaire/bien (:propertyId) sans GET propre ; route « legacy »',
+    'POST /api/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/ajustements':
+      'parent = lot de copropriété (:lotId) : pas de GET /lots/:lotId (la liste des lots passe par le syndic)',
+    'POST /api/tenants/:tenantId/syndics/:syndicId/lots/:lotId/paiements/apercu':
+      'parent = lot (:lotId), idem ; en outre simple APERÇU (calcul sans écriture), à servir par une lecture'
+  };
+
+  it('garde-fou : toute création imbriquée du catalogue a un parent lisible, sinon refus connu et déclaré', () => {
+    const entries = nestedCreates();
+    expect(entries.length).toBeGreaterThan(0);
+    const offenders = entries.filter(entry => !findStateSource(entry, 'create')).map(entry => entry.id);
+    expect(offenders.filter(id => !(id in KNOWN_UNPLANNABLE_NESTED_CREATES))).toEqual([]);
+    // Une entrée devenue inutile (route supprimée ou parent désormais lisible) doit être retirée de la liste.
+    expect(Object.keys(KNOWN_UNPLANNABLE_NESTED_CREATES).filter(id => !offenders.includes(id))).toEqual([]);
   });
 
   it('lastParamAncestorPath', () => {
