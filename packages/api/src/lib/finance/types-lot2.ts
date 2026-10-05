@@ -117,6 +117,11 @@ export interface PostDocumentEntryParams {
     | 'STOCK_RECEIPT'
     | 'STOCK_ISSUE'
     | 'STOCK_ADJUSTMENT'
+    // Lot 040 : le retour fournisseur (C311 au cout moyen, D401 au prix
+    // fournisseur, ecart en 603) et le rebut (D603 / C311). Memes natures que
+    // `SOURCE_TYPE_BY_DOCUMENT` (`accounting.ts`).
+    | 'STOCK_SUPPLIER_RETURN'
+    | 'STOCK_SCRAP'
     // Gestion locative, lot 3 : le compte des proprietaires mandants. Aucune
     // n'est annulable par `voidDocumentTx` : leur contre-passation est ecrite
     // par `lib/owner-account`, sous la nature OWNER_VOID.

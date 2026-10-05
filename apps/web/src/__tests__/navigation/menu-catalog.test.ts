@@ -7,6 +7,7 @@ import {
   isMenuKeyDisabled,
   legacyMenuKeysFor,
   menuKeyFor,
+  menuKeysDeniedByPermissions,
   menuKeysForPersona,
   personaForRoleKey,
   resolveMenuMap,
@@ -279,5 +280,50 @@ describe('navigation filtrée — ce que la coquille rend réellement', () => {
     // propriétaire : c'est tout l'objet du préfixe de persona.
     const nav = filter('proprietaire', [menuKeyFor('collaborateur', 'biens')]);
     expect(nav?.tree.some(group => group.key === 'biens')).toBe(true);
+  });
+});
+
+describe('Chantiers et stock — lot 040 (ecrans §2.3)', () => {
+  const persona: PersonaId = 'collaborateur';
+  const groupe = menuKeyFor(persona, 'finance-chantiers-stock');
+  const stock = menuKeyFor(persona, 'finance-chantiers-stock', 'finance-stock');
+  const chantiers = menuKeyFor(persona, 'finance-chantiers-stock', 'finance-chantiers');
+  const MAGASINIER = [
+    'STOCK_VIEW',
+    'STOCK_RECEIVE',
+    'STOCK_ISSUE',
+    'STOCK_TRANSFER',
+    'STOCK_COUNT',
+    'STOCK_TAKERS_MANAGE'
+  ];
+
+  it('exige STOCK_VIEW pour la Gestion du stock et FINANCE_ACCOUNTS_READ pour le Suivi des chantiers', () => {
+    const entree = catalogForPersona(persona)
+      .flatMap(section => section.entries)
+      .find(entry => entry.menuKey === groupe);
+    expect(entree?.requires).toEqual(['STOCK_VIEW', 'FINANCE_ACCOUNTS_READ']);
+    expect(entree?.children.find(child => child.menuKey === stock)?.requires).toEqual(['STOCK_VIEW']);
+    expect(entree?.children.find(child => child.menuKey === chantiers)?.requires).toEqual(['FINANCE_ACCOUNTS_READ']);
+  });
+
+  it('un rôle aux seuls droits STOCK_* ouvre par défaut la Gestion du stock, pas le Suivi des chantiers', () => {
+    const map = defaultMenuMap(persona, new Set(MAGASINIER));
+    expect(map[groupe]).toBe(true);
+    expect(map[stock]).toBe(true);
+    expect(map[chantiers]).toBe(false);
+  });
+
+  it('un rôle avec FINANCE_ACCOUNTS_READ et STOCK_VIEW ouvre les deux', () => {
+    const map = defaultMenuMap(persona, new Set(['FINANCE_ACCOUNTS_READ', 'STOCK_VIEW']));
+    expect(map[groupe]).toBe(true);
+    expect(map[stock]).toBe(true);
+    expect(map[chantiers]).toBe(true);
+  });
+
+  it('la coquille rend au magasinier « Gestion du stock » sans « Suivi des chantiers »', () => {
+    const denied = menuKeysDeniedByPermissions(persona, MAGASINIER);
+    const nav = renderHook(() => useFilteredNavigation(NAVIGATION.collaborateur, new Set(denied))).result.current;
+    const entree = nav?.tree.find(group => group.key === 'finance-chantiers-stock');
+    expect(entree?.children?.map(child => child.key)).toEqual(['finance-stock']);
   });
 });

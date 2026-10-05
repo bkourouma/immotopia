@@ -7,6 +7,7 @@ import { PACK, PARTICULIER_PACKS } from '../../src/lib/subscription/catalog';
 import { loginSchema, validate } from '../../src/middleware/validation-middleware';
 import {
   PACK_TEST_EMAIL_DOMAIN,
+  PACK_TEST_MEMBERS,
   PACK_TEST_PASSWORD,
   PACK_TEST_TENANTS,
   STAGING_ORIGIN,
@@ -58,6 +59,39 @@ describe('données des agences de test par pack', () => {
       validate(loginSchema)(req, {} as Response, next);
       expect(next).toHaveBeenCalledWith();
       expect(req.body).toEqual({ email: t.adminEmail, password: PACK_TEST_PASSWORD });
+    }
+  });
+});
+
+describe('comptes de recette du contrôle du stock (lot 040)', () => {
+  it('rattache chaque compte à une agence 6 mois Promoteur ou Opérateur intégré existante', () => {
+    for (const member of PACK_TEST_MEMBERS) {
+      const tenant = PACK_TEST_TENANTS.find(t => t.tenantName === member.tenantName);
+      expect(tenant).toBeDefined();
+      expect(tenant!.profile).toBe('6m');
+      expect([PACK.PROMOTEUR, PACK.INTEGRE]).toContain(tenant!.pack);
+    }
+  });
+
+  it('porte exactement les quatre comptes attendus, au domaine .test', () => {
+    expect(PACK_TEST_MEMBERS.map(m => `${m.email}:${m.roleKey}`).sort()).toEqual(
+      [
+        `comptable-promoteur@${PACK_TEST_EMAIL_DOMAIN}:TENANT_ACCOUNTANT`,
+        `magasinier-integre@${PACK_TEST_EMAIL_DOMAIN}:TENANT_STOREKEEPER`,
+        `magasinier-promoteur@${PACK_TEST_EMAIL_DOMAIN}:TENANT_STOREKEEPER`,
+        `responsable-integre@${PACK_TEST_EMAIL_DOMAIN}:TENANT_ADMIN`
+      ].sort()
+    );
+  });
+
+  it('a des e-mails uniques, distincts de ceux des administrateurs, acceptés par la connexion', () => {
+    const emails = [...PACK_TEST_MEMBERS.map(m => m.email), ...PACK_TEST_TENANTS.map(t => t.adminEmail)];
+    expect(new Set(emails).size).toBe(emails.length);
+    for (const member of PACK_TEST_MEMBERS) {
+      const req = { body: { email: member.email, password: PACK_TEST_PASSWORD } } as Request;
+      const next = jest.fn();
+      validate(loginSchema)(req, {} as Response, next);
+      expect(next).toHaveBeenCalledWith();
     }
   });
 });

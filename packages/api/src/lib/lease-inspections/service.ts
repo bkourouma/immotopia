@@ -8,6 +8,59 @@ import { logger } from '../../utils/logger';
 import { env } from '../../config/env';
 import { getUploadsRoot } from '../../utils/project-root';
 import { badRequest, conflict, notFound } from '../errors';
+import { AppError, ErrorCode } from '../../middleware/error-middleware';
+import {
+  CONDITIONS,
+  DEDUCTION_SOURCES,
+  ITEM_KINDS,
+  MAX_QUANTITY,
+  MAX_REPLACEMENT_VALUE,
+  blankRoomsFrom,
+  compareInspections,
+  compareSummary,
+  countItems,
+  findRemovedEntryItems,
+  findUnevaluatedItems,
+  freezeEntryFields,
+  normalizeDeductions,
+  normalizeItemQuantity,
+  normalizeRooms,
+  templateRooms,
+  type CompareRow,
+  type CompareSummary,
+  type Deduction,
+  type InspectionMeters,
+  type InspectionRoom
+} from './inventory';
+
+// Forme des colonnes JSON et règles pures : `./inventory` (spec 040, volet
+// meublés). Réexportées ici pour les appelants historiques.
+export {
+  blankRoomsFrom,
+  compareInspections,
+  compareSummary,
+  defaultRooms,
+  findRemovedEntryItems,
+  findUnevaluatedItems,
+  freezeEntryFields,
+  furnishedRooms,
+  normalizeDeductions,
+  normalizeRooms,
+  parseMeterReading
+} from './inventory';
+export type {
+  CompareRow,
+  CompareSummary,
+  Condition,
+  Deduction,
+  DeductionSource,
+  InspectionItem,
+  InspectionMeters,
+  InspectionRoom,
+  InspectionTemplate,
+  ItemKind,
+  UnevaluatedItem
+} from './inventory';
 
 /**
  * États des lieux d'entrée et de sortie — lot 5 (section B) de la gestion
@@ -23,35 +76,6 @@ import { badRequest, conflict, notFound } from '../errors';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export type Condition = 'NEW' | 'GOOD' | 'FAIR' | 'POOR' | 'BROKEN';
-
-export interface InspectionItem {
-  id: string;
-  label: string;
-  condition: Condition | null;
-  comment: string | null;
-}
-
-export interface InspectionRoom {
-  id: string;
-  name: string;
-  items: InspectionItem[];
-}
-
-export interface Deduction {
-  id: string;
-  label: string;
-  amount: number;
-  roomId: string | null;
-  itemId: string | null;
-}
-
-export interface InspectionMeters {
-  electricity?: string | null;
-  water?: string | null;
-  gas?: string | null;
-}
 
 export interface InspectionPhotoDto {
   id: string;
@@ -81,134 +105,13 @@ export interface LeaseInspectionDto {
   photos: InspectionPhotoDto[];
 }
 
-export interface CompareRow {
-  roomId: string;
-  roomName: string;
-  itemId: string;
-  label: string;
-  entryCondition: Condition | null;
-  exitCondition: Condition | null;
-  degraded: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Fonctions pures — testables sans base
-// ---------------------------------------------------------------------------
-
-const STANDARD_ROOM_ITEMS = ['Sol', 'Murs', 'Plafond', 'Portes', 'Fenêtres', 'Prises et interrupteurs', 'Éclairage'];
-
-function makeItems(labels: string[]): InspectionItem[] {
-  return labels.map(label => ({ id: randomUUID(), label, condition: null, comment: null }));
-}
-
-/** Modèle de pièces par défaut d'un état des lieux d'entrée. */
-export function defaultRooms(): InspectionRoom[] {
-  return [
-    { id: randomUUID(), name: 'Entrée/Séjour', items: makeItems(STANDARD_ROOM_ITEMS) },
-    {
-      id: randomUUID(),
-      name: 'Cuisine',
-      items: makeItems([...STANDARD_ROOM_ITEMS, 'Évier et robinetterie', 'Placards'])
-    },
-    { id: randomUUID(), name: 'Chambre 1', items: makeItems([...STANDARD_ROOM_ITEMS, 'Placards']) },
-    {
-      id: randomUUID(),
-      name: 'Salle de bain',
-      items: makeItems(['Sol', 'Murs', 'Douche ou baignoire', 'Lavabo', 'Robinetterie', 'Ventilation'])
-    },
-    { id: randomUUID(), name: 'WC', items: makeItems(['Sol', 'Murs', "Cuvette et chasse d'eau"]) }
-  ];
-}
-
-/** Reprend des pièces existantes avec les mêmes identifiants, états vidés. */
-function blankRoomsFrom(rooms: InspectionRoom[]): InspectionRoom[] {
-  return rooms.map(room => ({
-    id: room.id,
-    name: room.name,
-    items: room.items.map(item => ({ id: item.id, label: item.label, condition: null, comment: null }))
-  }));
-}
-
-const CONDITION_RANK: Record<Condition, number> = { NEW: 0, GOOD: 1, FAIR: 2, POOR: 3, BROKEN: 4 };
-
-/**
- * Compare un état des lieux d'entrée et de sortie, élément par élément.
- *
- * Part des pièces de l'entrée, dans leur ordre ; les pièces ou éléments qui
- * n'existent que côté sortie (rooms modifiées après la création de la
- * sortie) sont ajoutés à la suite. `degraded` n'est vrai que lorsque les deux
- * états sont renseignés et que celui de sortie est strictement moins bon.
- */
-export function compareInspections(
-  entry: { rooms: InspectionRoom[] } | null,
-  exit: { rooms: InspectionRoom[] } | null
-): CompareRow[] {
-  const exitByKey = new Map<string, { room: InspectionRoom; item: InspectionItem }>();
-  for (const room of exit?.rooms ?? []) {
-    for (const item of room.items) {
-      exitByKey.set(`${room.id}:${item.id}`, { room, item });
-    }
-  }
-
-  const rows: CompareRow[] = [];
-  const seen = new Set<string>();
-
-  for (const room of entry?.rooms ?? []) {
-    for (const item of room.items) {
-      const key = `${room.id}:${item.id}`;
-      seen.add(key);
-      const exitMatch = exitByKey.get(key);
-      const entryCondition = item.condition;
-      const exitCondition = exitMatch?.item.condition ?? null;
-      rows.push({
-        roomId: room.id,
-        roomName: room.name,
-        itemId: item.id,
-        label: item.label,
-        entryCondition,
-        exitCondition,
-        degraded:
-          entryCondition !== null &&
-          exitCondition !== null &&
-          CONDITION_RANK[exitCondition] > CONDITION_RANK[entryCondition]
-      });
-    }
-  }
-
-  for (const room of exit?.rooms ?? []) {
-    for (const item of room.items) {
-      const key = `${room.id}:${item.id}`;
-      if (seen.has(key)) continue;
-      rows.push({
-        roomId: room.id,
-        roomName: room.name,
-        itemId: item.id,
-        label: item.label,
-        entryCondition: null,
-        exitCondition: item.condition,
-        degraded: false
-      });
-    }
-  }
-
-  return rows;
-}
-
 // ---------------------------------------------------------------------------
 // Lecture des colonnes JSON — toujours écrites par nous, jamais par l'usager
 // directement, mais on reste défensif à la lecture.
 // ---------------------------------------------------------------------------
 
-function toRooms(value: unknown): InspectionRoom[] {
-  return Array.isArray(value) ? (value as InspectionRoom[]) : [];
-}
-
 function toMeters(value: unknown): InspectionMeters | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as InspectionMeters) : null;
-}
-
-function toDeductions(value: unknown): Deduction[] {
-  return Array.isArray(value) ? (value as Deduction[]) : [];
 }
 
 type InspectionRow = Prisma.LeaseInspectionGetPayload<{ include: { photos: true } }>;
@@ -233,14 +136,14 @@ function toDto(row: InspectionRow): LeaseInspectionDto {
     type: row.type,
     status: row.status,
     inspectionDate: row.inspectionDate.toISOString(),
-    rooms: toRooms(row.rooms),
+    rooms: normalizeRooms(row.rooms),
     meters: toMeters(row.meters),
     keysCount: row.keysCount,
     generalComment: row.generalComment,
     tenantPresent: row.tenantPresent,
     tenantSignatoryName: row.tenantSignatoryName,
     agentSignatoryName: row.agentSignatoryName,
-    deductions: toDeductions(row.deductions),
+    deductions: normalizeDeductions(row.deductions),
     finalizedAt: row.finalizedAt ? row.finalizedAt.toISOString() : null,
     photos: row.photos.map(toPhotoDto)
   };
@@ -304,7 +207,12 @@ export async function listInspections(tenantId: string, leaseId: string): Promis
 export async function compareInspectionsForLease(
   tenantId: string,
   leaseId: string
-): Promise<{ entry: LeaseInspectionDto | null; exit: LeaseInspectionDto | null; rows: CompareRow[] }> {
+): Promise<{
+  entry: LeaseInspectionDto | null;
+  exit: LeaseInspectionDto | null;
+  rows: CompareRow[];
+  summary: CompareSummary;
+}> {
   await assertLeaseForTenant(tenantId, leaseId);
   const rows = await prisma.leaseInspection.findMany({
     where: { leaseId, tenantId },
@@ -314,7 +222,8 @@ export async function compareInspectionsForLease(
   const exitRow = rows.find(row => row.type === LeaseInspectionType.EXIT);
   const entry = entryRow ? toDto(entryRow) : null;
   const exit = exitRow ? toDto(exitRow) : null;
-  return { entry, exit, rows: compareInspections(entry, exit) };
+  const compared = compareInspections(entry, exit);
+  return { entry, exit, rows: compared, summary: compareSummary(entry, exit, compared) };
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +232,13 @@ export async function compareInspectionsForLease(
 
 const createInspectionSchema = z.object({
   type: z.enum(['ENTRY', 'EXIT']),
-  inspectionDate: dateOnlySchema
+  inspectionDate: dateOnlySchema,
+  // Absent = STANDARD : un appelant qui ignore le paramètre garde le
+  // comportement historique (bâti seulement).
+  template: z
+    .enum(['STANDARD', 'FURNISHED'])
+    .optional()
+    .transform(v => v ?? 'STANDARD')
 });
 
 export async function createInspection(
@@ -353,9 +268,12 @@ export async function createInspection(
       where: { leaseId, tenantId, type: LeaseInspectionType.ENTRY },
       select: { rooms: true }
     });
-    rooms = entry ? blankRoomsFrom(toRooms(entry.rooms)) : defaultRooms();
+    // Une entrée existe : ses pièces sont reprises et `template` est ignoré.
+    rooms = entry
+      ? blankRoomsFrom(normalizeRooms(entry.rooms))
+      : templateRooms(input.template, { withQuantities: false });
   } else {
-    rooms = defaultRooms();
+    rooms = templateRooms(input.template, { withQuantities: true });
   }
 
   const row = await prisma.leaseInspection.create({
@@ -378,14 +296,48 @@ export async function createInspection(
 // Mise à jour — brouillons seulement
 // ---------------------------------------------------------------------------
 
-const conditionSchema = z.enum(['NEW', 'GOOD', 'FAIR', 'POOR', 'BROKEN']);
+const conditionSchema = z.enum(CONDITIONS);
 
-const itemSchema = z.object({
-  id: z.string().trim().min(1, "Identifiant d'élément requis."),
-  label: z.string().trim().min(1, 'Libellé requis.'),
-  condition: conditionSchema.nullable(),
-  comment: z.string().trim().max(2000).nullable()
-});
+const itemSchema = z
+  .object({
+    id: z.string().trim().min(1, "Identifiant d'élément requis."),
+    label: z.string().trim().min(1, 'Libellé requis.'),
+    condition: conditionSchema.nullable(),
+    comment: z.string().trim().max(2000).nullable(),
+    // Champs du volet meublés, facultatifs : un document ancien (ou un client
+    // qui les ignore) reste accepté, en éléments de bâti.
+    kind: z
+      .enum(ITEM_KINDS)
+      .optional()
+      .transform(v => v ?? 'FIXTURE'),
+    quantity: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_QUANTITY)
+      .nullable()
+      .optional()
+      .transform(v => v ?? null),
+    replacementValue: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_REPLACEMENT_VALUE)
+      .nullable()
+      .optional()
+      .transform(v => v ?? null)
+  })
+  .superRefine((item, ctx) => {
+    if (item.kind === 'FIXTURE' && item.quantity !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['quantity'],
+        message: 'Seul un élément de mobilier porte une quantité.'
+      });
+    }
+  })
+  // R3 : un élément de mobilier manquant compte 0, quelle que soit la quantité reçue.
+  .transform(item => normalizeItemQuantity(item));
 
 const roomSchema = z.object({
   id: z.string().trim().min(1, 'Identifiant de pièce requis.'),
@@ -408,6 +360,16 @@ const deductionSchema = z.object({
     .string()
     .trim()
     .min(1)
+    .nullable()
+    .optional()
+    .transform(v => v ?? null),
+  source: z
+    .enum(DEDUCTION_SOURCES)
+    .optional()
+    .transform(v => v ?? 'MANUAL'),
+  proposedAmount: z
+    .number()
+    .nonnegative()
     .nullable()
     .optional()
     .transform(v => v ?? null)
@@ -485,6 +447,38 @@ const updateInspectionSchema = z
     }
   });
 
+/**
+ * R4 — sortie face à une entrée **finalisée** : un élément repris de l'entrée
+ * ne peut pas être retiré (on le marque « Manquant ») et ses libellé, nature
+ * et valeur de remplacement sont ceux de l'entrée. Une entrée en brouillon ou
+ * absente ne fait pas foi : aucune contrainte.
+ */
+async function guardExitAgainstEntry(
+  tenantId: string,
+  leaseId: string,
+  savedExitRooms: InspectionRoom[],
+  incomingRooms: InspectionRoom[]
+): Promise<InspectionRoom[]> {
+  const entry = await prisma.leaseInspection.findFirst({
+    where: { leaseId, tenantId, type: LeaseInspectionType.ENTRY },
+    select: { rooms: true, status: true }
+  });
+  if (!entry || entry.status !== LeaseInspectionStatus.FINALIZED) return incomingRooms;
+
+  const entryRooms = normalizeRooms(entry.rooms);
+  const removedItems = findRemovedEntryItems(entryRooms, savedExitRooms, incomingRooms);
+  if (removedItems.length > 0) {
+    throw new AppError(
+      "Un élément repris de l'état des lieux d'entrée ne peut pas être retiré de la sortie : indiquez « Manquant ».",
+      400,
+      ErrorCode.BAD_REQUEST,
+      undefined,
+      { removedItems }
+    );
+  }
+  return freezeEntryFields(incomingRooms, entryRooms);
+}
+
 export async function updateInspection(
   tenantId: string,
   leaseId: string,
@@ -498,12 +492,16 @@ export async function updateInspection(
   }
 
   const input = updateInspectionSchema.parse(body);
+  const rooms =
+    existing.type === LeaseInspectionType.EXIT
+      ? await guardExitAgainstEntry(tenantId, leaseId, normalizeRooms(existing.rooms), input.rooms)
+      : input.rooms;
 
   const row = await prisma.leaseInspection.update({
     where: { id: inspectionId, tenantId },
     data: {
       inspectionDate: parseDateOnly(input.inspectionDate),
-      rooms: input.rooms as unknown as Prisma.InputJsonValue,
+      rooms: rooms as unknown as Prisma.InputJsonValue,
       // Colonne optionnelle : `Prisma.DbNull` écrit un NULL SQL, un `null` nu
       // n'est pas accepté par le client pour une colonne Json (voir
       // audit-service.ts).
@@ -543,10 +541,20 @@ export async function finalizeInspection(
   if (existing.tenantPresent && !existing.tenantSignatoryName?.trim()) {
     throw badRequest('Le nom du signataire locataire est requis : le locataire était présent.');
   }
-  const rooms = toRooms(existing.rooms);
-  const hasCondition = rooms.some(room => room.items.some(item => item.condition !== null));
-  if (!hasCondition) {
+  const rooms = normalizeRooms(existing.rooms);
+  if (countItems(rooms) === 0) {
     throw badRequest('Au moins un élément doit avoir un état renseigné avant de finaliser.');
+  }
+  // R5 : chaque élément est évalué (état ; quantité pour le mobilier non manquant).
+  const unevaluatedItems = findUnevaluatedItems(rooms);
+  if (unevaluatedItems.length > 0) {
+    throw new AppError(
+      'Tous les éléments doivent être évalués avant de finaliser.',
+      400,
+      ErrorCode.BAD_REQUEST,
+      undefined,
+      { unevaluatedItems }
+    );
   }
 
   const row = await prisma.leaseInspection.update({

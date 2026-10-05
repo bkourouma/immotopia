@@ -686,7 +686,9 @@ export async function getLeaseById(tenantId: string, leaseId: string): Promise<L
           internalReference: true,
           address: true,
           title: true,
-          transactionModes: true
+          transactionModes: true,
+          // Présélection du modèle d'état des lieux (meublé ou non), spec 040 M1.
+          furnishingStatus: true
         }
       },
       primaryRenter: {

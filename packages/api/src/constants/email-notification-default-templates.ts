@@ -360,6 +360,15 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas : l'agence peut révoquer l'accès à tout moment.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
+  STOCK_ALERT_AGENCY: {
+    subject: 'Alertes de stock à traiter - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Alertes de stock à traiter</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
+<p style="margin:0 0 20px 0;"><strong>{{alertsCount}}</strong> nouvelle(s) alerte(s) de stock sont à traiter pour <strong>{{agencyName}}</strong>. Une alerte signale un fait au-dessus d'un seuil : elle ne désigne personne.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px; line-height:1.6;">{{alertsSummary}}</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#fffbeb; border-radius:8px; font-size:14px;"><a href="{{controlUrl}}" style="color:#b45309; font-weight:600; text-decoration:underline;">Ouvrir le contrôle du stock</a></p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
   INVITATION: {
     subject: 'Invitation - {{agencyName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Vous êtes invité(e)</h1>

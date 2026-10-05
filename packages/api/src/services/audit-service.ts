@@ -3,6 +3,7 @@ import { AuditLogEntry, AuditActionKey } from '../types/audit-types';
 import { logger } from '../utils/logger';
 import { registerShutdownHook } from '../utils/shutdown-hooks';
 import { AuditRow, buildAuditRow } from './audit-entry-builder';
+import { formatSlipNumber } from '../lib/finance/stock-bons';
 
 // In-memory audit queue. Rows are built (actor, tenant, request id, catalog,
 // redaction) when the event is logged, i.e. inside the request: the flush runs
@@ -305,7 +306,76 @@ async function loadResourceLabels(
     if (label) labelByLogId.set(log.id, label);
   }
 
+  await loadStockResourceLabels(logs, scopeTenantId, labelByLogId);
+
   return labelByLogId;
+}
+
+/** `jj/mm/aaaa` au jour UTC, comme les dates de pièce du stock. */
+function formatUtcDate(date: Date): string {
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getUTCFullYear()}`;
+}
+
+/**
+ * Libellés des objets du stock (spec 040, B6-R3) : un bon par son numéro, un
+ * inventaire par son lieu et sa date, un preneur par son nom. Bornés à
+ * l'agence en vue d'agence, comme les autres libellés.
+ */
+async function loadStockResourceLabels(
+  logs: Array<{ id: string; entityType: string; entityId: string }>,
+  scopeTenantId: string | undefined,
+  labelByLogId: Map<string, string>
+): Promise<void> {
+  const slipIds = new Set<string>();
+  const countIds = new Set<string>();
+  const takerIds = new Set<string>();
+  for (const log of logs) {
+    if (log.entityType === 'StockSlip') slipIds.add(log.entityId);
+    else if (log.entityType === 'StockCount') countIds.add(log.entityId);
+    else if (log.entityType === 'StockTaker') takerIds.add(log.entityId);
+  }
+  const scope = scopeTenantId ? { tenantId: scopeTenantId } : {};
+
+  const [slips, counts, takers] = await Promise.all([
+    nativeUuids(slipIds).length > 0
+      ? prisma.stockSlip.findMany({
+          where: { id: { in: nativeUuids(slipIds) }, ...scope },
+          select: { id: true, kind: true, year: true, number: true }
+        })
+      : [],
+    nativeUuids(countIds).length > 0
+      ? prisma.stockCount.findMany({
+          where: { id: { in: nativeUuids(countIds) }, ...scope },
+          select: { id: true, countedAt: true, location: { select: { label: true } } }
+        })
+      : [],
+    nativeUuids(takerIds).length > 0
+      ? prisma.stockTaker.findMany({
+          where: { id: { in: nativeUuids(takerIds) }, ...scope },
+          select: { id: true, fullName: true }
+        })
+      : []
+  ]);
+
+  const stockLabels = new Map<string, string>([
+    ...slips.map(slip => [slip.id, formatSlipNumber(slip.kind, slip.year, slip.number)] as const),
+    ...counts.map(
+      count =>
+        [
+          count.id,
+          `Inventaire — ${count.location?.label ?? 'Lieu inconnu'} du ${formatUtcDate(count.countedAt)}`
+        ] as const
+    ),
+    ...takers.map(taker => [taker.id, taker.fullName] as const)
+  ]);
+
+  for (const log of logs) {
+    if (log.entityType !== 'StockSlip' && log.entityType !== 'StockCount' && log.entityType !== 'StockTaker') continue;
+    const label = stockLabels.get(log.entityId);
+    if (label) labelByLogId.set(log.id, label);
+  }
 }
 
 // Graceful shutdown: flush remaining entries BEFORE the database is closed.

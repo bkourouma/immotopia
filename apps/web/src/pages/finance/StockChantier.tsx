@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Alert, App, Button, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   enableSiteStock,
-  getSiteStockReconciliation,
+  getSiteStockReconciliationWithMeta,
   getSiteStockStatus
 } from '../../services/finance-stock-rapprochement-service';
 import type { SiteStockReconciliationLine } from '../../types/finance-stock-rapprochement-types';
@@ -20,6 +20,7 @@ import {
   StateBlock,
   StatusTag
 } from '../../components/primitives';
+import { StockQuantityCell } from '../../components/finance/stock/StockQuantityCell';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -175,14 +176,24 @@ function messageErreur(err: unknown, secours: string): string {
   return reponse?.data?.message || secours;
 }
 
-/** Une quantité, et sous elle la valeur que le serveur lui attribue. */
-function CelluleFlux(props: { quantiteAffichee: string; valeur: number }): React.ReactElement {
+/**
+ * Une quantité, et sous elle la valeur que le serveur lui attribue.
+ *
+ * Lot 040 : une quantité `null` (lieu du chantier en comptage à l'aveugle)
+ * s'affiche « Comptage en cours », et une valeur `null` n'est pas affichée —
+ * jamais « 0 » ni « — » à la place d'un chiffre masqué.
+ */
+function CelluleFlux(props: { quantite: number | null; unite: string; valeur: number | null }): React.ReactElement {
   return (
     <div>
-      <div>{props.quantiteAffichee}</div>
-      <Text type="secondary">
-        <MoneyValue value={props.valeur} />
-      </Text>
+      <div>
+        <StockQuantityCell quantity={props.quantite} unit={props.unite} />
+      </div>
+      {props.quantite !== null && props.valeur !== null ? (
+        <Text type="secondary">
+          <MoneyValue value={props.valeur} />
+        </Text>
+      ) : null}
     </div>
   );
 }
@@ -195,13 +206,13 @@ export const StockChantier: React.FC = () => {
   const [basculeEnCours, setBasculeEnCours] = useState(false);
 
   const {
-    data: rapprochement,
+    data: rapprochementLu,
     isPending: rapprochementEnAttente,
     error: erreurRapprochement,
     refetch: refetchRapprochement
   } = useQuery({
     queryKey: detailKey('site-stock-reconciliation', tenantId, siteId ?? ''),
-    queryFn: () => getSiteStockReconciliation(tenantId as string, siteId as string),
+    queryFn: () => getSiteStockReconciliationWithMeta(tenantId as string, siteId as string),
     enabled: Boolean(tenantId && siteId),
     staleTime: STALE_TIME.list
   });
@@ -219,6 +230,8 @@ export const StockChantier: React.FC = () => {
     enabled: Boolean(tenantId && siteId),
     staleTime: STALE_TIME.list
   });
+
+  const rapprochement = rapprochementLu?.data;
 
   const invaliderTout = async () => {
     await queryClient.invalidateQueries({ queryKey: detailKey('site-stock-reconciliation', tenantId, siteId ?? '') });
@@ -238,11 +251,13 @@ export const StockChantier: React.FC = () => {
       const nouveau = await enableSiteStock(tenantId, siteId);
       await invaliderTout();
       message.success(
-        nouveau.stockLocationLabel
-          ? t('Chantier passé au stock. Ses réceptions atterriront au lieu « {{stockLocationLabel}} ».', {
-              stockLocationLabel: nouveau.stockLocationLabel
-            })
-          : t('Chantier passé au stock.')
+        `${
+          nouveau.stockLocationLabel
+            ? t('Chantier passé au stock. Ses réceptions atterriront au lieu « {{stockLocationLabel}} ».', {
+                stockLocationLabel: nouveau.stockLocationLabel
+              })
+            : t('Chantier passé au stock.')
+        } ${t('Pensez à faire l’inventaire d’ouverture.')}`
       );
     } catch (err) {
       // « Le chantier « X » est déjà passé au stock », « Chantier clos » : le
@@ -304,7 +319,7 @@ export const StockChantier: React.FC = () => {
       key: 'recu',
       align: 'end',
       render: (_, ligne) => (
-        <CelluleFlux quantiteAffichee={quantite(ligne.receivedQuantity, ligne.itemUnit)} valeur={ligne.receivedValue} />
+        <CelluleFlux quantite={ligne.receivedQuantity} unite={ligne.itemUnit} valeur={ligne.receivedValue} />
       )
     },
     {
@@ -312,10 +327,7 @@ export const StockChantier: React.FC = () => {
       key: 'transfere',
       align: 'end',
       render: (_, ligne) => (
-        <CelluleFlux
-          quantiteAffichee={quantite(ligne.transferredInQuantity, ligne.itemUnit)}
-          valeur={ligne.transferredInValue}
-        />
+        <CelluleFlux quantite={ligne.transferredInQuantity} unite={ligne.itemUnit} valeur={ligne.transferredInValue} />
       )
     },
     {
@@ -323,7 +335,28 @@ export const StockChantier: React.FC = () => {
       key: 'consomme',
       align: 'end',
       render: (_, ligne) => (
-        <CelluleFlux quantiteAffichee={quantite(ligne.issuedQuantity, ligne.itemUnit)} valeur={ligne.issuedValue} />
+        <CelluleFlux quantite={ligne.issuedQuantity} unite={ligne.itemUnit} valeur={ligne.issuedValue} />
+      )
+    },
+    {
+      // Lot 040 (A6) : deux colonnes descriptives, qui ne se soustraient de rien.
+      title: t('Retourné au fournisseur'),
+      key: 'retourne',
+      align: 'end',
+      render: (_, ligne) => (
+        <CelluleFlux
+          quantite={ligne.returnedToSupplierQuantity}
+          unite={ligne.itemUnit}
+          valeur={ligne.returnedToSupplierValue}
+        />
+      )
+    },
+    {
+      title: t('Mis au rebut'),
+      key: 'rebut',
+      align: 'end',
+      render: (_, ligne) => (
+        <CelluleFlux quantite={ligne.scrappedQuantity} unite={ligne.itemUnit} valeur={ligne.scrappedValue} />
       )
     },
     {
@@ -331,10 +364,7 @@ export const StockChantier: React.FC = () => {
       key: 'restant',
       align: 'end',
       render: (_, ligne) => (
-        <CelluleFlux
-          quantiteAffichee={quantite(ligne.remainingQuantity, ligne.itemUnit)}
-          valeur={ligne.remainingValue}
-        />
+        <CelluleFlux quantite={ligne.remainingQuantity} unite={ligne.itemUnit} valeur={ligne.remainingValue} />
       )
     }
   ];
@@ -437,6 +467,33 @@ export const StockChantier: React.FC = () => {
         />
       )}
 
+      {basculee && statut?.openingCountSuggested ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 'var(--space-4)' }}
+          message={t('Faites l’inventaire d’ouverture de ce lieu')}
+          description={
+            <>
+              <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
+                {t(
+                  'Il constate ce qui s’y trouve déjà. Les quantités trouvées entrent dans le stock sans valeur, puisque leurs factures ont déjà été imputées au chantier.'
+                )}
+              </Paragraph>
+              {statut.stockLocationId ? (
+                <Link
+                  to={`/tenant/${tenantId}/finance/stock/inventaire?ouvrir=OPENING&lieu=${encodeURIComponent(
+                    statut.stockLocationId
+                  )}`}
+                >
+                  {t('Faire l’inventaire d’ouverture')}
+                </Link>
+              ) : null}
+            </>
+          }
+        />
+      ) : null}
+
       {!basculee && (
         <div style={{ marginBottom: 'var(--space-6)' }}>
           <ConfirmAction
@@ -518,7 +575,13 @@ export const StockChantier: React.FC = () => {
         />
         <StatCard
           label={t('Restant sur le chantier')}
-          value={<MoneyValue value={rapprochement.remainingValue} />}
+          value={
+            rapprochement.remainingValue === null ? (
+              <StockQuantityCell quantity={null} />
+            ) : (
+              <MoneyValue value={rapprochement.remainingValue} />
+            )
+          }
           hint={t('Ce qui se trouve au lieu du chantier à cet instant.')}
         />
         <StatCard
@@ -578,7 +641,7 @@ export const StockChantier: React.FC = () => {
         {t(
           "Les quantités sont exprimées dans l'unité de chaque article, et la valeur que le serveur leur attribue est rappelée dessous."
         )}{' '}
-        <strong>{t('Ces quatre colonnes ne se soustraient pas entre elles')}</strong>{' '}
+        <strong>{t('Ces colonnes ne se soustraient pas entre elles')}</strong>{' '}
         {t(
           ": le consommé compte les sorties vers ce chantier depuis n'importe quel lieu, tandis que l'entré, le venu d'ailleurs et le restant portent sur le seul lieu du chantier."
         )}
@@ -588,7 +651,7 @@ export const StockChantier: React.FC = () => {
         // Le contrat de `getSiteStockReconciliation` ne pagine pas : il rend le
         // rapprochement entier d'un chantier.
         paginated={false}
-        scrollX={1100}
+        scrollX={1400}
         items={rapprochement.lines}
         total={rapprochement.lines.length}
         page={1}
@@ -603,12 +666,20 @@ export const StockChantier: React.FC = () => {
             title={ligne.itemReference}
             aria-label={ligne.itemReference}
             subtitle={ligne.itemLabel}
-            highlight={quantite(ligne.remainingQuantity, ligne.itemUnit)}
+            highlight={<StockQuantityCell quantity={ligne.remainingQuantity} unit={ligne.itemUnit} />}
             fields={[
               { label: t('Entré depuis une facture'), value: quantite(ligne.receivedQuantity, ligne.itemUnit) },
               { label: t("Venu d'un autre lieu"), value: quantite(ligne.transferredInQuantity, ligne.itemUnit) },
               { label: t('Consommé'), value: quantite(ligne.issuedQuantity, ligne.itemUnit) },
-              { label: t('Restant'), value: quantite(ligne.remainingQuantity, ligne.itemUnit) }
+              {
+                label: t('Retourné au fournisseur'),
+                value: quantite(ligne.returnedToSupplierQuantity, ligne.itemUnit)
+              },
+              { label: t('Mis au rebut'), value: quantite(ligne.scrappedQuantity, ligne.itemUnit) },
+              {
+                label: t('Restant'),
+                value: <StockQuantityCell quantity={ligne.remainingQuantity} unit={ligne.itemUnit} />
+              }
             ]}
           />
         )}

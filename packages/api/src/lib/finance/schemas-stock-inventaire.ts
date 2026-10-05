@@ -1,88 +1,46 @@
+import { StockReasonCode } from '@prisma/client';
 import { z } from 'zod';
 import { uuidPathParamSchema as sharedUuidPathParamSchema } from './schemas';
 
 /**
- * Validation Zod des sept points d'entrée des transferts et de l'inventaire —
- * lot 5, troisième sous-lot (`lib/finance/types-lot5-inventaire.ts`).
+ * Validation Zod des points d'entrée de l'inventaire — lot 5, refondue par le
+ * lot 040 (contrat `contracts/openapi.yaml` 2.0.0 : `CreateCountRequest`,
+ * `SetCountLineRequest`, `JustifyLineRequest`, `ValidateCountRequest`,
+ * `ReasonOnlyRequest`).
  *
  * **Toute entrée invalide devient un `ZodError`**, que le middleware central
- * (`middleware/error-middleware.ts`) traduit en 400, quelle que soit la route.
- * Même discipline qu'aux sous-lots précédents (`schemas-stock-mouvements.ts`,
- * `schemas-retentions.ts`) : le contrôleur n'appelle que `.parse`, jamais un
- * `.safeParse` suivi d'un abandon silencieux.
+ * traduit en 400. Le contrôleur n'appelle que `.parse`.
  *
- * ---------------------------------------------------------------------------
- * `.strict()` partout, et trois raisons distinctes de l'être
- * ---------------------------------------------------------------------------
+ * `.strict()` partout :
  *
- * 1. **Un corps ne répète jamais un identifiant que le chemin porte déjà.**
- *    Le chemin porte `tenantId`, `countId` et `itemId` selon la route ; aucun
- *    corps de ce fichier n'en parle. Quatre créations des lots 2 et 3
- *    échouaient en 400 contre le vrai serveur pour avoir ignoré cette règle.
+ * 1. **Un corps ne répète jamais un identifiant que le chemin porte déjà**
+ *    (`tenantId`, `countId`, `itemId`).
+ * 2. **`expectedQuantity` n'est PAS un champ de saisie** (principe P-4) : le
+ *    service la fige depuis le solde. `variance` et `varianceValue`, dérivées,
+ *    sont refusées pour la même raison.
+ * 3. **Le motif ne se saisit pas au comptage** (spec A2-R5) : il se saisit
+ *    ligne par ligne APRÈS la clôture du comptage, par la route de
+ *    justification. `reason` envoyé avec une saisie est refusé avec un message
+ *    explicite plutôt que par le refus générique d'un champ inconnu.
  *
- * 2. **`expectedQuantity` n'est PAS un champ de saisie** (principe P-4,
- *    contrat). Le service la lit dans le stock au moment de la saisie et la
- *    fige. La laisser entrer permettrait de fabriquer un écart nul — c'est
- *    exactement le geste que le besoin S6 cherche à empêcher. Comme le schéma
- *    est strict, un appelant qui l'enverrait reçoit un 400 explicite plutôt
- *    que de croire sa valeur prise en compte alors que Zod l'a *retirée* sans
- *    le dire. C'est la seule façon de rendre le principe visible du dehors.
- *    `variance` et `varianceValue`, tout aussi dérivées, sont refusées pour la
- *    même raison.
- *
- * 3. **La validation d'un inventaire ne se paramètre pas.** Son corps est un
- *    objet vide et strict : rien à décider au moment de valider, tout a été
- *    décidé en comptant.
- *
- * ---------------------------------------------------------------------------
- * Une quantité n'est pas un montant
- * ---------------------------------------------------------------------------
- *
- * Les quantités portent quatre décimales (`Decimal(16,4)`) : on compte des
- * tonnes et des mètres cubes. Aucun schéma de ce fichier ne les contraint à
- * l'entier.
- *
- * La quantité **transférée** est strictement positive : déplacer zéro n'est
- * pas un geste, et un négatif serait un transfert à l'envers déguisé.
- * La quantité **comptée**, elle, accepte le zéro — « on a compté, il n'y a
- * rien » est un résultat de comptage, et le plus fréquent des écarts. Seul le
- * négatif est refusé : on ne compte pas moins que rien.
+ * Une quantité comptée accepte le zéro (« il n'y a rien » est un résultat de
+ * comptage) ; seul le négatif est refusé. Quatre décimales, jamais l'entier.
  */
 
 export const uuidPathParamSchema = sharedUuidPathParamSchema;
 
-/** Les deux états d'un inventaire (`StockCountStatus`). */
-export const stockCountStatusSchema = z.enum(['DRAFT', 'VALIDATED'], {
+/** Les quatre états d'un inventaire (`StockCountStatus`, A2-R1). */
+export const stockCountStatusSchema = z.enum(['DRAFT', 'COUNTED', 'VALIDATED', 'CANCELLED'], {
   errorMap: () => ({ message: 'Statut d’inventaire invalide.' })
 });
 
-// ---------------------------------------------------------------------------
-// POST /stock/transfers
-//
-// Les deux lieux sont dans le CORPS, et ce n'est pas une répétition : le
-// chemin ne porte que `tenantId`. AUCUN PRIX n'est reçu — la valeur part au
-// coût moyen du lieu d'origine (principe P-4), et un transfert n'écrit aucune
-// écriture comptable.
-//
-// Le même lieu des deux côtés est refusé par le domaine, pas ici : Zod valide
-// la forme d'un champ, et la relation entre deux champs est une règle métier
-// dont le domaine reste la seule autorité.
-// ---------------------------------------------------------------------------
+/** Les trois natures d'un inventaire (`StockCountKind`, A7). */
+export const stockCountKindSchema = z.enum(['REGULAR', 'OPENING', 'CLOSING'], {
+  errorMap: () => ({ message: 'Nature d’inventaire invalide.' })
+});
 
-export const createStockTransferSchema = z
-  .object({
-    fromLocationId: z.string().uuid('Identifiant de lieu d’origine invalide.'),
-    toLocationId: z.string().uuid('Identifiant de lieu d’arrivée invalide.'),
-    itemId: z.string().uuid('Identifiant d’article invalide.'),
-    quantity: z
-      .number({ invalid_type_error: 'La quantité doit être un nombre.' })
-      .finite('La quantité doit être un nombre fini.')
-      .gt(0, 'La quantité transférée doit être strictement positive.'),
-    transferDate: z.coerce.date({ errorMap: () => ({ message: 'Date de transfert invalide.' }) })
-  })
-  .strict();
-
-export type CreateStockTransferInput = z.infer<typeof createStockTransferSchema>;
+/** Identifiant d'idempotence d'une saisie (B3-R2). */
+const clientRequestIdSchema = z.string().uuid('Identifiant de requête invalide.');
 
 // ---------------------------------------------------------------------------
 // POST /stock/counts
@@ -91,7 +49,8 @@ export type CreateStockTransferInput = z.infer<typeof createStockTransferSchema>
 export const createStockCountSchema = z
   .object({
     locationId: z.string().uuid('Identifiant de lieu de stockage invalide.'),
-    countedAt: z.coerce.date({ errorMap: () => ({ message: 'Date de comptage invalide.' }) })
+    countedAt: z.coerce.date({ errorMap: () => ({ message: 'Date de comptage invalide.' }) }),
+    kind: stockCountKindSchema.optional()
   })
   .strict();
 
@@ -99,38 +58,83 @@ export type CreateStockCountInput = z.infer<typeof createStockCountSchema>;
 
 // ---------------------------------------------------------------------------
 // PUT /stock/counts/:countId/lines
-//
-// `countId` est dans le CHEMIN, jamais dans le corps. `expectedQuantity` n'y
-// est pas non plus : voir la raison n°2 de l'en-tête.
 // ---------------------------------------------------------------------------
+
+/** Le message du refus d'un motif saisi au comptage (A2-R5). */
+export const REASON_AT_COUNT_MESSAGE = 'Le motif se saisit après la clôture du comptage.';
 
 export const setStockCountLineSchema = z
   .object({
     itemId: z.string().uuid('Identifiant d’article invalide.'),
-    // Le ZÉRO est accepté (voir l'en-tête). Seul le négatif est refusé.
     countedQuantity: z
       .number({ invalid_type_error: 'La quantité comptée doit être un nombre.' })
       .finite('La quantité comptée doit être un nombre fini.')
       .min(0, 'La quantité comptée ne peut pas être négative.'),
-    // Facultatif ICI, exigé À LA VALIDATION quand il y a un écart (besoin S6) :
-    // on compte une allée d'abord, on explique ensuite. Refuser le motif dès la
-    // saisie obligerait à inventer une explication avant d'avoir regardé, et
-    // « écart constaté » finirait recopié sur toutes les lignes.
-    reason: z.string().trim().max(500, 'Le motif de l’écart est trop long.').nullish()
+    clientRequestId: clientRequestIdSchema.optional(),
+    // Accepté par la forme pour être refusé avec un message clair (A2-R5).
+    reason: z.unknown().optional(),
+    reasonCode: z.unknown().optional()
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    for (const field of ['reason', 'reasonCode'] as const) {
+      if (value[field] !== undefined) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: REASON_AT_COUNT_MESSAGE });
+      }
+    }
+  })
+  .transform(({ itemId, countedQuantity, clientRequestId }) => ({ itemId, countedQuantity, clientRequestId }));
 
 export type SetStockCountLineInput = z.infer<typeof setStockCountLineSchema>;
 
 // ---------------------------------------------------------------------------
-// POST /stock/counts/:countId/validate
-//
-// Corps vide et strict : rien à décider au moment de valider. Parsé quand
-// même, pour refuser un corps qui répéterait `countId` plutôt que de le jeter
-// en silence (raison n°3 de l'en-tête).
+// POST /stock/counts/:countId/close
 // ---------------------------------------------------------------------------
 
-export const validateStockCountSchema = z.object({}).strict();
+export const closeStockCountSchema = z.object({}).strict();
+
+// ---------------------------------------------------------------------------
+// PUT /stock/counts/:countId/lines/:itemId/justification
+// ---------------------------------------------------------------------------
+
+export const justifyStockCountLineSchema = z
+  .object({
+    // Un code de la liste fermée ; le service refuse ceux qui ne sont pas de la
+    // colonne « Inventaire » (et `OPENING_BALANCE`) en `STOCK_REASON_NOT_ALLOWED`.
+    reasonCode: z.nativeEnum(StockReasonCode, { errorMap: () => ({ message: 'Motif d’écart invalide.' }) }),
+    reason: z.string().trim().max(500, 'La précision du motif est trop longue.').nullish()
+  })
+  .strict();
+
+export type JustifyStockCountLineInput = z.infer<typeof justifyStockCountLineSchema>;
+
+// ---------------------------------------------------------------------------
+// POST …/set-aside, …/set-aside-uncounted, …/cancel
+// ---------------------------------------------------------------------------
+
+export const reasonOnlySchema = z
+  .object({
+    reason: z
+      .string({ required_error: 'Le motif est obligatoire.' })
+      .trim()
+      .min(3, 'Le motif compte au moins 3 caractères.')
+      .max(500, 'Le motif est trop long.')
+  })
+  .strict();
+
+export type ReasonOnlyInput = z.infer<typeof reasonOnlySchema>;
+
+// ---------------------------------------------------------------------------
+// POST /stock/counts/:countId/validate
+// ---------------------------------------------------------------------------
+
+export const validateStockCountSchema = z
+  .object({
+    // Les bornes (10 à 500) sont vérifiées par le service : il répond alors
+    // `STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED`, que l'écran sait lire.
+    selfValidationReason: z.string().max(500, 'Le motif de la dérogation est trop long.').optional()
+  })
+  .strict();
 
 export type ValidateStockCountInput = z.infer<typeof validateStockCountSchema>;
 
@@ -141,7 +145,12 @@ export type ValidateStockCountInput = z.infer<typeof validateStockCountSchema>;
 export const listStockCountsQuerySchema = z
   .object({
     locationId: z.string().uuid('Identifiant de lieu de stockage invalide.').optional(),
-    status: stockCountStatusSchema.optional()
+    status: stockCountStatusSchema.optional(),
+    kind: stockCountKindSchema.optional(),
+    withLines: z
+      .enum(['true', 'false'], { errorMap: () => ({ message: 'withLines vaut true ou false.' }) })
+      .optional()
+      .transform(value => value === 'true')
   })
   .strict();
 

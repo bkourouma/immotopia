@@ -608,6 +608,26 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
     expect(writeSensitivity(path)?.category).toBe(category);
   });
 
+  // Lot 040 : les écritures du stock qui sortent de la marchandise ou une preuve.
+  it.each([
+    'POST /api/tenants/:tenantId/finance/stock/scraps',
+    'POST /api/tenants/:tenantId/finance/stock/supplier-returns',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/lines/:itemId/set-aside',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/set-aside-uncounted',
+    'POST /api/tenants/:tenantId/finance/stock/counts/:countId/cancel'
+  ])('%s : stock, écriture du catalogue classée sensible (lifecycle)', id => {
+    const entry = findWritableEntry(id);
+    expect(entry).toBeDefined();
+    expect(writeSensitivity(entry!.path)?.category).toBe('lifecycle');
+    expect(assessWrite(entry!, {})).toMatchObject({ sensitive: true, requiresTypedConfirmation: true });
+  });
+
+  it('stock : le retrait d’une pièce jointe est classé sensible, et exclu du catalogue comme destructeur', () => {
+    const path = '/api/tenants/:tenantId/finance/stock/attachments/:attachmentId/remove';
+    expect(writeSensitivity(path)?.category).toBe('lifecycle');
+    expect(findWritableEntry(`POST ${path}`)).toBeUndefined();
+  });
+
   it('`status` n’est sensible que sur un bail ; une création banale reste non sensible', () => {
     expect(writeSensitivity('/api/tenants/:tenantId/maintenance/tickets/:id/status')).toBeNull();
     expect(writeSensitivity('/api/tenants/:tenantId/rental/leases/:id/status')).not.toBeNull();

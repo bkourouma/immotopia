@@ -39,6 +39,16 @@ describe('onglets des espaces Finance par pack', () => {
     expect(keys('fournisseurs-commandes', m)).toHaveLength(3);
     expect(keys('reversements-commissions', m)).toEqual(['associations']);
     expect(keys('suivi-chantiers', m)).toHaveLength(3);
+    // Lot 040 : les six onglets du stock, tous sous `finance/stock`, donc
+    // classés CONSTRUCTION sans rien déclarer de plus.
+    expect(keys('gestion-stock', m)).toEqual([
+      'stock',
+      'stock-magasin',
+      'stock-inventaire',
+      'stock-preneurs',
+      'stock-controle',
+      'stock-parametrage'
+    ]);
   });
 
   it('INTEGRE : tout visible', () => {

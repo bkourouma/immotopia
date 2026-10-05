@@ -136,3 +136,30 @@ describe('WorkspaceTabs', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('WorkspaceTabs — espace « Gestion du stock » (lot 040)', () => {
+  const STOCK_ITEMS: WorkspaceTabItem[] = [
+    { key: 'stock', label: 'Stock', href: '/tenant/t1/finance/stock' },
+    { key: 'stock-magasin', label: 'Magasin', href: '/tenant/t1/finance/stock/magasin' },
+    { key: 'stock-controle', label: 'Contrôle', href: '/tenant/t1/finance/stock/controle' }
+  ];
+
+  it('allume « Magasin » et non « Stock » sur /finance/stock/magasin (préfixe le plus long)', () => {
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/finance/stock/magasin']}>
+        <WorkspaceTabs items={STOCK_ITEMS} ariaLabel="Gestion du stock" />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('tab', { name: 'Magasin' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Stock' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('garde « Contrôle » allumé avec ses paramètres de requête', () => {
+    render(
+      <MemoryRouter initialEntries={['/tenant/t1/finance/stock/controle?alerte=a1']}>
+        <WorkspaceTabs items={STOCK_ITEMS} ariaLabel="Gestion du stock" />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('tab', { name: 'Contrôle' })).toHaveAttribute('aria-selected', 'true');
+  });
+});

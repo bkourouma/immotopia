@@ -121,6 +121,53 @@ export const PACK_TEST_TENANTS: readonly PackTestTenant[] = PACK_TEST_BASES.flat
   }
 ]);
 
+/**
+ * Comptes de recette supplémentaires (lot 040, contrôle du stock) : un
+ * Magasinier, un Comptable et, chez l'Opérateur intégré, un second
+ * administrateur, pour jouer les « quatre yeux » d'un inventaire (celui qui
+ * compte n'est pas celui qui valide) et l'écran Magasin sans les valeurs.
+ * Rattachés aux agences « 6 mois » des packs qui portent le stock (Promoteur,
+ * Opérateur intégré), même mot de passe que les administrateurs.
+ */
+export interface PackTestMember {
+  /** Nom exact de l'agence (`PackTestTenant.tenantName`). */
+  tenantName: string;
+  fullName: string;
+  email: string;
+  /** Rôle d'agence attribué (rôles plateforme). */
+  roleKey: 'TENANT_STOREKEEPER' | 'TENANT_ACCOUNTANT' | 'TENANT_ADMIN';
+}
+
+const PROMOTEUR_6M = `Test — Pack Promoteur · ${PACK_TEST_PROFILE_LABEL['6m']}`;
+const INTEGRE_6M = `Test — Pack Opérateur intégré · ${PACK_TEST_PROFILE_LABEL['6m']}`;
+
+export const PACK_TEST_MEMBERS: readonly PackTestMember[] = [
+  {
+    tenantName: PROMOTEUR_6M,
+    fullName: 'Magasinier Test Promoteur',
+    email: `magasinier-promoteur@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_STOREKEEPER'
+  },
+  {
+    tenantName: PROMOTEUR_6M,
+    fullName: 'Comptable Test Promoteur',
+    email: `comptable-promoteur@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_ACCOUNTANT'
+  },
+  {
+    tenantName: INTEGRE_6M,
+    fullName: 'Magasinier Test Intégré',
+    email: `magasinier-integre@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_STOREKEEPER'
+  },
+  {
+    tenantName: INTEGRE_6M,
+    fullName: 'Responsable Test Intégré',
+    email: `responsable-integre@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_ADMIN'
+  }
+];
+
 /** Seule origine publique autorisée en production : le staging. */
 export const STAGING_ORIGIN = 'https://app.immotopia.cloud';
 const PRODUCTION_HOST_MARKER = 'clients.immotopia.cloud';
