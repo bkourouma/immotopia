@@ -18,6 +18,27 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `test/web-stabilise-tests-patrimoine` — 2026-10-05
+
+**État :** PR brouillon bkourouma/immotopia#118 vers `main`. Branche fondée sur `60fc282d`, dernier commit : celui de cette section. Le diff ne touche que des tests, pas de fusion sans accord.
+
+**Fait :**
+
+- `import-patrimoine-page.test.tsx` : les helpers (`titreEtape`, `bouton`, `boutonImporter`, `choisirNature`) ne passent plus par `*ByRole` avec `name`. Ils localisent par texte ou libellé, puis appellent `toHaveRole`.
+  - Cause mesurée au profil CPU : le calcul de nom accessible appelle `getComputedStyle` jsdom sur les feuilles antd, et `findBy`/`waitFor` le rejouent à chaque mutation.
+  - Résultat sur 1 cœur : parcours nominal de 4,1–4,4 s à 2,6–2,9 s par exécution.
+- Le test foncier « réouverture exige un motif » était déjà corrigé dans `main` par #117 (`fireEvent.change`). Il a été vérifié 16/16 sur 1 cœur.
+
+**Reste :** suivre la CI de #118. Le test (2) « rapproche les colonnes » est le plus lent du fichier (11–24 s en local) : c'est le prochain candidat.
+
+**Pièges :**
+
+- Vitest 2.1.9 n'a pas `--repeat`. Utiliser l'option `{ repeats: N }` dans une copie temporaire du test.
+- Pour simuler la charge de la CI : `start "" /affinity 0x1 /wait /b cmd /c npx vitest run …` dans un `.cmd` épingle Vitest sur 1 cœur et reproduit les flakies.
+- Les fichiers de test sont en CRLF dans le worktree : un remplacement scripté en `\n` échoue en silence. Préférer l'outil Edit.
+- Le worktree a besoin de jonctions vers `node_modules`, `apps/web/node_modules` et `packages/api/node_modules` (`@types/archiver`), sinon le typecheck de l'API casse.
+- `npm run lint` de l'API : 1 erreur préexistante, `no-irregular-whitespace` dans `src/lib/audit/platform-audit-csv.ts`.
+
 ## Pilote — lots 040 (contrôle du stock) et 041 (inventaire par WhatsApp) — 2026-10-05
 
 **État :** **fusionné dans `main`** le 2026-10-05, à la demande de l'utilisateur :
