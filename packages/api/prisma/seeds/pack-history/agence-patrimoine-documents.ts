@@ -63,7 +63,7 @@ export async function seedOwnLeaseDocuments(o: OwnState): Promise<void> {
       });
       counters.set(
         key,
-        last.reduce((m, d) => Math.max(m, Number.parseInt(d.document_number.slice(key.length + 1), 10) || 0), 0)
+        last.reduce((m, d) => Math.max(m, Number.parseInt((d.document_number ?? '').slice(key.length + 1), 10) || 0), 0)
       );
     }
     const n = (counters.get(key) ?? 0) + 1;
