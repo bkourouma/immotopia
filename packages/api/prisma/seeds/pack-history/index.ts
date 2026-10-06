@@ -21,10 +21,21 @@ import { seedPatrimoineHistoryForPack } from './patrimoine';
 import { seedPatrimoineExtras } from './patrimoine-extras';
 import { seedEquipe, seedFacturationPlateforme } from './equipe-plateforme';
 import { seedFinanceTransverse } from './finance-transverse';
+import { seedAgencePatrimoine } from './agence-patrimoine';
+import { seedPromoteurCommercial } from './promoteur-commercial';
+import { seedSyndicFixes } from './syndic-fixes';
+import { seedPatrimoineFixes } from './patrimoine-fixes';
+import { seedCoreCommunication } from './core-communication';
+import { seedFinanceGaps } from './finance-gaps';
 
-const AGENCE_SEEDERS: HistorySeeder[] = [seedAgenceHistory, seedAgenceCommercial, seedAgenceLocatif];
-const SYNDIC_SEEDERS: HistorySeeder[] = [seedSyndicHistory, seedSyndicExtras];
-const PROMOTEUR_SEEDERS: HistorySeeder[] = [seedPromoteurHistory, seedPromoteurExtras];
+const AGENCE_SEEDERS: HistorySeeder[] = [
+  seedAgenceHistory,
+  seedAgenceCommercial,
+  seedAgenceLocatif,
+  seedAgencePatrimoine
+];
+const SYNDIC_SEEDERS: HistorySeeder[] = [seedSyndicHistory, seedSyndicExtras, seedSyndicFixes];
+const PROMOTEUR_SEEDERS: HistorySeeder[] = [seedPromoteurHistory, seedPromoteurExtras, seedPromoteurCommercial];
 
 function patrimoineSeeders(pack: 'PATRIMOINE_ESSENTIEL' | 'PATRIMOINE_PRO'): HistorySeeder[] {
   async function seedPatrimoineBase(ctx: HistoryContext): Promise<void> {
@@ -33,7 +44,10 @@ function patrimoineSeeders(pack: 'PATRIMOINE_ESSENTIEL' | 'PATRIMOINE_PRO'): His
   async function seedPatrimoineComplements(ctx: HistoryContext): Promise<void> {
     await seedPatrimoineExtras(ctx, pack);
   }
-  return [seedPatrimoineBase, seedPatrimoineComplements];
+  async function seedPatrimoineCorrectifs(ctx: HistoryContext): Promise<void> {
+    await seedPatrimoineFixes(ctx, pack);
+  }
+  return [seedPatrimoineBase, seedPatrimoineComplements, seedPatrimoineCorrectifs];
 }
 
 function modulesForPack(pack: string): HistorySeeder[] {
@@ -58,7 +72,14 @@ function modulesForPack(pack: string): HistorySeeder[] {
 export function historySeedersForPack(pack: string): HistorySeeder[] {
   const modules = modulesForPack(pack);
   if (modules.length === 0) return [];
-  return [seedEquipe, ...modules, seedFinanceTransverse, seedFacturationPlateforme];
+  return [
+    seedEquipe,
+    ...modules,
+    seedCoreCommunication,
+    seedFinanceTransverse,
+    seedFinanceGaps,
+    seedFacturationPlateforme
+  ];
 }
 
 export { buildContext, neutralizeOutbound } from './types';
