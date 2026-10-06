@@ -383,8 +383,12 @@ export function buildCoproPlan(input: PlanInput): CoproPlan {
       metadata: { source: 'pack-history:syndic' }
     });
   }
+  // la fiche CRM d'un copropriétaire est ouverte à son arrivée dans la copropriété (jamais « aujourd'hui »)
+  const firstOwned = new Map<string, Date>();
   lotDefs.forEach((l, i) => {
     const o = ownerByKey.get(l.ownerKey)!;
+    const seen = firstOwned.get(o.contactId);
+    if (!seen || l.ownedSince < seen) firstOwned.set(o.contactId, l.ownedSince);
     plan.lots.push({
       id: l.id,
       syndicateId,
@@ -400,7 +404,8 @@ export function buildCoproPlan(input: PlanInput): CoproPlan {
     plan.ownerProfiles.push({
       lotId: l.id,
       contactId: o.contactId,
-      ownershipPercentage: Math.round(l.shares * 10) / 100,
+      // Part de PROPRIÉTÉ du lot (100 % pour un propriétaire unique), pas sa part de tantièmes.
+      ownershipPercentage: 100,
       ownedSince: l.ownedSince,
       portalAccessEnabled: i % 3 === 0,
       isActive: true
@@ -415,6 +420,11 @@ export function buildCoproPlan(input: PlanInput): CoproPlan {
       createdAt: mgmtStart
     });
   });
+
+  for (const c of plan.contacts) {
+    const since = firstOwned.get(c.id as string);
+    c.createdAt = since && since > mgmtStart ? since : mgmtStart;
+  }
 
   // ═══════════════════════════════════════════════════════════ trimestres
   type Quarter = { year: number; q: number; issue: Date; due: Date; period: string };
@@ -1215,7 +1225,8 @@ export function buildCoproPlan(input: PlanInput): CoproPlan {
     const owner = ownerByKey.get(ownerOfLot.get(call.lotId)!)!;
     const pays = (paymentsByCall.get(call.id) ?? []).sort((a, b) => a.date.getTime() - b.date.getTime());
     const paid = sum(pays.map(p => p.amount));
-    const st = paid >= call.amount ? 'PAID' : paid > 0 ? 'PARTIAL' : call.due < end ? 'OVERDUE' : 'PENDING';
+    // Statut STOCKÉ : PENDING/PARTIAL/PAID seulement ; « en retard » se dérive à la lecture.
+    const st = paid >= call.amount ? 'PAID' : paid > 0 ? 'PARTIAL' : 'PENDING';
     callStatus.set(call.id, st);
     const bounds = parsePeriodBounds(call.period.replace(/-TRAVAUX$/, ''));
     plan.calls.push({
