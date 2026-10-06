@@ -276,12 +276,18 @@ export async function seedRentalLedger(ctx: HistoryContext): Promise<void> {
 
   // 2. Gestion pour compte de tiers : un compte courant par propriétaire mandant.
   const list = await owners.listAgencyOwners(tenantId);
-  for (const owner of list) {
-    try {
-      await owners.syncOwnerAccount(tenantId, owner.id);
-    } catch (error) {
-      log(`finance : synchronisation du propriétaire ${owner.id} impossible (${(error as Error).message})`);
+  // La synchronisation fait naître les honoraires, qui eux-mêmes produisent des écritures : on la rejoue
+  // jusqu'à ce que plus rien ne bouge (convergence dès le premier passage, jamais de rattrapage au suivant).
+  for (let round = 0; round < 4; round++) {
+    const marker = await countEntries(ctx);
+    for (const owner of list) {
+      try {
+        await owners.syncOwnerAccount(tenantId, owner.id);
+      } catch (error) {
+        log(`finance : synchronisation du propriétaire ${owner.id} impossible (${(error as Error).message})`);
+      }
     }
+    if ((await countEntries(ctx)) === marker) break;
   }
 
   const after = await countEntries(ctx);

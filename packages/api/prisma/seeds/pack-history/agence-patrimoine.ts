@@ -13,6 +13,8 @@
  *   patrimoine   actifs, valorisations, prêts, dépenses, travaux, fiscalité, hypothèses de rendement, plan de trésorerie
  *   assurances   polices (actives, expirées), sinistres de tous statuts, carnet d'entretien, régularisation foncière
  *   portails     portails propriétaire et locataire ouverts, avec de vrais comptes de connexion
+
+ *   documents    documents locatifs des baux propres (contrat, reçus, quittances, avis…) et incidents de locataires de démonstration
  *   crm          dates de gain et de conversion réparties sur l'histoire (tableau de bord CRM)
  */
 import { neutralizeOutbound } from './types';
@@ -23,6 +25,7 @@ import { seedBillingEmission } from './agence-patrimoine-billing';
 import { seedVendorProviders } from './agence-patrimoine-vendors';
 import { fixSoldVisibility, spreadCrmDates } from './agence-patrimoine-donnees';
 import { seedOldStatementPayouts, seedStatements36 } from './agence-patrimoine-statements';
+import { seedDemoRenterTickets, seedOwnLeaseDocuments } from './agence-patrimoine-documents';
 import { seedPortalAccounts } from './agence-patrimoine-portals';
 import { buildProfiles } from './agence-patrimoine-profile';
 import type { Profile } from './agence-patrimoine-profile';
@@ -77,6 +80,10 @@ export async function seedAgencePatrimoine(ctx: HistoryContext): Promise<void> {
     await seedOldStatementPayouts(ctx);
   });
   await runBlock(ctx, only, 'portails', () => seedPortalAccounts(ctx));
+  await runBlock(ctx, only, 'documents', async () => {
+    await seedOwnLeaseDocuments(o);
+    await seedDemoRenterTickets(o);
+  });
   await runBlock(ctx, only, 'crm', () => spreadCrmDates(ctx));
 
   log(`agence patrimoine : terminé en ${((Date.now() - started) / 1000).toFixed(0)} s.`);

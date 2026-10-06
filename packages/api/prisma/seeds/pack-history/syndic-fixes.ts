@@ -35,6 +35,7 @@ import {
 import { FIRST_NAMES_F, FIRST_NAMES_M, LAST_NAMES, PROFESSIONS } from './syndic-data';
 import { addPayment, loadFacts } from './syndic-extras-finance';
 import { seedPropertyImages } from './property-images';
+import { seedChargeReceipts } from './syndic-extras-receipts';
 import { seedSyndicCrm } from './syndic-fixes-crm';
 import { seedCoOwnerPortalAccounts } from './syndic-fixes-portal';
 
@@ -58,6 +59,8 @@ export async function seedSyndicFixes(ctx: HistoryContext): Promise<void> {
   });
   await step('statuts des appels', () => fixChargeCallStatuses(env));
   await step('programmations', () => fixChargeSchedules(env));
+  // Les paiements et statuts d'appels sont définitifs : quittances, reçus et PDF (idempotent) sont émis maintenant.
+  await step('quittances et reçus', () => seedChargeReceipts(env));
   await step('contacts CRM', () => seedSyndicCrm(env));
   await step('portail copropriétaire', () => seedCoOwnerPortalAccounts(env));
   ctx.log(`syndic-fixes terminé en ${Math.round((Date.now() - started) / 1000)} s`);

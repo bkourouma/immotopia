@@ -25,6 +25,7 @@
 import { runWithTenantContext } from '../../../src/utils/tenant-context';
 import { neutralizeOutbound } from './types';
 import type { HistoryContext } from './types';
+import { seedPayroll } from './equipe-plateforme-payroll';
 import { activeStaff } from './finance-transverse-ops';
 import { balanceTreasury, renumberTransfers, repointSalaryPayments } from './finance-gaps-treasury';
 import { seedCashSessionsGeneral } from './finance-gaps-cash';
@@ -42,16 +43,16 @@ export async function seedFinanceGaps(ctx: HistoryContext): Promise<void> {
   const { prisma, tenantId } = ctx;
   await runWithTenantContext({ tenantId, userId: ctx.adminUserId }, async () => {
     const staff = await activeStaff(ctx);
-    const [sites, copros, leases, owners] = await Promise.all([
+    const [sites, copros, leases] = await Promise.all([
       prisma.constructionSite.count({ where: { tenantId } }),
       prisma.syndicate.count({ where: { tenantId } }),
-      prisma.rentalLease.count({ where: { tenant_id: tenantId } }),
-      prisma.tenantClient.count({ where: { tenantId, clientType: 'OWNER' } })
+      prisma.rentalLease.count({ where: { tenant_id: tenantId } })
     ]);
     const withConstruction = sites > 0;
-    const patrimoine = leases > 0 && owners === 0 && !withConstruction && copros === 0;
 
-    // 1. Cause racine du solde négatif : la paie sort de la banque ou du portefeuille, pas de la caisse.
+    // 1. Cause racine du solde négatif : la paie (écrite par défaut APRÈS la finance, avec la facturation
+    //    de la plateforme) sort de la banque ou du portefeuille, pas de la caisse.
+    if (withConstruction) await seedPayroll(ctx);
     await repointSalaryPayments(ctx);
 
     // 2. Caisse : sessions de l'agence (les agences à chantiers ont déjà celles de leurs chantiers).
@@ -64,7 +65,8 @@ export async function seedFinanceGaps(ctx: HistoryContext): Promise<void> {
     await seedPurchasesJournal(ctx);
 
     // 4. Facturation du mois, balances clients, commissions.
-    if (patrimoine) await seedBillingRunsDirect(ctx, staff);
+    // Toute agence qui a des baux et aucune campagne (l'Agence a déjà les siennes : bloc sauté).
+    if (leases > 0) await seedBillingRunsDirect(ctx, staff);
     if (copros > 0 && leases === 0) await seedClientBalances(ctx, staff, 'SYNDIC');
     if (withConstruction && leases === 0) await seedClientBalances(ctx, staff, 'PROMOTEUR');
     await seedAgentCommissionShares(ctx);

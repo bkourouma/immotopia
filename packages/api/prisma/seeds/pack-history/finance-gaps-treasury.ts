@@ -27,7 +27,7 @@
  * chronologique (numéro du virement et de ses écritures).
  */
 import type { HistoryContext } from './types';
-import { DAY, at, loadTreasury, postEntry } from './finance-transverse-ops';
+import { DAY, at, loadTreasury, pieceId, postEntry } from './finance-transverse-ops';
 import type { TreasuryRef } from './finance-transverse-ops';
 
 const HOUR = 3_600_000;
@@ -230,13 +230,19 @@ export async function balanceTreasury(
     result.transfers += 1;
   };
 
-  // Mois à balayer : de l'ouverture à aujourd'hui, une fenêtre de 31 jours à chaque début de mois.
-  const windows: Date[] = [new Date(ctx.start.getTime())];
-  for (let i = 0; i <= ctx.months; i++) {
-    const y = ctx.start.getUTCFullYear() + Math.floor((ctx.start.getUTCMonth() + i) / 12);
-    const m0 = (ctx.start.getUTCMonth() + i) % 12;
+  // Mois à balayer : depuis la plus ancienne écriture de trésorerie (certaines précèdent l'ouverture de l'histoire,
+  // comme les dépenses d'un bien acquis avant) jusqu'à aujourd'hui, une fenêtre de 31 jours à chaque début de mois.
+  let earliest = ctx.start.getTime();
+  for (const sr of series.values()) for (const f of sr.flows) earliest = Math.min(earliest, f.t);
+  const origin = new Date(earliest);
+  const windows: Date[] = [new Date(earliest - DAY)];
+  const months =
+    (ctx.end.getUTCFullYear() - origin.getUTCFullYear()) * 12 + ctx.end.getUTCMonth() - origin.getUTCMonth();
+  for (let i = 0; i <= months; i++) {
+    const y = origin.getUTCFullYear() + Math.floor((origin.getUTCMonth() + i) / 12);
+    const m0 = (origin.getUTCMonth() + i) % 12;
     const d = at(y, m0, 3, 10, 30);
-    if (d.getTime() < nowMs - DAY) windows.push(d);
+    if (d.getTime() > earliest && d.getTime() < nowMs - DAY) windows.push(d);
   }
 
   // 1. Comptes alimentés par la banque principale : chèques, Mobile Money, caisse, banques secondaires.
@@ -262,7 +268,8 @@ export async function balanceTreasury(
       if (low >= 0) continue;
       const amount = ceilTo(-low * 1.05 + 20_000, step);
       // Un rang d'heures par compte : les virements du même jour ne se confondent pas.
-      const date = new Date(start.getTime() + (secondary.indexOf(acc) % 6) * HOUR);
+      // Avant le début de la fenêtre : un creux survenu juste après son ouverture est ainsi couvert.
+      const date = new Date(start.getTime() - (1 + (secondary.indexOf(acc) % 6)) * HOUR);
       const ym = `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
       await move(main, acc, amount, date, `${label[1]}-${ym}-R`, label[0]);
     }
@@ -275,11 +282,24 @@ export async function balanceTreasury(
     if (low >= 0) continue;
     const step = withConstruction ? 1_000_000 : 500_000;
     const amount = ceilTo(-low * 1.08 + step / 2, step);
-    const when = new Date(start.getTime() - HOUR);
+    const when = new Date(start.getTime() - 7 * HOUR);
     seq += 1;
+    // Clé libre : une pièce de ce type déjà écrite à cette date (verrouillée) n'est jamais réécrite.
+    let n = 0;
+    while (
+      await prisma.journalEntry.findFirst({
+        where: {
+          tenantId,
+          documentType: 'TREASURY_FUNDING',
+          documentId: pieceId(tenantId, 'TREASURY_FUNDING', `gaps:${when.getTime()}:${n}`)
+        },
+        select: { id: true }
+      })
+    )
+      n += 1;
     await postEntry(ctx, {
       kind: 'TREASURY_FUNDING',
-      key: `gaps:${when.getTime()}`,
+      key: `gaps:${when.getTime()}:${n}`,
       date: when,
       reference: `APP-${when.getUTCFullYear()}${String(when.getUTCMonth() + 1).padStart(2, '0')}-R${seq}`,
       description: withConstruction
@@ -352,7 +372,6 @@ export async function balanceTreasury(
       `finance : trésorerie équilibrée (${result.transfers} virement(s) dont ${result.sweeps} remise(s) en banque, ${result.fundings} apport(s))`
     );
   }
-  void prisma;
   return result;
 }
 

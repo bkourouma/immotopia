@@ -14,6 +14,7 @@ import { MaintenanceTicketCategory } from '@prisma/client';
 import { pick } from './types';
 import type { HistoryContext } from './types';
 import { addDaysTo } from './agence-patrimoine-state';
+import { DEMO_NOTE } from './agence-patrimoine-documents';
 
 /** Spécialités du miroir qui conviennent à une catégorie de ticket. */
 const SPECIALTIES_BY_CATEGORY: Record<MaintenanceTicketCategory, readonly string[]> = {
@@ -68,7 +69,9 @@ export async function seedVendorProviders(ctx: HistoryContext): Promise<void> {
     where: {
       tenant_id: tenantId,
       assigned_vendor_id: null,
-      status: { in: ['RESOLVED', 'IN_PROGRESS'] }
+      status: { in: ['RESOLVED', 'IN_PROGRESS'] },
+      // Les incidents des locataires de démonstration gardent leur état d'origine.
+      statusHistory: { none: { note: DEMO_NOTE } }
     },
     orderBy: { declared_at: 'asc' },
     select: {

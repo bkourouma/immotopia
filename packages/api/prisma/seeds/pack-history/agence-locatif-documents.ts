@@ -13,7 +13,7 @@ import { DOCX_MIME, saveRentalDocx } from './agence-locatif-files';
 import { dateFr, fcfa, moisFr, noonUtc, pickOne, plusDays, ym } from './agence-locatif-base';
 import type { LeaseRow, LocatifBase } from './agence-locatif-base';
 
-const TYPE_DIR: Record<RentalDocumentType, string> = {
+export const TYPE_DIR: Record<RentalDocumentType, string> = {
   LEASE_CONTRACT: 'LEASE_CONTRACT',
   LEASE_ADDENDUM: 'LEASE_ADDENDUM',
   RENT_RECEIPT: 'RENT_RECEIPT',
@@ -25,7 +25,7 @@ const TYPE_DIR: Record<RentalDocumentType, string> = {
 
 const COMMERCIAL = ['BUREAU', 'BOUTIQUE_COMMERCIAL', 'ENTREPOT_INDUSTRIEL'];
 
-function partiesLines(lease: LeaseRow): string[] {
+export function partiesLines(lease: LeaseRow): string[] {
   return [
     '# Parties',
     `Le bailleur : ${lease.ownerName ?? 'Propriétaire du bien'}, représenté par l’agence gestionnaire (mandat de gestion).`,
@@ -36,7 +36,7 @@ function partiesLines(lease: LeaseRow): string[] {
   ];
 }
 
-function contractLines(lease: LeaseRow): string[] {
+export function contractLines(lease: LeaseRow): string[] {
   const commercial = COMMERCIAL.includes(lease.propertyType);
   const period = lease.billing === 'QUARTERLY' ? 'par trimestre' : 'par mois';
   return [
@@ -64,7 +64,7 @@ function contractLines(lease: LeaseRow): string[] {
   ];
 }
 
-function receiptLines(
+export function receiptLines(
   lease: LeaseRow,
   number: string,
   paidAt: Date,

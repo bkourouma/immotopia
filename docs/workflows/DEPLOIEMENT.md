@@ -903,12 +903,40 @@ l'application), syndic (copropriétés, appels, paiements, relances, AG, fonds,
 comptabilité), promoteur (chantiers, lots, budgets, fournisseurs, factures, bail de
 terrain), patrimoine (biens détenus, loyers, charges, travaux, assurances, prêts,
 valorisations ; entités, actifs, scénarios, sinistres en Pro). INTEGRE reçoit agence +
-syndic + promoteur. Le module Promoteur n'a ni ventes ni acquéreurs : le code ne les
-connaît pas. Aucun envoi sortant n'est possible pendant le seed (SMTP/SMS coupés avant
-tout import). Un seed d'historique interrompu laisse une agence partielle que la relance
-ne complète pas (garde d'idempotence « le module a déjà des données ») : la suspendre ou
-la purger, puis relancer. `PACK_TEST_HISTORY=0` crée les agences sans historique.
-Durée constatée en local : une douzaine de minutes.
+syndic + promoteur. Aucun envoi sortant n'est possible pendant le seed (SMTP/SMS coupés
+avant tout import). `PACK_TEST_HISTORY=0` crée les agences sans historique.
+
+**Profil « 3 ans » complet (aucun écran vide).** Après 36 mois d'usage, une agence aurait
+utilisé tous ses modules : les agences « 3 ans » reçoivent donc, en plus de l'historique
+de base, des compléments par module (un fichier d'accroche chacun dans `pack-history/`,
+appelés dans l'ordre par `index.ts`) :
+
+| Compléments                                                | Contenu                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `equipe-plateforme` (avant)                                | équipe de 6 à 10 membres par agence (rôles réels, un membre suspendu, un ancien membre), invitations de 4 statuts, menus coupés par rôle, paie des chantiers, journal d'activité de 36 mois                                                                                                   |
+| `agence-commercial`, `agence-locatif`, `agence-patrimoine` | CRM (notes, étiquettes, recherches, relances), mandats, ventes (offres, compromis, commissions), newsletters, états des lieux, événements de bail, reversements et relevés propriétaires sur 36 mois, retenues à la source, patrimoine des biens propres, prestataires, portails avec comptes |
+| `syndic-extras`, `syndic-fixes`                            | quittances et reçus en PDF, programmation des appels, échéanciers, fonds, contrats, parties communes, incidents, tickets liés, documents, AG convoquées ou annulées, quotes-parts de lots à 100 %, CRM, portail copropriétaire avec comptes                                                   |
+| `promoteur-extras`, `promoteur-commercial`                 | stock de chantier (articles, mouvements, bons, inventaires, écarts à justifier, WhatsApp d'inventaire sans envoi), caisse de chantier, retenues de garantie, associations, programmes en commercialisation (lots, CRM, ventes, maintenance, patrimoine conservé)                              |
+| `patrimoine-extras`, `patrimoine-fixes`                    | dossier documentaire, accès tiers, sinistres, régularisation foncière, hypothèses de rendement, parc de 27 biens en Pro, baux et impayés étalés, prêts, visites, portail du titulaire                                                                                                         |
+| `core-communication`                                       | newsletters (listes, modèles, campagnes), contacts CRM du Patrimoine, identité des documents (logo, signature, cachet), réglages de notification                                                                                                                                              |
+| `finance-transverse`, `finance-gaps` (après)               | comptabilité reconstituée, trésoreries (banque, caisse, mobile money) jamais négatives, virements, sessions de caisse, pièces à valider, facturation du mois, balances clients                                                                                                                |
+| `equipe-plateforme` (fin)                                  | 36 factures d'abonnement par agence, règlements, extensions, relevés d'usage, exports                                                                                                                                                                                                         |
+
+Chaque bloc de ces compléments est **idempotent** : il saute ce que l'agence porte déjà.
+Relancer `seed-pack-tests.sh staging` sur des agences « 3 ans » déjà créées leur ajoute
+donc ce qui manque, sans doublon et sans purge. Les agences « 6 mois » ne reçoivent pas
+ces compléments. Un seed d'historique de BASE interrompu laisse en revanche une agence
+partielle que la relance ne complète pas (garde « le module a déjà des données ») : la
+suspendre ou la purger, puis relancer. Les comptes de connexion ajoutés (équipe,
+portails propriétaire, locataire, copropriétaire) ont le même mot de passe de test public
+que les administrateurs. Durée constatée en local : DUREE_SEED (seed complet des 12 agences).
+
+**Limite connue : documents générés.** Les modèles DOCX de bail et de quittance et les
+documents générés des baux vivent sous `assets/`, dossier absent des images Docker du
+staging (voir « Non résolus » plus haut). Sur le staging, « Générer un contrat » et le
+téléchargement des quittances du jeu de démonstration ne fonctionneront pas tant que ce
+point n'est pas corrigé ; les autres pièces (PDF de syndic, de patrimoine, de stock, de
+biens, photos) sont de vrais fichiers écrits sur le volume des téléversements.
 
 ```bash
 ./infra/scripts/deploy.sh staging           # amène d'abord le web à jour

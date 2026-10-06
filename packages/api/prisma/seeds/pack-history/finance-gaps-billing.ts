@@ -371,33 +371,36 @@ const SHARES = [40, 35, 45, 30, 50, 38];
 
 export async function seedAgentCommissionShares(ctx: HistoryContext): Promise<void> {
   const { prisma, tenantId, log } = ctx;
+  // Les honoraires ne naissent qu'à la demande : on les fait tous naître ici (idempotent, clé unique par affectation).
+  const { materializeManagementFees } = await import('../../../src/lib/rental-fees/materialize');
+  await materializeManagementFees(tenantId, { from: new Date(0), to: new Date() });
   const fees = await prisma.managementFee.findMany({
     where: { tenantId, agentUserId: null },
     select: { id: true, leaseId: true, feeAmount: true }
   });
   if (fees.length === 0) return;
-  if ((await prisma.agentCommissionRate.count({ where: { tenantId } })) > 0) return;
 
-  const members = await prisma.membership.findMany({
-    where: {
-      tenantId,
-      status: 'ACTIVE',
-      user: { userRoles: { some: { tenantId, role: { key: { in: ['TENANT_AGENT', 'TENANT_MANAGER'] } } } } }
-    },
-    select: { userId: true },
-    orderBy: { createdAt: 'asc' }
-  });
-  const agents = members.map(m => m.userId);
-  if (agents.length === 0) return;
-
-  const shareOf = new Map<string, number>();
-  for (const [i, userId] of agents.entries()) {
-    const sharePercent = SHARES[i % SHARES.length];
-    shareOf.set(userId, sharePercent);
-    await prisma.agentCommissionRate.create({
-      data: { tenantId, userId, sharePercent, createdAt: ctx.start }
+  let rates = await prisma.agentCommissionRate.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+  if (rates.length === 0) {
+    const members = await prisma.membership.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        user: { userRoles: { some: { tenantId, role: { key: { in: ['TENANT_AGENT', 'TENANT_MANAGER'] } } } } }
+      },
+      select: { userId: true },
+      orderBy: { createdAt: 'asc' }
     });
+    for (const [i, m] of members.entries()) {
+      await prisma.agentCommissionRate.create({
+        data: { tenantId, userId: m.userId, sharePercent: SHARES[i % SHARES.length], createdAt: ctx.start }
+      });
+    }
+    rates = await prisma.agentCommissionRate.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
   }
+  const agents = rates.map(r => r.userId);
+  if (agents.length === 0) return;
+  const shareOf = new Map(rates.map(r => [r.userId, Number(r.sharePercent)]));
 
   // Gestionnaire de chaque bail (termes propres au bail : seul l'agent est renseigné).
   const leaseIds = Array.from(new Set(fees.map(f => f.leaseId)));

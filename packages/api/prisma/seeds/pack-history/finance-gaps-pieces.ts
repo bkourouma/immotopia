@@ -206,22 +206,22 @@ export async function seedPartialInvoices(ctx: HistoryContext, staff: string[]):
     : [];
   const sums = new Map(partial.map(p => [p.invoiceId, Number(p._sum.amount ?? 0)]));
   const already = invoices.filter(i => (sums.get(i.id) ?? 0) < Number(i.amount) && (sums.get(i.id) ?? 0) > 0).length;
-  if (already >= 3) return;
+  if (already >= 1) return;
 
   const candidates = await prisma.supplierInvoice.findMany({
     where: {
       tenantId,
       status: 'VALIDATED',
-      invoiceDate: { lt: new Date(ctx.end.getTime() - 25 * DAY), gt: new Date(ctx.end.getTime() - 170 * DAY) },
+      invoiceDate: { lt: new Date(ctx.end.getTime() - 25 * DAY), gt: new Date(ctx.end.getTime() - 400 * DAY) },
       paymentAllocations: { none: {} },
       purchaseOrderId: null,
-      amount: { gte: 150_000 }
+      amount: { gte: 60_000 }
     },
     select: { id: true, supplierId: true, amount: true, invoiceDate: true, reference: true },
     orderBy: { invoiceDate: 'desc' },
-    take: 12
+    take: 40
   });
-  const picks = candidates.filter(c => !c.reference.endsWith('-DUP')).slice(0, 3 - already);
+  const picks = candidates.filter(c => !c.reference.endsWith('-DUP')).slice(0, 3);
   if (picks.length === 0) return;
   const [{ prisma: appPrisma }, supplierSvc, accounting] = await Promise.all([
     import('../../../src/utils/database'),

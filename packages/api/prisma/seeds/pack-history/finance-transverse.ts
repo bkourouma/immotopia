@@ -37,6 +37,7 @@ import {
 import type { PackFlavor } from './finance-transverse-ops';
 import { seedTaxRemittances, seedTreasuryTransfers } from './finance-transverse-treasury';
 import { repointSalaryPayments } from './finance-gaps-treasury';
+import { seedPayroll } from './equipe-plateforme-payroll';
 
 /** Nature de l'agence, déduite de ses données (pas du nom du pack : l'opérateur intégré porte tout). */
 async function detect(ctx: HistoryContext) {
@@ -64,6 +65,8 @@ export async function seedFinanceTransverse(ctx: HistoryContext): Promise<void> 
     await seedTreasuryAccounts(ctx);
     await seedFinanceSettings(ctx);
     const kind = await detect(ctx);
+    // La paie est écrite par défaut après la finance : on la fait avant, pour que les alimentations de caisse la voient.
+    if (kind.withConstruction) await seedPayroll(ctx);
     // Patrimoine : gestion directe ; Agence/Opérateur : mandats ; Syndic : honoraires ; chantiers : fournisseurs du module.
     // Ni chantiers ni fournisseurs : fonctionnement courant de l'agence.
     await seedOpeningContribution(ctx, kind.flavor, kind.withConstruction);
