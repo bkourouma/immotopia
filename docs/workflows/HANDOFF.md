@@ -88,13 +88,13 @@ CI verte sur les deux. **Rien n'est déployé** : le checkout du serveur (`/home
 
 ---
 
-## Branche `feat/seed-3ans-complet` — 2026-10-06
+## Seed « 3 ans » complet (PR #120 fusionnée, staging déployé) — 2026-10-06
 
-**État :** code prêt, PR ouverte (fusion à l'utilisateur). **Rien n'est déployé ni seedé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Dernier commit : voir `git log` de la branche.
+**État :** PR bkourouma/immotopia#120 **fusionnée** (`e43990d1`) à la demande de l'utilisateur ; CI verte (un test web instable, `import-patrimoine-page`, a passé au second essai : voir la PR 118). **Staging déployé** par `deploy.sh staging` (« Deploiement staging termine (version e43990d1) », migrations à jour, web et API sains) ; le clone du serveur est à `e43990d1`. **Le seed n'a pas été lancé sur le staging** : il manque un « oui » explicite pour `./infra/scripts/seed-pack-tests.sh staging`. Production non touchée.
 
 **Fait :** les 6 agences « Test — Pack … · 3 ans » ne laissent plus d'écran vide. Après rejeu du seed d'origine sur une base jetable, 91 tables à `tenant_id` étaient vides dans les 5 types d'agence et chaque agence n'avait qu'un membre. Un fichier d'accroche par module complète maintenant l'historique (liste et ordre : `pack-history/index.ts`, détail : `DEPLOIEMENT.md` § « Profil 3 ans complet ») : équipe, CRM et ventes, locatif, patrimoine des biens propres, syndic, promoteur (stock, caisse, CRM, ventes), patrimoine, communication, finance, facturation plateforme, avec de vrais fichiers (`seed-files.ts`). Deux vagues d'agents, deux recettes API (un testeur par pack, GET seuls) : écrans vides, hypothèses de rendement en pourcentages au lieu de fractions, quotes-parts de lots fausses, comptes de trésorerie négatifs, quittances et campagnes manquantes corrigés. Vérifié : seed complet de zéro en 55 min, code 0 ; 3 tables seulement restent vides, sans écran (`communications`, `communication_preferences`, et `lot_tenant_assignments`, qui n'a pas de `tenant_id`) ; 2e et 3e passages en 6 min, code 0, le 3e identique au 2e (le 1er rattrape ~90 lignes sur les biens créés par un bloc tardif) ; aucun compte de trésorerie négatif, balances équilibrées ; types et ESLint propres sur `pack-history/`. `infra/scripts/seed-pack-tests.sh` donne désormais le volume des fichiers à l'utilisateur `node` de l'API.
 
-**Reste à faire (après fusion, un « oui » par action serveur) :** `git pull`, `./infra/scripts/deploy.sh staging`, `./infra/scripts/seed-pack-tests.sh staging` (idempotent : crée ou complète les 12 agences sans purge ; ~1 h la première fois). Non éprouvé : le seed dans l'image `migrate` du staging (chemins `UPLOADS_DIR`, droits du volume), le rendu des écrans dans un navigateur (recette faite à l'API seulement).
+**Reste à faire (un « oui » par action serveur) :** `./infra/scripts/seed-pack-tests.sh staging` (idempotent : crée ou complète les 12 agences sans purge ; ~1 h la première fois), puis ouvrir les comptes `<pack>-3ans@packs.immotopia.test` dans un navigateur. Non éprouvé : le seed dans l'image `migrate` du staging (chemins `UPLOADS_DIR`, droits du volume), le rendu des écrans dans un navigateur (recette faite à l'API seulement).
 
 **Pièges :**
 
