@@ -4,8 +4,8 @@
  *
  * Ordre : l'équipe d'abord (les écritures suivantes peuvent être attribuées à
  * plusieurs membres), puis chaque module et ses compléments « 3 ans »
- * (`*-extras`, `agence-commercial`, `agence-locatif`), puis la facturation de
- * la plateforme. Les compléments sont idempotents par bloc et ne font rien au
+ * (`*-extras`, `agence-commercial`, `agence-locatif`), puis la finance transverse
+ * et la facturation de la plateforme. Les compléments sont idempotents par bloc et ne font rien au
  * profil 6 mois.
  */
 import { PACK } from '../../../src/lib/subscription/catalog';
@@ -20,6 +20,7 @@ import { seedPromoteurExtras } from './promoteur-extras';
 import { seedPatrimoineHistoryForPack } from './patrimoine';
 import { seedPatrimoineExtras } from './patrimoine-extras';
 import { seedEquipe, seedFacturationPlateforme } from './equipe-plateforme';
+import { seedFinanceTransverse } from './finance-transverse';
 
 const AGENCE_SEEDERS: HistorySeeder[] = [seedAgenceHistory, seedAgenceCommercial, seedAgenceLocatif];
 const SYNDIC_SEEDERS: HistorySeeder[] = [seedSyndicHistory, seedSyndicExtras];
@@ -57,7 +58,7 @@ function modulesForPack(pack: string): HistorySeeder[] {
 export function historySeedersForPack(pack: string): HistorySeeder[] {
   const modules = modulesForPack(pack);
   if (modules.length === 0) return [];
-  return [seedEquipe, ...modules, seedFacturationPlateforme];
+  return [seedEquipe, ...modules, seedFinanceTransverse, seedFacturationPlateforme];
 }
 
 export { buildContext, neutralizeOutbound } from './types';
