@@ -18,6 +18,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `perf/ai-prompt-cache` — 2026-10-06
+
+**Fait :** cache de prompt Anthropic dans `lib/ai/providers/anthropic-provider.ts` : point d'arrêt explicite sur le bloc système (met en cache outils + invite, stables par construction, voir `system-prompt.ts`) et `cache_control` de premier niveau pour relire l'historique à chaque tour d'outils. Coupe-circuit `AI_PROMPT_CACHE=off` (`config/env.ts`, `env.example`, défaut `on`). Usage du cache journalisé en `debug`. Tests : `ai.anthropic-provider.test.ts` (12 verts), typecheck propre sur les fichiers touchés.
+
+**Reste / non vérifié :** aucun appel réel à l'API (pas de clé ici) : vérifier `cache_read_input_tokens > 0` dans le journal `debug` sur le staging avant de s'y fier. Le préfixe doit dépasser le minimum cacheable du modèle (512 jetons sur Opus 5.5), sinon rien n'est mis en cache sans erreur. Aucune fonctionnalité visible : classeur de fonctionnalités inchangé.
+
+**Piège :** le bloc d'écran variable ouvre le dernier message utilisateur (`orchestrator.ts`) : d'un message de l'utilisateur au suivant, l'historique change donc dès ce message ; le gain est surtout dans les tours d'outils d'une même requête et sur outils + invite.
+
+**Branche :** `perf/ai-prompt-cache`, worktree `.claude/worktrees/ai-prompt-cache` (jonction `node_modules` : retirer avec `rmdir` avant tout `git worktree remove`).
+
 ## Pilote — lots 040 (contrôle du stock) et 041 (inventaire par WhatsApp) — 2026-10-05
 
 **État :** **fusionné dans `main`** le 2026-10-05, à la demande de l'utilisateur :
