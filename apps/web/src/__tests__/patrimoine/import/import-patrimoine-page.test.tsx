@@ -495,7 +495,9 @@ describe('Importer mon patrimoine — la page', () => {
     expect(await screen.findByText('3 ligne(s) importée(s).')).toBeInTheDocument();
     expect(valeurRapport('Importées')).toBe('3');
     expect(valeurRapport('En erreur')).toBe('0');
-  });
+    // 30 s, sous le délai global de 40 s : environ 3 s sur un seul cœur depuis que les helpers ne rejouent plus
+    // le calcul de nom accessible ; un dépassement signalerait une régression de performance, pas la charge.
+  }, 30000);
 
   it('(2) rapproche les colonnes à la main quand les en-têtes ne sont pas reconnus', async () => {
     const user = nouvelUtilisateur();
@@ -515,12 +517,16 @@ describe('Importer mon patrimoine — la page', () => {
     for (const champ of ['Titre', 'Type de bien', 'Ville / commune', 'Mode de transaction']) {
       expect(manque).toHaveTextContent(champ);
     }
-    const previsualiser = screen.getByRole('button', { name: 'Prévisualiser' });
+    const previsualiser = await bouton(/^Prévisualiser$/);
     expect(previsualiser).toBeDisabled();
     expect(post).not.toHaveBeenCalled();
 
     const affecter = async (colonne: string, libelleChamp: string) => {
-      fireEvent.mouseDown(screen.getByRole('combobox', { name: `Champ pour la colonne ${colonne}` }));
+      // Par son `aria-label`, sans `getByRole` : le filtre d'accessibilité de cette requête remonte
+      // `getComputedStyle` sur chaque liste et ses ancêtres, plus d'une seconde par appel sous charge.
+      const liste = screen.getByLabelText(`Champ pour la colonne ${colonne}`);
+      expect(liste).toHaveRole('combobox');
+      fireEvent.mouseDown(liste);
       const option = await waitFor(() => {
         // Les listes déroulantes déjà refermées restent dans le DOM : la plus récente est la dernière.
         const trouvees = document.querySelectorAll(`.ant-select-item-option[title="${libelleChamp}"]`);
@@ -564,7 +570,7 @@ describe('Importer mon patrimoine — la page', () => {
     await titreEtape('Les colonnes');
     // Les champs obligatoires sont rapprochés : rien ne manque, on peut prévisualiser.
     expect(screen.queryByText('Champs obligatoires non rapprochés')).not.toBeInTheDocument();
-    const previsualiser = screen.getByRole('button', { name: 'Prévisualiser' });
+    const previsualiser = await bouton(/^Prévisualiser$/);
     expect(previsualiser).toBeEnabled();
     await user.click(previsualiser);
     await titreEtape('L’aperçu');
@@ -1138,7 +1144,7 @@ describe('Importer mon patrimoine — la page', () => {
     await titreEtape('Les colonnes');
     expect(screen.getByText(alerte)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Prévisualiser' }));
+    await user.click(await bouton(/^Prévisualiser$/));
     await titreEtape('L’aperçu');
     expect(screen.getByText(alerte)).toBeInTheDocument();
     expect(screen.getByLabelText('Titre, ligne 2')).toHaveValue('Villa Éléphant');
