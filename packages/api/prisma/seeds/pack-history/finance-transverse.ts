@@ -36,6 +36,7 @@ import {
 } from './finance-transverse-ops';
 import type { PackFlavor } from './finance-transverse-ops';
 import { seedTaxRemittances, seedTreasuryTransfers } from './finance-transverse-treasury';
+import { repointSalaryPayments } from './finance-gaps-treasury';
 
 /** Nature de l'agence, déduite de ses données (pas du nom du pack : l'opérateur intégré porte tout). */
 async function detect(ctx: HistoryContext) {
@@ -69,7 +70,11 @@ export async function seedFinanceTransverse(ctx: HistoryContext): Promise<void> 
     if (kind.hasSyndic) await seedSyndicFees(ctx);
     if (!kind.withConstruction) await seedSuppliers(ctx, kind.flavor, staff);
     await seedRentalLedger(ctx);
-    if (kind.withConstruction) await repointConstructionPayments(ctx);
+    if (kind.withConstruction) {
+      await repointConstructionPayments(ctx);
+      // La paie crédite la caisse par défaut : on la range avant de calculer les alimentations.
+      await repointSalaryPayments(ctx);
+    }
     await seedTaxRemittances(ctx, staff);
     await seedTreasuryTransfers(ctx, staff, kind.withConstruction);
     await seedVoids(ctx, staff);

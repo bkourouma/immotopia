@@ -319,7 +319,7 @@ async function seedManagementMandates(
   }>,
   plans: MandatePlan[]
 ): Promise<void> {
-  const { prisma, tenantId, rng, ctx, adminUserId, log } = env;
+  const { prisma, tenantId, rng, ctx, log } = env;
   const soldByProperty = new Map<string, MandatePlan>();
   for (const plan of plans) if (plan.managementClosedAt) soldByProperty.set(plan.prop.id, plan);
 
@@ -364,10 +364,9 @@ async function seedManagementMandates(
           startDate: start,
           endDate: closed,
           scope,
-          notes: 'Bien vendu : le mandat est clos à la signature de l’acte de vente.',
-          isActive: false,
-          revokedAt: closed,
-          revokedByUserId: adminUserId,
+          notes: 'Bien vendu : mandat honoré, clos à la signature de l’acte de vente.',
+          // Actif (honoré) : la liste des biens ne montre un bien CLIENT que sous mandat `isActive`.
+          isActive: true,
           createdAt: start
         }
       });

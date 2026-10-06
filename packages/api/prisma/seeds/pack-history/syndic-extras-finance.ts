@@ -31,7 +31,7 @@ import {
   type Tx
 } from './syndic-extras-common';
 
-interface LotFact {
+export interface LotFact {
   id: string;
   num: string;
   kind: string;
@@ -41,7 +41,7 @@ interface LotFact {
   method: PayMethod;
 }
 
-interface Facts {
+export interface Facts {
   lots: LotFact[];
   lotById: Map<string, LotFact>;
   roulementId: string | null;
@@ -53,7 +53,7 @@ interface Facts {
 const ORDINAL = ['1er', '2e', '3e', '4e'];
 const REGULARISATION_MARK = 'régularisation de l’arriéré';
 
-async function loadFacts(env: SyndicEnv, s: SyndicRow): Promise<Facts> {
+export async function loadFacts(env: SyndicEnv, s: SyndicRow): Promise<Facts> {
   const { prisma } = env;
   const lots = await prisma.syndicateLot.findMany({
     where: { syndicateId: s.id },
@@ -69,7 +69,7 @@ async function loadFacts(env: SyndicEnv, s: SyndicRow): Promise<Facts> {
   const stats = await prisma.$queryRaw<
     Array<{ lot_id: string; ov: bigint; pa: bigint; late: number | null }>
   >`SELECT c.lot_id,
-           COUNT(*) FILTER (WHERE c.status = 'OVERDUE') AS ov,
+           COUNT(*) FILTER (WHERE c.status IN ('OVERDUE', 'PENDING') AND c.due_date < ${env.end}) AS ov,
            COUNT(*) FILTER (WHERE c.status = 'PARTIAL') AS pa,
            AVG(EXTRACT(EPOCH FROM (p.paid_at - c.due_date)) / 86400) FILTER (WHERE c.status = 'PAID') AS late
     FROM charge_calls c
@@ -128,7 +128,7 @@ async function loadFacts(env: SyndicEnv, s: SyndicRow): Promise<Facts> {
 
 // ───────────────────────────────────────────────────────────────── paiement
 
-interface CallLite {
+export interface CallLite {
   id: string;
   period: string;
   amount: number;
@@ -141,7 +141,7 @@ interface CallLite {
  * affectations, écriture banque/caisse contre 450<lot>, compte copropriétaire
  * et crédit du fonds de travaux. Les statuts d'appels sont mis à jour par l'appelant.
  */
-async function addPayment(
+export async function addPayment(
   env: SyndicEnv,
   facts: Facts,
   led: CoproLedger,
@@ -346,7 +346,7 @@ async function seedCurrentPeriod(env: SyndicEnv, s: SyndicRow, facts: Facts, led
         amount: c.amount,
         currency: 'XOF',
         dueDate: due,
-        status: due < end ? ('OVERDUE' as const) : ('PENDING' as const),
+        status: 'PENDING' as const, // « en retard » se dérive à la lecture
         noticeSentAt: new Date(issue.getTime() + 3_600_000),
         createdAt: issue
       }))

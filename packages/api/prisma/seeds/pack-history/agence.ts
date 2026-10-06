@@ -1135,8 +1135,21 @@ async function buildMaintenance(
   const vendors: { id: string; specialties: readonly string[] }[] = [];
   for (let i = 0; i < Math.min(volumes.vendors, VENDOR_POOL.length); i++) {
     const v = VENDOR_POOL[i];
+    // La route « Prestataires » lit `service_providers` (source de vérité) et ne lit
+    // `maintenance_vendors` que comme miroir de même identifiant : écrire les deux.
+    const provider = await prisma.serviceProvider.create({
+      data: {
+        tenantId,
+        name: v.name,
+        specialty: v.specialties.join(', '),
+        email: v.email,
+        phone: v.phone
+      },
+      select: { id: true }
+    });
     const row = await prisma.maintenanceVendor.create({
       data: {
+        id: provider.id,
         tenant_id: tenantId,
         name: v.name,
         phone: v.phone,

@@ -437,16 +437,15 @@ export class CoproLedger {
   }
 }
 
-/** Statut d'un appel d'après ce qui est réglé (même règle que le plan de base). */
-export function callStatusFor(
-  amount: number,
-  paid: number,
-  due: Date,
-  end: Date
-): 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' {
+/**
+ * Statut STOCKÉ d'un appel d'après ce qui est réglé (même règle que le service de charges :
+ * `statusFromCents`). « En retard » n'est jamais stocké : il se dérive à la lecture
+ * (`deriveChargeCallStatus`), l'échéance n'entre donc pas dans le calcul.
+ */
+export function callStatusFor(amount: number, paid: number, _due?: Date, _end?: Date): 'PENDING' | 'PARTIAL' | 'PAID' {
   if (paid >= amount) return 'PAID';
   if (paid > 0) return 'PARTIAL';
-  return due < end ? 'OVERDUE' : 'PENDING';
+  return 'PENDING';
 }
 
 /** Référence plausible d'un règlement selon le mode (même forme que le plan de base). */
@@ -463,4 +462,17 @@ export function paymentRef(rng: () => number, method: PayMethod, date: Date): st
     default:
       return `REC-${ymd}-${d(3)}`;
   }
+}
+
+/**
+ * Vrai pour un tenant au pack SYNDIC seul (sans module agence) : ses immeubles sont des biens
+ * rattachés par `Syndicate.propertyId` (maintenance, photos). Faux pour l'Opérateur intégré.
+ */
+export async function isSyndicPack(env: SyndicEnv): Promise<boolean> {
+  const item = await env.prisma.subscriptionItem.findFirst({
+    where: { tenantId: env.tenantId, catalogItem: { kind: 'PACK' } },
+    orderBy: { startsAt: 'asc' },
+    select: { catalogItem: { select: { code: true } } }
+  });
+  return item?.catalogItem.code === 'SYNDIC';
 }

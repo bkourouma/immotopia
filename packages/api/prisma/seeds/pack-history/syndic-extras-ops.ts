@@ -1,5 +1,5 @@
 /**
- * Compléments SYNDIC — vie de l'immeuble : bâtiment (fiche bien), contrats de
+ * Compléments SYNDIC — vie de l'immeuble : bâtiment (fiche bien, pack Syndic seul), contrats de
  * maintenance et leurs liens budgétaires, parties communes, incidents ouverts,
  * tickets de maintenance liés, factures d'intervention et imputations de coûts,
  * occupants (locataires), anciens propriétaires, profils du portail, assemblées
@@ -22,6 +22,7 @@ import {
   pickOne,
   pickStaff,
   roundTo,
+  isSyndicPack,
   shuffle,
   slug,
   type SyndicEnv
@@ -38,6 +39,8 @@ const ZONES: Array<{ match: RegExp; zone: string; lat: number; lng: number }> = 
 ];
 
 export async function seedBuildings(env: SyndicEnv): Promise<void> {
+  // Un syndic seul gère ses immeubles comme des biens ; l'Opérateur intégré a déjà tout son patrimoine.
+  if (!(await isSyndicPack(env))) return;
   const { prisma, tenantId } = env;
   let index = 0;
   for (const s of env.syndicates) {

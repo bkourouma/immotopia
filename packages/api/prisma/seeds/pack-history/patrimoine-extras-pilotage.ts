@@ -837,7 +837,8 @@ export async function seedYieldAndTax(s: PatState): Promise<void> {
       select: { valuatedAt: true, estimatedValue: true }
     });
     if (!assumed.has(p.id)) {
-      let growth = 4;
+      // Fractions (0,04 = 4 %), comme l'attendent `lib/patrimoine/yield.ts` et le schéma API.
+      let growth = 0.04;
       if (vals.length >= 2) {
         const a = vals[0];
         const b = vals[vals.length - 1];
@@ -845,10 +846,7 @@ export async function seedYieldAndTax(s: PatState): Promise<void> {
         if (years > 0.5)
           growth = Math.max(
             0,
-            Math.min(
-              12,
-              roundTo((Math.pow(Number(b.estimatedValue) / Number(a.estimatedValue), 1 / years) - 1) * 100, 0.5)
-            )
+            Math.min(0.12, roundTo(Math.pow(Number(b.estimatedValue) / Number(a.estimatedValue), 1 / years) - 1, 0.005))
           );
       }
       const land = p.type === 'TERRAIN';
@@ -858,9 +856,13 @@ export async function seedYieldAndTax(s: PatState): Promise<void> {
           propertyId: p.id,
           years: 10,
           valueGrowthRate: growth,
-          rentGrowthRate: land ? 0 : 3,
-          expenseGrowthRate: land ? 2 : 4,
-          vacancyRate: land ? 0 : ['BUREAU', 'ENTREPOT_INDUSTRIEL', 'BOUTIQUE_COMMERCIAL'].includes(p.type) ? 8 : 5,
+          rentGrowthRate: land ? 0 : 0.03,
+          expenseGrowthRate: land ? 0.02 : 0.04,
+          vacancyRate: land
+            ? 0
+            : ['BUREAU', 'ENTREPOT_INDUSTRIEL', 'BOUTIQUE_COMMERCIAL'].includes(p.type)
+              ? 0.08
+              : 0.05,
           updatedByUserId: author(s)
         }
       });

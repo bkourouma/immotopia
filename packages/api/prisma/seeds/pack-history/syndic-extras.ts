@@ -9,7 +9,7 @@
  * déjà sur le tenant est sauté, pour compléter une agence déjà peuplée sans
  * purge) ; fichiers réels via `seed-files.ts`.
  *
- * Ordre : identité (mandants, logos) → fiche du bâtiment → finances (appel du
+ * Ordre : identité (mandants, logos) → fiche du bâtiment (pack Syndic seul) → finances (appel du
  * trimestre en cours, régularisations, échéanciers, programmation, fonds,
  * budget suivant) → vie de l'immeuble (contrats, parties communes, incidents,
  * tickets, coûts, occupants, assemblées) → quittances et reçus (PDF) →
