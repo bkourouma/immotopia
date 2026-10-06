@@ -29,6 +29,9 @@ export interface StoredSeedFile {
 
 const CP1252: Record<string, number> = {
   '€': 0x80,
+  Œ: 0x8c,
+  œ: 0x9c,
+  Ÿ: 0x9f,
   '‚': 0x82,
   '„': 0x84,
   '…': 0x85,
