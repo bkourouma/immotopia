@@ -245,6 +245,9 @@ const envSchema = z
     // confirmation. 300 s ne suffisent pas toujours : 900 s par defaut, 300 s au minimum.
     AI_WRITE_PLAN_TTL_SECONDS: z.coerce.number().int().min(300).max(3600).default(900),
     AI_REFUSAL_FALLBACK: z.enum(['on', 'off']).default('on'),
+    // Cache de prompt Anthropic (cache_control) : invite systeme + outils, et
+    // historique des tours d'outils. `off` coupe les marqueurs sans toucher au reste.
+    AI_PROMPT_CACHE: z.enum(['on', 'off']).default('on'),
     // Plafonds PAR AGENCE (tous collaborateurs confondus) sur POST /ai/chat, en
     // plus des limites par utilisateur (rate-limit-middleware.ts).
     AI_TENANT_MINUTE_LIMIT: z.coerce.number().int().min(1).max(100000).default(100),
