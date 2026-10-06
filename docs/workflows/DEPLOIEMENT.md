@@ -929,7 +929,7 @@ ces compléments. Un seed d'historique de BASE interrompu laisse en revanche une
 partielle que la relance ne complète pas (garde « le module a déjà des données ») : la
 suspendre ou la purger, puis relancer. Les comptes de connexion ajoutés (équipe,
 portails propriétaire, locataire, copropriétaire) ont le même mot de passe de test public
-que les administrateurs. Durée constatée en local : DUREE_SEED (seed complet des 12 agences).
+que les administrateurs. Durée constatée en local : environ une heure pour les 12 agences créées de zéro (55 min mesurées), 6 minutes pour une relance sur des agences déjà peuplées.
 
 **Limite connue : documents générés.** Les modèles DOCX de bail et de quittance et les
 documents générés des baux vivent sous `assets/`, dossier absent des images Docker du
