@@ -20,7 +20,7 @@ Modèle de section :
 ```markdown
 ## Branche `test/web-stabilise-tests-patrimoine` — 2026-10-05
 
-**État :** PR brouillon bkourouma/immotopia#118 vers `main`. Branche fondée sur `60fc282d`, dernier commit : celui de cette section. Le diff ne touche que des tests, pas de fusion sans accord.
+**État :** PR bkourouma/immotopia#118 vers `main`, sortie du brouillon le 2026-10-07 (CI verte trois fois de suite sur `bc836239`, relances comprises), puis `origin/main` fusionné dans la branche le 2026-10-08 pour lever un conflit sur ce fichier. Le diff ne touche que des tests. **Fusion réservée à l'utilisateur.**
 
 **Fait :**
 
@@ -29,7 +29,9 @@ Modèle de section :
   - Résultat sur 1 cœur : parcours nominal de 4,1–4,4 s à 2,6–2,9 s par exécution.
 - Le test foncier « réouverture exige un motif » était déjà corrigé dans `main` par #117 (`fireEvent.change`). Il a été vérifié 16/16 sur 1 cœur.
 
-**Reste :** suivre la CI de #118. Le test (2) « rapproche les colonnes » est le plus lent du fichier (11–24 s en local) : c'est le prochain candidat.
+**Reste :** attendre la CI après la fusion de `main`, puis la fusion par l'utilisateur. Le test (2) a été accéléré (36–39 s → 22–26 s sur 1 cœur, 2 exécutions) et le parcours nominal (1 bis) a retrouvé sa limite de 30 s. Non élucidé : un échec isolé du test (1) « gabarit » après 22,8 s en local, jamais relu ; piste non prouvée, le premier chargement d'exceljs (~2,5 s à froid).
+
+**Défaut préexistant de ce fichier :** sur `main`, le bloc ```markdown ouvert à la ligne 20 (« Modèle de section ») n'est fermé que vers la ligne 200 : toutes les sections de branche en tête de fichier sont donc dans un bloc de code. À corriger dans une PR dédiée.
 
 **Pièges :**
 
@@ -38,6 +40,16 @@ Modèle de section :
 - Les fichiers de test sont en CRLF dans le worktree : un remplacement scripté en `\n` échoue en silence. Préférer l'outil Edit.
 - Le worktree a besoin de jonctions vers `node_modules`, `apps/web/node_modules` et `packages/api/node_modules` (`@types/archiver`), sinon le typecheck de l'API casse.
 - `npm run lint` de l'API : 1 erreur préexistante, `no-irregular-whitespace` dans `src/lib/audit/platform-audit-csv.ts`.
+
+## Branche `perf/ai-prompt-cache` — 2026-10-06
+
+**Fait :** cache de prompt Anthropic dans `lib/ai/providers/anthropic-provider.ts` : point d'arrêt explicite sur le bloc système (met en cache outils + invite, stables par construction, voir `system-prompt.ts`) et `cache_control` de premier niveau pour relire l'historique à chaque tour d'outils. Coupe-circuit `AI_PROMPT_CACHE=off` (`config/env.ts`, `env.example`, défaut `on`). Usage du cache journalisé en `debug`. Tests : `ai.anthropic-provider.test.ts` (12 verts), typecheck propre sur les fichiers touchés.
+
+**Reste / non vérifié :** aucun appel réel à l'API (pas de clé ici) : vérifier `cache_read_input_tokens > 0` dans le journal `debug` sur le staging avant de s'y fier. Le préfixe doit dépasser le minimum cacheable du modèle (512 jetons sur Opus 5.5), sinon rien n'est mis en cache sans erreur. Aucune fonctionnalité visible : classeur de fonctionnalités inchangé.
+
+**Piège :** le bloc d'écran variable ouvre le dernier message utilisateur (`orchestrator.ts`) : d'un message de l'utilisateur au suivant, l'historique change donc dès ce message ; le gain est surtout dans les tours d'outils d'une même requête et sur outils + invite.
+
+**Branche :** `perf/ai-prompt-cache`, worktree `.claude/worktrees/ai-prompt-cache` (jonction `node_modules` : retirer avec `rmdir` avant tout `git worktree remove`).
 
 ## Pilote — lots 040 (contrôle du stock) et 041 (inventaire par WhatsApp) — 2026-10-05
 
@@ -109,15 +121,24 @@ CI verte sur les deux. **Rien n'est déployé** : le checkout du serveur (`/home
 
 ---
 
-## Branche `feat/donnees-test-packs` — 2026-10-03
+## Branche `feat/seed-3ans-complet` — 2026-10-06
 
-**État :** code prêt, PR ouverte (fusion à l'utilisateur) ; **rien n'est déployé ni créé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Éprouvé de bout en bout sur une base PostgreSQL jetable (conteneur `immotopia-donnees-test`, port 5447) : 12 agences créées, code de sortie 0, aucun échec d'audit, relance sans doublon (~12 min).
+**État :** code prêt, PR ouverte (fusion à l'utilisateur). **Rien n'est déployé ni seedé sur app.immotopia.cloud** (chaque action serveur exige un « oui »). Dernier commit : voir `git log` de la branche.
 
-**Fait :** deux agences par pack (« · 6 mois » reprend l'agence et l'e-mail d'origine, renommée ; « · 3 ans », e-mail `<pack>-3ans@packs.immotopia.test`), historique par module dans `packages/api/prisma/seeds/pack-history/` (agence, syndic, promoteur, patrimoine ; INTEGRE = agence+syndic+promoteur), `disable-outbound.ts` importé en premier (SMTP/SMS coupés), menu de connexion à 12 groupes, doc DEPLOIEMENT. Correctif produit : `rental-deposit-service` mettait un Decimal Prisma dans la charge d'audit (`Number(...)`), ce qui faisait échouer tout le lot d'audit.
+**Fait :** les 6 agences « Test — Pack … · 3 ans » ne laissent plus d'écran vide. Après rejeu du seed d'origine sur une base jetable, 91 tables à `tenant_id` étaient vides dans les 5 types d'agence et chaque agence n'avait qu'un membre. Un fichier d'accroche par module complète maintenant l'historique (liste et ordre : `pack-history/index.ts`, détail : `DEPLOIEMENT.md` § « Profil 3 ans complet ») : équipe, CRM et ventes, locatif, patrimoine des biens propres, syndic, promoteur (stock, caisse, CRM, ventes), patrimoine, communication, finance, facturation plateforme, avec de vrais fichiers (`seed-files.ts`). Deux vagues d'agents, deux recettes API (un testeur par pack, GET seuls) : écrans vides, hypothèses de rendement en pourcentages au lieu de fractions, quotes-parts de lots fausses, comptes de trésorerie négatifs, quittances et campagnes manquantes corrigés. Vérifié : seed complet de zéro en 55 min, code 0 ; 3 tables seulement restent vides, sans écran (`communications`, `communication_preferences`, et `lot_tenant_assignments`, qui n'a pas de `tenant_id`) ; 2e et 3e passages en 6 min, code 0, le 3e identique au 2e (le 1er rattrape ~90 lignes sur les biens créés par un bloc tardif) ; aucun compte de trésorerie négatif, balances équilibrées ; types et ESLint propres sur `pack-history/`. `infra/scripts/seed-pack-tests.sh` donne désormais le volume des fichiers à l'utilisateur `node` de l'API.
 
-**Reste :** après fusion, sur le serveur : `git pull`, `./infra/scripts/deploy.sh staging` (menu), `./infra/scripts/seed-pack-tests.sh staging`. Non éprouvé : le seed dans l'image `migrate` du staging, l'affichage des écrans sur ces données (aucune recette navigateur).
+**Reste à faire (après fusion, un « oui » par action serveur) :** `git pull`, `./infra/scripts/deploy.sh staging`, `./infra/scripts/seed-pack-tests.sh staging` (idempotent : crée ou complète les 12 agences sans purge ; ~1 h la première fois). Non éprouvé : le seed dans l'image `migrate` du staging (chemins `UPLOADS_DIR`, droits du volume), le rendu des écrans dans un navigateur (recette faite à l'API seulement).
 
-**Pièges :** le module Promoteur n'a ni ventes ni acquéreurs (le code ne les connaît pas). Un seed d'historique interrompu laisse une agence partielle que la relance ne complète pas (garde « déjà des données ») : la purger. Les documents patrimoine/syndic n'ont pas de fichier réel (téléchargement 404). `prisma generate` dans le worktree modifie le client partagé via la jonction `node_modules`. L'EmailService retombe sur smtp.hostinger.com sans variable : d'où `disable-outbound`. Wiki non mis à jour : outillage de staging.
+**Pièges :**
+
+- Les modèles DOCX (`document_templates`) et les documents générés des baux dépendent de `assets/`, absent des images Docker (voir « Non résolus » de `DEPLOIEMENT.md`) : sur le staging, « Générer un contrat » et le téléchargement des quittances du jeu de démonstration ne marchent pas, et aucun modèle n'est créé. À corriger dans une tâche à part avant toute démonstration de génération de documents.
+- Les comptes ajoutés (équipe, portails propriétaire, locataire, copropriétaire, titulaire) ont le mot de passe de test PUBLIC : staging seulement.
+- Aucune campagne newsletter en statut SCHEDULED (le job d'envoi du staging l'enverrait vraiment). Le seed coupe SMTP et SMS avant tout import.
+- Pour le seul pack SYNDIC, une fiche bâtiment (`Property` IMMEUBLE, `COPRO-xxxx`) par copropriété porte les tickets de maintenance ; l'Opérateur intégré n'en a aucune (elles polluaient listes, tableau de bord et quotas).
+- Les profils « 6 mois » ne reçoivent pas ces compléments.
+- Postgres local à 100 connexions quand plusieurs agents lancent des seeds en parallèle ; `DROP DATABASE` peut être refusé par le classifieur d'outils : créer une base numérotée à la place. Limiteur de l'API : 1000 requêtes par 15 min et par IP.
+
+**Défauts de l'application constatés, non corrigés :** `property-quality-service.ts:134` (`field.name.split` alors que les gabarits portent `key` : 500 sur tout terrain) ; l'écran des pénalités (`Penalties.tsx`) lit `adjusted_amount` que l'API ne renvoie pas ; `getTimeSeries` du tableau de bord CRM génère des semaines futures et date gains et conversions par `updatedAt` ; le tableau de bord du syndic ne dérive pas « en retard » alors que la liste le fait ; `GET /syndics/mandants` et `/rental/installments?status=<invalide>` répondent 500 au lieu de 400 ; `/maintenance/admin/vendors` lit `service_providers` (`maintenance_vendors` n'est qu'un miroir) ; `listProperties` masque un bien CLIENT dont le mandat n'est plus actif ; `getPatrimoineOverview` compte les loyers de tous les baux actifs ; l'onglet abonnés d'une liste dynamique lit `newsletter_subscribers` (contourné par des lignes miroirs) ; le service de salaires crédite toujours la caisse par défaut ; la balance âgée ne lit que les baux ; `createTransfer` numérote par ordre de saisie ; `JournalType` n'a ni achats, ni ventes, ni OD ; quotas `ACTIFS` et `PHOTOS_INVENTAIRE` affichés en dépassement et essai à +5 ans (TRIALING) : voulus ou hors périmètre ; `rental_refunds`, `crm_notes`, `communications` : aucune route ni écran. Wiki non mis à jour : aucune fonctionnalité visible ajoutée (données de démonstration seulement).
 
 ---
 

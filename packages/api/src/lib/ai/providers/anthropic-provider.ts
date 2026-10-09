@@ -154,11 +154,18 @@ export class AnthropicProvider implements LlmProvider {
     const config = await this.getConfig();
     if (signal.aborted) throw createAbortError(); // coupé pendant la lecture de la configuration
     const useFallback = config.refusalFallback;
+    const useCache = env.AI_PROMPT_CACHE !== 'off';
 
     const params: Anthropic.Beta.Messages.MessageCreateParams = {
       model: config.model,
       max_tokens: req.maxOutputTokens,
-      system: req.system,
+      // Les outils précèdent le système dans le préfixe : le point d'arrêt posé sur
+      // le bloc système met en cache outils + invite. Les deux sont stables (voir
+      // system-prompt.ts) ; le bloc d'écran variable est dans le dernier message.
+      system: useCache ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }] : req.system,
+      // Cache automatique de la suite : le point d'arrêt suit le dernier bloc, donc
+      // chaque tour d'outils relit tout ce qui précède au lieu de le retraiter.
+      ...(useCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
       messages: toAnthropicMessages(req.messages),
       tools: req.tools.map(tool => ({
         name: tool.name,
@@ -193,6 +200,16 @@ export class AnthropicProvider implements LlmProvider {
         if (delta) onTextDelta(delta);
       });
       const message = await Promise.race([stream.finalMessage(), aborted]);
+
+      // Seule preuve que le cache sert : lectures à zéro sur des tours répétés = un
+      // invalidateur silencieux (date, identifiant, outils variables dans le préfixe).
+      if (useCache && message.usage) {
+        logger.debug('ImmoCopilot : usage du cache de prompt', {
+          cacheReadTokens: message.usage.cache_read_input_tokens ?? 0,
+          cacheWriteTokens: message.usage.cache_creation_input_tokens ?? 0,
+          uncachedInputTokens: message.usage.input_tokens
+        });
+      }
 
       const assistantContent = fromAnthropicContent(message.content);
       return {
