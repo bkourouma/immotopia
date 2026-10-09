@@ -1272,3 +1272,13 @@ Pièges et décisions :
 - Déploiement du site : `npx tsc --noEmit` local passe grâce au cache
   incrémental alors que `next build` échoue ; vérifier avec
   `--incremental false` ou `npm run build`.
+
+---
+
+## Branche `fix/copilot-liste-ecritures` — 2026-10-09
+
+**Fait :** recette navigateur d'ImmoCopilot v2 (OpenRouter, DeepSeek V4 Flash, base locale migrée jusqu'à `20261010100000`). Défaut trouvé et corrigé : `list_capabilities` ne listait que les routes GET alors que le prompt et `plan_write` lui faisaient chercher les routes d'écriture ; un vrai modèle bouclait puis « trop d'étapes ». Désormais `kind: 'write'` renvoie les routes que `findWritableEntry` accepte (jamais DELETE ni sensibles), `method` figure dans chaque entrée, le prompt demande de chercher par module d'abord. Rejoué en navigateur avec 4 tours (défaut) : search_properties, 2 × list_capabilities, plan_write → carte d'accord PUT Prix 250 000 → 260 000, refus enregistré. Relectures code et sécurité : rien de bloquant. Classeur wiki et miroir mis à jour (ligne `list_capabilities`).
+
+**Reste :** l'approbation (« Approuver et exécuter ») n'a pas été exercée : la route est un `PUT` (remplacement) et on ne sait pas si elle conserve les autres champs du bien — à vérifier avant. 4 tests de `ai.write-plan.test.ts` (« contrat figé miroir du front ») échouent localement sans lien avec le diff (contracts.ts et copilot.ts inchangés) : la CI tranche. Mineurs de la relecture sécurité : 20 routes d'écriture du catalogue sans permission (newsletter, whatsapp-notifications…) visibles de tout porteur de `PROPERTIES_VIEW` (l'exécution reste gardée) ; faire remonter les gardes de routeur dans `permissionsOf`. Une `TypeError` ponctuelle du fournisseur au premier appel, non reproduite. Plantage possible d'un graphique si le modèle nomme une clé `ref` (recharts) : non confirmé.
+
+**Pièges :** `preview_start` lance dans le checkout principal, pas le worktree : API et web lancés à la main depuis `.claude/worktrees/ia-v2` (journaux `ia-v2-{api,web}.log`). Le client Prisma du `node_modules` partagé est régénéré pour `main` : le checkout `feat/comptes-test-packs` ne tourne plus tant qu'il n'est pas mis à jour. `AI_MAX_TOOL_ROUNDS` n'a pas été changé (4 suffit désormais). Retirer les jonctions `node_modules` avec `rmdir` AVANT tout `git worktree remove`.

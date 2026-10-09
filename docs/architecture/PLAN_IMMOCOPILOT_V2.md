@@ -66,7 +66,7 @@ ChatGPT/Claude/Gemini) avec un panneau « artefact » et la dictée ; toute
 - **Décision changée** : le catalogue ne porte PAS le schéma Zod du corps ni de la
   requête (les contrôleurs parsent leurs schémas en ligne, pas de registre à lire).
   À reprendre à l'étape 4 si `plan_write` en a besoin.
-- Outils `list_capabilities` (recherche, GET seulement, 20 résultats) et `call_read`
+- Outils `list_capabilities` (recherche, 20 résultats ; GET par défaut, POST/PUT/PATCH avec `kind: "write"` pour `plan_write`, jamais DELETE) et `call_read`
   : exécutent une route GET par **requête loopback** sous l'identité de l'utilisateur
   (même jeton, aucune URL fournie par le modèle), donc avec toute la chaîne de
   middlewares réelle. Réponses masquées (clés évoquant un secret) puis réduites

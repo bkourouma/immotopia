@@ -26,7 +26,13 @@ jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (...a: unk
 
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../src/middleware/error-middleware';
 import type { CopilotSseEvent, CopilotToolContext } from '../../src/lib/ai/contracts';
-import { getCatalogEntries, findCatalogEntry, MAX_CAPABILITY_RESULTS } from '../../src/lib/ai/gateway/catalog';
+import {
+  getCatalogEntries,
+  findCatalogEntry,
+  findWritableEntry,
+  isPermittedByCatalog,
+  MAX_CAPABILITY_RESULTS
+} from '../../src/lib/ai/gateway/catalog';
 import {
   LOOPBACK_MAX_BODY_BYTES,
   LoopbackTimeoutError,
@@ -675,5 +681,102 @@ describe('invite système', () => {
     const prompt = buildSystemPrompt('fr', [{ name: 'search_properties' }]);
     expect(prompt).not.toContain('call_read');
     expect(prompt).not.toContain('list_capabilities');
+  });
+});
+
+describe('list_capabilities — kind write', () => {
+  const list = (input: unknown, permissions: Set<string> = ALL_CATALOG_PERMISSIONS) =>
+    listCapabilitiesTool.execute(listCapabilitiesTool.inputSchema.parse(input), ctx({ permissions }));
+  type Item = { id: string; method: string; path: string };
+  const itemsOf = (r: { modelResult: Record<string, unknown> }) => (r.modelResult.items ?? []) as Item[];
+  const WRITE_QUERIES = ['contacts', 'tag', 'lease', 'finance', 'property', 'user', 'payment', 'task'];
+
+  it('renvoie de vrais POST/PUT/PATCH du catalogue : jamais GET, DELETE ni route sensible', async () => {
+    let seen = 0;
+    for (const query of WRITE_QUERIES) {
+      for (const item of itemsOf(await list({ query, kind: 'write' }))) {
+        seen += 1;
+        const entry = findCatalogEntry(item.id);
+        expect(entry).toBeDefined();
+        expect(['POST', 'PUT', 'PATCH']).toContain(item.method);
+        expect(item.method).toBe(entry?.method);
+        expect(entry?.sensitive).toBe(false);
+        expect(item.id.startsWith('GET ')).toBe(false);
+        expect(item.id.startsWith('DELETE ')).toBe(false);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+    const all = itemsOf(await list({ module: 'crm', kind: 'write' }));
+    expect(all.some(item => item.id === POST_CONTACTS)).toBe(true);
+  });
+
+  it('chaque id renvoyé en mode write est accepté par findWritableEntry', async () => {
+    const ids = new Set<string>();
+    for (const entry of getCatalogEntries()) {
+      for (const item of itemsOf(await list({ module: entry.module, kind: 'write' }))) ids.add(item.id);
+    }
+    expect(ids.size).toBeGreaterThan(0);
+    for (const id of ids) expect(findWritableEntry(id)).toBeDefined();
+  });
+
+  it('mode read (explicite ou par défaut) inchangé : aucune écriture, méthode GET exposée', async () => {
+    for (const input of [{ query: 'contacts' }, { query: 'contacts', kind: 'read' }]) {
+      const items = itemsOf(await list(input));
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) expect(item.method).toBe('GET');
+    }
+  });
+
+  it('sans kind ni query/module : modules de lecture ; avec kind write : modules d’écriture', async () => {
+    const readModules = (await list({})).modelResult.modules as Array<{ module: string; routes: number }>;
+    const writeModules = (await list({ kind: 'write' })).modelResult.modules as Array<{
+      module: string;
+      routes: number;
+    }>;
+    expect(writeModules.length).toBeGreaterThan(0);
+    const writeTotal = writeModules.reduce((sum, m) => sum + m.routes, 0);
+    const expected = getCatalogEntries().filter(
+      e => findWritableEntry(e.id) && isPermittedByCatalog(e, ALL_CATALOG_PERMISSIONS)
+    ).length;
+    expect(writeTotal).toBe(expected);
+    expect(readModules).not.toEqual(writeModules);
+  });
+
+  it('un utilisateur sans la permission requise ne voit pas la route', async () => {
+    const restricted = getCatalogEntries().find(
+      e => findWritableEntry(e.id) && e.permissions && e.permissions.length > 0
+    );
+    expect(restricted).toBeDefined();
+    const entry = restricted!;
+    const withRight = itemsOf(await list({ module: entry.module, kind: 'write' }, ALL_CATALOG_PERMISSIONS));
+    expect(withRight.some(item => item.id === entry.id)).toBe(true);
+    const without = new Set([...ALL_CATALOG_PERMISSIONS].filter(key => !entry.permissions!.includes(key)));
+    const hidden = itemsOf(await list({ module: entry.module, kind: 'write' }, without));
+    expect(hidden.some(item => item.id === entry.id)).toBe(false);
+    for (const item of hidden) {
+      expect(isPermittedByCatalog(findCatalogEntry(item.id)!, without)).toBe(true);
+    }
+  });
+
+  it('rejette un kind inconnu et déclare l’énumération dans le jsonSchema', () => {
+    expect(listCapabilitiesTool.inputSchema.safeParse({ query: 'x', kind: 'delete' }).success).toBe(false);
+    expect(listCapabilitiesTool.inputSchema.safeParse({ query: 'x', kind: 'write' }).success).toBe(true);
+    const props = (listCapabilitiesTool.jsonSchema as { properties: Record<string, { enum?: string[] }> }).properties;
+    expect(props.kind.enum).toEqual(['read', 'write']);
+  });
+
+  it('le prompt système cite kind write avec plan_write, pas sans', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { buildSystemPrompt } =
+      require('../../src/lib/ai/system-prompt') as typeof import('../../src/lib/ai/system-prompt');
+    const tools = toolsForUser(ALL_CATALOG_PERMISSIONS);
+    expect(tools.map(tool => tool.name)).toContain('plan_write');
+    expect(buildSystemPrompt('fr', tools)).toMatch(/list_capabilities avec kind: "write"/);
+    const withoutWrite = buildSystemPrompt(
+      'fr',
+      tools.filter(tool => tool.name !== 'plan_write')
+    );
+    expect(withoutWrite).not.toContain('kind: "write"');
+    expect(withoutWrite).not.toContain('plan_write');
   });
 });
