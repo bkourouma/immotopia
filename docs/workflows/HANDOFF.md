@@ -18,6 +18,29 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `test/web-stabilise-tests-patrimoine` — 2026-10-05
+
+**État :** PR bkourouma/immotopia#118 vers `main`, prête pour relecture, tête `e5941a9f` (`main` du 2026-10-10 fusionné), CI verte sur les 7 contrôles et mergeStateStatus CLEAN. **Fusion réservée à l'utilisateur, sur GitHub.** Le diff ne touche que des tests et ce fichier.
+
+**Fait :**
+
+- `import-patrimoine-page.test.tsx` : les helpers (`titreEtape`, `bouton`, `boutonImporter`, `choisirNature`) ne passent plus par `*ByRole` avec `name`. Ils localisent par texte ou libellé, puis appellent `toHaveRole`.
+  - Cause mesurée au profil CPU : le calcul de nom accessible appelle `getComputedStyle` jsdom sur les feuilles antd, et `findBy`/`waitFor` le rejouent à chaque mutation.
+  - Résultat sur 1 cœur : parcours nominal de 4,1–4,4 s à 2,6–2,9 s par exécution.
+- Le test foncier « réouverture exige un motif » était déjà corrigé dans `main` par #117 (`fireEvent.change`). Il a été vérifié 16/16 sur 1 cœur.
+
+**Reste :** la fusion par l'utilisateur, puis supprimer cette section. Le test (2) a été accéléré (36–39 s → 22–26 s sur 1 cœur, 2 exécutions) et le parcours nominal (1 bis) a retrouvé sa limite de 30 s. Non élucidé : un échec isolé du test (1) « gabarit » après 22,8 s en local, jamais relu ; piste non prouvée, le premier chargement d'exceljs (~2,5 s à froid). **Suivi à décider à part :** `apps/web/src/__tests__/finance/stock-inventaire.test.tsx` (« ?ouvrir=OPENING&lieu= préremplit l'inventaire d'ouverture… ») est instable en CI : rouge une fois sur 7f132d68 en 449 ms (fenêtre trouvée avant son titre), vert à la relance, fichier identique à `main`.
+
+**Défaut préexistant de ce fichier :** sur `main`, le bloc ```markdown ouvert à la ligne 20 (« Modèle de section ») n'est fermé que vers la ligne 200 : toutes les sections de branche en tête de fichier sont donc dans un bloc de code. À corriger dans une PR dédiée.
+
+**Pièges :**
+
+- Vitest 2.1.9 n'a pas `--repeat`. Utiliser l'option `{ repeats: N }` dans une copie temporaire du test.
+- Pour simuler la charge de la CI : `start "" /affinity 0x1 /wait /b cmd /c npx vitest run …` dans un `.cmd` épingle Vitest sur 1 cœur et reproduit les flakies.
+- Les fichiers de test sont en CRLF dans le worktree : un remplacement scripté en `\n` échoue en silence. Préférer l'outil Edit.
+- Le worktree a besoin de jonctions vers `node_modules`, `apps/web/node_modules` et `packages/api/node_modules` (`@types/archiver`), sinon le typecheck de l'API casse.
+- `npm run lint` de l'API : 1 erreur préexistante, `no-irregular-whitespace` dans `src/lib/audit/platform-audit-csv.ts`.
+
 ## Branche `perf/ai-prompt-cache` — 2026-10-06
 
 **Fait :** cache de prompt Anthropic dans `lib/ai/providers/anthropic-provider.ts` : point d'arrêt explicite sur le bloc système (met en cache outils + invite, stables par construction, voir `system-prompt.ts`) et `cache_control` de premier niveau pour relire l'historique à chaque tour d'outils. Coupe-circuit `AI_PROMPT_CACHE=off` (`config/env.ts`, `env.example`, défaut `on`). Usage du cache journalisé en `debug`. Tests : `ai.anthropic-provider.test.ts` (12 verts), typecheck propre sur les fichiers touchés.
