@@ -28,6 +28,8 @@ export function findWritableEntry(id: string): CatalogEntry | undefined {
   const entry = BY_ID.get(id);
   if (!entry || !WRITABLE_METHODS.has(entry.method) || entry.sensitive) return undefined;
   if (isDestructive(entry.method, entry.path) || entry.id !== `${entry.method} ${entry.path}`) return undefined;
+  // Fail closed : une écriture dont le catalogue ne connaît aucune permission n'est ni listée ni planifiée.
+  if (!entry.permissions && !entry.anyOfPermissions) return undefined;
   return entry;
 }
 
@@ -50,8 +52,18 @@ export function isPermittedByCatalog(entry: CatalogEntry, permissions: ReadonlyS
 
 const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+/** `read` : consultations (GET). `write` : écritures proposables par `plan_write` (POST/PUT/PATCH, jamais DELETE). */
+export type CapabilityKind = 'read' | 'write';
+
+/** Routes que `kind` autorise dans la recherche : jamais celles à secret (`sensitive`) ; en écriture, exactement celles de `findWritableEntry` (les écritures à risque — envoi, paiement — restent listables : `plan_write` exige alors le mot de confirmation). */
+function isListable(entry: CatalogEntry, kind: CapabilityKind): boolean {
+  if (kind === 'write') return findWritableEntry(entry.id) !== undefined;
+  return READABLE_METHODS.has(entry.method) && !entry.sensitive;
+}
+
 export interface CapabilityQuery {
   query?: string;
+  kind?: CapabilityKind;
   module?: string;
   permissions: ReadonlySet<string>;
 }
@@ -61,8 +73,16 @@ export interface CapabilitySearchResult {
   entries: CatalogEntry[];
 }
 
-/** Recherche textuelle (tous les mots présents) dans les routes GET consultables : jamais les routes sensibles. */
-export function searchCapabilities({ query, module, permissions }: CapabilityQuery): CapabilitySearchResult {
+/**
+ * Recherche textuelle (tous les mots présents) dans les routes consultables (GET, défaut) ou
+ * proposables en écriture (`kind: 'write'`) : jamais les routes sensibles ni les suppressions.
+ */
+export function searchCapabilities({
+  query,
+  module,
+  permissions,
+  kind = 'read'
+}: CapabilityQuery): CapabilitySearchResult {
   const words = fold(query ?? '')
     .split(/[^a-z0-9]+/)
     .filter(word => word.length > 0);
@@ -70,7 +90,7 @@ export function searchCapabilities({ query, module, permissions }: CapabilityQue
 
   const scored: Array<{ entry: CatalogEntry; score: number }> = [];
   for (const entry of ENTRIES) {
-    if (!READABLE_METHODS.has(entry.method) || entry.sensitive) continue;
+    if (!isListable(entry, kind)) continue;
     if (wantedModule && fold(entry.module) !== wantedModule) continue;
     if (!isPermittedByCatalog(entry, permissions)) continue;
     const haystack = fold(`${entry.module} ${entry.summary} ${entry.path}`);
@@ -89,11 +109,14 @@ export function searchCapabilities({ query, module, permissions }: CapabilityQue
   };
 }
 
-/** Modules consultables et leur nombre de routes, pour guider une recherche sans mot-clé. */
-export function listReadableModules(permissions: ReadonlySet<string>): Array<{ module: string; routes: number }> {
+/** Modules consultables (ou, avec `kind: 'write'`, modifiables) et leur nombre de routes, pour guider une recherche sans mot-clé. */
+export function listReadableModules(
+  permissions: ReadonlySet<string>,
+  kind: CapabilityKind = 'read'
+): Array<{ module: string; routes: number }> {
   const counts = new Map<string, number>();
   for (const entry of ENTRIES) {
-    if (!READABLE_METHODS.has(entry.method) || entry.sensitive || !isPermittedByCatalog(entry, permissions)) continue;
+    if (!isListable(entry, kind) || !isPermittedByCatalog(entry, permissions)) continue;
     counts.set(entry.module, (counts.get(entry.module) ?? 0) + 1);
   }
   return [...counts.entries()].map(([module, routes]) => ({ module, routes })).sort((a, b) => b.routes - a.routes);

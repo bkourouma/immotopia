@@ -339,7 +339,35 @@ function reset() {
   jest.clearAllMocks();
 }
 
-beforeEach(reset);
+// Horloge figee, coherente avec START / END / NEXT_END : le service borne
+// l'echeance a « maintenant » et numerote par annee courante. Seul Date est
+// simule (timers et microtaches restent reels pour les await).
+beforeEach(() => {
+  jest.useFakeTimers({
+    now: new Date('2026-10-01T12:00:00.000Z'),
+    doNotFake: [
+      'nextTick',
+      'setImmediate',
+      'clearImmediate',
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+      'queueMicrotask',
+      'hrtime',
+      'performance',
+      'requestAnimationFrame',
+      'cancelAnimationFrame',
+      'requestIdleCallback',
+      'cancelIdleCallback'
+    ]
+  });
+  reset();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 // ------------------------------------------------------------------ pur
 

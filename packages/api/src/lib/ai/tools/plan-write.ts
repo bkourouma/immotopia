@@ -17,6 +17,7 @@ import type { WriteSensitivityCategory } from '../gateway/path-rules';
 import { buildPath, httpErrorMessage, MAX_QUERY_KEYS, pathParamsSchema, querySchema } from '../gateway/request-utils';
 import { redactSecrets } from '../gateway/sanitize';
 import { PLAN_BODY_MAX_BYTES, PLAN_BODY_MAX_DEPTH, planBodySchema } from '../gateway/write-input';
+import { checkWriteBody } from '../gateway/write-validators';
 import { canonicalJson, computePlanHash, sha256Hex } from '../plan-hash';
 import { signCapabilityProposal } from '../proposal-token';
 import {
@@ -297,9 +298,29 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
         t("Impossible de vérifier la ressource parente visée : l'assistant ne peut pas proposer cette écriture.")
       );
     }
+    // Validation à sec du corps, comme la route réelle le ferait : un plan voué à l'échec n'est jamais affiché,
+    // et rien n'est lu ni signé ni audité pour lui. Le corps du modèle reste inchangé (hash, jeton, exécution).
+    const bodyCheck = checkWriteBody(entry, body, { tenantId: ctx.tenantId, pathParams });
+    if (bodyCheck.status === 'invalid') {
+      throw new ValidationError(
+        t('Corps refusé par la route : certains champs sont absents ou invalides.'),
+        bodyCheck.issues.map(issue => ({
+          field: issue.path,
+          message: issue.message,
+          kind: issue.kind,
+          ...(issue.allowedValues ? { allowedValues: issue.allowedValues } : {})
+        }))
+      );
+    }
+    const unverifiedBody = bodyCheck.status === 'unchecked';
     const warnings: string[] = [
       t('Le serveur peut modifier d’autres champs (dates, statuts, montants calculés) que ceux listés.')
     ];
+    if (unverifiedBody) {
+      warnings.push(
+        t('Cette route n’a pas pu être vérifiée à l’avance : le serveur contrôlera les champs à l’exécution.')
+      );
+    }
 
     let state: ReadState | null = null;
     let stateReadAt: string | undefined;
@@ -463,6 +484,7 @@ export const planWriteTool: CopilotToolDefinition<typeof inputSchema> = {
         summary:
           `Plan « ${input.title} » prêt (${entry.method} ${entry.module}, ${changeSet.changes.length} changement(s) calculé(s) par le serveur` +
           `${requiresTypedConfirmation ? ', confirmation renforcée exigée' : ''}). ` +
+          `${unverifiedBody ? "Les champs du corps n'ont pas pu être vérifiés à l'avance : le serveur les contrôlera à l'exécution, le plan peut encore échouer. " : ''}` +
           "AUCUNE écriture n'a été faite. Attends la décision humaine dans l'interface (approbation ou refus) ; " +
           "ne prétends jamais l'écriture effectuée avant d'en voir le résultat, et n'en propose pas d'autre tant que l'utilisateur n'a pas répondu."
       },

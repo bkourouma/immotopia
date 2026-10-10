@@ -1295,3 +1295,25 @@ Pièges et décisions :
 - Déploiement du site : `npx tsc --noEmit` local passe grâce au cache
   incrémental alors que `next build` échoue ; vérifier avec
   `--incremental false` ou `npm run build`.
+
+---
+
+## Branche `fix/copilot-liste-ecritures` — 2026-10-09
+
+**Fait :** recette navigateur d'ImmoCopilot v2 (OpenRouter, DeepSeek V4 Flash, base locale migrée jusqu'à `20261010100000`). Défaut trouvé et corrigé : `list_capabilities` ne listait que les routes GET alors que le prompt et `plan_write` lui faisaient chercher les routes d'écriture ; un vrai modèle bouclait puis « trop d'étapes ». Désormais `kind: 'write'` renvoie les routes que `findWritableEntry` accepte (jamais DELETE ni sensibles), `method` figure dans chaque entrée, le prompt demande de chercher par module d'abord. Rejoué en navigateur avec 4 tours (défaut) : search_properties, 2 × list_capabilities, plan_write → carte d'accord PUT Prix 250 000 → 260 000, refus enregistré. Relectures code et sécurité : rien de bloquant. Classeur wiki et miroir mis à jour (ligne `list_capabilities`).
+
+**Ajouté ensuite (même PR) :** test `platform-invoice.test.ts` rendu indépendant de l'horloge (dates en dur périmées, il cassait toute PR depuis le 9/10) ; 20 écritures du catalogue sans permission traitées : plancher `COMMUNICATION_VIEW` pour newsletter, whatsapp-notifications et email-notifications, écritures sans permission écartées à la génération et refusées par `findWritableEntry` (`PATCH client-details` sort du catalogue, 658 → 657 entrées). 6 GET restent sans permission connue (racine, dashboard, clients, cash-sessions/:sessionId, maintenance/vendors/active, entitlements) : volontaire, un test existant l'exige. `test:isolation` non rejoué.
+
+**Reste :** l'approbation (« Approuver et exécuter ») n'a pas été exercée : la route est un `PUT` (remplacement) et on ne sait pas si elle conserve les autres champs du bien — à vérifier avant. 4 tests de `ai.write-plan.test.ts` (« contrat figé miroir du front ») échouent localement sans lien avec le diff (contracts.ts et copilot.ts inchangés) : la CI tranche. Mineurs de la relecture sécurité : 20 routes d'écriture du catalogue sans permission (newsletter, whatsapp-notifications…) visibles de tout porteur de `PROPERTIES_VIEW` (l'exécution reste gardée) ; faire remonter les gardes de routeur dans `permissionsOf`. Une `TypeError` ponctuelle du fournisseur au premier appel, non reproduite. Plantage possible d'un graphique si le modèle nomme une clé `ref` (recharts) : non confirmé.
+
+**Pièges :** `preview_start` lance dans le checkout principal, pas le worktree : API et web lancés à la main depuis `.claude/worktrees/ia-v2` (journaux `ia-v2-{api,web}.log`). Le client Prisma du `node_modules` partagé est régénéré pour `main` : le checkout `feat/comptes-test-packs` ne tourne plus tant qu'il n'est pas mis à jour. `AI_MAX_TOOL_ROUNDS` n'a pas été changé (4 suffit désormais). Retirer les jonctions `node_modules` avec `rmdir` AVANT tout `git worktree remove`.
+
+---
+
+## Branche `fix/copilot-validation-plan` — 2026-10-10
+
+**Fait :** (1) `plan_write` valide à sec le corps proposé contre le schéma Zod réel de 11 routes (`lib/ai/gateway/write-validators.ts` : biens POST/PUT, CRM contacts/deals/activités/conversion/rôles, baux POST/PATCH ; schémas de bail déplacés dans `lib/rental/schemas.ts`) AVANT d'afficher la carte : refus = `ValidationError` avec `issues` renvoyées au modèle (chemin, absent/invalide, valeurs permises ; jamais la valeur saisie), aucun jeton ni audit. Route hors registre : plan accepté avec l'avertissement « n'a pas pu être vérifiée à l'avance ». (2) `fieldErrors` dans le résultat d'exécution (`execute-capability.ts`, contrat figé API/web mis à jour) et affichage « libellé : message » dans la carte d'échec (`WritePlanCard.tsx`), libellés traduits dont « Type de détention ». Masquage des valeurs citées et des chemins secrets, indépendant de la langue. Rejoué en navigateur : la création de bien incomplète est refusée avant affichage et le modèle demande titre et type de détention. Relectures code et sécurité : non bloquant, mineurs corrigés. Classeur wiki (lignes 889 et 890) et miroir régénérés.
+
+**Reste :** autres écritures (~340) hors registre = `unchecked` ; ~15 min par route (lire le contrôleur, exporter le schéma, ajouter l'entrée et son test de parité). Faux accept connu : bail avec `startDate: ''` (le contrôleur lève BadRequestError après le parse, pas de `fieldErrors`). Messages Zod personnalisés préexistants en anglais (« First name is required », champ `version` des deals). Parité avec la vraie route testée sur 3 routes témoins seulement. Approbation d'un `PUT` de bien jamais exercée. `test:isolation` non rejoué. Staging non redéployé avec cette branche.
+
+**Pièges :** ne JAMAIS lancer `npm run i18n:extract` ni `i18n-migrate --only` pour ce périmètre : ils orphelinisent presque tous les catalogues (les agents ont restauré à la main). Un test web instable sous charge (`Importer mon patrimoine`, délai) : relancer le job. Hook de commit : une commande contenant `push` et `main` dans le même texte est bloquée (séparer `git push` et `gh pr create --base main`).

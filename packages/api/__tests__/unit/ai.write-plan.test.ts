@@ -67,6 +67,12 @@ const CONTACT_ID = '55555555-5555-4555-8555-555555555555';
 const PATCH_CONTACT = 'PATCH /api/tenants/:tenantId/crm/contacts/:contactId';
 const GET_CONTACT = 'GET /api/tenants/:tenantId/crm/contacts/:contactId';
 const POST_CONTACTS = 'POST /api/tenants/:tenantId/crm/contacts';
+/** Corps valide pour createContactSchema (firstName, lastName et email obligatoires). */
+const contactBody = (firstName: string, lastName = 'Koné') => ({
+  firstName,
+  lastName,
+  email: `${firstName.toLowerCase()}@example.com`
+});
 const POST_CONVERT = 'POST /api/tenants/:tenantId/crm/contacts/:contactId/convert';
 const POST_VALIDATE = 'POST /api/tenants/:tenantId/finance/salary-notes/:salaryNoteId/validate';
 const SENSITIVE_WRITE = 'POST /api/tenants/:tenantId/users/:userId/reset-password';
@@ -88,6 +94,7 @@ const json = (res: http.ServerResponse, status: number, body: unknown) => {
   res.end(JSON.stringify(body));
 };
 
+// Ces corps s'appuient sur le fait que les schémas CRM ignorent les clés inconnues (non stricts).
 const contactState = {
   success: true,
   data: {
@@ -97,7 +104,7 @@ const contactState = {
     score: 10,
     consentEmail: false,
     password: 'old-secret',
-    address: { city: 'Cocody', zip: '01' }
+    localisation: { city: 'Cocody', zip: '01' }
   }
 };
 
@@ -278,14 +285,14 @@ describe('plan_write — ce qui est refusé', () => {
   it('plafond : 3 plans par requête de chat, le 4e est refusé', async () => {
     const context = ctx();
     for (let i = 0; i < COPILOT_MAX_WRITE_PLANS_PER_REQUEST; i += 1) {
-      await plan({ capabilityId: POST_CONTACTS, body: { firstName: `A${i}` } }, context);
+      await plan({ capabilityId: POST_CONTACTS, body: contactBody(`A${i}`) }, context);
     }
     expect(context.writePlansIssued).toBe(3);
-    await expect(plan({ capabilityId: POST_CONTACTS, body: { firstName: 'D' } }, context)).rejects.toBeInstanceOf(
+    await expect(plan({ capabilityId: POST_CONTACTS, body: contactBody('D') }, context)).rejects.toBeInstanceOf(
       BadRequestError
     );
     // Une autre requête de chat repart de zéro.
-    await expect(plan({ capabilityId: POST_CONTACTS, body: { firstName: 'E' } }, ctx())).resolves.toBeDefined();
+    await expect(plan({ capabilityId: POST_CONTACTS, body: contactBody('E') }, ctx())).resolves.toBeDefined();
   });
 });
 
@@ -302,7 +309,7 @@ describe('plan_write — simulation sans écriture', () => {
         score: 20,
         consentEmail: true,
         nouveauChamp: 'x',
-        address: { city: 'Plateau', zip: '01' }
+        localisation: { city: 'Plateau', zip: '01' }
       }
     });
     const p = planOf(outcome);
@@ -325,10 +332,10 @@ describe('plan_write — simulation sans écriture', () => {
       { field: 'score', before: 10, after: 20 },
       { field: 'consentEmail', before: false, after: true },
       { field: 'nouveauChamp', before: undefined, after: 'x' },
-      { field: 'address.city', before: 'Cocody', after: 'Plateau' }
+      { field: 'localisation.city', before: 'Cocody', after: 'Plateau' }
     ]);
     expect(p.changes.some(c => c.field === 'fullName')).toBe(false); // inchangé : omis
-    expect(p.changes.some(c => c.field === 'address.zip')).toBe(false);
+    expect(p.changes.some(c => c.field === 'localisation.zip')).toBe(false);
     expect(p.warnings.join(' | ')).toContain('Le serveur peut modifier d’autres champs');
     expect(p.warnings.join(' | ')).toContain('nouveauChamp');
     expect(p.sensitive).toBe(false);
@@ -382,39 +389,48 @@ describe('plan_write — simulation sans écriture', () => {
   });
 
   it('POST de création : aucun « avant », aucune lecture, recordKind create, pas de cible', async () => {
-    const p = planOf(await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'Awa', lastName: 'Koné' } }));
+    const p = planOf(await plan({ capabilityId: POST_CONTACTS, body: contactBody('Awa') }));
     expect(received).toHaveLength(0);
     expect(p.recordKind).toBe('create');
     expect(p.method).toBe('POST');
     expect(p.target).toBeNull();
     expect(p.changes).toEqual([
       { field: 'firstName', before: undefined, after: 'Awa' },
-      { field: 'lastName', before: undefined, after: 'Koné' }
+      { field: 'lastName', before: undefined, after: 'Koné' },
+      { field: 'email', before: undefined, after: 'awa@example.com' }
     ]);
   });
 
   it('POST d’action sur une ressource : cible lue sur le GET du parent, changes = le corps', async () => {
     const p = planOf(
-      await plan({ capabilityId: POST_CONVERT, pathParams: { contactId: CONTACT_ID }, body: { targetType: 'OWNER' } })
+      await plan({
+        capabilityId: POST_CONVERT,
+        pathParams: { contactId: CONTACT_ID },
+        body: { roles: ['PROPRIETAIRE'] }
+      })
     );
     expect(received.map(r => `${r.method} ${r.url}`)).toEqual([
       `GET /api/tenants/${TENANT}/crm/contacts/${CONTACT_ID}`
     ]);
     expect(p.recordKind).toBe('action');
     expect(p.target).toEqual({ label: 'Awa Koné', resolved: true });
-    expect(p.changes).toEqual([{ field: 'targetType', before: undefined, after: 'OWNER' }]);
+    expect(p.changes).toEqual([{ field: 'roles.0', before: undefined, after: 'PROPRIETAIRE' }]);
     nothingWritten();
   });
 
   it('action sur une ressource introuvable : plan refusé', async () => {
     handler = (_req, res) => json(res, 404, { success: false, message: 'Introuvable' });
     await expect(
-      plan({ capabilityId: POST_CONVERT, pathParams: { contactId: CONTACT_ID }, body: {} })
+      plan({ capabilityId: POST_CONVERT, pathParams: { contactId: CONTACT_ID }, body: { roles: ['PROPRIETAIRE'] } })
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  // Les 42 clés `champN` passent la validation à sec parce que les schémas CRM ne sont pas stricts.
   it('plus de 30 changements : 30 affichés, changesTruncated, mot de confirmation exigé', async () => {
-    const body = Object.fromEntries(Array.from({ length: 45 }, (_, i) => [`champ${i}`, i]));
+    const body = {
+      ...contactBody('Awa'),
+      ...Object.fromEntries(Array.from({ length: 42 }, (_, i) => [`champ${i}`, i]))
+    };
     const p = planOf(await plan({ capabilityId: POST_CONTACTS, body }));
     expect(p.changes).toHaveLength(30);
     expect(p.changesTruncated).toBe(true);
@@ -426,7 +442,7 @@ describe('plan_write — simulation sans écriture', () => {
     const exact = planOf(
       await plan({
         capabilityId: POST_CONTACTS,
-        body: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`c${i}`, i]))
+        body: { ...contactBody('Awa'), ...Object.fromEntries(Array.from({ length: 27 }, (_, i) => [`c${i}`, i])) }
       })
     );
     expect(exact.changesTruncated).toBeUndefined();
@@ -528,7 +544,7 @@ describe('plan_write — parent d’une création imbriquée', () => {
       await plan({ capabilityId: PATCH_CONTACT, pathParams: { contactId: CONTACT_ID }, body: { city: 'Z' } })
     );
     expect(upd.pathParams).toEqual([{ name: 'contactId', value: CONTACT_ID }]);
-    const create = planOf(await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'A' } }));
+    const create = planOf(await plan({ capabilityId: POST_CONTACTS, body: contactBody('A') }));
     expect(create.pathParams).toBeUndefined();
     expect(create.stateReadAt).toBeUndefined();
   });
@@ -711,7 +727,7 @@ describe('écritures sensibles : routes réelles du catalogue (audit)', () => {
   });
 
   it('une écriture non classée reste à l’accord simple : plan non sensible, pas de mot', async () => {
-    const p = planOf(await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'Awa' } }));
+    const p = planOf(await plan({ capabilityId: POST_CONTACTS, body: contactBody('Awa') }));
     expect(p.sensitive).toBe(false);
     expect(p.requiresTypedConfirmation).toBe(false);
     expect(p.confirmationWord).toBeUndefined();
@@ -918,7 +934,7 @@ describe('plan_write — jeton, audit et résultat', () => {
   });
 
   it('modelResult : seulement planned, proposalId, summary ; JAMAIS le jeton ; dit d’attendre', async () => {
-    const outcome = await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'Awa' } });
+    const outcome = await plan({ capabilityId: POST_CONTACTS, body: contactBody('Awa') });
     const p = planOf(outcome);
     expect(Object.keys(outcome.modelResult).sort()).toEqual(['planned', 'proposalId', 'summary']);
     expect(outcome.modelResult.planned).toBe(true);
@@ -1181,7 +1197,13 @@ describe('contrat figé (miroir du front)', () => {
     return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map(match => match[1]!).sort();
   };
 
-  it.each(['WritePlan', 'WritePlanChange', 'CapabilityExecutedPayload'])(
+  it('CapabilityExecutedPayload : liste exacte des champs du contrat', () => {
+    expect(keysOf(read('packages/api/src/lib/ai/contracts.ts'), 'CapabilityExecutedPayload')).toEqual(
+      ['kind', 'proposalId', 'ok', 'status', 'message', 'resultPreview', 'fieldErrors'].sort()
+    );
+  });
+
+  it.each(['WritePlan', 'WritePlanChange', 'CapabilityExecutedPayload', 'CapabilityFieldError'])(
     '%s : mêmes champs côté API et côté web',
     name => {
       const api = read('packages/api/src/lib/ai/contracts.ts');
@@ -1224,7 +1246,7 @@ describe('contrat figé (miroir du front)', () => {
   });
 
   it('se sérialise en événement SSE `write_plan`', async () => {
-    const outcome = await plan({ capabilityId: POST_CONTACTS, body: { firstName: 'Awa' } });
+    const outcome = await plan({ capabilityId: POST_CONTACTS, body: contactBody('Awa') });
     const text = formatSseEvent(outcome.uiEvent!);
     expect(text.startsWith('event: write_plan\ndata: ')).toBe(true);
     expect(JSON.parse(text.split('data: ')[1]!).plan.capabilityId).toBe(POST_CONTACTS);
@@ -1381,10 +1403,10 @@ describe('orchestrateur + fournisseur fake — écritures', () => {
   it('plafond de 3 plans par requête de chat, via l’orchestrateur', async () => {
     const step = {
       toolCalls: [
-        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: { firstName: 'A' }, ...base } },
-        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: { firstName: 'B' }, ...base } },
-        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: { firstName: 'C' }, ...base } },
-        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: { firstName: 'D' }, ...base } }
+        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: contactBody('A'), ...base } },
+        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: contactBody('B'), ...base } },
+        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: contactBody('C'), ...base } },
+        { name: 'plan_write' as const, input: { capabilityId: POST_CONTACTS, body: contactBody('D'), ...base } }
       ]
     };
     const { events, requests } = await run('x', new FakeProvider([step, { text: 'fin' }]));
