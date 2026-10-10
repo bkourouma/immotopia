@@ -127,6 +127,8 @@ describe('catalogue de la passerelle IA', () => {
 
   it('toute route d’agence non DELETE, non destructrice, non exclue a une entrée', () => {
     const ids = new Set(built.entries.map(entry => entry.id));
+    // Écritures écartées faute de permission connue (fail closed) : voir ai.catalog-guards.test.ts.
+    const unguarded = new Set(built.excludedUnguardedWrites.map(entry => entry.id));
     const missing: string[] = [];
     for (const route of routes) {
       if (!isTenantScoped(route)) continue;
@@ -134,6 +136,7 @@ describe('catalogue de la passerelle IA', () => {
       if (!['GET', 'POST', 'PUT', 'PATCH'].includes(route.method)) continue;
       if (/webhook/i.test(route.path) || route.path.startsWith('/api/tenants/:tenantId/ai')) continue;
       if (route.path.split('/').includes('simulator')) continue;
+      if (unguarded.has(`${route.method} ${route.path}`)) continue;
       if (!ids.has(`${route.method} ${route.path}`)) missing.push(`${route.method} ${route.path}`);
     }
     expect(missing).toEqual([]);

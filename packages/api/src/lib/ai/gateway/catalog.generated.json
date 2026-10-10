@@ -261,7 +261,7 @@
       "pathParams": [],
       "module": "email-notifications",
       "summary": "list (email-notifications)",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1415,7 +1415,7 @@
       "pathParams": [],
       "module": "newsletter",
       "summary": "newsletter / campaigns",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1426,7 +1426,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1437,7 +1437,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId} / preview",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1448,7 +1448,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId} / recipients",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1459,7 +1459,7 @@
       "pathParams": [],
       "module": "newsletter",
       "summary": "newsletter / lists",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1470,7 +1470,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1481,7 +1481,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId} / export",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1492,7 +1492,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId} / subscribers",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1503,7 +1503,7 @@
       "pathParams": [],
       "module": "newsletter",
       "summary": "newsletter / templates",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -1514,7 +1514,7 @@
       "pathParams": ["templateId"],
       "module": "newsletter",
       "summary": "newsletter / templates / {templateId}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3373,7 +3373,7 @@
       "pathParams": [],
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3396,17 +3396,6 @@
       "module": "agence",
       "summary": "update tenant self (agence)",
       "permissions": ["TENANT_SETTINGS_EDIT"],
-      "anyOfPermissions": null,
-      "sensitive": false
-    },
-    {
-      "id": "PATCH /api/tenants/:tenantId/client-details",
-      "method": "PATCH",
-      "path": "/api/tenants/:tenantId/client-details",
-      "pathParams": [],
-      "module": "client-details",
-      "summary": "update client details (client-details)",
-      "permissions": null,
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3483,7 +3472,7 @@
       "pathParams": ["key"],
       "module": "email-notifications",
       "summary": "update (email-notifications / {key})",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3593,7 +3582,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3604,7 +3593,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -3615,7 +3604,7 @@
       "pathParams": ["templateId"],
       "module": "newsletter",
       "summary": "newsletter / templates / {templateId}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -4143,7 +4132,7 @@
       "pathParams": ["key"],
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications / {key}",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -4407,7 +4396,7 @@
       "pathParams": ["key"],
       "module": "email-notifications",
       "summary": "reset (email-notifications / {key} / reset)",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5212,7 +5201,7 @@
       "pathParams": [],
       "module": "newsletter",
       "summary": "newsletter / campaigns",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5223,7 +5212,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId} / cancel",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5234,7 +5223,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId} / schedule",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5245,7 +5234,7 @@
       "pathParams": ["campaignId"],
       "module": "newsletter",
       "summary": "newsletter / campaigns / {campaignId} / send",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5256,7 +5245,7 @@
       "pathParams": [],
       "module": "newsletter",
       "summary": "newsletter / lists",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5267,7 +5256,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId} / import",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5278,7 +5267,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId} / subscribers",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5289,7 +5278,7 @@
       "pathParams": ["listId"],
       "module": "newsletter",
       "summary": "newsletter / lists / {listId} / subscribers / from-contacts",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5300,7 +5289,7 @@
       "pathParams": [],
       "module": "newsletter",
       "summary": "newsletter / templates",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -6928,7 +6917,7 @@
       "pathParams": ["key"],
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications / {key} / reset",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -6939,7 +6928,7 @@
       "pathParams": [],
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications / group-broadcast / send",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -6950,7 +6939,7 @@
       "pathParams": [],
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications / group-invite / send-all",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -6961,7 +6950,7 @@
       "pathParams": [],
       "module": "whatsapp-notifications",
       "summary": "whatsapp-notifications / test-send",
-      "permissions": null,
+      "permissions": ["COMMUNICATION_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
     },
