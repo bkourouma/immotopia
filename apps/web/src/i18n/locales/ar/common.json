@@ -306,6 +306,7 @@
   "Bien": "العقار",
   "Bien créé (réf. {{ref}}) ; sa valorisation d’acquisition a été refusée : {{motif}}. Ne relancez pas cette ligne : ajoutez la valorisation par l’import « Valorisations ».": "أُنشئ العقار (المرجع {{ref}})؛ لكن تقييم الاقتناء رُفض: {{motif}}. لا تُعد تشغيل هذا السطر: أضف التقييم عبر استيراد «التقييمات».",
   "Bien immobilier": "العقار",
+  "Bien parent": "العقار الأصلي",
   "biens": "عقارات",
   "Biens": "العقارات",
   "Biens concernés": "العقارات المعنيّة",
@@ -1176,6 +1177,7 @@
   "Mo": "ميغابايت",
   "Mobile Money": "المحفظة الإلكترونية",
   "Mode": "الطريقة",
+  "Mode de transaction": "نوع المعاملة",
   "Mode démonstration : aucun paiement réel.": "وضع تجريبي: لا يوجد دفع حقيقي.",
   "Mode test": "وضع الاختبار",
   "Modèle de document": "نموذج مستند",
@@ -1861,6 +1863,7 @@
   "Type d'événement": "نوع الحدث",
   "Type de bien": "نوع العقار",
   "Type de couverture": "نوع التغطية",
+  "Type de détention": "نوع الملكية",
   "Type de document": "نوع المستند",
   "Type de mandat": "نوع الوكالة",
   "Types de biens": "أنواع العقارات",
@@ -1990,5 +1993,6 @@
   "Vue consolidée": "عرض مجمَّع",
   "Wave": "Wave",
   "WhatsApp": "واتساب",
-  "Word (.docx)": "Word (.docx)"
+  "Word (.docx)": "Word (.docx)",
+  "Zone": "المنطقة"
 }

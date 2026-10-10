@@ -248,6 +248,12 @@ export interface WritePlan {
   confirmationWord?: 'CONFIRMER';
 }
 
+/** Erreur de validation d'un champ, remontée de la route (message traduit, jamais la valeur saisie). */
+export interface CapabilityFieldError {
+  path: string;
+  message: string;
+}
+
 /** Résultat de POST /actions/execute pour un jeton de plan d'écriture. */
 export interface CapabilityExecutedPayload {
   kind: 'capability';
@@ -257,6 +263,8 @@ export interface CapabilityExecutedPayload {
   message: string;
   /** Réponse de la route, masquée et réduite comme `call_read`. */
   resultPreview: unknown;
+  /** Présent seulement pour un refus de validation (400/422 VALIDATION_ERROR) : 10 erreurs au plus. */
+  fieldErrors?: CapabilityFieldError[];
 }
 
 export interface CopilotStatus {

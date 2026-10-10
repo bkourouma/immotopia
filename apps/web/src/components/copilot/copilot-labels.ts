@@ -100,7 +100,23 @@ export function knownEnumLabel(value: string): string | null {
  * la charge de l'appelant (infobulle `title`).
  */
 export function planFieldLabel(field: string): string {
-  switch (field.toLowerCase().replace(/[^a-z0-9]/g, '')) {
+  // Chemin imbriqué (`address.city`, `items[0].name`) : libellé du dernier segment.
+  const segments = field.split('.').filter(s => s !== '');
+  const leaf = (segments[segments.length - 1] ?? field).replace(/\[\d+\]$/, '') || field;
+  switch (leaf.toLowerCase().replace(/[^a-z0-9]/g, '')) {
+    case 'ownershiptype':
+      return t('Type de détention');
+    case 'propertytype':
+      return t('Type de bien');
+    case 'transactionmode':
+    case 'transactionmodes':
+      return t('Mode de transaction');
+    case 'locationzone':
+      return t('Zone');
+    case 'containerparentid':
+      return t('Bien parent');
+    case 'owneruserid':
+      return t('Propriétaire');
     case 'internalnotes':
       return t('Notes internes');
     case 'notes':
@@ -228,6 +244,6 @@ export function planFieldLabel(field: string): string {
     case 'position':
       return t('Position');
     default:
-      return humanizeFieldName(field);
+      return humanizeFieldName(leaf);
   }
 }

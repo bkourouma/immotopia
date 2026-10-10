@@ -315,6 +315,54 @@ describe('WritePlanCard : états figés', () => {
     expect(screen.queryByRole('button', { name: 'Refuser' })).toBeNull();
   });
 
+  describe('échec avec champs en erreur', () => {
+    const failed = { ...result, ok: false, status: 400, message: 'Les données fournies sont invalides.' };
+
+    it('liste « libellé : message » avec le chemin technique en infobulle', () => {
+      setup(makePlan(), {
+        state: 'failed',
+        result: {
+          ...failed,
+          fieldErrors: [
+            { path: 'ownershipType', message: 'Le type de détention du bien est absent ou inconnu.' },
+            { path: 'address.city', message: 'Ville requise.' }
+          ]
+        },
+        error: { code: 'EXECUTION_FAILED', message: failed.message }
+      });
+      expect(screen.getByText('Les données fournies sont invalides.')).toBeInTheDocument();
+      const items = within(screen.getByTestId('copilot-write-plan-field-errors')).getAllByRole('listitem');
+      expect(items.map(li => li.textContent)).toEqual([
+        'Type de détention : Le type de détention du bien est absent ou inconnu.',
+        'Ville : Ville requise.'
+      ]);
+      expect(items[0].querySelector('span')).toHaveAttribute('title', 'ownershipType');
+    });
+
+    it('sans fieldErrors : aucune liste, comportement inchangé', () => {
+      setup(makePlan(), {
+        state: 'failed',
+        result: failed,
+        error: { code: 'EXECUTION_FAILED', message: failed.message }
+      });
+      expect(screen.getByText('Les données fournies sont invalides.')).toBeInTheDocument();
+      expect(screen.queryByTestId('copilot-write-plan-field-errors')).toBeNull();
+      const empty = { ...failed, fieldErrors: [] };
+      setup(makePlan(), { state: 'failed', result: empty });
+      expect(screen.queryByTestId('copilot-write-plan-field-errors')).toBeNull();
+    });
+
+    it('un message contenant du HTML reste du texte, sans valeur saisie', () => {
+      const { container } = setup(makePlan(), {
+        state: 'failed',
+        result: { ...failed, fieldErrors: [{ path: 'title', message: '<img src=x onerror=alert(1)>' }] }
+      });
+      expect(container.querySelector('img')).toBeNull();
+      const li = within(screen.getByTestId('copilot-write-plan-field-errors')).getByRole('listitem');
+      expect(li.textContent).toBe('Titre : <img src=x onerror=alert(1)>');
+    });
+  });
+
   it('refusé : statut local', () => {
     setup(makePlan(), { state: 'refused', decidedAt: '2026-03-01T10:00:00Z' });
     expect(screen.getByRole('group', { name: /Action refusée — rien n'a été modifié/ })).toBeInTheDocument();

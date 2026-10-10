@@ -180,6 +180,13 @@ export interface CapabilityExecutedPayload {
   status: number;
   message: string;
   resultPreview: unknown;
+  fieldErrors?: CapabilityFieldError[];
+}
+
+/** Champ refusé par la validation d'une écriture (message déjà traduit, jamais la valeur saisie). */
+export interface CapabilityFieldError {
+  path: string;
+  message: string;
 }
 
 /** Retour de POST /actions/execute : document (sans `kind`) ou capacité (`kind: 'capability'`). */

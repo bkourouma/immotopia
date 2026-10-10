@@ -251,6 +251,98 @@ describe('exécution d’un plan confirmé', () => {
     expect(JSON.stringify(second.payload)).not.toContain('/srv/app');
   });
 
+  describe('fieldErrors (refus de validation)', () => {
+    const validation = (status: number, errors: unknown, extra: Record<string, unknown> = {}) => {
+      handler = (_req, res) =>
+        json(res, status, {
+          success: false,
+          message: 'Les données fournies sont invalides.',
+          code: 'VALIDATION_ERROR',
+          errors,
+          ...extra
+        });
+    };
+
+    it('400 VALIDATION_ERROR : fieldErrors { path, message }, message générique conservé', async () => {
+      validation(400, [{ field: 'ownershipType', message: 'Le type de détention du bien est absent ou inconnu' }]);
+      const { payload } = await run(issue().token);
+      expect(payload).toMatchObject({ ok: false, status: 400, message: 'Les données fournies sont invalides.' });
+      expect(payload.fieldErrors).toEqual([
+        { path: 'ownershipType', message: 'Le type de détention du bien est absent ou inconnu' }
+      ]);
+    });
+
+    it('422 VALIDATION_ERROR : accepté aussi ; 10 erreurs au plus, messages tronqués à 200 caractères', async () => {
+      validation(
+        422,
+        Array.from({ length: 15 }, (_, i) => ({ field: `f${i}`, message: 'm'.repeat(500) }))
+      );
+      const { payload } = await run(issue().token);
+      expect(payload.fieldErrors).toHaveLength(10);
+      expect(payload.fieldErrors!.every(e => e.message.length === 200)).toBe(true);
+    });
+
+    it('chemin secret (password, token) : message masqué, valeur jamais renvoyée', async () => {
+      validation(400, [
+        { field: 'user.password', message: 'Trop court : « Hunter2Secret »' },
+        { field: 'apiToken', message: 'Format invalide « abc123 »' }
+      ]);
+      const { payload } = await run(issue().token);
+      expect(payload.fieldErrors).toEqual([
+        { path: 'user.password', message: 'Valeur invalide.' },
+        { path: 'apiToken', message: 'Valeur invalide.' }
+      ]);
+      expect(JSON.stringify(payload.fieldErrors)).not.toMatch(/Hunter2Secret|abc123/);
+    });
+
+    it('message Zod par défaut citant « received » : texte générique', async () => {
+      validation(400, [{ field: 'city', message: "Invalid enum value. Expected a | b, received 'zzz'" }]);
+      const { payload } = await run(issue().token);
+      expect(payload.fieldErrors).toEqual([{ path: 'city', message: 'Valeur invalide.' }]);
+    });
+
+    it.each([
+      ['arabe, citation « »', 'القيمة غير صالحة، المستلم « zzz-secret »'],
+      ['arabe, received suivi d’un guillemet', 'المستلم "zzz-secret"'],
+      ['français, « »', 'Valeur invalide. Attendu : a | b, reçu « zzz-secret ».'],
+      ['anglais, guillemets droits', 'Invalid value, got "zzz-secret"'],
+      ['guillemets typographiques', 'Invalid value “zzz-secret”']
+    ])('valeur citée (%s) : masquée', async (_label, message) => {
+      validation(400, [{ field: 'city', message }]);
+      const { payload } = await run(issue().token);
+      expect(payload.fieldErrors).toEqual([{ path: 'city', message: 'Valeur invalide.' }]);
+      expect(JSON.stringify(payload.fieldErrors)).not.toContain('zzz-secret');
+    });
+
+    it('type invalide sans citation, apostrophe simple : message conservé', async () => {
+      const message = "Type invalide : nombre attendu, chaîne reçu. L'utilisateur n'a pas saisi de prix.";
+      validation(400, [{ field: 'price', message }]);
+      const { payload } = await run(issue().token);
+      expect(payload.fieldErrors).toEqual([{ path: 'price', message }]);
+    });
+
+    it('400 qui n’est pas une validation, succès, JSON illisible : pas de fieldErrors', async () => {
+      handler = (_req, res) =>
+        json(res, 400, {
+          success: false,
+          message: 'Mauvaise requête',
+          code: 'BAD_REQUEST',
+          errors: [{ field: 'a', message: 'b' }]
+        });
+      expect((await run(issue().token)).payload).not.toHaveProperty('fieldErrors');
+
+      handler = (_req, res) =>
+        json(res, 200, { success: true, code: 'VALIDATION_ERROR', errors: [{ field: 'a', message: 'b' }] });
+      expect((await run(issue().token)).payload).not.toHaveProperty('fieldErrors');
+
+      handler = (_req, res) => {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end('{pas du json');
+      };
+      expect((await run(issue().token)).payload).not.toHaveProperty('fieldErrors');
+    });
+  });
+
   it('délai dépassé : 504, message honnête (l’écriture a pu aboutir), jamais rejouée', async () => {
     const spy = jest.spyOn(loopbackModule, 'loopbackWrite').mockRejectedValueOnce(new LoopbackTimeoutError());
     const { token } = issue();
