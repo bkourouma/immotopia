@@ -44,11 +44,12 @@ jest.mock('../../src/services/document-generation-service', () => ({
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (...a: unknown[]) => mockLogAudit(...a) }));
 
 import type { CopilotSseEvent, LlmMessage, LlmProvider, LlmTurnResult } from '../../src/lib/ai/contracts';
-import { NotFoundError } from '../../src/middleware/error-middleware';
+import { NotFoundError, ValidationError } from '../../src/middleware/error-middleware';
 import { MAX_TOOL_CALLS_PER_REQUEST, runChat, type RunChatInput } from '../../src/lib/ai/orchestrator';
 import { formatContextBlock, resolvePageContext, sanitizeReference } from '../../src/lib/ai/page-context';
 import { FakeProvider, type FakeStep, LlmProviderError } from '../../src/lib/ai/providers';
 import { buildSystemPrompt } from '../../src/lib/ai/system-prompt';
+import { planWriteTool } from '../../src/lib/ai/tools/plan-write';
 import { toolsForUser } from '../../src/lib/ai/tools/registry';
 import { resetProposalUsageForTests } from '../../src/lib/ai/proposal-token';
 import { env } from '../../src/config/env';
@@ -757,5 +758,52 @@ describe('aucun chemin du chat vers une écriture', () => {
   it('le registre des outils du LLM ne contient aucun outil d’exécution', () => {
     const source = read('lib/ai/tools/registry.ts');
     expect(source).not.toMatch(/^import[^\n]*(execute-rental-document|document-generation-service)/m);
+  });
+});
+
+describe('orchestrateur — erreurs de validation renvoyées au modèle', () => {
+  const planWriteFailingWith = (errors: Array<{ field: string; message: string }>) => ({
+    ...planWriteTool,
+    execute: async () => {
+      throw new ValidationError('Corps refusé.', errors);
+    }
+  });
+  const planInput = { capabilityId: 'POST /api/tenants/:tenantId/crm/contacts', title: 'T', steps: ['e'] };
+
+  it('plan_write : `issues` plafonnées à 10, messages tronqués à 200 caractères', async () => {
+    const errors = Array.from({ length: 12 }, (_, i) => ({ field: `champ${i}`, message: 'm'.repeat(500) }));
+    const harness = start(scripted([{ toolCalls: [{ name: 'plan_write', input: planInput }] }, { text: 'x' }]), {
+      tools: [planWriteFailingWith(errors)]
+    });
+    await harness.result;
+    const block = harness.requests[1][2].content[0] as { content: string; isError?: boolean };
+    expect(block.isError).toBe(true);
+    const payload = JSON.parse(block.content) as { error: string; issues: Array<{ field: string; message: string }> };
+    expect(payload.error).toBe('VALIDATION_ERROR');
+    expect(payload.issues).toHaveLength(10);
+    expect(payload.issues[0]!.field).toBe('champ0');
+    expect(payload.issues.every(i => i.message.length === 200)).toBe(true);
+  });
+
+  it('la ValidationError d’un autre outil ne renvoie pas `issues` au modèle', async () => {
+    mockListProperties.mockRejectedValue(
+      new ValidationError('Corps refusé.', [{ field: 'city', message: 'Champ obligatoire.' }])
+    );
+    const harness = start(
+      scripted([{ toolCalls: [{ name: 'search_properties', input: { city: 'Cocody' } }] }, { text: 'x' }])
+    );
+    await harness.result;
+    const block = harness.requests[1][2].content[0] as { content: string };
+    expect(JSON.parse(block.content)).not.toHaveProperty('issues');
+  });
+
+  it('une AppError sans champs ne porte pas de clé `issues`', async () => {
+    mockListProperties.mockRejectedValue(new NotFoundError('Introuvable.'));
+    const harness = start(
+      scripted([{ toolCalls: [{ name: 'search_properties', input: { city: 'Cocody' } }] }, { text: 'x' }])
+    );
+    await harness.result;
+    const block = harness.requests[1][2].content[0] as { content: string };
+    expect(JSON.parse(block.content)).not.toHaveProperty('issues');
   });
 });

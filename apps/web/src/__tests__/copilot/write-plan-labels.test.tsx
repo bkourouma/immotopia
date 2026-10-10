@@ -26,6 +26,24 @@ describe('planFieldLabel et planModuleLabel', () => {
     expect(planFieldLabel('champInconnuXyz')).toBe('Champ inconnu xyz');
   });
 
+  it('traduit les champs courants des écritures de bien, y compris en chemin imbriqué', () => {
+    expect(planFieldLabel('ownershipType')).toBe('Type de détention');
+    expect(planFieldLabel('propertyType')).toBe('Type de bien');
+    expect(planFieldLabel('transactionMode')).toBe('Mode de transaction');
+    expect(planFieldLabel('transactionModes')).toBe('Mode de transaction');
+    expect(planFieldLabel('transactionModes[0]')).toBe('Mode de transaction');
+    expect(planFieldLabel('status')).toBe('Statut');
+    expect(planFieldLabel('address')).toBe('Adresse');
+    expect(planFieldLabel('locationZone')).toBe('Zone');
+    expect(planFieldLabel('price')).toBe('Prix');
+    expect(planFieldLabel('currency')).toBe('Devise');
+    expect(planFieldLabel('title')).toBe('Titre');
+    expect(planFieldLabel('containerParentId')).toBe('Bien parent');
+    expect(planFieldLabel('ownerUserId')).toBe('Propriétaire');
+    expect(planFieldLabel('data.property.ownershipType')).toBe('Type de détention');
+    expect(planFieldLabel('items[0].title')).toBe('Titre');
+  });
+
   it('traduit les modules et segments de chemin, repli sur la valeur brute', () => {
     expect(planModuleLabel('CRM')).toBe('CRM');
     expect(planModuleLabel('RENTAL')).toBe('Gestion locative');

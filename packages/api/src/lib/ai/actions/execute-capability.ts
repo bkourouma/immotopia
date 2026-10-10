@@ -5,12 +5,12 @@ import { logAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { getRequestContext } from '../../../utils/request-context';
 import { logger } from '../../../utils/logger';
-import type { CapabilityExecutedPayload, CapabilityProposalClaims } from '../contracts';
+import type { CapabilityExecutedPayload, CapabilityFieldError, CapabilityProposalClaims } from '../contracts';
 import { findWritableEntry, isPermittedByCatalog } from '../gateway/catalog';
 import { isDestructive } from '../gateway/path-rules';
 import { LoopbackTimeoutError, loopbackWrite, type LoopbackResponse } from '../gateway/loopback';
 import { buildPath, buildQueryString, extractErrorMessage } from '../gateway/request-utils';
-import { redactSecrets, reduceForModel, stripDiskPaths } from '../gateway/sanitize';
+import { isSecretKey, redactSecrets, reduceForModel, stripDiskPaths } from '../gateway/sanitize';
 import { computePlanHash } from '../plan-hash';
 import { ProposalError, redeemProposal, verifyCapabilityProposal } from '../proposal-token';
 import { assessWrite, CONFIRMATION_WORD } from '../write-plan';
@@ -77,6 +77,51 @@ function writeMessage(status: number, text: string): string {
   if (status === 404) return t('Ressource introuvable.');
   if (status === 429) return t('Trop de requêtes, réessayez dans un instant.');
   return t("L'écriture a échoué.");
+}
+
+const MAX_FIELD_ERRORS = 10;
+const MAX_FIELD_ERROR_CHARS = 200;
+
+/**
+ * Un message qui CITE une valeur (entre « … », “ ” ou "…", ou `received`/`reçu`/`المستلم` suivi d'un guillemet)
+ * peut contenir la valeur saisie : détection indépendante de la langue. L'apostrophe simple n'en est pas une
+ * (« l'utilisateur »), et un message de type sans citation (« Type invalide : X attendu, Y reçu. ») reste lisible.
+ */
+const QUOTED_VALUE = /«[^»]*»|“[^”]*”|"[^"]*"|(?:received|reçu|المستلم)\s*[:=]?\s*["«“'‘]/i;
+function quotesAValue(message: string): boolean {
+  return QUOTED_VALUE.test(message);
+}
+
+/**
+ * Erreurs par champ d'un refus de validation de la route (400/422 `VALIDATION_ERROR`). Jamais la valeur saisie :
+ * un chemin secret ou un message Zod par défaut (« received ») qui peut citer la valeur donne un texte générique.
+ * Tout autre cas (autre erreur, succès, JSON illisible) : `undefined`.
+ */
+function extractFieldErrors(status: number, text: string): CapabilityFieldError[] | undefined {
+  if (status !== 400 && status !== 422) return undefined;
+  let body: { code?: unknown; errors?: unknown };
+  try {
+    body = JSON.parse(text) as typeof body;
+  } catch {
+    return undefined;
+  }
+  if (!body || typeof body !== 'object' || body.code !== 'VALIDATION_ERROR' || !Array.isArray(body.errors)) {
+    return undefined;
+  }
+  const result: CapabilityFieldError[] = [];
+  for (const raw of body.errors) {
+    if (result.length >= MAX_FIELD_ERRORS) break;
+    if (!raw || typeof raw !== 'object') continue;
+    const { field, message } = raw as { field?: unknown; message?: unknown };
+    if (typeof field !== 'string' || typeof message !== 'string') continue;
+    const secret = field.split(/[.[\]]+/).some(segment => segment !== '' && isSecretKey(segment));
+    const mayQuoteValue = quotesAValue(message);
+    result.push({
+      path: field.slice(0, MAX_FIELD_ERROR_CHARS),
+      message: secret || mayQuoteValue ? t('Valeur invalide.') : message.slice(0, MAX_FIELD_ERROR_CHARS)
+    });
+  }
+  return result.length > 0 ? result : undefined;
 }
 
 function preview(response: LoopbackResponse): unknown {
@@ -168,6 +213,7 @@ export async function executeCapability(input: ExecuteCapabilityInput): Promise<
   let status: number;
   let message: string;
   let resultPreview: unknown = null;
+  let fieldErrors: CapabilityFieldError[] | undefined;
   try {
     const response = await loopbackWrite({
       method,
@@ -185,6 +231,7 @@ export async function executeCapability(input: ExecuteCapabilityInput): Promise<
     const succeeded = status >= 200 && status < 300;
     message = succeeded ? t('Écriture effectuée.') : writeMessage(status, response.text);
     resultPreview = preview(response);
+    if (!succeeded) fieldErrors = extractFieldErrors(status, response.text);
   } catch (error) {
     if (error instanceof LoopbackTimeoutError) {
       status = 504;
@@ -221,6 +268,14 @@ export async function executeCapability(input: ExecuteCapabilityInput): Promise<
   });
 
   return {
-    payload: { kind: 'capability', proposalId: claims.jti, ok, status, message, resultPreview }
+    payload: {
+      kind: 'capability',
+      proposalId: claims.jti,
+      ok,
+      status,
+      message,
+      resultPreview,
+      ...(fieldErrors ? { fieldErrors } : {})
+    }
   };
 }

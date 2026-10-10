@@ -7,8 +7,9 @@ import {
 } from '@ant-design/icons';
 import { Alert, Button, Card, Input, Space, Tag } from 'antd';
 import { t } from '../../i18n/t';
-import type { WritePlan, WritePlanState, CapabilityExecutedPayload } from '../../types/copilot';
+import type { WritePlan, WritePlanState, CapabilityExecutedPayload, CapabilityFieldError } from '../../types/copilot';
 import { requiredConfirmationWord } from '../../utils/copilot-write-plan';
+import { planFieldLabel } from './copilot-labels';
 import { WritePlanChangesTable } from './WritePlanChangesTable';
 import { WritePlanPathParams, WritePlanQuery } from './WritePlanRouteParams';
 import {
@@ -158,6 +159,19 @@ function Warnings({ warnings }: { warnings: string[] }): React.ReactElement | nu
   );
 }
 
+/** Champs refusés par la validation : libellé lisible (chemin technique en infobulle) et message serveur en texte brut. */
+function FieldErrors({ errors }: { errors: CapabilityFieldError[] }): React.ReactElement {
+  return (
+    <ul data-testid="copilot-write-plan-field-errors" style={{ margin: '8px 0 0', paddingInlineStart: 20 }}>
+      {errors.map((fe, index) => (
+        <li key={index} style={{ overflowWrap: 'anywhere' }}>
+          <span title={fe.path}>{planFieldLabel(fe.path)}</span> : {fe.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Outcome({
   state,
   result,
@@ -195,6 +209,7 @@ function Outcome({
   return (
     <div role="status" aria-live="polite" data-testid="copilot-write-plan-status" style={{ marginBlockStart: 12 }}>
       {alert}
+      {state === 'failed' && result?.fieldErrors?.length ? <FieldErrors errors={result.fieldErrors} /> : null}
       {time ? (
         <p style={{ ...mutedStyle, margin: '6px 0 0', fontSize: 12 }}>
           {t('Décision enregistrée le {{date}}', { date: time })}

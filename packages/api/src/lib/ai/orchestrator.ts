@@ -16,6 +16,7 @@ import type {
 } from './contracts';
 import { formatContextBlock, type ResolvedPageContext } from './page-context';
 import { isAbortError, LlmProviderError } from './providers';
+import { redactSecrets } from './gateway/sanitize';
 import { buildSystemPrompt } from './system-prompt';
 import { ALL_TOOLS, findTool, toLlmToolSpecs, type ToolFeature } from './tools/registry';
 
@@ -84,6 +85,17 @@ export function moduleNotIncludedMessage(feature: ToolFeature): string {
 }
 
 /** Messages de la conversation : rôles alternés, premier message utilisateur (exigence des fournisseurs). */
+const MAX_PLAN_ISSUES = 10;
+const MAX_PLAN_ISSUE_CHARS = 200;
+
+/** Erreurs de champ de `plan_write` seulement : 10 au plus, messages tronqués, secrets masqués. */
+function planWriteIssues(errors: Array<{ field: string; message: string }>): unknown[] {
+  return errors.slice(0, MAX_PLAN_ISSUES).map(issue => {
+    const safe = redactSecrets(issue) as { message?: unknown };
+    return typeof safe.message === 'string' ? { ...safe, message: safe.message.slice(0, MAX_PLAN_ISSUE_CHARS) } : safe;
+  });
+}
+
 function toLlmMessages(messages: ChatRequest['messages'], contextBlock: string): LlmMessage[] {
   const out: LlmMessage[] = [];
   const lastIndex = messages.length - 1;
@@ -308,7 +320,12 @@ async function runToolCall(
     });
     if (error instanceof AppError) {
       // Message d'une erreur typée : rédigé pour l'utilisateur (« Bail introuvable. »), sans détail interne.
-      return errorResult(call.id, error.code ?? 'ERROR', error.message);
+      return errorResult(
+        call.id,
+        error.code ?? 'ERROR',
+        error.message,
+        tool.name === 'plan_write' && error.errors ? { issues: planWriteIssues(error.errors) } : undefined
+      );
     }
     logger.error('ImmoCopilot : échec inattendu d’un outil', { tenantId, tool: tool.name, error });
     return errorResult(call.id, 'INTERNAL', "L'outil a rencontré une erreur.");

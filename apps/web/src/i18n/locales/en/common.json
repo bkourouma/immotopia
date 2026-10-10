@@ -306,6 +306,7 @@
   "Bien": "Property",
   "Bien créé (réf. {{ref}}) ; sa valorisation d’acquisition a été refusée : {{motif}}. Ne relancez pas cette ligne : ajoutez la valorisation par l’import « Valorisations ».": "Property created (ref. {{ref}}); its acquisition valuation was rejected: {{motif}}. Do not re-run this line: add the valuation through the « Valuations » import.",
   "Bien immobilier": "Property",
+  "Bien parent": "Parent property",
   "biens": "properties",
   "Biens": "Properties",
   "Biens concernés": "Properties concerned",
@@ -1176,6 +1177,7 @@
   "Mo": "MB",
   "Mobile Money": "Mobile Money",
   "Mode": "Method",
+  "Mode de transaction": "Transaction mode",
   "Mode démonstration : aucun paiement réel.": "Demo mode: no real payment.",
   "Mode test": "Test mode",
   "Modèle de document": "Document template",
@@ -1861,6 +1863,7 @@
   "Type d'événement": "Event type",
   "Type de bien": "Property type",
   "Type de couverture": "Coverage type",
+  "Type de détention": "Ownership type",
   "Type de document": "Document type",
   "Type de mandat": "Mandate type",
   "Types de biens": "Property types",
@@ -1990,5 +1993,6 @@
   "Vue consolidée": "Consolidated view",
   "Wave": "Wave",
   "WhatsApp": "WhatsApp",
-  "Word (.docx)": "Word (.docx)"
+  "Word (.docx)": "Word (.docx)",
+  "Zone": "Area"
 }
