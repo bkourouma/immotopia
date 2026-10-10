@@ -42,6 +42,8 @@ export interface BuiltCatalog {
   entries: CatalogEntry[];
   /** Routes d'agence exclues parce que destructrices (jamais écrites dans le fichier). */
   excludedDestructive: Array<{ id: string; destructive: true }>;
+  /** Écritures d'agence écartées faute de permission connue (fail closed), jamais écrites dans le fichier. */
+  excludedUnguardedWrites: Array<{ id: string; unguardedWrite: true }>;
 }
 
 const TENANT_PREFIX = '/api/tenants/:tenantId';
@@ -101,8 +103,23 @@ function summaryOf(path: string, handler: unknown): string {
   return words ? `${words} (${trail || 'agence'})` : trail || 'agence';
 }
 
+/**
+ * Modules d'agence dont les routeurs ne posent QUE `requireTenantCollaborator` (un type de rôle, pas une
+ * permission RBAC) : le catalogue ne pouvait donc rien exiger d'eux. Plancher posé côté assistant, plus strict
+ * que la route : la permission que l'interface exige déjà pour tout l'espace Communication
+ * (`apps/web/src/navigation/menu-catalog.ts`, seed `communication-permissions-seed.ts` : admin, manager, agent).
+ * L'exécution reste jugée par la chaîne réelle ; ce plancher ne sert qu'à ne pas montrer ni planifier ces routes
+ * à un collaborateur qui n'a pas accès à l'écran correspondant. (`requireTenantCollaborator` lui-même est toujours
+ * satisfait ici : `requireAiAssistantAccess` n'admet que des collaborateurs, d'où aucun marqueur dans le catalogue.)
+ */
+export const COMMUNICATION_PERMISSION_FLOOR: ReadonlyMap<string, readonly string[]> = new Map([
+  ['newsletter', ['COMMUNICATION_VIEW']],
+  ['whatsapp-notifications', ['COMMUNICATION_VIEW']],
+  ['email-notifications', ['COMMUNICATION_VIEW']]
+]);
+
 function permissionsOf(route: DiscoveredRoute): Pick<CatalogEntry, 'permissions' | 'anyOfPermissions'> {
-  const all = new Set<string>();
+  const all = new Set<string>(COMMUNICATION_PERMISSION_FLOOR.get(moduleOf(route.path)) ?? []);
   const anyOf: string[][] = [];
   for (const mw of route.middlewares as any[]) {
     if (typeof mw?.permissionKey === 'string') all.add(mw.permissionKey);
@@ -124,6 +141,7 @@ export function isTenantScoped(route: DiscoveredRoute): boolean {
 export function buildCatalog(routes: DiscoveredRoute[]): BuiltCatalog {
   const byId = new Map<string, CatalogEntry>();
   const destructive = new Map<string, { id: string; destructive: true }>();
+  const unguardedWrites = new Map<string, { id: string; unguardedWrite: true }>();
 
   for (const route of routes) {
     if (!isTenantScoped(route)) continue;
@@ -136,6 +154,13 @@ export function buildCatalog(routes: DiscoveredRoute[]): BuiltCatalog {
     // Express sert la PREMIÈRE route qui correspond : un doublon ultérieur est inatteignable.
     if (byId.has(id)) continue;
     const handler = route.middlewares[route.middlewares.length - 1];
+    const permissions = permissionsOf(route);
+    // Fail closed : une ÉCRITURE dont aucune permission n'est connue (simple appartenance à l'agence, comme
+    // `PATCH client-details`, libre-service d'un compte portail) n'entre pas dans le catalogue.
+    if (route.method !== 'GET' && !permissions.permissions && !permissions.anyOfPermissions) {
+      unguardedWrites.set(id, { id, unguardedWrite: true });
+      continue;
+    }
     byId.set(id, {
       id,
       method: route.method as CatalogEntry['method'],
@@ -143,7 +168,7 @@ export function buildCatalog(routes: DiscoveredRoute[]): BuiltCatalog {
       pathParams: pathParamsOf(route.path),
       module: moduleOf(route.path),
       summary: summaryOf(route.path, handler),
-      ...permissionsOf(route),
+      ...permissions,
       sensitive: isSensitivePath(route.path)
     });
   }
@@ -151,7 +176,8 @@ export function buildCatalog(routes: DiscoveredRoute[]): BuiltCatalog {
   const byText = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return {
     entries: [...byId.values()].sort(byText),
-    excludedDestructive: [...destructive.values()].sort(byText)
+    excludedDestructive: [...destructive.values()].sort(byText),
+    excludedUnguardedWrites: [...unguardedWrites.values()].sort(byText)
   };
 }
 

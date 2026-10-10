@@ -28,6 +28,8 @@ export function findWritableEntry(id: string): CatalogEntry | undefined {
   const entry = BY_ID.get(id);
   if (!entry || !WRITABLE_METHODS.has(entry.method) || entry.sensitive) return undefined;
   if (isDestructive(entry.method, entry.path) || entry.id !== `${entry.method} ${entry.path}`) return undefined;
+  // Fail closed : une écriture dont le catalogue ne connaît aucune permission n'est ni listée ni planifiée.
+  if (!entry.permissions && !entry.anyOfPermissions) return undefined;
   return entry;
 }
 
