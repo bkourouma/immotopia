@@ -20,7 +20,7 @@ Modèle de section :
 ```markdown
 ## Branche `test/web-stabilise-tests-patrimoine` — 2026-10-05
 
-**État :** PR bkourouma/immotopia#118 vers `main`, sortie du brouillon le 2026-10-07 (CI verte trois fois de suite sur `bc836239`, relances comprises), puis `origin/main` fusionné dans la branche le 2026-10-08 pour lever un conflit sur ce fichier. Le diff ne touche que des tests. **Fusion réservée à l'utilisateur.**
+**État :** PR bkourouma/immotopia#118 vers `main`, prête pour relecture, tête `e5941a9f` (`main` du 2026-10-10 fusionné), CI verte sur les 7 contrôles et mergeStateStatus CLEAN. **Fusion réservée à l'utilisateur, sur GitHub.** Le diff ne touche que des tests et ce fichier.
 
 **Fait :**
 
@@ -29,7 +29,7 @@ Modèle de section :
   - Résultat sur 1 cœur : parcours nominal de 4,1–4,4 s à 2,6–2,9 s par exécution.
 - Le test foncier « réouverture exige un motif » était déjà corrigé dans `main` par #117 (`fireEvent.change`). Il a été vérifié 16/16 sur 1 cœur.
 
-**Reste :** attendre la CI après la fusion de `main`, puis la fusion par l'utilisateur. Le test (2) a été accéléré (36–39 s → 22–26 s sur 1 cœur, 2 exécutions) et le parcours nominal (1 bis) a retrouvé sa limite de 30 s. Non élucidé : un échec isolé du test (1) « gabarit » après 22,8 s en local, jamais relu ; piste non prouvée, le premier chargement d'exceljs (~2,5 s à froid).
+**Reste :** la fusion par l'utilisateur, puis supprimer cette section. Le test (2) a été accéléré (36–39 s → 22–26 s sur 1 cœur, 2 exécutions) et le parcours nominal (1 bis) a retrouvé sa limite de 30 s. Non élucidé : un échec isolé du test (1) « gabarit » après 22,8 s en local, jamais relu ; piste non prouvée, le premier chargement d'exceljs (~2,5 s à froid). **Suivi à décider à part :** `apps/web/src/__tests__/finance/stock-inventaire.test.tsx` (« ?ouvrir=OPENING&lieu= préremplit l'inventaire d'ouverture… ») est instable en CI : rouge une fois sur 7f132d68 en 449 ms (fenêtre trouvée avant son titre), vert à la relance, fichier identique à `main`.
 
 **Défaut préexistant de ce fichier :** sur `main`, le bloc ```markdown ouvert à la ligne 20 (« Modèle de section ») n'est fermé que vers la ligne 200 : toutes les sections de branche en tête de fichier sont donc dans un bloc de code. À corriger dans une PR dédiée.
 
