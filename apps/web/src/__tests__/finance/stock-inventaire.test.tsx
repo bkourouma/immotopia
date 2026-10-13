@@ -511,6 +511,22 @@ async function choisir(etiquette: RegExp, texteOption: RegExp) {
   fireEvent.click(trouve);
 }
 
+/**
+ * La fenêtre « Ouvrir un inventaire » ouverte par `?ouvrir=…&lieu=…`, une fois préremplie.
+ *
+ * Elle se monte d'abord dans son état par défaut (aucun lieu, nature « courant », invite « Choisir un
+ * lieu de stockage ») ; c'est un `useEffect` qui y pose ensuite le lieu et la nature de l'URL. Ce premier
+ * état est réel : un observateur DOM le voit à chaque montage. `findByRole('dialog')` se résout dès que la
+ * fenêtre existe et, selon la charge, avant cet effet — un test qui lisait aussitôt le contenu échouait
+ * alors par intermittence en CI (« Unable to find an element with the text: Inventaire d’ouverture »).
+ * Le lieu et la nature sont posés dans la même mise à jour : l'invite qui disparaît marque l'état final.
+ */
+async function fenetreOuverturePrerempli(): Promise<HTMLElement> {
+  const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+  await waitFor(() => expect(within(fenetre).queryByText('Choisir un lieu de stockage')).not.toBeInTheDocument(), TIMEOUT);
+  return fenetre;
+}
+
 async function ongletInventaire() {
   fireEvent.click(await screen.findByRole('tab', { name: 'Inventaire physique' }, TIMEOUT));
 }
@@ -655,7 +671,7 @@ describe('La liste des inventaires', () => {
     configurerGet({ ctx });
     monter(`/tenant/${TENANT}/finance/stock/inventaire?ouvrir=OPENING&lieu=${DEPOT}`);
 
-    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    const fenetre = await fenetreOuverturePrerempli();
     expect(within(fenetre).getByText('Inventaire d’ouverture')).toBeInTheDocument();
     expect(within(fenetre).getByText(/Un surplus y entre sans valeur/)).toBeInTheDocument();
     const natures = await optionsDeId('comptage-nature');
@@ -669,7 +685,7 @@ describe('La liste des inventaires', () => {
   it('n’offre pas « Inventaire d’ouverture » quand openingCountSuggested est faux', async () => {
     monter(`/tenant/${TENANT}/finance/stock/inventaire?ouvrir=OPENING&lieu=${DEPOT}`);
 
-    const fenetre = await screen.findByRole('dialog', {}, TIMEOUT);
+    const fenetre = await fenetreOuverturePrerempli();
     expect(within(fenetre).getByText('Inventaire courant')).toBeInTheDocument();
     const natures = await optionsDeId('comptage-nature');
     expect(natures.map(n => n.textContent)).toEqual(['Inventaire courant', 'Inventaire de clôture']);

@@ -18,18 +18,17 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
-## Branche `test/web-stabilise-tests-patrimoine` — 2026-10-05
+## Branche `test/stock-inventaire-instable` — 2026-10-11
 
-**État :** PR bkourouma/immotopia#118 vers `main`, prête pour relecture, tête `e5941a9f` (`main` du 2026-10-10 fusionné), CI verte sur les 7 contrôles et mergeStateStatus CLEAN. **Fusion réservée à l'utilisateur, sur GitHub.** Le diff ne touche que des tests et ce fichier.
+**État :** correctif du test commité et poussé, PR vers `main` (fusion à l'utilisateur). Vérifié en local le 2026-10-13 : `stock-inventaire.test.tsx` 32/32, ESLint propre, typecheck web 0 erreur. Branche issue de `origin/main` (`307dfba4`). Seul fichier de code modifié : `apps/web/src/__tests__/finance/stock-inventaire.test.tsx`.
 
-**Fait :**
+**Cause établie :** dans `FenetreOuverture` (`pages/finance/StockInventaire.tsx`), la fenêtre se monte d'abord à l'état par défaut (invite « Choisir un lieu de stockage ») ; un `useEffect` y pose ensuite le lieu et la nature d'après `?ouvrir=…&lieu=…`. Un observateur DOM voit cet état intermédiaire à 16 montages sur 16. `findByRole('dialog')` se résout parfois avant l'effet, d'où l'échec CI intermittent « Unable to find an element with the text: Inventaire d’ouverture ». Preuve déterministe : avec l'effet retardé de 400 ms (patch temporaire, annulé), l'ancien test échoue avec ce message exact et le nouveau passe.
 
-- `import-patrimoine-page.test.tsx` : les helpers (`titreEtape`, `bouton`, `boutonImporter`, `choisirNature`) ne passent plus par `*ByRole` avec `name`. Ils localisent par texte ou libellé, puis appellent `toHaveRole`.
-  - Cause mesurée au profil CPU : le calcul de nom accessible appelle `getComputedStyle` jsdom sur les feuilles antd, et `findBy`/`waitFor` le rejouent à chaque mutation.
-  - Résultat sur 1 cœur : parcours nominal de 4,1–4,4 s à 2,6–2,9 s par exécution.
-- Le test foncier « réouverture exige un motif » était déjà corrigé dans `main` par #117 (`fireEvent.change`). Il a été vérifié 16/16 sur 1 cœur.
+**Fait :** helper `fenetreOuverturePrerempli()` (attend la disparition de l'invite), utilisé par « ?ouvrir=OPENING&lieu= préremplit… » et par « n’offre pas « Inventaire d’ouverture »… ». Pour le second, la course n'est pas démontrée (il passe aussi avec l'effet retardé) : changement par cohérence, à dire dans la PR. Comportement applicatif inchangé.
 
-**Reste :** la fusion par l'utilisateur, puis supprimer cette section. Le test (2) a été accéléré (36–39 s → 22–26 s sur 1 cœur, 2 exécutions) et le parcours nominal (1 bis) a retrouvé sa limite de 30 s. Non élucidé : un échec isolé du test (1) « gabarit » après 22,8 s en local, jamais relu ; piste non prouvée, le premier chargement d'exceljs (~2,5 s à froid). **Suivi à décider à part :** `apps/web/src/__tests__/finance/stock-inventaire.test.tsx` (« ?ouvrir=OPENING&lieu= préremplit l'inventaire d'ouverture… ») est instable en CI : rouge une fois sur 7f132d68 en 449 ms (fenêtre trouvée avant son titre), vert à la relance, fichier identique à `main`.
+**Reste :** suivre la CI de la PR, la fusion par l'utilisateur, puis supprimer cette section.
+
+**Points ouverts pour l'utilisateur :** décider de la PR du correctif ci-dessus. Non élucidé depuis la PR #118 : un échec isolé, jamais relu, du test (1) « gabarit » de l'import patrimoine après 22,8 s en local (piste non prouvée : premier chargement d'exceljs).
 
 **Défaut préexistant de ce fichier :** sur `main`, le bloc ```markdown ouvert à la ligne 20 (« Modèle de section ») n'est fermé que vers la ligne 200 : toutes les sections de branche en tête de fichier sont donc dans un bloc de code. À corriger dans une PR dédiée.
 
@@ -39,7 +38,11 @@ Modèle de section :
 - Pour simuler la charge de la CI : `start "" /affinity 0x1 /wait /b cmd /c npx vitest run …` dans un `.cmd` épingle Vitest sur 1 cœur et reproduit les flakies.
 - Les fichiers de test sont en CRLF dans le worktree : un remplacement scripté en `\n` échoue en silence. Préférer l'outil Edit.
 - Le worktree a besoin de jonctions vers `node_modules`, `apps/web/node_modules` et `packages/api/node_modules` (`@types/archiver`), sinon le typecheck de l'API casse.
-- `npm run lint` de l'API : 1 erreur préexistante, `no-irregular-whitespace` dans `src/lib/audit/platform-audit-csv.ts`.
+- `npm run lint` de l'API : 1 erreur préexistante, `no-irregular-whitespace` dans `src/lib/audit/platform-audit-csv.ts` (étape `continue-on-error` en CI, sans effet bloquant).
+- Le patch de preuve (`setTimeout` de 400 ms dans l'effet de `StockInventaire.tsx`) a été annulé par copie de sauvegarde : vérifier que ce fichier n'apparaît pas dans `git status`.
+- Fichiers de la page en CRLF : un remplacement scripté échoue en silence ; normaliser les `\n` puis réécrire.
+- Le filtre `-t` de Vitest ne retrouve pas un nom à apostrophe typographique passé par le shell Windows : filtrer sur un mot ASCII (« openingCountSuggested est faux »).
+- Un worktree peut redémarrer sur sa branche d'origine `claude/youthful-elbakyan-3df131` : vérifier `git branch --show-current` avant toute fusion.
 
 ## Branche `perf/ai-prompt-cache` — 2026-10-06
 
