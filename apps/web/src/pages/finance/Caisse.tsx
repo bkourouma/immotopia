@@ -34,9 +34,14 @@ import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
+import { useAuth } from '../../hooks/useAuth';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
+import { isPermissionDenied, writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+const messageSansDroitCaisse = t("Vous n'avez pas le droit de tenir une caisse.");
 
 /**
  * Caisse d'agence — Lot 6 (scratchpad `lot6-contrat-api.md`).
@@ -102,8 +107,20 @@ export const Caisse: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
-  const [onglet, setOnglet] = useState<Onglet>('ma-caisse');
+  // Ce que la personne a le droit de faire (BUG-2026-09-29-006) : tenir une
+  // caisse demande FINANCE_DOCUMENTS_CREATE, la valider FINANCE_DOCUMENTS_VALIDATE.
+  // `permissions` nul = aucune restriction (administrateur d'agence) ; on
+  // n'appelle « Ma caisse » qu'une fois les droits connus, pour ne pas
+  // provoquer un 403 aussitôt masqué.
+  const { permissions, ready: droitsConnus } = useMyMenuAccess(tenantId);
+  const peutTenirCaisse = permissions === null || permissions.has('FINANCE_DOCUMENTS_CREATE');
+  const peutValider = permissions === null || permissions.has('FINANCE_DOCUMENTS_VALIDATE');
+
+  const [ongletChoisi, setOnglet] = useState<Onglet>('ma-caisse');
+  // Sans droit de tenir une caisse, l'écran s'ouvre sur l'historique.
+  const onglet: Onglet = peutTenirCaisse ? ongletChoisi : 'historique';
 
   // --- Ouverture -----------------------------------------------------------
   const [fondDeCaisse, setFondDeCaisse] = useState<number | null>(null);
@@ -128,8 +145,10 @@ export const Caisse: React.FC = () => {
   const sessionCouranteQuery = useQuery({
     queryKey: queryKey('cash-session-current', tenantId, {}),
     queryFn: () => getCurrentCashSession(tenantId as string),
-    enabled: Boolean(tenantId),
-    staleTime: STALE_TIME.list
+    enabled: Boolean(tenantId) && droitsConnus && peutTenirCaisse,
+    staleTime: STALE_TIME.list,
+    // Un 403 est une réponse définitive : ne pas la rejouer.
+    retry: (nombre, erreur) => !isPermissionDenied(erreur) && nombre < 2
   });
 
   const historiqueQuery = useQuery({
@@ -176,7 +195,7 @@ export const Caisse: React.FC = () => {
       message.success(t('Caisse ouverte.'));
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t("L'ouverture de la caisse a échoué."));
+      message.error(writeErrorMessage(err, t("L'ouverture de la caisse a échoué."), messageSansDroitCaisse));
     } finally {
       setOuvertureEnCours(false);
     }
@@ -202,7 +221,7 @@ export const Caisse: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
       queryClient.invalidateQueries({ queryKey: queryKey('cash-sessions', tenantId, {}) });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La clôture a échoué.'));
+      message.error(writeErrorMessage(err, t('La clôture a échoué.'), messageSansDroitCaisse));
     } finally {
       setClotureEnCours(false);
     }
@@ -219,8 +238,11 @@ export const Caisse: React.FC = () => {
       setCommentaireValidation('');
       setSessionOuverteId(null);
       queryClient.invalidateQueries({ queryKey: queryKey('cash-sessions', tenantId, {}) });
+      queryClient.invalidateQueries({ queryKey: queryKey('cash-session-detail', tenantId, {}) });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || t('La validation a échoué.'));
+      message.error(
+        writeErrorMessage(err, t('La validation a échoué.'), t("Vous n'avez pas le droit de valider une caisse."))
+      );
     } finally {
       setValidationEnCours(false);
     }
@@ -371,7 +393,13 @@ export const Caisse: React.FC = () => {
     </>
   );
 
-  const ongletMaCaisse = sessionCouranteQuery.error ? (
+  const ongletMaCaisse = isPermissionDenied(sessionCouranteQuery.error) ? (
+    <StateBlock
+      variant="empty"
+      title={t("Vous n'avez pas le droit de tenir une caisse.")}
+      description={t("Vous pouvez consulter l'historique des caisses depuis l'onglet « Historique ».")}
+    />
+  ) : sessionCouranteQuery.error ? (
     <StateBlock
       variant="error"
       description={t('Impossible de charger votre caisse.')}
@@ -487,14 +515,16 @@ export const Caisse: React.FC = () => {
       />
 
       <div role="tablist" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-        <Button
-          role="tab"
-          aria-selected={onglet === 'ma-caisse'}
-          type={onglet === 'ma-caisse' ? 'primary' : 'default'}
-          onClick={() => setOnglet('ma-caisse')}
-        >
-          {t('Ma caisse')}
-        </Button>
+        {peutTenirCaisse && (
+          <Button
+            role="tab"
+            aria-selected={onglet === 'ma-caisse'}
+            type={onglet === 'ma-caisse' ? 'primary' : 'default'}
+            onClick={() => setOnglet('ma-caisse')}
+          >
+            {t('Ma caisse')}
+          </Button>
+        )}
         <Button
           role="tab"
           aria-selected={onglet === 'historique'}
@@ -772,7 +802,15 @@ export const Caisse: React.FC = () => {
               </>
             )}
 
-            {detailQuery.data.status === 'CLOSED' && (
+            {detailQuery.data.status === 'CLOSED' && !peutValider && (
+              <Text type="secondary">{t('La validation d’une caisse est réservée aux responsables habilités.')}</Text>
+            )}
+
+            {detailQuery.data.status === 'CLOSED' && peutValider && user?.id === detailQuery.data.cashierUserId && (
+              <Text type="secondary">{t('Vous avez tenu cette caisse : un autre responsable doit la valider.')}</Text>
+            )}
+
+            {detailQuery.data.status === 'CLOSED' && peutValider && user?.id !== detailQuery.data.cashierUserId && (
               <>
                 <div>
                   <label htmlFor="caisse-commentaire-validation">{t('Commentaire (facultatif)')}</label>
