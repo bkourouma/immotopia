@@ -13,6 +13,7 @@ import {
 } from '../middleware/error-middleware';
 import { assertBelongsToTenant } from '../utils/tenant-ownership';
 import crypto from 'crypto';
+import { t } from '../i18n';
 
 export function getFrontendBaseUrl(): string {
   return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -738,7 +739,7 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
       error,
       actorUserId
     });
-    throw new BadRequestError("Échec de l'envoi de l'email. L'ancien lien d'invitation reste valable.");
+    throw new BadRequestError(t("Échec de l'envoi de l'email. L'ancien lien d'invitation reste valable."));
   }
 
   // L'e-mail est parti : on peut maintenant invalider l'ancien jeton et

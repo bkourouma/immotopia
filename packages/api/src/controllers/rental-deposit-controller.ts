@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
+import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
 import { z } from 'zod';
 import {
   createDeposit,
@@ -9,7 +10,6 @@ import {
   computeDepositBalance
 } from '../services/rental-deposit-service';
 import { RentalDepositMovementType } from '@prisma/client';
-import { t } from '../i18n';
 
 const createDepositMovementSchema = z.object({
   type: z.enum(['COLLECT', 'HOLD', 'RELEASE', 'REFUND', 'FORFEIT', 'ADJUSTMENT']),
@@ -24,185 +24,110 @@ const createDepositMovementSchema = z.object({
 });
 
 /**
+ * Les handlers lèvent des erreurs typées (`asyncHandler`) : le middleware
+ * d'erreurs fixe le statut (404 introuvable, 409 conflit, 400 validation) et
+ * traduit le message ; un `ZodError` y devient un 400 détaillé champ par champ.
+ */
+
+/**
  * Get security deposit for a lease
  * GET /tenants/:tenantId/rental/leases/:leaseId/deposit
  */
-export async function getDepositHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
-    const actorUserId = req.user?.userId;
+export const getDepositHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
+  const actorUserId = req.user?.userId;
 
-    const deposit = await getDeposit(tenantId, leaseId, actorUserId);
+  const deposit = await getDeposit(tenantId, leaseId, actorUserId);
 
-    if (!deposit) {
-      res.status(404).json({
-        success: false,
-        message: 'Dépôt de garantie non trouvé'
-      });
-      return;
-    }
-
-    const currentBalance = computeDepositBalance(deposit);
-
-    res.json({
-      success: true,
-      data: {
-        ...deposit,
-        current_balance: currentBalance
-      }
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: t(error.message)
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération du dépôt de garantie'
-    });
+  if (!deposit) {
+    throw new NotFoundError('Dépôt de garantie introuvable');
   }
-}
+
+  const currentBalance = computeDepositBalance(deposit);
+
+  res.json({
+    success: true,
+    data: {
+      ...deposit,
+      current_balance: currentBalance
+    }
+  });
+});
 
 /**
  * Create security deposit for a lease
  * POST /tenants/:tenantId/rental/leases/:leaseId/deposit
  */
-export async function createDepositHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
-    const actorUserId = req.user?.userId;
+export const createDepositHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    const deposit = await createDeposit(tenantId, leaseId, actorUserId);
-
-    const currentBalance = computeDepositBalance(deposit);
-
-    res.status(201).json({
-      success: true,
-      data: {
-        ...deposit,
-        current_balance: currentBalance
-      }
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: t(error.message)
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la création du dépôt de garantie'
-    });
+  if (!actorUserId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const deposit = await createDeposit(tenantId, leaseId, actorUserId);
+
+  const currentBalance = computeDepositBalance(deposit);
+
+  res.status(201).json({
+    success: true,
+    data: {
+      ...deposit,
+      current_balance: currentBalance
+    }
+  });
+});
 
 /**
  * Create deposit movement
  * POST /tenants/:tenantId/rental/deposits/:depositId/movements
  */
-export async function createDepositMovementHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { depositId } = req.params;
-    const actorUserId = req.user?.userId;
+export const createDepositMovementHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { depositId } = req.params;
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    // Validate request body
-    const validatedData = createDepositMovementSchema.parse(req.body);
-
-    const movement = await createDepositMovement(
-      tenantId,
-      depositId,
-      validatedData.type as RentalDepositMovementType,
-      validatedData.amount,
-      validatedData.paymentId ?? undefined,
-      validatedData.installmentId ?? undefined,
-      validatedData.note ?? undefined,
-      actorUserId,
-      validatedData.treasuryAccountId ?? undefined,
-      validatedData.method ?? undefined
-    );
-
-    res.status(201).json({
-      success: true,
-      data: movement
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: t(error.message)
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la création du mouvement de dépôt'
-    });
+  if (!actorUserId) {
+    throw new UnauthorizedError();
   }
-}
+
+  // Validate request body (un ZodError devient un 400 via le middleware)
+  const validatedData = createDepositMovementSchema.parse(req.body);
+
+  const movement = await createDepositMovement(
+    tenantId,
+    depositId,
+    validatedData.type as RentalDepositMovementType,
+    validatedData.amount,
+    validatedData.paymentId ?? undefined,
+    validatedData.installmentId ?? undefined,
+    validatedData.note ?? undefined,
+    actorUserId,
+    validatedData.treasuryAccountId ?? undefined,
+    validatedData.method ?? undefined
+  );
+
+  res.status(201).json({
+    success: true,
+    data: movement
+  });
+});
 
 /**
  * List deposit movements
  * GET /tenants/:tenantId/rental/deposits/:depositId/movements
  */
-export async function listDepositMovementsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { depositId } = req.params;
+export const listDepositMovementsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { depositId } = req.params;
 
-    const movements = await listDepositMovements(tenantId, depositId);
+  const movements = await listDepositMovements(tenantId, depositId);
 
-    res.json({
-      success: true,
-      data: movements
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: t(error.message)
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des mouvements de dépôt'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: movements
+  });
+});

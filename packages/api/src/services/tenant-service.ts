@@ -772,7 +772,7 @@ export async function getOrCreateTenantClientFromContact(
   tenantId: string,
   contactId: string,
   clientType: ClientType,
-  options: { db?: PrismaTransactionClient } = {}
+  options: { db?: PrismaTransactionClient; notify?: boolean } = {}
 ): Promise<{
   tenantClient: Prisma.TenantClientGetPayload<{
     include: {
@@ -797,7 +797,8 @@ export async function getOrCreateTenantClientFromContact(
 }> {
   // Avec `options.db` (transaction de l'appelant), tout est ecrit dans cette
   // transaction et la notification WhatsApp est laissee a l'appelant : un echec
-  // ulterieur n'y laisse ni compte ni client.
+  // ulterieur n'y laisse ni compte ni client. `notify: false` (rattrapage en
+  // masse) crée le compte sans aucun message : l'envoi est une décision humaine.
   const db: PrismaTransactionClient = options.db ?? prisma;
   // Get the CRM contact
   const contact = await db.crmContact.findFirst({
@@ -887,7 +888,7 @@ export async function getOrCreateTenantClientFromContact(
     });
 
     // Notify user on WhatsApp (if consent + number) with reset-password link
-    if (!options.db) {
+    if (!options.db && options.notify !== false) {
       try {
         const baseUrl = (frontendUrl || '').replace(/\/$/, '');
         const resetUrl = baseUrl ? `${baseUrl}/reset-password?token=${resetToken}` : '';

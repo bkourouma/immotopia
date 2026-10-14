@@ -8,6 +8,7 @@ import {
 } from '../services/invitation-service';
 import { asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 import { z } from 'zod';
+import { t } from '../i18n';
 
 // Validation schemas
 const inviteCollaboratorSchema = z.object({
@@ -56,8 +57,8 @@ export const inviteCollaboratorHandler = asyncHandler(async (req: Request, res: 
   res.status(201).json({
     success: true,
     message: result.emailSent
-      ? 'Invitation envoyée avec succès.'
-      : "Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer.",
+      ? t('Invitation envoyée avec succès.')
+      : t("Invitation créée, mais l'e-mail n'a pas pu être envoyé. Utilisez « Renvoyer » pour réessayer."),
     data: result.invitation
   });
 });

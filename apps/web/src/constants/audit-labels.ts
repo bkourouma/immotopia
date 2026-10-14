@@ -77,6 +77,7 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   // Location – Dépôts de garantie
   RENTAL_DEPOSIT_CREATED: t("Enregistrement d'un dépôt de garantie pour le bail"),
   RENTAL_DEPOSIT_MOVEMENT_CREATED: t("Enregistrement d'un mouvement sur le dépôt (entrée, sortie, etc.)"),
+  RENTAL_DEPOSIT_MOVEMENT_DELETED: t("Annulation d'un mouvement du dépôt (paiement annulé)"),
 
   // Location – Pénalités
   RENTAL_PENALTY_CALCULATED: t("Calcul automatique d'une pénalité de retard"),

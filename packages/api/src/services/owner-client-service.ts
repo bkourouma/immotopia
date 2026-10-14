@@ -60,7 +60,9 @@ export async function ensureOwnerClientIfOwnerRole(
  * Rattrapage : crée le `TenantClient` OWNER de chaque contact de l'agence qui
  * porte un rôle Propriétaire actif (contacts convertis avant que la
  * conversion ne le fasse). Idempotent ; c'est une écriture, donc exposée en
- * POST explicite. Un contact en échec n'empêche pas les autres.
+ * POST explicite. Aucune notification (WhatsApp, lien de réinitialisation)
+ * n'est envoyée : le rattrapage tourne en arrière-plan, sans décision humaine.
+ * Un contact en échec n'empêche pas les autres.
  *
  * @returns nombre de contacts propriétaires examinés et de clients créés.
  */
@@ -85,7 +87,7 @@ export async function syncOwnerClients(tenantId: string): Promise<{ examined: nu
             select: { id: true }
           })
         : null;
-      await getOrCreateTenantClientFromContact(tenantId, contact.id, 'OWNER');
+      await getOrCreateTenantClientFromContact(tenantId, contact.id, 'OWNER', { notify: false });
       if (!existing) created += 1;
     } catch (error) {
       logger.warn('Owner TenantClient sync failed for contact', {

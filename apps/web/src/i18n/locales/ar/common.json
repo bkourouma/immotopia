@@ -778,6 +778,7 @@
   "Enregistrement (identifiant {{id}})": "سجل (المعرّف {{id}})",
   "Enregistrement d'un dépôt de garantie pour le bail": "تم تسجيل مبلغ تأمين للعقد",
   "Enregistrement d'un mouvement sur le dépôt (entrée, sortie, etc.)": "تم تسجيل حركة على التأمين (دخول، خروج، إلخ)",
+  "Annulation d'un mouvement du dépôt (paiement annulé)": "تم إلغاء حركة على التأمين (تم إلغاء الدفعة)",
   "Enregistrement d'un rebut de stock": "تسجيل إتلاف مخزون",
   "Enregistrement d'un retour de marchandise au fournisseur": "تسجيل إرجاع بضائع إلى المورد",
   "Enregistrement d'un transfert de stock entre deux lieux": "تسجيل تحويل مخزون بين موقعين",

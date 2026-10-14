@@ -582,7 +582,7 @@ export async function updateProperty(
   // Seul un bien de l'agence peut n'avoir aucun proprietaire : retirer celui
   // d'un bien prive ou sous mandat le rendrait orphelin.
   if (data.ownerUserId === null && existing.ownershipType !== PropertyOwnershipType.TENANT) {
-    throw new BadRequestError('Le propriétaire de ce bien ne peut pas être retiré.');
+    throw new BadRequestError(t('Le propriétaire de ce bien ne peut pas être retiré.'));
   }
 
   // Validate against template if typeSpecificData is provided

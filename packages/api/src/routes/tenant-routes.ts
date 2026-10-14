@@ -151,12 +151,15 @@ router.get('/:tenantId/clients', authenticate, requireTenantAccess, requireTenan
 
 // Rattrapage idempotent des propriétaires : les contacts convertis au rôle
 // Propriétaire avant que la conversion ne crée leur TenantClient. Écriture,
-// donc POST (jamais dans le GET de la liste).
+// donc POST (jamais dans le GET de la liste). Elle peut créer des comptes
+// (sans aucune notification) : réservée à qui peut modifier les contacts (les
+// appels du web tolèrent le refus et lisent alors la liste existante).
 router.post(
   '/:tenantId/clients/sync-owners',
   authenticate,
   requireTenantAccess,
   requireTenantCollaborator,
+  requirePermission('CRM_CONTACTS_EDIT'),
   syncOwnerClientsHandler
 );
 

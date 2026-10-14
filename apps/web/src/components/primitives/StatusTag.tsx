@@ -132,13 +132,13 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: () => string }> = {
   HELD: { tone: 'warning', label: () => t('Détenue') },
   RELEASED: { tone: 'success', label: () => t('Libérée') },
 
-  // Ventes immobilières (lot 9) : mandats, offres, compromis, commissions.
-  // Abonnement plateforme (enum Prisma SubscriptionStatus). TRIALING et
-  // PAST_DUE manquaient, et s'affichaient donc en code brut sur la fiche
-  // agence super-admin (BUG-2026-09-28-002).
+  // Abonnements : abonnement plateforme (enum Prisma SubscriptionStatus).
+  // TRIALING et PAST_DUE manquaient, et s'affichaient donc en code brut sur la
+  // fiche agence super-admin (BUG-2026-09-28-002).
   TRIALING: { tone: 'info', label: () => t('Essai') },
   PAST_DUE: { tone: 'danger', label: () => t('Impayé') },
 
+  // Ventes immobilières (lot 9) : mandats, offres, compromis, commissions.
   SUBMITTED: { tone: 'info', label: () => t('Soumise') },
   COUNTERED: { tone: 'warning', label: () => t('Contre-offre') },
   WITHDRAWN: { tone: 'neutral', label: () => t('Retirée') },

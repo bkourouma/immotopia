@@ -20,6 +20,7 @@ import {
   libellePeriodeEcheance
 } from './rental-installment-service';
 import { t } from '../i18n';
+import { recordAuditEvent } from './audit-service';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
 // ---------------------------------------------------------------------------
@@ -887,7 +888,8 @@ async function reverseInstallmentAllocations(
 async function defaireCollectesDepotTx(
   tx: PrismaTransactionClient,
   tenantId: string,
-  paymentId: string
+  paymentId: string,
+  actorUserId?: string
 ): Promise<void> {
   const collectes = await tx.rentalDepositMovement.findMany({
     where: { payment_id: paymentId, tenant_id: tenantId, type: 'COLLECT' },
@@ -918,6 +920,24 @@ async function defaireCollectesDepotTx(
       where: { id: collecte.deposit_id, tenant_id: tenantId },
       data: { collected_amount: { decrement: Number(collecte.amount) } }
     });
+
+    // Comme la création du mouvement : la trace est écrite dans la même
+    // transaction, sinon la suppression ne laisserait aucun événement.
+    if (actorUserId) {
+      await recordAuditEvent(tx, {
+        actorUserId,
+        tenantId,
+        actionKey: 'RENTAL_DEPOSIT_MOVEMENT_DELETED',
+        entityType: 'RENTAL_DEPOSIT_MOVEMENT',
+        entityId: collecte.id,
+        payload: {
+          depositId: collecte.deposit_id,
+          type: 'COLLECT',
+          amount: Number(collecte.amount),
+          paymentId
+        }
+      });
+    }
     logger.info(`Payment ${paymentId} annulé : collecte de dépôt ${collecte.id} défaite`);
   }
 }
@@ -937,7 +957,7 @@ export async function updatePaymentStatusTx(
   tenantId: string,
   paymentId: string,
   status: RentalPaymentStatus,
-  _actorUserId?: string
+  actorUserId?: string
 ): Promise<any> {
   const payment = await tx.rentalPayment.findFirst({
     where: {
@@ -994,7 +1014,7 @@ export async function updatePaymentStatusTx(
       // Un règlement annulé ne garantit plus rien : la collecte de dépôt qui
       // s'y rattache est défaite (mouvement supprimé, cumul collecté réduit),
       // sans quoi le dépôt resterait « complet » sans encaissement valide.
-      await defaireCollectesDepotTx(tx, tenantId, paymentId);
+      await defaireCollectesDepotTx(tx, tenantId, paymentId, actorUserId);
 
       if (installmentIds.length > 0) {
         await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId, tenant_id: tenantId } });

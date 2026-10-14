@@ -98,7 +98,11 @@ const mockPrisma: Row = {
 jest.mock('../../src/utils/database', () => ({
   prisma: new Proxy({}, { get: (_t, prop) => (mockPrisma as any)[prop] })
 }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+const mockRecordAudit = jest.fn(async (..._args: any[]) => undefined);
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: jest.fn(),
+  recordAuditEvent: (...args: any[]) => (mockRecordAudit as any)(...args)
+}));
 jest.mock('../../src/services/rental-installment-service', () => ({
   annulerPieceTx: jest.fn(),
   compteLocataireDuBailTx: jest.fn(async () => null),
@@ -223,6 +227,27 @@ describe("l'annulation d'un paiement défait la collecte de dépôt rattachée",
 
     expect(store.movements.filter(m => m.type === 'COLLECT')).toHaveLength(0);
     expect(store.deposits[0].collected_amount).toBe(0);
+  });
+
+  it('écrit un événement d’audit dans la transaction quand la collecte est défaite', async () => {
+    await createDepositMovement(T, 'dep-1', 'COLLECT' as any, 150_000, 'pay-1');
+    const movementId = store.movements.find(m => m.type === 'COLLECT')!.id;
+    mockRecordAudit.mockClear();
+
+    await updatePaymentStatusTx(mockPrisma as any, T, 'pay-1', 'CANCELED' as any, 'actor');
+
+    expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+    expect(mockRecordAudit).toHaveBeenCalledWith(
+      mockPrisma,
+      expect.objectContaining({
+        actorUserId: 'actor',
+        tenantId: T,
+        actionKey: 'RENTAL_DEPOSIT_MOVEMENT_DELETED',
+        entityType: 'RENTAL_DEPOSIT_MOVEMENT',
+        entityId: movementId,
+        payload: expect.objectContaining({ depositId: 'dep-1', type: 'COLLECT', amount: 150_000, paymentId: 'pay-1' })
+      })
+    );
   });
 
   it('refuse l’annulation quand le dépôt a déjà été restitué ou retenu', async () => {

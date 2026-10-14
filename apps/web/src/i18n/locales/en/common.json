@@ -778,6 +778,7 @@
   "Enregistrement (identifiant {{id}})": "Record (ID {{id}})",
   "Enregistrement d'un dépôt de garantie pour le bail": "A security deposit was recorded for the lease",
   "Enregistrement d'un mouvement sur le dépôt (entrée, sortie, etc.)": "A movement was recorded on the deposit (in, out, etc.)",
+  "Annulation d'un mouvement du dépôt (paiement annulé)": "A deposit movement was cancelled (payment cancelled)",
   "Enregistrement d'un rebut de stock": "Recording of a stock scrap",
   "Enregistrement d'un retour de marchandise au fournisseur": "Recording of a return of goods to the supplier",
   "Enregistrement d'un transfert de stock entre deux lieux": "Recording of a stock transfer between two locations",

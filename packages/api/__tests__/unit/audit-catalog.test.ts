@@ -106,6 +106,8 @@ describe('catalogue d’audit', () => {
       // Refus d'un plan d'écriture de l'assistant (POST /ai/actions/reject).
       'AI_PROPOSAL_REJECTED',
       // Contrôle du stock de chantier (spec 040, B6-R4).
+      // Collecte de dépôt défaite par l'annulation du paiement qui l'a financée.
+      'RENTAL_DEPOSIT_MOVEMENT_DELETED',
       'STOCK_RECEIPT_RECORDED',
       'STOCK_ISSUE_RECORDED',
       'STOCK_TRANSFER_RECORDED',
