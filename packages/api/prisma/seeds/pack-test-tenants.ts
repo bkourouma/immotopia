@@ -121,6 +121,99 @@ export const PACK_TEST_TENANTS: readonly PackTestTenant[] = PACK_TEST_BASES.flat
   }
 ]);
 
+/**
+ * Comptes de recette supplémentaires (lot 040, contrôle du stock) : un
+ * Magasinier, un Comptable et, chez l'Opérateur intégré, un second
+ * administrateur, pour jouer les « quatre yeux » d'un inventaire (celui qui
+ * compte n'est pas celui qui valide) et l'écran Magasin sans les valeurs.
+ * Rattachés aux agences « 6 mois » des packs qui portent le stock (Promoteur,
+ * Opérateur intégré), même mot de passe que les administrateurs.
+ */
+export interface PackTestMember {
+  /** Nom exact de l'agence (`PackTestTenant.tenantName`). */
+  tenantName: string;
+  fullName: string;
+  email: string;
+  /** Rôle d'agence attribué (rôles plateforme). */
+  roleKey: 'TENANT_STOREKEEPER' | 'TENANT_ACCOUNTANT' | 'TENANT_ADMIN' | 'TENANT_SITE_MANAGER';
+}
+
+const PROMOTEUR_6M = `Test — Pack Promoteur · ${PACK_TEST_PROFILE_LABEL['6m']}`;
+const INTEGRE_6M = `Test — Pack Opérateur intégré · ${PACK_TEST_PROFILE_LABEL['6m']}`;
+
+export const PACK_TEST_MEMBERS: readonly PackTestMember[] = [
+  {
+    tenantName: PROMOTEUR_6M,
+    fullName: 'Magasinier Test Promoteur',
+    email: `magasinier-promoteur@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_STOREKEEPER'
+  },
+  {
+    tenantName: PROMOTEUR_6M,
+    fullName: 'Comptable Test Promoteur',
+    email: `comptable-promoteur@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_ACCOUNTANT'
+  },
+  {
+    tenantName: INTEGRE_6M,
+    fullName: 'Magasinier Test Intégré',
+    email: `magasinier-integre@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_STOREKEEPER'
+  },
+  {
+    tenantName: INTEGRE_6M,
+    fullName: 'Responsable Test Intégré',
+    email: `responsable-integre@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_ADMIN'
+  },
+  // Lot 041 (inventaire par WhatsApp, plan §7.6) : un Chef de chantier par
+  // agence, inscrit au bot (PACK_TEST_WHATSAPP_REGISTRATIONS ci-dessous).
+  {
+    tenantName: PROMOTEUR_6M,
+    fullName: 'Chef de chantier Test Promoteur',
+    email: `chef-promoteur@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_SITE_MANAGER'
+  },
+  {
+    tenantName: INTEGRE_6M,
+    fullName: 'Chef de chantier Test Intégré',
+    email: `chef-integre@${PACK_TEST_EMAIL_DOMAIN}`,
+    roleKey: 'TENANT_SITE_MANAGER'
+  }
+];
+
+/**
+ * Inscriptions WhatsApp de recette (lot 041, plan §7.6), ACTIVES d'emblée :
+ * le staging tourne en transport `log` avec le simulateur, aucun message ne
+ * part. Numéros FICTIFS, dans la plage de recette `+225 01 00 00 01 xx`
+ * (jamais un vrai numéro). Chacune est affectée à un chantier dédié, basculé au
+ * stock par le seed (`PACK_TEST_WHATSAPP_SITE_NAME`).
+ */
+export interface PackTestWhatsappRegistration {
+  tenantName: string;
+  /** E-mail du Chef de chantier inscrit (`PACK_TEST_MEMBERS`). */
+  memberEmail: string;
+  phoneE164: string;
+}
+
+/** Plage des numéros fictifs de recette : `+22501000001` suivi de deux chiffres. */
+export const PACK_TEST_WHATSAPP_PHONE_PATTERN = /^\+22501000001\d{2}$/;
+
+/** Chantier de recette créé (et basculé au stock) par le seed dans chaque agence inscrite. */
+export const PACK_TEST_WHATSAPP_SITE_NAME = 'Chantier de recette — inventaire WhatsApp';
+
+export const PACK_TEST_WHATSAPP_REGISTRATIONS: readonly PackTestWhatsappRegistration[] = [
+  { tenantName: PROMOTEUR_6M, memberEmail: `chef-promoteur@${PACK_TEST_EMAIL_DOMAIN}`, phoneE164: '+2250100000101' },
+  { tenantName: INTEGRE_6M, memberEmail: `chef-integre@${PACK_TEST_EMAIL_DOMAIN}`, phoneE164: '+2250100000102' }
+];
+
+/**
+ * Agences qui reçoivent un bloc `EXT_INVENTAIRE_WHATSAPP` (500 photos par
+ * mois) : le Promoteur seulement, pour jouer « option absente » (M06b) sur
+ * l'Opérateur intégré (plan §9, R14).
+ */
+export const PACK_TEST_WHATSAPP_OPTION_TENANTS: readonly string[] = [PROMOTEUR_6M];
+
 /** Seule origine publique autorisée en production : le staging. */
 export const STAGING_ORIGIN = 'https://app.immotopia.cloud';
 const PRODUCTION_HOST_MARKER = 'clients.immotopia.cloud';

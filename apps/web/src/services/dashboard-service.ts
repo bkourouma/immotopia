@@ -27,7 +27,13 @@ export interface DashboardSeriesPoint {
   attendu: number;
 }
 
-export type DashboardTaskKind = 'OVERDUE_INSTALLMENT' | 'PENDING_DECLARATION' | 'URGENT_TICKET';
+/**
+ * `STOCK_ALERT` (lot 040, spec B7-R5) : une alerte de stock à traiter. Le
+ * serveur ne l'émet qu'avec la fonctionnalité CONSTRUCTION et le droit
+ * STOCK_ALERTS_VIEW ; son `href` mène à
+ * `/tenant/<tenantId>/finance/stock/controle?alerte=<alertId>`.
+ */
+export type DashboardTaskKind = 'OVERDUE_INSTALLMENT' | 'PENDING_DECLARATION' | 'URGENT_TICKET' | 'STOCK_ALERT';
 
 export interface DashboardTask {
   id: string;

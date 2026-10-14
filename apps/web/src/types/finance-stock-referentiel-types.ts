@@ -1,4 +1,5 @@
 import { t } from '../i18n/t';
+import type { StockLocationView } from './finance-stock-controle-types';
 /**
  * Contrat gelé de la frontière réseau — lot 5, premier sous-lot : le
  * référentiel du stock (PRD E9, besoins S1, S4, S5).
@@ -168,6 +169,13 @@ export interface ListStockItemsFilters {
 // ---------------------------------------------------------------------------
 // Le lieu de stockage
 // ---------------------------------------------------------------------------
+
+/**
+ * Un lieu tel que `GET /stock/locations` le rend depuis le lot 040 (contrat
+ * `LocationView`) : le lieu, plus l'inventaire en cours, le chantier clos,
+ * l'inventaire d'ouverture suggéré et les articles à recompter.
+ */
+export type { StockLocationView };
 
 export interface StockLocation {
   id: string;

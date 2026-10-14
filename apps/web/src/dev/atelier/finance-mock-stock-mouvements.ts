@@ -69,6 +69,14 @@
  *   natures qui n'imputent aucun chantier, et dont la colonne « Chantier
  *   imputé » doit dire « Aucune imputation » plutôt que rester vide.
  *
+ * **Lot 040.** Les lectures rendent `{ data, meta }` (valeurs visibles,
+ * aucun lieu masqué) ; le journal porte bons, motifs, délais de saisie et
+ * pièces jointes, plus un rebut et un retour au fournisseur ; la réception
+ * rend son bon et ses contrôles, la sortie son bon multi-lignes ; les bons,
+ * les factures réceptionnables et leurs réceptions sont servis ici. Le
+ * contexte terrain et le carnet des preneurs sont servis par
+ * `finance-mock-stock-controle.ts`.
+ *
  * **Limite assumée, identique à celle des autres fichiers de l'atelier.**
  * `mock-api.ts` route par le seul CHEMIN, jamais par la méthode, et ne
  * transmet pas les paramètres de requête : ni `onlyInStock`, ni les filtres du
@@ -84,6 +92,15 @@ import type {
   StockLocationRef,
   StockMovement
 } from '../../types/finance-stock-mouvements-types';
+import type {
+  StockBalanceView,
+  StockInvoiceReceiptsView,
+  StockMeta,
+  StockMovementAuthor,
+  StockMovementView,
+  StockReceivableInvoice,
+  StockSlipView
+} from '../../types/finance-stock-controle-types';
 import type { Scenario } from './mock-api';
 
 // ---------------------------------------------------------------------------
@@ -446,31 +463,355 @@ const MOUVEMENTS: StockMovement[] = [
   }
 ];
 
-/** La réponse d'une réception : un mouvement PAR LIGNE, jamais un seul objet. */
-const RECEPTION_CREEE: StockMovement[] = [MOUVEMENTS[0], MOUVEMENTS[1]];
+// ---------------------------------------------------------------------------
+// Lot 040 — les formes du contrôle du stock : `{ data, meta }`, bons, factures
+// ---------------------------------------------------------------------------
 
-/** La réponse d'une sortie : un seul mouvement, valorisé par le serveur. */
-const SORTIE_CREEE: StockMovement = MOUVEMENTS[3];
+/**
+ * Le `meta` des lectures. L'atelier montre l'écran d'une comptable : valeurs
+ * visibles, aucun lieu masqué. Le magasinier sans valeurs a sa propre scène
+ * (banc du contrôle, `finance-mock-stock-controle.ts`).
+ */
+const META: StockMeta = { valuesVisible: true, blindLocationIds: [], nextCursor: null };
+
+const FACTURE_0142 = 'facture-0142';
+const FACTURE_0151 = 'facture-0151';
+const BON_RECEPTION = 'bon-br-2026-00042';
+const BON_SORTIE = 'bon-bs-2026-00057';
+
+/** Un solde du lot 5, dans la forme du lot 040 (champs de valeur `number | null`). */
+function versSolde(solde: StockBalance): StockBalanceView {
+  return { ...solde };
+}
+
+/**
+ * Un mouvement du lot 5, complété des champs du lot 040 : bon, preneur,
+ * motif, délai de saisie, pièces jointes. Les réceptions de la facture 0142
+ * portent le bon BR-2026-00042 ; les sorties, le bon BS-2026-00057.
+ */
+function versMouvement(mouvement: StockMovement): StockMovementView {
+  const jourSaisie = mouvement.createdAt.slice(0, 10);
+  const jourDeclare = mouvement.movementDate.slice(0, 10);
+  const delai = Math.round((Date.parse(jourSaisie) - Date.parse(jourDeclare)) / 86_400_000);
+  const reception = mouvement.type === 'RECEIPT';
+  const sortie = mouvement.type === 'ISSUE';
+  return {
+    ...mouvement,
+    takerId: sortie ? 'preneur-kone' : null,
+    takerLabel: sortie ? mouvement.requestedBy : null,
+    supplierInvoiceId:
+      mouvement.supplierInvoiceReference === 'F-2026-0142'
+        ? FACTURE_0142
+        : mouvement.supplierInvoiceReference
+          ? FACTURE_0151
+          : null,
+    transferGroupId: mouvement.transferGroupId ?? null,
+    stockCountId: null,
+    slipId:
+      reception && mouvement.supplierInvoiceReference === 'F-2026-0142' ? BON_RECEPTION : sortie ? BON_SORTIE : null,
+    slipNumber:
+      reception && mouvement.supplierInvoiceReference === 'F-2026-0142'
+        ? 'BR-2026-00042'
+        : sortie
+          ? 'BS-2026-00057'
+          : null,
+    reasonCode:
+      mouvement.type === 'ADJUSTMENT' ? 'COUNTING_ERROR' : mouvement.type === 'TRANSFER' ? 'SITE_SUPPLY' : null,
+    reason: null,
+    valuationSource: reception ? 'INVOICE_LINE' : null,
+    supplierCreditValue: null,
+    createdByUserId: mouvement.createdByLabel === 'Ibrahima Yao' ? 'u2' : 'u1',
+    // Le délai entre la date déclarée et la saisie : la pastille « +n j ».
+    entryLagDays: Math.max(0, delai),
+    attachmentsCount: reception ? 2 : sortie ? 1 : 0
+  };
+}
+
+/** Un rebut, pour que le journal montre les six natures. */
+const REBUT: StockMovementView = {
+  ...versMouvement(MOUVEMENTS[0]),
+  id: 'mvt-scrap-ciment',
+  type: 'SCRAP',
+  movementDate: '2026-09-18T00:00:00.000Z',
+  createdAt: '2026-09-22T09:40:00.000Z',
+  quantity: 6,
+  isDecrease: true,
+  unitCost: 4_750,
+  totalValue: 28_500,
+  quantityAfter: 314,
+  valueAfter: 1_491_500,
+  supplierInvoiceId: null,
+  supplierInvoiceReference: null,
+  slipId: null,
+  slipNumber: null,
+  reasonCode: 'BREAKAGE',
+  reason: 'Sacs éventrés par la pluie',
+  valuationSource: null,
+  // Saisi quatre jours après la date déclarée : pastille d'avertissement.
+  entryLagDays: 4,
+  attachmentsCount: 1
+};
+
+/** Un retour au fournisseur : la valeur sortie du stock et le montant porté au fournisseur. */
+const RETOUR: StockMovementView = {
+  ...versMouvement(MOUVEMENTS[0]),
+  id: 'mvt-return-ciment',
+  type: 'SUPPLIER_RETURN',
+  movementDate: '2026-09-19T00:00:00.000Z',
+  createdAt: '2026-09-19T15:10:00.000Z',
+  quantity: 10,
+  isDecrease: true,
+  unitCost: 4_750,
+  totalValue: 47_500,
+  quantityAfter: 304,
+  valueAfter: 1_444_000,
+  slipId: null,
+  slipNumber: null,
+  reasonCode: 'DAMAGED_ON_DELIVERY',
+  reason: null,
+  valuationSource: null,
+  supplierCreditValue: 47_000,
+  entryLagDays: 0,
+  attachmentsCount: 0
+};
+
+const JOURNAL: StockMovementView[] = [...MOUVEMENTS.map(versMouvement), REBUT, RETOUR];
+
+const AUTEURS: StockMovementAuthor[] = [
+  { userId: 'u1', label: 'Aissatou Brou' },
+  { userId: 'u2', label: 'Ibrahima Yao' }
+];
+
+/** Les factures réceptionnables : l'une déjà reçue, l'autre jamais. */
+const FACTURES: StockReceivableInvoice[] = [
+  {
+    id: FACTURE_0142,
+    reference: 'F-2026-0142',
+    supplierName: 'Quincaillerie du Niger',
+    invoiceDate: '2026-09-01',
+    siteId: null,
+    siteName: null,
+    receiptCount: 1,
+    lastReceiptAt: '2026-09-02T08:12:00.000Z',
+    amount: 2_198_500
+  },
+  {
+    id: FACTURE_0151,
+    reference: 'F-2026-0151',
+    supplierName: 'Ciments d’Abidjan',
+    invoiceDate: '2026-09-05',
+    siteId: RIVIERA,
+    siteName: 'Villa de la Riviera',
+    receiptCount: 0,
+    lastReceiptAt: null,
+    amount: 408_000
+  }
+];
+
+const RECEPTIONS_0142: StockInvoiceReceiptsView = {
+  invoice: {
+    id: FACTURE_0142,
+    reference: 'F-2026-0142',
+    supplierName: 'Quincaillerie du Niger',
+    invoiceDate: '2026-09-01',
+    status: 'VALIDATED',
+    amount: 2_198_500,
+    lines: [
+      {
+        id: 'ligne-0142-1',
+        label: 'Ciment CPJ 42,5 — 400 sacs',
+        quantity: 400,
+        unitPrice: 4_700,
+        amount: 1_880_000,
+        hasUnitPrice: true
+      },
+      {
+        id: 'ligne-0142-2',
+        label: 'Fer à béton HA 12 — 170 barres',
+        quantity: 170,
+        unitPrice: 1_875,
+        amount: 318_500,
+        hasUnitPrice: true
+      }
+    ]
+  },
+  byItem: [
+    {
+      itemId: CIMENT,
+      itemLabel: 'Ciment CPJ 42,5',
+      itemUnit: 'sac',
+      receivedQuantity: 400,
+      returnedQuantity: 10,
+      returnableQuantity: 390,
+      returnNeedsInvoiceLine: false,
+      valuationSources: ['INVOICE_LINE']
+    }
+  ],
+  receipts: [
+    {
+      slipId: BON_RECEPTION,
+      slipNumber: 'BR-2026-00042',
+      receiptDate: '2026-09-02',
+      createdAt: '2026-09-02T08:12:00.000Z',
+      createdByLabel: 'Aissatou Brou',
+      locationLabel: "Magasin central d'Angré",
+      lines: [
+        {
+          itemId: CIMENT,
+          itemLabel: 'Ciment CPJ 42,5',
+          itemUnit: 'sac',
+          quantity: 400,
+          unitCost: 4_700,
+          totalValue: 1_880_000
+        }
+      ]
+    }
+  ],
+  returns: [RETOUR],
+  receivedValue: 1_880_000,
+  returnedValue: 47_500
+};
+
+function receptionsDe(invoiceId: string): StockInvoiceReceiptsView {
+  if (invoiceId === FACTURE_0142) return RECEPTIONS_0142;
+  const facture = FACTURES.find(f => f.id === invoiceId) ?? FACTURES[1];
+  return {
+    invoice: {
+      id: facture.id,
+      reference: facture.reference,
+      supplierName: facture.supplierName,
+      invoiceDate: facture.invoiceDate,
+      status: 'VALIDATED',
+      amount: facture.amount,
+      lines: [
+        {
+          id: `ligne-${facture.id}-1`,
+          label: 'Ciment CPJ 42,5 — 80 sacs',
+          quantity: 80,
+          unitPrice: 5_100,
+          amount: 408_000,
+          hasUnitPrice: true
+        }
+      ]
+    },
+    byItem: [],
+    receipts: [],
+    returns: [],
+    receivedValue: 0,
+    returnedValue: 0
+  };
+}
+
+function bonDe(slipId: string): StockSlipView {
+  const sortie = slipId === BON_SORTIE;
+  const mouvements = JOURNAL.filter(m => m.slipId === (sortie ? BON_SORTIE : BON_RECEPTION));
+  return {
+    id: sortie ? BON_SORTIE : BON_RECEPTION,
+    kind: sortie ? 'ISSUE' : 'RECEIPT',
+    number: sortie ? 'BS-2026-00057' : 'BR-2026-00042',
+    documentDate: sortie ? '2026-09-11' : '2026-09-02',
+    createdAt: sortie ? '2026-09-11T16:20:00.000Z' : '2026-09-02T08:12:00.000Z',
+    location: { id: MAGASIN, label: "Magasin central d'Angré" },
+    site: sortie ? { id: COCODY, name: 'Résidence Cocody' } : null,
+    taker: sortie ? { id: 'preneur-kone', label: 'Fatoumata Kouadio, conductrice de travaux' } : null,
+    requestedBy: sortie ? 'Fatoumata Kouadio, conductrice de travaux' : null,
+    supplierInvoice: sortie
+      ? null
+      : { id: FACTURE_0142, reference: 'F-2026-0142', supplierName: 'Quincaillerie du Niger' },
+    stockCountId: null,
+    createdByLabel: sortie ? 'Ibrahima Yao' : 'Aissatou Brou',
+    totalValue: mouvements.reduce((total, m) => total + (m.totalValue ?? 0), 0),
+    currency: DEVISE,
+    movements: mouvements,
+    attachments: []
+  };
+}
 
 export function repondreStockMouvements(chemin: string, scenario: Scenario): unknown | null {
   // --- Route C. L'état du stock -------------------------------------------
   if (/\/tenants\/[^/]+\/finance\/stock\/balances$/.test(chemin)) {
-    return { success: true, data: scenario === 'vide' ? [] : SOLDES };
+    return { success: true, data: scenario === 'vide' ? [] : SOLDES.map(versSolde), meta: META };
   }
 
-  // --- Route D. Le journal des mouvements ---------------------------------
+  // --- Le journal : auteurs (littéral, avant la liste) --------------------
+  if (/\/tenants\/[^/]+\/finance\/stock\/movements\/authors$/.test(chemin)) {
+    return { success: true, data: AUTEURS };
+  }
+
+  // --- Route D. Le journal des mouvements, paginé par curseur -------------
   if (/\/tenants\/[^/]+\/finance\/stock\/movements$/.test(chemin)) {
-    return { success: true, data: scenario === 'vide' ? [] : MOUVEMENTS };
+    return { success: true, data: scenario === 'vide' ? [] : JOURNAL, meta: META };
   }
 
-  // --- Route A. La réception ----------------------------------------------
+  // --- Route A. La réception : bon, mouvements et contrôles ---------------
   if (/\/tenants\/[^/]+\/finance\/stock\/receipts$/.test(chemin)) {
-    return { success: true, data: RECEPTION_CREEE };
+    return {
+      success: true,
+      data: {
+        slip: {
+          id: BON_RECEPTION,
+          kind: 'RECEIPT',
+          number: 'BR-2026-00042',
+          documentDate: '2026-09-02',
+          createdAt: '2026-09-02T08:12:00.000Z'
+        },
+        movements: [JOURNAL[0], JOURNAL[1]],
+        controls: [
+          {
+            code: 'RECEIPT_REPEATED',
+            severity: 'INFO',
+            message:
+              'Cette facture avait déjà une réception : vérifiez que cette marchandise n’a pas été saisie deux fois.',
+            itemIds: [],
+            amount: null,
+            threshold: null,
+            alertId: 'alerte-receipt-repeated-01'
+          }
+        ]
+      },
+      meta: META
+    };
   }
 
-  // --- Route B. La sortie --------------------------------------------------
+  // --- Route B. La sortie multi-lignes : un bon, ses mouvements -----------
   if (/\/tenants\/[^/]+\/finance\/stock\/issues$/.test(chemin)) {
-    return { success: true, data: SORTIE_CREEE };
+    return {
+      success: true,
+      data: {
+        slip: {
+          id: BON_SORTIE,
+          kind: 'ISSUE',
+          number: 'BS-2026-00057',
+          documentDate: '2026-09-11',
+          createdAt: '2026-09-11T16:20:00.000Z'
+        },
+        movements: JOURNAL.filter(m => m.slipId === BON_SORTIE)
+      },
+      meta: META
+    };
+  }
+
+  // --- Rebut et retour au fournisseur -------------------------------------
+  if (/\/tenants\/[^/]+\/finance\/stock\/scraps$/.test(chemin)) {
+    return { success: true, data: REBUT, meta: META };
+  }
+  if (/\/tenants\/[^/]+\/finance\/stock\/supplier-returns$/.test(chemin)) {
+    return { success: true, data: RETOUR, meta: META };
+  }
+
+  // --- Les bons ------------------------------------------------------------
+  const bonMatch = /\/tenants\/[^/]+\/finance\/stock\/slips\/([^/]+)$/.exec(chemin);
+  if (bonMatch) {
+    return { success: true, data: bonDe(bonMatch[1]), meta: META };
+  }
+
+  // --- Les factures réceptionnables et leurs réceptions -------------------
+  if (/\/tenants\/[^/]+\/finance\/stock\/receivable-invoices$/.test(chemin)) {
+    return { success: true, data: scenario === 'vide' ? [] : FACTURES, meta: META };
+  }
+  const factureMatch = /\/tenants\/[^/]+\/finance\/stock\/supplier-invoices\/([^/]+)\/receipts$/.exec(chemin);
+  if (factureMatch) {
+    return { success: true, data: receptionsDe(factureMatch[1]), meta: META };
   }
 
   // --- Le référentiel, appelé directement. Voir l'en-tête : ces deux

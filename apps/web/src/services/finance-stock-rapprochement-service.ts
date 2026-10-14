@@ -53,6 +53,7 @@
 
 import apiClient from '../utils/api-client';
 import type { SiteStockReconciliation, SiteStockStatus } from '../types/finance-stock-rapprochement-types';
+import type { StockMeta, StockRead } from '../types/finance-stock-controle-types';
 
 type ApiResponse<T> = { success: boolean; data: T };
 
@@ -96,4 +97,23 @@ export async function getSiteStockReconciliation(tenantId: string, siteId: strin
     `${base(tenantId)}/sites/${siteId}/stock/reconciliation`
   );
   return response.data.data;
+}
+
+/**
+ * Lot 040 : le même rapprochement, lu avec son `meta` (spec §8.2). Pendant un
+ * comptage du lieu du chantier, `remainingQuantity` et `remainingValue` valent
+ * `null` pour un appelant sans STOCK_COUNT_VALIDATE, et `meta.blindLocationIds`
+ * le dit. `getSiteStockReconciliation` reste inchangée pour ses lecteurs.
+ */
+export async function getSiteStockReconciliationWithMeta(
+  tenantId: string,
+  siteId: string
+): Promise<StockRead<SiteStockReconciliation>> {
+  const response = await apiClient.get<{ success: boolean; data: SiteStockReconciliation; meta?: StockMeta }>(
+    `${base(tenantId)}/sites/${siteId}/stock/reconciliation`
+  );
+  return {
+    data: response.data.data,
+    meta: response.data.meta ?? { valuesVisible: false, blindLocationIds: [] }
+  };
 }

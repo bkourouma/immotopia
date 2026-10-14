@@ -120,6 +120,8 @@ export interface RentalLease {
     price?: number;
     currency?: string;
     transactionModes?: string[];
+    /** Présélectionne le modèle d'état des lieux (spec 040, M1). */
+    furnishingStatus?: 'FURNISHED' | 'UNFURNISHED' | 'PARTIALLY_FURNISHED' | null;
   };
   primaryRenter?: {
     id: string;

@@ -11,17 +11,27 @@ export type MenuAccessMap = Record<string, Record<string, boolean>>;
  * rôle à l'autre en un clic, et refaire un aller-retour réseau à chaque clic
  * rendrait la comparaison entre deux rôles pénible.
  */
-export async function listMenuAccess(): Promise<MenuAccessMap> {
-  const response = await apiClient.get('/roles/menu-access');
+export async function listMenuAccess(tenantId?: string | null): Promise<MenuAccessMap> {
+  const response = await apiClient.get('/roles/menu-access', { params: tenantId ? { tenantId } : {} });
   return response.data.data ?? {};
 }
 
-/** Remplace les menus d'un rôle par la carte fournie. */
+/**
+ * Remplace les menus d'un rôle par la carte fournie.
+ *
+ * Sans `tenantId`, le périmètre est la plateforme (rôles PLATFORM) ; pour un
+ * rôle d'agence ou un portail, l'agence est obligatoire.
+ */
 export async function updateMenuAccess(
   roleKey: string,
-  menus: Record<string, boolean>
+  menus: Record<string, boolean>,
+  tenantId?: string | null
 ): Promise<Record<string, boolean>> {
-  const response = await apiClient.put(`/roles/menu-access/${encodeURIComponent(roleKey)}`, { menus });
+  const response = await apiClient.put(
+    `/roles/menu-access/${encodeURIComponent(roleKey)}`,
+    { menus },
+    { params: tenantId ? { tenantId } : {} }
+  );
   return response.data.data ?? {};
 }
 

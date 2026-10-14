@@ -82,6 +82,11 @@ export interface SiteStockStatus {
   stockLocationId: string | null;
   /** Libellé du lieu. L'écran montre ce nom, jamais l'identifiant. */
   stockLocationLabel: string | null;
+  /**
+   * Lot 040 (A7-R1) : vrai si le chantier est basculé depuis moins de 30
+   * jours et que son lieu n'a aucun inventaire d'ouverture non abandonné.
+   */
+  openingCountSuggested: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,16 +119,26 @@ export interface SiteStockReconciliationLine {
   transferredInQuantity: number;
   /** Sorti vers ce chantier, depuis n'importe quel lieu. C'est le consommé. */
   issuedQuantity: number;
-  /** Ce qui reste au lieu du chantier, à l'instant de la lecture. */
-  remainingQuantity: number;
+  /**
+   * Ce qui reste au lieu du chantier, à l'instant de la lecture. `null`
+   * pendant un comptage du lieu (aveugle, lot 040) : l'écran affiche
+   * « Comptage en cours » et ne recalcule rien.
+   */
+  remainingQuantity: number | null;
   /** Valeur entrée depuis une facture. */
   receivedValue: number;
   /** Valeur venue d'un autre lieu. Comptée à part. */
   transferredInValue: number;
   /** Valeur de ce qui a été consommé. C'est ce qui est entré dans le coût. */
   issuedValue: number;
-  /** Valeur de ce qui reste. */
-  remainingValue: number;
+  /** Valeur de ce qui reste. `null` pendant un comptage du lieu (aveugle). */
+  remainingValue: number | null;
+  /** Lot 040 : retourné au fournisseur depuis le lieu du chantier. Descriptif. */
+  returnedToSupplierQuantity: number;
+  returnedToSupplierValue: number;
+  /** Lot 040 : mis au rebut sur le lieu du chantier. Descriptif. */
+  scrappedQuantity: number;
+  scrappedValue: number;
   currency: string;
 }
 
@@ -178,8 +193,8 @@ export interface SiteStockReconciliation {
   unreconciledAmount: number;
   /** Total consommé, en valeur : la part du coût du chantier qui vient du stock. */
   issuedValue: number;
-  /** Total restant sur le chantier, en valeur. */
-  remainingValue: number;
+  /** Total restant sur le chantier, en valeur. `null` pendant un comptage du lieu (aveugle). */
+  remainingValue: number | null;
   currency: string;
   lines: SiteStockReconciliationLine[];
 }

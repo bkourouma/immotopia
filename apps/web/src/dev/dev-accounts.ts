@@ -10,6 +10,10 @@
  *
  * - douze agences de test, deux par pack d'abonnement (6 mois et 3 ans,
  *   `pack-*`), avec un administrateur chacune et un mot de passe commun (`PACK_PASSWORD`) ;
+ *   les agences « 6 mois » Promoteur et Opérateur intégré portent en plus les
+ *   comptes de recette du contrôle du stock (Magasinier, Comptable, second
+ *   administrateur) et un Chef de chantier inscrit au bot WhatsApp du lot 041
+ *   (`PACK_TEST_MEMBERS` côté API) ;
  *   le contrat des données est partagé avec le seed du staging côté API ;
  * - les comptes historiques (plateforme, Ivoire Résidences).
  *
@@ -52,6 +56,60 @@ const PACK_PROFILES = [
   { suffix: '3a', label: '3 ans', emailSuffix: '-3ans' }
 ] as const;
 
+/**
+ * Comptes de recette du contrôle du stock (lot 040) et du Chef de chantier
+ * inscrit au bot WhatsApp (lot 041), après l'administrateur de l'agence
+ * « 6 mois » : contrat partagé avec `PACK_TEST_MEMBERS` (API).
+ */
+const STOCK_RECETTE_ACCOUNTS: Record<string, DevAccount[]> = {
+  promoteur: [
+    {
+      email: `magasinier-promoteur@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Magasinier Test Promoteur',
+      // Rôle TENANT_STOREKEEPER : écran Magasin, sans les valeurs.
+      persona: 'Collaborateur'
+    },
+    {
+      email: `comptable-promoteur@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Comptable Test Promoteur',
+      // Rôle TENANT_ACCOUNTANT.
+      persona: 'Collaborateur'
+    },
+    {
+      email: `chef-promoteur@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Chef de chantier Test Promoteur',
+      // Rôle TENANT_SITE_MANAGER (lot 041) : compte par WhatsApp, sans « Gestion du stock » au web.
+      persona: 'Collaborateur'
+    }
+  ],
+  integre: [
+    {
+      email: `magasinier-integre@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Magasinier Test Intégré',
+      // Rôle TENANT_STOREKEEPER.
+      persona: 'Collaborateur'
+    },
+    {
+      email: `responsable-integre@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Responsable Test Intégré',
+      // Second TENANT_ADMIN : valide l'inventaire compté par un autre.
+      persona: 'Collaborateur'
+    },
+    {
+      email: `chef-integre@${PACK_EMAIL_DOMAIN}`,
+      password: PACK_PASSWORD,
+      fullName: 'Chef de chantier Test Intégré',
+      // Rôle TENANT_SITE_MANAGER (lot 041), agence sans l'option Inventaire WhatsApp.
+      persona: 'Collaborateur'
+    }
+  ]
+};
+
 /** Deux agences de test par pack (6 mois, 3 ans), un TENANT_ADMIN chacune. */
 function packGroups(slug: string, label: string, fullName: string, emailLocalPart: string): DevTenantAccounts[] {
   return PACK_PROFILES.map(profile => ({
@@ -65,7 +123,8 @@ function packGroups(slug: string, label: string, fullName: string, emailLocalPar
         fullName: `${fullName} (${profile.label})`,
         // Administrateur (TENANT_ADMIN) de l'agence de test du pack.
         persona: 'Collaborateur' as const
-      }
+      },
+      ...(profile.suffix === '6m' ? (STOCK_RECETTE_ACCOUNTS[slug] ?? []) : [])
     ]
   }));
 }

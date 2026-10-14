@@ -218,7 +218,7 @@ export async function executerImport(options: OptionsExecution): Promise<CompteR
         resultat.code = 'REPONSE_INCERTAINE';
         resultat.relancable = false;
         resultat.motif = t(
-          'La réponse du serveur n’est pas parvenue : vérifiez la liste des biens avant de relancer cette ligne.'
+          'La réponse du serveur n’est pas parvenue : vérifiez ce qui a été enregistré avant de relancer cette ligne.'
         );
       }
       echouees.push(resultat);

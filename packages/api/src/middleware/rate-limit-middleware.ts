@@ -136,6 +136,28 @@ export const webhookRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook Meta WhatsApp Cloud de l'inventaire (lot 041, W6-R5) : 600 requêtes
+ * par minute et par IP, clé préfixée `wa-cloud:`, distincte de
+ * `webhookRateLimiter` (partagé avec les IPN PaySecureHub). Chaque envoi du
+ * bot fait revenir jusqu'à trois statuts (`sent`, `delivered`, `read`) en plus
+ * des messages entrants, et Meta émet depuis un nombre restreint d'adresses :
+ * 120/min saturerait au premier pic de chantiers. Le plafond borne une
+ * inondation sans gêner ce trafic. Appliqué AVANT la lecture du corps et la
+ * vérification de la signature, qui reste toujours exigée.
+ */
+export const whatsappCloudWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 600,
+  keyGenerator: req => `wa-cloud:${req.ip ?? 'inconnue'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Routes publiques des liens securises (lib/secure-links) : 30 requetes par
  * minute et par IP, appliquees AVANT toute verification du jeton. La reponse
  * 429 est la meme quel que soit le jeton ; elle porte les memes en-tetes
@@ -447,6 +469,27 @@ export const aiActionRateLimiter = rateLimit({
       success: false,
       code: 'RATE_LIMITED',
       message: t('Trop de confirmations en peu de temps. Réessayez dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * ImmoCopilot : refus d'une proposition. Compteur SÉPARÉ de `aiActionRateLimiter` (clé préfixée) : refuser
+ * n'écrit rien, et un lot de refus ne doit pas bloquer une confirmation légitime. Plafond plus souple
+ * (30 par minute) ; toute requête compte, jeton invalide compris, pour que la route ne serve pas à tester
+ * des jetons sans limite.
+ */
+export const aiRejectRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => `ai-reject:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de refus en peu de temps. Réessayez dans une minute.')
     });
   },
   standardHeaders: true,

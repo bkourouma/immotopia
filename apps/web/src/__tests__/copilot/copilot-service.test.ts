@@ -46,6 +46,40 @@ describe('getStatus', () => {
   });
 });
 
+describe('getStatus — motif du refus', () => {
+  it.each([
+    [401, 'FORBIDDEN'],
+    [403, 'FORBIDDEN'],
+    [404, 'NOT_FOUND']
+  ])('HTTP %i -> enabled:false, reason %s', async (status, reason) => {
+    mockedGet.mockRejectedValue({ response: { status } });
+    const s = await copilotService.getStatus('t1');
+    expect(s.enabled).toBe(false);
+    expect(s.reason).toBe(reason);
+  });
+
+  it('réseau ou 5xx : désactivé sans motif de refus', async () => {
+    mockedGet.mockRejectedValue({ response: { status: 500 } });
+    expect((await copilotService.getStatus('t1')).reason).toBeUndefined();
+  });
+
+  it("garde le motif envoyé par l'API (désactivé côté serveur)", async () => {
+    mockedGet.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          enabled: false,
+          reason: 'NOT_CONFIGURED',
+          provider: null,
+          tools: [],
+          limits: { maxMessages: 1, maxMessageChars: 1 }
+        }
+      }
+    });
+    expect((await copilotService.getStatus('t1')).reason).toBe('NOT_CONFIGURED');
+  });
+});
+
 describe('streamChat', () => {
   it('type les événements, ignore inconnus et JSON illisible', async () => {
     mockedStream.mockImplementation(async (_p, _b, opts) => {
@@ -72,5 +106,48 @@ describe('executeProposal', () => {
     mockedPost.mockResolvedValue({ data: { success: true, data: payload } });
     await expect(copilotService.executeProposal('t1', 'tok')).resolves.toEqual(payload);
     expect(mockedPost).toHaveBeenCalledWith('/tenants/t1/ai/actions/execute', { proposalToken: 'tok' });
+  });
+});
+
+describe('executeAction', () => {
+  it('envoie la confirmation seulement si elle est fournie', async () => {
+    const payload = { kind: 'capability', proposalId: 'p1', ok: true, status: 200, message: 'ok', resultPreview: null };
+    mockedPost.mockResolvedValue({ data: { success: true, data: payload } });
+    await expect(copilotService.executeAction('t1', 'tok', 'CONFIRMER')).resolves.toEqual(payload);
+    expect(mockedPost).toHaveBeenLastCalledWith('/tenants/t1/ai/actions/execute', {
+      proposalToken: 'tok',
+      confirmation: 'CONFIRMER'
+    });
+    await copilotService.executeAction('t1', 'tok');
+    expect(mockedPost).toHaveBeenLastCalledWith('/tenants/t1/ai/actions/execute', { proposalToken: 'tok' });
+  });
+});
+
+describe('événement write_plan', () => {
+  it('est reconnu et typé par le parseur', async () => {
+    mockedStream.mockImplementation(async (_p, _b, opts) => {
+      opts.onEvent({ event: 'write_plan', data: '{"plan":{"proposalId":"p1"}}' });
+    });
+    const events: unknown[] = [];
+    await copilotService.streamChat(
+      't1',
+      { messages: [{ role: 'user', content: 'x' }] },
+      { onEvent: e => events.push(e) }
+    );
+    expect(events).toEqual([{ type: 'write_plan', plan: { proposalId: 'p1' } }]);
+  });
+});
+
+describe('rejectAction', () => {
+  it("POST /ai/actions/reject avec le jeton (jusqu'à 16 384 caractères)", async () => {
+    mockedPost.mockResolvedValue({ data: { success: true, data: { rejected: true } } });
+    const token = 'x'.repeat(16_384);
+    await expect(copilotService.rejectAction('t1', token)).resolves.toBe(true);
+    expect(mockedPost).toHaveBeenLastCalledWith('/tenants/t1/ai/actions/reject', { proposalToken: token });
+  });
+
+  it('ne lève jamais : erreur réseau ou 4xx donnent false', async () => {
+    mockedPost.mockRejectedValue({ response: { status: 500 } });
+    await expect(copilotService.rejectAction('t1', 'tok')).resolves.toBe(false);
   });
 });

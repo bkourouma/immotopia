@@ -24,6 +24,9 @@ const store = {
   movements: [] as Row[],
   balances: [] as Row[],
   items: [] as Row[],
+  // Lot 040 : inventaires (openingCountSuggested) et audit de la bascule.
+  counts: [] as Row[],
+  audits: [] as Row[],
   seq: 0
 };
 
@@ -102,6 +105,26 @@ const mockPrisma: Row = {
           totalValue: sommeOuNull(group.map(m => Number(m.totalValue)))
         }
       }));
+    })
+  },
+
+  stockCount: {
+    findFirst: jest.fn(
+      async ({ where }: Row) =>
+        store.counts.find(
+          c =>
+            c.tenantId === where.tenantId &&
+            c.locationId === where.locationId &&
+            c.kind === where.kind &&
+            c.status !== where.status.not
+        ) ?? null
+    )
+  },
+
+  auditLog: {
+    create: jest.fn(async ({ data }: Row) => {
+      store.audits.push(data);
+      return data;
     })
   },
 
@@ -278,6 +301,8 @@ beforeEach(() => {
   store.movements = [];
   store.balances = [];
   store.items = [];
+  store.counts = [];
+  store.audits = [];
   store.seq = 0;
 });
 
@@ -490,7 +515,7 @@ describe('getSiteStockReconciliation — l’écart', () => {
     const rapport = await getSiteStockReconciliation(TENANT_ID, site.id);
     const ligne = rapport.lines[0];
 
-    expect(ligne.receivedQuantity - ligne.issuedQuantity - ligne.remainingQuantity).toBe(0);
+    expect(ligne.receivedQuantity - ligne.issuedQuantity - (ligne.remainingQuantity ?? 0)).toBe(0);
     expect(rapport.unreconciledAmount).toBe(200_000);
   });
 
@@ -1013,7 +1038,9 @@ describe('getSiteStockStatus', () => {
       siteLabel: site.name,
       stockEnabledAt: BASCULE,
       stockLocationId: location.id,
-      stockLocationLabel: location.label
+      stockLocationLabel: location.label,
+      // Bascule ancienne (mars) : la fenêtre de 30 jours est passée (A7-R1).
+      openingCountSuggested: false
     });
   });
 
@@ -1028,5 +1055,103 @@ describe('getSiteStockStatus', () => {
 
   it('refuse un chantier inexistant', async () => {
     await expect(getSiteStockStatus(TENANT_ID, 'chantier-fantome')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lot 040 — inventaire d'ouverture proposé, audit, couples descriptifs, aveugle
+// ---------------------------------------------------------------------------
+
+describe('lot 040 — bascule et statut', () => {
+  const DAY = 86_400_000;
+
+  it('A7-1 : après la bascule, openingCountSuggested est vrai ; faux après un OPENING ; faux à 31 jours', async () => {
+    const site = seedSite();
+    const status = await runTransaction((tx: any) =>
+      enableStockOnSiteTx(tx, TENANT_ID, site.id, { enabledAt: new Date(), enabledByUserId: 'user-1' })
+    );
+    expect(status.openingCountSuggested).toBe(true);
+
+    store.counts.push({
+      tenantId: TENANT_ID,
+      locationId: status.stockLocationId,
+      kind: 'OPENING',
+      status: 'VALIDATED'
+    });
+    expect((await getSiteStockStatus(TENANT_ID, site.id)).openingCountSuggested).toBe(false);
+
+    // Un OPENING abandonné ne retire pas la proposition.
+    store.counts[0].status = 'CANCELLED';
+    expect((await getSiteStockStatus(TENANT_ID, site.id)).openingCountSuggested).toBe(true);
+
+    store.sites[0].stockEnabledAt = new Date(Date.now() - 31 * DAY);
+    expect((await getSiteStockStatus(TENANT_ID, site.id)).openingCountSuggested).toBe(false);
+  });
+
+  it('écrit STOCK_SITE_ENABLED dans la transaction de la bascule (B6-R1)', async () => {
+    const site = seedSite();
+    await runTransaction((tx: any) =>
+      enableStockOnSiteTx(tx, TENANT_ID, site.id, { enabledAt: new Date(), enabledByUserId: 'user-1' })
+    );
+    expect(store.audits).toEqual([
+      expect.objectContaining({
+        actionKey: 'STOCK_SITE_ENABLED',
+        tenantId: TENANT_ID,
+        actorUserId: 'user-1',
+        entityType: 'ConstructionSite',
+        entityId: site.id
+      })
+    ]);
+  });
+});
+
+describe('lot 040 — rapprochement : couples descriptifs et aveugle', () => {
+  it('rend les retours fournisseur et les rebuts du lieu, sans changer l’écart', async () => {
+    const { site, location } = seedSwitchedSite();
+    const ciment = seedItem();
+    seedInvoice(site, 500_000);
+    seedMovement({ type: 'RECEIPT', itemId: ciment.id, locationId: location.id, quantity: 100, totalValue: 500_000 });
+    seedMovement({
+      type: 'SUPPLIER_RETURN',
+      itemId: ciment.id,
+      locationId: location.id,
+      isDecrease: true,
+      quantity: 4,
+      totalValue: 20_000
+    });
+    seedMovement({
+      type: 'SCRAP',
+      itemId: ciment.id,
+      locationId: location.id,
+      isDecrease: true,
+      quantity: 2,
+      totalValue: 10_000
+    });
+    seedBalance({ itemId: ciment.id, locationId: location.id, quantity: 94, value: 470_000 });
+
+    const result = await getSiteStockReconciliation(TENANT_ID, site.id);
+
+    expect(result.lines[0]).toMatchObject({
+      returnedToSupplierQuantity: 4,
+      returnedToSupplierValue: 20_000,
+      scrappedQuantity: 2,
+      scrappedValue: 10_000,
+      remainingQuantity: 94
+    });
+    expect(result.unreconciledAmount).toBe(0);
+  });
+
+  it('§8.2 : pendant un comptage du lieu, le restant et son total valent null pour l’appelant aveugle', async () => {
+    const { site, location } = seedSwitchedSite();
+    const ciment = seedItem();
+    seedBalance({ itemId: ciment.id, locationId: location.id, quantity: 100, value: 500_000 });
+
+    const blind = await getSiteStockReconciliation(TENANT_ID, site.id, { blindLocationIds: new Set([location.id]) });
+    expect(blind.remainingValue).toBeNull();
+    expect(blind.lines[0]).toMatchObject({ remainingQuantity: null, remainingValue: null });
+
+    const voyant = await getSiteStockReconciliation(TENANT_ID, site.id, { blindLocationIds: new Set() });
+    expect(voyant.remainingValue).toBe(500_000);
+    expect(voyant.lines[0].remainingQuantity).toBe(100);
   });
 });

@@ -56,7 +56,9 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'OWNER_MONTHLY_REPORT_SENT',
   'RENTER_PAYMENT_LINK_SENT',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
-  'EXTERNAL_ACCESS_LINK_SENT'
+  'EXTERNAL_ACCESS_LINK_SENT',
+  // Chantiers – contrôle du stock (lot 040, B7-R6)
+  'STOCK_ALERT_AGENCY'
 ] as const;
 
 export type EmailNotificationKey = (typeof EMAIL_NOTIFICATION_KEYS)[number];
@@ -327,6 +329,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       "Envoi au notaire, à l'expert-comptable ou au banquier du lien sécurisé d'accès en lecture seule à une sélection de biens (durée limitée, révocable).",
     recipientLabel: 'Tiers de confiance'
+  },
+  STOCK_ALERT_AGENCY: {
+    key: 'STOCK_ALERT_AGENCY',
+    label: 'Alertes de stock (récapitulatif)',
+    description:
+      "Récapitulatif envoyé aux responsables du stock de l'agence quand de nouvelles alertes de stock sont à traiter (écart d'inventaire, sortie importante, rebut, réception, achat de matériaux en espèces).",
+    recipientLabel: 'Responsables du stock'
   },
   INVITATION: {
     key: 'INVITATION',

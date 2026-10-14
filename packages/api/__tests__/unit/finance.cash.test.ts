@@ -105,6 +105,10 @@ const store = {
   invoices: [] as Row[],
   payments: [] as Row[],
   users: [] as Row[],
+  // Lot 040 (A9) : réglages de contrôle, articles, alertes de stock.
+  stockSettings: [] as Row[],
+  stockItems: [] as Row[],
+  stockAlerts: [] as Row[],
   seq: 0
 };
 
@@ -224,6 +228,19 @@ const mockPrisma: Row = {
     ),
     findMany: jest.fn(async ({ where }: Row) => {
       let rows = store.vouchers.filter(v => v.tenantId === where.tenantId);
+      // Lot 040 (A9) : cumul du mois des pièces « matériaux » validées d'un chantier.
+      if (where.siteId) {
+        return rows.filter(
+          v =>
+            v.siteId === where.siteId &&
+            where.costCategoryId.in.includes(v.costCategoryId) &&
+            v.validatedAt !== null &&
+            v.voucherDate >= where.voucherDate.gte &&
+            v.voucherDate < where.voucherDate.lt &&
+            v.amount < where.amount.lt &&
+            v.id !== where.id.not
+        );
+      }
       if (where.createdByUserId) rows = rows.filter(v => v.createdByUserId === where.createdByUserId);
       if (where.validatedAt === null) rows = rows.filter(v => v.validatedAt === null);
       return rows.map(v => ({ ...v, createdBy: store.users.find(u => u.id === v.createdByUserId) ?? null }));
@@ -303,6 +320,35 @@ const mockPrisma: Row = {
     })
   },
 
+  // Lot 040 (A9) : lus SANS création (aucun `create` ni `upsert` exposé ici :
+  // une écriture de réglages dans la transaction d'une pièce ferait échouer le test).
+  stockSettings: {
+    findUnique: jest.fn(async ({ where }: Row) => store.stockSettings.find(s => s.tenantId === where.tenantId) ?? null)
+  },
+  stockItem: {
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.stockItems.filter(
+        i => i.tenantId === where.tenantId && i.isActive === where.isActive && i.defaultCostCategoryId !== null
+      )
+    )
+  },
+  // Même règle que `INSERT … ON CONFLICT (tenant_id, dedupe_key) DO NOTHING`.
+  stockAlert: {
+    createMany: jest.fn(async ({ data, skipDuplicates }: Row) => {
+      let count = 0;
+      for (const row of data) {
+        const duplicate = store.stockAlerts.some(a => a.tenantId === row.tenantId && a.dedupeKey === row.dedupeKey);
+        if (duplicate) {
+          if (!skipDuplicates) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+          continue;
+        }
+        store.stockAlerts.push({ ...row });
+        count += 1;
+      }
+      return { count };
+    })
+  },
+
   supplierPayment: {
     findMany: jest.fn(async ({ where }: Row) => {
       let rows = store.payments.filter(p => p.tenantId === where.tenantId && p.validatedAt === null);
@@ -325,6 +371,7 @@ async function runTransaction<T>(callback: (tx: Row) => Promise<T>): Promise<T> 
     sites: structuredClone(store.sites),
     categories: structuredClone(store.categories),
     vouchers: structuredClone(store.vouchers),
+    stockAlerts: structuredClone(store.stockAlerts),
     allocations: structuredClone(store.allocations),
     journals: structuredClone(store.journals),
     accounts: structuredClone(store.accounts),
@@ -340,6 +387,7 @@ async function runTransaction<T>(callback: (tx: Row) => Promise<T>): Promise<T> 
     store.sites = snapshot.sites;
     store.categories = snapshot.categories;
     store.vouchers = snapshot.vouchers;
+    store.stockAlerts = snapshot.stockAlerts;
     store.allocations = snapshot.allocations;
     store.journals = snapshot.journals;
     store.accounts = snapshot.accounts;
@@ -348,6 +396,13 @@ async function runTransaction<T>(callback: (tx: Row) => Promise<T>): Promise<T> 
     throw error;
   }
 }
+
+// Lot 040 : le référentiel du stock n'est pas appelé par la caisse (A9 lit les
+// réglages SANS `ensureStockSettingsTx`) ; doublure pour le prouver.
+const ensureStockSettingsTx = jest.fn();
+jest.mock('../../src/lib/finance/stock-referentiel', () => ({
+  ensureStockSettingsTx: (...args: any[]) => ensureStockSettingsTx(...args)
+}));
 
 jest.mock('../../src/utils/database', () => ({
   prisma: new Proxy(
@@ -414,6 +469,9 @@ beforeEach(() => {
   store.accounts = [];
   store.invoices = [];
   store.payments = [];
+  store.stockSettings = [];
+  store.stockItems = [];
+  store.stockAlerts = [];
   store.users = [
     { id: GESTIONNAIRE_ID, fullName: 'Fatoumata Camara', email: 'f.camara@example.gn' },
     { id: DIRIGEANT_ID, fullName: 'Ibrahima Sory', email: 'i.sory@example.gn' }
@@ -768,5 +826,143 @@ describe('deleteDraftCashVoucherTx — jeter un brouillon, jamais une pièce val
     await supprimer(voucher.id);
 
     expect((await getValidationQueue(TENANT_ID)).find(item => item.documentId === voucher.id)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lot 040 (A9) — achats de matériaux en espèces
+// ---------------------------------------------------------------------------
+
+describe('validateCashVoucherTx — alerte CASH_MATERIAL_PURCHASE (A9)', () => {
+  function seedCiment(): Row {
+    const category = seedCategory({ label: 'Ciment' });
+    // Poste « proposé » par un article actif : matériaux faute de liste saisie (A9-R1).
+    store.stockItems.push({
+      id: nextId('art'),
+      tenantId: TENANT_ID,
+      isActive: true,
+      defaultCostCategoryId: category.id
+    });
+    return category;
+  }
+
+  function seedControls(overrides: Row): void {
+    store.stockSettings.push({
+      tenantId: TENANT_ID,
+      backdatingLimitDays: 7,
+      requireTaker: false,
+      issueAlertAmount: 500000,
+      countVarianceAlertAmount: 100000,
+      countVarianceAlertPercent: 5,
+      cashMaterialAlertAmount: 100000,
+      materialCostCategoryIds: [],
+      ...overrides
+    });
+  }
+
+  async function valider(site: Row, category: Row, amount: number, date = '2026-03-10T00:00:00.000Z') {
+    const voucher = await createVoucher(site, category, { amount, voucherDate: new Date(date) });
+    return validateVoucher(voucher.id);
+  }
+
+  it('A9-1 : une pièce de 150 000 ouvre une alerte SINGLE ; une pièce de 40 000 n’en ouvre pas', async () => {
+    const site = seedSite();
+    const ciment = seedCiment();
+
+    const grosse = await valider(site, ciment, 150000);
+    expect(store.stockAlerts).toHaveLength(1);
+    expect(store.stockAlerts[0]).toMatchObject({
+      kind: 'CASH_MATERIAL_PURCHASE',
+      severity: 'WARNING',
+      dedupeKey: `CASH_MATERIAL_PURCHASE:${grosse.id}`,
+      amount: 150000,
+      threshold: 100000,
+      siteId: site.id,
+      subjectType: 'CashVoucher',
+      subjectId: grosse.id,
+      details: { mode: 'SINGLE', voucherNumber: grosse.number }
+    });
+
+    const autreSite = seedSite({ name: 'Chantier Lambanyi' });
+    await valider(autreSite, ciment, 40000);
+    expect(store.stockAlerts).toHaveLength(1);
+  });
+
+  it('A9-2 : trois pièces de 40 000 → une seule alerte de cumul, à la troisième ; la quatrième passe sans rien ouvrir', async () => {
+    const site = seedSite();
+    const ciment = seedCiment();
+
+    await valider(site, ciment, 40000, '2026-03-02T00:00:00.000Z');
+    await valider(site, ciment, 40000, '2026-03-12T00:00:00.000Z');
+    expect(store.stockAlerts).toHaveLength(0);
+    const troisieme = await valider(site, ciment, 40000, '2026-03-20T00:00:00.000Z');
+    expect(store.stockAlerts).toHaveLength(1);
+    expect(store.stockAlerts[0]).toMatchObject({
+      dedupeKey: `CASH_MATERIAL_CUMUL:${site.id}:2026-03`,
+      amount: 120000,
+      threshold: 100000,
+      subjectId: troisieme.id,
+      details: { mode: 'MONTHLY_CUMUL', month: '2026-03', vouchersCount: 3 }
+    });
+
+    // B7-5 : la quatrième atteint encore le cumul — validée sans erreur, rien de plus.
+    const quatrieme = await valider(site, ciment, 40000, '2026-03-25T00:00:00.000Z');
+    expect(quatrieme.status).toBe('VALIDATED');
+    expect(store.stockAlerts).toHaveLength(1);
+
+    // Un autre mois repart de zéro.
+    await valider(site, ciment, 40000, '2026-04-01T00:00:00.000Z');
+    expect(store.stockAlerts).toHaveLength(1);
+  });
+
+  it('A9-3 : poste « Main-d’œuvre » sans alerte ; seuil vide sans alerte', async () => {
+    const site = seedSite();
+    seedCiment();
+    const mainOeuvre = seedCategory();
+    await valider(site, mainOeuvre, 500000);
+    expect(store.stockAlerts).toHaveLength(0);
+
+    const ciment = seedCiment();
+    seedControls({ cashMaterialAlertAmount: null });
+    await valider(site, ciment, 500000);
+    expect(store.stockAlerts).toHaveLength(0);
+  });
+
+  it('A9-4 : 150 000 puis 40 000 dans le mois → une alerte SINGLE, aucune de cumul', async () => {
+    const site = seedSite();
+    const ciment = seedCiment();
+    await valider(site, ciment, 150000, '2026-03-02T00:00:00.000Z');
+    await valider(site, ciment, 40000, '2026-03-05T00:00:00.000Z');
+    expect(store.stockAlerts.map(a => a.details.mode)).toEqual(['SINGLE']);
+  });
+
+  it('A9-5 : agence sans ligne de réglages → défauts appliqués, aucune ligne créée', async () => {
+    const site = seedSite();
+    const ciment = seedCiment();
+    await valider(site, ciment, 150000);
+    expect(store.stockSettings).toHaveLength(0);
+    expect(ensureStockSettingsTx).not.toHaveBeenCalled();
+    expect(store.stockAlerts).toHaveLength(1);
+  });
+
+  it('postes « matériaux » saisis : la liste prime sur les articles', async () => {
+    const site = seedSite();
+    const ciment = seedCiment();
+    const fer = seedCategory({ label: 'Fer' });
+    seedControls({ materialCostCategoryIds: [fer.id] });
+    await valider(site, ciment, 150000);
+    expect(store.stockAlerts).toHaveLength(0);
+    await valider(site, fer, 150000);
+    expect(store.stockAlerts).toHaveLength(1);
+  });
+
+  it('une validation annulée n’ouvre aucune alerte (même transaction)', async () => {
+    const site = seedSite();
+    const ciment = seedCiment();
+    const voucher = await createVoucher(site, ciment, { amount: 150000 });
+    // La pièce est validée ailleurs entre la lecture et la mise à jour conditionnelle.
+    mockPrisma.cashVoucher.updateMany.mockImplementationOnce(async () => ({ count: 0 }));
+    await expect(validateVoucher(voucher.id)).rejects.toThrow(/validée par ailleurs/);
+    expect(store.stockAlerts).toHaveLength(0);
   });
 });

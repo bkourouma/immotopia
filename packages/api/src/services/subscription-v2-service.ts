@@ -233,8 +233,33 @@ const usageProviders: Record<CapacityKeyCode, UsageProvider> = {
   COPROPRIETES: countActiveCopros,
   CHANTIERS: countActiveSites,
   BIENS_DETENUS: countHeldProperties,
-  ACTIFS: countActiveAssets
+  ACTIFS: countActiveAssets,
+  PHOTOS_INVENTAIRE: countInventoryPhotosThisMonth
 };
+
+/**
+ * Photos analysees par l'IA dans le MOIS CIVIL UTC courant (capacite
+ * PHOTOS_INVENTAIRE, lot 041, W11-R2) : `StockWhatsappUsage.used` du mois,
+ * 0 sans ligne. Une CONSOMMATION, pas un stock : le compteur repart de zero
+ * chaque mois. Il n'est ecrit que par la reservation atomique du quota
+ * (`src/lib/stock-whatsapp/quota.ts`, jamais lu puis reecrit) ; ce fournisseur
+ * ne fait que le lire.
+ *
+ * Vit ici et non dans `quota.ts` : le quota lit `getEntitlements` de ce
+ * service, l'inverse creerait un cycle d'import. `quota.ts` peut l'exposer
+ * sous le nom du contrat (`countWhatsappPhotosThisMonth`, plan 041 §3.3).
+ */
+export async function countInventoryPhotosThisMonth(db: Db, tenantId: string, now: Date = new Date()): Promise<number> {
+  const month = now.toISOString().slice(0, 7);
+  // findFirst et non findUnique sur la clé composée `tenantId_month` : la garde
+  // tenant (prisma-tenant-guard-extension, mode enforce) ne lit que `tenantId`
+  // au premier niveau du `where`.
+  const row = await db.stockWhatsappUsage.findFirst({
+    where: { tenantId, month },
+    select: { used: true }
+  });
+  return row?.used ?? 0;
+}
 
 /**
  * Actifs de patrimoine du tenant (capacite ACTIFS, packs Particulier) : les
@@ -1517,6 +1542,10 @@ async function computeOverageForUsage(
   });
   // ACTIFS n'a ni extension ni depassement facture : au-dela du plafond, le
   // palier gratuit refuse l'ajout (garde du lot 4B) ; rien n'est facture.
+  // PHOTOS_INVENTAIRE (lot 041, W11-R2) non plus, VOLONTAIREMENT : au-dela du
+  // quota du mois, le bot refuse la photo (M07) ; aucun depassement facture.
+  // Ne pas lui ajouter d'entree ici (EXT_INVENTAIRE_WHATSAPP n'est pas une
+  // extension de depassement).
   const extensionCodes: Partial<Record<CapacityKeyCode, string>> = {
     LOTS: EXTENSION.LOTS_10,
     COPROPRIETES: EXTENSION.COPRO,

@@ -20,8 +20,11 @@ import type {
   StockItem,
   StockLocation,
   StockLocationKind,
+  StockLocationView,
   UpdateStockItemInput
 } from '../../types/finance-stock-referentiel-types';
+import { STOCK_COUNT_STATUS_DISPLAY } from '../../types/finance-stock-controle-types';
+import { useStockFieldContext } from '../../hooks/useStockFieldContext';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
@@ -162,6 +165,28 @@ const AVERTISSEMENT_DESACTIVATION_LIEU = t(
   "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
 );
 
+/**
+ * Le statut d'un lieu, et la pastille de l'inventaire qui le vise (lot 040,
+ * `LocationView.countInProgress`) : « Comptage en cours » ou « Comptage clos ».
+ * Le serveur refuse de désactiver un lieu qui en porte un (409
+ * STOCK_COUNT_IN_PROGRESS) ; son message est relayé tel quel.
+ */
+function StatutDuLieu({ lieu }: { lieu: StockLocationView }): React.ReactElement {
+  const inventaire = lieu.countInProgress;
+  return (
+    <Space size={4} wrap>
+      <StatusTag status={lieu.isActive ? 'ACTIVE' : 'INACTIVE'} />
+      {inventaire ? (
+        <StatusTag
+          status={`STOCK_COUNT_${inventaire.status}`}
+          tone={STOCK_COUNT_STATUS_DISPLAY[inventaire.status].tone}
+          label={STOCK_COUNT_STATUS_DISPLAY[inventaire.status].label}
+        />
+      ) : null}
+    </Space>
+  );
+}
+
 export const StockReferentiel: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -174,6 +199,18 @@ export const StockReferentiel: React.FC = () => {
    * supprime.
    */
   const confirmerAction = useConfirmAction();
+
+  /**
+   * Lot 040 (ecrans §10.1) : les gestes d'écriture du référentiel exigent
+   * FINANCE_SETTINGS_MANAGE. L'écran le lit dans `abilities.canManageSettings`
+   * du contexte terrain — une seule source — et n'affiche ses boutons
+   * d'écriture qu'à qui peut s'en servir. Tant que le contexte n'est pas lu,
+   * rien n'est proposé. Un `403` inattendu reste relayé par le serveur.
+   */
+  const contexteTerrain = useStockFieldContext(tenantId);
+  const peutParametrer = contexteTerrain.data?.data.abilities.canManageSettings === true;
+  // Les listes attendent le contexte : sans lui, les gestes permis ne sont pas encore connus.
+  const contexteEnAttente = contexteTerrain.isPending && Boolean(tenantId);
 
   // ---------------------------------------------------------------------
   // Filtres des deux listes
@@ -233,17 +270,19 @@ export const StockReferentiel: React.FC = () => {
 
   // Référentiels des formulaires. Les postes servent la PROPOSITION d'un
   // article ; les chantiers, le lieu de stockage d'un chantier.
+  // Lot 040 : ces deux lectures exigent un droit financier et ne servent
+  // qu'aux formulaires d'écriture — elles ne partent que pour qui paramètre.
   const { data: postes } = useQuery({
     queryKey: queryKey('cost-categories', tenantId, {}),
     queryFn: () => listCostCategories(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && peutParametrer,
     staleTime: STALE_TIME.reference
   });
 
   const { data: chantiers } = useQuery({
     queryKey: queryKey('construction-sites', tenantId, {}),
     queryFn: () => listConstructionSites(tenantId as string),
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && peutParametrer,
     staleTime: STALE_TIME.reference
   });
 
@@ -562,7 +601,7 @@ export const StockReferentiel: React.FC = () => {
   const listeArticles = articles ?? [];
   const listeLieux = lieux ?? [];
 
-  const colonnesArticles: ColumnsType<StockItem> = [
+  const toutesColonnesArticles: ColumnsType<StockItem> = [
     { title: t('Référence'), key: 'reference', render: (_, a) => a.reference },
     { title: t('Désignation'), key: 'designation', render: (_, a) => a.label },
     { title: t('Unité'), key: 'unite', render: (_, a) => a.unit },
@@ -607,8 +646,10 @@ export const StockReferentiel: React.FC = () => {
       )
     }
   ];
+  // Lot 040 : la colonne « Actions » n'existe que pour qui paramètre le stock.
+  const colonnesArticles = toutesColonnesArticles.filter(colonne => peutParametrer || colonne.key !== 'actions');
 
-  const colonnesLieux: ColumnsType<StockLocation> = [
+  const toutesColonnesLieux: ColumnsType<StockLocationView> = [
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
     { title: t('Nature'), key: 'nature', render: (_, l) => STOCK_LOCATION_KIND_LABELS[l.kind] },
     {
@@ -616,7 +657,7 @@ export const StockReferentiel: React.FC = () => {
       key: 'chantier',
       render: (_, l) => l.siteLabel ?? <Text type="secondary">—</Text>
     },
-    { title: t('Statut'), key: 'statut', render: (_, l) => <StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
+    { title: t('Statut'), key: 'statut', render: (_, l) => <StatutDuLieu lieu={l} /> },
     {
       title: t('Actions'),
       key: 'actions',
@@ -644,6 +685,7 @@ export const StockReferentiel: React.FC = () => {
       )
     }
   ];
+  const colonnesLieux = toutesColonnesLieux.filter(colonne => peutParametrer || colonne.key !== 'actions');
 
   const ongletArticles = (
     <>
@@ -675,9 +717,11 @@ export const StockReferentiel: React.FC = () => {
         >
           {t('Articles actifs uniquement')}
         </Checkbox>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreationArticleOuverte(true)}>
-          {t('Nouvel article')}
-        </Button>
+        {peutParametrer ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreationArticleOuverte(true)}>
+            {t('Nouvel article')}
+          </Button>
+        ) : null}
       </Space>
 
       <DataView<StockItem>
@@ -689,7 +733,7 @@ export const StockReferentiel: React.FC = () => {
         page={1}
         pageSize={Math.max(listeArticles.length, 1)}
         onPageChange={() => {}}
-        loading={articlesEnAttente}
+        loading={articlesEnAttente || contexteEnAttente}
         isReloading={articlesEnRechargement && !articlesEnAttente}
         error={erreurArticles ? t('Impossible de charger les articles.') : null}
         onRetry={() => refetchArticles()}
@@ -699,7 +743,9 @@ export const StockReferentiel: React.FC = () => {
           setRecherche('');
         }}
         emptyDescription={t("Aucun article n'est encore enregistré.")}
-        emptyAction={{ label: t('Nouvel article'), onClick: () => setCreationArticleOuverte(true) }}
+        emptyAction={
+          peutParametrer ? { label: t('Nouvel article'), onClick: () => setCreationArticleOuverte(true) } : undefined
+        }
         columns={colonnesArticles}
         rowKey={a => a.id}
         aria-label={t('Articles du stock')}
@@ -714,24 +760,30 @@ export const StockReferentiel: React.FC = () => {
               { label: t('Famille'), value: a.category ?? t('Non renseignée') },
               { label: t('Poste proposé à la sortie'), value: a.defaultCostCategoryLabel ?? t('Aucun poste proposé') }
             ]}
-            primaryAction={{ label: t('Corriger'), onClick: () => ouvrirCorrectionArticle(a) }}
+            primaryAction={
+              peutParametrer ? { label: t('Corriger'), onClick: () => ouvrirCorrectionArticle(a) } : undefined
+            }
             // Aucune suppression ici non plus : la seule action secondaire est
             // la bascule d'activité.
-            secondaryActions={[
-              a.isActive
-                ? {
-                    key: 'desactiver',
-                    label: t('Désactiver'),
-                    onClick: () =>
-                      confirmerAction({
-                        title: t("Désactiver l'article « {{reference}} » ?", { reference: a.reference }),
-                        description: AVERTISSEMENT_DESACTIVATION_ARTICLE,
-                        okText: t('Confirmer la désactivation'),
-                        onConfirm: () => basculerArticle(a, false)
-                      })
-                  }
-                : { key: 'reactiver', label: t('Réactiver'), onClick: () => basculerArticle(a, true) }
-            ]}
+            secondaryActions={
+              peutParametrer
+                ? [
+                    a.isActive
+                      ? {
+                          key: 'desactiver',
+                          label: t('Désactiver'),
+                          onClick: () =>
+                            confirmerAction({
+                              title: t("Désactiver l'article « {{reference}} » ?", { reference: a.reference }),
+                              description: AVERTISSEMENT_DESACTIVATION_ARTICLE,
+                              okText: t('Confirmer la désactivation'),
+                              onConfirm: () => basculerArticle(a, false)
+                            })
+                        }
+                      : { key: 'reactiver', label: t('Réactiver'), onClick: () => basculerArticle(a, true) }
+                  ]
+                : undefined
+            }
           />
         )}
       />
@@ -772,12 +824,14 @@ export const StockReferentiel: React.FC = () => {
         <Checkbox checked={lieuxActifsSeulement} onChange={event => setLieuxActifsSeulement(event.target.checked)}>
           {t('Lieux actifs uniquement')}
         </Checkbox>
-        <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirCreationLieu}>
-          {t('Nouveau lieu de stockage')}
-        </Button>
+        {peutParametrer ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirCreationLieu}>
+            {t('Nouveau lieu de stockage')}
+          </Button>
+        ) : null}
       </Space>
 
-      <DataView<StockLocation>
+      <DataView<StockLocationView>
         paginated={false}
         scrollX={900}
         items={listeLieux}
@@ -785,7 +839,7 @@ export const StockReferentiel: React.FC = () => {
         page={1}
         pageSize={Math.max(listeLieux.length, 1)}
         onPageChange={() => {}}
-        loading={lieuxEnAttente}
+        loading={lieuxEnAttente || contexteEnAttente}
         error={erreurLieux ? t('Impossible de charger les lieux de stockage.') : null}
         onRetry={() => refetchLieux()}
         isFiltered={lieuxActifsSeulement || Boolean(natureFiltre)}
@@ -794,7 +848,7 @@ export const StockReferentiel: React.FC = () => {
           setNatureFiltre(undefined);
         }}
         emptyDescription={t("Aucun lieu de stockage n'est encore créé.")}
-        emptyAction={{ label: t('Nouveau lieu de stockage'), onClick: ouvrirCreationLieu }}
+        emptyAction={peutParametrer ? { label: t('Nouveau lieu de stockage'), onClick: ouvrirCreationLieu } : undefined}
         columns={colonnesLieux}
         rowKey={l => l.id}
         aria-label={t('Lieux de stockage')}
@@ -803,24 +857,30 @@ export const StockReferentiel: React.FC = () => {
             title={l.label}
             aria-label={l.label}
             subtitle={STOCK_LOCATION_KIND_LABELS[l.kind]}
-            status={<StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} />}
+            status={<StatutDuLieu lieu={l} />}
             fields={[{ label: t('Chantier'), value: l.siteLabel ?? '—' }]}
-            primaryAction={{ label: t('Corriger le libellé'), onClick: () => ouvrirCorrectionLieu(l) }}
-            secondaryActions={[
-              l.isActive
-                ? {
-                    key: 'desactiver',
-                    label: t('Désactiver'),
-                    onClick: () =>
-                      confirmerAction({
-                        title: t('Désactiver le lieu « {{label}} » ?', { label: l.label }),
-                        description: AVERTISSEMENT_DESACTIVATION_LIEU,
-                        okText: t('Confirmer la désactivation'),
-                        onConfirm: () => basculerLieu(l, false)
-                      })
-                  }
-                : { key: 'reactiver', label: t('Réactiver'), onClick: () => basculerLieu(l, true) }
-            ]}
+            primaryAction={
+              peutParametrer ? { label: t('Corriger le libellé'), onClick: () => ouvrirCorrectionLieu(l) } : undefined
+            }
+            secondaryActions={
+              peutParametrer
+                ? [
+                    l.isActive
+                      ? {
+                          key: 'desactiver',
+                          label: t('Désactiver'),
+                          onClick: () =>
+                            confirmerAction({
+                              title: t('Désactiver le lieu « {{label}} » ?', { label: l.label }),
+                              description: AVERTISSEMENT_DESACTIVATION_LIEU,
+                              okText: t('Confirmer la désactivation'),
+                              onConfirm: () => basculerLieu(l, false)
+                            })
+                        }
+                      : { key: 'reactiver', label: t('Réactiver'), onClick: () => basculerLieu(l, true) }
+                  ]
+                : undefined
+            }
           />
         )}
       />
@@ -870,55 +930,57 @@ export const StockReferentiel: React.FC = () => {
             )}
           </Card>
 
-          <Card>
-            <Title level={5} style={{ marginTop: 0 }}>
-              {t('Arrêter la décision')}
-            </Title>
-            {/*
+          {peutParametrer ? (
+            <Card>
+              <Title level={5} style={{ marginTop: 0 }}>
+                {t('Arrêter la décision')}
+              </Title>
+              {/*
               Une seule méthode existe aujourd'hui. Présenter une liste
               déroulante laisserait croire qu'un choix est offert : ce qui est
               enregistré ici, c'est la DÉCISION, sa date et son motif.
             */}
-            <Paragraph type="secondary">
-              <strong>{t("Une seule méthode existe aujourd'hui")}</strong>{' '}
-              {t(": le coût moyen pondéré. Ce geste n'en change donc pas — il enregistre la")}{' '}
-              <strong>{t('décision')}</strong>
-              {t(
-                ", sa date et son motif, comme le besoin S5 l'exige. En ajouter une autre est un travail à part entière, pas une ligne de paramétrage."
-              )}
-            </Paragraph>
-            <Paragraph>
-              {t('Méthode retenue :')} <strong>{STOCK_VALUATION_METHOD_LABELS.WEIGHTED_AVERAGE}</strong>
-            </Paragraph>
-            <div style={{ maxWidth: 520 }}>
-              <label htmlFor="methode-motif">{t('Motif de la décision')}</label>
-              <TextArea
-                id="methode-motif"
-                rows={3}
-                value={motifDecision}
-                onChange={event => setMotifDecision(event.target.value)}
-                placeholder={t(
-                  'Ex. Décision du comité de gestion du 12 mars : coût moyen pondéré retenu pour tous les chantiers.'
+              <Paragraph type="secondary">
+                <strong>{t("Une seule méthode existe aujourd'hui")}</strong>{' '}
+                {t(": le coût moyen pondéré. Ce geste n'en change donc pas — il enregistre la")}{' '}
+                <strong>{t('décision')}</strong>
+                {t(
+                  ", sa date et son motif, comme le besoin S5 l'exige. En ajouter une autre est un travail à part entière, pas une ligne de paramétrage."
                 )}
-              />
-              <div style={{ marginTop: 'var(--space-2)' }}>
-                <Text type={motifManquant ? 'danger' : 'secondary'}>
-                  {t(
-                    'Le motif est obligatoire : sans lui, personne ne saura dans six mois pourquoi les chiffres ont changé de sens.'
+              </Paragraph>
+              <Paragraph>
+                {t('Méthode retenue :')} <strong>{STOCK_VALUATION_METHOD_LABELS.WEIGHTED_AVERAGE}</strong>
+              </Paragraph>
+              <div style={{ maxWidth: 520 }}>
+                <label htmlFor="methode-motif">{t('Motif de la décision')}</label>
+                <TextArea
+                  id="methode-motif"
+                  rows={3}
+                  value={motifDecision}
+                  onChange={event => setMotifDecision(event.target.value)}
+                  placeholder={t(
+                    'Ex. Décision du comité de gestion du 12 mars : coût moyen pondéré retenu pour tous les chantiers.'
                   )}
-                </Text>
+                />
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  <Text type={motifManquant ? 'danger' : 'secondary'}>
+                    {t(
+                      'Le motif est obligatoire : sans lui, personne ne saura dans six mois pourquoi les chiffres ont changé de sens.'
+                    )}
+                  </Text>
+                </div>
+                <Button
+                  type="primary"
+                  style={{ marginTop: 'var(--space-3)' }}
+                  loading={decisionEnCours}
+                  disabled={motifManquant}
+                  onClick={arreterMethode}
+                >
+                  {t('Enregistrer la décision')}
+                </Button>
               </div>
-              <Button
-                type="primary"
-                style={{ marginTop: 'var(--space-3)' }}
-                loading={decisionEnCours}
-                disabled={motifManquant}
-                onClick={arreterMethode}
-              >
-                {t('Enregistrer la décision')}
-              </Button>
-            </div>
-          </Card>
+            </Card>
+          ) : null}
         </>
       )}
     </>
@@ -1093,6 +1155,11 @@ export const StockReferentiel: React.FC = () => {
                 leur nombre, qui voudra désormais dire autre chose. À ne faire que pour réparer une erreur de saisie,
                 jamais pour changer de conditionnement.
               </Text>
+              <div style={{ marginTop: 'var(--space-2)' }}>
+                <Text type="warning">
+                  {t('Changer l’unité ne convertit pas les quantités déjà en stock. Vérifiez par un inventaire.')}
+                </Text>
+              </div>
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <Checkbox checked={uniteAcquittee} onChange={event => setUniteAcquittee(event.target.checked)}>
                   {t("J'ai compris : les quantités déjà enregistrées ne seront pas reconverties.")}

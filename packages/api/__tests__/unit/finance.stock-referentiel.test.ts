@@ -26,6 +26,9 @@ const store = {
   settings: [] as Row[],
   sites: [] as Row[],
   categories: [] as Row[],
+  // Lot 040 : inventaires et lignes, pour le refus de désactivation et la vue d'un lieu.
+  counts: [] as Row[],
+  countLines: [] as Row[],
   seq: 0
 };
 
@@ -57,6 +60,33 @@ const mockPrisma: Row = {
   constructionSite: {
     findFirst: jest.fn(
       async ({ where }: Row) => store.sites.find(s => s.id === where.id && s.tenantId === where.tenantId) ?? null
+    ),
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.sites.filter(s => s.tenantId === where.tenantId && where.id.in.includes(s.id))
+    )
+  },
+
+  // Lot 040 : `where` réduits à ce que le référentiel et `stock-controles.ts` envoient.
+  stockCount: {
+    findFirst: jest.fn(
+      async ({ where }: Row) =>
+        store.counts.find(
+          c => c.tenantId === where.tenantId && c.locationId === where.locationId && where.status.in.includes(c.status)
+        ) ?? null
+    ),
+    findMany: jest.fn(async ({ where }: Row) => {
+      let rows = store.counts.filter(c => c.tenantId === where.tenantId && where.locationId.in.includes(c.locationId));
+      if (where.status?.not) rows = rows.filter(c => c.status !== where.status.not);
+      if (typeof where.status === 'string') rows = rows.filter(c => c.status === where.status);
+      return [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    })
+  },
+
+  stockCountLine: {
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.countLines
+        .filter(l => where.countId.in.includes(l.countId) && l.setAsideAt)
+        .map(l => ({ ...l, item: store.items.find(i => i.id === l.itemId) ?? null }))
     )
   },
 
@@ -191,9 +221,12 @@ import {
   getStockSettings,
   listStockItems,
   listStockLocations,
+  buildLocationViews,
   setStockValuationMethodTx,
   updateStockItemTx,
-  updateStockLocationTx
+  updateStockItemWithChangesTx,
+  updateStockLocationTx,
+  updateStockLocationWithChangesTx
 } from '../../src/lib/finance/stock-referentiel';
 
 const TENANT_ID = 'tenant-1';
@@ -251,6 +284,8 @@ beforeEach(() => {
   store.settings = [];
   store.sites = [];
   store.categories = [];
+  store.counts = [];
+  store.countLines = [];
   store.seq = 0;
 });
 
@@ -721,5 +756,183 @@ describe('setStockValuationMethodTx — une décision datée et motivée', () =>
     expect(second.decisionNote).toBe('Confirmé après audit');
     expect(second.decidedAt.getTime()).toBeGreaterThanOrEqual(premier.decidedAt.getTime());
     expect(store.settings).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D. Lot 040 — désactivation d'un lieu en inventaire, changements audités, vue d'un lieu
+// ---------------------------------------------------------------------------
+
+describe('Lot 040 — désactiver un lieu qui porte un inventaire en cours (spec §9)', () => {
+  it.each(['DRAFT', 'COUNTED'])(
+    'refuse la désactivation pendant un inventaire %s : 409 STOCK_COUNT_IN_PROGRESS',
+    async status => {
+      const lieu = await seedLocation({ label: 'Magasin central' });
+      store.counts.push({
+        id: 'inv-1',
+        tenantId: TENANT_ID,
+        locationId: lieu.id,
+        status,
+        kind: 'REGULAR',
+        createdAt: new Date()
+      });
+
+      await expect(
+        runTransaction((tx: any) => updateStockLocationTx(tx, TENANT_ID, lieu.id, { isActive: false }))
+      ).rejects.toMatchObject({ statusCode: 409, code: 'STOCK_COUNT_IN_PROGRESS', data: { countId: 'inv-1' } });
+      expect(store.locations[0].isActive).toBe(true);
+    }
+  );
+
+  it('accepte la désactivation après un inventaire validé ou abandonné, et le renommage pendant un inventaire', async () => {
+    const lieu = await seedLocation({ label: 'Magasin central' });
+    store.counts.push({
+      id: 'inv-v',
+      tenantId: TENANT_ID,
+      locationId: lieu.id,
+      status: 'VALIDATED',
+      createdAt: new Date()
+    });
+    store.counts.push({
+      id: 'inv-c',
+      tenantId: TENANT_ID,
+      locationId: lieu.id,
+      status: 'CANCELLED',
+      createdAt: new Date()
+    });
+
+    const desactive = await runTransaction((tx: any) =>
+      updateStockLocationTx(tx, TENANT_ID, lieu.id, { isActive: false })
+    );
+    expect(desactive.isActive).toBe(false);
+
+    store.counts.push({
+      id: 'inv-d',
+      tenantId: TENANT_ID,
+      locationId: lieu.id,
+      status: 'DRAFT',
+      createdAt: new Date()
+    });
+    const renomme = await runTransaction((tx: any) =>
+      updateStockLocationTx(tx, TENANT_ID, lieu.id, { label: 'Magasin Nord' })
+    );
+    expect(renomme.label).toBe('Magasin Nord');
+  });
+
+  it('un inventaire d’une autre agence sur un même identifiant ne bloque rien', async () => {
+    const lieu = await seedLocation({ label: 'Magasin central' });
+    store.counts.push({
+      id: 'inv-x',
+      tenantId: AUTRE_TENANT,
+      locationId: lieu.id,
+      status: 'DRAFT',
+      createdAt: new Date()
+    });
+    await expect(
+      runTransaction((tx: any) => updateStockLocationTx(tx, TENANT_ID, lieu.id, { isActive: false }))
+    ).resolves.toMatchObject({ isActive: false });
+  });
+});
+
+describe('Lot 040 — les changements audités (B6-R1)', () => {
+  it('STOCK_ITEM_UPDATED porte l’unité dans ses changements, et rien de ce qui n’a pas changé', async () => {
+    const article = await seedItem({ unit: 'sac', label: 'Ciment CPJ 42.5' });
+
+    const { item, changes } = await runTransaction((tx: any) =>
+      updateStockItemWithChangesTx(tx, TENANT_ID, article.id, { unit: 'tonne', label: 'Ciment CPJ 42.5' })
+    );
+
+    expect(item.unit).toBe('tonne');
+    expect(changes).toEqual({ unit: { before: 'sac', after: 'tonne' } });
+  });
+
+  it('un article d’une autre agence se corrige en 404', async () => {
+    const article = await seedItem();
+    store.items[0].tenantId = AUTRE_TENANT;
+    await expect(
+      runTransaction((tx: any) => updateStockItemWithChangesTx(tx, TENANT_ID, article.id, { label: 'X' }))
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('STOCK_LOCATION_UPDATED porte le libellé et l’activité changés', async () => {
+    const lieu = await seedLocation({ label: 'Magasin central' });
+    const { changes } = await runTransaction((tx: any) =>
+      updateStockLocationWithChangesTx(tx, TENANT_ID, lieu.id, { label: 'Magasin Nord', isActive: false })
+    );
+    expect(changes).toEqual({
+      label: { before: 'Magasin central', after: 'Magasin Nord' },
+      isActive: { before: true, after: false }
+    });
+  });
+});
+
+describe('Lot 040 — buildLocationViews (LocationView)', () => {
+  it('signale l’inventaire en cours, le chantier clos, l’ouverture suggérée et les articles à recompter', async () => {
+    const now = new Date('2026-10-04T00:00:00.000Z');
+    const ouvert = seedSite({ closedAt: null, stockEnabledAt: new Date('2026-09-20T00:00:00.000Z') });
+    const clos = seedSite({ closedAt: new Date('2026-09-01'), stockEnabledAt: new Date('2026-01-01') });
+    const magasin = await seedLocation({ label: 'Magasin central' });
+    const lieuOuvert = await seedLocation({ kind: 'SITE', label: 'Dépôt ouvert', siteId: ouvert.id });
+    const lieuClos = await seedLocation({ kind: 'SITE', label: 'Dépôt clos', siteId: clos.id });
+    const article = await seedItem({ label: 'Fer de 10' });
+
+    store.counts.push({
+      id: 'inv-draft',
+      tenantId: TENANT_ID,
+      locationId: magasin.id,
+      status: 'DRAFT',
+      kind: 'REGULAR',
+      createdAt: now
+    });
+    store.counts.push({
+      id: 'inv-ok',
+      tenantId: TENANT_ID,
+      locationId: lieuClos.id,
+      status: 'VALIDATED',
+      kind: 'CLOSING',
+      validatedAt: now,
+      createdAt: now
+    });
+    store.countLines.push({ countId: 'inv-ok', itemId: article.id, setAsideAt: now });
+
+    const records = await listStockLocations(TENANT_ID, {});
+    const views = await buildLocationViews(mockPrisma as any, TENANT_ID, records, now);
+    const byId = new Map(views.map(view => [view.id, view]));
+
+    expect(byId.get(magasin.id)).toMatchObject({
+      countInProgress: { countId: 'inv-draft', status: 'DRAFT', kind: 'REGULAR' },
+      siteClosed: false,
+      openingCountSuggested: false,
+      toRecount: []
+    });
+    expect(byId.get(lieuOuvert.id)).toMatchObject({
+      siteClosed: false,
+      openingCountSuggested: true,
+      countInProgress: null
+    });
+    expect(byId.get(lieuClos.id)).toMatchObject({ siteClosed: true, openingCountSuggested: false });
+    expect(byId.get(lieuClos.id)!.toRecount).toEqual([
+      { itemId: article.id, itemLabel: 'Fer de 10', countId: 'inv-ok', setAsideAt: now }
+    ]);
+  });
+
+  it('aucune quantité ni valeur dans la vue d’un lieu', async () => {
+    await seedLocation({ label: 'Magasin central' });
+    const [view] = await buildLocationViews(mockPrisma as any, TENANT_ID, await listStockLocations(TENANT_ID, {}));
+    expect(Object.keys(view).sort()).toEqual(
+      [
+        'countInProgress',
+        'id',
+        'isActive',
+        'kind',
+        'label',
+        'openingCountSuggested',
+        'siteClosed',
+        'siteId',
+        'siteLabel',
+        'tenantId',
+        'toRecount'
+      ].sort()
+    );
   });
 });

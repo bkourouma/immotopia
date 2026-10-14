@@ -4,6 +4,7 @@ import { getEntitlements } from './subscription-v2-service';
 import { evaluateFeatureAccess } from '../lib/subscription/feature-access';
 import type { Feature } from '../lib/subscription/features';
 import { logger } from '../utils/logger';
+import { listOpenStockAlertsForWorkQueue, stockAlertHref } from '../lib/finance/stock-alertes-lecture';
 import {
   CrmDealStage,
   MaintenanceTicketPriority,
@@ -61,7 +62,8 @@ export interface DashboardSeriesPoint {
 
 export interface DashboardTask {
   id: string;
-  kind: 'OVERDUE_INSTALLMENT' | 'PENDING_DECLARATION' | 'URGENT_TICKET';
+  /** `STOCK_ALERT` : alerte de stock ouverte (lot 040, B7-R5). */
+  kind: 'OVERDUE_INSTALLMENT' | 'PENDING_DECLARATION' | 'URGENT_TICKET' | 'STOCK_ALERT';
   title: string;
   /**
    * Le complément non monétaire de la ligne : le retard, le moyen de paiement,
@@ -304,6 +306,12 @@ export async function getTenantDashboard(tenantId: string, userId: string): Prom
   // menant vers un écran interdit.
   const canViewSyndic = permissions.includes('SYNDIC_VIEW') && hasFeature('SYNDIC');
   const canViewPatrimoine = canViewProperties && hasFeature('PATRIMOINE');
+  // Lot 040 (B7-R5) : alertes de stock pour qui les traite ET voit les
+  // valeurs, dans une agence qui a les chantiers (CONSTRUCTION).
+  const canViewStockAlerts =
+    permissions.includes('STOCK_ALERTS_VIEW') &&
+    permissions.includes('STOCK_VALUES_VIEW') &&
+    hasFeature('CONSTRUCTION');
 
   const now = new Date();
   const periodStart = startOfCurrentMonth(now);
@@ -340,7 +348,12 @@ export async function getTenantDashboard(tenantId: string, userId: string): Prom
     canViewMaintenance ? getMaintenance(tenantId, base) : null,
     canViewSyndic ? getSyndic(tenantId, base) : null,
     canViewPatrimoine ? getPatrimoine(tenantId, base) : null,
-    getWorkQueue(tenantId, base, now, { canViewInstallments, canViewPayments, canViewMaintenance }),
+    getWorkQueue(tenantId, base, now, {
+      canViewInstallments,
+      canViewPayments,
+      canViewMaintenance,
+      canViewStockAlerts
+    }),
     getRecentActivity(tenantId, base, { canViewProperties, canViewContacts, canViewPayments })
   ]);
 
@@ -923,9 +936,14 @@ async function getWorkQueue(
   tenantId: string,
   base: string,
   now: Date,
-  access: { canViewInstallments: boolean; canViewPayments: boolean; canViewMaintenance: boolean }
+  access: {
+    canViewInstallments: boolean;
+    canViewPayments: boolean;
+    canViewMaintenance: boolean;
+    canViewStockAlerts?: boolean;
+  }
 ): Promise<DashboardTask[]> {
-  const [overdue, declarations, tickets] = await Promise.all([
+  const [overdue, declarations, tickets, stockAlerts] = await Promise.all([
     access.canViewInstallments
       ? prisma.rentalInstallment.findMany({
           where: {
@@ -985,7 +1003,8 @@ async function getWorkQueue(
           orderBy: { declared_at: 'asc' },
           take: WORK_QUEUE_PER_SOURCE
         })
-      : []
+      : [],
+    access.canViewStockAlerts ? loadStockAlertTasks(tenantId) : []
   ]);
 
   const joursDeRetard = (due: Date): number => Math.max(0, Math.floor((now.getTime() - due.getTime()) / 86_400_000));
@@ -1037,7 +1056,8 @@ async function getWorkQueue(
       occurredAt: ticket.declared_at.toISOString(),
       severity: ticket.priority === MaintenanceTicketPriority.URGENT ? ('danger' as const) : ('warning' as const),
       href: `${base}/admin/maintenance/tickets/${ticket.id}`
-    }))
+    })),
+    ...stockAlerts
   ];
 
   // Le plus urgent d'abord : la gravité prime, puis l'ancienneté.
@@ -1045,6 +1065,34 @@ async function getWorkQueue(
   return taches
     .sort((a, b) => poids[a.severity] - poids[b.severity] || a.occurredAt.localeCompare(b.occurredAt))
     .slice(0, WORK_QUEUE_LIMIT);
+}
+
+/**
+ * Alertes de stock ouvertes (lot 040, B7-R5) : « À regarder » d'abord. Titre
+ * neutre (jamais de nom de personne), lieu ou chantier en description, lien
+ * vers l'écran Contrôle. Une panne de lecture n'empêche pas le reste du
+ * tableau de bord : la source est alors simplement vide.
+ */
+async function loadStockAlertTasks(tenantId: string): Promise<DashboardTask[]> {
+  try {
+    const items = await listOpenStockAlertsForWorkQueue(tenantId, WORK_QUEUE_PER_SOURCE);
+    return items.map(item => ({
+      id: `stock-alert:${item.alertId}`,
+      kind: 'STOCK_ALERT' as const,
+      title: item.title,
+      description: item.place ?? '',
+      amount: item.amount,
+      occurredAt: item.raisedAt.toISOString(),
+      severity: item.severity,
+      href: stockAlertHref(tenantId, item.alertId)
+    }));
+  } catch (error) {
+    logger.error('Dashboard: stock alerts unavailable', {
+      tenantId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  }
 }
 
 /** Fusionne les dernières lignes de chaque source lisible en un seul fil. */

@@ -528,7 +528,14 @@ export const LeaseDetailPage: React.FC = () => {
                     {translate('États des lieux')}
                   </span>
                 ),
-                children: tenantId && leaseId ? <LeaseInspectionsPanel tenantId={tenantId} leaseId={leaseId} /> : null
+                children:
+                  tenantId && leaseId ? (
+                    <LeaseInspectionsPanel
+                      tenantId={tenantId}
+                      leaseId={leaseId}
+                      propertyFurnishingStatus={lease?.property?.furnishingStatus}
+                    />
+                  ) : null
               },
               {
                 key: 'documents',

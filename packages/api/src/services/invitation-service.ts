@@ -28,7 +28,11 @@ const TENANT_ROLE_LABELS_FR: Record<string, string> = {
   TENANT_ADMIN: "Administrateur de l'agence",
   TENANT_MANAGER: 'Gestionnaire',
   TENANT_AGENT: 'Agent immobilier',
-  TENANT_ACCOUNTANT: 'Comptable'
+  TENANT_ACCOUNTANT: 'Comptable',
+  // Lot 040 (B1-R4) : recoit, sort, transfere et compte le stock, sans valeurs.
+  TENANT_STOREKEEPER: 'Magasinier',
+  // Lot 041 (W2-R2) : compte le stock de ses chantiers, notamment par WhatsApp.
+  TENANT_SITE_MANAGER: 'Chef de chantier'
 };
 
 /**

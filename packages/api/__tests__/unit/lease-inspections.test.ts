@@ -108,7 +108,16 @@ describe('compareInspections', () => {
         label: 'Sol',
         entryCondition: 'GOOD',
         exitCondition: 'POOR',
-        degraded: true
+        degraded: true,
+        kind: 'FIXTURE',
+        entryQuantity: null,
+        exitQuantity: null,
+        missing: false,
+        quantityDecrease: 0,
+        missingQuantity: 0,
+        absentFromExit: false,
+        replacementValue: null,
+        missingValue: null
       },
       {
         roomId: 'room-1',
@@ -117,7 +126,16 @@ describe('compareInspections', () => {
         label: 'Murs',
         entryCondition: 'NEW',
         exitCondition: 'NEW',
-        degraded: false
+        degraded: false,
+        kind: 'FIXTURE',
+        entryQuantity: null,
+        exitQuantity: null,
+        missing: false,
+        quantityDecrease: 0,
+        missingQuantity: 0,
+        absentFromExit: false,
+        replacementValue: null,
+        missingValue: null
       }
     ]);
   });
@@ -181,7 +199,16 @@ describe('compareInspections', () => {
         label: 'Sol',
         entryCondition: null,
         exitCondition: 'GOOD',
-        degraded: false
+        degraded: false,
+        kind: 'FIXTURE',
+        entryQuantity: null,
+        exitQuantity: null,
+        missing: false,
+        quantityDecrease: 0,
+        missingQuantity: 0,
+        absentFromExit: false,
+        replacementValue: null,
+        missingValue: null
       }
     ]);
   });

@@ -83,7 +83,8 @@ describe('AnthropicProvider', () => {
     expect(params).toEqual({
       model: 'claude-opus-5-5',
       max_tokens: 16000,
-      system: 'SYS',
+      system: [{ type: 'text', text: 'SYS', cache_control: { type: 'ephemeral' } }],
+      cache_control: { type: 'ephemeral' },
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Bonjour' }] }],
       tools: [
         {
@@ -116,6 +117,19 @@ describe('AnthropicProvider', () => {
     const [params] = mockStream.mock.calls[0];
     expect(params).not.toHaveProperty('fallbacks');
     expect(params).not.toHaveProperty('betas');
+  });
+
+  it('coupe le cache de prompt avec AI_PROMPT_CACHE=off', async () => {
+    mutableEnv.AI_PROMPT_CACHE = 'off';
+    try {
+      mockStream.mockReturnValue(fakeStream({ message: { stop_reason: 'end_turn', content: [] } }));
+      await new AnthropicProvider({ getConfig }).runTurn(req, () => undefined, new AbortController().signal);
+      const [params] = mockStream.mock.calls[0];
+      expect(params.system).toBe('SYS');
+      expect(params).not.toHaveProperty('cache_control');
+    } finally {
+      delete mutableEnv.AI_PROMPT_CACHE;
+    }
   });
 
   it('traduit les blocs : tool_use, thinking opaque, tool_result renvoyés', async () => {

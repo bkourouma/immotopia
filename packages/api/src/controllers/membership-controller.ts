@@ -12,7 +12,7 @@ import {
 } from '../services/membership-service';
 import { z } from 'zod';
 import { parsePagination } from '../utils/pagination-helper';
-import { asyncHandler } from '../middleware/error-middleware';
+import { asyncHandler, UnauthorizedError } from '../middleware/error-middleware';
 
 /**
  * Membres assignables (id, nom d'affichage, roles ; ACTIFS seulement).
@@ -109,72 +109,52 @@ export async function getMemberHandler(req: Request, res: Response): Promise<voi
  * Update member roles
  * PATCH /api/tenants/:tenantId/users/:userId
  */
-export async function updateMemberHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-
-    // Validate request body
-    const validationResult = updateMemberRolesSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: validationResult.error.errors
-      });
-      return;
-    }
-
-    const data = validationResult.data;
-    const member = await updateMemberRoles(userId, tenantId, data, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Rôles mis à jour avec succès.',
-      data: member
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const updateMemberHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, userId } = req.params;
+
+  // Validate request body
+  const validationResult = updateMemberRolesSchema.safeParse(req.body);
+  if (!validationResult.success) {
+    res.status(400).json({
+      success: false,
+      message: 'Données invalides',
+      errors: validationResult.error.errors
+    });
+    return;
+  }
+
+  const member = await updateMemberRoles(userId, tenantId, validationResult.data, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Rôles mis à jour avec succès.',
+    data: member
+  });
+});
 
 /**
- * Disable a member
+ * Disable a member. L'acteur (`req.user.userId`) est transmis au service, qui refuse
+ * l'auto-désactivation et la désactivation du dernier administrateur actif.
  * POST /api/tenants/:tenantId/users/:userId/disable
  */
-export async function disableMemberHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    const { tenantId, userId } = req.params;
-    const membership = await disableMember(userId, tenantId, req.user.userId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Membre désactivé avec succès.',
-      data: membership
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    if (errorMessage.includes('introuvable')) {
-      res.status(404).json({ success: false, message: errorMessage });
-    } else {
-      res.status(400).json({ success: false, message: errorMessage });
-    }
+export const disableMemberHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
   }
-}
+
+  const { tenantId, userId } = req.params;
+  const membership = await disableMember(userId, tenantId, req.user.userId);
+
+  res.status(200).json({
+    success: true,
+    message: 'Membre désactivé avec succès.',
+    data: membership
+  });
+});
 
 /**
  * Enable a member

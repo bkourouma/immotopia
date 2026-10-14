@@ -95,6 +95,10 @@ const SOURCE_TYPE_BY_DOCUMENT: Record<string, string> = {
   STOCK_RECEIPT: 'STOCK_RECEIPT',
   STOCK_ISSUE: 'STOCK_ISSUE',
   STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  // Lot 040 : retour fournisseur et rebut (data-model §2.1, §4). Sans ces deux
+  // entrees, leurs ecritures tomberaient sur `MANUAL`.
+  STOCK_SUPPLIER_RETURN: 'STOCK_SUPPLIER_RETURN',
+  STOCK_SCRAP: 'STOCK_SCRAP',
   // Gestion locative, lot 3. La contre-passation d'un mouvement du compte
   // proprietaire porte la nature VOID, comme toute annulation du module.
   OWNER_RENT_COLLECTED: 'OWNER_RENT_COLLECTED',

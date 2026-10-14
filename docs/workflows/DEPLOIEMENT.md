@@ -903,12 +903,40 @@ l'application), syndic (copropriétés, appels, paiements, relances, AG, fonds,
 comptabilité), promoteur (chantiers, lots, budgets, fournisseurs, factures, bail de
 terrain), patrimoine (biens détenus, loyers, charges, travaux, assurances, prêts,
 valorisations ; entités, actifs, scénarios, sinistres en Pro). INTEGRE reçoit agence +
-syndic + promoteur. Le module Promoteur n'a ni ventes ni acquéreurs : le code ne les
-connaît pas. Aucun envoi sortant n'est possible pendant le seed (SMTP/SMS coupés avant
-tout import). Un seed d'historique interrompu laisse une agence partielle que la relance
-ne complète pas (garde d'idempotence « le module a déjà des données ») : la suspendre ou
-la purger, puis relancer. `PACK_TEST_HISTORY=0` crée les agences sans historique.
-Durée constatée en local : une douzaine de minutes.
+syndic + promoteur. Aucun envoi sortant n'est possible pendant le seed (SMTP/SMS coupés
+avant tout import). `PACK_TEST_HISTORY=0` crée les agences sans historique.
+
+**Profil « 3 ans » complet (aucun écran vide).** Après 36 mois d'usage, une agence aurait
+utilisé tous ses modules : les agences « 3 ans » reçoivent donc, en plus de l'historique
+de base, des compléments par module (un fichier d'accroche chacun dans `pack-history/`,
+appelés dans l'ordre par `index.ts`) :
+
+| Compléments                                                | Contenu                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `equipe-plateforme` (avant)                                | équipe de 6 à 10 membres par agence (rôles réels, un membre suspendu, un ancien membre), invitations de 4 statuts, menus coupés par rôle, paie des chantiers, journal d'activité de 36 mois                                                                                                   |
+| `agence-commercial`, `agence-locatif`, `agence-patrimoine` | CRM (notes, étiquettes, recherches, relances), mandats, ventes (offres, compromis, commissions), newsletters, états des lieux, événements de bail, reversements et relevés propriétaires sur 36 mois, retenues à la source, patrimoine des biens propres, prestataires, portails avec comptes |
+| `syndic-extras`, `syndic-fixes`                            | quittances et reçus en PDF, programmation des appels, échéanciers, fonds, contrats, parties communes, incidents, tickets liés, documents, AG convoquées ou annulées, quotes-parts de lots à 100 %, CRM, portail copropriétaire avec comptes                                                   |
+| `promoteur-extras`, `promoteur-commercial`                 | stock de chantier (articles, mouvements, bons, inventaires, écarts à justifier, WhatsApp d'inventaire sans envoi), caisse de chantier, retenues de garantie, associations, programmes en commercialisation (lots, CRM, ventes, maintenance, patrimoine conservé)                              |
+| `patrimoine-extras`, `patrimoine-fixes`                    | dossier documentaire, accès tiers, sinistres, régularisation foncière, hypothèses de rendement, parc de 27 biens en Pro, baux et impayés étalés, prêts, visites, portail du titulaire                                                                                                         |
+| `core-communication`                                       | newsletters (listes, modèles, campagnes), contacts CRM du Patrimoine, identité des documents (logo, signature, cachet), réglages de notification                                                                                                                                              |
+| `finance-transverse`, `finance-gaps` (après)               | comptabilité reconstituée, trésoreries (banque, caisse, mobile money) jamais négatives, virements, sessions de caisse, pièces à valider, facturation du mois, balances clients                                                                                                                |
+| `equipe-plateforme` (fin)                                  | 36 factures d'abonnement par agence, règlements, extensions, relevés d'usage, exports                                                                                                                                                                                                         |
+
+Chaque bloc de ces compléments est **idempotent** : il saute ce que l'agence porte déjà.
+Relancer `seed-pack-tests.sh staging` sur des agences « 3 ans » déjà créées leur ajoute
+donc ce qui manque, sans doublon et sans purge. Les agences « 6 mois » ne reçoivent pas
+ces compléments. Un seed d'historique de BASE interrompu laisse en revanche une agence
+partielle que la relance ne complète pas (garde « le module a déjà des données ») : la
+suspendre ou la purger, puis relancer. Les comptes de connexion ajoutés (équipe,
+portails propriétaire, locataire, copropriétaire) ont le même mot de passe de test public
+que les administrateurs. Durée constatée en local : environ une heure pour les 12 agences créées de zéro (55 min mesurées), 6 minutes pour une relance sur des agences déjà peuplées.
+
+**Limite connue : documents générés.** Les modèles DOCX de bail et de quittance et les
+documents générés des baux vivent sous `assets/`, dossier absent des images Docker du
+staging (voir « Non résolus » plus haut). Sur le staging, « Générer un contrat » et le
+téléchargement des quittances du jeu de démonstration ne fonctionneront pas tant que ce
+point n'est pas corrigé ; les autres pièces (PDF de syndic, de patrimoine, de stock, de
+biens, photos) sont de vrais fichiers écrits sur le volume des téléversements.
 
 ```bash
 ./infra/scripts/deploy.sh staging           # amène d'abord le web à jour
@@ -925,6 +953,24 @@ production (garde `ALLOW_PACK_TEST_TENANTS=1`).
 
 **Attention : mot de passe public, staging seulement.** Il figure dans le bundle
 du staging ; ne jamais réutiliser ces comptes ni ce mot de passe ailleurs.
+
+Les agences « 6 mois » Promoteur et Opérateur intégré portent en plus quatre
+comptes de recette du contrôle du stock (lot 040), au même mot de passe :
+`magasinier-promoteur@`, `comptable-promoteur@`, `magasinier-integre@` et
+`responsable-integre@packs.immotopia.test` (Magasinier, Comptable, second
+administrateur qui valide l'inventaire compté par un autre). Liste et rôles :
+`PACK_TEST_MEMBERS` dans `prisma/seeds/pack-test-tenants.ts`, reprise dans la
+connexion rapide du staging (`apps/web/src/dev/dev-accounts.ts`). Après le
+déploiement du lot, **relancer le seed** (`./infra/scripts/seed-pack-tests.sh
+staging`) pour les créer : il est idempotent et ne recrée pas les agences.
+
+Lot 041 : ces deux agences portent aussi un Chef de chantier
+(`chef-promoteur@` et `chef-integre@packs.immotopia.test`, rôle
+`TENANT_SITE_MANAGER`), inscrit au bot WhatsApp et déjà actif, aux numéros
+**fictifs** `+2250100000101` et `+2250100000102`, sur un chantier « Chantier de
+recette — inventaire WhatsApp » basculé au stock. Seul le Promoteur reçoit un
+bloc `EXT_INVENTAIRE_WHATSAPP` : l'Opérateur intégré joue « option absente ».
+Liste : `PACK_TEST_WHATSAPP_REGISTRATIONS` dans le même fichier.
 
 Pour les retirer, suspendre chaque agence avec l'outil d'exploitation
 (`docker exec immotopia-saas-api node dist/scripts/provision-subscription.js suspend --tenant <slug> [--dry-run]`,
@@ -991,6 +1037,126 @@ seul le journal dit ce qui aurait été refusé. `make-env.sh` livre `warn` dans
 deux environnements : tant que la bascule n'est pas faite, le filet
 multi-tenant et les quotas d'abonnement de la production ne bloquent rien (voir
 les [points ouverts](#points-ouverts)).
+
+### Lot 040 — contrôle du stock de chantier
+
+À relire avant le premier déploiement du lot (détail :
+`specs/040-controle-stock/data-model.md` §5.3).
+
+- **Le retour arrière est un correctif en avant.** Les migrations ajoutent des
+  valeurs d'enum (`ALTER TYPE … ADD VALUE`, irréversible) ; dès qu'une ligne
+  porte une valeur nouvelle (inventaire `COUNTED` ou `CANCELLED`, mouvement
+  `SCRAP` ou `SUPPLIER_RETURN`, écriture `STOCK_SCRAP`…), l'ancienne image ne
+  sait plus lire la liste des inventaires, le journal ni le grand livre. Le
+  retour arrière de la section précédente ne vaut donc que dans les minutes qui
+  suivent la mise en ligne, avant toute écriture du stock ; ensuite, on corrige
+  et on redéploie le code du lot, les migrations restent.
+- **API et web partent ensemble** (ce que fait `deploy.sh`) : les formes de
+  réponse du stock changent (`POST /stock/receipts`, `POST /stock/issues`,
+  `PUT …/lines`, listes paginées). Un onglet resté ouvert sur l'ancien web se
+  remet d'aplomb en rechargeant la page ; aucun drapeau de fonctionnalité.
+- **`STOCK_ALERT_MAIL_JOB_ENABLED`** (`env.example`, défaut `false`) : envoi,
+  toutes les 10 minutes, de l'e-mail récapitulatif des nouvelles alertes de
+  stock aux responsables du stock de chaque agence. La purge nocturne des clés
+  d'idempotence (3 h UTC) tourne quelle que soit la valeur. L'activer d'abord
+  sur le staging, vérifier la réception, puis sur la production
+  ([modifier une variable](#modifier-une-variable-denvironnement)).
+- **Droits.** La migration `20261008090200_controle_stock_permissions` crée les
+  dix droits `STOCK_*` et le rôle Magasinier (`TENANT_STOREKEEPER`), et reporte
+  les droits financiers existants sur les droits du stock équivalents, pour
+  tous les rôles qui les portent (personne ne perd l'accès qu'il avait). Elle
+  est idempotente. Les droits prennent effet au plus tard 5 minutes après
+  l'attribution d'un rôle (cache par instance).
+- **Couper les menus hors stock du Magasinier, une fois, par la plateforme.**
+  Les clés de menu ne sont connues que du web : la migration n'écrit aucune
+  décision de menu. Après le déploiement, un super-administrateur ouvre
+  l'écran des accès aux menus par rôle (`PUT /roles/menu-access/:roleKey`) et,
+  pour `TENANT_STOREKEEPER`, choisit **« Toutes les agences (défaut) »** puis ne
+  laisse que les menus du stock (le Magasin, les preneurs, le stock). Ce défaut
+  vaut pour toutes les agences, y compris celles créées ensuite, tant qu'une
+  agence n'a pas son propre réglage pour ce rôle. À faire sur le staging, puis
+  sur la production.
+- **Comptes de recette** : relancer le seed des comptes de test par pack sur le
+  staging ([plus haut](#comptes-de-test-par-pack-staging)).
+
+### Lot 041 — Inventaire WhatsApp
+
+Comptage du stock de chantier par photo WhatsApp et IA (`specs/041-inventaire-whatsapp/`).
+À relire avant le premier déploiement du lot.
+
+**Variables** (`packages/api/env.example`, contrôlées au démarrage par
+`src/config/env.ts`) :
+
+| Variable                                                                           | Staging              | Production                                                                                          |
+| ---------------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
+| `WHATSAPP_INVENTORY_TRANSPORT`                                                     | `log` (rien ne part) | `meta`, ou `disabled` (défaut) tant que la mise en service n'est pas faite                          |
+| `WHATSAPP_INVENTORY_SIMULATOR`                                                     | `1`                  | absent (`0`)                                                                                        |
+| `STOCK_VISION_PROVIDER`                                                            | `fake`               | `gemini` ou `openrouter`                                                                            |
+| `STOCK_VISION_MODEL`, `GEMINI_API_KEY` (ou `OPENROUTER_API_KEY`)                   | —                    | requis par le fournisseur choisi                                                                    |
+| `META_WA_APP_SECRET`, `META_WA_VERIFY_TOKEN` (32 caractères au moins)              | —                    | requis avec `meta`                                                                                  |
+| `META_WA_ACCESS_TOKEN`, `META_WA_PHONE_NUMBER_ID`                                  | —                    | requis avec `meta`                                                                                  |
+| `META_WA_GRAPH_VERSION`, `META_WA_MEDIA_HOSTS`, `WHATSAPP_INVENTORY_PUBLIC_NUMBER` | facultatif           | défauts `v23.0`, `lookaside.fbsbx.com` [à vérifier au déploiement] ; numéro affiché à l'inscription |
+| `WHATSAPP_INVENTORY_WARN_QUOTA`                                                    | `500`                | `500` (quota de secours hors `enforce`)                                                             |
+
+**Refus de `deploy.sh prod`.** Le script refuse la production si le fichier de
+secrets porte `WHATSAPP_INVENTORY_SIMULATOR=1`, `WHATSAPP_INVENTORY_TRANSPORT=log`
+ou `STOCK_VISION_PROVIDER=fake`, quelle que soit l'écriture (`export`,
+guillemets, espaces), comme `PAYMENT_GATEWAY_SIMULATOR`. `env.ts` refuse en plus
+au démarrage `log` en production sans simulateur et `fake` hors développement,
+test ou simulateur.
+
+**Staging.** `WHATSAPP_INVENTORY_TRANSPORT=log`, `WHATSAPP_INVENTORY_SIMULATOR=1`,
+`STOCK_VISION_PROVIDER=fake` : aucun message WhatsApp ne part, aucune IA n'est
+appelée. La recette se joue dans l'onglet Gestion du stock › WhatsApp ›
+Simulateur, avec les directives `fake:…` en légende des photos. Après le
+déploiement du lot, **relancer le seed des comptes de test**
+([plus haut](#comptes-de-test-par-pack-staging)) : il crée les deux chefs de
+chantier, leurs inscriptions et le bloc d'option du Promoteur.
+
+**Mise en service Meta, pas à pas** (production, une fois) :
+
+1. Business Manager vérifié ; application Meta de type « Business » ; produit
+   WhatsApp ajouté.
+2. Numéro officiel ajouté et vérifié (SMS ou appel), nom d'affichage approuvé ;
+   noter le `phone_number_id` → `META_WA_PHONE_NUMBER_ID`.
+3. Utilisateur système avec un jeton **permanent** (droits
+   `whatsapp_business_messaging` et `whatsapp_business_management`) →
+   `META_WA_ACCESS_TOKEN`. Jamais le jeton temporaire de 24 heures.
+4. Clé secrète de l'application → `META_WA_APP_SECRET` ; jeton de vérification
+   généré (`openssl rand -base64 48`) → `META_WA_VERIFY_TOKEN`. Les deux restent
+   propres à la production.
+5. Déployer avec `WHATSAPP_INVENTORY_TRANSPORT=meta`
+   ([modifier une variable](#modifier-une-variable-denvironnement)). Puis, dans
+   l'application Meta : URL de rappel
+   `https://<api>/api/webhooks/whatsapp-cloud/events` et jeton de vérification ;
+   « Vérifier et enregistrer » (le `GET` doit rendre le challenge). Le webhook
+   répond `404` tant que le transport n'est pas `meta`, `401` à un corps sans
+   signature `X-Hub-Signature-256` valide.
+6. Abonner le compte WhatsApp Business au champ `messages`.
+7. Moyen de paiement du compte : les réponses dans la fenêtre de 24 heures sont
+   gratuites, mais le compte l'exige [à vérifier].
+8. Essai : inscrire un numéro de test, envoyer son code, puis une photo ;
+   vérifier dans le journal l'hôte de téléchargement des médias et ajuster
+   `META_WA_MEDIA_HOSTS` si besoin (refus `HOST_NOT_ALLOWED` sinon).
+9. Vision : `STOCK_VISION_PROVIDER=gemini` et `GEMINI_API_KEY` (ou `openrouter`
+   et sa clé), `STOCK_VISION_MODEL`.
+10. Couper les menus hors stock du rôle « Chef de chantier »
+    (`TENANT_SITE_MANAGER`) par l'écran des accès aux menus par rôle, en
+    choisissant « Toutes les agences (défaut) », comme pour le Magasinier du
+    lot 040. Le rôle ne porte que `STOCK_COUNT` : sans
+    `STOCK_VIEW`, la Gestion du stock lui est de toute façon fermée.
+11. **Retour arrière** : `WHATSAPP_INVENTORY_TRANSPORT=disabled` coupe la
+    fonction sans redéployer (webhook en `404`, minuteries et reprise des
+    événements arrêtées ; l'effacement des copies et les purges nocturnes
+    continuent). Schéma : les migrations ajoutent des valeurs d'enum
+    (`PHOTOS_INVENTAIRE`, `FIELD_COUNT_CLOSED`), irréversibles ; le retour
+    arrière du schéma est un correctif en avant
+    (`specs/041-inventaire-whatsapp/data-model.md` §5.3).
+
+**Données personnelles.** Le numéro d'un chef n'apparaît jamais en clair dans un
+journal ; celui d'un expéditeur inconnu n'est gardé qu'en empreinte HMAC. Les
+photos sont des fichiers privés (`uploads/stock-whatsapp/<agence>/…`), jamais
+servis en statique, et partent avec l'export d'agence.
 
 ## Sauvegarde et restauration
 

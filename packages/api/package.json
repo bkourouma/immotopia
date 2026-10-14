@@ -8,6 +8,7 @@
   },
   "scripts": {
     "i18n:extract": "node scripts/i18n-extract.mjs",
+    "ai:catalog": "ts-node -T scripts/generate-ai-catalog.ts",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",

@@ -53,6 +53,14 @@ jest.mock('../../src/lib/finance/stock-rapprochement', () => ({
   getSiteStockReconciliation: (...args: any[]) => getSiteStockReconciliation(...args)
 }));
 
+// Lot 040 : le rapprochement lit l'appelant et les lieux en comptage (§8.2).
+const resolveStockCallerContext = jest.fn();
+const loadBlindLocationIds = jest.fn();
+jest.mock('../../src/lib/finance/stock-controles', () => ({
+  resolveStockCallerContext: (...args: any[]) => resolveStockCallerContext(...args),
+  loadBlindLocationIds: (...args: any[]) => loadBlindLocationIds(...args)
+}));
+
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     $transaction: (callback: any) => callback({})
@@ -119,6 +127,8 @@ function reconciliationRecord(overrides: Partial<Record<string, unknown>> = {}) 
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resolveStockCallerContext.mockResolvedValue({ userId: 'user-1', canValidateCount: false, valuesVisible: true });
+  loadBlindLocationIds.mockResolvedValue(new Set([LOCATION_A]));
 });
 
 // ---------------------------------------------------------------------------
@@ -140,7 +150,9 @@ describe('POST /tenants/:tenantId/finance/sites/:siteId/stock/enable', () => {
     expect(tenantId).toBe(TENANT_A);
     expect(siteId).toBe(SITE_A);
     // La date vient du contrôleur — l'instant de la décision —, jamais du corps.
-    expect(Object.keys(params)).toEqual(['enabledAt']);
+    // L'auteur vient du jeton (audit STOCK_SITE_ENABLED, lot 040).
+    expect(Object.keys(params)).toEqual(['enabledAt', 'enabledByUserId']);
+    expect(params.enabledByUserId).toBe('user-1');
     expect(params.enabledAt).toBeInstanceOf(Date);
   });
 
@@ -272,7 +284,11 @@ describe('GET /tenants/:tenantId/finance/sites/:siteId/stock/reconciliation', ()
     expect(res.body.data.unreconciledAmount).toBe(100_000);
     expect(res.body.data.lines).toHaveLength(1);
     expect(res.body.data.lines[0].transferredInQuantity).toBe(30);
-    expect(getSiteStockReconciliation).toHaveBeenCalledWith(TENANT_A, SITE_A);
+    // Lot 040 (§8.2) : les lieux en comptage de l'appelant sont transmis, et la réponse porte `meta`.
+    expect(getSiteStockReconciliation).toHaveBeenCalledWith(TENANT_A, SITE_A, {
+      blindLocationIds: new Set([LOCATION_A])
+    });
+    expect(res.body.meta).toEqual({ valuesVisible: true, blindLocationIds: [LOCATION_A] });
   });
 
   it('répond 200 sur un chantier non basculé, et laisse passer le consommé sans le raboter', async () => {

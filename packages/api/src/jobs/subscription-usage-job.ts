@@ -65,14 +65,19 @@ const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
   COPROPRIETES: 'copropriétés',
   CHANTIERS: 'chantiers',
   BIENS_DETENUS: 'biens détenus',
-  ACTIFS: 'actifs'
+  ACTIFS: 'actifs',
+  PHOTOS_INVENTAIRE: 'photos analysées'
 };
 
 /**
- * ACTIFS n'existe que pour les packs Particulier : sans plafond d'actifs
- * (agence, pack Patrimoine), la capacite est ignoree — ni releve, ni alerte.
+ * Capacites facultatives, ignorees sans plafond — ni releve, ni alerte :
+ * ACTIFS n'existe que pour les packs Particulier (agence, pack Patrimoine :
+ * aucun plafond) ; PHOTOS_INVENTAIRE (lot 041, W11-R2) seulement avec l'option
+ * Inventaire WhatsApp souscrite.
  */
-const isActifsWithoutCap = (key: CapacityKeyCode, limit: number) => key === 'ACTIFS' && limit <= 0;
+const OPTIONAL_CAPACITIES: readonly CapacityKeyCode[] = ['ACTIFS', 'PHOTOS_INVENTAIRE'];
+const isOptionalCapacityWithoutCap = (key: CapacityKeyCode, limit: number) =>
+  OPTIONAL_CAPACITIES.includes(key) && limit <= 0;
 
 type SubscriptionRow = Prisma.SubscriptionGetPayload<object>;
 
@@ -312,7 +317,7 @@ export async function recordUsageSnapshots(tenantId: string, now: Date = new Dat
   let recorded = 0;
   for (const key of CAPACITY_KEYS) {
     const capacity = entitlements.capacities[key];
-    if (isActifsWithoutCap(key, capacity.limit)) continue;
+    if (isOptionalCapacityWithoutCap(key, capacity.limit)) continue;
     recorded += 1;
     const where = { tenantId_capacityKey_snapshotDate: { tenantId, capacityKey: key as CapacityKey, snapshotDate } };
     // eslint-disable-next-line no-await-in-loop -- trois capacites.
@@ -368,7 +373,7 @@ export async function evaluateQuotaAlerts(tenantId: string, now: Date = new Date
 
   for (const key of CAPACITY_KEYS) {
     const { used, limit } = entitlements.capacities[key];
-    if (isActifsWithoutCap(key, limit)) continue;
+    if (isOptionalCapacityWithoutCap(key, limit)) continue;
     for (const threshold of crossedThresholds(used, limit)) {
       let created;
       try {

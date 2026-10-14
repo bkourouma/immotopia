@@ -13,6 +13,7 @@ import {
   GoldOutlined,
   MailOutlined,
   MenuOutlined,
+  RobotOutlined,
   RiseOutlined,
   SafetyOutlined,
   ShopOutlined,
@@ -74,6 +75,9 @@ import type { FinanceWorkspaceFamily } from './finance-workspaces';
  * empêche les `/tenant/undefined/...` que produit aujourd'hui la sidebar tant
  * que l'appartenance n'est pas chargée.
  */
+
+/** Clé du menu « Assistant » (page plein écran d'ImmoCopilot). */
+export const ASSISTANT_GROUP_KEY = 'assistant';
 
 /**
  * Les cinq personas qui ont une navigation.
@@ -587,6 +591,16 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/newsletter/templates'
             }
           ]
+        },
+        // Visible seulement quand ImmoCopilot est activé pour l'agence (voir
+        // `withAssistantMenu` dans la coquille).
+        {
+          key: ASSISTANT_GROUP_KEY,
+          label: t('Assistant'),
+          icon: <RobotOutlined />,
+          zone: 'more',
+          section: 'commercial',
+          href: '/tenant/:tenantId/assistant'
         },
         {
           key: 'syndic',

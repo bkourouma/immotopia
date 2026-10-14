@@ -52,13 +52,16 @@ import { t } from '../i18n/t';
 // ---------------------------------------------------------------------------
 
 /** Les quatre natures du schéma serveur (`StockMovementType`). */
-export type StockMovementType = 'RECEIPT' | 'ISSUE' | 'TRANSFER' | 'ADJUSTMENT';
+export type StockMovementType = 'RECEIPT' | 'ISSUE' | 'TRANSFER' | 'ADJUSTMENT' | 'SUPPLIER_RETURN' | 'SCRAP';
 
 export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = {
   RECEIPT: t('Réception'),
   ISSUE: t('Sortie vers un chantier'),
   TRANSFER: t('Transfert entre lieux'),
-  ADJUSTMENT: t('Ajustement d’inventaire')
+  ADJUSTMENT: t('Ajustement d’inventaire'),
+  // Lot 040 (A6) : retour au fournisseur et rebut.
+  SUPPLIER_RETURN: t('Retour au fournisseur'),
+  SCRAP: t('Rebut')
 };
 
 /**
@@ -74,7 +77,9 @@ export const STOCK_MOVEMENT_TYPE_TONES: Record<StockMovementType, 'neutral' | 'i
   RECEIPT: 'success',
   ISSUE: 'info',
   TRANSFER: 'neutral',
-  ADJUSTMENT: 'warning'
+  ADJUSTMENT: 'warning',
+  SUPPLIER_RETURN: 'neutral',
+  SCRAP: 'warning'
 };
 
 // ---------------------------------------------------------------------------

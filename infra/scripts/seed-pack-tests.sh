@@ -112,11 +112,24 @@ run_seed() {
   local script="$1"; shift
   compose --profile tools run --rm --no-deps -T -w /repo/packages/api \
     -e ALLOW_PACK_TEST_TENANTS=1 \
+    -e UPLOADS_DIR=/data/uploads \
+    -v "${STACK_NAME}-uploads-data:/data/uploads" \
     --entrypoint npx migrate ts-node -T "prisma/seeds/${script}.ts" "$@"
 }
 
 step "Creation des agences de test par pack"
 run_seed seed-pack-test-tenants || fail "le seed a echoue (voir le message ci-dessus). Il est idempotent : relancer apres correction."
+
+# Le conteneur migrate tourne en root : les fichiers ecrits (photos de biens, PDF des
+# documents, pieces jointes) lui appartiennent. L'API tourne en `node` : elle doit
+# les lire ET pouvoir ajouter des fichiers dans les memes dossiers (nouvelle photo
+# sur un bien du jeu de demonstration, par exemple).
+step "Droits sur les fichiers deposes"
+compose --profile tools run --rm --no-deps -T \
+  -v "${STACK_NAME}-uploads-data:/data/uploads" \
+  --entrypoint chown migrate -R node:node /data/uploads \
+  || fail "chown du volume ${STACK_NAME}-uploads-data impossible."
+ok "volume ${STACK_NAME}-uploads-data rendu a l'utilisateur de l'API"
 
 printf '\n\033[1;32mAgences de test par pack pretes sur %s.\033[0m\n' "$PUBLIC_ORIGIN"
 echo "Idempotent : relancer ce script ne cree aucun doublon, il resynchronise seulement les comptes."

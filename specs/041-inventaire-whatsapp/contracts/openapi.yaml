@@ -1,0 +1,1635 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia — Inventaire de chantier par WhatsApp et IA (spec 041)
+  version: 1.0.0 # révision 1 (04/10/2026)
+  description: >
+    Routes du lot 041. Chaque opération d'agence indique sa permission
+    (x-permission), sa fonctionnalité d'abonnement (x-fonctionnalite :
+    CONSTRUCTION par le préfixe /finance/stock,
+    packages/api/src/lib/subscription/route-features.ts:162), son audit
+    (x-audit) et ses masques (x-masquage-valeurs, x-masquage-aveugle, mêmes
+    règles que le lot 040, specs/040-controle-stock/spec.md §8.1 et §8.2).
+
+    Règles communes :
+    - Routes d'agence : authenticate + requireTenantAccess ; tenantId vient de
+      l'URL. Tout identifiant reçu (inscription, membre, chantier, capture,
+      session, inventaire) est vérifié comme appartenant à l'agence : une
+      référence d'une autre agence répond 404, comme un objet inexistant.
+    - Enveloppes : { success: true, data, meta? } et { success: false, message,
+      error, code?, errors?, data? } (comme le lot 040).
+    - Le numéro de téléphone n'est rendu en clair que par la création et la
+      lecture d'une inscription, à FINANCE_SETTINGS_MANAGE ; partout ailleurs il
+      est masqué (phoneMasked).
+    - Aucune réponse ne porte un code d'activation, sauf la création et la
+      régénération (une seule fois).
+    - Webhook : public, signé par Meta (X-Hub-Signature-256), hors abonnement,
+      hors catalogue de l'assistant (chemin contenant « webhook »).
+    - Vocabulaire (D2 du lot 040) : aucun message, libellé ni champ ne contient
+      « vol », « voleur », « fraude » ou « détournement ».
+servers:
+  - url: /api
+tags:
+  - name: Webhook
+  - name: Inscriptions
+  - name: Passerelle
+  - name: ComptagesTerrain
+  - name: Captures
+  - name: Conversations
+  - name: Simulateur
+
+paths:
+  # ===========================================================================
+  # Webhook Meta (W6) — public
+  # ===========================================================================
+  /webhooks/whatsapp-cloud/events:
+    get:
+      tags: [Webhook]
+      operationId: verifyWhatsappCloudWebhook
+      summary: Vérification d'abonnement Meta (hub.challenge)
+      x-statut: nouvelle
+      x-public: true
+      description: >
+        404 si WHATSAPP_INVENTORY_TRANSPORT ≠ meta. hub.verify_token comparé à
+        META_WA_VERIFY_TOKEN à temps constant ; masqué dans le journal des
+        requêtes. Limiteur webhookRateLimiter.
+      parameters:
+        - {
+            name: hub.mode,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [subscribe] },
+          }
+        - {
+            name: hub.verify_token,
+            in: query,
+            required: true,
+            schema: { type: string, maxLength: 256 },
+          }
+        - {
+            name: hub.challenge,
+            in: query,
+            required: true,
+            schema: { type: string, maxLength: 256 },
+          }
+      responses:
+        "200":
+          description: Le challenge, tel quel.
+          content: { text/plain: { schema: { type: string } } }
+        "403": { description: Jeton faux ou mode inattendu (corps vide). }
+        "404": { description: Transport autre que meta. }
+        "429": { description: Limiteur. }
+    post:
+      tags: [Webhook]
+      operationId: receiveWhatsappCloudEvents
+      summary: Événements Meta (messages et statuts)
+      x-statut: nouvelle
+      x-public: true
+      description: >
+        Corps BRUT (express.raw, 1 Mo), parseurs globaux contournés par préfixe.
+        Signature X-Hub-Signature-256 TOUJOURS vérifiée (HMAC-SHA256 du corps
+        brut, META_WA_APP_SECRET), quel que soit NODE_ENV. Chaque message est
+        inséré dans whatsapp_cloud_events (wamid unique) AVANT la réponse 200 ;
+        le traitement suit dans le processus, repris par la tâche s'il est
+        interrompu. Les statuts sont journalisés et ignorés. Un
+        metadata.phone_number_id autre que META_WA_PHONE_NUMBER_ID est ignoré.
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema: { type: string, pattern: "^sha256=[0-9a-f]{64}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetaWebhookPayload" }
+      responses:
+        "200":
+          description: Reçu (même pour un renvoi déjà traité, un statut, un champ inconnu).
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties: { received: { type: boolean, enum: [true] } },
+                    },
+                },
+            }
+        "401": { description: Signature absente ou fausse. Rien n'est écrit. }
+        "404": { description: Transport autre que meta. }
+        "413": { description: Corps de plus de 1 Mo. }
+        "429": { description: Limiteur. }
+
+  # ===========================================================================
+  # Passerelle, quota, mesures (W1, W11, W14-R7)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/whatsapp/overview:
+    get:
+      tags: [Passerelle]
+      operationId: getStockWhatsappOverview
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: month,
+            in: query,
+            required: false,
+            schema: { type: string, pattern: '^\d{4}-\d{2}$' },
+            description: "Mois des mesures (défaut : mois courant UTC).",
+          }
+      responses:
+        "200":
+          description: OK
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          success: { type: boolean },
+                          data:
+                            { $ref: "#/components/schemas/WhatsappOverview" },
+                        },
+                    },
+                },
+            }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # Inscriptions (W3)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/whatsapp/eligible-members:
+    get:
+      tags: [Inscriptions]
+      operationId: listStockWhatsappEligibleMembers
+      summary: Membres ACTIFS titulaires du rôle Chef de chantier (lu en base)
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, label, registered]
+                      properties:
+                        userId: { type: string }
+                        label:
+                          {
+                            type: string,
+                            description: "fullName, sinon e-mail.",
+                          }
+                        registered:
+                          {
+                            type: boolean,
+                            description: Porte déjà une inscription non révoquée.,
+                          }
+  /tenants/{tenantId}/finance/stock/whatsapp/eligible-sites:
+    get:
+      tags: [Inscriptions]
+      operationId: listStockWhatsappEligibleSites
+      summary: Chantiers ouverts, basculés au stock, lieu actif (W3-R5)
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/SiteRef" },
+                    }
+  /tenants/{tenantId}/finance/stock/whatsapp/registrations:
+    get:
+      tags: [Inscriptions]
+      operationId: listStockWhatsappRegistrations
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: status,
+            in: query,
+            schema: { $ref: "#/components/schemas/RegistrationStatus" },
+          }
+      responses:
+        "200":
+          description: OK
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          success: { type: boolean },
+                          data:
+                            {
+                              type: array,
+                              items:
+                                {
+                                  $ref: "#/components/schemas/RegistrationView",
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+    post:
+      tags: [Inscriptions]
+      operationId: createStockWhatsappRegistration
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_WHATSAPP_REGISTRATION_CREATED (redact phone)
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { $ref: "#/components/schemas/CreateRegistrationRequest" },
+              },
+          }
+      responses:
+        "201":
+          description: Inscription en attente ; le code n'est rendu qu'ici.
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          success: { type: boolean },
+                          data:
+                            {
+                              $ref: "#/components/schemas/RegistrationWithCode",
+                            },
+                        },
+                    },
+                },
+            }
+        "400":
+          {
+            description: "STOCK_WHATSAPP_PHONE_INVALID, STOCK_WHATSAPP_SITES_REQUIRED, VALIDATION_ERROR",
+          }
+        "404": { description: Chantier ou membre d'une autre agence. }
+        "409":
+          {
+            description: "STOCK_WHATSAPP_PHONE_UNAVAILABLE, STOCK_WHATSAPP_MEMBER_NOT_ELIGIBLE, STOCK_WHATSAPP_MEMBER_ALREADY_REGISTERED, STOCK_WHATSAPP_SITE_NOT_ELIGIBLE (data.siteIds)",
+          }
+  /tenants/{tenantId}/finance/stock/whatsapp/registrations/{registrationId}:
+    get:
+      tags: [Inscriptions]
+      operationId: getStockWhatsappRegistration
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/RegistrationId" },
+        ]
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data:
+                              { $ref: "#/components/schemas/RegistrationView" },
+                          },
+                      },
+                  },
+              },
+          }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Inscriptions]
+      operationId: updateStockWhatsappRegistrationSites
+      summary: Remplace les chantiers affectés
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_WHATSAPP_REGISTRATION_UPDATED (changes)
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/RegistrationId" },
+        ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [siteIds]
+              properties:
+                siteIds:
+                  {
+                    type: array,
+                    minItems: 1,
+                    maxItems: 10,
+                    uniqueItems: true,
+                    items: { type: string, format: uuid },
+                  }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data:
+                              { $ref: "#/components/schemas/RegistrationView" },
+                          },
+                      },
+                  },
+              },
+          }
+        "409":
+          {
+            description: "STOCK_WHATSAPP_REGISTRATION_WRONG_STATUS (révoquée), STOCK_WHATSAPP_SITE_NOT_ELIGIBLE",
+          }
+  /tenants/{tenantId}/finance/stock/whatsapp/registrations/{registrationId}/regenerate-code:
+    post:
+      tags: [Inscriptions]
+      operationId: regenerateStockWhatsappActivationCode
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_WHATSAPP_ACTIVATION_CODE_REGENERATED
+      description: Seulement en PENDING_ACTIVATION. Nouveau code, 72 h, essais remis à zéro.
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/RegistrationId" },
+        ]
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data:
+                              {
+                                $ref: "#/components/schemas/RegistrationWithCode",
+                              },
+                          },
+                      },
+                  },
+              },
+          }
+        "409": { description: STOCK_WHATSAPP_REGISTRATION_WRONG_STATUS }
+  /tenants/{tenantId}/finance/stock/whatsapp/registrations/{registrationId}/revoke:
+    post:
+      tags: [Inscriptions]
+      operationId: revokeStockWhatsappRegistration
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_WHATSAPP_REGISTRATION_REVOKED (critique)
+      description: Ferme la session ouverte (REVOKED), abandonne la proposition (EXPIRED). Aucun message au chef.
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/RegistrationId" },
+        ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data:
+                              { $ref: "#/components/schemas/RegistrationView" },
+                          },
+                      },
+                  },
+              },
+          }
+        "409":
+          {
+            description: STOCK_WHATSAPP_REGISTRATION_WRONG_STATUS (déjà révoquée),
+          }
+
+  # ===========================================================================
+  # Comptages terrain — réconciliation (W14, ecrans §3)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/whatsapp/field-counts:
+    get:
+      tags: [ComptagesTerrain]
+      operationId: listStockFieldCounts
+      summary: Par lieu et article, stock théorique et dernier comptage physique
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: theoreticalValue, averageUnitCost
+      x-masquage-aveugle: >
+        theoreticalQuantity, theoreticalValue, averageUnitCost valent null sur un
+        lieu en comptage pour un appelant sans STOCK_COUNT_VALIDATE ; le lieu est
+        listé dans meta.blindLocationIds. lastCount n'est jamais masqué
+        (quantité comptée).
+      description: >
+        Une ligne par couple (lieu, article) qui a un solde non nul OU au moins
+        un comptage (toute source) dans les 180 derniers jours. « Dernier
+        comptage physique » = ligne d'inventaire la plus récente (countedAtServer,
+        lot 040) de ce couple, quel que soit son statut sauf CANCELLED.
+        Pagination par curseur opaque, tri lieu puis référence.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - { name: siteId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: locationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { name: itemId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: source,
+            in: query,
+            schema: { type: string, enum: [WHATSAPP, WEB] },
+            description: Source du dernier comptage.,
+          }
+        - { name: cursor, in: query, schema: { type: string } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/FieldCountRow" },
+                    }
+                  meta: { $ref: "#/components/schemas/StockMeta" }
+
+  # ===========================================================================
+  # Captures et preuve (T10, W14)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/whatsapp/captures:
+    get:
+      tags: [Captures]
+      operationId: listStockFieldCaptures
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - { name: countId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: locationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { name: itemId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: outcome,
+            in: query,
+            schema: { $ref: "#/components/schemas/CaptureOutcome" },
+          }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+          }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/CaptureSummary" },
+                    }
+                  meta:
+                    {
+                      type: object,
+                      properties:
+                        { nextCursor: { type: string, nullable: true } },
+                    }
+  /tenants/{tenantId}/finance/stock/whatsapp/captures/{captureId}:
+    get:
+      tags: [Captures]
+      operationId: getStockFieldCapture
+      summary: Détail pour le visualiseur de preuve
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/CaptureId" },
+        ]
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data: { $ref: "#/components/schemas/CaptureView" },
+                          },
+                      },
+                  },
+              },
+          }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tenants/{tenantId}/finance/stock/whatsapp/captures/{captureId}/file:
+    get:
+      tags: [Captures]
+      operationId: getStockFieldCaptureFile
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: DOCUMENT_DOWNLOADED (middleware d'accès)
+      description: privateUploadPath(fileUrl, ['stock-whatsapp', tenantId, aaaa]) puis sendPrivateFile (no-store).
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/CaptureId" },
+        ]
+      responses:
+        "200":
+          {
+            description: OK,
+            content: { image/jpeg: {}, image/png: {}, image/webp: {} },
+          }
+        "404":
+          {
+            description: "Inexistante, autre agence, ou photo retirée (STOCK_WHATSAPP_PHOTO_REMOVED dans code).",
+          }
+  /tenants/{tenantId}/finance/stock/whatsapp/captures/{captureId}/remove-photo:
+    post:
+      tags: [Captures]
+      operationId: removeStockFieldCapturePhoto
+      x-statut: nouvelle
+      x-permission: STOCK_DISPOSE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_WHATSAPP_PHOTO_REMOVED (critique)
+      parameters:
+        [
+          { $ref: "#/components/parameters/TenantId" },
+          { $ref: "#/components/parameters/CaptureId" },
+        ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data: { $ref: "#/components/schemas/CaptureView" },
+                          },
+                      },
+                  },
+              },
+          }
+        "409": { description: STOCK_WHATSAPP_PHOTO_ALREADY_REMOVED }
+  /tenants/{tenantId}/finance/stock/whatsapp/counts/{countId}/captures:
+    get:
+      tags: [Captures]
+      operationId: listStockCountFieldCaptures
+      summary: Pour l'écran Inventaire du lot 040 (badge, lien photo)
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      description: >
+        Rend la source de l'inventaire et, par article, la capture qui a fixé la
+        quantité de sa ligne (confirmedAt le plus récent, outcome ACCEPTED ou
+        CORRECTED). Aucun attendu : l'écran Inventaire le lit dans CountView,
+        sous les règles du lot 040.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: countId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    required: [countId, source, lines]
+                    properties:
+                      countId: { type: string, format: uuid }
+                      source: { type: string, enum: [WEB, WHATSAPP] }
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            [itemId, captureId, outcome, confirmedAt, hasPhoto]
+                          properties:
+                            itemId: { type: string, format: uuid }
+                            countLineId:
+                              { type: string, format: uuid, nullable: true }
+                            captureId: { type: string, format: uuid }
+                            outcome:
+                              { type: string, enum: [ACCEPTED, CORRECTED] }
+                            mergeMode:
+                              {
+                                type: string,
+                                enum: [ADD, REPLACE],
+                                nullable: true,
+                              }
+                            confirmedAt: { type: string, format: date-time }
+                            hasPhoto: { type: boolean }
+                            capturesCount:
+                              {
+                                type: integer,
+                                description: "Captures confirmées pour cet article dans l’inventaire (additions comprises).",
+                              }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # Conversations (T9, W14-R3)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/whatsapp/sessions:
+    get:
+      tags: [Conversations]
+      operationId: listStockWhatsappSessions
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE ou STOCK_COUNT_VALIDATE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: registrationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { name: open, in: query, schema: { type: boolean } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data:
+                              {
+                                type: array,
+                                items:
+                                  { $ref: "#/components/schemas/SessionView" },
+                              },
+                            meta:
+                              {
+                                type: object,
+                                properties:
+                                  {
+                                    nextCursor:
+                                      { type: string, nullable: true },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          }
+  /tenants/{tenantId}/finance/stock/whatsapp/sessions/{sessionId}/messages:
+    get:
+      tags: [Conversations]
+      operationId: listStockWhatsappSessionMessages
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE ou STOCK_COUNT_VALIDATE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: sessionId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data:
+                              {
+                                type: array,
+                                items:
+                                  {
+                                    $ref: "#/components/schemas/ConversationMessage",
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # Simulateur (W13) — absent si transport ≠ log, ou production sans
+  # WHATSAPP_INVENTORY_SIMULATOR=1 ; exclu du catalogue de l'assistant
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/whatsapp/simulator/messages:
+    post:
+      tags: [Simulateur]
+      operationId: injectStockWhatsappSimulatorMessage
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      description: >
+        Injecte un message entrant dans le MÊME moteur que le webhook
+        (handleInboundMessage, via = SIMULATOR). Exactement une cible :
+        registrationId (inscription de l'agence, en attente ou active) ou
+        freePhone (numéro libre, pour jouer un expéditeur inconnu).
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SimulatorTextOrReply" }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                registrationId: { type: string, format: uuid }
+                freePhone: { type: string, maxLength: 40 }
+                caption:
+                  {
+                    type: string,
+                    maxLength: 200,
+                    description: "Lue par le faux fournisseur seulement (fake:…).",
+                  }
+                file:
+                  {
+                    type: string,
+                    format: binary,
+                    description: "JPEG, PNG ou WebP, 10 Mo.",
+                  }
+      responses:
+        "202":
+          description: Accepté ; la conversation se relit par GET …/simulator/conversation.
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties:
+                        {
+                          success: { type: boolean },
+                          data:
+                            {
+                              type: object,
+                              properties: { metaMessageId: { type: string } },
+                            },
+                        },
+                    },
+                },
+            }
+        "400":
+          {
+            description: "VALIDATION_ERROR, STOCK_WHATSAPP_SIMULATOR_FILE_TYPE",
+          }
+        "404":
+          {
+            description: "STOCK_WHATSAPP_SIMULATOR_UNAVAILABLE, ou inscription d’une autre agence",
+          }
+        "413": { description: STOCK_WHATSAPP_FILE_TOO_LARGE }
+  /tenants/{tenantId}/finance/stock/whatsapp/simulator/conversation:
+    get:
+      tags: [Simulateur]
+      operationId: getStockWhatsappSimulatorConversation
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: registrationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: freePhone,
+            in: query,
+            schema: { type: string, maxLength: 40 },
+          }
+        - {
+            name: after,
+            in: query,
+            schema: { type: string, format: date-time },
+            description: Messages postérieurs (relecture incrémentale).,
+          }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      session: { $ref: "#/components/schemas/SessionView" }
+                      messages:
+                        {
+                          type: array,
+                          items:
+                            {
+                              $ref: "#/components/schemas/ConversationMessage",
+                            },
+                        }
+        "404": { description: STOCK_WHATSAPP_SIMULATOR_UNAVAILABLE }
+  /tenants/{tenantId}/finance/stock/whatsapp/simulator/sessions/{sessionId}/advance:
+    post:
+      tags: [Simulateur]
+      operationId: advanceStockWhatsappSimulatorClock
+      summary: Recule lastInboundAt et lance la tâche pour cette session (W13-R5)
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: sessionId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [minutes]
+              properties:
+                minutes: { type: integer, enum: [10, 30] }
+      responses:
+        "200":
+          {
+            description: OK,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            success: { type: boolean },
+                            data: { $ref: "#/components/schemas/SessionView" },
+                          },
+                      },
+                  },
+              },
+          }
+        "404":
+          {
+            description: STOCK_WHATSAPP_SIMULATOR_UNAVAILABLE ou session d'une autre agence,
+          }
+
+components:
+  parameters:
+    TenantId:
+      { name: tenantId, in: path, required: true, schema: { type: string } }
+    RegistrationId:
+      {
+        name: registrationId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    CaptureId:
+      {
+        name: captureId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+
+  responses:
+    Forbidden:
+      {
+        description: "Droit manquant (FORBIDDEN) ou module non inclus (MODULE_NOT_INCLUDED).",
+      }
+    NotFound:
+      { description: "Inexistant ou d’une autre agence (même réponse)." }
+
+  schemas:
+    # --- Webhook Meta (sous-ensemble lu ; champs inconnus ignorés) ----------
+    MetaWebhookPayload:
+      type: object
+      description: >
+        Source : https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
+        et …/webhooks/reference/messages/interactive (consultées le 04/10/2026).
+      required: [object, entry]
+      properties:
+        object: { type: string, enum: [whatsapp_business_account] }
+        entry:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              changes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field:
+                      { type: string, description: "Seul « messages » est lu." }
+                    value:
+                      type: object
+                      properties:
+                        messaging_product: { type: string, enum: [whatsapp] }
+                        metadata:
+                          type: object
+                          properties:
+                            display_phone_number: { type: string }
+                            phone_number_id: { type: string }
+                        contacts:
+                          type: array
+                          description: Ignoré (profile.name non conservé).
+                          items:
+                            {
+                              type: object,
+                              properties:
+                                {
+                                  wa_id: { type: string },
+                                  profile:
+                                    {
+                                      type: object,
+                                      properties: { name: { type: string } },
+                                    },
+                                },
+                            }
+                        messages:
+                          type: array
+                          items:
+                            { $ref: "#/components/schemas/MetaInboundMessage" }
+                        statuses:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: string }
+                              status:
+                                {
+                                  type: string,
+                                  description: "sent, delivered, read, failed",
+                                }
+                              timestamp: { type: string }
+                              recipient_id: { type: string }
+    MetaInboundMessage:
+      type: object
+      required: [from, id, timestamp, type]
+      properties:
+        from: { type: string, description: "Numéro sans « + » (wa_id)." }
+        id: { type: string, description: wamid }
+        timestamp: { type: string, description: Secondes Unix. }
+        type:
+          {
+            type: string,
+            description: "text, image, document, interactive ; tout autre → M28.",
+          }
+        text: { type: object, properties: { body: { type: string } } }
+        image: { $ref: "#/components/schemas/MetaMedia" }
+        document: { $ref: "#/components/schemas/MetaMedia" }
+        interactive:
+          type: object
+          properties:
+            type: { type: string, enum: [button_reply, list_reply] }
+            button_reply:
+              {
+                type: object,
+                properties: { id: { type: string }, title: { type: string } },
+              }
+            list_reply:
+              {
+                type: object,
+                properties:
+                  {
+                    id: { type: string },
+                    title: { type: string },
+                    description: { type: string },
+                  },
+              }
+        context:
+          {
+            type: object,
+            properties: { from: { type: string }, id: { type: string } },
+          }
+    MetaMedia:
+      type: object
+      properties:
+        id: { type: string }
+        mime_type: { type: string }
+        sha256: { type: string }
+        caption: { type: string }
+
+    # --- Inscriptions -------------------------------------------------------
+    RegistrationStatus:
+      { type: string, enum: [PENDING_ACTIVATION, ACTIVE, REVOKED] }
+    SiteRef:
+      type: object
+      required: [siteId, name, eligible]
+      properties:
+        siteId: { type: string, format: uuid }
+        name: { type: string }
+        locationId: { type: string, format: uuid, nullable: true }
+        eligible:
+          {
+            type: boolean,
+            description: "Ouvert, basculé au stock, lieu actif (relu à chaque lecture).",
+          }
+        ineligibleReason:
+          {
+            type: string,
+            enum: [CLOSED, NOT_STOCK_ENABLED, LOCATION_INACTIVE],
+            nullable: true,
+          }
+    CreateRegistrationRequest:
+      type: object
+      additionalProperties: false
+      required: [userId, phone, siteIds]
+      properties:
+        userId: { type: string }
+        phone:
+          {
+            type: string,
+            maxLength: 40,
+            description: "Normalisé par normalizePhoneE164 (225 par défaut).",
+          }
+        siteIds:
+          {
+            type: array,
+            minItems: 1,
+            maxItems: 10,
+            uniqueItems: true,
+            items: { type: string, format: uuid },
+          }
+    RegistrationView:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          userLabel,
+          phoneE164,
+          phoneMasked,
+          status,
+          sites,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string }
+        userLabel: { type: string }
+        phoneE164:
+          {
+            type: string,
+            description: "En clair : cette route est réservée à FINANCE_SETTINGS_MANAGE.",
+          }
+        phoneMasked: { type: string, example: "+225 07 •• •• •• 78" }
+        status: { $ref: "#/components/schemas/RegistrationStatus" }
+        activationExpiresAt: { type: string, format: date-time, nullable: true }
+        activationAttemptsLeft: { type: integer, nullable: true }
+        activatedAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        revokeReason: { type: string, nullable: true }
+        lastInboundAt: { type: string, format: date-time, nullable: true }
+        access:
+          type: object
+          description: Contrôle W3-R10 relu à la lecture (pour l'écran).
+          properties:
+            ok: { type: boolean }
+            reason:
+              {
+                type: string,
+                nullable: true,
+                enum:
+                  [
+                    TENANT_SUSPENDED,
+                    MEMBERSHIP_NOT_ACTIVE,
+                    USER_INACTIVE,
+                    ROLE_MISSING,
+                    OPTION_MISSING,
+                    null,
+                  ],
+              }
+        sites: { type: array, items: { $ref: "#/components/schemas/SiteRef" } }
+        openSessionId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+    RegistrationWithCode:
+      allOf:
+        - $ref: "#/components/schemas/RegistrationView"
+        - type: object
+          required: [activationCode, botNumber]
+          properties:
+            activationCode:
+              {
+                type: string,
+                pattern: '^\d{6}$',
+                description: "Rendu UNE fois ; jamais relisible.",
+              }
+            botNumber:
+              {
+                type: string,
+                nullable: true,
+                description: WHATSAPP_INVENTORY_PUBLIC_NUMBER,
+              }
+
+    # --- Passerelle et mesures ----------------------------------------------
+    WhatsappOverview:
+      type: object
+      required: [transport, simulatorAvailable, vision, quota, measures]
+      properties:
+        transport: { type: string, enum: [disabled, log, meta] }
+        gatewayReady:
+          {
+            type: boolean,
+            description: "meta : variables présentes ; log : vrai ; disabled : faux.",
+          }
+        botNumber: { type: string, nullable: true }
+        simulatorAvailable: { type: boolean }
+        vision:
+          type: object
+          description: >
+            Fournisseur réellement actif (fake non permis sur ce serveur rend
+            disabled) et modèle qu'il emploie : fake-vision-1 pour fake, null
+            pour disabled, STOCK_VISION_MODEL pour gemini et openrouter.
+          properties:
+            provider:
+              { type: string, enum: [disabled, fake, gemini, openrouter] }
+            model: { type: string, nullable: true, example: fake-vision-1 }
+        quota:
+          type: object
+          required: [month, used, limit, source]
+          properties:
+            month: { type: string, example: "2026-10" }
+            used: { type: integer }
+            limit: { type: integer }
+            source:
+              {
+                type: string,
+                enum: [OPTION, WARN_FALLBACK, OFF_FALLBACK, NONE],
+                description: "NONE : enforce sans option.",
+              }
+            blocks:
+              {
+                type: integer,
+                description: Blocs EXT_INVENTAIRE_WHATSAPP souscrits.,
+              }
+        measures:
+          type: object
+          description: Agence entière, jamais par personne (W14-R7).
+          properties:
+            photosAnalyzed: { type: integer }
+            medianSecondsToConfirm: { type: number, nullable: true }
+            acceptedFirstTimeRate:
+              {
+                type: number,
+                nullable: true,
+                description: "ACCEPTED ÷ (ACCEPTED + CORRECTED).",
+              }
+            proofCoverageRate:
+              {
+                type: number,
+                nullable: true,
+                description: "Lignes WhatsApp avec photo non retirée ÷ lignes WhatsApp.",
+              }
+            unreadableRate: { type: number, nullable: true }
+            unrecognizedRate: { type: number, nullable: true }
+            failedRate: { type: number, nullable: true }
+
+    # --- Comptages terrain ----------------------------------------------------
+    StockMeta:
+      type: object
+      description: Même forme que Meta du lot 040.
+      properties:
+        valuesVisible: { type: boolean }
+        blindLocationIds: { type: array, items: { type: string, format: uuid } }
+        nextCursor: { type: string, nullable: true }
+    FieldCountRow:
+      type: object
+      required:
+        [locationId, locationLabel, itemId, itemReference, itemLabel, unit]
+      properties:
+        locationId: { type: string, format: uuid }
+        locationLabel: { type: string }
+        siteId: { type: string, format: uuid, nullable: true }
+        siteName: { type: string, nullable: true }
+        itemId: { type: string, format: uuid }
+        itemReference: { type: string }
+        itemLabel: { type: string }
+        unit: { type: string }
+        theoreticalQuantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Solde courant ; null sur un lieu en comptage sans STOCK_COUNT_VALIDATE.",
+          }
+        theoreticalValue: { type: number, nullable: true, description: valeur }
+        averageUnitCost: { type: number, nullable: true, description: valeur }
+        lastCount:
+          type: object
+          nullable: true
+          properties:
+            countId: { type: string, format: uuid }
+            countStatus: { type: string, enum: [DRAFT, COUNTED, VALIDATED] }
+            countSource: { type: string, enum: [WEB, WHATSAPP] }
+            countedQuantity:
+              {
+                type: number,
+                nullable: true,
+                description: "null pour une ligne non comptée (A2-R8).",
+              }
+            countedAtServer: { type: string, format: date-time, nullable: true }
+            countedByLabel: { type: string, nullable: true }
+            captureId: { type: string, format: uuid, nullable: true }
+            hasPhoto: { type: boolean }
+            outcome:
+              { type: string, enum: [ACCEPTED, CORRECTED], nullable: true }
+
+    # --- Captures -----------------------------------------------------------
+    CaptureOutcome:
+      {
+        type: string,
+        enum:
+          [
+            RECEIVED,
+            PENDING,
+            ACCEPTED,
+            CORRECTED,
+            CANCELLED,
+            EXPIRED,
+            UNREADABLE,
+            UNRECOGNIZED,
+            FAILED,
+          ],
+      }
+    CaptureSummary:
+      type: object
+      required: [id, receivedAt, outcome, hasPhoto, via]
+      properties:
+        id: { type: string, format: uuid }
+        receivedAt: { type: string, format: date-time }
+        outcome: { $ref: "#/components/schemas/CaptureOutcome" }
+        via: { type: string, enum: [META, SIMULATOR] }
+        siteName: { type: string, nullable: true }
+        locationId: { type: string, format: uuid, nullable: true }
+        itemId: { type: string, format: uuid, nullable: true }
+        itemLabel: { type: string, nullable: true }
+        unit: { type: string, nullable: true }
+        proposedTotal: { type: number, nullable: true }
+        confirmedQuantity: { type: number, nullable: true }
+        chefLabel: { type: string }
+        countId: { type: string, format: uuid, nullable: true }
+        hasPhoto: { type: boolean }
+    CaptureView:
+      allOf:
+        - $ref: "#/components/schemas/CaptureSummary"
+        - type: object
+          properties:
+            sha256: { type: string, description: Empreinte du fichier stocké. }
+            mimeType: { type: string }
+            sizeBytes: { type: integer }
+            itemImposed: { type: boolean }
+            itemReference: { type: string, nullable: true }
+            countLineId: { type: string, format: uuid, nullable: true }
+            countStatus:
+              {
+                type: string,
+                nullable: true,
+                enum: [DRAFT, COUNTED, VALIDATED, CANCELLED, null],
+              }
+            lineQuantityAfter: { type: number, nullable: true }
+            mergeMode: { type: string, enum: [ADD, REPLACE], nullable: true }
+            confirmedAt: { type: string, format: date-time, nullable: true }
+            sessionId: { type: string, format: uuid }
+            analysis:
+              nullable: true
+              allOf: [{ $ref: "#/components/schemas/StockVisionResult" }]
+            vision:
+              type: object
+              properties:
+                provider: { type: string, nullable: true }
+                model: { type: string, nullable: true }
+                analysisMs: { type: integer, nullable: true }
+                failureReason:
+                  {
+                    type: string,
+                    nullable: true,
+                    enum:
+                      [TIMEOUT, PROVIDER_ERROR, INVALID_OUTPUT, DISABLED, null],
+                  }
+            photoRemoved:
+              type: object
+              nullable: true
+              properties:
+                at: { type: string, format: date-time }
+                byLabel: { type: string }
+                reason: { type: string }
+            canRemovePhoto:
+              { type: boolean, description: STOCK_DISPOSE et photo présente. }
+            canReadConversation: { type: boolean }
+    StockVisionResult:
+      type: object
+      description: Sortie validée par Zod (stockVisionResultSchema, spec W8-R5). Aucun champ de stock théorique.
+      required:
+        [
+          quality,
+          itemId,
+          itemConfidence,
+          visibleUnits,
+          layers,
+          columns,
+          depthRows,
+          proposedTotal,
+          confidence,
+          method,
+          explanation,
+        ]
+      properties:
+        quality: { type: string, enum: [OK, TOO_DARK, BLURRY, NOT_STOCK] }
+        itemId: { type: string, format: uuid, nullable: true }
+        itemConfidence: { type: number, minimum: 0, maximum: 1 }
+        visibleUnits: { type: integer, minimum: 0 }
+        layers: { type: integer, minimum: 1, nullable: true }
+        columns: { type: integer, minimum: 1, nullable: true }
+        depthRows: { type: integer, minimum: 1, nullable: true }
+        proposedTotal: { type: number, minimum: 0, maximum: 1000000 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        method:
+          {
+            type: string,
+            enum: [SACKS_STACKED, BARS_BUNDLE, BLOCKS_PALLET, OTHER],
+          }
+        explanation: { type: string, maxLength: 300 }
+
+    # --- Conversations ------------------------------------------------------
+    SessionView:
+      type: object
+      required: [id, registrationId, state, openedAt]
+      properties:
+        id: { type: string, format: uuid }
+        registrationId: { type: string, format: uuid }
+        chefLabel: { type: string }
+        state:
+          {
+            type: string,
+            enum:
+              [
+                AWAITING_SITE,
+                ANALYZING,
+                AWAITING_ITEM,
+                AWAITING_CONFIRMATION,
+                AWAITING_MERGE,
+                READY,
+                CLOSED,
+              ],
+          }
+        siteName: { type: string, nullable: true }
+        countId: { type: string, format: uuid, nullable: true }
+        openedAt: { type: string, format: date-time }
+        lastInboundAt: { type: string, format: date-time }
+        closedAt: { type: string, format: date-time, nullable: true }
+        closeReason:
+          {
+            type: string,
+            nullable: true,
+            enum:
+              [FIN, SITE_CHANGE, TIMEOUT, ACCESS_LOST, REVOKED, NO_SITE, null],
+          }
+        countOutcome:
+          {
+            type: string,
+            nullable: true,
+            enum: [COUNTED, LEFT_OPEN, NONE, null],
+          }
+        capturesCount: { type: integer }
+    ConversationMessage:
+      type: object
+      required: [id, direction, kind, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        direction: { type: string, enum: [INBOUND, OUTBOUND] }
+        kind:
+          {
+            type: string,
+            enum: [TEXT, IMAGE, BUTTONS, LIST, REPLY, UNSUPPORTED],
+          }
+        text: { type: string, nullable: true, maxLength: 1000 }
+        interactive:
+          type: array
+          nullable: true
+          items:
+            {
+              type: object,
+              properties:
+                {
+                  id: { type: string },
+                  title: { type: string },
+                  description: { type: string },
+                },
+            }
+        captureId: { type: string, format: uuid, nullable: true }
+        via: { type: string, enum: [META, SIMULATOR], nullable: true }
+        sendError: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    # --- Simulateur ---------------------------------------------------------
+    SimulatorTextOrReply:
+      type: object
+      additionalProperties: false
+      description: Exactement une cible (registrationId ou freePhone) et exactement un contenu (text ou replyId).
+      properties:
+        registrationId: { type: string, format: uuid }
+        freePhone: { type: string, maxLength: 40 }
+        text: { type: string, minLength: 1, maxLength: 1000 }
+        replyId:
+          {
+            type: string,
+            maxLength: 200,
+            description: "Identifiant d’un bouton ou d’une ligne proposés par le bot.",
+          }
+        replyTitle: { type: string, maxLength: 24 }
+
+    # --- Codes d'erreur -----------------------------------------------------
+    StockWhatsappErrorCode:
+      type: string
+      description: Codes stables (ErrorCode, packages/api/src/middleware/error-middleware.ts:45).
+      enum:
+        - STOCK_WHATSAPP_PHONE_INVALID # 400
+        - STOCK_WHATSAPP_PHONE_UNAVAILABLE # 409, même message quelle que soit l'agence
+        - STOCK_WHATSAPP_MEMBER_NOT_ELIGIBLE # 409
+        - STOCK_WHATSAPP_MEMBER_ALREADY_REGISTERED # 409
+        - STOCK_WHATSAPP_SITES_REQUIRED # 400
+        - STOCK_WHATSAPP_SITE_NOT_ELIGIBLE # 409, data.siteIds
+        - STOCK_WHATSAPP_REGISTRATION_WRONG_STATUS # 409
+        - STOCK_WHATSAPP_PHOTO_ALREADY_REMOVED # 409
+        - STOCK_WHATSAPP_PHOTO_REMOVED # 404 sur …/file
+        - STOCK_WHATSAPP_SIMULATOR_UNAVAILABLE # 404
+        - STOCK_WHATSAPP_SIMULATOR_FILE_TYPE # 400
+        - STOCK_WHATSAPP_FILE_TOO_LARGE # 413
+        - STOCK_WHATSAPP_CONVERSATION_FORBIDDEN # 403 (ni FINANCE_SETTINGS_MANAGE ni STOCK_COUNT_VALIDATE)
+
+    # --- Clés d'audit (src/types/audit-catalog.ts, visibility TENANT) -------
+    StockWhatsappAuditKey:
+      type: string
+      description: >
+        redact ['phone', 'phoneE164'] sur toutes. Critiques : écrites par
+        recordAuditEvent dans la transaction. Hors requête (moteur, tâche),
+        l'acteur et l'agence sont passés explicitement (aucun contexte de requête).
+      enum:
+        - STOCK_WHATSAPP_REGISTRATION_CREATED # ADMIN, critique
+        - STOCK_WHATSAPP_REGISTRATION_UPDATED # ADMIN (changes : siteIds)
+        - STOCK_WHATSAPP_ACTIVATION_CODE_REGENERATED # SECURITY
+        - STOCK_WHATSAPP_REGISTRATION_ACTIVATED # SECURITY, critique
+        - STOCK_WHATSAPP_ACTIVATION_LOCKED # SECURITY (5 essais ou code expiré)
+        - STOCK_WHATSAPP_REGISTRATION_REVOKED # SECURITY, critique
+        - STOCK_WHATSAPP_COUNT_RECORDED # DATA (capture, ligne, quantité, mode)
+        - STOCK_WHATSAPP_COUNT_CLOSED # DATA, critique (inventaire clos par WhatsApp)
+        - STOCK_WHATSAPP_QUOTA_REACHED # DATA (une fois par agence et par mois)
+        - STOCK_WHATSAPP_PHOTO_REMOVED # DATA, critique

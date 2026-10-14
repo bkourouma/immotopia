@@ -22,6 +22,8 @@ function buildRouteLabels(): Record<string, string> {
     settings: t('Paramètres'),
     profile: t('Profil'),
 
+    assistant: t('Assistant'),
+
     // Propriétés
     properties: t('Propriétés'),
     new: t('Nouveau'),
@@ -110,6 +112,10 @@ function buildRouteLabels(): Record<string, string> {
     stock: t('Stock'),
     inventaire: t('Inventaire'),
     parametrage: t('Articles et lieux'),
+    // Lot 040 : les trois écrans nouveaux de l'espace « Gestion du stock ».
+    magasin: t('Magasin'),
+    preneurs: t('Preneurs'),
+    controle: t('Contrôle'),
     salaires: t('Salaires'),
     tacherons: t('Tâcherons'),
 

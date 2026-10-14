@@ -1,9 +1,11 @@
 import React from 'react';
 import { Button, Card, Space, Switch, Typography } from 'antd';
 import { PrinterOutlined } from '@ant-design/icons';
-import { LeaseInspection } from '../../../services/lease-inspections-service';
+import { InspectionRoom, LeaseInspection } from '../../../services/lease-inspections-service';
 import { RoomsAccordion } from './RoomsAccordion';
 import { DeductionsSection } from './DeductionsSection';
+import { itemKind } from './inspection-constants';
+import { formatNumberWithSpaces } from '../../../lib/utils';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
@@ -21,6 +23,32 @@ const noop = async () => undefined;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale(), { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+/**
+ * Valeur de remplacement totale de l'inventaire (valeur à l'unité × quantité
+ * pour le mobilier), `null` si aucun élément n'en porte.
+ */
+function inventoryReplacementTotal(rooms: InspectionRoom[]): number | null {
+  let total = 0;
+  let found = false;
+  for (const room of rooms) {
+    for (const item of room.items) {
+      if (item.replacementValue === null || item.replacementValue === undefined) continue;
+      found = true;
+      total += itemKind(item) === 'FURNITURE' ? item.replacementValue * (item.quantity ?? 0) : item.replacementValue;
+    }
+  }
+  return found ? total : null;
+}
+
+/** Rappel de la valeur relevée à l'entrée, sur une sortie imprimée. */
+function entryHint(value: string | number | null | undefined): React.ReactNode {
+  return (
+    <Text type="secondary" style={{ marginInlineStart: 8 }}>
+      ({t('Entrée : {{valeur}}', { valeur: value === null || value === undefined || value === '' ? '—' : value })})
+    </Text>
+  );
 }
 
 /**
@@ -48,6 +76,9 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
     }
     return map;
   }, [isExit, entryInspection]);
+
+  const inventoryTotal = isExit ? null : inventoryReplacementTotal(inspection.rooms);
+  const showEntryValues = isExit && Boolean(entryInspection);
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="large">
@@ -82,19 +113,39 @@ export const InspectionViewer: React.FC<InspectionViewerProps> = ({
           rooms={inspection.rooms}
           readOnly
           showEntryReminder={isExit}
+          isExit={isExit}
           entryItemsById={entryItemsById}
           photos={inspection.photos}
           onUploadPhoto={noop}
           onDeletePhoto={noop}
         />
+        {inventoryTotal !== null && (
+          <Text strong style={{ display: 'block', marginTop: 12 }}>
+            {t("Valeur de remplacement totale de l'inventaire : {{montant}} FCFA", {
+              montant: formatNumberWithSpaces(String(inventoryTotal))
+            })}
+          </Text>
+        )}
       </Card>
 
       <Card title={t('Compteurs et clés')}>
         <Space direction="vertical">
-          <Text>{t('Électricité : {{valeur}}', { valeur: inspection.meters?.electricity || '—' })}</Text>
-          <Text>{t('Eau : {{valeur}}', { valeur: inspection.meters?.water || '—' })}</Text>
-          <Text>{t('Gaz : {{valeur}}', { valeur: inspection.meters?.gas || '—' })}</Text>
-          <Text>{t('Nombre de clés : {{valeur}}', { valeur: inspection.keysCount ?? '—' })}</Text>
+          <Text>
+            {t('Électricité : {{valeur}}', { valeur: inspection.meters?.electricity || '—' })}
+            {showEntryValues && entryHint(entryInspection?.meters?.electricity)}
+          </Text>
+          <Text>
+            {t('Eau : {{valeur}}', { valeur: inspection.meters?.water || '—' })}
+            {showEntryValues && entryHint(entryInspection?.meters?.water)}
+          </Text>
+          <Text>
+            {t('Gaz : {{valeur}}', { valeur: inspection.meters?.gas || '—' })}
+            {showEntryValues && entryHint(entryInspection?.meters?.gas)}
+          </Text>
+          <Text>
+            {t('Nombre de clés : {{valeur}}', { valeur: inspection.keysCount ?? '—' })}
+            {showEntryValues && entryHint(entryInspection?.keysCount)}
+          </Text>
         </Space>
       </Card>
 

@@ -34,7 +34,10 @@ import { flushAuditEvents } from '../../src/services/audit-service';
 import { encodeAuditCursor } from '../../src/services/audit-read-service';
 import { updateMemberRoles } from '../../src/services/membership-service';
 import { generateAccessToken } from '../../src/utils/jwt-utils';
+import { createSupplierTx } from '../../src/lib/finance/suppliers';
 import { getEntitlements } from '../../src/services/subscription-v2-service';
+import { env } from '../../src/config/env';
+import { deleteCapturePhoto, storeCapturePhoto } from '../../src/lib/stock-whatsapp/capture-files';
 import {
   applyPlatformProviderStatus,
   reconcilePlatformCheckoutPublic
@@ -2337,6 +2340,962 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       // Rien n'a bougé chez A ni chez B.
       expect(await activePacks(a.tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
       expect(await activePacks(b.tenant.id)).toEqual(['PARTICULIER_GRATUIT']);
+    });
+  });
+
+  /**
+   * Lot 040 — contrôle du stock (spec §8.4, B8-R3). B possède un preneur, un
+   * bon de sortie, un inventaire en cours, une pièce jointe, une alerte et une
+   * facture réceptionnable ; un responsable du stock de A, sur SES propres URL,
+   * n'atteint aucun de ces objets (404) et aucune réponse de A n'en cite un.
+   */
+  describe('Stock — étanchéité entre agences (lot 040)', () => {
+    const STOCK_ALL = [
+      'STOCK_VIEW',
+      'STOCK_VALUES_VIEW',
+      'STOCK_RECEIVE',
+      'STOCK_ISSUE',
+      'STOCK_TRANSFER',
+      'STOCK_COUNT',
+      'STOCK_TAKERS_MANAGE',
+      'STOCK_COUNT_VALIDATE',
+      'STOCK_DISPOSE',
+      'STOCK_ALERTS_VIEW'
+    ];
+    const S = (tenantId: string) => `/api/tenants/${tenantId}/finance/stock`;
+    const today = () => new Date().toISOString().slice(0, 10);
+    const month = () => new Date().toISOString().slice(0, 7);
+
+    let stockA: TestUser;
+    let stockB: TestUser;
+    /** Ce qui appartient à A : une sortie de A ne diffère d'une sortie valable que par UN identifiant de B. */
+    const ofA = { locationId: '', itemId: '', siteId: '', costCategoryId: '', takerId: '' };
+    const ofB = {
+      locationId: '',
+      itemId: '',
+      siteId: '',
+      takerId: '',
+      slipId: '',
+      countId: '',
+      validatedCountId: '',
+      costCategoryId: '',
+      attachmentId: '',
+      alertId: '',
+      invoiceId: '',
+      takerName: `Preneur de B ${randomUUID().slice(0, 6)}`,
+      locationLabel: `Magasin de B ${randomUUID().slice(0, 6)}`
+    };
+    /** Identifiants et libellés de B qu'aucune réponse de A ne doit citer. */
+    const secretsOfB = () => Object.values(ofB).filter(value => value.length > 0);
+
+    function expectNoTraceOfB(body: unknown): void {
+      const text = JSON.stringify(body ?? {});
+      for (const secret of secretsOfB()) {
+        expect(text).not.toContain(secret);
+      }
+    }
+
+    beforeAll(async () => {
+      stockA = await createTenantMemberUser(tenantA, 'stock-a', 'STOCK_ISOLATION_TEST', STOCK_ALL);
+      stockB = await createTenantMemberUser(tenantB, 'stock-b', 'STOCK_ISOLATION_TEST', STOCK_ALL);
+      const tid = tenantB.id;
+
+      // A a son propre stock : ses listes ne sont pas vides, la comparaison discrimine.
+      ofA.locationId = (
+        await prisma.stockLocation.create({
+          data: { tenantId: tenantA.id, kind: 'WAREHOUSE', label: `Magasin de A ${randomUUID().slice(0, 6)}` }
+        })
+      ).id;
+      ofA.itemId = (
+        await prisma.stockItem.create({
+          data: { tenantId: tenantA.id, reference: `A-${randomUUID().slice(0, 6)}`, label: 'Ciment de A', unit: 'sac' }
+        })
+      ).id;
+      await prisma.stockBalance.create({
+        data: {
+          tenantId: tenantA.id,
+          itemId: ofA.itemId,
+          locationId: ofA.locationId,
+          quantity: 100,
+          value: 500_000,
+          currency: 'XOF'
+        }
+      });
+      ofA.siteId = (await prisma.constructionSite.create({ data: { tenantId: tenantA.id, name: 'Chantier de A' } })).id;
+      ofA.costCategoryId = (
+        await prisma.costCategory.create({ data: { tenantId: tenantA.id, label: 'Gros œuvre A' } })
+      ).id;
+      ofA.takerId = (
+        await prisma.stockTaker.create({
+          data: {
+            tenantId: tenantA.id,
+            fullName: 'Preneur de A',
+            normalizedName: 'preneur de a',
+            createdByUserId: stockA.id
+          }
+        })
+      ).id;
+
+      ofB.siteId = (await prisma.constructionSite.create({ data: { tenantId: tid, name: 'Chantier de B' } })).id;
+      const costCategoryId = (await prisma.costCategory.create({ data: { tenantId: tid, label: 'Gros œuvre B' } })).id;
+      ofB.costCategoryId = costCategoryId;
+      ofB.locationId = (
+        await prisma.stockLocation.create({ data: { tenantId: tid, kind: 'WAREHOUSE', label: ofB.locationLabel } })
+      ).id;
+      ofB.itemId = (
+        await prisma.stockItem.create({
+          data: { tenantId: tid, reference: `B-${randomUUID().slice(0, 6)}`, label: 'Ciment de B', unit: 'sac' }
+        })
+      ).id;
+      await prisma.stockBalance.create({
+        data: {
+          tenantId: tid,
+          itemId: ofB.itemId,
+          locationId: ofB.locationId,
+          quantity: 100,
+          value: 500_000,
+          currency: 'XOF'
+        }
+      });
+      ofB.takerId = (
+        await prisma.stockTaker.create({
+          data: {
+            tenantId: tid,
+            fullName: ofB.takerName,
+            normalizedName: ofB.takerName.toLowerCase(),
+            createdByUserId: stockB.id
+          }
+        })
+      ).id;
+
+      // Un vrai bon de sortie, par l'API de B.
+      const issue = await request(app)
+        .post(`${S(tid)}/issues`)
+        .set({ Authorization: stockB.authHeader })
+        .send({
+          locationId: ofB.locationId,
+          siteId: ofB.siteId,
+          issueDate: today(),
+          takerId: ofB.takerId,
+          lines: [{ itemId: ofB.itemId, quantity: 10, costCategoryId }]
+        });
+      expect(issue.status).toBe(201);
+      ofB.slipId = issue.body.data.slip.id;
+
+      // Un inventaire en cours, avec une ligne.
+      const count = await request(app)
+        .post(`${S(tid)}/counts`)
+        .set({ Authorization: stockB.authHeader })
+        .send({ locationId: ofB.locationId, countedAt: today() });
+      expect(count.status).toBe(201);
+      ofB.countId = count.body.data.id;
+      const line = await request(app)
+        .put(`${S(tid)}/counts/${ofB.countId}/lines`)
+        .set({ Authorization: stockB.authHeader })
+        .send({ itemId: ofB.itemId, countedQuantity: 88 });
+      expect(line.status).toBe(200);
+
+      // Un inventaire VALIDÉ (procès-verbal émis), sur un second lieu : compté
+      // et clos par stockB, validé par une autre personne de B (quatre yeux).
+      const validatorB = await createTenantMemberUser(tenantB, 'stock-b-valideur', 'STOCK_ISOLATION_TEST', STOCK_ALL);
+      const secondLocationId = (
+        await prisma.stockLocation.create({
+          data: { tenantId: tid, kind: 'WAREHOUSE', label: `Dépôt de B ${randomUUID().slice(0, 6)}` }
+        })
+      ).id;
+      await prisma.stockBalance.create({
+        data: {
+          tenantId: tid,
+          itemId: ofB.itemId,
+          locationId: secondLocationId,
+          quantity: 30,
+          value: 150_000,
+          currency: 'XOF'
+        }
+      });
+      const toValidate = await request(app)
+        .post(`${S(tid)}/counts`)
+        .set({ Authorization: stockB.authHeader })
+        .send({ locationId: secondLocationId, countedAt: today() });
+      expect(toValidate.status).toBe(201);
+      ofB.validatedCountId = toValidate.body.data.id;
+      const counted = await request(app)
+        .put(`${S(tid)}/counts/${ofB.validatedCountId}/lines`)
+        .set({ Authorization: stockB.authHeader })
+        .send({ itemId: ofB.itemId, countedQuantity: 30 });
+      expect(counted.status).toBe(200);
+      const closed = await request(app)
+        .post(`${S(tid)}/counts/${ofB.validatedCountId}/close`)
+        .set({ Authorization: stockB.authHeader });
+      expect(closed.status).toBe(200);
+      const validated = await request(app)
+        .post(`${S(tid)}/counts/${ofB.validatedCountId}/validate`)
+        .set({ Authorization: validatorB.authHeader })
+        .send({});
+      expect(validated.status).toBe(200);
+
+      // Pièce jointe et alerte : posées en base, sans fichier ni seuil à franchir.
+      ofB.attachmentId = (
+        await prisma.stockAttachment.create({
+          data: {
+            tenantId: tid,
+            targetType: 'SLIP',
+            slipId: ofB.slipId,
+            purpose: 'SIGNED_SLIP',
+            fileName: 'bon-signe-de-b.jpg',
+            fileUrl: null,
+            mimeType: 'image/jpeg',
+            sizeBytes: 1234,
+            sha256: 'b'.repeat(64),
+            uploadedByUserId: stockB.id
+          }
+        })
+      ).id;
+      ofB.alertId = (
+        await prisma.stockAlert.create({
+          data: {
+            tenantId: tid,
+            kind: 'LARGE_ISSUE',
+            severity: 'WARNING',
+            dedupeKey: `LARGE_ISSUE:${ofB.slipId}`,
+            amount: 50_000,
+            threshold: 10_000,
+            locationId: ofB.locationId,
+            siteId: ofB.siteId,
+            subjectType: 'StockSlip',
+            subjectId: ofB.slipId
+          }
+        })
+      ).id;
+
+      // Une facture validée de B : réceptionnable chez B, jamais chez A.
+      const supplier = await prisma.$transaction(tx =>
+        createSupplierTx(tx, tid, { name: `Fournisseur de B ${randomUUID().slice(0, 6)}`, kind: 'MATERIALS' as any })
+      );
+      ofB.invoiceId = (
+        await prisma.supplierInvoice.create({
+          data: {
+            tenantId: tid,
+            supplierId: supplier.id,
+            siteId: ofB.siteId,
+            invoiceDate: new Date(),
+            reference: `FAC-B-${randomUUID().slice(0, 6)}`,
+            amount: 100_000,
+            status: 'VALIDATED',
+            createdByUserId: stockB.id,
+            validatedByUserId: stockB.id,
+            validatedAt: new Date()
+          }
+        })
+      ).id;
+    });
+
+    afterAll(async () => {
+      // Les clés `Restrict` du stock (bons, pièces, lignes) refusent une
+      // suppression en cascade dans le désordre : on vide d'abord, dans l'ordre.
+      for (const tenantId of [tenantA.id, tenantB.id]) {
+        const steps: Array<() => Promise<unknown>> = [
+          () => prisma.stockAttachment.deleteMany({ where: { tenantId } }),
+          () => prisma.stockAlert.deleteMany({ where: { tenantId } }),
+          () => prisma.costAllocation.deleteMany({ where: { tenantId } }),
+          () => prisma.stockMovement.deleteMany({ where: { tenantId } }),
+          () => prisma.stockCountLine.deleteMany({ where: { count: { tenantId } } }),
+          () => prisma.stockSlip.deleteMany({ where: { tenantId } }),
+          () => prisma.stockCount.deleteMany({ where: { tenantId } }),
+          () => prisma.stockTaker.deleteMany({ where: { tenantId } }),
+          () => prisma.stockClientRequest.deleteMany({ where: { tenantId } }),
+          () => prisma.stockBalance.deleteMany({ where: { tenantId } }),
+          () => prisma.stockItem.deleteMany({ where: { tenantId } }),
+          () => prisma.stockLocation.deleteMany({ where: { tenantId } })
+        ];
+        for (const step of steps) {
+          // eslint-disable-next-line no-await-in-loop -- l'ordre des suppressions compte.
+          await step();
+        }
+      }
+    });
+
+    const asA = () => ({ Authorization: stockA.authHeader });
+    const asB = () => ({ Authorization: stockB.authHeader });
+
+    it('témoin : B lit ses propres objets (les tests ci-dessous discriminent)', async () => {
+      const slip = await request(app)
+        .get(`${S(tenantB.id)}/slips/${ofB.slipId}`)
+        .set(asB());
+      expect(slip.status).toBe(200);
+      const takers = await request(app)
+        .get(`${S(tenantB.id)}/takers`)
+        .set(asB());
+      expect(JSON.stringify(takers.body)).toContain(ofB.takerId);
+      const alerts = await request(app)
+        .get(`${S(tenantB.id)}/alerts`)
+        .set(asB());
+      expect(JSON.stringify(alerts.body)).toContain(ofB.alertId);
+      const receivable = await request(app)
+        .get(`${S(tenantB.id)}/receivable-invoices`)
+        .set(asB());
+      expect(JSON.stringify(receivable.body)).toContain(ofB.invoiceId);
+      const context = await request(app)
+        .get(`${S(tenantB.id)}/field-context`)
+        .set(asB());
+      expect(JSON.stringify(context.body)).toContain(ofB.locationId);
+      const report = await request(app)
+        .get(`${S(tenantB.id)}/counts/${ofB.validatedCountId}/report.pdf`)
+        .set(asB());
+      expect(report.status).toBe(200);
+      const slipPdf = await request(app)
+        .get(`${S(tenantB.id)}/slips/${ofB.slipId}/pdf`)
+        .set(asB());
+      expect(slipPdf.status).toBe(200);
+    });
+
+    it("preneur de B : PATCH via l'URL de A -> 404, preneur intact ; le carnet de A ne le cite pas", async () => {
+      const patch = await request(app)
+        .patch(`${S(tenantA.id)}/takers/${ofB.takerId}`)
+        .set(asA())
+        .send({ fullName: 'Modifie par A — ne doit jamais arriver' });
+      expect(patch.status).toBe(404);
+      expect((await prisma.stockTaker.findUnique({ where: { id: ofB.takerId } }))!.fullName).toBe(ofB.takerName);
+      const list = await request(app)
+        .get(`${S(tenantA.id)}/takers`)
+        .set(asA());
+      expect(list.status).toBe(200);
+      expectNoTraceOfB(list.body);
+    });
+
+    it("bon de B : détail et PDF via l'URL de A -> 404", async () => {
+      const detail = await request(app)
+        .get(`${S(tenantA.id)}/slips/${ofB.slipId}`)
+        .set(asA());
+      expect(detail.status).toBe(404);
+      expectNoTraceOfB(detail.body);
+      const pdf = await request(app)
+        .get(`${S(tenantA.id)}/slips/${ofB.slipId}/pdf`)
+        .set(asA());
+      expect(pdf.status).toBe(404);
+    });
+
+    it("inventaire de B : détail, saisie, clôture et procès-verbal via l'URL de A -> 404, rien ne bouge", async () => {
+      expect(
+        (
+          await request(app)
+            .get(`${S(tenantA.id)}/counts/${ofB.countId}`)
+            .set(asA())
+        ).status
+      ).toBe(404);
+      const put = await request(app)
+        .put(`${S(tenantA.id)}/counts/${ofB.countId}/lines`)
+        .set(asA())
+        .send({ itemId: ofB.itemId, countedQuantity: 1 });
+      expect(put.status).toBe(404);
+      expect(
+        (
+          await request(app)
+            .post(`${S(tenantA.id)}/counts/${ofB.countId}/close`)
+            .set(asA())
+        ).status
+      ).toBe(404);
+      const report = await request(app)
+        .get(`${S(tenantA.id)}/counts/${ofB.countId}/report.pdf`)
+        .set(asA());
+      expect(report.status).toBe(404);
+      // L'inventaire VALIDÉ de B : ni son détail ni son procès-verbal.
+      const validated = await request(app)
+        .get(`${S(tenantA.id)}/counts/${ofB.validatedCountId}`)
+        .set(asA());
+      expect(validated.status).toBe(404);
+      expectNoTraceOfB(validated.body);
+      const validatedReport = await request(app)
+        .get(`${S(tenantA.id)}/counts/${ofB.validatedCountId}/report.pdf`)
+        .set(asA());
+      expect(validatedReport.status).toBe(404);
+      const count = await prisma.stockCount.findUnique({ where: { id: ofB.countId }, include: { lines: true } });
+      expect(count!.status).toBe('DRAFT');
+      expect(count!.lines.map(l => Number(l.countedQuantity))).toEqual([88]);
+      const list = await request(app)
+        .get(`${S(tenantA.id)}/counts`)
+        .set(asA());
+      expect(list.status).toBe(200);
+      expectNoTraceOfB(list.body);
+    });
+
+    it("pièce jointe de B : fichier, liste et retrait via l'URL de A -> 404, pièce intacte", async () => {
+      const file = await request(app)
+        .get(`${S(tenantA.id)}/attachments/${ofB.attachmentId}/file`)
+        .set(asA());
+      expect(file.status).toBe(404);
+      const list = await request(app)
+        .get(`${S(tenantA.id)}/attachments`)
+        .query({ targetType: 'SLIP', targetId: ofB.slipId })
+        .set(asA());
+      expect(list.status).toBe(404);
+      expectNoTraceOfB(list.body);
+      const remove = await request(app)
+        .post(`${S(tenantA.id)}/attachments/${ofB.attachmentId}/remove`)
+        .set(asA())
+        .send({ reason: 'Retrait tenté par A' });
+      expect(remove.status).toBe(404);
+      expect((await prisma.stockAttachment.findUnique({ where: { id: ofB.attachmentId } }))!.removedAt).toBeNull();
+    });
+
+    it("alerte de B : traitement via l'URL de A -> 404, alerte encore ouverte ; la liste de A ne la cite pas", async () => {
+      const ack = await request(app)
+        .post(`${S(tenantA.id)}/alerts/${ofB.alertId}/acknowledge`)
+        .set(asA())
+        .send({});
+      expect(ack.status).toBe(404);
+      expect((await prisma.stockAlert.findUnique({ where: { id: ofB.alertId } }))!.status).toBe('OPEN');
+      const list = await request(app)
+        .get(`${S(tenantA.id)}/alerts`)
+        .set(asA());
+      expect(list.status).toBe(200);
+      expectNoTraceOfB(list.body);
+    });
+
+    it('contexte terrain, indicateurs et journal de A : aucune trace de B', async () => {
+      const context = await request(app)
+        .get(`${S(tenantA.id)}/field-context`)
+        .set(asA());
+      expect(context.status).toBe(200);
+      expectNoTraceOfB(context.body);
+      const indicators = await request(app)
+        .get(`${S(tenantA.id)}/indicators`)
+        .query({ from: month(), to: month() })
+        .set(asA());
+      expect(indicators.status).toBe(200);
+      expectNoTraceOfB(indicators.body);
+      const filtered = await request(app)
+        .get(`${S(tenantA.id)}/indicators`)
+        .query({ from: month(), to: month(), locationId: ofB.locationId })
+        .set(asA());
+      expect([200, 404]).toContain(filtered.status);
+      expectNoTraceOfB(filtered.body);
+      const movements = await request(app)
+        .get(`${S(tenantA.id)}/movements`)
+        .set(asA());
+      expect(movements.status).toBe(200);
+      expectNoTraceOfB(movements.body);
+    });
+
+    it("factures réceptionnables : celle de B n'apparaît pas chez A, et ses réceptions -> 404", async () => {
+      const receivable = await request(app)
+        .get(`${S(tenantA.id)}/receivable-invoices`)
+        .set(asA());
+      expect(receivable.status).toBe(200);
+      expectNoTraceOfB(receivable.body);
+      const receipts = await request(app)
+        .get(`${S(tenantA.id)}/supplier-invoices/${ofB.invoiceId}/receipts`)
+        .set(asA());
+      expect(receipts.status).toBe(404);
+      expectNoTraceOfB(receipts.body);
+    });
+
+    const issueOfA = (override: Record<string, string>) => {
+      const { costCategoryId, ...head } = override;
+      return {
+        locationId: ofA.locationId,
+        siteId: ofA.siteId,
+        issueDate: today(),
+        takerId: ofA.takerId,
+        ...head,
+        lines: [{ itemId: ofA.itemId, quantity: 1, costCategoryId: costCategoryId ?? ofA.costCategoryId }]
+      };
+    };
+
+    it.each([
+      ['takerId', () => ({ takerId: ofB.takerId })],
+      ['siteId', () => ({ siteId: ofB.siteId })],
+      ['costCategoryId', () => ({ costCategoryId: ofB.costCategoryId })],
+      ['locationId', () => ({ locationId: ofB.locationId })]
+    ])("A écrit une sortie portant le %s de B -> 404, rien n'est écrit", async (_field, override) => {
+      const scope = { tenantId: { in: [tenantA.id, tenantB.id] } };
+      const before = await prisma.stockMovement.count({ where: scope });
+      const res = await request(app)
+        .post(`${S(tenantA.id)}/issues`)
+        .set(asA())
+        .send(issueOfA(override()));
+      expect(res.status).toBe(404);
+      expectNoTraceOfB(res.body);
+      expect(await prisma.stockMovement.count({ where: scope })).toBe(before);
+    });
+
+    it('témoin : la même sortie, toute de A, passe (201)', async () => {
+      const res = await request(app)
+        .post(`${S(tenantA.id)}/issues`)
+        .set(asA())
+        .send(issueOfA({}));
+      expect(res.status).toBe(201);
+    });
+
+    it("le responsable du stock de A sur l'URL de B -> 403", async () => {
+      const res = await request(app)
+        .get(`${S(tenantB.id)}/slips/${ofB.slipId}`)
+        .set(asA());
+      expect(res.status).toBe(403);
+      expectNoTraceOfB(res.body);
+    });
+  });
+
+  /**
+   * Lot 041 — inventaire par WhatsApp (spec §8.2). B possède une inscription,
+   * une capture et son fichier, une session et sa conversation, un inventaire
+   * ouvert par WhatsApp ; un administrateur de A, sur SES propres URL,
+   * n'atteint aucun de ces objets (404) et aucune réponse de A n'en cite un.
+   * Le webhook Meta refuse un corps sans signature (401) et n'écrit rien.
+   */
+  describe('Inventaire WhatsApp — étanchéité entre agences (lot 041)', () => {
+    const WA_ALL = [
+      'FINANCE_SETTINGS_MANAGE',
+      'STOCK_VIEW',
+      'STOCK_VALUES_VIEW',
+      'STOCK_COUNT',
+      'STOCK_COUNT_VALIDATE',
+      'STOCK_DISPOSE'
+    ];
+    const W = (tenantId: string) => `/api/tenants/${tenantId}/finance/stock/whatsapp`;
+    const PHONE_B = '+2250100000301';
+    const PHONE_A = '+2250100000302';
+
+    let waA: TestUser;
+    let waB: TestUser;
+    const ofA = { siteId: '', registrationId: '', chefId: '' };
+    const ofB = {
+      chefId: '',
+      siteId: '',
+      locationId: '',
+      registrationId: '',
+      sessionId: '',
+      captureId: '',
+      countId: '',
+      messageId: '',
+      sha256: '',
+      siteName: `Chantier WA de B ${randomUUID().slice(0, 6)}`,
+      messageText: `Texte du chef de B ${randomUUID().slice(0, 6)}`,
+      phone: PHONE_B,
+      phoneDigits: PHONE_B.slice(1)
+    };
+    let fileUrlOfB = '';
+    const secretsOfB = () => Object.values(ofB).filter(value => value.length > 0);
+
+    function expectNoTraceOfB(body: unknown): void {
+      const text = JSON.stringify(body ?? {});
+      for (const secret of secretsOfB()) expect(text).not.toContain(secret);
+    }
+
+    async function siteManagerMember(tenant: TestTenant, prefix: string): Promise<string> {
+      const role = await prisma.role.findUniqueOrThrow({ where: { key: 'TENANT_SITE_MANAGER' }, select: { id: true } });
+      const user = await prisma.user.create({
+        data: {
+          email: `${prefix}-${randomUUID().slice(0, 8)}@isolation-test.local`,
+          passwordHash: null,
+          fullName: `${prefix} (test isolation)`,
+          globalRole: 'USER',
+          emailVerified: true,
+          isActive: true
+        }
+      });
+      await prisma.membership.create({
+        data: { userId: user.id, tenantId: tenant.id, status: 'ACTIVE', acceptedAt: new Date() }
+      });
+      await prisma.userRole.create({ data: { userId: user.id, roleId: role.id, tenantId: tenant.id } });
+      return user.id;
+    }
+
+    async function siteWithLocation(tenantId: string, name: string): Promise<{ siteId: string; locationId: string }> {
+      const site = await prisma.constructionSite.create({ data: { tenantId, name, stockEnabledAt: new Date() } });
+      const location = await prisma.stockLocation.create({
+        data: { tenantId, kind: 'SITE', label: `Lieu ${name}`, siteId: site.id }
+      });
+      return { siteId: site.id, locationId: location.id };
+    }
+
+    /** Un JPEG minimal bien formé (le stockage refuse ce qu'il ne sait pas nettoyer). */
+    function tinyJpeg(): Buffer {
+      const segment = (marker: number, payload: Buffer) =>
+        Buffer.concat([Buffer.from([0xff, marker, (payload.length + 2) >> 8, (payload.length + 2) & 0xff]), payload]);
+      return Buffer.concat([
+        Buffer.from([0xff, 0xd8]),
+        segment(0xe0, Buffer.from([0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0])),
+        segment(0xdb, Buffer.concat([Buffer.from([0]), Buffer.alloc(64, 1)])),
+        segment(0xc0, Buffer.from([8, 0, 16, 0, 16, 1, 1, 0x11, 0])),
+        segment(0xc4, Buffer.concat([Buffer.from([0x00, 1]), Buffer.alloc(15, 0), Buffer.from([0])])),
+        segment(0xda, Buffer.from([1, 1, 0, 0, 0x3f, 0])),
+        Buffer.from([0x12, 0x34, 0x56, 0xff, 0xd9])
+      ]);
+    }
+
+    beforeAll(async () => {
+      waA = await createTenantMemberUser(tenantA, 'wa-a', 'WA_ISOLATION_TEST', WA_ALL);
+      waB = await createTenantMemberUser(tenantB, 'wa-b', 'WA_ISOLATION_TEST', WA_ALL);
+
+      // A : son propre chantier et sa propre inscription (ses listes ne sont pas vides).
+      ofA.chefId = await siteManagerMember(tenantA, 'chef-wa-a');
+      ofA.siteId = (await siteWithLocation(tenantA.id, `Chantier WA de A ${randomUUID().slice(0, 6)}`)).siteId;
+      ofA.registrationId = (
+        await prisma.stockWhatsappRegistration.create({
+          data: {
+            tenantId: tenantA.id,
+            userId: ofA.chefId,
+            phoneE164: PHONE_A,
+            status: 'ACTIVE',
+            activatedAt: new Date(),
+            createdByUserId: waA.id
+          }
+        })
+      ).id;
+      await prisma.stockWhatsappRegistrationSite.create({
+        data: { tenantId: tenantA.id, registrationId: ofA.registrationId, siteId: ofA.siteId }
+      });
+
+      // B : inscription active, session, inventaire ouvert par WhatsApp, capture et fichier, message.
+      const tid = tenantB.id;
+      ofB.chefId = await siteManagerMember(tenantB, 'chef-wa-b');
+      const placeB = await siteWithLocation(tid, ofB.siteName);
+      ofB.siteId = placeB.siteId;
+      ofB.locationId = placeB.locationId;
+      ofB.registrationId = (
+        await prisma.stockWhatsappRegistration.create({
+          data: {
+            tenantId: tid,
+            userId: ofB.chefId,
+            phoneE164: PHONE_B,
+            status: 'ACTIVE',
+            activatedAt: new Date(),
+            createdByUserId: waB.id
+          }
+        })
+      ).id;
+      await prisma.stockWhatsappRegistrationSite.create({
+        data: { tenantId: tid, registrationId: ofB.registrationId, siteId: ofB.siteId }
+      });
+      ofB.countId = (
+        await prisma.stockCount.create({
+          data: {
+            tenantId: tid,
+            locationId: ofB.locationId,
+            countedAt: new Date(),
+            createdByUserId: ofB.chefId,
+            status: 'DRAFT',
+            source: 'WHATSAPP'
+          }
+        })
+      ).id;
+      const item = await prisma.stockItem.create({
+        data: { tenantId: tid, reference: `WA-B-${randomUUID().slice(0, 6)}`, label: 'Ciment de B', unit: 'sac' }
+      });
+      ofB.sessionId = (
+        await prisma.stockWhatsappSession.create({
+          data: {
+            tenantId: tid,
+            registrationId: ofB.registrationId,
+            state: 'READY',
+            siteId: ofB.siteId,
+            locationId: ofB.locationId,
+            countId: ofB.countId,
+            lastInboundAt: new Date()
+          }
+        })
+      ).id;
+      const stored = await storeCapturePhoto(tid, tinyJpeg());
+      if ('refused' in stored) throw new Error(`Photo de test refusée : ${stored.refused}`);
+      fileUrlOfB = stored.fileUrl;
+      ofB.sha256 = stored.sha256;
+      const line = await prisma.stockCountLine.create({
+        data: {
+          countId: ofB.countId,
+          itemId: item.id,
+          expectedQuantity: 84,
+          countedQuantity: 84,
+          countedByUserId: ofB.chefId
+        }
+      });
+      ofB.captureId = (
+        await prisma.stockFieldCapture.create({
+          data: {
+            tenantId: tid,
+            registrationId: ofB.registrationId,
+            sessionId: ofB.sessionId,
+            userId: ofB.chefId,
+            siteId: ofB.siteId,
+            locationId: ofB.locationId,
+            countId: ofB.countId,
+            countLineId: line.id,
+            itemId: item.id,
+            outcome: 'ACCEPTED',
+            via: 'SIMULATOR',
+            fileUrl: stored.fileUrl,
+            mimeType: stored.mimeType,
+            sizeBytes: stored.sizeBytes,
+            sha256: stored.sha256,
+            proposedTotal: 84,
+            confirmedQuantity: 84,
+            lineQuantityAfter: 84,
+            confirmedAt: new Date()
+          }
+        })
+      ).id;
+      ofB.messageId = (
+        await prisma.stockWhatsappMessage.create({
+          data: {
+            tenantId: tid,
+            registrationId: ofB.registrationId,
+            sessionId: ofB.sessionId,
+            direction: 'INBOUND',
+            kind: 'TEXT',
+            text: ofB.messageText,
+            via: 'SIMULATOR'
+          }
+        })
+      ).id;
+    });
+
+    afterAll(async () => {
+      if (fileUrlOfB) await deleteCapturePhoto(fileUrlOfB).catch(() => undefined);
+      for (const tenantId of [tenantA.id, tenantB.id]) {
+        const steps: Array<() => Promise<unknown>> = [
+          () => prisma.stockWhatsappMessage.deleteMany({ where: { tenantId } }),
+          () => prisma.stockWhatsappSession.updateMany({ where: { tenantId }, data: { pendingCaptureId: null } }),
+          () => prisma.stockFieldCapture.deleteMany({ where: { tenantId } }),
+          () => prisma.stockWhatsappSession.deleteMany({ where: { tenantId } }),
+          () => prisma.stockWhatsappRegistrationSite.deleteMany({ where: { tenantId } }),
+          () => prisma.stockWhatsappRegistration.deleteMany({ where: { tenantId } }),
+          () => prisma.stockCountLine.deleteMany({ where: { count: { tenantId, source: 'WHATSAPP' } } }),
+          () => prisma.stockCount.deleteMany({ where: { tenantId, source: 'WHATSAPP' } }),
+          () => prisma.stockItem.deleteMany({ where: { tenantId, reference: { startsWith: 'WA-B-' } } }),
+          () => prisma.stockLocation.deleteMany({ where: { tenantId, label: { startsWith: 'Lieu Chantier WA de ' } } }),
+          () => prisma.constructionSite.deleteMany({ where: { tenantId, name: { startsWith: 'Chantier WA de ' } } })
+        ];
+        for (const step of steps) {
+          // eslint-disable-next-line no-await-in-loop -- l'ordre des suppressions compte.
+          await step();
+        }
+      }
+    });
+
+    const asA = () => ({ Authorization: waA.authHeader });
+    const asB = () => ({ Authorization: waB.authHeader });
+
+    it('témoin : B lit ses propres objets (les tests ci-dessous discriminent)', async () => {
+      const registration = await request(app)
+        .get(`${W(tenantB.id)}/registrations/${ofB.registrationId}`)
+        .set(asB());
+      expect(registration.status).toBe(200);
+      const capture = await request(app)
+        .get(`${W(tenantB.id)}/captures/${ofB.captureId}`)
+        .set(asB());
+      expect(capture.status).toBe(200);
+      expect(JSON.stringify(capture.body)).toContain(ofB.sha256);
+      const file = await request(app)
+        .get(`${W(tenantB.id)}/captures/${ofB.captureId}/file`)
+        .set(asB());
+      expect(file.status).toBe(200);
+      const messages = await request(app)
+        .get(`${W(tenantB.id)}/sessions/${ofB.sessionId}/messages`)
+        .set(asB());
+      expect(messages.status).toBe(200);
+      expect(JSON.stringify(messages.body)).toContain(ofB.messageText);
+      const captures = await request(app)
+        .get(`${W(tenantB.id)}/counts/${ofB.countId}/captures`)
+        .set(asB());
+      expect(captures.status).toBe(200);
+      expect(JSON.stringify(captures.body)).toContain(ofB.captureId);
+      const fieldCounts = await request(app)
+        .get(`${W(tenantB.id)}/field-counts`)
+        .set(asB());
+      expect(fieldCounts.status).toBe(200);
+      expect(JSON.stringify(fieldCounts.body)).toContain(ofB.locationId);
+    });
+
+    it("inscription de B : lecture, chantiers, code et révocation via l'URL de A -> 404, rien ne bouge", async () => {
+      const base = `${W(tenantA.id)}/registrations/${ofB.registrationId}`;
+      const read = await request(app).get(base).set(asA());
+      expect(read.status).toBe(404);
+      expectNoTraceOfB(read.body);
+      const patch = await request(app)
+        .patch(base)
+        .set(asA())
+        .send({ siteIds: [ofA.siteId] });
+      expect(patch.status).toBe(404);
+      const regenerate = await request(app).post(`${base}/regenerate-code`).set(asA()).send({});
+      expect(regenerate.status).toBe(404);
+      expectNoTraceOfB(regenerate.body);
+      const revoke = await request(app).post(`${base}/revoke`).set(asA()).send({ reason: 'Révocation tentée par A' });
+      expect(revoke.status).toBe(404);
+      const row = await prisma.stockWhatsappRegistration.findUniqueOrThrow({
+        where: { id: ofB.registrationId },
+        include: { sites: { select: { siteId: true } } }
+      });
+      expect(row.status).toBe('ACTIVE');
+      expect(row.activationCodeHash).toBeNull();
+      expect(row.sites.map(site => site.siteId)).toEqual([ofB.siteId]);
+      const list = await request(app)
+        .get(`${W(tenantA.id)}/registrations`)
+        .set(asA());
+      expect(list.status).toBe(200);
+      expect(JSON.stringify(list.body)).toContain(ofA.registrationId);
+      expectNoTraceOfB(list.body);
+    });
+
+    it('A inscrit un chef avec un chantier, un membre ou le numéro de B -> refus, aucune inscription écrite', async () => {
+      const before = await prisma.stockWhatsappRegistration.count({ where: { tenantId: tenantA.id } });
+      const otherChefOfA = await siteManagerMember(tenantA, 'chef-wa-a2');
+      const withSiteOfB = await request(app)
+        .post(`${W(tenantA.id)}/registrations`)
+        .set(asA())
+        .send({ userId: otherChefOfA, phone: '+2250100000303', siteIds: [ofB.siteId] });
+      expect(withSiteOfB.status).toBe(404);
+      expectNoTraceOfB(withSiteOfB.body);
+      const withMemberOfB = await request(app)
+        .post(`${W(tenantA.id)}/registrations`)
+        .set(asA())
+        .send({ userId: ofB.chefId, phone: '+2250100000304', siteIds: [ofA.siteId] });
+      expect(withMemberOfB.status).toBe(409);
+      expect(withMemberOfB.body.code).toBe('STOCK_WHATSAPP_MEMBER_NOT_ELIGIBLE');
+      expectNoTraceOfB(withMemberOfB.body);
+      // Le numéro de B : refus neutre, sans dire qu'une autre agence l'utilise.
+      const withPhoneOfB = await request(app)
+        .post(`${W(tenantA.id)}/registrations`)
+        .set(asA())
+        .send({ userId: otherChefOfA, phone: PHONE_B, siteIds: [ofA.siteId] });
+      expect(withPhoneOfB.status).toBe(409);
+      expect(withPhoneOfB.body.code).toBe('STOCK_WHATSAPP_PHONE_UNAVAILABLE');
+      expectNoTraceOfB(withPhoneOfB.body);
+      expect(await prisma.stockWhatsappRegistration.count({ where: { tenantId: tenantA.id } })).toBe(before);
+    });
+
+    it("capture de B : détail, fichier et retrait de la photo via l'URL de A -> 404, photo intacte", async () => {
+      const detail = await request(app)
+        .get(`${W(tenantA.id)}/captures/${ofB.captureId}`)
+        .set(asA());
+      expect(detail.status).toBe(404);
+      expectNoTraceOfB(detail.body);
+      const file = await request(app)
+        .get(`${W(tenantA.id)}/captures/${ofB.captureId}/file`)
+        .set(asA());
+      expect(file.status).toBe(404);
+      const remove = await request(app)
+        .post(`${W(tenantA.id)}/captures/${ofB.captureId}/remove-photo`)
+        .set(asA())
+        .send({ reason: 'Retrait tenté par A' });
+      expect(remove.status).toBe(404);
+      const capture = await prisma.stockFieldCapture.findUniqueOrThrow({ where: { id: ofB.captureId } });
+      expect(capture.fileUrl).toBe(fileUrlOfB);
+      expect(capture.photoRemovedAt).toBeNull();
+      const list = await request(app)
+        .get(`${W(tenantA.id)}/captures`)
+        .set(asA());
+      expect(list.status).toBe(200);
+      expectNoTraceOfB(list.body);
+      const filtered = await request(app)
+        .get(`${W(tenantA.id)}/captures`)
+        .query({ locationId: ofB.locationId })
+        .set(asA());
+      expect([200, 404]).toContain(filtered.status);
+      expectNoTraceOfB(filtered.body);
+    });
+
+    it("session et conversation de B via l'URL de A -> 404 ; les sessions de A ne la citent pas", async () => {
+      const messages = await request(app)
+        .get(`${W(tenantA.id)}/sessions/${ofB.sessionId}/messages`)
+        .set(asA());
+      expect(messages.status).toBe(404);
+      expectNoTraceOfB(messages.body);
+      const sessions = await request(app)
+        .get(`${W(tenantA.id)}/sessions`)
+        .set(asA());
+      expect(sessions.status).toBe(200);
+      expectNoTraceOfB(sessions.body);
+      const byRegistration = await request(app)
+        .get(`${W(tenantA.id)}/sessions`)
+        .query({ registrationId: ofB.registrationId })
+        .set(asA());
+      expect([200, 404]).toContain(byRegistration.status);
+      expectNoTraceOfB(byRegistration.body);
+    });
+
+    it("comptages terrain et captures de l'inventaire de B via l'URL de A -> 404 ou sans fuite", async () => {
+      const captures = await request(app)
+        .get(`${W(tenantA.id)}/counts/${ofB.countId}/captures`)
+        .set(asA());
+      expect(captures.status).toBe(404);
+      expectNoTraceOfB(captures.body);
+      const fieldCounts = await request(app)
+        .get(`${W(tenantA.id)}/field-counts`)
+        .set(asA());
+      expect(fieldCounts.status).toBe(200);
+      expectNoTraceOfB(fieldCounts.body);
+      for (const query of [{ locationId: ofB.locationId }, { siteId: ofB.siteId }]) {
+        // eslint-disable-next-line no-await-in-loop
+        const filtered = await request(app)
+          .get(`${W(tenantA.id)}/field-counts`)
+          .query(query)
+          .set(asA());
+        expect([200, 404]).toContain(filtered.status);
+        expectNoTraceOfB(filtered.body);
+      }
+      const overview = await request(app)
+        .get(`${W(tenantA.id)}/overview`)
+        .set(asA());
+      expect(overview.status).toBe(200);
+      expectNoTraceOfB(overview.body);
+    });
+
+    it("l'administrateur de A sur l'URL de B -> 403", async () => {
+      const res = await request(app)
+        .get(`${W(tenantB.id)}/registrations/${ofB.registrationId}`)
+        .set(asA());
+      expect(res.status).toBe(403);
+      expectNoTraceOfB(res.body);
+    });
+
+    it('webhook Meta : un corps sans signature, ou mal signé, -> 401 et aucun événement écrit', async () => {
+      const mutable = env as unknown as Record<string, unknown>;
+      const saved = {
+        WHATSAPP_INVENTORY_TRANSPORT: mutable.WHATSAPP_INVENTORY_TRANSPORT,
+        META_WA_APP_SECRET: mutable.META_WA_APP_SECRET,
+        META_WA_PHONE_NUMBER_ID: mutable.META_WA_PHONE_NUMBER_ID
+      };
+      mutable.WHATSAPP_INVENTORY_TRANSPORT = 'meta';
+      mutable.META_WA_APP_SECRET = 'secret-de-test-du-webhook-meta-isolation-041';
+      mutable.META_WA_PHONE_NUMBER_ID = '100000000000001';
+      try {
+        const body = JSON.stringify({
+          object: 'whatsapp_business_account',
+          entry: [
+            {
+              changes: [
+                {
+                  field: 'messages',
+                  value: {
+                    metadata: { phone_number_id: '100000000000001' },
+                    messages: [
+                      { from: ofB.phoneDigits, id: `wamid.${randomUUID()}`, type: 'text', text: { body: 'FIN' } }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        });
+        const before = await prisma.whatsappCloudEvent.count();
+        const unsigned = await request(app)
+          .post('/api/webhooks/whatsapp-cloud/events')
+          .set('Content-Type', 'application/json')
+          .send(body);
+        expect(unsigned.status).toBe(401);
+        const forged = await request(app)
+          .post('/api/webhooks/whatsapp-cloud/events')
+          .set('Content-Type', 'application/json')
+          .set('X-Hub-Signature-256', `sha256=${'0'.repeat(64)}`)
+          .send(body);
+        expect(forged.status).toBe(401);
+        expect(await prisma.whatsappCloudEvent.count()).toBe(before);
+        // Rien n'a touché la session de B.
+        const session = await prisma.stockWhatsappSession.findUniqueOrThrow({ where: { id: ofB.sessionId } });
+        expect(session.closedAt).toBeNull();
+      } finally {
+        Object.assign(mutable, saved);
+      }
     });
   });
 });

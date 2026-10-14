@@ -11,12 +11,14 @@
  * Exception : les packs Patrimoine (Essentiel, Pro) et leur bloc de biens ne
  * viennent pas du site mais des decisions de Baba du 28/09 (lot P1) ; ils
  * sont amorces par la migration 20261001101600_patrimoine_pack_catalogue.
+ * L'option Inventaire WhatsApp (lot 041, W-D6 du 04/10) est amorcee par la
+ * migration 20261009090200_inventaire_whatsapp_catalogue.
  *
  * Voir docs/architecture/PLAN-ABONNEMENTS.md.
  */
 
 export type ModuleKeyCode = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER' | 'MODULE_PATRIMOINE';
-export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS';
+export type CapacityKeyCode = 'LOTS' | 'COPROPRIETES' | 'CHANTIERS' | 'BIENS_DETENUS' | 'ACTIFS' | 'PHOTOS_INVENTAIRE';
 export type CatalogItemKindCode = 'PACK' | 'EXTENSION' | 'SETUP';
 
 export const MODULE_KEYS: readonly ModuleKeyCode[] = [
@@ -30,7 +32,9 @@ export const CAPACITY_KEYS: readonly CapacityKeyCode[] = [
   'COPROPRIETES',
   'CHANTIERS',
   'BIENS_DETENUS',
-  'ACTIFS'
+  'ACTIFS',
+  /** Lot 041 (W11) : photos analysees dans le mois civil UTC (consommation, sans depassement facture). */
+  'PHOTOS_INVENTAIRE'
 ];
 
 /** Codes stables des packs et extensions (les lignes SETUP suivent `SETUP_<PACK>`). */
@@ -51,7 +55,9 @@ export const EXTENSION = {
   LOTS_10: 'EXT_LOTS_10',
   COPRO: 'EXT_COPRO',
   CHANTIER: 'EXT_CHANTIER',
-  BIENS_10: 'EXT_BIENS_10'
+  BIENS_10: 'EXT_BIENS_10',
+  /** Lot 041 (W-D6) : bloc de 500 photos analysees par mois, Promoteur et Integre. */
+  INVENTAIRE_WHATSAPP: 'EXT_INVENTAIRE_WHATSAPP'
 } as const;
 
 /** Palier commun aux deux packs Patrimoine : Essentiel et Pro ne se cumulent pas (`rules.tierGroup`). */
@@ -319,6 +325,24 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     isSellable: true,
     sortOrder: 140,
     capacities: { BIENS_DETENUS: 10 }
+  },
+  {
+    // Lot 041 (W-D6, W11-R1) : option Inventaire WhatsApp, cumulable (quantite
+    // de l'element d'abonnement). Amorcee par la migration
+    // 20261009090200_inventaire_whatsapp_catalogue. PHOTOS_INVENTAIRE est une
+    // consommation du mois civil UTC, sans depassement facture.
+    code: EXTENSION.INVENTAIRE_WHATSAPP,
+    kind: 'EXTENSION',
+    name: 'Inventaire WhatsApp — bloc de 500 photos',
+    description: 'Comptage du stock de chantier par photo WhatsApp et IA : 500 photos analysées par mois',
+    monthlyPrice: 25_000,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: [PACK.PROMOTEUR, PACK.INTEGRE] },
+    isSellable: true,
+    sortOrder: 150,
+    capacities: { PHOTOS_INVENTAIRE: 500 }
   },
   ...(
     [

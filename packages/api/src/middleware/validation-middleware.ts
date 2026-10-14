@@ -20,7 +20,7 @@ function sanitizeString(input: string): string {
  * @param body - Request body object
  * @returns Sanitized body
  */
-function sanitizeBody(body: any): any {
+export function sanitizeBody(body: any): any {
   if (typeof body === 'string') {
     return sanitizeString(body);
   }

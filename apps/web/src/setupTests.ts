@@ -1,6 +1,11 @@
 // Jest setup file for frontend tests
 import '@testing-library/jest-dom';
+import { afterEach } from 'vitest';
 import { LANGUAGE_STORAGE_KEY } from './i18n/config';
+import { resetCopilotStatusCache } from './utils/copilot-status-cache';
+
+// Le cache de `GET /ai/status` est global au module : un test ne doit pas hériter de l'état d'un autre.
+afterEach(() => resetCopilotStatusCache());
 
 // La suite est ecrite en francais : elle cherche « Enregistrer », pas « Save ».
 //

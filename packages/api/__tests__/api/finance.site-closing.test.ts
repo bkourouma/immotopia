@@ -55,7 +55,8 @@ const deleteSiteLotTx = jest.fn();
 const setLotAllocationMethodTx = jest.fn();
 const listSiteLots = jest.fn();
 const getSiteCostBreakdown = jest.fn();
-const getSiteClosureBlockers = jest.fn();
+const getSiteClosureBlockersForCaller = jest.fn();
+const resolveStockCallerContext = jest.fn(async (userId: string) => ({ userId, canValidateCount: false }));
 const closeSiteTx = jest.fn();
 const reopenSiteTx = jest.fn();
 const capitalizeSiteLotTx = jest.fn();
@@ -67,10 +68,16 @@ jest.mock('../../src/lib/finance/site-closing', () => ({
   setLotAllocationMethodTx: (...args: any[]) => setLotAllocationMethodTx(...args),
   listSiteLots: (...args: any[]) => listSiteLots(...args),
   getSiteCostBreakdown: (...args: any[]) => getSiteCostBreakdown(...args),
-  getSiteClosureBlockers: (...args: any[]) => getSiteClosureBlockers(...args),
+  getSiteClosureBlockersForCaller: (...args: any[]) => getSiteClosureBlockersForCaller(...args),
   closeSiteTx: (...args: any[]) => closeSiteTx(...args),
   reopenSiteTx: (...args: any[]) => reopenSiteTx(...args),
   capitalizeSiteLotTx: (...args: any[]) => capitalizeSiteLotTx(...args)
+}));
+
+// Lot 040 : le contexte de l'appelant décide du masquage des bloqueurs de stock (§8.2).
+jest.mock('../../src/lib/finance/stock-controles', () => ({
+  ...jest.requireActual('../../src/lib/finance/stock-controles'),
+  resolveStockCallerContext: (...args: any[]) => (resolveStockCallerContext as any)(...args)
 }));
 
 jest.mock('../../src/utils/database', () => ({
@@ -401,17 +408,22 @@ describe('GET /tenants/:tenantId/finance/sites/:siteId/cost-breakdown', () => {
 
 describe('GET /tenants/:tenantId/finance/sites/:siteId/closure-blockers', () => {
   it('rend 200 avec un tableau VIDE quand rien ne bloque — une absence n’est pas une erreur', async () => {
-    getSiteClosureBlockers.mockResolvedValue([]);
+    getSiteClosureBlockersForCaller.mockResolvedValue([]);
 
     const res = await request(app).get(`${BASE}/closure-blockers`);
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual([]);
-    expect(getSiteClosureBlockers).toHaveBeenCalledWith(TENANT_A, SITE_A);
+    // Le contexte vient du jeton (user-1) et de l'agence de l'URL, jamais du corps.
+    expect(resolveStockCallerContext).toHaveBeenCalledWith('user-1', TENANT_A);
+    expect(getSiteClosureBlockersForCaller).toHaveBeenCalledWith(TENANT_A, SITE_A, {
+      userId: 'user-1',
+      canValidateCount: false
+    });
   });
 
   it('rend les bloqueurs avec leur message et leur compte', async () => {
-    getSiteClosureBlockers.mockResolvedValue([
+    getSiteClosureBlockersForCaller.mockResolvedValue([
       { message: '2 factures fournisseur en brouillon visent encore ce chantier…', count: 2 }
     ]);
 

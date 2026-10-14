@@ -190,8 +190,26 @@ export interface SiteCostBreakdown {
  */
 export interface SiteClosureBlocker {
   message: string;
-  /** Combien de pièces sont concernées. */
-  count: number;
+  /**
+   * Combien de pièces sont concernées — ou, pour `STOCK_RESIDUAL`, combien
+   * d'articles le lieu porte encore.
+   *
+   * **`null` pour `STOCK_RESIDUAL`** quand le lieu du chantier est en comptage à
+   * l'aveugle pour l'appelant (lot 040, spec §8.2, `SiteClosureBlockerView`
+   * côté serveur) : ce nombre dirait au compteur combien d'articles il lui
+   * reste à trouver. Le bloqueur reste listé, sans nombre.
+   */
+  count: number | null;
+  /** Références des pièces bloquantes, quand la nature de pièce en porte une. */
+  references?: string[];
+  /**
+   * Identifiants des objets bloquants, pour un lien vers chacun : l'inventaire
+   * (`STOCK_COUNT`) ou le lieu de stockage (`STOCK_RESIDUAL`,
+   * `STOCK_CLOSING_COUNT_MISSING`) — lot 040, A7-R3.
+   */
+  documentIds?: string[];
+  /** Nature du bloqueur (contrat `ClosureBlocker`). */
+  documentType?: 'SUPPLIER_INVOICE' | 'STOCK_COUNT' | 'STOCK_RESIDUAL' | 'STOCK_CLOSING_COUNT_MISSING';
 }
 
 /**

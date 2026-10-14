@@ -1,8 +1,9 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
+import { useLocation } from 'react-router-dom';
 import { t } from '../../i18n/t';
-import copilotService from '../../services/copilot-service';
+import { useCopilotStatus } from '../../hooks/useCopilotStatus';
 import type { CopilotStatus } from '../../types/copilot';
 
 // Le tiroir (chat, Markdown, cartes) ne se charge qu'à la première ouverture :
@@ -14,12 +15,27 @@ const COPILOT_KEYSHORTCUTS = 'Control+J Meta+J';
 
 export interface CopilotRootProps {
   tenantId: string;
+  /**
+   * État déjà lu par l'appelant (la coquille, qui en tire aussi le menu) :
+   * `null` tant qu'il est inconnu. Absent : le composant le lit lui-même.
+   */
+  status?: CopilotStatus | null;
   /** Vrai quand la barre d'onglets basse est affichée (mobile et tablette). */
   hasTabs?: boolean;
   /** Vrai quand l'action flottante de l'écran est affichée : le bouton se place au-dessus. */
   hasAction?: boolean;
   /** Vrai sur ordinateur : pas de barre d'onglets, pas d'action flottante. */
   isDesktop?: boolean;
+}
+
+/** Page plein écran de l'assistant : le tiroir et son bouton n'y ont plus de raison d'être. */
+export const isAssistantPagePath = (pathname: string): boolean => /\/assistant\/?$/.test(pathname);
+
+/** Zone de saisie de la page plein écran (voir `CopilotComposer`). */
+function focusPageComposer(): boolean {
+  const input = document.querySelector<HTMLTextAreaElement>('#main textarea[aria-label]');
+  input?.focus();
+  return Boolean(input);
 }
 
 /**
@@ -29,29 +45,18 @@ export interface CopilotRootProps {
  */
 const CopilotRoot: React.FC<CopilotRootProps> = ({
   tenantId,
+  status: statusProp,
   hasTabs = false,
   hasAction = false,
   isDesktop = true
 }) => {
-  const [status, setStatus] = useState<CopilotStatus | null>(null);
+  const { pathname } = useLocation();
+  const onAssistantPage = isAssistantPagePath(pathname);
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    setStatus(null);
-    // Le service est déjà défensif ; ce `catch` ne fait que garantir qu'une
-    // erreur inattendue laisse le bouton masqué.
-    copilotService
-      .getStatus(tenantId)
-      .catch(() => null)
-      .then(s => {
-        if (!cancelled) setStatus(s);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId]);
+  const ownStatus = useCopilotStatus(tenantId, statusProp === undefined);
+  const status = statusProp === undefined ? ownStatus : statusProp;
 
   const enabled = Boolean(status?.enabled);
 
@@ -65,12 +70,14 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
         event.preventDefault();
-        openDrawer();
+        // Sur la page plein écran : on met le curseur dans la saisie au lieu d'ouvrir un tiroir par-dessus.
+        if (onAssistantPage && focusPageComposer()) return;
+        if (!onAssistantPage) openDrawer();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [enabled, openDrawer]);
+  }, [enabled, onAssistantPage, openDrawer]);
 
   if (!status?.enabled) return null;
 
@@ -83,7 +90,7 @@ const CopilotRoot: React.FC<CopilotRootProps> = ({
 
   return (
     <>
-      {!open && (
+      {!open && !onAssistantPage && (
         <Button
           type="primary"
           shape="circle"

@@ -116,6 +116,50 @@ describe('CopilotRoot', () => {
   });
 });
 
+describe('CopilotRoot — page plein écran', () => {
+  function renderOnAssistantPage() {
+    return render(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={[`/tenant/${TENANT}/assistant`]}>
+          <main id="main">
+            <textarea aria-label="Votre message" />
+          </main>
+          <CopilotRoot tenantId={TENANT} />
+        </MemoryRouter>
+      </LanguageProvider>
+    );
+  }
+
+  it('masque le bouton flottant sur /assistant', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    renderOnAssistantPage();
+    await waitFor(() => expect(calls).toContain(TENANT));
+    expect(screen.queryByRole('button', BUTTON)).not.toBeInTheDocument();
+  });
+
+  it('Ctrl+J met le curseur dans la saisie au lieu d’ouvrir un tiroir', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    renderOnAssistantPage();
+    await waitFor(() => {
+      const notPrevented = fireEvent.keyDown(window, { key: 'j', ctrlKey: true });
+      expect(notPrevented).toBe(false);
+    });
+    const field = screen.getAllByLabelText('Votre message')[0];
+    expect(field).toHaveFocus();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+  });
+
+  it('ouvre le tiroir avec des actions en icône seule, nommées et en infobulle', async () => {
+    getStatus.mockResolvedValue(ENABLED);
+    renderRoot();
+    fireEvent.click(await screen.findByRole('button', BUTTON));
+    const full = await screen.findByRole('button', { name: 'Ouvrir en pleine page' });
+    const reset = screen.getByRole('button', { name: 'Nouvelle conversation' });
+    expect(full.textContent?.trim()).toBe('');
+    expect(reset.textContent?.trim()).toBe('');
+  });
+});
+
 function makeAuth(over: Partial<AuthContextType>): AuthContextType {
   return {
     user: {

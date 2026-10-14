@@ -6,10 +6,10 @@ import {
   getStockItem,
   getStockSettings,
   listStockItems,
-  listStockLocations,
+  listStockLocationViews,
   setStockValuationMethodTx,
-  updateStockItemTx,
-  updateStockLocationTx
+  updateStockItemWithChangesTx,
+  updateStockLocationWithChangesTx
 } from '../lib/finance/stock-referentiel';
 import {
   createStockItemSchema,
@@ -22,6 +22,8 @@ import {
   uuidPathParamSchema
 } from '../lib/finance/schemas-stock-referentiel';
 import { prisma } from '../utils/database';
+import { logAuditEvent } from '../services/audit-service';
+import { AuditActionKey } from '../types/audit-types';
 
 /**
  * Contrôleur des neuf points d'entrée du référentiel du stock — lot 5,
@@ -44,7 +46,34 @@ import { prisma } from '../utils/database';
  * **Aucune suppression** : ni article ni lieu ne s'effacent — leurs
  * mouvements racontent où la matière est passée. La désactivation passe par
  * `isActive` sur les deux PATCH.
+ *
+ * **Audit (lot 040, B6-R1)** : `STOCK_ITEM_CREATED`, `STOCK_ITEM_UPDATED`
+ * (avec `changes`, l'unité comprise), `STOCK_LOCATION_CREATED`,
+ * `STOCK_LOCATION_UPDATED`. Non critiques : écrits APRÈS la transaction par
+ * `logAuditEvent` (B6-R2, B6-R5). Une correction qui ne change rien n'écrit
+ * rien.
  */
+
+/** Un événement d'audit du référentiel, après la transaction. */
+function auditReferentiel(
+  req: Request,
+  tenantId: string,
+  actionKey: AuditActionKey,
+  entityType: 'StockItem' | 'StockLocation',
+  entityId: string,
+  payload: Record<string, unknown>,
+  changes?: Record<string, unknown>
+): void {
+  logAuditEvent({
+    tenantId,
+    actorUserId: req.user?.userId ?? null,
+    actionKey,
+    entityType,
+    entityId,
+    payload,
+    ...(changes ? { changes } : {})
+  });
+}
 
 function requireTenantId(req: Request): string {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -81,6 +110,14 @@ export const createStockItemHandler = asyncHandler(async (req: Request, res: Res
     })
   );
 
+  auditReferentiel(req, tenantId, AuditActionKey.STOCK_ITEM_CREATED, 'StockItem', item.id, {
+    reference: item.reference,
+    label: item.label,
+    unit: item.unit,
+    category: item.category,
+    defaultCostCategoryId: item.defaultCostCategoryId
+  });
+
   res.status(201).json({ success: true, data: item });
 });
 
@@ -97,7 +134,19 @@ export const updateStockItemHandler = asyncHandler(async (req: Request, res: Res
   // veut dire « ne touche pas », et `null` veut dire « efface ». Recopier
   // `body.category ?? null` effacerait la famille à chaque correction du seul
   // libellé.
-  const item = await prisma.$transaction(tx => updateStockItemTx(tx, tenantId, itemId, body));
+  const { item, changes } = await prisma.$transaction(tx => updateStockItemWithChangesTx(tx, tenantId, itemId, body));
+
+  if (Object.keys(changes).length > 0) {
+    auditReferentiel(
+      req,
+      tenantId,
+      AuditActionKey.STOCK_ITEM_UPDATED,
+      'StockItem',
+      item.id,
+      { reference: item.reference, label: item.label },
+      changes
+    );
+  }
 
   res.status(200).json({ success: true, data: item });
 });
@@ -144,6 +193,12 @@ export const createStockLocationHandler = asyncHandler(async (req: Request, res:
     })
   );
 
+  auditReferentiel(req, tenantId, AuditActionKey.STOCK_LOCATION_CREATED, 'StockLocation', location.id, {
+    kind: location.kind,
+    label: location.label,
+    siteId: location.siteId
+  });
+
   res.status(201).json({ success: true, data: location });
 });
 
@@ -156,20 +211,35 @@ export const updateStockLocationHandler = asyncHandler(async (req: Request, res:
   const locationId = requireUuidParam(req, 'locationId');
   const body = updateStockLocationSchema.parse(req.body ?? {});
 
-  const location = await prisma.$transaction(tx => updateStockLocationTx(tx, tenantId, locationId, body));
+  const { location, changes } = await prisma.$transaction(tx =>
+    updateStockLocationWithChangesTx(tx, tenantId, locationId, body)
+  );
+
+  if (Object.keys(changes).length > 0) {
+    auditReferentiel(
+      req,
+      tenantId,
+      AuditActionKey.STOCK_LOCATION_UPDATED,
+      'StockLocation',
+      location.id,
+      { kind: location.kind, label: location.label },
+      changes
+    );
+  }
 
   res.status(200).json({ success: true, data: location });
 });
 
 // ---------------------------------------------------------------------------
-// G. GET stock/locations — liste filtrée
+// G. GET stock/locations — liste filtrée, en `LocationView` (lot 040 :
+// inventaire en cours, chantier clos, ouverture suggérée, articles à recompter)
 // ---------------------------------------------------------------------------
 
 export const listStockLocationsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);
   const query = listStockLocationsQuerySchema.parse(req.query ?? {});
 
-  const locations = await listStockLocations(tenantId, { onlyActive: query.onlyActive, kind: query.kind });
+  const locations = await listStockLocationViews(tenantId, { onlyActive: query.onlyActive, kind: query.kind });
 
   res.status(200).json({ success: true, data: locations });
 });

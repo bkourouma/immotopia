@@ -24,7 +24,12 @@ type DecodedImage =
   | { kind: 'bitmap'; source: ImageBitmap; width: number; height: number }
   | { kind: 'element'; source: HTMLImageElement; objectUrl: string; width: number; height: number };
 
-export async function downscaleImageFile(file: File, maxSide = 800): Promise<File> {
+/**
+ * @param maxSide Grand côté maximal, en pixels.
+ * @param quality Qualité JPEG de 0 à 1 (lot 040 : 0,7 pour les photos du stock).
+ *   Défaut inchangé : 0,9. Sans effet sur un PNG.
+ */
+export async function downscaleImageFile(file: File, maxSide = 800, quality = JPEG_QUALITY): Promise<File> {
   if (!DOWNSCALABLE_TYPES.has(file.type)) {
     return file;
   }
@@ -61,7 +66,7 @@ export async function downscaleImageFile(file: File, maxSide = 800): Promise<Fil
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(decoded.source, 0, 0, targetWidth, targetHeight);
 
-    const blob = await canvasToBlob(canvas, file.type);
+    const blob = await canvasToBlob(canvas, file.type, quality);
     if (!blob) {
       return file;
     }
@@ -119,12 +124,12 @@ function loadImageElement(objectUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob | null> {
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
   return new Promise(resolve => {
     if (typeof canvas.toBlob !== 'function') {
       resolve(null);
       return;
     }
-    canvas.toBlob(blob => resolve(blob), type, type === 'image/jpeg' ? JPEG_QUALITY : undefined);
+    canvas.toBlob(blob => resolve(blob), type, type === 'image/jpeg' ? quality : undefined);
   });
 }

@@ -150,6 +150,12 @@ beforeAll(async () => {
   await touch('uploads/rental/penalties/rpA/j.pdf', 'penalty-A');
   await touch('uploads/platform/invoice-payments/tA/p.pdf', 'proof-A');
   await touch('uploads/branding/tA/mandants/m1/logo-x.png', 'brand-A');
+  // Lot 040 (B5-R9) : pieces jointes du stock de chantier.
+  await touch('uploads/stock/tA/2026/photo-a.jpg', 'stock-A');
+  await touch('uploads/stock/tB/2026/photo-b.jpg', 'stock-B');
+  // Lot 041 (data-model §6) : photos de comptage par WhatsApp.
+  await touch('uploads/stock-whatsapp/tA/2026/capture-a.jpg', 'capture-A');
+  await touch('uploads/stock-whatsapp/tB/2026/capture-b.jpg', 'capture-B');
   await touch('uploads/maintenance/tA/t1/m.pdf', 'maint-A');
   await touch('uploads/docs/a.pdf', 'loose');
   await touch('uploads/exports/tA/old.zip', 'old');
@@ -462,6 +468,12 @@ describe('Export agence — collecteur de fichiers', () => {
     ['branding/tA/agence/cachet-x.png', true],
     ['branding/tB/mandants/m1/logo-x.png', false],
     ['branding/tA', false],
+    ['stock/tA/2026/photo-a.jpg', true],
+    ['stock/tB/2026/photo-b.jpg', false],
+    ['stock/tA', false],
+    ['stock-whatsapp/tA/2026/capture-a.jpg', true],
+    ['stock-whatsapp/tB/2026/capture-b.jpg', false],
+    ['stock-whatsapp/tA', false],
     ['properties/pA/photo.jpg', true],
     ['properties/pB/photo.jpg', false],
     ['syndics/sA1/documents/a.pdf', true],
@@ -483,6 +495,22 @@ describe('Export agence — collecteur de fichiers', () => {
     expect(collector.files.size).toBe(1);
     expect(collector.missingCount).toBe(1);
     expect([...collector.files.keys()]).toEqual([n('fichiers/uploads/branding/tA/mandants/m1/logo-x.png')]);
+  });
+
+  it("joint la piece jointe de stock de l'agence et refuse celle d'une autre agence (lot 040, B5-R9)", async () => {
+    const collector = new FileReferenceCollector('tA', roots, owned());
+    await collector.inspectField('fileUrl', '/uploads/stock/tA/2026/photo-a.jpg');
+    await collector.inspectField('fileUrl', '/uploads/stock/tB/2026/photo-b.jpg');
+    expect([...collector.files.keys()]).toEqual([n('fichiers/uploads/stock/tA/2026/photo-a.jpg')]);
+    expect(collector.refusedCount).toBe(1);
+  });
+
+  it("joint la photo de comptage WhatsApp de l'agence et refuse celle d'une autre agence (lot 041)", async () => {
+    const collector = new FileReferenceCollector('tA', roots, owned());
+    await collector.inspectField('fileUrl', '/uploads/stock-whatsapp/tA/2026/capture-a.jpg');
+    await collector.inspectField('fileUrl', '/uploads/stock-whatsapp/tB/2026/capture-b.jpg');
+    expect([...collector.files.keys()]).toEqual([n('fichiers/uploads/stock-whatsapp/tA/2026/capture-a.jpg')]);
+    expect(collector.refusedCount).toBe(1);
   });
 
   it('refuse une image de marque dont le dossier appartient a une autre agence', async () => {

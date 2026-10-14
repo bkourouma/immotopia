@@ -35,7 +35,10 @@ export function DocumentListCard({ scope, items, tenantId, propertyId }: Documen
               />
             ) : (
               <div key={`${doc.kind}-${doc.id}`}>
-                <Typography.Text>{doc.label}</Typography.Text> <Tag>{doc.type}</Tag>
+                <Typography.Text>
+                  <bdi>{doc.label}</bdi>
+                </Typography.Text>{' '}
+                <Tag>{doc.type}</Tag>
                 {doc.status ? <Tag>{doc.status}</Tag> : null}
                 {doc.date ? <Typography.Text type="secondary">{doc.date.slice(0, 10)}</Typography.Text> : null}
               </div>

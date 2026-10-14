@@ -6,7 +6,7 @@ import {
   closeSiteTx,
   createSiteLotTx,
   deleteSiteLotTx,
-  getSiteClosureBlockers,
+  getSiteClosureBlockersForCaller,
   getSiteCostBreakdown,
   listSiteLots,
   reopenSiteTx,
@@ -22,6 +22,7 @@ import {
   updateSiteLotSchema,
   uuidPathParamSchema
 } from '../lib/finance/schemas-site-closing';
+import { resolveStockCallerContext } from '../lib/finance/stock-controles';
 import { prisma } from '../utils/database';
 
 /**
@@ -190,7 +191,10 @@ export const getSiteClosureBlockersHandler = asyncHandler(async (req: Request, r
   const tenantId = requireTenantId(req);
   const siteId = requireUuidParam(req, 'siteId');
 
-  const blockers = await getSiteClosureBlockers(tenantId, siteId);
+  // Lot 040 (§8.2) : le nombre d'articles restant sur un lieu en comptage
+  // aveugle n'est pas rendu à un compteur sans STOCK_COUNT_VALIDATE.
+  const ctx = await resolveStockCallerContext(requireActorUserId(req), tenantId);
+  const blockers = await getSiteClosureBlockersForCaller(tenantId, siteId, ctx);
 
   res.status(200).json({ success: true, data: blockers });
 });

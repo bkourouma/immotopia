@@ -170,9 +170,12 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'finance-achats': FINANCE_ACCOUNTS_OR_REPORTS,
   'finance-fournisseurs': FINANCE_ACCOUNTS_OR_REPORTS,
   'finance-retenues': ['FINANCE_ACCOUNTS_READ'],
-  'finance-chantiers-stock': FINANCE_ACCOUNTS_OR_REPORTS,
-  'finance-chantiers': FINANCE_ACCOUNTS_OR_REPORTS,
-  'finance-stock': ['FINANCE_ACCOUNTS_READ'],
+  // Chantiers et stock (lot 040, écrans §2.3) : les six onglets du stock exigent
+  // STOCK_VIEW, les trois du suivi des chantiers FINANCE_ACCOUNTS_READ ; le
+  // groupe s'ouvre avec l'une ou l'autre (un magasinier ne voit que le stock).
+  'finance-chantiers-stock': ['STOCK_VIEW', 'FINANCE_ACCOUNTS_READ'],
+  'finance-chantiers': ['FINANCE_ACCOUNTS_READ'],
+  'finance-stock': ['STOCK_VIEW'],
   'finance-main-oeuvre': ['FINANCE_ACCOUNTS_READ'],
   'finance-salaires': ['FINANCE_ACCOUNTS_READ'],
   'finance-tacherons': ['FINANCE_ACCOUNTS_READ'],
@@ -404,11 +407,16 @@ export function defaultMenuEnabled(requires: string[], rolePermissionKeys: Set<s
  * Le serveur ne connaît que des clés opaques et « l'absence de décision vaut
  * autorisé » : un rôle sans `PROPERTIES_VIEW` voyait donc Biens et Patrimoine,
  * et tombait sur un écran en erreur générique (BUG-2026-10-02-010 / -004).
- * La liste est volontairement bornée à ces deux groupes, qui partagent la
- * même permission d'entrée ; l'étendre à d'autres groupes se décide avec leurs
- * propres permissions (voir `MENU_REQUIREMENTS`).
+ * La liste est volontairement bornée ; l'étendre à d'autres groupes se décide
+ * avec leurs propres permissions (voir `MENU_REQUIREMENTS`).
+ *
+ * Lot 040 (ecrans §2.3) : « Chantiers et stock » s'y ajoute, pour que le
+ * Magasinier, qui n'a que des droits `STOCK_*`, voie « Gestion du stock » sans
+ * « Suivi des chantiers ». Les menus hors stock de ce rôle ne sont PAS coupés
+ * ici (Q14) : la plateforme les coupe une fois, dans l'écran « Rôles et
+ * menus ».
  */
-const PERMISSION_GATED_GROUPS: readonly string[] = ['biens', 'patrimoine'];
+const PERMISSION_GATED_GROUPS: readonly string[] = ['biens', 'patrimoine', 'finance-chantiers-stock'];
 
 /**
  * Clés de menu que les permissions du compte ne permettent pas d'ouvrir

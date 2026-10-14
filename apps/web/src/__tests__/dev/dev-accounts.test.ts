@@ -38,7 +38,8 @@ describe('comptes de démonstration par pack', () => {
     expect(PACK_PASSWORD).toBe('PackTest@2026');
     expect(PACK_EMAIL_DOMAIN).toBe('packs.immotopia.test');
     for (const group of PACK_GROUPS) {
-      expect(group.accounts).toHaveLength(1);
+      const extra = ['pack-promoteur-6m', 'pack-integre-6m'].includes(group.id) ? 3 : 0;
+      expect(group.accounts).toHaveLength(1 + extra);
       const [admin] = group.accounts;
       expect(admin.password).toBe(PACK_PASSWORD);
       expect(admin.persona).toBe('Collaborateur');
@@ -56,6 +57,26 @@ describe('comptes de démonstration par pack', () => {
         [`${name} (3 ans)`, `${local}-3ans@packs.immotopia.test`]
       ])
     );
+  });
+
+  it('ajoute les comptes de recette du stock et du chef de chantier WhatsApp aux agences 6 mois Promoteur et Intégré (contrat avec l’API)', () => {
+    const emailsOf = (id: string) =>
+      PACK_GROUPS.find(group => group.id === id)!
+        .accounts.slice(1)
+        .map(account => account.email);
+    expect(emailsOf('pack-promoteur-6m')).toEqual([
+      'magasinier-promoteur@packs.immotopia.test',
+      'comptable-promoteur@packs.immotopia.test',
+      'chef-promoteur@packs.immotopia.test'
+    ]);
+    expect(emailsOf('pack-integre-6m')).toEqual([
+      'magasinier-integre@packs.immotopia.test',
+      'responsable-integre@packs.immotopia.test',
+      'chef-integre@packs.immotopia.test'
+    ]);
+    for (const account of PACK_GROUPS.flatMap(group => group.accounts)) {
+      expect(account.password).toBe(PACK_PASSWORD);
+    }
   });
 
   it('garde les comptes historiques, sans doublon d’adresse ni d’identifiant', () => {

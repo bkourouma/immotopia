@@ -87,7 +87,7 @@ describe('loginRateLimiter', () => {
 
 describe('limiteurs ImmoCopilot — message traduit', () => {
   /** La langue de la requête vient de l'en-tête `x-lang` (le vrai middleware lit Accept-Language). */
-  function appIa(name: 'aiChatRateLimiter' | 'aiActionRateLimiter') {
+  function appIa(name: 'aiChatRateLimiter' | 'aiActionRateLimiter' | 'aiRejectRateLimiter') {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const limiters = require('../../src/middleware/rate-limit-middleware');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -104,7 +104,8 @@ describe('limiteurs ImmoCopilot — message traduit', () => {
 
   it.each([
     ['aiChatRateLimiter', 20, /assistant/],
-    ['aiActionRateLimiter', 10, /confirmations/]
+    ['aiActionRateLimiter', 10, /confirmations/],
+    ['aiRejectRateLimiter', 30, /refus/]
   ] as const)('%s : 429 RATE_LIMITED, message en français puis en anglais', async (name, max, fragment) => {
     const app = appIa(name);
     for (let i = 0; i < max; i += 1) {
@@ -122,5 +123,25 @@ describe('limiteurs ImmoCopilot — message traduit', () => {
     expect(en.status).toBe(429);
     expect(en.body.message).toMatch(/Try again/);
     expect(en.body.message).not.toMatch(/Réessayez/);
+  });
+
+  it('confirmations et refus ont des compteurs séparés : un lot de refus ne bloque pas une confirmation', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const limiters = require('../../src/middleware/rate-limit-middleware');
+    const app = express();
+    app.post('/execute', limiters.aiActionRateLimiter, (_req, res) => res.json({ ok: true }));
+    app.post('/reject', limiters.aiRejectRateLimiter, (_req, res) => res.status(400).json({ ok: false }));
+    // Refus (jetons invalides compris) : comptés dans LEUR compteur, jusqu'au plafond.
+    for (let i = 0; i < 30; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      expect((await request(app).post('/reject')).status).toBe(400);
+    }
+    expect((await request(app).post('/reject')).status).toBe(429);
+    // La confirmation passe toujours : quota intact.
+    for (let i = 0; i < 10; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      expect((await request(app).post('/execute')).status).toBe(200);
+    }
+    expect((await request(app).post('/execute')).status).toBe(429);
   });
 });

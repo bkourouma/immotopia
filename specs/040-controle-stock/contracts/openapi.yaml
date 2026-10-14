@@ -1,0 +1,3638 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia — Contrôle du stock de chantier (spec 040, sprints A et B)
+  version: 2.0.0 # révision 2, après critique adverse (04/10/2026)
+  description: >
+    Routes nouvelles (x-statut: nouvelle) et modifiées (x-statut: modifiée) du lot
+    040. Chaque opération indique sa permission (x-permission), sa fonctionnalité
+    d'abonnement (x-fonctionnalite : CONSTRUCTION partout, par préfixe,
+    packages/api/src/lib/subscription/route-features.ts:157-162 — aucun changement
+    de gating, décision D1), son événement d'audit (x-audit), ce qui est masqué
+    sans STOCK_VALUES_VIEW (x-masquage-valeurs) et ce qui est masqué pendant un
+    comptage à l'aveugle (x-masquage-aveugle).
+
+    Règles communes :
+    - Toutes les routes passent authenticate + requireTenantAccess ; tenantId
+      vient de l'URL. Tout identifiant reçu (lieu, article, chantier, poste,
+      facture, ligne de facture, preneur, employé, tâcheron, inventaire, bon,
+      pièce jointe, alerte) est vérifié comme appartenant à l'agence : une
+      référence d'une autre agence répond 404, comme un objet inexistant.
+    - Enveloppe de succès : { success: true, data, meta? }. Enveloppe d'erreur :
+      { success: false, message, error, code?, errors?, data? }
+      (packages/api/src/middleware/error-middleware.ts:18-42).
+    - Masquage des valeurs (spec.md §8.1) : sans STOCK_VALUES_VIEW, chaque champ
+      marqué « valeur » vaut null ; meta.valuesVisible = false.
+    - Aveugle (spec.md §8.2, révision 2) : un lieu portant un inventaire DRAFT
+      est « en comptage ». Pour un appelant sans STOCK_COUNT_VALIDATE (même
+      détenteur de STOCK_VALUES_VIEW), sur ce lieu, valent null : quantity,
+      value, averageUnitCost (soldes) ; quantityAfter, valueAfter, unitCost
+      (mouvements du lieu, partout où ils sont rendus : journal, CSV, bons,
+      réponses d'écriture, réceptions d'une facture) ; remainingQuantity,
+      remainingValue (rapprochement du chantier). onlyInStock ne filtre pas un
+      lieu en comptage. meta.blindLocationIds liste ces lieux. Les routes
+      d'inventaire masquent attendu et écart à TOUS tant que l'inventaire est
+      DRAFT.
+    - Idempotence (spec.md B3-R2) : rejeu même utilisateur, même corps → 200,
+      résultat d'origine RE-MASQUÉ pour l'appelant ; corps différent ou autre
+      utilisateur → 409 STOCK_IDEMPOTENCY_MISMATCH.
+    - Dates de mouvement : AAAA-MM-JJ ; pas dans le futur (UTC), pas plus
+      anciennes que backdatingLimitDays (A5-R4).
+    - Vocabulaire (D2) : aucun message, libellé ni champ ne contient « vol »,
+      « voleur », « fraude » ou « détournement ».
+servers:
+  - url: /api
+tags:
+  - name: Terrain
+  - name: Mouvements
+  - name: Bons
+  - name: Inventaires
+  - name: Preneurs
+  - name: PiecesJointes
+  - name: Alertes
+  - name: Indicateurs
+  - name: Reglages
+  - name: Referentiel
+  - name: Chantiers
+
+paths:
+  # ===========================================================================
+  # Terrain (B3)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/field-context:
+    get:
+      tags: [Terrain]
+      summary: Tout ce dont l'écran mobile a besoin, en un appel
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: receivableInvoices[].amount ; takers[].phone sans STOCK_TAKERS_MANAGE ; people vide sans STOCK_TAKERS_MANAGE
+      x-masquage-aveugle: aucune quantité n'est renvoyée par cette route ; locations[].countInProgress signale le lieu en comptage
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Contexte terrain
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, meta]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/FieldContext" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # Mouvements (A5, A6, A8, A10, A11, B2)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/receipts:
+    post:
+      tags: [Mouvements]
+      summary: Enregistrer une réception (un bon BR, un mouvement par ligne)
+      description: >
+        Facture VALIDÉE exigée (inchangé). Lieu actif ; refusé sur le lieu d'un
+        chantier clos (A7-R4). Prix de chaque ligne selon A8-R3. Contrôles A8-R2
+        renvoyés dans controls et ouverts en alertes. Verrous A10.
+      x-statut: modifiée
+      x-permission: STOCK_RECEIVE (était FINANCE_DOCUMENTS_CREATE)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_RECEIPT_RECORDED (critique)
+      x-masquage-valeurs: movements[].unitCost, totalValue, valueAfter, valuationSource ; controls[].amount, threshold (message alors sans montant)
+      x-masquage-aveugle: movements[].quantityAfter, valueAfter, unitCost si le lieu est en comptage
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReceiptRequest" }
+      responses:
+        "200":
+          description: Rejeu idempotent (même clientRequestId, même corps) — résultat d'origine
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReceiptResultEnvelope" }
+        "201":
+          description: Réception enregistrée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReceiptResultEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/receivable-invoices:
+    get:
+      tags: [Mouvements]
+      summary: Chercher une facture validée réceptionnable (au-delà des 50 du contexte terrain)
+      description: >
+        Factures VALIDÉES de l'agence, plus récentes d'abord, sans leurs lignes
+        (elles se lisent par /stock/supplier-invoices/{invoiceId}/receipts).
+        Recherche sur la référence et le nom du fournisseur. Résout la question
+        Q9 des écrans : le magasinier peut réceptionner une facture ancienne.
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: data[].amount
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - { name: search, in: query, schema: { type: string, maxLength: 120 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 50, default: 20 },
+          }
+      responses:
+        "200":
+          description: Une page de factures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReceivableInvoice" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/supplier-invoices/{invoiceId}/receipts:
+    get:
+      tags: [Mouvements]
+      summary: Réceptions et retours déjà enregistrés sur une facture, lignes de la facture et cumul par article
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: invoice.amount, invoice.lines[].unitPrice, amount ; receipts[].lines[].unitCost, totalValue ; byItem[].valuationSources ; receivedValue ; returnedValue
+      x-masquage-aveugle: returns[].quantityAfter, valueAfter, unitCost pour un lieu en comptage
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/InvoiceId"
+      responses:
+        "200":
+          description: Historique de la facture
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/InvoiceReceiptsView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/stock/issues:
+    post:
+      tags: [Mouvements]
+      summary: Sortir vers un chantier (un bon BS, 1 à 50 lignes)
+      description: >
+        Corps multi-lignes, ou corps à un article (forme actuelle) converti en une
+        ligne. Preneur ou demandeur obligatoire (B2-R3). Chaque ligne écrit son
+        mouvement, son écriture (poste ou 605 / 311) et son imputation STOCK_ISSUE
+        (inchangé). Chantier ouvert exigé (inchangé). Alerte LARGE_ISSUE si la
+        valeur du bon atteint le seuil. Verrous A10.
+      x-statut: modifiée
+      x-permission: STOCK_ISSUE (était FINANCE_DOCUMENTS_CREATE)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_ISSUE_RECORDED (critique)
+      x-masquage-valeurs: movements[].unitCost, totalValue, valueAfter
+      x-masquage-aveugle: movements[].quantityAfter, valueAfter, unitCost ; message STOCK_INSUFFICIENT sans quantité (et audit STOCK_BLIND_INSUFFICIENT_REFUSED)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/IssueRequest"
+                - $ref: "#/components/schemas/IssueRequestSingle"
+      responses:
+        "200":
+          description: Rejeu idempotent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlipResultEnvelope" }
+        "201":
+          description: Sortie enregistrée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlipResultEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/transfers:
+    post:
+      tags: [Mouvements]
+      summary: Transférer entre deux lieux (demandeur et motif obligatoires)
+      description: >
+        Deux mouvements liés par transferGroupId, aucune écriture, aucune
+        imputation (inchangé). Refusé vers le lieu d'un chantier clos (A7-R4),
+        permis depuis ce lieu. Verrous A10 sur les deux couples.
+      x-statut: modifiée
+      x-permission: STOCK_TRANSFER (était FINANCE_DOCUMENTS_CREATE)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_TRANSFER_RECORDED (critique)
+      x-masquage-valeurs: value ; movements[].unitCost, totalValue, valueAfter
+      x-masquage-aveugle: movements[].quantityAfter, valueAfter, unitCost pour le ou les lieux en comptage ; value si l'origine est en comptage
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "200":
+          description: Rejeu idempotent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransferResultEnvelope" }
+        "201":
+          description: Transfert enregistré
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransferResultEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/supplier-returns:
+    post:
+      tags: [Mouvements]
+      summary: Retourner une marchandise au fournisseur (A6)
+      description: >
+        Facture validée ; article réceptionné sur cette facture ; quantité ≤ solde
+        du lieu et ≤ reçu − déjà retourné. Écriture C311 (coût moyen) / D401
+        (coût de réception de la facture) / écart 603, et mouvement « réglé » sur
+        le compte de tiers du fournisseur (data-model §4).
+      x-statut: nouvelle
+      x-permission: STOCK_DISPOSE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_SUPPLIER_RETURN_RECORDED (critique)
+      x-masquage-valeurs: sans objet (STOCK_DISPOSE n'est attribué qu'avec STOCK_VALUES_VIEW par la migration) ; si la plateforme modifie un rôle qui l'a sans valeurs, unitCost, totalValue, valueAfter, supplierCreditValue = null
+      x-masquage-aveugle: quantityAfter, valueAfter, unitCost si le lieu est en comptage et l'appelant sans STOCK_COUNT_VALIDATE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SupplierReturnRequest" }
+      responses:
+        "200":
+          description: Rejeu idempotent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MovementEnvelope" }
+        "201":
+          description: Retour enregistré
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MovementEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/scraps:
+    post:
+      tags: [Mouvements]
+      summary: Enregistrer un rebut (A6)
+      description: >
+        Écriture D603 / C311 au coût moyen du lieu ; aucune imputation de chantier.
+        Alerte LARGE_SCRAP si la valeur atteint issueAlertAmount.
+      x-statut: nouvelle
+      x-permission: STOCK_DISPOSE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_SCRAP_RECORDED (critique)
+      x-masquage-valeurs: unitCost, totalValue, valueAfter (cas d'un rôle modifié par la plateforme)
+      x-masquage-aveugle: quantityAfter, valueAfter, unitCost (idem retour)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScrapRequest" }
+      responses:
+        "200":
+          description: Rejeu idempotent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MovementEnvelope" }
+        "201":
+          description: Rebut enregistré
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MovementEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/balances:
+    get:
+      tags: [Mouvements]
+      summary: Soldes par (article, lieu)
+      x-statut: modifiée
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ)
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: value, averageUnitCost
+      x-masquage-aveugle: quantity, value, averageUnitCost des lieux en comptage (appelant sans STOCK_COUNT_VALIDATE) ; onlyInStock ne filtre pas ces lieux (toutes leurs lignes sont rendues, masquées)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: locationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { name: itemId, in: query, schema: { type: string, format: uuid } }
+        - { name: onlyInStock, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Soldes (data reste un tableau ; meta ajouté)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/BalanceView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/movements:
+    get:
+      tags: [Mouvements]
+      summary: Journal des mouvements, paginé et filtrable (A5)
+      description: >
+        Tri movementDate DESC, createdAt DESC, id DESC. Curseur opaque.
+        Les trois filtres par personne (takerId, createdByUserId, requestedBy)
+        exigent STOCK_VALUES_VIEW (403 STOCK_VALUE_FIELD_FORBIDDEN sinon).
+      x-statut: modifiée
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ) ; filtres takerId, createdByUserId et requestedBy réservés à STOCK_VALUES_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: unitCost, totalValue, valueAfter, supplierCreditValue, valuationSource
+      x-masquage-aveugle: quantityAfter, valueAfter, unitCost des mouvements d'un lieu en comptage
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MovementFilterItemId"
+        - $ref: "#/components/parameters/MovementFilterLocationId"
+        - $ref: "#/components/parameters/MovementFilterSiteId"
+        - $ref: "#/components/parameters/MovementFilterType"
+        - $ref: "#/components/parameters/MovementFilterSlipId"
+        - $ref: "#/components/parameters/MovementFilterMovementId"
+        - $ref: "#/components/parameters/MovementFilterTakerId"
+        - $ref: "#/components/parameters/MovementFilterCreatedByUserId"
+        - $ref: "#/components/parameters/MovementFilterRequestedBy"
+        - $ref: "#/components/parameters/MovementFilterFrom"
+        - $ref: "#/components/parameters/MovementFilterTo"
+        - { name: cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 200, default: 50 },
+          }
+      responses:
+        "200":
+          description: Une page du journal (data reste un tableau ; curseur dans meta)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/MovementView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/movements/export.csv:
+    get:
+      tags: [Mouvements]
+      summary: Export CSV du journal (mêmes filtres, sans curseur, 50 000 lignes au plus)
+      description: >
+        src/lib/csv.ts : BOM UTF-8, CRLF, séparateur « ; », protection contre les
+        formules. Colonnes : date du mouvement ; saisi le ; délai de saisie (j) ;
+        nature ; bon ; article (référence) ; désignation ; unité ; lieu ; sens ;
+        quantité ; quantité après ; chantier ; poste ; preneur ou demandeur ;
+        motif (code) ; motif (précision) ; facture ; auteur ; et, avec
+        STOCK_VALUES_VIEW seulement : prix unitaire ; valeur ; valeur après.
+        DATA_EXPORTED est écrit par le middleware d'accès (spec 023 §6).
+      x-statut: nouvelle
+      x-permission: "STOCK_VIEW (filtres par personne, requestedBy compris : STOCK_VALUES_VIEW)"
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: DATA_EXPORTED (automatique)
+      x-masquage-valeurs: colonnes de valeur absentes
+      x-masquage-aveugle: colonnes « quantité après », « prix unitaire » et « valeur après » vides pour un lieu en comptage
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MovementFilterItemId"
+        - $ref: "#/components/parameters/MovementFilterLocationId"
+        - $ref: "#/components/parameters/MovementFilterSiteId"
+        - $ref: "#/components/parameters/MovementFilterType"
+        - $ref: "#/components/parameters/MovementFilterSlipId"
+        - $ref: "#/components/parameters/MovementFilterMovementId"
+        - $ref: "#/components/parameters/MovementFilterTakerId"
+        - $ref: "#/components/parameters/MovementFilterCreatedByUserId"
+        - $ref: "#/components/parameters/MovementFilterRequestedBy"
+        - $ref: "#/components/parameters/MovementFilterFrom"
+        - $ref: "#/components/parameters/MovementFilterTo"
+      responses:
+        "200":
+          description: Fichier `journal-stock-AAAA-MM-JJ.csv` (Content-Disposition attachment)
+          content:
+            text/csv:
+              schema: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: "Plus de 50 000 lignes : code STOCK_EXPORT_TOO_LARGE, affiner les filtres"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /tenants/{tenantId}/finance/stock/movements/authors:
+    get:
+      tags: [Mouvements]
+      summary: Auteurs de mouvements de l'agence (alimente le filtre par utilisateur)
+      x-statut: nouvelle
+      x-permission: STOCK_VALUES_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Auteurs distincts, triés par libellé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [userId, label]
+                      properties:
+                        userId: { type: string }
+                        label:
+                          {
+                            type: string,
+                            description: "fullName, à défaut e-mail",
+                          }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # Bons (B4)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/slips/{slipId}:
+    get:
+      tags: [Bons]
+      summary: Détail d'un bon (BR, BS, PVI) avec ses mouvements et pièces jointes
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: totalValue ; movements[] (champs de valeur) ; taker.phone (sans STOCK_TAKERS_MANAGE)
+      x-masquage-aveugle: movements[].quantityAfter, valueAfter, unitCost (lieu en comptage)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SlipId"
+      responses:
+        "200":
+          description: Bon
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/SlipView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/stock/slips/{slipId}/pdf:
+    get:
+      tags: [Bons]
+      summary: PDF du bon (régénéré, zones de signature)
+      description: >
+        Gabarit pdf-lib du bon de caisse (finance-sites-controller.ts:413-564),
+        en-tête de document-branding.ts. Libellés imprimés lus dans
+        StockSlip.snapshot (figés à l'émission, spec B4-R3), texte en français
+        passé par sanitizeForPdf. Un PVI se télécharge plutôt par
+        /stock/counts/{countId}/report.pdf. DOCUMENT_DOWNLOADED est écrit par le
+        middleware d'accès.
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: DOCUMENT_DOWNLOADED (automatique)
+      x-masquage-valeurs: aucun montant imprimé sans STOCK_VALUES_VIEW
+      x-masquage-aveugle: aucune quantité après mouvement n'est imprimée sur un bon (ni prix si le lieu est en comptage)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SlipId"
+      responses:
+        "200":
+          description: Fichier `BS-2026-00042.pdf`
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # Inventaires (A1, A2, A3, A4, A7)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/counts:
+    post:
+      tags: [Inventaires]
+      summary: Ouvrir un inventaire (DRAFT, à l'aveugle)
+      description: >
+        Un seul inventaire DRAFT ou COUNTED par lieu (index unique partiel :
+        409 STOCK_COUNT_ALREADY_OPEN). OPENING (spec A7-R1) : lieu de chantier
+        (kind SITE) seulement, dans les 30 jours qui suivent la bascule
+        (stockEnabledAt), sinon 409 STOCK_OPENING_COUNT_NOT_ALLOWED ; un seul
+        par lieu hors abandon (409 STOCK_OPENING_COUNT_EXISTS). CLOSING réservé
+        au lieu d'un chantier (même code STOCK_OPENING_COUNT_NOT_ALLOWED : « nature
+        interdite sur ce lieu »). La réponse liste les articles à recompter du
+        lieu (toRecount).
+      x-statut: modifiée
+      x-permission: STOCK_COUNT (était FINANCE_DOCUMENTS_CREATE)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_OPENED
+      x-masquage-aveugle: réponse en blind = true
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCountRequest" }
+      responses:
+        "201":
+          description: Inventaire ouvert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    get:
+      tags: [Inventaires]
+      summary: Lister les inventaires
+      x-statut: modifiée
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ)
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: countedValue, varianceValueGross, varianceValueNet, setAsideVarianceValue, lines[].varianceValue, lines[].unitCostAtValidation
+      x-masquage-aveugle: pour tout inventaire DRAFT, à tous — lines[].expectedQuantity, lines[].variance, varianceCount, toutes les valeurs d'écart
+      description: >
+        Sans withLines=true, chaque inventaire est rendu avec lines = [] (le
+        compte reste dans linesCount) : la liste n'a pas besoin des lignes
+        (question Q13 des écrans). Le détail se lit par /stock/counts/{countId}.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: locationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: status,
+            in: query,
+            schema: { $ref: "#/components/schemas/CountStatus" },
+          }
+        - {
+            name: kind,
+            in: query,
+            schema: { $ref: "#/components/schemas/CountKind" },
+          }
+        - {
+            name: withLines,
+            in: query,
+            schema: { type: boolean, default: false },
+          }
+      responses:
+        "200":
+          description: Inventaires
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/CountView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/lines:
+    put:
+      tags: [Inventaires]
+      summary: Saisir ou ressaisir le comptage d'un article (DRAFT)
+      description: >
+        Fige expectedQuantity et expectedCapturedAt (jamais renvoyés), enregistre
+        l'auteur, l'heure serveur et countedBlind (faux si l'appelant détient
+        STOCK_COUNT_VALIDATE), ajoute l'appelant à counterUserIds (jamais
+        retiré). Le champ reason est refusé (400 : « Le motif se saisit après la
+        clôture du comptage »).
+      x-statut: modifiée
+      x-permission: STOCK_COUNT
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_LINE_RECORDED (quantité avant et après)
+      x-masquage-aveugle: la réponse ne contient que la ligne saisie, sans attendu ni écart
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetCountLineRequest" }
+      responses:
+        "200":
+          description: Ligne saisie (ou rejeu idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/CountLineView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/lines/{itemId}:
+    delete:
+      tags: [Inventaires]
+      summary: Retirer une ligne d'un inventaire en cours (DRAFT seulement)
+      description: Son auteur reste compteur de l'inventaire (spec A1-R1).
+      x-statut: modifiée
+      x-permission: STOCK_COUNT (était FINANCE_DOCUMENTS_CREATE)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_LINE_REMOVED
+      x-masquage-aveugle: réponse blind = true
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+        - $ref: "#/components/parameters/ItemId"
+      responses:
+        "200":
+          description: Inventaire après retrait
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/close:
+    post:
+      tags: [Inventaires]
+      summary: Clore le comptage (DRAFT → COUNTED) ; les écarts deviennent visibles
+      description: >
+        Refusée sans ligne (409 STOCK_COUNT_EMPTY), sauf CLOSING d'un lieu dont
+        tous les soldes sont nuls. Crée, sous les verrous A10 du lieu, une ligne
+        « non comptée » (countedQuantity null, attendu figé) pour chaque article
+        de solde non nul sans ligne (spec A2-R8). Pour OPENING et CLOSING,
+        refusée tant qu'un tel article existe : 409 STOCK_COUNT_INCOMPLETE,
+        data.items.
+      x-statut: nouvelle
+      x-permission: STOCK_COUNT
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_CLOSED (critique)
+      x-masquage-valeurs: champs de valeur de CountView
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              { type: object, additionalProperties: false, properties: {} }
+      responses:
+        "200":
+          description: Inventaire clos, écarts révélés
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/lines/{itemId}/justification:
+    put:
+      tags: [Inventaires]
+      summary: Justifier l'écart d'une ligne (COUNTED)
+      x-statut: nouvelle
+      x-permission: STOCK_COUNT ou STOCK_COUNT_VALIDATE (requireAnyPermission, rbac-middleware.ts:92)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_LINE_JUSTIFIED
+      x-masquage-valeurs: varianceValue, unitCostAtValidation
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+        - $ref: "#/components/parameters/ItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JustifyLineRequest" }
+      responses:
+        "200":
+          description: Ligne justifiée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/CountLineView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/lines/{itemId}/set-aside:
+    post:
+      tags: [Inventaires]
+      summary: Écarter une ligne d'un inventaire clos (non ajustée, imprimée au PV)
+      x-statut: nouvelle
+      x-permission: STOCK_COUNT_VALIDATE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_LINE_SET_ASIDE (critique, payload avec attendu et compté)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+        - $ref: "#/components/parameters/ItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReasonOnlyRequest" }
+      responses:
+        "200":
+          description: Inventaire après mise à l'écart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/set-aside-uncounted:
+    post:
+      tags: [Inventaires]
+      summary: Écarter d'un coup toutes les lignes non comptées d'un inventaire clos (motif commun)
+      description: >
+        Inventaire tournant ou article volontairement non compté (spec A2-R8) :
+        c'est le validateur, jamais le compteur, qui décide de ne pas compter.
+        Écrit une ligne d'audit listant les articles. Sans ligne non comptée :
+        200, rien ne change.
+      x-statut: nouvelle
+      x-permission: STOCK_COUNT_VALIDATE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_LINE_SET_ASIDE (critique, une ligne d'audit, articles listés)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReasonOnlyRequest" }
+      responses:
+        "200":
+          description: Inventaire après mise à l'écart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/validate:
+    post:
+      tags: [Inventaires]
+      summary: Valider (COUNTED → VALIDATED) ; les écarts deviennent des ajustements
+      description: >
+        Exige le statut COUNTED (un DRAFT répond 409 STOCK_COUNT_WRONG_STATUS :
+        clore d'abord). Lignes non comptées non écartées → 409
+        STOCK_COUNT_UNCOUNTED_LINES (data.items). A1 (aucun des compteurs —
+        counterUserIds — ne valide ; dérogation testée en base), A3 (écart
+        appliqué au solde courant), A4 (motif typé exigé, motif libre d'avant le
+        lot accepté). Fige countedValue, varianceValueGross/Net,
+        setAsideVarianceValue, unitCostAtValidation, movementsSinceCapture
+        (null pour une ligne d'avant le lot). Tire le numéro PVI. Alertes
+        COUNT_VARIANCE (lignes écartées comprises, surplus d'ouverture exclus),
+        COUNT_LINE_SET_ASIDE (au moins une ligne écartée ou non comptée) et, en
+        dérogation, COUNT_SELF_VALIDATED.
+      x-statut: modifiée
+      x-permission: STOCK_COUNT_VALIDATE (était FINANCE_DOCUMENTS_VALIDATE)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_VALIDATED (critique) ; STOCK_COUNT_SELF_VALIDATED (critique) en dérogation
+      x-masquage-valeurs: champs de valeur de CountView (sans objet pour les rôles système)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateCountRequest" }
+      responses:
+        "200":
+          description: Inventaire validé
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/cancel:
+    post:
+      tags: [Inventaires]
+      summary: Abandonner un inventaire en cours (DRAFT → CANCELLED)
+      description: >
+        Les routes de lecture ne révèlent jamais ses attendus. L'audit porte
+        attendu et compté de chaque ligne ; avec au moins une ligne, alerte
+        COUNT_CANCELLED (spec A2-R6).
+      x-statut: nouvelle
+      x-permission: STOCK_COUNT_VALIDATE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_COUNT_CANCELLED (critique, attendu et compté par ligne)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReasonOnlyRequest" }
+      responses:
+        "200":
+          description: Inventaire abandonné (reste aveugle)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}/report.pdf:
+    get:
+      tags: [Inventaires]
+      summary: Procès-verbal d'inventaire (VALIDATED seulement)
+      description: >
+        Compteurs (counterUserIds), validateur, mention de dérogation, lignes
+        ajustées, écartées et non comptées, mention « comptée sans aveugle »,
+        mouvements postérieurs au comptage (« non mesuré » pour une ligne
+        d'avant le lot), zones de signature ; libellés figés (snapshot du PVI).
+        Inventaire validé avant le lot : PDF sans numéro (spec B4-R3 bis).
+        Monté avant toute route GET /stock/counts/{countId} plus générique ; le
+        segment fixe empêche toute capture (finance-stock-inventaire-routes.ts:52-65).
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: DOCUMENT_DOWNLOADED (automatique)
+      x-masquage-valeurs: aucun montant imprimé sans STOCK_VALUES_VIEW
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      responses:
+        "200":
+          description: Fichier `PVI-2026-00007.pdf`
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Inventaire non validé (DRAFT, COUNTED, CANCELLED) : STOCK_COUNT_WRONG_STATUS"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /tenants/{tenantId}/finance/stock/counts/{countId}:
+    get:
+      tags: [Inventaires]
+      summary: Détail d'un inventaire (dernière route déclarée sous /stock/counts/)
+      x-statut: modifiée
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ)
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: countedValue, varianceValueGross, varianceValueNet, setAsideVarianceValue, lines[].varianceValue, lines[].unitCostAtValidation
+      x-masquage-aveugle: DRAFT et CANCELLED — expectedQuantity, variance, varianceCount et valeurs à null pour tous, blind = true
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CountId"
+      responses:
+        "200":
+          description: Inventaire
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CountEnvelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # Preneurs (B2)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/takers:
+    get:
+      tags: [Preneurs]
+      summary: Lister le carnet des preneurs
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: phone = null sans STOCK_TAKERS_MANAGE (spec B2-R6)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: onlyActive,
+            in: query,
+            schema: { type: boolean, default: true },
+          }
+        - { name: search, in: query, schema: { type: string, maxLength: 120 } }
+      responses:
+        "200":
+          description: Preneurs, triés par nom
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/TakerView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Preneurs]
+      summary: Ajouter un preneur
+      x-statut: nouvelle
+      x-permission: STOCK_TAKERS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_TAKER_CREATED (phone masqué dans l'audit)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTakerRequest" }
+      responses:
+        "201":
+          description: Preneur créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/TakerView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/stock/takers/{takerId}:
+    patch:
+      tags: [Preneurs]
+      summary: Corriger, désactiver un preneur ou effacer son téléphone
+      x-statut: nouvelle
+      x-permission: STOCK_TAKERS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_TAKER_UPDATED (avec changes, phone masqué)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TakerId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTakerRequest" }
+      responses:
+        "200":
+          description: Preneur à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/TakerView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ===========================================================================
+  # Pièces jointes (B5)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/attachments:
+    post:
+      tags: [PiecesJointes]
+      summary: Déposer une photo ou un scan (multipart, champ « file »)
+      description: >
+        multer en mémoire, 10 Mo (forme de lease-inspection-routes.ts:35-49).
+        JPEG, PNG, WebP, PDF, type vérifié sur les octets. EXIF retiré avant
+        écriture ; SHA-256 du fichier stocké. Droit : celui de la cible (tableau
+        de spec B5-R6) — la garde de route exige l'un des droits de dépôt, le
+        service vérifie le bon. Ligne d'inventaire : statut COUNTED seulement.
+        Mouvement RECEIPT ou ADJUSTMENT : 409 STOCK_ATTACHMENT_TARGET_NOT_ALLOWED.
+        clientRequestId accepté (opération ATTACHMENT) : un rejeu renvoie 200 et
+        la pièce d'origine.
+      x-statut: nouvelle
+      x-permission: STOCK_RECEIVE | STOCK_ISSUE | STOCK_TRANSFER | STOCK_COUNT | STOCK_COUNT_VALIDATE | STOCK_DISPOSE (selon la cible)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_ATTACHMENT_ADDED
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/AttachmentUpload" }
+      responses:
+        "200":
+          description: Rejeu idempotent — pièce d'origine
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/AttachmentView" }
+        "201":
+          description: Pièce jointe enregistrée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/AttachmentView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413":
+          description: Fichier de plus de 10 Mo (STOCK_ATTACHMENT_TOO_LARGE)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      tags: [PiecesJointes]
+      summary: Pièces jointes d'une cible (retirées comprises, sans fichier)
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: targetType,
+            in: query,
+            required: true,
+            schema: { $ref: "#/components/schemas/AttachmentTarget" },
+          }
+        - {
+            name: targetId,
+            in: query,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200":
+          description: Pièces jointes, plus anciennes d'abord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AttachmentView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/stock/attachments/{attachmentId}/file:
+    get:
+      tags: [PiecesJointes]
+      summary: Fichier d'une pièce jointe (privé, jamais servi en statique)
+      description: >
+        privateUploadPath(fileUrl, ['stock', tenantId, <aaaa>]) puis
+        readPrivateUpload / sendPrivateFile (private-files.ts:53-108) :
+        Content-Disposition attachment, Cache-Control private, no-store. Pièce
+        retirée : 404. Chaque lecture, vignette comprise, écrit une ligne
+        DOCUMENT_DOWNLOADED (voulu, spec B5-R8).
+      x-statut: nouvelle
+      x-permission: STOCK_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: DOCUMENT_DOWNLOADED (automatique)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AttachmentId"
+      responses:
+        "200":
+          description: Le fichier
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/stock/attachments/{attachmentId}/remove:
+    post:
+      tags: [PiecesJointes]
+      summary: Retirer une pièce jointe (fichier effacé, trace et empreinte conservées)
+      description: >
+        Le dépositaire dans les 15 minutes ; au-delà, STOCK_DISPOSE. Motif exigé.
+        Valable pour toutes les cibles (mouvement, bon dont PVI, ligne
+        d'inventaire). AttachmentView.canRemove le dit à l'appelant.
+      x-statut: nouvelle
+      x-permission: dépositaire (≤ 15 min) ou STOCK_DISPOSE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_ATTACHMENT_REMOVED (critique)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AttachmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReasonOnlyRequest" }
+      responses:
+        "200":
+          description: Pièce retirée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/AttachmentView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ===========================================================================
+  # Alertes (B7) et indicateurs (B8)
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/alerts:
+    get:
+      tags: [Alertes]
+      summary: Lister les alertes de stock
+      x-statut: nouvelle
+      x-permission: STOCK_ALERTS_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-valeurs: amount, threshold (rôle modifié par la plateforme sans STOCK_VALUES_VIEW) ; message alors construit sans montant
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: status,
+            in: query,
+            schema: { $ref: "#/components/schemas/AlertStatus" },
+          }
+        - {
+            name: kind,
+            in: query,
+            schema: { $ref: "#/components/schemas/AlertKind" },
+          }
+        - { name: siteId, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: locationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 512 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+          }
+      responses:
+        "200":
+          description: Alertes, plus récentes d'abord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AlertView" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/alerts/{alertId}/acknowledge:
+    post:
+      tags: [Alertes]
+      summary: Marquer une alerte comme traitée (note facultative)
+      x-statut: nouvelle
+      x-permission: STOCK_ALERTS_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_ALERT_ACKNOWLEDGED
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AlertId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                note: { type: string, maxLength: 1000, nullable: true }
+      responses:
+        "200":
+          description: Alerte traitée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/AlertView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Déjà traitée (STOCK_ALERT_ALREADY_ACKNOWLEDGED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /tenants/{tenantId}/finance/stock/indicators:
+    get:
+      tags: [Indicateurs]
+      summary: Indicateurs par lieu et par mois (jamais par personne)
+      x-statut: nouvelle
+      x-permission: STOCK_VALUES_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: from,
+            in: query,
+            required: true,
+            schema:
+              {
+                type: string,
+                pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+                example: "2026-05",
+              },
+          }
+        - {
+            name: to,
+            in: query,
+            required: true,
+            schema:
+              {
+                type: string,
+                pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+                example: "2026-10",
+              },
+          }
+        - {
+            name: locationId,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200":
+          description: Indicateurs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/IndicatorsView" }
+        "400":
+          description: Période invalide ou de plus de 24 mois
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # Réglages et référentiel
+  # ===========================================================================
+  /tenants/{tenantId}/finance/stock/settings/controls:
+    get:
+      tags: [Reglages]
+      summary: Réglages de contrôle (seuils, bornes, mode strict)
+      x-statut: nouvelle
+      x-permission: STOCK_VALUES_VIEW
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Réglages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/ControlsSettings" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      tags: [Reglages]
+      summary: Modifier les réglages de contrôle
+      x-statut: nouvelle
+      x-permission: FINANCE_SETTINGS_MANAGE
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_CONTROLS_UPDATED (critique, avec changes)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ControlsSettingsPatch" }
+      responses:
+        "200":
+          description: Réglages à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/ControlsSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/stock/settings:
+    get:
+      tags: [Reglages]
+      summary: Méthode de valorisation (lecture) — réponse inchangée
+      x-statut: modifiée (permission seulement)
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ) ; PUT inchangé (FINANCE_SETTINGS_MANAGE)
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          {
+            description: "Inchangé (StockSettingsRecord, types-lot5-referentiel.ts)",
+          }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/items:
+    get:
+      tags: [Referentiel]
+      summary: Liste des articles — réponse inchangée
+      x-statut: modifiée (permission seulement)
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ) ; POST inchangé (FINANCE_SETTINGS_MANAGE) + audit STOCK_ITEM_CREATED
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200": { description: "Inchangé (StockItemRecord[])" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/items/{itemId}:
+    get:
+      tags: [Referentiel]
+      summary: Détail d'un article — réponse inchangée
+      x-statut: modifiée (permission seulement)
+      x-permission: STOCK_VIEW ; PATCH inchangé (FINANCE_SETTINGS_MANAGE) + audit STOCK_ITEM_UPDATED avec changes (dont l'unité)
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/ItemId"
+      responses:
+        "200": { description: "Inchangé (StockItemRecord)" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/stock/locations:
+    get:
+      tags: [Referentiel]
+      summary: Liste des lieux — un champ ajouté
+      x-statut: modifiée
+      x-permission: STOCK_VIEW (était FINANCE_ACCOUNTS_READ) ; POST inchangé + audit STOCK_LOCATION_CREATED
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - { name: onlyActive, in: query, schema: { type: boolean } }
+        - {
+            name: kind,
+            in: query,
+            schema: { type: string, enum: [WAREHOUSE, SITE] },
+          }
+      responses:
+        "200":
+          description: StockLocationRecord[] + countInProgress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/LocationView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/stock/locations/{locationId}:
+    patch:
+      tags: [Referentiel]
+      summary: Corriger un lieu — désactivation refusée pendant un inventaire
+      x-statut: modifiée
+      x-permission: FINANCE_SETTINGS_MANAGE (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_LOCATION_UPDATED
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: locationId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200": { description: "Inchangé (StockLocationRecord)" }
+        "409":
+          description: Désactivation d'un lieu portant un inventaire DRAFT ou COUNTED (STOCK_COUNT_IN_PROGRESS)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  # ===========================================================================
+  # Chantiers (A7, A9) — sous /finance/sites et /finance/cash-vouchers
+  # ===========================================================================
+  /tenants/{tenantId}/finance/sites/{siteId}/stock/enable:
+    post:
+      tags: [Chantiers]
+      summary: Basculer un chantier au stock — propose l'inventaire d'ouverture
+      x-statut: modifiée
+      x-permission: FINANCE_SETTINGS_MANAGE (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      x-audit: STOCK_SITE_ENABLED (critique)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              { type: object, additionalProperties: false, properties: {} }
+      responses:
+        "200":
+          description: SiteStockStatusRecord + openingCountSuggested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/SiteStockStatusView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/stock/status:
+    get:
+      tags: [Chantiers]
+      summary: Statut de stock d'un chantier — openingCountSuggested ajouté
+      x-statut: modifiée
+      x-permission: FINANCE_ACCOUNTS_READ (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Statut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data: { $ref: "#/components/schemas/SiteStockStatusView" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/stock/reconciliation:
+    get:
+      tags: [Chantiers]
+      summary: Rapprochement — deux couples descriptifs par ligne, formule de l'écart inchangée
+      description: >
+        Doctrine « montré, pas jugé » intacte (stock-rapprochement.ts:54-58) :
+        les champs ajoutés expliquent le restant, ils ne qualifient rien.
+        Pendant un comptage du lieu du chantier, le restant est masqué (spec
+        §8.2) et la réponse porte meta.
+      x-statut: modifiée
+      x-permission: FINANCE_ACCOUNTS_READ (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      x-masquage-aveugle: lines[].remainingQuantity, lines[].remainingValue et remainingValue de l'en-tête à null pendant un inventaire DRAFT du lieu du chantier, pour un appelant sans STOCK_COUNT_VALIDATE
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: >
+            SiteStockReconciliationRecord inchangé ; chaque élément de lines reçoit
+            les champs de ReconciliationLineAdditions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    description: "SiteStockReconciliationRecord (types-lot5-rapprochement.ts:210-222) dont chaque ligne est étendue"
+                    properties:
+                      remainingValue:
+                        {
+                          type: number,
+                          nullable: true,
+                          description: "null pendant un comptage du lieu (aveugle)",
+                        }
+                      lines:
+                        type: array
+                        items:
+                          {
+                            $ref: "#/components/schemas/ReconciliationLineAdditions",
+                          }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/closure-blockers:
+    get:
+      tags: [Chantiers]
+      summary: Bloqueurs de clôture — trois bloqueurs de stock ajoutés (A7-R3)
+      x-statut: modifiée
+      x-permission: FINANCE_ACCOUNTS_READ (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: SiteClosureBlocker[] (types-lot4-closing.ts:292-303)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ClosureBlocker" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/close:
+    post:
+      tags: [Chantiers]
+      summary: Clôturer un chantier — refusée tant qu'un bloqueur de stock subsiste
+      description: >
+        409 dont le message concatène les messages des bloqueurs, y compris
+        STOCK_COUNT, STOCK_RESIDUAL et STOCK_CLOSING_COUNT_MISSING (comportement
+        de site-closing.ts:801-804). Prend le verrou stock-site du chantier avant
+        collectClosureBlockers (spec A7-R3 bis).
+      x-statut: modifiée (comportement)
+      x-permission: FINANCE_DOCUMENTS_VALIDATE (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200": { description: "Inchangé (SiteClosureRecord)" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/cash-vouchers/{voucherId}/validate:
+    post:
+      tags: [Chantiers]
+      summary: Valider une pièce de caisse — peut ouvrir une alerte CASH_MATERIAL_PURCHASE (A9)
+      description: >
+        Réponse inchangée. Effet ajouté dans la transaction, à côté de
+        raiseBudgetAlertIfNeededTx (cash.ts:379), sans jamais lever d'exception.
+      x-statut: modifiée (effet de bord)
+      x-permission: FINANCE_DOCUMENTS_VALIDATE (inchangé)
+      x-fonctionnalite: CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - {
+            name: voucherId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200": { description: "Inchangé (CashVoucherRecord)" }
+
+  /tenants/{tenantId}/dashboard:
+    get:
+      tags: [Alertes]
+      summary: Tableau de bord — workQueue reçoit la nature STOCK_ALERT (B7-R5)
+      description: >
+        DashboardTask.kind (dashboard-service.ts:62-77) s'étend de 'STOCK_ALERT'
+        pour un appelant qui détient STOCK_ALERTS_VIEW et STOCK_VALUES_VIEW dans
+        une agence qui a CONSTRUCTION. id = `stock-alert:<alertId>`, title = titre
+        neutre de l'alerte, description = lieu ou chantier, amount = montant ou
+        null, occurredAt = raisedAt, severity = warning | info,
+        href = `/tenant/<tenantId>/finance/stock/controle?alerte=<alertId>`
+        (route web de l'écran Contrôle, ecrans.md §10.4).
+      x-statut: modifiée
+      x-permission: inchangée (route du tableau de bord)
+      x-fonctionnalite: CORE (inchangé) ; la nature STOCK_ALERT n'apparaît qu'avec CONSTRUCTION
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200": { description: "TenantDashboard inchangé hors workQueue[].kind" }
+
+components:
+  parameters:
+    TenantId:
+      { name: tenantId, in: path, required: true, schema: { type: string } }
+    CountId:
+      {
+        name: countId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    ItemId:
+      {
+        name: itemId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    SlipId:
+      {
+        name: slipId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    TakerId:
+      {
+        name: takerId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    AttachmentId:
+      {
+        name: attachmentId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    AlertId:
+      {
+        name: alertId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    InvoiceId:
+      {
+        name: invoiceId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    SiteId:
+      {
+        name: siteId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    MovementFilterItemId:
+      { name: itemId, in: query, schema: { type: string, format: uuid } }
+    MovementFilterLocationId:
+      { name: locationId, in: query, schema: { type: string, format: uuid } }
+    MovementFilterSiteId:
+      { name: siteId, in: query, schema: { type: string, format: uuid } }
+    MovementFilterType:
+      {
+        name: type,
+        in: query,
+        schema: { $ref: "#/components/schemas/MovementType" },
+      }
+    MovementFilterTakerId:
+      name: takerId
+      in: query
+      description: Filtre par personne — réservé à STOCK_VALUES_VIEW (403 sinon)
+      schema: { type: string, format: uuid }
+    MovementFilterCreatedByUserId:
+      name: createdByUserId
+      in: query
+      description: Réservé à STOCK_VALUES_VIEW (403 sinon)
+      schema: { type: string }
+    MovementFilterRequestedBy:
+      name: requestedBy
+      in: query
+      description: Contient, insensible à la casse. Filtre par personne — réservé à STOCK_VALUES_VIEW (403 sinon).
+      schema: { type: string, maxLength: 120 }
+    MovementFilterSlipId:
+      name: slipId
+      in: query
+      description: Mouvements d'un bon (question Q6 des écrans)
+      schema: { type: string, format: uuid }
+    MovementFilterMovementId:
+      name: movementId
+      in: query
+      description: Un mouvement, ou les deux moitiés de son transfert (lien d'une alerte StockMovement)
+      schema: { type: string, format: uuid }
+    MovementFilterFrom:
+      { name: from, in: query, schema: { type: string, format: date } }
+    MovementFilterTo:
+      { name: to, in: query, schema: { type: string, format: date } }
+
+  responses:
+    BadRequest:
+      description: >
+        Requête invalide. Codes : BAD_REQUEST (Zod, errors[]), STOCK_DATE_IN_FUTURE,
+        STOCK_DATE_TOO_OLD, STOCK_REQUESTER_REQUIRED, STOCK_TAKER_REQUIRED,
+        STOCK_REASON_REQUIRED, STOCK_REASON_NOT_ALLOWED,
+        STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED, STOCK_ATTACHMENT_TYPE.
+        (STOCK_UNIT_COST_REQUIRED est retiré en révision 2 : la chaîne de prix
+        A8-R3 s'applique à tout appelant.)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: >
+        403. Codes : FORBIDDEN (permission manquante), MODULE_NOT_INCLUDED
+        (CONSTRUCTION non souscrit, mode enforce), STOCK_VALUE_FIELD_FORBIDDEN
+        (valeur envoyée sans STOCK_VALUES_VIEW, ou filtre par personne :
+        takerId, createdByUserId, requestedBy),
+        STOCK_COUNT_SELF_VALIDATION_FORBIDDEN (A1-R2),
+        STOCK_ATTACHMENT_REMOVAL_FORBIDDEN.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Introuvable — ou appartient à une autre agence (même réponse).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: >
+        409. Codes : STOCK_INSUFFICIENT, STOCK_SITE_CLOSED, STOCK_LOCATION_INACTIVE,
+        STOCK_ITEM_INACTIVE, STOCK_INVOICE_NOT_VALIDATED, STOCK_RETURN_EXCEEDS_RECEIVED,
+        STOCK_RETURN_UNVALUED, STOCK_COUNT_ALREADY_OPEN, STOCK_OPENING_COUNT_EXISTS,
+        STOCK_OPENING_COUNT_NOT_ALLOWED, STOCK_COUNT_WRONG_STATUS,
+        STOCK_COUNT_EMPTY, STOCK_COUNT_INCOMPLETE (data.items),
+        STOCK_COUNT_UNCOUNTED_LINES (data.items),
+        STOCK_COUNT_UNJUSTIFIED_VARIANCE (data.items),
+        STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS (data.items), STOCK_COUNT_IN_PROGRESS,
+        STOCK_TAKER_DUPLICATE (data.existingTakerId), STOCK_TAKER_INACTIVE,
+        STOCK_IDEMPOTENCY_MISMATCH, STOCK_ATTACHMENT_TARGET_NOT_ALLOWED,
+        STOCK_ALERT_ALREADY_ACKNOWLEDGED, CONFLICT (bloqueurs de clôture).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    # ---------------------------------------------------------------- communs
+    ErrorResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, enum: [false] }
+        message:
+          {
+            type: string,
+            description: "Traduit par t() selon la langue de la requête",
+          }
+        error:
+          { type: string, description: "Alias rétro-compatible de message" }
+        code: { $ref: "#/components/schemas/StockErrorCode" }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+        data:
+          type: object
+          description: >
+            Charge propre au code : items pour STOCK_COUNT_UNJUSTIFIED_VARIANCE,
+            STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS, STOCK_COUNT_INCOMPLETE,
+            STOCK_COUNT_UNCOUNTED_LINES et, s'il est connu, STOCK_INSUFFICIENT
+            (sans aucune quantité pour un lieu en comptage).
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  itemId: { type: string, format: uuid }
+                  itemLabel: { type: string }
+            existingTakerId: { type: string, format: uuid }
+
+    StockErrorCode:
+      type: string
+      description: >
+        Codes stables, levés en AppError (error-middleware.ts:69-91) et ajoutés à
+        ErrorCode. Les codes génériques existants restent possibles.
+      enum:
+        - BAD_REQUEST
+        - FORBIDDEN
+        - NOT_FOUND
+        - CONFLICT
+        - MODULE_NOT_INCLUDED
+        - STOCK_INSUFFICIENT
+        - STOCK_DATE_IN_FUTURE
+        - STOCK_DATE_TOO_OLD
+        - STOCK_REQUESTER_REQUIRED
+        - STOCK_TAKER_REQUIRED
+        - STOCK_TAKER_INACTIVE
+        - STOCK_TAKER_DUPLICATE
+        - STOCK_REASON_REQUIRED
+        - STOCK_REASON_NOT_ALLOWED
+        - STOCK_VALUE_FIELD_FORBIDDEN
+        - STOCK_SITE_CLOSED
+        - STOCK_LOCATION_INACTIVE
+        - STOCK_ITEM_INACTIVE
+        - STOCK_INVOICE_NOT_VALIDATED
+        - STOCK_RETURN_EXCEEDS_RECEIVED
+        - STOCK_RETURN_UNVALUED
+        - STOCK_COUNT_ALREADY_OPEN
+        - STOCK_OPENING_COUNT_EXISTS
+        - STOCK_OPENING_COUNT_NOT_ALLOWED
+        - STOCK_COUNT_WRONG_STATUS
+        - STOCK_COUNT_EMPTY
+        - STOCK_COUNT_INCOMPLETE
+        - STOCK_COUNT_UNCOUNTED_LINES
+        - STOCK_COUNT_UNJUSTIFIED_VARIANCE
+        - STOCK_COUNT_NEGATIVE_AFTER_MOVEMENTS
+        - STOCK_COUNT_SELF_VALIDATION_FORBIDDEN
+        - STOCK_COUNT_SELF_VALIDATION_REASON_REQUIRED
+        - STOCK_COUNT_IN_PROGRESS
+        - STOCK_IDEMPOTENCY_MISMATCH
+        - STOCK_ATTACHMENT_TYPE
+        - STOCK_ATTACHMENT_TOO_LARGE
+        - STOCK_ATTACHMENT_REMOVAL_FORBIDDEN
+        - STOCK_ATTACHMENT_TARGET_NOT_ALLOWED
+        - STOCK_ALERT_ALREADY_ACKNOWLEDGED
+        - STOCK_EXPORT_TOO_LARGE
+
+    Meta:
+      type: object
+      required: [valuesVisible, blindLocationIds]
+      properties:
+        valuesVisible:
+          type: boolean
+          description: Faux sans STOCK_VALUES_VIEW ; tous les champs « valeur » valent alors null.
+        blindLocationIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: Lieux en comptage dont les quantités sont masquées à l'appelant (vide pour un détenteur de STOCK_COUNT_VALIDATE).
+        nextCursor:
+          type: string
+          nullable: true
+          description: Routes paginées seulement ; null à la dernière page.
+
+    MovementType:
+      type: string
+      enum: [RECEIPT, ISSUE, TRANSFER, ADJUSTMENT, SUPPLIER_RETURN, SCRAP]
+    ReasonCode:
+      type: string
+      description: "Liste fermée ; applicabilité par contexte : spec.md §4"
+      enum:
+        [
+          BREAKAGE,
+          DETERIORATION,
+          COUNTING_ERROR,
+          ENTRY_ERROR,
+          UNIT_CONFUSION,
+          UNRECORDED_ISSUE,
+          UNRECORDED_RECEIPT,
+          UNEXPLAINED_DISAPPEARANCE,
+          OPENING_BALANCE,
+          NON_CONFORMING,
+          DAMAGED_ON_DELIVERY,
+          EXCESS_DELIVERY,
+          SITE_SUPPLY,
+          RETURN_TO_WAREHOUSE,
+          SITE_EVACUATION,
+          REBALANCING,
+          OTHER,
+        ]
+    CountStatus: { type: string, enum: [DRAFT, COUNTED, VALIDATED, CANCELLED] }
+    CountKind: { type: string, enum: [REGULAR, OPENING, CLOSING] }
+    ValuationSource:
+      {
+        type: string,
+        enum: [DECLARED, INVOICE_LINE, AVERAGE_COST, LAST_RECEIPT, NONE],
+      }
+    SlipKind: { type: string, enum: [RECEIPT, ISSUE, COUNT_REPORT] }
+    AttachmentTarget: { type: string, enum: [MOVEMENT, SLIP, COUNT_LINE] }
+    AttachmentPurpose:
+      { type: string, enum: [GOODS_PHOTO, DELIVERY_NOTE, SIGNED_SLIP, OTHER] }
+    AlertKind:
+      type: string
+      enum:
+        [
+          COUNT_VARIANCE,
+          COUNT_LINE_SET_ASIDE,
+          COUNT_CANCELLED,
+          LARGE_ISSUE,
+          LARGE_SCRAP,
+          RECEIPT_REPEATED,
+          RECEIPT_OVER_INVOICE,
+          RECEIPT_UNVALUED,
+          CASH_MATERIAL_PURCHASE,
+          COUNT_SELF_VALIDATED,
+        ]
+    AlertSeverity: { type: string, enum: [INFO, WARNING] }
+    AlertStatus: { type: string, enum: [OPEN, ACKNOWLEDGED] }
+
+    ClientRequestId:
+      type: string
+      format: uuid
+      description: "Clé d'idempotence tirée par l'appareil (B3-R2). Rejeu même utilisateur, même corps → 200 et résultat d'origine re-masqué ; corps différent ou autre utilisateur → 409 STOCK_IDEMPOTENCY_MISMATCH."
+
+    MovementDate:
+      type: string
+      format: date
+      description: "AAAA-MM-JJ ; ≤ aujourd'hui (UTC) ; ≥ aujourd'hui − backdatingLimitDays (A5-R4)"
+
+    # ---------------------------------------------------------------- mouvements
+    MovementView:
+      type: object
+      description: >
+        StockMovementRecord (types-lot5-mouvements.ts:152-194) étendu. Les champs
+        « valeur » valent null sans STOCK_VALUES_VIEW ; quantityAfter vaut null
+        pour un lieu en comptage (appelant sans STOCK_COUNT_VALIDATE).
+      required:
+        [
+          id,
+          type,
+          itemId,
+          itemReference,
+          itemLabel,
+          itemUnit,
+          locationId,
+          locationLabel,
+          movementDate,
+          quantity,
+          isDecrease,
+          unitCost,
+          totalValue,
+          currency,
+          quantityAfter,
+          valueAfter,
+          siteId,
+          siteLabel,
+          costCategoryLabel,
+          requestedBy,
+          takerId,
+          takerLabel,
+          supplierInvoiceId,
+          supplierInvoiceReference,
+          transferGroupId,
+          stockCountId,
+          slipId,
+          slipNumber,
+          reasonCode,
+          reason,
+          valuationSource,
+          supplierCreditValue,
+          createdByUserId,
+          createdByLabel,
+          createdAt,
+          entryLagDays,
+          attachmentsCount,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/MovementType" }
+        itemId: { type: string, format: uuid }
+        itemReference: { type: string }
+        itemLabel: { type: string }
+        itemUnit: { type: string }
+        locationId: { type: string, format: uuid }
+        locationLabel: { type: string }
+        movementDate: { type: string, format: date-time }
+        quantity:
+          {
+            type: number,
+            description: "Toujours positive ; le sens est dans type / isDecrease",
+          }
+        isDecrease: { type: boolean }
+        unitCost:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; masqué aussi pendant un comptage (aveugle)",
+          }
+        totalValue:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; pour SUPPLIER_RETURN, valeur sortie du 311",
+          }
+        currency: { type: string, example: XOF }
+        quantityAfter:
+          {
+            type: number,
+            nullable: true,
+            description: "masqué pendant un comptage (aveugle)",
+          }
+        valueAfter:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; masqué aussi pendant un comptage (aveugle)",
+          }
+        siteId: { type: string, format: uuid, nullable: true }
+        siteLabel: { type: string, nullable: true }
+        costCategoryLabel: { type: string, nullable: true }
+        requestedBy:
+          {
+            type: string,
+            nullable: true,
+            description: "Texte, ou instantané du libellé du preneur",
+          }
+        takerId: { type: string, format: uuid, nullable: true }
+        takerLabel:
+          {
+            type: string,
+            nullable: true,
+            description: "Libellé ACTUEL du preneur (« Nom — Équipe »)",
+          }
+        supplierInvoiceId: { type: string, format: uuid, nullable: true }
+        supplierInvoiceReference: { type: string, nullable: true }
+        transferGroupId: { type: string, format: uuid, nullable: true }
+        stockCountId: { type: string, format: uuid, nullable: true }
+        slipId: { type: string, format: uuid, nullable: true }
+        slipNumber: { type: string, nullable: true, example: "BS-2026-00042" }
+        reasonCode:
+          {
+            allOf: [{ $ref: "#/components/schemas/ReasonCode" }],
+            nullable: true,
+          }
+        reason:
+          {
+            type: string,
+            nullable: true,
+            description: "Précision libre ; visible au journal (A4-R4)",
+          }
+        valuationSource:
+          {
+            allOf: [{ $ref: "#/components/schemas/ValuationSource" }],
+            nullable: true,
+            description: "valeur (null sans STOCK_VALUES_VIEW) ; RECEIPT seulement",
+          }
+        supplierCreditValue:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; SUPPLIER_RETURN seulement",
+          }
+        createdByUserId: { type: string }
+        createdByLabel: { type: string }
+        createdAt:
+          {
+            type: string,
+            format: date-time,
+            description: "Heure serveur de saisie",
+          }
+        entryLagDays:
+          {
+            type: integer,
+            minimum: 0,
+            description: "jour(createdAt) − jour(movementDate)",
+          }
+        attachmentsCount:
+          {
+            type: integer,
+            minimum: 0,
+            description: "Pièces jointes non retirées",
+          }
+
+    BalanceView:
+      type: object
+      required:
+        [
+          itemId,
+          itemReference,
+          itemLabel,
+          itemUnit,
+          locationId,
+          locationLabel,
+          quantity,
+          value,
+          averageUnitCost,
+          currency,
+        ]
+      properties:
+        itemId: { type: string, format: uuid }
+        itemReference: { type: string }
+        itemLabel: { type: string }
+        itemUnit: { type: string }
+        locationId: { type: string, format: uuid }
+        locationLabel: { type: string }
+        quantity:
+          {
+            type: number,
+            nullable: true,
+            description: "masqué pendant un comptage (aveugle)",
+          }
+        value:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; masqué aussi pendant un comptage (aveugle)",
+          }
+        averageUnitCost:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; masqué aussi pendant un comptage (aveugle)",
+          }
+        currency: { type: string }
+
+    SlipSummary:
+      type: object
+      required: [id, kind, number, documentDate, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/SlipKind" }
+        number:
+          {
+            type: string,
+            example: "BR-2026-00042",
+            description: "Préfixe-année-rang sur 5 chiffres",
+          }
+        documentDate: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    SlipView:
+      allOf:
+        - $ref: "#/components/schemas/SlipSummary"
+        - type: object
+          required:
+            [
+              location,
+              site,
+              taker,
+              requestedBy,
+              supplierInvoice,
+              stockCountId,
+              createdByLabel,
+              totalValue,
+              currency,
+              movements,
+              attachments,
+            ]
+          properties:
+            location:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                label: { type: string }
+            site:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+            taker:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                label: { type: string }
+            requestedBy: { type: string, nullable: true }
+            supplierInvoice:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                reference: { type: string }
+                supplierName: { type: string }
+            stockCountId: { type: string, format: uuid, nullable: true }
+            createdByLabel: { type: string }
+            totalValue: { type: number, nullable: true, description: "valeur" }
+            currency: { type: string }
+            movements:
+              type: array
+              items: { $ref: "#/components/schemas/MovementView" }
+            attachments:
+              type: array
+              items: { $ref: "#/components/schemas/AttachmentView" }
+
+    ReceiptLine:
+      type: object
+      additionalProperties: false
+      required: [itemId, quantity]
+      properties:
+        itemId: { type: string, format: uuid }
+        quantity: { type: number, exclusiveMinimum: true, minimum: 0 }
+        unitCost:
+          type: number
+          minimum: 0
+          description: >
+            Facultatif. Réservé à STOCK_VALUES_VIEW (sinon 403
+            STOCK_VALUE_FIELD_FORBIDDEN). Absent : chaîne de repli A8-R3 (ligne
+            de facture, coût moyen du lieu, dernier prix, zéro), pour tout appelant.
+        supplierInvoiceLineId:
+          type: string
+          format: uuid
+          description: Ligne de la MÊME facture d'où prendre le prix unitaire (A8-R3).
+
+    ReceiptRequest:
+      type: object
+      additionalProperties: false
+      required: [locationId, supplierInvoiceId, receiptDate, lines]
+      properties:
+        locationId: { type: string, format: uuid }
+        supplierInvoiceId: { type: string, format: uuid }
+        receiptDate: { $ref: "#/components/schemas/MovementDate" }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/ReceiptLine" }
+        clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    ReceiptControl:
+      type: object
+      required: [code, severity, message, amount, threshold, alertId, itemIds]
+      properties:
+        code:
+          {
+            type: string,
+            enum: [RECEIPT_REPEATED, RECEIPT_OVER_INVOICE, RECEIPT_UNVALUED],
+          }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        message:
+          type: string
+          example: "Cette facture a déjà été réceptionnée (BR-2026-00012 du 02/10/2026)."
+          description: Traduit ; construit SANS montant pour un appelant sans STOCK_VALUES_VIEW.
+        itemIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: Articles concernés (lignes sans prix pour RECEIPT_UNVALUED) ; vide sinon. Question Q15 des écrans.
+        amount:
+          { type: number, nullable: true, description: "valeur — cumul reçu" }
+        threshold:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur — montant de la facture",
+          }
+        alertId: { type: string, format: uuid }
+
+    ReceiptResultEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [slip, movements, controls]
+          description: "Changement de forme : data était un tableau de mouvements."
+          properties:
+            slip: { $ref: "#/components/schemas/SlipSummary" }
+            movements:
+              type: array
+              items: { $ref: "#/components/schemas/MovementView" }
+            controls:
+              type: array
+              items: { $ref: "#/components/schemas/ReceiptControl" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    RequesterFields:
+      type: object
+      description: >
+        Au moins l'un des deux (400 STOCK_REQUESTER_REQUIRED). requireTaker = true
+        exige takerId (400 STOCK_TAKER_REQUIRED). Avec takerId, requestedBy est
+        ignoré et remplacé par l'instantané du libellé du preneur.
+      properties:
+        takerId: { type: string, format: uuid }
+        requestedBy: { type: string, minLength: 1, maxLength: 200 }
+
+    IssueLine:
+      type: object
+      additionalProperties: false
+      required: [itemId, quantity, costCategoryId]
+      properties:
+        itemId: { type: string, format: uuid }
+        quantity: { type: number, exclusiveMinimum: true, minimum: 0 }
+        costCategoryId:
+          {
+            type: string,
+            format: uuid,
+            description: "Exigé, jamais deviné (inchangé)",
+          }
+
+    IssueRequest:
+      allOf:
+        - $ref: "#/components/schemas/RequesterFields"
+        - type: object
+          required: [locationId, siteId, issueDate, lines]
+          properties:
+            locationId: { type: string, format: uuid }
+            siteId: { type: string, format: uuid }
+            issueDate: { $ref: "#/components/schemas/MovementDate" }
+            lines:
+              type: array
+              minItems: 1
+              maxItems: 50
+              items: { $ref: "#/components/schemas/IssueLine" }
+            clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    IssueRequestSingle:
+      description: Forme actuelle (un article), acceptée et convertie en une ligne.
+      allOf:
+        - $ref: "#/components/schemas/RequesterFields"
+        - type: object
+          required:
+            [locationId, itemId, quantity, siteId, costCategoryId, issueDate]
+          properties:
+            locationId: { type: string, format: uuid }
+            itemId: { type: string, format: uuid }
+            quantity: { type: number, exclusiveMinimum: true, minimum: 0 }
+            siteId: { type: string, format: uuid }
+            costCategoryId: { type: string, format: uuid }
+            issueDate: { $ref: "#/components/schemas/MovementDate" }
+            clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    SlipResultEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [slip, movements]
+          description: "Changement de forme : data était un mouvement unique."
+          properties:
+            slip: { $ref: "#/components/schemas/SlipSummary" }
+            movements:
+              type: array
+              items: { $ref: "#/components/schemas/MovementView" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    TransferRequest:
+      allOf:
+        - $ref: "#/components/schemas/RequesterFields"
+        - type: object
+          required:
+            [
+              fromLocationId,
+              toLocationId,
+              itemId,
+              quantity,
+              transferDate,
+              reasonCode,
+            ]
+          properties:
+            fromLocationId: { type: string, format: uuid }
+            toLocationId: { type: string, format: uuid }
+            itemId: { type: string, format: uuid }
+            quantity: { type: number, exclusiveMinimum: true, minimum: 0 }
+            transferDate: { $ref: "#/components/schemas/MovementDate" }
+            reasonCode:
+              type: string
+              enum:
+                [
+                  SITE_SUPPLY,
+                  RETURN_TO_WAREHOUSE,
+                  SITE_EVACUATION,
+                  REBALANCING,
+                  OTHER,
+                ]
+            reason:
+              {
+                type: string,
+                maxLength: 500,
+                description: "Obligatoire pour OTHER",
+              }
+            clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    TransferResultEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required:
+            [
+              transferGroupId,
+              movements,
+              fromLocationLabel,
+              toLocationLabel,
+              quantity,
+              value,
+              currency,
+            ]
+          properties:
+            transferGroupId: { type: string, format: uuid }
+            movements:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items: { $ref: "#/components/schemas/MovementView" }
+            fromLocationLabel: { type: string }
+            toLocationLabel: { type: string }
+            quantity: { type: number }
+            value: { type: number, nullable: true, description: "valeur" }
+            currency: { type: string }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    SupplierReturnRequest:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          locationId,
+          supplierInvoiceId,
+          itemId,
+          quantity,
+          returnDate,
+          reasonCode,
+        ]
+      properties:
+        locationId: { type: string, format: uuid }
+        supplierInvoiceId: { type: string, format: uuid }
+        supplierInvoiceLineId:
+          type: string
+          format: uuid
+          description: >
+            Ligne de la MÊME facture qui porte l'article : son prix unitaire
+            valorise la part fournisseur (401). Exigée quand une réception de
+            l'article sur cette facture n'a pas un prix DECLARED ou INVOICE_LINE
+            (409 STOCK_RETURN_UNVALUED sinon, spec A6-R3 bis).
+        itemId: { type: string, format: uuid }
+        quantity: { type: number, exclusiveMinimum: true, minimum: 0 }
+        returnDate: { $ref: "#/components/schemas/MovementDate" }
+        reasonCode:
+          {
+            type: string,
+            enum: [NON_CONFORMING, DAMAGED_ON_DELIVERY, EXCESS_DELIVERY, OTHER],
+          }
+        reason:
+          {
+            type: string,
+            maxLength: 500,
+            description: "Obligatoire pour OTHER",
+          }
+        clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    ScrapRequest:
+      type: object
+      additionalProperties: false
+      required: [locationId, itemId, quantity, scrapDate, reasonCode]
+      properties:
+        locationId: { type: string, format: uuid }
+        itemId: { type: string, format: uuid }
+        quantity: { type: number, exclusiveMinimum: true, minimum: 0 }
+        scrapDate: { $ref: "#/components/schemas/MovementDate" }
+        reasonCode: { type: string, enum: [BREAKAGE, DETERIORATION, OTHER] }
+        reason:
+          {
+            type: string,
+            maxLength: 500,
+            description: "Obligatoire pour OTHER",
+          }
+        clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    MovementEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        data: { $ref: "#/components/schemas/MovementView" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    InvoiceLineView:
+      type: object
+      required: [id, label, quantity, unitPrice, amount, hasUnitPrice]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        quantity: { type: number, nullable: true }
+        unitPrice: { type: number, nullable: true, description: "valeur" }
+        amount: { type: number, nullable: true, description: "valeur" }
+        hasUnitPrice:
+          {
+            type: boolean,
+            description: "Vrai si la ligne peut valoriser une réception (A8-R3, étape 2) ou un retour (A6-R3 bis). Rendu à tous : ce n'est pas une valeur.",
+          }
+
+    ReceivableInvoice:
+      type: object
+      description: Facture validée réceptionnable, SANS ses lignes (contexte terrain et recherche).
+      required:
+        [
+          id,
+          reference,
+          supplierName,
+          invoiceDate,
+          siteId,
+          siteName,
+          receiptCount,
+          lastReceiptAt,
+          amount,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        reference: { type: string }
+        supplierName: { type: string }
+        invoiceDate: { type: string, format: date-time }
+        siteId: { type: string, format: uuid, nullable: true }
+        siteName: { type: string, nullable: true }
+        receiptCount: { type: integer, minimum: 0 }
+        lastReceiptAt: { type: string, format: date-time, nullable: true }
+        amount: { type: number, nullable: true, description: "valeur" }
+
+    InvoiceReceiptsView:
+      type: object
+      required:
+        [invoice, receipts, returns, byItem, receivedValue, returnedValue]
+      properties:
+        invoice:
+          type: object
+          required:
+            [id, reference, supplierName, invoiceDate, status, amount, lines]
+          properties:
+            id: { type: string, format: uuid }
+            reference: { type: string }
+            supplierName: { type: string }
+            invoiceDate: { type: string, format: date-time }
+            status: { type: string, enum: [DRAFT, VALIDATED, VOIDED] }
+            amount: { type: number, nullable: true, description: "valeur" }
+            lines:
+              type: array
+              description: Lignes de la facture (déplacées du contexte terrain, spec B3-R1).
+              items: { $ref: "#/components/schemas/InvoiceLineView" }
+        byItem:
+          type: array
+          description: >
+            Cumul par article, calculé par le serveur (question Q8 des écrans) :
+            l'écran du retour n'additionne rien.
+          items:
+            type: object
+            required:
+              [
+                itemId,
+                itemLabel,
+                itemUnit,
+                receivedQuantity,
+                returnedQuantity,
+                returnableQuantity,
+                returnNeedsInvoiceLine,
+              ]
+            properties:
+              itemId: { type: string, format: uuid }
+              itemLabel: { type: string }
+              itemUnit: { type: string }
+              receivedQuantity: { type: number }
+              returnedQuantity: { type: number }
+              returnableQuantity:
+                {
+                  type: number,
+                  description: "reçu − retourné (le solde du lieu peut limiter davantage)",
+                }
+              returnNeedsInvoiceLine:
+                {
+                  type: boolean,
+                  description: "Vrai si un retour exige supplierInvoiceLineId (A6-R3 bis). Rendu à tous.",
+                }
+              valuationSources:
+                type: array
+                nullable: true
+                description: "valeur — sources de prix des réceptions de l'article"
+                items: { $ref: "#/components/schemas/ValuationSource" }
+        receipts:
+          type: array
+          items:
+            type: object
+            required:
+              [
+                slipId,
+                slipNumber,
+                receiptDate,
+                createdAt,
+                createdByLabel,
+                locationLabel,
+                lines,
+              ]
+            properties:
+              slipId:
+                {
+                  type: string,
+                  format: uuid,
+                  nullable: true,
+                  description: "Nul pour une réception d'avant le lot",
+                }
+              slipNumber: { type: string, nullable: true }
+              receiptDate: { type: string, format: date-time }
+              createdAt: { type: string, format: date-time }
+              createdByLabel: { type: string }
+              locationLabel: { type: string }
+              lines:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    itemId: { type: string, format: uuid }
+                    itemLabel: { type: string }
+                    itemUnit: { type: string }
+                    quantity: { type: number }
+                    unitCost:
+                      { type: number, nullable: true, description: "valeur" }
+                    totalValue:
+                      { type: number, nullable: true, description: "valeur" }
+        returns:
+          type: array
+          items: { $ref: "#/components/schemas/MovementView" }
+        receivedValue:
+          { type: number, nullable: true, description: "valeur — Σ réceptions" }
+        returnedValue:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur — Σ retours (coût de réception)",
+          }
+
+    # ---------------------------------------------------------------- terrain
+    FieldContext:
+      type: object
+      required:
+        [
+          locations,
+          sites,
+          costCategories,
+          items,
+          takers,
+          receivableInvoices,
+          reasonCodes,
+          settings,
+          abilities,
+          people,
+        ]
+      properties:
+        locations:
+          type: array
+          items: { $ref: "#/components/schemas/LocationView" }
+        sites:
+          type: array
+          description: Chantiers ouverts, plus les chantiers clos dont le lieu porte encore du stock (évacuation).
+          items:
+            type: object
+            required: [id, name, status, closed, stockEnabled, locationId]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              status: { type: string }
+              closed: { type: boolean }
+              stockEnabled: { type: boolean }
+              locationId: { type: string, format: uuid, nullable: true }
+        costCategories:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              label: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              reference: { type: string }
+              label: { type: string }
+              unit: { type: string }
+              category: { type: string, nullable: true }
+              defaultCostCategoryId:
+                { type: string, format: uuid, nullable: true }
+        takers:
+          type: array
+          items: { $ref: "#/components/schemas/TakerView" }
+        receivableInvoices:
+          type: array
+          description: >
+            Les 50 factures VALIDÉES les plus récentes des 180 derniers jours,
+            SANS leurs lignes (poids sur un téléphone en 3G). Au-delà :
+            GET /stock/receivable-invoices ; lignes : GET
+            /stock/supplier-invoices/{invoiceId}/receipts.
+          items: { $ref: "#/components/schemas/ReceivableInvoice" }
+        reasonCodes:
+          type: object
+          properties:
+            count:
+              {
+                type: array,
+                items: { $ref: "#/components/schemas/ReasonCode" },
+              }
+            scrap:
+              {
+                type: array,
+                items: { $ref: "#/components/schemas/ReasonCode" },
+              }
+            supplierReturn:
+              {
+                type: array,
+                items: { $ref: "#/components/schemas/ReasonCode" },
+              }
+            transfer:
+              {
+                type: array,
+                items: { $ref: "#/components/schemas/ReasonCode" },
+              }
+        settings:
+          type: object
+          properties:
+            requireTaker: { type: boolean }
+            backdatingLimitDays: { type: integer }
+        abilities:
+          type: object
+          description: Droits de l'appelant, pour n'afficher que les gestes permis.
+          properties:
+            canReceive: { type: boolean }
+            canIssue: { type: boolean }
+            canTransfer: { type: boolean }
+            canCount: { type: boolean }
+            canValidateCount: { type: boolean }
+            canDispose: { type: boolean }
+            canManageTakers: { type: boolean }
+            valuesVisible: { type: boolean }
+            canViewAlerts:
+              {
+                type: boolean,
+                description: "STOCK_ALERTS_VIEW (question Q1 des écrans)",
+              }
+            canManageSettings:
+              {
+                type: boolean,
+                description: "FINANCE_SETTINGS_MANAGE : référentiel et réglages de contrôle (Q1)",
+              }
+        people:
+          type: array
+          description: >
+            Employés et tâcherons actifs, pour lier un preneur ; vide sans
+            STOCK_TAKERS_MANAGE. Le nom seulement (spec B2-R6) : ni métier, ni
+            poste, ni contact.
+          items:
+            type: object
+            required: [kind, id, fullName]
+            properties:
+              kind: { type: string, enum: [EMPLOYEE, CONTRACTOR] }
+              id: { type: string, format: uuid }
+              fullName: { type: string }
+
+    LocationView:
+      type: object
+      description: StockLocationRecord (types-lot5-referentiel.ts) + countInProgress, siteClosed, openingCountSuggested, toRecount (questions Q2 des écrans, spec A2-R7, A7-R1).
+      required:
+        [
+          id,
+          tenantId,
+          kind,
+          label,
+          siteId,
+          siteLabel,
+          isActive,
+          countInProgress,
+          siteClosed,
+          openingCountSuggested,
+          toRecount,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string }
+        kind: { type: string, enum: [WAREHOUSE, SITE] }
+        label: { type: string }
+        siteId: { type: string, format: uuid, nullable: true }
+        siteLabel: { type: string, nullable: true }
+        isActive: { type: boolean }
+        countInProgress:
+          type: object
+          nullable: true
+          properties:
+            countId: { type: string, format: uuid }
+            status: { type: string, enum: [DRAFT, COUNTED] }
+            kind: { $ref: "#/components/schemas/CountKind" }
+        siteClosed:
+          {
+            type: boolean,
+            description: "Lieu d'un chantier clôturé (n'accepte ni réception ni transfert entrant)",
+          }
+        openingCountSuggested:
+          {
+            type: boolean,
+            description: "A7-R1 : lieu de chantier, bascule de moins de 30 jours, aucun OPENING validé ni en cours",
+          }
+        toRecount:
+          type: array
+          description: Articles écartés (ou non comptés) au dernier inventaire validé du lieu, pas recomptés depuis.
+          items:
+            type: object
+            required: [itemId, itemLabel, countId, setAsideAt]
+            properties:
+              itemId: { type: string, format: uuid }
+              itemLabel: { type: string }
+              countId: { type: string, format: uuid }
+              setAsideAt: { type: string, format: date-time }
+
+    # ---------------------------------------------------------------- inventaires
+    CreateCountRequest:
+      type: object
+      additionalProperties: false
+      required: [locationId, countedAt]
+      properties:
+        locationId: { type: string, format: uuid }
+        countedAt: { $ref: "#/components/schemas/MovementDate" }
+        kind:
+          {
+            allOf: [{ $ref: "#/components/schemas/CountKind" }],
+            default: REGULAR,
+          }
+
+    SetCountLineRequest:
+      type: object
+      additionalProperties: false
+      required: [itemId, countedQuantity]
+      properties:
+        itemId: { type: string, format: uuid }
+        countedQuantity:
+          { type: number, minimum: 0, description: "Zéro accepté" }
+        clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    JustifyLineRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCode]
+      properties:
+        reasonCode:
+          type: string
+          description: "Colonne « Inventaire » de spec.md §4, OPENING_BALANCE exclu (400 STOCK_REASON_NOT_ALLOWED)"
+          enum:
+            [
+              BREAKAGE,
+              DETERIORATION,
+              COUNTING_ERROR,
+              ENTRY_ERROR,
+              UNIT_CONFUSION,
+              UNRECORDED_ISSUE,
+              UNRECORDED_RECEIPT,
+              UNEXPLAINED_DISAPPEARANCE,
+              OTHER,
+            ]
+        reason:
+          {
+            type: string,
+            maxLength: 500,
+            nullable: true,
+            description: "Obligatoire pour OTHER",
+          }
+
+    ValidateCountRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        selfValidationReason:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: "Exigé seulement en dérogation (A1-R3) ; refusé (400) quand un autre validateur existe"
+
+    ReasonOnlyRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+
+    CountLineView:
+      type: object
+      required:
+        [
+          id,
+          itemId,
+          itemReference,
+          itemLabel,
+          itemUnit,
+          countedQuantity,
+          notCounted,
+          countedBlind,
+          countedByUserId,
+          countedByLabel,
+          countedAtServer,
+          expectedQuantity,
+          variance,
+          varianceValue,
+          unitCostAtValidation,
+          reasonCode,
+          reason,
+          justified,
+          justifiedByLabel,
+          justifiedAt,
+          setAside,
+          movementsSinceCapture,
+          attachmentsCount,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        itemId: { type: string, format: uuid }
+        itemReference: { type: string }
+        itemLabel: { type: string }
+        itemUnit: { type: string }
+        countedQuantity:
+          {
+            type: number,
+            nullable: true,
+            description: "null = ligne non comptée créée à la clôture du comptage (A2-R8)",
+          }
+        notCounted:
+          {
+            type: boolean,
+            description: "Vrai pour une ligne non comptée (A2-R8) : à écarter, jamais ajustée",
+          }
+        countedBlind:
+          {
+            type: boolean,
+            nullable: true,
+            description: "Faux si comptée par un détenteur de STOCK_COUNT_VALIDATE (A2-R9) ; null avant le lot ou non comptée",
+          }
+        countedByUserId: { type: string, nullable: true }
+        countedByLabel:
+          {
+            type: string,
+            nullable: true,
+            description: "Nul pour une ligne d'avant le lot",
+          }
+        countedAtServer: { type: string, format: date-time, nullable: true }
+        expectedQuantity:
+          {
+            type: number,
+            nullable: true,
+            description: "null en DRAFT, pour tous (aveugle)",
+          }
+        variance:
+          {
+            type: number,
+            nullable: true,
+            description: "compté − attendu ; null en DRAFT",
+          }
+        varianceValue:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; null en DRAFT ; figée à la validation",
+          }
+        unitCostAtValidation:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; VALIDATED seulement",
+          }
+        reasonCode:
+          {
+            allOf: [{ $ref: "#/components/schemas/ReasonCode" }],
+            nullable: true,
+          }
+        reason: { type: string, nullable: true }
+        justified:
+          {
+            type: boolean,
+            description: "Règle unique A4-R2 calculée par le serveur (reasonCode, ou motif libre d'une ligne d'avant le lot)",
+          }
+        justifiedByLabel: { type: string, nullable: true }
+        justifiedAt: { type: string, format: date-time, nullable: true }
+        setAside:
+          type: object
+          nullable: true
+          properties:
+            at: { type: string, format: date-time }
+            byLabel: { type: string }
+            reason: { type: string }
+        movementsSinceCapture:
+          {
+            type: integer,
+            nullable: true,
+            description: "VALIDATED seulement (A3-R4)",
+          }
+        attachmentsCount: { type: integer, minimum: 0 }
+
+    CountView:
+      type: object
+      required:
+        [
+          id,
+          tenantId,
+          locationId,
+          locationLabel,
+          kind,
+          status,
+          blind,
+          countedAt,
+          createdByUserId,
+          createdByLabel,
+          closedAt,
+          closedByLabel,
+          validatedAt,
+          validatedByLabel,
+          cancelledAt,
+          cancelReason,
+          selfValidated,
+          selfValidationReason,
+          counters,
+          lines,
+          linesCount,
+          uncountedLinesCount,
+          varianceCount,
+          countedValue,
+          varianceValueGross,
+          varianceValueNet,
+          setAsideVarianceValue,
+          currency,
+          slip,
+          validation,
+          toRecount,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string }
+        locationId: { type: string, format: uuid }
+        locationLabel: { type: string }
+        kind: { $ref: "#/components/schemas/CountKind" }
+        status: { $ref: "#/components/schemas/CountStatus" }
+        blind:
+          {
+            type: boolean,
+            description: "Vrai en DRAFT et en CANCELLED : attendu et écarts masqués à tous",
+          }
+        countedAt: { type: string, format: date-time }
+        createdByUserId: { type: string }
+        createdByLabel: { type: string }
+        closedAt: { type: string, format: date-time, nullable: true }
+        closedByLabel: { type: string, nullable: true }
+        validatedAt: { type: string, format: date-time, nullable: true }
+        validatedByLabel: { type: string, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        cancelReason: { type: string, nullable: true }
+        selfValidated: { type: boolean }
+        selfValidationReason: { type: string, nullable: true }
+        counters:
+          type: array
+          description: Compteurs de l'inventaire (counterUserIds, A1-R1), libellés.
+          items:
+            type: object
+            properties:
+              userId: { type: string }
+              label: { type: string }
+        lines:
+          type: array
+          description: Vide dans la liste sans withLines=true.
+          items: { $ref: "#/components/schemas/CountLineView" }
+        linesCount: { type: integer }
+        uncountedLinesCount:
+          {
+            type: integer,
+            description: "Lignes non comptées (A2-R8), écartées ou non",
+          }
+        varianceCount:
+          { type: integer, nullable: true, description: "null tant que blind" }
+        countedValue:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; figée à la validation",
+          }
+        varianceValueGross:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; Σ |écart| valorisé ; figée à la validation",
+          }
+        varianceValueNet:
+          type: number
+          nullable: true
+          description: >
+            valeur ; négatif quand il manque. En COUNTED : estimation au coût moyen
+            courant (comportement actuel) ; en VALIDATED : figée ; null tant que blind.
+        setAsideVarianceValue:
+          {
+            type: number,
+            nullable: true,
+            description: "valeur ; écart des lignes écartées, figé à la validation (A2-R7)",
+          }
+        currency: { type: string }
+        slip:
+          allOf: [{ $ref: "#/components/schemas/SlipSummary" }]
+          nullable: true
+          description: PVI, à partir de la validation
+        validation:
+          type: object
+          nullable: true
+          description: COUNTED seulement, calculé pour l'appelant (A1-R5, question Q5 des écrans).
+          properties:
+            callerIsCounter: { type: boolean }
+            selfValidationAllowed:
+              {
+                type: boolean,
+                description: "Aucun autre membre actif ne peut valider (test en base, A1-R3)",
+              }
+        toRecount:
+          type: array
+          description: Articles à recompter du lieu, rappelés à l'ouverture (A2-R7).
+          items:
+            type: object
+            properties:
+              itemId: { type: string, format: uuid }
+              itemLabel: { type: string }
+
+    CountEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        data: { $ref: "#/components/schemas/CountView" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    # ---------------------------------------------------------------- preneurs
+    TakerView:
+      type: object
+      required:
+        [
+          id,
+          label,
+          fullName,
+          teamOrCompany,
+          phone,
+          employeeId,
+          contractorId,
+          linkedPersonLabel,
+          isActive,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string, example: "Koné Ibrahim — Équipe maçonnerie" }
+        fullName: { type: string }
+        teamOrCompany: { type: string, nullable: true }
+        phone:
+          {
+            type: string,
+            nullable: true,
+            description: "null sans STOCK_TAKERS_MANAGE (B2-R6)",
+          }
+        employeeId: { type: string, format: uuid, nullable: true }
+        contractorId: { type: string, format: uuid, nullable: true }
+        linkedPersonLabel: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    CreateTakerRequest:
+      type: object
+      additionalProperties: false
+      required: [fullName]
+      properties:
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        teamOrCompany: { type: string, maxLength: 120, nullable: true }
+        phone: { type: string, maxLength: 30, nullable: true }
+        employeeId: { type: string, format: uuid, nullable: true }
+        contractorId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description: "Exclusif avec employeeId (400)",
+          }
+
+    UpdateTakerRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        teamOrCompany: { type: string, maxLength: 120, nullable: true }
+        phone:
+          {
+            type: string,
+            maxLength: 30,
+            nullable: true,
+            description: "null efface le numéro",
+          }
+        employeeId: { type: string, format: uuid, nullable: true }
+        contractorId: { type: string, format: uuid, nullable: true }
+        isActive: { type: boolean }
+
+    # ---------------------------------------------------------------- pièces jointes
+    AttachmentUpload:
+      type: object
+      required: [file, targetType, targetId]
+      properties:
+        file:
+          {
+            type: string,
+            format: binary,
+            description: "JPEG, PNG, WebP ou PDF, 10 Mo au plus",
+          }
+        targetType: { $ref: "#/components/schemas/AttachmentTarget" }
+        targetId:
+          {
+            type: string,
+            format: uuid,
+            description: "Mouvement, bon ou ligne d'inventaire",
+          }
+        purpose: { $ref: "#/components/schemas/AttachmentPurpose" }
+        caption: { type: string, maxLength: 500 }
+        clientRequestId: { $ref: "#/components/schemas/ClientRequestId" }
+
+    AttachmentView:
+      type: object
+      required:
+        [
+          id,
+          targetType,
+          targetId,
+          purpose,
+          caption,
+          fileName,
+          mimeType,
+          sizeBytes,
+          sha256,
+          uploadedByLabel,
+          createdAt,
+          removed,
+          canRemove,
+          removableUntil,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        targetType: { $ref: "#/components/schemas/AttachmentTarget" }
+        targetId: { type: string, format: uuid }
+        purpose: { $ref: "#/components/schemas/AttachmentPurpose" }
+        caption: { type: string, nullable: true }
+        fileName: { type: string }
+        mimeType: { type: string }
+        sizeBytes: { type: integer }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        uploadedByLabel: { type: string }
+        createdAt:
+          { type: string, format: date-time, description: "Heure serveur" }
+        canRemove:
+          {
+            type: boolean,
+            description: "Calculé pour l'appelant : dépositaire dans les 15 minutes, ou STOCK_DISPOSE (question Q3 des écrans)",
+          }
+        removableUntil:
+          {
+            type: string,
+            format: date-time,
+            nullable: true,
+            description: "Fin des 15 minutes du dépositaire ; null pour un autre appelant",
+          }
+        removed:
+          type: object
+          nullable: true
+          properties:
+            at: { type: string, format: date-time }
+            byLabel: { type: string }
+            reason: { type: string }
+
+    # ---------------------------------------------------------------- alertes, indicateurs, réglages
+    AlertView:
+      type: object
+      required:
+        [
+          id,
+          kind,
+          severity,
+          status,
+          title,
+          message,
+          amount,
+          threshold,
+          currency,
+          site,
+          location,
+          subjectType,
+          subjectId,
+          subjectLabel,
+          raisedAt,
+          acknowledgedAt,
+          acknowledgedByLabel,
+          acknowledgeNote,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/AlertKind" }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        status: { $ref: "#/components/schemas/AlertStatus" }
+        title:
+          {
+            type: string,
+            example: "Écart d'inventaire à justifier au-dessus du seuil",
+            description: "Construit depuis kind, traduit ; jamais de nom de personne",
+          }
+        message:
+          type: string
+          example: "Inventaire du Magasin central du 30/09/2026 : écart de 145 000 FCFA (seuil 100 000)."
+          description: Construit à la lecture, traduit ; SANS montant pour un appelant sans STOCK_VALUES_VIEW (B7-R3).
+        amount: { type: number, nullable: true, description: "valeur, figée" }
+        threshold:
+          { type: number, nullable: true, description: "valeur, figée" }
+        currency: { type: string }
+        site:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        location:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            label: { type: string }
+        subjectType:
+          {
+            type: string,
+            enum:
+              [
+                StockSlip,
+                StockCount,
+                StockMovement,
+                SupplierInvoice,
+                CashVoucher,
+              ],
+          }
+        subjectId: { type: string, format: uuid }
+        subjectLabel: { type: string, nullable: true, example: "BS-2026-00042" }
+        mode:
+          {
+            type: string,
+            nullable: true,
+            enum: [SINGLE, MONTHLY_CUMUL],
+            description: "LARGE_SCRAP et CASH_MATERIAL_PURCHASE seulement",
+          }
+        raisedAt: { type: string, format: date-time }
+        acknowledgedAt: { type: string, format: date-time, nullable: true }
+        acknowledgedByLabel: { type: string, nullable: true }
+        acknowledgeNote: { type: string, nullable: true }
+
+    IndicatorRow:
+      type: object
+      required:
+        [
+          month,
+          countsValidated,
+          countsWithoutFrozenValues,
+          countedValue,
+          varianceValueGross,
+          setAsideVarianceValue,
+          varianceRate,
+          uncountedLines,
+          blindLineShare,
+          issuesCount,
+          issuesWithTaker,
+          takerShare,
+          countsValidatedByOther,
+          otherValidatorShare,
+          scrapValue,
+          scrapShare,
+          movementsCount,
+          averageEntryLagDays,
+          sameDayShare,
+        ]
+      properties:
+        locationId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description: "null pour le total",
+          }
+        locationLabel: { type: string, nullable: true }
+        month: { type: string, example: "2026-09" }
+        countsValidated: { type: integer }
+        countsWithoutFrozenValues:
+          {
+            type: integer,
+            description: "Inventaires validés avant le lot, exclus du taux",
+          }
+        countedValue: { type: number }
+        varianceValueGross:
+          {
+            type: number,
+            description: "Lignes ajustées (surplus d'ouverture exclus)",
+          }
+        setAsideVarianceValue:
+          { type: number, description: "Lignes écartées (A2-R7)" }
+        varianceRate:
+          {
+            type: number,
+            nullable: true,
+            description: "(varianceValueGross + setAsideVarianceValue) ÷ countedValue ; 0 à 1 ; null sans inventaire",
+          }
+        uncountedLines:
+          {
+            type: integer,
+            description: "Lignes non comptées des inventaires validés (A2-R8)",
+          }
+        blindLineShare:
+          {
+            type: number,
+            nullable: true,
+            description: "Part des lignes comptées à l'aveugle (A2-R9)",
+          }
+        issuesCount: { type: integer }
+        issuesWithTaker: { type: integer }
+        takerShare: { type: number, nullable: true }
+        countsValidatedByOther: { type: integer }
+        otherValidatorShare: { type: number, nullable: true }
+        scrapValue:
+          { type: number, description: "Valeur des rebuts du mois (A6-R6)" }
+        scrapShare:
+          {
+            type: number,
+            nullable: true,
+            description: "Rebuts ÷ (sorties + rebuts + retours), en valeur",
+          }
+        movementsCount: { type: integer }
+        averageEntryLagDays: { type: number, nullable: true }
+        sameDayShare: { type: number, nullable: true }
+
+    IndicatorsView:
+      type: object
+      required: [from, to, rows, totals]
+      properties:
+        from: { type: string, example: "2026-05" }
+        to: { type: string, example: "2026-10" }
+        rows:
+          type: array
+          description: Une ligne par (lieu, mois), mois sans activité inclus à zéro.
+          items: { $ref: "#/components/schemas/IndicatorRow" }
+        totals:
+          type: array
+          description: Une ligne par mois, tous lieux confondus (locationId null).
+          items: { $ref: "#/components/schemas/IndicatorRow" }
+
+    ControlsSettings:
+      type: object
+      required:
+        [
+          backdatingLimitDays,
+          requireTaker,
+          issueAlertAmount,
+          countVarianceAlertAmount,
+          countVarianceAlertPercent,
+          cashMaterialAlertAmount,
+          materialCostCategoryIds,
+          effectiveMaterialCostCategoryIds,
+          updatedAt,
+          updatedByLabel,
+        ]
+      properties:
+        backdatingLimitDays: { type: integer, minimum: 0, maximum: 365 }
+        requireTaker: { type: boolean }
+        issueAlertAmount: { type: number, nullable: true }
+        countVarianceAlertAmount: { type: number, nullable: true }
+        countVarianceAlertPercent:
+          { type: number, nullable: true, minimum: 0, maximum: 100 }
+        cashMaterialAlertAmount: { type: number, nullable: true }
+        materialCostCategoryIds:
+          type: array
+          items: { type: string, format: uuid }
+        effectiveMaterialCostCategoryIds:
+          type: array
+          description: Postes réellement traités comme « matériaux » (liste saisie, ou déduite des articles si elle est vide — A9-R1).
+          items: { type: string, format: uuid }
+        updatedAt: { type: string, format: date-time, nullable: true }
+        updatedByLabel: { type: string, nullable: true }
+
+    ControlsSettingsPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        backdatingLimitDays: { type: integer, minimum: 0, maximum: 365 }
+        requireTaker: { type: boolean }
+        issueAlertAmount: { type: number, minimum: 0, nullable: true }
+        countVarianceAlertAmount: { type: number, minimum: 0, nullable: true }
+        countVarianceAlertPercent:
+          { type: number, minimum: 0, maximum: 100, nullable: true }
+        cashMaterialAlertAmount: { type: number, minimum: 0, nullable: true }
+        materialCostCategoryIds:
+          type: array
+          maxItems: 100
+          items: { type: string, format: uuid }
+          description: Chaque poste est vérifié comme appartenant à l'agence (404 sinon).
+
+    # ---------------------------------------------------------------- chantiers
+    SiteStockStatusView:
+      type: object
+      description: SiteStockStatusRecord (types-lot5-rapprochement.ts:125-133) + openingCountSuggested.
+      required:
+        [
+          siteId,
+          siteLabel,
+          stockEnabledAt,
+          stockLocationId,
+          stockLocationLabel,
+          openingCountSuggested,
+        ]
+      properties:
+        siteId: { type: string, format: uuid }
+        siteLabel: { type: string }
+        stockEnabledAt: { type: string, format: date-time, nullable: true }
+        stockLocationId: { type: string, format: uuid, nullable: true }
+        stockLocationLabel: { type: string, nullable: true }
+        openingCountSuggested:
+          type: boolean
+          description: >
+            Vrai si le chantier est basculé depuis moins de 30 jours et que son
+            lieu n'a aucun inventaire OPENING non abandonné (spec A7-R1).
+
+    ReconciliationLineAdditions:
+      type: object
+      description: >
+        Champs ajoutés à SiteStockReconciliationLine (types-lot5-rapprochement.ts:182-209),
+        et champs existants devenus nullables pendant un comptage du lieu.
+      properties:
+        returnedToSupplierQuantity: { type: number }
+        returnedToSupplierValue: { type: number }
+        scrappedQuantity: { type: number }
+        scrappedValue: { type: number }
+        remainingQuantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Existant ; null pendant un comptage du lieu (aveugle)",
+          }
+        remainingValue:
+          {
+            type: number,
+            nullable: true,
+            description: "Existant ; null pendant un comptage du lieu (aveugle)",
+          }
+
+    ClosureBlocker:
+      type: object
+      description: SiteClosureBlocker (types-lot4-closing.ts:292-303) ; deux valeurs de documentType ajoutées.
+      required: [message, count]
+      properties:
+        message: { type: string }
+        count: { type: integer }
+        references: { type: array, items: { type: string } }
+        documentIds: { type: array, items: { type: string, format: uuid } }
+        documentType:
+          type: string
+          enum:
+            [
+              SUPPLIER_INVOICE,
+              STOCK_COUNT,
+              STOCK_RESIDUAL,
+              STOCK_CLOSING_COUNT_MISSING,
+            ]
+          description: >
+            STOCK_COUNT : inventaire DRAFT ou COUNTED sur le lieu du chantier
+            (documentIds = [countId]). STOCK_RESIDUAL : au moins un solde > 0 sur
+            le lieu (count = nombre d'articles, documentIds = [locationId]).
+            STOCK_CLOSING_COUNT_MISSING : aucun inventaire CLOSING validé depuis
+            le dernier mouvement entrant du lieu (documentIds = [locationId]).
+            Spec A7-R3.

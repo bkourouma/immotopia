@@ -32,6 +32,13 @@ jest.mock('../../src/utils/database', () => ({
 
 import { getMyMenuAccessHandler } from '../../src/controllers/role-controller';
 
+/** Les handlers sont enveloppes par asyncHandler : l'erreur typee part dans next(). */
+async function run(handler: any, req: any, res: any): Promise<any> {
+  const next = jest.fn();
+  await handler(req, res, next);
+  return next.mock.calls[0]?.[0];
+}
+
 function mockRes() {
   const res: any = {};
   res.status = jest.fn().mockReturnValue(res);
@@ -56,10 +63,10 @@ describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
     };
     const res = mockRes();
 
-    await getMyMenuAccessHandler(req, res);
+    const error = await run(getMyMenuAccessHandler, req, res);
 
     expect(userHasTenantAccess).toHaveBeenCalledWith('user-1', 'tenant-autre-agence', 'USER');
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(error).toMatchObject({ name: 'ForbiddenError', statusCode: 403 });
     expect(getDisabledMenusForUser).not.toHaveBeenCalled();
   });
 
@@ -74,7 +81,7 @@ describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
     };
     const res = mockRes();
 
-    await getMyMenuAccessHandler(req, res);
+    await run(getMyMenuAccessHandler, req, res);
 
     expect(getDisabledMenusForUser).toHaveBeenCalledWith('user-1', 'tenant-A');
     expect(res.status).toHaveBeenCalledWith(200);
@@ -92,7 +99,7 @@ describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
     };
     const res = mockRes();
 
-    await getMyMenuAccessHandler(req, res);
+    await run(getMyMenuAccessHandler, req, res);
 
     expect(getUserPermissions).toHaveBeenCalledWith('user-1', 'tenant-A');
     expect(res.json).toHaveBeenCalledWith({
@@ -111,7 +118,7 @@ describe('getMyMenuAccessHandler — tenantId de query verifie', () => {
     };
     const res = mockRes();
 
-    await getMyMenuAccessHandler(req, res);
+    await run(getMyMenuAccessHandler, req, res);
 
     expect(userHasTenantAccess).not.toHaveBeenCalled();
     expect(getDisabledMenusForUser).toHaveBeenCalledWith('user-1', undefined);
@@ -128,7 +135,7 @@ describe('getMyMenuAccessHandler — permissions pour le filtrage du menu', () =
 
     const req: any = { user: { userId: 'u1', globalRole: 'USER' }, query: { tenantId: 'tenant-A' } };
     const res = mockRes();
-    await getMyMenuAccessHandler(req, res);
+    await run(getMyMenuAccessHandler, req, res);
 
     expect(getMenuPermissionKeysForUser).toHaveBeenCalledWith('u1', 'tenant-A', 'USER');
     expect(res.json).toHaveBeenCalledWith({

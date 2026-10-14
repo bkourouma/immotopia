@@ -1,9 +1,11 @@
 import React from 'react';
 import {
+  AlertOutlined,
   AppstoreOutlined,
   AuditOutlined,
   BankOutlined,
   BuildOutlined,
+  CameraOutlined,
   CarryOutOutlined,
   DashboardOutlined,
   EnvironmentOutlined,
@@ -12,12 +14,14 @@ import {
   IdcardOutlined,
   ImportOutlined,
   InboxOutlined,
+  MobileOutlined,
   PercentageOutlined,
   ProfileOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
   TeamOutlined,
-  WalletOutlined
+  WalletOutlined,
+  WhatsAppOutlined
 } from '@ant-design/icons';
 import type { WorkspaceTabItem } from '../components/navigation/WorkspaceTabs';
 import { t } from '../i18n/t';
@@ -190,17 +194,55 @@ export const FINANCE_WORKSPACES: Record<FinanceWorkspaceFamily, FinanceWorkspace
       }
     ]
   },
-  // Le quotidien (réceptions, sorties), le contrôle (transferts, comptage),
-  // puis le référentiel qu'on ne touche qu'à l'installation.
+  // Le quotidien (réceptions, sorties), le terrain (le Magasin, au
+  // téléphone), le comptage, le carnet des preneurs, le contrôle, puis le
+  // référentiel qu'on ne touche qu'à l'installation (lot 040, ecrans §2.2).
+  //
+  // Liste DÉCLARATIVE : un onglet de plus (le lot 041 en ajoute deux,
+  // « Comptages terrain » et « WhatsApp », après « Contrôle ») est une ligne
+  // de plus ici, rien d'autre. L'entrée de menu « Gestion du stock » s'allume d'elle-même sur
+  // chacun (`financeWorkspaceActiveFor`), et l'onglet actif reste le préfixe
+  // le plus long : `/stock/magasin` allume « Magasin », pas « Stock ».
   'gestion-stock': {
     label: () => t('Gestion du stock'),
     tabs: [
       { key: 'stock', label: () => t('Stock'), href: `${FINANCE}/stock`, icon: <InboxOutlined /> },
       {
+        key: 'stock-magasin',
+        label: () => t('Magasin'),
+        href: `${FINANCE}/stock/magasin`,
+        icon: <MobileOutlined />
+      },
+      {
         key: 'stock-inventaire',
         label: () => t('Inventaire'),
         href: `${FINANCE}/stock/inventaire`,
         icon: <CarryOutOutlined />
+      },
+      {
+        key: 'stock-preneurs',
+        label: () => t('Preneurs'),
+        href: `${FINANCE}/stock/preneurs`,
+        icon: <TeamOutlined />
+      },
+      {
+        key: 'stock-controle',
+        label: () => t('Contrôle'),
+        href: `${FINANCE}/stock/controle`,
+        icon: <AlertOutlined />
+      },
+      // Lot 041 — après « Contrôle » du lot 040, avant « Articles et lieux ».
+      {
+        key: 'stock-comptages-terrain',
+        label: () => t('Comptages terrain'),
+        href: `${FINANCE}/stock/comptages-terrain`,
+        icon: <CameraOutlined />
+      },
+      {
+        key: 'stock-whatsapp',
+        label: () => t('WhatsApp'),
+        href: `${FINANCE}/stock/whatsapp`,
+        icon: <WhatsAppOutlined />
       },
       {
         key: 'stock-parametrage',

@@ -87,6 +87,9 @@ import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
+import { logger } from '../../utils/logger';
+import { alertKeys, raiseStockAlertTx, readStockAlertSettings, toYearMonthUtc } from './stock-alertes';
+import { resolveMaterialCostCategoryIds } from './stock-reglages';
 import type {
   CashVoucherRecord,
   CreateCashVoucherTx,
@@ -378,6 +381,18 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
   // depense qui, elle, a bien eu lieu.
   await raiseBudgetAlertIfNeededTx(tx, tenantId, voucher.siteId);
 
+  // Lot 040 (A9-R2) : achat de matériaux en espèces, à côté de l'alerte de
+  // budget et pour la même raison — dans la transaction de la pièce, sans
+  // jamais refuser la validation.
+  await raiseCashMaterialAlertIfNeededTx(tx, tenantId, {
+    id: voucher.id,
+    siteId: voucher.siteId,
+    costCategoryId: voucher.costCategoryId,
+    amount,
+    voucherDate: voucher.voucherDate,
+    number
+  });
+
   // Mise à jour conditionnelle plutôt qu'inconditionnelle : si une autre
   // transaction a validé cette même pièce entre notre lecture initiale et cet
   // instant, `count` vaut 0 et on abandonne — l'écriture et l'imputation qu'on
@@ -404,6 +419,122 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
   const updated = await tx.cashVoucher.findFirst({ where: { id: voucher.id, tenantId } });
   return toVoucherRecord(updated as Record<string, any>);
 };
+
+// ---------------------------------------------------------------------------
+// Lot 040 (A9) — achats de matériaux en espèces
+// ---------------------------------------------------------------------------
+
+/** La pièce en cours de validation, telle que l'alerte A9 la lit. */
+export interface CashMaterialVoucher {
+  id: string;
+  siteId: string;
+  costCategoryId: string;
+  amount: number;
+  voucherDate: Date;
+  /** Numéro tiré à cette validation (`AAAA-NNNN`). */
+  number: string | null;
+}
+
+/**
+ * Alerte `CASH_MATERIAL_PURCHASE` d'une pièce de caisse validée (spec A9-R2),
+ * UNE SEULE par événement :
+ *
+ * - pièce ≥ seuil → alerte de la pièce (`mode = SINGLE`) ;
+ * - pièce < seuil → cumul du mois civil UTC de SA date (`voucherDate`) des
+ *   pièces « matériaux » VALIDÉES du même chantier restées chacune sous le
+ *   seuil, pièce courante comprise ; s'il atteint le seuil, alerte de cumul
+ *   (`mode = MONTHLY_CUMUL`), une seule par chantier et par mois (clé
+ *   anti-doublon) : le fractionnement en petites pièces ne la contourne pas.
+ *
+ * Poste « matériaux » : A9-R1 (`resolveMaterialCostCategoryIds`). Seuil vide :
+ * rien. S'applique à tout chantier, basculé au stock ou non (A9-R3).
+ *
+ * Réglages lus SANS `ensureStockSettingsTx` (`readStockAlertSettings`) : la
+ * transaction d'une pièce ne crée jamais de ligne de réglages. Naissance par
+ * `raiseStockAlertTx` (`ON CONFLICT DO NOTHING`) : une 4e pièce du mois qui
+ * atteindrait encore le cumul passe sans erreur.
+ *
+ * Le cumul se lit APRÈS le verrou de séquence de l'agence
+ * (`lockTenantFinanceSequenceTx`, pris plus haut) : deux validations d'une
+ * même agence sont en série, la seconde voit la première validée.
+ *
+ * Ne lève jamais pour cause d'alerte : une erreur de calcul est journalisée et
+ * la pièce se valide quand même. (Une erreur SQL, elle, condamnerait la
+ * transaction PostgreSQL quoi qu'on fasse : les lectures ci-dessous sont des
+ * lectures simples, bornées à l'agence.)
+ */
+export async function raiseCashMaterialAlertIfNeededTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  voucher: CashMaterialVoucher
+): Promise<void> {
+  try {
+    const settings = await readStockAlertSettings(tx, tenantId);
+    const threshold = settings.cashMaterialAlertAmount;
+    if (threshold === null || threshold === undefined) {
+      return;
+    }
+    const materialIds = await resolveMaterialCostCategoryIds(tx, tenantId, settings.materialCostCategoryIds);
+    if (!materialIds.includes(voucher.costCategoryId)) {
+      return;
+    }
+
+    if (voucher.amount >= threshold) {
+      await raiseStockAlertTx(tx, {
+        tenantId,
+        kind: 'CASH_MATERIAL_PURCHASE',
+        severity: 'WARNING',
+        dedupeKey: alertKeys.cashMaterial(voucher.id),
+        amount: voucher.amount,
+        threshold,
+        siteId: voucher.siteId,
+        subjectType: 'CashVoucher',
+        subjectId: voucher.id,
+        details: { mode: 'SINGLE', voucherNumber: voucher.number }
+      });
+      return;
+    }
+
+    const date = voucher.voucherDate;
+    const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+    const nextMonthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+    const others = await tx.cashVoucher.findMany({
+      where: {
+        tenantId,
+        siteId: voucher.siteId,
+        costCategoryId: { in: materialIds },
+        validatedAt: { not: null },
+        voucherDate: { gte: monthStart, lt: nextMonthStart },
+        amount: { lt: threshold },
+        id: { not: voucher.id }
+      },
+      select: { amount: true }
+    });
+    const cumul = roundMoney(others.reduce((sum, row) => sum + toAmountOrZero(row.amount), voucher.amount));
+    if (cumul < threshold) {
+      return;
+    }
+    const month = toYearMonthUtc(date);
+    await raiseStockAlertTx(tx, {
+      tenantId,
+      kind: 'CASH_MATERIAL_PURCHASE',
+      severity: 'WARNING',
+      dedupeKey: alertKeys.cashMaterialCumul(voucher.siteId, month),
+      amount: cumul,
+      threshold,
+      siteId: voucher.siteId,
+      subjectType: 'CashVoucher',
+      subjectId: voucher.id,
+      details: { mode: 'MONTHLY_CUMUL', month, vouchersCount: others.length + 1 }
+    });
+  } catch (error) {
+    logger.warn('Alerte achat de matériaux en espèces non levée', {
+      tenantId,
+      voucherId: voucher.id,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Suppression d'un brouillon — ajout du 20 septembre 2026

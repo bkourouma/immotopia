@@ -68,6 +68,9 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
+import { AppError, ErrorCode } from '../../middleware/error-middleware';
+import { loadBlindLocationIds, lockStockSiteTx } from './stock-controles';
+import type { StockCallerContext } from './types-040-controle';
 import { assertCapacityTx, syncLotActivationsTx } from '../../services/lot-registry-service';
 import { roundMoneyXof, roundPercent } from './money';
 import type { FinanceReadClient } from './site-cost';
@@ -758,6 +761,90 @@ async function collectClosureBlockers(
     });
   }
 
+  blockers.push(...(await collectStockClosureBlockers(client, tenantId, siteId)));
+
+  return blockers;
+}
+
+/**
+ * Les trois bloqueurs de stock (lot 040, spec A7-R3), pour un chantier qui a
+ * un lieu de stockage. Après la clôture, plus rien n'est imputable au
+ * chantier : le reste qui dormirait sur son lieu deviendrait la matière la plus
+ * facile à faire disparaître sans trace. D'où le parcours attendu —
+ * inventaire de clôture (qui ajuste au réel), transfert du reste vers un
+ * magasin, puis clôture.
+ *
+ * 1. `STOCK_COUNT` : un inventaire DRAFT ou COUNTED sur le lieu ;
+ * 2. `STOCK_RESIDUAL` : au moins un solde de quantité > 0 sur le lieu ;
+ * 3. `STOCK_CLOSING_COUNT_MISSING` : le lieu a reçu au moins une entrée
+ *    (réception, transfert entrant, ajustement en hausse) et aucun inventaire
+ *    CLOSING n'a été validé depuis la dernière. Les ajustements écrits par cet
+ *    inventaire de clôture lui-même ne comptent pas comme une entrée
+ *    postérieure.
+ */
+async function collectStockClosureBlockers(
+  client: FinanceReadClient,
+  tenantId: string,
+  siteId: string
+): Promise<SiteClosureBlocker[]> {
+  const location = await client.stockLocation.findFirst({ where: { tenantId, siteId }, select: { id: true } });
+  if (!location) {
+    return [];
+  }
+
+  const [openCount, residualItems, lastClosing] = await Promise.all([
+    client.stockCount.findFirst({
+      where: { tenantId, locationId: location.id, status: { in: ['DRAFT', 'COUNTED'] } },
+      select: { id: true }
+    }),
+    client.stockBalance.count({ where: { tenantId, locationId: location.id, quantity: { gt: 0 } } }),
+    client.stockCount.findFirst({
+      where: { tenantId, locationId: location.id, kind: 'CLOSING', status: 'VALIDATED' },
+      orderBy: { validatedAt: 'desc' },
+      select: { id: true, validatedAt: true }
+    })
+  ]);
+  const lastIncoming = await client.stockMovement.findFirst({
+    where: {
+      tenantId,
+      locationId: location.id,
+      isDecrease: false,
+      type: { in: ['RECEIPT', 'TRANSFER', 'ADJUSTMENT'] },
+      // `not` seul écarterait aussi les mouvements sans inventaire (NULL).
+      ...(lastClosing ? { OR: [{ stockCountId: null }, { stockCountId: { not: lastClosing.id } }] } : {})
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true }
+  });
+
+  const blockers: SiteClosureBlocker[] = [];
+  if (openCount) {
+    blockers.push({
+      message: 'Un inventaire est en cours sur le lieu de stockage du chantier : terminez-le avant de clôturer.',
+      count: 1,
+      documentIds: [openCount.id],
+      documentType: 'STOCK_COUNT'
+    });
+  }
+  if (residualItems > 0) {
+    blockers.push({
+      message:
+        "Le lieu de stockage du chantier porte encore du stock : faites l'inventaire de clôture, puis transférez le reste vers un magasin.",
+      count: residualItems,
+      documentIds: [location.id],
+      documentType: 'STOCK_RESIDUAL'
+    });
+  }
+  const closingValidatedAt = lastClosing?.validatedAt ?? null;
+  if (lastIncoming && (!closingValidatedAt || closingValidatedAt.getTime() < lastIncoming.createdAt.getTime())) {
+    blockers.push({
+      message:
+        "Le lieu de stockage du chantier n'a pas d'inventaire de clôture validé depuis sa dernière entrée de marchandise.",
+      count: 1,
+      documentIds: [location.id],
+      documentType: 'STOCK_CLOSING_COUNT_MISSING'
+    });
+  }
   return blockers;
 }
 
@@ -766,6 +853,41 @@ export const getSiteClosureBlockers: GetSiteClosureBlockers = async (tenantId, s
   await loadSiteOrThrow(prisma, tenantId, siteId);
   return collectClosureBlockers(prisma, tenantId, siteId);
 };
+
+/**
+ * Un bloqueur tel que le voit l'appelant : `count` vaut `null` quand il
+ * trahirait un lieu en comptage aveugle (spec §8.2).
+ */
+export type SiteClosureBlockerView = Omit<SiteClosureBlocker, 'count'> & { count: number | null };
+
+/**
+ * Masque, pour un appelant sans STOCK_COUNT_VALIDATE, le nombre d'articles en
+ * stock du bloqueur `STOCK_RESIDUAL` quand le lieu du chantier est en comptage
+ * (inventaire DRAFT, §8.2) : ce nombre dirait au compteur combien d'articles
+ * il lui reste à trouver. Le bloqueur lui-même reste listé — la clôture est de
+ * toute façon refusée tant que l'inventaire est en cours.
+ */
+export function maskClosureBlockersForCaller(
+  blockers: SiteClosureBlocker[],
+  blindLocationIds: ReadonlySet<string>
+): SiteClosureBlockerView[] {
+  return blockers.map(blocker =>
+    blocker.documentType === 'STOCK_RESIDUAL' && (blocker.documentIds ?? []).some(id => blindLocationIds.has(id))
+      ? { ...blocker, count: null }
+      : blocker
+  );
+}
+
+/** `getSiteClosureBlockers`, masqué pour l'appelant (`GET sites/:siteId/closure-blockers`). */
+export async function getSiteClosureBlockersForCaller(
+  tenantId: string,
+  siteId: string,
+  ctx: StockCallerContext
+): Promise<SiteClosureBlockerView[]> {
+  const blockers = await getSiteClosureBlockers(tenantId, siteId);
+  const blind = await loadBlindLocationIds(prisma, tenantId, ctx);
+  return maskClosureBlockersForCaller(blockers, blind);
+}
 
 async function buildClosureRecord(
   client: FinanceReadClient,
@@ -789,6 +911,12 @@ async function buildClosureRecord(
 
 /** Voir `CloseSiteTx` dans `./types-lot4-closing.ts`. */
 export const closeSiteTx: CloseSiteTx = async (tx, tenantId, siteId, params) => {
+  // Lot 040 (A7-R3 bis) : le verrou de chantier `stock-site` AVANT de vérifier
+  // que le chantier est ouvert et avant `collectClosureBlockers`. Une réception
+  // ou un transfert vers le lieu du chantier prend le même verrou : une entrée
+  // et une clôture simultanées ne passent jamais toutes les deux. Pris avant la
+  // lecture du chantier, pour que l'état lu soit celui d'après l'attente.
+  await lockStockSiteTx(tx, siteId);
   const site = await loadSiteOrThrow(tx, tenantId, siteId);
 
   if (isClosed(site)) {
@@ -800,7 +928,11 @@ export const closeSiteTx: CloseSiteTx = async (tx, tenantId, siteId, params) => 
 
   const blockers = await collectClosureBlockers(tx, tenantId, siteId);
   if (blockers.length > 0) {
-    throw conflict(blockers.map(blocker => blocker.message).join(' '), { blockers });
+    // `AppError` et non `conflict(message, details)` : les détails de
+    // `lib/errors` ne parviennent pas au client (spec 040 §8.3).
+    throw new AppError(blockers.map(blocker => blocker.message).join(' '), 409, ErrorCode.CONFLICT, undefined, {
+      blockers
+    });
   }
 
   // `finalCost` reçoit le coût réel à CET instant, et rien d'autre.

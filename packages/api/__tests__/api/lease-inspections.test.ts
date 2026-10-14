@@ -111,6 +111,31 @@ function buildApp() {
   return app;
 }
 
+/** Évalue chaque élément (état GOOD ; quantité 1 pour un mobilier qui n'en a pas). */
+function evaluateAll(rooms: any[]): void {
+  for (const r of rooms) {
+    for (const i of r.items) {
+      i.condition = 'GOOD';
+      if (i.kind === 'FURNITURE' && i.quantity == null) i.quantity = 1;
+    }
+  }
+}
+
+/** Corps complet d'un `PUT …/inspections/:id`. */
+function putBody(rooms: unknown[]) {
+  return {
+    inspectionDate: '2026-09-01',
+    rooms,
+    meters: null,
+    keysCount: null,
+    generalComment: null,
+    tenantPresent: false,
+    tenantSignatoryName: null,
+    agentSignatoryName: null,
+    deductions: []
+  };
+}
+
 describe('États des lieux', () => {
   const app = buildApp();
 
@@ -264,7 +289,7 @@ describe('États des lieux', () => {
       expect(res.status).toBe(400);
     });
 
-    it('finalise quand le signataire agence est renseigné et au moins un état saisi', async () => {
+    it('finalise quand le signataire agence est renseigné et tous les éléments évalués', async () => {
       const createRes = await request(app)
         .post('/api/tenants/tenant-1/rental/leases/lease-1/inspections')
         .send({ type: 'ENTRY', inspectionDate: '2026-09-01' });
@@ -272,7 +297,7 @@ describe('États des lieux', () => {
       const row = mockInspections.get(inspectionId);
       row.agentSignatoryName = 'Agent Test';
       row.tenantPresent = false;
-      row.rooms[0].items[0].condition = 'GOOD';
+      evaluateAll(row.rooms);
 
       const res = await request(app).post(
         `/api/tenants/tenant-1/rental/leases/lease-1/inspections/${inspectionId}/finalize`
@@ -295,6 +320,226 @@ describe('États des lieux', () => {
       );
 
       expect(res.status).toBe(409);
+    });
+  });
+
+  describe('volet meublés (spec 040, M1 à M5)', () => {
+    const BASE = '/api/tenants/tenant-1/rental/leases/lease-1/inspections';
+
+    async function create(body: Record<string, unknown>) {
+      return request(app)
+        .post(BASE)
+        .send({ inspectionDate: '2026-09-01', ...body });
+    }
+
+    async function finalizedEntry(template?: 'FURNISHED') {
+      const res = await create({ type: 'ENTRY', ...(template ? { template } : {}) });
+      const row = mockInspections.get(res.body.data.id);
+      evaluateAll(row.rooms);
+      row.status = 'FINALIZED';
+      return row;
+    }
+
+    it('crée six pièces, bâti puis mobilier, avec le modèle FURNISHED', async () => {
+      const res = await create({ type: 'ENTRY', template: 'FURNISHED' });
+      expect(res.status).toBe(201);
+      const rooms = res.body.data.rooms;
+      expect(rooms).toHaveLength(6);
+      expect(rooms[5].name).toBe('Équipements et divers');
+      const sejour = rooms[0].items;
+      expect(sejour[0]).toMatchObject({ kind: 'FIXTURE', quantity: null, replacementValue: null });
+      const tv = sejour.find((i: any) => i.label === 'Téléviseur');
+      expect(tv).toMatchObject({ kind: 'FURNITURE', quantity: 1, replacementValue: null, condition: null });
+      const ids = rooms.flatMap((r: any) => r.items.map((i: any) => i.id));
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('garde le modèle actuel sans `template`, éléments normalisés en bâti', async () => {
+      const res = await create({ type: 'ENTRY' });
+      expect(res.body.data.rooms).toHaveLength(5);
+      for (const r of res.body.data.rooms) {
+        for (const i of r.items) expect(i).toMatchObject({ kind: 'FIXTURE', quantity: null, replacementValue: null });
+      }
+    });
+
+    it('reprend nature et valeur de l’entrée pour la sortie, quantités vidées, `template` ignoré', async () => {
+      const entryRes = await create({ type: 'ENTRY', template: 'FURNISHED' });
+      const entryRow = mockInspections.get(entryRes.body.data.id);
+      const tv = entryRow.rooms[0].items.find((i: any) => i.label === 'Téléviseur');
+      tv.replacementValue = 150000;
+      tv.quantity = 2;
+
+      const exitRes = await create({ type: 'EXIT', template: 'STANDARD' });
+      expect(exitRes.body.data.rooms).toHaveLength(6);
+      const exitTv = exitRes.body.data.rooms[0].items.find((i: any) => i.id === tv.id);
+      expect(exitTv).toMatchObject({ kind: 'FURNITURE', replacementValue: 150000, quantity: null, condition: null });
+    });
+
+    it('applique le modèle demandé à une sortie sans entrée, quantités vides', async () => {
+      const res = await create({ type: 'EXIT', template: 'FURNISHED' });
+      const furniture = res.body.data.rooms.flatMap((r: any) => r.items).filter((i: any) => i.kind === 'FURNITURE');
+      expect(furniture.length).toBeGreaterThan(0);
+      expect(furniture.every((i: any) => i.quantity === null)).toBe(true);
+    });
+
+    it('accepte un document ancien dont les éléments ignorent les nouveaux champs', async () => {
+      const createRes = await create({ type: 'ENTRY' });
+      const legacyRooms = createRes.body.data.rooms.map((r: any) => ({
+        ...r,
+        items: r.items.map(({ id, label, condition, comment }: any) => ({ id, label, condition, comment }))
+      }));
+      const res = await request(app).put(`${BASE}/${createRes.body.data.id}`).send(putBody(legacyRooms));
+      expect(res.status).toBe(200);
+      expect(res.body.data.rooms[0].items[0]).toMatchObject({
+        kind: 'FIXTURE',
+        quantity: null,
+        replacementValue: null
+      });
+      expect(res.body.data.deductions).toEqual([]);
+    });
+
+    it('ramène à 0 la quantité d’un mobilier manquant et accepte MISSING sur le bâti', async () => {
+      const createRes = await create({ type: 'ENTRY', template: 'FURNISHED' });
+      const rooms = createRes.body.data.rooms;
+      const tv = rooms[0].items.find((i: any) => i.label === 'Téléviseur');
+      tv.condition = 'MISSING';
+      tv.quantity = 3;
+      rooms[0].items[0].condition = 'MISSING';
+      const res = await request(app).put(`${BASE}/${createRes.body.data.id}`).send(putBody(rooms));
+      expect(res.status).toBe(200);
+      const saved = res.body.data.rooms[0].items;
+      expect(saved.find((i: any) => i.id === tv.id)).toMatchObject({ condition: 'MISSING', quantity: 0 });
+      expect(saved[0]).toMatchObject({ condition: 'MISSING', quantity: null });
+    });
+
+    it('refuse une quantité sur un élément de bâti (400)', async () => {
+      const createRes = await create({ type: 'ENTRY' });
+      const rooms = createRes.body.data.rooms;
+      rooms[0].items[0].quantity = 2;
+      const res = await request(app).put(`${BASE}/${createRes.body.data.id}`).send(putBody(rooms));
+      expect(res.status).toBe(400);
+      expect(res.body.errors.map((e: any) => e.message)).toContain('Seul un élément de mobilier porte une quantité.');
+    });
+
+    it('conserve source et montant proposé des retenues', async () => {
+      const createRes = await create({ type: 'ENTRY' });
+      const deductions = [
+        {
+          id: 'd1',
+          label: 'Téléviseur',
+          amount: 120000,
+          roomId: null,
+          itemId: 'x',
+          source: 'MISSING',
+          proposedAmount: 150000
+        },
+        { id: 'd2', label: 'Ménage', amount: 5000, roomId: null, itemId: null }
+      ];
+      const res = await request(app)
+        .put(`${BASE}/${createRes.body.data.id}`)
+        .send({ ...putBody(createRes.body.data.rooms), deductions });
+      expect(res.status).toBe(200);
+      expect(res.body.data.deductions[0]).toMatchObject({ source: 'MISSING', proposedAmount: 150000, amount: 120000 });
+      expect(res.body.data.deductions[1]).toMatchObject({ source: 'MANUAL', proposedAmount: null });
+    });
+
+    it('refuse de retirer de la sortie un élément de l’entrée finalisée (400, data.removedItems)', async () => {
+      await finalizedEntry('FURNISHED');
+      const exitRes = await create({ type: 'EXIT' });
+      const rooms = exitRes.body.data.rooms;
+      const removed = rooms[0].items.pop();
+      const res = await request(app).put(`${BASE}/${exitRes.body.data.id}`).send(putBody(rooms));
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe(
+        "Un élément repris de l'état des lieux d'entrée ne peut pas être retiré de la sortie : indiquez « Manquant »."
+      );
+      expect(res.body.data.removedItems).toEqual([{ itemId: removed.id, label: removed.label }]);
+    });
+
+    it('tolère le retrait quand l’entrée est encore en brouillon', async () => {
+      await create({ type: 'ENTRY', template: 'FURNISHED' });
+      const exitRes = await create({ type: 'EXIT' });
+      const rooms = exitRes.body.data.rooms;
+      rooms[0].items.pop();
+      const res = await request(app).put(`${BASE}/${exitRes.body.data.id}`).send(putBody(rooms));
+      expect(res.status).toBe(200);
+    });
+
+    it('fige libellé, nature et valeur d’un élément repris de l’entrée finalisée', async () => {
+      const entryRow = await finalizedEntry('FURNISHED');
+      const entryTv = entryRow.rooms[0].items.find((i: any) => i.label === 'Téléviseur');
+      entryTv.replacementValue = 150000;
+      const exitRes = await create({ type: 'EXIT' });
+      const rooms = exitRes.body.data.rooms;
+      const tv = rooms[0].items.find((i: any) => i.id === entryTv.id);
+      tv.label = 'Carton vide';
+      tv.replacementValue = 1;
+      const res = await request(app).put(`${BASE}/${exitRes.body.data.id}`).send(putBody(rooms));
+      expect(res.status).toBe(200);
+      expect(res.body.data.rooms[0].items.find((i: any) => i.id === entryTv.id)).toMatchObject({
+        label: 'Téléviseur',
+        kind: 'FURNITURE',
+        replacementValue: 150000
+      });
+    });
+
+    it('refuse de finaliser tant qu’un élément n’est pas évalué (400, data.unevaluatedItems)', async () => {
+      const createRes = await create({ type: 'ENTRY', template: 'FURNISHED' });
+      const row = mockInspections.get(createRes.body.data.id);
+      row.agentSignatoryName = 'Agent Test';
+      row.tenantPresent = false;
+      evaluateAll(row.rooms);
+      row.rooms[0].items[0].condition = null;
+      const tv = row.rooms[0].items.find((i: any) => i.label === 'Téléviseur');
+      tv.quantity = null;
+
+      const res = await request(app).post(`${BASE}/${createRes.body.data.id}/finalize`);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Tous les éléments doivent être évalués avant de finaliser.');
+      expect(res.body.data.unevaluatedItems).toEqual([
+        expect.objectContaining({ itemId: row.rooms[0].items[0].id, roomName: 'Entrée/Séjour', missing: 'CONDITION' }),
+        expect.objectContaining({ itemId: tv.id, label: 'Téléviseur', missing: 'QUANTITY' })
+      ]);
+    });
+
+    it('garde le refus historique pour un document sans aucun élément', async () => {
+      const createRes = await create({ type: 'ENTRY' });
+      const row = mockInspections.get(createRes.body.data.id);
+      row.agentSignatoryName = 'Agent Test';
+      row.tenantPresent = false;
+      row.rooms = [];
+      const res = await request(app).post(`${BASE}/${createRes.body.data.id}/finalize`);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Au moins un élément doit avoir un état renseigné avant de finaliser.');
+    });
+
+    it('compare : manquants, baisses de quantité et synthèse des clés', async () => {
+      const entryRow = await finalizedEntry('FURNISHED');
+      entryRow.keysCount = 3;
+      const entryItems = entryRow.rooms[0].items;
+      const tv = entryItems.find((i: any) => i.label === 'Téléviseur');
+      tv.replacementValue = 150000;
+      const chairs = entryItems.find((i: any) => i.label === 'Chaises');
+      chairs.quantity = 6;
+
+      const exitRes = await create({ type: 'EXIT' });
+      const exitRow = mockInspections.get(exitRes.body.data.id);
+      evaluateAll(exitRow.rooms);
+      exitRow.keysCount = 2;
+      exitRow.rooms[0].items.find((i: any) => i.id === tv.id).condition = 'MISSING';
+      exitRow.rooms[0].items.find((i: any) => i.id === chairs.id).quantity = 4;
+
+      const res = await request(app).get(`${BASE}/compare`);
+      expect(res.status).toBe(200);
+      const rows = res.body.data.rows;
+      expect(rows.find((r: any) => r.itemId === tv.id)).toMatchObject({ missing: true, missingValue: 150000 });
+      expect(rows.find((r: any) => r.itemId === chairs.id)).toMatchObject({ quantityDecrease: 2, missingQuantity: 2 });
+      expect(res.body.data.summary.keys).toEqual({ entry: 3, exit: 2, missing: 1 });
+      expect(res.body.data.summary).toMatchObject({
+        missingCount: 1,
+        quantityDecreaseCount: 1,
+        missingValueTotal: 150000
+      });
     });
   });
 

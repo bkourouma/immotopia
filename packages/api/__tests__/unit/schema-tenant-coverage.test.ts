@@ -68,7 +68,6 @@ const GLOBAL_MODELS = new Set([
   'Role', // Catalogue de roles (scope plateforme ou tenant, mais le modele Role lui-meme est global).
   'Permission', // Catalogue de permissions, plateforme.
   'RolePermission', // Table de jonction Role<->Permission, plateforme.
-  'RoleMenuAccess', // Acces aux menus par role, plateforme (role-controller.ts).
   'Country', // Referentiel geographique public.
   'Region', // Referentiel geographique public.
   'Commune', // Referentiel geographique public.
@@ -92,7 +91,12 @@ const GLOBAL_MODELS = new Set([
   // Anti-abus d'inscription : compteur par IP hachée (HMAC), sans agence par
   // nature — une inscription précède tout rattachement à une agence. Ne porte
   // aucune donnée d'agence ni d'utilisateur.
-  'SignupAttempt'
+  'SignupAttempt',
+  // Lot 041 (data-model §2.9) : journal du webhook Meta (inventaire WhatsApp).
+  // Reçu avant toute résolution d'agence (elle se déduit de l'inscription) ;
+  // sans numéro en clair (senderHash HMAC, payload effacé au traitement),
+  // purgé à 30 jours.
+  'WhatsappCloudEvent'
 ]);
 
 /**

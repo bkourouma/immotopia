@@ -50,7 +50,9 @@ export const NOTIFICATION_KEY_FEATURES: Readonly<Record<string, Feature>> = {
   OWNER_DOCUMENT_EXPIRY_ALERT: 'PATRIMOINE',
   OWNER_MONTHLY_REPORT_SENT: 'PATRIMOINE',
   // Accès en lecture seule des tiers de confiance (lot B3)
-  EXTERNAL_ACCESS_LINK_SENT: 'PATRIMOINE'
+  EXTERNAL_ACCESS_LINK_SENT: 'PATRIMOINE',
+  // Chantiers : contrôle du stock (lot 040, B7-R6)
+  STOCK_ALERT_AGENCY: 'CONSTRUCTION'
 };
 
 export function featureOfNotificationKey(key: string): Feature {

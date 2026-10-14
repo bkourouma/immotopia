@@ -11,14 +11,29 @@ import apiClient from '../utils/api-client';
 export type InspectionType = 'ENTRY' | 'EXIT';
 export type InspectionStatus = 'DRAFT' | 'FINALIZED';
 
-/** Neuf, Bon, Usagé, Mauvais, Hors service — dans cet ordre, du meilleur au pire. */
-export type InspectionCondition = 'NEW' | 'GOOD' | 'FAIR' | 'POOR' | 'BROKEN';
+/**
+ * Neuf, Bon, Usagé, Mauvais, Hors service — dans cet ordre, du meilleur au
+ * pire — puis Manquant (l'objet n'est pas dans le logement, spec 040 M2).
+ */
+export type InspectionCondition = 'NEW' | 'GOOD' | 'FAIR' | 'POOR' | 'BROKEN' | 'MISSING';
+
+/** Bâti (attaché au logement, sans quantité) ou mobilier (avec quantité). */
+export type InspectionItemKind = 'FIXTURE' | 'FURNITURE';
+
+/** Modèle de départ d'un nouvel état des lieux. */
+export type InspectionTemplate = 'STANDARD' | 'FURNISHED';
 
 export interface InspectionItem {
   id: string;
   label: string;
   condition: InspectionCondition | null;
   comment: string | null;
+  /** Absent = `FIXTURE` (document antérieur au volet meublés). */
+  kind?: InspectionItemKind;
+  /** Mobilier seulement ; entier de 0 à 9 999. */
+  quantity?: number | null;
+  /** Valeur de remplacement à l'unité, en FCFA. */
+  replacementValue?: number | null;
 }
 
 export interface InspectionRoom {
@@ -33,7 +48,13 @@ export interface InspectionDeduction {
   amount: number;
   roomId?: string | null;
   itemId?: string | null;
+  /** Absent = `MANUAL`. */
+  source?: InspectionDeductionSource;
+  /** Montant proposé au moment du clic (valeur × quantité manquante), `null` si inconnu. */
+  proposedAmount?: number | null;
 }
+
+export type InspectionDeductionSource = 'MANUAL' | 'DEGRADED' | 'MISSING' | 'KEYS';
 
 export interface InspectionPhoto {
   id: string;
@@ -77,17 +98,65 @@ export interface InspectionCompareRow {
   entryCondition: InspectionCondition | null;
   exitCondition: InspectionCondition | null;
   degraded: boolean;
+  kind: InspectionItemKind;
+  entryQuantity: number | null;
+  exitQuantity: number | null;
+  missing: boolean;
+  quantityDecrease: number;
+  missingQuantity: number;
+  absentFromExit: boolean;
+  replacementValue: number | null;
+  missingValue: number | null;
+}
+
+export type InspectionMeterKey = 'electricity' | 'water' | 'gas';
+
+export interface InspectionMeterComparison {
+  entry: string | null;
+  exit: string | null;
+  /** Sortie − entrée, `null` si l'un des relevés ne se lit pas comme un nombre. */
+  difference: number | null;
+}
+
+export interface InspectionCompareSummary {
+  keys: { entry: number | null; exit: number | null; missing: number | null };
+  meters: Record<InspectionMeterKey, InspectionMeterComparison>;
+  missingCount: number;
+  quantityDecreaseCount: number;
+  degradedCount: number;
+  absentFromExitCount: number;
+  missingValueTotal: number;
+  missingWithoutValueCount: number;
 }
 
 export interface InspectionCompareResult {
   entry: LeaseInspection | null;
   exit: LeaseInspection | null;
   rows: InspectionCompareRow[];
+  /** Facultatif pour lire une réponse d'une API antérieure au volet meublés. */
+  summary?: InspectionCompareSummary;
 }
 
 export interface CreateInspectionRequest {
   type: InspectionType;
   inspectionDate: string;
+  /** Absent = `STANDARD`. Ignoré pour une sortie quand l'entrée existe. */
+  template?: InspectionTemplate;
+}
+
+/** Élément non évalué renvoyé par un refus de finalisation (`data.unevaluatedItems`). */
+export interface UnevaluatedInspectionItem {
+  roomId: string;
+  roomName: string;
+  itemId: string;
+  label: string;
+  missing: 'CONDITION' | 'QUANTITY';
+}
+
+/** Élément de l'entrée retiré de la sortie, refusé par l'API (`data.removedItems`). */
+export interface RemovedInspectionItem {
+  itemId: string;
+  label: string;
 }
 
 export interface UpdateInspectionRequest {

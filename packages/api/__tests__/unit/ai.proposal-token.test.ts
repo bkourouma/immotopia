@@ -24,12 +24,15 @@ const mockPrisma: Record<string, unknown> & {
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
 import { env } from '../../src/config/env';
-import type { GenerateRentalDocumentArgs } from '../../src/lib/ai/contracts';
+import { COPILOT_MAX_PROPOSAL_TOKEN_CHARS, type GenerateRentalDocumentArgs } from '../../src/lib/ai/contracts';
 import {
+  peekProposalAction,
   ProposalError,
   redeemProposal,
   resetProposalUsageForTests,
+  signCapabilityProposal,
   signProposal,
+  verifyCapabilityProposal,
   verifyProposal
 } from '../../src/lib/ai/proposal-token';
 
@@ -173,7 +176,7 @@ describe('proposal-token', () => {
       ['mauvaise version', 'v2.abc.def'],
       ['caractères hors base64url', 'v1.ab+c/.de=f'],
       ['segment vide', 'v1..abc'],
-      ['trop long', `v1.${'a'.repeat(5000)}.b`]
+      ['trop long', `v1.${'a'.repeat(COPILOT_MAX_PROPOSAL_TOKEN_CHARS + 1)}.b`]
     ])('rejette un format invalide : %s', (_label, token) => {
       const error = expectProposalError(
         () => verifyProposal(token, { userId: USER, tenantId: TENANT }),
@@ -375,5 +378,104 @@ describe('proposal-token', () => {
       await expect(redeemProposal(claims)).rejects.toThrow('base indisponible');
       await expect(redeemProposal(claims)).resolves.toBeUndefined();
     });
+  });
+});
+
+describe('proposal-token — action EXECUTE_CAPABILITY (plan d’écriture, étape 4)', () => {
+  const args = {
+    capabilityId: 'PATCH /api/tenants/:tenantId/crm/contacts/:contactId',
+    pathParams: { contactId: 'c-1' },
+    query: {},
+    body: { city: 'Bouaké' },
+    planHash: 'a'.repeat(64)
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-29T10:00:00.000Z'));
+    resetProposalUsageForTests();
+    mockPrisma.auditLog.findFirst.mockReset().mockResolvedValue(null);
+    mockPrisma.auditLog.create.mockReset().mockResolvedValue({ id: 'audit-1' });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('signe un jeton de la même forme, lié à sub et tid, valable AI_WRITE_PLAN_TTL_SECONDS (900 s, plancher 300 s)', () => {
+    const { token, claims } = signCapabilityProposal({ userId: USER, tenantId: TENANT, args });
+    expect(token).toMatch(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    expect(claims).toMatchObject({ v: 1, sub: USER, tid: TENANT, act: 'EXECUTE_CAPABILITY' });
+    expect(claims.exp - claims.iat).toBe(env.AI_WRITE_PLAN_TTL_SECONDS);
+    expect(env.AI_WRITE_PLAN_TTL_SECONDS).toBeGreaterThanOrEqual(300);
+    expect(verifyCapabilityProposal(token, { userId: USER, tenantId: TENANT })).toEqual(claims);
+  });
+
+  it('les deux actions ne se confondent pas : chaque vérificateur refuse le jeton de l’autre (BAD_CLAIMS)', () => {
+    const capability = signCapabilityProposal({ userId: USER, tenantId: TENANT, args }).token;
+    const rental = signProposal({ userId: USER, tenantId: TENANT, args: ARGS }).token;
+    expect(() => verifyProposal(capability, { userId: USER, tenantId: TENANT })).toThrow(ProposalError);
+    expect(() => verifyCapabilityProposal(rental, { userId: USER, tenantId: TENANT })).toThrow(ProposalError);
+    try {
+      verifyProposal(capability, { userId: USER, tenantId: TENANT });
+    } catch (error) {
+      expect((error as ProposalError).code).toBe('PROPOSAL_INVALID');
+      expect((error as ProposalError).reason).toBe('BAD_CLAIMS');
+    }
+  });
+
+  it('expiré, mauvais utilisateur, mauvaise agence : mêmes codes que pour une quittance', () => {
+    const { token } = signCapabilityProposal({ userId: USER, tenantId: TENANT, args });
+    expect(() => verifyCapabilityProposal(token, { userId: 'autre', tenantId: TENANT })).toThrow(
+      expect.objectContaining({ code: 'PROPOSAL_INVALID', reason: 'WRONG_USER' })
+    );
+    expect(() => verifyCapabilityProposal(token, { userId: USER, tenantId: 'tenant-b' })).toThrow(
+      expect.objectContaining({ code: 'PROPOSAL_INVALID', reason: 'WRONG_TENANT' })
+    );
+    jest.setSystemTime(new Date('2026-09-29T10:00:00.000Z').getTime() + (env.AI_WRITE_PLAN_TTL_SECONDS + 1) * 1000);
+    expect(() => verifyCapabilityProposal(token, { userId: USER, tenantId: TENANT })).toThrow(
+      expect.objectContaining({ code: 'PROPOSAL_EXPIRED' })
+    );
+  });
+
+  it('refuse un identifiant DELETE ou hors agence dès la lecture des claims, même signé', () => {
+    for (const capabilityId of [
+      'DELETE /api/tenants/:tenantId/crm/contacts/:contactId',
+      'GET /api/tenants/:tenantId/crm/contacts',
+      'POST /api/auth/login',
+      'PATCH /api/admin/x'
+    ]) {
+      const { token } = signCapabilityProposal({ userId: USER, tenantId: TENANT, args: { ...args, capabilityId } });
+      expect(() => verifyCapabilityProposal(token, { userId: USER, tenantId: TENANT })).toThrow(
+        expect.objectContaining({ code: 'PROPOSAL_INVALID', reason: 'BAD_CLAIMS' })
+      );
+    }
+  });
+
+  it('usage unique : réclamation sous verrou, audit sans le corps', async () => {
+    const { claims } = signCapabilityProposal({ userId: USER, tenantId: TENANT, args });
+    await redeemProposal(claims);
+    expect(mockPrisma.auditLog.create.mock.calls[0][0].data.payload).toEqual({
+      act: 'EXECUTE_CAPABILITY',
+      capabilityId: args.capabilityId,
+      planHash: args.planHash
+    });
+    await expect(redeemProposal(claims)).rejects.toMatchObject({ code: 'PROPOSAL_ALREADY_USED' });
+  });
+
+  it('taille : jusqu’à COPILOT_MAX_PROPOSAL_TOKEN_CHARS, au-delà MALFORMED', () => {
+    const big = { ...args, body: { note: 'n'.repeat(7000) } };
+    const { token } = signCapabilityProposal({ userId: USER, tenantId: TENANT, args: big });
+    expect(token.length).toBeGreaterThan(4096);
+    expect(token.length).toBeLessThanOrEqual(COPILOT_MAX_PROPOSAL_TOKEN_CHARS);
+    expect(() => verifyCapabilityProposal(token, { userId: USER, tenantId: TENANT })).not.toThrow();
+  });
+
+  it('peekProposalAction : lit l’action sans faire confiance, null si illisible', () => {
+    expect(peekProposalAction(signCapabilityProposal({ userId: USER, tenantId: TENANT, args }).token)).toBe(
+      'EXECUTE_CAPABILITY'
+    );
+    expect(peekProposalAction(signProposal({ userId: USER, tenantId: TENANT, args: ARGS }).token)).toBe(
+      'GENERATE_RENTAL_DOCUMENT'
+    );
+    for (const bad of ['', 'x', 'v1..', 'v1.@@@.sig', `v1.${b64({ act: 'DELETE_EVERYTHING' })}.sig`]) {
+      expect(peekProposalAction(bad)).toBeNull();
+    }
   });
 });

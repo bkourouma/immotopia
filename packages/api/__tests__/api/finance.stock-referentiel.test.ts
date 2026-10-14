@@ -36,14 +36,43 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
   }
 }));
 
+/**
+ * Gardes doublées : refus (403) quand l'en-tête `x-deny` nomme leur
+ * permission. Lot 040 (B1-R2, B1-R3) : la lecture passe sur STOCK_VIEW,
+ * l'écriture reste sur FINANCE_SETTINGS_MANAGE.
+ */
+function guard(permission: string) {
+  return (req: any, res: any, next: any) => {
+    const denied = String(req.headers['x-deny'] ?? '').split(',');
+    if (denied.includes(permission)) {
+      res.status(403).json({ success: false, message: 'Permission refusée', code: 'FORBIDDEN' });
+      return;
+    }
+    next();
+  };
+}
+
 jest.mock('../../src/middleware/finance-rbac-middleware', () => ({
-  requireAccountsRead: (_req: any, _res: any, next: any) => next(),
-  requireReportsRead: (_req: any, _res: any, next: any) => next(),
-  requireDocumentsCreate: (_req: any, _res: any, next: any) => next(),
-  requireDocumentsValidate: (_req: any, _res: any, next: any) => next(),
-  requireSitesManage: (_req: any, _res: any, next: any) => next(),
-  requireSettingsManage: (_req: any, _res: any, next: any) => next()
+  requireAccountsRead: guard('FINANCE_ACCOUNTS_READ'),
+  requireReportsRead: guard('FINANCE_REPORTS_READ'),
+  requireDocumentsCreate: guard('FINANCE_DOCUMENTS_CREATE'),
+  requireDocumentsValidate: guard('FINANCE_DOCUMENTS_VALIDATE'),
+  requireSitesManage: guard('FINANCE_SITES_MANAGE'),
+  requireSettingsManage: guard('FINANCE_SETTINGS_MANAGE')
 }));
+
+jest.mock('../../src/middleware/stock-rbac-middleware', () => ({
+  requireStockView: guard('STOCK_VIEW')
+}));
+
+const logAuditEvent = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (...args: any[]) => logAuditEvent(...args)
+}));
+
+/** Les changements que rend la doublure des écritures avec changements (lot 040). */
+let itemChanges: Record<string, unknown> = {};
+let locationChanges: Record<string, unknown> = {};
 
 const createStockItemTx = jest.fn();
 const updateStockItemTx = jest.fn();
@@ -57,12 +86,18 @@ const setStockValuationMethodTx = jest.fn();
 
 jest.mock('../../src/lib/finance/stock-referentiel', () => ({
   createStockItemTx: (...args: any[]) => createStockItemTx(...args),
-  updateStockItemTx: (...args: any[]) => updateStockItemTx(...args),
+  updateStockItemWithChangesTx: async (...args: any[]) => ({
+    item: await updateStockItemTx(...args),
+    changes: itemChanges
+  }),
   listStockItems: (...args: any[]) => listStockItems(...args),
   getStockItem: (...args: any[]) => getStockItem(...args),
   createStockLocationTx: (...args: any[]) => createStockLocationTx(...args),
-  updateStockLocationTx: (...args: any[]) => updateStockLocationTx(...args),
-  listStockLocations: (...args: any[]) => listStockLocations(...args),
+  updateStockLocationWithChangesTx: async (...args: any[]) => ({
+    location: await updateStockLocationTx(...args),
+    changes: locationChanges
+  }),
+  listStockLocationViews: (...args: any[]) => listStockLocations(...args),
   getStockSettings: (...args: any[]) => getStockSettings(...args),
   setStockValuationMethodTx: (...args: any[]) => setStockValuationMethodTx(...args)
 }));
@@ -128,6 +163,8 @@ function settingsRecord(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  itemChanges = {};
+  locationChanges = {};
 });
 
 // ---------------------------------------------------------------------------
@@ -576,5 +613,106 @@ describe('Aucune route ne supprime un article ni un lieu', () => {
 
     expect(article.status).toBe(404);
     expect(lieu.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lot 040 — gardes STOCK_VIEW en lecture, audit du référentiel, inventaire en cours
+// ---------------------------------------------------------------------------
+
+describe('Lot 040 — gardes du référentiel (B1-R2, B1-R3)', () => {
+  it('les quatre lectures passent sur STOCK_VIEW, plus sur FINANCE_ACCOUNTS_READ', async () => {
+    listStockItems.mockResolvedValue([]);
+    getStockItem.mockResolvedValue(itemRecord());
+    listStockLocations.mockResolvedValue([]);
+    getStockSettings.mockResolvedValue(settingsRecord());
+    const paths = [
+      `/api/tenants/${TENANT_A}/finance/stock/items`,
+      `/api/tenants/${TENANT_A}/finance/stock/items/${ITEM_A}`,
+      `/api/tenants/${TENANT_A}/finance/stock/locations`,
+      `/api/tenants/${TENANT_A}/finance/stock/settings`
+    ];
+    for (const path of paths) {
+      expect((await request(app).get(path).set('x-deny', 'FINANCE_ACCOUNTS_READ')).status).toBe(200);
+      expect((await request(app).get(path).set('x-deny', 'STOCK_VIEW')).status).toBe(403);
+    }
+  });
+
+  it('les écritures restent sur FINANCE_SETTINGS_MANAGE', async () => {
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/stock/items`)
+      .set('x-deny', 'FINANCE_SETTINGS_MANAGE')
+      .send({ reference: 'CIM-42', label: 'Ciment', unit: 'sac' });
+    expect(res.status).toBe(403);
+    expect(createStockItemTx).not.toHaveBeenCalled();
+  });
+});
+
+describe('Lot 040 — audit du référentiel (B6-R1)', () => {
+  it('STOCK_ITEM_CREATED après la création d’un article', async () => {
+    createStockItemTx.mockResolvedValue(itemRecord());
+    await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/stock/items`)
+      .send({ reference: 'CIM-42', label: 'Ciment CPJ 42.5', unit: 'sac' });
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_A,
+        actorUserId: 'user-1',
+        actionKey: 'STOCK_ITEM_CREATED',
+        entityType: 'StockItem',
+        entityId: ITEM_A,
+        payload: expect.objectContaining({ reference: 'CIM-42', unit: 'sac' })
+      })
+    );
+  });
+
+  it('STOCK_ITEM_UPDATED avec changes, dont l’unité ; rien si rien n’a changé', async () => {
+    updateStockItemTx.mockResolvedValue(itemRecord({ unit: 'tonne' }));
+    itemChanges = { unit: { before: 'sac', after: 'tonne' } };
+    await request(app).patch(`/api/tenants/${TENANT_A}/finance/stock/items/${ITEM_A}`).send({ unit: 'tonne' });
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: 'STOCK_ITEM_UPDATED', changes: { unit: { before: 'sac', after: 'tonne' } } })
+    );
+
+    logAuditEvent.mockClear();
+    itemChanges = {};
+    await request(app).patch(`/api/tenants/${TENANT_A}/finance/stock/items/${ITEM_A}`).send({ unit: 'tonne' });
+    expect(logAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it('STOCK_LOCATION_CREATED et STOCK_LOCATION_UPDATED', async () => {
+    createStockLocationTx.mockResolvedValue(locationRecord());
+    await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/stock/locations`)
+      .send({ kind: 'WAREHOUSE', label: 'Magasin central' });
+    expect(logAuditEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        actionKey: 'STOCK_LOCATION_CREATED',
+        entityType: 'StockLocation',
+        entityId: LOCATION_A
+      })
+    );
+
+    updateStockLocationTx.mockResolvedValue(locationRecord({ isActive: false }));
+    locationChanges = { isActive: { before: true, after: false } };
+    await request(app)
+      .patch(`/api/tenants/${TENANT_A}/finance/stock/locations/${LOCATION_A}`)
+      .send({ isActive: false });
+    expect(logAuditEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({ actionKey: 'STOCK_LOCATION_UPDATED', changes: locationChanges })
+    );
+  });
+
+  it('relaie 409 STOCK_COUNT_IN_PROGRESS à la désactivation d’un lieu en inventaire, sans audit', async () => {
+    const { AppError } = jest.requireActual('../../src/middleware/error-middleware');
+    updateStockLocationTx.mockRejectedValue(
+      new AppError('Inventaire en cours.', 409, 'STOCK_COUNT_IN_PROGRESS', undefined, { countId: 'inv-1' })
+    );
+    const res = await request(app)
+      .patch(`/api/tenants/${TENANT_A}/finance/stock/locations/${LOCATION_A}`)
+      .send({ isActive: false });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('STOCK_COUNT_IN_PROGRESS');
+    expect(logAuditEvent).not.toHaveBeenCalled();
   });
 });

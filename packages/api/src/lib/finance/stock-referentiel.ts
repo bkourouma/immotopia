@@ -44,7 +44,10 @@
 
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
+import { ErrorCode } from '../../middleware/error-middleware';
 import { badRequest, conflict, notFound } from '../errors';
+import { isOpeningCountSuggested, loadItemsToRecount, stockError } from './stock-controles';
+import type { LocationView, PrismaLike } from './types-040-controle';
 import type {
   CreateStockItemTx,
   CreateStockLocationTx,
@@ -364,6 +367,24 @@ export const updateStockLocationTx: UpdateStockLocationTx = async (tx, tenantId,
   if (params.isActive !== undefined) {
     // Désactiver n'est pas supprimer : le lieu garde son stock et son
     // historique, il cesse simplement d'être proposé (contrat).
+    //
+    // Lot 040 (spec §9) : un lieu qui porte un inventaire en cours (DRAFT ou
+    // COUNTED) ne se désactive pas — l'inventaire ne pourrait plus être clos
+    // ni validé proprement.
+    if (params.isActive === false) {
+      const inProgress = await tx.stockCount.findFirst({
+        where: { tenantId, locationId, status: { in: ['DRAFT', 'COUNTED'] } },
+        select: { id: true }
+      });
+      if (inProgress) {
+        throw stockError(
+          409,
+          ErrorCode.STOCK_COUNT_IN_PROGRESS,
+          'Ce lieu porte un inventaire en cours : terminez-le ou abandonnez-le avant de le désactiver.',
+          { countId: inProgress.id }
+        );
+      }
+    }
     data.isActive = params.isActive;
   }
 
@@ -461,3 +482,156 @@ export const setStockValuationMethodTx: SetStockValuationMethodTx = async (tx, t
 
   return toStockSettingsRecord(updated);
 };
+
+// ---------------------------------------------------------------------------
+// D. Lot 040 — la vue d'un lieu (`LocationView`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Complète des lieux du référentiel avec ce que le terrain doit savoir
+ * (contrat `LocationView`) : l'inventaire en cours (DRAFT ou COUNTED), le
+ * chantier clos, l'inventaire d'ouverture suggéré (A7-R1) et les articles à
+ * recompter (A2-R7). Aucune quantité ni valeur : la vue ne révèle rien d'un
+ * lieu en comptage.
+ *
+ * Quatre requêtes en tout, jamais une par lieu.
+ */
+export async function buildLocationViews(
+  db: PrismaLike,
+  tenantId: string,
+  locations: StockLocationRecord[],
+  now: Date = new Date()
+): Promise<LocationView[]> {
+  if (locations.length === 0) {
+    return [];
+  }
+  const locationIds = locations.map(location => location.id);
+  const siteIds = [...new Set(locations.map(location => location.siteId).filter((id): id is string => !!id))];
+
+  const [counts, sites, toRecount] = await Promise.all([
+    db.stockCount.findMany({
+      where: { tenantId, locationId: { in: locationIds }, status: { not: 'CANCELLED' } },
+      select: { id: true, locationId: true, status: true, kind: true, createdAt: true },
+      orderBy: { createdAt: 'desc' }
+    }),
+    siteIds.length > 0
+      ? db.constructionSite.findMany({
+          where: { tenantId, id: { in: siteIds } },
+          select: { id: true, closedAt: true, stockEnabledAt: true }
+        })
+      : Promise.resolve([] as Array<{ id: string; closedAt: Date | null; stockEnabledAt: Date | null }>),
+    loadItemsToRecount(db, tenantId, locationIds)
+  ]);
+
+  const siteById = new Map(sites.map(site => [site.id, site]));
+  const inProgressByLocation = new Map<string, (typeof counts)[number]>();
+  const liveOpeningLocations = new Set<string>();
+  for (const count of counts) {
+    if ((count.status === 'DRAFT' || count.status === 'COUNTED') && !inProgressByLocation.has(count.locationId)) {
+      inProgressByLocation.set(count.locationId, count);
+    }
+    if (count.kind === 'OPENING') {
+      liveOpeningLocations.add(count.locationId);
+    }
+  }
+
+  return locations.map(location => {
+    const site = location.siteId ? siteById.get(location.siteId) : undefined;
+    const siteClosed = !!site?.closedAt;
+    const inProgress = inProgressByLocation.get(location.id);
+    return {
+      ...location,
+      countInProgress: inProgress
+        ? { countId: inProgress.id, status: inProgress.status as 'DRAFT' | 'COUNTED', kind: inProgress.kind }
+        : null,
+      siteClosed,
+      openingCountSuggested:
+        location.kind === 'SITE' && !!site && !siteClosed
+          ? isOpeningCountSuggested(
+              { stockEnabledAt: site.stockEnabledAt ?? null },
+              liveOpeningLocations.has(location.id),
+              now
+            )
+          : false,
+      toRecount: toRecount.get(location.id) ?? []
+    };
+  });
+}
+
+/** `GET /stock/locations` (lot 040) : les lieux filtrés, en `LocationView`. */
+export async function listStockLocationViews(
+  tenantId: string,
+  filters?: { onlyActive?: boolean; kind?: 'WAREHOUSE' | 'SITE' }
+): Promise<LocationView[]> {
+  const locations = await listStockLocations(tenantId, filters ?? {});
+  return buildLocationViews(prisma, tenantId, locations);
+}
+
+// ---------------------------------------------------------------------------
+// E. Lot 040 — écritures du référentiel avec leurs changements (audit B6)
+// ---------------------------------------------------------------------------
+
+/** Champs modifiés `{ champ: { before, after } }` (`AuditLogEntry.changes`). */
+export type ReferentielChanges = Record<string, { before: unknown; after: unknown }>;
+
+function diffRecords<T extends object>(before: T, after: T, keys: Array<keyof T>): ReferentielChanges {
+  const changes: ReferentielChanges = {};
+  for (const key of keys) {
+    if (before[key] !== after[key]) {
+      changes[String(key)] = { before: before[key], after: after[key] };
+    }
+  }
+  return changes;
+}
+
+const ITEM_AUDITED_FIELDS: Array<keyof StockItemRecord> = [
+  'label',
+  'unit',
+  'category',
+  'defaultCostCategoryId',
+  'isActive'
+];
+
+const LOCATION_AUDITED_FIELDS: Array<keyof StockLocationRecord> = ['label', 'isActive'];
+
+/**
+ * Corrige un article et rend ce qui a changé — l'unité comprise : passer de
+ * « sac » à « tonne » ne reconvertit rien, l'audit doit donc le montrer
+ * (B6-R1). Même règle que `updateStockItemTx`, qu'elle appelle.
+ */
+export async function updateStockItemWithChangesTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  itemId: string,
+  params: Parameters<UpdateStockItemTx>[3]
+): Promise<{ item: StockItemRecord; changes: ReferentielChanges }> {
+  const beforeRow = await tx.stockItem.findFirst({
+    where: { id: itemId, tenantId },
+    include: { defaultCostCategory: { select: { label: true } } }
+  });
+  if (!beforeRow) {
+    throw notFound('Article introuvable');
+  }
+  const before = toStockItemRecord(beforeRow);
+  const item = await updateStockItemTx(tx, tenantId, itemId, params);
+  return { item, changes: diffRecords(before, item, ITEM_AUDITED_FIELDS) };
+}
+
+/** Corrige un lieu et rend ce qui a changé (libellé, activité). */
+export async function updateStockLocationWithChangesTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  locationId: string,
+  params: Parameters<UpdateStockLocationTx>[3]
+): Promise<{ location: StockLocationRecord; changes: ReferentielChanges }> {
+  const beforeRow = await tx.stockLocation.findFirst({
+    where: { id: locationId, tenantId },
+    include: { site: { select: { name: true } } }
+  });
+  if (!beforeRow) {
+    throw notFound('Lieu de stockage introuvable');
+  }
+  const before = toStockLocationRecord(beforeRow);
+  const location = await updateStockLocationTx(tx, tenantId, locationId, params);
+  return { location, changes: diffRecords(before, location, LOCATION_AUDITED_FIELDS) };
+}

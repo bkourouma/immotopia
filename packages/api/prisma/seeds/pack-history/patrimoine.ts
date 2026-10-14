@@ -1033,10 +1033,11 @@ export async function seedPatrimoineHistoryForPack(ctx: HistoryContext, pack: Pa
           tenantId,
           propertyId: propertyIds[i],
           years: 10,
-          valueGrowthRate: roundTo(spec.growth * 100, 0.5),
-          rentGrowthRate: 3,
-          expenseGrowthRate: 4,
-          vacancyRate: spec.type === 'BUREAU' || spec.type === 'ENTREPOT_INDUSTRIEL' ? 8 : 5,
+          // Fractions (0,05 = 5 %), comme l'attendent `lib/patrimoine/yield.ts` et le schéma API.
+          valueGrowthRate: Number(spec.growth.toFixed(4)),
+          rentGrowthRate: 0.03,
+          expenseGrowthRate: 0.04,
+          vacancyRate: spec.type === 'BUREAU' || spec.type === 'ENTREPOT_INDUSTRIEL' ? 0.08 : 0.05,
           updatedByUserId: adminUserId
         });
       }

@@ -691,3 +691,140 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   }, 15000);
 });
+
+// ---------------------------------------------------------------------------
+// Lot 040 — les bloqueurs de stock et leurs liens d'action (E8, A7-R3)
+// ---------------------------------------------------------------------------
+
+describe('Lot 040 — les bloqueurs de stock', () => {
+  const FACTURE: SiteClosureBlocker = {
+    message:
+      'Une facture fournisseur en brouillon vise encore ce chantier : validez-la ou supprimez-la avant de clôturer.',
+    count: 1,
+    documentType: 'SUPPLIER_INVOICE'
+  };
+  const INVENTAIRE: SiteClosureBlocker = {
+    message: 'Un inventaire est en cours sur le lieu de stockage de ce chantier.',
+    count: 1,
+    documentType: 'STOCK_COUNT',
+    documentIds: ['inventaire-7']
+  };
+  const RESTE: SiteClosureBlocker = {
+    // Le message réel du serveur : il ne porte pas le nombre d'articles, qui
+    // voyage dans `count` (et vaut `null` en comptage à l'aveugle).
+    message:
+      "Le lieu de stockage du chantier porte encore du stock : faites l'inventaire de clôture, puis transférez le reste vers un magasin.",
+    count: 5,
+    documentType: 'STOCK_RESIDUAL',
+    documentIds: ['lieu-chantier-3']
+  };
+  const CLOTURE_MANQUANTE: SiteClosureBlocker = {
+    message: 'Le lieu de stockage de ce chantier n’a pas d’inventaire de clôture validé.',
+    count: 1,
+    documentType: 'STOCK_CLOSING_COUNT_MISSING',
+    documentIds: ['lieu-chantier-3']
+  };
+
+  it('donne à chaque bloqueur de stock son lien d’action', async () => {
+    configurerGet({ bloqueurs: [INVENTAIRE, RESTE] });
+    monter();
+
+    expect(await screen.findByText(INVENTAIRE.message, {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ouvrir l’inventaire' })).toHaveAttribute(
+      'href',
+      `/tenant/${TENANT}/finance/stock/inventaire?inventaire=inventaire-7`
+    );
+    expect(screen.getByRole('link', { name: 'Transférer le reste vers un magasin' })).toHaveAttribute(
+      'href',
+      `/tenant/${TENANT}/finance/stock/inventaire?onglet=transfert&origine=lieu-chantier-3`
+    );
+    expect(screen.getByRole('button', { name: 'Clôturer le chantier' })).toBeDisabled();
+  });
+
+  it('lie l’inventaire de clôture manquant à son ouverture', async () => {
+    configurerGet({ bloqueurs: [CLOTURE_MANQUANTE] });
+    monter();
+
+    expect(await screen.findByText(CLOTURE_MANQUANTE.message, {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Faire l’inventaire de clôture' })).toHaveAttribute(
+      'href',
+      `/tenant/${TENANT}/finance/stock/inventaire?ouvrir=CLOSING&lieu=lieu-chantier-3`
+    );
+  });
+
+  it('ne compte pas les articles du stock parmi les pièces concernées', async () => {
+    configurerGet({ bloqueurs: [FACTURE, RESTE] });
+    monter();
+
+    await screen.findByText(FACTURE.message, {}, { timeout: 8000 });
+    // Deux raisons, mais UNE seule pièce : les cinq articles du reste n'en sont pas.
+    expect(screen.getByText(/2 raisons empêchent de clôturer ce chantier \(1 pièce concernée\)/i)).toBeInTheDocument();
+    expect(screen.queryByText(/6 pièces concernées/i)).not.toBeInTheDocument();
+  });
+
+  it('sans aucune pièce, ne parle pas de pièces concernées', async () => {
+    configurerGet({ bloqueurs: [RESTE] });
+    monter();
+
+    await screen.findByText(RESTE.message, {}, { timeout: 8000 });
+    expect(screen.getByText('1 raison empêche de clôturer ce chantier.')).toBeInTheDocument();
+    expect(screen.queryByText(/pièces? concernées?/i)).not.toBeInTheDocument();
+  });
+
+  it('dit l’ordre du parcours et place l’inventaire de clôture avant le transfert', async () => {
+    // Le serveur les rend dans l'autre ordre : l'écran remet le parcours d'aplomb.
+    configurerGet({ bloqueurs: [RESTE, CLOTURE_MANQUANTE] });
+    monter();
+
+    expect(
+      await screen.findByText(
+        'Faites d’abord l’inventaire de clôture du lieu de stockage, puis transférez ce qui reste vers un magasin.',
+        {},
+        { timeout: 8000 }
+      )
+    ).toBeInTheDocument();
+    const elements = screen.getAllByRole('listitem').map(li => li.textContent ?? '');
+    const rangCloture = elements.findIndex(texte => texte.includes(CLOTURE_MANQUANTE.message));
+    const rangReste = elements.findIndex(texte => texte.includes(RESTE.message));
+    expect(rangCloture).toBeGreaterThanOrEqual(0);
+    expect(rangCloture).toBeLessThan(rangReste);
+  });
+
+  it('dit combien d’articles restent sur le lieu quand le serveur le donne', async () => {
+    configurerGet({ bloqueurs: [RESTE] });
+    monter();
+
+    await screen.findByText(RESTE.message, {}, { timeout: 8000 });
+    expect(screen.getByText('5 articles encore en stock.')).toBeInTheDocument();
+    expect(screen.queryByText(/comptage en cours/i)).not.toBeInTheDocument();
+  });
+
+  it('en comptage à l’aveugle (count null) : le reste est listé sans nombre, la clôture reste bloquée', async () => {
+    // Spec §8.2 : le nombre d'articles dirait au compteur combien il lui en
+    // reste à trouver — le serveur rend `count: null`, l'écran n'en invente aucun.
+    const resteMasque: SiteClosureBlocker = { ...RESTE, count: null };
+    configurerGet({ bloqueurs: [FACTURE, INVENTAIRE, resteMasque] });
+    monter();
+
+    const element = await screen.findByText(RESTE.message, {}, { timeout: 8000 });
+    const ligne = element.closest('li') as HTMLElement;
+    expect(within(ligne).getByText('Nombre d’articles masqué (comptage en cours).')).toBeInTheDocument();
+    expect(ligne.textContent ?? '').not.toMatch(/\d/);
+    expect(screen.queryByText(/articles? encore en stock/i)).not.toBeInTheDocument();
+    expect(within(ligne).getByRole('link', { name: 'Transférer le reste vers un magasin' })).toHaveAttribute(
+      'href',
+      `/tenant/${TENANT}/finance/stock/inventaire?onglet=transfert&origine=lieu-chantier-3`
+    );
+    // Trois raisons, une seule pièce : le reste masqué n'ajoute rien au total.
+    expect(screen.getByText(/3 raisons empêchent de clôturer ce chantier \(1 pièce concernée\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clôturer le chantier' })).toBeDisabled();
+  });
+
+  it('sans bloqueur, dit que ni pièce ni stock ne vise le chantier', async () => {
+    monter();
+
+    expect(
+      await screen.findByText(/Aucune pièce en brouillon ni aucun stock ne le vise\./, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+  });
+});

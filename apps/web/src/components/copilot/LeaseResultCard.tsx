@@ -14,15 +14,21 @@ export function LeaseResultCard({ item, tenantId }: LeaseResultCardProps): React
   return (
     <Card size="small" data-testid="copilot-lease-card">
       <Link to={`/tenant/${tenantId}/rental/leases/${item.id}`}>
-        <Typography.Text strong>{t('Bail {{number}}', { number: item.leaseNumber })}</Typography.Text>
+        <Typography.Text strong>
+          <bdi>{t('Bail {{number}}', { number: item.leaseNumber })}</bdi>
+        </Typography.Text>
       </Link>{' '}
       <Tag>{leaseStatusLabel(item.status)}</Tag>
       <div>
-        <Typography.Text>{item.propertyLabel}</Typography.Text>
+        <Typography.Text>
+          <bdi>{item.propertyLabel}</bdi>
+        </Typography.Text>
       </div>
       {item.renterName ? (
         <div>
-          <Typography.Text type="secondary">{item.renterName}</Typography.Text>
+          <Typography.Text type="secondary">
+            <bdi>{item.renterName}</bdi>
+          </Typography.Text>
         </div>
       ) : null}
       <Typography.Text>

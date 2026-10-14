@@ -35,12 +35,19 @@ export function PropertyResultCard({ item, tenantId }: PropertyResultCardProps):
         ) : null}
         <div style={{ minWidth: 0, flex: 1 }}>
           <Link to={`/tenant/${tenantId}/properties/${item.id}`}>
-            <Typography.Text strong>{item.title}</Typography.Text>
+            <Typography.Text strong>
+              <bdi>{item.title}</bdi>
+            </Typography.Text>
           </Link>
           <div>
             <Typography.Text type="secondary">
-              {item.internalReference}
-              {item.locationZone ? ` · ${item.locationZone}` : ''}
+              <bdi>{item.internalReference}</bdi>
+              {item.locationZone ? (
+                <>
+                  {' · '}
+                  <bdi>{item.locationZone}</bdi>
+                </>
+              ) : null}
             </Typography.Text>
           </div>
           <div>
