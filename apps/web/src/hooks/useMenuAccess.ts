@@ -3,7 +3,7 @@ import { MORE_TAB_HREF } from '../navigation/model';
 import type { NavGroup, PersonaNav } from '../navigation/model';
 import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
-import { getMyDisabledMenus } from '../services/role-menu-service';
+import { getMyDisabledMenus, getMyMenuAccess } from '../services/role-menu-service';
 import { getMenuEntitlements } from '../services/entitlements-service';
 import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../navigation/feature-access';
 import type { FeatureAccessMap } from '../navigation/feature-access';
@@ -44,6 +44,52 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
   }, [tenantId]);
 
   return disabled;
+}
+
+export interface MyMenuAccessState {
+  /** Clés de menu coupées par un administrateur pour ce compte. */
+  disabled: Set<string>;
+  /**
+   * Permissions détenues dans l'agence, ou `null` : pas de filtrage par
+   * permission (pas d'agence, chargement, échec réseau).
+   */
+  permissions: Set<string> | null;
+  /**
+   * `true` une fois la réponse arrivée (ou échouée). Avant, `permissions`
+   * vaut `null` sans que cela veuille dire « aucune restriction » : un écran
+   * qui appelle une route protégée doit attendre `ready` pour ne pas
+   * déclencher un 403 qu'il masquerait aussitôt.
+   */
+  ready: boolean;
+}
+
+const NO_RESTRICTION: MyMenuAccessState = { disabled: new Set(), permissions: null, ready: false };
+
+export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
+  const [state, setState] = useState<MyMenuAccessState>(NO_RESTRICTION);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getMyMenuAccess(tenantId)
+      .then(access => {
+        if (cancelled) return;
+        setState({
+          disabled: new Set(access.disabledMenuKeys),
+          permissions: access.permissionKeys ? new Set(access.permissionKeys) : null,
+          ready: true
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ ...NO_RESTRICTION, ready: true });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  return state;
 }
 
 /**

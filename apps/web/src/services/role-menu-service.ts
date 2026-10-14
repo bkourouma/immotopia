@@ -44,16 +44,20 @@ export async function updateMenuAccess(
  * permissions ne permettent pas d'ouvrir (Biens et Patrimoine sans
  * `PROPERTIES_VIEW`) s'ajoutent aux coupures explicites.
  */
-export async function getMyDisabledMenus(tenantId?: string | null): Promise<string[]> {
+export async function getMyMenuAccess(
+  tenantId?: string | null
+): Promise<{ disabledMenuKeys: string[]; permissionKeys: string[] | null }> {
   const response = await apiClient.get('/roles/menu-access/me', {
     params: tenantId ? { tenantId } : {}
   });
   const disabled: string[] = response.data.data?.disabledMenuKeys ?? [];
   const permissions: unknown = response.data.data?.permissions;
-  if (!Array.isArray(permissions)) return disabled;
-  const denied = menuKeysDeniedByPermissions(
-    'collaborateur',
-    permissions.filter(p => typeof p === 'string')
-  );
-  return Array.from(new Set([...disabled, ...denied]));
+  if (!Array.isArray(permissions)) return { disabledMenuKeys: disabled, permissionKeys: null };
+  const permissionKeys = permissions.filter((p): p is string => typeof p === 'string');
+  const denied = menuKeysDeniedByPermissions('collaborateur', permissionKeys);
+  return { disabledMenuKeys: Array.from(new Set([...disabled, ...denied])), permissionKeys };
+}
+
+export async function getMyDisabledMenus(tenantId?: string | null): Promise<string[]> {
+  return (await getMyMenuAccess(tenantId)).disabledMenuKeys;
 }

@@ -17,6 +17,7 @@ import {
   getSupplierInvoiceHandler,
   getSuppliersBalanceHandler,
   listSupplierInvoicesHandler,
+  listSupplierPaymentsHandler,
   listSuppliersHandler,
   validateSupplierInvoiceHandler,
   voidSupplierInvoiceHandler
@@ -90,6 +91,15 @@ router.post(
   '/tenants/:tenantId/finance/supplier-invoices/:invoiceId/void',
   requireDocumentsValidate,
   voidSupplierInvoiceHandler
+);
+
+// Lecture des règlements d'un fournisseur (BUG-2026-09-29-001) : ils doivent se
+// relire depuis la fiche, quelle que soit la personne ou la session qui les a
+// saisis. Même garde de lecture que les factures.
+router.get(
+  '/tenants/:tenantId/finance/suppliers/:supplierId/payments',
+  requireAccountsRead,
+  listSupplierPaymentsHandler
 );
 
 router.post(
