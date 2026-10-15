@@ -8,7 +8,8 @@ import { runWithTenantContext } from '../../utils/tenant-context';
 import { generateToken, hashToken, hashesMatch, looksLikeToken } from './token';
 import { invalidSecureLinkError } from './errors';
 
-export type SecureLinkScope = 'OWNER_MONTHLY_REPORT' | 'EXTERNAL_ACCESS_GRANT' | 'INSTALLMENT_PAYMENT'; // = enum Prisma
+export type SecureLinkScope =
+  'OWNER_MONTHLY_REPORT' | 'EXTERNAL_ACCESS_GRANT' | 'INSTALLMENT_PAYMENT' | 'GENERAL_MEETING_ACCESS'; // = enum Prisma
 
 export interface CreateSecureLinkInput {
   tenantId: string;
@@ -71,6 +72,8 @@ export function buildSecureLinkUrl(scope: SecureLinkScope, token: string): strin
       return `${base}/payer#${token}`;
     case 'EXTERNAL_ACCESS_GRANT':
       return `${base}/acces-partage#${token}`;
+    case 'GENERAL_MEETING_ACCESS':
+      return `${base}/ag-direct#${token}`;
   }
 }
 

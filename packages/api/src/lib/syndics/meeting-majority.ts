@@ -82,14 +82,29 @@ export interface ResolutionTally {
   result: 'APPROVED' | 'REJECTED' | null;
 }
 
+/** Emargement d'un lot (spec 043) : absence de ligne = absent. */
+export interface MajorityAttendance {
+  lotId: string;
+  status: 'PRESENT' | 'REPRESENTED' | 'ABSENT';
+  mode?: 'ONLINE' | 'IN_PERSON' | null;
+}
+
 export interface MeetingAttendance {
-  /** Lots ayant vote au moins une fois dans l'assemblee, et leurs tantiemes. */
+  /** Lots presents ou representes (emarges, ou ayant vote), et leurs tantiemes. Nom historique. */
   representedLots: number;
   representedShares: number;
   totalLots: number;
   totalShares: number;
   /** Tantiemes representes / tantiemes totaux, en %, deux decimales. */
   quorumPercent: number;
+  /** Lots presents (PRESENT, ou ayant vote sans emargement), et leurs tantiemes. */
+  presentLots: number;
+  presentShares: number;
+  /** Lots emarges REPRESENTED (donneur de pouvoir), et leurs tantiemes. */
+  representedOnlyLots: number;
+  representedOnlyShares: number;
+  /** Lots comptes dans le quorum et emarges en ligne. */
+  onlineLots: number;
 }
 
 /** Ramene une saisie libre a un code de regle ; tout texte inconnu vaut l'article 24. */
@@ -189,25 +204,56 @@ export function computeResolutionTally(
 }
 
 /**
- * Presence de l'assemblee : un lot est represente des qu'il a vote sur au
- * moins une resolution (en personne ou par son mandataire). Indicatif, aucune
- * regle de quorum n'est bloquante.
+ * Presence de l'assemblee (D3, spec 043) : un lot est compte s'il est emarge
+ * PRESENT ou REPRESENTED, OU s'il a vote au moins une fois (compatibilite avec
+ * les assemblees deja tenues, sans emargement). Un lot emarge ABSENT mais qui a
+ * vote compte comme present. Indicatif, aucune regle de quorum n'est bloquante.
  */
-export function computeMeetingAttendance(lots: MajorityLot[], votes: Array<{ lotId: string }>): MeetingAttendance {
+export function computeMeetingAttendance(
+  lots: MajorityLot[],
+  votes: Array<{ lotId: string }>,
+  attendances: MajorityAttendance[] = []
+): MeetingAttendance {
   const lotsById = new Map(lots.map(lot => [lot.id, lot]));
-  const representedIds = new Set(votes.map(vote => vote.lotId).filter(lotId => lotsById.has(lotId)));
-  const representedShares = Array.from(representedIds).reduce(
-    (sum, lotId) => sum + (lotsById.get(lotId)?.generalShares || 0),
-    0
-  );
+  const votedIds = new Set(votes.map(vote => vote.lotId).filter(lotId => lotsById.has(lotId)));
+  const attendanceByLot = new Map(attendances.filter(a => lotsById.has(a.lotId)).map(a => [a.lotId, a]));
+
+  let presentLots = 0;
+  let presentShares = 0;
+  let representedOnlyLots = 0;
+  let representedOnlyShares = 0;
+  let onlineLots = 0;
+
+  for (const lot of lots) {
+    const attendance = attendanceByLot.get(lot.id);
+    const emargedIn = attendance?.status === 'PRESENT' || attendance?.status === 'REPRESENTED';
+    if (!emargedIn && !votedIds.has(lot.id)) continue;
+    const shares = lot.generalShares || 0;
+    if (attendance?.status === 'REPRESENTED') {
+      representedOnlyLots += 1;
+      representedOnlyShares += shares;
+    } else {
+      presentLots += 1;
+      presentShares += shares;
+    }
+    if (emargedIn && attendance?.mode === 'ONLINE') onlineLots += 1;
+  }
+
+  const representedLots = presentLots + representedOnlyLots;
+  const representedShares = presentShares + representedOnlyShares;
   const totalShares = lots.reduce((sum, lot) => sum + (lot.generalShares || 0), 0);
   const quorumPercent = totalShares > 0 ? Math.round((representedShares / totalShares) * 10000) / 100 : 0;
 
   return {
-    representedLots: representedIds.size,
+    representedLots,
     representedShares,
     totalLots: lots.length,
     totalShares,
-    quorumPercent
+    quorumPercent,
+    presentLots,
+    presentShares,
+    representedOnlyLots,
+    representedOnlyShares,
+    onlineLots
   };
 }

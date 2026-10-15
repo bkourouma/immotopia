@@ -10,6 +10,7 @@ import {
   listCoOwnerMeetings,
   type CoOwnerPortalScope
 } from '../lib/syndics/coowner-portal';
+import { issueCoOwnerPortalMeetingLink } from '../lib/syndics/meeting-participants';
 
 /**
  * Portail copropriétaire — lecture seule (`/api/portal/copropriete/*`).
@@ -33,6 +34,7 @@ function scopeOf(req: Request): CoOwnerPortalScope {
 }
 
 const lotParamsSchema = z.object({ lotId: z.string().uuid() });
+const meetingParamsSchema = z.object({ meetingId: z.string().uuid() });
 const documentParamsSchema = z.object({ documentId: z.string().uuid() });
 const chargeCallsQuerySchema = z.object({ lotId: z.string().uuid().optional() });
 
@@ -70,4 +72,17 @@ export const downloadCoOwnerDocumentHandler = asyncHandler(async (req: Request, 
 export const listCoOwnerMeetingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const meetings = await listCoOwnerMeetings(scopeOf(req));
   res.json({ success: true, data: meetings });
+});
+
+/**
+ * Spec 043 : lien personnel d'AG en direct pour le contact du portail. Seule
+ * ecriture du portail : elle ne touche ni lot ni vote, elle delivre un acces
+ * (jeton remis une fois, jamais mis en cache).
+ */
+export const issueCoOwnerMeetingAccessHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { meetingId } = meetingParamsSchema.parse(req.params);
+  const data = await issueCoOwnerPortalMeetingLink(scopeOf(req), meetingId, req.user?.userId ?? null);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.json({ success: true, data });
 });

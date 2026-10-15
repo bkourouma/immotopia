@@ -36,6 +36,32 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-ag-en-direct` — 2026-10-15
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur
+**Dernier commit :** voir `git log` (décisions D1, D3, D7, D13 validées le 2026-10-15)
+**Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
+
+Fait :
+
+- Spec `specs/043-syndic-ag-en-direct/spec.md` (décisions D1–D12 du Pilote, à valider par le fondateur).
+- API, web, migration `20261015100000_syndic_ag_en_direct`, wiki des fonctionnalités, revue de sécurité (0 critique/haute ; 1 moyenne + 3 basses corrigées).
+- Recette navigateur (`docs/recette/SCENARIO_SYNDIC_AG_EN_DIRECT.md`) jouée sur la démo : 6 anomalies d'écran (BUG-2026-10-15-001 à 006) corrigées dans `7fcbe145` et retestées « passé ». Migration appliquée avec succès sur la base de démo.
+- Démo : worktree `.claude/worktrees/demo` sur `7fcbe145`, dépendances propres (réinstallées le 2026-10-15 : la première installation était incomplète, `zod` amputé). Agence de recette « Horizon Syndic Gestion » créée par l'interface dans la base de démo (identifiants de test : `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md` 1.1), copropriété « Résidence Les Flamboyants », 4 lots, 2 AG de recette.
+
+Reste à faire :
+
+- Décisions validées par le fondateur le 2026-10-15 : lien seul suffit (D1), quorum indicatif (D3), décision provisoire masquée au gestionnaire pendant un vote ouvert (D7, fait), téléphone gardé dans la liste des participants (D13).
+- Non joué : portail copropriétaire (aucun compte portail dans la démo), boutons de vote en 375 px pendant un vote ouvert, compte rendu Word avec feuille de présence (téléchargement non fait), envoi réel des convocations (démo sans SMTP : « 4 échoué(s) »), `measure:entry`, `test:isolation`, charge du polling sur une grande copropriété.
+
+Pièges et décisions :
+
+- `npm run i18n:extract` supprime des traductions existantes sur ce dépôt (API : 35 clés) et en ajoute des vides : ne pas l'utiliser, éditer les catalogues à la main et relire leur diff.
+- Après tout ajout de route API : `npm run ai:catalog` dans `packages/api` (sinon `ai.catalog.test.ts` échoue en CI).
+- Ne pas lancer `prisma format` (réaligne ~200 lignes du schéma).
+- Recette dans un panneau masqué : l'interrogation se met en pause (`document.hidden`) ; l'agent de recette force la visibilité par JavaScript.
+- La base de démo n'avait aucune agence Syndic : le seed des packs a été refusé par l'outil de sécurité ; l'agence a été créée par l'interface avec l'accord de l'utilisateur.
+
 ## Branche `feat/modeles-syndic-word` — 2026-10-15
 
 **État :** prêt à relire (PR 133 ; la PR 129 des modèles standard est fusionnée dans `main`)

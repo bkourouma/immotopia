@@ -58,6 +58,7 @@ import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './rou
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
+import meetingLivePublicRoutes, { PUBLIC_MEETING_LIVE_PREFIX } from './routes/meeting-live-public-routes';
 import externalAccessRoutes from './routes/external-access-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
@@ -138,6 +139,7 @@ app.use(compressionMiddleware);
 const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_SECURE_LINKS_PREFIX,
   PUBLIC_EXTERNAL_ACCESS_PREFIX,
+  PUBLIC_MEETING_LIVE_PREFIX,
   WHATSAPP_CLOUD_WEBHOOK_PREFIX
 ];
 const skipSecureLinkPublic =
@@ -246,6 +248,8 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
+// Spec 043 : AG en direct par lien personnel (jeton dans le corps, JSON 4 Ko, limiteurs par IP et par jeton).
+app.use('/api', meetingLivePublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess
