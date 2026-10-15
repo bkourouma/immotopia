@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Form, Modal, Popconfirm, Select, Table, Typography } from 'antd';
+import { App, Alert, Button, Card, Form, Modal, Popconfirm, Select, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Table } from '../primitives';
 import { listContacts } from '../../services/crm-service';
 import { createMeetingProxy, deleteMeetingProxy } from '../../services/syndic-service';
 import { MeetingContact, MeetingLot, MeetingProxy } from '../../types/syndic-types';
@@ -193,6 +194,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
         <Text type="secondary">{t("Aucun lot n'a de copropriétaire : aucun pouvoir possible.")}</Text>
       ) : null}
       <Table
+        exportFilename={t('Pouvoirs')}
         scroll={{ x: 'max-content' }}
         rowKey="id"
         size="small"

@@ -170,6 +170,8 @@ function useLocalTable<T>(items: T[], pageSize: number) {
 
   return {
     pageItems,
+    // Toutes les lignes, triées comme à l'écran : c'est ce que l'export emporte.
+    allItems: sorted,
     total,
     page,
     pageSize,
@@ -661,6 +663,7 @@ export const SyndicDetail: React.FC = () => {
             columns={buildingColumns}
             rowKey={row => row.id}
             aria-label={t('Détail des bâtiments')}
+            export={{ filename: t('Détail des bâtiments'), fetchAll: async () => buildingsTable.allItems }}
             renderCard={row => (
               <DataCard
                 title={row.title}
@@ -693,6 +696,7 @@ export const SyndicDetail: React.FC = () => {
             columns={chargeColumns}
             rowKey={row => row.id}
             aria-label={t('Détail des appels de charges')}
+            export={{ filename: t('Détail des appels de charges'), fetchAll: async () => chargesTable.allItems }}
             scrollX={1100}
             renderCard={row => (
               <DataCard

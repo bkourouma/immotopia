@@ -469,6 +469,7 @@ const CarnetDesPreneurs: React.FC<CarnetProps> = ({ tenantId, canManage, people 
 
       <DataView<StockTakerView>
         aria-label={t('Carnet des preneurs')}
+        export={{ filename: t('Carnet des preneurs') }}
         items={preneurs}
         total={preneurs.length}
         page={1}

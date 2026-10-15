@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
+import { App, Button, Modal, Space, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,7 +16,7 @@ import type {
 } from '../../../types/external-access';
 import { useAuth } from '../../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { PageHeader, StateBlock, SkeletonList } from '../../../components/primitives';
+import { PageHeader, StateBlock, SkeletonList, Table } from '../../../components/primitives';
 import { apiErrorMessage, isForbiddenError } from '../../../components/patrimoine/patrimoine-labels';
 import { PatrimoineForbidden } from '../../../components/patrimoine/PatrimoineForbidden';
 import { activeLocale } from '../../../i18n/format';
@@ -168,6 +168,7 @@ export const ExternalAccessPage: React.FC = () => {
         />
       ) : (
         <Table<ExternalAccessGrantSummary>
+          exportFilename={t('Accès partagés')}
           rowKey="id"
           pagination={false}
           scroll={{ x: 'max-content' }}
@@ -182,6 +183,7 @@ export const ExternalAccessPage: React.FC = () => {
             },
             {
               title: t('Bénéficiaire'),
+              exportValue: grant => `${grant.recipientName} — ${accessTypeLabel(grant.type)}`,
               render: (_: unknown, grant) => (
                 <Space orientation="vertical" size={0}>
                   <Text strong>{grant.recipientName}</Text>
@@ -191,6 +193,7 @@ export const ExternalAccessPage: React.FC = () => {
             },
             {
               title: t('Périmètre'),
+              exportValue: grant => (grant.ownerName ? `${scopeLabel(grant)} — ${grant.ownerName}` : scopeLabel(grant)),
               render: (_: unknown, grant) => (
                 <Space orientation="vertical" size={0}>
                   <Text>{scopeLabel(grant)}</Text>
@@ -200,6 +203,7 @@ export const ExternalAccessPage: React.FC = () => {
             },
             {
               title: t('Rubriques'),
+              exportValue: grant => grant.sections.map(accessSectionLabel).join(', '),
               // Largeur bornée : les étiquettes passent à la ligne au lieu d'allonger le tableau.
               width: 240,
               render: (_: unknown, grant) => (
@@ -213,6 +217,8 @@ export const ExternalAccessPage: React.FC = () => {
             { title: t('Expiration'), render: (_: unknown, grant) => expiryLabel(grant) },
             {
               title: t('Dernière consultation'),
+              exportValue: grant =>
+                `${formatDate(grant.lastViewedAt)} — ${t('{{count}} consultation(s)', { count: grant.viewCount })}`,
               render: (_: unknown, grant) => (
                 <Space orientation="vertical" size={0}>
                   <Text>{formatDate(grant.lastViewedAt)}</Text>
@@ -222,6 +228,7 @@ export const ExternalAccessPage: React.FC = () => {
             },
             {
               title: t('Actions'),
+              exportable: false,
               align: 'end' as const,
               // Épinglée au bord : les actions restent visibles même quand le tableau défile.
               fixed: 'end' as const,

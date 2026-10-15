@@ -331,12 +331,25 @@ export const Association: React.FC = () => {
   const colonnesReleve: ColumnsType<PartnerStatementLine> = [
     { title: t('Bien'), key: 'bien', render: (_, l) => l.propertyLabel },
     { title: t('Période'), key: 'periode', render: (_, l) => libellePeriode(l.periodYear, l.periodMonth) },
-    { title: t('Facturé'), key: 'facture', align: 'end', render: (_, l) => <MoneyValue value={l.rentBilled} /> },
-    { title: t('Encaissé'), key: 'encaisse', align: 'end', render: (_, l) => <MoneyValue value={l.rentCollected} /> },
+    {
+      title: t('Facturé'),
+      key: 'facture',
+      align: 'end',
+      exportValue: l => l.rentBilled,
+      render: (_, l) => <MoneyValue value={l.rentBilled} />
+    },
+    {
+      title: t('Encaissé'),
+      key: 'encaisse',
+      align: 'end',
+      exportValue: l => l.rentCollected,
+      render: (_, l) => <MoneyValue value={l.rentCollected} />
+    },
     {
       title: t('Sa part'),
       key: 'part',
       align: 'end',
+      exportValue: l => l.partnerShare,
       render: (_, l) => (
         <strong>
           <MoneyValue value={l.partnerShare} />
@@ -392,6 +405,7 @@ export const Association: React.FC = () => {
         columns={colonnesAssocies}
         rowKey={s => s.id}
         aria-label={t("Associés de l'association")}
+        export={{ filename: t('Associés') }}
         renderCard={s => (
           <DataCard
             title={s.partnerName}
@@ -449,6 +463,7 @@ export const Association: React.FC = () => {
         columns={colonnesBiens}
         rowKey={p => p.propertyId}
         aria-label={t("Biens rattachés à l'association")}
+        export={{ filename: t('Biens rattachés') }}
         renderCard={p => (
           <DataCard
             title={p.propertyLabel}
@@ -523,6 +538,7 @@ export const Association: React.FC = () => {
               columns={colonnesReleve}
               rowKey={l => `${l.propertyLabel}-${l.periodYear}-${l.periodMonth}`}
               aria-label={t("Lignes de l'état de quote-part")}
+              export={{ filename: t('État de quote-part') }}
               renderCard={l => (
                 <DataCard
                   title={libellePeriode(l.periodYear, l.periodMonth)}

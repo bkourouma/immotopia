@@ -30,7 +30,13 @@ export { NotFound } from './NotFound';
 export { AccountNotLinked } from './AccountNotLinked';
 
 export { DataView } from './DataView';
-export type { DataViewProps } from './DataView';
+export type { DataViewProps, DataViewExport } from './DataView';
+
+export { ExportMenu } from './ExportMenu';
+export type { ExportMenuProps, ExportFetchAllResult } from './ExportMenu';
+
+export { Table } from './Table';
+export type { ExportableTableProps } from './Table';
 
 export { DataCard } from './DataCard';
 export type { DataCardProps, DataCardField } from './DataCard';

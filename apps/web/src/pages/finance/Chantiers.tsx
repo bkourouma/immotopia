@@ -174,6 +174,7 @@ export const Chantiers: React.FC = () => {
       key: 'cout',
       align: 'end',
       // Calculé côté serveur (P-4) : cette colonne se contente de l'afficher.
+      exportValue: c => c.actualCost,
       render: (_, c) => <MoneyValue value={c.actualCost} />
     },
     {
@@ -242,6 +243,7 @@ export const Chantiers: React.FC = () => {
         columns={colonnes}
         rowKey={c => c.id}
         aria-label={t('Chantiers')}
+        export={{ filename: t('Chantiers') }}
         renderCard={c => (
           <DataCard
             title={c.name}

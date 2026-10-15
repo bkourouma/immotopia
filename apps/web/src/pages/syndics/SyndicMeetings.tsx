@@ -13,12 +13,12 @@ import {
   Space,
   Spin,
   TimePicker,
-  Table,
   Tag,
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { Table } from '../../components/primitives';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
 import { describeConvocation, meetingStatusColors } from '../../components/syndics/meeting-governance';
@@ -204,6 +204,7 @@ export const SyndicMeetings: React.FC = () => {
         ) : (
           <Card title={t('Liste des assemblées')}>
             <Table
+              exportFilename={t('Liste des assemblées')}
               scroll={{ x: 'max-content' }}
               rowKey="id"
               dataSource={meetings}

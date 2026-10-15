@@ -150,15 +150,28 @@ export default function CoOwnerLotAccount() {
       title: t('Débit'),
       key: 'debit',
       align: 'end',
+      exportValue: tx => (tx.debit ? Number(tx.debit) : null),
       render: (_, tx) => (tx.debit ? <MoneyValue value={tx.debit} /> : '—')
     },
     {
       title: t('Crédit'),
       key: 'credit',
       align: 'end',
+      exportValue: tx => (tx.credit ? Number(tx.credit) : null),
       render: (_, tx) => (tx.credit ? <MoneyValue value={tx.credit} /> : '—')
     },
-    { title: t('Solde après'), key: 'balanceAfter', align: 'end', render: (_, tx) => <SoldeApres transaction={tx} /> }
+    {
+      title: t('Solde après'),
+      key: 'balanceAfter',
+      align: 'end',
+      // Le rendu accole le montant et l'étiquette Débiteur/Créditeur : on les sépare.
+      exportTitle: t('Solde (+ débiteur, − créditeur)'),
+      exportValue: tx => {
+        const amount = Math.abs(Number(tx.balanceAfter));
+        return tx.balanceAfterDirection === 'CREDITEUR' ? -amount : amount;
+      },
+      render: (_, tx) => <SoldeApres transaction={tx} />
+    }
   ];
 
   return (
@@ -203,6 +216,7 @@ export default function CoOwnerLotAccount() {
           onPageChange={() => {}}
           rowKey={tx => tx.id}
           aria-label={t('Mouvements du compte')}
+          export={{ filename: t('Mouvements du compte') }}
           emptyDescription={t('Aucun mouvement enregistré sur ce compte.')}
           columns={columns}
           renderCard={tx => (

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Card, Table, Button, Modal, Tag, Space, Spin, Select, DatePicker, Typography } from 'antd';
+import { App, Card, Button, Modal, Tag, Space, Spin, Select, DatePicker, Typography } from 'antd';
 import {
   PlusOutlined,
   SendOutlined,
@@ -17,7 +17,8 @@ import {
   type NewsletterTemplate,
   type NewsletterCampaign
 } from '../../services/newsletter.service';
-import { useConfirmAction } from '../../components/primitives';
+import { Table, useConfirmAction } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 const statusColors: Record<string, string> = {
@@ -56,11 +57,14 @@ export function NewsletterCampaignsPage() {
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
   const [scheduleDate, setScheduleDate] = useState<dayjs.Dayjs | null>(null);
   const [saving, setSaving] = useState(false);
+  // Filtre de statut de la liste affichée, repris tel quel par l'export.
+  const statusFilterRef = useRef<string | undefined>(undefined);
 
   const loadCampaigns = useCallback(
     async (page = 1, limit = 20, status?: string) => {
       if (!tenantId) return;
       setLoading(true);
+      statusFilterRef.current = status;
       try {
         const data = await newsletterService.listCampaigns(tenantId, { page, limit, status });
         setCampaigns(data.campaigns);
@@ -212,6 +216,7 @@ export function NewsletterCampaignsPage() {
       title: t('Sujet'),
       dataIndex: 'subject',
       key: 'subject',
+      exportValue: (r: NewsletterCampaign) => `${r.subject} — ${statusLabels[r.status] ?? r.status}`,
       render: (v: string, r: NewsletterCampaign) => (
         <Space>
           <Typography.Text strong>{v}</Typography.Text>
@@ -227,6 +232,16 @@ export function NewsletterCampaignsPage() {
     {
       title: t('Statistiques'),
       key: 'stats',
+      exportValue: (r: NewsletterCampaign) =>
+        r.status === 'SENT' || r.status === 'SENDING'
+          ? [
+              `${t('Mails envoyés')} : ${r.sentCount ?? 0}`,
+              `${t('Mails ouverts')} : ${r.openCount ?? 0}`,
+              (r.failedCount ?? 0) > 0 ? `${t('Retournés:')} ${r.failedCount}` : ''
+            ]
+              .filter(Boolean)
+              .join(' — ')
+          : '',
       render: (_: unknown, r: NewsletterCampaign) =>
         r.status === 'SENT' || r.status === 'SENDING' ? (
           <Space wrap size="middle">
@@ -339,6 +354,17 @@ export function NewsletterCampaignsPage() {
 
         <Card>
           <Table
+            exportFilename={t('Campagnes newsletter')}
+            exportFetchAll={() =>
+              collectAllPages<NewsletterCampaign>(async (page, limit) => {
+                const data = await newsletterService.listCampaigns(tenantId as string, {
+                  page,
+                  limit,
+                  status: statusFilterRef.current
+                });
+                return { items: data.campaigns ?? [], total: data.pagination?.total ?? 0 };
+              })
+            }
             scroll={{ x: 'max-content' }}
             loading={loading}
             columns={columns}

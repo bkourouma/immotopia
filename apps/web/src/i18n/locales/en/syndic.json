@@ -1209,6 +1209,8 @@
   "Vote pas encore ouvert": "Vote not open yet",
   "Votes (lots) :": "Votes (units):",
   "Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.": "You can mix BUILDING, villa, office, retail unit, and so on.",
+  "Exécutions de la programmation": "Schedule runs",
+  "Solde (+ débiteur, − créditeur)": "Balance (+ debit, − credit)",
   "Copie impossible : sélectionnez le lien et copiez-le à la main.": "Copy failed: select the link and copy it manually.",
   "Origine des votes : {{online}} en ligne · {{proxy}} mandataire · {{manager}} saisi(s) par le gestionnaire": "Vote origin: {{online}} online · {{proxy}} by proxy · {{manager}} entered by the manager"
 }

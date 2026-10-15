@@ -154,7 +154,9 @@ export const Tacherons: React.FC = () => {
       title: translate("Ce qu'on lui doit"),
       key: 'du',
       align: 'end',
-      render: (_, t) => <CeQuOnLuiDoit contractor={t} />
+      render: (_, t) => <CeQuOnLuiDoit contractor={t} />,
+      // Nombre signé : négatif = avance déjà versée.
+      exportValue: t => t.accountBalance
     },
     {
       title: translate('Statut'),
@@ -195,6 +197,7 @@ export const Tacherons: React.FC = () => {
       </div>
 
       <DataView<Contractor>
+        export={{ filename: translate('Tâcherons') }}
         // Le contrat de `listContractors` ne pagine pas.
         paginated={false}
         scrollX={1000}

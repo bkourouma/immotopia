@@ -1,19 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Descriptions,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag
-} from 'antd';
+import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Tag } from 'antd';
 import { CalculatorOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -29,11 +15,11 @@ import {
   type SuggestResponse
 } from '../../../services/patrimoine-assets-service';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
-import { ConfirmAction, StateBlock } from '../../primitives';
+import { ConfirmAction, StateBlock, Table } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 import { apiErrorMessage, formatAmount, formatDay, serverFieldErrors, todayIso } from './asset-format';
-import { detailKeyLabel, VALUATION_METHODS, valuationMethodName } from './asset-classes';
+import { detailKeyLabel, reliabilityLabel, VALUATION_METHODS, valuationMethodName } from './asset-classes';
 import { ReliabilityBadge } from './ReliabilityBadge';
 
 interface ValuationFormValues {
@@ -528,6 +514,7 @@ export const AssetValuationsTab: React.FC<{
         <>
           <ValuationCurve valuations={valuationsQuery.data ?? []} />
           <Table<AssetValuationDto>
+            exportFilename={t('Historique des valeurs')}
             rowKey="id"
             size="small"
             loading={valuationsQuery.isPending}
@@ -555,6 +542,7 @@ export const AssetValuationsTab: React.FC<{
               {
                 title: t('Fiabilité'),
                 key: 'reliability',
+                exportValue: row => reliabilityLabel(row.reliability),
                 render: (_: unknown, row) => (
                   <ReliabilityBadge reliability={row.reliability} reasons={row.reliabilityReasons} />
                 )

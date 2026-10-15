@@ -1,8 +1,9 @@
 import React from 'react';
-import { Table, Tag, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
 import { MaintenanceContract } from '../../types/syndic-types';
 import { contractStatusLabels } from './labels';
 import { LinkedProviderInvoices } from './LinkedProviderInvoices';
@@ -54,6 +55,7 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
       title: t('Montant annuel'),
       key: 'annualAmount',
       align: 'end',
+      exportValue: (item: MaintenanceContract) => (item.annualAmount ? Number(item.annualAmount) : null),
       render: (_: unknown, item) => (item.annualAmount ? <MoneyValue value={item.annualAmount} /> : t('Non renseigné'))
     },
     {
@@ -70,6 +72,7 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
 
   return (
     <Table
+      exportFilename={t('Contrats de maintenance')}
       scroll={{ x: 'max-content' }}
       rowKey="id"
       dataSource={contracts}

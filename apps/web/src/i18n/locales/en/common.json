@@ -2030,5 +2030,15 @@
   "WhatsApp": "WhatsApp",
   "Word (.docx)": "Word (.docx)",
   "Zone": "Area",
+  "Exporter le tableau": "Export table",
+  "Aucune colonne exportable.": "No exportable column.",
+  "L'export est limité à {{count}} lignes : affinez les filtres pour obtenir le reste.": "The export is limited to {{count}} rows: refine the filters to get the rest.",
+  "Seules les {{count}} lignes affichées ont été exportées, sur {{total}}.": "Only the {{count}} displayed rows were exported, out of {{total}}.",
+  "Choisissez « Enregistrer en PDF » dans la fenêtre d'impression.": "Choose \"Save as PDF\" in the print window.",
+  "Export terminé ({{count}} lignes).": "Export complete ({{count}} rows).",
+  "L'export a échoué.": "The export failed.",
+  "Généré le {{date}}": "Generated on {{date}}",
+  "Page {{page}} / {{total}}": "Page {{page}} / {{total}}",
+  "Polices d'assurance": "Insurance policies",
   "Le vote du lot {{lots}} a été saisi par le syndic : vous ne pouvez plus le modifier depuis cette page.": "The vote for lot {{lots}} was entered by the managing agent: you can no longer change it from this page."
 }

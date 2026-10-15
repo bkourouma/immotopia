@@ -36,6 +36,34 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/export-tableaux` — 2026-10-15
+
+**État :** PR #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)
+**Dernier commit :** voir `git log` (correctifs d'export, puis cette passation)
+
+Fait :
+
+- Socle `apps/web/src/utils/table-export/`, `primitives/ExportMenu.tsx`, `primitives/Table.tsx`, prop `export` de `DataView` (actif par défaut), champs de colonne `exportable`/`exportTitle`/`exportValue`, `collectAllPages`. Déployé sur 156 fichiers ; classeur des fonctionnalités ; traductions en/ar.
+- Les 8 fichiers de test en échec dans la suite complète passent SEULS (`finance/stock` : 51 tests mais 449 s, lenteur préexistante).
+- Build OK ; entrée 226 050 o gzip, budget 227 328 o (marge 1 278 o) ; `exceljs` et `jspdf` hors entrée.
+- Relecture des lots (agent sonnet, lecture seule) : filtres des `fetchAll`, `exportValue` et `exportable={false}` conformes. Corrigé : export complet de la recherche de contacts (`AdvancedContactSearch`), soldes Débiteur/Créditeur exportés en nombre signé (+ débiteur, − créditeur) avec titre de colonne dédié.
+- `NewsletterListsPage` : `exportFetchAll` branché (tous les abonnés de la liste).
+- Recette navigateur (instance de démo, web servi depuis le worktree) : Biens en grille, EN, CSV/Excel/PDF — CSV conforme, xlsx valide (nombres typés, en-tête figé, filtre automatique, pas d'actions), PDF 1 page. Collaborateurs en arabe : CSV avec BOM et en-têtes arabes ; PDF → repli impression (toast « Enregistrer en PDF »), aucun fichier.
+
+Reste à faire :
+
+- Non vérifié en réel : export multi-pages (Baux paginé : la base de démo n'a aucun bail ni de liste de plus d'une page ; seuls les tests unitaires de `collectAllPages` le couvrent), page de portail, xlsx/PDF en arabe.
+- Les filtres de colonne côté client d'Ant Design ne restreignent pas l'export.
+- Passer la PR en prête quand la CI est verte ; ne pas fusionner.
+
+Pièges :
+
+- Le dépôt partage l'instance de démo (`.claude/worktrees/demo`) : une autre session l'a re-synchronisée sur un autre commit et re-semée (autre identifiant d'agence) pendant la recette. Servir le web depuis son propre worktree (API de démo inchangée côté API) et lire l'identifiant d'agence dans les liens du tableau de bord.
+- Ports 3300/8800 pris : j'ai utilisé 3310 (web) et 8810 (API, `FRONTEND_URL=http://localhost:3310`).
+- En dev, la première importation de `jspdf` fait recharger la page (optimisation Vite) : relancer l'export.
+- Ne pas déclencher l'impression en panneau masqué : la boîte native bloque le panneau.
+- `apps/web/.env` du worktree (ignoré par git) a servi au lancement ; le laisser ou le supprimer.
+
 ## Branche `feat/syndic-ag-en-direct` — 2026-10-15
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur

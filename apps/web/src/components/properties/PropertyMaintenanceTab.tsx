@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Table, Select, Space, Typography, Empty, Spin, Tag, Button } from 'antd';
+import { Card, Select, Space, Typography, Empty, Spin, Tag, Button } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
+import { Table } from '../primitives';
 import { TicketStatusBadge } from '../maintenance/TicketStatusBadge';
 import { propertyMaintenanceService } from '../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus, MaintenanceTicketCategory } from '../../types/maintenance-types';
@@ -163,6 +164,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
           />
         ) : (
           <Table
+            exportFilename={t('Historique de maintenance')}
             columns={columns}
             dataSource={tickets}
             rowKey="id"

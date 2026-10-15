@@ -1,9 +1,10 @@
 ﻿import React from 'react';
-import { Button, Space, Table, Tag, Typography } from 'antd';
+import { Button, Space, Tag, Typography } from 'antd';
 import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
@@ -94,6 +95,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: (item: ChargeCall) => Number(item.amount),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={item.amount} />
     },
     {
@@ -114,12 +116,14 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Payé'),
       key: 'paid',
       align: 'end',
+      exportValue: (item: ChargeCall) => computePaidAmount(item),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={computePaidAmount(item)} />
     },
     {
       title: t('Reste'),
       key: 'outstanding',
       align: 'end',
+      exportValue: (item: ChargeCall) => computeOutstandingAmount(item),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={computeOutstandingAmount(item)} />
     },
     {
@@ -177,6 +181,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
 
   return (
     <Table
+      exportFilename={t('Appels de charges')}
       rowKey="id"
       columns={columns}
       dataSource={items}
