@@ -73,9 +73,23 @@ export function isCallSelectable(call: CoOwnerChargeCall, selected: CoOwnerCharg
   return selected.length === 0 || selected[0].lot?.id === call.lot.id;
 }
 
-/** Mention d'un paiement déjà engagé sur l'appel (colonne « Statut »). */
-const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
-  if (call.onlineCheckout === 'IN_PROGRESS') return <Tag color="processing">{t('Paiement en cours')}</Tag>;
+/** Mention d'un paiement déjà engagé sur l'appel (colonne « Statut »), avec la reprise si le compte en a le code. */
+const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall; onResume?: (call: CoOwnerChargeCall) => void }> = ({
+  call,
+  onResume
+}) => {
+  if (call.onlineCheckout === 'IN_PROGRESS') {
+    return (
+      <>
+        <Tag color="processing">{t('Paiement en cours')}</Tag>
+        {onResume && call.onlineCheckoutCode ? (
+          <Button size="small" type="link" onClick={() => onResume(call)}>
+            {t('Reprendre le paiement')}
+          </Button>
+        ) : null}
+      </>
+    );
+  }
   if (call.onlineCheckout === 'REVIEW') return <Tag color="warning">{t('Paiement en vérification')}</Tag>;
   return null;
 };
@@ -89,7 +103,9 @@ export const ChargeCallsTable: React.FC<{
   calls: CoOwnerChargeCall[];
   showLot?: boolean;
   selection?: ChargeCallSelection;
-}> = ({ calls, showLot = true, selection }) => {
+  /** Reprend le paiement en cours d'un appel (page du fournisseur) ; absent = pas de bouton. */
+  onResume?: (call: CoOwnerChargeCall) => void;
+}> = ({ calls, showLot = true, selection, onResume }) => {
   const selectedCalls = selection ? calls.filter(call => selection.selectedIds.includes(call.id)) : [];
   const showSelection = Boolean(selection) && calls.some(call => call.onlinePayable);
 
@@ -153,7 +169,7 @@ export const ChargeCallsTable: React.FC<{
       render: (_, call) => (
         <>
           <ChargeCallStatusTag status={call.status} />
-          <OnlineCheckoutTag call={call} />
+          <OnlineCheckoutTag call={call} onResume={onResume} />
         </>
       )
     },
@@ -184,7 +200,7 @@ export const ChargeCallsTable: React.FC<{
           status={
             <>
               <ChargeCallStatusTag status={call.status} />
-              <OnlineCheckoutTag call={call} />
+              <OnlineCheckoutTag call={call} onResume={onResume} />
             </>
           }
           highlight={<MoneyValue value={call.outstanding} />}

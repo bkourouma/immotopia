@@ -21,8 +21,8 @@ import {
  * L'INTÉRIEUR de ce périmètre ; hors de lui, 404 comme pour un objet
  * inexistant.
  *
- * Aucune route d'écriture, et en particulier aucun paiement en ligne : le
- * paiement des charges de copropriété n'existe pas (hors périmètre de ce lot).
+ * Lecture seule. Le paiement en ligne des charges a son propre contrôleur
+ * (`coowner-online-payment-controller.ts`).
  */
 
 function scopeOf(req: Request): CoOwnerPortalScope {
@@ -49,7 +49,10 @@ export const getCoOwnerLotAccountHandler = asyncHandler(async (req: Request, res
 
 export const listCoOwnerChargeCallsHandler = asyncHandler(async (req: Request, res: Response) => {
   const { lotId } = chargeCallsQuerySchema.parse(req.query);
-  const calls = await listCoOwnerChargeCalls(scopeOf(req), { lotId });
+  const calls = await listCoOwnerChargeCalls(scopeOf(req), {
+    lotId,
+    tenantClientId: req.coOwnerPortal?.tenantClientId ?? null
+  });
   res.json({ success: true, data: calls });
 });
 

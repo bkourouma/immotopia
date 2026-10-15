@@ -463,6 +463,14 @@ export interface CoOwnerChargeCall /* + */ {
   onlinePayable: boolean;
   /** Paiement en cours (PENDING < 15 min) ou à vérifier (REVIEW) couvrant cet appel. */
   onlineCheckout: "NONE" | "IN_PROGRESS" | "REVIEW";
+  /** Copropriété de l'appel : l'écran retrouve sa disponibilité par identifiant, jamais par nom. */
+  syndicateId: string;
+  /**
+   * Code du paiement ouvert (`IN_PROGRESS` ou `REVIEW`) lancé par CE compte portail, pour le reprendre
+   * (`GET /paiements-en-ligne/:codePaiement` rend alors l'URL du fournisseur) ; `null` si aucun, ou si le
+   * paiement ouvert vient d'un autre compte ou d'un lien sécurisé.
+   */
+  onlineCheckoutCode: string | null;
 }
 ```
 

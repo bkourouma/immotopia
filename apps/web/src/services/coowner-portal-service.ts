@@ -76,10 +76,14 @@ export interface CoOwnerChargeCall {
   status: CoOwnerChargeCallStatus;
   lot: { id: string; lotNumber: string; lotType: CoOwnerLotType } | null;
   syndicate: string | null;
+  /** Copropriété de l'appel : sert à retrouver sa disponibilité (plus de rapprochement par nom). */
+  syndicateId: string;
   /** Copropriété payable en ligne ET reste dû > 0 ET devise XOF/FCFA (contrat 042 §2.2). */
   onlinePayable: boolean;
   /** Paiement en cours (< 15 min) ou à vérifier couvrant cet appel. */
   onlineCheckout: 'NONE' | 'IN_PROGRESS' | 'REVIEW';
+  /** Code du paiement ouvert de CE compte (pour le reprendre) ; null sinon. */
+  onlineCheckoutCode: string | null;
 }
 
 export interface CoOwnerDocument {

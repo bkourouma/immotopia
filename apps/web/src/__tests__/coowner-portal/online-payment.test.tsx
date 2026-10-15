@@ -65,8 +65,10 @@ function call(overrides: Partial<CoOwnerChargeCall> = {}): CoOwnerChargeCall {
     status: 'OVERDUE',
     lot: { id: 'lot-1', lotNumber: 'A1', lotType: 'APARTMENT' },
     syndicate: 'Résidence Les Acacias',
+    syndicateId: 's1',
     onlinePayable: true,
     onlineCheckout: 'NONE',
+    onlineCheckoutCode: null,
     ...overrides
   };
 }
@@ -187,6 +189,53 @@ describe('Appels de charges — paiement en ligne', () => {
     expect(screen.getByRole('checkbox', { name: "Sélectionner l'appel 2026-T4" })).toBeDisabled();
     // Frais à la charge du payeur.
     expect(screen.getByText(/frais du service de paiement peuvent s/)).toBeInTheDocument();
+  });
+
+  it('retrouve la copropriété par son identifiant, même si deux copropriétés portent le même nom', async () => {
+    listMyChargeCalls.mockResolvedValue([call({ syndicateId: 's2' })]);
+    getOnlinePaymentAvailability.mockResolvedValue({
+      syndicates: [
+        { ...availability().syndicates[0], syndicateId: 's1', feesPaidBy: 'CLIENT' },
+        { ...availability().syndicates[0], syndicateId: 's2', feesPaidBy: 'AGENCY' }
+      ],
+      paymentMethods: ['WAVE']
+    });
+    mountPage();
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: "Sélectionner l'appel 2026-T1" }, WAIT));
+
+    expect(screen.getByText(/frais du service de paiement sont pris en charge/)).toBeInTheDocument();
+    expect(screen.queryByText(/frais du service de paiement peuvent s/)).not.toBeInTheDocument();
+  });
+
+  it('reprend un paiement en cours depuis la liste grâce à son code', async () => {
+    listMyChargeCalls.mockResolvedValue([call({ onlineCheckout: 'IN_PROGRESS', onlineCheckoutCode: CODE })]);
+    getOnlinePayment.mockResolvedValue(checkout());
+    mountPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reprendre le paiement' }, WAIT));
+
+    await waitFor(() => expect(redirectMock).toHaveBeenCalledWith(CHECKOUT_URL));
+    expect(getOnlinePayment).toHaveBeenCalledWith(CODE);
+  });
+
+  it('ne propose pas la reprise d’un paiement en cours d’un autre compte (pas de code)', async () => {
+    listMyChargeCalls.mockResolvedValue([call({ onlineCheckout: 'IN_PROGRESS', onlineCheckoutCode: null })]);
+    mountPage();
+
+    expect(await screen.findByText('Paiement en cours', {}, WAIT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reprendre le paiement' })).not.toBeInTheDocument();
+  });
+
+  it('refuse une URL non sûre à la reprise : aucune redirection', async () => {
+    listMyChargeCalls.mockResolvedValue([call({ onlineCheckout: 'IN_PROGRESS', onlineCheckoutCode: CODE })]);
+    getOnlinePayment.mockResolvedValue(checkout({ checkoutUrl: 'javascript:alert(1)' }));
+    mountPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reprendre le paiement' }, WAIT));
+
+    await waitFor(() => expect(getOnlinePayment).toHaveBeenCalled());
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 
   it('indique que les frais sont pris en charge par l’agence quand c’est le cas', async () => {

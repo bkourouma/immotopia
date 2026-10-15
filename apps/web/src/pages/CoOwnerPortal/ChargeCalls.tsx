@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom';
 import { MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import {
+  getOnlinePayment,
   getOnlinePaymentAvailability,
   listMyChargeCalls,
   startOnlinePayment,
@@ -37,11 +38,10 @@ function channelLabel(channel: OnlinePaymentChannel): string {
   }
 }
 
-/** Frais et mode de la copropriété du lot choisi (rapprochement par nom : l'appel ne porte pas l'identifiant). */
-function syndicateOnlineInfo(availability: CoOwnerOnlinePaymentAvailability, syndicateName: string | null | undefined) {
-  const available = availability.syndicates.filter(syndicate => syndicate.available);
+/** Frais et mode de la copropriété de l'appel choisi, retrouvée par son identifiant. */
+function syndicateOnlineInfo(availability: CoOwnerOnlinePaymentAvailability, syndicateId: string) {
   return (
-    available.find(syndicate => syndicate.name === syndicateName) ?? (available.length === 1 ? available[0] : null)
+    availability.syndicates.find(syndicate => syndicate.available && syndicate.syndicateId === syndicateId) ?? null
   );
 }
 
@@ -167,7 +167,7 @@ export default function CoOwnerChargeCalls() {
   }
   const selectedTotal = selectedCalls.reduce((sum, call) => sum + call.outstanding, 0);
   const selectedInfo =
-    availability && selectedCalls.length > 0 ? syndicateOnlineInfo(availability, selectedCalls[0].syndicate) : null;
+    availability && selectedCalls.length > 0 ? syndicateOnlineInfo(availability, selectedCalls[0].syndicateId) : null;
 
   const payOnline = async () => {
     const lotId = selectedCalls[0]?.lot?.id;
@@ -185,6 +185,22 @@ export default function CoOwnerChargeCalls() {
       setProblem(problemFromError(e));
     } finally {
       setPaying(false);
+    }
+  };
+
+  // Reprise d'un paiement en cours depuis la liste : l'URL vient du serveur (code du compte), jamais du navigateur.
+  const resumePayment = async (call: CoOwnerChargeCall) => {
+    if (!call.onlineCheckoutCode) return;
+    setProblem(null);
+    try {
+      const checkout = await getOnlinePayment(call.onlineCheckoutCode);
+      if (checkout.status === 'PENDING' && isSafeCheckoutUrl(checkout.checkoutUrl)) {
+        redirectToExternalUrl(checkout.checkoutUrl);
+        return;
+      }
+      setReturnCode(checkout.codePaiement);
+    } catch (e) {
+      setProblem(problemFromError(e));
     }
   };
 
@@ -289,6 +305,7 @@ export default function CoOwnerChargeCalls() {
       <Card>
         <ChargeCallsTable
           calls={calls}
+          onResume={onlineEnabled ? call => void resumePayment(call) : undefined}
           selection={
             onlineEnabled ? { selectedIds: selectedCalls.map(call => call.id), onChange: setSelectedIds } : undefined
           }

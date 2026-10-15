@@ -100,8 +100,10 @@ function call(overrides: Partial<CoOwnerChargeCall> = {}): CoOwnerChargeCall {
     status: 'OVERDUE',
     lot: { id: 'lot-1', lotNumber: 'A1', lotType: 'APARTMENT' },
     syndicate: 'Résidence Les Acacias',
+    syndicateId: 's1',
     onlinePayable: false,
     onlineCheckout: 'NONE',
+    onlineCheckoutCode: null,
     ...overrides
   };
 }
