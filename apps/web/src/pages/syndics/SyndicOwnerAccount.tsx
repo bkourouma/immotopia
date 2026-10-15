@@ -19,7 +19,7 @@ import {
 } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue, StatCard, Table, formatMoney } from '../../components/primitives';
+import { MoneyValue, StatCard, Table } from '../../components/primitives';
 import {
   createLotOwnerAccountAdjustment,
   downloadLotOwnerAccountStatement,
@@ -330,9 +330,10 @@ export const SyndicOwnerAccount: React.FC = () => {
                     dataIndex: 'balanceAfter',
                     align: 'end',
                     // Le rendu accole le montant et l'étiquette Débiteur/Créditeur : on les sépare.
+                    exportTitle: t('Solde (+ débiteur, − créditeur)'),
                     exportValue: (row: OwnerAccountTransaction) => {
                       const info = describeOwnerBalance(row.balanceAfter);
-                      return `${formatMoney(info.amount)} — ${balanceToneLabel[info.tone]}`;
+                      return info.tone === 'creditor' ? -info.amount : info.amount;
                     },
                     render: (value: number | string) => {
                       const info = describeOwnerBalance(value);

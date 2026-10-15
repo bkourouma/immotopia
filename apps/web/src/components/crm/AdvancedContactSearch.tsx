@@ -10,6 +10,7 @@ import { ContactSearchResults } from './ContactSearchResults';
 import { FilterBuilder } from './FilterBuilder';
 import { SavedSearchesList } from './SavedSearchesList';
 import { t } from '../../i18n/t';
+import { collectAllPages } from '../../utils/table-export/collect';
 
 interface AdvancedContactSearchProps {
   onSelectContacts?: (contacts: ContactSearchResultItem[]) => void;
@@ -209,6 +210,12 @@ export function AdvancedContactSearch({
 
           <ContactSearchResults
             contacts={results.contacts}
+            exportFetchAll={() =>
+              collectAllPages<ContactSearchResultItem>(async (page, limit) => {
+                const data = await contactSearchService.search(tenantId!, { ...filters, page, limit });
+                return { items: data?.contacts ?? [], total: data?.pagination?.total ?? 0 };
+              })
+            }
             selectedContacts={selectedContacts}
             onSelectionChange={
               mode === 'select'

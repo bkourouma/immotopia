@@ -2,7 +2,7 @@ import React from 'react';
 import { Tag, Button, Space, Typography } from 'antd';
 import { DeleteOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import type { NewsletterSubscriber } from '../../services/newsletter.service';
-import { Table } from '../primitives';
+import { Table, type ExportFetchAllResult } from '../primitives';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -18,7 +18,7 @@ interface SubscriberListProps {
    * Récupère TOUS les abonnés de la liste (même filtre que celle affichée) pour
    * l'export Excel/CSV/PDF du tableau. Sans lui, seule la page affichée est exportée.
    */
-  exportFetchAll?: () => Promise<NewsletterSubscriber[]>;
+  exportFetchAll?: () => Promise<ExportFetchAllResult<NewsletterSubscriber>>;
   canEdit?: boolean;
 }
 

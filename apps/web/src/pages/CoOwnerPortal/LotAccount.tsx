@@ -6,15 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import {
-  DataCard,
-  DataView,
-  MoneyValue,
-  SkeletonList,
-  SkeletonStats,
-  StateBlock,
-  formatMoney
-} from '../../components/primitives';
+import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import {
@@ -25,13 +17,7 @@ import {
 } from '../../services/coowner-portal-service';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallsTable } from './ChargeCallsTable';
-import {
-  BalanceDirectionTag,
-  balanceDirectionHint,
-  balanceDirectionLabel,
-  lotTypeLabel,
-  transactionTypeLabel
-} from './labels';
+import { BalanceDirectionTag, balanceDirectionHint, lotTypeLabel, transactionTypeLabel } from './labels';
 import { blobErrorMessage, isNotFound, portalErrorMessage } from './portal-error';
 
 /** `AAAA-MM-JJ`, ou `undefined` si la date n'est pas posée. */
@@ -179,10 +165,11 @@ export default function CoOwnerLotAccount() {
       key: 'balanceAfter',
       align: 'end',
       // Le rendu accole le montant et l'étiquette Débiteur/Créditeur : on les sépare.
-      exportValue: tx =>
-        tx.balanceAfterDirection === 'A_JOUR'
-          ? formatMoney(tx.balanceAfter)
-          : `${formatMoney(tx.balanceAfter)} — ${balanceDirectionLabel(tx.balanceAfterDirection)}`,
+      exportTitle: t('Solde (+ débiteur, − créditeur)'),
+      exportValue: tx => {
+        const amount = Math.abs(Number(tx.balanceAfter));
+        return tx.balanceAfterDirection === 'CREDITEUR' ? -amount : amount;
+      },
       render: (_, tx) => <SoldeApres transaction={tx} />
     }
   ];
