@@ -38,8 +38,8 @@ Pièges et décisions :
 
 ## Branche `feat/prelevement-bancaire` — 2026-10-15
 
-**État :** prêt à relire — PR #128 (base `main`), CI verte, recette à faire
-**Dernier commit :** `48515b14` fix(prelevement): correctifs de l'audit de sécurité du lot P1 (+ ce commit de passation)
+**État :** prêt à relire — PR #128 (base `main`), recette navigateur P1 jouée et rejouée le 2026-10-15, à fusionner par l'utilisateur
+**Dernier commit :** `0e3cddb7` fix(prelevement): correctifs d'affichage relevés à la recette navigateur (+ ce commit de passation)
 **Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
 
 Fait :
@@ -53,10 +53,13 @@ Fait :
 
 Reste à faire :
 
-- Lire la CI de la PR #128 et corriger. `ai.write-plan.test.ts` échoue en local sur des fichiers hors diff (`copilot.ts`) : vérifier si c'est la CI ou seulement les fins de ligne CRLF du worktree.
-- CI de la PR #128 : 7/7 vertes, fusionnable (2026-10-15) ; auto-fix activé. `ai.write-plan.test.ts` n'échoue qu'en local (fins de ligne du worktree).
-- Recette navigateur (spec §6.4) NON FAITE. Accord de l'utilisateur donné le 2026-10-15 pour la recette et `packages/api/.env.demo`. `PAYMENT_SECRETS_KEY` y a été ajoutée (clé générée, 32 octets ; copie de l'ancien fichier dans le scratchpad de la session). Ensuite : `npm run demo:sync -- feat/prelevement-bancaire --migrate --install`, `preview_start` api-demo et web-demo, scénario §6.4.
-- ATTENTION instance de démo : le 2026-10-15 vers 16 h, une autre session (`feat/syndic-ag-en-direct`, révision `349f9e5d`) la faisait tourner (`web-demo` sur 3300). Mon `demo:sync --install` l'a basculée sur `31b9aed9`, puis `npm ci` a échoué (EPERM sur `esbuild.exe`, verrouillé par son serveur) après avoir supprimé une partie de `.claude/worktrees/demo/node_modules` (vite absent). Révision remise sur `349f9e5d` ; base de démo NON migrée. À réparer, serveur de démo arrêté : `npm run demo:sync -- 349f9e5d --install`. Ne pas lancer la recette 042 tant que cette session utilise la démo.
+- Lire la CI de la PR #128 après le push de `0e3cddb7` et corriger si besoin (7/7 vertes avant ; auto-fix activé). `ai.write-plan.test.ts` n'échoue qu'en local (fins de ligne du worktree).
+- Défaut mineur laissé ouvert : dans la fenêtre « Activer le mandat », le champ « Date de signature » refuse la saisie `15/10/2026` (il attend `2026-10-15` ou le calendrier), sans message. À aligner sur le format affiché.
+- À trancher : « Nouveau mandat » est désactivé dès qu'un mandat ouvert existe sur le bail, alors que PB2-R7 n'interdit qu'un mandat ouvert par couple (bail, créancier) ; le serveur reste plus permissif que l'écran.
+- Non joué à la recette : modification d'un mandat, plafond, jour de collecte propre au mandat, rôle sans MANAGE, isolation entre agences (`test:isolation`), tableau des créanciers à 1 024 px en arabe (il déborde), bouton « Télécharger l'autorisation » visible seulement en Brouillon (la spec PB3-R1 ne l'impose pas).
+- Recette navigateur (spec §6.4) FAITE le 2026-10-15 sur la démo (révisions `0da9c860` puis `0e3cddb7`) : créancier BANK, mandat avec l'IBAN publié, PDF, scan, activer/suspendre/réactiver/révoquer, IBAN complet absent de toutes les réponses /api, page Encaisser › Prélèvements, arabe en RTL. Migrations `20261015090000_*` et `20261015090100_*` appliquées sur `immotopia_demo` (pas ailleurs). Correctifs d'affichage dans `0e3cddb7` (fil d'Ariane, vocabulaire arabe « تفويض », IBAN en LTR, bouton désactivé).
+- Données laissées dans la base de démo : agence « Bamako Immobilier », compte jetable `recette.p1@immotopia.test` (TENANT_ADMIN, mot de passe aléatoire dans le scratchpad de la session, pas dans le dépôt), un bien, un locataire, le bail BAIL-2026-0001, un créancier et deux mandats révoqués. Sans danger, à supprimer à la main si la base de démo est réutilisée telle quelle.
+- Instance de démo : partagée avec d'autres sessions (`feat/syndic-ag-en-direct` à `349f9e5d`, puis une session export à `88d4b57c` pendant la recette). Avec l'accord de l'utilisateur, la démo a été reprise pour la recette 042. Elle est à remettre sur `88d4b57c` (`npm run demo:sync -- 88d4b57c --install`) avec les serveurs de démo arrêtés ; voir l'état réel avec `npm run demo:status` avant d'y toucher.
 - Points ouverts de l'audit : clé de chiffrement dédiée et versionnée pour les IBAN (aujourd'hui `PAYMENT_SECRETS_KEY` partagée, préfixe `pg1`) ; borne basse de `signedAt`/`revokedAt`.
 - P2 (remises) selon `plan.md`, après les pièces de la banque pilote (spec §2).
 
@@ -67,6 +70,9 @@ Pièges et décisions :
 - `npm run ai:catalog` crée un dossier `uploads/` vide à la racine du worktree (ignoré par git) ; à relancer après toute modification de route.
 - Les tâches en arrière-plan meurent avec la session : lancer les tests longs au premier plan.
 - Le filtre d'audit masque toute clé contenant « iban » (`ibanLast4` devenait `[masqué]`) : la charge utile utilise `last4Digits`.
+- Sous Windows, arrêter un serveur de démo depuis le panneau d'aperçu (`preview_stop`) laisse parfois orphelins `ts-node-dev` ou `vite` et `esbuild.exe` : ils verrouillent `.claude/worktrees/demo/node_modules` et font échouer `npm ci` (EPERM). Avant tout `demo:sync --install`, lister les `node.exe`/`esbuild.exe` dont la ligne de commande contient `worktrees\demo` et arrêter ceux-là.
+- L'API de démo met environ 80 s à répondre après son démarrage (premier chargement) : attendre `http://localhost:8800/health` avant de se connecter, sinon « Network Error ».
+- `npm run i18n:extract` réécrit les fins de ligne de presque tous les catalogues (`git status` les montre modifiés sans diff réel) : n'ajouter au commit que les fichiers réellement changés.
 
 ## Branche `feat/modeles-documents-entete` — 2026-10-15
 
