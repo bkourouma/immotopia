@@ -36,25 +36,25 @@ Pièges et décisions :
 - …
 ```
 
-## Branche `feat/modeles-syndic-word` — 2026-10-15
+## Branche `fix/docker-modeles-standard` — 2026-10-15
 
-**État :** prêt à relire (PR 133 ; la PR 129 des modèles standard est fusionnée dans `main`)
+**État :** prêt à relire (PR 135)
 **Dernier commit :** voir `git log` de la branche
 
 Fait :
 
-- Trois routes `.docx` (SYNDIC_VIEW) : avis d'appel `charges/:chargeId/avis.docx`, quittance `quittances/:receiptId/fichier.docx` (depuis le snapshot figé), convocation d'AG `assemblees/:meetingId/lots/:lotId/convocation.docx` (`?dateLimitePouvoir=AAAA-MM-JJ`). Code : `lib/syndics/word-documents.ts`, `controllers/syndic-word-documents-controller.ts`.
-- Boutons « Word » dans l'écran des appels, des quittances et la fiche d'assemblée. Catalogue de balises à jour. Rendu LibreOffice contrôlé (balises toutes résolues).
+- Modèles Word standard (PR 129) et téléchargements Word syndic (PR 133, avis d'appel `charges/:id/avis.docx`, quittance `quittances/:id/fichier.docx`, convocation `assemblees/:id/lots/:lotId/convocation.docx`) fusionnés dans `main` le 2026-10-15. Le `Dockerfile` ne livrait aucun `assets/` : cette PR ajoute la copie de `assets/modeles_standard`.
 
 Reste à faire :
 
-- Ouvrir un des documents dans Microsoft Word (jamais fait). Convocation : pas de description par point d'ordre du jour ; tantièmes et e-mail vides sur une quittance (le snapshot ne les porte pas).
-- Modèles standard (PR 129, fusionnée le 2026-10-15) : rejouer `npm run db:seed:document-templates` sur chaque base pour que le défaut locatif devienne le modèle standard ; pied « Page » du DOCX et libellés des PDF en arabe restent en français ; ouvrir un document dans Word (jamais fait).
+- Livrer aussi `assets/modeles_documents/*.docx` (baux, reçu, relevé) : fait par la PR 134 (signature électronique, autre session) ; conflit trivial sur le `Dockerfile` attendu entre 134 et 135, garder les deux blocs.
+- Déployer le staging (par l'utilisateur) une fois 134 et 135 fusionnées, puis `npm run db:seed:document-templates` pour que le défaut locatif devienne le modèle standard ; ouvrir un document dans Word (jamais fait).
+- Limites connues : quittance Word sans tantièmes ni e-mail (le snapshot ne les porte pas) ; convocation sans description par point d'ordre du jour ; pied « Page » du DOCX et libellés PDF arabes en français.
 
 Pièges et décisions :
 
 - `ai.catalog` : toute nouvelle route impose `npm run ai:catalog` (catalog.generated.json).
-- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe avec une config ts-jest sans diagnostics, et en CI.
+- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe en CI.
 
 ## État courant (pilote) — 2026-10-13
 
