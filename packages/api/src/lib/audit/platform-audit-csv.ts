@@ -67,5 +67,5 @@ export function platformAuditCsvLine(log: PlatformAuditLogDto): string {
 
 /** Début du fichier : BOM UTF-8 (Excel) puis l'en-tête. */
 export function platformAuditCsvHead(): string {
-  return `﻿${csvRow(PLATFORM_AUDIT_CSV_HEADER)}\r\n`;
+  return `FEFF${csvRow(PLATFORM_AUDIT_CSV_HEADER)}\r\n`;
 }
