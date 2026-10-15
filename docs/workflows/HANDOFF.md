@@ -51,6 +51,7 @@ Fait :
 
 Reste à faire :
 
+- Recette navigateur : scénario `docs/recette/SCENARIO_SYNDIC_AG_EN_DIRECT.md` écrit ; démo synchronisée sur `349f9e5d` avec migration appliquée (base de démo), `api-demo` 8800 et `web-demo` 3300 lancés ; recette pas encore jouée (reportée au début de la fenêtre de quota suivante).
 - CI de la PR #130 : premier passage rouge (catalogue IA périmé — `npm run ai:catalog` après tout ajout de route — et 6 traductions vides apportées par l’extraction), corrigé dans `da586082`, à confirmer vert. Revue de sécurité faite (0 critique/haute ; 1 moyenne et 3 basses corrigées : un vote en ligne ne remplace plus un vote du syndic ni le vote du copropriétaire par son mandataire, limite IP 3000/min, jeton effacé à la fin de l'AG, erreur typée).
 - Décisions D1–D12 de la spec à faire valider par le fondateur ; téléphone des copropriétaires exposé à SYNDIC_VIEW dans la liste des participants (à confirmer).
 - Non vérifié : migration sur une vraie base, recette navigateur (démo), `measure:entry`, suites complètes, `test:isolation`, charge du polling sur une grande copropriété (chaque `/etat` relit lots, profils et votes).
