@@ -3,7 +3,8 @@ import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, rgb } from 'pdf
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { privateUploadPath, privateUploadReadRoots } from '../files/private-files';
-import { sanitizeForPdf } from './pdf-text';
+import { t } from '../../i18n';
+import { pdfLanguage, sanitizeForPdf } from './pdf-text';
 import { readBrandingImage, readImageFile, type BrandingImage } from './branding-storage';
 
 /**
@@ -323,9 +324,11 @@ export function truncate(text: string, font: PDFFont, size: number, maxWidth: nu
   return `${clean.slice(0, Math.max(low, 1))}...`;
 }
 
-const MARGIN = 40;
+export const PAGE_MARGIN = 40;
+const MARGIN = PAGE_MARGIN;
 const LOGO_BOX = { width: 90, height: 60 };
 const GREY = rgb(0.35, 0.35, 0.35);
+const RULE_GREY = rgb(0.75, 0.75, 0.75);
 
 /** Lignes d'identité de l'émetteur, dans l'ordre d'affichage. */
 export function issuerIdentityLines(issuer: DocumentIssuer): string[] {
@@ -341,91 +344,209 @@ export function issuerIdentityLines(issuer: DocumentIssuer): string[] {
   return lines;
 }
 
+/** Cache d'images par document PDF : une image n'est intégrée qu'une fois (impression groupée). */
+const embeddedImages = new WeakMap<PDFDocument, Map<DocumentImage, Promise<PDFImage | null>>>();
+
+function embedImageOnce(pdfDoc: PDFDocument, image: DocumentImage | null): Promise<PDFImage | null> {
+  if (!image) return Promise.resolve(null);
+  let cache = embeddedImages.get(pdfDoc);
+  if (!cache) {
+    cache = new Map();
+    embeddedImages.set(pdfDoc, cache);
+  }
+  let embedded = cache.get(image);
+  if (!embedded) {
+    embedded = embedImage(pdfDoc, image);
+    cache.set(image, embedded);
+  }
+  return embedded;
+}
+
+export interface DocumentHeaderOptions {
+  title: string;
+  subtitle?: string;
+  /** Texte aligné à droite sur la ligne du titre (numéro de document). */
+  titleRight?: string;
+  /** Zone de l'en-tête ; par défaut la largeur utile de la page, marges standard. */
+  frame?: { x: number; top: number; width: number };
+  /** Échelle (1 = page A4 entière) pour un document dessiné dans une case réduite. */
+  scale?: number;
+  /** Nombre maximal de lignes d'identité de l'émetteur. */
+  maxIdentityLines?: number;
+  /** Sous-titre en gris (par défaut en noir). */
+  subtitleGrey?: boolean;
+  /** Ligne « Copropriété : … » sous le titre (vraie par défaut). */
+  showSyndicate?: boolean;
+  /**
+   * En-tête resserré pour une très petite case (impression groupée) : espaces
+   * verticaux et interlignes réduits, pour laisser la place au corps du document.
+   */
+  compact?: boolean;
+}
+
+interface HeaderLayout {
+  x: number;
+  width: number;
+  top: number;
+  s: number;
+  compact: boolean;
+}
+
+type HeaderFonts = { regular: PDFFont; bold: PDFFont };
+
+/** Espacement vertical mis à l'échelle, jamais réduit sous 30 % de sa valeur nominale. */
+const spacing = (value: number, s: number, compact = false) => Math.max(value * (compact ? 0.15 : 0.3), value * s);
+
+/** Interligne des lignes secondaires de l'en-tête (resserré dans une très petite case). */
+const leading = (compact: boolean, normal: number) => (compact ? 1.25 : normal);
+
+/** Logos de l'émetteur (gauche) et de la copropriété (droite) ; renvoie la zone de texte et le bas du bandeau. */
+async function drawHeaderLogos(pdfDoc: PDFDocument, page: PDFPage, branding: DocumentBranding, layout: HeaderLayout) {
+  const box = { width: Math.max(28, LOGO_BOX.width * layout.s), height: Math.max(20, LOGO_BOX.height * layout.s) };
+  const gap = Math.max(6, 12 * layout.s);
+  let textX = layout.x;
+  let textRight = layout.x + layout.width;
+  let bandBottom = layout.top;
+
+  const issuerLogo = await embedImageOnce(pdfDoc, branding.issuerLogo);
+  if (issuerLogo) {
+    const size = fitInBox(issuerLogo.width, issuerLogo.height, box.width, box.height);
+    page.drawImage(issuerLogo, { x: layout.x, y: layout.top - size.height, ...size });
+    textX = layout.x + box.width + gap;
+    bandBottom = Math.min(bandBottom, layout.top - size.height);
+  }
+  const syndicateLogo = await embedImageOnce(pdfDoc, branding.syndicate?.logo ?? null);
+  if (syndicateLogo) {
+    const size = fitInBox(syndicateLogo.width, syndicateLogo.height, box.width, box.height);
+    page.drawImage(syndicateLogo, { x: layout.x + layout.width - size.width, y: layout.top - size.height, ...size });
+    textRight = layout.x + layout.width - box.width - gap;
+    bandBottom = Math.min(bandBottom, layout.top - size.height);
+  }
+  return { textX, textWidth: Math.max(textRight - textX, 40), bandBottom };
+}
+
+/** Nom et lignes d'identité de l'émetteur ; renvoie l'ordonnée sous le dernier texte. */
+function drawIssuerIdentity(
+  page: PDFPage,
+  fonts: HeaderFonts,
+  issuer: DocumentIssuer,
+  zone: { textX: number; textWidth: number },
+  layout: HeaderLayout,
+  maxLines: number
+): number {
+  const nameSize = Math.max(7, 12 * layout.s);
+  const lineSize = Math.max(5, 8 * layout.s);
+  let y = layout.top - nameSize;
+  page.drawText(truncate(issuer.name || ' ', fonts.bold, nameSize, zone.textWidth), {
+    x: zone.textX,
+    y,
+    size: nameSize,
+    font: fonts.bold
+  });
+  for (const line of issuerIdentityLines(issuer).slice(0, maxLines)) {
+    y -= lineSize * leading(layout.compact, 1.4);
+    page.drawText(truncate(line, fonts.regular, lineSize, zone.textWidth), {
+      x: zone.textX,
+      y,
+      size: lineSize,
+      font: fonts.regular,
+      color: GREY
+    });
+  }
+  return y - spacing(4, layout.s, layout.compact);
+}
+
+/** Ligne « Copropriété : nom - adresse - références ». */
+function syndicateLine(syndicate: NonNullable<DocumentBranding['syndicate']>): string {
+  const language = pdfLanguage();
+  const refs = [
+    syndicate.registrationNo ? `${t('Immatriculation', undefined, language)} ${syndicate.registrationNo}` : null,
+    syndicate.cadastralReference ? `${t('Réf. cadastrale', undefined, language)} ${syndicate.cadastralReference}` : null
+  ]
+    .filter(Boolean)
+    .join(' - ');
+  return [`${t('Copropriété', undefined, language)} : ${syndicate.name}`, syndicate.address, refs]
+    .filter(Boolean)
+    .join(' - ');
+}
+
+/** Titre (numéro facultatif à droite), puis lignes secondaires ; renvoie l'ordonnée de la dernière ligne. */
+function drawHeaderTitle(
+  page: PDFPage,
+  fonts: HeaderFonts,
+  branding: DocumentBranding,
+  options: DocumentHeaderOptions,
+  layout: HeaderLayout,
+  ruleY: number
+): number {
+  const { x, width, s } = layout;
+  const titleSize = Math.max(8, 16 * s);
+  let cursor = ruleY - spacing(8, s, layout.compact) - titleSize;
+  let titleWidth = width;
+  if (options.titleRight) {
+    const rightSize = Math.max(6.5, 10 * s);
+    const right = sanitizeForPdf(options.titleRight);
+    const rightWidth = fonts.bold.widthOfTextAtSize(right, rightSize);
+    page.drawText(right, { x: x + width - rightWidth, y: cursor, size: rightSize, font: fonts.bold });
+    titleWidth = width - rightWidth - 6;
+  }
+  page.drawText(truncate(options.title, fonts.bold, titleSize, titleWidth), {
+    x,
+    y: cursor,
+    size: titleSize,
+    font: fonts.bold
+  });
+
+  const extra: Array<{ text: string; size: number; grey: boolean }> = [];
+  if (branding.syndicate && options.showSyndicate !== false) {
+    extra.push({ text: syndicateLine(branding.syndicate), size: Math.max(5.5, 9 * s), grey: true });
+  }
+  if (options.subtitle)
+    extra.push({ text: options.subtitle, size: Math.max(5.5, 10 * s), grey: options.subtitleGrey === true });
+  for (const line of extra) {
+    cursor -= line.size * leading(layout.compact, 1.5);
+    page.drawText(truncate(line.text, fonts.regular, line.size, width), {
+      x,
+      y: cursor,
+      size: line.size,
+      font: fonts.regular,
+      ...(line.grey ? { color: GREY } : {})
+    });
+  }
+  return cursor;
+}
+
 /**
  * En-tête commun : logo de l'émetteur à gauche, son identité au centre, logo
- * de la copropriété à droite, puis le titre (et un sous-titre facultatif).
+ * de la copropriété à droite, filet, puis le titre (numéro facultatif à
+ * droite), la ligne « Copropriété : … » et un sous-titre facultatif.
  * Renvoie l'ordonnée disponible sous l'en-tête.
  */
 export async function drawDocumentHeader(
   pdfDoc: PDFDocument,
   page: PDFPage,
   branding: DocumentBranding,
-  options: { title: string; subtitle?: string }
+  options: DocumentHeaderOptions
 ): Promise<number> {
-  const { regular, bold } = await fontsOf(pdfDoc);
+  const fonts = await fontsOf(pdfDoc);
   const { width, height } = page.getSize();
-  const top = height - MARGIN;
-  let bandBottom = top;
+  const s = options.scale ?? 1;
+  const frame = options.frame ?? { x: MARGIN, top: height - MARGIN, width: width - 2 * MARGIN };
+  const layout: HeaderLayout = { x: frame.x, width: frame.width, top: frame.top, s, compact: options.compact === true };
 
-  const issuerLogo = await embedImage(pdfDoc, branding.issuerLogo);
-  let textX = MARGIN;
-  if (issuerLogo) {
-    const size = fitInBox(issuerLogo.width, issuerLogo.height, LOGO_BOX.width, LOGO_BOX.height);
-    page.drawImage(issuerLogo, { x: MARGIN, y: top - size.height, ...size });
-    textX = MARGIN + LOGO_BOX.width + 12;
-    bandBottom = Math.min(bandBottom, top - size.height);
-  }
-
-  const syndicateLogo = await embedImage(pdfDoc, branding.syndicate?.logo ?? null);
-  let textRight = width - MARGIN;
-  if (syndicateLogo) {
-    const size = fitInBox(syndicateLogo.width, syndicateLogo.height, LOGO_BOX.width, LOGO_BOX.height);
-    page.drawImage(syndicateLogo, { x: width - MARGIN - size.width, y: top - size.height, ...size });
-    textRight = width - MARGIN - LOGO_BOX.width - 12;
-    bandBottom = Math.min(bandBottom, top - size.height);
-  }
-
-  const textWidth = Math.max(textRight - textX, 80);
-  let y = top - 12;
-  page.drawText(truncate(branding.issuer.name || ' ', bold, 12, textWidth), { x: textX, y, size: 12, font: bold });
-  for (const line of issuerIdentityLines(branding.issuer)) {
-    y -= 11;
-    page.drawText(truncate(line, regular, 8, textWidth), { x: textX, y, size: 8, font: regular, color: GREY });
-  }
-  bandBottom = Math.min(bandBottom, y - 4);
-
-  let cursor = bandBottom - 10;
+  const zone = await drawHeaderLogos(pdfDoc, page, branding, layout);
+  const identityBottom = drawIssuerIdentity(page, fonts, branding.issuer, zone, layout, options.maxIdentityLines ?? 4);
+  const ruleY = Math.min(zone.bandBottom, identityBottom) - spacing(10, s, layout.compact);
   page.drawLine({
-    start: { x: MARGIN, y: cursor },
-    end: { x: width - MARGIN, y: cursor },
+    start: { x: frame.x, y: ruleY },
+    end: { x: frame.x + frame.width, y: ruleY },
     thickness: 0.5,
-    color: rgb(0.75, 0.75, 0.75)
+    color: RULE_GREY
   });
-
-  cursor -= 24;
-  const contentWidth = width - 2 * MARGIN;
-  page.drawText(truncate(options.title, bold, 16, contentWidth), { x: MARGIN, y: cursor, size: 16, font: bold });
-
-  const syndicate = branding.syndicate;
-  if (syndicate) {
-    const refs = [
-      syndicate.registrationNo ? `Immatriculation ${syndicate.registrationNo}` : null,
-      syndicate.cadastralReference ? `Réf. cadastrale ${syndicate.cadastralReference}` : null
-    ]
-      .filter(Boolean)
-      .join(' - ');
-    const line = [`Copropriété : ${syndicate.name}`, syndicate.address, refs].filter(Boolean).join(' - ');
-    cursor -= 15;
-    page.drawText(truncate(line, regular, 9, contentWidth), {
-      x: MARGIN,
-      y: cursor,
-      size: 9,
-      font: regular,
-      color: GREY
-    });
-  }
-  if (options.subtitle) {
-    cursor -= 14;
-    page.drawText(truncate(options.subtitle, regular, 10, contentWidth), {
-      x: MARGIN,
-      y: cursor,
-      size: 10,
-      font: regular
-    });
-  }
+  const last = drawHeaderTitle(page, fonts, branding, options, layout, ruleY);
 
   pdfDoc.setAuthor(sanitizeForPdf(branding.issuer.name));
-  return cursor - 20;
+  return last - spacing(20, s, layout.compact);
 }
 
 /**
