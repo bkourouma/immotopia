@@ -61,6 +61,14 @@ const InstallmentPaymentStatusPage = lazy(() =>
     default: m.InstallmentPaymentStatusPage
   }))
 );
+// Paiement des charges de copropriété par lien sécurisé (spec 042) : mêmes règles que ci-dessus.
+// Pages écrites par un autre agent, export par défaut.
+const ChargeCallPaymentPage = lazy(
+  () => import(/* webpackChunkName: "public-payment" */ './pages/public/ChargeCallPaymentPage')
+);
+const ChargeCallPaymentStatusPage = lazy(
+  () => import(/* webpackChunkName: "public-payment" */ './pages/public/ChargeCallPaymentStatusPage')
+);
 const Dashboard = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Dashboard').then(m => ({ default: m.Dashboard }))
 );
@@ -358,6 +366,11 @@ const SyndicChargeSchedules = lazy(() =>
 const SyndicProfilesIncidents = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicProfilesIncidents').then(m => ({
     default: m.SyndicProfilesIncidents
+  }))
+);
+const SyndicOnlinePayments = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOnlinePayments').then(m => ({
+    default: m.SyndicOnlinePayments
   }))
 );
 const SyndicMandatingAgencies = lazy(() =>
@@ -819,6 +832,8 @@ function App() {
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
                         <Route path="/payer" element={<InstallmentPaymentPage />} />
                         <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
+                        <Route path="/payer-charges" element={<ChargeCallPaymentPage />} />
+                        <Route path="/payer-charges/statut" element={<ChargeCallPaymentStatusPage />} />
                         <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
@@ -954,6 +969,10 @@ function App() {
                               element={<SyndicRecovery />}
                             />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/paiements-en-ligne"
+                              element={<SyndicOnlinePayments />}
+                            />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
                               element={<SyndicAccounting />}

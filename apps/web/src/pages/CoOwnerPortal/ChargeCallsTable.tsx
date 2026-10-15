@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Button } from 'antd';
+import { Button, Checkbox, Tag } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
-import { downloadCoOwnerChargeCallNotice, type CoOwnerChargeCall } from '../../services/coowner-portal-service';
+import {
+  MAX_CHARGE_CALLS_PER_PAYMENT,
+  downloadCoOwnerChargeCallNotice,
+  type CoOwnerChargeCall
+} from '../../services/coowner-portal-service';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallStatusTag } from './labels';
@@ -52,15 +56,73 @@ const NoticeButton: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
 };
 
 /**
- * Appels de charges d'un copropriétaire, partagé par « Mes appels de
- * charges » et par le détail d'un lot. Lecture seule : aucun bouton de
- * paiement (le paiement en ligne des charges de copropriété n'existe pas).
+ * Sélection des appels à régler en ligne (spec 042). Un paiement couvre les
+ * appels d'un seul lot : dès qu'un appel est coché, ceux des autres lots sont
+ * grisés. Le serveur reste juge (`onlinePayable`, reste dû recalculé).
  */
-export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: boolean }> = ({
-  calls,
-  showLot = true
-}) => {
+export interface ChargeCallSelection {
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}
+
+/** Vrai si l'appel peut être coché, compte tenu de la sélection courante. */
+export function isCallSelectable(call: CoOwnerChargeCall, selected: CoOwnerChargeCall[]): boolean {
+  if (!call.onlinePayable || call.onlineCheckout !== 'NONE' || !call.lot) return false;
+  if (selected.some(other => other.id === call.id)) return true;
+  if (selected.length >= MAX_CHARGE_CALLS_PER_PAYMENT) return false;
+  return selected.length === 0 || selected[0].lot?.id === call.lot.id;
+}
+
+/** Mention d'un paiement déjà engagé sur l'appel (colonne « Statut »). */
+const OnlineCheckoutTag: React.FC<{ call: CoOwnerChargeCall }> = ({ call }) => {
+  if (call.onlineCheckout === 'IN_PROGRESS') return <Tag color="processing">{t('Paiement en cours')}</Tag>;
+  if (call.onlineCheckout === 'REVIEW') return <Tag color="warning">{t('Paiement en vérification')}</Tag>;
+  return null;
+};
+
+/**
+ * Appels de charges d'un copropriétaire, partagé par « Mes appels de
+ * charges » et par le détail d'un lot. Sans `selection`, lecture seule ; avec,
+ * une case à cocher apparaît sur les appels payables en ligne.
+ */
+export const ChargeCallsTable: React.FC<{
+  calls: CoOwnerChargeCall[];
+  showLot?: boolean;
+  selection?: ChargeCallSelection;
+}> = ({ calls, showLot = true, selection }) => {
+  const selectedCalls = selection ? calls.filter(call => selection.selectedIds.includes(call.id)) : [];
+  const showSelection = Boolean(selection) && calls.some(call => call.onlinePayable);
+
+  const toggle = (call: CoOwnerChargeCall, checked: boolean) => {
+    if (!selection) return;
+    selection.onChange(
+      checked ? [...selection.selectedIds, call.id] : selection.selectedIds.filter(id => id !== call.id)
+    );
+  };
+
+  const selectBox = (call: CoOwnerChargeCall) => {
+    if (!call.onlinePayable) return null;
+    return (
+      <Checkbox
+        checked={selectedCalls.some(other => other.id === call.id)}
+        disabled={!isCallSelectable(call, selectedCalls)}
+        onChange={event => toggle(call, event.target.checked)}
+        aria-label={t("Sélectionner l'appel {{period}}", { period: call.period })}
+      />
+    );
+  };
+
   const columns: ColumnsType<CoOwnerChargeCall> = [
+    ...(showSelection
+      ? [
+          {
+            title: t('Payer'),
+            key: 'select',
+            width: 64,
+            render: (_: unknown, call: CoOwnerChargeCall) => selectBox(call)
+          }
+        ]
+      : []),
     { title: t('Période'), dataIndex: 'period', key: 'period' },
     ...(showLot
       ? [
@@ -85,7 +147,16 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
         </strong>
       )
     },
-    { title: t('Statut'), key: 'status', render: (_, call) => <ChargeCallStatusTag status={call.status} /> },
+    {
+      title: t('Statut'),
+      key: 'status',
+      render: (_, call) => (
+        <>
+          <ChargeCallStatusTag status={call.status} />
+          <OnlineCheckoutTag call={call} />
+        </>
+      )
+    },
     { title: t('Avis'), key: 'notice', align: 'end', render: (_, call) => <NoticeButton call={call} /> }
   ];
 
@@ -110,11 +181,17 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
           ]
             .filter(Boolean)
             .join(' · ')}
-          status={<ChargeCallStatusTag status={call.status} />}
+          status={
+            <>
+              <ChargeCallStatusTag status={call.status} />
+              <OnlineCheckoutTag call={call} />
+            </>
+          }
           highlight={<MoneyValue value={call.outstanding} />}
           fields={[
             { label: t('Montant'), value: <MoneyValue value={call.amount} /> },
             { label: t('Payé'), value: <MoneyValue value={call.paid} /> },
+            ...(showSelection && call.onlinePayable ? [{ label: t('Payer'), value: selectBox(call) }] : []),
             { label: t('Avis'), value: <NoticeButton call={call} /> }
           ]}
         />

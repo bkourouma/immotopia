@@ -390,6 +390,8 @@ describe("Avis d'appel", () => {
       status: 'OVERDUE',
       lot: { id: 'lot-1', lotNumber: 'A1', lotType: 'APARTMENT' },
       syndicate: 'Résidence Les Acacias',
+      onlinePayable: false,
+      onlineCheckout: 'NONE',
       ...overrides
     };
   }
