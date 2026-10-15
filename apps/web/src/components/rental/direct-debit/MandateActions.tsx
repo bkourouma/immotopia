@@ -265,6 +265,7 @@ export const MandateActions: React.FC<MandateActionsProps> = ({ tenantId, mandat
             <DatePicker
               style={{ width: '100%' }}
               value={signedAt}
+              format="DD/MM/YYYY"
               onChange={value => setSignedAt(value)}
               disabledDate={date => date.isAfter(dayjs(), 'day')}
             />

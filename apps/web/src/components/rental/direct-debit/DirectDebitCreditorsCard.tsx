@@ -250,15 +250,17 @@ export const DirectDebitCreditorsCard: React.FC<DirectDebitCreditorsCardProps> =
         {loading ? (
           <Spin />
         ) : (
-          <Table<CreditorDto>
-            rowKey="id"
-            size="small"
-            columns={columns}
-            dataSource={creditors}
-            pagination={false}
-            scroll={{ x: 'max-content' }}
-            locale={{ emptyText: t('Aucun créancier de prélèvement configuré') }}
-          />
+          <div style={{ minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
+            <Table<CreditorDto>
+              rowKey="id"
+              size="small"
+              columns={columns}
+              dataSource={creditors}
+              pagination={false}
+              scroll={{ x: 'max-content' }}
+              locale={{ emptyText: t('Aucun créancier de prélèvement configuré') }}
+            />
+          </div>
         )}
       </Space>
 

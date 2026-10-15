@@ -17,6 +17,7 @@ const listMandates = vi.fn();
 const listCreditors = vi.fn();
 const createMandate = vi.fn();
 const checkIban = vi.fn();
+const activateMandate = vi.fn();
 const getLease = vi.fn();
 
 vi.mock('../../services/direct-debit-service', () => ({
@@ -24,7 +25,7 @@ vi.mock('../../services/direct-debit-service', () => ({
   listCreditors: (...a: unknown[]) => listCreditors(...a),
   createMandate: (...a: unknown[]) => createMandate(...a),
   checkIban: (...a: unknown[]) => checkIban(...a),
-  activateMandate: vi.fn(),
+  activateMandate: (...a: unknown[]) => activateMandate(...a),
   suspendMandate: vi.fn(),
   reactivateMandate: vi.fn(),
   revokeMandate: vi.fn(),
@@ -175,6 +176,27 @@ describe('LeaseDirectDebitPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Activer' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Voir le scan' })).toBeInTheDocument();
+  });
+
+  it("accepte la date de signature saisie en jj/mm/aaaa et l'envoie à l'API en aaaa-mm-jj", async () => {
+    const user = userEvent.setup();
+    listMandates.mockResolvedValue({
+      items: [makeMandate({ hasSignedScan: true })],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    });
+    activateMandate.mockResolvedValue(makeMandate({ status: 'ACTIVE', hasSignedScan: true }));
+    mount();
+    await screen.findByText('MDT-2026-0001');
+
+    await user.click(screen.getByRole('button', { name: 'Activer' }));
+    const dialog = await screen.findByRole('dialog');
+    const dateInput = dialog.querySelector('.ant-picker input') as HTMLInputElement;
+    await user.type(dateInput, '15/10/2025{Enter}');
+    await user.click(within(dialog).getByRole('button', { name: 'Activer' }));
+
+    await waitFor(() => expect(activateMandate).toHaveBeenCalledWith(TENANT_ID, 'm-1', '2025-10-15'));
   });
 
   it('propose Suspendre et Révoquer sur un mandat actif, Réactiver sur un mandat suspendu', async () => {
