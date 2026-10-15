@@ -180,14 +180,14 @@ describe('succès : un seul encaissement', () => {
     expect(db.engine.issueReceiptsForPaymentTx).not.toHaveBeenCalled();
   });
 
-  it('un appel soldé entre-temps par un paiement manuel : l’excédent devient une avance, jamais un refus', async () => {
+  it('un appel soldé entre-temps par un paiement manuel : le reste dû ne couvre plus le paiement -> REVIEW (l’ACCEPT garde l’avance)', async () => {
     const checkout = db.addCheckout();
     db.store.allocations.push({ id: 'manual', paymentId: 'p0', chargeCallId: IDS.C1, amount: 30000 });
 
     const { checkout: result } = await reconcileSyndicCheckout(IDS.T1, checkout.id);
 
-    expect(result.status).toBe('SUCCESS');
-    expect(payments()[0].unallocatedAmount).toBe(30000);
+    expect(result).toMatchObject({ status: 'REVIEW', reviewKind: 'CALLS_UNAVAILABLE' });
+    expect(payments()).toHaveLength(0);
   });
 });
 
@@ -360,11 +360,12 @@ describe('échec, annulation, attente, fournisseur injoignable', () => {
     expect(row(checkout.id)).toMatchObject({ status: 'PENDING', checkAttempts: 1 });
   });
 
-  it('une tentative EXPIRED est close : aucun appel au fournisseur', async () => {
+  it('une tentative EXPIRED sans succès fournisseur reste EXPIRED', async () => {
     const checkout = db.addCheckout({ status: 'EXPIRED' });
+    db.engine.client.getStatus.mockResolvedValue(status({ mappedState: 'PENDING', rawState: 'PENDING' }));
     const { changed } = await reconcileSyndicCheckout(IDS.T1, checkout.id);
     expect(changed).toBe(false);
-    expect(db.engine.client.getStatus).not.toHaveBeenCalled();
+    expect(row(checkout.id).status).toBe('EXPIRED');
   });
 });
 
@@ -593,5 +594,56 @@ describe('tâche planifiée', () => {
 
     expect(result).toEqual({ reconciled: 0, expired: 0, errors: 0 });
     expect(db.engine.client.getStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('durcissements de l’audit', () => {
+  it('double encaissement : appels déjà soldés par une autre tentative -> CALLS_UNAVAILABLE, rien d’enregistré', async () => {
+    const checkout = db.addCheckout();
+    for (const call of db.store.calls.filter(c => [IDS.C1, IDS.C2].includes(c.id))) {
+      db.store.allocations.push({
+        id: `a-${call.id}`,
+        paymentId: 'p0',
+        chargeCallId: call.id,
+        amount: Number(call.amount)
+      });
+    }
+
+    await reconcileSyndicCheckout(IDS.T1, checkout.id);
+
+    expect(row(checkout.id)).toMatchObject({ status: 'REVIEW', reviewKind: 'CALLS_UNAVAILABLE' });
+    expect(payments()).toHaveLength(0);
+  });
+
+  it('succès fournisseur sans montant -> REVIEW AMOUNT_MISMATCH, rien d’encaissé', async () => {
+    const checkout = db.addCheckout();
+    db.engine.client.getStatus.mockResolvedValue(status({ amount: null }));
+
+    await reconcileSyndicCheckout(IDS.T1, checkout.id);
+
+    expect(row(checkout.id)).toMatchObject({ status: 'REVIEW', reviewKind: 'AMOUNT_MISMATCH' });
+    expect(payments()).toHaveLength(0);
+  });
+
+  it('succès rapporté sur une tentative EXPIRED -> REVIEW CONTRARY_STATE, rien d’encaissé', async () => {
+    const checkout = db.addCheckout({ status: 'EXPIRED' });
+
+    await reconcileSyndicCheckout(IDS.T1, checkout.id);
+
+    expect(row(checkout.id)).toMatchObject({ status: 'REVIEW', reviewKind: 'CONTRARY_STATE' });
+    expect(payments()).toHaveLength(0);
+  });
+
+  it('simulateur indisponible (production) -> findSyndicSimulatorCheckout renvoie null', async () => {
+    const checkout = db.addCheckout();
+    const env = jest.requireActual('../../src/config/env');
+    const previous = env.paymentGatewaySimulatorAvailable;
+    env.paymentGatewaySimulatorAvailable = false;
+    try {
+      expect(await findSyndicSimulatorCheckout(CODE)).toBeNull();
+    } finally {
+      env.paymentGatewaySimulatorAvailable = previous;
+    }
+    expect((await findSyndicSimulatorCheckout(CODE))?.id).toBe(checkout.id);
   });
 });

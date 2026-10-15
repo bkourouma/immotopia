@@ -65,7 +65,7 @@ export function createLinkDb() {
   };
 
   const matchesLink = (row: Row, where: Row = {}) =>
-    ['id', 'tenantId', 'scope', 'objectType', 'objectId'].every(
+    ['id', 'tenantId', 'scope', 'objectType', 'objectId', 'createdByUserId'].every(
       key => where[key] === undefined || row[key] === where[key]
     ) &&
     (where.revokedAt !== null || row.revokedAt === null);

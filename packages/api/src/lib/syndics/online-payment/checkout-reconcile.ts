@@ -15,6 +15,7 @@ import {
   reconcileCutoff
 } from '../../payment-gateway/checkout-core';
 import type { NormalizedProviderStatus } from '../../payment-gateway/checkout-core';
+import { paymentGatewaySimulatorAvailable } from '../../../config/env';
 import { gatewayClientForMode } from '../../payment-gateway/paysecurehub';
 import { scheduleChargeDocumentDelivery } from '../charge-receipt-delivery';
 import { loadSyndicGatewayConfigById, syndicCredentialsFrom } from './gateway-config';
@@ -165,6 +166,17 @@ async function applyProviderStatus(
   // R19 : en revue, ou déjà tranchée, la vérification ne fait que mettre le suivi à jour.
   if (checkout.status === 'REVIEW' || checkout.resolution) return touch(checkout, bookkeeping);
 
+  // Succès sans montant rapporté : impossible de le rapprocher de la tentative, on ne l'encaisse pas.
+  if (ps.state === 'SUCCESS' && ps.amount === null && OPEN_STATUSES.includes(checkout.status)) {
+    const marked = await markSyndicCheckoutReview(checkout, {
+      kind: 'AMOUNT_MISMATCH',
+      reason: t('Le fournisseur confirme le paiement sans indiquer le montant reçu.'),
+      fromStatuses: OPEN_STATUSES,
+      extra: bookkeeping
+    });
+    return { checkout: await reload(checkout), changed: marked };
+  }
+
   const decision = decideCheckoutTransition({
     currentStatus: checkout.status,
     expectedAmount: Number(checkout.amount),
@@ -198,8 +210,6 @@ async function applyProviderStatus(
 
 /** Cœur du rapprochement : statut fournisseur (clé de la copropriété) puis transition. */
 async function reconcileRow(checkout: SyndicCheckoutRecord): Promise<ReconcileSyndicResult> {
-  if (checkout.status === 'EXPIRED') return { checkout, changed: false };
-
   const config = await loadSyndicGatewayConfigById(checkout.tenantId, checkout.configId);
   // La configuration de la tentative doit être celle de SA copropriété : jamais une autre clé.
   if (!config || config.syndicateId !== checkout.syndicateId) {
@@ -227,6 +237,18 @@ async function reconcileRow(checkout: SyndicCheckoutRecord): Promise<ReconcileSy
       error: (error as Error)?.message
     });
     throw providerUnreachable();
+  }
+
+  // Tentative expirée : seul un succès tardif est à trancher (l'argent est parti), le reste est ignoré.
+  if (checkout.status === 'EXPIRED') {
+    if (providerStatus.state !== 'SUCCESS') return { checkout, changed: false };
+    const marked = await markSyndicCheckoutReview(checkout, {
+      kind: 'CONTRARY_STATE',
+      reason: t('Le fournisseur a encaissé ce paiement après son expiration.'),
+      fromStatuses: ['EXPIRED'],
+      extra: bookkeepingOf(providerStatus)
+    });
+    return { checkout: await reload(checkout), changed: marked };
   }
 
   return applyProviderStatus(checkout, providerStatus);
@@ -334,7 +356,7 @@ export async function refreshSyndicCheckout(checkout: SyndicCheckoutRecord): Pro
  * contrôleur répond alors 404 sans distinguer.
  */
 export async function findSyndicSimulatorCheckout(codePaiement: string): Promise<SyndicCheckoutRecord | null> {
-  if (!isSyndicCodePaiement(codePaiement)) return null;
+  if (!paymentGatewaySimulatorAvailable || !isSyndicCodePaiement(codePaiement)) return null;
   return prisma.syndicOnlineCheckout.findFirst({
     where: { codePaiement, config: { mode: 'SIMULATOR' }, tenant: { status: { not: 'SUSPENDED' } } }
   });

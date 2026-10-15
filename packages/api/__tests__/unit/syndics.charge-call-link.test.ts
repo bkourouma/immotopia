@@ -50,6 +50,7 @@ jest.mock('../../src/lib/payment-gateway/paysecurehub', () => ({
 }));
 
 import {
+  createAutomaticChargeCallPaymentUrl,
   createChargeCallPaymentLink,
   getChargeCallPaymentByToken,
   getChargeCallPaymentStatusByCode,
@@ -603,5 +604,22 @@ describe('côté gestionnaire', () => {
     // Un lien d'une autre agence : introuvable.
     await expectAppError(revokeChargeCallPaymentLink(IDS.T2, IDS.S1, IDS.C1, other.id, MANAGER), 404);
     await expectAppError(revokeChargeCallPaymentLink(IDS.T1, IDS.S1, IDS.C1, 'inconnu', MANAGER), 404);
+  });
+});
+
+describe('lien automatique (envoi de l’appel)', () => {
+  it('révoque les anciens liens automatiques actifs mais garde ceux du gestionnaire', async () => {
+    const manual = await openLink();
+    const input = { tenantId: IDS.T1, syndicateId: IDS.S1, lotId: IDS.L1, chargeCallIds: [IDS.C1] };
+
+    const first = await createAutomaticChargeCallPaymentUrl(input);
+    const second = await createAutomaticChargeCallPaymentUrl(input);
+
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    const auto = db.links.filter(link => link.createdByUserId === null);
+    expect(auto).toHaveLength(2);
+    expect(auto.filter(link => link.revokedAt === null)).toHaveLength(1);
+    expect(db.links.find(link => link.id === manual.id)!.revokedAt).toBeNull();
   });
 });

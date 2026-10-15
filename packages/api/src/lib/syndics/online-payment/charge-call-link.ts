@@ -610,6 +610,19 @@ export async function createAutomaticChargeCallPaymentUrl(input: {
         lotId: input.lotId
       });
       if ('failure' in context) return null;
+      // Le jeton n'est pas stocké : on ne peut pas réutiliser un lien. On révoque les liens
+      // AUTOMATIQUES (créés sans gestionnaire) encore actifs de cet appel ; ceux d'un gestionnaire restent.
+      await prisma.secureLink.updateMany({
+        where: {
+          tenantId: input.tenantId,
+          scope: CHARGE_CALL_LINK_SCOPE,
+          objectType: CHARGE_CALL_OBJECT_TYPE,
+          objectId: chargeCallId,
+          createdByUserId: null,
+          revokedAt: null
+        },
+        data: { revokedAt: new Date() }
+      });
       const link = await createChargeCallPaymentLinkFor(input.tenantId, context, null, {
         ttlDays: env.SECURE_LINK_MAX_TTL_DAYS
       });

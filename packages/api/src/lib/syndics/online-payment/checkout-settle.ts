@@ -6,7 +6,7 @@ import { t } from '../../../i18n';
 import { logAuditEvent } from '../../../services/audit-service';
 import { AuditActionKey } from '../../../types/audit-types';
 import { ConflictError } from '../../../middleware/error-middleware';
-import { recordLotPaymentTx } from '../charge-allocation';
+import { recordLotPaymentTx, sumAllocationsByCall } from '../charge-allocation';
 import { issueReceiptsForPaymentTx, toDocumentRefs } from '../charge-receipts';
 import type { IssuedChargeDocument } from '../charge-receipts';
 import { assertFiscalYearOpenTx } from '../provider-invoice-accounting';
@@ -153,13 +153,32 @@ export async function settleSyndicCheckoutTx(
 
   const present = await tx.chargeCall.findMany({
     where: { id: { in: checkout.chargeCallIds }, lotId, syndicateId },
-    select: { id: true }
+    select: { id: true, amount: true }
   });
   if (present.length < checkout.chargeCallIds.length && !params.tolerateMissingCalls) {
     throw new SyndicSettleBusinessError(
       'CALLS_UNAVAILABLE',
       t("Un appel de charges payé a disparu ou n'appartient plus à ce lot.")
     );
+  }
+
+  // Succès AUTOMATIQUE : si les appels visés ont été soldés entre-temps (autre tentative, paiement
+  // manuel), on n'encaisse pas une seconde fois. L'ACCEPT manuel garde l'excédent en avance.
+  if (!params.tolerateMissingCalls && !params.actorUserId) {
+    const paid = await sumAllocationsByCall(
+      tx,
+      present.map(call => call.id)
+    );
+    let outstandingCents = 0;
+    for (const call of present) {
+      outstandingCents += Math.max(0, Math.round(Number(call.amount) * 100) - (paid.get(call.id) ?? 0));
+    }
+    if (outstandingCents < Math.round(params.amount * 100)) {
+      throw new SyndicSettleBusinessError(
+        'CALLS_UNAVAILABLE',
+        t('Les appels de charges visés sont déjà soldés ou ne couvrent plus ce paiement.')
+      );
+    }
   }
 
   const providerTransactionId = params.providerTransactionId ?? checkout.providerTransactionId ?? null;
