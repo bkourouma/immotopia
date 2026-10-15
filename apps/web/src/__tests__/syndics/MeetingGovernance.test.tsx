@@ -21,6 +21,13 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+// La console « En direct » (spec 043) a ses propres tests ; l'antd allégé ci-dessous ne la porterait pas.
+vi.mock('../../components/syndics/MeetingLiveConsole', () => ({
+  MANUAL_VOTE_ANCHOR_ID: 'meeting-vote-entry',
+  MeetingLiveConsole: () => null,
+  default: () => null
+}));
+
 vi.mock('@ant-design/icons', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
@@ -337,7 +344,7 @@ describe('AG - statut, majorité et pouvoirs', () => {
     mockDetail('IN_PROGRESS');
     renderRoute('/tenant/tenant-1/syndics/syndic-1/assemblees/meeting-1');
 
-    const board = (await screen.findByText('Resultats des resolutions')).closest('section') as HTMLElement;
+    const board = (await screen.findByText('Résultats des résolutions')).closest('section') as HTMLElement;
     // Texte libre historique « Article 24 » : traité comme l'article 24.
     expect(within(board).getByText('Article 24 — majorité simple')).toBeTruthy();
     expect(within(board).getByText('2 lot(s) · 300 tantièmes')).toBeTruthy();
@@ -408,7 +415,7 @@ describe('AG - statut, majorité et pouvoirs', () => {
     }
 
     mockValidateFields.mockResolvedValueOnce({ title: 'Ravalement', majorityRule: 'ARTICLE_25' });
-    const dialog = screen.getByRole('dialog', { name: 'Ajouter une resolution' });
+    const dialog = screen.getByRole('dialog', { name: 'Ajouter une résolution' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ajouter' }));
     await waitFor(() =>
       expect(mockApi.post).toHaveBeenCalledWith(`${DETAIL_URL}/resolutions`, {

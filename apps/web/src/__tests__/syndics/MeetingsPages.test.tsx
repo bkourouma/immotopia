@@ -18,6 +18,13 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+// La console « En direct » (spec 043) a ses propres tests ; ici l'antd allégé ci-dessous ne la porterait pas.
+vi.mock('../../components/syndics/MeetingLiveConsole', () => ({
+  MANUAL_VOTE_ANCHOR_ID: 'meeting-vote-entry',
+  MeetingLiveConsole: () => null,
+  default: () => null
+}));
+
 vi.mock('@ant-design/icons', async () => {
   // Vitest resolves named imports against the keys of this object, so the mock
   // must expose the real export names — a Proxy over {} declares none.
