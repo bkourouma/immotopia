@@ -107,9 +107,13 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
         return (
           <Card key={resolution.id}>
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Title level={5} style={{ margin: 0 }}>
-                {t('Résolution')} {index + 1}: {resolution.title}
-              </Title>
+              <Space wrap>
+                <Title level={5} style={{ margin: 0 }}>
+                  {t('Résolution')} {index + 1}: {resolution.title}
+                </Title>
+                {/* Vote ouvert : aucune decision provisoire n'est montree, seulement l'etat du vote. */}
+                {!readOnly && resolution.voteStatus === 'OPEN' ? <Tag color="blue">{t('Vote en cours')}</Tag> : null}
+              </Space>
               {resolution.description ? <Paragraph type="secondary">{resolution.description}</Paragraph> : null}
               <Space wrap>
                 <Text type="secondary">{t('Règle de majorité :')}</Text>

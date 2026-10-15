@@ -427,6 +427,7 @@ export const SyndicMeetingDetail: React.FC = () => {
           quorum={meeting.quorum || 0}
           resolutions={meeting.resolutions || []}
           attendance={meeting.attendance}
+          frozen={frozen}
         />
 
         <MeetingProxies

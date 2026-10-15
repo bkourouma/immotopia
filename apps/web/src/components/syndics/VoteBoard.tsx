@@ -12,6 +12,8 @@ interface VoteBoardProps {
   resolutions: MeetingResolution[];
   /** Tantiemes representes sur le total, calcules par l'API. */
   attendance?: MeetingAttendance;
+  /** AG cloturee ou annulee : la decision est affichee meme si un vote est reste ouvert. */
+  frozen?: boolean;
 }
 
 /** « 2 lots · 300 tantièmes » : nombre de lots et poids en tantiemes. */
@@ -20,7 +22,7 @@ function formatCount(lots: number, shares?: number) {
   return t('{{lots}} lot(s) · {{shares}} tantièmes', { lots, shares });
 }
 
-export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, attendance }) => {
+export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, attendance, frozen = false }) => {
   const rawQuorum = typeof quorum === 'number' ? quorum : Number(quorum);
   const storedQuorum = Number.isFinite(rawQuorum) ? rawQuorum : 0;
   const quorumPercent = Number((attendance ? attendance.quorumPercent : storedQuorum).toFixed(2));
@@ -70,6 +72,8 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, atten
       key: 'result',
       // Resultat enregistre (recalcule a chaque vote et fige a la cloture).
       render: (_: unknown, resolution) => {
+        // Vote ouvert : la decision provisoire est masquee, seuls les decomptes restent visibles.
+        if (!frozen && resolution.voteStatus === 'OPEN') return <Tag color="blue">{t('Vote en cours')}</Tag>;
         const value = resolution.result ?? 'PENDING';
         return <Tag color={resultColors[value]}>{resultLabels[value] || value}</Tag>;
       }

@@ -39,7 +39,7 @@ Pièges et décisions :
 ## Branche `feat/syndic-ag-en-direct` — 2026-10-15
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur
-**Dernier commit :** `7fcbe145` fix(syndic): anomalies de la recette navigateur de l'AG en direct
+**Dernier commit :** voir `git log` (décisions D1, D3, D7, D13 validées le 2026-10-15)
 **Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
 
 Fait :
@@ -51,9 +51,8 @@ Fait :
 
 Reste à faire :
 
-- Décisions D1–D12 à valider (lien sans mot de passe, quorum indicatif, présence au clic « Rejoindre », résultats visibles à la clôture du vote) ; téléphone des copropriétaires exposé à SYNDIC_VIEW dans la liste des participants.
+- Décisions validées par le fondateur le 2026-10-15 : lien seul suffit (D1), quorum indicatif (D3), décision provisoire masquée au gestionnaire pendant un vote ouvert (D7, fait), téléphone gardé dans la liste des participants (D13).
 - Non joué : portail copropriétaire (aucun compte portail dans la démo), boutons de vote en 375 px pendant un vote ouvert, compte rendu Word avec feuille de présence (téléchargement non fait), envoi réel des convocations (démo sans SMTP : « 4 échoué(s) »), `measure:entry`, `test:isolation`, charge du polling sur une grande copropriété.
-- À trancher : le tableau du bas de la fiche (gestionnaire seulement) affiche « Approuvée/Rejetée » provisoire pendant un vote ouvert (comportement antérieur).
 
 Pièges et décisions :
 
