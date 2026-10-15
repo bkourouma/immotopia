@@ -36,6 +36,26 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/modeles-syndic-word` — 2026-10-15
+
+**État :** prêt à relire (PR empilée sur `feat/modeles-documents-entete`, PR 129)
+**Dernier commit :** voir `git log` de la branche
+
+Fait :
+
+- Trois routes `.docx` (SYNDIC_VIEW) : avis d'appel `charges/:chargeId/avis.docx`, quittance `quittances/:receiptId/fichier.docx` (depuis le snapshot figé), convocation d'AG `assemblees/:meetingId/lots/:lotId/convocation.docx` (`?dateLimitePouvoir=AAAA-MM-JJ`). Code : `lib/syndics/word-documents.ts`, `controllers/syndic-word-documents-controller.ts`.
+- Boutons « Word » dans l'écran des appels, des quittances et la fiche d'assemblée. Catalogue de balises à jour. Rendu LibreOffice contrôlé (balises toutes résolues).
+
+Reste à faire :
+
+- Ouvrir un des documents dans Microsoft Word (jamais fait). Convocation : pas de description par point d'ordre du jour ; tantièmes et e-mail vides sur une quittance (le snapshot ne les porte pas).
+- Fusionner d'abord la PR 129 : cette PR est empilée dessus (cibler `main` ensuite).
+
+Pièges et décisions :
+
+- `ai.catalog` : toute nouvelle route impose `npm run ai:catalog` (catalog.generated.json).
+- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe avec une config ts-jest sans diagnostics, et en CI.
+
 ## Branche `feat/modeles-documents-entete` — 2026-10-15
 
 **État :** prêt à relire (PR ouverte)
