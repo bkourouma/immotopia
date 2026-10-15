@@ -248,6 +248,16 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
       "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
+  },
+  {
+    method: '*',
+    test: withPrefix('/api/public/signatures/:token'),
+    reason:
+      "Page publique de signature electronique (spec 044, lot S1) : le signataire n'a pas de compte, le jeton (32 octets " +
+      "aleatoires, SHA-256 seul en base, expirant, lie a UNE demande et UN signataire) est la seule preuve d'acces. " +
+      "Aucun identifiant d'agence ne vient de la requete : l'agence se deduit du jeton. Limiteur par IP avant toute " +
+      'verification, refus uniforme 404 pour jeton inconnu, expire, revoque ou demande close, en-tetes no-store/noindex, ' +
+      'jeton masque des journaux, code a usage unique (5 essais) exige pour signer hors presence.'
   }
 ];
 

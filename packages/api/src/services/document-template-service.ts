@@ -8,23 +8,15 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import PizZip from 'pizzip';
+import { getTemplatesWriteDir } from '../utils/assets-paths';
 
 /**
- * Get project root directory
- */
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
-}
-
-/**
- * Get templates base path
+ * Dossier d'ecriture des modeles importes (volume sous UPLOADS_DIR, sinon
+ * `<racine>/assets/modeles_documents`). Les modeles livres restent lus depuis
+ * `getShippedTemplatesDir()` (voir utils/assets-paths.ts).
  */
 function getTemplatesBasePath(): string {
-  const projectRoot = getProjectRoot();
-  return path.join(projectRoot, 'assets', 'modeles_documents');
+  return getTemplatesWriteDir();
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB

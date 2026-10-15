@@ -82,9 +82,14 @@ RUN npm prune --omit=dev
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+# LibreOffice (Writer seul) convertit les DOCX en PDF pour la signature
+# electronique (lib/pdf-convert) ; les polices evitent des PDF aux glyphes
+# manquants (accents, arabe). Impact : environ +450 a +600 Mo sur l'image
+# runtime (voir docs/workflows/DEPLOIEMENT.md).
+RUN apk add --no-cache openssl libreoffice-writer font-noto ttf-dejavu
 
 ENV NODE_ENV=production
+ENV DOCX_PDF_CONVERTER=libreoffice
 ENV PORT=8001
 # Uploads live on a volume, outside the deployment directory.
 ENV UPLOADS_DIR=/data/uploads
@@ -107,6 +112,13 @@ COPY --from=prod-deps /repo/packages/api/node_modules ./node_modules
 COPY --from=prod-deps /repo/packages/api/dist ./dist
 COPY --from=prod-deps /repo/packages/api/prisma ./prisma
 COPY --from=prod-deps /repo/packages/api/package.json ./package.json
+
+# Modeles DOCX livres (bail, quittance, releve), en LECTURE SEULE : le code les
+# lit sous <cwd>/assets/modeles_documents, cwd = /app. Les sous-dossiers
+# `default/` et `tenants/` (ecrits a l'execution) ne sont pas copies, voir
+# .dockerignore. Les documents generes et les modeles importes par une agence
+# s'ecrivent, eux, sous UPLOADS_DIR (volume), jamais dans la couche d'image.
+COPY assets/modeles_documents/*.docx ./assets/modeles_documents/
 
 # Garde-fou : aucune dependance de production declaree ne doit manquer.
 # On teste la presence du dossier plutot que require.resolve, car plusieurs

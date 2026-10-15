@@ -296,7 +296,25 @@ const envSchema = z
     // (https://openrouter.ai/google/gemini-3.8-flash, meme date).
     STOCK_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
     GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000)
+    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+
+    // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
+    // demande est refusee. `log` : rien ne part, seules des metadonnees sont
+    // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
+    // usage unique geres par le noyau (e-mail, WhatsApp).
+    SIGNATURE_PROVIDER: z.enum(['disabled', 'log', 'internal']).default('disabled'),
+    // Duree de validite par defaut d'une demande (et donc des jetons), en jours ; 30 au plus.
+    SIGNATURE_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+    // Code a usage unique (SG-R4) : validite, essais, renvois, delai entre deux envois.
+    SIGNATURE_OTP_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+    SIGNATURE_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+    SIGNATURE_OTP_MAX_RESENDS: z.coerce.number().int().min(0).max(10).default(3),
+    SIGNATURE_OTP_RESEND_DELAY_SECONDS: z.coerce.number().int().min(0).max(600).default(30),
+    // Quota de secours (demandes par agence et par mois) sans capacite
+    // SIGNATURES_MENSUELLES, en SUBSCRIPTION_ENFORCEMENT=warn ou off (SG-R12).
+    SIGNATURE_WARN_QUOTA: z.coerce.number().int().min(0).max(100000).default(50),
+    // Conversion DOCX -> PDF (lib/pdf-convert), necessaire au bail signable.
+    DOCX_PDF_CONVERTER: z.enum(['libreoffice', 'disabled']).default('disabled')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).

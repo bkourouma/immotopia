@@ -57,6 +57,8 @@ import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './routes/whatsapp-cloud-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
+import signaturePublicRoutes, { PUBLIC_SIGNATURES_PREFIX } from './routes/signature-public-routes';
+import signatureRoutes from './routes/signature-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
 import externalAccessRoutes from './routes/external-access-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
@@ -138,6 +140,7 @@ app.use(compressionMiddleware);
 const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_SECURE_LINKS_PREFIX,
   PUBLIC_EXTERNAL_ACCESS_PREFIX,
+  PUBLIC_SIGNATURES_PREFIX,
   WHATSAPP_CLOUD_WEBHOOK_PREFIX
 ];
 const skipSecureLinkPublic =
@@ -246,6 +249,8 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
+// Spec 044 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
+app.use('/api', signaturePublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess
@@ -255,6 +260,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage ImmoCopilot (super-admin)
 app.use('/api/roles', roleRoutes);
+app.use('/api/signatures', signatureRoutes); // Signature electronique, cote agence (spec 044)
 app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
