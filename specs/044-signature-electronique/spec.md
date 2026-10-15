@@ -1,4 +1,4 @@
-# 043 — Signature électronique
+# 044 — Signature électronique
 
 **Branche :** `docs/spec-signature-electronique` · **Statut :** brouillon à valider
 **Décision utilisateur (2026-10-15) :** approche hybride (couche `SignatureProvider`,
@@ -107,4 +107,4 @@ prestataire, lot S6).
    tarifs, hébergement des données) avant le lot S6.
 6. **SMS** : dépend de l'intégration du lot SMS-1 ; en attendant, e-mail et
    WhatsApp.
-7. **Numérotation spec** : 043 choisi (042 est réservé au plan de paiement mobile Syndic, voir HANDOFF).
+7. **Numérotation spec** : 044 (042 est réservé au paiement mobile Syndic, 043 à l'AG en direct Syndic ; renumérotée de 043 en 044 le 2026-10-15).
