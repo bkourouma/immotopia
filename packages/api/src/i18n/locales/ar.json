@@ -1810,15 +1810,12 @@
   "- Lot {{lot}} ({{shares}} tantièmes) : {{person}} - {{status}} - {{mode}}": "- الوحدة {{lot}} ({{shares}} حصة): {{person}} - {{status}} - {{mode}}",
   "{{person}}, représenté(e) par {{representative}}": "{{person}}، ممثَّل(ة) بواسطة {{representative}}",
   "Absent(e)": "غائب(ة)",
-  "Accès refusé à cette agence.": "",
   "Assemblée annulée : aucun lien d'accès ne peut être créé": "الجمعية ملغاة: لا يمكن إنشاء رابط دخول",
   "Assemblée annulée : les présences ne peuvent plus être modifiées": "الجمعية ملغاة: لم يعد تعديل الحضور ممكنًا",
   "Assemblée clôturée : aucun lien d'accès ne peut être créé": "الجمعية مغلقة: لا يمكن إنشاء رابط دخول",
   "Assemblée clôturée : les présences sont figées": "الجمعية مغلقة: الحضور مجمّد",
   "Assemblée clôturée ou annulée : les votes ne peuvent plus être ouverts ni clos": "الجمعية مغلقة أو ملغاة: لم يعد فتح التصويت أو إغلاقه ممكنًا",
   "Assemblée générale introuvable ou inaccessible": "الجمعية العامة غير موجودة أو غير متاحة",
-  "Ce membre est deja desactive.": "",
-  "Clé de rôle manquante.": "",
   "En ligne": "عبر الإنترنت",
   "En salle": "في القاعة",
   "FEUILLE DE PRÉSENCE": "قائمة الحضور",
@@ -1835,8 +1832,5 @@
   "Rejoignez l'assemblée avant de voter": "انضم إلى الجمعية قبل التصويت",
   "Représenté(e)": "ممثَّل(ة)",
   "Résolution introuvable ou inaccessible": "القرار غير موجود أو غير متاح",
-  "tenantId invalide.": "",
-  "TenantId manquant pour l'assemblée en direct": "معرّف الوكالة مفقود للجمعية المباشرة",
-  "Un ou plusieurs roles sont invalides ou ne sont pas des roles tenant.": "",
-  "Un rôle plateforme ne se règle pas par agence : retirez tenantId.": ""
+  "TenantId manquant pour l'assemblée en direct": "معرّف الوكالة مفقود للجمعية المباشرة"
 }

@@ -1810,15 +1810,12 @@
   "- Lot {{lot}} ({{shares}} tantièmes) : {{person}} - {{status}} - {{mode}}": "- Lot {{lot}} ({{shares}} shares): {{person}} - {{status}} - {{mode}}",
   "{{person}}, représenté(e) par {{representative}}": "{{person}}, represented by {{representative}}",
   "Absent(e)": "Absent",
-  "Accès refusé à cette agence.": "",
   "Assemblée annulée : aucun lien d'accès ne peut être créé": "Meeting cancelled: no access link can be created",
   "Assemblée annulée : les présences ne peuvent plus être modifiées": "Meeting cancelled: attendance can no longer be changed",
   "Assemblée clôturée : aucun lien d'accès ne peut être créé": "Meeting closed: no access link can be created",
   "Assemblée clôturée : les présences sont figées": "Meeting closed: attendance is frozen",
   "Assemblée clôturée ou annulée : les votes ne peuvent plus être ouverts ni clos": "Meeting closed or cancelled: votes can no longer be opened or closed",
   "Assemblée générale introuvable ou inaccessible": "General meeting not found or inaccessible",
-  "Ce membre est deja desactive.": "",
-  "Clé de rôle manquante.": "",
   "En ligne": "Online",
   "En salle": "In the room",
   "FEUILLE DE PRÉSENCE": "ATTENDANCE SHEET",
@@ -1835,8 +1832,5 @@
   "Rejoignez l'assemblée avant de voter": "Join the meeting before voting",
   "Représenté(e)": "Represented",
   "Résolution introuvable ou inaccessible": "Resolution not found or inaccessible",
-  "tenantId invalide.": "",
-  "TenantId manquant pour l'assemblée en direct": "TenantId missing for the live meeting",
-  "Un ou plusieurs roles sont invalides ou ne sont pas des roles tenant.": "",
-  "Un rôle plateforme ne se règle pas par agence : retirez tenantId.": ""
+  "TenantId manquant pour l'assemblée en direct": "TenantId missing for the live meeting"
 }
