@@ -337,4 +337,133 @@ describe('MeetingLiveConsole', () => {
       vi.useRealTimers();
     }
   });
+
+  it('interroge aussi pendant la préparation (AG planifiée) et s’arrête à la clôture', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.getLiveMeeting.mockResolvedValue(live({}, 'PLANNED'));
+      const view = mount('PLANNED');
+      await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+      expect(api.getLiveMeeting).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      expect(api.getLiveMeeting).toHaveBeenCalledTimes(2);
+
+      api.getLiveMeeting.mockResolvedValue(live({}, 'COMPLETED'));
+      view.rerender(
+        <App>
+          <MeetingLiveConsole tenantId="t1" syndicId="s1" meetingId="m1" meetingStatus="COMPLETED" />
+        </App>
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      const calls = api.getLiveMeeting.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(7000);
+      });
+      expect(api.getLiveMeeting).toHaveBeenCalledTimes(calls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('signale un changement de la vue en direct, sans bruit quand rien ne change', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onLiveChanged = vi.fn();
+      mount('IN_PROGRESS', { onLiveChanged });
+      await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+      expect(onLiveChanged).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      expect(onLiveChanged).not.toHaveBeenCalled();
+
+      const changed = live();
+      changed.resolutions[1] = { ...changed.resolutions[1], ballotCount: 2 };
+      api.getLiveMeeting.mockResolvedValue(changed);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      expect(onLiveChanged).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      expect(onLiveChanged).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('affiche l’origine des votes d’une résolution', async () => {
+    const view = live();
+    view.resolutions[1] = {
+      ...view.resolutions[1],
+      ballotCount: 3,
+      votes: [
+        { lotId: 'l1', vote: 'FOR', source: 'CO_OWNER', castByContactId: 'c1', updatedAt: '2026-10-20T10:01:00.000Z' },
+        {
+          lotId: 'l2',
+          vote: 'FOR',
+          source: 'PROXY_HOLDER',
+          castByContactId: 'c1',
+          updatedAt: '2026-10-20T10:01:00.000Z'
+        },
+        {
+          lotId: 'l3',
+          vote: 'AGAINST',
+          source: 'MANAGER',
+          castByContactId: null,
+          updatedAt: '2026-10-20T10:01:00.000Z'
+        }
+      ]
+    };
+    api.getLiveMeeting.mockResolvedValue(view);
+    mount();
+    expect(
+      await screen.findByText('Origine des votes : 1 en ligne · 1 mandataire · 1 saisi(s) par le gestionnaire')
+    ).toBeTruthy();
+  });
+
+  it('affiche le lien dans une fenêtre quand le presse-papiers ne répond pas', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: vi.fn(() => new Promise<void>(() => undefined)) }
+      });
+      api.issueParticipantLink.mockResolvedValue({
+        url: 'https://app.example.com/ag-direct#tok3',
+        expiresAt: '2026-10-27T00:00:00.000Z'
+      });
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: 'Copier le lien de Awa Traoré' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+      const field = (await screen.findByLabelText('Lien personnel')) as HTMLInputElement;
+      expect(field.value).toBe('https://app.example.com/ag-direct#tok3');
+      expect(field.readOnly).toBe(true);
+      expect(screen.getByRole('button', { name: 'Copier' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('confirme « Lien copié » quand la copie réussit', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) }
+    });
+    api.issueParticipantLink.mockResolvedValue({
+      url: 'https://app.example.com/ag-direct#tok4',
+      expiresAt: '2026-10-27T00:00:00.000Z'
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Copier le lien de Awa Traoré' }));
+    expect(await screen.findByText('Lien copié')).toBeTruthy();
+  });
 });

@@ -106,14 +106,33 @@ export const SyndicMeetingDetail: React.FC = () => {
     }
   };
 
+  /**
+   * Rafraîchit le détail en silence (séance en direct) : ni `loading` ni message d'erreur,
+   * la console reste montée et les blocs du bas se mettent à jour.
+   */
+  const refreshMeetingSilently = async () => {
+    if (!effectiveTenantId || !syndicId || !meetingId) return;
+    try {
+      setMeeting(await getMeeting(effectiveTenantId, syndicId, meetingId));
+    } catch {
+      // Échec passager : on garde l'état affiché, la prochaine variation relancera une lecture.
+    }
+  };
+
+  const metaStartTime = meeting?.startTime ?? null;
+  const metaEndTime = meeting?.endTime ?? null;
+  const metaLocation = meeting?.location ?? '';
+  const hasMeeting = meeting !== null;
+
+  // Dépendances ciblées : un rafraîchissement silencieux ne doit pas écraser une saisie en cours.
   useEffect(() => {
-    if (!meeting) return;
+    if (!hasMeeting) return;
     meetingMetaForm.setFieldsValue({
-      startTime: meeting.startTime ? dayjs(meeting.startTime) : null,
-      endTime: meeting.endTime ? dayjs(meeting.endTime) : null,
-      location: meeting.location || ''
+      startTime: metaStartTime ? dayjs(metaStartTime) : null,
+      endTime: metaEndTime ? dayjs(metaEndTime) : null,
+      location: metaLocation || ''
     });
-  }, [meeting, meetingMetaForm]);
+  }, [hasMeeting, metaStartTime, metaEndTime, metaLocation, meetingMetaForm]);
 
   const handleVote = async (resolutionId: string, lotId: string, vote: VoteChoice) => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
@@ -214,7 +233,7 @@ export const SyndicMeetingDetail: React.FC = () => {
       agendaForm.resetFields();
       await loadMeeting();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t("Echec de l'enregistrement du point"));
+      message.error(err.response?.data?.error || t("Échec de l'enregistrement du point"));
     } finally {
       setSavingAgenda(false);
     }
@@ -399,6 +418,7 @@ export const SyndicMeetingDetail: React.FC = () => {
               videoConferenceUrl={meeting.videoConferenceUrl}
               refreshKey={meeting.updatedAt}
               onMeetingChanged={loadMeeting}
+              onLiveChanged={refreshMeetingSilently}
             />
           </Card>
         )}
@@ -482,7 +502,7 @@ export const SyndicMeetingDetail: React.FC = () => {
                   >
                     <Space direction="vertical" size={4}>
                       {(item.discussions || []).length === 0 ? (
-                        <Text type="secondary">{t('Aucune discussion renseignee.')}</Text>
+                        <Text type="secondary">{t('Aucune discussion renseignée.')}</Text>
                       ) : (
                         (item.discussions || []).map((discussion, index) => (
                           <Text key={`${item.id}-${index}`}>- {discussion}</Text>
@@ -513,7 +533,7 @@ export const SyndicMeetingDetail: React.FC = () => {
       </Space>
 
       <Modal
-        title={t('Ajouter une resolution')}
+        title={t('Ajouter une résolution')}
         open={openResolution}
         onCancel={() => setOpenResolution(false)}
         onOk={() => void handleAddResolution()}
@@ -533,7 +553,7 @@ export const SyndicMeetingDetail: React.FC = () => {
             <Input.TextArea rows={4} />
           </Form.Item>
           <Form.Item
-            label={t('Regle de majorite')}
+            label={t('Règle de majorité')}
             name="majorityRule"
             initialValue={DEFAULT_MAJORITY_RULE}
             extra={majorityRuleHint(selectedMajorityRule)}

@@ -2029,5 +2029,6 @@
   "Wave": "Wave",
   "WhatsApp": "واتساب",
   "Word (.docx)": "Word (.docx)",
-  "Zone": "المنطقة"
+  "Zone": "المنطقة",
+  "Le vote du lot {{lots}} a été saisi par le syndic : vous ne pouvez plus le modifier depuis cette page.": "تم إدخال التصويت الخاص بالوحدة {{lots}} من قبل النقابة: لا يمكنك تعديله من هذه الصفحة."
 }

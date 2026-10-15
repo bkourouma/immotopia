@@ -22,6 +22,11 @@ import {
   voteStatusColor,
   voteStatusLabel
 } from '../../components/syndics/live/live-labels';
+import {
+  majorityRuleHint,
+  majorityRuleLabel,
+  normalizeMajorityRule
+} from '../../components/syndics/meeting-governance';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
@@ -108,7 +113,8 @@ function newest(previous: ViewState, next: LiveMeetingPublicView): LiveMeetingPu
 
 const MeetingHeader: React.FC<{ view: LiveMeetingPublicView }> = ({ view }) => {
   const { meeting } = view;
-  const videoUrl = isSafeVideoUrl(meeting.videoConferenceUrl) ? meeting.videoConferenceUrl : null;
+  const over = meeting.status === 'COMPLETED' || meeting.status === 'CANCELLED';
+  const videoUrl = !over && isSafeVideoUrl(meeting.videoConferenceUrl) ? meeting.videoConferenceUrl : null;
   return (
     <Card>
       <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -174,20 +180,37 @@ const MyLotsCard: React.FC<{ view: LiveMeetingPublicView }> = ({ view }) => (
   </Card>
 );
 
+interface VoteNotice {
+  lotIds: string[];
+  vote: VoteChoice;
+}
+
 interface ResolutionCardProps {
   view: LiveMeetingPublicView;
   resolution: PublicLiveResolution;
   busy: boolean;
-  notice: string | null;
+  /** Dernier vote envoyé depuis cette page : n'est confirmé que tant que le serveur le confirme. */
+  notice: VoteNotice | null;
   onVote: (resolutionId: string, lotIds: string[], vote: VoteChoice) => void;
 }
 
 const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy, notice, onVote }) => {
   const open = resolution.voteStatus === 'OPEN' && view.meeting.status === 'IN_PROGRESS';
   const voteByLot = new Map(resolution.myVotes.map(vote => [vote.lotId, vote]));
-  const allLotIds = view.myLots.map(lot => lot.lotId);
+  // Un lot dont le vote a été saisi par le syndic ne peut plus être modifié par le copropriétaire.
+  const lockedLotIds = new Set(resolution.myVotes.filter(vote => vote.source === 'MANAGER').map(vote => vote.lotId));
+  const lockedLots = view.myLots.filter(lot => lockedLotIds.has(lot.lotId));
+  const allLotIds = view.myLots.filter(lot => !lockedLotIds.has(lot.lotId)).map(lot => lot.lotId);
   const result = resolution.result;
   const votingAllowed = open && view.canVote;
+  const rule = normalizeMajorityRule(resolution.majorityRule);
+  // La confirmation reflète les votes actuels du serveur : elle disparaît si un vote a été écrasé.
+  const confirmedNotice =
+    notice !== null &&
+    notice.lotIds.every(lotId => {
+      const current = voteByLot.get(lotId);
+      return current !== undefined && current.vote === notice.vote && current.source !== 'MANAGER';
+    });
 
   return (
     <Card
@@ -197,6 +220,9 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {resolution.description ? <Paragraph style={{ marginBottom: 0 }}>{resolution.description}</Paragraph> : null}
+        <Text type="secondary">
+          {majorityRuleLabel(rule)} — {majorityRuleHint(rule)}
+        </Text>
 
         {resolution.voteStatus === 'OPEN' ? (
           <Text type="secondary">
@@ -240,7 +266,24 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
           </Space>
         ) : null}
 
-        {notice ? <Alert type="success" showIcon message={notice} /> : null}
+        {confirmedNotice && notice ? (
+          <Alert
+            type="success"
+            showIcon
+            message={t('Vote enregistré : {{vote}}', { vote: voteChoiceLabel(notice.vote) })}
+          />
+        ) : null}
+
+        {open && lockedLots.length > 0 ? (
+          <Alert
+            type="info"
+            showIcon
+            message={t(
+              'Le vote du lot {{lots}} a été saisi par le syndic : vous ne pouvez plus le modifier depuis cette page.',
+              { lots: lockedLots.map(lot => lot.lotNumber).join(', ') }
+            )}
+          />
+        ) : null}
 
         {open && !votingAllowed && !view.me.joined ? (
           <Alert type="info" showIcon message={t("Rejoignez l'assemblée pour voter.")} />
@@ -279,7 +322,7 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
                             key={choice}
                             size="small"
                             type={current?.vote === choice ? 'primary' : 'default'}
-                            disabled={busy}
+                            disabled={busy || lockedLotIds.has(lot.lotId)}
                             aria-label={t('Lot {{lotNumber}} : {{vote}}', {
                               lotNumber: lot.lotNumber,
                               vote: voteChoiceLabel(choice)
@@ -295,7 +338,9 @@ const ResolutionCard: React.FC<ResolutionCardProps> = ({ view, resolution, busy,
                 </Space>
               </div>
             ) : null}
-            <Text type="secondary">{t('Vous pouvez modifier votre vote tant que le vote est ouvert.')}</Text>
+            {allLotIds.length > 0 ? (
+              <Text type="secondary">{t('Vous pouvez modifier votre vote tant que le vote est ouvert.')}</Text>
+            ) : null}
           </Space>
         ) : null}
       </Space>
@@ -317,7 +362,7 @@ export const MeetingLivePage: React.FC = () => {
   const [joining, setJoining] = useState(false);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [notices, setNotices] = useState<Record<string, string>>({});
+  const [notices, setNotices] = useState<Record<string, VoteNotice>>({});
   const tokenRef = useRef<string | null | undefined>(undefined);
   const stateRef = useRef<ViewState>(state);
   stateRef.current = state;
@@ -413,10 +458,7 @@ export const MeetingLivePage: React.FC = () => {
     setVotingId(null);
     if (result.status === 'ok') {
       setState(previous => ({ kind: 'ok', view: newest(previous, result.view) }));
-      setNotices(previous => ({
-        ...previous,
-        [resolutionId]: t('Vote enregistré : {{vote}}', { vote: voteChoiceLabel(vote) })
-      }));
+      setNotices(previous => ({ ...previous, [resolutionId]: { lotIds, vote } }));
       return;
     }
     applyActionFailure(result.status, 'message' in result ? result.message : undefined);
@@ -514,7 +556,7 @@ export const MeetingLivePage: React.FC = () => {
               </Card>
             ) : null}
 
-            {(status === 'PLANNED' || status === 'IN_PROGRESS') && view.me.joined ? (
+            {(status === 'PLANNED' || status === 'IN_PROGRESS') && view.me.joined && !actionError ? (
               <Alert
                 type="success"
                 showIcon
@@ -538,7 +580,7 @@ export const MeetingLivePage: React.FC = () => {
               </Card>
             ) : null}
 
-            {status === 'IN_PROGRESS' || status === 'COMPLETED' ? (
+            {status === 'PLANNED' || status === 'IN_PROGRESS' || status === 'COMPLETED' ? (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Title level={4} style={{ margin: 0 }}>
                   {t('Résolutions')}

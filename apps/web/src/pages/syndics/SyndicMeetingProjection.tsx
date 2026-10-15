@@ -51,6 +51,8 @@ const ResultRow: React.FC<{ resolution: LiveResolutionRow }> = ({ resolution }) 
   );
 };
 
+// Vote ouvert : seule la participation est montrée, jamais le sens des votes ni les tantièmes
+// (ils n'apparaissent qu'à la clôture du vote, décision D7, comme sur la page publique).
 const OpenResolution: React.FC<{ resolution: LiveResolutionRow; totalLots: number }> = ({ resolution, totalLots }) => {
   const percent = totalLots > 0 ? clampPercent((resolution.ballotCount / totalLots) * 100) : 0;
   return (
@@ -64,13 +66,6 @@ const OpenResolution: React.FC<{ resolution: LiveResolutionRow; totalLots: numbe
         {t('Participation : {{voted}} lot(s) sur {{total}}', { voted: resolution.ballotCount, total: totalLots })}
       </div>
       <Progress percent={percent} showInfo={false} strokeColor="#22c55e" trailColor="#334155" />
-      <div style={{ marginBlockStart: 8 }}>
-        {t('Pour {{for}} · Contre {{against}} · Abstention {{abstain}}', {
-          for: resolution.tally.sharesFor,
-          against: resolution.tally.sharesAgainst,
-          abstain: resolution.tally.sharesAbstain
-        })}
-      </div>
     </div>
   );
 };

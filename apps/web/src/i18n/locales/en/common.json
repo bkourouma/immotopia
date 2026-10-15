@@ -2029,5 +2029,6 @@
   "Wave": "Wave",
   "WhatsApp": "WhatsApp",
   "Word (.docx)": "Word (.docx)",
-  "Zone": "Area"
+  "Zone": "Area",
+  "Le vote du lot {{lots}} a été saisi par le syndic : vous ne pouvez plus le modifier depuis cette page.": "The vote for lot {{lots}} was entered by the managing agent: you can no longer change it from this page."
 }

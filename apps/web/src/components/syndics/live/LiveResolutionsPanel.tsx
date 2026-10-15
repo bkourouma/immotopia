@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Card, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { LiveResolutionRow } from '../../../types/syndic-live-types';
+import type { VoteSource } from '../../../types/syndic-types';
 import { voteStatusColor, voteStatusLabel } from './live-labels';
 import { majorityRuleHint, majorityRuleLabel, normalizeMajorityRule } from '../meeting-governance';
 import { t } from '../../../i18n/t';
@@ -19,6 +20,10 @@ interface LiveResolutionsPanelProps {
   showManualEntry: boolean;
 }
 
+function countBySource(resolution: LiveResolutionRow, source: VoteSource): number {
+  return resolution.votes.filter(vote => vote.source === source).length;
+}
+
 export const LiveResolutionsPanel: React.FC<LiveResolutionsPanelProps> = ({
   resolutions,
   totalLots,
@@ -29,7 +34,7 @@ export const LiveResolutionsPanel: React.FC<LiveResolutionsPanelProps> = ({
   onManualEntry,
   showManualEntry
 }) => {
-  if (resolutions.length === 0) return <Text type="secondary">{t('Aucune resolution enregistree')}</Text>;
+  if (resolutions.length === 0) return <Text type="secondary">{t('Aucune résolution enregistrée')}</Text>;
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       {resolutions.map((resolution, index) => {
@@ -55,6 +60,18 @@ export const LiveResolutionsPanel: React.FC<LiveResolutionsPanelProps> = ({
                   total: totalLots
                 })}
               </Text>
+              {resolution.votes.length > 0 ? (
+                <Text type="secondary">
+                  {t(
+                    'Origine des votes : {{online}} en ligne · {{proxy}} mandataire · {{manager}} saisi(s) par le gestionnaire',
+                    {
+                      online: countBySource(resolution, 'CO_OWNER'),
+                      proxy: countBySource(resolution, 'PROXY_HOLDER'),
+                      manager: countBySource(resolution, 'MANAGER')
+                    }
+                  )}
+                </Text>
+              ) : null}
               <Text>
                 {t(
                   'Pour {{for}} · Contre {{against}} · Abstention {{abstain}} (en tantièmes, référence {{reference}})',

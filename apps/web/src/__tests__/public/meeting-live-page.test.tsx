@@ -366,4 +366,132 @@ describe('MeetingLivePage', () => {
     expect(screen.getByText("L'assemblée n'a pas encore commencé")).toBeTruthy();
     expect(screen.getByText('Comptes 2025')).toBeTruthy();
   });
+
+  it('liste les résolutions avant l’ouverture de la séance, sans bouton de vote', async () => {
+    fetchState.mockResolvedValue(
+      ok(
+        view({
+          meeting: { ...view().meeting, status: 'PLANNED' },
+          canVote: false,
+          resolutions: [
+            resolution({ voteStatus: 'PENDING', voteOpenedAt: null, description: 'Quitus au syndic', ballotCount: 0 }),
+            resolution({ id: 'r2', title: 'Travaux de toiture', voteStatus: 'PENDING', majorityRule: 'ARTICLE_25' })
+          ]
+        })
+      )
+    );
+    render(<MeetingLivePage />);
+    await flush();
+    expect(screen.getByText('Approbation des comptes')).toBeTruthy();
+    expect(screen.getByText('Quitus au syndic')).toBeTruthy();
+    expect(screen.getByText('Travaux de toiture')).toBeTruthy();
+    expect(screen.getAllByText('Vote pas encore ouvert')).toHaveLength(2);
+    expect(screen.getByText(/Article 25/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Pour' })).toBeNull();
+  });
+
+  it('masque la visioconférence quand l’AG est terminée', async () => {
+    fetchState.mockResolvedValue(
+      ok(
+        view({
+          meeting: { ...view().meeting, status: 'COMPLETED', videoConferenceUrl: 'https://meet.example.com/abc' },
+          canVote: false
+        })
+      )
+    );
+    render(<MeetingLivePage />);
+    await flush();
+    expect(screen.queryByRole('link', { name: /Rejoindre la visioconférence/ })).toBeNull();
+  });
+
+  it('retire la confirmation périmée quand le syndic écrase le vote, et verrouille le lot', async () => {
+    fetchState.mockResolvedValue(ok(view()));
+    vote.mockResolvedValue(
+      ok(
+        view({
+          resolutions: [resolution({ myVotes: [{ lotId: 'l1', vote: 'FOR', source: 'CO_OWNER' }] })],
+          serverTime: '2026-10-20T10:00:05.000Z'
+        })
+      )
+    );
+    render(<MeetingLivePage />);
+    await flush();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pour' }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Vote enregistré : Pour')).toBeTruthy();
+
+    fetchState.mockResolvedValue(
+      ok(
+        view({
+          resolutions: [resolution({ myVotes: [{ lotId: 'l1', vote: 'AGAINST', source: 'MANAGER' }] })],
+          serverTime: '2026-10-20T10:00:10.000Z'
+        })
+      )
+    );
+    await tick();
+    expect(screen.queryByText('Vote enregistré : Pour')).toBeNull();
+    expect(screen.getByText('Lot A1 : Contre — Saisi par le gestionnaire')).toBeTruthy();
+    expect(screen.getByText(/a été saisi par le syndic/)).toBeTruthy();
+    expect(screen.queryByText('Vous pouvez modifier votre vote tant que le vote est ouvert.')).toBeNull();
+    for (const name of ['Pour', 'Contre', 'Abstention']) {
+      expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it('désactive le lot saisi par le syndic en vote lot par lot, l’autre lot reste votable', async () => {
+    const lots = [
+      {
+        lotId: 'l1',
+        lotNumber: 'A1',
+        generalShares: 100,
+        role: 'OWNER' as const,
+        grantorName: null,
+        attendanceStatus: 'PRESENT' as const
+      },
+      {
+        lotId: 'l2',
+        lotNumber: 'B2',
+        generalShares: 50,
+        role: 'OWNER' as const,
+        grantorName: null,
+        attendanceStatus: 'PRESENT' as const
+      }
+    ];
+    fetchState.mockResolvedValue(
+      ok(
+        view({
+          myLots: lots,
+          resolutions: [resolution({ myVotes: [{ lotId: 'l1', vote: 'AGAINST', source: 'MANAGER' }] })]
+        })
+      )
+    );
+    vote.mockResolvedValue(ok(view()));
+    render(<MeetingLivePage />);
+    await flush();
+    expect((screen.getByRole('button', { name: 'Lot A1 : Pour' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Lot B2 : Pour' }) as HTMLButtonElement).disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Pour' })[0]);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // « Pour tous mes lots » n'envoie que le lot encore votable.
+    expect(vote).toHaveBeenCalledWith(TOKEN, 'r1', [{ lotId: 'l2', vote: 'FOR' }]);
+  });
+
+  it('n’empile pas « Vous avez rejoint » avec une erreur d’action', async () => {
+    fetchState.mockResolvedValue(ok(view()));
+    vote.mockResolvedValue({ status: 'conflict', message: 'Le vote est clos.' });
+    render(<MeetingLivePage />);
+    await flush();
+    expect(screen.getByText(/Vous avez rejoint l'assemblée/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pour' }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Le vote est clos.')).toBeTruthy();
+    expect(screen.queryByText(/Vous avez rejoint l'assemblée/)).toBeNull();
+  });
 });

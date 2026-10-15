@@ -132,6 +132,24 @@ describe('SyndicMeetingProjection', () => {
     expect(screen.getByText('Approuvée')).toBeTruthy();
   });
 
+  it('ne dévoile ni tantièmes ni sens des votes pendant un vote ouvert', async () => {
+    const view = live();
+    view.resolutions[1] = {
+      ...view.resolutions[1],
+      tally: { ...tally, result: null, sharesFor: 150, sharesAgainst: 0, sharesAbstain: 0 }
+    };
+    getLiveMeeting.mockResolvedValue(view);
+    mount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Participation : 2 lot(s) sur 4')).toBeTruthy();
+    // Seul le vote clos montre le détail Pour / Contre / Abstention (une seule ligne : la résolution 1).
+    expect(screen.queryByText(/Pour 150/)).toBeNull();
+    expect(screen.getAllByText(/Pour [0-9]+ · Contre [0-9]+ · Abstention [0-9]+/)).toHaveLength(1);
+    expect(screen.getByText('Pour 200 · Contre 100 · Abstention 0')).toBeTruthy();
+  });
+
   it('interroge toutes les 3 s et s’arrête à la clôture de l’AG', async () => {
     getLiveMeeting.mockResolvedValue(live());
     mount();

@@ -70,7 +70,7 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
   const lotsById = useMemo(() => new Map(lots.map(lot => [lot.id, lot])), [lots]);
 
   if (resolutions.length === 0) {
-    return <Empty description={t('Aucune resolution enregistree')} />;
+    return <Empty description={t('Aucune résolution enregistrée')} />;
   }
 
   const getSelectedLotId = (resolutionId: string) => selectedLotsByResolution[resolutionId] || lots[0]?.id;
@@ -108,7 +108,7 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
           <Card key={resolution.id}>
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
               <Title level={5} style={{ margin: 0 }}>
-                {t('Resolution')} {index + 1}: {resolution.title}
+                {t('Résolution')} {index + 1}: {resolution.title}
               </Title>
               {resolution.description ? <Paragraph type="secondary">{resolution.description}</Paragraph> : null}
               <Space wrap>

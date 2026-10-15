@@ -34,14 +34,15 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, atten
 
   const columns: ColumnsType<MeetingResolution> = [
     {
-      title: t('Resolution'),
+      title: t('Résolution'),
       dataIndex: 'title',
       key: 'title'
     },
     {
       title: t('Règle'),
       key: 'rule',
-      render: (_: unknown, resolution) => majorityRuleLabel(resolution.tally?.rule ?? normalizeMajorityRule(resolution.majorityRule))
+      render: (_: unknown, resolution) =>
+        majorityRuleLabel(resolution.tally?.rule ?? normalizeMajorityRule(resolution.majorityRule))
     },
     {
       title: t('Pour'),
@@ -65,7 +66,7 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, atten
         resolution.tally ? t('{{shares}} tantièmes', { shares: resolution.tally.referenceShares }) : '-'
     },
     {
-      title: t('Resultat'),
+      title: t('Résultat'),
       key: 'result',
       // Resultat enregistre (recalcule a chaque vote et fige a la cloture).
       render: (_: unknown, resolution) => {
@@ -92,7 +93,7 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, atten
         </Card>
       </Col>
       <Col xs={24} md={16}>
-        <Card title={t('Resultats des resolutions')}>
+        <Card title={t('Résultats des résolutions')}>
           <Table
             scroll={{ x: 'max-content' }}
             rowKey="id"

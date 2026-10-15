@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Col, Input, Progress, Row, Space, Statistic, Typography } from 'antd';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { App, Alert, Button, Card, Col, Input, Modal, Progress, Row, Space, Statistic, Typography } from 'antd';
 import {
   closeResolutionVote,
   getLiveMeeting,
@@ -37,6 +37,46 @@ interface MeetingLiveConsoleProps {
   refreshKey?: string;
   /** Appelé après une modification de la fiche (URL de visio) pour la recharger. */
   onMeetingChanged?: () => void | Promise<void>;
+  /**
+   * Appelé quand la vue en direct a changé (votes, état d'un vote, quorum, statut) :
+   * la fiche rafraîchit alors ses blocs du bas en silence.
+   */
+  onLiveChanged?: () => void | Promise<void>;
+}
+
+/** Empreinte de ce qui alimente les blocs du bas de la fiche (quorum, votes, résultats). */
+function liveSignature(view: LiveMeetingAdminView): string {
+  const resolutions = view.resolutions
+    .map(
+      resolution =>
+        `${resolution.id}:${resolution.voteStatus}:${resolution.ballotCount}:${resolution.tally.sharesFor}:` +
+        `${resolution.tally.sharesAgainst}:${resolution.tally.sharesAbstain}:` +
+        resolution.votes.map(vote => `${vote.lotId}${vote.vote}${vote.source}${vote.updatedAt}`).join(',')
+    )
+    .join('|');
+  const { attendance } = view;
+  return `${view.meeting.status}#${attendance.quorumPercent}:${attendance.representedShares}:${attendance.representedLots}#${resolutions}`;
+}
+
+const CLIPBOARD_TIMEOUT_MS = 2000;
+
+/** Copie dans le presse-papiers ; faux si indisponible, refusé ou sans réponse (jamais de journal du texte). */
+async function copyToClipboard(text: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    if (!navigator.clipboard?.writeText) return false;
+    await Promise.race([
+      navigator.clipboard.writeText(text),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), CLIPBOARD_TIMEOUT_MS);
+      })
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 function errorText(err: unknown, fallback: string): string {
@@ -103,7 +143,8 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   meetingStatus,
   videoConferenceUrl,
   refreshKey,
-  onMeetingChanged
+  onMeetingChanged,
+  onLiveChanged
 }) => {
   const { message } = App.useApp();
   const [live, setLive] = useState<LiveMeetingAdminView | null>(null);
@@ -118,6 +159,9 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
 
   const frozen = meetingStatus === 'COMPLETED' || meetingStatus === 'CANCELLED';
   const inProgress = meetingStatus === 'IN_PROGRESS';
+  const lastSignature = useRef<string | null>(null);
+  const onLiveChangedRef = useRef(onLiveChanged);
+  onLiveChangedRef.current = onLiveChanged;
 
   const load = useCallback(async (): Promise<number | false | void> => {
     try {
@@ -128,12 +172,18 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       setLive(view);
       setParticipants(list);
       setError(null);
+      const signature = liveSignature(view);
+      if (lastSignature.current !== null && lastSignature.current !== signature) {
+        void onLiveChangedRef.current?.();
+      }
+      lastSignature.current = signature;
     } catch (err) {
       // Un échec passager garde les dernières données à l'écran.
       setError(errorText(err, t('Impossible de charger la séance en direct')));
     }
-    return inProgress ? undefined : false;
-  }, [tenantId, syndicId, meetingId, inProgress]);
+    // Interrogation tant que l'AG n'est ni terminée ni annulée (les copropriétaires rejoignent avant l'ouverture).
+    return frozen ? false : undefined;
+  }, [tenantId, syndicId, meetingId, frozen]);
 
   const { refresh } = useVisiblePolling(load, { resetKey: `${meetingStatus}|${refreshKey ?? ''}` });
 
@@ -184,12 +234,11 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
     setBusyContactId(participant.contactId);
     try {
       const { url } = await issueParticipantLink(tenantId, syndicId, meetingId, participant.contactId);
-      try {
-        await navigator.clipboard.writeText(url);
+      if (await copyToClipboard(url)) {
         setShownLink(null);
         message.success(t('Lien copié'));
-      } catch {
-        // Presse-papiers refusé (contexte non sécurisé, permission) : on affiche le lien à copier à la main.
+      } else {
+        // Presse-papiers indisponible, refusé ou muet : on affiche le lien à copier à la main.
         setShownLink({ name: participant.name, url });
       }
       refresh();
@@ -197,6 +246,16 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       message.error(errorText(err, t('Génération du lien impossible')));
     } finally {
       setBusyContactId(null);
+    }
+  };
+
+  const handleCopyShown = async () => {
+    if (!shownLink) return;
+    if (await copyToClipboard(shownLink.url)) {
+      message.success(t('Lien copié'));
+      setShownLink(null);
+    } else {
+      message.warning(t('Copie impossible : sélectionnez le lien et copiez-le à la main.'));
     }
   };
 
@@ -273,7 +332,7 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
         <Button href={projectionPath} target="_blank" rel="noopener noreferrer">
           {t('Projeter')}
         </Button>
-        {inProgress ? <Text type="secondary">{t('Mise à jour automatique toutes les 3 secondes')}</Text> : null}
+        {!frozen ? <Text type="secondary">{t('Mise à jour automatique toutes les 3 secondes')}</Text> : null}
       </Space>
 
       {live ? <QuorumPanel live={live} /> : null}
@@ -326,24 +385,6 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
       </Card>
 
       <Card size="small" title={t('Participants et liens personnels')}>
-        {shownLink ? (
-          <Alert
-            type="info"
-            showIcon
-            closable
-            onClose={() => setShownLink(null)}
-            style={{ marginBottom: 12 }}
-            message={t('Copiez ce lien et transmettez-le à {{name}}', { name: shownLink.name })}
-            description={
-              <Input
-                readOnly
-                value={shownLink.url}
-                aria-label={t('Lien personnel')}
-                onFocus={event => event.target.select()}
-              />
-            }
-          />
-        ) : null}
         <LiveParticipantsTable
           participants={participants}
           readOnly={frozen}
@@ -352,6 +393,29 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           onRevoke={participant => void handleRevoke(participant)}
         />
       </Card>
+      <Modal
+        open={shownLink !== null}
+        title={t('Lien personnel')}
+        onCancel={() => setShownLink(null)}
+        footer={[
+          <Button key="copy" type="primary" onClick={() => void handleCopyShown()}>
+            {t('Copier')}
+          </Button>,
+          <Button key="close" onClick={() => setShownLink(null)}>
+            {t('Fermer')}
+          </Button>
+        ]}
+      >
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <Text>{t('Copiez ce lien et transmettez-le à {{name}}', { name: shownLink?.name ?? '' })}</Text>
+          <Input
+            readOnly
+            value={shownLink?.url ?? ''}
+            aria-label={t('Lien personnel')}
+            onFocus={event => event.target.select()}
+          />
+        </Space>
+      </Modal>
     </Space>
   );
 };
