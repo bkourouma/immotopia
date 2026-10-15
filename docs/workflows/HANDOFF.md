@@ -39,7 +39,7 @@ Pièges et décisions :
 ## Branche `feat/prelevement-bancaire` — 2026-10-15
 
 **État :** prêt à relire — PR #128 (base `main`), recette navigateur P1 jouée et rejouée le 2026-10-15, à fusionner par l'utilisateur
-**Dernier commit :** `76de15f6` fusion de `main` (PR #131 export des tableaux, #135 Docker) juste avant la fusion de la PR, conflits résolus (+ ce commit de passation). Avant : `dafcb87e` fusion de la PR #130.
+**Dernier commit :** fusion de `main` (PR #137 lint, #138 PWA) du 15/10, après `382a5f81` (+ ce commit de passation). Classeur : 939 lignes.
 **Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
 
 Fait :
