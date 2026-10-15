@@ -17,6 +17,12 @@ import { listSyndicCheckouts } from '../lib/syndics/online-payment/checkout-quer
 import { verifySyndicCheckout } from '../lib/syndics/online-payment/checkout-reconcile';
 import { decideSyndicCheckout } from '../lib/syndics/online-payment/checkout-review';
 import {
+  createChargeCallPaymentLink,
+  listChargeCallPaymentLinks,
+  revokeChargeCallPaymentLink
+} from '../lib/syndics/online-payment/charge-call-link';
+import { sendChargeCallPaymentLink } from '../lib/syndics/online-payment/charge-call-link-send';
+import {
   GATEWAY_PAYOUT_MAX_AMOUNT,
   listGatewayPayouts,
   recordGatewayPayout
@@ -185,4 +191,83 @@ export const recordPayoutHandler = asyncHandler(async (req: Request, res: Respon
     });
   }
   res.status(201).json({ success: true, data: result });
+});
+
+// --- 1.10 : lien « Payer cet appel » ------------------------------------------
+
+const createPaymentLinkSchema = z
+  .object({
+    delivery: z.enum(['SEND', 'COPY']),
+    ttlDays: z.number().int().min(1).max(30).optional()
+  })
+  .strict();
+
+const chargeIdOf = (req: Request) => assertUuidOrNotFound(req.params.chargeId, t('Appel de charges introuvable.'));
+const linkIdSchema = z.string().min(1).max(64);
+
+/**
+ * Le montant, le destinataire et la durée maximale viennent du serveur ; seule la
+ * durée (1 à 30 jours, jamais tronquée) peut être demandée. L'URL (porteuse du
+ * jeton) n'est renvoyée qu'une fois, à la copie ; ni la liste ni l'envoi ne la
+ * renvoient.
+ */
+export const createChargeCallPaymentLinkHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = tenantIdOf(req);
+  const syndicateId = syndicIdOf(req);
+  const chargeCallId = chargeIdOf(req);
+  const body = createPaymentLinkSchema.parse(req.body ?? {});
+  const actorUserId = actorOf(req);
+
+  if (body.delivery === 'COPY') {
+    const { link, context } = await createChargeCallPaymentLink(tenantId, syndicateId, chargeCallId, actorUserId, {
+      ttlDays: body.ttlDays
+    });
+    res.status(201).json({
+      success: true,
+      data: {
+        linkId: link.id,
+        url: link.url,
+        expiresAt: link.expiresAt.toISOString(),
+        amountDue: context.amountDue,
+        currency: context.currency
+      }
+    });
+    return;
+  }
+
+  const result = await sendChargeCallPaymentLink(tenantId, syndicateId, chargeCallId, actorUserId, {
+    ttlDays: body.ttlDays
+  });
+  if (!result.sent) {
+    res.status(200).json({ success: true, data: { sent: false, reason: result.reason } });
+    return;
+  }
+  res.status(201).json({
+    success: true,
+    data: {
+      sent: true,
+      channel: result.channel,
+      linkId: result.linkId,
+      expiresAt: result.expiresAt,
+      amountDue: result.amountDue,
+      currency: result.currency
+    }
+  });
+});
+
+export const listChargeCallPaymentLinksHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = await listChargeCallPaymentLinks(tenantIdOf(req), syndicIdOf(req), chargeIdOf(req));
+  res.json({ success: true, data });
+});
+
+export const revokeChargeCallPaymentLinkHandler = asyncHandler(async (req: Request, res: Response) => {
+  const linkId = linkIdSchema.parse(req.params.linkId);
+  await revokeChargeCallPaymentLink(
+    tenantIdOf(req),
+    syndicIdOf(req),
+    chargeIdOf(req),
+    linkId,
+    actorOf(req) ?? 'system'
+  );
+  res.json({ success: true, data: { revoked: true } });
 });

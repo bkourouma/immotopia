@@ -55,6 +55,8 @@ export const EMAIL_NOTIFICATION_KEYS = [
   'LAND_STEP_OVERDUE_ALERT',
   'OWNER_MONTHLY_REPORT_SENT',
   'RENTER_PAYMENT_LINK_SENT',
+  // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
+  'CHARGE_CALL_PAYMENT_LINK_SENT',
   // Patrimoine – accès en lecture seule des tiers de confiance (lot B3)
   'EXTERNAL_ACCESS_LINK_SENT',
   // Chantiers – contrôle du stock (lot 040, B7-R6)
@@ -322,6 +324,13 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     description:
       "Envoi au locataire d'un lien sécurisé pour régler son loyer en ligne par Mobile Money (durée limitée, révocable), lorsque le canal e-mail est retenu.",
     recipientLabel: 'Locataire'
+  },
+  CHARGE_CALL_PAYMENT_LINK_SENT: {
+    key: 'CHARGE_CALL_PAYMENT_LINK_SENT',
+    label: "Lien de paiement d'un appel de charges",
+    description:
+      "Envoi au copropriétaire d'un lien sécurisé pour régler un appel de charges en ligne par Mobile Money (durée limitée, révocable), à la demande du gestionnaire, lorsque le canal e-mail est retenu.",
+    recipientLabel: 'Copropriétaire'
   },
   EXTERNAL_ACCESS_LINK_SENT: {
     key: 'EXTERNAL_ACCESS_LINK_SENT',

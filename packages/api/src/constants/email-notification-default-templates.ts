@@ -353,6 +353,14 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
+  CHARGE_CALL_PAYMENT_LINK_SENT: {
+    subject: 'Appel de charges {{period}} - {{syndicateName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Paiement de votre appel de charges</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
+<p style="margin:0 0 20px 0;">L'appel de charges de la période <strong>{{period}}</strong> pour votre lot {{lotLabel}} de la copropriété <strong>{{syndicateName}}</strong> est à régler : <strong>{{amountDue}}</strong>, échéance le {{dueDate}}. Vous pouvez le payer en ligne par Mobile Money.</p>
+<p style="margin:0 0 20px 0; padding:14px; background:#eff6ff; border-radius:8px; font-size:14px;"><a href="{{paymentUrl}}" style="color:#1d4ed8; font-weight:600; text-decoration:underline;">Payer cet appel</a></p>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>`
+  },
   EXTERNAL_ACCESS_LINK_SENT: {
     subject: 'Accès partagé par {{agencyName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Accès en lecture seule</h1>

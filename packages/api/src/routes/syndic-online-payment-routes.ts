@@ -10,12 +10,15 @@ import {
   syndicGatewayWriteRateLimiter
 } from '../middleware/rate-limit-middleware';
 import {
+  createChargeCallPaymentLinkHandler,
   decideCheckoutHandler,
   getGatewaySettingsHandler,
   getProviderBalanceHandler,
+  listChargeCallPaymentLinksHandler,
   listCheckoutsHandler,
   listPayoutsHandler,
   recordPayoutHandler,
+  revokeChargeCallPaymentLinkHandler,
   testGatewayConnectionHandler,
   updateGatewaySettingsHandler,
   verifyCheckoutHandler
@@ -81,5 +84,22 @@ router.post(
 // 1.8 et 1.9 : reversements du compte de collecte 5525.
 router.get(`${GATEWAY}/reversements`, ...guards, canView, listPayoutsHandler);
 router.post(`${GATEWAY}/reversements`, ...guards, canEdit, syndicGatewayWriteRateLimiter, recordPayoutHandler);
+
+// 1.10 : lien « Payer cet appel » (créer ou copier, envoyer, lister, révoquer).
+router.post(
+  `${BASE}/charges/:chargeId/lien-paiement`,
+  ...guards,
+  canEdit,
+  syndicGatewayWriteRateLimiter,
+  createChargeCallPaymentLinkHandler
+);
+router.get(`${BASE}/charges/:chargeId/liens-paiement`, ...guards, canView, listChargeCallPaymentLinksHandler);
+router.delete(
+  `${BASE}/charges/:chargeId/lien-paiement/:linkId`,
+  ...guards,
+  canEdit,
+  syndicGatewayWriteRateLimiter,
+  revokeChargeCallPaymentLinkHandler
+);
 
 export default router;

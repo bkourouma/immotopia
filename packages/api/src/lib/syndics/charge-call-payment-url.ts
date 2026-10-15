@@ -1,12 +1,13 @@
 /**
  * Lien de paiement en ligne joint aux messages d'appel de charges (avis et
- * relances) — lot M6 du paiement mobile des copropriétaires.
+ * relances) — lot M6 du paiement mobile des copropriétaires (spec 042).
  *
- * `resolveChargeCallPaymentUrl` est le point d'extension : pour l'instant il
- * ne produit aucun lien (`null`) et les messages partent sans bloc « Payer en
- * ligne ». Un lot ultérieur branchera le lien sécurisé (jeton à usage limité)
- * en passant son propre résolveur via `options.resolvePaymentUrl`, ou en
- * remplaçant le corps de cette fonction.
+ * `resolveChargeCallPaymentUrl` crée, pour un appel unique, un lien sécurisé
+ * « Payer cet appel » (portée CHARGE_CALL_PAYMENT, 30 jours, sans auteur) quand
+ * la copropriété a une configuration utilisable, que l'agence a le droit
+ * SYNDIC, que l'appel est encore dû et que le lot n'a pas été revendu depuis.
+ * Sinon `null` et le message part sans bloc « Payer en ligne ». Un appelant
+ * peut toujours passer son propre résolveur via `options.resolvePaymentUrl`.
  */
 import { logger } from '../../utils/logger';
 import { t } from '../../i18n';
@@ -30,8 +31,24 @@ export interface ChargeCallPaymentUrlInput {
  */
 export type ChargeCallPaymentUrlResolver = (input: ChargeCallPaymentUrlInput) => Promise<string | null>;
 
-/** Résolveur par défaut : aucun lien tant que le paiement en ligne n'est pas branché. */
-export const resolveChargeCallPaymentUrl: ChargeCallPaymentUrlResolver = async () => null;
+/**
+ * Résolveur par défaut : le lien sécurisé de l'appel. Import différé : le
+ * service du lien charge le moteur de paiement, qui lui-même dépend de ce
+ * module de messages (évite un cycle d'import au chargement).
+ */
+export const resolveChargeCallPaymentUrl: ChargeCallPaymentUrlResolver = async input => {
+  try {
+    const { createAutomaticChargeCallPaymentUrl } = await import('./online-payment/charge-call-link');
+    return await createAutomaticChargeCallPaymentUrl(input);
+  } catch (error) {
+    // Le message part sans lien : jamais d'URL ni de jeton dans ce journal.
+    logger.warn('charge call payment url resolver failed', {
+      lotId: input.lotId,
+      errorName: error instanceof Error ? error.name : 'UnknownError'
+    });
+    return null;
+  }
+};
 
 /** Variables de gabarit liées au lien de paiement ; toujours des chaînes (vides sans lien). */
 export interface PaymentTemplateVars {
