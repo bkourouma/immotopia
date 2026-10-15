@@ -38,21 +38,40 @@ Pièges et décisions :
 
 ## Branche `feat/syndic-paiement-mobile` — 2026-10-15
 
-**État :** en cours (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
-**Dernier commit :** `3730cd1f` écrans du paiement mobile (poussé sur origin)
+**État :** en cours, aucune PR ouverte (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
+**Dernier commit :** voir `git log` (poussé sur origin) — arrêt de session à ~90 % de la limite de 5 h, à la demande de l'utilisateur
 
 Paiement mobile money des appels de charges par les copropriétaires (spec `specs/042-syndic-paiement-mobile/`, contrat d'API dans `contracts.md`). Décisions de l'utilisateur : un compte PaySecureHub PAR COPROPRIÉTÉ, sans repli vers le compte du cabinet ; appels entiers seulement ; frais selon le `feesPaidBy` de l'agence ; lien « Payer cet appel » sans connexion dans les avis et relances.
 
-Fait (commité) : spec et contrats ; schéma et 2 migrations (`SyndicPaymentGatewayConfig`, `SyndicOnlineCheckout`, idempotence de `ChargePayment`, portée `CHARGE_CALL_PAYMENT`) ; `lib/payment-gateway/checkout-core.ts` (cœur commun, loyers inchangés) ; variables `paymentUrl`/`paymentBlock` dans les avis et relances (résolveur qui renvoie `null` pour l'instant) et relance au copropriétaire réel ; écrans web (portail, onglet gestionnaire « Paiements en ligne », pages publiques `/payer-charges`). tsc API et web à 0 erreur ; 275 tests API et 109 tests web ciblés verts.
+Fait (commité, tsc API et web à 0 erreur, tests ciblés verts) :
 
-Reste à faire : moteur Syndic (`lib/syndics/online-payment/`), comptabilité 5525 et reversements, API de configuration et routes gestionnaire (agents lancés le 2026-10-15) ; puis API portail (M3, et ajouter `syndicateId` et le code du paiement en cours aux appels du portail, demandés par l'écran), lien sécurisé (M6 API, brancher `resolveChargeCallPaymentUrl`), `navigation/model.tsx` (`activeFor` de « syndics-finances »), extraction i18n unique à la fin, classeur des fonctionnalités, relectures code et sécurité, recette démo au simulateur, 3 PR empilées.
+- Spec et contrats ; schéma et 2 migrations (`SyndicPaymentGatewayConfig`, `SyndicOnlineCheckout`, idempotence de `ChargePayment`, portée `CHARGE_CALL_PAYMENT`).
+- `lib/payment-gateway/checkout-core.ts` (cœur commun, loyers inchangés).
+- Moteur `lib/syndics/online-payment/` (démarrage, rapprochement IPN/simulateur/tâche, REVIEW, décision ACCEPT/REJECT), encaissement au 5525 et reversements 5525 → 521.
+- API gestionnaire `/syndics/:id/paiement-en-ligne/*` et `/paiements-en-ligne/*` (configuration, test, solde, suivi, vérifier, trancher, reversements).
+- Lien « Payer cet appel » (M6 API) : routes publiques `/api/public/secure-links/charge-call-payment[/start|/status]`, routes gestionnaire du lien, résolveur branché dans avis et relances, événement `CHARGE_CALL_PAYMENT_LINK_SENT`.
+- Écrans : portail (bouton Payer, sélection, retour), onglet gestionnaire « Paiements en ligne », pages publiques `/payer-charges`.
+
+- API du portail (M3) : `/api/portal/copropriete/paiements-en-ligne[/disponibilite|/:codePaiement]`, champs `onlinePayable`, `onlineCheckout`, `syndicateId`, `onlineCheckoutCode` sur `GET /appels` ; écran : copropriété par `syndicateId`, « Reprendre le paiement », onglet Finances actif.
+
+Vérifié le 2026-10-15 : tsc API et web à 0 erreur ; jest 92 suites / 1463 tests verts (syndic, portail, paiement, inventaires) ; vitest portail, navigation, gestionnaire et pages publiques verts.
+
+Reste à faire :
+
+- Le GET de statut du portail ne revérifie pas le droit SYNDIC (voulu : un paiement lancé doit pouvoir se rapprocher) ; contrat §2 à aligner.
+- Web : variables `CHARGE_CALL_PAYMENT_LINK_SENT` dans `apps/web/src/constants/whatsapp-notification-variables.ts` ; boutons du lien « Payer cet appel » côté gestionnaire (service déjà prêt, route 1.10).
+- `npm run i18n:extract` dans `packages/api` ET `apps/web` (en une fois, aucun agent ne l'a lancé), puis traductions en/ar.
+- Classeur des fonctionnalités + `npm run wiki:export` (sous-fonctionnalités listées dans les rapports : configuration marchande par copropriété, paiement portail, lien, suivi/vérifier/trancher, reversements, événement de notification).
+- Mutualiser `isCurrentLotOwner` (dupliqué dans `notifications.ts` et `charge-call-link.ts`).
+- Rejouer les tests sur PostgreSQL réel (conteneur `immotopia-smm-test` : Docker était arrêté, tout a tourné sur doubles en mémoire ; verrous consultatifs et P2002 non prouvés), `npm run test:isolation`.
+- Relectures `code-reviewer` et `security-auditor` (paiement, portail, page publique), recette démo au simulateur, puis 3 PR empilées (ou une seule) avec titre et description en français.
 
 Pièges et décisions :
 
 - Ne pas lancer `prisma format` : il réécrit ~600 lignes du schéma.
-- Conteneur de test dédié `immotopia-smm-test` (port 55471, identifiants de test seulement, migrations appliquées).
-- Les agents web n'ont pas lancé `i18n:extract` (catalogues partagés) : à faire en une fois.
-- À trancher : langue du libellé « Payer en ligne » dans les messages (langue de la requête actuellement) ; numéro du reçu absent du statut public (contrat §3.3) ; mode LIVE non validé (le montant BMI inclut-il les frais ?).
+- Exercice clos : `assertFiscalYearOpenTx` lève une `ConflictError` 409 (le contrat §0.2/§1.7 dit 400) : corriger le contrat.
+- Pas de colonne `mode` sur `SyndicOnlineCheckout` : le mode affiché vient de la configuration actuelle.
+- À trancher par l'utilisateur : langue du libellé « Payer en ligne » dans les messages ; numéro du reçu absent du statut public (§3.3) ; WhatsApp `CHARGE_CALL_PAYMENT_LINK_SENT` activé par défaut (le lien loyer est en opt-in) ; règle « lot revendu » (copropriétaire de plus fort pourcentage, `ownedSince` > début de période) ; permission `TENANT_SETTINGS_EDIT` exigée en plus de `SYNDIC_EDIT` pour la configuration ; deux copropriétés peuvent partager un compte marchand ; mode LIVE non validé (le montant BMI inclut-il les frais ? sinon REVIEW à tort).
 
 ## État courant (pilote) — 2026-10-13
 
