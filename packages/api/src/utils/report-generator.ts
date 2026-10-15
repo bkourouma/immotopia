@@ -4,10 +4,14 @@
  */
 
 import { toCsvString } from '../lib/csv';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
 import { prisma } from './database';
+import { drawDocumentHeader, resolveDocumentBranding } from '../lib/documents/document-branding';
+import { FOOTER_RESERVED, drawDocumentFooters } from '../lib/documents/document-layout';
+import { pdfLanguage } from '../lib/documents/pdf-text';
+import { t } from '../i18n';
 import { logger } from './logger';
 import { RentalPaymentStatus } from '@prisma/client';
 
@@ -49,35 +53,22 @@ interface OccupancyReportData {
 /**
  * T140: Generate revenue report in PDF format
  */
-export async function generateRevenueReportPDF(data: RevenueReportData, _tenantId: string): Promise<Buffer> {
+export async function generateRevenueReportPDF(data: RevenueReportData, tenantId: string): Promise<Buffer> {
   try {
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([612, 792]); // Letter size
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    let y = 750;
-    const margin = 50;
+    const margin = 40;
     const lineHeight = 20;
 
-    // Title
-    page.drawText(pdfSafe('Rapport de Revenus'), {
-      x: margin,
-      y,
-      size: 24,
-      font: boldFont,
-      color: rgb(0, 0, 0)
+    // En-tête standard de l'agence, titre et période
+    const branding = await resolveDocumentBranding(tenantId, null);
+    let y = await drawDocumentHeader(pdfDoc, page, branding, {
+      title: t('Rapport de revenus', undefined, pdfLanguage()),
+      subtitle: `Période : ${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`
     });
-    y -= 40;
-
-    // Date range
-    page.drawText(pdfSafe(`Période: ${format(data.startDate, 'dd/MM/yyyy')} - ${format(data.endDate, 'dd/MM/yyyy')}`), {
-      x: margin,
-      y,
-      size: 12,
-      font
-    });
-    y -= 30;
 
     // Summary
     page.drawText(pdfSafe('Résumé'), {
@@ -116,9 +107,9 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
 
       let currentPage = page;
       for (const item of data.revenuesByProperty.slice(0, 20)) {
-        if (y < 100) {
+        if (y < FOOTER_RESERVED + 30) {
           currentPage = pdfDoc.addPage([612, 792]);
-          y = 750;
+          y = 792 - 60;
         }
         currentPage.drawText(pdfSafe(`${item.propertyAddress}: ${formatCurrency(item.revenue)}`), {
           x: margin + 20,
@@ -130,6 +121,10 @@ export async function generateRevenueReportPDF(data: RevenueReportData, _tenantI
       }
     }
 
+    await drawDocumentFooters(pdfDoc, {
+      issuerName: branding.issuer.name,
+      reference: t('Rapport de revenus', undefined, pdfLanguage())
+    });
     const pdfBytes = await pdfDoc.save();
     return Buffer.from(pdfBytes);
   } catch (error) {
@@ -233,33 +228,22 @@ export async function generateRevenueReportExcel(data: RevenueReportData, _tenan
 /**
  * T143: Generate occupancy report in PDF format
  */
-export async function generateOccupancyReportPDF(data: OccupancyReportData, _tenantId: string): Promise<Buffer> {
+export async function generateOccupancyReportPDF(data: OccupancyReportData, tenantId: string): Promise<Buffer> {
   try {
     const pdfDoc = await PDFDocument.create();
     let page = pdfDoc.addPage([612, 792]);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    let y = 750;
-    const margin = 50;
+    const margin = 40;
     const lineHeight = 20;
 
-    // Title
-    page.drawText(pdfSafe("Rapport d'Occupation"), {
-      x: margin,
-      y,
-      size: 24,
-      font: boldFont
+    // En-tête standard de l'agence, titre et date
+    const branding = await resolveDocumentBranding(tenantId, null);
+    let y = await drawDocumentHeader(pdfDoc, page, branding, {
+      title: t("Rapport d'occupation", undefined, pdfLanguage()),
+      subtitle: `Au ${format(data.asOfDate, 'dd/MM/yyyy')}`
     });
-    y -= 40;
-
-    page.drawText(pdfSafe(`Date: ${format(data.asOfDate, 'dd/MM/yyyy')}`), {
-      x: margin,
-      y,
-      size: 12,
-      font
-    });
-    y -= 30;
 
     // Summary
     page.drawText(pdfSafe('Résumé'), {
@@ -312,9 +296,9 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
     y -= lineHeight;
 
     for (const prop of data.properties.slice(0, 30)) {
-      if (y < 100) {
+      if (y < FOOTER_RESERVED + 30) {
         page = pdfDoc.addPage([612, 792]);
-        y = 750;
+        y = 792 - 60;
       }
       page.drawText(pdfSafe(`${prop.address} - ${prop.status}`), {
         x: margin + 20,
@@ -325,6 +309,10 @@ export async function generateOccupancyReportPDF(data: OccupancyReportData, _ten
       y -= lineHeight;
     }
 
+    await drawDocumentFooters(pdfDoc, {
+      issuerName: branding.issuer.name,
+      reference: t("Rapport d'occupation", undefined, pdfLanguage())
+    });
     const pdfBytes = await pdfDoc.save();
     return Buffer.from(pdfBytes);
   } catch (error) {

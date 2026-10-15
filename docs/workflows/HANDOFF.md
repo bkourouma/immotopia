@@ -64,6 +64,28 @@ Pièges :
 - Ne pas déclencher l'impression en panneau masqué : la boîte native bloque le panneau.
 - `apps/web/.env` du worktree (ignoré par git) a servi au lancement ; le laisser ou le supprimer.
 
+## Branche `feat/modeles-documents-entete` — 2026-10-15
+
+**État :** prêt à relire (PR ouverte)
+**Dernier commit :** voir `git log` de la branche
+
+Fait :
+
+- En-tête et pied de page standard (`lib/documents/document-branding.ts`, `document-layout.ts`) sur reçus de charges, facture d'abonnement, relevé de compte financier, bon de caisse, rapports propriétaire.
+- Huit modèles .docx standard (`assets/modeles_standard/`, générés par `packages/api/scripts/build-standard-docx-templates.ts`), logo injecté sans module image (`lib/documents/docx-branding.ts`), contexte commun `EMETTEUR_*`/`COPROPRIETE_*`/`LOGO_*`. Catalogue : `docs/modeles-documents/CATALOGUE-PLACEHOLDERS.md`.
+- Compte rendu d'AG : modèle d'agence, puis modèle standard, puis texte brut. Seed des modèles locatifs : lit le modèle standard avant les anciens fichiers.
+
+Reste à faire :
+
+- Brancher à des routes les modèles avis d'appel, quittance de charges et convocation d'AG (aucun générateur Word pour eux).
+- Rejouer `npm run db:seed:document-templates` sur chaque base pour que le défaut locatif devienne le modèle standard ; ajouter les empreintes dans `PREVIOUS_SHIPPED_HASHES` quand une version standard aura été livrée.
+- Contrôle visuel dans Word/LibreOffice (jamais fait) ; pied « Page » du DOCX et libellés PDF arabes restent en français.
+
+Pièges et décisions :
+
+- `platform-invoice.test.ts` ne compile pas avec le client Prisma partagé par jonction (6 erreurs `CapacityKey`) ; sans rapport avec le diff.
+- Ne pas lancer `npm run i18n:extract` sans réaligner d'abord les catalogues (il a supprimé des traductions d'autres modules) ; les 15 clés ont été ajoutées à la main.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;

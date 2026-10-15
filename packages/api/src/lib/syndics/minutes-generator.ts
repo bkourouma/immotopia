@@ -1,11 +1,16 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
 import { logger } from '../../utils/logger';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-majority';
 import { t } from '../../i18n';
 import type { DocumentBranding } from '../documents/document-branding';
+import { buildCommonDocumentContext, buildIssuerContext } from '../documents/docx-branding';
+import { loadStandardTemplate } from '../documents/docx-standard-templates';
+import { renderDocxBuffer } from '../../services/docx-renderer';
+
+// Compatibilité : `buildIssuerContext` vivait ici avant d'être partagé par tous les modèles DOCX.
+export { buildIssuerContext };
 
 interface AgendaItemInput {
   orderIndex: number;
@@ -172,35 +177,6 @@ function getProjectRoot(): string {
     : cwd;
 }
 
-/**
- * Lot S1 : variables d'identite de l'emetteur (mandant de la copropriete,
- * sinon l'agence) offertes aux modeles DOCX d'agence :
- *   {{EMETTEUR_NOM}}, {{EMETTEUR_RAISON_SOCIALE}}, {{EMETTEUR_ADRESSE}},
- *   {{EMETTEUR_TELEPHONE}}, {{EMETTEUR_EMAIL}}, {{EMETTEUR_RCCM}},
- *   {{EMETTEUR_NCC}}, {{COPROPRIETE_IMMATRICULATION}},
- *   {{COPROPRIETE_REFERENCE_CADASTRALE}}.
- * Une valeur absente vaut une chaine vide (pas le motif `{{...}}` que laisse
- * `nullGetter` pour une variable inconnue).
- *
- * Le logo n'est PAS injecte dans le DOCX : `docxtemplater-image-module-free`
- * (1.1.1) plante au rendu avec docxtemplater 3.67 et tire `xmldom` 0.1.x,
- * vulnerable (CVE-2021-21366). Voir le rapport du lot S1.
- */
-export function buildIssuerContext(branding?: DocumentBranding | null): Record<string, string> {
-  const issuer = branding?.issuer;
-  return {
-    EMETTEUR_NOM: issuer?.name ?? '',
-    EMETTEUR_RAISON_SOCIALE: issuer?.legalName ?? issuer?.name ?? '',
-    EMETTEUR_ADRESSE: issuer?.address ?? '',
-    EMETTEUR_TELEPHONE: issuer?.phone ?? '',
-    EMETTEUR_EMAIL: issuer?.email ?? '',
-    EMETTEUR_RCCM: issuer?.rccm ?? '',
-    EMETTEUR_NCC: issuer?.taxId ?? '',
-    COPROPRIETE_IMMATRICULATION: branding?.syndicate?.registrationNo ?? '',
-    COPROPRIETE_REFERENCE_CADASTRALE: branding?.syndicate?.cadastralReference ?? ''
-  };
-}
-
 /** Lignes d'en-tete du compte rendu genere sans modele. */
 function issuerHeaderLines(branding?: DocumentBranding | null): string[] {
   const issuer = branding?.issuer;
@@ -329,6 +305,7 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
       RESOLUTION_VOTES_FOR: resolution.votesFor || 0,
       RESOLUTION_VOTES_AGAINST: resolution.votesAgainst || 0,
       RESOLUTION_VOTES_ABSTAIN: resolution.votesAbstain || 0,
+      RESOLUTION_TANTIEMES: formatShares(resolution) ?? '',
       RESOLUTION_RESULT: formatResolutionResult(resolution.result)
     };
   });
@@ -341,7 +318,12 @@ function buildTemplateContext(meeting: MeetingInput, branding?: DocumentBranding
   }
 
   return {
-    ...buildIssuerContext(branding),
+    ...buildCommonDocumentContext(branding, {
+      reference: `AG-${meeting.id.slice(0, 8).toUpperCase()}`,
+      emittedAt: new Date()
+    }),
+    COPROPRIETE_NOM: branding?.syndicate?.name ?? meeting.syndicate?.name ?? '',
+    COPROPRIETE_ADRESSE: branding?.syndicate?.address ?? meeting.syndicate?.address ?? '',
     SYNDICATE_NAME: meeting.syndicate?.name || t('Non renseignée'),
     SYNDICATE_ADDRESS: meeting.syndicate?.address || t('Non renseignée'),
     MEETING_TYPE: formatMeetingType(meeting.type),
@@ -385,27 +367,9 @@ async function resolveSyndicMinutesTemplatePath(
   }
 }
 
-async function buildDocxFromTemplate(templatePath: string, context: Record<string, unknown>): Promise<Buffer> {
-  const templateBuffer = await fs.readFile(templatePath);
-  const zip = new PizZip(templateBuffer);
-
-  const doc = new Docxtemplater(zip, {
-    paragraphLoop: true,
-    linebreaks: true,
-    delimiters: {
-      start: '{{',
-      end: '}}'
-    },
-    nullGetter: (part: any) => {
-      const varName = part.value || part.module || (typeof part === 'string' ? part : 'VARIABLE');
-      return `{{${varName}}}`;
-    }
-  });
-
-  doc.setData(context);
-  doc.render();
-  const rendered = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-  return Buffer.from(rendered);
+/** Rend un modèle DOCX (octets) avec le contexte du compte rendu ; une donnée vide reste vide. */
+function renderMinutesTemplate(templateBuffer: Buffer, context: Record<string, unknown>): Buffer {
+  return renderDocxBuffer(templateBuffer, context, { sanitize: false });
 }
 
 function buildDocumentXml(content: string): string {
@@ -490,34 +454,44 @@ function buildDocxBuffer(content: string): Buffer {
   return zip.generate({ type: 'nodebuffer' }) as Buffer;
 }
 
+/** Modèle personnalisé de l'agence, sinon modèle standard avec en-tête et logos. */
+async function renderMinutesFromTemplates(
+  meeting: MeetingInput,
+  tenantIdOverride: string | undefined,
+  branding: DocumentBranding | null | undefined
+): Promise<Buffer> {
+  const context = buildTemplateContext(meeting, branding);
+  const templatePath = await resolveSyndicMinutesTemplatePath(meeting, tenantIdOverride);
+  if (templatePath) {
+    try {
+      const rendered = renderMinutesTemplate(await fs.readFile(templatePath), context);
+      logger.info('Syndic minutes generated from tenant DOCX template', { meetingId: meeting.id });
+      return rendered;
+    } catch (error) {
+      logger.error('Syndic minutes tenant template failed, trying the standard template', {
+        error,
+        meetingId: meeting.id
+      });
+    }
+  }
+  const standard = await loadStandardTemplate('compte_rendu_assemblee_generale');
+  logger.info('Syndic minutes generated from the standard DOCX template', { meetingId: meeting.id });
+  return renderMinutesTemplate(standard, context);
+}
+
 export async function buildMeetingMinutesDocx(
   meeting: MeetingInput,
   tenantIdOverride?: string,
   branding?: DocumentBranding | null
 ): Promise<Buffer> {
-  const templatePath = await resolveSyndicMinutesTemplatePath(meeting, tenantIdOverride);
-
-  if (templatePath) {
-    try {
-      const context = buildTemplateContext(meeting, branding);
-      logger.info('Syndic minutes generated from DOCX template', {
-        meetingId: meeting.id,
-        templatePath
-      });
-      return await buildDocxFromTemplate(templatePath, context);
-    } catch (error) {
-      logger.error('Syndic minutes template rendering failed, fallback to internal text generator', {
-        error,
-        meetingId: meeting.id,
-        templatePath
-      });
-    }
-  } else {
-    logger.warn('Syndic minutes template not found, fallback to internal text generator', {
+  try {
+    return await renderMinutesFromTemplates(meeting, tenantIdOverride, branding);
+  } catch (error) {
+    logger.error('Syndic minutes template rendering failed, fallback to internal text generator', {
+      error,
       meetingId: meeting.id,
       tenantId: tenantIdOverride || meeting.syndicate?.tenantId || null
     });
+    return buildDocxBuffer(fallbackMinutes(meeting, branding));
   }
-
-  return buildDocxBuffer(fallbackMinutes(meeting, branding));
 }

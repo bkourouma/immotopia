@@ -10,7 +10,11 @@
  */
 
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
+import { t } from '../../i18n';
 import { sanitizeForPdf } from '../syndics/owner-account-statement';
+import { pdfLanguage } from '../documents/pdf-text';
+import { drawDocumentHeader, issuerFromMandant, type DocumentBranding } from '../documents/document-branding';
+import { FOOTER_RESERVED, drawDocumentFooters, drawPartyBlock } from '../documents/document-layout';
 import type { InvoiceLineKindCode } from './pricing';
 import type { PlatformCustomerInfo, PlatformIssuerInfo } from './platform-invoice';
 
@@ -87,6 +91,46 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
   return lines.length > 0 ? lines : [''];
 }
 
+/** L'émetteur plateforme se présente comme l'émetteur d'un document standard (sans logo). */
+function platformBranding(issuer: PlatformIssuerInfo): DocumentBranding {
+  return {
+    issuer: issuerFromMandant({
+      name: issuer.name,
+      legalName: null,
+      address: issuer.address,
+      phone: issuer.phone,
+      email: issuer.email,
+      rccm: issuer.rccm,
+      taxId: issuer.taxId
+    }),
+    issuerLogo: null,
+    signature: null,
+    stamp: null,
+    syndicate: null
+  };
+}
+
+/** Émetteur et mentions légales, à gauche du pied de page. */
+function platformFooterName(issuer: PlatformIssuerInfo): string {
+  return [issuer.name, issuer.rccm ? `RCCM ${issuer.rccm}` : null, issuer.taxId ? `CC ${issuer.taxId}` : null]
+    .filter(Boolean)
+    .join(' - ');
+}
+
+const invoiceSubtitle = (payload: PlatformInvoicePdfPayload): string =>
+  `${t('Émise le', undefined, pdfLanguage())} ${formatDate(payload.issueDate)}`;
+
+/** Numéro, dates et statut, dans la colonne de droite du bloc d'identification. */
+function invoiceMetaLines(payload: PlatformInvoicePdfPayload): Array<[string, string]> {
+  const isCreditNote = payload.nature === 'CREDIT_NOTE';
+  const lines: Array<[string, string]> = [
+    [isCreditNote ? 'Date' : 'Échéance', formatDate(isCreditNote ? payload.issueDate : payload.dueDate)],
+    [t('Statut', undefined, pdfLanguage()), STATUS_LABELS[payload.status] ?? payload.status]
+  ];
+  if (payload.creditedInvoiceNumber) lines.push(['Annule la facture', payload.creditedInvoiceNumber]);
+  return lines;
+}
+
 export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -113,7 +157,7 @@ export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload
     page.drawText(clean, { x: xRight - f.widthOfTextAtSize(clean, size), y, size, font: f, color });
   };
   const newPageIfNeeded = (needed: number) => {
-    if (y - needed >= 70) return;
+    if (y - needed >= FOOTER_RESERVED) return;
     page = pdfDoc.addPage([WIDTH, HEIGHT]);
     y = HEIGHT - 50;
     draw(`${title} ${payload.invoiceNumber} (suite)`, LEFT, 10, bold);
@@ -121,53 +165,39 @@ export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload
   };
 
   // ---------------------------------------------------------------- en-tete
-  draw(payload.issuer.name, LEFT, 14, bold);
-  drawRight(title, RIGHT, 18, bold);
-  y -= 16;
-  const issuerLines = [
-    payload.issuer.address,
-    payload.issuer.rccm ? `RCCM : ${payload.issuer.rccm}` : null,
-    payload.issuer.taxId ? `Compte contribuable : ${payload.issuer.taxId}` : null,
-    [payload.issuer.email, payload.issuer.phone].filter(Boolean).join(' - ') || null
-  ].filter((l): l is string => Boolean(l));
-  const metaLines: Array<[string, string]> = [
-    ['Numero', payload.invoiceNumber],
-    ["Date d'emission", formatDate(payload.issueDate)],
-    [isCreditNote ? 'Date' : 'Echeance', formatDate(isCreditNote ? payload.issueDate : payload.dueDate)],
-    ['Statut', STATUS_LABELS[payload.status] ?? payload.status]
-  ];
-  if (payload.creditedInvoiceNumber) metaLines.push(['Annule la facture', payload.creditedInvoiceNumber]);
-  const headerRows = Math.max(issuerLines.length, metaLines.length);
-  for (let i = 0; i < headerRows; i += 1) {
-    if (issuerLines[i]) draw(issuerLines[i], LEFT, 9, font, grey);
-    if (metaLines[i]) {
-      draw(`${metaLines[i][0]} :`, 360, 9, font, grey);
-      drawRight(metaLines[i][1], RIGHT, 9, bold);
-    }
-    y -= 13;
-  }
+  // Émetteur plateforme (PLATFORM_ISSUER_*), mise en page de l'en-tête standard
+  // des documents ; pas de logo plateforme.
+  const branding = platformBranding(payload.issuer);
+  y = await drawDocumentHeader(pdfDoc, page, branding, {
+    title,
+    titleRight: `N° ${payload.invoiceNumber}`,
+    subtitle: invoiceSubtitle(payload)
+  });
 
   // ---------------------------------------------------------------- client
-  y -= 14;
-  draw('Facture a', LEFT, 9, bold, grey);
-  y -= 14;
-  draw(payload.customer.name, LEFT, 11, bold);
-  y -= 14;
-  for (const line of [
-    payload.customer.address,
-    payload.customer.taxId ? `Compte contribuable : ${payload.customer.taxId}` : null,
-    [payload.customer.email, payload.customer.phone].filter(Boolean).join(' - ') || null
-  ]) {
-    if (!line) continue;
-    for (const part of wrap(line, font, 9, 300)) {
-      draw(part, LEFT, 9, font, grey);
-      y -= 12;
+  y = await drawPartyBlock(pdfDoc, page, y, [
+    {
+      title: t('Facturé à', undefined, pdfLanguage()),
+      lines: [
+        payload.customer.name,
+        payload.customer.address,
+        payload.customer.taxId ? `Compte contribuable : ${payload.customer.taxId}` : null,
+        [payload.customer.email, payload.customer.phone].filter(Boolean).join(' - ') || null
+      ]
+    },
+    {
+      title: t('Référence', undefined, pdfLanguage()),
+      lines: invoiceMetaLines(payload).map(([label, value]) => `${label} : ${value}`)
     }
-  }
+  ]);
   if (payload.periodStart && payload.periodEnd) {
-    y -= 6;
-    const label = payload.nature === 'OVERAGE' ? 'Depassement du mois' : 'Periode facturee';
-    draw(`${label} : du ${formatDate(payload.periodStart)} au ${formatDate(lastDay(payload.periodEnd))}`, LEFT, 9, bold);
+    const label = payload.nature === 'OVERAGE' ? 'Dépassement du mois' : 'Période facturée';
+    draw(
+      `${label} : du ${formatDate(payload.periodStart)} au ${formatDate(lastDay(payload.periodEnd))}`,
+      LEFT,
+      9,
+      bold
+    );
     y -= 12;
   }
 
@@ -188,9 +218,12 @@ export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload
   for (const line of payload.lines.filter(l => l.kind !== 'TAX')) {
     const labelLines = wrap(line.label, font, 9, COL_QTY - LEFT - 50);
     const periodNote =
-      line.periodStart && line.periodEnd &&
-      (!payload.periodStart || new Date(line.periodStart).getTime() !== new Date(payload.periodStart).getTime() ||
-        !payload.periodEnd || new Date(line.periodEnd).getTime() !== new Date(payload.periodEnd).getTime())
+      line.periodStart &&
+      line.periodEnd &&
+      (!payload.periodStart ||
+        new Date(line.periodStart).getTime() !== new Date(payload.periodStart).getTime() ||
+        !payload.periodEnd ||
+        new Date(line.periodEnd).getTime() !== new Date(payload.periodEnd).getTime())
         ? `du ${formatDate(line.periodStart)} au ${formatDate(lastDay(line.periodEnd))}`
         : null;
     newPageIfNeeded(12 * (labelLines.length + (periodNote ? 1 : 0)) + 6);
@@ -217,7 +250,7 @@ export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload
   const totals: Array<[string, number, boolean]> = [
     ['Total HT', payload.amountExclTax, false],
     [`TVA ${payload.taxRate} %`, payload.taxAmount, false],
-    [isCreditNote ? 'Total TTC de l\'avoir' : 'Total TTC', payload.amountTotal, true]
+    [isCreditNote ? "Total TTC de l'avoir" : 'Total TTC', payload.amountTotal, true]
   ];
   for (const [label, value, strong] of totals) {
     draw(label, 340, strong ? 11 : 9, strong ? bold : font);
@@ -247,16 +280,10 @@ export async function buildPlatformInvoicePdf(payload: PlatformInvoicePdfPayload
     first.drawText('BROUILLON', { x: 150, y: 380, size: 72, font: bold, color: rgb(0.85, 0.85, 0.85), opacity: 0.5 });
   }
 
-  // Mentions de bas de page, sur chaque page.
-  const footer = sanitizeForPdf(
-    [payload.issuer.name, payload.issuer.rccm ? `RCCM ${payload.issuer.rccm}` : null, payload.issuer.taxId ? `CC ${payload.issuer.taxId}` : null]
-      .filter(Boolean)
-      .join(' - ')
-  );
-  pdfDoc.getPages().forEach((p, index, pages) => {
-    p.drawText(footer, { x: LEFT, y: 30, size: 7, font, color: grey });
-    const pageLabel = `Page ${index + 1}/${pages.length}`;
-    p.drawText(pageLabel, { x: RIGHT - font.widthOfTextAtSize(pageLabel, 7), y: 30, size: 7, font, color: grey });
+  // Pied standard sur chaque page : émetteur, mentions légales, pagination.
+  await drawDocumentFooters(pdfDoc, {
+    issuerName: platformFooterName(payload.issuer),
+    reference: payload.invoiceNumber
   });
 
   return Buffer.from(await pdfDoc.save());
