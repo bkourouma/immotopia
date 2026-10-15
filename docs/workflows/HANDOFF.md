@@ -38,28 +38,31 @@ Pièges et décisions :
 
 ## Branche `feat/export-tableaux` — 2026-10-15
 
-**État :** PR brouillon #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)
-**Dernier commit :** `7543af85` export Excel, CSV et PDF sur tous les tableaux
+**État :** PR #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)
+**Dernier commit :** voir `git log` (correctifs d'export, puis cette passation)
 
 Fait :
 
-- Socle `apps/web/src/utils/table-export/`, `primitives/ExportMenu.tsx`, `primitives/Table.tsx`, prop `export` de `DataView` (actif par défaut), champs de colonne `exportable`/`exportTitle`/`exportValue` (`types/antd-table-export.d.ts`), `collectAllPages` pour les listes paginées.
-- Déploiement sur les 156 fichiers à tableaux (6 lots) ; classeur des fonctionnalités (3 lignes) ; traductions en/ar.
-- tsc web 0 erreur, lint 0 erreur ; suite web complète : 16 échecs dans 8 fichiers, tous longs (délais probables).
+- Socle `apps/web/src/utils/table-export/`, `primitives/ExportMenu.tsx`, `primitives/Table.tsx`, prop `export` de `DataView` (actif par défaut), champs de colonne `exportable`/`exportTitle`/`exportValue`, `collectAllPages`. Déployé sur 156 fichiers ; classeur des fonctionnalités ; traductions en/ar.
+- Les 8 fichiers de test en échec dans la suite complète passent SEULS (`finance/stock` : 51 tests mais 449 s, lenteur préexistante).
+- Build OK ; entrée 226 050 o gzip, budget 227 328 o (marge 1 278 o) ; `exceljs` et `jspdf` hors entrée.
+- Relecture des lots (agent sonnet, lecture seule) : filtres des `fetchAll`, `exportValue` et `exportable={false}` conformes. Corrigé : export complet de la recherche de contacts (`AdvancedContactSearch`), soldes Débiteur/Créditeur exportés en nombre signé (+ débiteur, − créditeur) avec titre de colonne dédié.
+- `NewsletterListsPage` : `exportFetchAll` branché (tous les abonnés de la liste).
+- Recette navigateur (instance de démo, web servi depuis le worktree) : Biens en grille, EN, CSV/Excel/PDF — CSV conforme, xlsx valide (nombres typés, en-tête figé, filtre automatique, pas d'actions), PDF 1 page. Collaborateurs en arabe : CSV avec BOM et en-têtes arabes ; PDF → repli impression (toast « Enregistrer en PDF »), aucun fichier.
 
 Reste à faire :
 
-- Relancer seuls : `admin/tenant-create`, `finance/associations`, `finance/balances`, `patrimoine/PropertyPatrimoineTab`, `rental/installments`, `rental/lease-inspections`, `finance/stock-referentiel`, `finance/stock` (`npx vitest run src/__tests__/<f>.test.tsx` depuis `apps/web`). Corriger s'ils échouent seuls.
-- `npm run build -w apps/web && npm run measure:entry -w apps/web` (marge de 1 206 o après le socle).
-- Recette navigateur : un export de chaque format sur Baux (fr puis ar, repli impression), sur Biens (disposition grille), sur une page de portail ; ouvrir les fichiers.
-- Relecture des diffs des lots finance A1/A2, syndic, patrimoine, locatif : leurs agents ont été coupés par un redémarrage de session avant de rendre leur rapport (le diff compile et passe le lint).
-- `NewsletterListsPage` : passer `exportFetchAll` à `SubscriberList`. Puis passer la PR en prête.
+- Non vérifié en réel : export multi-pages (Baux paginé : la base de démo n'a aucun bail ni de liste de plus d'une page ; seuls les tests unitaires de `collectAllPages` le couvrent), page de portail, xlsx/PDF en arabe.
+- Les filtres de colonne côté client d'Ant Design ne restreignent pas l'export.
+- Passer la PR en prête quand la CI est verte ; ne pas fusionner.
 
-Pièges et décisions :
+Pièges :
 
-- Sans `dataIndex`, Ant Design passe l'enregistrement comme valeur à `render` : le socle fait pareil (corrigé dans `build-table.ts`).
-- `apps/web/.env` copié par erreur dans le worktree (ignoré par git) : à supprimer par l'utilisateur ou à garder pour lancer le web depuis le worktree.
-- Une autre session a modifié `docs/workflows/HANDOFF.md` du checkout principal (ligne paiement mobile copropriétaires) : elle n'est pas dans cette branche.
+- Le dépôt partage l'instance de démo (`.claude/worktrees/demo`) : une autre session l'a re-synchronisée sur un autre commit et re-semée (autre identifiant d'agence) pendant la recette. Servir le web depuis son propre worktree (API de démo inchangée côté API) et lire l'identifiant d'agence dans les liens du tableau de bord.
+- Ports 3300/8800 pris : j'ai utilisé 3310 (web) et 8810 (API, `FRONTEND_URL=http://localhost:3310`).
+- En dev, la première importation de `jspdf` fait recharger la page (optimisation Vite) : relancer l'export.
+- Ne pas déclencher l'impression en panneau masqué : la boîte native bloque le panneau.
+- `apps/web/.env` du worktree (ignoré par git) a servi au lancement ; le laisser ou le supprimer.
 
 ## État courant (pilote) — 2026-10-13
 
