@@ -36,6 +36,28 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/pwa-mobile` — 2026-10-15
+
+**État :** prêt à relire (PR ouverte sur `main`)
+**Dernier commit :** voir `git log` de la branche
+
+Fait :
+
+- PWA installable (modèle : Repetiteur_Maison) : `apps/web/public/manifest.webmanifest`, icônes `public/icons/` (script `scripts/make-pwa-icons.ps1`), `sw.js`, `hors-ligne.html` ; `src/pwa/{register,install}.ts`, bouton `components/pwa/InstallAppButton` (page de connexion + menu utilisateur) ; blocs nginx `/sw.js`, `/hors-ligne.html`, manifeste et `/icons/` dans `infra/nginx/spa.conf`.
+- Le service worker ne met JAMAIS en cache `/api`, `/uploads` ni les pages de navigation : seulement `/assets`, `/fonts`, `/icons`.
+- Vérifié dans Chrome sur le build de production : service worker activé, bouton d'installation affiché, API non mise en cache. Tests : `src/pwa/__tests__/pwa.test.ts`.
+
+Reste à faire :
+
+- Non vérifié : installation réelle sur Android/iOS, pas de déploiement (staging puis prod via `deploy.sh`, l'image web doit être reconstruite) ; le mode hors ligne réel (coupure réseau) n'a été testé que par test unitaire.
+- Pas de notifications push ni de données hors ligne (choix volontaire : données d'agence jamais stockées sur l'appareil).
+
+Pièges et décisions :
+
+- Le checkout principal avait un `node_modules` incomplet ; le worktree `.claude/worktrees/pwa` a ses propres dépendances (`npm ci --ignore-scripts`).
+- `npm run i18n:extract` sur `main` réécrit ~14 catalogues (dérive d'autres PR) : seules mes 2 clés ont été gardées.
+- Le navigateur intégré de l'app Claude refuse les service workers : tester dans Chrome.
+
 ## Branche `feat/export-tableaux` — 2026-10-15
 
 **État :** PR #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)

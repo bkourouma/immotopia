@@ -7,6 +7,7 @@ import { LoginCredentials } from '../types/auth-types';
 import { API_ORIGIN } from '../config/api';
 import logoImmoTopia from '../assets/logo-immotopia.png';
 import { t } from '../i18n/t';
+import { InstallAppButton } from '../components/pwa/InstallAppButton';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -197,6 +198,10 @@ export const Login: React.FC = () => {
                   {t('Se connecter')}
                 </Button>
               </Form.Item>
+
+              <div style={{ marginTop: 'var(--space-3)' }}>
+                <InstallAppButton block />
+              </div>
 
               <Divider>{t('Ou continuer avec')}</Divider>
 
