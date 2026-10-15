@@ -17,6 +17,7 @@ let mockWorld: {
   resolutions: Row[];
   votes: Row[];
   proxies: Row[];
+  attendances: Row[];
 };
 let mockSeq = 0;
 
@@ -94,6 +95,27 @@ jest.mock('@prisma/client', () => {
         const r = mockWorld.resolutions.find(item => item.id === where.id)!;
         Object.assign(r, data);
         return r;
+      }),
+      // Spec 043 : la cloture de l'AG clot les votes encore ouverts.
+      updateMany: jest.fn(async ({ where, data }: Row) => {
+        const rows = mockWorld.resolutions.filter(
+          r => r.meetingId === where.meetingId && (where.voteStatus === undefined || r.voteStatus === where.voteStatus)
+        );
+        rows.forEach(r => Object.assign(r, data));
+        return { count: rows.length };
+      })
+    },
+    // Spec 043 : emargements (le vote du gestionnaire emarge le lot s'il ne l'est pas).
+    gMAttendance: {
+      findFirst: jest.fn(async ({ where }: Row) => {
+        const row = mockWorld.attendances.find(a => a.meetingId === where.meetingId && a.lotId === where.lotId);
+        return row ? { id: row.id } : null;
+      }),
+      findMany: jest.fn(async ({ where }: Row) => mockWorld.attendances.filter(a => a.meetingId === where.meetingId)),
+      create: jest.fn(async ({ data }: Row) => {
+        const row = { id: `att-${++mockSeq}`, ...data };
+        mockWorld.attendances.push(row);
+        return row;
       })
     },
     gMVote: {
@@ -151,6 +173,8 @@ jest.mock('@prisma/client', () => {
     }
   };
   client.$transaction = jest.fn(async (callback: any) => callback(client));
+  // Verrou consultatif de l'AG (spec 043) : sans effet sur le faux client.
+  client.$executeRaw = jest.fn(async () => 0);
 
   return { PrismaClient: jest.fn(() => client), Prisma: {} };
 });
@@ -210,7 +234,8 @@ function resetWorld(status = 'PLANNED') {
       }
     ],
     votes: [],
-    proxies: []
+    proxies: [],
+    attendances: []
   };
 }
 
@@ -484,5 +509,38 @@ describe('AG - pouvoirs', () => {
     await expectStatus(create('c2', 'c5'), 409, /pouvoirs ne peuvent plus/);
     await expectStatus(deleteMeetingProxyByTenant(T1, S1, 'M1', mockWorld.proxies[0].id), 409);
     expect(mockWorld.proxies).toHaveLength(1);
+  });
+});
+
+describe('AG en direct (spec 043) - ecritures du gestionnaire', () => {
+  beforeEach(() => resetWorld('IN_PROGRESS'));
+
+  it('la cloture de l AG clot les votes encore ouverts', async () => {
+    mockWorld.resolutions[0].voteStatus = 'OPEN';
+    await updateMeetingByTenant(T1, S1, 'M1', { status: 'COMPLETED' });
+    expect(mockWorld.resolutions[0].voteStatus).toBe('CLOSED');
+    expect(mockWorld.resolutions[0].voteClosedAt).toBeInstanceOf(Date);
+  });
+
+  it('un vote du gestionnaire garde son origine et emarge le lot en salle', async () => {
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'FOR', { userId: 'u-mgr' });
+    expect(mockWorld.votes[0]).toMatchObject({ lotId: 'A2', source: 'MANAGER', castByUserId: 'u-mgr' });
+    expect(mockWorld.attendances).toHaveLength(1);
+    expect(mockWorld.attendances[0]).toMatchObject({
+      tenantId: T1,
+      lotId: 'A2',
+      status: 'PRESENT',
+      mode: 'IN_PERSON',
+      recordedBy: 'MANAGER'
+    });
+    // Un second vote sur le meme lot n'ajoute pas d'emargement.
+    await castVoteAndRecomputeResolutionCounters(T1, S1, 'R1', 'A2', 'AGAINST', { userId: 'u-mgr' });
+    expect(mockWorld.attendances).toHaveLength(1);
+    expect(mockWorld.votes[0].vote).toBe('AGAINST');
+  });
+
+  it('enregistre l URL de visioconference', async () => {
+    const updated = await updateMeetingByTenant(T1, S1, 'M1', { videoConferenceUrl: 'https://visio.example.test/x' });
+    expect(updated.videoConferenceUrl).toBe('https://visio.example.test/x');
   });
 });

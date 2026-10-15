@@ -627,6 +627,8 @@ model Tenant {
   invoices                      Invoice[]
   invitations                   Invitation[]
   secureLinks                   SecureLink[]
+  gmParticipants                GMParticipant[]
+  gmAttendances                 GMAttendance[]
   externalAccessGrants          ExternalAccessGrant[]
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantEntities   ExternalAccessGrantEntity[]
@@ -1062,6 +1064,8 @@ enum SecureLinkScope {
   INSTALLMENT_PAYMENT
   /// Acces en lecture seule d'un tiers de confiance (lot B3, spec 034).
   EXTERNAL_ACCESS_GRANT
+  /// Acces personnel d'un copropriétaire a une assemblee generale en direct (spec 043).
+  GENERAL_MEETING_ACCESS
 }
 
 /// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
@@ -1905,6 +1909,7 @@ model CrmContact {
   syndicManaged              Syndicate[]           @relation("SyndicManager")
   gmProxiesAsGrantor         GMProxy[]             @relation("GMProxyGrantor")
   gmProxiesAsRepresentative  GMProxy[]             @relation("GMProxyRepresentative")
+  gmParticipations           GMParticipant[]
   lotOwnerProfiles           LotOwnerProfile[]
   lotTenantProfiles          LotTenantProfile[]
   ownerAccounts              OwnerAccount[]
@@ -4067,6 +4072,7 @@ model SyndicateLot {
   coowner              CrmContact?                @relation("LotCoowner", fields: [coownerId], references: [id], onDelete: SetNull)
   owner                CrmContact?                @relation("SyndicateLotOwner", fields: [ownerContactId], references: [id], onDelete: SetNull)
   votes                GMVote[]
+  gmAttendances        GMAttendance[]
   charges              ChargeCall[]
   chargePayments       ChargePayment[]
   ownerProfiles        LotOwnerProfile[]
@@ -4350,6 +4356,8 @@ model GeneralMeeting {
   quorum      Decimal?      @db.Decimal(5, 2)
   status      MeetingStatus @default(PLANNED)
   minutesUrl  String?       @map("minutes_url")
+  /// URL de visioconference facultative (https uniquement), affichee sur la page en direct (spec 043).
+  videoConferenceUrl String?       @map("video_conference_url")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -4357,6 +4365,8 @@ model GeneralMeeting {
   agendaItems GMAgendaItem[]
   resolutions GMResolution[]
   proxies     GMProxy[]
+  participants GMParticipant[]
+  attendances  GMAttendance[]
 
   @@index([syndicateId])
   @@index([status])
@@ -4392,6 +4402,10 @@ model GMResolution {
   votesAbstain Int               @default(0) @map("votes_abstain")
   sharesFor    Int               @default(0) @map("shares_for")
   createdAt    DateTime          @default(now()) @map("created_at")
+  /// Etat du vote en direct (spec 043) : PENDING (non soumise), OPEN, CLOSED.
+  voteStatus   GMResolutionVoteStatus @default(PENDING) @map("vote_status")
+  voteOpenedAt DateTime?              @map("vote_opened_at")
+  voteClosedAt DateTime?              @map("vote_closed_at")
 
   meeting         GeneralMeeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   votes           GMVote[]
@@ -4407,6 +4421,11 @@ model GMVote {
   lotId        String     @map("lot_id") @db.Uuid
   vote         VoteChoice
   createdAt    DateTime   @default(now()) @map("created_at")
+  /// Origine du vote (spec 043) : gestionnaire, copropriétaire connecté ou mandataire connecté.
+  source          GMVoteSource @default(MANAGER)
+  castByUserId    String?      @map("cast_by_user_id")
+  castByContactId String?      @map("cast_by_contact_id")
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at")
 
   resolution GMResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
   lot        SyndicateLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
@@ -4415,6 +4434,80 @@ model GMVote {
   @@index([resolutionId])
   @@index([lotId])
   @@map("gm_votes")
+}
+
+enum GMResolutionVoteStatus {
+  PENDING
+  OPEN
+  CLOSED
+}
+
+enum GMVoteSource {
+  MANAGER
+  CO_OWNER
+  PROXY_HOLDER
+}
+
+enum GMAttendanceStatus {
+  PRESENT
+  REPRESENTED
+  ABSENT
+}
+
+enum GMAttendanceMode {
+  ONLINE
+  IN_PERSON
+}
+
+enum GMAttendanceRecorder {
+  SELF
+  MANAGER
+}
+
+/// Contact invite a une AG (porteur des liens personnels, spec 043). Un par contact et par AG.
+model GMParticipant {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id")
+  meetingId  String    @map("meeting_id") @db.Uuid
+  contactId  String    @map("contact_id")
+  joinedAt   DateTime? @map("joined_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  contact CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, contactId])
+  @@index([tenantId])
+  @@index([contactId])
+  @@map("gm_participants")
+}
+
+/// Emargement d'un lot a une AG (spec 043). Absence de ligne = absent.
+model GMAttendance {
+  id                     String               @id @default(uuid()) @db.Uuid
+  tenantId               String               @map("tenant_id")
+  meetingId              String               @map("meeting_id") @db.Uuid
+  lotId                  String               @map("lot_id") @db.Uuid
+  status                 GMAttendanceStatus
+  mode                   GMAttendanceMode
+  attendeeContactId      String?              @map("attendee_contact_id")
+  representedByContactId String?              @map("represented_by_contact_id")
+  recordedBy             GMAttendanceRecorder @map("recorded_by")
+  recordedByUserId       String?              @map("recorded_by_user_id")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  lot     SyndicateLot   @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, lotId])
+  @@index([tenantId])
+  @@index([lotId])
+  @@map("gm_attendances")
 }
 
 model GMProxy {

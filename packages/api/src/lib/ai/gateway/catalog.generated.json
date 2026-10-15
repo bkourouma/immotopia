@@ -2850,12 +2850,34 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/direct",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/direct",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / direct",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
       "pathParams": ["syndicId", "meetingId", "lotId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / assemblees / {meetingId} / lots / {lotId} / convocation.docx",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / participants",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -6482,6 +6504,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/lien",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/lien",
+      "pathParams": ["syndicId", "meetingId", "contactId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / participants / {contactId} / lien",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
@@ -6493,12 +6526,45 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / presences",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions",
       "pathParams": ["syndicId", "meetingId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / assemblees / {meetingId} / resolutions",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote",
+      "pathParams": ["syndicId", "meetingId", "resolutionId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / resolutions / {resolutionId} / clore-vote",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote",
+      "pathParams": ["syndicId", "meetingId", "resolutionId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / resolutions / {resolutionId} / ouvrir-vote",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -7423,6 +7489,17 @@
       "pathParams": ["agencyId"],
       "module": "syndic-mandating-agencies",
       "summary": "syndic-mandating-agencies / {agencyId} / images / logo",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences/:lotId",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences/:lotId",
+      "pathParams": ["syndicId", "meetingId", "lotId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / presences / {lotId}",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
