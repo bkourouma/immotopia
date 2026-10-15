@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
-import { FilePdfOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
@@ -58,6 +58,7 @@ interface ChargeCallTableProps {
   onRecordPayment?: (charge: ChargeCall) => void;
   /** Callback pour l'action « Avis d'appel (PDF) » (lot S4). Optionnel, même règle que ci-dessus. */
   onDownloadNotice?: (charge: ChargeCall) => void;
+  onDownloadNoticeWord?: (charge: ChargeCall) => void;
   /**
    * Fonds de la copropriété : quand la liste est fournie, une colonne « Fonds »
    * affiche le fonds qui reçoit en entier ce qui est payé sur l'appel.
@@ -72,6 +73,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   loading = false,
   onRecordPayment,
   onDownloadNotice,
+  onDownloadNoticeWord,
   funds,
   onAssignFund
 }) => {
@@ -143,7 +145,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           }
         ]
       : []),
-    ...(onRecordPayment || onDownloadNotice || onAssignFund
+    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund
       ? [
           {
             title: t('Actions'),
@@ -158,6 +160,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                 {onDownloadNotice ? (
                   <Button size="small" icon={<FilePdfOutlined />} onClick={() => onDownloadNotice(item)}>
                     {t("Avis d'appel (PDF)")}
+                  </Button>
+                ) : null}
+                {onDownloadNoticeWord ? (
+                  <Button size="small" icon={<FileWordOutlined />} onClick={() => onDownloadNoticeWord(item)}>
+                    {t("Avis d'appel (Word)")}
                   </Button>
                 ) : null}
                 {onAssignFund ? (

@@ -2795,6 +2795,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
+      "pathParams": ["syndicId", "meetingId", "lotId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / lots / {lotId} / convocation.docx",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
@@ -2845,6 +2856,17 @@
       "pathParams": ["syndicId", "chargeId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / charges / {chargeId} / avis",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/avis.docx",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/avis.docx",
+      "pathParams": ["syndicId", "chargeId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / charges / {chargeId} / avis.docx",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -3252,6 +3274,17 @@
       "pathParams": ["syndicId", "receiptId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / quittances / {receiptId} / fichier",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/quittances/:receiptId/fichier.docx",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/quittances/:receiptId/fichier.docx",
+      "pathParams": ["syndicId", "receiptId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / quittances / {receiptId} / fichier.docx",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
