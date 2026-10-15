@@ -4,12 +4,16 @@
  * de Intl fr-FR non encodables en WinAnsi) et exports CSV non échappés.
  */
 const mockPrisma: any = {
-  rentalPayment: { findMany: jest.fn() }
+  rentalPayment: { findMany: jest.fn() },
+  tenant: { findUnique: jest.fn() },
+  syndicate: { findFirst: jest.fn() }
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+import { PDFDocument } from 'pdf-lib';
 import {
   generateRevenueReportPDF,
+  generateOccupancyReportPDF,
   generateRevenueReportCSV,
   exportData,
   pdfSafe
@@ -32,9 +36,30 @@ const data: any = {
 };
 
 describe('rapport de revenus', () => {
+  beforeEach(() => {
+    mockPrisma.tenant.findUnique.mockResolvedValue({ name: 'Agence Éléonore', logoUrl: null, financeSettings: null });
+    mockPrisma.syndicate.findFirst.mockResolvedValue(null);
+  });
+
   it('PDF : ne lève pas (adresse à virgule, accents, montants à 9 chiffres)', async () => {
     const buffer = await generateRevenueReportPDF(data, 'tenant-a');
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    expect(mockPrisma.tenant.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'tenant-a' } }));
+  });
+
+  it("PDF d'occupation : en-tête de l'agence et pied paginé sur plusieurs pages", async () => {
+    const occupancy: any = {
+      asOfDate: new Date('2026-09-30'),
+      totalProperties: 30,
+      occupiedProperties: 20,
+      availableProperties: 10,
+      occupancyRate: 66.666,
+      properties: Array.from({ length: 30 }, (_, index) => ({ address: `Lot ${index} — Cocody ✓`, status: 'OCCUPIED' }))
+    };
+    const buffer = await generateOccupancyReportPDF(occupancy, 'tenant-a');
+    const pdf = await PDFDocument.load(buffer);
+    expect(pdf.getPageCount()).toBeGreaterThan(1);
+    expect(mockPrisma.tenant.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'tenant-a' } }));
   });
 
   it('pdfSafe remplace les caractères non encodables', () => {

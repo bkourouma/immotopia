@@ -1,5 +1,8 @@
 {
   " et ": " و ",
+  "Avis d'appel (Word)": "إشعار المطالبة (Word)",
+  "Convocation (Word)": "الدعوة إلى الجمعية (Word)",
+  "Télécharger (Word)": "تنزيل (Word)",
   "—": "—",
   "{{count}} actifs": "{{count}} نشطة",
   "{{count}} avis seront retentés (e-mail et WhatsApp) pour les appels de cette exécution encore dus et sans avis envoyé.": "ستتم إعادة محاولة إرسال {{count}} إشعار (بريد إلكتروني وواتساب) لنداءات هذا التنفيذ التي لا تزال مستحقة ولم يُرسل لها إشعار.",

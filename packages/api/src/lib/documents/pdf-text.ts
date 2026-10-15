@@ -1,3 +1,5 @@
+import { currentLanguage, type Language } from '../../i18n';
+
 /**
  * Caractères propres à WinAnsi (Windows-1252) au-delà de Latin-1 : ceux que
  * pdf-lib sait aussi encoder avec les polices standard (`Helvetica`).
@@ -32,3 +34,12 @@ export function sanitizeForPdf(text: string): string {
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+
+/**
+ * Langue des libellés fixes d'un PDF : celle de la requête, sauf l'arabe
+ * (Helvetica ne dessine pas l'arabe : repli sur le français plutôt que « ? »).
+ */
+export function pdfLanguage(): Language {
+  const language = currentLanguage();
+  return language === 'ar' ? 'fr' : language;
+}

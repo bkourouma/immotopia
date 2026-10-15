@@ -527,6 +527,24 @@ export async function deleteMeetingAgendaItem(
   return response.data.data;
 }
 
+/** Convocation Word d'un lot à l'assemblée (`GET .../assemblees/:meetingId/lots/:lotId/convocation.docx`). */
+export async function downloadMeetingConvocationWord(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  lotId: string,
+  fallbackName = 'convocation.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${encodeURIComponent(meetingId)}/lots/${encodeURIComponent(lotId)}/convocation.docx`,
+    { responseType: 'blob' }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}
+
 export async function generateMeetingMinutesDocx(tenantId: string, syndicId: string, meetingId: string): Promise<Blob> {
   const response = await apiClient.post(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/compte-rendu`,

@@ -172,6 +172,30 @@ export async function getChargeCallNoticeForTenant(
 }
 
 /**
+ * Gestion : données de l'avis (celles du PDF) et identité, pour un rendu autre
+ * que PDF (avis Word). Même garde d'appartenance que `getChargeCallNoticeForTenant`.
+ */
+export async function loadChargeCallNoticeForTenant(
+  tenantId: string,
+  syndicateId: string,
+  chargeCallId: string
+): Promise<{
+  data: ChargeCallNoticeData;
+  branding: DocumentBranding;
+  paymentMethods: ChargeCallNoticeData['paymentMethods'];
+  lotId: string;
+}> {
+  const call = await findTenantCall(tenantId, syndicateId, chargeCallId);
+  const context = await loadNoticeRenderContext(tenantId, call.syndicateId);
+  return {
+    data: toNoticeData(call, context.paymentMethods),
+    branding: context.branding,
+    paymentMethods: context.paymentMethods,
+    lotId: call.lotId
+  };
+}
+
+/**
  * Portail : avis d'un appel d'un lot du périmètre (`resolveCoOwnerScope`).
  * Les copropriétés du périmètre sont déjà vérifiées comme étant de l'agence.
  * Le destinataire imprimé est le contact de la session pour ce lot (relu

@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 import {
   ChargeSchedule,
   ChargeSchedulePreview,
@@ -146,6 +147,22 @@ export async function previewChargeSchedule(
     `${scheduleBase(tenantId, syndicId, scheduleId)}/apercu`
   );
   return response.data.data;
+}
+
+/** Avis d'appel en Word (`GET .../charges/:chargeId/avis.docx`), nom tiré de `Content-Disposition`. */
+export async function downloadChargeCallNoticeWord(
+  tenantId: string,
+  syndicId: string,
+  chargeId: string,
+  fallbackName = 'avis-appel.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(`${base(tenantId, syndicId)}/charges/${chargeId}/avis.docx`, {
+    responseType: 'blob'
+  });
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }
 
 /** Déclenche le téléchargement direct de l'avis d'appel (PDF, fichier privé). */

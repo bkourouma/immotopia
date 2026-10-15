@@ -62,6 +62,26 @@ Pièges et décisions :
 - Recette dans un panneau masqué : l'interrogation se met en pause (`document.hidden`) ; l'agent de recette force la visibilité par JavaScript.
 - La base de démo n'avait aucune agence Syndic : le seed des packs a été refusé par l'outil de sécurité ; l'agence a été créée par l'interface avec l'accord de l'utilisateur.
 
+## Branche `feat/modeles-syndic-word` — 2026-10-15
+
+**État :** prêt à relire (PR 133 ; la PR 129 des modèles standard est fusionnée dans `main`)
+**Dernier commit :** voir `git log` de la branche
+
+Fait :
+
+- Trois routes `.docx` (SYNDIC_VIEW) : avis d'appel `charges/:chargeId/avis.docx`, quittance `quittances/:receiptId/fichier.docx` (depuis le snapshot figé), convocation d'AG `assemblees/:meetingId/lots/:lotId/convocation.docx` (`?dateLimitePouvoir=AAAA-MM-JJ`). Code : `lib/syndics/word-documents.ts`, `controllers/syndic-word-documents-controller.ts`.
+- Boutons « Word » dans l'écran des appels, des quittances et la fiche d'assemblée. Catalogue de balises à jour. Rendu LibreOffice contrôlé (balises toutes résolues).
+
+Reste à faire :
+
+- Ouvrir un des documents dans Microsoft Word (jamais fait). Convocation : pas de description par point d'ordre du jour ; tantièmes et e-mail vides sur une quittance (le snapshot ne les porte pas).
+- Modèles standard (PR 129, fusionnée le 2026-10-15) : rejouer `npm run db:seed:document-templates` sur chaque base pour que le défaut locatif devienne le modèle standard ; pied « Page » du DOCX et libellés des PDF en arabe restent en français ; ouvrir un document dans Word (jamais fait).
+
+Pièges et décisions :
+
+- `ai.catalog` : toute nouvelle route impose `npm run ai:catalog` (catalog.generated.json).
+- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe avec une config ts-jest sans diagnostics, et en CI.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;

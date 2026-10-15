@@ -112,6 +112,7 @@ import {
   renameFundHandler,
   adjustFundBalanceHandler
 } from '../controllers/syndic-controller';
+import { downloadConvocationDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 const router = Router();
 
@@ -376,6 +377,11 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/convocation',
   requirePropertyPermission('SYNDIC_EDIT'),
   resendMeetingConvocationHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  downloadConvocationDocxHandler
 );
 router.patch(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId',

@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { uploadTemplate, extractPlaceholders } from '../../src/services/document-template-service';
+import { standardTemplateForDocType } from '../../src/lib/documents/docx-standard-templates';
 import { decideTemplateRefresh, PREVIOUS_SHIPPED_HASHES } from '../../src/services/document-template-refresh';
 
 const prisma = new PrismaClient();
@@ -109,6 +110,9 @@ async function seedDocumentTemplates() {
 
   for (const docTypeConfig of docTypes) {
     const candidates = [path.join(templatesDir, docTypeConfig.filename)];
+    // Modèle standard avec en-tête et logo (assets/modeles_standard), avant les anciens fichiers.
+    const standard = standardTemplateForDocType(docTypeConfig.type);
+    if (standard) candidates.push(path.join(projectRoot, 'assets', 'modeles_standard', standard.fileName));
     if (docTypeConfig.legacyFilename) {
       candidates.push(path.join(legacyDir, docTypeConfig.legacyFilename));
     }

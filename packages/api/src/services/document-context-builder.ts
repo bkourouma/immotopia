@@ -22,6 +22,8 @@ import {
   propertyTypeLabel
 } from './document-context-helpers';
 import { t } from '../i18n';
+import { resolveDocumentBranding } from '../lib/documents/document-branding';
+import { buildCommonDocumentContext } from '../lib/documents/docx-branding';
 import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
 
 /** Montant Prisma (`Decimal`), nombre ou chaine. */
@@ -339,6 +341,26 @@ async function buildCommonDocumentFields(
   };
 }
 
+/**
+ * Contexte commun à tous les modèles DOCX (émetteur, copropriété vide, date,
+ * référence, logos), placé SOUS les clés propres du document : celles-ci
+ * gardent la priorité. Un échec de lecture de l'identité ne bloque jamais le
+ * document : il sort sans en-tête renseigné.
+ */
+async function withCommonContext(
+  tenantId: string,
+  context: Record<string, any>,
+  reference: string | null | undefined
+): Promise<Record<string, any>> {
+  let branding = null;
+  try {
+    branding = await resolveDocumentBranding(tenantId, null);
+  } catch (error) {
+    logger.warn('Document branding unavailable, DOCX header left empty', { error, tenantId });
+  }
+  return { ...buildCommonDocumentContext(branding, { reference }), ...context };
+}
+
 /** Lieu d'emission : ville de l'agence, a defaut son adresse. */
 function issuePlace(agency: any): string {
   return orDash(agency?.city || agency?.address);
@@ -631,7 +653,7 @@ async function buildLeaseContext(kind: LeaseKind, tenantId: string, leaseId: str
     }));
   }
 
-  return context;
+  return withCommonContext(tenantId, context, context.BAIL_NUMERO);
 }
 
 /**
@@ -825,7 +847,7 @@ export async function buildRentReceiptContext(
     DATE_PAIEMENT: orDash(formatDate(payment.succeeded_at || payment.initiated_at))
   };
 
-  return context;
+  return withCommonContext(tenantId, context, context.RECU_NUMERO);
 }
 
 /**
@@ -1051,7 +1073,7 @@ export async function buildRentStatementContext(
     OBSERVATIONS: observations.length > 0 ? observations.join(' ') : NON_RENSEIGNE
   };
 
-  return context;
+  return withCommonContext(tenantId, context, context.RELEVE_REFERENCE);
 }
 
 /**
@@ -1100,8 +1122,12 @@ export function validateContext(
 
   // Critical placeholders that must be present
   const criticalPlaceholders = ['AGENCE_NOM', 'LOCATAIRE_NOM', 'BAIL_NUMERO', 'BAIL_LOYER_MENSUEL'];
+  // Les logos ne sont pas des valeurs du contexte : ils sont posés après le
+  // rendu (injectDocxImages) et disparaissent d'eux-mêmes sans image.
+  const injectedAfterRender = ['LOGO_EMETTEUR', 'LOGO_COPROPRIETE'];
 
   placeholders.forEach(placeholder => {
+    if (injectedAfterRender.includes(placeholder)) return;
     if (!(placeholder in context) || context[placeholder] === null || context[placeholder] === undefined) {
       if (criticalPlaceholders.includes(placeholder)) {
         missing.push(placeholder);
