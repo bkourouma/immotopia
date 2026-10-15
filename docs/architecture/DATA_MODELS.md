@@ -426,6 +426,64 @@ même fichier (ni `UPDATE`, ni index partiel, ni valeur par défaut). Elle est o
 la migration de la colonne. Une autre branche qui ajoute sa propre valeur à `SecureLinkScope`
 prend un horodatage et un nom distincts.
 
+## Paiement mobile des charges de copropriété (spec 042)
+
+Les copropriétaires règlent leurs appels de charges par mobile money (PaySecureHub) depuis le
+portail ou un lien sécurisé. Spec : [specs/042-syndic-paiement-mobile](../../specs/042-syndic-paiement-mobile/spec.md),
+contrats : [contracts.md](../../specs/042-syndic-paiement-mobile/contracts.md). Le compte
+fournisseur est celui **de la copropriété**, jamais celui du cabinet : aucun repli sur
+`PaymentGatewayConfig`.
+
+### `SyndicPaymentGatewayConfig` (table `syndic_payment_gateway_configs`)
+
+Une ligne par copropriété (`syndicate_id` unique), `tenantId` posé côté serveur. Reprend les
+champs de `PaymentGatewayConfig` : `provider`, `mode` (`SIMULATOR`/`LIVE`), `isActive`,
+`merchantId`, `apiKeyEncrypted` (AES-256-GCM, `PAYMENT_SECRETS_KEY`, **jamais renvoyée** par
+l'API), `apiKeyLast4`, `lastTestAt/Ok/Message`, `updatedByUserId`. Sans ligne, l'API répond
+les valeurs par défaut (simulateur, inactif) sans rien écrire. Index `tenantId` ; couverte par
+`schema-tenant-coverage.test.ts`.
+
+### `SyndicOnlineCheckout` (table `syndic_online_checkouts`)
+
+Une tentative de paiement en ligne d'un ou plusieurs appels d'un **lot**. Rattachée à la
+copropriété, au lot et à la configuration utilisée (`configId`, `onDelete: Restrict`).
+
+| Champ                                                   | Rôle                                                                                                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `origin`, `tenantClientId`, `secureLinkId`, `contactId` | Point d'entrée (portail ou lien) et payeur ; champs simples, sans relation, jamais un jeton                                      |
+| `codePaiement`                                          | Unique, préfixe `IMS-` ; clé d'idempotence du `ChargePayment` créé                                                               |
+| `amount`, `receivedAmount`, `currency`                  | Montant demandé et montant rapporté par le fournisseur                                                                           |
+| `chargeCallIds`                                         | Appels visés, figés au lancement (`ChargeCall.id`, champ simple)                                                                 |
+| `status` (`OnlineCheckoutStatus`)                       | `PENDING`, `SUCCESS`, `FAILED`, `CANCELED`, `EXPIRED`, `REVIEW`                                                                  |
+| `reviewKind`, `reviewReason`                            | Motif de mise en revue (`AMOUNT_MISMATCH`, `FISCAL_YEAR_CLOSED`, `CALLS_UNAVAILABLE`, `DUPLICATE_TRANSACTION`, `CONTRARY_STATE`) |
+| `resolution`, `resolutionNote`, `resolvedAt/ByUserId`   | Décision du gestionnaire (`ACCEPTED`/`REJECTED`), note obligatoire                                                               |
+| `chargePaymentId` (unique)                              | Encaissement enregistré ; nul tant que le fournisseur n'a pas confirmé                                                           |
+
+Index `(tenantId, status)`, `(syndicateId, status)`, `(syndicateId, createdAt)`, `lotId`,
+`(tenantId, secureLinkId)`. `tenantId` direct : gardé par l'extension d'isolation.
+
+### Champs ajoutés à `ChargePayment`
+
+- `origin` (`ChargePaymentOrigin` : `MANUAL` par défaut, `ONLINE`) ;
+- `idempotencyKey` (unique, nullable) : `codePaiement` du checkout pour un paiement en ligne ;
+- `providerTransactionId` (unique, nullable) : un même paiement opérateur ne s'enregistre
+  qu'une fois (le doublon met le checkout en `REVIEW` / `DUPLICATE_TRANSACTION`) ;
+- relation inverse `onlineCheckout`.
+
+### Autres ajouts
+
+- `SecureLinkScope.CHARGE_CALL_PAYMENT` : `objectType = "ChargeCall"`, un lien = un appel ;
+  URL `${FRONTEND_URL}/payer-charges#<jeton>`.
+- Compte comptable **5525** « PaySecureHub (mobile money) » de la copropriété (classe 5, actif),
+  créé à la première utilisation ; encaissement en ligne = débit 5525 / crédit copropriétaire ;
+  reversement enregistré par le gestionnaire = débit 521 / crédit 5525 (`documentType`
+  `SYNDIC_GATEWAY_PAYOUT`).
+
+**Migrations** (non commitées au moment de la rédaction, additives) :
+`20261015115900_secure_link_scope_charge_call_payment` (valeur d'enum, seule dans sa
+migration) puis `20261015120000_syndic_paiement_mobile` (deux tables, enums, colonnes de
+`charge_payments`).
+
 ## LandRegularization — régularisation foncière (lot B2, spec 033)
 
 Suivi d'avancement de la régularisation foncière d'un bien (attestation villageoise, ACD,

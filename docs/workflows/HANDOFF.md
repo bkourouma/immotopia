@@ -36,6 +36,24 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-paiement-mobile` — 2026-10-15
+
+**État :** en cours (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
+**Dernier commit :** `3730cd1f` écrans du paiement mobile (poussé sur origin)
+
+Paiement mobile money des appels de charges par les copropriétaires (spec `specs/042-syndic-paiement-mobile/`, contrat d'API dans `contracts.md`). Décisions de l'utilisateur : un compte PaySecureHub PAR COPROPRIÉTÉ, sans repli vers le compte du cabinet ; appels entiers seulement ; frais selon le `feesPaidBy` de l'agence ; lien « Payer cet appel » sans connexion dans les avis et relances.
+
+Fait (commité) : spec et contrats ; schéma et 2 migrations (`SyndicPaymentGatewayConfig`, `SyndicOnlineCheckout`, idempotence de `ChargePayment`, portée `CHARGE_CALL_PAYMENT`) ; `lib/payment-gateway/checkout-core.ts` (cœur commun, loyers inchangés) ; variables `paymentUrl`/`paymentBlock` dans les avis et relances (résolveur qui renvoie `null` pour l'instant) et relance au copropriétaire réel ; écrans web (portail, onglet gestionnaire « Paiements en ligne », pages publiques `/payer-charges`). tsc API et web à 0 erreur ; 275 tests API et 109 tests web ciblés verts.
+
+Reste à faire : moteur Syndic (`lib/syndics/online-payment/`), comptabilité 5525 et reversements, API de configuration et routes gestionnaire (agents lancés le 2026-10-15) ; puis API portail (M3, et ajouter `syndicateId` et le code du paiement en cours aux appels du portail, demandés par l'écran), lien sécurisé (M6 API, brancher `resolveChargeCallPaymentUrl`), `navigation/model.tsx` (`activeFor` de « syndics-finances »), extraction i18n unique à la fin, classeur des fonctionnalités, relectures code et sécurité, recette démo au simulateur, 3 PR empilées.
+
+Pièges et décisions :
+
+- Ne pas lancer `prisma format` : il réécrit ~600 lignes du schéma.
+- Conteneur de test dédié `immotopia-smm-test` (port 55471, identifiants de test seulement, migrations appliquées).
+- Les agents web n'ont pas lancé `i18n:extract` (catalogues partagés) : à faire en une fois.
+- À trancher : langue du libellé « Payer en ligne » dans les messages (langue de la requête actuellement) ; numéro du reçu absent du statut public (contrat §3.3) ; mode LIVE non validé (le montant BMI inclut-il les frais ?).
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;
