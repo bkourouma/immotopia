@@ -127,8 +127,10 @@ Migrations (P1), dans cet ordre :
 - **Clé RIB UEMOA** (avertissement seulement) : RIB = banque (5) + guichet
   (5) + compte (12) + clé (2) ; lettres remplacées par la table française
   (A,J→1 ; B,K,S→2 ; C,L,T→3 ; D,M,U→4 ; E,N,V→5 ; F,O,W→6 ; G,P,X→7 ;
-  H,Q,Y→8 ; I,R,Z→9) ; clé attendue = 97 − ((89·banque + 15·guichet +
-  3·compte) mod 97). Écart → avertissement
+  H,Q,Y→8 ; I,R,Z→9) ; clé attendue = 97 − ((22 premiers caractères
+  convertis, lus comme un nombre, × 100) mod 97). Les poids 89/15/3 de la
+  formule française ne valent que pour un compte de 11 caractères. Vérifié
+  sur le RIB publié `CI008 01113 011342912005 89`. Écart → avertissement
   « La clé RIB ne correspond pas au calcul habituel : vérifiez le RIB auprès du titulaire. »
 - **Code banque** = caractères 5 à 9 de l'IBAN ; **4 derniers** = 4 derniers
   caractères de l'IBAN.
