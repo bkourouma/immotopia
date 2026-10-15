@@ -349,7 +349,12 @@ export const MeetingLivePage: React.FC = () => {
     if (result.status === 'ok') {
       setStale(false);
       setState(previous => ({ kind: 'ok', view: newest(previous, result.view) }));
-      return isOver(result.view) ? false : LIVE_POLL_INTERVAL_MS;
+      if (isOver(result.view)) {
+        // L'assemblée est terminée : le jeton n'a plus d'usage, ne pas le garder en stockage.
+        forgetToken();
+        return false;
+      }
+      return LIVE_POLL_INTERVAL_MS;
     }
     if (result.status === 'invalid') {
       forgetToken();
@@ -364,9 +369,9 @@ export const MeetingLivePage: React.FC = () => {
 
   const { refresh } = useVisiblePolling(poll);
 
-  const applyActionFailure = (status: string) => {
+  const applyActionFailure = (status: string, message?: string) => {
     if (status === 'conflict') {
-      setActionError(t("Le vote n'est plus ouvert ou l'assemblée n'est plus en cours."));
+      setActionError(message || t("Le vote n'est plus ouvert ou l'assemblée n'est plus en cours."));
       refresh();
     } else if (status === 'rate_limited') {
       setActionError(t('Trop de tentatives, réessayez dans quelques instants.'));
@@ -390,7 +395,7 @@ export const MeetingLivePage: React.FC = () => {
       setState(previous => ({ kind: 'ok', view: newest(previous, result.view) }));
       return;
     }
-    applyActionFailure(result.status);
+    applyActionFailure(result.status, 'message' in result ? result.message : undefined);
   };
 
   const onVote = async (resolutionId: string, lotIds: string[], vote: VoteChoice) => {
@@ -414,7 +419,7 @@ export const MeetingLivePage: React.FC = () => {
       }));
       return;
     }
-    applyActionFailure(result.status);
+    applyActionFailure(result.status, 'message' in result ? result.message : undefined);
   };
 
   // L'avis de confirmation s'efface quand le vote est clos.

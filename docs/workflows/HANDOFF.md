@@ -36,6 +36,30 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-ag-en-direct` — 2026-10-15
+
+**État :** en cours (code, tests ciblés et wiki faits ; revue de sécurité puis PR)
+**Dernier commit :** `411ef147` docs(fonctionnalites): AG en direct
+**Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
+
+Fait :
+
+- Spec `specs/043-syndic-ag-en-direct/spec.md` (décisions D1–D12 prises par le Pilote, à valider par le fondateur : lien par contact et par AG, présence au clic « Rejoindre », quorum indicatif, état de vote PENDING/OPEN/CLOSED, résultats visibles à la clôture du vote, interrogation 3 s au lieu de websocket).
+- API : modèles `GMParticipant`, `GMAttendance`, champs de vote, scope `GENERAL_MEETING_ACCESS`, migration `20261015100000_syndic_ag_en_direct` (jamais jouée sur une vraie base) ; console, émargement, ouvrir/clore le vote, participants et liens ; routes publiques `/api/public/assemblees/{etat,rejoindre,voter}` ; portail `POST /assemblees/:meetingId/acces` ; lien dans la convocation ; feuille de présence dans le PV.
+- Web : page `/ag-direct`, console « En direct » du détail d'AG, projection, bouton du portail.
+- Vérifié : `npm run typecheck` (0 erreur), `check:architecture`, 15 suites Jest ciblées (264 tests), 25 fichiers Vitest ciblés, `wiki:check`.
+
+Reste à faire :
+
+- Revue de sécurité (lancée), corrections éventuelles, PR vers `main`.
+- Non vérifié : migration sur une vraie base, recette navigateur (démo), `measure:entry`, suites complètes, `test:isolation`, charge du polling sur une grande copropriété (chaque `/etat` relit lots, profils et votes).
+
+Pièges et décisions :
+
+- `npm run i18n:extract` de l'API a supprimé 35 traductions existantes (catalogue de départ incomplet) : catalogues reconstruits « HEAD + nouvelles clés ». Toujours relire le diff des catalogues après une extraction.
+- Un `prisma format` a réaligné ~200 lignes du schéma : retiré (commit `32dea7a8`). Ne pas lancer `prisma format` sur ce dépôt.
+- La session pilote a été coupée deux fois (fin du processus) : les agents d'arrière-plan s'arrêtent avec elle ; leur travail reste dans le worktree, les relancer par message.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;

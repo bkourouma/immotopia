@@ -1827,6 +1827,8 @@
   "L'assemblée n'est pas en cours : le vote est fermé": "الجمعية ليست قيد الانعقاد: التصويت مغلق",
   "La séance n'est pas ouverte : ouvrez-la avant de gérer les votes": "الجلسة غير مفتوحة: افتحها قبل إدارة التصويت",
   "Le vote de cette résolution est déjà ouvert": "التصويت على هذا القرار مفتوح بالفعل",
+  "Le copropriétaire de ce lot a déjà voté lui-même : son vote ne peut pas être remplacé par son mandataire.": "لقد صوّت مالك هذه الحصة بنفسه: لا يمكن لوكيله استبدال تصويته.",
+  "Le vote de ce lot a été enregistré par le syndic : adressez-vous à lui pour le modifier.": "تم تسجيل تصويت هذه الحصة من قبل مدير الاتحاد: يرجى التواصل معه لتعديله.",
   "Le vote de cette résolution n'est pas ouvert": "التصويت على هذا القرار غير مفتوح",
   "Lots présents ou représentés : {{lots}} sur {{totalLots}} ({{shares}} tantièmes sur {{totalShares}}, soit {{percent}} %).": "الوحدات الحاضرة أو الممثَّلة: {{lots}} من {{totalLots}} ({{shares}} حصة من {{totalShares}}، أي {{percent}} %).",
   "Présent(e)": "حاضر(ة)",

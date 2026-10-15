@@ -155,6 +155,7 @@ describe('MeetingLivePage', () => {
     expect(fetchState).toHaveBeenCalledTimes(1);
     await tick();
     expect(fetchState).toHaveBeenCalledTimes(2);
+    expect(window.sessionStorage.getItem(MEETING_TOKEN_STORAGE_KEY)).toBe(TOKEN);
 
     fetchState.mockResolvedValue(
       ok(
@@ -167,6 +168,8 @@ describe('MeetingLivePage', () => {
     );
     await tick();
     expect(screen.getByText('Assemblée terminée')).toBeTruthy();
+    // Le jeton n'a plus d'usage une fois l'AG terminée : il quitte le sessionStorage.
+    expect(window.sessionStorage.getItem(MEETING_TOKEN_STORAGE_KEY)).toBeNull();
     const calls = fetchState.mock.calls.length;
     await tick();
     await tick();
@@ -237,6 +240,25 @@ describe('MeetingLivePage', () => {
     expect(vote).toHaveBeenCalledWith(TOKEN, 'r1', [{ lotId: 'l1', vote: 'FOR' }]);
     expect(screen.getByText('Vote enregistré : Pour')).toBeTruthy();
     expect(screen.getByText('Lot A1 : Pour')).toBeTruthy();
+  });
+
+  it('affiche la raison donnée par le serveur quand le vote est refusé (409)', async () => {
+    fetchState.mockResolvedValue(ok(view()));
+    vote.mockResolvedValue({
+      status: 'conflict',
+      message: 'Le vote de ce lot a été enregistré par le syndic : adressez-vous à lui pour le modifier.'
+    });
+    render(<MeetingLivePage />);
+    await flush();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pour' }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(
+      screen.getByText('Le vote de ce lot a été enregistré par le syndic : adressez-vous à lui pour le modifier.')
+    ).toBeTruthy();
+    expect(screen.queryByText('Vote enregistré : Pour')).toBeNull();
   });
 
   it('vote lot par lot quand plusieurs lots sont représentés', async () => {

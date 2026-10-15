@@ -859,6 +859,73 @@ describe('Routes publiques : voter', () => {
     expect(state.body.data.resolutions[0].myVotes).toEqual([{ lotId: L3, vote: 'AGAINST', source: 'CO_OWNER' }]);
   });
 
+  it('un vote saisi par le gestionnaire n est pas ecrase en ligne (409, rien n est ecrit)', async () => {
+    mockPrisma.gMVote.rows.push({
+      id: id(703),
+      resolutionId: R1,
+      lotId: L1,
+      vote: 'FOR',
+      source: 'MANAGER',
+      castByUserId: 'user-manager'
+    });
+    const token = await issueToken(AWA);
+    await pub('/rejoindre', { token });
+    await openR1();
+    // Tout ou rien : le lot libre L3 n'est pas ecrit non plus.
+    const res = await pub('/voter', {
+      token,
+      resolutionId: R1,
+      votes: [
+        { lotId: L3, vote: 'AGAINST' },
+        { lotId: L1, vote: 'AGAINST' }
+      ]
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('syndic');
+    expect(mockPrisma.gMVote.rows).toHaveLength(1);
+    expect(mockPrisma.gMVote.rows[0]).toMatchObject({ lotId: L1, vote: 'FOR', source: 'MANAGER' });
+  });
+
+  it('un mandataire ne remplace pas le vote du copropriétaire (409) ; le copropriétaire remplace celui de son mandataire', async () => {
+    const bakary = await issueToken(BAKARY);
+    const eric = await issueToken(ERIC);
+    await pub('/rejoindre', { token: bakary });
+    await pub('/rejoindre', { token: eric });
+    await openR1();
+
+    // Le copropriétaire a voté lui-même : son mandataire ne peut plus voter pour ce lot.
+    expect((await pub('/voter', { token: bakary, resolutionId: R1, votes: [{ lotId: L2, vote: 'FOR' }] })).status).toBe(
+      200
+    );
+    const blocked = await pub('/voter', { token: eric, resolutionId: R1, votes: [{ lotId: L2, vote: 'AGAINST' }] });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.message).toContain('mandataire');
+    expect(mockPrisma.gMVote.rows).toHaveLength(1);
+    expect(mockPrisma.gMVote.rows[0]).toMatchObject({ lotId: L2, vote: 'FOR', source: 'CO_OWNER' });
+
+    // Inversement : le mandataire a voté, le copropriétaire reprend la main.
+    mockPrisma.gMVote.rows.length = 0;
+    expect(
+      (await pub('/voter', { token: eric, resolutionId: R1, votes: [{ lotId: L2, vote: 'AGAINST' }] })).status
+    ).toBe(200);
+    expect(mockPrisma.gMVote.rows[0]).toMatchObject({ source: 'PROXY_HOLDER', castByContactId: ERIC });
+    const replaced = await pub('/voter', { token: bakary, resolutionId: R1, votes: [{ lotId: L2, vote: 'ABSTAIN' }] });
+    expect(replaced.status).toBe(200);
+    expect(mockPrisma.gMVote.rows).toHaveLength(1);
+    expect(mockPrisma.gMVote.rows[0]).toMatchObject({
+      vote: 'ABSTAIN',
+      source: 'CO_OWNER',
+      castByContactId: BAKARY
+    });
+    // Le mandataire peut aussi revoter sa propre voix de mandataire.
+    mockPrisma.gMVote.rows.length = 0;
+    await pub('/voter', { token: eric, resolutionId: R1, votes: [{ lotId: L2, vote: 'FOR' }] });
+    expect(
+      (await pub('/voter', { token: eric, resolutionId: R1, votes: [{ lotId: L2, vote: 'AGAINST' }] })).status
+    ).toBe(200);
+    expect(mockPrisma.gMVote.rows[0]).toMatchObject({ vote: 'AGAINST', source: 'PROXY_HOLDER' });
+  });
+
   it('le copropriétaire voit le vote saisi par le gestionnaire sur son lot (et seulement le sien)', async () => {
     mockPrisma.gMVote.rows.push(
       { id: id(701), resolutionId: R1, lotId: L1, vote: 'FOR', source: 'MANAGER', castByUserId: 'user-manager' },

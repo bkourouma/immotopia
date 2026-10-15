@@ -41,8 +41,18 @@ const MEETING_BASE_SELECT = {
   syndicate: { select: { id: true, name: true, tenantId: true } }
 } as const;
 
+/**
+ * « AG introuvable » : sous-classe dediee pour que les appelants (lien
+ * personnel) la reconnaissent par `instanceof`, jamais par le texte traduit.
+ */
+export class MeetingNotFoundError extends NotFoundError {
+  constructor() {
+    super(t('Assemblée générale introuvable ou inaccessible'));
+  }
+}
+
 function meetingNotFound(): NotFoundError {
-  return new NotFoundError(t('Assemblée générale introuvable ou inaccessible'));
+  return new MeetingNotFoundError();
 }
 
 /** Assemblee de l'agence et de la copropriete, ou 404 identique a une assemblee inexistante. */

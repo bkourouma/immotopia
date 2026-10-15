@@ -17,7 +17,13 @@ import {
   voteSourceForRole,
   LAST_SEEN_WRITE_INTERVAL_MS
 } from './meeting-live-rules';
-import { loadLiveContext, loadMeetingBaseById, votableLotsFor, type LiveContext } from './meeting-live-context';
+import {
+  loadLiveContext,
+  loadMeetingBaseById,
+  MeetingNotFoundError,
+  votableLotsFor,
+  type LiveContext
+} from './meeting-live-context';
 import { MEETING_LINK_OBJECT_TYPE } from './meeting-participants';
 
 /**
@@ -125,7 +131,7 @@ async function withAccess<T>(token: string, run: (access: Access) => Promise<T>)
       return await run(access);
     } catch (error) {
       // Assemblee supprimee, lot disparu : pas de message qui distingue les cas pour un jeton.
-      if (error instanceof NotFoundError && error.message === t('Assemblée générale introuvable ou inaccessible')) {
+      if (error instanceof MeetingNotFoundError) {
         throw invalidSecureLinkError();
       }
       throw error;
@@ -401,6 +407,28 @@ export async function castPublicVotes(token: string, input: PublicVoteInput): Pr
       const votableByLot = new Map(votable.map(entry => [entry.lotId, entry]));
       for (const lotId of choices.keys()) {
         if (!votableByLot.has(lotId)) throw new NotFoundError(t('Lot introuvable ou inaccessible'));
+      }
+
+      // Un vote existant n'est pas toujours remplacable (decision D6) : le
+      // syndic garde la main sur ce qu'il a saisi, et un mandataire ne remplace
+      // pas le vote que le coproprietaire a donne lui-meme. Tout ou rien.
+      const existingVotes = await tx.gMVote.findMany({
+        where: { resolutionId: resolution.id, lotId: { in: [...choices.keys()] } },
+        select: { lotId: true, source: true, castByContactId: true }
+      });
+      for (const existing of existingVotes) {
+        if (existing.source === 'MANAGER') {
+          throw new ConflictError(
+            t('Le vote de ce lot a été enregistré par le syndic : adressez-vous à lui pour le modifier.')
+          );
+        }
+        if (existing.source === 'CO_OWNER' && votableByLot.get(existing.lotId)?.role === 'PROXY') {
+          throw new ConflictError(
+            t(
+              'Le copropriétaire de ce lot a déjà voté lui-même : son vote ne peut pas être remplacé par son mandataire.'
+            )
+          );
+        }
       }
 
       for (const [lotId, vote] of choices) {

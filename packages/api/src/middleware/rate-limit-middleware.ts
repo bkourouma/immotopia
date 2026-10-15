@@ -243,12 +243,13 @@ export function meetingLiveTokenKey(req: Request, bucket: string): string {
 }
 
 /**
- * AG en direct, routes publiques (spec 043) : 600/min par IP (une salle
- * partage souvent une IP), applique AVANT toute lecture du corps.
+ * AG en direct, routes publiques (spec 043) : 3000/min par IP (une salle
+ * derriere une seule IP : 20 requetes/min par participant), applique AVANT
+ * toute lecture du corps.
  */
 export const meetingLiveIpRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 600,
+  max: 3000,
   keyGenerator: req => `meeting-live-ip:${req.ip ?? 'inconnue'}`,
   handler: meetingLiveTooMany,
   standardHeaders: true,

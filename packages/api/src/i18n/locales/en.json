@@ -1827,6 +1827,8 @@
   "L'assemblée n'est pas en cours : le vote est fermé": "The meeting is not in progress: voting is closed",
   "La séance n'est pas ouverte : ouvrez-la avant de gérer les votes": "The session is not open: open it before managing votes",
   "Le vote de cette résolution est déjà ouvert": "Voting on this resolution is already open",
+  "Le copropriétaire de ce lot a déjà voté lui-même : son vote ne peut pas être remplacé par son mandataire.": "The owner of this lot has already voted in person: their vote cannot be replaced by their proxy holder.",
+  "Le vote de ce lot a été enregistré par le syndic : adressez-vous à lui pour le modifier.": "This lot's vote was recorded by the managing agent: please contact them to change it.",
   "Le vote de cette résolution n'est pas ouvert": "Voting on this resolution is not open",
   "Lots présents ou représentés : {{lots}} sur {{totalLots}} ({{shares}} tantièmes sur {{totalShares}}, soit {{percent}} %).": "Lots present or represented: {{lots}} of {{totalLots}} ({{shares}} shares out of {{totalShares}}, i.e. {{percent}} %).",
   "Présent(e)": "Present",

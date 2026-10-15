@@ -10,7 +10,7 @@ export type PublicMeetingFailure = 'invalid' | 'rate_limited' | 'unavailable';
 export type PublicMeetingResult = { status: 'ok'; view: LiveMeetingPublicView } | { status: PublicMeetingFailure };
 
 /** Un vote refusé parce que l'état a changé (résolution close, AG terminée) vaut `conflict`. */
-export type PublicMeetingVoteResult = PublicMeetingResult | { status: 'conflict' };
+export type PublicMeetingVoteResult = PublicMeetingResult | { status: 'conflict'; message?: string };
 
 // Appels publics : sans session (`withCredentials: false`), statut HTTP lu ici
 // (`validateStatus`) pour que le refresh de session et les redirections de
@@ -32,7 +32,11 @@ async function post(path: string, body: Record<string, unknown>): Promise<Public
     if (response.status === 200 && response.data?.success && response.data.data) {
       return { status: 'ok', view: response.data.data };
     }
-    if (response.status === 409) return { status: 'conflict' };
+    if (response.status === 409) {
+      // Le serveur donne la raison (vote du syndic, vote du copropriétaire, vote clos) dans la langue de la requête.
+      const message = (response.data as { message?: unknown } | undefined)?.message;
+      return typeof message === 'string' && message.trim() ? { status: 'conflict', message } : { status: 'conflict' };
+    }
     return { status: failureFor(response.status) };
   } catch {
     return { status: 'unavailable' };
