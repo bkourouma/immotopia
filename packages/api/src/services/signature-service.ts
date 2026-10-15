@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, type SignatureDocumentKind } from '@prisma/client';
 import { env } from '../config/env';
 import { currentLanguage, t } from '../i18n';
 import {
@@ -14,9 +14,7 @@ import { logger } from '../utils/logger';
 import { assertBelongsToTenant } from '../utils/tenant-ownership';
 import { runWithTenantContext } from '../utils/tenant-context';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
-import { getDocumentFile } from './document-generation-service';
 import { countSignaturesThisMonth } from './subscription-v2-service';
-import { convertDocxToPdf } from '../lib/pdf-convert';
 import { cancelOpenRequestsForTarget, cancelRequestInternal } from '../lib/signature/cancel';
 import type { CreateSignatureInput, ListSignaturesFilters } from '../lib/signature/schemas';
 import { toRequestDto } from '../lib/signature/dto';
@@ -36,7 +34,10 @@ import {
   notifyIssuer,
   prepareSignerToken
 } from '../lib/signature/notify';
-import { assertSignatureProviderEnabled } from '../lib/signature/provider';
+import { assertSignatureProviderEnabled, getSignatureProvider } from '../lib/signature/provider';
+import { getSignatureSource } from '../lib/signature/sources';
+import type { DefaultSigner, LoadedSource } from '../lib/signature/sources';
+import { hasPermission } from './permission-service';
 import { releaseSignature, reserveSignature, resolveSignatureQuotaPolicy } from '../lib/signature/quota';
 import { sealRequest } from '../lib/signature/sealing';
 import { generateToken, hashToken } from '../lib/signature/token';
@@ -150,38 +151,6 @@ async function assertWhatsappContact(tenantId: string, signer: NormalizedSigner)
   }
 }
 
-// ------------------------------------------------------------- document source
-
-type LeaseSource = { documentId: string; documentHash: string | null; pdf: Buffer; title: string };
-
-/**
- * Document source du bail : dernier contrat FINAL (`RentalDocument` de type
- * LEASE_CONTRACT), converti en PDF si c'est un DOCX. Refus clair sans contrat.
- */
-async function loadLeaseSource(tenantId: string, lease: { id: string; lease_number: string }): Promise<LeaseSource> {
-  const document = await prisma.rentalDocument.findFirst({
-    where: { tenant_id: tenantId, lease_id: lease.id, type: 'LEASE_CONTRACT', status: 'FINAL' },
-    orderBy: { created_at: 'desc' },
-    select: { id: true, mime_type: true, file_hash: true }
-  });
-  if (!document) {
-    throw new BadRequestError(
-      t("Aucun contrat n'a été généré pour ce bail : générez le contrat avant de l'envoyer en signature.")
-    );
-  }
-  const file = await getDocumentFile(tenantId, document.id);
-  const pdf = document.mime_type === 'application/pdf' ? file : await convertDocxToPdf(file);
-  if (pdf.subarray(0, 4).toString('latin1') !== '%PDF') {
-    throw new AppError(t('La conversion du contrat en PDF a échoué.'), 502, 'SERVICE_UNAVAILABLE');
-  }
-  return {
-    documentId: document.id,
-    documentHash: document.file_hash ?? null,
-    pdf,
-    title: t('Contrat de bail {{number}}', { number: lease.lease_number })
-  };
-}
-
 // ------------------------------------------------------------------- quota
 
 async function reserveQuota(tenantId: string, actorUserId: string): Promise<string> {
@@ -215,13 +184,31 @@ async function reserveQuota(tenantId: string, actorUserId: string): Promise<stri
 
 type Ctx = { tenantId: string; userId: string };
 
+/**
+ * Signataires proposés, nettoyés avant d'être servis : le téléphone n'est rendu qu'à un
+ * utilisateur qui peut lire les contacts CRM (sinon `contactId` seul, le consentement
+ * WhatsApp se vérifie côté API) ; un signataire sans nom retombe sur son e-mail, et sans
+ * nom ni e-mail il n'est pas proposé.
+ */
+async function visibleSigners(ctx: Ctx, signers: DefaultSigner[]) {
+  const canReadContacts = await hasPermission(ctx.userId, 'CRM_CONTACTS_VIEW', ctx.tenantId);
+  return signers
+    .map(signer => ({
+      ...signer,
+      fullName: signer.fullName?.trim() || signer.email?.trim() || '',
+      phone: canReadContacts ? (signer.phone ?? null) : null
+    }))
+    .filter(signer => signer.fullName);
+}
+
 async function persistRequest(args: {
   ctx: Ctx;
   requestId: string;
   input: CreateSignatureInput;
   signers: NormalizedSigner[];
   tokens: string[];
-  source: LeaseSource;
+  source: LoadedSource;
+  targetType: string;
   sourceFileKey: string;
   sourceHash: string;
   expiresAt: Date;
@@ -237,15 +224,15 @@ async function persistRequest(args: {
           id: requestId,
           tenantId: ctx.tenantId,
           kind: args.input.kind,
-          targetType: 'RentalLease',
+          targetType: args.targetType,
           targetId: args.input.targetId,
           title: args.source.title,
           language: currentLanguage(),
           status: 'SENT',
           providerId: args.providerId,
           providerRef: args.providerRef ?? null,
-          sourceDocumentId: args.source.documentId,
-          sourceDocHash: args.source.documentHash,
+          sourceDocumentId: args.source.documentId ?? null,
+          sourceDocHash: args.source.documentHash ?? null,
           sourceFileKey: args.sourceFileKey,
           sourceHash: args.sourceHash,
           sequential: args.input.sequential ?? false,
@@ -294,7 +281,7 @@ async function persistRequest(args: {
         payload: {
           requestId,
           kind: args.input.kind,
-          targetType: 'RentalLease',
+          targetType: args.targetType,
           targetId: args.input.targetId,
           signerCount: args.signers.length,
           channels: args.signers.map(s => s.channel),
@@ -324,25 +311,20 @@ async function persistRequest(args: {
 export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInput) {
   const provider = assertSignatureProviderEnabled();
 
-  await assertBelongsToTenant(prisma, 'rentalLease', input.targetId, ctx.tenantId, {
-    tenantField: 'tenant_id',
-    message: t('Bail introuvable.')
-  });
-  const lease = await prisma.rentalLease.findFirst({
-    where: { id: input.targetId, tenant_id: ctx.tenantId },
-    select: { id: true, lease_number: true, status: true }
-  });
-  if (!lease) throw new NotFoundError(t('Bail introuvable.'));
-  if (lease.status === 'CANCELED' || lease.status === 'ENDED') {
-    throw new BadRequestError(t('Ce bail est terminé ou annulé : il ne peut plus être envoyé en signature.'));
+  // Le type de document dit comment retrouver, figer et marquer sa cible (lib/signature/sources).
+  const source = getSignatureSource(input.kind);
+  // Liste d'autorisation (SG-R1) : seul un fournisseur déclaré qualifié signe un type qui exige un prestataire.
+  if (isProviderRequiredForSource(source) && !provider.qualified) {
+    throw new BadRequestError(t('Ce document exige un prestataire de signature qualifié ; contactez le support.'));
   }
+  await source.assertTarget(ctx, input.targetId);
   const signers = normalizeSigners(input.signers);
   for (const signer of signers) await assertWhatsappContact(ctx.tenantId, signer);
   const open = await prisma.signatureRequest.findFirst({
     where: {
       tenantId: ctx.tenantId,
-      targetType: 'RentalLease',
-      targetId: lease.id,
+      targetType: source.targetType,
+      targetId: input.targetId,
       kind: input.kind,
       status: { in: [...OPEN_REQUEST_STATUSES] }
     },
@@ -360,22 +342,28 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
   const expiresAt = new Date(now.getTime() + (input.expiresInDays ?? env.SIGNATURE_TOKEN_TTL_DAYS) * 86_400_000);
   const tokens = signers.map(() => generateToken());
   try {
-    const source = await loadLeaseSource(ctx.tenantId, lease);
-    const sourceHash = sha256Hex(source.pdf);
+    const fetched = await source.loadSource(ctx, input.targetId);
+    // Document généré à la volée : l'empreinte des données sert de repère (isSourceIntact).
+    const loaded: LoadedSource = {
+      ...fetched,
+      documentHash: fetched.documentHash ?? (await source.snapshotHash?.(ctx, input.targetId)) ?? null
+    };
+    const sourceHash = sha256Hex(loaded.pdf);
     const created = await provider.createRequest({
       tenantId: ctx.tenantId,
       requestId,
       kind: input.kind,
       signerCount: signers.length
     });
-    const sourceFileKey = await writeSignatureFile(ctx.tenantId, requestId, 'source.pdf', source.pdf);
+    const sourceFileKey = await writeSignatureFile(ctx.tenantId, requestId, 'source.pdf', loaded.pdf);
     await persistRequest({
       ctx,
       requestId,
       input,
       signers,
       tokens,
-      source,
+      source: loaded,
+      targetType: source.targetType,
       sourceFileKey,
       sourceHash,
       expiresAt,
@@ -458,10 +446,16 @@ async function finalizeCreation(args: {
 
 // ------------------------------------------------------------ lecture
 
-export async function listSignatureRequests(tenantId: string, filters: ListSignaturesFilters) {
+export async function listSignatureRequests(
+  tenantId: string,
+  filters: ListSignaturesFilters,
+  /** Types que l'utilisateur peut lire (permission du type) ; absent = tous. */
+  kinds?: readonly string[]
+) {
   const rows = await prisma.signatureRequest.findMany({
     where: {
       tenantId,
+      ...(kinds ? { kind: { in: [...kinds] as SignatureDocumentKind[] } } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.targetType ? { targetType: filters.targetType } : {}),
       ...(filters.targetId ? { targetId: filters.targetId } : {})
@@ -485,6 +479,31 @@ export async function getSignatureRequest(tenantId: string, id: string) {
   const events = await listChainedEvents(tenantId, id);
   const dto = toRequestDto(row, { events });
   return { ...dto, chainIntact: verifyEventChain(events).ok };
+}
+
+/**
+ * SG-R1 : le type exige-t-il un prestataire qualifié ? Vrai si la source le déclare
+ * ou si le type figure dans `SIGNATURE_PROVIDER_REQUIRED_KINDS` (tous les types).
+ */
+export function isProviderRequiredForSource(source: { kind: SignatureDocumentKind; providerRequired?: boolean }) {
+  return Boolean(source.providerRequired) || env.SIGNATURE_PROVIDER_REQUIRED_KINDS.includes(source.kind);
+}
+
+/**
+ * Contexte d'une cible pour l'écran « Envoyer pour signature » : type de cible,
+ * exigence de prestataire et signataires proposés par la source. La cible est
+ * vérifiée (agence, statut) comme à la création.
+ */
+export async function getSignatureTargetContext(ctx: Ctx, kind: string, targetId: string) {
+  const source = getSignatureSource(kind);
+  await source.assertTarget(ctx, targetId);
+  return {
+    kind: source.kind,
+    targetType: source.targetType,
+    // Vrai seulement si le fournisseur actif ne peut pas signer ce type (R-2).
+    providerRequired: isProviderRequiredForSource(source) && !getSignatureProvider().qualified,
+    signers: await visibleSigners(ctx, source.defaultSigners ? await source.defaultSigners(ctx, targetId) : [])
+  };
 }
 
 // ------------------------------------------------------------ annulation

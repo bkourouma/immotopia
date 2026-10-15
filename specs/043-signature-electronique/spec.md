@@ -46,6 +46,15 @@ prestataire, lot S6).
   explicite, horodatage, IP, empreinte du document. La valeur juridique exacte
   (droit ivoirien et OHADA, à valider par un juriste) conditionne l'usage pour
   la vente : prévoir un drapeau par type de document « prestataire requis ».
+  Mise en oeuvre (lot S4, 2026-10-15) : la variable
+  `SIGNATURE_PROVIDER_REQUIRED_KINDS` (liste de kinds, défaut `SALE_AGREEMENT`)
+  alimente `providerRequired` de la source ; le noyau refuse alors la signature
+  interne (400, « prestataire de signature qualifié ; contactez le support ») et
+  l'écran désactive l'envoi. Le compromis de vente est donc livré mais inutilisable
+  avec le fournisseur interne tant que le type n'est pas retiré de la variable ;
+  **l'avis juridique n'est pas rendu** : ce retrait est une décision du fondateur,
+  après cet avis. Les clauses du PDF du compromis sont des clauses types à faire
+  valider par un juriste.
 - **SG-R2 Immutabilité.** Le document source est figé par son SHA-256 à
   l'envoi. Toute modification après envoi annule la demande (`CANCELED`) et
   en crée une nouvelle.
@@ -97,6 +106,11 @@ prestataire, lot S6).
   prestataire ; passe par `config/env.ts` et `env.example`.
 - **SG-R14 Libellés.** Tous les textes passent par `t()`, trilingue fr/en/ar,
   marges logiques ; le certificat est produit dans la langue du document.
+  **Limite acceptée** : les PDF générés à la volée (mandats, compromis, état des
+  lieux) sont en français avec la police standard Helvetica (WinAnsi) ; tout
+  caractère hors de ce jeu (arabe, par exemple, dans un nom ou un libellé saisi)
+  est imprimé « ? » par `sanitizeForPdf` au lieu de faire échouer la génération.
+  Une police Unicode embarquée lèverait la limite.
 
 ## 5. Écrans
 

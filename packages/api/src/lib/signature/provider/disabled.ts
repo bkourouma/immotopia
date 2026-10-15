@@ -10,6 +10,7 @@ export function signatureDisabledError(): AppError {
 export function createDisabledProvider(): SignatureProvider {
   return {
     id: 'disabled',
+    qualified: false,
     async createRequest() {
       throw signatureDisabledError();
     },

@@ -67,7 +67,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
         kind,
         targetId,
         // `contactId` (si connu) part avec le signataire : l'API l'exige pour WHATSAPP.
-        signers: signers.map(signer => ({
+        signers: signers.map(({ phoneKnown: _phoneKnown, ...signer }) => ({
           ...signer,
           fullName: signer.fullName.trim(),
           contact: signer.channel === 'IN_PERSON' ? '' : signer.contact.trim()
@@ -91,7 +91,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
       title={t('Envoyer pour signature')}
       onCancel={onClose}
       width={720}
-      destroyOnClose
+      destroyOnHidden
       footer={[
         <Button key="cancel" onClick={onClose}>
           {t('Annuler')}
@@ -129,11 +129,14 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
               style={{ width: 120 }}
               options={CHANNELS.map(channel => {
                 // WhatsApp n'est offert que pour un signataire lié à un contact CRM.
-                const blocked = channel === 'WHATSAPP' && !signer.contactId;
+                const noPhone = channel === 'WHATSAPP' && Boolean(signer.contactId) && signer.phoneKnown === false;
+                const blocked = channel === 'WHATSAPP' && (!signer.contactId || noPhone);
                 return {
                   value: channel,
                   disabled: blocked,
-                  label: blocked ? `${channelLabel(channel)} — ${t('Lier à un contact CRM')}` : channelLabel(channel)
+                  label: blocked
+                    ? `${channelLabel(channel)} — ${noPhone ? t('Numéro indisponible') : t('Lier à un contact CRM')}`
+                    : channelLabel(channel)
                 };
               })}
             />

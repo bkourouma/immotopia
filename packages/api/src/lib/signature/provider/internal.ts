@@ -49,6 +49,7 @@ async function deliverWhatsapp(message: OutboundSignatureMessage): Promise<Deliv
 export function createInternalProvider(): SignatureProvider {
   return {
     id: 'internal',
+    qualified: false,
     async createRequest(input) {
       return { providerRef: `internal-${input.requestId}` };
     },

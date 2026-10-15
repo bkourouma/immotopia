@@ -47,6 +47,7 @@ import { DEPOSIT_HOLDER_LABELS, dateCourte } from './helpers';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
+import { SaleAgreementSignatures } from './SaleAgreementSignatures';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -156,6 +157,8 @@ export const SaleAgreementDetail: React.FC = () => {
   const [signOpen, setSignOpen] = useState(false);
   const [signedAt, setSignedAt] = useState<dayjs.Dayjs>(() => dayjs());
   const [signing, setSigning] = useState(false);
+  // Une demande de signature électronique ouverte : `signAgreement` l'annulerait.
+  const [signatureOpen, setSignatureOpen] = useState(false);
 
   const signer = async () => {
     if (!tenantId || !id) return;
@@ -467,9 +470,21 @@ export const SaleAgreementDetail: React.FC = () => {
 
         <Space wrap style={{ marginTop: 'var(--space-6)' }}>
           {peutSigner && (
-            <Button type="primary" onClick={() => setSignOpen(true)}>
-              {t('Signer le compromis')}
-            </Button>
+            <Tooltip
+              title={
+                signatureOpen
+                  ? t(
+                      'Une demande de signature électronique est en cours : annulez-la avant de marquer le compromis signé.'
+                    )
+                  : undefined
+              }
+            >
+              <span>
+                <Button type="primary" disabled={signatureOpen} onClick={() => setSignOpen(true)}>
+                  {t('Signer le compromis')}
+                </Button>
+              </span>
+            </Tooltip>
           )}
           {peutPasserActe && (
             <Tooltip
@@ -488,6 +503,16 @@ export const SaleAgreementDetail: React.FC = () => {
           )}
         </Space>
       </Card>
+
+      {agreement.status !== 'CANCELLED' && (
+        <SaleAgreementSignatures
+          agreementId={agreement.id}
+          number={agreement.number}
+          canSend={agreement.status === 'DRAFT'}
+          onChanged={() => void rafraichirApresMutation()}
+          onOpenChange={setSignatureOpen}
+        />
+      )}
 
       <Card
         title={t('Conditions suspensives')}

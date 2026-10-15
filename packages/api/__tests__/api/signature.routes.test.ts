@@ -22,12 +22,11 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
     next();
   }
 }));
-jest.mock('../../src/middleware/rental-rbac-middleware', () => ({
-  requireLeasesView: (_req: any, _res: any, next: any) => next(),
-  requireLeasesEdit: (_req: any, _res: any, next: any) => next()
-}));
-jest.mock('../../src/middleware/subscription-feature-middleware', () => ({
-  requireFeature: () => (_req: any, _res: any, next: any) => next()
+// Permission et abonnement selon le TYPE de document : testés dans signature-access.test.ts.
+const permittedSignatureKinds = jest.fn(async () => ['LEASE_CONTRACT']);
+jest.mock('../../src/middleware/signature-access-middleware', () => ({
+  requireSignatureKindAccess: () => (_req: any, _res: any, next: any) => next(),
+  permittedSignatureKinds: (...a: unknown[]) => (permittedSignatureKinds as any)(...a)
 }));
 jest.mock('../../src/middleware/signature-tenant-middleware', () => ({
   resolveSignatureTenant: (_req: any, _res: any, next: any) => next()
@@ -40,6 +39,7 @@ const cancelSignatureRequest = jest.fn();
 const remindSignatureRequest = jest.fn();
 const reissueInPersonToken = jest.fn();
 const sendSignatureFile = jest.fn();
+const getSignatureTargetContext = jest.fn();
 jest.mock('../../src/services/signature-service', () => ({
   createSignatureRequest: (...a: unknown[]) => createSignatureRequest(...a),
   listSignatureRequests: (...a: unknown[]) => listSignatureRequests(...a),
@@ -47,7 +47,8 @@ jest.mock('../../src/services/signature-service', () => ({
   cancelSignatureRequest: (...a: unknown[]) => cancelSignatureRequest(...a),
   remindSignatureRequest: (...a: unknown[]) => remindSignatureRequest(...a),
   reissueInPersonToken: (...a: unknown[]) => reissueInPersonToken(...a),
-  sendSignatureFile: (...a: unknown[]) => sendSignatureFile(...a)
+  sendSignatureFile: (...a: unknown[]) => sendSignatureFile(...a),
+  getSignatureTargetContext: (...a: unknown[]) => getSignatureTargetContext(...a)
 }));
 
 const getPublicSignature = jest.fn();
@@ -104,7 +105,7 @@ describe('agence : /api/signatures', () => {
 
   it('POST refuse un type inconnu, des signataires absents ou un champ non prévu (400)', async () => {
     for (const body of [
-      { ...validBody, kind: 'SALE_AGREEMENT' },
+      { ...validBody, kind: 'PIGEON' },
       { ...validBody, signers: [] },
       { ...validBody, unexpected: true },
       { ...validBody, signers: [{ ...validBody.signers[0], channel: 'PIGEON' }] },
@@ -122,11 +123,11 @@ describe('agence : /api/signatures', () => {
       '/api/signatures?status=SENT&targetType=RentalLease&targetId=l1&tenantId=tenant-2'
     );
     expect(response.status).toBe(200);
-    expect(listSignatureRequests).toHaveBeenCalledWith('tenant-2', {
-      status: 'SENT',
-      targetType: 'RentalLease',
-      targetId: 'l1'
-    });
+    expect(listSignatureRequests).toHaveBeenCalledWith(
+      'tenant-2',
+      { status: 'SENT', targetType: 'RentalLease', targetId: 'l1' },
+      ['LEASE_CONTRACT']
+    );
     expect((await request(app).get('/api/signatures?status=NOPE')).status).toBe(400);
   });
 
@@ -143,6 +144,23 @@ describe('agence : /api/signatures', () => {
     expect(reissued.body.data).toEqual({ inPersonUrlToken: 'jeton-sur-place' });
     expect(reissued.headers['cache-control']).toBe('no-store');
     expect(reissueInPersonToken).toHaveBeenCalledWith({ tenantId: 'tenant-1', userId: 'user-1' }, R1, S1);
+  });
+
+  it('GET contexte d’une cible : signataires proposés, type validé', async () => {
+    getSignatureTargetContext.mockResolvedValue({
+      kind: 'LEASE_CONTRACT',
+      targetType: 'RentalLease',
+      providerRequired: false,
+      signers: []
+    });
+    const ok = await request(app).get('/api/signatures/targets/LEASE_CONTRACT/lease-1/context');
+    expect(ok.status).toBe(200);
+    expect(getSignatureTargetContext).toHaveBeenCalledWith(
+      { tenantId: 'tenant-1', userId: 'user-1' },
+      'LEASE_CONTRACT',
+      'lease-1'
+    );
+    expect((await request(app).get('/api/signatures/targets/PIGEON/lease-1/context')).status).toBe(400);
   });
 
   it('refuse un identifiant qui n’est pas un UUID (400) sans appeler le service', async () => {

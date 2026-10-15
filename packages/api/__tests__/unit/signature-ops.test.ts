@@ -80,6 +80,7 @@ import {
   sealPendingSignatureRequests
 } from '../../src/services/signature-service';
 import { cancelOpenRequestsForTarget } from '../../src/lib/signature/cancel';
+import { leaseContractSource } from '../../src/lib/signature/sources/lease-contract';
 
 const ctx = { tenantId: 't1', userId: 'u1' };
 const future = new Date(Date.now() + 86_400_000);
@@ -252,6 +253,20 @@ describe('tâche planifiée', () => {
 });
 
 describe('annulation sur changement du document (SG-R2)', () => {
+  it('appelle le hook onCancel de la source, dans la transaction, avec le motif', async () => {
+    const onCancel = jest.fn(async () => undefined);
+    leaseContractSource.onCancel = onCancel;
+    prismaMock.signatureRequest.findMany.mockImplementation(async () => [{ id: 'r1' }]);
+    await cancelOpenRequestsForTarget({ tenantId: 't1', userId: 'u1' }, 'RentalLease', 'l1');
+    expect(onCancel).toHaveBeenCalledWith(
+      prismaMock,
+      expect.objectContaining({ id: 'r1', kind: 'LEASE_CONTRACT', targetType: 'RentalLease', targetId: 'l1' }),
+      'SOURCE_CHANGED',
+      expect.any(Date)
+    );
+    delete leaseContractSource.onCancel;
+  });
+
   it('annule les demandes ouvertes du bail, tracées comme SOURCE_CHANGED', async () => {
     prismaMock.signatureRequest.findMany.mockImplementation(async () => [{ id: 'r1' }, { id: 'r2' }]);
     const count = await cancelOpenRequestsForTarget({ tenantId: 't1', userId: 'u1' }, 'RentalLease', 'l1');

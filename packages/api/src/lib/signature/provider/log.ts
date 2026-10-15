@@ -18,6 +18,7 @@ export function takeLoggedSignatureMessages(): OutboundSignatureMessage[] {
 export function createLogProvider(): SignatureProvider {
   return {
     id: 'log',
+    qualified: false,
     async createRequest(input) {
       logger.info('Signature (log) : demande créée', { tenantId: input.tenantId, signers: input.signerCount });
       return { providerRef: `log-${input.requestId}` };

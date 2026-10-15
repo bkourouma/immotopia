@@ -3,7 +3,8 @@
  * Typé d'après le contrat communiqué par le lot API ; à confronter au code réel.
  */
 
-export type SignatureKind = 'LEASE_CONTRACT';
+export type SignatureKind =
+  'LEASE_CONTRACT' | 'MANAGEMENT_MANDATE' | 'SALE_MANDATE' | 'LEASE_INSPECTION' | 'SALE_AGREEMENT';
 export type SignatureRequestStatus =
   'DRAFT' | 'SENT' | 'PARTIALLY_SIGNED' | 'COMPLETED' | 'DECLINED' | 'EXPIRED' | 'CANCELED';
 export type SignerStatus = 'PENDING' | 'OPENED' | 'SIGNED' | 'DECLINED';
@@ -40,6 +41,8 @@ export interface SignerInput {
   contact: string;
   /** Contact CRM du signataire : exigé par l'API pour le canal WHATSAPP. */
   contactId?: string;
+  /** Indication d'affichage (jamais envoyée) : faux quand le téléphone du contact est inconnu ou masqué. */
+  phoneKnown?: boolean;
 }
 
 export interface CreateSignatureRequestInput {
@@ -96,4 +99,20 @@ export interface PublicSignOutcome {
 export interface RemindOutcome {
   reminded: number;
   failed: number;
+}
+
+/** Signataire proposé par l'API pour une cible (`GET /signatures/targets/:kind/:targetId/context`). */
+export interface DefaultSignerDto {
+  role: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  contactId?: string | null;
+}
+
+export interface SignatureTargetContext {
+  kind: SignatureKind;
+  targetType: string;
+  providerRequired: boolean;
+  signers: DefaultSignerDto[];
 }

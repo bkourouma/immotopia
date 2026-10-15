@@ -9,6 +9,7 @@ import { assertThirdPartyAllowedForTenant } from './own-assets-barrier-service';
 import { t } from '../i18n';
 import { syncLotActivationsTx } from './lot-registry-service';
 import { NotFoundError, ConflictError } from '../middleware/error-middleware';
+import { cancelOpenRequestsForTarget } from '../lib/signature/cancel';
 
 /** Rattachement préalable d'un bien sans agence : propriétaire client de l'agence, ou bail de l'agence. */
 async function isAttachedToTenant(tenantId: string, propertyId: string, ownerUserId: string | null): Promise<boolean> {
@@ -227,6 +228,11 @@ export async function revokeMandate(mandateId: string, tenantId: string, actorUs
     }
     return updated;
   });
+
+  // Spec 043 : un mandat révoqué ne peut plus être signé, ses demandes en cours sont annulées.
+  await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId ?? null }, 'PropertyMandate', mandateId).catch(
+    error => logger.warn('Annulation des signatures du mandat échouée', { mandateId, error: String(error) })
+  );
 
   logger.info('Property mandate revoked', {
     mandateId,

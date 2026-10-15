@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
+import { SignatureDocumentKind } from '@prisma/client';
 import { z } from 'zod';
 import { createSignatureSchema, listSignaturesSchema } from '../lib/signature/schemas';
+import { permittedSignatureKinds } from '../middleware/signature-access-middleware';
 import { asyncHandler, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 import {
   cancelSignatureRequest,
   createSignatureRequest,
   getSignatureRequest,
+  getSignatureTargetContext,
   listSignatureRequests,
   reissueInPersonToken,
   remindSignatureRequest,
@@ -40,7 +43,9 @@ export const listSignaturesHandler = asyncHandler(async (req: Request, res: Resp
   const { tenantId: _ignored, ...query } = req.query as Record<string, unknown>;
   void _ignored;
   const filters = listSignaturesSchema.parse(query);
-  const data = await listSignatureRequests(ctxOf(req).tenantId, filters);
+  const { tenantId, userId } = ctxOf(req);
+  // La liste ne montre que les types de document que l'utilisateur a le droit de lire.
+  const data = await listSignatureRequests(tenantId, filters, await permittedSignatureKinds(userId, tenantId));
   res.json({ success: true, data });
 });
 
@@ -75,4 +80,16 @@ export const signatureFileHandler = asyncHandler(async (req: Request, res: Respo
   const parsed = fileQuerySchema.safeParse(query);
   if (!parsed.success) throw new BadRequestError('Variante de fichier invalide.');
   await sendSignatureFile(ctxOf(req).tenantId, idSchema.parse(req.params.id), parsed.data.variant, res);
+});
+
+const targetContextParams = z.object({
+  kind: z.nativeEnum(SignatureDocumentKind),
+  targetId: z.string().trim().min(1).max(64)
+});
+
+/** Contexte d'une cible (signataires proposés) : permission d'écriture du type, vérifiée par la route. */
+export const signatureTargetContextHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { kind, targetId } = targetContextParams.parse(req.params);
+  const data = await getSignatureTargetContext(ctxOf(req), kind, targetId);
+  res.json({ success: true, data });
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Card, Empty, List, Modal, Popconfirm, Space, Spin, Tag, Typography } from 'antd';
 import {
   cancelSignatureRequest,
@@ -26,6 +26,14 @@ interface SignaturesPanelProps {
   defaultSigners: SignerInput[];
   /** Nom de base des PDF téléchargés. */
   fileLabel: string;
+  /** SG-R1 : le type de document exige un prestataire qualifié ; l'envoi est alors désactivé. */
+  providerRequired?: boolean;
+  /** Le statut de la cible interdit un nouvel envoi (ex. compromis déjà signé) ; l'historique reste visible. */
+  sendDisabled?: boolean;
+  /** Appelé quand l'état des demandes a changé (envoi, annulation, signature, scellement) : le parent peut se rafraîchir. */
+  onChanged?: () => void;
+  /** Appelé à chaque chargement avec « une demande est ouverte ». */
+  onOpenChange?: (hasOpen: boolean) => void;
 }
 
 function dateLabel(iso?: string | null): string {
@@ -43,7 +51,11 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
   targetType,
   targetId,
   defaultSigners,
-  fileLabel
+  fileLabel,
+  providerRequired = false,
+  sendDisabled = false,
+  onChanged,
+  onOpenChange
 }) => {
   const { message } = App.useApp();
   const [requests, setRequests] = useState<SignatureRequestDto[] | null>(null);
@@ -51,13 +63,23 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
   const [sendOpen, setSendOpen] = useState(false);
   const [inPerson, setInPerson] = useState<{ signer: SignerDto; token: string } | null>(null);
 
+  // Empreinte des états connus : une évolution (scellement par un tiers, annulation) prévient le parent.
+  const fingerprint = useRef<string | null>(null);
+
   const load = useCallback(async () => {
     setError(null);
     try {
-      setRequests(await listSignatureRequests({ targetType, targetId }));
+      const list = await listSignatureRequests({ targetType, targetId });
+      setRequests(list);
+      const print = list.map(request => `${request.id}:${request.status}`).join('|');
+      const changed = fingerprint.current !== null && fingerprint.current !== print;
+      fingerprint.current = print;
+      onOpenChange?.(list.some(request => isOpenRequest(request.status)));
+      if (changed) onChanged?.();
     } catch (err: any) {
       setError(err?.response?.data?.message || t('Erreur lors du chargement des signatures'));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetType, targetId]);
 
   useEffect(() => {
@@ -123,11 +145,18 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <Space style={{ justifyContent: 'space-between', width: '100%' }} wrap>
         <Text type="secondary">{t('Signature électronique du document, signataire par signataire.')}</Text>
-        <Button type="primary" onClick={() => setSendOpen(true)} disabled={hasOpen}>
+        <Button type="primary" onClick={() => setSendOpen(true)} disabled={hasOpen || providerRequired || sendDisabled}>
           {t('Envoyer pour signature')}
         </Button>
       </Space>
 
+      {providerRequired && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('Signature électronique indisponible pour ce document : un prestataire qualifié est requis')}
+        />
+      )}
       {error && <Alert type="error" showIcon message={error} />}
       {!requests && !error && <Spin />}
       {requests && requests.length === 0 && (
@@ -233,7 +262,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
         onCancel={() => setInPerson(null)}
         footer={null}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         {inPerson && <PublicSigningFlow token={inPerson.token} onDone={() => void load()} />}
       </Modal>
