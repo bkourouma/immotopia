@@ -274,7 +274,7 @@ export const MandateActions: React.FC<MandateActionsProps> = ({ tenantId, mandat
 
       <Modal
         open={dialog === 'suspend' || dialog === 'revoke'}
-        title={dialog === 'revoke' ? t('Révoquer le mandat') : t('Suspendre le mandat')}
+        title={dialog === 'revoke' ? t('Révoquer le mandat de prélèvement') : t('Suspendre le mandat')}
         okText={dialog === 'revoke' ? t('Révoquer') : t('Suspendre')}
         cancelText={t('Annuler')}
         okButtonProps={{ danger: dialog === 'revoke', loading: busy }}

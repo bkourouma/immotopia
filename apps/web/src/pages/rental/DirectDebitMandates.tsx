@@ -67,7 +67,12 @@ export const DirectDebitMandates: React.FC = () => {
           '—'
         )
     },
-    { title: t('IBAN'), dataIndex: 'ibanMasked', key: 'iban' },
+    {
+      title: t('IBAN'),
+      dataIndex: 'ibanMasked',
+      key: 'iban',
+      render: (value: string) => <bdi dir="ltr">{value}</bdi>
+    },
     { title: t('Code banque'), dataIndex: 'bankCode', key: 'bankCode' },
     { title: t('Titulaire'), dataIndex: 'holderName', key: 'holder' },
     { title: t('Créancier'), key: 'creditor', render: (_value, mandate) => mandate.creditor.label },

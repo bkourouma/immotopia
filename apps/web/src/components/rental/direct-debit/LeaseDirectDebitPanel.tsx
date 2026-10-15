@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Descriptions, Empty, List, Space, Spin, Typography } from 'antd';
+import { Alert, App, Button, Card, Descriptions, Empty, List, Space, Spin, Tooltip, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { getLease } from '../../../services/rental-service';
 import { CreditorDto, listCreditors, listMandates, MandateDto } from '../../../services/direct-debit-service';
@@ -111,6 +111,10 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
 
   const hasOpenMandate = useMemo(() => (mandates ?? []).some(mandate => mandate.status !== 'REVOKED'), [mandates]);
 
+  const openMandateMessage = t(
+    'Un mandat ouvert existe déjà : pour changer de compte bancaire, révoquez-le puis créez-en un nouveau.'
+  );
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 32 }}>
@@ -140,20 +144,17 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
         <Text type="secondary">
           {t("Le locataire autorise l'agence à prélever son loyer sur son compte bancaire.")}
         </Text>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormOpen(true)}>
-          {t('Nouveau mandat')}
-        </Button>
+        {/* Le <span> reçoit le survol : un bouton désactivé n'émet pas d'événement souris. */}
+        <Tooltip title={hasOpenMandate ? openMandateMessage : undefined}>
+          <span style={{ display: 'inline-block' }}>
+            <Button type="primary" icon={<PlusOutlined />} disabled={hasOpenMandate} onClick={() => setFormOpen(true)}>
+              {t('Nouveau mandat de prélèvement')}
+            </Button>
+          </span>
+        </Tooltip>
       </Space>
 
-      {hasOpenMandate && (
-        <Alert
-          type="info"
-          showIcon
-          message={t(
-            'Un mandat ouvert existe déjà : pour changer de compte bancaire, révoquez-le puis créez-en un nouveau.'
-          )}
-        />
-      )}
+      {hasOpenMandate && <Alert type="info" showIcon message={openMandateMessage} />}
 
       {(mandates ?? []).length === 0 ? (
         <Empty description={t('Aucun mandat de prélèvement pour ce bail')} />
@@ -173,7 +174,9 @@ export const LeaseDirectDebitPanel: React.FC<LeaseDirectDebitPanelProps> = ({ te
               >
                 <Descriptions size="small" column={{ xs: 1, md: 2, xl: 3 }}>
                   <Descriptions.Item label={t('Débiteur')}>{mandate.debtor.displayName ?? '—'}</Descriptions.Item>
-                  <Descriptions.Item label={t('IBAN')}>{mandate.ibanMasked}</Descriptions.Item>
+                  <Descriptions.Item label={t('IBAN')}>
+                    <bdi dir="ltr">{mandate.ibanMasked}</bdi>
+                  </Descriptions.Item>
                   <Descriptions.Item label={t('Code banque')}>{mandate.bankCode}</Descriptions.Item>
                   <Descriptions.Item label={t('Titulaire')}>{mandate.holderName}</Descriptions.Item>
                   <Descriptions.Item label={t('Créancier')}>{mandate.creditor.label}</Descriptions.Item>

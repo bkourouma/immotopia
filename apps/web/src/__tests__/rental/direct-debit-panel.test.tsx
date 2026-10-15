@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App as AntApp } from 'antd';
 import {
@@ -127,6 +127,33 @@ describe('LeaseDirectDebitPanel', () => {
     expect(document.body.textContent).not.toContain(RAW_IBAN);
   });
 
+  it('désactive « Nouveau mandat » quand un mandat ouvert existe, avec le motif en infobulle', async () => {
+    mount();
+    await screen.findByText('MDT-2026-0001');
+
+    const button = screen.getByRole('button', { name: /Nouveau mandat/ });
+    expect(button).toBeDisabled();
+    expect(screen.getAllByText(/Un mandat ouvert existe déjà/).length).toBeGreaterThanOrEqual(1);
+
+    // Antd pose l'infobulle sur le conteneur du bouton désactivé.
+    fireEvent.mouseEnter(button.parentElement as HTMLElement);
+    await waitFor(() => expect(screen.getAllByText(/Un mandat ouvert existe déjà/).length).toBeGreaterThanOrEqual(2));
+  });
+
+  it('active « Nouveau mandat » quand tous les mandats sont révoqués', async () => {
+    listMandates.mockResolvedValue({
+      items: [makeMandate({ status: 'REVOKED', revocationReason: 'Départ' })],
+      total: 1,
+      page: 1,
+      pageSize: 100
+    });
+    mount();
+    await screen.findByText('MDT-2026-0001');
+
+    expect(screen.getByRole('button', { name: /Nouveau mandat/ })).toBeEnabled();
+    expect(screen.queryByText(/Un mandat ouvert existe déjà/)).not.toBeInTheDocument();
+  });
+
   it("désactive « Activer » tant qu'aucun scan signé n'est déposé", async () => {
     mount();
     await screen.findByText('MDT-2026-0001');
@@ -195,7 +222,7 @@ describe('LeaseDirectDebitPanel', () => {
     expect(await within(dialog).findByText('CI001')).toBeInTheDocument();
 
     await user.type(within(dialog).getByLabelText('Titulaire du compte'), 'Awa Traoré');
-    await user.click(within(dialog).getByRole('button', { name: 'Créer le mandat' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Créer le mandat de prélèvement' }));
 
     await waitFor(() => expect(createMandate).toHaveBeenCalled());
     expect(createMandate).toHaveBeenCalledWith(
@@ -234,7 +261,7 @@ describe('LeaseDirectDebitPanel', () => {
     await user.type(within(dialog).getByLabelText('IBAN ou RIB'), 'CI00BAD');
 
     expect(await within(dialog).findByText("La clé de contrôle de l'IBAN est incorrecte.")).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Créer le mandat' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Créer le mandat de prélèvement' })).toBeDisabled();
     expect(createMandate).not.toHaveBeenCalled();
   });
 });

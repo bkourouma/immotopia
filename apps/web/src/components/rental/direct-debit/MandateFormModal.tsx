@@ -162,7 +162,7 @@ export const MandateFormModal: React.FC<MandateFormModalProps> = ({
     <Modal
       open={open}
       title={t('Nouveau mandat de prélèvement')}
-      okText={t('Créer le mandat')}
+      okText={t('Créer le mandat de prélèvement')}
       cancelText={t('Annuler')}
       onOk={() => void handleOk()}
       onCancel={handleClose}
@@ -209,7 +209,9 @@ export const MandateFormModal: React.FC<MandateFormModalProps> = ({
               {!checking && check && !check.valid && check.error && <Text type="danger">{check.error}</Text>}
               {!checking && check?.valid && (
                 <Descriptions size="small" column={1} style={{ marginTop: 4 }}>
-                  <Descriptions.Item label={t('IBAN')}>{check.ibanMasked}</Descriptions.Item>
+                  <Descriptions.Item label={t('IBAN')}>
+                    <bdi dir="ltr">{check.ibanMasked}</bdi>
+                  </Descriptions.Item>
                   <Descriptions.Item label={t('Code banque')}>{check.bankCode}</Descriptions.Item>
                 </Descriptions>
               )}
@@ -221,6 +223,8 @@ export const MandateFormModal: React.FC<MandateFormModalProps> = ({
           }
         >
           <Input
+            dir="ltr"
+            style={{ textAlign: 'start' }}
             autoComplete="off"
             spellCheck={false}
             inputMode="text"
