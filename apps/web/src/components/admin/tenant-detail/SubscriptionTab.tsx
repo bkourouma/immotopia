@@ -14,7 +14,6 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Typography
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -46,7 +45,7 @@ import {
   updateSubscriptionItem,
   type ExtensionRequest
 } from '../../../services/subscription-extras-service';
-import { StatusTag, MoneyValue, useConfirmAction } from '../../primitives';
+import { StatusTag, MoneyValue, Table, useConfirmAction } from '../../primitives';
 import { ReasonPromptModal } from '../ReasonPromptModal';
 import { isExtensionAllowed } from '../../../utils/extension-rules';
 import { activeLocale } from '../../../i18n/format';
@@ -630,6 +629,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
       title: t('Élément'),
       dataIndex: 'name',
       key: 'name',
+      exportValue: item => `${item.name} — ${ITEM_KIND_LABEL[item.kind] ?? item.kind}`,
       render: (_, item) => (
         <Space direction="vertical" size={0}>
           <Text strong>{item.name}</Text>
@@ -643,6 +643,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     {
       title: t('Prix mensuel figé'),
       key: 'price',
+      exportValue: item => item.quantity * item.unitMonthlyPrice * (1 - item.discountPercent / 100),
       render: (_, item) => (
         <Space direction="vertical" size={0}>
           <MoneyValue value={item.quantity * item.unitMonthlyPrice * (1 - item.discountPercent / 100)} />
@@ -657,6 +658,8 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     {
       title: t('Début / fin'),
       key: 'period',
+      exportValue: item =>
+        `${formatDateTime(item.startsAt)} — ${item.endsAt ? formatDateTime(item.endsAt) : t('sans fin')}`,
       render: (_, item) => (
         <Space direction="vertical" size={0}>
           <Text style={{ fontSize: 'var(--font-size-sm)' }}>{formatDateTime(item.startsAt)}</Text>
@@ -880,6 +883,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         }
       >
         <Table<SubscriptionItemDTO>
+          exportFilename={t('Packs et extensions')}
           dataSource={items}
           columns={itemColumns}
           rowKey="id"
@@ -891,6 +895,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <Card title={t('Dérogations')}>
         <Table<CapacityOverrideDTO>
+          exportFilename={t('Dérogations')}
           dataSource={overrides}
           columns={overrideColumns}
           rowKey="id"
@@ -957,6 +962,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <Card title={t("Demandes d'extension")}>
         <Table<ExtensionRequest>
+          exportFilename={t("Demandes d'extension")}
           dataSource={requests}
           rowKey="id"
           pagination={false}

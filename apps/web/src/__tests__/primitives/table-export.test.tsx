@@ -54,6 +54,12 @@ describe('résolution des colonnes exportables', () => {
     expect(table.rows[0].map(c => c.text)).toEqual(['profond', 'x!', 'rendu-x']);
   });
 
+  it('passe l’enregistrement comme valeur à render quand la colonne n’a pas de dataIndex (comme Ant Design)', async () => {
+    const columns: ColumnsType<Row> = [{ title: 'Sans index', key: 'si', render: (v: Row) => `rendu-${v.nom}` }];
+    const table = await buildExportTable(columns, [{ id: '1', nom: 'x' }]);
+    expect(table.rows[0].map(c => c.text)).toEqual(['rendu-x']);
+  });
+
   it('aplatit les lignes enfants avec un retrait sur la première colonne', async () => {
     const columns: ColumnsType<Row> = [{ title: 'Nom', dataIndex: 'nom' }];
     const table = await buildExportTable(columns, [

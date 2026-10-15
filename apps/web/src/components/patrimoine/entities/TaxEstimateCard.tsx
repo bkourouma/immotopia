@@ -1,8 +1,8 @@
 import React from 'react';
-import { Alert, Collapse, Table, Tag, Typography } from 'antd';
+import { Alert, Collapse, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TaxComputation, TaxLine } from '../../../types/patrimoine-entities-types';
-import { MoneyValue } from '../../primitives';
+import { MoneyValue, Table } from '../../primitives';
 import {
   taxKindLabel,
   taxLineCodeLabel,
@@ -57,6 +57,8 @@ const buildLineColumns = (): ColumnsType<TaxLine> => [
     title: t('Source'),
     dataIndex: 'source',
     key: 'source',
+    exportValue: row =>
+      `${row.source ?? '—'}${row.status === 'A_VALIDER' ? ` — ${parameterStatusLabel('A_VALIDER')}` : ''}`,
     render: (value: string | null, row) => (
       <span>
         {value ?? '—'}
@@ -116,6 +118,7 @@ export const TaxEstimateCard: React.FC<TaxEstimateCardProps> = ({ computations, 
                 </Text>
               )}
               <Table
+                exportFilename={taxKindLabel(computation.taxKind)}
                 rowKey={(line, index) => `${computation.taxKind}-${line.code}-${index}`}
                 columns={buildLineColumns()}
                 dataSource={computation.lines}

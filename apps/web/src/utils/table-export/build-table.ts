@@ -146,9 +146,13 @@ export async function buildExportTable<T>(
         cells[rowIndex][colIndex] = typeCell(raw, null);
         return;
       }
+      // Comme Ant Design (rc-table) : sans `dataIndex`, la « valeur » passée à
+      // `render` est l'enregistrement entier — certaines colonnes s'écrivent
+      // `render: (record) => …`.
+      const renderValue = path ? raw : record;
       let node: ReactNode;
       try {
-        node = unwrapRendered(column.render(raw as never, record, rowIndex));
+        node = unwrapRendered(column.render(renderValue as never, record, rowIndex));
       } catch {
         cells[rowIndex][colIndex] = typeCell(raw, null);
         return;

@@ -165,6 +165,7 @@ export const BalanceAgee: React.FC = () => {
       title: t('Solde'),
       key: 'solde',
       align: 'end',
+      exportValue: l => l.balance,
       render: (_, l) => <MoneyValue value={l.balance} signed />
     },
     colonneTranche(t('À échoir'), 'notYetDue'),
@@ -248,6 +249,7 @@ export const BalanceAgee: React.FC = () => {
         columns={colonnes}
         rowKey={l => l.accountId}
         aria-label={t('Balance âgée')}
+        export={{ filename: t('Balance âgée') }}
         sort={list.sort}
         onSortChange={list.setSort}
         // Neuf colonnes hors « Actions » : elles ne tiennent pas dans les

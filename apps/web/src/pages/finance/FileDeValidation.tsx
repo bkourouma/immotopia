@@ -346,6 +346,7 @@ export const FileDeValidation: React.FC = () => {
         />
       ),
       key: 'selection',
+      exportable: false,
       width: 48,
       render: (_, doc) => (
         <Checkbox
@@ -361,7 +362,8 @@ export const FileDeValidation: React.FC = () => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, doc) => <MoneyValue value={doc.amount} />
+      render: (_, doc) => <MoneyValue value={doc.amount} />,
+      exportValue: doc => doc.amount
     },
     { title: t('Saisie le'), key: 'date', render: (_, doc) => dateCourte(doc.createdAt) },
     { title: t('Saisi par'), key: 'saisisseur', render: (_, doc) => doc.createdByLabel },
@@ -520,6 +522,7 @@ export const FileDeValidation: React.FC = () => {
       )}
 
       <DataView<PendingDocument>
+        export={{ filename: t('File de validation') }}
         // La file n'est pas paginée : le contrat gelé (`getValidationQueue`)
         // rend l'ensemble des pièces en attente, sans enveloppe de pagination.
         paginated={false}

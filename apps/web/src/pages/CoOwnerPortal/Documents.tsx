@@ -103,6 +103,7 @@ export default function CoOwnerDocuments() {
           onPageChange={() => {}}
           rowKey={doc => doc.id}
           aria-label={t('Documents de copropriété')}
+          export={{ filename: t('Documents de copropriété') }}
           emptyDescription={t("Aucun document n'est encore disponible.")}
           columns={columns}
           renderCard={doc => (

@@ -15,7 +15,6 @@ import {
   Space,
   Spin,
   Switch,
-  Table,
   Tag,
   Typography,
   Upload
@@ -69,7 +68,7 @@ import {
 } from '../../services/property-service';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
-import { MoneyValue, formatMoney } from '../primitives';
+import { MoneyValue, Table, formatMoney } from '../primitives';
 import {
   DEVISE_PATRIMOINE,
   apiErrorMessage,
@@ -700,6 +699,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          exportFilename={t('Gérer les valorisations')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={valuations}
@@ -748,6 +748,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          exportFilename={t('Gérer les dépenses')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={expenses}
@@ -804,6 +805,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          exportFilename={t('Gérer les crédits')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={loans}
@@ -851,6 +853,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <Alert type="error" showIcon message={sectionErrors.workPrograms} />
         ) : (
           <Table
+            exportFilename={t('Gérer les programmes de travaux')}
             scroll={{ x: 'max-content' }}
             rowKey="id"
             dataSource={workPrograms}
@@ -860,6 +863,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               {
                 title: t('Chantier'),
                 dataIndex: 'constructionSite',
+                exportValue: (record: WorkProgram) => record.constructionSite?.name ?? '',
                 render: (_: unknown, record: WorkProgram) =>
                   record.constructionSite ? <Tag color="blue">{record.constructionSite.name}</Tag> : '—'
               },

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Button, Space, Table, Tag, Typography } from 'antd';
+import { Button, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { ConfirmAction, MoneyValue } from '../../primitives';
+import { ConfirmAction, MoneyValue, Table, formatMoney } from '../../primitives';
 import { ChargeSchedule } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
 import {
@@ -34,6 +34,7 @@ export const ScheduleTable: React.FC<{
       title: t('Libellé'),
       dataIndex: 'label',
       key: 'label',
+      exportValue: schedule => `${schedule.label} — ${frequencyLabels[schedule.frequency]}`,
       render: (value: string, schedule) => (
         <Space direction="vertical" size={0}>
           <Text strong>{value}</Text>
@@ -44,6 +45,12 @@ export const ScheduleTable: React.FC<{
     {
       title: t('Source et montant'),
       key: 'source',
+      exportValue: schedule =>
+        schedule.amountSource === 'FIXED'
+          ? `${amountSourceLabels.FIXED} — ${formatMoney(schedule.fixedAmount ?? 0, { currency: displayCurrency(schedule.currency) })}`
+          : schedule.budget
+            ? `${amountSourceLabels.BUDGET} — ${schedule.budget.label} (${schedule.budget.fiscalYear})`
+            : amountSourceLabels.BUDGET,
       render: (_, schedule) =>
         schedule.amountSource === 'FIXED' ? (
           <Space direction="vertical" size={0}>
@@ -64,6 +71,10 @@ export const ScheduleTable: React.FC<{
     {
       title: t('Prochaine émission'),
       key: 'next',
+      exportValue: schedule =>
+        schedule.nextPeriod
+          ? `${schedule.nextPeriod.label} — ${t('Émission')} ${formatDay(schedule.nextPeriod.issueDate)} · ${t('Échéance')} ${formatDay(schedule.nextPeriod.dueDate)}`
+          : t('Aucune (fin de programmation atteinte)'),
       render: (_, schedule) =>
         schedule.nextPeriod ? (
           <Space direction="vertical" size={0}>
@@ -80,12 +91,19 @@ export const ScheduleTable: React.FC<{
     {
       title: t('Statut'),
       key: 'status',
+      exportValue: schedule => (schedule.active ? t('Active') : t('En pause')),
       render: (_, schedule) =>
         schedule.active ? <Tag color="green">{t('Active')}</Tag> : <Tag color="default">{t('En pause')}</Tag>
     },
     {
       title: t('Dernière exécution'),
       key: 'lastRun',
+      exportValue: schedule => {
+        const run = schedule.lastRun;
+        if (!run) return t('Aucune');
+        const error = run.error ? describeScheduleError(run.error) : '';
+        return `${run.periodLabel} · ${runStatusConfig[run.status].label}${error ? ` — ${error}` : ''}`;
+      },
       render: (_, schedule) =>
         schedule.lastRun ? (
           <Space direction="vertical" size={0}>
@@ -167,6 +185,7 @@ export const ScheduleTable: React.FC<{
 
   return (
     <Table
+      exportFilename={t('Programmation des appels de charges')}
       rowKey="id"
       scroll={{ x: 'max-content' }}
       dataSource={schedules}

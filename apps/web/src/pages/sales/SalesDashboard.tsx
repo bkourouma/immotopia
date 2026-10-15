@@ -65,11 +65,18 @@ export const SalesDashboard: React.FC = () => {
       title: t('Prix demandé'),
       key: 'prix',
       align: 'end',
+      exportValue: m => m.askingPrice,
       render: (_, m) => <MoneyValue value={m.askingPrice} />
     },
     { title: t('Type'), key: 'type', render: (_, m) => MANDATE_TYPE_LABELS[m.mandateType] },
     { title: t('Échéance'), key: 'echeance', render: (_, m) => dateCourte(m.endDate) },
-    { title: t('Offres'), key: 'offres', align: 'end', render: (_, m) => m.offersCount },
+    {
+      title: t('Offres'),
+      key: 'offres',
+      align: 'end',
+      exportValue: m => m.offersCount,
+      render: (_, m) => m.offersCount
+    },
     {
       title: t('Statut'),
       key: 'statut',
@@ -152,6 +159,8 @@ export const SalesDashboard: React.FC = () => {
       )}
 
       <DataView<SaleMandateDto>
+        // L'API ne pagine pas : tout est déjà chargé.
+        export={{ filename: t('Mandats de vente actifs') }}
         paginated={false}
         items={items}
         total={items.length}

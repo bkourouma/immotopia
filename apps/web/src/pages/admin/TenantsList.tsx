@@ -1,20 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Space,
-  Typography,
-  Button,
-  Input,
-  Select,
-  Alert,
-  Spin,
-  Empty,
-  Table,
-  Tag,
-  Checkbox,
-  Progress
-} from 'antd';
+import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Tag, Checkbox, Progress } from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -28,6 +14,8 @@ import { listTenants, Tenant, TenantFilters, type ProvisionTenantResult } from '
 import { listCatalog, type CatalogEntry } from '../../services/subscription-v2-service';
 import { getSubscriptionSummaries, type SubscriptionSummary } from '../../services/subscription-extras-service';
 import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
+import { Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -80,6 +68,13 @@ export const TenantsList: React.FC = () => {
   const [summaries, setSummaries] = useState<Record<string, SubscriptionSummary>>({});
   const [nearLimitOnly, setNearLimitOnly] = useState(false);
 
+  // Export : la requête exacte de la liste affichée (filtres + recherche au
+  // moment du chargement) et les résumés des agences des autres pages.
+  const lastQueryRef = useRef<TenantFilters>({});
+  const exportSummariesRef = useRef<Record<string, SubscriptionSummary>>({});
+  const summaryOf = (tenantId: string): SubscriptionSummary | undefined =>
+    exportSummariesRef.current[tenantId] ?? summaries[tenantId];
+
   useEffect(() => {
     listCatalog()
       .then(setCatalog)
@@ -103,10 +98,9 @@ export const TenantsList: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await listTenants({
-        ...filters,
-        search: searchTerm || undefined
-      });
+      const query: TenantFilters = { ...filters, search: searchTerm || undefined };
+      lastQueryRef.current = query;
+      const response = await listTenants(query);
       if (response.success && response.data) {
         const list = response.data.tenants || [];
         setTenants(list);
@@ -143,6 +137,20 @@ export const TenantsList: React.FC = () => {
     setFilters({ ...filters, page: 1, status });
   };
 
+  const fetchAllTenants = async () => {
+    const { page: _page, limit: _limit, ...query } = lastQueryRef.current;
+    const collected = await collectAllPages<Tenant>(async (page, limit) => {
+      const response = await listTenants({ ...query, page, limit });
+      const list = response.data?.tenants ?? [];
+      const pageSummaries = await getSubscriptionSummaries(list.map(tenant => tenant.id)).catch(() => ({}));
+      exportSummariesRef.current = { ...exportSummariesRef.current, ...pageSummaries };
+      return { items: list, total: response.data?.pagination?.total ?? 0 };
+    });
+    // Même filtre « proche de la limite » que la liste affichée.
+    const items = nearLimitOnly ? collected.items.filter(tenant => summaryOf(tenant.id)?.nearLimit) : collected.items;
+    return { items, truncated: collected.truncated };
+  };
+
   const filteredTenants = nearLimitOnly ? tenants.filter(tenant => summaries[tenant.id]?.nearLimit) : tenants;
 
   const columns: ColumnsType<Tenant> = [
@@ -150,6 +158,7 @@ export const TenantsList: React.FC = () => {
       title: t('Nom'),
       dataIndex: 'name',
       key: 'name',
+      exportValue: record => `${record.name} — ${record.slug}`,
       render: (_, record) => (
         <Space>
           <div
@@ -184,6 +193,8 @@ export const TenantsList: React.FC = () => {
     {
       title: t('Packs'),
       key: 'packs',
+      exportValue: record =>
+        (summaryOf(record.id)?.packs ?? []).map(code => catalog.find(c => c.code === code)?.name ?? code).join(', '),
       render: (_, record) => {
         const summary = summaries[record.id];
         if (!summary) return <Text type="secondary">—</Text>;
@@ -200,6 +211,7 @@ export const TenantsList: React.FC = () => {
     {
       title: t('% de lots utilisés'),
       key: 'lotsUsage',
+      exportValue: record => summaryOf(record.id)?.lotsUsagePercent ?? null,
       render: (_, record) => {
         const percent = summaries[record.id]?.lotsUsagePercent ?? null;
         if (percent === null) return <Text type="secondary">—</Text>;
@@ -223,6 +235,10 @@ export const TenantsList: React.FC = () => {
     {
       title: t('Prochaine échéance'),
       key: 'nextDue',
+      exportValue: record => {
+        const date = summaryOf(record.id)?.nextDueAt;
+        return date ? new Date(date).toLocaleDateString(activeLocale()) : '';
+      },
       render: (_, record) => {
         const date = summaries[record.id]?.nextDueAt;
         return date ? new Date(date).toLocaleDateString(activeLocale()) : '—';
@@ -343,6 +359,8 @@ export const TenantsList: React.FC = () => {
               />
             ) : (
               <Table
+                exportFilename={t('Agences')}
+                exportFetchAll={fetchAllTenants}
                 rowKey="id"
                 columns={columns}
                 dataSource={filteredTenants}

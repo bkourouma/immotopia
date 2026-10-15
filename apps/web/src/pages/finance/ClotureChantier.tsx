@@ -561,6 +561,7 @@ export const ClotureChantier: React.FC = () => {
       title: t('Coût de revient'),
       key: 'cout',
       align: 'end',
+      exportValue: lot => lot.costPrice,
       render: (_, lot) => (
         <strong>
           <MoneyValue value={lot.costPrice} />
@@ -767,6 +768,7 @@ export const ClotureChantier: React.FC = () => {
         columns={colonnesLots}
         rowKey={lot => lot.id}
         aria-label={t('Lots du chantier')}
+        export={{ filename: t('Lots du chantier') }}
         renderCard={lot => (
           <DataCard
             title={lot.name}

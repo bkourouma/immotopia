@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Alert, Button, Drawer, Empty, Form, Input, Space, Spin, Table, Tooltip, Typography } from 'antd';
+import { App, Alert, Button, Drawer, Empty, Form, Input, Space, Spin, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
-import { useConfirmAction } from '../../components/primitives';
+import { Table, useConfirmAction } from '../../components/primitives';
 import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import {
   createMandatingAgency,
@@ -200,6 +200,8 @@ export const SyndicMandatingAgencies: React.FC = () => {
       {
         title: t('Logo'),
         key: 'logo',
+        // Vignette : rien à exporter.
+        exportable: false,
         width: 64,
         render: (_: unknown, agency) =>
           agency.hasLogo ? (
@@ -212,6 +214,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
       {
         title: t('Coordonnées'),
         key: 'contact',
+        exportValue: (agency: MandatingAgency) => [agency.phone, agency.email].filter(Boolean).join(' — '),
         render: (_: unknown, agency) => (
           <Space direction="vertical" size={0}>
             {agency.phone ? <Text>{agency.phone}</Text> : null}
@@ -285,7 +288,13 @@ export const SyndicMandatingAgencies: React.FC = () => {
         ) : items.length === 0 ? (
           <Empty description={t('Aucune agence mandante enregistrée')} />
         ) : (
-          <Table<MandatingAgency> rowKey="id" columns={columns} dataSource={items} pagination={false} />
+          <Table<MandatingAgency>
+            exportFilename={t('Agences mandantes')}
+            rowKey="id"
+            columns={columns}
+            dataSource={items}
+            pagination={false}
+          />
         )}
       </Space>
 

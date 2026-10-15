@@ -625,7 +625,13 @@ export const FactureFournisseur: React.FC = () => {
     { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
     { title: t('Date'), key: 'date', render: (_, f) => dateCourte(f.invoiceDate) },
     { title: t('Chantier'), key: 'chantier', render: (_, f) => f.siteLabel ?? '—' },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, f) => <MoneyValue value={f.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, f) => <MoneyValue value={f.amount} />,
+      exportValue: f => f.amount
+    },
     {
       title: t('Statut'),
       key: 'statut',
@@ -891,6 +897,7 @@ export const FactureFournisseur: React.FC = () => {
             {t('Factures de')} {fournisseur.name}
           </Title>
           <DataView<SupplierInvoice>
+            export={{ filename: t('Factures fournisseurs') }}
             paginated={false}
             items={listeFactures}
             total={listeFactures.length}
@@ -1068,6 +1075,7 @@ export const FactureFournisseur: React.FC = () => {
               <div style={{ marginTop: 'var(--space-6)' }}>
                 <Title level={5}>{t('Règlements de cette session')}</Title>
                 <DataView<SupplierPayment>
+                  export={{ filename: t('Règlements de cette session') }}
                   paginated={false}
                   items={reglements}
                   total={reglements.length}
@@ -1081,11 +1089,16 @@ export const FactureFournisseur: React.FC = () => {
                       title: t('Montant réglé'),
                       key: 'montant',
                       align: 'end',
-                      render: (_, r) => <MoneyValue value={r.amount} />
+                      render: (_, r) => <MoneyValue value={r.amount} />,
+                      exportValue: r => r.amount
                     },
                     {
                       title: t('Affectation'),
                       key: 'affectation',
+                      exportValue: r =>
+                        r.allocations.length > 0
+                          ? r.allocations.map(a => a.invoiceReference).join(' · ')
+                          : t('Acompte, sans facture'),
                       render: (_, r) => {
                         const risques = r.status === 'DRAFT' ? referencesRisqueesDuReglement(r) : [];
                         return (

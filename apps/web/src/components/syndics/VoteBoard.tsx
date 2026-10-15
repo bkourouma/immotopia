@@ -1,6 +1,7 @@
 import React from 'react';
-import { Card, Col, Progress, Row, Statistic, Table, Tag, Typography } from 'antd';
+import { Card, Col, Progress, Row, Statistic, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../primitives';
 import { MeetingAttendance, MeetingResolution } from '../../types/syndic-types';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-governance';
 import { t } from '../../i18n/t';
@@ -41,7 +42,8 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, atten
     {
       title: t('Règle'),
       key: 'rule',
-      render: (_: unknown, resolution) => majorityRuleLabel(resolution.tally?.rule ?? normalizeMajorityRule(resolution.majorityRule))
+      render: (_: unknown, resolution) =>
+        majorityRuleLabel(resolution.tally?.rule ?? normalizeMajorityRule(resolution.majorityRule))
     },
     {
       title: t('Pour'),
@@ -94,6 +96,7 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions, atten
       <Col xs={24} md={16}>
         <Card title={t('Resultats des resolutions')}>
           <Table
+            exportFilename={t('Resultats des resolutions')}
             scroll={{ x: 'max-content' }}
             rowKey="id"
             dataSource={resolutions}

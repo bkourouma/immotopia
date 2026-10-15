@@ -34,6 +34,7 @@ import { STOCK_COUNT_STATUS_DISPLAY } from '../../types/finance-stock-controle-t
 import { formatQuantity } from '../../types/finance-stock-inventaire-types';
 import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { handleApiError } from '../../utils/error-handler';
+import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import { t } from '../../i18n/t';
 
 const PAGE_SIZE = 50;
@@ -217,6 +218,7 @@ export function StockComptagesTerrain(): React.ReactElement {
     {
       title: t('Lieu'),
       key: 'location',
+      exportValue: row => (row.siteName ? `${row.locationLabel} — ${row.siteName}` : row.locationLabel),
       render: (_v, row) => (
         <Space direction="vertical" size={0}>
           <span>{row.locationLabel}</span>
@@ -231,6 +233,7 @@ export function StockComptagesTerrain(): React.ReactElement {
     {
       title: t('Article'),
       key: 'item',
+      exportValue: row => `${row.itemLabel} — ${row.itemReference}`,
       render: (_v, row) => (
         <Space direction="vertical" size={0}>
           <span>{row.itemLabel}</span>
@@ -252,16 +255,36 @@ export function StockComptagesTerrain(): React.ReactElement {
             title: t('Valeur'),
             key: 'value',
             align: 'end' as const,
-            render: (_v: unknown, row: FieldCountRow) => valeurCell(row)
+            render: (_v: unknown, row: FieldCountRow) => valeurCell(row),
+            exportValue: (row: FieldCountRow) => row.theoreticalValue ?? null
           }
         ]
       : []),
     { title: t('Dernier comptage'), key: 'last', align: 'end', render: (_v, row) => <LastCountCell row={row} /> },
     { title: t('Date et heure'), key: 'at', render: (_v, row) => <CountedAtCell row={row} /> },
     { title: t('Compté par'), key: 'by', render: (_v, row) => row.lastCount?.countedByLabel ?? '—' },
-    { title: t('Source'), key: 'source', render: (_v, row) => <SourceCell row={row} /> },
-    { title: t('Inventaire'), key: 'count', render: (_v, row) => inventaireCell(row) },
-    { title: t('Photo'), key: 'photo', render: (_v, row) => photoCell(row) }
+    {
+      title: t('Source'),
+      key: 'source',
+      render: (_v, row) => <SourceCell row={row} />,
+      exportValue: row => {
+        const dernier = row.lastCount;
+        if (!dernier?.countSource) return '';
+        const source = dernier.countSource === 'WHATSAPP' ? t('WhatsApp') : t('Web');
+        return dernier.outcome === 'CORRECTED' ? `${source} — ${t('corrigé')}` : source;
+      }
+    },
+    {
+      title: t('Inventaire'),
+      key: 'count',
+      render: (_v, row) => inventaireCell(row),
+      exportValue: row => {
+        const statut = row.lastCount?.countStatus;
+        return statut ? STOCK_COUNT_STATUS_DISPLAY[statut].label : '';
+      }
+    },
+    // Un bouton d'ouverture du visualiseur : rien à lire dans un fichier.
+    { title: t('Photo'), key: 'photo', exportable: false, render: (_v, row) => photoCell(row) }
   ];
 
   const emptyAction =
@@ -363,6 +386,27 @@ export function StockComptagesTerrain(): React.ReactElement {
       ) : (
         <DataView<FieldCountRow>
           aria-label={t('Comptages terrain')}
+          // Liste par curseur : l'export reparcourt toutes les pages, avec les
+          // mêmes filtres que la liste affichée.
+          export={{
+            filename: t('Comptages terrain'),
+            fetchAll: async () => {
+              const toutes: FieldCountRow[] = [];
+              let curseur: string | undefined;
+              let tronque = false;
+              do {
+                const page = await listStockFieldCounts(tenantId, { ...filtres, cursor: curseur, limit: 200 });
+                toutes.push(...page.data);
+                curseur = page.meta.nextCursor ?? undefined;
+                if (curseur && toutes.length >= EXPORT_MAX_ROWS) {
+                  tronque = true;
+                  toutes.length = EXPORT_MAX_ROWS;
+                  break;
+                }
+              } while (curseur);
+              return { items: toutes, truncated: tronque };
+            }
+          }}
           items={rows}
           total={rows.length}
           page={1}

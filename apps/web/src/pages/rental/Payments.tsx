@@ -15,6 +15,7 @@ import {
   CreatePaymentRequest,
   AllocatePaymentRequest
 } from '../../services/rental-service';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { PaymentDeclarationsList } from '../../components/rental/PaymentDeclarationsList';
@@ -204,6 +205,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             title: t('Bail'),
             key: 'bail',
             width: 250,
+            exportValue: (p: RentalPayment) => `${p.lease?.lease_number || '—'} — ${nomDuBien(p.lease?.property)}`,
             render: (_: unknown, p: RentalPayment) => (
               <>
                 <div style={{ fontWeight: 600 }}>{p.lease?.lease_number || '—'}</div>
@@ -226,12 +228,14 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
+      exportValue: p => Number(p.amount || 0),
       render: (_, p) => <MoneyValue value={p.amount} currency={deviseAffichee(p.currency)} />
     },
     {
       title: t('Reste à affecter'),
       key: 'reste',
       align: 'end',
+      exportValue: p => resteAAffecter(p),
       render: (_, p) => {
         const reste = resteAAffecter(p);
         return reste > 0 ? (
@@ -318,6 +322,21 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       </FilterSheet>
 
       <DataView<RentalPayment>
+        // Export de TOUS les paiements, avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t('Paiements'),
+          fetchAll: () =>
+            collectAllPages<RentalPayment>(async (page, limit) => {
+              const reponse = await listPayments(tenantId, {
+                leaseId,
+                status: (list.filters.status as RentalPaymentStatus) || undefined,
+                renterClientId: list.filters.renterClientId || undefined,
+                page,
+                limit
+              });
+              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+        }}
         // Neuf colonnes hors onglet de bail — le bail et le locataire s'ajoutent
         // aux sept d'origine. Elles ne tiennent pas dans les ~690 px utiles au
         // plancher du desktop.

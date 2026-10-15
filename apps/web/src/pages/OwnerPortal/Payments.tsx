@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Select, DatePicker, Button, Empty } from 'antd';
+import { Card, Row, Col, Typography, Spin, Alert, Tag, Space, Select, DatePicker, Button, Empty } from 'antd';
 import { DollarOutlined, FilterOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { PaymentDetailsModal } from '../../components/OwnerPortal/PaymentDetailsModal';
+import { Table } from '../../components/primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -339,6 +340,7 @@ export default function Payments() {
       <Card title={t('Historique des paiements')}>
         {data && data.payments.length > 0 ? (
           <Table
+            exportFilename={t('Historique des paiements')}
             scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.payments}

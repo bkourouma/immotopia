@@ -286,6 +286,16 @@ function MotifDeLigne({ ligne }: { ligne: StockCountLine }): React.ReactElement 
   );
 }
 
+/** Le motif d'une ligne en une seule ligne de texte, pour l'export. */
+function motifExporte(ligne: StockCountLine): string {
+  if (ligne.setAside) return t('Écartée : {{motif}}', { motif: ligne.setAside.reason });
+  if (ligne.notCounted) return t('Non compté');
+  if (!estEnEcart(ligne)) return t('Aucun écart');
+  if (!ligne.justified) return t('Écart à justifier');
+  const libelle = stockReasonDisplay(ligne.reasonCode, ligne.reasonCode ? null : ligne.reason) ?? '';
+  return ligne.reasonCode && ligne.reason ? `${libelle} — ${ligne.reason}` : libelle;
+}
+
 /** L'écart d'une ligne : `warning` tant qu'il n'est pas justifié, neutre ensuite — jamais rouge. */
 function EcartDeLigne({ ligne }: { ligne: StockCountLine }): React.ReactElement {
   if (ligne.notCounted) return <Text type="secondary">{t('— non compté')}</Text>;
@@ -909,6 +919,7 @@ function colonnesLignesInventaire(params: {
     {
       title: t('Article'),
       key: 'article',
+      exportValue: ligne => `${ligne.itemReference} — ${ligne.itemLabel}`,
       render: (_, ligne) => <InventaireLigneArticle ligne={ligne} comptage={comptage} />
     }
   ];
@@ -944,7 +955,8 @@ function colonnesLignesInventaire(params: {
         title: t('Valeur de l’écart'),
         key: 'valeur',
         align: 'end',
-        render: (_, ligne) => (ligne.varianceValue === null ? null : <MoneyValue value={ligne.varianceValue} />)
+        render: (_, ligne) => (ligne.varianceValue === null ? null : <MoneyValue value={ligne.varianceValue} />),
+        exportValue: ligne => ligne.varianceValue
       });
     }
   }
@@ -952,12 +964,18 @@ function colonnesLignesInventaire(params: {
   if (aveugle) {
     colonnes.push({ title: t('Saisi à'), key: 'saisi', render: (_, ligne) => dateEtHeure(ligne.countedAtServer) });
   } else {
-    colonnes.push({ title: t('Motif'), key: 'motif', render: (_, ligne) => <MotifDeLigne ligne={ligne} /> });
+    colonnes.push({
+      title: t('Motif'),
+      key: 'motif',
+      render: (_, ligne) => <MotifDeLigne ligne={ligne} />,
+      exportValue: motifExporte
+    });
     colonnes.push({
       title: t('Pièces jointes'),
       key: 'pieces',
       align: 'end',
-      render: (_, ligne) => String(ligne.attachmentsCount)
+      render: (_, ligne) => String(ligne.attachmentsCount),
+      exportValue: ligne => ligne.attachmentsCount
     });
   }
   if (comptage.status === 'VALIDATED') {
@@ -970,7 +988,8 @@ function colonnesLignesInventaire(params: {
           <Text type="secondary">{t('Non mesuré')}</Text>
         ) : (
           String(ligne.movementsSinceCapture)
-        )
+        ),
+      exportValue: ligne => ligne.movementsSinceCapture
     });
   }
   if (actions) {
@@ -1025,6 +1044,7 @@ const TableauLignes: React.FC<{
   ariaLabel: string;
 }> = ({ comptage, lignes, valuesVisible, vide, actions, actionCarte, ariaLabel }) => (
   <DataView<StockCountLine>
+    export={{ filename: ariaLabel }}
     paginated={false}
     scrollX={1100}
     items={lignes}
@@ -1996,7 +2016,15 @@ const OngletInventaire: React.FC<{
     { title: t('Lieu'), key: 'lieu', render: (_, c) => c.locationLabel },
     { title: t('Nature'), key: 'nature', render: (_, c) => STOCK_COUNT_KIND_LABELS[c.kind] },
     { title: t('Compté le'), key: 'date', render: (_, c) => dateCourte(c.countedAt) },
-    { title: t('État'), key: 'etat', render: (_, c) => etat(c) },
+    {
+      title: t('État'),
+      key: 'etat',
+      render: (_, c) => etat(c),
+      exportValue: c =>
+        c.selfValidated
+          ? `${STOCK_COUNT_STATUS_DISPLAY[c.status].label} — ${t('Validé sans second regard')}`
+          : STOCK_COUNT_STATUS_DISPLAY[c.status].label
+    },
     { title: t('Lignes'), key: 'lignes', align: 'end', render: (_, c) => c.linesCount },
     {
       title: t('Lignes en écart'),
@@ -2011,7 +2039,8 @@ const OngletInventaire: React.FC<{
             title: t('Valeur de l’écart'),
             key: 'valeur',
             align: 'end' as const,
-            render: (_: unknown, c: StockCount) => valeurEcart(c)
+            render: (_: unknown, c: StockCount) => valeurEcart(c),
+            exportValue: (c: StockCount) => (c.blind ? null : c.varianceValueNet)
           }
         ]
       : []),
@@ -2092,6 +2121,7 @@ const OngletInventaire: React.FC<{
       </Space>
 
       <DataView<StockCount>
+        export={{ filename: t('Inventaires') }}
         paginated={false}
         scrollX={1300}
         items={comptages}

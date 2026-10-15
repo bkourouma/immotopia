@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Alert, Button, Card, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Space, Tag, Typography } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
 import {
   createOwnerStatement,
@@ -9,7 +9,7 @@ import {
   sendOwnerStatement
 } from '../../../services/patrimoine-service';
 import { isLegacyStatement, statementStatusLabel } from '../../../components/patrimoine/owner-statement-helpers';
-import { MoneyValue } from '../../../components/primitives';
+import { MoneyValue, Table } from '../../../components/primitives';
 import { listContacts } from '../../../services/crm-service';
 import { listProperties } from '../../../services/property-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
@@ -178,6 +178,7 @@ export const OwnerStatementsPage: React.FC = () => {
 
         <Card title={t('Historique des relevés')}>
           <Table
+            exportFilename={t('Historique des relevés')}
             scroll={{ x: 'max-content' }}
             loading={loading}
             rowKey="id"
@@ -202,6 +203,8 @@ export const OwnerStatementsPage: React.FC = () => {
                 title: t('Honoraires et TVA'),
                 key: 'fees',
                 align: 'end' as const,
+                exportValue: (record: OwnerStatement) =>
+                  Number(record.totalManagementFees) + Number(record.totalManagementFeesVat),
                 render: (_: unknown, record: OwnerStatement) => (
                   <MoneyValue value={Number(record.totalManagementFees) + Number(record.totalManagementFeesVat)} />
                 )
@@ -221,6 +224,10 @@ export const OwnerStatementsPage: React.FC = () => {
               {
                 title: t('Statut'),
                 dataIndex: 'status',
+                exportValue: (record: OwnerStatement) =>
+                  isLegacyStatement(record)
+                    ? `${statementStatusLabel(record.status)} — ${t('Ancien calcul')}`
+                    : statementStatusLabel(record.status),
                 render: (status: OwnerStatement['status'], record: OwnerStatement) => (
                   <Space size={4} wrap>
                     <Tag>{statementStatusLabel(status)}</Tag>

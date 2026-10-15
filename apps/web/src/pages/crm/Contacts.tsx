@@ -1,4 +1,4 @@
-import { dealSummaryLabel, dealTypeLabel, dealStageLabel } from '../../utils/crm-labels';
+import { dealTypeLabel, dealStageLabel } from '../../utils/crm-labels';
 import { contactDisplayName } from '../../utils/contact-display';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -7,7 +7,6 @@ import {
   App,
   Button,
   Input,
-  Table,
   Card,
   Tag as AntTag,
   Space,
@@ -37,8 +36,6 @@ import {
   DeleteOutlined,
   CloseOutlined,
   FilterOutlined,
-  DownloadOutlined,
-  FileExcelOutlined,
   CheckOutlined
 } from '@ant-design/icons';
 import { ContactForm } from '../../components/crm/ContactForm';
@@ -59,7 +56,8 @@ import {
   ContactFilters
 } from '../../services/crm-service';
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
-import { exportToCSV, exportToExcel } from '../../utils/export-utils';
+import { Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import type { ColumnsType } from 'antd/es/table';
 import { t as translate } from '../../i18n/t';
 
@@ -224,50 +222,6 @@ export const Contacts: React.FC = () => {
     }
   };
 
-  const handleExportCSV = () => {
-    const exportData = contacts.map(contact => ({
-      Nom: contactDisplayName(contact),
-      Email: contact.email,
-      Téléphone: contact.phonePrimary || contact.phone || '',
-      Statut:
-        contact.status === 'LEAD'
-          ? translate('Prospect')
-          : contact.status === 'ACTIVE_CLIENT'
-            ? translate('Client actif')
-            : translate('Archivé'),
-      Source: contact.source || '',
-      'Prochaine action': contact.nextAction
-        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
-        : '',
-      'Affaire en cours': contact.activeDeal ? dealSummaryLabel(contact.activeDeal.type, contact.activeDeal.stage) : '',
-      'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
-    }));
-    exportToCSV(exportData, 'contacts');
-    message.success(translate('Export CSV réussi'));
-  };
-
-  const handleExportExcel = async () => {
-    const exportData = contacts.map(contact => ({
-      Nom: contactDisplayName(contact),
-      Email: contact.email,
-      Téléphone: contact.phonePrimary || contact.phone || '',
-      Statut:
-        contact.status === 'LEAD'
-          ? translate('Prospect')
-          : contact.status === 'ACTIVE_CLIENT'
-            ? translate('Client actif')
-            : translate('Archivé'),
-      Source: contact.source || '',
-      'Prochaine action': contact.nextAction
-        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
-        : '',
-      'Affaire en cours': contact.activeDeal ? dealSummaryLabel(contact.activeDeal.type, contact.activeDeal.stage) : '',
-      'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
-    }));
-    await exportToExcel(exportData, 'contacts', 'Contacts');
-    message.success(translate('Export Excel réussi'));
-  };
-
   const toutesColonnes: ColumnsType<CrmContact> = [
     {
       title: translate('Nom'),
@@ -289,6 +243,12 @@ export const Contacts: React.FC = () => {
     {
       title: translate('Prochaine action'),
       key: 'nextAction',
+      exportValue: record =>
+        record.nextAction
+          ? `${record.nextAction.nextActionType || translate('Action')} — ${new Date(
+              record.nextAction.nextActionAt
+            ).toLocaleDateString(activeLocale())}`
+          : '',
       render: (_, record) => {
         if (!record.nextAction) return <Text type="secondary">-</Text>;
         return (
@@ -308,6 +268,10 @@ export const Contacts: React.FC = () => {
     {
       title: translate('Affaire en cours'),
       key: 'activeDeal',
+      exportValue: record =>
+        record.activeDeal
+          ? `${dealTypeLabel(record.activeDeal.type)} — ${dealStageLabel(record.activeDeal.stage)}`
+          : '',
       render: (_, record) => {
         if (!record.activeDeal) return <Text type="secondary">-</Text>;
         const dealType = dealTypeLabel(record.activeDeal.type);
@@ -386,12 +350,6 @@ export const Contacts: React.FC = () => {
           </Col>
           <Col xs={24} sm={24} md={12}>
             <Space wrap>
-              <Button icon={<DownloadOutlined />} onClick={handleExportCSV}>
-                {translate('Exporter CSV')}
-              </Button>
-              <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
-                {translate('Exporter Excel')}
-              </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
                 {translate('Nouveau contact')}
               </Button>
@@ -683,6 +641,25 @@ export const Contacts: React.FC = () => {
             {/* Table View */}
             <Card>
               <Table
+                exportFilename={translate('Contacts')}
+                // Export de TOUS les contacts, avec les mêmes filtres que la liste affichée.
+                exportFetchAll={() =>
+                  collectAllPages<CrmContact>(async (page, limit) => {
+                    const reponse = await listContacts(tenantId as string, {
+                      ...filters,
+                      search: filters.search || undefined,
+                      startDate: advancedFilters.startDate,
+                      endDate: advancedFilters.endDate,
+                      assignedTo: advancedFilters.assignedTo,
+                      source: advancedFilters.source,
+                      hasActiveDeal: hasActiveDealFilter,
+                      hasUpcomingActivity: hasUpcomingActivityFilter,
+                      page,
+                      limit
+                    });
+                    return { items: reponse.contacts ?? [], total: reponse.pagination?.total ?? 0 };
+                  })
+                }
                 columns={columns}
                 dataSource={contacts}
                 rowKey="id"

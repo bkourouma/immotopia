@@ -1,7 +1,8 @@
 import React from 'react';
-import { Table, Tag, Button, Space, Typography } from 'antd';
+import { Tag, Button, Space, Typography } from 'antd';
 import { DeleteOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import type { NewsletterSubscriber } from '../../services/newsletter.service';
+import { Table } from '../primitives';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -13,6 +14,11 @@ interface SubscriberListProps {
   onRemove: (sub: NewsletterSubscriber) => void;
   onImport: () => void;
   onExport: () => void;
+  /**
+   * Récupère TOUS les abonnés de la liste (même filtre que celle affichée) pour
+   * l'export Excel/CSV/PDF du tableau. Sans lui, seule la page affichée est exportée.
+   */
+  exportFetchAll?: () => Promise<NewsletterSubscriber[]>;
   canEdit?: boolean;
 }
 
@@ -36,6 +42,7 @@ export function SubscriberList({
   onRemove,
   onImport,
   onExport,
+  exportFetchAll,
   canEdit = true
 }: SubscriberListProps) {
   const columns = [
@@ -91,6 +98,8 @@ export function SubscriberList({
         </Button>
       </div>
       <Table
+        exportFilename={translate('Abonnés')}
+        exportFetchAll={exportFetchAll}
         scroll={{ x: 'max-content' }}
         loading={loading}
         columns={columns}

@@ -176,11 +176,18 @@ export const BonsDeCommande: React.FC = () => {
         />
       )
     },
-    { title: t('Montant total'), key: 'montant', align: 'end', render: (_, b) => <MoneyValue value={b.totalAmount} /> },
+    {
+      title: t('Montant total'),
+      key: 'montant',
+      align: 'end',
+      exportValue: b => b.totalAmount,
+      render: (_, b) => <MoneyValue value={b.totalAmount} />
+    },
     {
       title: t('Reste à facturer'),
       key: 'reste',
       align: 'end',
+      exportValue: b => b.remainingAmount,
       render: (_, b) => <MoneyValue value={b.remainingAmount} />
     },
     {
@@ -276,6 +283,7 @@ export const BonsDeCommande: React.FC = () => {
         columns={colonnes}
         rowKey={b => b.id}
         aria-label={t('Bons de commande')}
+        export={{ filename: t('Bons de commande') }}
         renderCard={b => (
           <DataCard
             title={b.reference}

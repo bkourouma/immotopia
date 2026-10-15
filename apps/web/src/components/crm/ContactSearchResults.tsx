@@ -1,8 +1,9 @@
 import { contactDisplayName } from '../../utils/contact-display';
 import React from 'react';
-import { Table, Tag, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 import { t as translate } from '../../i18n/t';
+import { Table, type ExportFetchAllResult } from '../primitives';
 
 interface ContactSearchResultsProps {
   contacts: ContactSearchResultItem[];
@@ -14,6 +15,11 @@ interface ContactSearchResultsProps {
   loading?: boolean;
   pagination?: { total: number; page: number; limit: number; totalPages: number };
   onPageChange?: (page: number, limit: number) => void;
+  /**
+   * Récupère TOUS les résultats de la recherche en cours (mêmes filtres que la liste).
+   * Sans lui, l'export ne couvre que la page affichée.
+   */
+  exportFetchAll?: () => Promise<ExportFetchAllResult<ContactSearchResultItem>>;
 }
 
 export function ContactSearchResults({
@@ -25,7 +31,8 @@ export function ContactSearchResults({
   multiSelect = true,
   loading = false,
   pagination,
-  onPageChange
+  onPageChange,
+  exportFetchAll
 }: ContactSearchResultsProps) {
   const rowSelection =
     mode === 'select'
@@ -82,6 +89,7 @@ export function ContactSearchResults({
     {
       title: translate('Tags'),
       key: 'tags',
+      exportValue: (r: ContactSearchResultItem) => r.tags?.map(tag => tag.name).join(', ') ?? '',
       render: (_: unknown, r: ContactSearchResultItem) =>
         r.tags?.length
           ? r.tags.map(t => (
@@ -95,6 +103,10 @@ export function ContactSearchResults({
 
   return (
     <Table<ContactSearchResultItem>
+      // Pas d'export dans un sélecteur de contacts : seule la recherche en consultation s'exporte.
+      exportable={mode === 'view'}
+      exportFilename={translate('Contacts')}
+      exportFetchAll={exportFetchAll}
       scroll={{ x: 'max-content' }}
       rowKey="id"
       loading={loading}

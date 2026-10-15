@@ -67,6 +67,10 @@ export const LandRegularizationListPage: React.FC = () => {
     {
       title: t('Bien'),
       key: 'bien',
+      exportValue: dossier =>
+        dossier.property.internalReference
+          ? `${dossier.property.title} — ${dossier.property.internalReference}`
+          : dossier.property.title,
       render: (_, dossier) => (
         <>
           <Link to={lien(dossier)} style={{ fontWeight: 600 }}>
@@ -88,6 +92,7 @@ export const LandRegularizationListPage: React.FC = () => {
     {
       title: t('Avancement'),
       key: 'avancement',
+      exportValue: dossier => dossier.progress.percent,
       render: (_, dossier) => <ProgressCell dossier={dossier} />
     },
     {
@@ -101,6 +106,7 @@ export const LandRegularizationListPage: React.FC = () => {
       title: t('Frais engagés'),
       key: 'frais',
       align: 'end',
+      exportValue: dossier => dossier.feesXof,
       render: (_, dossier) => formatXof(dossier.feesXof)
     },
     {
@@ -112,6 +118,7 @@ export const LandRegularizationListPage: React.FC = () => {
       title: t('Étapes en retard'),
       key: 'retard',
       align: 'end',
+      exportValue: dossier => dossier.overdueSteps,
       render: (_, dossier) =>
         dossier.overdueSteps > 0 ? <Tag color="error">{dossier.overdueSteps}</Tag> : <span>0</span>
     }
@@ -162,6 +169,8 @@ export const LandRegularizationListPage: React.FC = () => {
       </FilterSheet>
 
       <DataView<LandRegularizationSummary>
+        // L'API ne pagine pas : toute la liste est déjà chargée.
+        export={{ filename: t('Dossiers de régularisation foncière') }}
         items={dossiers}
         total={dossiers.length}
         page={1}

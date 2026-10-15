@@ -15,7 +15,6 @@ import {
   Select,
   Space,
   Steps,
-  Table,
   Tooltip,
   Typography
 } from 'antd';
@@ -41,7 +40,7 @@ import type {
   SaleMilestoneDto
 } from '../../services/sales-service';
 import { detailKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, PageHeader, StateBlock, StatusTag } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { DEPOSIT_HOLDER_LABELS, dateCourte } from './helpers';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
@@ -355,6 +354,8 @@ export const SaleAgreementDetail: React.FC = () => {
     {
       title: t('Statut'),
       key: 'statut',
+      // Le menu de changement de statut n'a pas de texte : on exporte le libellé du statut.
+      exportValue: c => CONDITION_STATUS_OPTIONS.find(option => option.value === c.status)?.label ?? c.status,
       render: (_, c) =>
         peutModifier ? (
           <Select
@@ -501,6 +502,7 @@ export const SaleAgreementDetail: React.FC = () => {
         }
       >
         <Table<SaleConditionDto>
+          exportFilename={t('Conditions suspensives')}
           size="small"
           dataSource={agreement.conditions}
           columns={colonnesConditions}
@@ -520,6 +522,8 @@ export const SaleAgreementDetail: React.FC = () => {
           />
         )}
         <Table<MilestoneRow>
+          // Cellules de saisie : un formulaire éditable, pas une liste à exporter.
+          exportable={false}
           size="small"
           dataSource={milestoneRows}
           rowKey={r => r.id}

@@ -73,12 +73,25 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
         ]
       : []),
     { title: t('Échéance'), key: 'dueDate', render: (_, call) => dayjs(call.dueDate).format('DD/MM/YYYY') },
-    { title: t('Montant'), key: 'amount', align: 'end', render: (_, call) => <MoneyValue value={call.amount} /> },
-    { title: t('Payé'), key: 'paid', align: 'end', render: (_, call) => <MoneyValue value={call.paid} /> },
+    {
+      title: t('Montant'),
+      key: 'amount',
+      align: 'end',
+      exportValue: call => Number(call.amount),
+      render: (_, call) => <MoneyValue value={call.amount} />
+    },
+    {
+      title: t('Payé'),
+      key: 'paid',
+      align: 'end',
+      exportValue: call => Number(call.paid),
+      render: (_, call) => <MoneyValue value={call.paid} />
+    },
     {
       title: t('Reste à payer'),
       key: 'outstanding',
       align: 'end',
+      exportValue: call => Number(call.outstanding),
       render: (_, call) => (
         <strong>
           <MoneyValue value={call.outstanding} />
@@ -86,7 +99,14 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
       )
     },
     { title: t('Statut'), key: 'status', render: (_, call) => <ChargeCallStatusTag status={call.status} /> },
-    { title: t('Avis'), key: 'notice', align: 'end', render: (_, call) => <NoticeButton call={call} /> }
+    // Bouton de téléchargement de l'avis : rien à exporter.
+    {
+      title: t('Avis'),
+      key: 'notice',
+      align: 'end',
+      exportable: false,
+      render: (_, call) => <NoticeButton call={call} />
+    }
   ];
 
   return (
@@ -99,6 +119,7 @@ export const ChargeCallsTable: React.FC<{ calls: CoOwnerChargeCall[]; showLot?: 
       onPageChange={() => {}}
       rowKey={call => call.id}
       aria-label={t('Appels de charges')}
+      export={{ filename: t('Appels de charges') }}
       emptyDescription={t("Aucun appel de charges n'a été émis pour vos lots.")}
       columns={columns}
       renderCard={call => (
