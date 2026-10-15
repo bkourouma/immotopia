@@ -108,6 +108,27 @@ const transactionMock = jest.fn(async (callback: any) =>
   callback({ voidDocument: { findUniqueOrThrow: (...args: any[]) => voidDocumentFindUniqueOrThrow(...args) } })
 );
 
+// L'en-tête du bon de caisse lit l'identité de l'agence : on la simule, le reste du module reste réel.
+jest.mock('../../src/lib/documents/document-branding', () => ({
+  ...jest.requireActual('../../src/lib/documents/document-branding'),
+  resolveDocumentBranding: jest.fn(async () => ({
+    issuer: {
+      kind: 'AGENCY',
+      name: 'Agence Test',
+      legalName: null,
+      address: null,
+      phone: null,
+      email: null,
+      rccm: null,
+      taxId: null
+    },
+    issuerLogo: null,
+    signature: null,
+    stamp: null,
+    syndicate: null
+  }))
+}));
+
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     $transaction: (callback: any) => transactionMock(callback),
