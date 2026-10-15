@@ -51,6 +51,10 @@ prestataire, lot S6).
   en crée une nouvelle.
 - **SG-R3 Jeton.** 32 octets aléatoires, seul le SHA-256 est stocké (comme
   `SecureLink`), TTL 7 jours par défaut, 30 max. Un jeton par signataire.
+- **SG-R4b Canaux et contacts.** Décisions du 2026-10-15 : le canal WhatsApp
+  exige un contact CRM (`contactId`) ayant consenti ; deux signataires peuvent
+  partager le même contact (couple, colocataires), chacun avec son jeton et son
+  code.
 - **SG-R4 Code à usage unique.** 6 chiffres, HMAC-SHA256, comparaison à temps
   constant, 5 essais, validité 10 minutes, renvoi limité (3). Canaux : e-mail,
   WhatsApp (consentement CRM), SMS quand le lot SMS-1 sera intégré. Le code
@@ -71,14 +75,23 @@ prestataire, lot S6).
   cible (bail, mandat…) est vérifié comme appartenant à l'agence
   (`assertBelongsToTenant`). Routes publiques : aucune fuite d'existence
   (même réponse pour jeton inconnu, expiré ou révoqué).
-- **SG-R10 Signature sur place.** Pour l'état des lieux (et tout document en
-  présence), mode « tablette » : l'agent ouvre la demande, le signataire dessine
-  sa signature ; le code à usage unique est optionnel, la présence est tracée.
+- **SG-R10 Signature sur place.** Pour tout document (bail compris), mode
+  « tablette » : l'agent ouvre la demande, le signataire dessine sa signature.
+  Décisions du 2026-10-15 (revue sécurité) : sans code à usage unique, la
+  présence ne tient qu'à la signature manuscrite, donc **le mode DRAWN est
+  obligatoire** (un nom saisi est refusé). Traçabilité : le jeton sur place (24 h
+  au plus, jamais en cache) est remis une seule fois ; sa remise ou sa
+  réémission écrit un événement `IN_PERSON_TOKEN_ISSUED` et une action d'audit
+  critique, `SignatureSigner.inPersonIssuedBy` désigne l'utilisateur de
+  l'agence, et l'événement `SIGNED` consigne cet utilisateur comme agent présent.
 - **SG-R11 Refus et expiration.** Un signataire peut refuser (motif) ; un
   job marque `EXPIRED` les demandes échues et notifie l'émetteur.
 - **SG-R12 Facturation.** Capacité d'abonnement `SIGNATURES_MENSUELLES`,
   réservation atomique à l'envoi, politique selon `SUBSCRIPTION_ENFORCEMENT`
   (modèle : `lib/stock-whatsapp/quota.ts`) ; restitution si l'envoi échoue.
+  Décision du 2026-10-15 : la réservation précède la conversion LibreOffice
+  (coûteuse) ; toute erreur ultérieure la restitue. Pas de facturation de
+  dépassement : au-delà du plafond, la création est refusée (409).
 - **SG-R13 Fournisseur.** Variable `SIGNATURE_PROVIDER` =
   `disabled` | `log` | `internal` (défaut `disabled`), plus tard un nom de
   prestataire ; passe par `config/env.ts` et `env.example`.

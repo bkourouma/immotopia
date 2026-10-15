@@ -5,6 +5,7 @@ import Docxtemplater from 'docxtemplater';
 import { logger } from '../../utils/logger';
 import { majorityRuleLabel, normalizeMajorityRule } from './meeting-majority';
 import { t } from '../../i18n';
+import { getShippedTemplatesDir, getTemplatesWriteDir } from '../../utils/assets-paths';
 import type { DocumentBranding } from '../documents/document-branding';
 
 interface AgendaItemInput {
@@ -163,13 +164,6 @@ function escapeXml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
-}
-
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
 }
 
 /**
@@ -367,22 +361,18 @@ async function resolveSyndicMinutesTemplatePath(
   const tenantId = tenantIdOverride || meeting.syndicate?.tenantId;
   if (!tenantId) return null;
 
-  const projectRoot = getProjectRoot();
-  const templatePath = path.join(
-    projectRoot,
-    'assets',
-    'modeles_documents',
-    'tenants',
-    tenantId,
-    'compte-rendu-TEMPLATE.docx'
-  );
-
-  try {
-    await fs.access(templatePath);
-    return templatePath;
-  } catch {
-    return null;
+  // Modele importe par l'agence : volume d'abord, puis ancien emplacement.
+  const relative = path.join('tenants', tenantId, 'compte-rendu-TEMPLATE.docx');
+  for (const base of [getTemplatesWriteDir(), getShippedTemplatesDir()]) {
+    const candidate = path.join(base, relative);
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // essayer le suivant
+    }
   }
+  return null;
 }
 
 async function buildDocxFromTemplate(templatePath: string, context: Record<string, unknown>): Promise<Buffer> {

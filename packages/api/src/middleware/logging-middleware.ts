@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { maskSensitivePath } from '../utils/sensitive-path';
 
 /**
  * Préfixe du webhook Meta WhatsApp Cloud (lot 041). Recopié ici plutôt
@@ -21,7 +22,9 @@ const MASK = '[masqué]';
  * `hub.challenge` y sont remplacés par `[masqué]`. Toute autre URL est rendue
  * telle quelle.
  */
-export function maskRequestUrl(url: string): string {
+export function maskRequestUrl(rawUrl: string): string {
+  // Signature electronique : le jeton du signataire est dans le chemin.
+  const url = maskSensitivePath(rawUrl);
   const queryStart = url.indexOf('?');
   if (queryStart < 0) return url;
   const path = url.slice(0, queryStart);

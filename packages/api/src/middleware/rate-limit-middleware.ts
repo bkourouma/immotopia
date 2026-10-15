@@ -523,3 +523,45 @@ export const auditIntegrityRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+// ---------------------------------------------------------------------------
+// Signature électronique publique (spec 043) : /api/public/signatures/:token
+// ---------------------------------------------------------------------------
+
+function signatureLimitHandler(_req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+}
+
+/** Consultation de la page de signature et du PDF : 60 par minute et par IP, avant toute vérification du jeton. */
+export const signaturePublicRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `signature-public:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Envoi de code (coûte un message) : 10 par 15 minutes et par IP. */
+export const signatureOtpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: req => `signature-otp:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Signature et refus (devinette du code) : 20 par 15 minutes et par IP, en plus du plafond d'essais par code. */
+export const signatureActionRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-action:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});

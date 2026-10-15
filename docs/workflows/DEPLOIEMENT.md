@@ -931,12 +931,14 @@ suspendre ou la purger, puis relancer. Les comptes de connexion ajoutés (équip
 portails propriétaire, locataire, copropriétaire) ont le même mot de passe de test public
 que les administrateurs. Durée constatée en local : environ une heure pour les 12 agences créées de zéro (55 min mesurées), 6 minutes pour une relance sur des agences déjà peuplées.
 
-**Limite connue : documents générés.** Les modèles DOCX de bail et de quittance et les
-documents générés des baux vivent sous `assets/`, dossier absent des images Docker du
-staging (voir « Non résolus » plus haut). Sur le staging, « Générer un contrat » et le
-téléchargement des quittances du jeu de démonstration ne fonctionneront pas tant que ce
-point n'est pas corrigé ; les autres pièces (PDF de syndic, de patrimoine, de stock, de
-biens, photos) sont de vrais fichiers écrits sur le volume des téléversements.
+**Documents générés (corrigé, lot S0 de la spec 043).** Les modèles DOCX livrés
+(`assets/modeles_documents/*.docx`) sont copiés en lecture seule dans l'image
+runtime (`/app/assets/modeles_documents`) ; les documents générés et les
+modèles importés par une agence s'écrivent sous `UPLOADS_DIR`
+(`/data/uploads/generated_documents`, `/data/uploads/modeles_documents`), donc
+sur le volume `<pile>-uploads-data`, sauvegardé par `backup.sh`. À vérifier sur
+le staging après le prochain déploiement : « Générer un contrat » et le
+téléchargement d'une quittance.
 
 ```bash
 ./infra/scripts/deploy.sh staging           # amène d'abord le web à jour
@@ -1198,8 +1200,9 @@ se chevaucher. Code de sortie non nul au moindre échec.
 - **Ce que `backup.sh` ne sauvegarde pas** : le fichier de secrets (à conserver
   hors serveur, étape 1), le volume des journaux (`<pile>-api-logs`), la
   configuration nginx et les certificats, la crontab, la configuration rclone, et
-  tout dossier `assets/` créé dans le conteneur d'API (voir
-  [points ouverts](#points-ouverts)).
+  tout dossier `assets/` créé dans le conteneur d'API (les documents générés
+  sont désormais sur le volume des téléversements, voir
+  [« Fichiers livrés et fichiers générés »](#fichiers-livrés-et-fichiers-générés)).
 
 ### `restore-check.sh` (non éprouvé)
 
@@ -1504,28 +1507,85 @@ ls -lh /home/deployer/backups/immotopia-prod
   Le `docker-compose.yml` de la racine est un outil de développement : ne jamais
   le déployer.
 
+## Fichiers livrés et fichiers générés
+
+Choix (lot S0) : une seule règle, portée par `packages/api/src/utils/assets-paths.ts`.
+
+| Nature                                           | Emplacement dans l'image                                        | Écriture                     |
+| ------------------------------------------------ | --------------------------------------------------------------- | ---------------------------- |
+| Modèles livrés `assets/modeles_documents/*.docx` | `/app/assets/modeles_documents` (couche d'image)                | jamais, lecture seule        |
+| Documents générés (baux, quittances)             | `$UPLOADS_DIR/generated_documents/<agence>/<type>/<AAAA>/<MM>/` | volume `<pile>-uploads-data` |
+| Modèles importés par une agence                  | `$UPLOADS_DIR/modeles_documents/tenants/<agence>/`              | volume `<pile>-uploads-data` |
+
+- Pas de nouveau volume ni de nouvelle variable : `UPLOADS_DIR` (déjà
+  `/data/uploads` dans l'image et dans le compose) suffit, et `backup.sh` couvre
+  déjà ce volume. `docker-compose.yml`, `docker-compose.prod.yml` (utilisé aussi
+  pour le staging) n'ont pas changé.
+- Le serveur statique ne sert jamais `generated_documents` ni `modeles_documents`
+  (liste blanche de `uploadsAccessGuard`) : le téléchargement passe par la route
+  authentifiée.
+- `.dockerignore` : `assets/generated_documents`, `assets/modeles_documents/tenants`,
+  `assets/modeles_documents/default` et `assets/media` restent hors de l'image ;
+  seuls les `.docx` livrés à la racine de `modeles_documents` sont copiés.
+- Repli pour l'existant : un document déjà généré porte en base un chemin absolu
+  de l'ancien emplacement (`<cwd>/assets/generated_documents/...`) ; la lecture
+  l'accepte toujours (chemin stocké, dans l'ancien ou le nouveau dossier). Les
+  modèles importés sont cherchés d'abord sur le volume, puis sous
+  `assets/modeles_documents`. Aucune migration de données. Sans `UPLOADS_DIR`
+  (développement), rien ne change : tout reste sous `<racine>/assets/`.
+- Les gabarits globaux « par défaut » (`db:seed:document-templates`) ne sont
+  toujours pas amorcés par `bootstrap.sh`.
+
+### Conversion DOCX vers PDF (LibreOffice)
+
+L'étape runtime installe `libreoffice-writer`, `font-noto` et `ttf-dejavu` et
+pose `DOCX_PDF_CONVERTER=libreoffice` (`lib/pdf-convert`, utilisé par la
+signature électronique). **Impact sur l'image : de l'ordre de +450 à +600 Mo**
+(estimation Alpine, à mesurer au premier build), et un build plus long. Hors
+Docker (développement), la variable vaut `disabled` par défaut : la conversion
+répond 503 avec un message clair. Pour la désactiver sur une pile, poser
+`DOCX_PDF_CONVERTER=disabled` dans son fichier d'environnement.
+
+Durcissement : la conversion lance `soffice` avec un environnement réduit à
+`PATH`, `HOME` (dossier de travail) et `LANG` (aucun secret du serveur hérité),
+neutralise le DOCX avant conversion (relations externes, champs `INCLUDEPICTURE`
+/ `INCLUDETEXT` / `LINK`, adresses `file:`, macros) et borne les conversions à
+2 simultanées par processus (503 au-delà).
+
+### Journaux nginx sans jeton de signature
+
+Le lien `/signer/<jeton>` et l'API publique `/api/public/signatures/<jeton>`
+portent un jeton secret dans le chemin. Les trois fichiers `infra/nginx/*.conf`
+déclarent un `map` + un `log_format` (`immotopia_staging_masked`,
+`immotopia_prod_masked`, `immotopia_web_masked`) qui remplacent le jeton par
+`[masque]` dans la ligne de requête ET dans le Referer, et branchent
+`access_log` dessus. Les fichiers de `sites-enabled` sont inclus dans le
+contexte `http` : ces directives y sont valides sans toucher à `nginx.conf`.
+
+Actions sur le serveur (non éprouvées, `nginx -t` non exécuté ici) :
+
+1. **Les vhosts de l'hôte ont déjà été réécrits par certbot** : ne pas recopier
+   le fichier du dépôt. Ajouter à la main, AVANT le premier bloc `server`, les
+   blocs `map` et `log_format` du fichier du dépôt, puis remplacer dans le bloc
+   `server` qui écoute en 443 (et en 80) la ligne `access_log` par
+   `access_log /var/log/nginx/<hôte>.access.log immotopia_staging_masked;`
+   (`immotopia_prod_masked` en production).
+2. `sudo nginx -t && sudo systemctl reload nginx`.
+3. Le nginx embarqué (`spa.conf`) est reconstruit avec l'image web : redéployer.
+4. Vérifier : `curl -s https://<hôte>/signer/AAAAAAAAAAAAAAAAAAAAAAAA >/dev/null`
+   puis `grep signer /var/log/nginx/<hôte>.access.log | tail -1` doit montrer
+   `/signer/[masque]`.
+
+Limite : `error_log` peut citer la ligne de requête lors d'une erreur amont
+(502, délai). Il n'a pas de masquage possible côté nginx ; en limiter la
+conservation et l'accès (rotation courte, lecture réservée à root).
+
 ## Points ouverts
 
 Non résolus à la date de rédaction :
 
 - **Géographie de la Côte d'Ivoire non amorcée.** `bootstrap.sh` ne lance pas
   `db:seed:geographic` : la recherche de communes est vide. Non bloquant.
-- **Gabarits DOCX globaux (baux, quittances) non amorcés, et écriture sous
-  `<cwd>/assets/` impossible dans l'image : CONFIRMÉ le 2026-09-29.**
-  `bootstrap.sh` ne lance pas `db:seed:document-templates`. Les `.docx` sources
-  sont dans `assets/modeles_documents/` du dépôt, mais `packages/api/Dockerfile`
-  ne copie aucun dossier `assets/` dans ses images. Le code lit et écrit sous
-  `<cwd>/assets/` (`modeles_documents`, `generated_documents`) ; dans l'image
-  runtime le répertoire courant est `/app`, qui appartient à `root`, alors que le
-  conteneur tourne sous l'utilisateur `node`. Mesuré sur une image construite en
-  local : `mkdir /app/assets` répond « Permission denied » et `/app/assets`
-  n'existe pas. La génération d'un bail ou d'une quittance et l'import d'un
-  gabarit par une agence échouent donc très probablement aussi sur le staging
-  actuel. Même en créant le dossier, il vivrait dans la couche du conteneur
-  (perdu à chaque recréation) et hors sauvegarde. Correction confiée à une tâche
-  séparée (variable de dossier, volume nommé sauvegardé, gabarits livrés) ;
-  **ne pas promettre les contrats de bail ni les quittances à un client avant
-  qu'elle soit livrée et vérifiée sur le staging.**
 - **34 paramètres fiscaux livrés en statut `A_VALIDER`** (référentiel
   `TaxParameter`, migration `20261002143700_patrimoine_p4_entites_fiscalite`) :
   validation métier à obtenir avant de présenter les estimations à un client.

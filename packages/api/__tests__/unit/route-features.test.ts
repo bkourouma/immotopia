@@ -49,6 +49,12 @@ const OUTSIDE_SUBSCRIPTION: Array<{ prefix: string; exact?: boolean; reason: str
     prefix: '/api/webhooks',
     reason: 'Webhooks de fournisseurs (Meta WhatsApp Cloud, lot 041) : signés, sans session ni agence ambiante.'
   },
+  {
+    prefix: '/api/signatures',
+    reason:
+      "Signature electronique (spec 043) : l'agence est resolue par resolveSignatureTenant puis controlee par requireTenantAccess ; " +
+      "le module RENTAL est exige par requireFeature('RENTAL') sur chaque route (le contrat HTTP n'a pas de /tenants/:tenantId)."
+  },
   { prefix: '/api/geographic', reason: 'Referentiel public.' },
   { prefix: '/api/public', reason: 'Vitrine publique des biens.' },
   { prefix: '/api/newsletter', reason: 'Newsletter publique (inscription, desinscription).' },
