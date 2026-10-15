@@ -237,14 +237,16 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Nouvel appel de charges</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Un nouvel appel de charges a été émis pour votre lot dans la copropriété <strong>{{syndicateName}}</strong>.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Période : {{period}}. Lot : {{lotLabel}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.</p>`
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Période : {{period}}. Lot : {{lotLabel}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px;">{{paymentBlock}}</p>`
   },
   CHARGE_CALL_REMINDER: {
     subject: 'Rappel d appel de charges - {{period}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Rappel d appel de charges</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Rappel pour l appel de charges de la période <strong>{{period}}</strong> concernant votre lot {{lotLabel}}.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.</p>`
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px;">{{paymentBlock}}</p>`
   },
   CHARGE_PAYMENT_RECEIPT: {
     subject: 'Reçu de paiement {{number}} - {{syndicateName}}',

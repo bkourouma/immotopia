@@ -13,6 +13,13 @@ import { currentOwnerProfilesSorted } from './lot-owner';
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
 import { MARKER_KIND } from '../notification-markers';
+import {
+  buildPaymentTemplateVars,
+  resolveChargeCallPaymentUrl,
+  stripEmptyPaymentParagraph,
+  whatsappPaymentVars,
+  type ChargeCallPaymentUrlResolver
+} from './charge-call-payment-url';
 
 /** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
 function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
@@ -32,6 +39,20 @@ async function isCurrentLotOwner(lotId: string, ownerId: string, now: Date = new
   });
   const current = profiles.filter(profile => !profile.ownedUntil || profile.ownedUntil.getTime() >= now.getTime());
   return current.length === 0 || current.some(profile => profile.contactId === ownerId);
+}
+
+/**
+ * Destinataire d'un avis d'appel ou d'une relance : UNE seule règle, la même
+ * que les quittances (`charge-receipt-queries.ts`) — `ownerContactId` d'abord,
+ * à défaut `coownerId` (un lot créé depuis « Profils et copropriétaires » ne
+ * renseigne souvent que ce dernier). `null` quand le lot n'a ni l'un ni
+ * l'autre ; le contrôle « copropriétaire actuel » reste à `isCurrentLotOwner`.
+ */
+export function resolveChargeCallRecipient<T>(
+  lot?: { ownerContactId?: string | null; coownerId?: string | null; owner?: T | null; coowner?: T | null } | null
+): T | null {
+  const recipient = lot?.ownerContactId ? lot.owner : lot?.coownerId ? lot.coowner : null;
+  return recipient ?? null;
 }
 
 function getOwnerWhatsappTarget(owner: {
@@ -73,6 +94,8 @@ export interface NotifyChargeCallOptions {
    * n'empêche pas l'envoi : l'e-mail part sans pièce jointe.
    */
   buildAttachments?: () => Promise<NotificationAttachment[]>;
+  /** Lien de paiement en ligne joint au message (voir `charge-call-payment-url.ts`) ; aucun lien par défaut. */
+  resolvePaymentUrl?: ChargeCallPaymentUrlResolver;
 }
 
 async function resolveAttachments(chargeCallId: string, options: NotifyChargeCallOptions) {
@@ -209,6 +232,12 @@ export async function notifyChargeCall(
     recipient.legalName ||
     'Copropriétaire';
 
+  const paymentVars = await buildPaymentTemplateVars(options.resolvePaymentUrl ?? resolveChargeCallPaymentUrl, {
+    tenantId,
+    syndicateId: chargeCall.syndicateId,
+    lotId: chargeCall.lotId,
+    chargeCallIds: [chargeCall.id]
+  });
   const templateVars = {
     ownerName,
     syndicateName: chargeCall.syndicate.name,
@@ -217,8 +246,10 @@ export async function notifyChargeCall(
     period: chargeCall.period,
     amount,
     currency: chargeCall.currency,
-    dueDate
+    dueDate,
+    ...paymentVars
   };
+  const whatsappVars = whatsappPaymentVars(templateVars);
 
   let emailSent = false;
   let whatsappSent = false;
@@ -246,7 +277,7 @@ export async function notifyChargeCall(
           await emailService.sendEmail({
             to: recipient.email,
             subject: applyTemplate(subjectTpl, templateVars),
-            html: applyTemplate(bodyTpl, templateVars, true),
+            html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl),
             ...(attachments.length > 0 ? { attachments } : {})
           });
           emailSent = true;
@@ -265,7 +296,7 @@ export async function notifyChargeCall(
   whatsappSent = await sendWhatsappNotification({
     tenantId,
     notificationKey: eventKeyWhatsApp,
-    variables: templateVars,
+    variables: whatsappVars,
     contactId: recipient.id
   });
   if (!whatsappSent) {
@@ -274,7 +305,7 @@ export async function notifyChargeCall(
       whatsappSent = await sendWhatsappNotification({
         tenantId,
         notificationKey: eventKeyWhatsApp,
-        variables: templateVars,
+        variables: whatsappVars,
         to: directPhone
       });
     }
@@ -574,7 +605,10 @@ export async function notifyMeetingConvocation(
   } as ConvocationResult;
 }
 
-export async function notifyChargeCallReminder(reminderId: string) {
+export async function notifyChargeCallReminder(
+  reminderId: string,
+  options: Pick<NotifyChargeCallOptions, 'resolvePaymentUrl'> = {}
+) {
   const eventKeyEmail: EmailNotificationKey = 'CHARGE_CALL_REMINDER';
   const eventKeyWhatsApp: WhatsappNotificationKey = 'CHARGE_CALL_REMINDER';
 
@@ -586,6 +620,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
           lot: {
             include: {
               owner: true,
+              coowner: true,
               property: {
                 select: {
                   title: true,
@@ -608,10 +643,18 @@ export async function notifyChargeCallReminder(reminderId: string) {
   }
 
   const call = reminder.chargeCall;
-  const owner = call.lot?.owner;
+  // Même règle de destinataire que l'avis d'appel (`notifyChargeCall`).
+  const owner = resolveChargeCallRecipient(call.lot);
   if (!owner) {
     logger.info('notifyChargeCallReminder: no owner linked to lot', { reminderId, lotId: call.lotId });
     return { emailSent: false, whatsappSent: false, skipped: 'NO_OWNER_CONTACT' as const };
+  }
+  if (!(await isCurrentLotOwner(call.lotId, owner.id))) {
+    logger.warn('notifyChargeCallReminder: lot owner is not a current co-owner, skipping notifications', {
+      reminderId,
+      lotId: call.lotId
+    });
+    return { emailSent: false, whatsappSent: false, skipped: 'OWNER_NOT_CURRENT' as const };
   }
 
   const tenantId = call.syndicate.tenantId;
@@ -626,6 +669,12 @@ export async function notifyChargeCallReminder(reminderId: string) {
   const ownerName =
     [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim() || owner.legalName || 'Copropriétaire';
 
+  const paymentVars = await buildPaymentTemplateVars(options.resolvePaymentUrl ?? resolveChargeCallPaymentUrl, {
+    tenantId,
+    syndicateId: call.syndicateId,
+    lotId: call.lotId,
+    chargeCallIds: [call.id]
+  });
   const templateVars = {
     ownerName,
     syndicateName: call.syndicate.name,
@@ -638,8 +687,10 @@ export async function notifyChargeCallReminder(reminderId: string) {
     remainingAmount: outstanding.toLocaleString('fr-FR'),
     currency: call.currency,
     dueDate: new Date(call.dueDate).toLocaleDateString('fr-FR'),
-    reminderLevel: String(reminder.reminderLevel)
+    reminderLevel: String(reminder.reminderLevel),
+    ...paymentVars
   };
+  const whatsappVars = whatsappPaymentVars(templateVars);
 
   let emailSent = false;
   let whatsappSent = false;
@@ -653,7 +704,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
       await emailService.sendEmail({
         to: owner.email,
         subject: applyTemplate(subjectTpl, templateVars),
-        html: applyTemplate(bodyTpl, templateVars, true)
+        html: stripEmptyPaymentParagraph(applyTemplate(bodyTpl, templateVars, true), paymentVars, bodyTpl)
       });
       emailSent = true;
     }
@@ -662,7 +713,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
   whatsappSent = await sendWhatsappNotification({
     tenantId,
     notificationKey: eventKeyWhatsApp,
-    variables: templateVars,
+    variables: whatsappVars,
     contactId: owner.id
   });
   if (!whatsappSent) {
@@ -671,7 +722,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
       whatsappSent = await sendWhatsappNotification({
         tenantId,
         notificationKey: eventKeyWhatsApp,
-        variables: templateVars,
+        variables: whatsappVars,
         to: directPhone
       });
     }

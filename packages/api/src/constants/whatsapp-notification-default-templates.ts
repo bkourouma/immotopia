@@ -47,9 +47,9 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   RENTER_PAYMENT_LINK_SENT:
     'Bonjour {{renterName}}, votre loyer {{agencyName}} pour la période {{period}} est à régler : {{amountDue}}. Payez en ligne par Mobile Money : {{paymentUrl}} (lien personnel, valable jusqu’au {{expiresAt}}).',
   CHARGE_CALL_ISSUED:
-    'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.{{paymentBlock}}',
   CHARGE_CALL_REMINDER:
-    'Bonjour {{ownerName}}, rappel pour l’appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, rappel pour l’appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.{{paymentBlock}}',
   GENERAL_MEETING_CONVOCATION:
     'Bonjour {{ownerName}}, vous êtes convoqué(e) à l’assemblée générale de la copropriété {{syndicateName}} le {{meetingDate}} à {{meetingTime}}, lieu : {{meetingLocation}}.',
   GENERAL_MEETING_MINUTES:
