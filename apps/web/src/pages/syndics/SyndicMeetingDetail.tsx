@@ -20,6 +20,7 @@ import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, Plus
 import dayjs from 'dayjs';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingAgenda } from '../../components/syndics/MeetingAgenda';
+import { MANUAL_VOTE_ANCHOR_ID, MeetingLiveConsole } from '../../components/syndics/MeetingLiveConsole';
 import { MeetingProxies } from '../../components/syndics/MeetingProxies';
 import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
 import { VoteBoard } from '../../components/syndics/VoteBoard';
@@ -388,6 +389,20 @@ export const SyndicMeetingDetail: React.FC = () => {
           </Space>
         </div>
 
+        {meeting.status === 'CANCELLED' ? null : (
+          <Card title={t('En direct')}>
+            <MeetingLiveConsole
+              tenantId={effectiveTenantId || ''}
+              syndicId={syndicId || ''}
+              meetingId={meeting.id}
+              meetingStatus={meeting.status}
+              videoConferenceUrl={meeting.videoConferenceUrl}
+              refreshKey={meeting.updatedAt}
+              onMeetingChanged={loadMeeting}
+            />
+          </Card>
+        )}
+
         <VoteBoard
           quorum={meeting.quorum || 0}
           resolutions={meeting.resolutions || []}
@@ -480,7 +495,7 @@ export const SyndicMeetingDetail: React.FC = () => {
           </Space>
         </Card>
 
-        <Card title={t('Ordre du jour et votes')}>
+        <Card id={MANUAL_VOTE_ANCHOR_ID} title={t('Ordre du jour et votes')}>
           <MeetingAgenda
             resolutions={meeting.resolutions || []}
             lots={meetingLots}

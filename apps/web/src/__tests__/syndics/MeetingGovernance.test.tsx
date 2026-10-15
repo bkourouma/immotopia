@@ -21,6 +21,13 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+// La console « En direct » (spec 043) a ses propres tests ; l'antd allégé ci-dessous ne la porterait pas.
+vi.mock('../../components/syndics/MeetingLiveConsole', () => ({
+  MANUAL_VOTE_ANCHOR_ID: 'meeting-vote-entry',
+  MeetingLiveConsole: () => null,
+  default: () => null
+}));
+
 vi.mock('@ant-design/icons', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
