@@ -286,6 +286,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SIGNATURE_QUOTA_REFUSED]: tenant('BILLING', { redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_IN_PERSON_TOKEN_ISSUED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_CHAIN_BROKEN]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_PROPERTY_STATUS_TO_REVIEW]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
 
   // Divers
   [AuditActionKey.LOT_REGISTRY_RECONCILED]: internal('SYSTEM'),

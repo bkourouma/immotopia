@@ -63,6 +63,10 @@ jest.mock('../../src/lib/signature/notify', () => ({
   languageOf: () => 'fr',
   notifyIssuer: jest.fn(async () => undefined)
 }));
+const cancelRequestInternal = jest.fn(async (..._args: unknown[]) => true);
+jest.mock('../../src/lib/signature/cancel', () => ({
+  cancelRequestInternal: (...args: unknown[]) => (cancelRequestInternal as any)(...args)
+}));
 const sealSignedPdf = jest.fn(async () => ({ pdf: Buffer.from('%PDF-sealed'), sha256: 's'.repeat(64), pageCount: 3 }));
 jest.mock('../../src/lib/signature/seal', () => ({ sealSignedPdf: () => sealSignedPdf() }));
 
@@ -71,6 +75,7 @@ import { AuditActionKey } from '../../src/types/audit-types';
 import { sha256Hex } from '../../src/lib/signature/evidence';
 import { sealRequest } from '../../src/lib/signature/sealing';
 import { leaseContractSource } from '../../src/lib/signature/sources/lease-contract';
+import { SourceChangedError } from '../../src/lib/signature/sources';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -103,6 +108,21 @@ describe('scellement et piste de preuve', () => {
       where: { id: 'l1', tenant_id: 't1' },
       data: { signed_at: expect.any(Date), signature_request_id: 'r1' }
     });
+    onSealed.mockRestore();
+  });
+
+  it('S-2 : un document changé depuis l’envoi n’est pas scellé, la demande est annulée (SOURCE_CHANGED)', async () => {
+    const intact = jest.spyOn(leaseContractSource, 'isSourceIntact').mockResolvedValue(false);
+    expect(await sealRequest('t1', 'r1')).toBe('SKIPPED');
+    expect(sealSignedPdf).not.toHaveBeenCalled();
+    expect(cancelRequestInternal).toHaveBeenCalledWith({ tenantId: 't1', userId: null }, 'r1', 'SOURCE_CHANGED');
+    intact.mockRestore();
+  });
+
+  it('S-2 : onSealed qui constate un changement dans la transaction annule la demande, sans nouvelle tentative', async () => {
+    const onSealed = jest.spyOn(leaseContractSource, 'onSealed').mockRejectedValue(new SourceChangedError());
+    expect(await sealRequest('t1', 'r1')).toBe('SKIPPED');
+    expect(cancelRequestInternal).toHaveBeenCalledWith({ tenantId: 't1', userId: null }, 'r1', 'SOURCE_CHANGED');
     onSealed.mockRestore();
   });
 

@@ -10,7 +10,9 @@ import type {
   PublicSignInput,
   PublicSignOutcome,
   RemindOutcome,
-  SignatureRequestDto
+  SignatureKind,
+  SignatureRequestDto,
+  SignatureTargetContext
 } from '../types/signature-types';
 
 /** Les réponses sont lues enveloppées (`{ success, data }`) ou nues, selon la route. */
@@ -31,6 +33,15 @@ function unwrap<T>(body: unknown): T {
 function tenantParams(): { tenantId?: string } {
   const tenantId = getStoredActiveTenantId();
   return tenantId ? { tenantId } : {};
+}
+
+/** Signataires proposés pour une cible : la cible est vérifiée côté API (agence, statut). */
+export async function fetchSignatureContext(kind: SignatureKind, targetId: string): Promise<SignatureTargetContext> {
+  const response = await apiClient.get(
+    `/signatures/targets/${encodeURIComponent(kind)}/${encodeURIComponent(targetId)}/context`,
+    { params: tenantParams() }
+  );
+  return unwrap<SignatureTargetContext>(response.data);
 }
 
 export async function createSignatureRequest(input: CreateSignatureRequestInput): Promise<SignatureRequestDto> {

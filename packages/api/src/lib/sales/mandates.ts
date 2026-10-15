@@ -4,6 +4,8 @@ import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
 import { getPropertyForTenant } from '../../utils/property-tenant-guard';
 import { assertThirdPartyAllowedForTenant } from '../../services/own-assets-barrier-service';
+import { logger } from '../../utils/logger';
+import { cancelOpenRequestsForTarget } from '../signature/cancel';
 import { propertyLabels, tenantClientNames, userNames } from './names';
 import { mandateNumber, nextSequenceTx } from './numbering';
 import { createMandateSchema, revokeMandateSchema, updateMandateSchema } from './schemas';
@@ -87,6 +89,7 @@ async function toMandateDto(
     isExpired: isExpired(row.endDate, row.status),
     revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     revokeReason: row.revokeReason,
+    signedAt: row.signedAt ? row.signedAt.toISOString() : null,
     notes: row.notes,
     openOffersCount,
     offersCount,
@@ -227,7 +230,45 @@ export async function getMandateDetail(tenantId: string, mandateId: string): Pro
   return { ...dto, coSellers: sellers, offers, agreements, commission };
 }
 
-export async function updateMandate(tenantId: string, mandateId: string, body: unknown): Promise<SaleMandateDto> {
+/**
+ * Un champ IMPRIMÉ dans le PDF du mandat (spec 043) change-t-il ? Le prix plancher, les notes et la
+ * part du négociateur ne sont pas imprimés : les modifier n'invalide aucune signature.
+ */
+function printedMandateFieldsChanged(
+  row: MandateRow,
+  next: {
+    mandateType: string;
+    askingPrice: number;
+    commissionMode: string;
+    commissionRate: number | null;
+    commissionFixedAmount: number | null;
+    commissionPayer: string;
+    agentUserId: string | null;
+    startDate: Date;
+    endDate: Date | null;
+  }
+): boolean {
+  const num = (value: unknown) => (value == null ? null : Number(value));
+  const time = (value: Date | null) => (value ? value.getTime() : null);
+  return (
+    next.mandateType !== row.mandateType ||
+    next.askingPrice !== Number(row.askingPrice) ||
+    next.commissionMode !== row.commissionMode ||
+    (next.commissionRate ?? null) !== num(row.commissionRate) ||
+    (next.commissionFixedAmount ?? null) !== num(row.commissionFixedAmount) ||
+    next.commissionPayer !== row.commissionPayer ||
+    next.agentUserId !== row.agentUserId ||
+    time(next.startDate) !== time(row.startDate) ||
+    time(next.endDate) !== time(row.endDate)
+  );
+}
+
+export async function updateMandate(
+  tenantId: string,
+  mandateId: string,
+  body: unknown,
+  userId?: string
+): Promise<SaleMandateDto> {
   const input = updateMandateSchema.parse(body);
   const row = await prisma.saleMandate.findFirst({ where: { id: mandateId, tenantId } });
   if (!row) throw notFound('Mandat de vente introuvable');
@@ -277,6 +318,23 @@ export async function updateMandate(tenantId: string, mandateId: string, body: u
     if (!agent) throw badRequest("Le négociateur choisi n'est pas un collaborateur actif de cette agence");
   }
 
+  const printedChanged = printedMandateFieldsChanged(row, {
+    mandateType: input.mandateType ?? row.mandateType,
+    askingPrice,
+    commissionMode,
+    commissionRate,
+    commissionFixedAmount,
+    commissionPayer: input.commissionPayer ?? row.commissionPayer,
+    agentUserId: input.agentUserId !== undefined ? input.agentUserId : row.agentUserId,
+    startDate,
+    endDate
+  });
+  if (printedChanged && row.signedAt) {
+    throw conflict(
+      'Ce mandat est signé : ses conditions ne se modifient plus. Révoquez-le et créez un nouveau mandat.'
+    );
+  }
+
   const updated = await prisma.saleMandate.update({
     where: { id: row.id, tenantId },
     data: {
@@ -295,6 +353,12 @@ export async function updateMandate(tenantId: string, mandateId: string, body: u
     }
   });
 
+  // Spec 043 : un champ imprimé a changé, la demande de signature ouverte ne porte plus le bon document.
+  if (printedChanged) {
+    await cancelOpenRequestsForTarget({ tenantId, userId: userId ?? null }, 'SaleMandate', row.id).catch(error =>
+      logger.warn('Annulation des signatures du mandat échouée', { mandateId: row.id, error: String(error) })
+    );
+  }
   return toMandateDto(prisma, tenantId, updated);
 }
 
@@ -343,6 +407,11 @@ export async function revokeMandate(
     await closeOpenOffersTx(tx, { tenantId, mandateId: row.id, userId, reason: 'Mandat révoqué' });
     return result;
   });
+
+  // Spec 043 : un mandat révoqué ne peut plus être signé, ses demandes en cours sont annulées.
+  await cancelOpenRequestsForTarget({ tenantId, userId: userId ?? null }, 'SaleMandate', row.id).catch(error =>
+    logger.warn('Annulation des signatures du mandat échouée', { mandateId: row.id, error: String(error) })
+  );
 
   return toMandateDto(prisma, tenantId, updated);
 }

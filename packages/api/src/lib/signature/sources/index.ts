@@ -12,6 +12,7 @@ export {
   registerSignatureSource,
   resetSignatureSourcesForTests
 } from './registry';
+export { SourceChangedError } from './types';
 export type {
   DefaultSigner,
   LoadedSource,

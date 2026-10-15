@@ -34,9 +34,10 @@ import {
   notifyIssuer,
   prepareSignerToken
 } from '../lib/signature/notify';
-import { assertSignatureProviderEnabled } from '../lib/signature/provider';
+import { assertSignatureProviderEnabled, getSignatureProvider } from '../lib/signature/provider';
 import { getSignatureSource } from '../lib/signature/sources';
-import type { LoadedSource } from '../lib/signature/sources';
+import type { DefaultSigner, LoadedSource } from '../lib/signature/sources';
+import { hasPermission } from './permission-service';
 import { releaseSignature, reserveSignature, resolveSignatureQuotaPolicy } from '../lib/signature/quota';
 import { sealRequest } from '../lib/signature/sealing';
 import { generateToken, hashToken } from '../lib/signature/token';
@@ -183,6 +184,23 @@ async function reserveQuota(tenantId: string, actorUserId: string): Promise<stri
 
 type Ctx = { tenantId: string; userId: string };
 
+/**
+ * Signataires proposés, nettoyés avant d'être servis : le téléphone n'est rendu qu'à un
+ * utilisateur qui peut lire les contacts CRM (sinon `contactId` seul, le consentement
+ * WhatsApp se vérifie côté API) ; un signataire sans nom retombe sur son e-mail, et sans
+ * nom ni e-mail il n'est pas proposé.
+ */
+async function visibleSigners(ctx: Ctx, signers: DefaultSigner[]) {
+  const canReadContacts = await hasPermission(ctx.userId, 'CRM_CONTACTS_VIEW', ctx.tenantId);
+  return signers
+    .map(signer => ({
+      ...signer,
+      fullName: signer.fullName?.trim() || signer.email?.trim() || '',
+      phone: canReadContacts ? (signer.phone ?? null) : null
+    }))
+    .filter(signer => signer.fullName);
+}
+
 async function persistRequest(args: {
   ctx: Ctx;
   requestId: string;
@@ -295,10 +313,9 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
 
   // Le type de document dit comment retrouver, figer et marquer sa cible (lib/signature/sources).
   const source = getSignatureSource(input.kind);
-  if (source.providerRequired && (provider.id === 'internal' || provider.id === 'log')) {
-    throw new BadRequestError(
-      t("Ce type de document exige un prestataire de signature : la signature interne n'est pas autorisée.")
-    );
+  // Liste d'autorisation (SG-R1) : seul un fournisseur déclaré qualifié signe un type qui exige un prestataire.
+  if (isProviderRequiredForSource(source) && !provider.qualified) {
+    throw new BadRequestError(t('Ce document exige un prestataire de signature qualifié ; contactez le support.'));
   }
   await source.assertTarget(ctx, input.targetId);
   const signers = normalizeSigners(input.signers);
@@ -465,6 +482,14 @@ export async function getSignatureRequest(tenantId: string, id: string) {
 }
 
 /**
+ * SG-R1 : le type exige-t-il un prestataire qualifié ? Vrai si la source le déclare
+ * ou si le type figure dans `SIGNATURE_PROVIDER_REQUIRED_KINDS` (tous les types).
+ */
+export function isProviderRequiredForSource(source: { kind: SignatureDocumentKind; providerRequired?: boolean }) {
+  return Boolean(source.providerRequired) || env.SIGNATURE_PROVIDER_REQUIRED_KINDS.includes(source.kind);
+}
+
+/**
  * Contexte d'une cible pour l'écran « Envoyer pour signature » : type de cible,
  * exigence de prestataire et signataires proposés par la source. La cible est
  * vérifiée (agence, statut) comme à la création.
@@ -475,8 +500,9 @@ export async function getSignatureTargetContext(ctx: Ctx, kind: string, targetId
   return {
     kind: source.kind,
     targetType: source.targetType,
-    providerRequired: Boolean(source.providerRequired),
-    signers: (await source.defaultSigners?.(ctx, targetId)) ?? []
+    // Vrai seulement si le fournisseur actif ne peut pas signer ce type (R-2).
+    providerRequired: isProviderRequiredForSource(source) && !getSignatureProvider().qualified,
+    signers: await visibleSigners(ctx, source.defaultSigners ? await source.defaultSigners(ctx, targetId) : [])
   };
 }
 

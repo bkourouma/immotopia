@@ -46,6 +46,17 @@ export type DefaultSigner = {
   contactId?: string | null;
 };
 
+/**
+ * Levée par `onSealed` quand le document a changé depuis l'envoi (empreinte ou statut) :
+ * le noyau annule alors la demande (SOURCE_CHANGED) au lieu de réessayer le scellement.
+ */
+export class SourceChangedError extends Error {
+  constructor() {
+    super('SOURCE_CHANGED');
+    this.name = 'SourceChangedError';
+  }
+}
+
 export type SourceCancelReason = 'USER' | 'SEND_FAILED' | 'SOURCE_CHANGED';
 
 export interface SignatureDocumentSource {

@@ -119,6 +119,19 @@ const paymentSecretsKeySchema = z
     { message: 'doit être 32 octets encodés en base64 (`openssl rand -base64 32`)' }
   );
 
+/**
+ * Types de document signables (miroir de l'enum Prisma `SignatureDocumentKind`, gardé
+ * aligné par `__tests__/unit/env-signature-kinds.test.ts`). Liste littérale : la
+ * configuration ne dépend pas du client Prisma, que de nombreux tests simulent.
+ */
+export const SIGNATURE_DOCUMENT_KINDS = [
+  'LEASE_CONTRACT',
+  'MANAGEMENT_MANDATE',
+  'SALE_MANDATE',
+  'LEASE_INSPECTION',
+  'SALE_AGREEMENT'
+] as const;
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -303,6 +316,30 @@ const envSchema = z
     // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
     // usage unique geres par le noyau (e-mail, WhatsApp).
     SIGNATURE_PROVIDER: z.enum(['disabled', 'log', 'internal']).default('disabled'),
+    // Types de document dont la signature exige un prestataire qualifie (SG-R1) :
+    // liste separee par des virgules de SignatureDocumentKind. Le fournisseur
+    // `internal` (signature simple) est refuse pour ces types tant que le type
+    // n'est pas retire de la liste, apres avis juridique. Defaut : le compromis de vente.
+    // Chaque element est valide : une valeur inconnue (faute de frappe) bloque le
+    // demarrage, au lieu de laisser un type sans la protection attendue.
+    SIGNATURE_PROVIDER_REQUIRED_KINDS: z
+      .string()
+      .default('SALE_AGREEMENT')
+      .transform(value =>
+        value
+          .split(',')
+          .map(kind => kind.trim().toUpperCase())
+          .filter(Boolean)
+      )
+      .pipe(
+        z.array(
+          z.enum(SIGNATURE_DOCUMENT_KINDS, {
+            errorMap: (issue, ctx) => ({
+              message: `type de document inconnu ${JSON.stringify((issue as { received?: unknown }).received ?? ctx.data)} (valeurs : ${SIGNATURE_DOCUMENT_KINDS.join(', ')})`
+            })
+          })
+        )
+      ),
     // Duree de validite par defaut d'une demande (et donc des jetons), en jours ; 30 au plus.
     SIGNATURE_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
     // Code a usage unique (SG-R4) : validite, essais, renvois, delai entre deux envois.
@@ -470,6 +507,13 @@ function loadEnv(): Env {
     // eslint-disable-next-line no-console
     console.warn(
       `⚠️  ${perInstanceLimitersWarning({ tenantMinute: env.AI_TENANT_MINUTE_LIMIT, tenantDaily: env.AI_TENANT_DAILY_LIMIT })}`
+    );
+  }
+
+  if (!env.SIGNATURE_PROVIDER_REQUIRED_KINDS.includes('SALE_AGREEMENT')) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "⚠️  SIGNATURE_PROVIDER_REQUIRED_KINDS ne contient pas SALE_AGREEMENT : le compromis de vente peut être signé par la signature simple (sans prestataire qualifié). À ne faire qu'après avis juridique."
     );
   }
 

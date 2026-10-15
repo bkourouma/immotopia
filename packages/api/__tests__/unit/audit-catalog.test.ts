@@ -84,6 +84,7 @@ describe('catalogue d’audit', () => {
       'SIGNATURE_QUOTA_REFUSED',
       'SIGNATURE_IN_PERSON_TOKEN_ISSUED',
       'SIGNATURE_CHAIN_BROKEN',
+      'SIGNATURE_PROPERTY_STATUS_TO_REVIEW',
       'AUDIT_EXPORTED',
       'AUDIT_SEALED',
       'AUDIT_PURGED',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Popconfirm, Select, Space, Spin, Table, Typography } from 'antd';
+import { Button, Card, Modal, Popconfirm, Select, Space, Spin, Table, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { PropertyOwnershipType } from '../../types/property-types';
 import type { PropertyMandate } from '../../types/property-types';
@@ -7,6 +7,7 @@ import { createMandate, getPropertyMandates, revokeMandate, updateProperty } fro
 import { listContacts } from '../../services/crm-service';
 import { contactDisplayName } from '../../utils/contact-display';
 import { PropertyMandateForm } from './PropertyMandateForm';
+import { MandateSignatures } from '../signature/MandateSignatures';
 import { apiErrorMessage } from '../patrimoine/patrimoine-labels';
 import { feedback } from '../../lib/feedback';
 import { activeLocale } from '../../i18n/format';
@@ -119,6 +120,7 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [signaturesFor, setSignaturesFor] = useState<MandateRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -198,15 +200,26 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
             { title: t('Fin'), dataIndex: 'endDate', render: formatDate },
             { title: t('Notes'), dataIndex: 'notes', render: (value?: string) => value || '—' },
             {
+              title: t('Signature'),
+              key: 'signature',
+              render: (_: unknown, record: MandateRow) =>
+                record.signedAt ? t('Signé le {{date}}', { date: formatDate(record.signedAt) }) : '—'
+            },
+            {
               title: t('Actions'),
               key: 'actions',
               render: (_: unknown, record: MandateRow) =>
                 record.isActive ? (
-                  <Popconfirm title={t('Résilier ce mandat ?')} onConfirm={() => revoke(record.id)}>
-                    <Button danger size="small" loading={revokingId === record.id}>
-                      {t('Résilier')}
+                  <Space>
+                    <Button size="small" onClick={() => setSignaturesFor(record)}>
+                      {t('Signatures')}
                     </Button>
-                  </Popconfirm>
+                    <Popconfirm title={t('Résilier ce mandat ?')} onConfirm={() => revoke(record.id)}>
+                      <Button danger size="small" loading={revokingId === record.id}>
+                        {t('Résilier')}
+                      </Button>
+                    </Popconfirm>
+                  </Space>
                 ) : (
                   <Text type="secondary">{t('Résilié')}</Text>
                 )
@@ -214,6 +227,25 @@ const MandatsDuBien: React.FC<Pick<Props, 'tenantId' | 'propertyId' | 'ownerName
           ]}
         />
       </Card>
+      <Modal
+        open={signaturesFor !== null}
+        title={t('Signatures du mandat de gestion')}
+        footer={null}
+        width={720}
+        destroyOnHidden
+        onCancel={() => {
+          setSignaturesFor(null);
+          void load();
+        }}
+      >
+        {signaturesFor && (
+          <MandateSignatures
+            kind="MANAGEMENT_MANDATE"
+            mandateId={signaturesFor.id}
+            fileLabel={`mandat-gestion-${signaturesFor.id.slice(0, 8)}`}
+          />
+        )}
+      </Modal>
     </Space>
   );
 };

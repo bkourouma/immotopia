@@ -5,3 +5,7 @@
  * par `sources/index.ts`.
  */
 import './lease-contract';
+import './lease-inspection';
+import './sale-agreement';
+import './management-mandate';
+import './sale-mandate';

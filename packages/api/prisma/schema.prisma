@@ -2426,6 +2426,10 @@ model PropertyMandate {
   isActive        Boolean   @default(true) @map("is_active")
   revokedAt       DateTime? @map("revoked_at")
   revokedByUserId String?   @map("revoked_by_user_id")
+  /// Spec 043 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
+  signedAt        DateTime? @map("signed_at")
+  signatureRequestId String? @map("signature_request_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -8871,6 +8875,10 @@ model SaleMandate {
   revokedByUserId       String?             @map("revoked_by_user_id")
   revokeReason          String?             @map("revoke_reason") @db.Text
   notes                 String?             @db.Text
+  /// Spec 043 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
+  signedAt              DateTime?           @map("signed_at")
+  signatureRequestId    String?             @map("signature_request_id") @db.Uuid
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 

@@ -6,7 +6,8 @@ import { appendSignatureEvent, listChainedEvents, verifyEventChain } from './eve
 import { sha256Hex } from './evidence';
 import { readSignatureFile, writeSignatureFile } from './files';
 import { agencyNameOf, languageOf, notifyIssuer } from './notify';
-import { findSignatureSource } from './sources';
+import { cancelRequestInternal } from './cancel';
+import { findSignatureSource, SourceChangedError } from './sources';
 import { sealSignedPdf, type SealSigner } from './seal';
 
 /**
@@ -141,6 +142,13 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
       return 'SKIPPED';
     }
 
+    // SG-R2 : le document a-t-il changé depuis l'envoi ? Si oui, on ne scelle rien : la demande est annulée.
+    const documentSource = findSignatureSource(request.kind);
+    if (documentSource && !(await documentSource.isSourceIntact({ ...request, tenantId }))) {
+      await cancelRequestInternal({ tenantId, userId: null }, requestId, 'SOURCE_CHANGED');
+      return 'SKIPPED';
+    }
+
     const source = await readSignatureFile(tenantId, requestId, request.sourceFileKey);
     if (sha256Hex(source.buffer) !== request.sourceHash) throw new Error('SOURCE_HASH_MISMATCH');
 
@@ -164,32 +172,40 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
     });
     const signedFileKey = await writeSignatureFile(tenantId, requestId, 'signed.pdf', sealed.pdf);
 
-    const done = await prisma.$transaction(async tx => {
-      const updated = await tx.signatureRequest.updateMany({
-        where: { id: requestId, tenantId, status: { in: ['SENT', 'PARTIALLY_SIGNED'] }, signedFileKey: null },
-        data: { status: 'COMPLETED', signedFileKey, signedHash: sealed.sha256, completedAt: now, sealingAt: null }
+    let done: boolean;
+    try {
+      done = await prisma.$transaction(async tx => {
+        const updated = await tx.signatureRequest.updateMany({
+          where: { id: requestId, tenantId, status: { in: ['SENT', 'PARTIALLY_SIGNED'] }, signedFileKey: null },
+          data: { status: 'COMPLETED', signedFileKey, signedHash: sealed.sha256, completedAt: now, sealingAt: null }
+        });
+        if (updated.count !== 1) return false;
+        // Marquage « signé » dans le module du document, atomique avec le passage à COMPLETED.
+        await findSignatureSource(request.kind)?.onSealed(tx, { ...request, tenantId }, now);
+        await appendSignatureEvent(tx, {
+          tenantId,
+          requestId,
+          type: 'SEALED',
+          payload: { signedHash: sealed.sha256, pages: sealed.pageCount },
+          now
+        });
+        await recordAuditEvent(tx, {
+          tenantId,
+          actorUserId: null,
+          actorType: 'SYSTEM',
+          actionKey: AuditActionKey.SIGNATURE_SEALED,
+          entityType: 'SignatureRequest',
+          entityId: requestId,
+          payload: { requestId, kind: request.kind, targetType: request.targetType, signedHash: sealed.sha256 }
+        });
+        return true;
       });
-      if (updated.count !== 1) return false;
-      // Marquage « signé » dans le module du document, atomique avec le passage à COMPLETED.
-      await findSignatureSource(request.kind)?.onSealed(tx, { ...request, tenantId }, now);
-      await appendSignatureEvent(tx, {
-        tenantId,
-        requestId,
-        type: 'SEALED',
-        payload: { signedHash: sealed.sha256, pages: sealed.pageCount },
-        now
-      });
-      await recordAuditEvent(tx, {
-        tenantId,
-        actorUserId: null,
-        actorType: 'SYSTEM',
-        actionKey: AuditActionKey.SIGNATURE_SEALED,
-        entityType: 'SignatureRequest',
-        entityId: requestId,
-        payload: { requestId, kind: request.kind, targetType: request.targetType, signedHash: sealed.sha256 }
-      });
-      return true;
-    });
+    } catch (error) {
+      // `onSealed` a constaté, dans la transaction, que le document a changé : annulation, pas de nouvelle tentative.
+      if (!(error instanceof SourceChangedError)) throw error;
+      await cancelRequestInternal({ tenantId, userId: null }, requestId, 'SOURCE_CHANGED');
+      return 'SKIPPED';
+    }
     if (!done) return 'SKIPPED';
 
     await notifyIssuer({

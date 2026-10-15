@@ -41,6 +41,12 @@ export type DeliveryResult =
  */
 export interface SignatureProvider {
   readonly id: SignatureProviderId;
+  /**
+   * Prestataire QUALIFIÉ (valeur juridique renforcée, SG-R1). Liste d'autorisation :
+   * seul un fournisseur qui le déclare peut signer un type de document qui exige
+   * un prestataire. `internal`, `log` et `disabled` ne le sont pas.
+   */
+  readonly qualified: boolean;
   createRequest(input: CreateRequestInput): Promise<{ providerRef?: string }>;
   cancel(requestId: string): Promise<void>;
   deliver(message: OutboundSignatureMessage): Promise<DeliveryResult>;
