@@ -1,5 +1,5 @@
 /**
- * Mandat de vente (`SaleMandate`) en PDF, généré à la volée (spec 043, lot S2).
+ * Mandat de vente (`SaleMandate`) en PDF, généré à la volée (spec 044, lot S2).
  *
  * Même découpage que le mandat de gestion (`lib/properties/management-mandate-pdf.ts`) :
  * lecture filtrée par agence, MODÈLE de document, rendu `pdf-lib`. L'empreinte

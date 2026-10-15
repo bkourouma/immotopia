@@ -1,5 +1,5 @@
 /**
- * Tâche planifiée de la signature électronique (spec 043, SG-R11).
+ * Tâche planifiée de la signature électronique (spec 044, SG-R11).
  *
  * Toutes les 15 minutes :
  * - rejoue le scellement des demandes entièrement signées dont le scellement

@@ -3,7 +3,7 @@ import { BadRequestError } from '../../middleware/error-middleware';
 import { replaceControlChars } from './text';
 
 /**
- * Validation de la signature saisie ou dessinée (spec 043, SG-R5).
+ * Validation de la signature saisie ou dessinée (spec 044, SG-R5).
  * - `TYPED` : le nom tapé, 2 à 120 caractères, sans caractère de contrôle ;
  * - `DRAWN` : PNG en `data:image/png;base64,...`, 200 Ko décodés au plus,
  *   signature PNG vérifiée (jamais l'en-tête déclaré seul).

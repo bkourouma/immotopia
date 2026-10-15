@@ -1,7 +1,7 @@
 import { maskPhone, normalizePhoneE164 } from '../phone/e164';
 
 /**
- * Formes de sortie de l'API de signature (spec 043). Les contacts sont masqués ;
+ * Formes de sortie de l'API de signature (spec 044). Les contacts sont masqués ;
  * `tokenHash`, `otpHash`, IP et clés de fichier ne sortent JAMAIS.
  */
 

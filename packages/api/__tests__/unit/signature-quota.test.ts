@@ -1,5 +1,5 @@
 /**
- * Quota mensuel de signatures (spec 043, SG-R12) : modes enforce / warn / off,
+ * Quota mensuel de signatures (spec 044, SG-R12) : modes enforce / warn / off,
  * réservation conditionnelle (jamais lue puis réécrite), restitution, mois
  * civil UTC, fournisseur d'usage de la capacité.
  */

@@ -1,5 +1,5 @@
 /**
- * Signature de l'état des lieux (spec 043, lot S3) : PDF serveur, source
+ * Signature de l'état des lieux (spec 044, lot S3) : PDF serveur, source
  * LEASE_INSPECTION (statut finalisé exigé, isolation inter-agences, empreinte
  * du contenu et des photos, signataires) et annulation à la suppression.
  */

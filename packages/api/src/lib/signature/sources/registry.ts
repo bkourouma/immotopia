@@ -3,7 +3,7 @@ import { BadRequestError } from '../../../middleware/error-middleware';
 import type { SignatureDocumentSource } from './types';
 
 /**
- * Registre des sources de document signables (spec 043). Une source s'enregistre
+ * Registre des sources de document signables (spec 044). Une source s'enregistre
  * en fin de son fichier (`registerSignatureSource(source)`) ; `sources/register.ts`
  * importe ces fichiers, une ligne par source.
  */

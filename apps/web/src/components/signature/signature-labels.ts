@@ -1,7 +1,7 @@
 import { t } from '../../i18n/t';
 import type { SignatureRequestStatus, SignerChannel, SignerStatus } from '../../types/signature-types';
 
-/** Rôles proposés à l'envoi (valeurs du modèle de données, spec 043). */
+/** Rôles proposés à l'envoi (valeurs du modèle de données, spec 044). */
 export const SIGNER_ROLES = [
   'LOCATAIRE',
   'CO_LOCATAIRE',

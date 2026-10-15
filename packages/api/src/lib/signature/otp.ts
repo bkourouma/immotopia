@@ -3,7 +3,7 @@ import { env } from '../../config/env';
 import { hashesMatch } from './token';
 
 /**
- * Code à usage unique (spec 043, SG-R4). Même schéma que l'activation de
+ * Code à usage unique (spec 044, SG-R4). Même schéma que l'activation de
  * l'inventaire WhatsApp (`lib/stock-whatsapp/registrations/activation.ts`) :
  * 6 chiffres, HMAC-SHA256 à clé serveur dérivée de `JWT_SECRET`, comparaison à
  * temps constant, essais réservés AVANT la comparaison. Limites (essais, renvois,

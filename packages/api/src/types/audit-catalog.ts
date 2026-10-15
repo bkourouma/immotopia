@@ -28,7 +28,7 @@ type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 /** Lot 041 : le numero du chef de chantier n'apparait jamais en clair dans l'audit. */
 const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
 
-/** Spec 043 : contact (e-mail, numero), IP et signature ne figurent jamais en clair dans l'audit. */
+/** Spec 044 : contact (e-mail, numero), IP et signature ne figurent jamais en clair dans l'audit. */
 const SIGNATURE_REDACT = ['contact', 'email', 'phone', 'phoneE164', 'ip', 'ipAddress', 'signature'];
 
 /** Visible de l'agence concernée. */
@@ -275,7 +275,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.STOCK_WHATSAPP_QUOTA_REACHED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
   [AuditActionKey.STOCK_WHATSAPP_PHOTO_REMOVED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
 
-  // Signature electronique (spec 043). Critiques : ecrites DANS la transaction metier.
+  // Signature electronique (spec 044). Critiques : ecrites DANS la transaction metier.
   [AuditActionKey.SIGNATURE_REQUEST_SENT]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_SIGNED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_DECLINED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),

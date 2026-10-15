@@ -6,7 +6,7 @@ import { normalizePhoneE164 } from '../../phone/e164';
 import type { DeliveryResult, OutboundSignatureMessage, SignatureProvider } from '../types';
 
 /**
- * Fournisseur `internal` (spec 043, SG-R13) : le noyau gère jeton, code et
+ * Fournisseur `internal` (spec 044, SG-R13) : le noyau gère jeton, code et
  * scellement ; ce fournisseur ne fait que REMETTRE les messages, par e-mail
  * (`email-service`) ou WhatsApp (fournisseur WhatsApp du dépôt). Si un contact
  * CRM est désigné, son consentement WhatsApp est exigé. Aucune erreur de

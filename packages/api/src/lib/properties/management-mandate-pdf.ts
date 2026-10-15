@@ -1,5 +1,5 @@
 /**
- * Mandat de gestion (`PropertyMandate`) en PDF, généré à la volée (spec 043,
+ * Mandat de gestion (`PropertyMandate`) en PDF, généré à la volée (spec 044,
  * lot S2) : rien n'est stocké, le noyau de signature fige les octets à l'envoi.
  *
  * Construction en trois temps, pour se tester sans PDF : lecture des données

@@ -1,5 +1,5 @@
 /**
- * Mandat de vente signé électroniquement (spec 043, S-3 et S-10) : un mandat signé ne
+ * Mandat de vente signé électroniquement (spec 044, S-3 et S-10) : un mandat signé ne
  * se modifie plus sur les champs IMPRIMÉS dans le PDF (409) ; sur un mandat non signé,
  * changer un champ imprimé annule les demandes ouvertes, changer le prix plancher, les
  * notes ou la part du négociateur n'annule rien. L'utilisateur est propagé à l'annulation.

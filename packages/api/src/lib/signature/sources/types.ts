@@ -3,7 +3,7 @@ import type { PrismaTransactionClient } from '../../../utils/database';
 import type { Feature } from '../../subscription/features';
 
 /**
- * Contrat d'une « source de document » signable (spec 043). Le noyau de la
+ * Contrat d'une « source de document » signable (spec 044). Le noyau de la
  * signature (création, jeton, code, scellement, annulation) est le même pour tous
  * les documents ; une source dit seulement COMMENT un type de document est
  * retrouvé, figé, vérifié et marqué signé dans SON module.

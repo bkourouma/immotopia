@@ -1,5 +1,5 @@
 /**
- * Capacité SIGNATURES_MENSUELLES (spec 043, décisions du 15/10/2026) : quota selon
+ * Capacité SIGNATURES_MENSUELLES (spec 044, décisions du 15/10/2026) : quota selon
  * le pack d'agence (valeurs PROVISOIRES), extension cumulable « bloc de 50 »
  * (prix à décider : 0 et non vendable), additionnée par le calcul des droits ;
  * la migration de données dit la même chose que le catalogue et reste idempotente.

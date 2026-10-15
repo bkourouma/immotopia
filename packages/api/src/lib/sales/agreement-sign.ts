@@ -8,7 +8,7 @@ import { setPropertyStatusTx } from './property-status';
 /**
  * Transition « compromis signé » (DRAFT -> SIGNED, bien en UNDER_OFFER), commune
  * à la signature manuelle (`signAgreement`) et au scellement de la signature
- * électronique (source `SALE_AGREEMENT`, spec 043). Dans la transaction fournie.
+ * électronique (source `SALE_AGREEMENT`, spec 044). Dans la transaction fournie.
  *
  * La transition est CONDITIONNELLE (`updateMany` sur `status: DRAFT`) : deux
  * appels concurrents (scellement rejoué, annulation en parallèle) ne la

@@ -16,7 +16,7 @@ import { agreementNumber } from './numbering';
 
 /**
  * Compromis de vente en PDF, généré à la volée pour la signature électronique
- * (spec 043, source SALE_AGREEMENT). Rien n'est stocké : `loadAgreementPdfData`
+ * (spec 044, source SALE_AGREEMENT). Rien n'est stocké : `loadAgreementPdfData`
  * lit le compromis, `renderSaleAgreementPdf` le dessine, `agreementFingerprint`
  * en donne l'empreinte (détection d'un changement après l'envoi, SG-R2).
  *

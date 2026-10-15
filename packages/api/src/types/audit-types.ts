@@ -246,7 +246,7 @@ export enum AuditActionKey {
   STOCK_WHATSAPP_QUOTA_REACHED = 'STOCK_WHATSAPP_QUOTA_REACHED',
   STOCK_WHATSAPP_PHOTO_REMOVED = 'STOCK_WHATSAPP_PHOTO_REMOVED',
 
-  // Signature electronique (spec 043). Payloads : identifiants, canal, empreintes ; jamais de contact en clair, de jeton ni de code.
+  // Signature electronique (spec 044). Payloads : identifiants, canal, empreintes ; jamais de contact en clair, de jeton ni de code.
   SIGNATURE_REQUEST_SENT = 'SIGNATURE_REQUEST_SENT',
   SIGNATURE_SIGNED = 'SIGNATURE_SIGNED',
   SIGNATURE_DECLINED = 'SIGNATURE_DECLINED',

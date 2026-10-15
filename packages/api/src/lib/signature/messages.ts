@@ -2,7 +2,7 @@ import { env } from '../../config/env';
 import { t, type Language } from '../../i18n';
 
 /**
- * Messages remis aux signataires (spec 043, SG-R14) : lien, code, relance. Les
+ * Messages remis aux signataires (spec 044, SG-R14) : lien, code, relance. Les
  * textes passent par `t()` dans la langue de la demande. Aucun de ces textes
  * n'est journalisé (ils portent le lien ou le code).
  */

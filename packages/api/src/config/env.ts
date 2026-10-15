@@ -311,7 +311,7 @@ const envSchema = z
     GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
 
-    // Signature electronique (spec 043, SG-R13). `disabled` par defaut : toute
+    // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
     // demande est refusee. `log` : rien ne part, seules des metadonnees sont
     // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
     // usage unique geres par le noyau (e-mail, WhatsApp).

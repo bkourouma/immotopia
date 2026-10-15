@@ -16,7 +16,7 @@ import {
 } from '../services/signature-service';
 
 /**
- * Contrôleurs « agence » de la signature électronique (spec 043, lot S1).
+ * Contrôleurs « agence » de la signature électronique (spec 044, lot S1).
  * L'agence et l'utilisateur viennent du contexte posé par `requireTenantAccess`,
  * jamais du corps de la requête.
  */

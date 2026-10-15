@@ -28,7 +28,7 @@ import { cancelRequestInternal } from '../lib/signature/cancel';
 import { findSignatureSource } from '../lib/signature/sources';
 
 /**
- * Signature électronique, côté signataire (spec 043, lot S1) : routes publiques
+ * Signature électronique, côté signataire (spec 044, lot S1) : routes publiques
  * sous `/api/public/signatures/:token`. Le jeton est la seule preuve d'accès.
  * Jeton inconnu, expiré, révoqué ou demande close : MÊME refus (404 uniforme,
  * `invalidSecureLinkError`), aucune fuite d'existence (SG-R9). Après

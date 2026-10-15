@@ -1,4 +1,4 @@
-# 043 — Modèle de données (proposition)
+# 044 — Modèle de données (proposition)
 
 Tous les modèles portent `tenantId` et figurent dans
 `__tests__/unit/schema-tenant-coverage.test.ts`.

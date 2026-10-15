@@ -5,7 +5,7 @@ import { createInternalProvider } from './internal';
 import { createLogProvider } from './log';
 
 /**
- * Choix du fournisseur de signature (spec 043, SG-R13), selon
+ * Choix du fournisseur de signature (spec 044, SG-R13), selon
  * `env.SIGNATURE_PROVIDER` (`disabled` par défaut). Fabrique mise en cache,
  * comme `lib/stock-whatsapp/transport`.
  */

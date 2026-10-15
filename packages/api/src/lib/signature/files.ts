@@ -6,7 +6,7 @@ import { getUploadsRoot } from '../../utils/project-root';
 import { privateUploadPath, readPrivateUpload, type PrivateFile } from '../files/private-files';
 
 /**
- * Fichiers de la signature (spec 043, SG-R7) : PDF source, PDF scellé, images
+ * Fichiers de la signature (spec 044, SG-R7) : PDF source, PDF scellé, images
  * de signature dessinée. Tous PRIVES, sous `uploads/signatures/<agence>/<demande>/` :
  * `uploadsAccessGuard` répond 404 à ce dossier en statique, ils ne sortent que
  * par les routes authentifiées ou par le jeton d'un signataire. La valeur

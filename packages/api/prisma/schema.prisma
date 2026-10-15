@@ -109,7 +109,7 @@ enum CapacityKey {
   /// Lot 041 (W11). Photos analysees par l'IA dans le MOIS CIVIL UTC
   /// (consommation, pas stock). Sans facturation de depassement.
   PHOTOS_INVENTAIRE
-  /// Spec 043 (SG-R12). Demandes de signature electronique envoyees dans le
+  /// Spec 044 (SG-R12). Demandes de signature electronique envoyees dans le
   /// MOIS CIVIL UTC (consommation, pas stock). Sans facturation de depassement.
   SIGNATURES_MENSUELLES
 }
@@ -792,7 +792,7 @@ model Tenant {
   stockWhatsappMessages          StockWhatsappMessage[]
   stockFieldCaptures             StockFieldCapture[]
   stockWhatsappUsages            StockWhatsappUsage[]
-  // Spec 043 : signature electronique.
+  // Spec 044 : signature electronique.
   signatureRequests              SignatureRequest[]
   signatureSigners               SignatureSigner[]
   signatureEvents                SignatureEvent[]
@@ -2426,7 +2426,7 @@ model PropertyMandate {
   isActive        Boolean   @default(true) @map("is_active")
   revokedAt       DateTime? @map("revoked_at")
   revokedByUserId String?   @map("revoked_by_user_id")
-  /// Spec 043 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// Spec 044 : mandat signe electroniquement par toutes les parties (renseigne au
   /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
   signedAt        DateTime? @map("signed_at")
   signatureRequestId String? @map("signature_request_id") @db.Uuid
@@ -2725,7 +2725,7 @@ model RentalLease {
   notes                    String?                @db.Text
   terms_json               Json?                  @map("terms_json")
   created_by_user_id       String                 @map("created_by_user_id")
-  /// Spec 043 : bail signe electroniquement par toutes les parties. Renseigne au
+  /// Spec 044 : bail signe electroniquement par toutes les parties. Renseigne au
   /// scellement ; `signature_request_id` designe la demande (SignatureRequest)
   /// dont le PDF scelle fait foi. Sans relation Prisma : le PDF scelle n'est PAS
   /// un RentalDocument (il vit dans uploads/signatures, jamais en statique).
@@ -8875,7 +8875,7 @@ model SaleMandate {
   revokedByUserId       String?             @map("revoked_by_user_id")
   revokeReason          String?             @map("revoke_reason") @db.Text
   notes                 String?             @db.Text
-  /// Spec 043 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// Spec 044 : mandat signe electroniquement par toutes les parties (renseigne au
   /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
   signedAt              DateTime?           @map("signed_at")
   signatureRequestId    String?             @map("signature_request_id") @db.Uuid
@@ -10027,7 +10027,7 @@ model WhatsappCloudEvent {
 }
 
 // =============================================================
-// SIGNATURE ELECTRONIQUE (spec 043, lot S1)
+// SIGNATURE ELECTRONIQUE (spec 044, lot S1)
 // =============================================================
 
 enum SignatureDocumentKind {
@@ -10062,7 +10062,7 @@ enum SignatureChannel {
   IN_PERSON
 }
 
-/// Spec 043 (SG-R2, SG-R7). Demande de signature d'UN document. `sourceHash`
+/// Spec 044 (SG-R2, SG-R7). Demande de signature d'UN document. `sourceHash`
 /// est le SHA-256 du PDF source fige a l'envoi ; `signedHash` celui du PDF
 /// scelle. Les deux fichiers sont PRIVES (uploads/signatures/<agence>/<demande>/),
 /// jamais servis en statique : la cle stockee est un identifiant, pas une URL.
@@ -10110,7 +10110,7 @@ model SignatureRequest {
   @@map("signature_requests")
 }
 
-/// Spec 043 (SG-R3, SG-R4, SG-R5). Un signataire = un jeton. Seul le SHA-256 du
+/// Spec 044 (SG-R3, SG-R4, SG-R5). Un signataire = un jeton. Seul le SHA-256 du
 /// jeton est stocke (`tokenHash`), comme SecureLink ; le code a usage unique
 /// n'est stocke qu'en HMAC-SHA256 a cle serveur (`otpHash`). `contact` (e-mail
 /// ou numero) n'est JAMAIS renvoye en clair : masque en sortie, absent des
@@ -10161,7 +10161,7 @@ model SignatureSigner {
   @@map("signature_signers")
 }
 
-/// Spec 043 (SG-R8). Piste de preuve APPEND-ONLY et chainee : `eventHash` =
+/// Spec 044 (SG-R8). Piste de preuve APPEND-ONLY et chainee : `eventHash` =
 /// SHA-256 de (prevHash, seq, type, signataire, payload, date) ; `seq` est
 /// unique par demande, donc deux ajouts simultanes ne peuvent pas bifurquer la
 /// chaine. Un declencheur SQL refuse toute modification (migration).
@@ -10186,7 +10186,7 @@ model SignatureEvent {
   @@map("signature_events")
 }
 
-/// Spec 043 (SG-R12). Consommation mensuelle (mois civil UTC `AAAA-MM`) de la
+/// Spec 044 (SG-R12). Consommation mensuelle (mois civil UTC `AAAA-MM`) de la
 /// capacite SIGNATURES_MENSUELLES. Ecrit par la seule reservation atomique de
 /// `lib/signature/quota.ts` (jamais lu puis reecrit) ; rendu si l'envoi echoue.
 /// CHECK `signature_usages_used_non_negative` en SQL.

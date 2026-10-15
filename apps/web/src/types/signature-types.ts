@@ -1,5 +1,5 @@
 /**
- * Contrat de l'API de signature électronique (spec 043, lot S1).
+ * Contrat de l'API de signature électronique (spec 044, lot S1).
  * Typé d'après le contrat communiqué par le lot API ; à confronter au code réel.
  */
 

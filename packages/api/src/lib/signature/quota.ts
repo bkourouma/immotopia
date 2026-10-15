@@ -4,7 +4,7 @@ import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 
 /**
- * Quota mensuel de demandes de signature (spec 043, SG-R12), sur le modèle de
+ * Quota mensuel de demandes de signature (spec 044, SG-R12), sur le modèle de
  * `lib/stock-whatsapp/quota.ts`. L'unité est la DEMANDE envoyée (quel que soit
  * le nombre de signataires). La place est réservée AVANT l'envoi par une mise à
  * jour conditionnelle (jamais lue puis réécrite) et rendue si l'envoi échoue.

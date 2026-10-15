@@ -6,7 +6,7 @@ import { registerSignatureSource } from './registry';
 import type { SignatureDocumentSource } from './types';
 
 /**
- * Source « bail » (LEASE_CONTRACT, spec 043 lot S1) : le dernier `RentalDocument`
+ * Source « bail » (LEASE_CONTRACT, spec 044 lot S1) : le dernier `RentalDocument`
  * FINAL de type LEASE_CONTRACT du bail, DOCX converti en PDF. Le bail porte
  * `signed_at` et `signature_request_id` une fois scellé.
  *

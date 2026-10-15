@@ -525,7 +525,7 @@ export const auditIntegrityRateLimiter = rateLimit({
 });
 
 // ---------------------------------------------------------------------------
-// Signature électronique publique (spec 043) : /api/public/signatures/:token
+// Signature électronique publique (spec 044) : /api/public/signatures/:token
 // ---------------------------------------------------------------------------
 
 function signatureLimitHandler(_req: Request, res: Response): void {

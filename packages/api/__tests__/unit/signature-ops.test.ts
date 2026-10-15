@@ -1,5 +1,5 @@
 /**
- * Opérations de la signature électronique côté agence (spec 043, revue du
+ * Opérations de la signature électronique côté agence (spec 044, revue du
  * 2026-10-15) : relance, jeton sur place, piste de preuve, expiration, tâche,
  * scellement refusé sur une piste rompue, annulation sur changement de contrat.
  */

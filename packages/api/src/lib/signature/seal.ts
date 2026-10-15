@@ -3,7 +3,7 @@ import { t, type Language } from '../../i18n';
 import { sha256Hex } from './evidence';
 
 /**
- * Scellement du PDF signé (spec 043, SG-R7). À partir du PDF source figé :
+ * Scellement du PDF signé (spec 044, SG-R7). À partir du PDF source figé :
  * 1. une page « Signatures » appose les signatures visibles (dessinées ou
  *    saisies) avec nom, rôle et date ;
  * 2. une page « Certificat de signature » récapitule demande, signataires,

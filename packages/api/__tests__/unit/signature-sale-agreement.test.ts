@@ -1,5 +1,5 @@
 /**
- * Signature du compromis de vente (spec 043, lot S4) : PDF sans prix plancher,
+ * Signature du compromis de vente (spec 044, lot S4) : PDF sans prix plancher,
  * exigence de prestataire (SG-R1), invalidation à la modification (SG-R2),
  * scellement idempotent, isolation entre agences et permissions de la source.
  * Base, fournisseur, quota et fichiers sont simulés.

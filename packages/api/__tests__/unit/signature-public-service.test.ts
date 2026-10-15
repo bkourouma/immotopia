@@ -1,5 +1,5 @@
 /**
- * Machine d'états du signataire (spec 043, lot S1) : jeton, code à usage unique
+ * Machine d'états du signataire (spec 044, lot S1) : jeton, code à usage unique
  * (5 essais, renvois, délai), signature, refus, tour de signature, uniformité
  * des refus. La base est une doublure en mémoire d'UN signataire et de sa
  * demande ; les envois, le scellement et les fichiers sont simulés.

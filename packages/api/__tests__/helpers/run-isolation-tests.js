@@ -45,7 +45,7 @@ console.log('Application des migrations sur la base de test isolation...');
 execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
 
 console.log(
-  'Execution des suites sur base reelle : isolation (E1), acces tiers de confiance (B3), signature electronique (spec 043), patrimoine multi-actifs et espace particulier...'
+  'Execution des suites sur base reelle : isolation (E1), acces tiers de confiance (B3), signature electronique (spec 044), patrimoine multi-actifs et espace particulier...'
 );
 // --runInBand : isolation.test.ts compare des compteurs GLOBAUX avant/apres ; une suite parallele qui ecrit dans la meme base les fausserait.
 execSync(

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Spec 043 (lot S1) — signature électronique du bail, bout en bout sur une BASE
+ * Spec 044 (lot S1) — signature électronique du bail, bout en bout sur une BASE
  * RÉELLE : isolation inter-agences, parcours complet (création, jeton, signature
  * sur place, scellement, bail marqué signé), piste de preuve chaînée et
  * append-only (déclencheur SQL), index unique « une demande ouverte par bail »,

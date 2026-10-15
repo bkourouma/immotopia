@@ -1,5 +1,5 @@
 /**
- * Création d'une demande de signature de bail (spec 043, lot S1) : fournisseur,
+ * Création d'une demande de signature de bail (spec 044, lot S1) : fournisseur,
  * isolation de la cible, contrat source, quota réservé puis rendu, doublon,
  * envois, sortie sans secret. Base, fichiers, envois et audit sont simulés.
  */

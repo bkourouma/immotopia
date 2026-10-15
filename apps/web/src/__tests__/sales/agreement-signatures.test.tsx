@@ -5,7 +5,7 @@ import { App as AntApp } from 'antd';
 import { SaleAgreementSignatures, toSignerInputs } from '../../pages/sales/SaleAgreementSignatures';
 
 /**
- * Spec 043, S4 : carte « Signatures » du compromis. Signataires préremplis par
+ * Spec 044, S4 : carte « Signatures » du compromis. Signataires préremplis par
  * le contexte de l'API ; si un prestataire qualifié est requis (SG-R1), avertissement
  * et envoi désactivé. Le mock couvre chaque export de `signature-service` utilisé.
  */

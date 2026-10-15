@@ -61,7 +61,7 @@ const InstallmentPaymentStatusPage = lazy(() =>
     default: m.InstallmentPaymentStatusPage
   }))
 );
-// Signature électronique (spec 043) : page publique à jeton dans le chemin, hors AppShell.
+// Signature électronique (spec 044) : page publique à jeton dans le chemin, hors AppShell.
 const SignaturePage = lazy(() =>
   import(/* webpackChunkName: "public-signature" */ './pages/public/SignaturePage').then(m => ({
     default: m.SignaturePage

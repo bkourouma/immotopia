@@ -47,7 +47,7 @@ import { sendPrivateFile } from '../lib/files/private-files';
 import type { Response } from 'express';
 
 /**
- * Signature électronique, côté agence (spec 043, lot S1) : création d'une
+ * Signature électronique, côté agence (spec 044, lot S1) : création d'une
  * demande pour un bail, liste, détail, annulation, relance, fichiers, jeton de
  * signature sur place, expiration. Tout est filtré par `tenantId` ; la cible
  * est vérifiée par `assertBelongsToTenant`.

@@ -1,5 +1,5 @@
 /**
- * PDF d'un état des lieux FINALISÉ (spec 043, lot S3) : le document que les
+ * PDF d'un état des lieux FINALISÉ (spec 044, lot S3) : le document que les
  * parties signent. Deux temps, comme `finance/stock-bons-pdf.ts` : un MODÈLE
  * (tout le texte imprimé, testable sans PDF) puis son rendu `pdf-lib`.
  *

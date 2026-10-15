@@ -1,5 +1,5 @@
 /**
- * config/env.ts — SIGNATURE_PROVIDER_REQUIRED_KINDS (spec 043, SG-R1) : chaque
+ * config/env.ts — SIGNATURE_PROVIDER_REQUIRED_KINDS (spec 044, SG-R1) : chaque
  * élément est validé (une faute de frappe bloque le démarrage au lieu de laisser un
  * type sans la protection attendue) et un avertissement signale l'absence du compromis.
  * `env` est un singleton évalué à l'import : chaque scénario recharge le module isolé.

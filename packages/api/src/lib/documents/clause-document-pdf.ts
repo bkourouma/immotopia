@@ -1,5 +1,5 @@
 /**
- * Moteur de rendu d'un document « à clauses » (mandats, spec 043) : un MODÈLE
+ * Moteur de rendu d'un document « à clauses » (mandats, spec 044) : un MODÈLE
  * de document (tout le texte qui sera imprimé) puis son rendu `pdf-lib`. Même
  * découpage que `lib/finance/stock-bons-pdf.ts` : le modèle se teste sans PDF.
  *

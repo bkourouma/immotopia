@@ -264,7 +264,7 @@ export async function countInventoryPhotosThisMonth(db: Db, tenantId: string, no
 
 /**
  * Demandes de signature electronique du MOIS CIVIL UTC (capacite
- * SIGNATURES_MENSUELLES, spec 043 SG-R12) : `SignatureUsage.used` du mois, 0
+ * SIGNATURES_MENSUELLES, spec 044 SG-R12) : `SignatureUsage.used` du mois, 0
  * sans ligne. Ecrit par la seule reservation atomique de lib/signature/quota.ts.
  */
 export async function countSignaturesThisMonth(db: Db, tenantId: string, now: Date = new Date()): Promise<number> {

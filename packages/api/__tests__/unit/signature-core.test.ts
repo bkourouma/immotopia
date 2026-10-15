@@ -1,5 +1,5 @@
 /**
- * Noyau de la signature électronique (spec 043, lot S1) : code à usage unique,
+ * Noyau de la signature électronique (spec 044, lot S1) : code à usage unique,
  * jeton, chaînage de la piste de preuve, scellement PDF, saisie de signature,
  * masquage des contacts et du jeton dans les journaux.
  */

@@ -231,7 +231,7 @@ export async function getMandateDetail(tenantId: string, mandateId: string): Pro
 }
 
 /**
- * Un champ IMPRIMÉ dans le PDF du mandat (spec 043) change-t-il ? Le prix plancher, les notes et la
+ * Un champ IMPRIMÉ dans le PDF du mandat (spec 044) change-t-il ? Le prix plancher, les notes et la
  * part du négociateur ne sont pas imprimés : les modifier n'invalide aucune signature.
  */
 function printedMandateFieldsChanged(
@@ -353,7 +353,7 @@ export async function updateMandate(
     }
   });
 
-  // Spec 043 : un champ imprimé a changé, la demande de signature ouverte ne porte plus le bon document.
+  // Spec 044 : un champ imprimé a changé, la demande de signature ouverte ne porte plus le bon document.
   if (printedChanged) {
     await cancelOpenRequestsForTarget({ tenantId, userId: userId ?? null }, 'SaleMandate', row.id).catch(error =>
       logger.warn('Annulation des signatures du mandat échouée', { mandateId: row.id, error: String(error) })
@@ -408,7 +408,7 @@ export async function revokeMandate(
     return result;
   });
 
-  // Spec 043 : un mandat révoqué ne peut plus être signé, ses demandes en cours sont annulées.
+  // Spec 044 : un mandat révoqué ne peut plus être signé, ses demandes en cours sont annulées.
   await cancelOpenRequestsForTarget({ tenantId, userId: userId ?? null }, 'SaleMandate', row.id).catch(error =>
     logger.warn('Annulation des signatures du mandat échouée', { mandateId: row.id, error: String(error) })
   );

@@ -9,7 +9,7 @@ import { generateToken, hashToken } from './token';
 import type { DeliveryResult } from './types';
 
 /**
- * Remise des liens et des codes aux signataires (spec 043), et notification de
+ * Remise des liens et des codes aux signataires (spec 044), et notification de
  * l'émetteur. Rien de ce qui est remis (lien, jeton, code, contact) n'est
  * journalisé : seuls le canal et le résultat figurent aux événements.
  */

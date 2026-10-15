@@ -229,7 +229,7 @@ export async function revokeMandate(mandateId: string, tenantId: string, actorUs
     return updated;
   });
 
-  // Spec 043 : un mandat révoqué ne peut plus être signé, ses demandes en cours sont annulées.
+  // Spec 044 : un mandat révoqué ne peut plus être signé, ses demandes en cours sont annulées.
   await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId ?? null }, 'PropertyMandate', mandateId).catch(
     error => logger.warn('Annulation des signatures du mandat échouée', { mandateId, error: String(error) })
   );

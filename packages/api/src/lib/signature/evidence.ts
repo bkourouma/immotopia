@@ -3,7 +3,7 @@ import { env } from '../../config/env';
 import { replaceControlChars } from './text';
 
 /**
- * Éléments de preuve : empreintes de texte et d'IP (spec 043, SG-R5, SG-R7).
+ * Éléments de preuve : empreintes de texte et d'IP (spec 044, SG-R5, SG-R7).
  * L'IP n'est jamais stockée en clair : HMAC-SHA256 à clé dérivée de `JWT_SECRET`
  * (une empreinte sans secret se retrouverait par balayage des adresses) et une
  * forme tronquée (/24 en IPv4, /48 en IPv6) pour le certificat.

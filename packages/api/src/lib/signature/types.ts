@@ -1,5 +1,5 @@
 /**
- * Types partagés du noyau de signature électronique (spec 043, lot S1).
+ * Types partagés du noyau de signature électronique (spec 044, lot S1).
  * Les types d'énumération viennent de Prisma ; ce fichier porte le contrat du
  * fournisseur et les formes de sortie.
  */

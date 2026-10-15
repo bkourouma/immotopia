@@ -1,5 +1,5 @@
 /**
- * Scellement (spec 043, SG-R7, SG-R8) : la piste de preuve est vérifiée AVANT de
+ * Scellement (spec 044, SG-R7, SG-R8) : la piste de preuve est vérifiée AVANT de
  * sceller ; une chaîne rompue refuse le scellement (FAILED) et déclenche un audit
  * critique. Garde-fou statique sur la migration de durcissement.
  */

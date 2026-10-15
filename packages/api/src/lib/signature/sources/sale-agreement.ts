@@ -8,7 +8,7 @@ import { registerSignatureSource } from './registry';
 import { SourceChangedError, type DefaultSigner, type SignatureDocumentSource } from './types';
 
 /**
- * Source « compromis de vente » (SALE_AGREEMENT, spec 043 lot S4). Le PDF est
+ * Source « compromis de vente » (SALE_AGREEMENT, spec 044 lot S4). Le PDF est
  * généré à la volée (`lib/sales/agreement-pdf`) ; son empreinte de données
  * (`snapshotHash`) sert de repère : tout changement du compromis après l'envoi
  * l'invalide (`isSourceIntact`, et annulation active depuis `lib/sales/agreements`).

@@ -73,7 +73,7 @@ describe('catalogue d’audit', () => {
     // ici, et nulle part ailleurs : la migration est figée.
     const postMigrationKeys = [
       'AUDIT_VIEWED',
-      // Spec 043 : signature électronique.
+      // Spec 044 : signature électronique.
       'SIGNATURE_REQUEST_SENT',
       'SIGNATURE_SIGNED',
       'SIGNATURE_DECLINED',

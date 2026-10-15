@@ -2,7 +2,7 @@ import express from 'express';
 import request from 'supertest';
 
 /**
- * Routes de la signature électronique (spec 043, lot S1) : contrat HTTP agence
+ * Routes de la signature électronique (spec 044, lot S1) : contrat HTTP agence
  * et public. Les gardes (authenticate, requireTenantAccess, RBAC, abonnement)
  * sont des passe-plats qui posent le contexte ; les services sont simulés.
  * On vérifie que les contrôleurs tirent l'agence du CONTEXTE (jamais du corps),

@@ -13,7 +13,7 @@
  * sont amorces par la migration 20261001101600_patrimoine_pack_catalogue.
  * L'option Inventaire WhatsApp (lot 041, W-D6 du 04/10) est amorcee par la
  * migration 20261009090200_inventaire_whatsapp_catalogue.
- * La capacite SIGNATURES_MENSUELLES (spec 043, decisions du 15/10) est incluse selon
+ * La capacite SIGNATURES_MENSUELLES (spec 044, decisions du 15/10) est incluse selon
  * le pack (VALEURS PROVISOIRES, a valider : AGENCE 20, SYNDIC 50, PROMOTEUR 20,
  * INTEGRE 100) et se complete par l'extension EXT_SIGNATURES_SUPPLEMENTAIRES (bloc de
  * 50, cumulable). Les deux sont posees sur le catalogue par la migration
@@ -42,7 +42,7 @@ export const CAPACITY_KEYS: readonly CapacityKeyCode[] = [
   'ACTIFS',
   /** Lot 041 (W11) : photos analysees dans le mois civil UTC (consommation, sans depassement facture). */
   'PHOTOS_INVENTAIRE',
-  /** Spec 043 (SG-R12) : demandes de signature electronique du mois civil UTC (consommation, sans depassement facture). */
+  /** Spec 044 (SG-R12) : demandes de signature electronique du mois civil UTC (consommation, sans depassement facture). */
   'SIGNATURES_MENSUELLES'
 ];
 
@@ -67,7 +67,7 @@ export const EXTENSION = {
   BIENS_10: 'EXT_BIENS_10',
   /** Lot 041 (W-D6) : bloc de 500 photos analysees par mois, Promoteur et Integre. */
   INVENTAIRE_WHATSAPP: 'EXT_INVENTAIRE_WHATSAPP',
-  /** Spec 043 : bloc de 50 signatures electroniques par mois, cumulable, packs d'agence. */
+  /** Spec 044 : bloc de 50 signatures electroniques par mois, cumulable, packs d'agence. */
   SIGNATURES_SUPPLEMENTAIRES: 'EXT_SIGNATURES_SUPPLEMENTAIRES'
 } as const;
 
@@ -356,7 +356,7 @@ export const DEFAULT_CATALOG: readonly CatalogItemDef[] = [
     capacities: { PHOTOS_INVENTAIRE: 500 }
   },
   {
-    // Spec 043 (decision du 15/10) : a l'atteinte du quota mensuel de signatures de leur pack,
+    // Spec 044 (decision du 15/10) : a l'atteinte du quota mensuel de signatures de leur pack,
     // les agences achetent des blocs de 50 (cumulables par la quantite), jamais de depassement
     // facture. PRIX A FIXER (decision fondateur) : 0 et non vendable en attendant ; le
     // super-admin le renseigne et l'ouvre a la vente depuis le catalogue.

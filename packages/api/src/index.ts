@@ -82,7 +82,7 @@ app.listen(PORT, () => {
     // relances, expirations et reprise du webhook seulement si le transport
     // n'est pas `disabled`.
     startStockWhatsappJob({ transportActive: env.WHATSAPP_INVENTORY_TRANSPORT !== 'disabled' });
-    // Spec 043 : expiration des demandes de signature et reprise du scellement.
+    // Spec 044 : expiration des demandes de signature et reprise du scellement.
     startSignatureJob();
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.

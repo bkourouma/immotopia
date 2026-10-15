@@ -12,7 +12,7 @@ import {
 } from '../services/signature-public-service';
 
 /**
- * Points d'entrée PUBLICS de la signature électronique (spec 043, lot S1) :
+ * Points d'entrée PUBLICS de la signature électronique (spec 044, lot S1) :
  * `/api/public/signatures/:token`. Le jeton est dans le chemin (contrat du
  * lien `/signer/:jeton`) ; il est masqué du journal des requêtes
  * (`utils/sensitive-path.ts`). Tout corps ou paramètre invalide répond comme

@@ -7,7 +7,7 @@ import { registerSignatureSource } from './registry';
 import type { DefaultSigner, SignatureDocumentSource } from './types';
 
 /**
- * Source « état des lieux » (LEASE_INSPECTION, spec 043 lot S3) : le PDF est
+ * Source « état des lieux » (LEASE_INSPECTION, spec 044 lot S3) : le PDF est
  * généré par `lib/lease-inspections/inspection-pdf.ts` (aucun fichier source
  * n'existe en base). Seul un état des lieux FINALISÉ se signe : il est alors
  * figé (`updateInspection`, `addInspectionPhoto`, `deleteInspection`… refusent

@@ -1,7 +1,7 @@
 import { SignatureDocumentKind } from '@prisma/client';
 import { z } from 'zod';
 
-/** Schémas Zod de l'API « agence » de la signature électronique (spec 043, lot S1). */
+/** Schémas Zod de l'API « agence » de la signature électronique (spec 044, lot S1). */
 
 export const SIGNATURE_MAX_SIGNERS = 10;
 

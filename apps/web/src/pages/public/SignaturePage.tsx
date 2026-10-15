@@ -5,7 +5,7 @@ import { PublicSigningFlow } from '../../components/signature/PublicSigningFlow'
 import { t } from '../../i18n/t';
 
 /**
- * Page publique `/signer/:token` (spec 043) : hors coquille authentifiée,
+ * Page publique `/signer/:token` (spec 044) : hors coquille authentifiée,
  * mobile d'abord. Le jeton est le seul élément de l'URL ; la page demande
  * aux moteurs de ne pas l'indexer et de ne pas transmettre l'adresse en referrer.
  */

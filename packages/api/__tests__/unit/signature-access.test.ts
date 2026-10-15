@@ -1,5 +1,5 @@
 /**
- * Droits d'accès à la signature selon le TYPE de document (spec 043) : permission
+ * Droits d'accès à la signature selon le TYPE de document (spec 044) : permission
  * RBAC et fonctionnalité d'abonnement déclarées par la source du type, lues sur le
  * corps (création), sur la demande en base (détail, fichiers, annulation, relance)
  * ou sur le paramètre `:kind`. La liste est filtrée aux types lisibles.

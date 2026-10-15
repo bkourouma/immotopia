@@ -15,7 +15,7 @@ import {
 } from '../controllers/signature-controller';
 
 /**
- * Signature électronique, routes « agence » (spec 043), montées sur
+ * Signature électronique, routes « agence » (spec 044), montées sur
  * `/api/signatures`. Toutes passent par `authenticate`, `resolveSignatureTenant`
  * puis `requireTenantAccess` (agence). Le droit RBAC et la fonctionnalité
  * d'abonnement dépendent du TYPE de document, déclarés par sa source

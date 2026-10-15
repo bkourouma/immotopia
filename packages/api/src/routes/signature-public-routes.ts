@@ -17,7 +17,7 @@ import {
 } from '../controllers/signature-public-controller';
 
 /**
- * Routes publiques de la signature électronique (spec 043, lot S1), sous
+ * Routes publiques de la signature électronique (spec 044, lot S1), sous
  * `/api/public/signatures/:token`. Montées dans `app.ts` AVANT les routeurs qui
  * imposent une authentification : le jeton du signataire est la seule preuve
  * d'accès. Limiteur par IP avant toute vérification, en-têtes anti-cache sur

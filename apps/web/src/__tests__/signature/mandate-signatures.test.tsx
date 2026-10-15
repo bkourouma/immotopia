@@ -7,7 +7,7 @@ import { MandateSignatures } from '../../components/signature/MandateSignatures'
 import { PropertyMandatesTab } from '../../components/properties/PropertyMandatesTab';
 
 /**
- * Spec 043, S2 : signature des mandats (gestion et vente). Le panneau préremplit
+ * Spec 044, S2 : signature des mandats (gestion et vente). Le panneau préremplit
  * ses signataires depuis le contexte de la cible ; l'onglet des mandats d'un bien
  * affiche « Signé le … » et ouvre le panneau. Le mock couvre CHAQUE export utilisé.
  */

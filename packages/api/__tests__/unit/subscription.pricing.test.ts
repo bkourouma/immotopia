@@ -95,14 +95,14 @@ describe('Catalogue par defaut = grille du site', () => {
     // 20261004220100_particulier_catalogue (verifies ci-dessous). L'option
     // Inventaire WhatsApp (lot 041) ne vient pas du site mais de la decision
     // du fondateur du 04/10/2026 : 20261009090200_inventaire_whatsapp_catalogue.
-    // L'extension signatures (spec 043) vient de 20261015120000_signatures_incluses_packs.
+    // L'extension signatures (spec 044) vient de 20261015120000_signatures_incluses_packs.
     for (const item of DEFAULT_CATALOG) {
       if (
         PATRIMOINE_PACKS.includes(item.code) ||
         PARTICULIER_PACKS.includes(item.code) ||
         item.code === EXTENSION.BIENS_10 ||
         item.code === EXTENSION.INVENTAIRE_WHATSAPP ||
-        // Spec 043 : vient de 20261015120000_signatures_incluses_packs (verifiee par signature-catalog.test.ts).
+        // Spec 044 : vient de 20261015120000_signatures_incluses_packs (verifiee par signature-catalog.test.ts).
         item.code === EXTENSION.SIGNATURES_SUPPLEMENTAIRES ||
         item.code.startsWith('SETUP_PATRIMOINE_')
       ) {

@@ -6,7 +6,7 @@ import { registerSignatureSource } from './registry';
 import { SourceChangedError, type DefaultSigner, type SignatureDocumentSource } from './types';
 
 /**
- * Source « mandat de gestion » (MANAGEMENT_MANDATE, spec 043 lot S2) : le PDF est
+ * Source « mandat de gestion » (MANAGEMENT_MANDATE, spec 044 lot S2) : le PDF est
  * généré à la volée depuis le `PropertyMandate` (`lib/properties/management-mandate-pdf`),
  * sans fichier stocké. Le mandat porte `signed_at` et `signature_request_id`
  * une fois scellé. L'empreinte des données (`snapshotHash`) détecte une

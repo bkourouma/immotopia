@@ -7,7 +7,7 @@ import { registerSignatureSource } from './registry';
 import { SourceChangedError, type DefaultSigner, type SignatureDocumentSource } from './types';
 
 /**
- * Source « mandat de vente » (SALE_MANDATE, spec 043 lot S2) : le PDF est généré à
+ * Source « mandat de vente » (SALE_MANDATE, spec 044 lot S2) : le PDF est généré à
  * la volée depuis le `SaleMandate` (`lib/sales/mandate-pdf`), sans fichier stocké
  * et sans jamais lire le prix plancher. Le mandat porte `signed_at` et
  * `signature_request_id` une fois scellé ; l'empreinte des données détecte une

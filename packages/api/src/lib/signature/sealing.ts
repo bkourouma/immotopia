@@ -11,7 +11,7 @@ import { findSignatureSource, SourceChangedError } from './sources';
 import { sealSignedPdf, type SealSigner } from './seal';
 
 /**
- * Orchestration du scellement d'une demande (spec 043, SG-R7). Appelée dès que
+ * Orchestration du scellement d'une demande (spec 044, SG-R7). Appelée dès que
  * le dernier signataire a signé, et rejouée par la tâche planifiée si elle a
  * échoué (`sealPendingRequests`). Une seule instance scelle à la fois : la
  * demande est RÉSERVÉE par mise à jour conditionnelle (`sealingAt`, périmée

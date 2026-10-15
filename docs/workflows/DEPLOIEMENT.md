@@ -931,7 +931,7 @@ suspendre ou la purger, puis relancer. Les comptes de connexion ajoutés (équip
 portails propriétaire, locataire, copropriétaire) ont le même mot de passe de test public
 que les administrateurs. Durée constatée en local : environ une heure pour les 12 agences créées de zéro (55 min mesurées), 6 minutes pour une relance sur des agences déjà peuplées.
 
-**Documents générés (corrigé, lot S0 de la spec 043).** Les modèles DOCX livrés
+**Documents générés (corrigé, lot S0 de la spec 044).** Les modèles DOCX livrés
 (`assets/modeles_documents/*.docx`) sont copiés en lecture seule dans l'image
 runtime (`/app/assets/modeles_documents`) ; les documents générés et les
 modèles importés par une agence s'écrivent sous `UPLOADS_DIR`

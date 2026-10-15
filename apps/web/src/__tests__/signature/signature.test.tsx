@@ -8,7 +8,7 @@ import { SendForSignatureModal } from '../../components/signature/SendForSignatu
 import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
 
 /**
- * Spec 043, S1 : page publique de signature, modale d'envoi et panneau « Signatures ».
+ * Spec 044, S1 : page publique de signature, modale d'envoi et panneau « Signatures ».
  * Le mock couvre CHAQUE export de `signature-service` utilisé par les composants.
  */
 

@@ -1,5 +1,5 @@
 /**
- * Sources de signature des mandats (spec 043, lot S2) : mandat de gestion
+ * Sources de signature des mandats (spec 044, lot S2) : mandat de gestion
  * (PropertyMandate) et mandat de vente (SaleMandate). Contrat du registre,
  * isolation entre agences, droits, scellement et annulation, signataires
  * proposés, PDF produit (valide, sans prix plancher ni notes). La base est simulée.

@@ -4,7 +4,7 @@ import { sha256Hex } from './evidence';
 import type { SignatureEventType } from './types';
 
 /**
- * Piste de preuve append-only et chaînée (spec 043, SG-R8). Chaque événement
+ * Piste de preuve append-only et chaînée (spec 044, SG-R8). Chaque événement
  * porte le hachage du précédent (`prevHash`) : modifier ou retirer un événement
  * rompt la chaîne, ce que `verifyEventChain` détecte. `seq` est unique par
  * demande ; l'ajout verrouille la ligne de la demande (`FOR UPDATE`), si bien

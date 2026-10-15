@@ -7,7 +7,7 @@ import { findSignatureSource } from './sources';
 import { OPEN_REQUEST_STATUSES } from './types';
 
 /**
- * Annulation d'une demande de signature (spec 043). Module à part : le
+ * Annulation d'une demande de signature (spec 044). Module à part : le
  * document source change dans d'autres services (régénération du contrat), qui
  * doivent pouvoir annuler sans importer `signature-service` (cycle d'imports
  * avec `document-generation-service`).

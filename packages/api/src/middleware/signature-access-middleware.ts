@@ -8,7 +8,7 @@ import { hasPermission } from '../services/permission-service';
 import { prisma } from '../utils/database';
 
 /**
- * Droits d'accès à la signature selon le TYPE de document (spec 043). Les routes
+ * Droits d'accès à la signature selon le TYPE de document (spec 044). Les routes
  * `/api/signatures` restent authentifiées et cloisonnées par agence
  * (`authenticate` + `requireTenantAccess`) ; ce middleware ajoute, APRÈS elles, la
  * permission RBAC et la fonctionnalité d'abonnement que la source du type

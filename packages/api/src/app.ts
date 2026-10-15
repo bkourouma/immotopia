@@ -249,7 +249,7 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
-// Spec 043 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
+// Spec 044 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
 app.use('/api', signaturePublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
@@ -260,7 +260,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage ImmoCopilot (super-admin)
 app.use('/api/roles', roleRoutes);
-app.use('/api/signatures', signatureRoutes); // Signature electronique, cote agence (spec 043)
+app.use('/api/signatures', signatureRoutes); // Signature electronique, cote agence (spec 044)
 app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT

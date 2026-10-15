@@ -8,7 +8,7 @@ import { toSignerInputs } from '../../components/rental/inspections/InspectionSi
 import type { LeaseInspection } from '../../services/lease-inspections-service';
 
 /**
- * Spec 043, S3 : bouton « Signatures » d'un état des lieux finalisé, signataires
+ * Spec 044, S3 : bouton « Signatures » d'un état des lieux finalisé, signataires
  * préremplis par l'API, locataire présent et agent en signature sur place.
  */
 
