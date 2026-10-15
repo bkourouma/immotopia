@@ -243,7 +243,7 @@ describe('direct-debit / création', () => {
     expect(mockAudit.record).toHaveBeenCalledTimes(1);
     const entry = mockAudit.record.mock.calls[0][1];
     expect(entry.actionKey).toBe('DIRECT_DEBIT_MANDATE_CREATED');
-    expect(entry.payload).toMatchObject({ bankCode: 'CI008', ibanLast4: '0589' });
+    expect(entry.payload).toMatchObject({ bankCode: 'CI008', last4Digits: '0589' });
     expectNoLeak(entry);
   });
 
@@ -363,7 +363,7 @@ describe('direct-debit / transitions de statut', () => {
     expect(active.activatedAt).not.toBeNull();
     const entry = mockAudit.record.mock.calls.at(-1)?.[1];
     expect(entry.actionKey).toBe('DIRECT_DEBIT_MANDATE_ACTIVATED');
-    expect(entry.payload).toMatchObject({ from: 'DRAFT', to: 'ACTIVE', ibanLast4: '0589' });
+    expect(entry.payload).toMatchObject({ from: 'DRAFT', to: 'ACTIVE', last4Digits: '0589' });
     expectNoLeak(active);
     expectNoLeak(entry);
   });
@@ -503,7 +503,15 @@ describe('direct-debit / scan signé', () => {
       '/uploads/rental/direct-debit/tenant-a/mandate-1/ancien.pdf'
     );
     const entry = mockAudit.record.mock.calls.at(-1)?.[1];
-    expect(entry.payload.previousPath).toBe('/uploads/rental/direct-debit/tenant-a/mandate-1/ancien.pdf');
+    expect(entry.payload).toMatchObject({ replaced: true });
+    expect(JSON.stringify(entry.payload)).not.toContain('/uploads/');
+  });
+
+  it("refuse le dépôt d'un scan sur un mandat actif", async () => {
+    const draft = await createDraft();
+    mockState.mandates[0].status = 'ACTIVE';
+    await expect(uploadSignedScan(TENANT, draft.id, { buffer: pdf })).rejects.toBeInstanceOf(ConflictError);
+    expect(mockFiles.store).not.toHaveBeenCalled();
   });
 
   it('refuse un type de fichier non reconnu par ses octets, sans rien écrire', async () => {

@@ -1834,5 +1834,6 @@
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}.",
   "Vue consolidée": "Consolidated view",
   "Vue patrimoine indisponible.": "Portfolio view unavailable.",
-  "Zone": "Area"
+  "Zone": "Area",
+  "Le scan signé ne se dépose que sur un mandat en brouillon : révoquez ce mandat et créez-en un autre.": "A signed scan can only be uploaded to a draft mandate: revoke this mandate and create a new one."
 }

@@ -1,7 +1,7 @@
 import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
-import { logAuditEvent } from '../../services/audit-service';
+import { recordAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { prisma } from '../../utils/database';
 import {
@@ -247,13 +247,14 @@ export async function generateAuthorizationPdf(
     branding
   );
 
-  logAuditEvent({
+  // Trace écrite AVANT l'envoi (le PDF porte l'IBAN complet) : un échec d'écriture bloque l'envoi.
+  await recordAuditEvent(prisma, {
     actorUserId: actorUserId ?? null,
     tenantId,
     actionKey: AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED,
     entityType: 'DirectDebitMandate',
     entityId: mandateId,
-    payload: { reference, bankCode: row.ibanBankCode, ibanLast4: row.ibanLast4 }
+    payload: { reference, bankCode: row.ibanBankCode, last4Digits: row.ibanLast4 }
   });
   return { buffer, fileName: authorizationFileName(reference) };
 }

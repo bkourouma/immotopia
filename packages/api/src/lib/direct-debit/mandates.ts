@@ -40,7 +40,7 @@ import type { PrivateFile } from '../files/private-files';
  * - L'IBAN complet n'existe en clair que le temps de le chiffrer à la
  *   création, et dans le PDF d'autorisation (`authorization-pdf.ts`). Il ne
  *   figure dans aucune réponse, aucun journal, aucune charge utile d'audit :
- *   seulement `bankCode` et `ibanLast4`.
+ *   seulement `bankCode` et `last4Digits` (clé non masquée par le filtre « iban » de l audit).
  * - Les transitions de statut s'écrivent par `updateMany` gardé sur le statut
  *   lu : deux requêtes concurrentes ne peuvent pas toutes deux réussir.
  */
@@ -242,7 +242,7 @@ export async function createMandate(
             leaseId: input.leaseId,
             debtorClientId: input.debtorClientId,
             bankCode: parsed.bankCode,
-            ibanLast4: parsed.last4
+            last4Digits: parsed.last4
           }
         });
         return created.id;
@@ -371,7 +371,7 @@ async function applyTransition(
         from: current.status,
         to: step.to,
         bankCode: current.ibanBankCode,
-        ibanLast4: current.ibanLast4,
+        last4Digits: current.ibanLast4,
         ...step.payload
       }
     });
@@ -471,6 +471,10 @@ export async function uploadSignedScan(
   if (existing.status === 'REVOKED') {
     throw new ConflictError(t('Un mandat révoqué ne peut plus recevoir de scan.'));
   }
+  if (existing.status !== 'DRAFT')
+    throw new ConflictError(
+      t('Le scan signé ne se dépose que sur un mandat en brouillon : révoquez ce mandat et créez-en un autre.')
+    );
 
   const kind = assertMandateScan(file?.buffer);
   const storedPath = await storeMandateScan(tenantId, mandateId, (file as UploadedScan).buffer, kind);
@@ -486,8 +490,13 @@ export async function uploadSignedScan(
       if (current.status === 'REVOKED') {
         throw new ConflictError(t('Un mandat révoqué ne peut plus recevoir de scan.'));
       }
+      if (current.status !== 'DRAFT')
+        throw new ConflictError(
+          t('Le scan signé ne se dépose que sur un mandat en brouillon : révoquez ce mandat et créez-en un autre.')
+        );
+      // Condition sur le scan lu : deux dépôts concurrents ne laissent pas de fichier orphelin.
       const result = await tx.directDebitMandate.updateMany({
-        where: { id: mandateId, tenantId, status: current.status },
+        where: { id: mandateId, tenantId, status: current.status, signedScanUrl: current.signedScanUrl },
         data: { signedScanUrl: storedPath, signedScanUploadedAt: new Date() }
       });
       if (result.count === 0) {
@@ -502,9 +511,7 @@ export async function uploadSignedScan(
         payload: {
           reference: referenceOf(current.year, current.sequence),
           bankCode: current.ibanBankCode,
-          ibanLast4: current.ibanLast4,
-          path: storedPath,
-          previousPath: current.signedScanUrl,
+          last4Digits: current.ibanLast4,
           replaced: Boolean(current.signedScanUrl)
         }
       });

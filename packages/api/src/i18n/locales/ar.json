@@ -1834,5 +1834,6 @@
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "أنت تستخدم {{used}} {{label}} من أصل {{limit}} مشمولة. {{policy}} أضف امتدادًا من {{url}}.",
   "Vue consolidée": "نظرة موحّدة",
   "Vue patrimoine indisponible.": "عرض المحفظة العقارية غير متاح.",
-  "Zone": "المنطقة"
+  "Zone": "المنطقة",
+  "Le scan signé ne se dépose que sur un mandat en brouillon : révoquez ce mandat et créez-en un autre.": "لا يمكن إيداع النسخة الموقعة إلا على تفويض في حالة مسودة: ألغوا هذا التفويض وأنشئوا تفويضًا جديدًا."
 }

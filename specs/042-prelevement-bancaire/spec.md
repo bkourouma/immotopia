@@ -138,17 +138,22 @@ Débit Mobile Money récurrent ; intégration bancaire directe ; signature
   de gestion.
 - PB3-R2. Scan signé : PDF ou image (JPEG, PNG), 10 Mo au plus, stocké en
   fichier privé, servi uniquement par une route authentifiée qui vérifie
-  l'agence. Remplacer le scan conserve l'ancien dans l'audit (chemin, pas le
-  contenu).
+  l'agence. Déposé ou remplacé **seulement sur un mandat en brouillon** ; un
+  mandat actif ou suspendu garde sa preuve (révoquer et recréer pour en
+  changer). L'audit ne contient pas le chemin du fichier.
+- PB3-R3. Le téléchargement du PDF à IBAN complet est audité dans la base
+  avant l'envoi (action critique) ; un échec d'écriture bloque l'envoi.
 
 ### PB4 — Droits et module
 
 - PB4-R1. Deux permissions : `RENTAL_DIRECT_DEBIT_VIEW` (consulter
   créanciers et mandats, IBAN masqué) et `RENTAL_DIRECT_DEBIT_MANAGE` (tout
-  le reste, y compris le PDF à IBAN complet et le scan signé). Une migration
-  de données les accorde aux rôles qui ont déjà `RENTAL_PAYMENTS_VIEW`
-  (consultation) et `RENTAL_PAYMENTS_CREATE` (les deux) ; le seed de
-  développement les accorde par le préfixe `RENTAL_`.
+  le reste, y compris le PDF à IBAN complet et le scan signé). La migration de
+  données accorde VIEW à tout rôle qui a `RENTAL_PAYMENTS_VIEW`, et MANAGE
+  aux seuls rôles `TENANT_ADMIN` et `TENANT_MANAGER` (audit de sécurité : un
+  rôle qui encaisse seulement n'accède pas aux IBAN) ; les autres rôles la
+  reçoivent par l'écran des rôles. Le seed de développement les accorde par
+  le préfixe `RENTAL_` (administrateur et gestionnaire).
 - PB4-R2. Toutes les routes sont sous `/api/tenants/:tenantId/rental/…` :
   garde d'agence (`requireTenantAccess`) et fonctionnalité `RENTAL` de
   l'abonnement (table `lib/subscription/route-features.ts`, règle `/rental`
