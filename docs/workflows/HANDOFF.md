@@ -38,7 +38,7 @@ Pièges et décisions :
 
 ## Branche `feat/prelevement-bancaire` — 2026-10-15
 
-**État :** prêt à relire — PR #128 (base `main`), CI non encore lue
+**État :** prêt à relire — PR #128 (base `main`), CI verte, recette à faire
 **Dernier commit :** `48515b14` fix(prelevement): correctifs de l'audit de sécurité du lot P1 (+ ce commit de passation)
 **Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
 
@@ -54,7 +54,9 @@ Fait :
 Reste à faire :
 
 - Lire la CI de la PR #128 et corriger. `ai.write-plan.test.ts` échoue en local sur des fichiers hors diff (`copilot.ts`) : vérifier si c'est la CI ou seulement les fins de ligne CRLF du worktree.
-- Recette navigateur (spec §6.4) : `npm run demo:sync -- feat/prelevement-bancaire --migrate --install`, avec `PAYMENT_SECRETS_KEY` renseignée dans `packages/api/.env.demo` (sinon la création de mandat refuse : chiffrement non configuré). Toucher ce `.env` demande l'accord de l'utilisateur.
+- CI de la PR #128 : 7/7 vertes, fusionnable (2026-10-15) ; auto-fix activé. `ai.write-plan.test.ts` n'échoue qu'en local (fins de ligne du worktree).
+- Recette navigateur (spec §6.4) NON FAITE. Accord de l'utilisateur donné le 2026-10-15 pour la recette et `packages/api/.env.demo`. `PAYMENT_SECRETS_KEY` y a été ajoutée (clé générée, 32 octets ; copie de l'ancien fichier dans le scratchpad de la session). Ensuite : `npm run demo:sync -- feat/prelevement-bancaire --migrate --install`, `preview_start` api-demo et web-demo, scénario §6.4.
+- ATTENTION instance de démo : le 2026-10-15 vers 16 h, une autre session (`feat/syndic-ag-en-direct`, révision `349f9e5d`) la faisait tourner (`web-demo` sur 3300). Mon `demo:sync --install` l'a basculée sur `31b9aed9`, puis `npm ci` a échoué (EPERM sur `esbuild.exe`, verrouillé par son serveur) après avoir supprimé une partie de `.claude/worktrees/demo/node_modules` (vite absent). Révision remise sur `349f9e5d` ; base de démo NON migrée. À réparer, serveur de démo arrêté : `npm run demo:sync -- 349f9e5d --install`. Ne pas lancer la recette 042 tant que cette session utilise la démo.
 - Points ouverts de l'audit : clé de chiffrement dédiée et versionnée pour les IBAN (aujourd'hui `PAYMENT_SECRETS_KEY` partagée, préfixe `pg1`) ; borne basse de `signedAt`/`revokedAt`.
 - P2 (remises) selon `plan.md`, après les pièces de la banque pilote (spec §2).
 
