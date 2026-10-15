@@ -17,6 +17,12 @@ import {
 // Ecart recette (lot syndic-ecarts, T2) : votant d'un lot a la date de l'AG.
 import { presentLotOwners, pickPrimaryOwnerProfile, syncLotOwnerFromProfilesTx } from './lot-owner';
 import { toMajorityLotsAt, votersAt, type LotOwnerProfileForVoters } from './meeting-voters';
+import {
+  LOT_OWNER_PROFILE_SELECT_FOR_VOTERS,
+  MEETING_CONTACT_SELECT,
+  normalizeOwnerProfilesForVoters
+} from './meeting-lots';
+import { lockMeetingTx, recomputeMeetingResultsTx } from './meeting-results';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
 // Lot S2 (audit S1) : le logo prive de la copropriete est supprime avec elle.
@@ -1787,41 +1793,6 @@ export async function listMeetingsBySyndicate(
   });
 }
 
-/** Champs d'un contact CRM exposes dans une assemblee (mandant, mandataire). */
-const MEETING_CONTACT_SELECT = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  legalName: true,
-  email: true
-} as const;
-
-/**
- * `LotOwnerProfile.ownershipPercentage` est un `Prisma.Decimal` : converti en
- * `number` ici (frontiere Prisma), pour que `lib/syndics/meeting-voters.ts`
- * reste un module pur sans dependance a Prisma.
- */
-function normalizeOwnerProfilesForVoters(
-  profiles: Array<{
-    contactId: string;
-    ownershipPercentage: unknown;
-    ownedSince: Date;
-    ownedUntil: Date | null;
-    contact: {
-      id: string;
-      firstName: string | null;
-      lastName: string | null;
-      legalName: string | null;
-      email: string | null;
-    };
-  }>
-): LotOwnerProfileForVoters[] {
-  return profiles.map(profile => ({
-    ...profile,
-    ownershipPercentage: Number(profile.ownershipPercentage)
-  }));
-}
-
 /**
  * Une assemblee cloturee ou annulee est figee : plus de vote, de resolution ni
  * de pouvoir. Messages fixes (le texte francais sert de cle de traduction).
@@ -1854,20 +1825,6 @@ function meetingTransitionErrorMessage(from: string, to: string): string {
   if (from === 'IN_PROGRESS' && to === 'PLANNED') return 'Une seance ouverte ne peut pas redevenir planifiee';
   return "Transition de statut d'assemblee impossible";
 }
-
-/**
- * Profils de propriete d'un lot, tels que necessaires a `votersAt` /
- * `toMajorityLotsAt` : `select` minimal — jamais `portalAccessToken` ni le
- * reste de `LotOwnerProfile` dans une reponse (ecart recette, lot
- * syndic-ecarts T2).
- */
-const LOT_OWNER_PROFILE_SELECT_FOR_VOTERS = {
-  contactId: true,
-  ownershipPercentage: true,
-  ownedSince: true,
-  ownedUntil: true,
-  contact: { select: MEETING_CONTACT_SELECT }
-} as const;
 
 export async function getMeetingByTenant(tenantId: string, syndicateId: string, meetingId: string) {
   const meeting = await prisma.generalMeeting.findFirst({
@@ -1912,6 +1869,17 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
           grantor: { select: MEETING_CONTACT_SELECT },
           representative: { select: MEETING_CONTACT_SELECT }
         }
+      },
+      attendances: {
+        select: {
+          lotId: true,
+          status: true,
+          mode: true,
+          recordedBy: true,
+          attendeeContactId: true,
+          representedByContactId: true,
+          updatedAt: true
+        }
       }
     }
   });
@@ -1940,12 +1908,40 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
     };
   });
 
+  // Spec 043 : noms de ceux qui sont la (ou qui representent), pour la feuille de presence.
+  const attendanceContactIds = Array.from(
+    new Set(
+      (meeting.attendances ?? [])
+        .flatMap(row => [row.attendeeContactId, row.representedByContactId])
+        .filter((contactId): contactId is string => Boolean(contactId))
+    )
+  );
+  const attendeeContacts =
+    attendanceContactIds.length === 0
+      ? []
+      : await prisma.crmContact.findMany({
+          where: { tenantId, id: { in: attendanceContactIds } },
+          select: MEETING_CONTACT_SELECT
+        });
+  const attendeeNames = new Map(
+    attendeeContacts.map(contact => [
+      contact.id,
+      contact.legalName?.trim() || [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim()
+    ])
+  );
+
   return {
     ...meeting,
+    attendances: (meeting.attendances ?? []).map(row => ({
+      ...row,
+      attendeeName: row.attendeeContactId ? (attendeeNames.get(row.attendeeContactId) ?? null) : null,
+      representedByName: row.representedByContactId ? (attendeeNames.get(row.representedByContactId) ?? null) : null
+    })),
     syndicate: meeting.syndicate ? { ...meeting.syndicate, lots: lotsWithVoters } : meeting.syndicate,
     attendance: computeMeetingAttendance(
       lots,
-      meeting.resolutions.flatMap(resolution => resolution.votes)
+      meeting.resolutions.flatMap(resolution => resolution.votes),
+      meeting.attendances ?? []
     ),
     resolutions: meeting.resolutions.map(resolution => ({
       ...resolution,
@@ -1979,66 +1975,6 @@ async function findMeetingForTenant(
   return meeting;
 }
 
-/**
- * Recalcule les compteurs et le resultat de chaque resolution de l'assemblee,
- * puis le quorum (tantiemes des lots ayant vote / tantiemes totaux).
- */
-async function recomputeMeetingResultsTx(
-  tx: PrismaTransactionClient,
-  syndicateId: string,
-  meetingId: string,
-  scheduledAt: Date
-) {
-  // Ecart recette (lot syndic-ecarts, T2) : le resultat stocke doit suivre la
-  // meme regle que la lecture (`getMeetingByTenant`) — le votant d'un lot est
-  // son proprietaire a la date de l'AG (`scheduledAt`), pas le proprietaire
-  // actuel. La date est fournie par l'appelant (deja lue via
-  // `findMeetingForTenant` ou equivalent) pour eviter une lecture Prisma
-  // redondante dans la transaction.
-  const rawLots = await tx.syndicateLot.findMany({
-    where: { syndicateId },
-    select: {
-      id: true,
-      generalShares: true,
-      coownerId: true,
-      ownerContactId: true,
-      owner: { select: MEETING_CONTACT_SELECT },
-      ownerProfiles: { select: LOT_OWNER_PROFILE_SELECT_FOR_VOTERS }
-    }
-  });
-  const profilesByLotId = new Map<string, LotOwnerProfileForVoters[]>(
-    rawLots.map(lot => [lot.id, normalizeOwnerProfilesForVoters(lot.ownerProfiles ?? [])])
-  );
-  const lots: MajorityLot[] = toMajorityLotsAt(rawLots, profilesByLotId, scheduledAt);
-  const resolutions = await tx.gMResolution.findMany({
-    where: { meetingId },
-    select: { id: true, majorityRule: true, votes: { select: { lotId: true, vote: true } } }
-  });
-
-  for (const resolution of resolutions) {
-    const tally = computeResolutionTally(resolution.majorityRule, lots, resolution.votes);
-    await tx.gMResolution.update({
-      where: { id: resolution.id },
-      data: {
-        result: tally.result,
-        votesFor: tally.votesFor,
-        votesAgainst: tally.votesAgainst,
-        votesAbstain: tally.votesAbstain,
-        sharesFor: tally.sharesFor
-      }
-    });
-  }
-
-  const attendance = computeMeetingAttendance(
-    lots,
-    resolutions.flatMap(resolution => resolution.votes)
-  );
-  await tx.generalMeeting.update({
-    where: { id: meetingId },
-    data: { quorum: attendance.quorumPercent }
-  });
-}
-
 export async function updateMeetingByTenant(
   tenantId: string,
   syndicateId: string,
@@ -2047,6 +1983,7 @@ export async function updateMeetingByTenant(
     startTime?: Date | null;
     endTime?: Date | null;
     location?: string | null;
+    videoConferenceUrl?: string | null;
     status?: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   }
 ) {
@@ -2054,6 +1991,8 @@ export async function updateMeetingByTenant(
 
   return prisma.$transaction(async tx => {
     const existing = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+    // Verrou de l'AG : un vote ou un emargement simultane ne se perd pas dans le recalcul de cloture.
+    await lockMeetingTx(tx, meetingId);
 
     const statusChange: Record<string, unknown> = {};
     if (data.status && data.status !== existing.status) {
@@ -2071,6 +2010,11 @@ export async function updateMeetingByTenant(
       }
       // A la cloture, les resultats sont recalcules une derniere fois puis figes.
       if (data.status === 'COMPLETED') {
+        // Spec 043 : la cloture de l'AG clot les votes encore ouverts.
+        await tx.gMResolution.updateMany({
+          where: { meetingId, voteStatus: 'OPEN' },
+          data: { voteStatus: 'CLOSED', voteClosedAt: now }
+        });
         await recomputeMeetingResultsTx(tx, syndicateId, meetingId, existing.scheduledAt);
       }
     }
@@ -2081,6 +2025,7 @@ export async function updateMeetingByTenant(
         ...(has('startTime') ? { startTime: data.startTime ?? null } : {}),
         ...(has('endTime') ? { endTime: data.endTime ?? null } : {}),
         ...(has('location') ? { location: data.location ?? null } : {}),
+        ...(has('videoConferenceUrl') ? { videoConferenceUrl: data.videoConferenceUrl ?? null } : {}),
         ...statusChange
       }
     });
@@ -2195,12 +2140,19 @@ export async function addResolutionToMeeting(
   });
 }
 
+/**
+ * Vote du gestionnaire (SYNDIC_EDIT) pour un lot, quel que soit l'etat de vote
+ * de la resolution (D5) tant que l'AG n'est ni cloturee ni annulee. L'origine
+ * `MANAGER` et l'auteur sont gardes. Si le lot n'a pas d'emargement, il est
+ * emarge PRESENT / IN_PERSON (spec 043). Transaction sous verrou d'AG.
+ */
 export async function castVoteAndRecomputeResolutionCounters(
   tenantId: string,
   syndicateId: string,
   resolutionId: string,
   lotId: string,
-  vote: 'FOR' | 'AGAINST' | 'ABSTAIN'
+  vote: 'FOR' | 'AGAINST' | 'ABSTAIN',
+  actor?: { userId?: string | null }
 ) {
   const meetingId = await prisma.$transaction(async tx => {
     const resolution = await tx.gMResolution.findFirst({
@@ -2222,7 +2174,16 @@ export async function castVoteAndRecomputeResolutionCounters(
       throw notFound('Resolution introuvable ou inaccessible');
     }
 
-    assertMeetingOpenForChanges(resolution.meeting.status, {
+    // Verrou de l'AG, puis relecture du statut sous le verrou : une cloture
+    // simultanee ne laisse pas passer un vote.
+    await lockMeetingTx(tx, resolution.meeting.id);
+    const meeting =
+      (await tx.generalMeeting.findFirst({
+        where: { id: resolution.meeting.id },
+        select: { id: true, status: true, scheduledAt: true }
+      })) ?? resolution.meeting;
+
+    assertMeetingOpenForChanges(meeting.status, {
       COMPLETED: 'Assemblee cloturee : les votes sont figes',
       CANCELLED: 'Assemblee annulee : aucun vote possible'
     });
@@ -2249,19 +2210,40 @@ export async function castVoteAndRecomputeResolutionCounters(
           lotId
         }
       },
-      update: { vote },
+      update: { vote, source: 'MANAGER', castByUserId: actor?.userId ?? null, castByContactId: null },
       create: {
         resolutionId,
         lotId,
-        vote
+        vote,
+        source: 'MANAGER',
+        castByUserId: actor?.userId ?? null
       }
     });
 
+    // Un lot qui vote est present : emargement cree s'il manque (jamais ecrase).
+    const attendance = await tx.gMAttendance.findFirst({
+      where: { meetingId: meeting.id, lotId },
+      select: { id: true }
+    });
+    if (!attendance) {
+      await tx.gMAttendance.create({
+        data: {
+          tenantId,
+          meetingId: meeting.id,
+          lotId,
+          status: 'PRESENT',
+          mode: 'IN_PERSON',
+          recordedBy: 'MANAGER',
+          recordedByUserId: actor?.userId ?? null
+        }
+      });
+    }
+
     // Resultat recalcule a chaque vote, en tantiemes, selon la regle de la
     // resolution (voir meeting-majority.ts) ; quorum recalcule sur l'assemblee.
-    await recomputeMeetingResultsTx(tx, syndicateId, resolution.meeting.id, resolution.meeting.scheduledAt);
+    await recomputeMeetingResultsTx(tx, syndicateId, meeting.id, meeting.scheduledAt);
 
-    return resolution.meeting.id;
+    return meeting.id;
   });
 
   // Relu apres la validation de la transaction : lu depuis le client global a

@@ -9,6 +9,16 @@ import {
   assignChargeCallFundHandler
 } from '../controllers/syndic-fund-assignment-controller';
 import {
+  bulkLotAttendanceHandler,
+  closeResolutionVoteHandler,
+  getLiveMeetingHandler,
+  issueParticipantLinkHandler,
+  listMeetingParticipantsHandler,
+  openResolutionVoteHandler,
+  revokeParticipantLinksHandler,
+  setLotAttendanceHandler
+} from '../controllers/syndic-meeting-live-controller';
+import {
   inviteCoOwnerToPortalHandler,
   revokeCoOwnerPortalAccessHandler
 } from '../controllers/syndic-coowner-portal-controller';
@@ -422,6 +432,47 @@ router.delete(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs/:proxyId',
   requirePropertyPermission('SYNDIC_EDIT'),
   deleteMeetingProxyHandler
+);
+// Spec 043 : AG en direct (console du gestionnaire).
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/direct',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getLiveMeetingHandler
+);
+router.put(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences/:lotId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setLotAttendanceHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  bulkLotAttendanceHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  openResolutionVoteHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  closeResolutionVoteHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  listMeetingParticipantsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/lien',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  issueParticipantLinkHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/liens',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  revokeParticipantLinksHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',
