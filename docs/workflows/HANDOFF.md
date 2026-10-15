@@ -39,7 +39,7 @@ Pièges et décisions :
 ## Branche `feat/syndic-ag-en-direct` — 2026-10-15
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130 (CI en cours à l'ouverture), fusion par l'utilisateur
-**Dernier commit :** `66aa6d0d` fix(syndic): suites de la revue de sécurité de l'AG en direct
+**Dernier commit :** `da586082` fix(syndic): catalogue IA régénéré et traductions vides retirées (CI)
 **Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
 
 Fait :
@@ -51,7 +51,7 @@ Fait :
 
 Reste à faire :
 
-- Suivre la CI de la PR #130 et corriger sur la branche. Revue de sécurité faite (0 critique/haute ; 1 moyenne et 3 basses corrigées : un vote en ligne ne remplace plus un vote du syndic ni le vote du copropriétaire par son mandataire, limite IP 3000/min, jeton effacé à la fin de l'AG, erreur typée).
+- CI de la PR #130 : premier passage rouge (catalogue IA périmé — `npm run ai:catalog` après tout ajout de route — et 6 traductions vides apportées par l’extraction), corrigé dans `da586082`, à confirmer vert. Revue de sécurité faite (0 critique/haute ; 1 moyenne et 3 basses corrigées : un vote en ligne ne remplace plus un vote du syndic ni le vote du copropriétaire par son mandataire, limite IP 3000/min, jeton effacé à la fin de l'AG, erreur typée).
 - Décisions D1–D12 de la spec à faire valider par le fondateur ; téléphone des copropriétaires exposé à SYNDIC_VIEW dans la liste des participants (à confirmer).
 - Non vérifié : migration sur une vraie base, recette navigateur (démo), `measure:entry`, suites complètes, `test:isolation`, charge du polling sur une grande copropriété (chaque `/etat` relit lots, profils et votes).
 
