@@ -13,6 +13,7 @@ import { currentOwnerProfilesSorted } from './lot-owner';
 // (noms, libellés saisis librement) y sont échappées.
 import { applyReceiptTemplate } from './charge-receipt-delivery';
 import { MARKER_KIND } from '../notification-markers';
+import { createConvocationLink } from './meeting-participants';
 
 /** Sujet (texte brut) ou corps HTML d'un e-mail : valeurs échappées dans le HTML. */
 function applyTemplate(template: string, vars: Record<string, string>, html = false): string {
@@ -431,6 +432,15 @@ async function recordConvocationDelivery(tenantId: string, meetingId: string, co
 }
 
 /**
+ * Gabarit e-mail sans le paragraphe du lien quand aucun lien n'a pu etre cree :
+ * la convocation part sans phrase orpheline (« … votez en ligne : »).
+ */
+export function dropMeetingLinkParagraph(template: string, meetingLink: string): string {
+  if (meetingLink.trim()) return template;
+  return template.replace(/<p\b[^>]*>[^<]*\{\{meetingLink\}\}[^<]*<\/p>\s*/g, '').replace(/\{\{meetingLink\}\}/g, '');
+}
+
+/**
  * Convoque les copropriétaires de l'assemblée. Premier envoi : tous. Renvoi
  * (un journal existe) : seuls les destinataires en échec ou jamais servis,
  * sauf `options.all`.
@@ -490,12 +500,19 @@ export async function notifyMeetingConvocation(
   for (const owner of owners) {
     const ownerName =
       [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim() || owner.legalName || 'Copropriétaire';
+    // Un lien personnel par destinataire (spec 043) ; vide si sa creation echoue : la convocation part quand meme.
+    const meetingLink = await createConvocationLink(
+      tenantId,
+      { id: meeting.id, scheduledAt: meeting.scheduledAt },
+      owner.id
+    );
     const templateVars = {
       ownerName,
       syndicateName: meeting.syndicate.name,
       meetingDate,
       meetingTime,
-      meetingLocation: meeting.location || 'À préciser'
+      meetingLocation: meeting.location || 'À préciser',
+      meetingLink
     };
     let served = false;
     let failed = false;
@@ -507,7 +524,11 @@ export async function notifyMeetingConvocation(
         await emailService.sendEmail({
           to: owner.email,
           subject: applyTemplate(emailConfig.subjectOverride || defaults.subject, templateVars),
-          html: applyTemplate(emailConfig.bodyHtmlOverride || defaults.bodyHtml, templateVars, true)
+          html: applyTemplate(
+            dropMeetingLinkParagraph(emailConfig.bodyHtmlOverride || defaults.bodyHtml, meetingLink),
+            templateVars,
+            true
+          )
         });
         emailSent += 1;
         served = true;
@@ -529,7 +550,8 @@ export async function notifyMeetingConvocation(
       tenantId,
       notificationKey: eventKeyWhatsApp,
       variables: templateVars,
-      contactId: owner.id
+      contactId: owner.id,
+      optionalVariables: ['meetingLink']
     });
     if (sentWhatsapp) {
       whatsappSent += 1;
@@ -541,7 +563,8 @@ export async function notifyMeetingConvocation(
           tenantId,
           notificationKey: eventKeyWhatsApp,
           variables: templateVars,
-          to: directPhone
+          to: directPhone,
+          optionalVariables: ['meetingLink']
         });
         if (sentDirectWhatsapp) {
           whatsappSent += 1;

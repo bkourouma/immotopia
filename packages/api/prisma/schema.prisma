@@ -520,67 +520,67 @@ model User {
   maintenanceCommentsAuthored     MaintenanceTicketComment[]       @relation("MaintenanceCommentAuthorUser")
   maintenanceStatusHistoryChanged MaintenanceTicketStatusHistory[] @relation("MaintenanceStatusHistoryChangedBy")
 
-  newsletterCampaignsCreated    NewsletterCampaign[]
-  savedContactSearches          SavedContactSearch[]
-  rentBillingRuns               RentBillingRun[]
-  supplierInvoicesCreated       SupplierInvoice[]       @relation("SupplierInvoiceCreatedBy")
-  supplierInvoicesValidated     SupplierInvoice[]       @relation("SupplierInvoiceValidatedBy")
-  supplierPaymentsCreated       SupplierPayment[]       @relation("SupplierPaymentCreatedBy")
-  supplierPaymentsValidated     SupplierPayment[]       @relation("SupplierPaymentValidatedBy")
-  cashVouchersCreated           CashVoucher[]           @relation("CashVoucherCreatedBy")
-  cashVouchersValidated         CashVoucher[]           @relation("CashVoucherValidatedBy")
-  managedConstructionSites      ConstructionSite[]      @relation("ConstructionSiteManager")
-  siteBudgetsValidated          SiteBudget[]            @relation("SiteBudgetValidatedBy")
-  budgetAmendmentsCreated       BudgetAmendment[]       @relation("BudgetAmendmentCreatedBy")
-  budgetAmendmentsValidated     BudgetAmendment[]       @relation("BudgetAmendmentValidatedBy")
-  purchaseOrdersCreated         PurchaseOrder[]         @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersIssued          PurchaseOrder[]         @relation("PurchaseOrderIssuedBy")
-  siteProgressEntriesLogged     SiteProgressEntry[]     @relation("SiteProgressEntryCreatedBy")
-  siteBudgetAlertsSeen          SiteBudgetAlert[]       @relation("SiteBudgetAlertAcknowledgedBy")
-  landLeasePaymentsCreated      LandLeasePayment[]      @relation("LandLeasePaymentCreatedBy")
-  landLeasePaymentsValidated    LandLeasePayment[]      @relation("LandLeasePaymentValidatedBy")
-  salaryNotesCreated            SalaryNote[]            @relation("SalaryNoteCreatedBy")
-  salaryNotesValidated          SalaryNote[]            @relation("SalaryNoteValidatedBy")
-  salaryPaymentsCreated         SalaryPayment[]         @relation("SalaryPaymentCreatedBy")
-  salaryPaymentsValidated       SalaryPayment[]         @relation("SalaryPaymentValidatedBy")
-  progressStatementsCreated     ProgressStatement[]     @relation("ProgressStatementCreatedBy")
-  progressStatementsValidated   ProgressStatement[]     @relation("ProgressStatementValidatedBy")
-  contractorPaymentsCreated     ContractorPayment[]     @relation("ContractorPaymentCreatedBy")
-  contractorPaymentsValidated   ContractorPayment[]     @relation("ContractorPaymentValidatedBy")
-  retentionsCreated             RetentionGuarantee[]    @relation("RetentionCreatedBy")
-  retentionsReleased            RetentionGuarantee[]    @relation("RetentionReleasedBy")
-  sitesClosed                   ConstructionSite[]      @relation("ConstructionSiteClosedBy")
-  stockMovementsCreated         StockMovement[]         @relation("StockMovementCreatedBy")
-  stockCountsCreated            StockCount[]            @relation("StockCountCreatedBy")
-  stockCountsValidated          StockCount[]            @relation("StockCountValidatedBy")
+  newsletterCampaignsCreated        NewsletterCampaign[]
+  savedContactSearches              SavedContactSearch[]
+  rentBillingRuns                   RentBillingRun[]
+  supplierInvoicesCreated           SupplierInvoice[]           @relation("SupplierInvoiceCreatedBy")
+  supplierInvoicesValidated         SupplierInvoice[]           @relation("SupplierInvoiceValidatedBy")
+  supplierPaymentsCreated           SupplierPayment[]           @relation("SupplierPaymentCreatedBy")
+  supplierPaymentsValidated         SupplierPayment[]           @relation("SupplierPaymentValidatedBy")
+  cashVouchersCreated               CashVoucher[]               @relation("CashVoucherCreatedBy")
+  cashVouchersValidated             CashVoucher[]               @relation("CashVoucherValidatedBy")
+  managedConstructionSites          ConstructionSite[]          @relation("ConstructionSiteManager")
+  siteBudgetsValidated              SiteBudget[]                @relation("SiteBudgetValidatedBy")
+  budgetAmendmentsCreated           BudgetAmendment[]           @relation("BudgetAmendmentCreatedBy")
+  budgetAmendmentsValidated         BudgetAmendment[]           @relation("BudgetAmendmentValidatedBy")
+  purchaseOrdersCreated             PurchaseOrder[]             @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersIssued              PurchaseOrder[]             @relation("PurchaseOrderIssuedBy")
+  siteProgressEntriesLogged         SiteProgressEntry[]         @relation("SiteProgressEntryCreatedBy")
+  siteBudgetAlertsSeen              SiteBudgetAlert[]           @relation("SiteBudgetAlertAcknowledgedBy")
+  landLeasePaymentsCreated          LandLeasePayment[]          @relation("LandLeasePaymentCreatedBy")
+  landLeasePaymentsValidated        LandLeasePayment[]          @relation("LandLeasePaymentValidatedBy")
+  salaryNotesCreated                SalaryNote[]                @relation("SalaryNoteCreatedBy")
+  salaryNotesValidated              SalaryNote[]                @relation("SalaryNoteValidatedBy")
+  salaryPaymentsCreated             SalaryPayment[]             @relation("SalaryPaymentCreatedBy")
+  salaryPaymentsValidated           SalaryPayment[]             @relation("SalaryPaymentValidatedBy")
+  progressStatementsCreated         ProgressStatement[]         @relation("ProgressStatementCreatedBy")
+  progressStatementsValidated       ProgressStatement[]         @relation("ProgressStatementValidatedBy")
+  contractorPaymentsCreated         ContractorPayment[]         @relation("ContractorPaymentCreatedBy")
+  contractorPaymentsValidated       ContractorPayment[]         @relation("ContractorPaymentValidatedBy")
+  retentionsCreated                 RetentionGuarantee[]        @relation("RetentionCreatedBy")
+  retentionsReleased                RetentionGuarantee[]        @relation("RetentionReleasedBy")
+  sitesClosed                       ConstructionSite[]          @relation("ConstructionSiteClosedBy")
+  stockMovementsCreated             StockMovement[]             @relation("StockMovementCreatedBy")
+  stockCountsCreated                StockCount[]                @relation("StockCountCreatedBy")
+  stockCountsValidated              StockCount[]                @relation("StockCountValidatedBy")
   // Lot 040 : controle du stock de chantier.
-  stockCountsClosed             StockCount[]            @relation("StockCountClosedBy")
-  stockCountsCancelled          StockCount[]            @relation("StockCountCancelledBy")
-  stockCountLinesCounted        StockCountLine[]        @relation("StockCountLineCountedBy")
-  stockCountLinesJustified      StockCountLine[]        @relation("StockCountLineJustifiedBy")
-  stockCountLinesSetAside       StockCountLine[]        @relation("StockCountLineSetAsideBy")
-  stockTakersCreated            StockTaker[]            @relation("StockTakerCreatedBy")
-  stockSlipsCreated             StockSlip[]             @relation("StockSlipCreatedBy")
-  stockAttachmentsUploaded      StockAttachment[]       @relation("StockAttachmentUploadedBy")
-  stockAttachmentsRemoved       StockAttachment[]       @relation("StockAttachmentRemovedBy")
-  stockAlertsAcknowledged       StockAlert[]            @relation("StockAlertAcknowledgedBy")
+  stockCountsClosed                 StockCount[]                @relation("StockCountClosedBy")
+  stockCountsCancelled              StockCount[]                @relation("StockCountCancelledBy")
+  stockCountLinesCounted            StockCountLine[]            @relation("StockCountLineCountedBy")
+  stockCountLinesJustified          StockCountLine[]            @relation("StockCountLineJustifiedBy")
+  stockCountLinesSetAside           StockCountLine[]            @relation("StockCountLineSetAsideBy")
+  stockTakersCreated                StockTaker[]                @relation("StockTakerCreatedBy")
+  stockSlipsCreated                 StockSlip[]                 @relation("StockSlipCreatedBy")
+  stockAttachmentsUploaded          StockAttachment[]           @relation("StockAttachmentUploadedBy")
+  stockAttachmentsRemoved           StockAttachment[]           @relation("StockAttachmentRemovedBy")
+  stockAlertsAcknowledged           StockAlert[]                @relation("StockAlertAcknowledgedBy")
   // Lot 041 : inventaire de chantier par WhatsApp.
   stockWhatsappRegistrations        StockWhatsappRegistration[] @relation("StockWhatsappRegistrationUser")
   stockWhatsappRegistrationsCreated StockWhatsappRegistration[] @relation("StockWhatsappRegistrationCreatedBy")
   stockWhatsappRegistrationsRevoked StockWhatsappRegistration[] @relation("StockWhatsappRegistrationRevokedBy")
   stockFieldCaptures                StockFieldCapture[]         @relation("StockFieldCaptureUser")
   stockFieldCapturePhotosRemoved    StockFieldCapture[]         @relation("StockFieldCapturePhotoRemovedBy")
-  voidedDocuments               VoidDocument[]
-  leasesManaged                 LeaseManagementTerms[]  @relation("LeaseManagementAgent")
-  agentCommissionRates          AgentCommissionRate[]
+  voidedDocuments                   VoidDocument[]
+  leasesManaged                     LeaseManagementTerms[]      @relation("LeaseManagementAgent")
+  agentCommissionRates              AgentCommissionRate[]
   // Lot 9 : ventes immobilieres.
-  saleMandatesAsAgent           SaleMandate[]           @relation("SaleMandateAgent")
-  saleMandatesRevoked           SaleMandate[]           @relation("SaleMandateRevokedBy")
-  saleOffersDecided             SaleOffer[]             @relation("SaleOfferDecidedBy")
-  saleAgreementsCancelled       SaleAgreement[]         @relation("SaleAgreementCancelledBy")
-  saleCommissionsAsAgent        SaleCommission[]        @relation("SaleCommissionAgent")
-  saleCommissionPaymentsCreated SaleCommissionPayment[] @relation("SaleCommissionPaymentCreatedBy")
-  saleCommissionPaymentsVoided  SaleCommissionPayment[] @relation("SaleCommissionPaymentVoidedBy")
+  saleMandatesAsAgent               SaleMandate[]               @relation("SaleMandateAgent")
+  saleMandatesRevoked               SaleMandate[]               @relation("SaleMandateRevokedBy")
+  saleOffersDecided                 SaleOffer[]                 @relation("SaleOfferDecidedBy")
+  saleAgreementsCancelled           SaleAgreement[]             @relation("SaleAgreementCancelledBy")
+  saleCommissionsAsAgent            SaleCommission[]            @relation("SaleCommissionAgent")
+  saleCommissionPaymentsCreated     SaleCommissionPayment[]     @relation("SaleCommissionPaymentCreatedBy")
+  saleCommissionPaymentsVoided      SaleCommissionPayment[]     @relation("SaleCommissionPaymentVoidedBy")
 
   @@index([email])
   @@map("users")
@@ -618,7 +618,7 @@ model Tenant {
 
   // Relationships
   roleMenuAccess RoleMenuAccess[]
-  clients TenantClient[]
+  clients        TenantClient[]
 
   // New relationships for multi-tenant RBAC
   modules                       TenantModule[]
@@ -627,6 +627,8 @@ model Tenant {
   invoices                      Invoice[]
   invitations                   Invitation[]
   secureLinks                   SecureLink[]
+  gmParticipants                GMParticipant[]
+  gmAttendances                 GMAttendance[]
   externalAccessGrants          ExternalAccessGrant[]
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantEntities   ExternalAccessGrantEntity[]
@@ -703,85 +705,85 @@ model Tenant {
   savedContactSearches         SavedContactSearch[]
 
   // Syndic relationships
-  syndicates               Syndicate[]
-  syndicMandatingAgencies  SyndicMandatingAgency[]
-  syndicChargeReceipts     SyndicChargeReceipt[]
-  syndicReceiptSequences   SyndicReceiptSequence[]
-  syndicChargeSchedules    SyndicChargeSchedule[]
-  syndicChargeScheduleRuns SyndicChargeScheduleRun[]
-  serviceProviders         ServiceProvider[]
-  assetValuations          AssetValuation[]
-  propertyLoans            PropertyLoan[]
-  propertyExpenses         PropertyExpense[]
-  ownerStatements          OwnerStatement[]
-  workPrograms             WorkProgram[]
-  patrimonyDocuments       PatrimonyDocument[]
-  thirdPartyAccounts       ThirdPartyAccount[]
-  thirdPartyMovements      ThirdPartyMovement[]
-  rentBillingRuns          RentBillingRun[]
-  suppliers                Supplier[]
-  supplierInvoices         SupplierInvoice[]
-  supplierPayments         SupplierPayment[]
-  constructionSites        ConstructionSite[]
-  costCategories           CostCategory[]
-  costAllocations          CostAllocation[]
-  cashVouchers             CashVoucher[]
-  voidDocuments            VoidDocument[]
-  siteBudgets              SiteBudget[]
-  budgetAmendments         BudgetAmendment[]
-  purchaseOrders           PurchaseOrder[]
-  siteProgressEntries      SiteProgressEntry[]
-  siteBudgetAlerts         SiteBudgetAlert[]
-  landLeases               LandLease[]
-  landLeasePayments        LandLeasePayment[]
-  landLeaseAccruals        LandLeaseAccrual[]
-  partnerships             Partnership[]
-  partnershipDistributions PartnershipDistribution[]
-  employees                Employee[]
-  salaryNotes              SalaryNote[]
-  salaryPayments           SalaryPayment[]
-  contractors              Contractor[]
-  contractorContracts      ContractorContract[]
-  progressStatements       ProgressStatement[]
-  contractorPayments       ContractorPayment[]
-  retentionGuarantees      RetentionGuarantee[]
-  siteLots                 SiteLot[]
-  stockSettings            StockSettings?
-  financeSettings          AgencyFinanceSettings?
-  ownerPortalSettings      OwnerPortalSettings?
-  cashPlanSettings         PatrimonyCashPlanSettings?
-  ownerManagementTerms     OwnerManagementTerms[]
-  leaseManagementTerms     LeaseManagementTerms[]
-  agentCommissionRates     AgentCommissionRate[]
-  managementFees           ManagementFee[]
-  ownerPayouts             OwnerPayout[]
-  leaseEvents              LeaseEvent[]
-  leaseInspections         LeaseInspection[]
-  leaseInspectionPhotos    LeaseInspectionPhoto[]
-  propertyOwnershipShares  PropertyOwnershipShare[]
+  syndicates                     Syndicate[]
+  syndicMandatingAgencies        SyndicMandatingAgency[]
+  syndicChargeReceipts           SyndicChargeReceipt[]
+  syndicReceiptSequences         SyndicReceiptSequence[]
+  syndicChargeSchedules          SyndicChargeSchedule[]
+  syndicChargeScheduleRuns       SyndicChargeScheduleRun[]
+  serviceProviders               ServiceProvider[]
+  assetValuations                AssetValuation[]
+  propertyLoans                  PropertyLoan[]
+  propertyExpenses               PropertyExpense[]
+  ownerStatements                OwnerStatement[]
+  workPrograms                   WorkProgram[]
+  patrimonyDocuments             PatrimonyDocument[]
+  thirdPartyAccounts             ThirdPartyAccount[]
+  thirdPartyMovements            ThirdPartyMovement[]
+  rentBillingRuns                RentBillingRun[]
+  suppliers                      Supplier[]
+  supplierInvoices               SupplierInvoice[]
+  supplierPayments               SupplierPayment[]
+  constructionSites              ConstructionSite[]
+  costCategories                 CostCategory[]
+  costAllocations                CostAllocation[]
+  cashVouchers                   CashVoucher[]
+  voidDocuments                  VoidDocument[]
+  siteBudgets                    SiteBudget[]
+  budgetAmendments               BudgetAmendment[]
+  purchaseOrders                 PurchaseOrder[]
+  siteProgressEntries            SiteProgressEntry[]
+  siteBudgetAlerts               SiteBudgetAlert[]
+  landLeases                     LandLease[]
+  landLeasePayments              LandLeasePayment[]
+  landLeaseAccruals              LandLeaseAccrual[]
+  partnerships                   Partnership[]
+  partnershipDistributions       PartnershipDistribution[]
+  employees                      Employee[]
+  salaryNotes                    SalaryNote[]
+  salaryPayments                 SalaryPayment[]
+  contractors                    Contractor[]
+  contractorContracts            ContractorContract[]
+  progressStatements             ProgressStatement[]
+  contractorPayments             ContractorPayment[]
+  retentionGuarantees            RetentionGuarantee[]
+  siteLots                       SiteLot[]
+  stockSettings                  StockSettings?
+  financeSettings                AgencyFinanceSettings?
+  ownerPortalSettings            OwnerPortalSettings?
+  cashPlanSettings               PatrimonyCashPlanSettings?
+  ownerManagementTerms           OwnerManagementTerms[]
+  leaseManagementTerms           LeaseManagementTerms[]
+  agentCommissionRates           AgentCommissionRate[]
+  managementFees                 ManagementFee[]
+  ownerPayouts                   OwnerPayout[]
+  leaseEvents                    LeaseEvent[]
+  leaseInspections               LeaseInspection[]
+  leaseInspectionPhotos          LeaseInspectionPhoto[]
+  propertyOwnershipShares        PropertyOwnershipShare[]
   // PATRIMOINE — Lot P4
-  holdingEntities          HoldingEntity[]
-  propertyHoldings         PropertyHolding[]
-  propertyTaxProfiles      PropertyTaxProfile[]
-  propertyYieldAssumptions PropertyYieldAssumption[]
-  assets                   Asset[]
-  patrimonyScenarios       PatrimonyScenario[]
-  cashSessions             CashSession[]
-  treasuryAccounts         TreasuryAccount[]
-  treasuryTransfers        TreasuryTransfer[]
-  rentWithholdings         RentWithholding[]
-  taxRemittances           TaxRemittance[]
-  stockItems               StockItem[]
-  stockLocations           StockLocation[]
-  stockBalances            StockBalance[]
-  stockMovements           StockMovement[]
-  stockCounts              StockCount[]
+  holdingEntities                HoldingEntity[]
+  propertyHoldings               PropertyHolding[]
+  propertyTaxProfiles            PropertyTaxProfile[]
+  propertyYieldAssumptions       PropertyYieldAssumption[]
+  assets                         Asset[]
+  patrimonyScenarios             PatrimonyScenario[]
+  cashSessions                   CashSession[]
+  treasuryAccounts               TreasuryAccount[]
+  treasuryTransfers              TreasuryTransfer[]
+  rentWithholdings               RentWithholding[]
+  taxRemittances                 TaxRemittance[]
+  stockItems                     StockItem[]
+  stockLocations                 StockLocation[]
+  stockBalances                  StockBalance[]
+  stockMovements                 StockMovement[]
+  stockCounts                    StockCount[]
   // Lot 040 : controle du stock de chantier.
-  stockTakers              StockTaker[]
-  stockSlips               StockSlip[]
-  stockAttachments         StockAttachment[]
-  stockAlerts              StockAlert[]
-  stockClientRequests      StockClientRequest[]
+  stockTakers                    StockTaker[]
+  stockSlips                     StockSlip[]
+  stockAttachments               StockAttachment[]
+  stockAlerts                    StockAlert[]
+  stockClientRequests            StockClientRequest[]
   // Lot 041 : inventaire de chantier par WhatsApp.
   stockWhatsappRegistrations     StockWhatsappRegistration[]
   stockWhatsappRegistrationSites StockWhatsappRegistrationSite[]
@@ -791,22 +793,22 @@ model Tenant {
   stockWhatsappUsages            StockWhatsappUsage[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
-  chartOfAccounts          ChartOfAccount[]
-  accountingJournals       AccountingJournal[]
-  journalEntries           JournalEntry[]
+  chartOfAccounts                ChartOfAccount[]
+  accountingJournals             AccountingJournal[]
+  journalEntries                 JournalEntry[]
   // Lot 9 : ventes immobilieres.
-  saleMandates             SaleMandate[]
-  saleOffers               SaleOffer[]
-  saleAgreements           SaleAgreement[]
-  saleAgreementConditions  SaleAgreementCondition[]
-  salePaymentMilestones    SalePaymentMilestone[]
-  saleCommissions          SaleCommission[]
-  saleCommissionPayments   SaleCommissionPayment[]
-  insurancePolicies        InsurancePolicy[]
-  insuranceClaims          InsuranceClaim[]
-  insuranceClaimDocs       InsuranceClaimDocument[]
-  insuranceClaimHistory    InsuranceClaimStatusHistory[]
-  maintenanceLogEntries    MaintenanceLogEntry[]
+  saleMandates                   SaleMandate[]
+  saleOffers                     SaleOffer[]
+  saleAgreements                 SaleAgreement[]
+  saleAgreementConditions        SaleAgreementCondition[]
+  salePaymentMilestones          SalePaymentMilestone[]
+  saleCommissions                SaleCommission[]
+  saleCommissionPayments         SaleCommissionPayment[]
+  insurancePolicies              InsurancePolicy[]
+  insuranceClaims                InsuranceClaim[]
+  insuranceClaimDocs             InsuranceClaimDocument[]
+  insuranceClaimHistory          InsuranceClaimStatusHistory[]
+  maintenanceLogEntries          MaintenanceLogEntry[]
 
   @@index([slug])
   @@index([status])
@@ -1059,6 +1061,8 @@ enum SecureLinkScope {
   INSTALLMENT_PAYMENT
   /// Acces en lecture seule d'un tiers de confiance (lot B3, spec 034).
   EXTERNAL_ACCESS_GRANT
+  /// Acces personnel d'un copropriétaire a une assemblee generale en direct (spec 043).
+  GENERAL_MEETING_ACCESS
 }
 
 /// Lien securise a jeton aleatoire, lecture seule, expirant et revocable.
@@ -1902,6 +1906,7 @@ model CrmContact {
   syndicManaged              Syndicate[]           @relation("SyndicManager")
   gmProxiesAsGrantor         GMProxy[]             @relation("GMProxyGrantor")
   gmProxiesAsRepresentative  GMProxy[]             @relation("GMProxyRepresentative")
+  gmParticipations           GMParticipant[]
   lotOwnerProfiles           LotOwnerProfile[]
   lotTenantProfiles          LotTenantProfile[]
   ownerAccounts              OwnerAccount[]
@@ -4063,6 +4068,7 @@ model SyndicateLot {
   coowner              CrmContact?                @relation("LotCoowner", fields: [coownerId], references: [id], onDelete: SetNull)
   owner                CrmContact?                @relation("SyndicateLotOwner", fields: [ownerContactId], references: [id], onDelete: SetNull)
   votes                GMVote[]
+  gmAttendances        GMAttendance[]
   charges              ChargeCall[]
   chargePayments       ChargePayment[]
   ownerProfiles        LotOwnerProfile[]
@@ -4336,23 +4342,27 @@ model SyndicReceiptSequence {
 }
 
 model GeneralMeeting {
-  id          String        @id @default(uuid()) @db.Uuid
-  syndicateId String        @map("syndicate_id") @db.Uuid
-  type        MeetingType   @map("meeting_type")
-  scheduledAt DateTime      @map("scheduled_at")
-  startTime   DateTime?     @map("start_time")
-  endTime     DateTime?     @map("end_time")
-  location    String?
-  quorum      Decimal?      @db.Decimal(5, 2)
-  status      MeetingStatus @default(PLANNED)
-  minutesUrl  String?       @map("minutes_url")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id                 String        @id @default(uuid()) @db.Uuid
+  syndicateId        String        @map("syndicate_id") @db.Uuid
+  type               MeetingType   @map("meeting_type")
+  scheduledAt        DateTime      @map("scheduled_at")
+  startTime          DateTime?     @map("start_time")
+  endTime            DateTime?     @map("end_time")
+  location           String?
+  quorum             Decimal?      @db.Decimal(5, 2)
+  status             MeetingStatus @default(PLANNED)
+  minutesUrl         String?       @map("minutes_url")
+  /// URL de visioconference facultative (https uniquement), affichee sur la page en direct (spec 043).
+  videoConferenceUrl String?       @map("video_conference_url")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  syndicate   Syndicate      @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  agendaItems GMAgendaItem[]
-  resolutions GMResolution[]
-  proxies     GMProxy[]
+  syndicate    Syndicate       @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  agendaItems  GMAgendaItem[]
+  resolutions  GMResolution[]
+  proxies      GMProxy[]
+  participants GMParticipant[]
+  attendances  GMAttendance[]
 
   @@index([syndicateId])
   @@index([status])
@@ -4377,17 +4387,21 @@ model GMAgendaItem {
 }
 
 model GMResolution {
-  id           String            @id @default(uuid()) @db.Uuid
-  meetingId    String            @map("meeting_id") @db.Uuid
+  id           String                 @id @default(uuid()) @db.Uuid
+  meetingId    String                 @map("meeting_id") @db.Uuid
   title        String
-  description  String?           @db.Text
-  majorityRule String?           @map("majority_rule")
+  description  String?                @db.Text
+  majorityRule String?                @map("majority_rule")
   result       ResolutionResult?
-  votesFor     Int               @default(0) @map("votes_for")
-  votesAgainst Int               @default(0) @map("votes_against")
-  votesAbstain Int               @default(0) @map("votes_abstain")
-  sharesFor    Int               @default(0) @map("shares_for")
-  createdAt    DateTime          @default(now()) @map("created_at")
+  votesFor     Int                    @default(0) @map("votes_for")
+  votesAgainst Int                    @default(0) @map("votes_against")
+  votesAbstain Int                    @default(0) @map("votes_abstain")
+  sharesFor    Int                    @default(0) @map("shares_for")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  /// Etat du vote en direct (spec 043) : PENDING (non soumise), OPEN, CLOSED.
+  voteStatus   GMResolutionVoteStatus @default(PENDING) @map("vote_status")
+  voteOpenedAt DateTime?              @map("vote_opened_at")
+  voteClosedAt DateTime?              @map("vote_closed_at")
 
   meeting         GeneralMeeting    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   votes           GMVote[]
@@ -4398,11 +4412,16 @@ model GMResolution {
 }
 
 model GMVote {
-  id           String     @id @default(uuid()) @db.Uuid
-  resolutionId String     @map("resolution_id") @db.Uuid
-  lotId        String     @map("lot_id") @db.Uuid
-  vote         VoteChoice
-  createdAt    DateTime   @default(now()) @map("created_at")
+  id              String       @id @default(uuid()) @db.Uuid
+  resolutionId    String       @map("resolution_id") @db.Uuid
+  lotId           String       @map("lot_id") @db.Uuid
+  vote            VoteChoice
+  createdAt       DateTime     @default(now()) @map("created_at")
+  /// Origine du vote (spec 043) : gestionnaire, copropriétaire connecté ou mandataire connecté.
+  source          GMVoteSource @default(MANAGER)
+  castByUserId    String?      @map("cast_by_user_id")
+  castByContactId String?      @map("cast_by_contact_id")
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at")
 
   resolution GMResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
   lot        SyndicateLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
@@ -4411,6 +4430,80 @@ model GMVote {
   @@index([resolutionId])
   @@index([lotId])
   @@map("gm_votes")
+}
+
+enum GMResolutionVoteStatus {
+  PENDING
+  OPEN
+  CLOSED
+}
+
+enum GMVoteSource {
+  MANAGER
+  CO_OWNER
+  PROXY_HOLDER
+}
+
+enum GMAttendanceStatus {
+  PRESENT
+  REPRESENTED
+  ABSENT
+}
+
+enum GMAttendanceMode {
+  ONLINE
+  IN_PERSON
+}
+
+enum GMAttendanceRecorder {
+  SELF
+  MANAGER
+}
+
+/// Contact invite a une AG (porteur des liens personnels, spec 043). Un par contact et par AG.
+model GMParticipant {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id")
+  meetingId  String    @map("meeting_id") @db.Uuid
+  contactId  String    @map("contact_id")
+  joinedAt   DateTime? @map("joined_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  contact CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, contactId])
+  @@index([tenantId])
+  @@index([contactId])
+  @@map("gm_participants")
+}
+
+/// Emargement d'un lot a une AG (spec 043). Absence de ligne = absent.
+model GMAttendance {
+  id                     String               @id @default(uuid()) @db.Uuid
+  tenantId               String               @map("tenant_id")
+  meetingId              String               @map("meeting_id") @db.Uuid
+  lotId                  String               @map("lot_id") @db.Uuid
+  status                 GMAttendanceStatus
+  mode                   GMAttendanceMode
+  attendeeContactId      String?              @map("attendee_contact_id")
+  representedByContactId String?              @map("represented_by_contact_id")
+  recordedBy             GMAttendanceRecorder @map("recorded_by")
+  recordedByUserId       String?              @map("recorded_by_user_id")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  lot     SyndicateLot   @relation(fields: [lotId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, lotId])
+  @@index([tenantId])
+  @@index([lotId])
+  @@map("gm_attendances")
 }
 
 model GMProxy {
@@ -6405,11 +6498,11 @@ model ConstructionSite {
   closedBy            User?                @relation("ConstructionSiteClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   lots                SiteLot[]
 
-  stockLocation  StockLocation?
-  stockMovements StockMovement[]
+  stockLocation                  StockLocation?
+  stockMovements                 StockMovement[]
   // Lot 040 : bons et alertes rattaches au chantier.
-  stockSlips     StockSlip[]
-  stockAlerts    StockAlert[]
+  stockSlips                     StockSlip[]
+  stockAlerts                    StockAlert[]
   // Lot 041 : inventaire de chantier par WhatsApp.
   stockWhatsappRegistrationSites StockWhatsappRegistrationSite[]
   stockWhatsappSessions          StockWhatsappSession[]
@@ -7796,8 +7889,8 @@ model StockItem {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  defaultCostCategory CostCategory?    @relation(fields: [defaultCostCategoryId], references: [id], onDelete: SetNull)
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultCostCategory CostCategory?       @relation(fields: [defaultCostCategoryId], references: [id], onDelete: SetNull)
   balances            StockBalance[]
   movements           StockMovement[]
   countLines          StockCountLine[]
@@ -7826,14 +7919,14 @@ model StockLocation {
   createdAt DateTime          @default(now()) @map("created_at")
   updatedAt DateTime          @updatedAt @map("updated_at")
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site      ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  balances  StockBalance[]
-  movements StockMovement[]
-  counts    StockCount[]
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site             ConstructionSite?      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  balances         StockBalance[]
+  movements        StockMovement[]
+  counts           StockCount[]
   // Lot 040 : bons emis sur ce lieu, alertes qui le visent.
-  slips     StockSlip[]
-  alerts    StockAlert[]
+  slips            StockSlip[]
+  alerts           StockAlert[]
   // Lot 041 : sessions et captures WhatsApp sur ce lieu.
   whatsappSessions StockWhatsappSession[]
   fieldCaptures    StockFieldCapture[]
@@ -8005,45 +8098,45 @@ model StockCount {
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
 
-  kind                  StockCountKind @default(REGULAR)
+  kind                  StockCountKind   @default(REGULAR)
   /// Lot 040 (A2-R4). Cloture du comptage (DRAFT -> COUNTED).
-  closedAt              DateTime?      @map("closed_at")
-  closedByUserId        String?        @map("closed_by_user_id")
+  closedAt              DateTime?        @map("closed_at")
+  closedByUserId        String?          @map("closed_by_user_id")
   /// Lot 040 (A2-R6).
-  cancelledAt           DateTime?      @map("cancelled_at")
-  cancelledByUserId     String?        @map("cancelled_by_user_id")
-  cancelReason          String?        @map("cancel_reason")
+  cancelledAt           DateTime?        @map("cancelled_at")
+  cancelledByUserId     String?          @map("cancelled_by_user_id")
+  cancelReason          String?          @map("cancel_reason")
   /// Lot 040 (A1-R3). Derogation du validateur unique.
-  selfValidated         Boolean        @default(false) @map("self_validated")
-  selfValidationReason  String?        @map("self_validation_reason")
+  selfValidated         Boolean          @default(false) @map("self_validated")
+  selfValidationReason  String?          @map("self_validation_reason")
   /// Lot 040 (A1-R1, revision 2). Toutes les personnes qui ont saisi au moins
   /// une ligne, meme remplacee, retiree ou ecartee ensuite. Alimente a chaque
   /// saisie, jamais diminue. Vide pour un inventaire d'avant le lot (le
   /// createur fait alors office de compteur, sans ecriture en base).
-  counterUserIds        String[]       @default([]) @map("counter_user_ids")
+  counterUserIds        String[]         @default([]) @map("counter_user_ids")
   /// Lot 040 (B8). Valeurs FIGEES a la validation. Nulles avant le lot 040 et
   /// tant que l'inventaire n'est pas valide. Remplacent la valeur d'ecart
   /// recalculee au cout moyen courant pour un inventaire valide.
-  countedValue          Decimal?       @map("counted_value") @db.Decimal(16, 2)
-  varianceValueGross    Decimal?       @map("variance_value_gross") @db.Decimal(16, 2)
-  varianceValueNet      Decimal?       @map("variance_value_net") @db.Decimal(16, 2)
+  countedValue          Decimal?         @map("counted_value") @db.Decimal(16, 2)
+  varianceValueGross    Decimal?         @map("variance_value_gross") @db.Decimal(16, 2)
+  varianceValueNet      Decimal?         @map("variance_value_net") @db.Decimal(16, 2)
   /// Lot 040 (A2-R7, revision 2). Somme des |ecart| valorises des lignes
   /// ECARTEES (lignes non comptees exclues : leur ecart est inconnu), au cout
   /// moyen du lieu a la validation. Entre dans COUNT_VARIANCE et dans le taux.
-  setAsideVarianceValue Decimal?       @map("set_aside_variance_value") @db.Decimal(16, 2)
+  setAsideVarianceValue Decimal?         @map("set_aside_variance_value") @db.Decimal(16, 2)
   /// Lot 041 (W5-R2). WHATSAPP : ouvert par le bot. Un inventaire WEB peut
   /// recevoir des lignes par WhatsApp ; il n'est alors jamais clos par le bot.
   source                StockCountSource @default(WEB)
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  location    StockLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  createdBy   User             @relation("StockCountCreatedBy", fields: [createdByUserId], references: [id])
-  validatedBy User?            @relation("StockCountValidatedBy", fields: [validatedByUserId], references: [id])
-  lines       StockCountLine[]
-  adjustments StockMovement[]
-  closedBy    User?            @relation("StockCountClosedBy", fields: [closedByUserId], references: [id])
-  cancelledBy User?            @relation("StockCountCancelledBy", fields: [cancelledByUserId], references: [id])
-  slip        StockSlip?       @relation("StockCountReport")
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location         StockLocation          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy        User                   @relation("StockCountCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy      User?                  @relation("StockCountValidatedBy", fields: [validatedByUserId], references: [id])
+  lines            StockCountLine[]
+  adjustments      StockMovement[]
+  closedBy         User?                  @relation("StockCountClosedBy", fields: [closedByUserId], references: [id])
+  cancelledBy      User?                  @relation("StockCountCancelledBy", fields: [cancelledByUserId], references: [id])
+  slip             StockSlip?             @relation("StockCountReport")
   // Lot 041 : captures et sessions WhatsApp rattachees a cet inventaire.
   fieldCaptures    StockFieldCapture[]
   whatsappSessions StockWhatsappSession[]
@@ -8057,15 +8150,15 @@ model StockCount {
 
 /// Une ligne de comptage : ce qu'on a trouve, face a ce que le systeme disait.
 model StockCountLine {
-  id               String  @id @default(uuid()) @db.Uuid
-  countId          String  @map("count_id") @db.Uuid
-  itemId           String  @map("item_id") @db.Uuid
+  id               String   @id @default(uuid()) @db.Uuid
+  countId          String   @map("count_id") @db.Uuid
+  itemId           String   @map("item_id") @db.Uuid
   /// Ce que le systeme disait au moment du comptage. FIGE a la saisie.
   ///
   /// Recopie, et c'est voulu : relire le solde a la validation comparerait le
   /// comptage d'hier au stock d'aujourd'hui, et l'ecart ne voudrait plus rien
   /// dire.
-  expectedQuantity Decimal @map("expected_quantity") @db.Decimal(16, 4)
+  expectedQuantity Decimal  @map("expected_quantity") @db.Decimal(16, 4)
   /// Ce qu'on a compte. NUL = ligne « non comptee » creee par le systeme a la
   /// cloture du comptage (lot 040, A2-R8) : elle ne s'ajuste pas, elle s'ecarte.
   countedQuantity  Decimal? @map("counted_quantity") @db.Decimal(16, 4)
@@ -8098,10 +8191,10 @@ model StockCountLine {
   count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
   item  StockItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
 
-  countedBy   User?             @relation("StockCountLineCountedBy", fields: [countedByUserId], references: [id])
-  justifiedBy User?             @relation("StockCountLineJustifiedBy", fields: [justifiedByUserId], references: [id])
-  setAsideBy  User?             @relation("StockCountLineSetAsideBy", fields: [setAsideByUserId], references: [id])
-  attachments StockAttachment[]
+  countedBy     User?               @relation("StockCountLineCountedBy", fields: [countedByUserId], references: [id])
+  justifiedBy   User?               @relation("StockCountLineJustifiedBy", fields: [justifiedByUserId], references: [id])
+  setAsideBy    User?               @relation("StockCountLineSetAsideBy", fields: [setAsideByUserId], references: [id])
+  attachments   StockAttachment[]
   /// Lot 041 : captures WhatsApp qui ont fixe la quantite de cette ligne.
   fieldCaptures StockFieldCapture[]
 

@@ -21,6 +21,23 @@ function applyTemplate(tpl: string, vars: Record<string, string>): string {
 }
 
 /**
+ * Retire du gabarit la phrase qui porte une variable facultative VIDE (ex. un
+ * lien qui n'a pas pu etre cree) : « … en ligne : {{meetingLink}} » ne doit pas
+ * partir avec un deux-points orphelin. Une phrase s'arrete au point, au saut
+ * de ligne ou a la fin du texte.
+ */
+export function omitSentencesWithEmptyVariables(tpl: string, vars: Record<string, string>, optional: string[]): string {
+  let output = tpl;
+  for (const key of optional) {
+    if ((vars[key] ?? '').trim()) continue;
+    output = output
+      .replace(new RegExp(`[^.!?\\n]*\\{\\{${key}\\}\\}[^.!?\\n]*[.!?]?`, 'g'), '')
+      .replace(/[ \t]+$/gm, '');
+  }
+  return output.trim();
+}
+
+/**
  * Normalize body text so WhatsApp clients can auto-detect clickable links.
  * - Convert markdown links [text](url) to "text: url"
  * - Remove backticks/angle-brackets around urls
@@ -76,6 +93,8 @@ export interface SendWhatsappOptions {
   to?: string;
   /** If provided, uses consentWhatsapp + whatsappNumber or phonePrimary from CRM contact. */
   contactId?: string;
+  /** Variables facultatives : si l'une est vide, la phrase du gabarit qui la porte est retiree. */
+  optionalVariables?: string[];
 }
 
 /**
@@ -83,7 +102,7 @@ export interface SendWhatsappOptions {
  * Returns true if a message was sent, false otherwise.
  */
 export async function sendWhatsappNotification(options: SendWhatsappOptions): Promise<boolean> {
-  const { tenantId, notificationKey, variables, to: toOption, contactId } = options;
+  const { tenantId, notificationKey, variables, to: toOption, contactId, optionalVariables } = options;
 
   const config = await getWhatsappNotificationConfig(tenantId, notificationKey);
   if (!config.enabled) {
@@ -177,7 +196,10 @@ export async function sendWhatsappNotification(options: SendWhatsappOptions): Pr
 
     const defaultBody = WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES[notificationKey];
     const bodyTpl = config.bodyOverride ?? defaultBody ?? '';
-    const body = normalizeBodyForClickableLinks(applyTemplate(bodyTpl, variables));
+    const effectiveTpl = optionalVariables?.length
+      ? omitSentencesWithEmptyVariables(bodyTpl, variables, optionalVariables)
+      : bodyTpl;
+    const body = normalizeBodyForClickableLinks(applyTemplate(effectiveTpl, variables));
     if (!body.trim()) {
       logger.warn('WhatsApp body empty after template rendering', { tenantId, notificationKey, provider });
       return false;

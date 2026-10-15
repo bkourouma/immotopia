@@ -181,22 +181,43 @@ function copy<T>(row: T): T {
   return row && typeof row === 'object' ? { ...(row as any) } : row;
 }
 
+/**
+ * Relations CALCULEES : une relation non stockee dans la ligne se resout depuis
+ * les lignes d'un autre modele (ex. les votes d'une resolution), pour que
+ * `select: { votes: ... }` voie les ecritures faites sur `gMVote`. Remplie par
+ * `createFakePrisma` ; vide tant qu'aucun test n'en demande.
+ */
+type DerivedRelation = (row: Row) => { model: string; rows: Row[] } | { model: string; row: Row | null };
+const DERIVED_RELATIONS = new Map<string, DerivedRelation>();
+
+function resolveRelation(model: string | undefined, row: Row, key: string): { model?: string; value: any } {
+  if (row[key] !== undefined || !model) return { value: row[key] };
+  const resolver = DERIVED_RELATIONS.get(`${model}.${key}`);
+  if (!resolver) return { value: row[key] };
+  const resolved = resolver(row) as any;
+  return { model: resolved.model, value: 'rows' in resolved ? resolved.rows : resolved.row };
+}
+
 /** Applique `select` / `include` (voir l'en-tête). */
-function project(row: any, args: any): any {
+function project(row: any, args: any, model?: string): any {
   if (row === null || row === undefined || typeof row !== 'object') return row;
-  if (Array.isArray(row)) return row.map(item => project(item, args));
+  if (Array.isArray(row)) return row.map(item => project(item, args, model));
   if (args?.select) {
     const out: Row = {};
     for (const [key, wanted] of Object.entries(args.select)) {
       if (!wanted) continue;
-      out[key] = wanted === true ? row[key] : project(row[key], wanted);
+      const relation = resolveRelation(model, row, key);
+      out[key] = wanted === true ? relation.value : project(relation.value, wanted, relation.model);
     }
     return out;
   }
   if (args?.include) {
     const out: Row = { ...row };
     for (const [key, wanted] of Object.entries(args.include)) {
-      if (wanted && typeof wanted === 'object') out[key] = project(row[key], wanted);
+      if (wanted && typeof wanted === 'object') {
+        const relation = resolveRelation(model, row, key);
+        out[key] = project(relation.value, wanted, relation.model);
+      }
     }
     return out;
   }
@@ -230,10 +251,10 @@ function createModel(name: string): FakeModel {
   model.findMany = jest.fn(async (args: any = {}) => {
     const rows = find(args);
     const sliced = args.take !== undefined ? rows.slice(args.skip ?? 0, (args.skip ?? 0) + args.take) : rows;
-    return sliced.map((row: Row) => project(row, args));
+    return sliced.map((row: Row) => project(row, args, name));
   });
-  model.findFirst = jest.fn(async (args: any = {}) => project(find(args)[0] ?? null, args));
-  model.findUnique = jest.fn(async (args: any = {}) => project(find(args)[0] ?? null, args));
+  model.findFirst = jest.fn(async (args: any = {}) => project(find(args)[0] ?? null, args, name));
+  model.findUnique = jest.fn(async (args: any = {}) => project(find(args)[0] ?? null, args, name));
   model.count = jest.fn(async (args: any = {}) => find(args).length);
   model.aggregate = jest.fn(async (args: any = {}) => {
     const rows = find(args);
@@ -256,13 +277,14 @@ function createModel(name: string): FakeModel {
     }
     return Array.from(groups.values()).map(rows => ({
       ...Object.fromEntries(args.by.map((field: string) => [field, rows[0][field]])),
-      _count: rows.length
+      // `_count: { _all: true }` rend `{ _all: n }` ; `_count: true` rend le nombre.
+      _count: args._count && typeof args._count === 'object' && args._count._all ? { _all: rows.length } : rows.length
     }));
   });
   model.create = jest.fn(async (args: any) => {
     const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...args.data };
     model.rows.push(row);
-    return project(row, args);
+    return project(row, args, name);
   });
   model.createMany = jest.fn(async (args: any) => {
     const data: Row[] = Array.isArray(args.data) ? args.data : [args.data];
@@ -285,17 +307,17 @@ function createModel(name: string): FakeModel {
     if (!row) throw Object.assign(new Error(`${name}.update : aucune ligne`), { code: 'P2025' });
     applyData(row, args.data);
     row.updatedAt = new Date();
-    return project(row, args);
+    return project(row, args, name);
   });
   model.upsert = jest.fn(async (args: any) => {
     const row = model.rows.find((candidate: Row) => matchesWhere(candidate, args.where));
     if (row) {
       Object.assign(row, args.update, { updatedAt: new Date() });
-      return project(row, args);
+      return project(row, args, name);
     }
     const created = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...args.create };
     model.rows.push(created);
-    return project(created, args);
+    return project(created, args, name);
   });
   model.updateMany = jest.fn(async (args: any) => {
     const rows = model.rows.filter((candidate: Row) => matchesWhere(candidate, args.where));
@@ -306,7 +328,7 @@ function createModel(name: string): FakeModel {
     const index = model.rows.findIndex((candidate: Row) => matchesWhere(candidate, args.where));
     if (index < 0) throw Object.assign(new Error(`${name}.delete : aucune ligne`), { code: 'P2025' });
     const [row] = model.rows.splice(index, 1);
-    return project(row, args);
+    return project(row, args, name);
   });
   model.deleteMany = jest.fn(async (args: any = {}) => {
     const before = model.rows.length;
@@ -334,6 +356,11 @@ export const FAKE_MODEL_NAMES = [
   'gMAgendaItem',
   'gMResolution',
   'gMVote',
+  // Spec 043 : AG en direct (participants, emargements, pouvoirs, liens personnels).
+  'gMParticipant',
+  'gMAttendance',
+  'gMProxy',
+  'secureLink',
   'user',
   'passwordResetToken',
   'membership',
@@ -413,6 +440,15 @@ export function createFakePrisma(): FakePrisma {
     fake.receiptSequences.set(key, next);
     return [{ last_value: next }];
   });
+  // Relations calculees (voir DERIVED_RELATIONS).
+  DERIVED_RELATIONS.set('gMResolution.votes', row => ({
+    model: 'gMVote',
+    rows: fake.gMVote.rows.filter((vote: Row) => vote.resolutionId === row.id)
+  }));
+  DERIVED_RELATIONS.set('secureLink.tenant', row => ({
+    model: 'tenant',
+    row: fake.tenant.rows.find((tenant: Row) => tenant.id === row.tenantId) ?? null
+  }));
   fake.reset = () => {
     for (const name of FAKE_MODEL_NAMES) {
       fake[name].rows = [];
