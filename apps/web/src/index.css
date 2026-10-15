@@ -143,12 +143,21 @@ code {
   background: transparent;
 }
 
-.ant-layout-sider .ant-menu-light .ant-menu-item:hover,
-.ant-layout-sider .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover,
-.ant-drawer-body .ant-menu-light .ant-menu-item:hover,
-.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover {
+/* Ant Design pose son survol avec `:not(.ant-menu-item-selected):hover`, soit
+   cinq classes de specificite : a quatre, notre texte clair perdait et le
+   libelle survole repassait en colorText sur le navy. `.ant-menu-root` et le
+   `:not()` d'Ant repris ici nous remettent devant, sans `!important`. */
+.ant-layout-sider .ant-menu-light.ant-menu-root .ant-menu-item:not(.ant-menu-item-disabled):hover,
+.ant-layout-sider .ant-menu-light.ant-menu-root .ant-menu-submenu > .ant-menu-submenu-title:hover,
+.ant-drawer-body .ant-menu-light.ant-menu-root .ant-menu-item:not(.ant-menu-item-disabled):hover,
+.ant-drawer-body .ant-menu-light.ant-menu-root .ant-menu-submenu > .ant-menu-submenu-title:hover {
   color: var(--text-on-nav);
   background: var(--nav-item-hover-bg);
+}
+
+.ant-layout-sider .ant-menu-light.ant-menu-root .ant-menu-item:not(.ant-menu-item-disabled):hover .ant-menu-item-icon,
+.ant-drawer-body .ant-menu-light.ant-menu-root .ant-menu-item:not(.ant-menu-item-disabled):hover .ant-menu-item-icon {
+  color: inherit;
 }
 
 .ant-layout-sider .ant-menu-light .ant-menu-item-selected,

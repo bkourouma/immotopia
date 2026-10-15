@@ -1,5 +1,5 @@
 import React from 'react';
-import { BankOutlined, EnvironmentOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import { BankOutlined, DeleteOutlined, EnvironmentOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { Syndicate } from '../../types/syndic-types';
@@ -48,43 +48,25 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
 
   const deleteButton = (
     <Button
-      key="delete"
-      type="link"
       danger
+      aria-label={t('Supprimer')}
       loading={deleting}
       disabled={deleteDisabled}
       onClick={() => onDelete?.(syndicate.id)}
     >
-      {t('Supprimer')}
+      {deleting ? null : <DeleteOutlined />}
     </Button>
   );
 
   return (
     <Card
       hoverable
-      styles={{ body: { padding: 20 } }}
-      actions={[
-        <Link key="detail" to={`/tenant/${tenantId}/syndics/${syndicate.id}`}>
-          {t('Voir la fiche')}
-        </Link>,
-        <Link key="lots" to={`/tenant/${tenantId}/syndics/${syndicate.id}/lots`}>
-          {t('Voir les lots')}
-        </Link>,
-        deleteDisabled ? (
-          <Tooltip
-            key="delete"
-            title={t('Cette copropriété a des lots ou d’autres données liées : elle ne peut pas être supprimée.')}
-          >
-            {deleteButton}
-          </Tooltip>
-        ) : (
-          deleteButton
-        )
-      ]}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      styles={{ body: { padding: 20, flex: 1, display: 'flex', flexDirection: 'column' } }}
     >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Space style={{ justifyContent: 'space-between', width: '100%' }} align="start" wrap>
-          <Space>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 8, minWidth: 0 }}>
             <div
               style={{
                 width: 44,
@@ -94,7 +76,8 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                color: '#1d4ed8'
+                color: '#1d4ed8',
+                flexShrink: 0
               }}
             >
               <BankOutlined />
@@ -105,9 +88,11 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
               </Title>
               <Text type="secondary">{t('Copropriété')}</Text>
             </div>
-          </Space>
-          <Tag color={status.color}>{status.label}</Tag>
-        </Space>
+          </div>
+          <Tag color={status.color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+            {status.label}
+          </Tag>
+        </div>
 
         <Paragraph type="secondary" style={{ marginBottom: 0 }}>
           <EnvironmentOutlined /> {syndicate.address}
@@ -137,12 +122,23 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
           {t('Mandant:')} {syndicate.mandatingAgency?.name || t('Identité de l’agence')}
         </Text>
 
-        <Link to={`/tenant/${tenantId}/syndics/${syndicate.id}`}>
-          <Button type="primary" block>
-            {t('Ouvrir la copropriété')}
-          </Button>
-        </Link>
-      </Space>
+        <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+          <Link to={`/tenant/${tenantId}/syndics/${syndicate.id}`} style={{ flex: 1 }}>
+            <Button type="primary" block>
+              {t('Ouvrir la copropriété')}
+            </Button>
+          </Link>
+          {deleteDisabled ? (
+            <Tooltip
+              title={t('Cette copropriété a des lots ou d’autres données liées : elle ne peut pas être supprimée.')}
+            >
+              <span>{deleteButton}</span>
+            </Tooltip>
+          ) : (
+            deleteButton
+          )}
+        </div>
+      </div>
     </Card>
   );
 };

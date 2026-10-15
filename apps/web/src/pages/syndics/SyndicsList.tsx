@@ -215,7 +215,7 @@ export const SyndicsList: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               {pagedItems.map(item => (
-                <Col key={item.id} xs={24} md={12} xl={8}>
+                <Col key={item.id} xs={24} md={12}>
                   <SyndicateCard
                     syndicate={item}
                     tenantId={effectiveTenantId || ''}

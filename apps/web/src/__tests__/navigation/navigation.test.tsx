@@ -51,15 +51,15 @@ describe('modèle de navigation — intégrité', () => {
     expect(NAVIGATION.coproprietaire.tabs).toHaveLength(5);
   });
 
-  it('donne au copropriétaire ses quatre destinations directes, et le lot S5 derrière « Plus »', () => {
+  it('donne au copropriétaire ses quatre destinations directes, et le lot S5 en entrées directes sans groupe « Plus »', () => {
     expect(NAVIGATION.coproprietaire.tree.filter(g => g.zone === 'primary').map(g => g.href)).toEqual([
       '/copropriete',
       '/copropriete/appels',
       '/copropriete/assemblees',
       '/copropriete/documents'
     ]);
-    const coproprietairePlus = NAVIGATION.coproprietaire.tree.find(g => g.key === 'plus');
-    expect(coproprietairePlus?.children?.map(c => c.href)).toEqual([
+    expect(NAVIGATION.coproprietaire.tree.find(g => g.key === 'plus')).toBeUndefined();
+    expect(NAVIGATION.coproprietaire.tree.filter(g => g.zone === 'more').map(g => g.href)).toEqual([
       '/copropriete/paiements',
       '/copropriete/quittances',
       '/copropriete/suivi-mensuel',
@@ -113,12 +113,11 @@ describe('modèle de navigation — intégrité', () => {
     expect(more.map(g => g.label)).toContain('Syndic');
   });
 
-  it('ramène le syndic à cinq entrées qui couvrent chacune leurs onglets', () => {
+  it('ramène le syndic à quatre entrées qui couvrent chacune leurs onglets', () => {
     const syndic = NAVIGATION.collaborateur.tree.find(g => g.key === 'syndic');
     expect(syndic?.children?.map(c => c.label)).toEqual([
       'Copropriétés',
       'Agences mandantes',
-      'Copropriété',
       'Finances',
       'Assemblées et documents'
     ]);

@@ -2,7 +2,8 @@ import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
 
 /**
- * Portail copropriétaire — `/api/portal/copropriete/*`, en lecture seule.
+ * Portail copropriétaire — `/api/portal/copropriete/*`, en lecture seule
+ * hormis le vote sur une résolution.
  *
  * Aucun identifiant de copropriétaire ni d'agence n'est jamais transmis : la
  * session suffit au serveur pour résoudre le copropriétaire et ses lots.
@@ -89,6 +90,8 @@ export interface CoOwnerDocument {
   externalUrl: string | null;
 }
 
+export type CoOwnerVoteChoice = 'FOR' | 'AGAINST' | 'ABSTAIN';
+
 export interface CoOwnerResolution {
   id: string;
   title: string;
@@ -99,7 +102,7 @@ export interface CoOwnerResolution {
   sharesAgainst: number;
   sharesAbstain: number;
   totalShares: number;
-  myVotes: Array<{ lotNumber: string; vote: 'FOR' | 'AGAINST' | 'ABSTAIN' }>;
+  myVotes: Array<{ lotId: string; lotNumber: string; vote: CoOwnerVoteChoice }>;
 }
 
 export interface CoOwnerMeeting {
@@ -110,7 +113,12 @@ export interface CoOwnerMeeting {
   status: CoOwnerMeetingStatus;
   syndicate: string | null;
   agenda: Array<{ id: string; orderIndex: number; title: string }>;
-  /** Vide tant que l'assemblée n'est pas clôturée. */
+  /**
+   * Lots pour lesquels le copropriétaire peut voter (assemblée planifiée ou en
+   * cours, et il en est le votant à la date de l'assemblée). Vide sinon.
+   */
+  votableLots: Array<{ lotId: string; lotNumber: string }>;
+  /** Assemblée ouverte : résolutions sans décompte ; clôturée : avec résultats. */
   resolutions: CoOwnerResolution[];
 }
 
@@ -140,6 +148,11 @@ export async function listMyChargeCalls(lotId?: string): Promise<CoOwnerChargeCa
 export async function listMyDocuments(): Promise<CoOwnerDocument[]> {
   const response = await apiClient.get<ApiResponse<CoOwnerDocument[]>>(`${BASE}/documents`);
   return response.data.data;
+}
+
+/** Vote (ou modifie son vote) sur une résolution d'une assemblée ouverte, pour un de ses lots. */
+export async function castMyVote(resolutionId: string, lotId: string, vote: CoOwnerVoteChoice): Promise<void> {
+  await apiClient.put(`${BASE}/resolutions/${resolutionId}/vote`, { lotId, vote });
 }
 
 export async function listMyMeetings(): Promise<CoOwnerMeeting[]> {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App as AntApp } from 'antd';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -31,6 +32,7 @@ const listMyChargeCalls = vi.fn();
 const listMyDocuments = vi.fn();
 const listMyMeetings = vi.fn();
 const downloadCoOwnerDocument = vi.fn();
+const castMyVote = vi.fn();
 
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
@@ -43,7 +45,8 @@ vi.mock('../../services/coowner-portal-service', async () => {
     listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a),
     listMyDocuments: (...a: unknown[]) => listMyDocuments(...a),
     listMyMeetings: (...a: unknown[]) => listMyMeetings(...a),
-    downloadCoOwnerDocument: (...a: unknown[]) => downloadCoOwnerDocument(...a)
+    downloadCoOwnerDocument: (...a: unknown[]) => downloadCoOwnerDocument(...a),
+    castMyVote: (...a: unknown[]) => castMyVote(...a)
   };
 });
 
@@ -55,15 +58,17 @@ function mount(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/copropriete" element={<CoOwnerLots />} />
-          <Route path="/copropriete/lots/:lotId" element={<CoOwnerLotAccount />} />
-          <Route path="/copropriete/appels" element={<CoOwnerChargeCalls />} />
-          <Route path="/copropriete/documents" element={<CoOwnerDocuments />} />
-          <Route path="/copropriete/assemblees" element={<CoOwnerMeetings />} />
-        </Routes>
-      </MemoryRouter>
+      <AntApp>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/copropriete" element={<CoOwnerLots />} />
+            <Route path="/copropriete/lots/:lotId" element={<CoOwnerLotAccount />} />
+            <Route path="/copropriete/appels" element={<CoOwnerChargeCalls />} />
+            <Route path="/copropriete/documents" element={<CoOwnerDocuments />} />
+            <Route path="/copropriete/assemblees" element={<CoOwnerMeetings />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
     </QueryClientProvider>
   );
 }
@@ -262,7 +267,21 @@ describe('Assemblées générales', () => {
       status: 'PLANNED',
       syndicate: 'Résidence Les Acacias',
       agenda: [{ id: 'ag-1', orderIndex: 1, title: 'Budget 2027' }],
-      resolutions: []
+      votableLots: [{ lotId: 'lot-a1', lotNumber: 'A1' }],
+      resolutions: [
+        {
+          id: 'r-open',
+          title: 'Budget prévisionnel 2027',
+          description: 'Vote du budget',
+          rule: 'ARTICLE_24',
+          result: null,
+          sharesFor: 0,
+          sharesAgainst: 0,
+          sharesAbstain: 0,
+          totalShares: 0,
+          myVotes: []
+        }
+      ]
     },
     {
       id: 'm-done',
@@ -272,6 +291,7 @@ describe('Assemblées générales', () => {
       status: 'COMPLETED',
       syndicate: 'Résidence Les Acacias',
       agenda: [{ id: 'ag-2', orderIndex: 1, title: 'Ravalement' }],
+      votableLots: [],
       resolutions: [
         {
           id: 'r-1',
@@ -283,27 +303,42 @@ describe('Assemblées générales', () => {
           sharesAgainst: 600,
           sharesAbstain: 0,
           totalShares: 1000,
-          myVotes: [{ lotNumber: 'A1', vote: 'FOR' }]
+          myVotes: [{ lotId: 'lot-a1', lotNumber: 'A1', vote: 'FOR' }]
         }
       ]
     }
   ];
 
-  it("affiche date, lieu et ordre du jour ; les résultats seulement pour l'assemblée clôturée", async () => {
+  it('affiche les assemblées en cartes, le détail et les résultats à l’ouverture', async () => {
     listMyMeetings.mockResolvedValue(meetings);
 
     mount('/copropriete/assemblees');
 
-    expect(await screen.findByText('Budget 2027', {}, WAIT)).toBeInTheDocument();
-    expect(screen.getByText('Salle B')).toBeInTheDocument();
+    expect(await screen.findByText('Salle B', {}, WAIT)).toBeInTheDocument();
     expect(screen.getByText('Planifiée')).toBeInTheDocument();
     expect(screen.getByText('Clôturée')).toBeInTheDocument();
-    expect(screen.getAllByText('Résultats des résolutions')).toHaveLength(1);
+    expect(screen.queryByText('Résultats des résolutions')).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: /Voir le détail/ }));
+    expect(await screen.findByText('Résultats des résolutions', {}, WAIT)).toBeInTheDocument();
     const resolution = screen.getByText('Ravalement de façade').closest('li') as HTMLElement;
     expect(within(resolution).getByText('Rejetée')).toBeInTheDocument();
     expect(within(resolution).getByText('Article 24 — majorité simple des tantièmes exprimés')).toBeInTheDocument();
     expect(within(resolution).getByText('Pour 400 · Contre 600 · Abstention 0 — sur 1000')).toBeInTheDocument();
     expect(within(resolution).getByText('Lot A1 : Pour')).toBeInTheDocument();
+  });
+
+  it('permet de voter pour un lot sur une assemblée ouverte, sans afficher de décompte', async () => {
+    listMyMeetings.mockResolvedValue(meetings);
+    castMyVote.mockResolvedValue(undefined);
+
+    mount('/copropriete/assemblees');
+
+    fireEvent.click(await screen.findByRole('button', { name: /Voter/ }, WAIT));
+    expect(await screen.findByText('Budget prévisionnel 2027', {}, WAIT)).toBeInTheDocument();
+    expect(screen.queryByText(/Tantièmes/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Contre'));
+    await waitFor(() => expect(castMyVote).toHaveBeenCalledWith('r-open', 'lot-a1', 'AGAINST'));
   });
 });

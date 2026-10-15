@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireCoOwnerPortalAccess } from '../middleware/coowner-portal-access';
 import { coOwnerChargeNoticeRateLimiter, coOwnerPortalPdfRateLimiter } from '../middleware/rate-limit-middleware';
 import {
+  castCoOwnerVoteHandler,
   downloadCoOwnerDocumentHandler,
   getCoOwnerLotAccountHandler,
   listCoOwnerChargeCallsHandler,
@@ -24,7 +25,7 @@ import { downloadCoOwnerChargeCallNoticeHandler } from '../controllers/coowner-c
 
 /**
  * Portail copropriétaire, monté sur `/api/portal/copropriete` (app.ts).
- * Lecture seule ; chaque route passe par `requireCoOwnerPortalAccess`.
+ * Lecture seule, hors vote sur une résolution ; chaque route passe par `requireCoOwnerPortalAccess`.
  * Comme les deux autres portails, hors abonnement (route-features, D8).
  */
 const router = Router();
@@ -40,6 +41,8 @@ router.get('/appels/:chargeId/avis', coOwnerChargeNoticeRateLimiter, downloadCoO
 router.get('/documents', listCoOwnerDocumentsHandler);
 router.get('/documents/:documentId/fichier', downloadCoOwnerDocumentHandler);
 router.get('/assemblees', listCoOwnerMeetingsHandler);
+// Vote en ligne sur une résolution d'une assemblée ouverte, pour un lot du copropriétaire.
+router.put('/resolutions/:resolutionId/vote', castCoOwnerVoteHandler);
 
 // Lot S5 (besoin 2) : paiements, reçus et quittances, relevé PDF, suivi
 // mensuel, fiche de la copropriété. Toujours limité aux lots du

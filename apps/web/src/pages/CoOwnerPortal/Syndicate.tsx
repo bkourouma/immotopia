@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Col, Descriptions, Row, Select, Space, Typography } from 'antd';
+import { BankOutlined, EnvironmentOutlined, HomeOutlined, MailOutlined, PhoneOutlined } from '@ant-design/icons';
+import { Card, Col, Divider, Row, Select, Space, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -45,20 +46,81 @@ function PortalImage({ loader, alt }: { loader: () => Promise<Blob>; alt: string
   return <img src={url} alt={alt} style={{ maxHeight: 72, maxWidth: 200, objectFit: 'contain' }} />;
 }
 
+/** Une pastille d'icône, couleur d'accent du portail. */
+function IconBadge({ icon, size = 44 }: { icon: React.ReactNode; size?: number }) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 12,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+        color: '#1d4ed8',
+        fontSize: size / 2
+      }}
+    >
+      {icon}
+    </div>
+  );
+}
+
+/** Un chiffre clé du bandeau d'identité. */
+function KeyFact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ minWidth: 120 }}>
+      <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+        {label}
+      </Text>
+      <Text strong style={{ fontSize: 16 }}>
+        {value}
+      </Text>
+    </div>
+  );
+}
+
+/** Une ligne de coordonnée : icône discrète, valeur, lien si utile. */
+function ContactRow({ icon, value, href }: { icon: React.ReactNode; value: string | null | undefined; href?: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <span style={{ color: '#8c8c8c', marginTop: 2 }}>{icon}</span>
+      {value ? href ? <a href={href}>{value}</a> : <Text>{value}</Text> : <Text type="secondary">—</Text>}
+    </div>
+  );
+}
+
 /** La fiche, une fois la copropriété choisie et chargée. */
 function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
   return (
-    <>
-      <Card
-        title={data.name}
-        extra={data.hasLogo ? <PortalImage loader={() => fetchCoOwnerSyndicateLogo(data.id)} alt={data.name} /> : null}
-      >
-        <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-          <Descriptions.Item label={t('Adresse')}>{data.address}</Descriptions.Item>
-          <Descriptions.Item label={t('Immatriculation')}>{data.registrationNo ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label={t('Référence cadastrale')}>{data.cadastralReference ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label={t('Nombre de lots')}>{data.lotCount}</Descriptions.Item>
-        </Descriptions>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <Card styles={{ body: { padding: 24 } }}>
+        <div
+          style={{ display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}
+        >
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', minWidth: 0 }}>
+            <IconBadge icon={<BankOutlined />} size={56} />
+            <div style={{ minWidth: 0 }}>
+              <Title level={3} style={{ margin: 0 }}>
+                {data.name}
+              </Title>
+              <Text type="secondary">
+                <EnvironmentOutlined /> {data.address}
+              </Text>
+            </div>
+          </div>
+          {data.hasLogo ? <PortalImage loader={() => fetchCoOwnerSyndicateLogo(data.id)} alt={data.name} /> : null}
+        </div>
+        <Divider style={{ marginBlock: 20 }} />
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <KeyFact label={t('Nombre de lots')} value={data.lotCount} />
+          <KeyFact label={t('Mes lots')} value={data.myLots.length} />
+          <KeyFact label={t('Immatriculation')} value={data.registrationNo ?? '—'} />
+          <KeyFact label={t('Référence cadastrale')} value={data.cadastralReference ?? '—'} />
+        </div>
       </Card>
 
       <Card title={t('Mes lots dans cette copropriété')}>
@@ -67,11 +129,14 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
         ) : (
           <Row gutter={[16, 16]}>
             {data.myLots.map(lot => (
-              <Col key={lot.id} xs={24} sm={12} md={8}>
-                <Card size="small">
-                  <Text strong>{t('Lot {{lotNumber}}', { lotNumber: lot.lotNumber })}</Text>
+              <Col key={lot.id} xs={24} sm={12} lg={8}>
+                <Card size="small" styles={{ body: { display: 'flex', gap: 12, alignItems: 'center' } }}>
+                  <IconBadge icon={<HomeOutlined />} size={40} />
                   <div>
-                    <Text type="secondary">{lotTypeLabel(lot.lotType)}</Text>
+                    <Text strong>{t('Lot {{lotNumber}}', { lotNumber: lot.lotNumber })}</Text>
+                    <div>
+                      <Text type="secondary">{lotTypeLabel(lot.lotType)}</Text>
+                    </div>
                   </div>
                 </Card>
               </Col>
@@ -80,9 +145,10 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
         )}
       </Card>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={12}>
+      <Row gutter={[16, 16]} style={{ alignItems: 'stretch' }}>
+        <Col xs={24} md={12} style={{ display: 'flex' }}>
           <Card
+            style={{ width: '100%' }}
             title={t('Émetteur des documents')}
             extra={
               data.hasIssuerLogo ? (
@@ -90,28 +156,40 @@ function SyndicateDetails({ data }: { data: CoOwnerSyndicateSheet }) {
               ) : null
             }
           >
-            <Descriptions column={1} size="small">
-              <Descriptions.Item label={t('Nom')}>{data.issuer.name}</Descriptions.Item>
-              <Descriptions.Item label={t('Adresse')}>{data.issuer.address ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label={t('Téléphone')}>{data.issuer.phone ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label={t('E-mail')}>{data.issuer.email ?? '—'}</Descriptions.Item>
-            </Descriptions>
+            <Space direction="vertical" size={10}>
+              <Text strong>{data.issuer.name}</Text>
+              <ContactRow icon={<EnvironmentOutlined />} value={data.issuer.address} />
+              <ContactRow
+                icon={<PhoneOutlined />}
+                value={data.issuer.phone}
+                href={data.issuer.phone ? `tel:${data.issuer.phone}` : undefined}
+              />
+              <ContactRow
+                icon={<MailOutlined />}
+                value={data.issuer.email}
+                href={data.issuer.email ? `mailto:${data.issuer.email}` : undefined}
+              />
+            </Space>
           </Card>
         </Col>
-        <Col xs={24} md={12}>
-          <Card title={t('Gestionnaire de la copropriété')}>
+        <Col xs={24} md={12} style={{ display: 'flex' }}>
+          <Card style={{ width: '100%' }} title={t('Gestionnaire de la copropriété')}>
             {data.syndicContact ? (
-              <Descriptions column={1} size="small">
-                <Descriptions.Item label={t('Nom')}>{data.syndicContact.name ?? '—'}</Descriptions.Item>
-                <Descriptions.Item label={t('E-mail')}>{data.syndicContact.email ?? '—'}</Descriptions.Item>
-              </Descriptions>
+              <Space direction="vertical" size={10}>
+                <Text strong>{data.syndicContact.name ?? '—'}</Text>
+                <ContactRow
+                  icon={<MailOutlined />}
+                  value={data.syndicContact.email}
+                  href={data.syndicContact.email ? `mailto:${data.syndicContact.email}` : undefined}
+                />
+              </Space>
             ) : (
               <Text type="secondary">{t("Aucun gestionnaire n'est désigné pour l'instant.")}</Text>
             )}
           </Card>
         </Col>
       </Row>
-    </>
+    </div>
   );
 }
 

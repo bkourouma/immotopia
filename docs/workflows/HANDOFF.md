@@ -36,6 +36,42 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-encaissement` — 2026-10-15
+
+**État :** en cours (correctif non commité)
+**Dernier commit :** `7effd904` merge PR #125
+
+Fait :
+
+- Portail copropriétaire : sidebar à plat (groupe « Plus » retiré, entrées en `zone: 'more'` pour la feuille mobile). Page Assemblées en cartes 2 par ligne + tiroir de détail ; vote en ligne : `PUT /api/portal/copropriete/resolutions/:resolutionId/vote` (`castCoOwnerVote`, lib/syndics/coowner-portal.ts). Vote ouvert tant que l'AG est PLANNED ou IN_PROGRESS ; seul le votant désigné du lot à la date de l'AG peut voter (`votersAt`) ; aucun décompte avant clôture. Test API : le service de vote partagé est simulé (faux Prisma sans relations imbriquées).
+- Menu « Copropriété » (clé `syndics-detail`) retiré de la sidebar dans `navigation/model.tsx` ; ses `activeFor` sont passés à « Copropriétés ». Wiki des fonctionnalités (`npm run wiki:export`, nouvelle route de vote comprise) et clé `syndics-detail` de `menu-catalog.ts` non traités.
+- Survol de la sidebar : texte quasi invisible sur le navy. Sélecteurs de survol de `apps/web/src/index.css` renforcés (`.ant-menu-root` + `:not(.ant-menu-item-disabled)`) pour passer devant la règle `:not(.ant-menu-item-selected):hover` d'Ant Design.
+
+Reste à faire :
+
+- Vérifier visuellement au survol (sidebar et drawer mobile), puis commiter.
+
+Pièges et décisions :
+
+- Ant Design pose son survol avec cinq classes de spécificité : à quatre, l'ordre d'injection cssinjs tranche.
+
+## Branche `feat/syndic-encaissement` — 2026-10-15
+
+**État :** données posées en base locale, rien de commité (seul `syndic-demo-seed.ts` modifié).
+
+Fait :
+
+- `syndic-demo-seed.ts` accepte `DEMO_ONLY=perles|jardins` et `DEMO_ID_SALT=<hex>` (suffixe des ids fixes, pour une autre agence de la même base) ; `upsertProperty` refuse un bien d'une autre agence.
+- Copropriété « Résidence Les Perles de la Riviera » (15 lots, 2023→2026) posée sur l'agence du compte `syndic@packs.immotopia.test` (`4aeeab68…`, id `5e1d1c01-2023-4a6e-9c0f-4aeeab680ba9`). Portail copropriétaire ouvert pour Jean-Marc Ahoua (lots A42, K01, P03), compte `jean-marc.ahoua@packs.immotopia.test`, mot de passe commun `PACK_TEST_PASSWORD`.
+
+- Liste des copropriétés : 2 cartes par ligne (`SyndicsList.tsx`), liens « Voir la fiche » / « Voir les lots » retirés, suppression en icône (`aria-label`) à côté de « Ouvrir la copropriété » (`SyndicateCard.tsx`) ; test adapté, non commité.
+
+- Factures prestataires des Perles (34, dont 24 paiements) posées via `createProviderInvoice` / `payProviderInvoice` (écritures comptables et mouvements de fonds inclus) ; script jetable, non conservé. Le seed de base n'en pose pas.
+
+Pièges :
+
+- Sans `DEMO_ID_SALT`, lancer le seed sur une autre agence déplaçait le bien support (upsert par id) ; réparé, garde ajoutée.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;

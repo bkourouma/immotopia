@@ -4,6 +4,8 @@ import { NotFoundError } from '../../middleware/error-middleware';
 import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
 import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCallStatusValue } from './finance-utils';
 import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from './meeting-majority';
+import { castVoteAndRecomputeResolutionCounters } from './queries';
+import { votersAt, type LotOwnerProfileForVoters } from './meeting-voters';
 import { sumAllocationsByCall } from './charge-allocation';
 import { fromCents } from './charge-allocation-plan';
 import { applyChronologicalBalances } from './owner-account-running-balance';
@@ -458,6 +460,52 @@ export async function getCoOwnerDocumentFile(scope: CoOwnerPortalScope, document
 // 5. Assemblées générales
 // ---------------------------------------------------------------------------
 
+const OPEN_MEETING_STATUSES = ['PLANNED', 'IN_PROGRESS'];
+
+const VOTER_LOT_SELECT = {
+  id: true,
+  syndicateId: true,
+  lotNumber: true,
+  coownerId: true,
+  ownerContactId: true,
+  owner: { select: { id: true, firstName: true, lastName: true, legalName: true, email: true } },
+  ownerProfiles: {
+    select: {
+      contactId: true,
+      ownershipPercentage: true,
+      ownedSince: true,
+      ownedUntil: true,
+      contact: { select: { id: true, firstName: true, lastName: true, legalName: true, email: true } }
+    }
+  }
+} satisfies Prisma.SyndicateLotSelect;
+
+type VoterLot = Prisma.SyndicateLotGetPayload<{ select: typeof VOTER_LOT_SELECT }>;
+
+/**
+ * Le lot vote par son propriétaire À LA DATE de l'assemblée (le plus gros
+ * détenteur en indivision, cf. meeting-voters.ts) : un copropriétaire ne vote
+ * pour un lot que s'il en est le votant désigné, jamais pour un lot dont il
+ * n'est qu'indivisaire minoritaire ou dont il n'était pas propriétaire alors.
+ */
+function isDesignatedVoter(scope: CoOwnerPortalScope, lot: VoterLot, meetingDate: Date): boolean {
+  const profiles: LotOwnerProfileForVoters[] = lot.ownerProfiles.map(profile => ({
+    ...profile,
+    ownershipPercentage: Number(profile.ownershipPercentage)
+  }));
+  const [voter] = votersAt(lot, profiles, meetingDate);
+  return voter !== undefined && scope.contactIds.includes(voter.contactId);
+}
+
+async function loadMyVoterLots(scope: CoOwnerPortalScope, syndicateIds: string[]): Promise<VoterLot[]> {
+  const myLotIds = scope.lots.filter(lot => syndicateIds.includes(lot.syndicateId)).map(lot => lot.lotId);
+  if (myLotIds.length === 0) return [];
+  return prisma.syndicateLot.findMany({
+    where: { id: { in: myLotIds }, syndicateId: { in: syndicateIds } },
+    select: VOTER_LOT_SELECT
+  });
+}
+
 export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
   if (scope.syndicateIds.length === 0) return [];
   const syndicates = await loadSyndicates(scope);
@@ -483,13 +531,17 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
     select: { id: true, meetingId: true, orderIndex: true, title: true }
   });
 
-  // Les résultats ne sont publiés qu'une fois l'assemblée clôturée.
+  // Les résultats ne sont publiés qu'une fois l'assemblée clôturée ; tant
+  // qu'elle est ouverte (planifiée ou en cours), les résolutions sont visibles
+  // pour voter, mais sans aucun décompte.
   const completed = meetings.filter(meeting => meeting.status === 'COMPLETED');
+  const open = meetings.filter(meeting => OPEN_MEETING_STATUSES.includes(meeting.status));
+  const resolutionMeetingIds = [...completed, ...open].map(meeting => meeting.id);
   const resolutions =
-    completed.length === 0
+    resolutionMeetingIds.length === 0
       ? []
       : await prisma.gMResolution.findMany({
-          where: { meetingId: { in: completed.map(meeting => meeting.id) } },
+          where: { meetingId: { in: resolutionMeetingIds } },
           orderBy: { createdAt: 'asc' },
           select: { id: true, meetingId: true, title: true, description: true, majorityRule: true, result: true }
         });
@@ -521,9 +573,18 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
         });
   const myLotIds = new Set(scope.lotIds);
   const lotNumberById = new Map(allLots.map(lot => [lot.id, lot.lotNumber]));
+  const openSyndicateIds = Array.from(new Set(open.map(meeting => meeting.syndicateId)));
+  const myVoterLots = openSyndicateIds.length === 0 ? [] : await loadMyVoterLots(scope, openSyndicateIds);
+  for (const lot of myVoterLots) lotNumberById.set(lot.id, lot.lotNumber);
 
   return meetings.map(meeting => {
     const syndicateLots = allLots.filter(lot => lot.syndicateId === meeting.syndicateId);
+    const isOpen = OPEN_MEETING_STATUSES.includes(meeting.status);
+    const votableLots = isOpen
+      ? myVoterLots
+          .filter(lot => lot.syndicateId === meeting.syndicateId && isDesignatedVoter(scope, lot, meeting.scheduledAt))
+          .map(lot => ({ lotId: lot.id, lotNumber: lot.lotNumber }))
+      : [];
     return {
       id: meeting.id,
       type: meeting.type,
@@ -534,30 +595,77 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
       agenda: agendaItems
         .filter(item => item.meetingId === meeting.id)
         .map(item => ({ id: item.id, orderIndex: item.orderIndex, title: item.title })),
-      resolutions:
-        meeting.status !== 'COMPLETED'
-          ? []
-          : resolutions
-              .filter(resolution => resolution.meetingId === meeting.id)
-              .map(resolution => {
-                const resolutionVotes = votes.filter(vote => vote.resolutionId === resolution.id);
-                const tally = computeResolutionTally(resolution.majorityRule, syndicateLots, resolutionVotes);
-                const rule: MajorityRule = normalizeMajorityRule(resolution.majorityRule);
-                return {
-                  id: resolution.id,
-                  title: resolution.title,
-                  description: resolution.description,
-                  rule,
-                  result: resolution.result ?? tally.result,
-                  sharesFor: tally.sharesFor,
-                  sharesAgainst: tally.sharesAgainst,
-                  sharesAbstain: tally.sharesAbstain,
-                  totalShares: tally.totalShares,
-                  myVotes: resolutionVotes
-                    .filter(vote => myLotIds.has(vote.lotId))
-                    .map(vote => ({ lotNumber: lotNumberById.get(vote.lotId) ?? '', vote: vote.vote }))
-                };
-              })
+      votableLots,
+      resolutions: resolutions
+        .filter(resolution => resolution.meetingId === meeting.id)
+        .map(resolution => {
+          const resolutionVotes = votes.filter(vote => vote.resolutionId === resolution.id);
+          const rule: MajorityRule = normalizeMajorityRule(resolution.majorityRule);
+          const myVotes = resolutionVotes
+            .filter(vote => myLotIds.has(vote.lotId))
+            .map(vote => ({ lotId: vote.lotId, lotNumber: lotNumberById.get(vote.lotId) ?? '', vote: vote.vote }));
+          if (meeting.status !== 'COMPLETED') {
+            return {
+              id: resolution.id,
+              title: resolution.title,
+              description: resolution.description,
+              rule,
+              result: null,
+              sharesFor: 0,
+              sharesAgainst: 0,
+              sharesAbstain: 0,
+              totalShares: 0,
+              myVotes
+            };
+          }
+          const tally = computeResolutionTally(resolution.majorityRule, syndicateLots, resolutionVotes);
+          return {
+            id: resolution.id,
+            title: resolution.title,
+            description: resolution.description,
+            rule,
+            result: resolution.result ?? tally.result,
+            sharesFor: tally.sharesFor,
+            sharesAgainst: tally.sharesAgainst,
+            sharesAbstain: tally.sharesAbstain,
+            totalShares: tally.totalShares,
+            myVotes
+          };
+        })
     };
   });
+}
+
+/**
+ * Vote d'un copropriétaire sur une résolution, pour un de SES lots. Le
+ * périmètre vient de la garde ; l'assemblée doit être ouverte (le service
+ * partagé refuse une assemblée clôturée ou annulée, en 409) et le demandeur
+ * doit être le votant du lot à la date de l'assemblée. Tout le reste répond
+ * comme un objet inexistant.
+ */
+export async function castCoOwnerVote(
+  scope: CoOwnerPortalScope,
+  resolutionId: string,
+  lotId: string,
+  vote: 'FOR' | 'AGAINST' | 'ABSTAIN'
+) {
+  const lotScope = scope.lots.find(lot => lot.lotId === lotId);
+  if (!lotScope) throw new NotFoundError('Lot introuvable.');
+
+  const resolution = await prisma.gMResolution.findFirst({
+    where: { id: resolutionId, meeting: { syndicateId: lotScope.syndicateId } },
+    select: { id: true, meeting: { select: { scheduledAt: true } } }
+  });
+  if (!resolution) throw new NotFoundError('Résolution introuvable.');
+
+  const lots = await loadMyVoterLots(scope, [lotScope.syndicateId]);
+  const lot = lots.find(candidate => candidate.id === lotId);
+  if (!lot || !isDesignatedVoter(scope, lot, resolution.meeting.scheduledAt)) {
+    throw new NotFoundError('Lot introuvable.');
+  }
+
+  // Le détail d'assemblée rendu par le service partagé contient les votes de
+  // tous les lots : il n'est jamais renvoyé au copropriétaire.
+  await castVoteAndRecomputeResolutionCounters(scope.tenantId, lotScope.syndicateId, resolutionId, lotId, vote);
+  return { resolutionId, lotId, vote };
 }

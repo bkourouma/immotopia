@@ -65,6 +65,23 @@ jest.mock('../../src/services/audit-service', () => ({
   flushAuditQueue: jest.fn()
 }));
 
+// Le vote lui-même (recalcul des résultats, détail d'assemblée) est celui du
+// service partagé, testé avec les assemblées de la gestion : ici il est
+// remplacé par une écriture du vote, pour vérifier ce que le portail lui passe.
+const mockCastVote = jest.fn(
+  async (_tenantId: string, _syndicateId: string, resolutionId: string, lotId: string, vote: string) => {
+    const existing = mockPrisma.gMVote.rows.find(
+      (row: any) => row.resolutionId === resolutionId && row.lotId === lotId
+    );
+    if (existing) existing.vote = vote;
+    else mockPrisma.gMVote.rows.push({ id: `vote-${resolutionId}-${lotId}`, resolutionId, lotId, vote });
+  }
+);
+jest.mock('../../src/lib/syndics/queries', () => ({
+  ...jest.requireActual('../../src/lib/syndics/queries'),
+  castVoteAndRecomputeResolutionCounters: (...args: any[]) => (mockCastVote as any)(...args)
+}));
+
 import coOwnerPortalRoutes from '../../src/routes/coowner-portal-routes';
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
@@ -121,6 +138,7 @@ const DOC_SB = id(604);
 const MEETING_DONE = id(701);
 const MEETING_PLANNED = id(702);
 const RESOLUTION = id(801);
+const RESOLUTION_OPEN = id(802);
 
 const PAST = new Date('2026-01-10T00:00:00.000Z');
 const FUTURE = new Date('2099-01-10T00:00:00.000Z');
@@ -129,6 +147,7 @@ function seed() {
   mockPrisma.reset();
   clearPermissionCache();
   mockSendInvitation.mockClear();
+  mockCastVote.mockClear();
 
   mockPrisma.tenant.rows.push(
     { id: TENANT_A, name: 'Agence Plateau', status: 'ACTIVE' },
@@ -298,6 +317,14 @@ function seed() {
     profile(PROFILE_NO_EMAIL, L4, CONTACT_NO_EMAIL, false)
   );
 
+  // Relations lues par `select` : le faux Prisma les attend dans la ligne.
+  for (const row of mockPrisma.syndicateLot.rows) {
+    row.owner = null;
+    row.ownerProfiles = mockPrisma.lotOwnerProfile.rows
+      .filter((candidate: any) => candidate.lotId === row.id)
+      .map((candidate: any) => ({ ...candidate, contact: { id: candidate.contactId } }));
+  }
+
   mockPrisma.ownerAccount.rows.push(
     {
       id: ACCOUNT_L1,
@@ -459,10 +486,24 @@ function seed() {
     result: 'REJECTED',
     createdAt: PAST
   });
+  mockPrisma.gMResolution.rows.push({
+    id: RESOLUTION_OPEN,
+    meetingId: MEETING_PLANNED,
+    title: 'Budget previsionnel 2027',
+    description: 'Vote du budget',
+    majorityRule: 'ARTICLE_24',
+    result: null,
+    createdAt: PAST
+  });
   mockPrisma.gMVote.rows.push(
     { id: 'v-1', resolutionId: RESOLUTION, lotId: L1, vote: 'FOR' },
     { id: 'v-2', resolutionId: RESOLUTION, lotId: L2, vote: 'AGAINST' }
   );
+
+  // Relation lue par le filtre `meeting: { syndicateId }` du vote.
+  for (const row of mockPrisma.gMResolution.rows) {
+    row.meeting = mockPrisma.generalMeeting.rows.find((meeting: any) => meeting.id === row.meetingId);
+  }
 }
 
 const as = (userId: string) => ({ 'x-test-user': userId });
@@ -592,7 +633,18 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     expect(res.status).toBe(200);
     const done = res.body.data.find((meeting: any) => meeting.id === MEETING_DONE);
     const planned = res.body.data.find((meeting: any) => meeting.id === MEETING_PLANNED);
-    expect(planned).toMatchObject({ location: 'Salle B', status: 'PLANNED', resolutions: [] });
+    expect(planned).toMatchObject({ location: 'Salle B', status: 'PLANNED' });
+    // Assemblée ouverte : résolutions visibles pour voter, jamais de décompte.
+    expect(planned.resolutions).toEqual([
+      expect.objectContaining({
+        id: RESOLUTION_OPEN,
+        result: null,
+        sharesFor: 0,
+        sharesAgainst: 0,
+        totalShares: 0,
+        myVotes: []
+      })
+    ]);
     expect(planned.agenda.map((item: any) => item.title)).toEqual(['Budget 2027']);
     expect(done.resolutions).toHaveLength(1);
     expect(done.resolutions[0]).toMatchObject({
@@ -602,10 +654,49 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
       sharesFor: 400,
       sharesAgainst: 600,
       totalShares: 1000,
-      myVotes: [{ lotNumber: 'A1', vote: 'FOR' }]
+      myVotes: [{ lotId: L1, lotNumber: 'A1', vote: 'FOR' }]
     });
     expect(JSON.stringify(res.body)).not.toContain(CONTACT_BAKARY);
     expect(JSON.stringify(res.body)).not.toContain('A2');
+  });
+});
+
+describe('Portail copropriétaire — vote sur une résolution', () => {
+  const vote = (userId: string, resolutionId: string, body: unknown) =>
+    request(app)
+      .put(`/api/portal/copropriete/resolutions/${resolutionId}/vote`)
+      .set(as(userId))
+      .send(body as object);
+
+  it('enregistre le vote d’un lot du copropriétaire, modifiable, et le lui renvoie', async () => {
+    const first = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'FOR' });
+    expect(first.status).toBe(200);
+    const second = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'AGAINST' });
+    expect(second.status).toBe(200);
+
+    const res = await request(app).get('/api/portal/copropriete/assemblees').set(as(USER_AWA));
+    const planned = res.body.data.find((meeting: any) => meeting.id === MEETING_PLANNED);
+    expect(planned.votableLots.map((lot: any) => lot.lotId).sort()).toEqual([L1]);
+    expect(planned.resolutions[0].myVotes).toEqual([{ lotId: L1, lotNumber: 'A1', vote: 'AGAINST' }]);
+    expect(mockPrisma.gMVote.rows.filter((row: any) => row.resolutionId === RESOLUTION_OPEN)).toHaveLength(1);
+  });
+
+  it('refuse le lot d’un autre copropriétaire comme un lot inexistant', async () => {
+    const res = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L2, vote: 'FOR' });
+    expect(res.status).toBe(404);
+    expect(mockPrisma.gMVote.rows.some((row: any) => row.resolutionId === RESOLUTION_OPEN)).toBe(false);
+  });
+
+  it('transmet au service partagé la copropriété du lot, jamais celle de la requête', async () => {
+    await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'FOR' });
+    expect(mockCastVote).toHaveBeenCalledWith(TENANT_A, S1, RESOLUTION_OPEN, L1, 'FOR');
+  });
+
+  it('refuse une résolution d’une autre copropriété (404) et un corps invalide (400)', async () => {
+    const otherSyndicate = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L3, vote: 'FOR' });
+    expect(otherSyndicate.status).toBe(404);
+    const invalid = await vote(USER_AWA, RESOLUTION_OPEN, { lotId: L1, vote: 'MAYBE' });
+    expect(invalid.status).toBe(400);
   });
 });
 

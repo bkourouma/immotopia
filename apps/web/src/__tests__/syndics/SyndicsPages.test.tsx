@@ -266,7 +266,9 @@ describe('Syndics pages', () => {
     renderWithAuthAndRoute('/tenant/tenant-1/syndics', <SyndicsList />);
 
     await screen.findByText('Résidence Pleine');
-    const deleteButtons = screen.getAllByText('Supprimer').map(node => node.closest('button')) as HTMLButtonElement[];
+    const deleteButtons = screen
+      .getAllByLabelText('Supprimer')
+      .map(node => node.closest('button')) as HTMLButtonElement[];
 
     // Résidence Pleine (4 lots) : bouton désactivé, une seule copropriété vide
     // active le sien.

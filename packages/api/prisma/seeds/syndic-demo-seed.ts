@@ -72,10 +72,17 @@ const UPLOADS_ROOT = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
   : path.resolve(__dirname, '../../../../uploads');
 
-const SYNDIC_PERLES_ID = '5e1d1c01-2023-4a6e-9c0f-7065726c6573';
-const SYNDIC_JARDINS_ID = '5e1d1c02-2026-4a6e-9c0f-6a617264696e';
-const PROPERTY_PERLES_ID = '5e1d1c01-b41d-4a6e-9c0f-000000000001';
-const PROPERTY_JARDINS_ID = '5e1d1c02-b41d-4a6e-9c0f-000000000002';
+// Les identifiants sont fixes (idempotence) mais uniques en base : pour poser le jeu sur une
+// AUTRE agence de la même base, DEMO_ID_SALT (hex, 12 car. max) change leur suffixe.
+const ID_SALT = (process.env.DEMO_ID_SALT || '')
+  .replace(/[^0-9a-f]/gi, '')
+  .slice(0, 12)
+  .padStart(12, '0');
+const withSalt = (id: string): string => (ID_SALT === '000000000000' ? id : id.slice(0, 24) + ID_SALT);
+const SYNDIC_PERLES_ID = withSalt('5e1d1c01-2023-4a6e-9c0f-7065726c6573');
+const SYNDIC_JARDINS_ID = withSalt('5e1d1c02-2026-4a6e-9c0f-6a617264696e');
+const PROPERTY_PERLES_ID = withSalt('5e1d1c01-b41d-4a6e-9c0f-000000000001');
+const PROPERTY_JARDINS_ID = withSalt('5e1d1c02-b41d-4a6e-9c0f-000000000002');
 
 // ═══════════════════════════════════════════════════════════════ utilitaires
 
@@ -3808,6 +3815,13 @@ async function upsertProperty(def: CoproDef, ownerUserId: string | null) {
     select: { id: true }
   });
   if (clash) throw new Error(`La référence ${p.reference} est déjà portée par un autre bien (${clash.id}).`);
+  // L'upsert par id ne doit jamais emporter le bien d'une autre agence.
+  const foreign = await prisma.property.findFirst({
+    where: { id: p.id, NOT: { tenantId: TENANT_ID } },
+    select: { tenantId: true }
+  });
+  if (foreign)
+    throw new Error(`Le bien ${p.id} appartient à une autre agence (${foreign.tenantId}) : utiliser DEMO_ID_SALT.`);
   const data = {
     internalReference: p.reference,
     propertyType: 'IMMEUBLE' as const,
@@ -5829,7 +5843,10 @@ async function main() {
       );
   }
 
-  const defs = [defPerles(), defJardins()];
+  // DEMO_ONLY=perles|jardins : ne poser qu'une des deux copropriétés.
+  const only = (process.env.DEMO_ONLY || '').trim().toLowerCase();
+  const defs = [defPerles(), defJardins()].filter(def => !only || def.name.toLowerCase().includes(only));
+  if (defs.length === 0) throw new Error(`DEMO_ONLY="${only}" ne correspond à aucune copropriété.`);
   const summaries: Summary[] = [];
   for (const def of defs) {
     const contactIds = await upsertContacts(def.contacts);

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler, ForbiddenError } from '../middleware/error-middleware';
 import {
+  castCoOwnerVote,
   getCoOwnerDocumentFile,
   getCoOwnerLotAccount,
   listCoOwnerChargeCalls,
@@ -70,4 +71,15 @@ export const downloadCoOwnerDocumentHandler = asyncHandler(async (req: Request, 
 export const listCoOwnerMeetingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const meetings = await listCoOwnerMeetings(scopeOf(req));
   res.json({ success: true, data: meetings });
+});
+
+const castVoteBodySchema = z.object({ lotId: z.string().uuid(), vote: z.enum(['FOR', 'AGAINST', 'ABSTAIN']) }).strict();
+const resolutionParamsSchema = z.object({ resolutionId: z.string().uuid() });
+
+/** Seule écriture du portail : le vote d'un copropriétaire sur une résolution, pour un de ses lots. */
+export const castCoOwnerVoteHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { resolutionId } = resolutionParamsSchema.parse(req.params);
+  const { lotId, vote } = castVoteBodySchema.parse(req.body ?? {});
+  const result = await castCoOwnerVote(scopeOf(req), resolutionId, lotId, vote);
+  res.json({ success: true, data: result });
 });
