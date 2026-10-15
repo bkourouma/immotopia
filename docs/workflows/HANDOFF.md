@@ -36,6 +36,31 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/export-tableaux` — 2026-10-15
+
+**État :** PR brouillon #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)
+**Dernier commit :** `7543af85` export Excel, CSV et PDF sur tous les tableaux
+
+Fait :
+
+- Socle `apps/web/src/utils/table-export/`, `primitives/ExportMenu.tsx`, `primitives/Table.tsx`, prop `export` de `DataView` (actif par défaut), champs de colonne `exportable`/`exportTitle`/`exportValue` (`types/antd-table-export.d.ts`), `collectAllPages` pour les listes paginées.
+- Déploiement sur les 156 fichiers à tableaux (6 lots) ; classeur des fonctionnalités (3 lignes) ; traductions en/ar.
+- tsc web 0 erreur, lint 0 erreur ; suite web complète : 16 échecs dans 8 fichiers, tous longs (délais probables).
+
+Reste à faire :
+
+- Relancer seuls : `admin/tenant-create`, `finance/associations`, `finance/balances`, `patrimoine/PropertyPatrimoineTab`, `rental/installments`, `rental/lease-inspections`, `finance/stock-referentiel`, `finance/stock` (`npx vitest run src/__tests__/<f>.test.tsx` depuis `apps/web`). Corriger s'ils échouent seuls.
+- `npm run build -w apps/web && npm run measure:entry -w apps/web` (marge de 1 206 o après le socle).
+- Recette navigateur : un export de chaque format sur Baux (fr puis ar, repli impression), sur Biens (disposition grille), sur une page de portail ; ouvrir les fichiers.
+- Relecture des diffs des lots finance A1/A2, syndic, patrimoine, locatif : leurs agents ont été coupés par un redémarrage de session avant de rendre leur rapport (le diff compile et passe le lint).
+- `NewsletterListsPage` : passer `exportFetchAll` à `SubscriberList`. Puis passer la PR en prête.
+
+Pièges et décisions :
+
+- Sans `dataIndex`, Ant Design passe l'enregistrement comme valeur à `render` : le socle fait pareil (corrigé dans `build-table.ts`).
+- `apps/web/.env` copié par erreur dans le worktree (ignoré par git) : à supprimer par l'utilisateur ou à garder pour lancer le web depuis le worktree.
+- Une autre session a modifié `docs/workflows/HANDOFF.md` du checkout principal (ligne paiement mobile copropriétaires) : elle n'est pas dans cette branche.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;
