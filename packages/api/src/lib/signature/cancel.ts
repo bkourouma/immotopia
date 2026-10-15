@@ -3,6 +3,7 @@ import { recordAuditEvent, AuditActionKey } from '../../services/audit-service';
 import { appendSignatureEvent } from './events';
 import { getSignatureProvider } from './provider';
 import { releaseSignature } from './quota';
+import { findSignatureSource } from './sources';
 import { OPEN_REQUEST_STATUSES } from './types';
 
 /**
@@ -24,6 +25,18 @@ export async function cancelRequestInternal(
 ): Promise<boolean> {
   const now = new Date();
   const canceled = await prisma.$transaction(async tx => {
+    const request = await tx.signatureRequest.findFirst({
+      where: { id: requestId, tenantId: ctx.tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        kind: true,
+        targetType: true,
+        targetId: true,
+        sourceDocumentId: true,
+        sourceDocHash: true
+      }
+    });
     const updated = await tx.signatureRequest.updateMany({
       where: { id: requestId, tenantId: ctx.tenantId, status: { in: [...OPEN_REQUEST_STATUSES] } },
       data: { status: 'CANCELED', canceledAt: now }
@@ -36,6 +49,7 @@ export async function cancelRequestInternal(
       payload: { reason, byUserId: ctx.userId },
       now
     });
+    if (request) await findSignatureSource(request.kind)?.onCancel?.(tx, request, reason, now);
     await recordAuditEvent(tx, {
       tenantId: ctx.tenantId,
       actorUserId: ctx.userId,

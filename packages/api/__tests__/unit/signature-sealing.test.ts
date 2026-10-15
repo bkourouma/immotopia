@@ -70,6 +70,7 @@ import { recordAuditEvent } from '../../src/services/audit-service';
 import { AuditActionKey } from '../../src/types/audit-types';
 import { sha256Hex } from '../../src/lib/signature/evidence';
 import { sealRequest } from '../../src/lib/signature/sealing';
+import { leaseContractSource } from '../../src/lib/signature/sources/lease-contract';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -81,6 +82,28 @@ describe('scellement et piste de preuve', () => {
   it('scelle quand la piste est intacte', async () => {
     expect(await sealRequest('t1', 'r1')).toBe('SEALED');
     expect(sealSignedPdf).toHaveBeenCalledTimes(1);
+  });
+
+  it('marque la cible signée par le hook onSealed de sa source, dans la transaction du scellement', async () => {
+    const onSealed = jest.spyOn(leaseContractSource, 'onSealed');
+    expect(await sealRequest('t1', 'r1')).toBe('SEALED');
+    expect(onSealed).toHaveBeenCalledWith(
+      prismaMock,
+      expect.objectContaining({
+        id: 'r1',
+        tenantId: 't1',
+        kind: 'LEASE_CONTRACT',
+        targetType: 'RentalLease',
+        targetId: 'l1'
+      }),
+      expect.any(Date)
+    );
+    // Le bail porte signed_at et la demande, comme avant le registre.
+    expect(prismaMock.rentalLease.updateMany).toHaveBeenCalledWith({
+      where: { id: 'l1', tenant_id: 't1' },
+      data: { signed_at: expect.any(Date), signature_request_id: 'r1' }
+    });
+    onSealed.mockRestore();
   });
 
   it('refuse de sceller une piste rompue : FAILED, audit critique, réservation libérée', async () => {

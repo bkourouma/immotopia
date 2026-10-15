@@ -344,6 +344,8 @@
   "Ce signataire a déjà signé ou refusé.": "هذا الموقّع وقّع أو رفض بالفعل.",
   "Ce template est utilisé par une campagne planifiée.": "هذا القالب مستخدم في حملة مجدولة.",
   "Ce tenant n'est plus actif.": "لم تعد هذه الوكالة نشطة.",
+  "Ce type de document exige un prestataire de signature : la signature interne n'est pas autorisée.": "يتطلب هذا النوع من المستندات مزوّد توقيع: التوقيع الداخلي غير مسموح.",
+  "Ce type de document ne peut pas encore être signé.": "لا يمكن توقيع هذا النوع من المستندات بعد.",
   "Ce versement est déjà annulé.": "هذه الدفعة ملغاة بالفعل.",
   "Ce virement est déjà annulé.": "هذا التحويل ملغى بالفعل.",
   "Cédé": "تم التصرف فيه",

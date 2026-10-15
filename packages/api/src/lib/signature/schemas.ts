@@ -1,3 +1,4 @@
+import { SignatureDocumentKind } from '@prisma/client';
 import { z } from 'zod';
 
 /** Schémas Zod de l'API « agence » de la signature électronique (spec 043, lot S1). */
@@ -18,7 +19,9 @@ const signerInputSchema = z
 export const createSignatureSchema = z
   .object({
     tenantId: z.string().optional(),
-    kind: z.literal('LEASE_CONTRACT'),
+    // Tout type connu est accepté ici ; un type sans source enregistrée (lib/signature/sources) est refusé
+    // en 400 « Ce type de document ne peut pas encore être signé » par getSignatureSource.
+    kind: z.nativeEnum(SignatureDocumentKind),
     targetId: z.string().trim().min(1).max(64),
     signers: z.array(signerInputSchema).min(1).max(SIGNATURE_MAX_SIGNERS),
     sequential: z.boolean().optional(),

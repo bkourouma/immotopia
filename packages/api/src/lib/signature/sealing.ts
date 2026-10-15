@@ -6,6 +6,7 @@ import { appendSignatureEvent, listChainedEvents, verifyEventChain } from './eve
 import { sha256Hex } from './evidence';
 import { readSignatureFile, writeSignatureFile } from './files';
 import { agencyNameOf, languageOf, notifyIssuer } from './notify';
+import { findSignatureSource } from './sources';
 import { sealSignedPdf, type SealSigner } from './seal';
 
 /**
@@ -110,6 +111,8 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
         kind: true,
         targetType: true,
         targetId: true,
+        sourceDocumentId: true,
+        sourceDocHash: true,
         title: true,
         language: true,
         sourceFileKey: true,
@@ -167,12 +170,8 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
         data: { status: 'COMPLETED', signedFileKey, signedHash: sealed.sha256, completedAt: now, sealingAt: null }
       });
       if (updated.count !== 1) return false;
-      if (request.targetType === 'RentalLease') {
-        await tx.rentalLease.updateMany({
-          where: { id: request.targetId, tenant_id: tenantId },
-          data: { signed_at: now, signature_request_id: requestId }
-        });
-      }
+      // Marquage « signé » dans le module du document, atomique avec le passage à COMPLETED.
+      await findSignatureSource(request.kind)?.onSealed(tx, { ...request, tenantId }, now);
       await appendSignatureEvent(tx, {
         tenantId,
         requestId,

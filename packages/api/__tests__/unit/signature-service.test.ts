@@ -14,6 +14,7 @@ const db: { created: Row | null; signers: Row[]; open: Row | null; lease: Row | 
 
 const txMock: Row = {
   signatureRequest: {
+    findFirst: jest.fn(async () => db.created),
     create: jest.fn(async ({ data }: Row) => {
       db.created = { ...data, createdAt: new Date(), completedAt: null, signedHash: null, signedFileKey: null };
     }),
@@ -105,7 +106,14 @@ jest.mock('../../src/lib/signature/provider', () => ({
 import { AppError, NotFoundError } from '../../src/middleware/error-middleware';
 import { AuditActionKey } from '../../src/types/audit-types';
 import { recordAuditEvent } from '../../src/services/audit-service';
-import { createSignatureRequest, normalizeSigners } from '../../src/services/signature-service';
+import {
+  createSignatureRequest,
+  getSignatureTargetContext,
+  normalizeSigners
+} from '../../src/services/signature-service';
+import { registerSignatureSource, resetSignatureSourcesForTests } from '../../src/lib/signature/sources';
+import { leaseContractSource } from '../../src/lib/signature/sources/lease-contract';
+import type { SignatureDocumentSource } from '../../src/lib/signature/sources';
 
 const ctx = { tenantId: 't1', userId: 'u1' };
 type SignerIn = {
@@ -330,5 +338,118 @@ describe('quota et conversion', () => {
     await createSignatureRequest(ctx, input([inPerson]));
     expect(db.created?.sourceDocHash).toBe('f'.repeat(64));
     expect(db.signers[0].inPersonIssuedBy).toBe('u1');
+  });
+});
+
+/** Source de test : un autre type de document que le bail. */
+function fakeSource(extra: Partial<SignatureDocumentSource> = {}): SignatureDocumentSource {
+  return {
+    kind: 'SALE_AGREEMENT',
+    targetType: 'SaleAgreement',
+    viewPermission: 'CRM_DEALS_VIEW',
+    editPermission: 'CRM_DEALS_EDIT',
+    feature: 'SALES',
+    assertTarget: jest.fn(async () => undefined),
+    loadSource: jest.fn(async () => ({ pdf: Buffer.from('%PDF-1.7 compromis'), title: 'Compromis' })),
+    isSourceIntact: jest.fn(async () => true),
+    onSealed: jest.fn(async () => undefined),
+    ...extra
+  };
+}
+
+describe('registre des sources de document', () => {
+  afterEach(() => {
+    resetSignatureSourcesForTests();
+    registerSignatureSource(leaseContractSource);
+  });
+
+  it('un type sans source enregistrée est refusé en 400, avant toute lecture ou réservation', async () => {
+    await expect(
+      createSignatureRequest(ctx, { ...input([email]), kind: 'SALE_MANDATE' } as never)
+    ).rejects.toMatchObject({ statusCode: 400, message: 'Ce type de document ne peut pas encore être signé.' });
+    expect(reserveSignature).not.toHaveBeenCalled();
+    expect(prismaMock.rentalLease.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('SG-R1 : un type qui exige un prestataire refuse la signature interne, sans quota consommé', async () => {
+    const source = fakeSource({ providerRequired: true });
+    registerSignatureSource(source);
+    await expect(
+      createSignatureRequest(ctx, { ...input([email]), kind: 'SALE_AGREEMENT' } as never)
+    ).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('prestataire') });
+    expect(source.assertTarget).not.toHaveBeenCalled();
+    expect(reserveSignature).not.toHaveBeenCalled();
+  });
+
+  it('la cible est vérifiée AVANT le quota, le document chargé APRÈS, et le type de cible vient de la source', async () => {
+    const source = fakeSource();
+    registerSignatureSource(source);
+    await createSignatureRequest(ctx, { ...input([inPerson]), kind: 'SALE_AGREEMENT' } as never);
+    const order = (fn: jest.Mock) => fn.mock.invocationCallOrder[0];
+    expect(order(source.assertTarget as jest.Mock)).toBeLessThan(order(reserveSignature));
+    expect(order(reserveSignature)).toBeLessThan(order(source.loadSource as jest.Mock));
+    expect(source.assertTarget).toHaveBeenCalledWith(ctx, 'lease-1');
+    expect(db.created).toMatchObject({ kind: 'SALE_AGREEMENT', targetType: 'SaleAgreement', sourceDocumentId: null });
+  });
+
+  it("un document généré à la volée fige l'empreinte de ses données (snapshotHash) dans sourceDocHash", async () => {
+    registerSignatureSource(fakeSource({ snapshotHash: jest.fn(async () => 'd'.repeat(64)) }));
+    await createSignatureRequest(ctx, { ...input([inPerson]), kind: 'SALE_AGREEMENT' } as never);
+    expect(db.created?.sourceDocHash).toBe('d'.repeat(64));
+  });
+
+  it("une cible refusée par sa source (autre agence, statut) n'écrit ni ne réserve rien", async () => {
+    registerSignatureSource(
+      fakeSource({
+        assertTarget: jest.fn(async () => {
+          throw new NotFoundError('Compromis introuvable.');
+        })
+      })
+    );
+    await expect(
+      createSignatureRequest(ctx, { ...input([inPerson]), kind: 'SALE_AGREEMENT' } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(reserveSignature).not.toHaveBeenCalled();
+    expect(writeSignatureFile).not.toHaveBeenCalled();
+  });
+
+  it('la source du bail est enregistrée et garde ses permissions et sa fonctionnalité', () => {
+    expect(leaseContractSource).toMatchObject({
+      kind: 'LEASE_CONTRACT',
+      targetType: 'RentalLease',
+      viewPermission: 'RENTAL_LEASES_VIEW',
+      editPermission: 'RENTAL_LEASES_EDIT',
+      feature: 'RENTAL'
+    });
+  });
+});
+
+describe('contexte d’une cible', () => {
+  afterEach(() => {
+    resetSignatureSourcesForTests();
+    registerSignatureSource(leaseContractSource);
+  });
+
+  it('vérifie la cible puis rend les signataires proposés par la source', async () => {
+    const source = fakeSource({
+      defaultSigners: jest.fn(async () => [
+        { role: 'ACHETEUR', fullName: 'Awa Koné', email: 'awa@exemple.ci', contactId: 'c1' }
+      ])
+    });
+    registerSignatureSource(source);
+    const context = await getSignatureTargetContext(ctx, 'SALE_AGREEMENT', 'x1');
+    expect(source.assertTarget).toHaveBeenCalledWith(ctx, 'x1');
+    expect(context).toEqual({
+      kind: 'SALE_AGREEMENT',
+      targetType: 'SaleAgreement',
+      providerRequired: false,
+      signers: [{ role: 'ACHETEUR', fullName: 'Awa Koné', email: 'awa@exemple.ci', contactId: 'c1' }]
+    });
+  });
+
+  it('une source sans defaultSigners rend une liste vide ; un type sans source est refusé en 400', async () => {
+    registerSignatureSource(fakeSource());
+    expect((await getSignatureTargetContext(ctx, 'SALE_AGREEMENT', 'x1')).signers).toEqual([]);
+    await expect(getSignatureTargetContext(ctx, 'LEASE_INSPECTION', 'x1')).rejects.toMatchObject({ statusCode: 400 });
   });
 });

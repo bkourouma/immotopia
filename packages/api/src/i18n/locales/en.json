@@ -344,6 +344,8 @@
   "Ce signataire a déjà signé ou refusé.": "This signer has already signed or declined.",
   "Ce template est utilisé par une campagne planifiée.": "This template is used by a scheduled campaign.",
   "Ce tenant n'est plus actif.": "This agency is no longer active.",
+  "Ce type de document exige un prestataire de signature : la signature interne n'est pas autorisée.": "This type of document requires a signature provider: internal signature is not allowed.",
+  "Ce type de document ne peut pas encore être signé.": "This type of document cannot be signed yet.",
   "Ce versement est déjà annulé.": "This remittance is already cancelled.",
   "Ce virement est déjà annulé.": "This transfer is already cancelled.",
   "Cédé": "Disposed of",

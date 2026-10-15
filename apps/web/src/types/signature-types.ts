@@ -3,7 +3,8 @@
  * Typé d'après le contrat communiqué par le lot API ; à confronter au code réel.
  */
 
-export type SignatureKind = 'LEASE_CONTRACT';
+export type SignatureKind =
+  'LEASE_CONTRACT' | 'MANAGEMENT_MANDATE' | 'SALE_MANDATE' | 'LEASE_INSPECTION' | 'SALE_AGREEMENT';
 export type SignatureRequestStatus =
   'DRAFT' | 'SENT' | 'PARTIALLY_SIGNED' | 'COMPLETED' | 'DECLINED' | 'EXPIRED' | 'CANCELED';
 export type SignerStatus = 'PENDING' | 'OPENED' | 'SIGNED' | 'DECLINED';

@@ -25,6 +25,7 @@ import { assertReadablePng, parseSignatureInput } from '../lib/signature/signatu
 import { hashToken, looksLikeToken } from '../lib/signature/token';
 import { ACTIONABLE_SIGNER_STATUSES, ACTIVE_REQUEST_STATUSES } from '../lib/signature/types';
 import { cancelRequestInternal } from '../lib/signature/cancel';
+import { findSignatureSource } from '../lib/signature/sources';
 
 /**
  * Signature électronique, côté signataire (spec 043, lot S1) : routes publiques
@@ -282,16 +283,22 @@ async function assertSourceIntact(signer: ResolvedSigner): Promise<void> {
     });
     throw new AppError(t('Le document ne peut plus être signé : contactez l’agence.'), 409, 'CONFLICT');
   }
-  if (request.targetType === 'RentalLease' && request.sourceDocumentId) {
-    const document = await prisma.rentalDocument.findFirst({
-      where: { id: request.sourceDocumentId, tenant_id: signer.tenantId },
-      select: { status: true, file_hash: true }
-    });
-    const changed = Boolean(request.sourceDocHash) && document?.file_hash !== request.sourceDocHash;
-    if (!document || document.status !== 'FINAL' || changed) {
-      await cancelRequestInternal({ tenantId: signer.tenantId, userId: null }, request.id, 'SOURCE_CHANGED');
-      throw invalidSecureLinkError();
-    }
+  // Module d'origine : le document est-il toujours celui qui a été envoyé ? (échec fermé si le type n'a plus de source)
+  const source = findSignatureSource(request.kind);
+  const intact =
+    source !== undefined &&
+    (await source.isSourceIntact({
+      id: request.id,
+      tenantId: signer.tenantId,
+      kind: request.kind,
+      targetType: request.targetType,
+      targetId: request.targetId,
+      sourceDocumentId: request.sourceDocumentId,
+      sourceDocHash: request.sourceDocHash
+    }));
+  if (!intact) {
+    await cancelRequestInternal({ tenantId: signer.tenantId, userId: null }, request.id, 'SOURCE_CHANGED');
+    throw invalidSecureLinkError();
   }
 }
 

@@ -2,7 +2,16 @@ import { t } from '../../i18n/t';
 import type { SignatureRequestStatus, SignerChannel, SignerStatus } from '../../types/signature-types';
 
 /** Rôles proposés à l'envoi (valeurs du modèle de données, spec 043). */
-export const SIGNER_ROLES = ['LOCATAIRE', 'CO_LOCATAIRE', 'BAILLEUR', 'AGENT'] as const;
+export const SIGNER_ROLES = [
+  'LOCATAIRE',
+  'CO_LOCATAIRE',
+  'BAILLEUR',
+  'AGENT',
+  'MANDANT',
+  'VENDEUR',
+  'COVENDEUR',
+  'ACQUEREUR'
+] as const;
 
 export function roleLabel(role: string): string {
   switch (role) {
@@ -14,6 +23,14 @@ export function roleLabel(role: string): string {
       return t('Bailleur');
     case 'AGENT':
       return t('Agent');
+    case 'MANDANT':
+      return t('Mandant');
+    case 'VENDEUR':
+      return t('Vendeur');
+    case 'COVENDEUR':
+      return t('Co-vendeur');
+    case 'ACQUEREUR':
+      return t('Acquéreur');
     default:
       return role;
   }

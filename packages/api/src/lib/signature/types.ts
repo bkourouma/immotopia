@@ -3,7 +3,7 @@
  * Les types d'énumération viennent de Prisma ; ce fichier porte le contrat du
  * fournisseur et les formes de sortie.
  */
-export type SignatureDocumentKindCode = 'LEASE_CONTRACT';
+export type SignatureDocumentKindCode = import('@prisma/client').SignatureDocumentKind;
 export type SignatureChannelCode = 'EMAIL' | 'WHATSAPP' | 'IN_PERSON';
 export type SignatureLanguage = 'fr' | 'en' | 'ar';
 
