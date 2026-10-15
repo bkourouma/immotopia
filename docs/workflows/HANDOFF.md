@@ -38,8 +38,8 @@ Pièges et décisions :
 
 ## Branche `feat/syndic-encaissement` — 2026-10-15
 
-**État :** en cours (correctif non commité)
-**Dernier commit :** `7effd904` merge PR #125
+**État :** prêt à relire — commité, poussé et déployé sur le staging (2026-10-15)
+**Dernier commit :** `10f2565c` feat(portail-copro) ; PR à ouvrir vers `main`
 
 Fait :
 
