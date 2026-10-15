@@ -38,29 +38,30 @@ Pièges et décisions :
 
 ## Branche `feat/syndic-ag-en-direct` — 2026-10-15
 
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130 (CI en cours à l'ouverture), fusion par l'utilisateur
-**Dernier commit :** `da586082` fix(syndic): catalogue IA régénéré et traductions vides retirées (CI)
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur
+**Dernier commit :** `7fcbe145` fix(syndic): anomalies de la recette navigateur de l'AG en direct
 **Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
 
 Fait :
 
-- Spec `specs/043-syndic-ag-en-direct/spec.md` (décisions D1–D12 prises par le Pilote, à valider par le fondateur : lien par contact et par AG, présence au clic « Rejoindre », quorum indicatif, état de vote PENDING/OPEN/CLOSED, résultats visibles à la clôture du vote, interrogation 3 s au lieu de websocket).
-- API : modèles `GMParticipant`, `GMAttendance`, champs de vote, scope `GENERAL_MEETING_ACCESS`, migration `20261015100000_syndic_ag_en_direct` (jamais jouée sur une vraie base) ; console, émargement, ouvrir/clore le vote, participants et liens ; routes publiques `/api/public/assemblees/{etat,rejoindre,voter}` ; portail `POST /assemblees/:meetingId/acces` ; lien dans la convocation ; feuille de présence dans le PV.
-- Web : page `/ag-direct`, console « En direct » du détail d'AG, projection, bouton du portail.
-- Vérifié : `npm run typecheck` (0 erreur), `check:architecture`, 15 suites Jest ciblées (264 tests), 25 fichiers Vitest ciblés, `wiki:check`.
+- Spec `specs/043-syndic-ag-en-direct/spec.md` (décisions D1–D12 du Pilote, à valider par le fondateur).
+- API, web, migration `20261015100000_syndic_ag_en_direct`, wiki des fonctionnalités, revue de sécurité (0 critique/haute ; 1 moyenne + 3 basses corrigées).
+- Recette navigateur (`docs/recette/SCENARIO_SYNDIC_AG_EN_DIRECT.md`) jouée sur la démo : 6 anomalies d'écran (BUG-2026-10-15-001 à 006) corrigées dans `7fcbe145` et retestées « passé ». Migration appliquée avec succès sur la base de démo.
+- Démo : worktree `.claude/worktrees/demo` sur `7fcbe145`, dépendances propres (réinstallées le 2026-10-15 : la première installation était incomplète, `zod` amputé). Agence de recette « Horizon Syndic Gestion » créée par l'interface dans la base de démo (identifiants de test : `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md` 1.1), copropriété « Résidence Les Flamboyants », 4 lots, 2 AG de recette.
 
 Reste à faire :
 
-- Recette navigateur : scénario `docs/recette/SCENARIO_SYNDIC_AG_EN_DIRECT.md` écrit ; démo synchronisée sur `349f9e5d` avec migration appliquée (base de démo), `api-demo` 8800 et `web-demo` 3300 lancés ; recette pas encore jouée (reportée au début de la fenêtre de quota suivante).
-- CI de la PR #130 : premier passage rouge (catalogue IA périmé — `npm run ai:catalog` après tout ajout de route — et 6 traductions vides apportées par l’extraction), corrigé dans `da586082`, à confirmer vert. Revue de sécurité faite (0 critique/haute ; 1 moyenne et 3 basses corrigées : un vote en ligne ne remplace plus un vote du syndic ni le vote du copropriétaire par son mandataire, limite IP 3000/min, jeton effacé à la fin de l'AG, erreur typée).
-- Décisions D1–D12 de la spec à faire valider par le fondateur ; téléphone des copropriétaires exposé à SYNDIC_VIEW dans la liste des participants (à confirmer).
-- Non vérifié : migration sur une vraie base, recette navigateur (démo), `measure:entry`, suites complètes, `test:isolation`, charge du polling sur une grande copropriété (chaque `/etat` relit lots, profils et votes).
+- Décisions D1–D12 à valider (lien sans mot de passe, quorum indicatif, présence au clic « Rejoindre », résultats visibles à la clôture du vote) ; téléphone des copropriétaires exposé à SYNDIC_VIEW dans la liste des participants.
+- Non joué : portail copropriétaire (aucun compte portail dans la démo), boutons de vote en 375 px pendant un vote ouvert, compte rendu Word avec feuille de présence (téléchargement non fait), envoi réel des convocations (démo sans SMTP : « 4 échoué(s) »), `measure:entry`, `test:isolation`, charge du polling sur une grande copropriété.
+- À trancher : le tableau du bas de la fiche (gestionnaire seulement) affiche « Approuvée/Rejetée » provisoire pendant un vote ouvert (comportement antérieur).
 
 Pièges et décisions :
 
-- `npm run i18n:extract` de l'API a supprimé 35 traductions existantes (catalogue de départ incomplet) : catalogues reconstruits « HEAD + nouvelles clés ». Toujours relire le diff des catalogues après une extraction.
-- Un `prisma format` a réaligné ~200 lignes du schéma : retiré (commit `32dea7a8`). Ne pas lancer `prisma format` sur ce dépôt.
-- La session pilote a été coupée deux fois (fin du processus) : les agents d'arrière-plan s'arrêtent avec elle ; leur travail reste dans le worktree, les relancer par message.
+- `npm run i18n:extract` supprime des traductions existantes sur ce dépôt (API : 35 clés) et en ajoute des vides : ne pas l'utiliser, éditer les catalogues à la main et relire leur diff.
+- Après tout ajout de route API : `npm run ai:catalog` dans `packages/api` (sinon `ai.catalog.test.ts` échoue en CI).
+- Ne pas lancer `prisma format` (réaligne ~200 lignes du schéma).
+- Recette dans un panneau masqué : l'interrogation se met en pause (`document.hidden`) ; l'agent de recette force la visibilité par JavaScript.
+- La base de démo n'avait aucune agence Syndic : le seed des packs a été refusé par l'outil de sécurité ; l'agence a été créée par l'interface avec l'accord de l'utilisateur.
 
 ## État courant (pilote) — 2026-10-13
 
