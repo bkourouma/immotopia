@@ -518,6 +518,11 @@ const InstallmentDetailPage = lazy(() =>
     default: m.InstallmentDetailPage
   }))
 );
+const DirectDebitMandates = lazy(() =>
+  import(/* webpackChunkName: "rental" */ './pages/rental/DirectDebitMandates').then(m => ({
+    default: m.DirectDebitMandates
+  }))
+);
 const Payments = lazy(() =>
   import(/* webpackChunkName: "rental" */ './pages/rental/Payments').then(m => ({ default: m.Payments }))
 );
@@ -1003,6 +1008,7 @@ function App() {
                             element={<InstallmentDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
+                          <Route path="/tenant/:tenantId/rental/direct-debit" element={<DirectDebitMandates />} />
                           <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
                           {/*
                         Finance. Les écrans d'un même flux partagent une route
