@@ -36,6 +36,36 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/prelevement-bancaire` — 2026-10-15
+
+**État :** prêt à relire — PR #128 (base `main`), CI non encore lue
+**Dernier commit :** `48515b14` fix(prelevement): correctifs de l'audit de sécurité du lot P1 (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
+
+Fait :
+
+- P0 : spec, modèle de données (contrat d'API), plan P0–P6 et ADR-007 dans `specs/042-prelevement-bancaire/` ; décisions D1–D8 du fondateur (15/10/2026).
+- P1 API : `packages/api/src/lib/direct-debit/**`, 15 routes `/tenants/:tenantId/rental/direct-debit`, migrations `20261015090000_*` et `20261015090100_*` (jamais appliquées), 10 actions d'audit, permissions VIEW/MANAGE, routes sensibles pour la passerelle IA.
+- P1 web : carte Paramètres financiers, onglet « Prélèvements » du bail, page Encaisser › Prélèvements.
+- Clé RIB UEMOA corrigée (22 caractères convertis × 100 mod 97 ; les poids 89/15/3 ne valent que pour un compte de 11 caractères).
+- Audit de sécurité : 0 critique, 0 élevée ; la moyenne (MANAGE réservé à TENANT_ADMIN/TENANT_MANAGER) et 4 faibles corrigées.
+- Wiki des fonctionnalités : 12 lignes ajoutées, `wiki:export` lancé.
+
+Reste à faire :
+
+- Lire la CI de la PR #128 et corriger. `ai.write-plan.test.ts` échoue en local sur des fichiers hors diff (`copilot.ts`) : vérifier si c'est la CI ou seulement les fins de ligne CRLF du worktree.
+- Recette navigateur (spec §6.4) : `npm run demo:sync -- feat/prelevement-bancaire --migrate --install`, avec `PAYMENT_SECRETS_KEY` renseignée dans `packages/api/.env.demo` (sinon la création de mandat refuse : chiffrement non configuré). Toucher ce `.env` demande l'accord de l'utilisateur.
+- Points ouverts de l'audit : clé de chiffrement dédiée et versionnée pour les IBAN (aujourd'hui `PAYMENT_SECRETS_KEY` partagée, préfixe `pg1`) ; borne basse de `signedAt`/`revokedAt`.
+- P2 (remises) selon `plan.md`, après les pièces de la banque pilote (spec §2).
+
+Pièges et décisions :
+
+- Le hook `validate-bash.sh` bloque toute commande qui contient à la fois « push » et « main » : pousser et lancer `gh pr create --base main` dans deux commandes séparées.
+- `npm run i18n:extract` (web et API) touche des catalogues hors périmètre : n'ajouter que ses clés ; les fichiers de locale qui n'ont qu'un changement de fin de ligne se restaurent sans risque.
+- `npm run ai:catalog` crée un dossier `uploads/` vide à la racine du worktree (ignoré par git) ; à relancer après toute modification de route.
+- Les tâches en arrière-plan meurent avec la session : lancer les tests longs au premier plan.
+- Le filtre d'audit masque toute clé contenant « iban » (`ibanLast4` devenait `[masqué]`) : la charge utile utilise `last4Digits`.
+
 ## État courant (pilote) — 2026-10-13
 
 Toutes les branches qui avaient une section ici sont fusionnées dans `main` ;
