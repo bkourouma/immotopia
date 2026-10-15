@@ -39,7 +39,7 @@ Pièges et décisions :
 ## Branche `feat/prelevement-bancaire` — 2026-10-15
 
 **État :** prêt à relire — PR #128 (base `main`), recette navigateur P1 jouée et rejouée le 2026-10-15, à fusionner par l'utilisateur
-**Dernier commit :** fusion de `main` (`2e134cdf`) par-dessus `811d9dba` fix(prelevement): date de signature en jj/mm/aaaa et tableau des créanciers contenu
+**Dernier commit :** `dafcb87e` fusion de la PR #130 (AG en direct) dans la branche, conflits résolus (+ ce commit de passation). Avant : `e4a9834a` fusion de `main` (`2e134cdf`) par-dessus `811d9dba` fix(prelevement): date de signature en jj/mm/aaaa et tableau des créanciers contenu
 **Worktree :** `.claude/worktrees/prelevement`, avec un `node_modules` PROPRE (`npm ci`, pas de jonction) parce que `schema.prisma` diverge du checkout principal.
 
 Fait :
@@ -54,12 +54,13 @@ Fait :
 Reste à faire :
 
 - Lire la CI de la PR #128 après le push de `0e3cddb7` et corriger si besoin (7/7 vertes avant ; auto-fix activé). `ai.write-plan.test.ts` n'échoue qu'en local (fins de ligne du worktree).
-- Corrigés après la recette mais NON revérifiés dans le navigateur : champ « Date de signature » de « Activer le mandat » (`format="DD/MM/YYYY"`, test jsdom ajouté) et débordement du tableau des créanciers à 1 024 px en arabe (le `Table` avait déjà `scroll x`; ajout d'un conteneur `overflow-x: auto` par hypothèse : si ça déborde encore, regarder le conteneur de `AgencyFinanceSettings.tsx`).
+- Corrigés après la recette (`811d9dba`) et revérifiés dans le navigateur sur la démo à `e4a9834a` : champ « Date de signature » de « Activer le mandat » (saisie `14/10/2026` et `15/10/2026` acceptée, `POST activate` avec `signedAt` en `aaaa-mm-jj`, réponse 200) et tableau des créanciers à 1 024 px en arabe (la page ne défile pas, le tableau défile dans sa carte, colonnes « Actif » et « Modifier » atteignables ; mesures, sans capture). Reste non vu : date future, rendu visuel réel, autres largeurs.
 - À trancher : « Nouveau mandat » est désactivé dès qu'un mandat ouvert existe sur le bail, alors que PB2-R7 n'interdit qu'un mandat ouvert par couple (bail, créancier) ; le serveur reste plus permissif que l'écran.
 - Non joué à la recette : modification d'un mandat, plafond, jour de collecte propre au mandat, rôle sans MANAGE, isolation entre agences (`test:isolation`), bouton « Télécharger l'autorisation » visible seulement en Brouillon (la spec PB3-R1 ne l'impose pas).
 - Recette navigateur (spec §6.4) FAITE le 2026-10-15 sur la démo (révisions `0da9c860` puis `0e3cddb7`) : créancier BANK, mandat avec l'IBAN publié, PDF, scan, activer/suspendre/réactiver/révoquer, IBAN complet absent de toutes les réponses /api, page Encaisser › Prélèvements, arabe en RTL. Migrations `20261015090000_*` et `20261015090100_*` appliquées sur `immotopia_demo` (pas ailleurs). Correctifs d'affichage dans `0e3cddb7` (fil d'Ariane, vocabulaire arabe « تفويض », IBAN en LTR, bouton désactivé).
+- Fusion de `main` (PR #130, AG en direct) du 15/10 : 5 conflits résolus par union (catalogues `packages/api/src/i18n/locales/{ar,en}.json`, `audit-catalog.test.ts`, classeur des fonctionnalités et miroir : 935 = 923 de `main` + 12 du prélèvement ; `wiki:check` vert). Tests relancés sur l'arbre fusionné : 9 suites API, 7 fichiers web (98 tests), typecheck. Le classeur `.xlsx` est binaire : à chaque nouvelle fusion de `main`, refaire cette vérification.
 - Données laissées dans la base de démo : agence « Bamako Immobilier », compte jetable `recette.p1@immotopia.test` (TENANT_ADMIN, mot de passe aléatoire dans le scratchpad de la session, pas dans le dépôt), un bien, un locataire, le bail BAIL-2026-0001, un créancier et deux mandats révoqués. Sans danger, à supprimer à la main si la base de démo est réutilisée telle quelle.
-- Instance de démo : partagée avec d'autres sessions (`feat/syndic-ag-en-direct` à `349f9e5d`, puis une session export à `88d4b57c` pendant la recette). Avec l'accord de l'utilisateur, la démo a été reprise pour la recette 042. Elle est à remettre sur `88d4b57c` (`npm run demo:sync -- 88d4b57c --install`) avec les serveurs de démo arrêtés ; voir l'état réel avec `npm run demo:status` avant d'y toucher.
+- Instance de démo : partagée avec d'autres sessions (`feat/syndic-ag-en-direct` à `349f9e5d`, export à `88d4b57c`, puis `7fcbe145` trouvée à la dernière reprise). Reprise pour la recette 042 avec l'accord de l'utilisateur ; elle est laissée à `e4a9834a` (branche `feat/prelevement-bancaire`), propre, dépendances installées, serveurs arrêtés. Pour la rendre à une autre session : `npm run demo:sync -- <révision> --install`. ATTENTION : `packages/api/.env.demo` a disparu du checkout principal (aucun `.env` n'y reste) et `demo:sync` refuse de tourner sans lui ; il faut le recréer (base de démo DÉDIÉE, `immotopia_demo`) avant tout nouveau `demo:sync`. Le worktree de démo garde son propre `packages/api/.env`.
 - Points ouverts de l'audit : clé de chiffrement dédiée et versionnée pour les IBAN (aujourd'hui `PAYMENT_SECRETS_KEY` partagée, préfixe `pg1`) ; borne basse de `signedAt`/`revokedAt`.
 - P2 (remises) selon `plan.md`, après les pièces de la banque pilote (spec §2).
 
@@ -73,6 +74,32 @@ Pièges et décisions :
 - Sous Windows, arrêter un serveur de démo depuis le panneau d'aperçu (`preview_stop`) laisse parfois orphelins `ts-node-dev` ou `vite` et `esbuild.exe` : ils verrouillent `.claude/worktrees/demo/node_modules` et font échouer `npm ci` (EPERM). Avant tout `demo:sync --install`, lister les `node.exe`/`esbuild.exe` dont la ligne de commande contient `worktrees\demo` et arrêter ceux-là.
 - L'API de démo met environ 80 s à répondre après son démarrage (premier chargement) : attendre `http://localhost:8800/health` avant de se connecter, sinon « Network Error ».
 - `npm run i18n:extract` réécrit les fins de ligne de presque tous les catalogues (`git status` les montre modifiés sans diff réel) : n'ajouter au commit que les fichiers réellement changés.
+
+## Branche `feat/syndic-ag-en-direct` — 2026-10-15
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur
+**Dernier commit :** voir `git log` (décisions D1, D3, D7, D13 validées le 2026-10-15)
+**Worktree :** `.claude/worktrees/ag-direct`, avec son PROPRE `node_modules` (npm ci, schéma modifié) : pas de jonction à retirer avant `git worktree remove`.
+
+Fait :
+
+- Spec `specs/043-syndic-ag-en-direct/spec.md` (décisions D1–D12 du Pilote, à valider par le fondateur).
+- API, web, migration `20261015100000_syndic_ag_en_direct`, wiki des fonctionnalités, revue de sécurité (0 critique/haute ; 1 moyenne + 3 basses corrigées).
+- Recette navigateur (`docs/recette/SCENARIO_SYNDIC_AG_EN_DIRECT.md`) jouée sur la démo : 6 anomalies d'écran (BUG-2026-10-15-001 à 006) corrigées dans `7fcbe145` et retestées « passé ». Migration appliquée avec succès sur la base de démo.
+- Démo : worktree `.claude/worktrees/demo` sur `7fcbe145`, dépendances propres (réinstallées le 2026-10-15 : la première installation était incomplète, `zod` amputé). Agence de recette « Horizon Syndic Gestion » créée par l'interface dans la base de démo (identifiants de test : `docs/recette/SCENARIO_SYNDIC_MODULES_V2.md` 1.1), copropriété « Résidence Les Flamboyants », 4 lots, 2 AG de recette.
+
+Reste à faire :
+
+- Décisions validées par le fondateur le 2026-10-15 : lien seul suffit (D1), quorum indicatif (D3), décision provisoire masquée au gestionnaire pendant un vote ouvert (D7, fait), téléphone gardé dans la liste des participants (D13).
+- Non joué : portail copropriétaire (aucun compte portail dans la démo), boutons de vote en 375 px pendant un vote ouvert, compte rendu Word avec feuille de présence (téléchargement non fait), envoi réel des convocations (démo sans SMTP : « 4 échoué(s) »), `measure:entry`, `test:isolation`, charge du polling sur une grande copropriété.
+
+Pièges et décisions :
+
+- `npm run i18n:extract` supprime des traductions existantes sur ce dépôt (API : 35 clés) et en ajoute des vides : ne pas l'utiliser, éditer les catalogues à la main et relire leur diff.
+- Après tout ajout de route API : `npm run ai:catalog` dans `packages/api` (sinon `ai.catalog.test.ts` échoue en CI).
+- Ne pas lancer `prisma format` (réaligne ~200 lignes du schéma).
+- Recette dans un panneau masqué : l'interrogation se met en pause (`document.hidden`) ; l'agent de recette force la visibilité par JavaScript.
+- La base de démo n'avait aucune agence Syndic : le seed des packs a été refusé par l'outil de sécurité ; l'agence a été créée par l'interface avec l'accord de l'utilisateur.
 
 ## Branche `feat/modeles-syndic-word` — 2026-10-15
 
