@@ -49,7 +49,16 @@ export interface ChargePaymentEntryInput {
   paidAt: Date;
   method?: string | null;
   reference?: string | null;
+  /**
+   * Compte de tresorerie debite (spec 042). Absent : deduit de `method` comme
+   * avant (571 caisse pour des especes, sinon 521 banque). `5525` = compte de
+   * collecte du paiement en ligne (journal banque).
+   */
+  treasuryAccountNumber?: CollectionTreasuryAccount;
 }
+
+/** Comptes de tresorerie qu'un encaissement peut debiter. */
+export type CollectionTreasuryAccount = '521' | '571' | '5525';
 
 /** Reference de l'ecriture : \`EC-\` puis le debut de l'identifiant du paiement. */
 export function chargePaymentEntryReference(paymentId: string): string {
@@ -58,7 +67,8 @@ export function chargePaymentEntryReference(paymentId: string): string {
 
 /**
  * Passe l'ecriture d'un encaissement (ou renvoie celle qui existe deja).
- * Refuse un exercice clos ; cree les comptes et le journal manquants.
+ * Refuse un exercice clos par une `ConflictError` (409) de
+ * `assertFiscalYearOpenTx`, reconnaissable par `instanceof ConflictError` ; cree les comptes et le journal manquants.
  */
 export async function postChargePaymentEntryTx(
   tx: PrismaTransactionClient,
@@ -73,8 +83,9 @@ export async function postChargePaymentEntryTx(
   const amount = roundMoney(input.amount);
   await assertFiscalYearOpenTx(tx, input.syndicateId, input.paidAt);
 
-  const cash = isCashMethod(input.method);
-  const treasuryNumber = cash ? '571' : '521';
+  const treasuryNumber: CollectionTreasuryAccount =
+    input.treasuryAccountNumber ?? (isCashMethod(input.method) ? '571' : '521');
+  const cash = treasuryNumber === '571';
   const accounts = await ensureSyndicAccountsTx(tx, input.tenantId, input.syndicateId, ['450', treasuryNumber]);
   const journalId = await ensureSyndicJournalTx(
     tx,
