@@ -3,7 +3,7 @@
  * session. L'amorçage d'authentification (`/auth/me`, puis `/auth/refresh`) n'a
  * rien à y faire : sans session il ne produirait que des 401 dans le réseau et la console.
  */
-const PUBLIC_TOKEN_PATHS = ['/acces-partage', '/rapport-proprietaire', '/payer'];
+const PUBLIC_TOKEN_PATHS = ['/acces-partage', '/rapport-proprietaire', '/payer', '/signer'];
 
 export function isPublicTokenPath(pathname: string): boolean {
   return PUBLIC_TOKEN_PATHS.some(base => pathname === base || pathname.startsWith(`${base}/`));

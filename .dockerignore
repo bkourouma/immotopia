@@ -8,6 +8,9 @@ uploads
 packages/uploads
 packages/api/uploads
 assets/generated_documents
+assets/modeles_documents/tenants
+assets/modeles_documents/default
+assets/media
 .env
 **/.env
 **/.env.*

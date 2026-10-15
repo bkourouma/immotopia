@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import multer from 'multer';
 import { logger } from '../utils/logger';
+import { maskSensitivePath } from '../utils/sensitive-path';
 import { t } from '../i18n';
 // Effet de bord : bascule le message par défaut de Zod en français (voir
 // `lib/zod-error-map.ts`). Importé ici — le point d'entrée le plus
@@ -461,7 +462,7 @@ export function errorHandler(err: Error | AppError, req: Request, res: Response,
     method: req.method,
     // Avoid the query string: it carries one-time tokens (verify-email,
     // newsletter confirm/unsubscribe).
-    path: req.path,
+    path: maskSensitivePath(req.path),
     ip: req.ip,
     ...(status >= 500 ? { stack: (err as Error)?.stack } : {})
   });

@@ -17,6 +17,7 @@ import { startLotReconciliationJob } from './jobs/lot-reconciliation-job';
 import { startAuditMaintenanceJob } from './jobs/audit-maintenance-job';
 import { startStockMaintenanceJob } from './jobs/stock-maintenance-job';
 import { startStockWhatsappJob } from './jobs/stock-whatsapp-job';
+import { startSignatureJob } from './jobs/signature-job';
 import { logger } from './utils/logger';
 
 /**
@@ -81,6 +82,8 @@ app.listen(PORT, () => {
     // relances, expirations et reprise du webhook seulement si le transport
     // n'est pas `disabled`.
     startStockWhatsappJob({ transportActive: env.WHATSAPP_INVENTORY_TRANSPORT !== 'disabled' });
+    // Spec 043 : expiration des demandes de signature et reprise du scellement.
+    startSignatureJob();
     // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
     // FAILED), demandes en attente relancees, archives echues supprimees.
     recoverTenantDataExports().catch(error =>
