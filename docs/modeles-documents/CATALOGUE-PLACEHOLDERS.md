@@ -12,9 +12,9 @@ références, pied de page « émetteur · RCCM · NCC · Page X / Y ».
 | `recu_loyer.docx`                      | Reçu de loyer                | Type `RENT_RECEIPT`                                                     |
 | `releve_locatif.docx`                  | Relevé de compte locatif     | Type `RENT_STATEMENT`                                                   |
 | `compte_rendu_assemblee_generale.docx` | Compte rendu d'AG            | Oui : `buildMeetingMinutesDocx`, repli quand l'agence n'a pas de modèle |
-| `avis_appel_charges.docx`              | Avis d'appel de charges      | Pas encore (aucune route)                                               |
-| `quittance_charges.docx`               | Quittance de charges         | Pas encore (aucune route)                                               |
-| `convocation_assemblee_generale.docx`  | Convocation à l'AG           | Pas encore (aucune route)                                               |
+| `avis_appel_charges.docx`              | Avis d'appel de charges      | Oui : `GET .../charges/:chargeId/avis.docx`                             |
+| `quittance_charges.docx`               | Quittance de charges         | Oui : `GET .../quittances/:receiptId/fichier.docx`                      |
+| `convocation_assemblee_generale.docx`  | Convocation à l'AG           | Oui : `GET .../assemblees/:meetingId/lots/:lotId/convocation.docx`      |
 
 Syntaxe : `{{BALISE}}` (docxtemplater, délimiteurs `{{ }}`). Une section répétée
 s'écrit `{{#LISTE}} … {{/LISTE}}` ; son contraire `{{^LISTE}} … {{/LISTE}}` ne
@@ -208,9 +208,9 @@ Les balises communes (`EMETTEUR_*`, `COPROPRIETE_*`, `DATE_EMISSION_DOCUMENT`,
 `REFERENCE_DOCUMENT`) s'y ajoutent ; `REFERENCE_DOCUMENT` vaut `AG-` suivi des 8
 premiers caractères de l'identifiant de l'assemblée.
 
-## Avis d'appel de charges (`avis_appel_charges.docx`) — non branché
+## Avis d'appel de charges (`avis_appel_charges.docx`) — branché
 
-À brancher sur `getChargeCallNoticeForTenant` (`src/lib/syndics/charge-call-notice.ts`).
+Route `GET /tenants/:tenantId/syndics/:syndicId/charges/:chargeId/avis.docx` (permission `SYNDIC_VIEW`, même limiteur que l'avis PDF). Contexte : `buildChargeCallContext` (`src/lib/syndics/word-documents.ts`), données de `loadChargeCallNoticeForTenant` (`charge-call-notice.ts`), les mêmes que l'avis PDF. Particularités : `{{DEVISE}}` vaut `FCFA` pour XOF/XAF ; `{{SOLDE_ANTERIEUR}}` porte, en négatif, l'avance imputée et les règlements déjà reçus sur cet appel (« appelé + solde = total à payer ») ; `{{TOTAL_A_PAYER}}` est le reste à payer du PDF ; `{{LIGNES}}` compte une ligne (l'appel, le PDF n'a pas de ventilation par poste) ; `{{REFERENCE_DOCUMENT}}` et `{{APPEL_REFERENCE}}` valent `APL-` + 8 premiers caractères de l'identifiant de l'appel ; `{{LIEU_EMISSION}}` est le dernier élément de l'adresse de l'émetteur.
 
 | Balise                        | Signification                          | Source (prévue)               | Exemple                       |
 | ----------------------------- | -------------------------------------- | ----------------------------- | ----------------------------- |
@@ -235,9 +235,9 @@ premiers caractères de l'identifiant de l'assemblée.
 | `{{MODALITES_PAIEMENT}}`      | Modes de règlement acceptés            | `SyndicPaymentMethod` actifs  | Virement : CI000 … ; Wave : … |
 | `{{LIEU_EMISSION}}`           | Lieu d'émission                        | Ville de l'émetteur           | Abidjan                       |
 
-## Quittance de charges (`quittance_charges.docx`) — non branché
+## Quittance de charges (`quittance_charges.docx`) — branché
 
-À brancher sur le snapshot de `charge-receipt-snapshot.ts`.
+Route `GET /tenants/:tenantId/syndics/:syndicId/quittances/:receiptId/fichier.docx` (permission `SYNDIC_VIEW`). Contexte : `buildReceiptContext`, TOUT depuis le snapshot figé (`charge-receipt-snapshot.ts`), identité et logos par `brandingForSnapshot` ; jamais de relecture du lot ou du contact vivants. Le snapshot ne porte ni les tantièmes ni l'e-mail : `{{LOT_TANTIEMES}}` et `{{LOT_TANTIEMES_TOTAL}}` valent `—`, `{{COPROPRIETAIRE_EMAIL}}` reste vide. Un reçu de paiement (type `RECEIPT`) utilise le même modèle : période(s) et montant appelé viennent des affectations du snapshot, `{{RESTE_DU}}` de `outstandingAfter`.
 
 | Balise                                                                             | Signification                         | Source (prévue)                | Exemple                        |
 | ---------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------ | ------------------------------ |
@@ -256,9 +256,9 @@ premiers caractères de l'identifiant de l'assemblée.
 | `{{REFERENCE_PAIEMENT}}`                                                           | Référence du paiement                 | Paiement                       | TRX-889                        |
 | `{{LIEU_EMISSION}}`                                                                | Lieu d'émission                       | Ville de l'émetteur            | Abidjan                        |
 
-## Convocation à l'assemblée générale (`convocation_assemblee_generale.docx`) — non branché
+## Convocation à l'assemblée générale (`convocation_assemblee_generale.docx`) — branché
 
-À brancher sur l'assemblée (`SyndicMeeting`) et le lot de chaque copropriétaire.
+Route `GET /tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx` (permission `SYNDIC_VIEW`), paramètre optionnel `?dateLimitePouvoir=AAAA-MM-JJ`. Contexte : `buildConvocationContext`. Destinataire : propriétaires actuels du lot (indivision : noms joints par une virgule), à défaut le propriétaire saisi sur le lot. `{{ORDRE_DU_JOUR}}` : points de l'ordre du jour, sinon résolutions proposées (titre + description). `{{MENTION_QUORUM}}` : vide si l'assemblée n'a pas de quorum. `{{DATE_LIMITE_POUVOIR}}` : la date passée en paramètre, sinon le jour de l'assemblée.
 
 | Balise                                                                             | Signification                          | Source (prévue)                | Exemple                 |
 | ---------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------ | ----------------------- |

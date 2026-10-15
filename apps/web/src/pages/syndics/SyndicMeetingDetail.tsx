@@ -20,6 +20,7 @@ import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, Plus
 import dayjs from 'dayjs';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingAgenda } from '../../components/syndics/MeetingAgenda';
+import { MeetingConvocationWord } from '../../components/syndics/MeetingConvocationWord';
 import { MeetingProxies } from '../../components/syndics/MeetingProxies';
 import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
 import { VoteBoard } from '../../components/syndics/VoteBoard';
@@ -375,6 +376,12 @@ export const SyndicMeetingDetail: React.FC = () => {
             >
               {t('Générer compte rendu Word')}
             </Button>
+            <MeetingConvocationWord
+              tenantId={effectiveTenantId || ''}
+              syndicId={syndicId || ''}
+              meetingId={meeting.id}
+              lots={meetingLots}
+            />
             {meeting.status === 'PLANNED' ? (
               <Button loading={resendingConvocation} onClick={() => void handleResendConvocation()}>
                 {t('Renvoyer la convocation')}
