@@ -175,6 +175,7 @@ export const BauxDeTerrain: React.FC = () => {
       title: t('Loyer annuel'),
       key: 'annuel',
       align: 'end',
+      exportValue: b => b.annualAmount,
       render: (_, b) => <MoneyValue value={b.annualAmount} />
     },
     {
@@ -183,12 +184,14 @@ export const BauxDeTerrain: React.FC = () => {
       align: 'end',
       // Calculée côté serveur : cette colonne se contente de l'afficher,
       // jamais de diviser `annualAmount` par douze elle-même (voir l'en-tête).
+      exportValue: b => b.monthlyAmount,
       render: (_, b) => <MoneyValue value={b.monthlyAmount} />
     },
     {
       title: t('Reste à consommer'),
       key: 'reste',
       align: 'end',
+      exportValue: b => resteAConsommer(b.accountBalance),
       render: (_, b) => <MoneyValue value={resteAConsommer(b.accountBalance)} />
     },
     { title: t('Chantiers rattachés'), key: 'chantiers', render: (_, b) => libelleChantiers(b) },
@@ -235,6 +238,7 @@ export const BauxDeTerrain: React.FC = () => {
         columns={colonnes}
         rowKey={b => b.id}
         aria-label={t('Baux de terrain')}
+        export={{ filename: t('Baux de terrain') }}
         renderCard={b => (
           <DataCard
             title={b.landLabel}

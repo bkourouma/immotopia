@@ -76,6 +76,34 @@ Pièges et décisions :
 - L'API de démo met environ 80 s à répondre après son démarrage (premier chargement) : attendre `http://localhost:8800/health` avant de se connecter, sinon « Network Error ».
 - `npm run i18n:extract` réécrit les fins de ligne de presque tous les catalogues (`git status` les montre modifiés sans diff réel) : n'ajouter au commit que les fichiers réellement changés.
 
+## Branche `feat/export-tableaux` — 2026-10-15
+
+**État :** PR #131 (base `main`), worktree `.claude/worktrees/export-tableaux` (jonctions `node_modules`)
+**Dernier commit :** voir `git log` (correctifs d'export, puis cette passation)
+
+Fait :
+
+- Socle `apps/web/src/utils/table-export/`, `primitives/ExportMenu.tsx`, `primitives/Table.tsx`, prop `export` de `DataView` (actif par défaut), champs de colonne `exportable`/`exportTitle`/`exportValue`, `collectAllPages`. Déployé sur 156 fichiers ; classeur des fonctionnalités ; traductions en/ar.
+- Les 8 fichiers de test en échec dans la suite complète passent SEULS (`finance/stock` : 51 tests mais 449 s, lenteur préexistante).
+- Build OK ; entrée 226 050 o gzip, budget 227 328 o (marge 1 278 o) ; `exceljs` et `jspdf` hors entrée.
+- Relecture des lots (agent sonnet, lecture seule) : filtres des `fetchAll`, `exportValue` et `exportable={false}` conformes. Corrigé : export complet de la recherche de contacts (`AdvancedContactSearch`), soldes Débiteur/Créditeur exportés en nombre signé (+ débiteur, − créditeur) avec titre de colonne dédié.
+- `NewsletterListsPage` : `exportFetchAll` branché (tous les abonnés de la liste).
+- Recette navigateur (instance de démo, web servi depuis le worktree) : Biens en grille, EN, CSV/Excel/PDF — CSV conforme, xlsx valide (nombres typés, en-tête figé, filtre automatique, pas d'actions), PDF 1 page. Collaborateurs en arabe : CSV avec BOM et en-têtes arabes ; PDF → repli impression (toast « Enregistrer en PDF »), aucun fichier.
+
+Reste à faire :
+
+- Non vérifié en réel : export multi-pages (Baux paginé : la base de démo n'a aucun bail ni de liste de plus d'une page ; seuls les tests unitaires de `collectAllPages` le couvrent), page de portail, xlsx/PDF en arabe.
+- Les filtres de colonne côté client d'Ant Design ne restreignent pas l'export.
+- Passer la PR en prête quand la CI est verte ; ne pas fusionner.
+
+Pièges :
+
+- Le dépôt partage l'instance de démo (`.claude/worktrees/demo`) : une autre session l'a re-synchronisée sur un autre commit et re-semée (autre identifiant d'agence) pendant la recette. Servir le web depuis son propre worktree (API de démo inchangée côté API) et lire l'identifiant d'agence dans les liens du tableau de bord.
+- Ports 3300/8800 pris : j'ai utilisé 3310 (web) et 8810 (API, `FRONTEND_URL=http://localhost:3310`).
+- En dev, la première importation de `jspdf` fait recharger la page (optimisation Vite) : relancer l'export.
+- Ne pas déclencher l'impression en panneau masqué : la boîte native bloque le panneau.
+- `apps/web/.env` du worktree (ignoré par git) a servi au lancement ; le laisser ou le supprimer.
+
 ## Branche `feat/syndic-ag-en-direct` — 2026-10-15
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/130, fusion par l'utilisateur
@@ -102,25 +130,25 @@ Pièges et décisions :
 - Recette dans un panneau masqué : l'interrogation se met en pause (`document.hidden`) ; l'agent de recette force la visibilité par JavaScript.
 - La base de démo n'avait aucune agence Syndic : le seed des packs a été refusé par l'outil de sécurité ; l'agence a été créée par l'interface avec l'accord de l'utilisateur.
 
-## Branche `feat/modeles-syndic-word` — 2026-10-15
+## Branche `fix/docker-modeles-standard` — 2026-10-15
 
-**État :** prêt à relire (PR 133 ; la PR 129 des modèles standard est fusionnée dans `main`)
+**État :** prêt à relire (PR 135)
 **Dernier commit :** voir `git log` de la branche
 
 Fait :
 
-- Trois routes `.docx` (SYNDIC_VIEW) : avis d'appel `charges/:chargeId/avis.docx`, quittance `quittances/:receiptId/fichier.docx` (depuis le snapshot figé), convocation d'AG `assemblees/:meetingId/lots/:lotId/convocation.docx` (`?dateLimitePouvoir=AAAA-MM-JJ`). Code : `lib/syndics/word-documents.ts`, `controllers/syndic-word-documents-controller.ts`.
-- Boutons « Word » dans l'écran des appels, des quittances et la fiche d'assemblée. Catalogue de balises à jour. Rendu LibreOffice contrôlé (balises toutes résolues).
+- Modèles Word standard (PR 129) et téléchargements Word syndic (PR 133, avis d'appel `charges/:id/avis.docx`, quittance `quittances/:id/fichier.docx`, convocation `assemblees/:id/lots/:lotId/convocation.docx`) fusionnés dans `main` le 2026-10-15. Le `Dockerfile` ne livrait aucun `assets/` : cette PR ajoute la copie de `assets/modeles_standard`.
 
 Reste à faire :
 
-- Ouvrir un des documents dans Microsoft Word (jamais fait). Convocation : pas de description par point d'ordre du jour ; tantièmes et e-mail vides sur une quittance (le snapshot ne les porte pas).
-- Modèles standard (PR 129, fusionnée le 2026-10-15) : rejouer `npm run db:seed:document-templates` sur chaque base pour que le défaut locatif devienne le modèle standard ; pied « Page » du DOCX et libellés des PDF en arabe restent en français ; ouvrir un document dans Word (jamais fait).
+- Livrer aussi `assets/modeles_documents/*.docx` (baux, reçu, relevé) : fait par la PR 134 (signature électronique, autre session) ; conflit trivial sur le `Dockerfile` attendu entre 134 et 135, garder les deux blocs.
+- Déployer le staging (par l'utilisateur) une fois 134 et 135 fusionnées, puis `npm run db:seed:document-templates` pour que le défaut locatif devienne le modèle standard ; ouvrir un document dans Word (jamais fait).
+- Limites connues : quittance Word sans tantièmes ni e-mail (le snapshot ne les porte pas) ; convocation sans description par point d'ordre du jour ; pied « Page » du DOCX et libellés PDF arabes en français.
 
 Pièges et décisions :
 
 - `ai.catalog` : toute nouvelle route impose `npm run ai:catalog` (catalog.generated.json).
-- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe avec une config ts-jest sans diagnostics, et en CI.
+- Le test `syndics.word-documents` ne compile pas en worktree à cause du client Prisma partagé (erreurs `CapacityKey`) ; il passe en CI.
 
 ## État courant (pilote) — 2026-10-13
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Button, Card, Popconfirm, Space, Table, Tag } from 'antd';
+import { Button, Card, Popconfirm, Space, Tag } from 'antd';
+import { Table } from '../primitives';
 import type { PropertyDocument } from '../../types/property-types';
 import { downloadPropertyDocumentFile } from '../../services/property-service';
 import { feedback } from '../../lib/feedback';
@@ -58,6 +59,7 @@ export const DocumentVault: React.FC<Props> = ({ documents, tenantId, propertyId
   return (
     <Card title={t('Coffre-fort documentaire')} extra={extra}>
       <Table
+        exportFilename={t('Coffre-fort documentaire')}
         scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={documents}
@@ -73,6 +75,8 @@ export const DocumentVault: React.FC<Props> = ({ documents, tenantId, propertyId
           {
             title: t('Expiration'),
             dataIndex: 'expirationDate',
+            exportValue: (record: PropertyDocument) =>
+              `${record.expirationDate ? new Date(record.expirationDate).toLocaleDateString(activeLocale()) : '—'} — ${expiryInfo(record.expirationDate).label}`,
             render: (value?: string | null) => {
               const info = expiryInfo(value);
               return (

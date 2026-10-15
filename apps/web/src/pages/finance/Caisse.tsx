@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Button, Card, Input, InputNumber, Modal, Select, Space, Switch, Table, Typography } from 'antd';
+import { App, Button, Card, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { CheckCircleOutlined, LockOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,7 +27,8 @@ import {
   StatCard,
   DataView,
   DataCard,
-  StatusTag
+  StatusTag,
+  Table
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
@@ -235,6 +236,7 @@ export const Caisse: React.FC = () => {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: l => l.amount,
       render: (_, l) => <MoneyValue value={l.amount} signed />
     }
   ];
@@ -352,6 +354,7 @@ export const Caisse: React.FC = () => {
             pagination={false}
             size="small"
             aria-label={t('Opérations de la caisse')}
+            exportFilename={t('Opérations de la caisse')}
           />
         ) : (
           <Text type="secondary">{t('Aucune opération pour le moment.')}</Text>
@@ -393,12 +396,25 @@ export const Caisse: React.FC = () => {
     { title: t('Caissier'), key: 'cashier', render: (_, s) => s.cashierName },
     { title: t('Ouverture'), key: 'openedAt', render: (_, s) => dateHeure(s.openedAt) },
     { title: t('Clôture'), key: 'closedAt', render: (_, s) => (s.closedAt ? dateHeure(s.closedAt) : '—') },
-    { title: t('Attendu'), key: 'expected', align: 'end', render: (_, s) => <MoneyValue value={s.expected.amount} /> },
-    { title: t('Compté'), key: 'counted', align: 'end', render: (_, s) => <MoneyValue value={s.countedAmount} /> },
+    {
+      title: t('Attendu'),
+      key: 'expected',
+      align: 'end',
+      exportValue: s => s.expected.amount,
+      render: (_, s) => <MoneyValue value={s.expected.amount} />
+    },
+    {
+      title: t('Compté'),
+      key: 'counted',
+      align: 'end',
+      exportValue: s => s.countedAmount ?? null,
+      render: (_, s) => <MoneyValue value={s.countedAmount} />
+    },
     {
       title: t('Écart'),
       key: 'difference',
       align: 'end',
+      exportValue: s => s.difference ?? null,
       render: (_, s) =>
         s.difference === null ? (
           '—'
@@ -459,6 +475,7 @@ export const Caisse: React.FC = () => {
         emptyDescription={t('Aucune session de caisse.')}
         rowKey={s => s.id}
         aria-label={t('Historique des caisses')}
+        export={{ filename: t('Historique des caisses') }}
         columns={colonnesHistorique}
         renderCard={s => (
           <DataCard
@@ -731,6 +748,7 @@ export const Caisse: React.FC = () => {
                     title: t('Montant'),
                     key: 'amount',
                     align: 'end',
+                    exportValue: l => l.amount,
                     render: (_, l) => <MoneyValue value={l.amount} signed />
                   }
                 ]}
@@ -738,6 +756,7 @@ export const Caisse: React.FC = () => {
                 pagination={false}
                 size="small"
                 aria-label={t('Opérations de la caisse')}
+                exportFilename={t('Opérations de la caisse')}
               />
             ) : (
               <Text type="secondary">{t('Aucune opération.')}</Text>
@@ -755,12 +774,18 @@ export const Caisse: React.FC = () => {
                     }));
                   })()}
                   columns={[
-                    { title: t('Valeur'), key: 'valeur', render: (_, l) => <MoneyValue value={Number(l.valeur)} /> },
+                    {
+                      title: t('Valeur'),
+                      key: 'valeur',
+                      exportValue: l => Number(l.valeur),
+                      render: (_, l) => <MoneyValue value={Number(l.valeur)} />
+                    },
                     { title: t('Nombre'), key: 'nombre', align: 'end', render: (_, l) => l.nombre },
                     {
                       title: t('Sous-total'),
                       key: 'sous-total',
                       align: 'end',
+                      exportValue: l => Number(l.valeur) * l.nombre,
                       render: (_, l) => <MoneyValue value={Number(l.valeur) * l.nombre} />
                     }
                   ]}
@@ -768,6 +793,7 @@ export const Caisse: React.FC = () => {
                   pagination={false}
                   size="small"
                   aria-label={t('Billetage de la caisse')}
+                  exportFilename={t('Billetage')}
                 />
               </>
             )}

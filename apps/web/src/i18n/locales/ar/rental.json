@@ -801,5 +801,6 @@
   "Voir la preuve de paiement": "عرض إثبات الدفع",
   "Voir le scan": "عرض النسخة الممسوحة",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "هل تريدون إعادة إنشائه انطلاقًا من البيانات الحالية لعقد الإيجار؟ سيتم استبدال النسخة السابقة.",
-  "Vous n'avez pas l'autorisation d'effectuer cette action.": "ليست لديكم صلاحية تنفيذ هذا الإجراء."
+  "Vous n'avez pas l'autorisation d'effectuer cette action.": "ليست لديكم صلاحية تنفيذ هذا الإجراء.",
+  "Déclarations de paiement": "إقرارات الدفع"
 }

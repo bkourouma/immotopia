@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Descriptions, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
 import { getOwnerStatementById, recomputeOwnerStatement } from '../../../services/patrimoine-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
-import { MoneyValue } from '../../../components/primitives';
+import { MoneyValue, Table } from '../../../components/primitives';
 import { OwnerStatementSecureLinks } from '../../../components/patrimoine/OwnerStatementSecureLinks';
 import {
   isLegacyStatement,
@@ -220,6 +220,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
 
       <Card title={t('Lignes du relevé')} loading={loading}>
         <Table
+          exportFilename={t('Lignes du relevé')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={statement?.items ?? []}

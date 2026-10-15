@@ -801,5 +801,6 @@
   "Voir la preuve de paiement": "View the proof of payment",
   "Voir le scan": "View the scan",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "Do you want to regenerate it from the lease's current data? The previous version will be replaced.",
-  "Vous n'avez pas l'autorisation d'effectuer cette action.": "You are not allowed to perform this action."
+  "Vous n'avez pas l'autorisation d'effectuer cette action.": "You are not allowed to perform this action.",
+  "Déclarations de paiement": "Payment declarations"
 }

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Table,
   Card,
   Select,
   Button,
@@ -17,6 +16,8 @@ import {
   Col
 } from 'antd';
 import { EyeOutlined, FilterOutlined } from '@ant-design/icons';
+import { Table } from '../../../components/primitives';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { managerMaintenanceService } from '../../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus, MaintenanceTicketPriority } from '../../../types/maintenance-types';
@@ -334,6 +335,17 @@ export const Tickets: React.FC = () => {
           ) : (
             <>
               <Table
+                exportFilename={t('Gestion des tickets de maintenance')}
+                exportFetchAll={() =>
+                  collectAllPages<Ticket>(async (page, limit) => {
+                    const reponse = await managerMaintenanceService.listTickets(effectiveTenantId as string, {
+                      ...filtresAppliques,
+                      page,
+                      limit
+                    });
+                    return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+                  })
+                }
                 columns={columns}
                 dataSource={tickets}
                 rowKey="id"

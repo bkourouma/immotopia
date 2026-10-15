@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Input, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Input, Popconfirm, Space, Tag, Typography } from 'antd';
+import { Table } from '../primitives';
 import {
   createOwnerStatementSecureLink,
   listOwnerStatementSecureLinks,
@@ -186,6 +187,7 @@ export const OwnerStatementSecureLinks: React.FC<OwnerStatementSecureLinksProps>
           />
         ) : null}
         <Table
+          exportFilename={t('Liens actifs')}
           scroll={{ x: 'max-content' }}
           rowKey="id"
           size="small"

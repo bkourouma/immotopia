@@ -1,6 +1,6 @@
 import React from 'react';
-import { Alert, Card, Descriptions, Space, Spin, Table, Typography } from 'antd';
-import { MoneyValue } from '../../primitives';
+import { Alert, Card, Descriptions, Space, Spin, Typography } from 'antd';
+import { MoneyValue, Table } from '../../primitives';
 import { ChargeScheduleFrequency, ChargeSchedulePreview } from '../../../types/syndic-types';
 import { t } from '../../../i18n/t';
 import { formatDay } from './chargeScheduleLabels';
@@ -41,6 +41,8 @@ export const SchedulePreviewPanel: React.FC<{
           </Descriptions>
           {!period.error && period.lots.length > 0 ? (
             <Table
+              // Aperçu de périodes à venir, rien d'émis : pas d'export.
+              exportable={false}
               style={{ marginTop: 12 }}
               size="small"
               rowKey="lotId"

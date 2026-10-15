@@ -37,6 +37,9 @@ vi.mock('@ant-design/icons', async () => {
 const mockValidateFields = vi.fn();
 const mockMessage = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), loading: vi.fn() };
 
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
 vi.mock('antd', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
   // Rend les enfants sans transmettre au DOM les props propres à Ant Design.

@@ -2045,5 +2045,15 @@
   "WhatsApp": "واتساب",
   "Word (.docx)": "Word (.docx)",
   "Zone": "المنطقة",
+  "Exporter le tableau": "تصدير الجدول",
+  "Aucune colonne exportable.": "لا يوجد عمود قابل للتصدير.",
+  "L'export est limité à {{count}} lignes : affinez les filtres pour obtenir le reste.": "التصدير محدود بـ {{count}} صف: ضيّق عوامل التصفية للحصول على الباقي.",
+  "Seules les {{count}} lignes affichées ont été exportées, sur {{total}}.": "تم تصدير الصفوف المعروضة فقط وعددها {{count}} من أصل {{total}}.",
+  "Choisissez « Enregistrer en PDF » dans la fenêtre d'impression.": "اختر «حفظ بصيغة PDF» في نافذة الطباعة.",
+  "Export terminé ({{count}} lignes).": "اكتمل التصدير ({{count}} صف).",
+  "L'export a échoué.": "فشل التصدير.",
+  "Généré le {{date}}": "تم الإنشاء في {{date}}",
+  "Page {{page}} / {{total}}": "صفحة {{page}} / {{total}}",
+  "Polices d'assurance": "وثائق التأمين",
   "Le vote du lot {{lots}} a été saisi par le syndic : vous ne pouvez plus le modifier depuis cette page.": "تم إدخال التصويت الخاص بالوحدة {{lots}} من قبل النقابة: لا يمكنك تعديله من هذه الصفحة."
 }

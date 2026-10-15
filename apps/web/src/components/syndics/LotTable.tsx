@@ -1,6 +1,7 @@
 ﻿import React from 'react';
-import { Button, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import { Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../primitives';
 import { SyndicateLot } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
@@ -52,6 +53,8 @@ export const LotTable: React.FC<LotTableProps> = ({
       dataIndex: 'lotNumber',
       key: 'lotNumber',
       width: 160,
+      // Le rendu accole le numéro et l'étiquette « Inactif » : on n'exporte que le numéro.
+      exportValue: (lot: SyndicateLot) => lot.lotNumber,
       render: (value: string, lot: SyndicateLot) => (
         <Space size={6}>
           <Text strong>{value}</Text>
@@ -216,6 +219,7 @@ export const LotTable: React.FC<LotTableProps> = ({
   return (
     <div>
       <Table
+        exportFilename={t('Lots')}
         className="lot-table"
         rowKey="id"
         size="middle"

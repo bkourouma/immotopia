@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Card, Col, Modal, Row, Select, Space, Table, Typography } from 'antd';
+import { Button, Card, Col, Modal, Row, Select, Space, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock } from '../../components/primitives';
+import { DataCard, DataView, MoneyValue, SkeletonList, StateBlock, Table } from '../../components/primitives';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import {
@@ -64,7 +64,13 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
   const columns: ColumnsType<CoOwnerPayment['allocations'][number]> = [
     { title: t('Période'), dataIndex: 'period', key: 'period' },
     { title: t('Échéance'), key: 'dueDate', render: (_, row) => dayjs(row.dueDate).format('DD/MM/YYYY') },
-    { title: t('Montant'), key: 'amount', align: 'end', render: (_, row) => <MoneyValue value={row.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'amount',
+      align: 'end',
+      exportValue: row => Number(row.amount),
+      render: (_, row) => <MoneyValue value={row.amount} />
+    },
     {
       title: t('Origine'),
       key: 'source',
@@ -81,6 +87,8 @@ function PaymentDetail({ payment }: { payment: CoOwnerPayment }) {
           </div>
         ) : (
           <Table
+            // Détail d'un paiement ouvert dans une fenêtre : la ligne est déjà exportée par la liste.
+            exportable={false}
             size="small"
             columns={columns}
             dataSource={payment.allocations}
@@ -137,6 +145,7 @@ export default function CoOwnerPayments() {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: row => Number(row.amount),
       render: (_, row) => <MoneyValue value={row.amount} currency={row.currency} />
     },
     { title: t('Mode'), key: 'method', render: (_, row) => row.methodLabel ?? '—' },
@@ -145,12 +154,14 @@ export default function CoOwnerPayments() {
       title: t('Avance restante'),
       key: 'remainingAdvance',
       align: 'end',
+      exportValue: row => Number(row.remainingAdvance),
       render: (_, row) => <MoneyValue value={row.remainingAdvance} currency={row.currency} />
     },
     {
       title: t('Détail'),
       key: 'detail',
       align: 'end',
+      exportable: false,
       render: (_, row) => (
         <Button icon={<EyeOutlined />} onClick={() => setDetail(row)}>
           {t('Détail')}
@@ -230,6 +241,7 @@ export default function CoOwnerPayments() {
             onPageChange={() => {}}
             rowKey={row => row.id}
             aria-label={t('Mes paiements')}
+            export={{ filename: t('Mes paiements') }}
             emptyDescription={t("Aucun paiement n'a encore été enregistré pour vos lots.")}
             columns={columns}
             renderCard={row => (

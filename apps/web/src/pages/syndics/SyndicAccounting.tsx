@@ -13,13 +13,12 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Typography
 } from 'antd';
 import { LockOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue, StatCard } from '../../components/primitives';
+import { MoneyValue, StatCard, Table } from '../../components/primitives';
 import {
   createAccountingEntry,
   createAccountingJournal,
@@ -274,6 +273,7 @@ export const SyndicAccounting: React.FC = () => {
 
             <Card title={t('Plan comptable')}>
               <Table
+                exportFilename={t('Plan comptable')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={accounts}
@@ -298,6 +298,7 @@ export const SyndicAccounting: React.FC = () => {
 
             <Card title={t('Journaux comptables')}>
               <Table
+                exportFilename={t('Journaux comptables')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={journals}
@@ -318,6 +319,7 @@ export const SyndicAccounting: React.FC = () => {
 
             <Card title={t('Écritures comptables')}>
               <Table
+                exportFilename={t('Écritures comptables')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={entries}
@@ -341,6 +343,7 @@ export const SyndicAccounting: React.FC = () => {
                   },
                   {
                     title: t('Action'),
+                    exportable: false,
                     render: (_, entry) =>
                       entry.isLocked ? (
                         <Tag>{t('Verrouillée')}</Tag>
@@ -363,6 +366,7 @@ export const SyndicAccounting: React.FC = () => {
               <Col xs={24} xl={12}>
                 <Card title={t('Balance de vérification')}>
                   <Table
+                    exportFilename={t('Balance de vérification')}
                     scroll={{ x: 'max-content' }}
                     rowKey="accountId"
                     dataSource={trialBalance.items}
@@ -394,6 +398,7 @@ export const SyndicAccounting: React.FC = () => {
               <Col xs={24} xl={12}>
                 <Card title={t('Grand livre')}>
                   <Table
+                    exportFilename={t('Grand livre')}
                     scroll={{ x: 'max-content' }}
                     rowKey="id"
                     dataSource={ledger}

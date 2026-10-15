@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Select, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Select, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined, FileWordOutlined, MailOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue } from '../../components/primitives';
+import { MoneyValue, Table } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { PrintReceiptsModal } from '../../components/syndics/PrintReceiptsModal';
 import { listSyndicateLots } from '../../services/syndic-service';
 import {
@@ -290,6 +291,7 @@ export const SyndicReceipts: React.FC = () => {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: row => Number(row.amount),
       render: (_: unknown, row) => <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
     },
     {
@@ -409,6 +411,20 @@ export const SyndicReceipts: React.FC = () => {
         {error ? <Alert type="error" message={error} showIcon /> : null}
 
         <Table<ReceiptView>
+          exportFilename={t('Quittances')}
+          // Tous les reçus et quittances, avec les mêmes filtres que la liste affichée.
+          exportFetchAll={() =>
+            collectAllPages<ReceiptView>(async (exportPage, limit) => {
+              const result = await listSyndicateReceipts(effectiveTenantId ?? '', syndicId ?? '', {
+                kind: kindFilter,
+                lotId: lotFilter,
+                contactId: contactFilter,
+                page: exportPage,
+                limit
+              });
+              return { items: result.items, total: result.pagination.total };
+            })
+          }
           rowKey="id"
           loading={loading}
           dataSource={items}

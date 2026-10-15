@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, Table, Tag } from 'antd';
+import { Card, Tag } from 'antd';
+import { Table } from '../primitives';
 import type { AssetValuation } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 import { valuationMethodLabel } from './patrimoine-labels';
@@ -13,6 +14,7 @@ export const ValuationHistory: React.FC<Props> = ({ valuations }) => {
   return (
     <Card title={t('Historique des valorisations')}>
       <Table
+        exportFilename={t('Historique des valorisations')}
         scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={valuations}

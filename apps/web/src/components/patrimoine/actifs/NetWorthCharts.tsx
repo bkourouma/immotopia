@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, Progress, Table, Typography } from 'antd';
+import { Card, Progress, Typography } from 'antd';
+import { Table } from '../../primitives';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { NetWorthHistoryPoint, NetWorthResult } from '../../../services/patrimoine-assets-service';
 import { t } from '../../../i18n/t';
@@ -40,6 +41,7 @@ export const ClassBreakdownCard: React.FC<{ result: NetWorthResult }> = ({ resul
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', alignItems: 'center' }}>
         <Table<ClassBreakdownRow>
+          exportFilename={t('Répartition par classe')}
           style={{ flex: '1 1 320px', minWidth: 0 }}
           size="small"
           rowKey="assetClass"

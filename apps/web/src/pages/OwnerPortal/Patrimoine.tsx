@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Col, Row, Space, Table, Typography } from 'antd';
+import { Button, Card, Col, Row, Space, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { BankOutlined, GoldOutlined, RiseOutlined, SyncOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { ownerPortalPatrimoineService } from '../../services/owner-portal-patrimoine-service';
 import type { PatrimoineOverview, PatrimoineSummaryProperty } from '../../services/owner-portal-patrimoine-service';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
-import { StateBlock, formatMoney } from '../../components/primitives';
+import { StateBlock, Table, formatMoney } from '../../components/primitives';
 import { DASH, deviseAffichee, formatPercent, sharePercentLabel } from './owner-patrimoine-labels';
 import { t } from '../../i18n/t';
 
@@ -83,6 +83,7 @@ export default function Patrimoine() {
       title: t('Bien'),
       dataIndex: 'title',
       key: 'title',
+      exportValue: record => `${record.title} — ${record.address}`,
       render: (_: string, record) => (
         <Space direction="vertical" size={0}>
           <Text strong>{record.title}</Text>
@@ -103,6 +104,7 @@ export default function Patrimoine() {
       {
         title: t('Dernière valorisation'),
         key: 'valuation',
+        exportValue: record => record.valuation?.estimatedValue ?? null,
         render: (_: unknown, record) =>
           record.valuation
             ? formatMoney(record.valuation.estimatedValue, { currency: deviseAffichee(record.valuation.currency) })
@@ -111,6 +113,7 @@ export default function Patrimoine() {
       {
         title: t('Plus-value latente'),
         key: 'latentCapitalGain',
+        exportValue: record => record.latentCapitalGain ?? null,
         render: (_: unknown, record) =>
           record.latentCapitalGain === undefined
             ? DASH
@@ -147,6 +150,7 @@ export default function Patrimoine() {
     columns.push({
       title: t('Capital restant dû'),
       key: 'loanSummary',
+      exportValue: record => record.loanSummary?.remainingCapital ?? null,
       render: (_: unknown, record) =>
         record.loanSummary
           ? formatMoney(record.loanSummary.remainingCapital, { currency: deviseAffichee(summary.currency) })
@@ -234,6 +238,7 @@ export default function Patrimoine() {
       <Card title={t('Vos biens')}>
         {properties.length > 0 ? (
           <Table
+            exportFilename={t('Vos biens')}
             scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={properties}

@@ -152,6 +152,7 @@ const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
     title: t('Montant facturé'),
     key: 'montant',
     align: 'end',
+    exportValue: ligne => ligne.amount,
     render: (_, ligne) => <MoneyValue value={ligne.amount} />
   }
 ];
@@ -167,6 +168,7 @@ const COLONNES_AVANCES: ColumnsType<LigneAvance> = [
     title: t('Montant imputé'),
     key: 'montant',
     align: 'end',
+    exportValue: ligne => ligne.amount,
     render: (_, ligne) => <MoneyValue value={ligne.amount} />
   }
 ];
@@ -258,6 +260,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             columns={COLONNES_FACTUREES}
             rowKey={ligne => ligne.installmentId}
             aria-label={t('Baux facturés')}
+            export={{ filename: t('Baux facturés') }}
             renderCard={ligne => (
               <DataCard
                 title={ligne.leaseLabel}
@@ -283,6 +286,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             columns={COLONNES_EXCLUES}
             rowKey={ligne => ligne.leaseId}
             aria-label={t('Baux exclus')}
+            export={{ filename: t('Baux exclus') }}
             renderCard={ligne => (
               <DataCard
                 title={ligne.leaseLabel}
@@ -306,6 +310,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             columns={COLONNES_AVANCES}
             rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
             aria-label={t('Avances imputées')}
+            export={{ filename: t('Avances imputées') }}
             renderCard={ligne => (
               <DataCard
                 title={ligne.tenantLabel}
@@ -570,6 +575,7 @@ export const Facturation: React.FC = () => {
         columns={colonnesHistorique}
         rowKey={c => c.id}
         aria-label={t('Historique des campagnes')}
+        export={{ filename: t('Historique des campagnes') }}
         renderCard={c => {
           const s = STATUT_CAMPAGNE[c.status];
           return (
