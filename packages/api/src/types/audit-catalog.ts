@@ -134,6 +134,15 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_INVITED]: tenant('ADMIN'),
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED]: tenant('SECURITY', { critical: true }),
   [AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT]: tenant('DATA'),
+  // Paiement mobile des copropriétaires (spec 042).
+  [AuditActionKey.SYNDIC_GATEWAY_CONFIG_UPDATED]: tenant('SECURITY'),
+  [AuditActionKey.SYNDIC_ONLINE_PAYMENT_STARTED]: tenant('BILLING'),
+  [AuditActionKey.SYNDIC_ONLINE_PAYMENT_CONFIRMED]: tenant('BILLING'),
+  [AuditActionKey.SYNDIC_ONLINE_PAYMENT_REVIEW]: tenant('BILLING'),
+  [AuditActionKey.SYNDIC_ONLINE_PAYMENT_RESOLVED]: tenant('BILLING'),
+  [AuditActionKey.SYNDIC_GATEWAY_PAYOUT_RECORDED]: tenant('BILLING'),
+  [AuditActionKey.SYNDIC_CHARGE_PAYMENT_LINK_SENT]: tenant('BILLING'),
+  [AuditActionKey.SECURE_LINK_CHARGE_PAYMENT_STARTED]: tenant('BILLING'),
 
   // Patrimoine : rapport propriétaire, sinistres, régularisation foncière.
   [AuditActionKey.PATRIMOINE_OWNER_MONTHLY_REPORT_SENT]: tenant('DATA'),
