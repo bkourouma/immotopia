@@ -47,6 +47,35 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-ag-visio` — 2026-10-16
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/144 (base `main`), CI à lire ; la fusion reste à l'utilisateur.
+**Dernier commit :** `09b0416d` résultats de recette dans la spec, après la fusion de `main` (`c98bd2f2`, PR 126, 132 et 142).
+**Worktree :** `.claude/worktrees/suspicious-cartwright-fc4a4c`, avec son PROPRE `node_modules` (npm install : `livekit-server-sdk`, `livekit-client`, `@livekit/components-react`, `@aws-sdk/client-s3`), pas de jonction à retirer avant `git worktree remove`.
+
+Fait :
+
+- Spec `specs/045-syndic-ag-visio/spec.md` (044 = signature électronique) : visio LiveKit intégrée à l'AG en direct et enregistrement (décision du fondateur du 2026-10-16), décisions V1–V15 et R1–R11, contrat d'API, résultats de recette.
+- API : service LiveKit porté d'École Digitale, routes publiques `/api/public/assemblees/visio` et `/visio/main`, routes gestionnaire `/visio`, `/visio/jeton`, parole, exclusion, enregistrement (`GMRecording`, migration `20261016120000_syndic_ag_enregistrement`, Egress MP4 vers S3, webhook `/api/webhooks/livekit`, rapatriement, lecture/téléchargement audités, reprise, suppression).
+- Web : salle `MeetingVisioRoom` (chargée à la demande), page `/ag-direct` (côte à côte / onglets), console (visio, enregistrements).
+- Relectures code et sécurité corrigées ; recette navigateur complète sur la démo (voir la spec) ; classeur des fonctionnalités (13 lignes) ; `SECURITY.md` § 12 quater ; `deploy.sh` (`INTEGRATION_KEYS`).
+
+Reste à faire :
+
+- Lire la CI de la PR 144 et corriger si besoin.
+- Fondateur : base juridique, information préalable et conservation des enregistrements (R10) ; valeurs par défaut V2–V4, V7–V13.
+- Mise en service : projet LiveKit DÉDIÉ (compte payant = accord de l'utilisateur), webhook vers `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
+- Non vérifié : LiveKit Cloud, charge 300 participants, effet serveur de `revokeTokenTs`, bascule de largeur à chaud dans un vrai navigateur, `test:isolation`.
+
+Pièges et décisions :
+
+- Pile de recette locale (gratuite) : conteneurs `immotopia-visio-net` (Redis, propriétaire de l'espace réseau et des ports 7880/7881/7882/8333), `immotopia-livekit-dev`, `immotopia-visio-s3` (SeaweedFS : les images MinIO ne sont plus publiées), `immotopia-visio-egress`, tous dans le même espace réseau (`--network container:immotopia-visio-net`). ARRÊTÉS (pas supprimés) le 2026-10-16 : les redémarrer dans cet ordre avec `docker start`. Configuration et secrets de développement dans le scratchpad de la session, jamais dans le dépôt ; mode d'emploi dans `docs/recette/SCENARIO_SYNDIC_AG_VISIO.md`.
+- LiveKit sous Docker Desktop : sans `node_ip` et avec `enable_loopback_candidate: true` ; avec `node_ip: 127.0.0.1`, le Chrome de l'Egress refuse le candidat de boucle locale (« Start signal not received »).
+- `React.StrictMode` (dev) montait la salle deux fois : deux connexions de la même identité, LiveKit refusait la seconde. La connexion part maintenant un tick après le montage (`StableLiveKitRoom`).
+- Instance de démo : worktree `.claude/worktrees/demo` à `6c923267` (avant la fusion de `main`), dépendances propres (`npm ci`), migrations appliquées sur `immotopia_demo` jusqu'à `20261016120000` ; serveurs arrêtés. `demo:sync` exige `packages/api/.env.demo` (absent) : la démo a été mise à jour à la main (`git checkout --detach`, `npm ci`, `prisma migrate deploy` lisant le `.env` du worktree de démo), API lancée avec les `LIVEKIT_*` en variables du processus. Données ajoutées : deux AG de recette « recette visio » (clôturée et en cours) dans « Horizon Syndic Gestion », un enregistrement disponible, liens révoqués pour Awa Traoré.
+- Un agent a reformaté par erreur ~840 fichiers puis les a restaurés en LF : `git status` les montrait modifiés sans diff ; remis en CRLF par script avant commit. Vérifier `git diff --numstat` avant tout `git add -u`.
+- Changer de langue pendant la visio remonte l'application (`key={language}`) et coupe la salle : limite documentée, non corrigée.
+
 ## Branche `feat/syndic-paiement-mobile` — 2026-10-15
 
 **État :** PR brouillon https://github.com/bkourouma/immotopia/pull/132 (base `main`) (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
