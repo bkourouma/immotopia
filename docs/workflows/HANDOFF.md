@@ -36,6 +36,31 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `ci/deploiement-continu-staging` — 2026-10-16
+
+**État :** prêt à relire — PR ouverte vers `main`, à fusionner par l'utilisateur ; rien n'agit avant la mise en service par le propriétaire
+**Dernier commit :** `42707962` correctifs de l'audit de sécurité (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/deploiement-continu` (jonction `node_modules` vers le checkout principal)
+
+Fait :
+
+- `.github/workflows/deploy.yml` : staging automatique sur CI verte de `main` (interrupteur `AUTO_DEPLOY_STAGING`), production par « Run workflow » derrière l'environnement `production`, sur le commit du dernier staging réussi. Un groupe de concurrence par environnement.
+- `infra/scripts/ci-deploy.sh` : commande imposée des clés SSH (`command=…,restrict`), worker détaché, canal public dédié (`<journal>.public`), journal complet dans `~/ci-deploy-logs/`. Prod : exige un commit déjà déployé avec succès en staging, refuse les retours arrière, sauvegarde et étiquette les images.
+- `check-infra.sh` : 18 cas de refus d'arguments. Docs : section « Déploiement continu » de `DEPLOIEMENT.md` (mise en service en 11 étapes), ADR-008, SECURITY.md §8.
+- Audit `security-auditor` (1 haute, 4 moyennes, 6 basses) : tout corrigé ou documenté. Simulation Linux réelle (conteneur ubuntu, vrais setsid/flock/tail, faux deploy.sh) : 42/42, dont coupure SSH en plein déploiement, client parti avant le début, file bornée, réécriture du script par son propre `git merge`.
+
+Reste à faire (propriétaire) :
+
+- Fusionner la PR, puis suivre la mise en service de `DEPLOIEMENT.md` : protéger `main` (ruleset) AVANT tout, clés ed25519, `authorized_keys`, `known_hosts`, environnements GitHub, secrets, tests négatifs, premier essai staging, puis `AUTO_DEPLOY_STAGING=true`.
+- Rien n'a tourné sur le serveur ni chez GitHub : tout est « non éprouvé ».
+
+Pièges :
+
+- `workflow_dispatch` exécute le fichier de la branche choisie : seule la règle « Deployment branches : main » des environnements protège les secrets.
+- Un essai manuel sur le serveur (checkout hors `origin/main`) bloque le déploiement CI : c'est voulu.
+- Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.
+- Python lancé par heredoc depuis Git Bash lit le texte en cp1252 : pour une retouche de texte accentué, passer par l'outil d'édition.
+
 ## Branche `feat/prelevement-bancaire` — 2026-10-15
 
 **État :** prêt à relire — PR #128 (base `main`), recette navigateur P1 jouée et rejouée le 2026-10-15, à fusionner par l'utilisateur
