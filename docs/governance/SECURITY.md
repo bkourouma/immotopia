@@ -268,6 +268,22 @@ exister dans `BACKUP_DIR` avant toute migration (aucune exigence au tout premier
 déploiement) ; le contrôle ne porte que sur l'existence d'un fichier récent, pas
 sur sa validité (voir §13).
 
+**Clés de déploiement de la CI.** Le déploiement continu
+([ADR-008](../architecture/adr/ADR-008-deploiement-continu.md)) se connecte au
+serveur avec deux clés ed25519 distinctes, une par environnement, stockées comme
+**secrets d'environnement GitHub** (`DEPLOY_SSH_KEY`, `DEPLOY_SSH_KNOWN_HOSTS` dans
+`staging` et `production`), jamais comme secrets de dépôt. Côté serveur, chaque clé
+est limitée dans `authorized_keys` par `command="…/ci-deploy.sh <env>",restrict` :
+ni shell, ni terminal, ni redirection ; elle ne lance que ce script, qui n'accepte
+que `deploy <env> <sha>` pour son propre environnement et un commit d'`origin/main`.
+Rotation : regénérer la paire, remplacer la ligne `authorized_keys` et le secret
+d'environnement, supprimer l'ancienne clé privée ; retirer la ligne coupe l'accès
+immédiatement. Le dépôt étant public, les journaux des workflows le sont aussi : le
+serveur ne renvoie que les lignes d'étape (le journal complet reste dans
+`~/ci-deploy-logs/`, mode 600), et aucune entrée n'est interpolée dans un script
+`run:`. Procédure : [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md), « Déploiement
+continu (GitHub Actions) ».
+
 **Premier compte SUPER_ADMIN.** `infra/scripts/bootstrap.sh` recueille toutes les
 saisies (e-mail deux fois, nom, confirmation, mot de passe deux fois sans écho)
 **avant** la première écriture : sans terminal ou en cas d'abandon, rien n'est
