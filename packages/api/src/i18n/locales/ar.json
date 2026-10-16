@@ -2058,6 +2058,7 @@
   "Aucun enregistrement n'est en cours": "لا يوجد تسجيل قيد التنفيذ",
   "Enregistrement introuvable ou inaccessible": "التسجيل غير موجود أو لا يمكن الوصول إليه",
   "Cet enregistrement ne peut pas être supprimé dans son état actuel": "لا يمكن حذف هذا التسجيل في حالته الحالية",
+  "Un enregistrement d'assemblée est encore en cours ou en traitement : la suppression est impossible pour le moment": "لا يزال تسجيل الجمعية جاريًا أو قيد المعالجة: الحذف غير ممكن حاليًا",
   "Le fichier dépasse la taille maximale : il est conservé sur le stockage de la visio": "الملف يتجاوز الحجم الأقصى: وهو محفوظ على تخزين المؤتمر المرئي",
   "Cet enregistrement ne peut pas être relancé dans son état actuel": "لا يمكن إعادة محاولة هذا التسجيل في حالته الحالية",
   "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "قد يتم تسجيل الجلسة (صورة وصوت)؛ وسيظهر إشعار على الشاشة أثناء التسجيل."

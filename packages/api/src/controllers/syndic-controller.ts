@@ -250,7 +250,7 @@ export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Respon
     throw badRequest('TenantId manquant pour la suppression de copropriete');
   }
 
-  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId);
+  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId, req.user?.userId ?? null);
 
   res.json({
     success: true,

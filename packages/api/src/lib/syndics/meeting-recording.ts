@@ -2,13 +2,11 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
-import { env } from '../../config/env';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { logger } from '../../utils/logger';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
-import { getUploadsRoot } from '../../utils/project-root';
 import {
   buildMeetingRoomName,
   buildRecordingStorageKey,
@@ -32,8 +30,10 @@ import {
   FAILURE_DOWNLOAD,
   RECORDING_SELECT,
   invalidateActiveRecordingCache,
+  lockRecordingTx,
   nameOf,
-  recordingFolder,
+  resolveRecordingPath,
+  unlinkIfPresent,
   viewOf,
   viewsOf,
   type MeetingRecordingView,
@@ -87,14 +87,6 @@ export async function listRecordings(
 }
 
 // --- Démarrage --------------------------------------------------------------
-
-/**
- * Verrou consultatif PROPRE a l'enregistrement : le verrou de vote de l'AG
- * (`lockMeetingTx`) ne doit pas rester tenu pendant des appels reseau LiveKit.
- */
-async function lockRecordingTx(tx: PrismaTransactionClient, meetingId: string): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ag-rec:${meetingId}`}))`;
-}
 
 async function assertMeetingInProgress(tx: PrismaTransactionClient, tenantId: string, meetingId: string) {
   const current = await tx.generalMeeting.findFirst({
@@ -257,20 +249,6 @@ async function loadScopedRecording(
   return { row, syndicateId: meeting.syndicateId };
 }
 
-/**
- * Chemin disque du fichier, verifie : sous la racine des fichiers deposes, dans le
- * dossier attendu de CETTE AG, nomme d'apres l'enregistrement. `null` sinon.
- */
-function resolveRecordingPath(row: RecordingRow, syndicateId: string): string | null {
-  const prefix = '/uploads/';
-  if (!row.fileUrl?.startsWith(prefix) || row.fileUrl.includes('\0')) return null;
-  const root = path.resolve(getUploadsRoot(env.UPLOADS_DIR));
-  const folder = path.resolve(root, ...recordingFolder(syndicateId, row.meetingId));
-  const absolute = path.resolve(root, row.fileUrl.slice(prefix.length));
-  if (path.dirname(absolute) !== folder || path.basename(absolute) !== `${row.id}.mp4`) return null;
-  return absolute;
-}
-
 export interface RecordingFile {
   recordingId: string;
   tenantId: string;
@@ -338,15 +316,6 @@ export async function retryRecording(
   if (updated.count === 0) throw notRetryable();
   setImmediate(() => void repatriateRecording(tenantId, row.id));
   return viewOf({ ...row, status: 'PROCESSING', failureReason: null });
-}
-
-/** Efface un fichier ; seul « deja absent » est toléré (toute autre erreur laisse la ligne inchangée). */
-async function unlinkIfPresent(absolutePath: string): Promise<void> {
-  try {
-    await fs.unlink(absolutePath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
 }
 
 /** DELETE /enregistrements/:recordingId : fichier effacé, ligne conservée en DELETED (trace). */
