@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 import { uploadTemplate, extractPlaceholders } from '../../src/services/document-template-service';
 import { standardTemplateForDocType } from '../../src/lib/documents/docx-standard-templates';
 import { decideTemplateRefresh, PREVIOUS_SHIPPED_HASHES } from '../../src/services/document-template-refresh';
+import { getTemplatesWriteDir } from '../../src/utils/assets-paths';
 
 const prisma = new PrismaClient();
 
@@ -169,7 +170,11 @@ async function seedDocumentTemplates() {
       if (decision === 'REFRESH' && existing) {
         // Nouvelle copie du fichier livre ; l'ancienne reste sur disque (les documents deja generes ne la lisent pas).
         const storedFilename = `${docTypeConfig.type}_${Date.now()}.docx`;
-        const storagePath = path.join(templatesDir, storedFilename);
+        // Volume des fichiers (UPLOADS_DIR) quand il est posé : le seed peut tourner dans un
+        // conteneur jetable, et c'est là que l'API relit les modèles (comme uploadTemplate).
+        const storageDir = path.join(getTemplatesWriteDir(), 'default');
+        await fs.mkdir(storageDir, { recursive: true });
+        const storagePath = path.join(storageDir, storedFilename);
         await fs.writeFile(storagePath, fileBuffer);
         let placeholders: string[] = [];
         try {

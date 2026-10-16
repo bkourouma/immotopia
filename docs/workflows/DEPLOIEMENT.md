@@ -209,18 +209,18 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 
 ### Scripts
 
-| Script                                        | Rôle                                                                                                                                                                                        |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make-env.sh <staging\|prod> [fichier]`       | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                 |
-| `deploy.sh <staging\|prod> [--no-build]`      | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                |
-| `bootstrap.sh <staging\|prod> [--dry-run]`    | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                    |
-| `set-google-oauth.sh <staging\|prod> [fich.]` | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                              |
-| `set-email-smtp.sh <staging\|prod> [fich.]`   | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets. |
-| `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
-| `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
-| `seed-pack-tests.sh staging [--dry-run]`      | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public. Refuse `prod`. Voir « Comptes de test par pack ».                          |
-| `ci-deploy.sh <staging\|prod> [sha]`          | Entrée imposée aux clés SSH de la CI (`command=`, `restrict`) : contrôles git, sauvegarde (prod), `deploy.sh`, détaché de SSH. **Non éprouvé.** Voir « Déploiement continu ».               |
-| `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
+| Script                                                    | Rôle                                                                                                                                                                                                                                |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make-env.sh <staging\|prod> [fichier]`                   | Crée le fichier de secrets (mode 600, secrets neufs). Refuse d'écraser un fichier existant.                                                                                                                                         |
+| `deploy.sh <staging\|prod> [--no-build]`                  | Contrôles, construction, migrations, démarrage, tests de fumée, empreinte des voisins. Idempotent, ne supprime jamais de volume. Un seul à la fois (verrou).                                                                        |
+| `bootstrap.sh <staging\|prod> [--dry-run]`                | Amorce une base vierge : RBAC, gabarits de biens, premier SUPER_ADMIN saisi au terminal (toutes les saisies avant la première écriture).                                                                                            |
+| `set-google-oauth.sh <staging\|prod> [fich.]`             | Écrit `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans le fichier de secrets, sans jamais afficher le secret.                                                                                                                      |
+| `set-email-smtp.sh <staging\|prod> [fich.]`               | Écrit la configuration SMTP (serveur, port, utilisateur, expéditeur, mot de passe saisi deux fois sans écho et protégé par des apostrophes pour Docker Compose) dans le fichier de secrets.                                         |
+| `backup.sh <staging\|prod>`                               | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                                                                     |
+| `restore-check.sh <dump.sql.gz>`                          | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                                                                       |
+| `seed-pack-tests.sh staging [--dry-run] [--repair-files]` | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public ; `--repair-files` répare les fichiers déjà semés hors du volume. Refuse `prod`. Voir « Comptes de test par pack ». |
+| `ci-deploy.sh <staging\|prod> [sha]`                      | Entrée imposée aux clés SSH de la CI (`command=`, `restrict`) : contrôles git, sauvegarde (prod), `deploy.sh`, détaché de SSH. **Non éprouvé.** Voir « Déploiement continu ».                                                       |
+| `check-infra.sh`                                          | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                                                                  |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
 « Modes des scripts »).
@@ -1259,6 +1259,41 @@ modèles importés par une agence s'écrivent sous `UPLOADS_DIR`
 sur le volume `<pile>-uploads-data`, sauvegardé par `backup.sh`. À vérifier sur
 le staging après le prochain déploiement : « Générer un contrat » et le
 téléchargement d'une quittance.
+
+**Fichiers semés hors du volume (corrigé, réparation à lancer une fois).** Le seed
+tourne dans un conteneur `migrate` **jetable** : seul le volume `<pile>-uploads-data`
+(monté sur `/data/uploads`, `UPLOADS_DIR`) survit à la fin du script. Les agences
+semées avant le correctif ont eu leurs documents locatifs (contrats, avenants,
+reçus, quittances, relevés) et les modèles de l'agence écrits sous `/repo/assets/...`,
+dans ce conteneur : les lignes `RentalDocument.file_path` et
+`DocumentTemplate.storage_path` pointent vers des fichiers disparus et hors des dossiers
+que l'API lit. Symptôme : « Envoyer pour signature » répond « Fichier du document
+invalide », le téléchargement d'une quittance échoue. Le correctif fait écrire le seed
+sur le volume (mêmes helpers que l'API, `utils/assets-paths.ts`) et monte `assets/` du
+dépôt en lecture seule dans le conteneur (l'image `migrate` n'embarque pas les modèles
+livrés ; un écrivain qui oublierait `UPLOADS_DIR` échoue donc au lieu de perdre ses
+fichiers). Pour réparer les agences **déjà semées**, sans purge ni recréation :
+
+```bash
+./infra/scripts/seed-pack-tests.sh staging --repair-files --dry-run   # n'affiche que le plan
+./infra/scripts/seed-pack-tests.sh staging --repair-files             # répare les fichiers
+```
+
+À lancer sur le serveur, depuis `/home/deployer/immotopia-saas`, **après** le
+déploiement qui apporte le correctif (l'image `migrate` doit contenir le script de
+réparation : `deploy.sh staging` la reconstruit). Le mode **refuse `prod`** comme le
+reste du script. Pour chaque document locatif et chaque modèle d'une agence de test dont
+le fichier est absent ou hors du volume, il réécrit le fichier sur le volume et met le
+chemin à jour : documents reconstitués avec le même générateur Word que le seed (à
+partir du numéro, de la date, du bail et de la description de la ligne ; ce n'est pas le
+contenu d'origine, perdu), modèles recopiés depuis `assets/modeles_documents`. Il n'affiche
+que des **compteurs** par agence (examinés, réparés, déjà sains, impossibles avec leur code
+d'erreur), jamais un contenu ni un chemin, et il est **idempotent** : un second passage
+répare 0 ligne. Il redonne ensuite les droits du volume à l'utilisateur de l'API
+(`chown`, comme le seed). Si une agence de gestion locative n'a aucun modèle propre, il
+le signale : relancer alors `./infra/scripts/seed-pack-tests.sh staging`, qui crée les
+modèles manquants. Les gabarits globaux « par défaut » (`db:seed:document-templates`)
+ne sont pas concernés : `bootstrap.sh` ne les pose toujours pas.
 
 ```bash
 ./infra/scripts/deploy.sh staging           # amène d'abord le web à jour

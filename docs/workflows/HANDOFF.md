@@ -47,6 +47,31 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `fix/seed-fichiers-volume` — 2026-10-16
+
+**État :** prêt à relire (PR vers `main`) ; worktree `.claude/worktrees/distracted-wu-7f2ca7`, `node_modules` = jonctions vers le checkout principal.
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Anomalie de recette du staging : sur « Pack Agence · 3 ans », « Envoyer pour signature » du bail BAIL-2026-0052 répondait « Fichier du document invalide » (`getDocumentFile`).
+
+Cause : `seed-pack-tests.sh` lance le seed dans un conteneur `migrate` jetable ; trois écrivains ignoraient `UPLOADS_DIR` et écrivaient sous `getProjectRoot()/assets/...` (= `/repo/assets/...`, perdu à la fin du conteneur) : `saveRentalDocx` (`agence-locatif-files.ts`), `seedDocumentTemplates` (`agence-commercial-docs.ts`), `writeGeneratedDocx` (`patrimoine-extras-files.ts`). Les lignes `RentalDocument.file_path` pointent donc vers des fichiers disparus et hors des dossiers autorisés. Découverte en plus : l'image `migrate` (cible `build` du Dockerfile) n'embarque pas `assets/`, donc `seedDocumentTemplates` ignorait les modèles livrés (« modèle de base introuvable ») : les agences de test n'ont peut-être AUCUN modèle propre.
+
+Fait :
+
+- Les trois écrivains passent par `utils/assets-paths.ts` (nouveau `getGeneratedDocumentDir`, repris par `saveGeneratedDocument` : un seul découpage `<agence>/<type>/<AAAA>/<MM>`), donc sur le volume quand `UPLOADS_DIR` est posé. Même correction dans la branche REFRESH de `document-templates-seed.ts`.
+- `seed-pack-tests.sh` monte `assets/` du dépôt en lecture seule dans le conteneur et gagne `--repair-files` (refuse `prod` comme le reste).
+- `prisma/seeds/repair-pack-test-files.ts` + `pack-history/repair-files.ts` : répare les `RentalDocument` (docx reconstitué avec `buildDocx` depuis la ligne, `file_hash` mis à jour) et les `DocumentTemplate` (copie du modèle livré) des 12 agences de test ; idempotent, n'affiche que des compteurs.
+- Tests : `pack-history.generated-files-paths.test.ts`, `pack-history.repair-files.test.ts`. Doc : `DEPLOIEMENT.md` (« Comptes de test par pack »).
+
+Reste à faire (par l'utilisateur, sur le serveur, après `deploy.sh staging` qui reconstruit l'image `migrate`) : `./infra/scripts/seed-pack-tests.sh staging --repair-files`, puis, si le compte rendu signale des agences sans modèle propre, `./infra/scripts/seed-pack-tests.sh staging`. Ensuite rejouer « Envoyer pour signature » sur BAIL-2026-0052.
+
+Pièges et non vérifié :
+
+- Rien n'a tourné sur le staging ni sur une base réelle : tests unitaires sur disque temporaire et base simulée seulement.
+- Les gabarits globaux (`db:seed:document-templates`) ne sont toujours pas posés par `bootstrap.sh` : sans modèle d'agence, la génération d'un nouveau contrat échoue (« Aucun template disponible »).
+- La signature convertit le DOCX en PDF (LibreOffice de l'image runtime) : non vérifiée sur un document reconstitué.
+- Les fichiers réparés sont créés par root dans le conteneur ; le script refait le `chown` du volume.
+
 ## Branche `feat/syndic-paiement-mobile` — 2026-10-15
 
 **État :** PR brouillon https://github.com/bkourouma/immotopia/pull/132 (base `main`) (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)

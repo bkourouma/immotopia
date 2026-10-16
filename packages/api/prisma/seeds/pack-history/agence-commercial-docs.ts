@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type { Prisma } from '@prisma/client';
-import { getProjectRoot } from '../../../src/utils/project-root';
+import { getShippedTemplatesDir, getTemplatesWriteDir } from '../../../src/utils/assets-paths';
 import { between, pick } from './types';
 import { writeDemoPdf } from './seed-files';
 import { DOC_LABELS, addDays } from './agence-commercial-data';
@@ -295,9 +295,11 @@ export async function seedDocumentTemplates(env: CommercialEnv): Promise<void> {
     log('commercial : modèles de documents déjà présents.');
     return;
   }
-  const root = getProjectRoot();
-  const source = path.join(root, 'assets', 'modeles_documents');
-  const targetDir = path.join(source, 'tenants', tenantId);
+  // Modèles livrés (lecture seule), copiés sur le volume d'écriture des modèles
+  // (`UPLOADS_DIR`/modeles_documents/tenants/<agence>), là où l'API les relit. Sans
+  // `UPLOADS_DIR` (développement) : l'ancien emplacement sous `<racine>/assets`.
+  const source = getShippedTemplatesDir();
+  const targetDir = path.join(getTemplatesWriteDir(), 'tenants', tenantId);
   const { extractPlaceholders } = await import('../../../src/services/document-template-service');
 
   const defs: Array<{
@@ -362,7 +364,7 @@ export async function seedDocumentTemplates(env: CommercialEnv): Promise<void> {
     try {
       buffer = await fs.readFile(path.join(source, def.file));
     } catch {
-      log(`commercial : modèle de base ${def.file} introuvable, modèle ignoré.`);
+      log(`commercial : modèle de base ${def.file} introuvable dans ${source}, modèle ignoré.`);
       continue;
     }
     await fs.mkdir(targetDir, { recursive: true });
