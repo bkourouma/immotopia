@@ -49,7 +49,7 @@ Pièges et décisions :
 
 ## Branche `fix/yousign-sandbox-staging` — 2026-10-16
 
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/146 (base `main`), CI en cours à la création (worktree `.claude/worktrees/loving-moser-776024`, `node_modules` en jonctions vers le checkout principal)
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/146 (base `main`), mise à jour avec `main` (a0b94a2e, PR 149) le 2026-10-16 : seul `HANDOFF.md` était en conflit, les deux sections sont gardées (worktree `.claude/worktrees/loving-moser-776024`, jonctions `node_modules` retirées hors commit)
 **Dernier commit :** voir `git log` (poussé sur origin) ; le code est dans `b7567aa4` fix(config): autoriser la sandbox Yousign sur le staging avec YOUSIGN_ALLOW_SANDBOX, les commits suivants ne touchent que `HANDOFF.md` et `DEPLOIEMENT.md`
 
 Fait : `YOUSIGN_ALLOW_SANDBOX` (`0`/`1`, défaut `0`) dans `config/env.ts` lève le seul refus « base SANDBOX Yousign en production » (le staging tourne en `NODE_ENV=production`) ; l'avertissement « aucune valeur » reste et suit toute base contenant « sandbox ». `deploy.sh prod` refuse `YOUSIGN_ALLOW_SANDBOX=1`. Tests dans `env-signature-yousign.test.ts` (5 suites env/SMS, 68 tests verts), docs `signature-prestataire.md`, `DEPLOIEMENT.md` (« Lot 044 »), `SECURITY.md`, `env.example`. Classeur des fonctionnalités non touché (configuration d'exploitation).
@@ -62,11 +62,42 @@ Reste à faire (par l'utilisateur, sur le serveur, après fusion de la PR et dé
 
 Pièges et décisions :
 
-- **Fichier de secrets du staging antérieur à `make-env.sh` (relevé de l'utilisateur sur le serveur, 2026-10-16, non revérifié depuis le dépôt) :** il ne portait que `NODE_ENV=production` et `BACKEND_URL=https://app.immotopia.cloud` parmi `SIGNATURE_PROVIDER`, `SMS_PROVIDER`, `PAYMENT_GATEWAY_SIMULATOR` et la configuration e-mail : un fichier ancien ne reçoit pas les réglages que `make-env.sh` écrit pour un fichier neuf, et le tableau « Vue d'ensemble » de `DEPLOIEMENT.md` décrit la cible, pas cet état. Corrigé le soir même à la main : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, e-mail par `set-email-smtp.sh` (boîte dédiée staging, port 465, `verify()` nodemailer « SMTP OK »), `deploy.sh staging --no-build` passé. `SMS_PROVIDER` reste absent (`disabled`) ; Yousign attend cette PR. Noté dans `DEPLOIEMENT.md` (section « Lot 044 » et « Points ouverts »). Non vérifié ici : `PLATFORM_PAYSECUREHUB_MODE=SIMULATOR` dans ce fichier.
+- **Fichier de secrets du staging antérieur à `make-env.sh` (relevé de l'utilisateur sur le serveur, 2026-10-16, non revérifié depuis le dépôt) :** il ne portait que `NODE_ENV=production` et `BACKEND_URL=https://app.immotopia.cloud` parmi `SIGNATURE_PROVIDER`, `SMS_PROVIDER`, `PAYMENT_GATEWAY_SIMULATOR` et la configuration e-mail : un fichier ancien ne reçoit pas les réglages que `make-env.sh` écrit pour un fichier neuf, et le tableau « Vue d'ensemble » de `DEPLOIEMENT.md` décrit la cible, pas cet état. Corrigé le soir même à la main : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, e-mail par `set-email-smtp.sh` (boîte dédiée staging, port 465, `verify()` nodemailer « SMTP OK »), `deploy.sh staging --no-build` passé. `SMS_PROVIDER` reste absent (`disabled`) ; Orange exige d'abord un nom d'expéditeur personnalisé approuvé (voir la section `fix/seed-fichiers-volume` ci-dessous) ; Yousign attend cette PR. Noté dans `DEPLOIEMENT.md` (section « Lot 044 » et « Points ouverts »). Non vérifié ici : `PLATFORM_PAYSECUREHUB_MODE=SIMULATOR` dans ce fichier.
 - `SIGNATURE_PROVIDER` est unique : avec `yousign`, SMS, WhatsApp et « sur place » sont refusés ; le SMS Orange CI se teste avec `SIGNATURE_PROVIDER=internal` et `SMS_PROVIDER=orange` (compte dédié au staging). `SMS_PROVIDER=log` est refusé sur le staging (`NODE_ENV=production`).
 - Non éprouvés : `deploy.sh prod` (seul le motif `grep` a été essayé), le démarrage réel du staging avec Yousign sandbox, l'envoi ou non de vraies invitations par la sandbox Yousign (n'y saisir que des adresses de test).
 - `YOUSIGN_API_KEY` n'est pas dans `INTEGRATION_KEYS` de `deploy.sh` (décision : une clé sandbox n'est pas un identifiant de production).
 - Les jonctions `node_modules` du worktree se retirent avec `rmdir` (jamais `rm -rf`) avant tout `git worktree remove`.
+
+## Branche `fix/seed-fichiers-volume` — 2026-10-16
+
+**État :** prêt à relire (PR https://github.com/bkourouma/immotopia/pull/149, base `main`, CI en cours) ; worktree `.claude/worktrees/distracted-wu-7f2ca7`, `node_modules` = jonctions vers le checkout principal.
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Anomalie de recette du staging : sur « Pack Agence · 3 ans », « Envoyer pour signature » du bail BAIL-2026-0052 répondait « Fichier du document invalide » (`getDocumentFile`).
+
+Cause : `seed-pack-tests.sh` lance le seed dans un conteneur `migrate` jetable ; trois écrivains ignoraient `UPLOADS_DIR` et écrivaient sous `getProjectRoot()/assets/...` (= `/repo/assets/...`, perdu à la fin du conteneur) : `saveRentalDocx` (`agence-locatif-files.ts`), `seedDocumentTemplates` (`agence-commercial-docs.ts`), `writeGeneratedDocx` (`patrimoine-extras-files.ts`). Les lignes `RentalDocument.file_path` pointent donc vers des fichiers disparus et hors des dossiers autorisés. Découverte en plus : l'image `migrate` (cible `build` du Dockerfile) n'embarque pas `assets/`, donc `seedDocumentTemplates` ignorait les modèles livrés (« modèle de base introuvable ») : les agences de test n'ont peut-être AUCUN modèle propre.
+
+Fait :
+
+- Les trois écrivains passent par `utils/assets-paths.ts` (nouveau `getGeneratedDocumentDir`, repris par `saveGeneratedDocument` : un seul découpage `<agence>/<type>/<AAAA>/<MM>`), donc sur le volume quand `UPLOADS_DIR` est posé. Même correction dans la branche REFRESH de `document-templates-seed.ts`.
+- `seed-pack-tests.sh` monte `assets/` du dépôt en lecture seule dans le conteneur et gagne `--repair-files` (refuse `prod` comme le reste).
+- `prisma/seeds/repair-pack-test-files.ts` + `pack-history/repair-files.ts` : répare les `RentalDocument` (docx reconstitué avec `buildDocx` depuis la ligne, `file_hash` mis à jour) et les `DocumentTemplate` (copie du modèle livré) des 12 agences de test ; idempotent, n'affiche que des compteurs.
+- Tests : `pack-history.generated-files-paths.test.ts`, `pack-history.repair-files.test.ts`. Doc : `DEPLOIEMENT.md` (« Comptes de test par pack »).
+
+Reste à faire (par l'utilisateur, sur le serveur, après `deploy.sh staging` qui reconstruit l'image `migrate`) : `./infra/scripts/seed-pack-tests.sh staging --repair-files`, puis, si le compte rendu signale des agences sans modèle propre, `./infra/scripts/seed-pack-tests.sh staging`. Ensuite rejouer « Envoyer pour signature » sur BAIL-2026-0052.
+
+Pièges et non vérifié :
+
+- Rien n'a tourné sur le staging ni sur une base réelle : tests unitaires sur disque temporaire et base simulée seulement.
+- Les gabarits globaux (`db:seed:document-templates`) ne sont toujours pas posés par `bootstrap.sh` : sans modèle d'agence, la génération d'un nouveau contrat échoue (« Aucun template disponible »).
+- La signature convertit le DOCX en PDF (LibreOffice de l'image runtime) : non vérifiée sur un document reconstitué.
+- Les fichiers réparés sont créés par root dans le conteneur ; le script refait le `chown` du volume.
+
+Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l'utilisateur ; pas relus ici) :
+
+- Contournement validé sans cette PR : sur « Pack Agence · 6 mois », le modèle `assets/modeles_standard/bail_habitation.docx` téléversé par l'interface puis défini par défaut ; contrat généré sur BAIL-2026-0008 ; envoi pour signature par e-mail à deux signataires, codes reçus, les deux ont signé, document scellé, « Piste de preuve intacte ». La signature interne fonctionne donc de bout en bout sur le staging, et la conversion DOCX → PDF par LibreOffice de l'image Docker est vérifiée en réel pour la première fois. Contenu du PDF signé pas encore relu.
+- Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
+- Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
 
 ## Branche `feat/syndic-paiement-mobile` — 2026-10-15
 

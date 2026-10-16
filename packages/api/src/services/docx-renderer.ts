@@ -7,7 +7,7 @@ import { logger } from '../utils/logger';
 import { DocumentTemplate } from '@prisma/client';
 import { AppError, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
-import { getGeneratedDocumentsDir, getShippedTemplatesDir, getTemplatesWriteDir } from '../utils/assets-paths';
+import { getGeneratedDocumentDir, getShippedTemplatesDir, getTemplatesWriteDir } from '../utils/assets-paths';
 import {
   DOCX_IMAGES_CONTEXT_KEY,
   injectDocxImages,
@@ -202,13 +202,10 @@ export async function saveGeneratedDocument(
   buffer: Buffer
 ): Promise<string> {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
 
   // Build path: <UPLOADS_DIR>/generated_documents/{tenantId}/{docType}/{YYYY}/{MM}/
   // (ancien emplacement `assets/generated_documents` hors UPLOADS_DIR, voir utils/assets-paths.ts)
-  const basePath = getGeneratedDocumentsDir();
-  const dirPath = path.join(basePath, tenantId, docType, String(year), month);
+  const dirPath = getGeneratedDocumentDir(tenantId, docType, now.getFullYear(), now.getMonth() + 1);
 
   // Create directory if it doesn't exist
   await fs.mkdir(dirPath, { recursive: true });
