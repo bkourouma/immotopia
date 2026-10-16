@@ -2,6 +2,20 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+/**
+ * Droits locatifs du rôle Comptable : LECTURE SEULE. Il consulte baux,
+ * échéances, paiements, pénalités et dépôts pour ses écrans financiers ; toute
+ * écriture (créer un bail, encaisser, affecter, calculer une pénalité) reste
+ * réservée aux rôles de gestion.
+ */
+export const ACCOUNTANT_RENTAL_READ_PERMISSION_KEYS = [
+  'RENTAL_LEASES_VIEW',
+  'RENTAL_INSTALLMENTS_VIEW',
+  'RENTAL_PAYMENTS_VIEW',
+  'RENTAL_PENALTIES_VIEW',
+  'RENTAL_DEPOSITS_VIEW'
+];
+
 async function seedRentalPermissions() {
   console.log('📋 Seeding Rental permissions...');
 

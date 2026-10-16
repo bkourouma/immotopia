@@ -13,9 +13,9 @@ import {
   PropertyFurnishingStatus,
   PropertyAvailability
 } from '@prisma/client';
-import { sendPropertyPublishedGroupBroadcast } from './whatsapp-group-automation-service';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
-import { NotFoundError, BadRequestError } from '../middleware/error-middleware';
+import { sendPropertyPublishedGroupBroadcast } from './whatsapp-group-automation-service';
 
 /**
  * Colonnes d'un bien visibles par un anonyme (`/public/properties`). Liste
@@ -121,7 +121,7 @@ export async function validatePublicationRequirements(propertyId: string): Promi
   if (!property) {
     return {
       valid: false,
-      errors: ['Propriete introuvable']
+      errors: [t('Bien introuvable.')]
     };
   }
 
@@ -129,30 +129,30 @@ export async function validatePublicationRequirements(propertyId: string): Promi
 
   // Required fields
   if (!property.title || property.title.trim() === '') {
-    errors.push('Le titre est obligatoire');
+    errors.push(t('Le titre du bien est obligatoire'));
   }
 
   if (!property.description || property.description.trim() === '') {
-    errors.push('La description est obligatoire');
+    errors.push(t('La description est obligatoire'));
   }
 
   if (!property.address || property.address.trim() === '') {
-    errors.push("L'adresse est obligatoire");
+    errors.push(t("L'adresse du bien est obligatoire"));
   }
 
   // Primary photo required
   if (!property.media || property.media.length === 0) {
-    errors.push('Au moins une photo principale est obligatoire');
+    errors.push(t('Au moins une photo principale est obligatoire'));
   }
 
   // Geolocation required
   if (!property.latitude || !property.longitude) {
-    errors.push('La geolocalisation (latitude/longitude) est obligatoire');
+    errors.push(t('La géolocalisation (latitude/longitude) est obligatoire'));
   }
 
   // Price required for published properties
   if (!property.price) {
-    errors.push('Le prix est obligatoire pour la publication');
+    errors.push(t('Le prix est obligatoire pour la publication'));
   }
 
   // Status must be AVAILABLE, RESERVED, or UNDER_OFFER
@@ -162,14 +162,16 @@ export async function validatePublicationRequirements(propertyId: string): Promi
     PropertyStatus.UNDER_OFFER
   ];
   if (!allowedStatuses.includes(property.status)) {
-    errors.push(`Le statut de la propriete doit etre: ${allowedStatuses.join(', ')}`);
+    errors.push(t('Le statut du bien doit être : {{statuts}}', { statuts: allowedStatuses.join(', ') }));
   }
 
   // Required documents must be valid
   const invalidRequiredDocs = property.documents.filter(doc => !doc.isValid);
   if (invalidRequiredDocs.length > 0) {
     errors.push(
-      `Certains documents obligatoires sont invalides ou expires: ${invalidRequiredDocs.map(d => d.documentType).join(', ')}`
+      t('Certains documents obligatoires sont invalides ou expirés : {{documents}}', {
+        documents: invalidRequiredDocs.map(d => d.documentType).join(', ')
+      })
     );
   }
 
@@ -202,8 +204,13 @@ export async function publishProperty(
   // Validate publication requirements
   const validation = await validatePublicationRequirements(propertyId);
   if (!validation.valid) {
+    // Refus métier, pas une panne : 400 avec la liste des conditions manquantes
+    // (BUG-2026-09-28-009 : c'était un `Error` nu, donc un 500 INTERNAL).
     throw new BadRequestError(
-      t('Conditions de publication non remplies : {{errors}}', { errors: validation.errors.join(', ') })
+      t('Les conditions de publication ne sont pas remplies : {{conditions}}', {
+        conditions: validation.errors.join(', ')
+      }),
+      validation.errors.map(message => ({ field: 'publication', message }))
     );
   }
 

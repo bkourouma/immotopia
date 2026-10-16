@@ -1,6 +1,22 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 
+const NEXT_ACTION_LABELS: Record<string, string> = {
+  CALL: 'Appel',
+  EMAIL: 'E-mail',
+  SMS: 'SMS',
+  WHATSAPP: 'WhatsApp',
+  VISIT: 'Visite',
+  MEETING: 'Réunion',
+  NOTE: 'Note',
+  TASK: 'Tâche'
+};
+
+/** Libellé français d'un code d'action (les textes libres restent tels quels). */
+export function getNextActionLabel(nextActionType: string): string {
+  return NEXT_ACTION_LABELS[nextActionType.trim().toUpperCase()] ?? nextActionType;
+}
+
 export type CalendarEventType = 'FOLLOWUP' | 'PROPERTY_VISIT';
 
 export type CalendarScope = 'GLOBAL' | 'MINE';
@@ -107,13 +123,12 @@ export async function getCalendarEvents(tenantId: string, filters: CalendarFilte
       const contactName = `${activity.contact.firstName} ${activity.contact.lastName}`;
       const dealLabel = activity.deal ? `${activity.deal.type} - ${activity.deal.stage}` : null;
 
-      const title = activity.nextActionType
-        ? `Tâche: ${activity.nextActionType} - ${contactName}`
-        : `Relance: ${contactName}`;
+      const actionLabel = activity.nextActionType ? getNextActionLabel(activity.nextActionType) : null;
+      const title = actionLabel ? `Tâche: ${actionLabel} - ${contactName}` : `Relance: ${contactName}`;
 
       const badges: string[] = [];
       if (activity.nextActionType) {
-        badges.push(activity.nextActionType);
+        badges.push(getNextActionLabel(activity.nextActionType));
       } else {
         badges.push('Relance');
       }

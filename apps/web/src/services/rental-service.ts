@@ -617,8 +617,11 @@ export interface RentalPenalty {
   currency: string;
   days_late: number;
   calculated_at: string;
+  /** Montant calculé d'origine d'une pénalité ajustée (`amount` est alors le montant retenu). */
+  calculated_amount?: number | null;
   adjusted_amount?: number | null;
   adjustment_reason?: string | null;
+  is_manual_override?: boolean;
   created_at: string;
   updated_at: string;
 }

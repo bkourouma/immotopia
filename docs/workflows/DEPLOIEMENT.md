@@ -1362,6 +1362,42 @@ deux environnements : tant que la bascule n'est pas faite, le filet
 multi-tenant et les quotas d'abonnement de la production ne bloquent rien (voir
 les [points ouverts](#points-ouverts)).
 
+### Rattrapage des honoraires de gestion (PR « Opérateur intégré »)
+
+À faire **une fois, APRÈS la migration et AVANT d'ouvrir la version aux
+utilisateurs**, sur le staging puis sur la production. Un niveau de conditions
+d'honoraires (bail, propriétaire, agence) ne vaut que pour les encaissements
+enregistrés après son dernier enregistrement (`feeTermsApplyToAllocation`) :
+un encaissement antérieur dont les honoraires ne sont pas encore figés n'en
+recevrait **jamais**. Le script fige l'historique de chaque agence avec les
+conditions encore en vigueur (`freezeManagementFees`, le même appel que celui
+qui précède chaque changement de conditions).
+
+```bash
+C=immotopia-prod-api; T=dist/scripts/backfill-management-fees.js   # staging : immotopia-saas-api
+# 1. Simulation (rien n'est écrit) : encaissements et honoraires qui seraient figés, par agence.
+docker exec $C node $T --allow-production
+# 2. Lire le rapport, puis appliquer (idempotent : on peut le relancer).
+docker exec $C node $T --allow-production --apply
+# Une seule agence : --tenant <id>. Sortie machine : --json.
+```
+
+- **Simulation par défaut.** `--apply` écrit ; `--allow-production` est exigé
+  dans le conteneur (`NODE_ENV=production`). Une agence en échec est signalée
+  sans arrêter les autres (code de sortie 1).
+- **Idempotent.** Seuls les encaissements sans honoraires sont traités (unicité
+  sur l'affectation) : un second passage, ou un passage concurrent, ne crée
+  rien. Un nouvel `--apply` après coup ne touche que les encaissements arrivés
+  entre-temps.
+- **Sauvegarde d'abord** en production (`./infra/scripts/backup.sh prod`), comme
+  pour tout déploiement. Le rattrapage ne modifie ni ne supprime aucune ligne
+  existante : il ajoute des lignes d'honoraires.
+- Le fichier est compilé dans l'image (`src/scripts/`) ; en développement :
+  `npm run ops:backfill-management-fees -w @immotopia/api -- [options]`.
+- Après `--apply`, la simulation doit afficher 0 encaissement pour chaque agence
+  (les encaissements sans condition d'honoraires applicable restent sans
+  honoraires, ce qui est voulu : ils n'apparaissent pas non plus en simulation).
+
 ### Lot 040 — contrôle du stock de chantier
 
 À relire avant le premier déploiement du lot (détail :
