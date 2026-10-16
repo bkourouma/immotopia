@@ -18,6 +18,16 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `docs/handoff-staging-deploiement` — 2026-10-16
+
+**État :** prêt à relire.
+
+**Fait :** staging déployé par la CI (workflow `Déploiement`, `workflow_dispatch`, commit `d4c9c83`, `deploy.sh staging` OK, `/health` et `/` en 200 sur app.immotopia.cloud). Premier essai réel du déploiement continu : il fonctionne. Secrets `DEPLOY_SSH_KEY` et `DEPLOY_SSH_KNOWN_HOSTS` posés dans l'environnement GitHub `staging` ; clé publique ajoutée dans `authorized_keys` de `deployer` (sauvegarde `authorized_keys.avant-ci-*`). PR 126, 132, 142 fusionnées dans `main`.
+
+**Reste :** repasser les 3 tests de refus de la clé du staging (code 2 attendu) puis supprimer la clé privée du poste ; environnement `production` et clé prod non créés ; `AUTO_DEPLOY_STAGING` non activé ; `main` non protégé par ruleset (prérequis de l'automatique) ; classeur de fonctionnalités à compléter (paiement mobile copropriétaires, règlements fournisseurs).
+
+**Pièges :** le service `ssh` du serveur s'est arrêté le 2026-10-16 (port 2222 refusé, `ssh.service` désactivé et lancé par `ssh.socket`) : à surveiller. `ssh-keyscan` de Windows ne rend que la bannière : lire la clé d'hôte sur le serveur. Le checkout du serveur doit être à jour (`git merge --ff-only origin/main`) sinon `ci-deploy.sh` est introuvable (code 127).
+
 ## Branche `feat/finance-fournisseurs-tresorerie` — 2026-10-16
 
 **État :** prêt à relire (PR 142), CI à relire après la fusion de main.
