@@ -36,6 +36,56 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `feat/syndic-acces-portail-visible` — 2026-10-16
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/147 (base `main`), CI en cours à l'ouverture ; fusion par l'utilisateur
+**Dernier commit :** `76d61ad7` feat(syndic): afficher l'accès au portail copropriétaire par lot (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/serene-hawking-f4a5a3` (jonctions `node_modules` retirées en fin de session : les reposer pour retester)
+
+Fait : recette du 2026-10-16 (staging) — un testeur ne voyait pas quels copropriétaires ont un accès au portail. Aucune route ajoutée : `GET .../syndics/:id` et `GET .../lots` chargent `portalAccessEnabled` avec les profils propriétaires déjà lus et renvoient `portalAccess` { status NONE/INACTIVE/PARTIAL/ACTIVE, activeCount, ownerCount } par lot (`presentSyndicateLots`, `lib/syndics/lot-owner.ts`). La fiche renvoie maintenant `owners`/`ownersLabel` comme la page « Lots » (plus de profils bruts). Colonne « Portail » dans `LotTable` (fiche + page « Lots »), lien « Gérer l'accès » vers `/profils-incidents`, indicateur « Lots avec accès au portail ». Six clés en/ar, classeur (992 lignes) et miroir à jour. Tests : `SyndicLotPortalAccess.test.tsx`, `syndics.lots-portal-access.test.ts`, `syndics.lot-owner.test.ts`.
+
+Reste à faire :
+
+- Regarder le rendu sur le staging après déploiement (fiche et page « Lots », arabe/RTL) : aucune recette visuelle n'a été jouée (pas d'API ni de base dans la session).
+- Dette hors périmètre : `npm run i18n:extract` à lancer pour le paiement mobile (PR 132) — plusieurs centaines de clés sans traduction dans `syndic.json` et remaniements d'autres catalogues ; ne pas le lancer « pour ajouter une clé » dans une PR de fonctionnalité.
+
+Pièges :
+
+- Jonctions `node_modules` vers le checkout principal = client Prisma partagé, plus ancien que le schéma d'origin/main (scope `CHARGE_CALL_PAYMENT`) : les suites Jest d'API qui montent `syndic-routes` échouent en ts-jest sur `lib/secure-links/service.ts`. Vérification locale avec une config Jest `isolatedModules` (comme le projet `api-app`) ; la CI régénère le client.
+- Le motif `__tests__/unit/syndics` capte aussi `syndics.*-fixtures.ts` (fichiers sans test : « must contain at least one test »), faux échecs.
+- Retirer les jonctions sans jamais suivre leur cible (jamais `rm -rf`), avant de supprimer le worktree : sous PowerShell, `[System.IO.Directory]::Delete($chemin, $false)` après avoir vérifié `LinkType -eq 'Junction'`. `cmd /c rmdir` lancé depuis Git Bash est mal interprété (`/c` converti en chemin) et ne retire rien.
+
+## Branche `fix/seed-fichiers-volume` — 2026-10-16
+
+**État :** prêt à relire (PR https://github.com/bkourouma/immotopia/pull/149, base `main`, CI en cours) ; worktree `.claude/worktrees/distracted-wu-7f2ca7`, `node_modules` = jonctions vers le checkout principal.
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Anomalie de recette du staging : sur « Pack Agence · 3 ans », « Envoyer pour signature » du bail BAIL-2026-0052 répondait « Fichier du document invalide » (`getDocumentFile`).
+
+Cause : `seed-pack-tests.sh` lance le seed dans un conteneur `migrate` jetable ; trois écrivains ignoraient `UPLOADS_DIR` et écrivaient sous `getProjectRoot()/assets/...` (= `/repo/assets/...`, perdu à la fin du conteneur) : `saveRentalDocx` (`agence-locatif-files.ts`), `seedDocumentTemplates` (`agence-commercial-docs.ts`), `writeGeneratedDocx` (`patrimoine-extras-files.ts`). Les lignes `RentalDocument.file_path` pointent donc vers des fichiers disparus et hors des dossiers autorisés. Découverte en plus : l'image `migrate` (cible `build` du Dockerfile) n'embarque pas `assets/`, donc `seedDocumentTemplates` ignorait les modèles livrés (« modèle de base introuvable ») : les agences de test n'ont peut-être AUCUN modèle propre.
+
+Fait :
+
+- Les trois écrivains passent par `utils/assets-paths.ts` (nouveau `getGeneratedDocumentDir`, repris par `saveGeneratedDocument` : un seul découpage `<agence>/<type>/<AAAA>/<MM>`), donc sur le volume quand `UPLOADS_DIR` est posé. Même correction dans la branche REFRESH de `document-templates-seed.ts`.
+- `seed-pack-tests.sh` monte `assets/` du dépôt en lecture seule dans le conteneur et gagne `--repair-files` (refuse `prod` comme le reste).
+- `prisma/seeds/repair-pack-test-files.ts` + `pack-history/repair-files.ts` : répare les `RentalDocument` (docx reconstitué avec `buildDocx` depuis la ligne, `file_hash` mis à jour) et les `DocumentTemplate` (copie du modèle livré) des 12 agences de test ; idempotent, n'affiche que des compteurs.
+- Tests : `pack-history.generated-files-paths.test.ts`, `pack-history.repair-files.test.ts`. Doc : `DEPLOIEMENT.md` (« Comptes de test par pack »).
+
+Reste à faire (par l'utilisateur, sur le serveur, après `deploy.sh staging` qui reconstruit l'image `migrate`) : `./infra/scripts/seed-pack-tests.sh staging --repair-files`, puis, si le compte rendu signale des agences sans modèle propre, `./infra/scripts/seed-pack-tests.sh staging`. Ensuite rejouer « Envoyer pour signature » sur BAIL-2026-0052.
+
+Pièges et non vérifié :
+
+- Rien n'a tourné sur le staging ni sur une base réelle : tests unitaires sur disque temporaire et base simulée seulement.
+- Les gabarits globaux (`db:seed:document-templates`) ne sont toujours pas posés par `bootstrap.sh` : sans modèle d'agence, la génération d'un nouveau contrat échoue (« Aucun template disponible »).
+- La signature convertit le DOCX en PDF (LibreOffice de l'image runtime) : non vérifiée sur un document reconstitué.
+- Les fichiers réparés sont créés par root dans le conteneur ; le script refait le `chown` du volume.
+
+Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l'utilisateur ; pas relus ici) :
+
+- Contournement validé sans cette PR : sur « Pack Agence · 6 mois », le modèle `assets/modeles_standard/bail_habitation.docx` téléversé par l'interface puis défini par défaut ; contrat généré sur BAIL-2026-0008 ; envoi pour signature par e-mail à deux signataires, codes reçus, les deux ont signé, document scellé, « Piste de preuve intacte ». La signature interne fonctionne donc de bout en bout sur le staging, et la conversion DOCX → PDF par LibreOffice de l'image Docker est vérifiée en réel pour la première fois. Contenu du PDF signé pas encore relu.
+- Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
+- Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
+
 ## Branche `fix/paiement-mobile-signature-defauts` — 2026-10-16
 
 **État :** prêt à relire (PR ouverte vers `main`, voir `gh pr list`), worktree `.claude/worktrees/affectionate-mendeleev-85d25c` (`node_modules` propre par `npm ci`, pas de jonction).
@@ -49,7 +99,7 @@ Fait :
 - Écran « Paiements en ligne » : Vérifier, Trancher, reversements derrière `SYNDIC_EDIT` ; configuration et test derrière `SYNDIC_EDIT` + `TENANT_SETTINGS_EDIT` (`useMyMenuAccess`).
 - T075 livrée : boutons « Payer cet appel » et « Liens de paiement » sur l'écran Charges d'une copropriété (`ChargeCallPaymentLinkButton.tsx`, `ChargeCallPaymentLinksPanel.tsx`) ; `Cache-Control: no-store` sur la réponse qui porte l'URL.
 - Signature : rôle et canal en libellés (page `/signer/:jeton`, certificat PDF via `lib/signature/labels.ts`), libellé de `IN_PERSON_TOKEN_ISSUED`, `q` accepté par `GET /api/signatures/summary`, champ `canEdit` (liste et détail) qui masque Relancer/Annuler.
-- Traductions en/ar : 238 libellés (web `common`, `syndic`, API). Classeur : 23 lignes ajoutées, 14 modifiées (1014 lignes).
+- Traductions en/ar : 238 libellés (web `common`, `syndic`, API). Classeur : 23 lignes ajoutées, 14 modifiées (1015 lignes après fusion de main, qui en ajoutait une).
 
 Reste à faire :
 
