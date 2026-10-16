@@ -542,6 +542,36 @@ export class EmailService {
   }
 
   /**
+   * Prénotification d'un prélèvement bancaire (spec 042, P2). Ne contient jamais l'IBAN complet : `ibanMasked` seulement.
+   * Placeholders: debtorName, agencyName, amount, collectionDate, period, leaseNumber, ibanMasked, mandateReference, creditorIdentifier.
+   */
+  async sendDirectDebitPrenotification(
+    to: string,
+    vars: {
+      debtorName: string;
+      agencyName: string;
+      amount: string;
+      collectionDate: string;
+      period: string;
+      leaseNumber: string;
+      ibanMasked: string;
+      mandateReference: string;
+      creditorIdentifier: string;
+    },
+    options?: { tenantId?: string; templateOverrides?: TemplateOverrides }
+  ): Promise<void> {
+    const { emailWrapper } = await import('../utils/payment-email-templates');
+    const { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } = await import('../constants/email-notification-default-templates');
+    const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES.DIRECT_DEBIT_PRENOTIFICATION;
+    const subject = applyTemplate(options?.templateOverrides?.subject || defaults.subject, vars);
+    const html = emailWrapper(applyTemplate(options?.templateOverrides?.bodyHtml || defaults.bodyHtml, vars, true));
+    const text = `Bonjour ${vars.debtorName},
+
+${vars.agencyName} prélèvera ${vars.amount} sur votre compte ${vars.ibanMasked} le ${vars.collectionDate} (loyer ${vars.period}, bail ${vars.leaseNumber}, mandat ${vars.mandateReference}).`;
+    await this.sendEmail({ to, subject, text, html, tenantId: options?.tenantId });
+  }
+
+  /**
    * Notify agency admins when a tenant creates a maintenance ticket (en dur).
    * Placeholders for overrides: agencyUserName, ticketTitle, ticketId, propertyReference, validationUrl, agencyName, renterName, ticketCreatedAt.
    */

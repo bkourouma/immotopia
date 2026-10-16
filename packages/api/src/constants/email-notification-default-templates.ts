@@ -354,6 +354,19 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:13px; color:#666;">Ce lien est personnel et valable jusqu'au {{expiresAt}}. Ne le transmettez pas.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
+  DIRECT_DEBIT_PRENOTIFICATION: {
+    subject: 'Prélèvement de votre loyer le {{collectionDate}} - {{agencyName}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Prélèvement à venir sur votre compte</h1>
+<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{debtorName}},</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> prélèvera <strong>{{amount}}</strong> sur votre compte bancaire le <strong>{{collectionDate}}</strong>, au titre de votre loyer {{period}} (bail {{leaseNumber}}).</p>
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
+  <tr><td style="padding:6px 0;"><strong>Compte débité :</strong> {{ibanMasked}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Référence du mandat :</strong> {{mandateReference}}</td></tr>
+  <tr><td style="padding:6px 0;"><strong>Numéro d'émetteur :</strong> {{creditorIdentifier}}</td></tr>
+</table>
+<p style="margin:0 0 12px 0; font-size:13px; color:#666;">Veillez à ce que votre compte soit approvisionné à cette date. Pour toute question, contactez votre agence avant le prélèvement.</p>
+<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
+  },
   CHARGE_CALL_PAYMENT_LINK_SENT: {
     subject: 'Appel de charges {{period}} - {{syndicateName}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Paiement de votre appel de charges</h1>

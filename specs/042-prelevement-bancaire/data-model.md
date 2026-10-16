@@ -392,8 +392,8 @@ Relations inverses : `Tenant`, `DirectDebitCreditor`, `DirectDebitMandate`,
 Migrations (P2), générées par `prisma migrate diff` (jamais `prisma format`,
 jamais `migrate dev`) :
 
-1. `20261016090000_prelevement_moyen_paiement` — `ALTER TYPE "RentalPaymentMethod" ADD VALUE 'DIRECT_DEBIT'`, seule.
-2. `20261016090100_prelevement_remises` — énumérations, tables, index, clés étrangères.
+1. `20261016120000_prelevement_moyen_paiement` — `ALTER TYPE "RentalPaymentMethod" ADD VALUE 'DIRECT_DEBIT'`, seule.
+2. `20261016120100_prelevement_remises` — énumérations, tables, index, clés étrangères.
 
 Aucune permission nouvelle : `RENTAL_DIRECT_DEBIT_VIEW` (consulter) et
 `RENTAL_DIRECT_DEBIT_MANAGE` (tout le reste, dont le fichier à IBAN complet).

@@ -260,3 +260,224 @@ export async function downloadSignedScan(
     filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
   };
 }
+
+// --- P2 : remises de loyers --------------------------------------------------
+//
+// Contrat : `specs/042-prelevement-bancaire/data-model.md` §7. Aucun champ ne
+// porte l'IBAN complet, le texte chiffré ou l'adresse e-mail du débiteur : le
+// fichier de remise (IBAN complet) ne se télécharge que par `exportRemittance`.
+
+export type RemittanceStatus = 'DRAFT' | 'VALIDATED' | 'EXPORTED' | 'SUBMITTED' | 'CANCELED';
+export type RemittanceLineStatus = 'PENDING' | 'CANCELED';
+export type PrenotificationStatus = 'PENDING' | 'SENT' | 'NO_EMAIL' | 'DISABLED' | 'FAILED';
+export type SkipReason =
+  'NO_INSTALLMENT' | 'NOTHING_DUE' | 'ALREADY_IN_REMITTANCE' | 'LEASE_NOT_ACTIVE' | 'COLLECTION_DAY_LATER';
+
+export interface RemittanceSummaryDto {
+  id: string;
+  /** Ex. PRL-2026-0001. */
+  reference: string;
+  status: RemittanceStatus;
+  /** Valeurs figées après validation. */
+  creditor: { id: string; label: string; creditorIdentifier: string | null };
+  /** AAAA-MM-JJ. */
+  collectionDate: string;
+  periodYear: number;
+  periodMonth: number;
+  /** AAAA-MM-JJ. */
+  prenotificationDeadline: string;
+  fileFormat: 'GENERIC_CSV';
+  lineCount: number;
+  totalAmount: number;
+  validatedAt: string | null;
+  firstExportedAt: string | null;
+  lastExportedAt: string | null;
+  exportCount: number;
+  submittedAt: string | null;
+  canceledAt: string | null;
+  cancellationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RemittanceLineDto {
+  id: string;
+  lineNumber: number;
+  /** Référence d'opération, ex. PRL-2026-0001-001. */
+  reference: string;
+  status: RemittanceLineStatus;
+  mandate: {
+    id: string;
+    reference: string;
+    ibanMasked: string;
+    holderName: string;
+    maxAmount: number | null;
+  };
+  debtor: { id: string; displayName: string | null };
+  lease: { id: string; leaseNumber: string };
+  installment: { id: string; periodYear: number; periodMonth: number; dueDate: string };
+  amount: number;
+  remainingDueAtSelection: number;
+  capped: boolean;
+  prenotificationStatus: PrenotificationStatus;
+  prenotifiedAt: string | null;
+  canceledAt: string | null;
+  cancellationReason: string | null;
+}
+
+export interface PrenotificationSummaryDto {
+  pending: number;
+  sent: number;
+  noEmail: number;
+  disabled: number;
+  failed: number;
+}
+
+export interface RemittanceDto extends RemittanceSummaryDto {
+  notes: string | null;
+  /** Toutes les lignes, annulées comprises, par `lineNumber`. */
+  lines: RemittanceLineDto[];
+  /** Lignes PENDING seulement. */
+  prenotificationSummary: PrenotificationSummaryDto;
+}
+
+export interface SkippedMandateDto {
+  mandateId: string;
+  mandateReference: string;
+  leaseNumber: string | null;
+  debtorName: string | null;
+  reason: SkipReason;
+}
+
+export interface RemittanceListFilters {
+  creditorId?: string;
+  status?: RemittanceStatus;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface RemittanceListResult {
+  items: RemittanceSummaryDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface CreateRemittanceInput {
+  creditorId: string;
+  /** AAAA-MM-JJ. */
+  collectionDate: string;
+  notes?: string;
+}
+
+export interface RemittanceWithSkipped {
+  remittance: RemittanceDto;
+  skipped: SkippedMandateDto[];
+}
+
+export interface RemittanceWithPrenotifications {
+  remittance: RemittanceDto;
+  prenotifications: PrenotificationSummaryDto;
+}
+
+export async function listRemittances(
+  tenantId: string,
+  filters: RemittanceListFilters = {}
+): Promise<RemittanceListResult> {
+  const params: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === '') continue;
+    params[key] = value as string | number;
+  }
+  const response = await apiClient.get(`${base(tenantId)}/remittances`, { params });
+  return response.data.data;
+}
+
+export async function createRemittance(tenantId: string, input: CreateRemittanceInput): Promise<RemittanceWithSkipped> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances`, input);
+  return response.data.data;
+}
+
+export async function getRemittance(tenantId: string, remittanceId: string): Promise<RemittanceDto> {
+  const response = await apiClient.get(`${base(tenantId)}/remittances/${remittanceId}`);
+  return response.data.data;
+}
+
+export async function refreshRemittance(tenantId: string, remittanceId: string): Promise<RemittanceWithSkipped> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/refresh`);
+  return response.data.data;
+}
+
+export async function cancelRemittanceLine(
+  tenantId: string,
+  remittanceId: string,
+  lineId: string,
+  reason?: string
+): Promise<RemittanceDto> {
+  const response = await apiClient.post(
+    `${base(tenantId)}/remittances/${remittanceId}/lines/${lineId}/cancel`,
+    reason ? { reason } : {}
+  );
+  return response.data.data;
+}
+
+export async function validateRemittance(
+  tenantId: string,
+  remittanceId: string
+): Promise<RemittanceWithPrenotifications> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/validate`);
+  return response.data.data;
+}
+
+export async function resendPrenotifications(
+  tenantId: string,
+  remittanceId: string
+): Promise<RemittanceWithPrenotifications> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/prenotifications`);
+  return response.data.data;
+}
+
+/**
+ * Une erreur reçue avec `responseType: 'blob'` porte son JSON dans un Blob :
+ * on le relit pour que `apiErrorMessage` retrouve le message de l'API.
+ */
+async function unwrapBlobError(error: unknown): Promise<void> {
+  const response = (error as { response?: { data?: unknown } })?.response;
+  if (!response || !(response.data instanceof Blob)) return;
+  try {
+    response.data = JSON.parse(await response.data.text());
+  } catch {
+    // Corps illisible : on garde l'erreur d'origine.
+  }
+}
+
+/** Produit le fichier de remise (IBAN complets) : un `POST` qui renvoie un fichier. */
+export async function exportRemittance(
+  tenantId: string,
+  remittanceId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  let response;
+  try {
+    response = await apiClient.post<Blob>(`${base(tenantId)}/remittances/${remittanceId}/export`, undefined, {
+      responseType: 'blob'
+    });
+  } catch (error) {
+    await unwrapBlobError(error);
+    throw error;
+  }
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
+}
+
+export async function submitRemittance(tenantId: string, remittanceId: string): Promise<RemittanceDto> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/submit`);
+  return response.data.data;
+}
+
+export async function cancelRemittance(tenantId: string, remittanceId: string, reason: string): Promise<RemittanceDto> {
+  const response = await apiClient.post(`${base(tenantId)}/remittances/${remittanceId}/cancel`, { reason });
+  return response.data.data;
+}
