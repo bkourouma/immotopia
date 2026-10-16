@@ -269,7 +269,8 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Vous êtes convoqué(e) à l’Assemblée Générale de la copropriété <strong>{{syndicateName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Date : {{meetingDate}}. Heure : {{meetingTime}}. Lieu : {{meetingLocation}}.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Suivez l’assemblée et votez en ligne : {{meetingLink}}</p>`
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Suivez l’assemblée et votez en ligne : {{meetingLink}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">{{recordingNotice}}</p>`
   },
   GENERAL_MEETING_MINUTES: {
     subject: 'Procès-verbal de l’assemblée générale du {{meetingDate}}',

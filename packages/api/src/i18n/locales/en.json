@@ -2059,5 +2059,6 @@
   "Enregistrement introuvable ou inaccessible": "Recording not found or inaccessible",
   "Cet enregistrement ne peut pas être supprimé dans son état actuel": "This recording cannot be deleted in its current state",
   "Le fichier dépasse la taille maximale : il est conservé sur le stockage de la visio": "The file exceeds the maximum size: it is kept on the video storage",
-  "Cet enregistrement ne peut pas être relancé dans son état actuel": "This recording cannot be retried in its current state"
+  "Cet enregistrement ne peut pas être relancé dans son état actuel": "This recording cannot be retried in its current state",
+  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "The meeting may be recorded (image and sound); a notice will be displayed on screen during the recording."
 }
