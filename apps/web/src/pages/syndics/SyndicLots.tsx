@@ -614,6 +614,15 @@ export const SyndicLots: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <StatCard
+                  label={t('Lots avec accès au portail')}
+                  value={
+                    lots.filter(lot => lot.portalAccess?.status === 'ACTIVE' || lot.portalAccess?.status === 'PARTIAL')
+                      .length
+                  }
+                />
+              </Col>
+              <Col xs={24} md={8}>
+                <StatCard
                   label={t('Lots avec locataire actif')}
                   value={
                     lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length
@@ -626,6 +635,7 @@ export const SyndicLots: React.FC = () => {
               <LotTable
                 lots={lots}
                 showMobileHint
+                portalManageHref={`/tenant/${effectiveTenantId}/syndics/${syndicId}/profils-incidents`}
                 propertyLabelById={propertyLabelById}
                 ownerLabelById={ownerLabelById}
                 ownerLabelByEmail={ownerLabelByEmail}

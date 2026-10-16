@@ -20,6 +20,8 @@ export interface OwnerProfileLike {
   ownedSince: Date | string;
   ownedUntil?: Date | string | null;
   isActive: boolean;
+  /** Accès au portail copropriétaire ouvert pour ce profil (voir `coowner-portal.ts`). */
+  portalAccessEnabled?: boolean;
   contact?: {
     firstName?: string | null;
     lastName?: string | null;
@@ -75,6 +77,44 @@ export function formatLotOwners<T extends OwnerProfileLike>(profiles: T[], now: 
     .join(', ');
 }
 
+/**
+ * Etat de l'acces au portail copropriétaire d'un lot, lu sur ses proprietaires
+ * actuels : `NONE` sans profil proprietaire (rien a inviter), `ACTIVE` quand
+ * tous les proprietaires y ont acces, `INACTIVE` quand aucun, `PARTIAL` en
+ * indivision lorsque seuls certains y ont acces.
+ */
+export type LotPortalAccessStatus = 'NONE' | 'INACTIVE' | 'PARTIAL' | 'ACTIVE';
+
+export interface LotPortalAccess {
+  status: LotPortalAccessStatus;
+  /** Proprietaires actuels du lot dont l'acces au portail est ouvert. */
+  activeCount: number;
+  /** Proprietaires actuels du lot (profils actifs et non termines). */
+  ownerCount: number;
+}
+
+/**
+ * Meme source que la colonne « Portail » de « Profils et incidents »
+ * (`LotOwnerProfile.portalAccessEnabled`), restreinte aux profils qui comptent
+ * pour le portail : actifs et non termines (`isCurrentOwnerProfile`).
+ */
+export function summarizeLotPortalAccess<T extends OwnerProfileLike>(
+  profiles: T[],
+  now: Date = new Date()
+): LotPortalAccess {
+  const current = currentOwnerProfilesSorted(profiles, now);
+  const activeCount = current.filter(profile => profile.portalAccessEnabled === true).length;
+  const status: LotPortalAccessStatus =
+    current.length === 0
+      ? 'NONE'
+      : activeCount === 0
+        ? 'INACTIVE'
+        : activeCount === current.length
+          ? 'ACTIVE'
+          : 'PARTIAL';
+  return { status, activeCount, ownerCount: current.length };
+}
+
 /** Proprietaires exposes par l'API sur chaque lot (liste, compte, recouvrement). */
 export function presentLotOwners<T extends OwnerProfileLike>(profiles: T[], now: Date = new Date()) {
   const current = currentOwnerProfilesSorted(profiles, now);
@@ -83,10 +123,28 @@ export function presentLotOwners<T extends OwnerProfileLike>(profiles: T[], now:
       contactId: profile.contactId,
       name: ownerProfileName(profile),
       percentage: percentageOf(profile) / 100,
-      ownedSince: profile.ownedSince
+      ownedSince: profile.ownedSince,
+      // Seulement quand la lecture a charge le champ : sinon « inconnu » ne doit pas passer pour « inactif ».
+      ...(profile.portalAccessEnabled === undefined ? {} : { portalAccessEnabled: profile.portalAccessEnabled })
     })),
     ownersLabel: formatLotOwners(profiles, now)
   };
+}
+
+/**
+ * Lots d'une copropriete tels que renvoyes au client (fiche et page « Lots ») :
+ * les profils proprietaires bruts n'en sortent pas, remplaces par `owners`,
+ * `ownersLabel` et `portalAccess` (la lecture charge `portalAccessEnabled`).
+ */
+export function presentSyndicateLots<L extends { ownerProfiles?: OwnerProfileLike[] | null }>(
+  lots: L[],
+  now: Date = new Date()
+) {
+  return lots.map(({ ownerProfiles, ...lot }) => ({
+    ...lot,
+    ...presentLotOwners(ownerProfiles ?? [], now),
+    portalAccess: summarizeLotPortalAccess(ownerProfiles ?? [], now)
+  }));
 }
 
 /**
