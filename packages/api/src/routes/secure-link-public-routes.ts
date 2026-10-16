@@ -1,6 +1,9 @@
 import express, { NextFunction, Request, Response, Router } from 'express';
 import { invalidSecureLinkError } from '../lib/secure-links';
 import {
+  chargePaymentStartRateLimiter,
+  chargePaymentStatusRateLimiter,
+  chargePaymentViewRateLimiter,
   secureLinkPaymentStartRateLimiter,
   secureLinkPublicRateLimiter,
   secureLinkStatusRateLimiter
@@ -10,6 +13,11 @@ import {
   installmentPaymentStartHandler,
   installmentPaymentStatusHandler
 } from '../controllers/installment-payment-public-controller';
+import {
+  chargeCallPaymentPublicHandler,
+  chargeCallPaymentStartHandler,
+  chargeCallPaymentStatusHandler
+} from '../controllers/charge-call-payment-public-controller';
 import {
   ownerMonthlyReportPublicHandler,
   secureLinkNoStoreHeaders
@@ -77,6 +85,32 @@ router.post(
   secureLinkNoStoreHeaders,
   express.json({ limit: MAX_BODY }),
   installmentPaymentStatusHandler
+);
+
+// Lien « Payer cet appel » des charges de copropriété (spec 042) : mêmes garanties, limiteurs
+// aux clés propres (30 / 10 / 90 par minute et par IP), posés avant toute vérification.
+router.post(
+  '/public/secure-links/charge-call-payment',
+  chargePaymentViewRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  chargeCallPaymentPublicHandler
+);
+
+router.post(
+  '/public/secure-links/charge-call-payment/start',
+  chargePaymentStartRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  chargeCallPaymentStartHandler
+);
+
+router.post(
+  '/public/secure-links/charge-call-payment/status',
+  chargePaymentStatusRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  chargeCallPaymentStatusHandler
 );
 
 // Erreur de parseur : refus uniforme (les en-têtes no-store sont déjà posés),

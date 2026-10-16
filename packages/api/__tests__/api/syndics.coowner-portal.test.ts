@@ -35,6 +35,15 @@ const mockPrisma = createFakePrisma();
 
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+// Paiement en ligne (spec 042) : la liste des appels interroge la disponibilité et les tentatives ouvertes.
+// Ces tables ne sont pas dans la base en mémoire ; ici aucune copropriété n'est configurée.
+(mockPrisma as any).syndicPaymentGatewayConfig = { findMany: jest.fn(async () => []) };
+(mockPrisma as any).paymentGatewayConfig = { findFirst: jest.fn(async () => null) };
+(mockPrisma as any).syndicOnlineCheckout = { findMany: jest.fn(async () => []) };
+jest.mock('../../src/lib/syndics/charge-schedule-tenant-gate', () => ({
+  evaluateSchedulingGate: async () => null
+}));
+
 jest.mock('../../src/middleware/auth-middleware', () => ({
   authenticate: (req: any, res: any, next: any) => {
     const userId = req.headers['x-test-user'];

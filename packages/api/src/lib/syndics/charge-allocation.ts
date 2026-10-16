@@ -79,7 +79,16 @@ export interface LotPaymentInput {
   method?: string | null;
   reference?: string | null;
   chargeCallIds?: string[] | null;
+  /** Absent pour un paiement sans utilisateur gestionnaire (paiement en ligne). */
   actorUserId?: string | null;
+  /** Spec 042 : cle d'idempotence (unique en base). Une seconde ecriture leve P2002. */
+  idempotencyKey?: string | null;
+  /** Spec 042 : identifiant de transaction du fournisseur (unique en base). */
+  providerTransactionId?: string | null;
+  /** Spec 042 : provenance ; `MANUAL` par defaut. */
+  origin?: 'MANUAL' | 'ONLINE';
+  /** Spec 042 : compte de tresorerie debite ; absent = deduit de `method` (521/571). */
+  treasuryAccountNumber?: '521' | '571' | '5525';
 }
 
 export interface LotPaymentAllocationView {
@@ -389,7 +398,10 @@ export async function recordLotPaymentTx(tx: PrismaTransactionClient, input: Lot
       paidAt: input.paidAt,
       method: input.method ?? null,
       reference: input.reference ?? null,
-      createdById: input.actorUserId ?? null
+      createdById: input.actorUserId ?? null,
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      ...(input.providerTransactionId ? { providerTransactionId: input.providerTransactionId } : {}),
+      ...(input.origin ? { origin: input.origin } : {})
     }
   });
 
@@ -419,7 +431,8 @@ export async function recordLotPaymentTx(tx: PrismaTransactionClient, input: Lot
     amount: fromCents(amountCents),
     paidAt: input.paidAt,
     method: input.method ?? null,
-    reference: input.reference ?? null
+    reference: input.reference ?? null,
+    ...(input.treasuryAccountNumber ? { treasuryAccountNumber: input.treasuryAccountNumber } : {})
   });
 
   const application = await applyLotAdvanceTx(tx, input.lotId);

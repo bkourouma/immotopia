@@ -24,10 +24,11 @@ import { isJournalEntryBalanced, roundMoney } from './finance-utils';
  *   624  charges courantes (entretien, reparations, maintenance) ;
  *   6241 travaux sur parties communes (sous-compte du 624) ;
  *   450  coproprietaires (encaissement des appels de charges, ligne par lot) ;
- *   571  caisse (encaissement en especes).
+ *   571  caisse (encaissement en especes) ;
+ *   5525 PaySecureHub (collecte mobile money, spec 042), reverse vers le 521.
  */
 
-export type SyndicAccountNumber = '401' | '521' | '624' | '6241' | '450' | '571';
+export type SyndicAccountNumber = '401' | '521' | '624' | '6241' | '450' | '571' | '5525';
 
 interface AccountSeed {
   accountNumber: SyndicAccountNumber;
@@ -54,7 +55,10 @@ export const SYNDIC_ACCOUNT_SEEDS: AccountSeed[] = [
     parent: '624'
   },
   { accountNumber: '450', accountName: 'Copropriétaires', accountClass: 4, accountType: 'ASSET' },
-  { accountNumber: '571', accountName: 'Caisse', accountClass: 5, accountType: 'ASSET' }
+  { accountNumber: '571', accountName: 'Caisse', accountClass: 5, accountType: 'ASSET' },
+  // Spec 042 : compte de collecte du paiement mobile. Cree A LA DEMANDE par
+  // `ensureSyndicAccountsTx`, jamais par les graines automatiques.
+  { accountNumber: '5525', accountName: 'PaySecureHub (mobile money)', accountClass: 5, accountType: 'ASSET' }
 ];
 
 const PROVIDER_ACCOUNT_NUMBERS: SyndicAccountNumber[] = ['401', '521', '624', '6241'];
@@ -186,7 +190,7 @@ export interface PostSyndicEntryParams {
   entryDate: Date;
   reference: string;
   description: string;
-  sourceType: 'PROVIDER_INVOICE' | 'PROVIDER_PAYMENT' | 'CHARGE_PAYMENT';
+  sourceType: 'PROVIDER_INVOICE' | 'PROVIDER_PAYMENT' | 'CHARGE_PAYMENT' | 'MANUAL';
   sourceId: string;
   documentType: string;
   lines: SyndicEntryLine[];

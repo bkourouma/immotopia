@@ -31,6 +31,7 @@ const listMyChargeCalls = vi.fn();
 const listMyDocuments = vi.fn();
 const listMyMeetings = vi.fn();
 const downloadCoOwnerDocument = vi.fn();
+const getOnlinePaymentAvailability = vi.fn();
 
 vi.mock('../../services/coowner-portal-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/coowner-portal-service')>(
@@ -43,7 +44,8 @@ vi.mock('../../services/coowner-portal-service', async () => {
     listMyChargeCalls: (...a: unknown[]) => listMyChargeCalls(...a),
     listMyDocuments: (...a: unknown[]) => listMyDocuments(...a),
     listMyMeetings: (...a: unknown[]) => listMyMeetings(...a),
-    downloadCoOwnerDocument: (...a: unknown[]) => downloadCoOwnerDocument(...a)
+    downloadCoOwnerDocument: (...a: unknown[]) => downloadCoOwnerDocument(...a),
+    getOnlinePaymentAvailability: (...a: unknown[]) => getOnlinePaymentAvailability(...a)
   };
 });
 
@@ -98,6 +100,10 @@ function call(overrides: Partial<CoOwnerChargeCall> = {}): CoOwnerChargeCall {
     status: 'OVERDUE',
     lot: { id: 'lot-1', lotNumber: 'A1', lotType: 'APARTMENT' },
     syndicate: 'Résidence Les Acacias',
+    syndicateId: 's1',
+    onlinePayable: false,
+    onlineCheckout: 'NONE',
+    onlineCheckoutCode: null,
     ...overrides
   };
 }

@@ -27,6 +27,8 @@ export const WHATSAPP_NOTIFICATION_KEYS = [
   'OWNER_MONTHLY_REPORT_SENT',
   // Location – lien de paiement du loyer envoyé au locataire
   'RENTER_PAYMENT_LINK_SENT',
+  // Syndic – lien « Payer cet appel » envoyé au copropriétaire (spec 042)
+  'CHARGE_CALL_PAYMENT_LINK_SENT',
   // Syndic – appels de charges & AG & incidents
   'CHARGE_CALL_ISSUED',
   'CHARGE_CALL_REMINDER',
@@ -178,6 +180,13 @@ export const WHATSAPP_NOTIFICATION_META: Record<WhatsappNotificationKey, Whatsap
     description:
       "Envoi WhatsApp au locataire d'un lien sécurisé pour régler son loyer en ligne par Mobile Money (durée limitée, révocable), lorsque le locataire a consenti et que son numéro est renseigné.",
     recipientLabel: 'Locataire'
+  },
+  CHARGE_CALL_PAYMENT_LINK_SENT: {
+    key: 'CHARGE_CALL_PAYMENT_LINK_SENT',
+    label: "Lien de paiement d'un appel de charges (WhatsApp)",
+    description:
+      "Envoi WhatsApp au copropriétaire d'un lien sécurisé pour régler un appel de charges en ligne par Mobile Money (durée limitée, révocable), à la demande du gestionnaire, lorsque le copropriétaire a consenti et que son numéro est renseigné.",
+    recipientLabel: 'Copropriétaire'
   },
   CHARGE_CALL_ISSUED: {
     key: 'CHARGE_CALL_ISSUED',

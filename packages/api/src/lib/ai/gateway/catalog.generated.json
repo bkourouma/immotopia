@@ -2949,6 +2949,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/liens-paiement",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/liens-paiement",
+      "pathParams": ["syndicId", "chargeId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / charges / {chargeId} / liens-paiement",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/charges/batch",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/batch",
@@ -3230,6 +3241,50 @@
       "pathParams": ["syndicId", "lotId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / lots / {lotId} / quittances",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / configuration",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / reversements",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/solde",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/solde",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / solde",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-en-ligne",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -6647,6 +6702,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/lien-paiement",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/lien-paiement",
+      "pathParams": ["syndicId", "chargeId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / charges / {chargeId} / lien-paiement",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/pay",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/pay",
@@ -6930,6 +6996,50 @@
       "summary": "syndics / {syndicId} / lots / import-properties",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_CREATE"]],
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / configuration / test",
+      "permissions": ["SYNDIC_EDIT", "TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / reversements",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/trancher",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/trancher",
+      "pathParams": ["syndicId", "checkoutId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-en-ligne / {checkoutId} / trancher",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/verifier",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/verifier",
+      "pathParams": ["syndicId", "checkoutId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-en-ligne / {checkoutId} / verifier",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
       "sensitive": false
     },
     {
@@ -7523,6 +7633,17 @@
       "module": "syndics",
       "summary": "syndics / {syndicId} / logo",
       "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / configuration",
+      "permissions": ["SYNDIC_EDIT", "TENANT_SETTINGS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
     }
