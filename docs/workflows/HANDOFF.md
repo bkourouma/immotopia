@@ -49,8 +49,8 @@ Pièges et décisions :
 
 ## Branche `fix/syndic-ag-enregistrements-orphelins` — 2026-10-16
 
-**État :** prêt à relire — PR empilée sur `feat/syndic-ag-visio` (PR 144) ; à recibler sur `main` une fois la 144 fusionnée.
-**Dernier commit :** voir `git log` de la branche (nettoyage des enregistrements d'AG en cascade).
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/145 (base `feat/syndic-ag-visio`, PR 144) ; à recibler sur `main` une fois la 144 fusionnée ; CI en cours à l'ouverture ; la fusion reste à l'utilisateur.
+**Dernier commit :** `358e9899` fusion de `origin/feat/syndic-ag-visio` (`d87f4657`, conflit de spec résolu : R12 réinsérée, R10 renvoie à R12), après `ad1461f4` (corrections de la relecture de sécurité).
 **Worktree :** `.claude/worktrees/sweet-kilby-b1ed43`, `node_modules` = trois JONCTIONS vers ceux du worktree `suspicious-cartwright-fc4a4c` (le seul dont le client Prisma connaît `GMRecording`) : les retirer avec `rmdir` AVANT tout `git worktree remove`.
 
 Fait :
