@@ -72,6 +72,32 @@ Pièges et décisions :
 - `deleteRecording` (PR 144) écrit encore son audit critique par la file asynchrone (`logAuditEvent`) : préexistant, non corrigé ici.
 - Le hook Prettier a réaligné les tableaux de la spec 045 au premier commit (espaces seulement, et deux blocs de code passés en guillemets doubles).
 
+## Branche `feat/syndic-ag-visio-discussion` — 2026-10-16
+
+**État :** prêt à relire — PR empilée sur `feat/syndic-ag-visio` (PR 144, non fusionnée) ; la fusion reste à l'utilisateur. Quand la PR 144 sera fusionnée, rebaser la cible de cette PR sur `main`.
+**Dernier commit :** voir `git log` (spec, recette, classeur et passation après les correctifs `a3f3f847` API et `95e9b0d9` web).
+**Worktree :** `.claude/worktrees/zen-poincare-ac73f3`, avec son PROPRE `node_modules` (`npm ci`), pas de jonction à retirer.
+
+Fait :
+
+- Spec `specs/046-syndic-ag-discussion/spec.md` (décision du fondateur du 2026-10-16, règles M1–M15 du Pilote à valider) : discussion écrite modérée dans la visio de l'AG, messages envoyés à l'API, stockés (`GMChatMessage`, migration `20261016150000_syndic_ag_discussion`) et diffusés par le serveur (sujet `ag-discussion`) ; personne n'a `canPublishData`.
+- API : routes publiques `/api/public/assemblees/discussion` et `/discussion/envoyer` (404 uniforme, 10 envois/min par lien, 120/min par AG, texte assaini), routes gestionnaire `/visio/discussion` (lecture, envoi, masquer, ouvrir/fermer) et `/visio/participants/:participantId/ecriture`, audit de la modération sans le texte, `chatMuted` dans la vue de la visio, route exclue du catalogue IA (sensible), `TooManyRequestsError` (429).
+- Web : panneau « Discussion » dans `MeetingVisioRoom` (page `/ag-direct` et salle du gestionnaire), carte « Discussion » et « Couper l'écriture » dans la console ; `useVisiblePolling.refresh()` relancé s'il arrive pendant une lecture.
+- Relectures `security-auditor` (0 critique, 0 haute) et code (4 moyennes web) corrigées ; recette navigateur D1–D9 de `docs/recette/SCENARIO_SYNDIC_AG_VISIO.md` jouée et rejouée après correctifs (voir la spec) ; classeur des fonctionnalités (7 lignes + 1 modifiée) ; `SECURITY.md` § 12 quater.
+
+Reste à faire :
+
+- Lire la CI de la PR et corriger si besoin.
+- Fondateur : valider M1–M15 (ouverte par défaut, 500 caractères, 10/min par lien et 120/min par AG, hors procès-verbal, conservation avec l'AG).
+- Non vérifié : charge (300 participants), plusieurs instances de l'API (plafond par AG propre au processus), LiveKit Cloud, clôture de l'AG pendant la discussion dans le navigateur (couverte par les tests).
+
+Pièges et décisions :
+
+- Le test `MeetingLiveConsole.test.tsx` « supprime après confirmation » a échoué lancé seul AVANT les correctifs, aussi sur la branche parente ; il passe après (52/52 selon l'agent) : test fragile, à surveiller en CI.
+- `npm run i18n:extract` salit tout l'arbre (dérive d'autres lots, ~14 `*.orphans.json`) : traductions de ce lot ajoutées à la main.
+- Instance de démo : worktree `.claude/worktrees/demo` détaché sur `95e9b0d9`, migrations appliquées sur `immotopia_demo` jusqu'à `20261016150000` ; serveurs ARRÊTÉS, conteneurs `immotopia-visio-*` ARRÊTÉS (les redémarrer dans l'ordre avec `docker start`) ; scripts de lancement avec les variables LiveKit dans le scratchpad de la session, jamais dans le dépôt. L'AG « recette visio 2 » contient ~20 messages de recette.
+- Panneau du navigateur masqué (session hors fenêtre) : clics à la souris impossibles, la recette passe par `javascript_tool` ; changer la langue dans un onglet la change dans tous (stockage partagé).
+
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/144 (base `main`), CI verte, `main` fusionnée ; la fusion reste à l'utilisateur.

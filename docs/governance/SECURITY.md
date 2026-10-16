@@ -1157,6 +1157,25 @@ langue pendant la visio remonte l'application et déconnecte de la salle. Une su
 contourne ce code (agence effacée à la main en SQL, `prisma/seed.ts` et `prisma/seeds/syndic-demo-seed.ts` de
 développement, dont son `syndicate.deleteMany`) laisse les MP4 et objets S3 de ses enregistrements.
 
+**Discussion écrite (spec 046).** Personne n'obtient `canPublishData`, ni copropriétaire ni
+gestionnaire : un message part à l'API d'ImmoTopia (`POST /api/public/assemblees/discussion/envoyer`
+par lien personnel, même 404 uniforme, limiteur de 10 envois/min par empreinte de jeton et plafond
+de 120 envois/min par AG ; console en `SYNDIC_EDIT`), est validé (zod, texte brut normalisé, 500
+caractères au plus, contrôles bidirectionnels, invisibles et caractères « tag » retirés, texte sans
+caractère visible refusé), stocké avec
+`tenantId` (`GMChatMessage`), puis diffusé par le serveur (`sendData`, sujet `ag-discussion`). Le
+client ignore tout message de ce sujet qui porte un émetteur participant. L'écriture exige l'AG en
+cours, le participant ayant rejoint et **présent dans la salle**, la discussion ouverte et son
+écriture non coupée. Le texte est **contenu saisi par un tiers** : il n'est jamais rendu en HTML
+ni en Markdown (texte React isolé par `<bdi dir="auto">`, pas de `dangerouslySetInnerHTML`), les
+adresses web ne sont pas cliquables, la fermeture et la coupure sont relues dans la transaction de
+l'écriture, et la route `visio/discussion` est exclue du catalogue de l'assistant IA (injection
+d'instructions, et l'IA n'écrit jamais dans une salle en direct). Un message masqué n'est plus
+servi aux copropriétaires mais reste en base pour le gestionnaire ; masquer, rétablir, couper
+l'écriture, ouvrir ou fermer la discussion sont audités sans le texte. `messageId` ou
+`participantId` d'une autre AG ou d'une autre agence : même 404 qu'un objet inexistant. Les
+messages sont conservés avec l'AG, sans purge automatique (même régime que R10).
+
 ## 13. Points ouverts
 
 Ce qui suit n'a pas pu être vérifié comme couvert dans le code au moment

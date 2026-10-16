@@ -152,6 +152,13 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_MEETING_RECORDING_AVAILABLE]: tenant('DATA'),
   [AuditActionKey.SYNDIC_MEETING_RECORDING_DELETED]: tenant('SECURITY', { critical: true }),
   [AuditActionKey.SYNDIC_MEETING_RECORDING_ACCESSED]: tenant('SECURITY'),
+  // Moderation de la discussion ecrite de la visio (spec 046).
+  [AuditActionKey.SYNDIC_MEETING_CHAT_MESSAGE_HIDDEN]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_CHAT_MESSAGE_RESTORED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_CHAT_PARTICIPANT_MUTED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_CHAT_PARTICIPANT_UNMUTED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_CHAT_OPENED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_CHAT_CLOSED]: tenant('DATA'),
   [AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT]: tenant('DATA'),
   // Paiement mobile des copropriétaires (spec 042).
   [AuditActionKey.SYNDIC_GATEWAY_CONFIG_UPDATED]: tenant('SECURITY'),

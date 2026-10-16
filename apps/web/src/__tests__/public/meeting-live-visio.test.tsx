@@ -9,6 +9,9 @@ const join = vi.fn();
 const vote = vi.fn();
 const fetchVisioToken = vi.fn();
 const raiseHand = vi.fn();
+const fetchDiscussion = vi.fn();
+const sendDiscussion = vi.fn();
+const discussionOutput = vi.hoisted(() => ({ loaded: null as unknown, sent: null as unknown, error: null as unknown }));
 
 vi.mock('../../services/public-meeting-live-service', async () => {
   const actual = await vi.importActual<typeof import('../../services/public-meeting-live-service')>(
@@ -20,7 +23,9 @@ vi.mock('../../services/public-meeting-live-service', async () => {
     joinPublicMeeting: (...a: unknown[]) => join(...a),
     votePublicMeeting: (...a: unknown[]) => vote(...a),
     fetchPublicVisioToken: (...a: unknown[]) => fetchVisioToken(...a),
-    setPublicHandRaised: (...a: unknown[]) => raiseHand(...a)
+    setPublicHandRaised: (...a: unknown[]) => raiseHand(...a),
+    fetchPublicDiscussion: (...a: unknown[]) => fetchDiscussion(...a),
+    sendPublicDiscussionMessage: (...a: unknown[]) => sendDiscussion(...a)
   };
 });
 
@@ -33,6 +38,10 @@ vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => ({
     getToken: () => Promise<unknown>;
     onRaiseHand?: (raised: boolean) => Promise<void>;
     onRefreshSignal?: () => void;
+    discussion?: {
+      load: () => Promise<unknown>;
+      send: (body: string) => Promise<unknown>;
+    };
   }) => {
     React.useEffect(() => {
       room.mounts += 1;
@@ -50,6 +59,32 @@ vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => ({
         <button type="button" onClick={() => void props.onRaiseHand?.(true)}>
           lever-la-main
         </button>
+        {props.discussion ? (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                void props
+                  .discussion!.load()
+                  .then(value => (discussionOutput.loaded = value))
+                  .catch(err => (discussionOutput.error = err))
+              }
+            >
+              charger-discussion
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                void props
+                  .discussion!.send('Bonjour')
+                  .then(value => (discussionOutput.sent = value))
+                  .catch(err => (discussionOutput.error = err))
+              }
+            >
+              envoyer-discussion
+            </button>
+          </>
+        ) : null}
       </div>
     );
   }
@@ -188,6 +223,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   room.mounts = 0;
   room.unmounts = 0;
+  discussionOutput.loaded = null;
+  discussionOutput.sent = null;
+  discussionOutput.error = null;
   screenMock.listeners.clear();
   installMatchMedia();
   setWide(false);
@@ -374,5 +412,71 @@ describe('MeetingLivePage : visio intégrée', () => {
     expect(screen.getByTestId('visio-room')).toBe(roomNode);
     expect(room.mounts).toBe(1);
     expect(room.unmounts).toBe(0);
+  });
+
+  describe('discussion écrite (spec 046)', () => {
+    async function openRoom() {
+      fetchState.mockResolvedValue(ok(view()));
+      render(<MeetingLivePage />);
+      await flush();
+      fireEvent.click(screen.getByRole('button', { name: 'Rejoindre la visio' }));
+      await flush();
+    }
+
+    const message = {
+      id: 'd1',
+      authorKind: 'COOWNER',
+      authorIdentity: 'p-c1',
+      authorName: 'Awa Traoré',
+      body: 'Bonjour',
+      hidden: false,
+      createdAt: '2026-10-20T10:00:00.000Z'
+    };
+
+    it('fournit à la salle un adaptateur qui lit l’historique avec le jeton du lien', async () => {
+      fetchDiscussion.mockResolvedValue({
+        status: 'ok',
+        data: { open: true, muted: false, canWrite: true, maxLength: 500, messages: [message] }
+      });
+      await openRoom();
+      fireEvent.click(screen.getByRole('button', { name: 'charger-discussion' }));
+      await flush();
+      expect(fetchDiscussion).toHaveBeenCalledWith(TOKEN);
+      expect(discussionOutput.loaded).toEqual({ open: true, muted: false, maxLength: 500, messages: [message] });
+    });
+
+    it('envoie le message avec le jeton du lien et rend le message du serveur', async () => {
+      sendDiscussion.mockResolvedValue({ status: 'ok', data: message });
+      await openRoom();
+      fireEvent.click(screen.getByRole('button', { name: 'envoyer-discussion' }));
+      await flush();
+      expect(sendDiscussion).toHaveBeenCalledWith(TOKEN, 'Bonjour');
+      expect(discussionOutput.sent).toEqual(message);
+    });
+
+    it.each([
+      [{ status: 'rate_limited' }, 'Vous écrivez trop vite, patientez un instant.'],
+      [
+        { status: 'conflict', message: 'La discussion est fermée par le gestionnaire' },
+        'La discussion est fermée par le gestionnaire'
+      ],
+      [{ status: 'rejected', message: 'Message trop long' }, 'Message trop long'],
+      [{ status: 'unavailable' }, 'La visio est momentanément indisponible, réessayez.'],
+      [{ status: 'invalid' }, "Accès à la discussion impossible. Votre lien n'est peut-être plus valide."]
+    ])('traduit l’échec %j en un message affichable', async (result, expected) => {
+      sendDiscussion.mockResolvedValue(result);
+      await openRoom();
+      fireEvent.click(screen.getByRole('button', { name: 'envoyer-discussion' }));
+      await flush();
+      expect((discussionOutput.error as Error).message).toBe(expected);
+    });
+
+    it('ne fournit pas d’adaptateur tant que la salle n’est pas affichée', async () => {
+      fetchState.mockResolvedValue(ok(view()));
+      render(<MeetingLivePage />);
+      await flush();
+      expect(screen.queryByRole('button', { name: 'charger-discussion' })).toBeNull();
+      expect(fetchDiscussion).not.toHaveBeenCalled();
+    });
   });
 });

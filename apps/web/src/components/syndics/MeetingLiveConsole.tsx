@@ -21,6 +21,8 @@ import { apiErrorText as errorText, useMeetingRecordings, useMeetingVisio } from
 import { LiveParticipantsTable } from './live/LiveParticipantsTable';
 import { LiveResolutionsPanel } from './live/LiveResolutionsPanel';
 import { MeetingVisioCard } from './visio/MeetingVisioCard';
+import { MeetingDiscussionCard } from './visio/MeetingDiscussionCard';
+import { useMeetingDiscussion } from './visio/use-meeting-discussion';
 import { MeetingRecordingsCard } from './visio/MeetingRecordingsCard';
 import { clampPercent } from './live/live-labels';
 import { t } from '../../i18n/t';
@@ -206,6 +208,9 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
     onChanged: visioState.refreshVisio
   });
 
+  const discussionState = useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingStatus });
+  const { discussion } = discussionState;
+
   const contacts = useMemo(() => uniqueContacts(live, participants), [live, participants]);
 
   const runAction = async (action: () => Promise<LiveMeetingAdminView>, okText: string, failText: string) => {
@@ -371,6 +376,22 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           onStartRecording={() => void recordingState.start()}
           onStopRecording={() => void recordingState.stop()}
           failedRecording={recordingState.latestFailed}
+          discussion={discussionState.discussionEnabled && inProgress ? discussionState.roomAdapter : undefined}
+          onWriting={(participant, allowed) => void visioState.writing(participant, allowed)}
+          busyWritingParticipantId={visioState.busyWritingId}
+        />
+      ) : null}
+
+      {discussion ? (
+        <MeetingDiscussionCard
+          discussion={discussion}
+          inProgress={inProgress}
+          frozen={frozen}
+          busyOpen={discussionState.busyOpen}
+          busyMessageId={discussionState.busyMessageId}
+          onToggleOpen={open => void discussionState.toggleOpen(open)}
+          onHide={(item, hidden) => void discussionState.setHidden(item.id, hidden)}
+          onSend={discussionState.send}
         />
       ) : null}
 

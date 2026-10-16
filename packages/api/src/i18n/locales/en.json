@@ -1619,6 +1619,7 @@
   "Trop de confirmations en peu de temps. Réessayez dans une minute.": "Too many confirmations in a short time. Try again in a minute.",
   "Trop de contacts (maximum {{max}}).": "Too many contacts (maximum {{max}}).",
   "Trop de documents pour une seule impression (500 au plus) : réduisez la période ou choisissez un copropriétaire.": "Too many documents for a single print run (500 at most): shorten the period or choose a co-owner.",
+  "Trop de messages dans cette assemblée, patientez un instant": "Too many messages in this meeting, please wait a moment",
   "Trop de messages envoyés à l'assistant par votre agence. Réessayez dans une minute.": "Too many messages sent to the assistant by your agency. Try again in a minute.",
   "Trop de messages envoyés à l'assistant. Réessayez dans une minute.": "Too many messages sent to the assistant. Try again in a minute.",
   "Trop de pages pour une seule impression (250 au plus) : mettez plus de quittances par page ou réduisez la période.": "Too many pages for a single print run (250 at most): put more receipts per page or shorten the period.",
@@ -2061,5 +2062,9 @@
   "Un enregistrement d'assemblée est encore en cours ou en traitement : la suppression est impossible pour le moment": "A meeting recording is still in progress or being processed: deletion is not possible for now",
   "Le fichier dépasse la taille maximale : il est conservé sur le stockage de la visio": "The file exceeds the maximum size: it is kept on the video storage",
   "Cet enregistrement ne peut pas être relancé dans son état actuel": "This recording cannot be retried in its current state",
+  "La discussion est fermée par le gestionnaire": "The discussion has been closed by the manager",
+  "Le gestionnaire a suspendu votre droit d'écrire": "The manager has suspended your right to write",
+  "Message introuvable ou inaccessible": "Message not found or inaccessible",
+  "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "The meeting is closed or cancelled: the discussion can no longer be changed",
   "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "The meeting may be recorded (image and sound); a notice will be displayed on screen during the recording."
 }

@@ -25,6 +25,13 @@ import {
   setVisioParticipantSpeakingHandler
 } from '../controllers/syndic-meeting-visio-controller';
 import {
+  getMeetingDiscussionHandler,
+  sendMeetingDiscussionMessageHandler,
+  setMeetingDiscussionMessageHiddenHandler,
+  setMeetingDiscussionOpenHandler,
+  setParticipantWritingHandler
+} from '../controllers/syndic-meeting-discussion-controller';
+import {
   deleteRecordingHandler,
   listRecordingsHandler,
   retryRecordingHandler,
@@ -508,6 +515,32 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure',
   requirePropertyPermission('SYNDIC_EDIT'),
   removeVisioParticipantHandler
+);
+// Spec 046 : discussion ecrite moderee de la visio.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getMeetingDiscussionHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  sendMeetingDiscussionMessageHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/messages/:messageId/masquer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setMeetingDiscussionMessageHiddenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/discussion/etat',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setMeetingDiscussionOpenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/ecriture',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setParticipantWritingHandler
 );
 // Spec 045 : enregistrement de l'AG (le fichier ne sort que par la route authentifiee ci-dessous).
 router.post(

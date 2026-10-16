@@ -633,6 +633,7 @@ model Tenant {
   gmParticipants                GMParticipant[]
   gmAttendances                 GMAttendance[]
   gmRecordings                  GMRecording[]
+  gmChatMessages                GMChatMessage[]
   externalAccessGrants          ExternalAccessGrant[]
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantEntities   ExternalAccessGrantEntity[]
@@ -4401,6 +4402,8 @@ model GeneralMeeting {
   minutesUrl  String?       @map("minutes_url")
   /// URL de visioconference facultative (https uniquement), affichee sur la page en direct (spec 043).
   videoConferenceUrl String?       @map("video_conference_url")
+  /// Discussion écrite de la visio fermée par le gestionnaire (spec 046, M5).
+  chatClosedAt DateTime?     @map("chat_closed_at")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
@@ -4411,6 +4414,7 @@ model GeneralMeeting {
   participants GMParticipant[]
   attendances  GMAttendance[]
   recordings   GMRecording[]
+  chatMessages GMChatMessage[]
 
   @@index([syndicateId])
   @@index([status])
@@ -4516,12 +4520,15 @@ model GMParticipant {
   contactId  String    @map("contact_id")
   joinedAt   DateTime? @map("joined_at")
   lastSeenAt DateTime? @map("last_seen_at")
+  /// Écriture coupée dans la discussion de la visio par le gestionnaire (spec 046, M6).
+  chatMutedAt DateTime? @map("chat_muted_at")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   contact CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  chatMessages GMChatMessage[]
 
   @@unique([meetingId, contactId])
   @@index([tenantId])
@@ -4570,6 +4577,39 @@ model GMRecording {
   @@index([tenantId])
   @@index([meetingId])
   @@map("gm_recordings")
+}
+
+enum GMChatAuthorKind {
+  COOWNER
+  MANAGER
+}
+
+/// Message de la discussion écrite de la visio d'une AG (spec 046).
+model GMChatMessage {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id")
+  meetingId      String           @map("meeting_id") @db.Uuid
+  authorKind     GMChatAuthorKind @map("author_kind")
+  /// GMParticipant auteur (COOWNER) ; nul pour le gestionnaire.
+  participantId  String?          @map("participant_id") @db.Uuid
+  /// Utilisateur auteur (MANAGER) ; nul pour un copropriétaire.
+  authorUserId   String?          @map("author_user_id")
+  /// Nom affiché, figé à l'envoi (M12).
+  authorName     String           @map("author_name")
+  /// Texte brut normalisé, 500 caractères au plus (M3).
+  body           String
+  hiddenAt       DateTime?        @map("hidden_at")
+  hiddenByUserId String?          @map("hidden_by_user_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting     GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participant GMParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([meetingId, createdAt])
+  @@map("gm_chat_messages")
 }
 
 /// Emargement d'un lot a une AG (spec 043). Absence de ligne = absent.

@@ -7,6 +7,8 @@ import type {
   LiveMeetingAdminView,
   MeetingParticipantView,
   MeetingRecordingView,
+  ManagerDiscussionMessageView,
+  ManagerDiscussionView,
   MeetingVisioAdminView
 } from '../../types/syndic-live-types';
 import type { MeetingStatus } from '../../types/syndic-types';
@@ -29,7 +31,12 @@ const api = {
   startMeetingRecording: vi.fn(),
   stopMeetingRecording: vi.fn(),
   deleteMeetingRecording: vi.fn(),
-  retryMeetingRecording: vi.fn()
+  retryMeetingRecording: vi.fn(),
+  getMeetingDiscussion: vi.fn(),
+  postMeetingDiscussionMessage: vi.fn(),
+  setMeetingDiscussionMessageHidden: vi.fn(),
+  setMeetingDiscussionOpen: vi.fn(),
+  setVisioParticipantWriting: vi.fn()
 };
 
 vi.mock('../../services/syndic-service', async () => {
@@ -53,17 +60,30 @@ vi.mock('../../services/syndic-service', async () => {
     startMeetingRecording: (...a: unknown[]) => api.startMeetingRecording(...a),
     stopMeetingRecording: (...a: unknown[]) => api.stopMeetingRecording(...a),
     deleteMeetingRecording: (...a: unknown[]) => api.deleteMeetingRecording(...a),
-    retryMeetingRecording: (...a: unknown[]) => api.retryMeetingRecording(...a)
+    retryMeetingRecording: (...a: unknown[]) => api.retryMeetingRecording(...a),
+    getMeetingDiscussion: (...a: unknown[]) => api.getMeetingDiscussion(...a),
+    postMeetingDiscussionMessage: (...a: unknown[]) => api.postMeetingDiscussionMessage(...a),
+    setMeetingDiscussionMessageHidden: (...a: unknown[]) => api.setMeetingDiscussionMessageHidden(...a),
+    setMeetingDiscussionOpen: (...a: unknown[]) => api.setMeetingDiscussionOpen(...a),
+    setVisioParticipantWriting: (...a: unknown[]) => api.setVisioParticipantWriting(...a)
   };
 });
 
 // La salle (LiveKit) est chargée à la demande : on la remplace par un témoin qui demande son jeton.
 vi.mock('../../components/syndics/visio/MeetingVisioRoom', () => {
-  const VisioRoomStub = ({ role, getToken }: { role: string; getToken: () => Promise<unknown> }) => {
+  const VisioRoomStub = ({
+    role,
+    getToken,
+    discussion
+  }: {
+    role: string;
+    getToken: () => Promise<unknown>;
+    discussion?: unknown;
+  }) => {
     React.useEffect(() => {
       void getToken().catch(() => undefined);
     }, [getToken]);
-    return <div data-testid="visio-room" data-role={role} />;
+    return <div data-testid="visio-room" data-role={role} data-discussion={discussion ? 'oui' : 'non'} />;
   };
   return { default: VisioRoomStub };
 });
@@ -223,6 +243,8 @@ beforeEach(() => {
   api.listMeetingParticipants.mockResolvedValue(participants);
   // Visio non configurée par défaut : l'API répond 409 et la console reste inchangée.
   api.getMeetingVisio.mockRejectedValue({ response: { status: 409 } });
+  // Discussion absente par défaut (API plus ancienne ou droit manquant) : la console reste inchangée.
+  api.getMeetingDiscussion.mockRejectedValue({ response: { status: 404 } });
 });
 
 describe('MeetingLiveConsole', () => {
@@ -828,5 +850,211 @@ describe('MeetingLiveConsole : correctifs de l enregistrement et de l exclusion'
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Exclure' }));
     expect(await screen.findByText('Participant absent de la salle')).toBeTruthy();
     expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+});
+
+const chatMessage = (overrides: Partial<ManagerDiscussionMessageView> = {}): ManagerDiscussionMessageView => ({
+  id: 'd1',
+  authorKind: 'COOWNER',
+  authorIdentity: 'p-c1',
+  authorName: 'Awa Traoré',
+  body: 'Bonjour à tous',
+  hidden: false,
+  createdAt: '2026-10-20T10:02:00.000Z',
+  participantId: 'p1',
+  hiddenAt: null,
+  hiddenByName: null,
+  ...overrides
+});
+
+const discussionView = (overrides: Partial<ManagerDiscussionView> = {}): ManagerDiscussionView => ({
+  enabled: true,
+  open: true,
+  maxLength: 500,
+  mutedParticipantIds: [],
+  messages: [chatMessage()],
+  ...overrides
+});
+
+describe('MeetingLiveConsole : discussion de la visio', () => {
+  it('ne montre aucune carte quand la discussion est indisponible', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    mount();
+    await screen.findByText('Visio intégrée');
+    expect(screen.queryByText('Discussion ouverte aux copropriétaires')).toBeNull();
+  });
+
+  it("ne montre rien quand la visio n'est pas configurée et qu'aucun message n'existe", async () => {
+    api.getMeetingDiscussion.mockResolvedValue(discussionView({ enabled: false, messages: [] }));
+    mount();
+    await waitFor(() => expect(api.getMeetingDiscussion).toHaveBeenCalledWith('t1', 's1', 'm1'));
+    await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+    expect(screen.queryByText('Discussion ouverte aux copropriétaires')).toBeNull();
+  });
+
+  it('liste les messages, masqués compris avec leur texte et la marque « masqué »', async () => {
+    api.getMeetingDiscussion.mockResolvedValue(
+      discussionView({
+        messages: [
+          chatMessage(),
+          chatMessage({
+            id: 'd2',
+            authorName: 'Ibrahim Koné',
+            body: 'texte caché',
+            hidden: true,
+            hiddenAt: '2026-10-20T10:03:00.000Z'
+          })
+        ]
+      })
+    );
+    mount();
+    expect(await screen.findByText('Bonjour à tous')).toBeTruthy();
+    expect(screen.getByText('texte caché')).toBeTruthy();
+    expect(screen.getByText('masqué')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Rétablir le message de Ibrahim Koné' })).toBeTruthy();
+  });
+
+  it("affiche le HTML d'un message comme du texte", async () => {
+    api.getMeetingDiscussion.mockResolvedValue(
+      discussionView({ messages: [chatMessage({ body: '<img src=x onerror=alert(1)> https://exemple.test' })] })
+    );
+    mount();
+    const text = await screen.findByText('<img src=x onerror=alert(1)> https://exemple.test');
+    const log = text.closest('[role="log"]') as HTMLElement;
+    expect(log.querySelector('img')).toBeNull();
+    expect(log.querySelector('a')).toBeNull();
+  });
+
+  it('masque un message, puis le rétablit', async () => {
+    // L'API garde l'état : la relecture périodique ne doit pas défaire l'action.
+    let hidden = false;
+    api.getMeetingDiscussion.mockImplementation(async () =>
+      discussionView({ messages: [chatMessage({ hidden, hiddenAt: hidden ? '2026-10-20T10:03:00.000Z' : null })] })
+    );
+    api.setMeetingDiscussionMessageHidden.mockImplementation(async (_t, _s, _m, _id, value: boolean) => {
+      hidden = value;
+      return chatMessage({ hidden, hiddenAt: hidden ? '2026-10-20T10:03:00.000Z' : null });
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Masquer le message de Awa Traoré' }));
+    await waitFor(() =>
+      expect(api.setMeetingDiscussionMessageHidden).toHaveBeenCalledWith('t1', 's1', 'm1', 'd1', true)
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Rétablir le message de Awa Traoré' }));
+    await waitFor(() =>
+      expect(api.setMeetingDiscussionMessageHidden).toHaveBeenCalledWith('t1', 's1', 'm1', 'd1', false)
+    );
+    expect(await screen.findByRole('button', { name: 'Masquer le message de Awa Traoré' })).toBeTruthy();
+  });
+
+  it("ferme puis rouvre la discussion avec l'interrupteur", async () => {
+    // L'API garde l'état : la relecture périodique ne doit pas défaire l'action.
+    let open = true;
+    api.getMeetingDiscussion.mockImplementation(async () => discussionView({ open }));
+    api.setMeetingDiscussionOpen.mockImplementation(async (_t, _s, _m, value: boolean) => {
+      open = value;
+      return { open };
+    });
+    mount();
+    const toggle = await screen.findByRole('switch', { name: 'Discussion ouverte aux copropriétaires' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.setMeetingDiscussionOpen).toHaveBeenCalledWith('t1', 's1', 'm1', false));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('switch', { name: 'Discussion ouverte aux copropriétaires' }).getAttribute('aria-checked')
+      ).toBe('false')
+    );
+    fireEvent.click(screen.getByRole('switch', { name: 'Discussion ouverte aux copropriétaires' }));
+    await waitFor(() => expect(api.setMeetingDiscussionOpen).toHaveBeenLastCalledWith('t1', 's1', 'm1', true));
+  });
+
+  it("le gestionnaire écrit pendant la séance ; le texte est conservé si l'envoi échoue", async () => {
+    api.getMeetingDiscussion.mockResolvedValue(discussionView());
+    api.postMeetingDiscussionMessage
+      .mockRejectedValueOnce({ response: { data: { error: "L'assemblée n'est pas en cours" } } })
+      .mockResolvedValueOnce(
+        chatMessage({ id: 'd9', authorKind: 'MANAGER', authorName: 'Syndic Dupont', body: 'Le vote va souvrir' })
+      );
+    mount();
+    const input = (await screen.findByLabelText('Votre message')) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'Le vote va souvrir' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    expect(await screen.findByText("L'assemblée n'est pas en cours")).toBeTruthy();
+    expect(input.value).toBe('Le vote va souvrir');
+
+    // Le pictogramme de chargement (animation de sortie) reste dans le nom accessible sous jsdom.
+    fireEvent.click(await screen.findByRole('button', { name: /Envoyer/ }));
+    await waitFor(() =>
+      expect(api.postMeetingDiscussionMessage).toHaveBeenLastCalledWith('t1', 's1', 'm1', 'Le vote va souvrir')
+    );
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(await screen.findAllByText('Le vote va souvrir')).toHaveLength(1);
+  });
+
+  it('après la séance : lecture seule, sans interrupteur ni saisie ni bouton de modération', async () => {
+    api.getMeetingDiscussion.mockResolvedValue(discussionView());
+    mount('COMPLETED');
+    expect(await screen.findByText('Bonjour à tous')).toBeTruthy();
+    expect(screen.getByText('Séance terminée : la discussion est en lecture seule.')).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByLabelText('Votre message')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Masquer le message/ })).toBeNull();
+  });
+
+  it('après la séance sans message : aucune carte', async () => {
+    api.getMeetingDiscussion.mockResolvedValue(discussionView({ messages: [] }));
+    mount('COMPLETED');
+    await waitFor(() => expect(api.getMeetingDiscussion).toHaveBeenCalled());
+    await screen.findByRole('combobox', { name: 'Émargement du lot B2' });
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('donne à la salle du modérateur un adaptateur de discussion pendant la séance', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.getMeetingDiscussion.mockResolvedValue(discussionView());
+    api.issueMeetingVisioToken.mockResolvedValue({
+      serverUrl: 'wss://lk',
+      token: 'jwt',
+      identity: 'g',
+      roomName: 'r',
+      expiresAt: ''
+    });
+    mount();
+    await screen.findByRole('switch', { name: 'Discussion ouverte aux copropriétaires' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir la visio' }));
+    const room = await screen.findByTestId('visio-room');
+    expect(room.getAttribute('data-discussion')).toBe('oui');
+  });
+
+  it("coupe l'écriture d'un copropriétaire, relit /visio et annonce le résultat", async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.setVisioParticipantWriting.mockResolvedValue({ participantId: 'p1', muted: true });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: "Couper l'écriture de Awa Traoré" }));
+    await waitFor(() => expect(api.setVisioParticipantWriting).toHaveBeenCalledWith('t1', 's1', 'm1', 'p1', false));
+    expect(await screen.findByText('Écriture coupée pour Awa Traoré')).toBeTruthy();
+    await waitFor(() => expect(api.getMeetingVisio.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it('marque « écriture coupée » et propose de la rétablir', async () => {
+    const muted = visioView();
+    muted.participants[1] = { ...muted.participants[1], chatMuted: true };
+    api.getMeetingVisio.mockResolvedValue(muted);
+    api.setVisioParticipantWriting.mockResolvedValue({ participantId: 'p2', muted: false });
+    mount();
+    expect(await screen.findByText('écriture coupée')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: "Rétablir l'écriture de Ibrahim Koné" }));
+    await waitFor(() => expect(api.setVisioParticipantWriting).toHaveBeenCalledWith('t1', 's1', 'm1', 'p2', true));
+    expect(await screen.findByText('Écriture rétablie pour Ibrahim Koné')).toBeTruthy();
+  });
+
+  it("désactive la coupure d'écriture quand l'AG est figée", async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    mount('COMPLETED');
+    const button = (await screen.findByRole('button', {
+      name: "Couper l'écriture de Awa Traoré"
+    })) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
   });
 });

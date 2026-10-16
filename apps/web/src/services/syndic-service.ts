@@ -3,6 +3,8 @@ import { filenameFromDisposition } from '../utils/save-blob';
 import { API_URL } from '../config/api';
 import type {
   LiveMeetingAdminView,
+  ManagerDiscussionMessageView,
+  ManagerDiscussionView,
   MeetingParticipantView,
   MeetingRecordingView,
   MeetingVisioAdminView,
@@ -1446,6 +1448,78 @@ export async function removeVisioParticipant(
     success: boolean;
     data: MeetingVisioAdminView & { revokedLinks: number };
   }>(`${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/exclure`, { revokeLinks });
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- discussion de la visio (spec 046) */
+
+/** Toute la discussion (masqués compris), lisible à tout moment pour une AG de l'agence. */
+export async function getMeetingDiscussion(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<ManagerDiscussionView> {
+  const response = await apiClient.get<{ success: boolean; data: ManagerDiscussionView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion`
+  );
+  return response.data.data;
+}
+
+/** Message du gestionnaire (annonce, réponse) : diffusé à la salle par le serveur. */
+export async function postMeetingDiscussionMessage(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  body: string
+): Promise<ManagerDiscussionMessageView> {
+  const response = await apiClient.post<{ success: boolean; data: ManagerDiscussionMessageView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/messages`,
+    { body }
+  );
+  return response.data.data;
+}
+
+/** Masque ou rétablit un message (idempotent). */
+export async function setMeetingDiscussionMessageHidden(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  messageId: string,
+  hidden: boolean
+): Promise<ManagerDiscussionMessageView> {
+  const response = await apiClient.post<{ success: boolean; data: ManagerDiscussionMessageView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/messages/${messageId}/masquer`,
+    { hidden }
+  );
+  return response.data.data;
+}
+
+/** Ferme ou rouvre la discussion pour les copropriétaires (idempotent). */
+export async function setMeetingDiscussionOpen(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  open: boolean
+): Promise<{ open: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: { open: boolean } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/discussion/etat`,
+    { open }
+  );
+  return response.data.data;
+}
+
+/** Coupe ou rétablit l'écriture d'un participant dans la discussion (idempotent). */
+export async function setVisioParticipantWriting(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  participantId: string,
+  allowed: boolean
+): Promise<{ participantId: string; muted: boolean }> {
+  const response = await apiClient.post<{ success: boolean; data: { participantId: string; muted: boolean } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/ecriture`,
+    { allowed }
+  );
   return response.data.data;
 }
 

@@ -208,6 +208,8 @@ export interface MeetingVisioParticipant {
   /** Droit de publier micro et caméra. */
   canSpeak: boolean;
   joinedAt: string | null;
+  /** Écriture dans la discussion coupée (spec 046, M6). Absent d'une API plus ancienne : `false`. */
+  chatMuted?: boolean;
 }
 
 export type MeetingRecordingStatus = 'RECORDING' | 'PROCESSING' | 'AVAILABLE' | 'FAILED' | 'DELETED';
@@ -231,4 +233,46 @@ export interface MeetingVisioAdminView {
   participants: MeetingVisioParticipant[];
   /** Absent d'une API plus ancienne : traité comme « enregistrement non configuré ». */
   recording?: { enabled: boolean; active: MeetingRecordingView | null };
+}
+
+/* ------------------------------------------------------------- discussion (spec 046) */
+
+/** Message de la discussion écrite de la visio. `body` est nul quand le message est masqué (vue copropriétaire). */
+export interface DiscussionMessageView {
+  id: string;
+  authorKind: 'COOWNER' | 'MANAGER';
+  /** Identité LiveKit : id du GMParticipant ou `gestionnaire-<userId>`. */
+  authorIdentity: string;
+  authorName: string;
+  body: string | null;
+  hidden: boolean;
+  createdAt: string;
+}
+
+export interface PublicDiscussionView {
+  /** Discussion ouverte pour la salle (M5). */
+  open: boolean;
+  /** Mon écriture est coupée (M6). */
+  muted: boolean;
+  /** `open && !muted` ; la présence dans la salle se vérifie à l'envoi. */
+  canWrite: boolean;
+  maxLength: number;
+  messages: DiscussionMessageView[];
+}
+
+export type ManagerDiscussionMessageView = Omit<DiscussionMessageView, 'body'> & {
+  /** Toujours le texte, même masqué. */
+  body: string;
+  participantId: string | null;
+  hiddenAt: string | null;
+  hiddenByName: string | null;
+};
+
+export interface ManagerDiscussionView {
+  /** Visio configurée (écriture possible). */
+  enabled: boolean;
+  open: boolean;
+  maxLength: number;
+  mutedParticipantIds: string[];
+  messages: ManagerDiscussionMessageView[];
 }

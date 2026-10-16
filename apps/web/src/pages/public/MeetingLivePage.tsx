@@ -1,10 +1,12 @@
-import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, Grid, Progress, Result, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import {
+  fetchPublicDiscussion,
   fetchPublicMeetingState,
   fetchPublicVisioToken,
   isSafeVideoUrl,
   joinPublicMeeting,
+  sendPublicDiscussionMessage,
   setPublicHandRaised,
   votePublicMeeting
 } from '../../services/public-meeting-live-service';
@@ -29,6 +31,7 @@ import {
   majorityRuleLabel,
   normalizeMajorityRule
 } from '../../components/syndics/meeting-governance';
+import type { VisioDiscussionAdapter } from '../../components/syndics/visio/use-visio-discussion';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
@@ -131,6 +134,19 @@ function visioFailureMessage(result: { status: string; message?: string }): stri
   if (result.status === 'rate_limited') return t('Trop de tentatives, réessayez dans quelques instants.');
   if (result.status === 'unavailable') return t('La visio est momentanément indisponible, réessayez.');
   return t("Accès à la visio impossible. Votre lien n'est peut-être plus valide.");
+}
+
+/** Message affichable pour un échec de la discussion (spec 046) : le serveur donne la raison d'un 409 ou d'un 400. */
+function discussionFailureMessage(result: { status: string; message?: string }, sending: boolean): string {
+  if (result.status === 'rate_limited') return t('Vous écrivez trop vite, patientez un instant.');
+  if (result.status === 'conflict') return result.message || t("La discussion n'est pas disponible pour le moment.");
+  if (result.status === 'rejected') return result.message || t('Message refusé : il est vide ou trop long.');
+  if (result.status === 'unavailable') {
+    return sending
+      ? t('La visio est momentanément indisponible, réessayez.')
+      : t('Impossible de charger la discussion, réessayez.');
+  }
+  return t("Accès à la discussion impossible. Votre lien n'est peut-être plus valide.");
 }
 
 /* -------------------------------------------------------------------- blocs */
@@ -731,6 +747,28 @@ export const MeetingLivePage: React.FC = () => {
     [tokenRef]
   );
 
+  // Adaptateur de la discussion de la salle : le jeton du lien part dans le corps de chaque appel.
+  const discussionAdapter = useMemo<VisioDiscussionAdapter>(
+    () => ({
+      load: async () => {
+        const token = tokenRef.current;
+        if (!token) throw new Error(discussionFailureMessage({ status: 'invalid' }, false));
+        const result = await fetchPublicDiscussion(token);
+        if (result.status !== 'ok') throw new Error(discussionFailureMessage(result, false));
+        const { open, muted, maxLength, messages } = result.data;
+        return { open, muted, maxLength, messages };
+      },
+      send: async body => {
+        const token = tokenRef.current;
+        if (!token) throw new Error(discussionFailureMessage({ status: 'invalid' }, true));
+        const result = await sendPublicDiscussionMessage(token, body);
+        if (result.status !== 'ok') throw new Error(discussionFailureMessage(result, true));
+        return result.data;
+      }
+    }),
+    [tokenRef]
+  );
+
   const view = state.kind === 'ok' ? state.view : null;
   const status = view?.meeting.status;
   const visioAvailable = Boolean(view?.visio?.enabled) && status === 'IN_PROGRESS' && Boolean(view?.me.joined);
@@ -790,6 +828,7 @@ export const MeetingLivePage: React.FC = () => {
         getToken={getVisioToken}
         onRaiseHand={raiseHand}
         onRefreshSignal={refresh}
+        discussion={discussionAdapter}
         title={t("Visio de l'assemblée")}
       />
     </Suspense>

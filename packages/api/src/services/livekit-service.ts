@@ -40,6 +40,8 @@ export const VISIO_TOKEN_TTL_SECONDS = 600;
 export const HAND_RAISED_ATTRIBUTE = 'main_levee';
 /** Sujet du message de donnees qui demande au client de relire l'etat. */
 export const REFRESH_TOPIC = 'ag-refresh';
+/** Sujet des messages de la discussion ecrite (spec 046) ; emis par le serveur seulement. */
+export const DISCUSSION_TOPIC = 'ag-discussion';
 
 /** LiveKit injoignable ou en erreur inattendue (503). */
 export class VisioUnavailableError extends AppError {
@@ -276,6 +278,26 @@ export async function sendRefreshSignal(roomName: string): Promise<void> {
     () =>
       roomClient().sendData(roomName, new TextEncoder().encode('{"type":"refresh"}'), DataPacket_Kind.RELIABLE, {
         topic: REFRESH_TOPIC
+      }),
+    { value: undefined }
+  );
+}
+
+/**
+ * Message de la discussion ecrite (spec 046) a toute la salle, ou aux seules identites
+ * `destinationIdentities`. Emis par le serveur : personne n'a `canPublishData`. Salle absente ignoree.
+ */
+export async function sendDiscussionEvent(
+  roomName: string,
+  payload: Record<string, unknown>,
+  destinationIdentities?: string[]
+): Promise<void> {
+  await call(
+    'sendData',
+    () =>
+      roomClient().sendData(roomName, new TextEncoder().encode(JSON.stringify(payload)), DataPacket_Kind.RELIABLE, {
+        topic: DISCUSSION_TOPIC,
+        ...(destinationIdentities ? { destinationIdentities } : {})
       }),
     { value: undefined }
   );
