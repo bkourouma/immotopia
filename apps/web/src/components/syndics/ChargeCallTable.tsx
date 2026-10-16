@@ -1,12 +1,13 @@
 ﻿import React from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
-import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, FileWordOutlined, LinkOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
 import { Table } from '../primitives';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
+import { ChargeCallPaymentLinkButton } from './ChargeCallPaymentLinkButton';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -47,6 +48,20 @@ function computeOutstandingAmount(item: ChargeCall): number {
   return Math.max(0, Number(item.amount) - computePaidAmount(item));
 }
 
+/** Lien « Payer cet appel » (spec 042) : droits de l'écran et ouverture de la liste des liens. */
+export interface ChargeCallPaymentLinkActions {
+  tenantId: string;
+  syndicId: string;
+  /** `SYNDIC_EDIT` : bouton « Payer cet appel ». */
+  canCreate: boolean;
+  /** `SYNDIC_VIEW` : bouton « Liens de paiement ». */
+  canView: boolean;
+  /** Ouvre le panneau des liens de l'appel. */
+  onOpenLinks: (charge: ChargeCall) => void;
+  /** Appelé après un envoi ou une création réussis. */
+  onChanged?: () => void;
+}
+
 interface ChargeCallTableProps {
   items: ChargeCall[];
   loading?: boolean;
@@ -66,6 +81,8 @@ interface ChargeCallTableProps {
   funds?: Array<{ id: string; name: string }>;
   /** Callback pour l'action « Affecter à un fonds ». Optionnel, même règle que les autres actions. */
   onAssignFund?: (charge: ChargeCall) => void;
+  /** Actions du lien de paiement mobile ; absent : aucune de ces actions n'est affichée. */
+  paymentLinks?: ChargeCallPaymentLinkActions;
 }
 
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
@@ -75,7 +92,8 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   onDownloadNotice,
   onDownloadNoticeWord,
   funds,
-  onAssignFund
+  onAssignFund,
+  paymentLinks
 }) => {
   const fundNames = new Map((funds || []).map(fund => [fund.id, fund.name]));
   const columns: ColumnsType<ChargeCall> = [
@@ -145,7 +163,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           }
         ]
       : []),
-    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund
+    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund || paymentLinks
       ? [
           {
             title: t('Actions'),
@@ -171,6 +189,26 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                   <Button size="small" onClick={() => onAssignFund(item)}>
                     {t('Affecter à un fonds')}
                   </Button>
+                ) : null}
+                {paymentLinks ? (
+                  <>
+                    <ChargeCallPaymentLinkButton
+                      size="small"
+                      tenantId={paymentLinks.tenantId}
+                      syndicId={paymentLinks.syndicId}
+                      chargeId={item.id}
+                      remaining={computeOutstandingAmount(item)}
+                      status={item.status}
+                      canCreate={paymentLinks.canCreate}
+                      periodLabel={item.period}
+                      onChanged={paymentLinks.onChanged}
+                    />
+                    {paymentLinks.canView ? (
+                      <Button size="small" icon={<LinkOutlined />} onClick={() => paymentLinks.onOpenLinks(item)}>
+                        {t('Liens de paiement')}
+                      </Button>
+                    ) : null}
+                  </>
                 ) : null}
               </Space>
             )
