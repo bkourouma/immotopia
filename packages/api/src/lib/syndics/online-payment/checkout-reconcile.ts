@@ -242,9 +242,15 @@ async function reconcileRow(checkout: SyndicCheckoutRecord): Promise<ReconcileSy
   // Tentative expirée : seul un succès tardif est à trancher (l'argent est parti), le reste est ignoré.
   if (checkout.status === 'EXPIRED') {
     if (providerStatus.state !== 'SUCCESS') return { checkout, changed: false };
+    // Pas de blocage : la décision reste humaine (note obligatoire, audit). Sans montant
+    // rapporté, accepter enregistrerait le montant demandé : le gestionnaire doit le savoir.
+    const reason =
+      providerStatus.amount === null
+        ? t('Le fournisseur a encaissé ce paiement après son expiration, sans en rapporter le montant.')
+        : t('Le fournisseur a encaissé ce paiement après son expiration.');
     const marked = await markSyndicCheckoutReview(checkout, {
       kind: 'CONTRARY_STATE',
-      reason: t('Le fournisseur a encaissé ce paiement après son expiration.'),
+      reason,
       fromStatuses: ['EXPIRED'],
       extra: bookkeepingOf(providerStatus)
     });
