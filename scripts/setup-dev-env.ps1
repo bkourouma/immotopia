@@ -175,8 +175,8 @@ if (-not $SkipGenerate) {
     exit 1
   }
 }
-# Depuis packagespi : c'est la que Prisma trouve packagespi\.env (DATABASE_URL).
-Push-Location (Join-Path $Root 'packagespi')
+# Depuis packages\api : c'est la que Prisma trouve packages\api\.env (DATABASE_URL).
+Push-Location (Join-Path $Root 'packages\api')
 try { Run 'prisma migrate deploy' { npx prisma migrate deploy } }
 finally { Pop-Location }
 Ok 'schema applique'
