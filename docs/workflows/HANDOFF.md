@@ -50,7 +50,7 @@ Pièges et décisions :
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/144 (base `main`), CI à lire ; la fusion reste à l'utilisateur.
-**Dernier commit :** `09b0416d` résultats de recette dans la spec, après la fusion de `main` (`c98bd2f2`, PR 126, 132 et 142).
+**Dernier commit :** `eea79613` test d'indivision (Biens) rendu attentif, instable en CI ; avant : `9efe7aec` avis d'enregistrement dans la convocation, `6bdd050a` tests d'enregistrement fiabilisés, fusion de `main` en `c98bd2f2`.
 **Worktree :** `.claude/worktrees/suspicious-cartwright-fc4a4c`, avec son PROPRE `node_modules` (npm install : `livekit-server-sdk`, `livekit-client`, `@livekit/components-react`, `@aws-sdk/client-s3`), pas de jonction à retirer avant `git worktree remove`.
 
 Fait :
@@ -62,9 +62,10 @@ Fait :
 
 Reste à faire :
 
-- Lire la CI de la PR 144 et corriger si besoin.
-- Fondateur : base juridique, information préalable et conservation des enregistrements (R10) ; valeurs par défaut V2–V4, V7–V13.
-- Mise en service : projet LiveKit DÉDIÉ (compte payant = accord de l'utilisateur), webhook vers `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
+- CI de la PR 144 : premier passage en échec (deux tests d'enregistrement trop pressés en CI, collision TS2451 entre deux tests d'env), corrigé dans `6bdd050a` ; second passage : `property-ownership.test.tsx` (hors lot, venu de `main`) instable, corrigé dans `eea79613`. Auto-fix actif sur la PR.
+- Décisions du fondateur du 2026-10-16, consignées dans la spec : LiveKit Cloud (V1), information dans la convocation (R2, fait : variable `{{recordingNotice}}`), conservation jusqu'à suppression manuelle (R10), chat modéré dans un lot suivant (V10). Restent à valider : base juridique de l'enregistrement, V2–V4, V7–V9, V11–V13.
+- Mise en service par l'utilisateur : créer le projet LiveKit Cloud dédié (compte et dépense), poser `LIVEKIT_*` et `LIVEKIT_RECORDING_S3_*` en staging puis production (déploiement avec son accord), déclarer le webhook `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
+- Sessions filles : « Effacer les enregistrements d'AG à la suppression » (branche `claude/sweet-kilby-b1ed43`) et « Chat modéré dans la visio de l'AG » (lot suivant, décision V10).
 - Non vérifié : LiveKit Cloud, charge 300 participants, effet serveur de `revokeTokenTs`, bascule de largeur à chaud dans un vrai navigateur, `test:isolation`.
 
 Pièges et décisions :

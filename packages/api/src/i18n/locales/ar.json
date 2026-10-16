@@ -2063,5 +2063,6 @@
   "La discussion est fermée par le gestionnaire": "أغلق المدير النقاش",
   "Le gestionnaire a suspendu votre droit d'écrire": "علّق المدير حقك في الكتابة",
   "Message introuvable ou inaccessible": "الرسالة غير موجودة أو لا يمكن الوصول إليها",
-  "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "الجمعية مغلقة أو ملغاة: لم يعد بالإمكان تعديل النقاش"
+  "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "الجمعية مغلقة أو ملغاة: لم يعد بالإمكان تعديل النقاش",
+  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "قد يتم تسجيل الجلسة (صورة وصوت)؛ وسيظهر إشعار على الشاشة أثناء التسجيل."
 }

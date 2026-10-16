@@ -2063,5 +2063,6 @@
   "La discussion est fermée par le gestionnaire": "The discussion has been closed by the manager",
   "Le gestionnaire a suspendu votre droit d'écrire": "The manager has suspended your right to write",
   "Message introuvable ou inaccessible": "Message not found or inaccessible",
-  "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "The meeting is closed or cancelled: the discussion can no longer be changed"
+  "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "The meeting is closed or cancelled: the discussion can no longer be changed",
+  "La séance pourra être enregistrée (image et son) ; un avis s'affichera à l'écran pendant l'enregistrement.": "The meeting may be recorded (image and sound); a notice will be displayed on screen during the recording."
 }

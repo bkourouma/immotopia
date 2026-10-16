@@ -106,6 +106,7 @@ import { uploadsAccessGuard } from '../../src/middleware/uploads-access-middlewa
 import { errorHandler } from '../../src/middleware/error-middleware';
 import { RecordingTooLargeError } from '../../src/lib/syndics/meeting-recording-errors';
 import { invalidateActiveRecordingCache, repatriateRecording } from '../../src/lib/syndics/meeting-recording';
+import { isRepatriating } from '../../src/lib/syndics/meeting-recording-ingest';
 
 const app = express();
 app.use('/api/webhooks/livekit', livekitWebhookRoutes);
@@ -132,9 +133,16 @@ const FILE_BYTES = Buffer.from('0123456789-FAKE-MP4-CONTENT-0123456789');
 
 const url = (meetingId: string, suffix: string) =>
   `/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${meetingId}${suffix}`;
+// Le rapatriement part apres la reponse (setImmediate) et ecrit reellement sur le disque :
+// attendre qu'il ait demarre, puis qu'aucun ne soit plus en cours (borne a 5 s). Deux
+// setImmediate ne suffisaient pas sur une CI chargee.
 const flush = async () => {
-  await new Promise(resolve => setImmediate(resolve));
-  await new Promise(resolve => setImmediate(resolve));
+  for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));
+  const deadline = Date.now() + 5000;
+  while (mockPrisma.gMRecording.rows.some(row => isRepatriating(String(row.id))) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));
 };
 
 function resetWorld(meetingStatus = 'IN_PROGRESS') {
