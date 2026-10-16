@@ -72,6 +72,12 @@ Pièges et non vérifié :
 - La signature convertit le DOCX en PDF (LibreOffice de l'image runtime) : non vérifiée sur un document reconstitué.
 - Les fichiers réparés sont créés par root dans le conteneur ; le script refait le `chown` du volume.
 
+Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l'utilisateur ; pas relus ici) :
+
+- Contournement validé sans cette PR : sur « Pack Agence · 6 mois », le modèle `assets/modeles_standard/bail_habitation.docx` téléversé par l'interface puis défini par défaut ; contrat généré sur BAIL-2026-0008 ; envoi pour signature par e-mail à deux signataires, codes reçus, les deux ont signé, document scellé, « Piste de preuve intacte ». La signature interne fonctionne donc de bout en bout sur le staging, et la conversion DOCX → PDF par LibreOffice de l'image Docker est vérifiée en réel pour la première fois. Contenu du PDF signé pas encore relu.
+- Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
+- Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
+
 ## Branche `feat/syndic-paiement-mobile` — 2026-10-15
 
 **État :** PR brouillon https://github.com/bkourouma/immotopia/pull/132 (base `main`) (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
