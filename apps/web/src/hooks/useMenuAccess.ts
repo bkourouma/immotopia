@@ -47,11 +47,18 @@ export interface MyMenuAccessState {
    * permission (administrateur d'agence, super-admin, chargement, échec réseau).
    */
   permissions: Set<string> | null;
+  /**
+   * `true` une fois la réponse arrivée (ou échouée). Avant, `permissions`
+   * vaut `null` sans que cela veuille dire « aucune restriction » : un écran
+   * qui appelle une route protégée doit attendre `ready` pour ne pas
+   * déclencher un 403 qu'il masquerait aussitôt.
+   */
+  ready: boolean;
 }
 
 const NO_DECISION: ReadonlySet<string> = new Set();
 
-const NO_RESTRICTION: MyMenuAccessState = { disabled: new Set(), enabled: new Set(), permissions: null };
+const NO_RESTRICTION: MyMenuAccessState = { disabled: new Set(), enabled: new Set(), permissions: null, ready: false };
 
 export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
   const [state, setState] = useState<MyMenuAccessState>(NO_RESTRICTION);
@@ -65,11 +72,12 @@ export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
         setState({
           disabled: new Set(access.disabledMenuKeys),
           enabled: new Set(access.enabledMenuKeys),
-          permissions: access.permissionKeys ? new Set(access.permissionKeys) : null
+          permissions: access.permissionKeys ? new Set(access.permissionKeys) : null,
+          ready: true
         });
       })
       .catch(() => {
-        if (!cancelled) setState(NO_RESTRICTION);
+        if (!cancelled) setState({ ...NO_RESTRICTION, ready: true });
       });
 
     return () => {

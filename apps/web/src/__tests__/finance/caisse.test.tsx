@@ -35,6 +35,20 @@ vi.mock('../../services/cash-sessions-service', () => ({
   getCashSession: (...a: unknown[]) => getCashSession(...a)
 }));
 
+// Permissions de la personne connectée : `null` = aucune restriction
+// (administrateur d'agence). Un test les restreint pour le Comptable ou le
+// Gestionnaire (BUG-2026-09-29-006).
+let permissionsDetenues: Set<string> | null = null;
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: permissionsDetenues, ready: true })
+}));
+
+// Personne connectée : ni le caissier des sessions de test (`user-1`) par défaut.
+let utilisateurId = 'user-99';
+vi.mock('../../hooks/useAuth', () => ({
+  useAuth: () => ({ user: { id: utilisateurId } })
+}));
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
@@ -111,6 +125,8 @@ function champ(id: string): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  permissionsDetenues = null;
+  utilisateurId = 'user-99';
   getCurrentCashSession.mockResolvedValue(null);
   listCashSessions.mockResolvedValue([]);
 });
@@ -309,7 +325,7 @@ describe('Caisse — historique et validation', () => {
     await waitFor(() => expect(validateCashSession).toHaveBeenCalledWith('agence-1', 'sess-1', { comment: undefined }));
   });
 
-  it('affiche le message 403 quand le valideur est le caissier de la session', async () => {
+  it('affiche un message clair quand le serveur refuse la validation faute de droit (403)', async () => {
     const closed = sessionAttendu31000({
       status: 'CLOSED',
       closedAt: '2026-09-23T18:00:00.000Z',
@@ -319,7 +335,13 @@ describe('Caisse — historique et validation', () => {
     listCashSessions.mockResolvedValue([closed]);
     getCashSession.mockResolvedValue(closed);
     validateCashSession.mockRejectedValue({
-      response: { status: 403, data: { message: 'Un caissier ne valide pas sa propre caisse.' } }
+      response: {
+        status: 403,
+        data: {
+          message: "Vous n'avez pas les droits nécessaires pour effectuer cette action.",
+          requiredPermission: 'FINANCE_DOCUMENTS_VALIDATE'
+        }
+      }
     });
 
     const user = userEvent.setup({ delay: null });
@@ -333,7 +355,68 @@ describe('Caisse — historique et validation', () => {
     await user.click(screen.getByRole('button', { name: /Valider/ }));
 
     expect(
-      await screen.findByText('Un caissier ne valide pas sa propre caisse.', {}, { timeout: 8000 })
+      await screen.findByText("Vous n'avez pas le droit de valider une caisse.", {}, { timeout: 8000 })
     ).toBeInTheDocument();
+  });
+
+  const sessionAValider = () =>
+    sessionAttendu31000({
+      status: 'CLOSED',
+      closedAt: '2026-09-23T18:00:00.000Z',
+      countedAmount: 31_000,
+      difference: 0
+    });
+
+  async function ouvrirDetail() {
+    const closed = sessionAValider();
+    listCashSessions.mockResolvedValue([closed]);
+    getCashSession.mockResolvedValue(closed);
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Historique' }));
+    await screen.findByText('CAI-2026-0001', {}, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: 'Voir le détail' }));
+    await screen.findByText('Caissier :', {}, { timeout: 8000 });
+  }
+
+  it('ne propose pas « Valider » sans le droit de valider (Comptable)', async () => {
+    permissionsDetenues = new Set(['FINANCE_DOCUMENTS_CREATE', 'FINANCE_ACCOUNTS_READ']);
+    await ouvrirDetail();
+
+    expect(screen.queryByRole('button', { name: /Valider/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/réservée aux responsables/)).toBeInTheDocument();
+  });
+
+  it('ne propose pas « Valider » au caissier de la session, même avec le droit', async () => {
+    utilisateurId = 'user-1';
+    await ouvrirDetail();
+
+    expect(screen.queryByRole('button', { name: /Valider/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/un autre responsable doit la valider/)).toBeInTheDocument();
+  });
+});
+
+describe('Caisse — rôle sans droit de tenir une caisse (Gestionnaire)', () => {
+  it("s'ouvre sur l'historique, sans onglet « Ma caisse » ni appel à la caisse courante", async () => {
+    permissionsDetenues = new Set(['FINANCE_ACCOUNTS_READ']);
+    listCashSessions.mockResolvedValue([sessionOuverte({ status: 'CLOSED' })]);
+    mount();
+
+    expect(await screen.findByText('CAI-2026-0001', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Ma caisse' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Impossible de charger votre caisse.')).not.toBeInTheDocument();
+    expect(getCurrentCashSession).not.toHaveBeenCalled();
+  });
+
+  it("dit clairement que la caisse n'est pas accessible quand le serveur répond 403", async () => {
+    getCurrentCashSession.mockRejectedValue({
+      response: { status: 403, data: { requiredPermission: 'FINANCE_DOCUMENTS_CREATE' } }
+    });
+    mount();
+
+    expect(
+      await screen.findByText(/Vous n'avez pas le droit de tenir une caisse/, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Impossible de charger votre caisse.')).not.toBeInTheDocument();
   });
 });

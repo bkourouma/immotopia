@@ -1245,6 +1245,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/suppliers/:supplierId/payments",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/suppliers/:supplierId/payments",
+      "pathParams": ["supplierId"],
+      "module": "finance",
+      "summary": "finance / suppliers / {supplierId} / payments",
+      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/suppliers/balance",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/suppliers/balance",

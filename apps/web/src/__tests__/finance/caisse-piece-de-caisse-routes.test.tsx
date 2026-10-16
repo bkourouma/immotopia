@@ -39,6 +39,12 @@ vi.mock('../../services/cash-sessions-service', () => ({
   getCashSession: (...a: unknown[]) => getCashSession(...a)
 }));
 
+// L'écran Caisse lit les droits et l'identité de la personne connectée.
+vi.mock('../../hooks/useMenuAccess', () => ({
+  useMyMenuAccess: () => ({ disabled: new Set<string>(), permissions: null, ready: true })
+}));
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-99' } }) }));
+
 vi.mock('../../services/treasury-service', () => ({
   listTreasuryAccounts: vi.fn().mockResolvedValue([])
 }));
