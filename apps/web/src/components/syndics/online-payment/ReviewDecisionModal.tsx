@@ -43,7 +43,7 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const kind = checkout?.reviewKind ?? null;
-  const allowed = allowedDecisions(kind);
+  const allowed = allowedDecisions(kind, checkout?.chargePaymentId);
 
   useEffect(() => {
     // Remise à zéro à chaque ouverture ; l'unique option permise est présélectionnée.
@@ -60,8 +60,10 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
 
   const currency = displayCurrency(checkout.currency) ?? 'FCFA';
   const received = checkout.receivedAmount;
-  // CONTRARY_STATE : l'encaissement existe déjà, accepter ne fait que clore le suivi.
-  const recordsPayment = decision === 'ACCEPT' && kind !== 'CONTRARY_STATE';
+  // CONTRARY_STATE avec encaissement : accepter ne fait que clore le suivi.
+  // Sans encaissement (succès tardif), accepter encaisse comme les autres motifs.
+  const alreadyRecorded = kind === 'CONTRARY_STATE' && Boolean(checkout.chargePaymentId);
+  const recordsPayment = decision === 'ACCEPT' && !alreadyRecorded;
   const noteOk = note.trim().length > 0;
 
   const submit = async () => {
@@ -99,7 +101,7 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
           <Alert
             type="warning"
             showIcon
-            message={reviewKindLabel(kind)}
+            message={reviewKindLabel(kind, checkout.chargePaymentId)}
             description={checkout.reviewReason ?? undefined}
           />
         ) : null}
@@ -134,17 +136,26 @@ export const ReviewDecisionModal: React.FC<ReviewDecisionModalProps> = ({
           >
             <Space direction="vertical">
               <Radio value="ACCEPT" disabled={!allowed.accept}>
-                {kind === 'CONTRARY_STATE'
+                {alreadyRecorded
                   ? t('Accepter : l’encaissement est déjà enregistré, clore le suivi')
                   : t('Accepter : enregistrer l’encaissement du montant reçu')}
               </Radio>
+              {recordsPayment && received === null ? (
+                <Text type="warning" style={{ fontSize: 12 }}>
+                  {t('Montant non rapporté par le fournisseur : le montant demandé ({{amount}}) sera enregistré.', {
+                    amount: formatMoney(checkout.amount, { currency })
+                  })}
+                </Text>
+              ) : null}
               {!allowed.accept ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {t('Impossible d’accepter : cette transaction est déjà enregistrée sur un autre paiement.')}
                 </Text>
               ) : null}
               <Radio value="REJECT" disabled={!allowed.reject}>
-                {t('Refuser : ne rien enregistrer')}
+                {kind === 'CONTRARY_STATE' && !alreadyRecorded
+                  ? t('Refuser : la tentative reste en échec, rien n’est encaissé')
+                  : t('Refuser : ne rien enregistrer')}
               </Radio>
               {!allowed.reject ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>

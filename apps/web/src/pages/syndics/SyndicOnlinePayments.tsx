@@ -6,6 +6,7 @@ import { PayoutsPanel } from '../../components/syndics/online-payment/PayoutsPan
 import { ReviewDecisionModal } from '../../components/syndics/online-payment/ReviewDecisionModal';
 import type { DecideSyndicCheckoutResult, SyndicOnlineCheckoutRow } from '../../services/syndic-online-payment-service';
 import { formatMoney } from '../../components/primitives';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
@@ -22,6 +23,11 @@ export const SyndicOnlinePayments: React.FC = () => {
   const [collectionBalance, setCollectionBalance] = useState<number | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [deciding, setDeciding] = useState<SyndicOnlineCheckoutRow | null>(null);
+  // Mêmes droits que l'API : vérifier, trancher, reverser = SYNDIC_EDIT ; configurer = en plus TENANT_SETTINGS_EDIT.
+  // `permissions === null` : aucune restriction (administrateur, super-admin, échec réseau).
+  const { permissions, ready } = useMyMenuAccess(tenantId);
+  const canEdit = ready && (permissions === null || permissions.has('SYNDIC_EDIT'));
+  const canEditSettings = canEdit && (permissions === null || permissions.has('TENANT_SETTINGS_EDIT'));
 
   if (!tenantId || !syndicId) {
     return <Alert type="error" showIcon message={t('Paramètres copropriété manquants')} />;
@@ -62,6 +68,7 @@ export const SyndicOnlinePayments: React.FC = () => {
         tenantId={tenantId}
         syndicId={syndicId}
         refreshToken={refreshToken}
+        canEditSettings={canEditSettings}
         onSettingsLoaded={settings => setCollectionBalance(settings.collectionAccount.balance)}
       />
 
@@ -71,12 +78,14 @@ export const SyndicOnlinePayments: React.FC = () => {
         refreshToken={refreshToken}
         onDecide={setDeciding}
         onChanged={bump}
+        canEdit={canEdit}
       />
 
       <PayoutsPanel
         tenantId={tenantId}
         syndicId={syndicId}
         collectionBalance={collectionBalance}
+        canEdit={canEdit}
         onRecorded={result => {
           setCollectionBalance(result.collectionBalanceAfter);
           bump();

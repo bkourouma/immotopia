@@ -44,7 +44,7 @@ export function originLabel(origin: CheckoutOrigin): string {
   return origin === 'PORTAL' ? t('Portail') : t('Lien de paiement');
 }
 
-export function reviewKindLabel(kind: ReviewKind): string {
+export function reviewKindLabel(kind: ReviewKind, chargePaymentId?: string | null): string {
   switch (kind) {
     case 'AMOUNT_MISMATCH':
       return t('Montant payé différent du montant attendu');
@@ -55,14 +55,23 @@ export function reviewKindLabel(kind: ReviewKind): string {
     case 'DUPLICATE_TRANSACTION':
       return t('Transaction fournisseur déjà enregistrée');
     case 'CONTRARY_STATE':
-      return t('Le fournisseur rapporte un échec ou une annulation après un succès');
+      return chargePaymentId
+        ? t('Le fournisseur rapporte un échec ou une annulation après un succès')
+        : t('Succès du fournisseur après expiration de la tentative');
   }
 }
 
-/** Règles du contrat §1.7 : ce que chaque motif autorise. */
-export function allowedDecisions(kind: ReviewKind | null): { accept: boolean; reject: boolean } {
+/**
+ * Règles du contrat §1.7 : ce que chaque motif autorise. `CONTRARY_STATE` avec
+ * encaissement : seul le classement du suivi ; sans encaissement (succès tardif
+ * après expiration) : accepter encaisse, refuser clôt la tentative en échec.
+ */
+export function allowedDecisions(
+  kind: ReviewKind | null,
+  chargePaymentId?: string | null
+): { accept: boolean; reject: boolean } {
   if (kind === 'DUPLICATE_TRANSACTION') return { accept: false, reject: true };
-  if (kind === 'CONTRARY_STATE') return { accept: true, reject: false };
+  if (kind === 'CONTRARY_STATE') return { accept: true, reject: !chargePaymentId };
   return { accept: true, reject: true };
 }
 
