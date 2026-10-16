@@ -49,7 +49,7 @@ Pièges et décisions :
 
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 
-**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/144 (base `main`), CI à lire ; la fusion reste à l'utilisateur.
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/144 (base `main`), CI verte, `main` fusionnée ; la fusion reste à l'utilisateur.
 **Dernier commit :** `eea79613` test d'indivision (Biens) rendu attentif, instable en CI ; avant : `9efe7aec` avis d'enregistrement dans la convocation, `6bdd050a` tests d'enregistrement fiabilisés, fusion de `main` en `c98bd2f2`.
 **Worktree :** `.claude/worktrees/suspicious-cartwright-fc4a4c`, avec son PROPRE `node_modules` (npm install : `livekit-server-sdk`, `livekit-client`, `@livekit/components-react`, `@aws-sdk/client-s3`), pas de jonction à retirer avant `git worktree remove`.
 
@@ -62,10 +62,10 @@ Fait :
 
 Reste à faire :
 
-- CI de la PR 144 : premier passage en échec (deux tests d'enregistrement trop pressés en CI, collision TS2451 entre deux tests d'env), corrigé dans `6bdd050a` ; second passage : `property-ownership.test.tsx` (hors lot, venu de `main`) instable, corrigé dans `eea79613`. Auto-fix actif sur la PR.
+- CI de la PR 144 : verte depuis `d33c4698` (premier passage : tests d'enregistrement trop pressés et collision TS2451, corrigés dans `6bdd050a` ; second : `property-ownership.test.tsx` instable, corrigé dans `eea79613`). Conflit avec `main` sur ce seul fichier résolu par fusion le 2026-10-16. Auto-fix actif sur la PR.
 - Décisions du fondateur du 2026-10-16, consignées dans la spec : LiveKit Cloud (V1), information dans la convocation (R2, fait : variable `{{recordingNotice}}`), conservation jusqu'à suppression manuelle (R10), chat modéré dans un lot suivant (V10). Restent à valider : base juridique de l'enregistrement, V2–V4, V7–V9, V11–V13.
 - Mise en service par l'utilisateur : créer le projet LiveKit Cloud dédié (compte et dépense), poser `LIVEKIT_*` et `LIVEKIT_RECORDING_S3_*` en staging puis production (déploiement avec son accord), déclarer le webhook `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
-- Sessions filles : « Effacer les enregistrements d'AG à la suppression » (branche `claude/sweet-kilby-b1ed43`) et « Chat modéré dans la visio de l'AG » (lot suivant, décision V10).
+- Sessions filles, PR empilées sur la 144 : « Effacer les enregistrements d'AG à la suppression » (PR https://github.com/bkourouma/immotopia/pull/145) et « Chat modéré dans la visio de l'AG » (spec 046, PR https://github.com/bkourouma/immotopia/pull/148, branche `feat/syndic-ag-visio-discussion`). Ordre de fusion : 144, puis 145 et 148 (à l'utilisateur).
 - Non vérifié : LiveKit Cloud, charge 300 participants, effet serveur de `revokeTokenTs`, bascule de largeur à chaud dans un vrai navigateur, `test:isolation`.
 
 Pièges et décisions :
@@ -76,6 +76,37 @@ Pièges et décisions :
 - Instance de démo : worktree `.claude/worktrees/demo` à `6c923267` (avant la fusion de `main`), dépendances propres (`npm ci`), migrations appliquées sur `immotopia_demo` jusqu'à `20261016120000` ; serveurs arrêtés. `demo:sync` exige `packages/api/.env.demo` (absent) : la démo a été mise à jour à la main (`git checkout --detach`, `npm ci`, `prisma migrate deploy` lisant le `.env` du worktree de démo), API lancée avec les `LIVEKIT_*` en variables du processus. Données ajoutées : deux AG de recette « recette visio » (clôturée et en cours) dans « Horizon Syndic Gestion », un enregistrement disponible, liens révoqués pour Awa Traoré.
 - Un agent a reformaté par erreur ~840 fichiers puis les a restaurés en LF : `git status` les montrait modifiés sans diff ; remis en CRLF par script avant commit. Vérifier `git diff --numstat` avant tout `git add -u`.
 - Changer de langue pendant la visio remonte l'application (`key={language}`) et coupe la salle : limite documentée, non corrigée.
+
+## Branche `fix/seed-fichiers-volume` — 2026-10-16
+
+**État :** prêt à relire (PR https://github.com/bkourouma/immotopia/pull/149, base `main`, CI en cours) ; worktree `.claude/worktrees/distracted-wu-7f2ca7`, `node_modules` = jonctions vers le checkout principal.
+**Dernier commit :** voir `git log` (poussé sur origin).
+
+Anomalie de recette du staging : sur « Pack Agence · 3 ans », « Envoyer pour signature » du bail BAIL-2026-0052 répondait « Fichier du document invalide » (`getDocumentFile`).
+
+Cause : `seed-pack-tests.sh` lance le seed dans un conteneur `migrate` jetable ; trois écrivains ignoraient `UPLOADS_DIR` et écrivaient sous `getProjectRoot()/assets/...` (= `/repo/assets/...`, perdu à la fin du conteneur) : `saveRentalDocx` (`agence-locatif-files.ts`), `seedDocumentTemplates` (`agence-commercial-docs.ts`), `writeGeneratedDocx` (`patrimoine-extras-files.ts`). Les lignes `RentalDocument.file_path` pointent donc vers des fichiers disparus et hors des dossiers autorisés. Découverte en plus : l'image `migrate` (cible `build` du Dockerfile) n'embarque pas `assets/`, donc `seedDocumentTemplates` ignorait les modèles livrés (« modèle de base introuvable ») : les agences de test n'ont peut-être AUCUN modèle propre.
+
+Fait :
+
+- Les trois écrivains passent par `utils/assets-paths.ts` (nouveau `getGeneratedDocumentDir`, repris par `saveGeneratedDocument` : un seul découpage `<agence>/<type>/<AAAA>/<MM>`), donc sur le volume quand `UPLOADS_DIR` est posé. Même correction dans la branche REFRESH de `document-templates-seed.ts`.
+- `seed-pack-tests.sh` monte `assets/` du dépôt en lecture seule dans le conteneur et gagne `--repair-files` (refuse `prod` comme le reste).
+- `prisma/seeds/repair-pack-test-files.ts` + `pack-history/repair-files.ts` : répare les `RentalDocument` (docx reconstitué avec `buildDocx` depuis la ligne, `file_hash` mis à jour) et les `DocumentTemplate` (copie du modèle livré) des 12 agences de test ; idempotent, n'affiche que des compteurs.
+- Tests : `pack-history.generated-files-paths.test.ts`, `pack-history.repair-files.test.ts`. Doc : `DEPLOIEMENT.md` (« Comptes de test par pack »).
+
+Reste à faire (par l'utilisateur, sur le serveur, après `deploy.sh staging` qui reconstruit l'image `migrate`) : `./infra/scripts/seed-pack-tests.sh staging --repair-files`, puis, si le compte rendu signale des agences sans modèle propre, `./infra/scripts/seed-pack-tests.sh staging`. Ensuite rejouer « Envoyer pour signature » sur BAIL-2026-0052.
+
+Pièges et non vérifié :
+
+- Rien n'a tourné sur le staging ni sur une base réelle : tests unitaires sur disque temporaire et base simulée seulement.
+- Les gabarits globaux (`db:seed:document-templates`) ne sont toujours pas posés par `bootstrap.sh` : sans modèle d'agence, la génération d'un nouveau contrat échoue (« Aucun template disponible »).
+- La signature convertit le DOCX en PDF (LibreOffice de l'image runtime) : non vérifiée sur un document reconstitué.
+- Les fichiers réparés sont créés par root dans le conteneur ; le script refait le `chown` du volume.
+
+Relevés de recette du staging, 2026-10-16 (Claude dans Chrome, rapportés par l'utilisateur ; pas relus ici) :
+
+- Contournement validé sans cette PR : sur « Pack Agence · 6 mois », le modèle `assets/modeles_standard/bail_habitation.docx` téléversé par l'interface puis défini par défaut ; contrat généré sur BAIL-2026-0008 ; envoi pour signature par e-mail à deux signataires, codes reçus, les deux ont signé, document scellé, « Piste de preuve intacte ». La signature interne fonctionne donc de bout en bout sur le staging, et la conversion DOCX → PDF par LibreOffice de l'image Docker est vérifiée en réel pour la première fois. Contenu du PDF signé pas encore relu.
+- Paiement mobile money d'un appel de charges (copropriété « Résidence Les Jacarandas », agence « Pack Syndic · 3 ans », mode Simulateur) réussi de bout en bout : reçu Q-2026-000093, statut « Payé », compte 5525 crédité.
+- Réglages du staging complétés le 2026-10-16 dans son fichier d'environnement (aucune valeur ici) : `SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`, clé `PAYMENT_SECRETS_KEY` propre au staging, SMTP configuré (vérifié). `SMS_PROVIDER` reste `disabled` : l'application Orange « ImmoTopia Staging » existe, mais Orange exige un nom d'expéditeur personnalisé approuvé (demande « IMMOTOPIA », à déposer par l'utilisateur) avant tout achat de forfait.
 
 ## Branche `feat/syndic-paiement-mobile` — 2026-10-15
 

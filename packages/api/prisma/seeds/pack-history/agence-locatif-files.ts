@@ -3,17 +3,18 @@
  * location, photos d'états des lieux et de tickets, PDF de pièces justificatives.
  *
  * Les documents locatifs générés (`RentalDocument`) sont servis par
- * `GET /documents/:id/download` qui les relit sous `<racine>/assets/generated_documents`
- * et les annonce comme .docx : ce sont donc de vrais fichiers .docx (zip OOXML
- * minimal, sans modèle) qui sont écrits à cet endroit, au chemin que
- * `saveGeneratedDocument` utiliserait. Les photos et les PDF suivent
+ * `GET /documents/:id/download` qui les relit sous le dossier des documents générés
+ * (`getGeneratedDocumentsDir` : `UPLOADS_DIR`/generated_documents, sinon
+ * `<racine>/assets/generated_documents`) et les annonce comme .docx : ce sont donc de
+ * vrais fichiers .docx (zip OOXML minimal, sans modèle) qui sont écrits à cet endroit,
+ * au chemin que `saveGeneratedDocument` utiliserait. Les photos et les PDF suivent
  * `seed-files.ts` (racine `UPLOADS_DIR`).
  */
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import PizZip from 'pizzip';
-import { getProjectRoot } from '../../../src/utils/project-root';
+import { getGeneratedDocumentDir } from '../../../src/utils/assets-paths';
 import { renderPropertyImage } from './property-images';
 import type { Scene } from './property-images';
 import { writeUpload } from './seed-files';
@@ -78,7 +79,12 @@ export interface StoredRentalDocument {
   size: number;
 }
 
-/** Écrit un document locatif sous `assets/generated_documents/<agence>/<type>/<AAAA>/<MM>/` (convention de `saveGeneratedDocument`). */
+/**
+ * Écrit un document locatif sous `<dossier des documents générés>/<agence>/<type>/<AAAA>/<MM>/`,
+ * là où l'API le relit : le volume des fichiers (`UPLOADS_DIR`) quand il est posé, sinon
+ * `<racine>/assets/generated_documents` (`getGeneratedDocumentDir`, comme `saveGeneratedDocument`).
+ * Le seed tourne dans un conteneur jetable : un chemin hors du volume disparaît avec lui.
+ */
 export async function saveRentalDocx(params: {
   tenantId: string;
   typeDir: string;
@@ -88,16 +94,11 @@ export async function saveRentalDocx(params: {
   title: string;
   lines: readonly string[];
 }): Promise<StoredRentalDocument> {
-  const year = String(params.issuedAt.getUTCFullYear());
-  const month = String(params.issuedAt.getUTCMonth() + 1).padStart(2, '0');
-  const dir = path.join(
-    getProjectRoot(),
-    'assets',
-    'generated_documents',
+  const dir = getGeneratedDocumentDir(
     params.tenantId,
     params.typeDir,
-    year,
-    month
+    params.issuedAt.getUTCFullYear(),
+    params.issuedAt.getUTCMonth() + 1
   );
   await fs.mkdir(dir, { recursive: true });
   const fileName = `${params.number}_${params.typeDir}_${params.keyPart.slice(0, 8)}.docx`.replace(

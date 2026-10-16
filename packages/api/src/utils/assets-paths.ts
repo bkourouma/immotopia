@@ -45,6 +45,15 @@ export function getGeneratedDocumentsDir(): string {
     : getLegacyGeneratedDocumentsDir();
 }
 
+/**
+ * Dossier d'un document généré : `<dossier des documents générés>/<agence>/<type>/<AAAA>/<MM>`.
+ * Découpage unique, partagé par `saveGeneratedDocument` et par les seeds de recette : un
+ * fichier semé atterrit là où l'API d'exécution le relit.
+ */
+export function getGeneratedDocumentDir(tenantId: string, docType: string, year: number, month: number): string {
+  return path.join(getGeneratedDocumentsDir(), tenantId, docType, String(year), String(month).padStart(2, '0'));
+}
+
 /** Dossier d'écriture des modèles importés (agences, défauts semés) : volume si `UPLOADS_DIR` est posé. */
 export function getTemplatesWriteDir(): string {
   return env.UPLOADS_DIR ? path.join(path.resolve(env.UPLOADS_DIR), 'modeles_documents') : getShippedTemplatesDir();
