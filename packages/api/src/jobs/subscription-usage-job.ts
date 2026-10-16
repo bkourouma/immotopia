@@ -66,7 +66,8 @@ const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
   CHANTIERS: 'chantiers',
   BIENS_DETENUS: 'biens détenus',
   ACTIFS: 'actifs',
-  PHOTOS_INVENTAIRE: 'photos analysées'
+  PHOTOS_INVENTAIRE: 'photos analysées',
+  SIGNATURES_MENSUELLES: 'signatures'
 };
 
 /**
@@ -75,7 +76,7 @@ const CAPACITY_LABELS: Record<CapacityKeyCode, string> = {
  * aucun plafond) ; PHOTOS_INVENTAIRE (lot 041, W11-R2) seulement avec l'option
  * Inventaire WhatsApp souscrite.
  */
-const OPTIONAL_CAPACITIES: readonly CapacityKeyCode[] = ['ACTIFS', 'PHOTOS_INVENTAIRE'];
+const OPTIONAL_CAPACITIES: readonly CapacityKeyCode[] = ['ACTIFS', 'PHOTOS_INVENTAIRE', 'SIGNATURES_MENSUELLES'];
 const isOptionalCapacityWithoutCap = (key: CapacityKeyCode, limit: number) =>
   OPTIONAL_CAPACITIES.includes(key) && limit <= 0;
 
@@ -437,6 +438,13 @@ function alertText(
   if (key === 'ACTIFS' && packs?.some(pack => PARTICULIER_PACKS.includes(pack))) {
     return t(
       'Vous utilisez {{used}} {{label}} sur {{limit}} inclus dans votre formule. {{policy}} Archivez les actifs dont vous n’avez plus besoin ou contactez-nous depuis {{url}}.',
+      vars
+    );
+  }
+  if (key === 'SIGNATURES_MENSUELLES') {
+    // Consommation sans dépassement facturé : le texte de politique ne s'applique pas, l'extension oui.
+    return t(
+      'Vous avez utilisé {{used}} {{label}} sur {{limit}} ce mois-ci. Ajoutez l’extension « Signatures électroniques — bloc de 50 » depuis {{url}}.',
       vars
     );
   }

@@ -14,8 +14,7 @@ import {
   Empty,
   Tabs,
   List,
-  Statistic,
-  Table
+  Statistic
 } from 'antd';
 import type { TabsProps } from 'antd';
 import {
@@ -28,6 +27,7 @@ import {
   WalletOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -233,6 +233,7 @@ export default function LeaseDetails() {
     {
       title: t('Période'),
       key: 'period',
+      exportValue: (record: any) => `${record.period_year}-${String(record.period_month).padStart(2, '0')}`,
       render: (record: any) => `${record.period_year}-${String(record.period_month).padStart(2, '0')}`
     },
     {
@@ -244,6 +245,11 @@ export default function LeaseDetails() {
     {
       title: t('Montant'),
       key: 'amount',
+      exportValue: (record: any) =>
+        Number(record.amount_rent) +
+        Number(record.amount_service) +
+        Number(record.amount_other_fees) +
+        Number(record.penalty_amount || 0),
       render: (record: any) =>
         formatCurrency(
           Number(record.amount_rent) +
@@ -353,6 +359,7 @@ export default function LeaseDetails() {
           <Card title={t('Calendrier des échéances')}>
             {data.installments.length > 0 ? (
               <Table
+                exportFilename={t('Calendrier des échéances')}
                 scroll={{ x: 'max-content' }}
                 columns={installmentColumns}
                 dataSource={data.installments}

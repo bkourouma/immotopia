@@ -234,6 +234,14 @@ export const PERMISSION_LABELS_FR: Record<string, PermissionLabelFr> = {
     label: t('Allouer les paiements'),
     description: t('Allouer les paiements aux échéances (rattacher un paiement à une échéance).')
   },
+  RENTAL_DIRECT_DEBIT_VIEW: {
+    label: t('Voir les prélèvements bancaires'),
+    description: t('Consulter les créanciers et les mandats de prélèvement bancaire.')
+  },
+  RENTAL_DIRECT_DEBIT_MANAGE: {
+    label: t('Gérer les prélèvements bancaires'),
+    description: t('Créer et modifier les créanciers et les mandats de prélèvement, déposer les scans signés.')
+  },
   RENTAL_PENALTIES_VIEW: {
     label: t('Voir les pénalités'),
     description: t('Consulter les pénalités de retard.')

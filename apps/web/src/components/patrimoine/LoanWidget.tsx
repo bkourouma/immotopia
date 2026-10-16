@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, Progress, Table, Tag } from 'antd';
+import { Card, Progress, Tag } from 'antd';
+import { Table } from '../primitives';
 import type { PropertyLoan } from '../../types/patrimoine-types';
 import { t } from '../../i18n/t';
 import { loanStatusLabel } from './patrimoine-labels';
@@ -47,7 +48,14 @@ export const LoanWidget: React.FC<Props> = ({ loans }) => {
           </div>
         );
       })}
-      <Table rowKey="id" dataSource={loans} columns={columns} pagination={{ pageSize: 4 }} scroll={{ x: 760 }} />
+      <Table
+        exportFilename={t('Crédits immobiliers')}
+        rowKey="id"
+        dataSource={loans}
+        columns={columns}
+        pagination={{ pageSize: 4 }}
+        scroll={{ x: 760 }}
+      />
     </Card>
   );
 };

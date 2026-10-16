@@ -13,7 +13,6 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Typography
 } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
@@ -31,7 +30,7 @@ import { TenantInvoicesSection } from '../../components/subscription/TenantInvoi
 import { PersonalTierCard } from '../../components/personal-space/PersonalTierCard';
 import { ASSET_USAGE_QUERY_KEY } from '../../services/personal-space-service';
 import { useQueryClient } from '@tanstack/react-query';
-import { StatusTag } from '../../components/primitives';
+import { StatusTag, Table } from '../../components/primitives';
 import { EXTENSION_REQUIRED_PACKS, isExtensionAllowed } from '../../utils/extension-rules';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -44,7 +43,8 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   CHANTIERS: t('Chantiers'),
   BIENS_DETENUS: t('Biens détenus'),
   ACTIFS: t('Actifs'),
-  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)')
+  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)'),
+  SIGNATURES_MENSUELLES: t('Signatures électroniques (par mois)')
 };
 
 // Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue
@@ -319,6 +319,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Form>
         {requests.length > 0 && (
           <Table<ExtensionRequest>
+            exportFilename={t('Mes demandes')}
             style={{ marginBlockStart: 'var(--space-4)' }}
             rowKey="id"
             size="small"

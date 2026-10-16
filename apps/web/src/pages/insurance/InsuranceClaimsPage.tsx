@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Alert, Select } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { listInsuranceClaims, listInsurancePolicies } from '../../services/insurance-service';
+import type { ColumnsType } from 'antd/es/table';
 import type { InsuranceClaimDto, InsuranceClaimStatus } from '../../types/insurance-types';
 import { CLAIM_STATUS_VALUES, claimStatusLabel, options } from '../../components/insurance/insurance-labels';
 import { useAuth } from '../../hooks/useAuth';
@@ -26,6 +27,20 @@ type Filtres = { status: string; propertyId: string; policyId: string };
 const FILTER_KEYS = ['status', 'propertyId', 'policyId'] as const;
 /** Maximum accepté par l'API pour une liste de sinistres. */
 const CLAIMS_LIMIT = 500;
+
+/** Les montants s'exportent en nombres purs (Excel peut les sommer), pas en texte formaté. */
+const VALEURS_EXPORT: Record<string, (claim: InsuranceClaimDto) => number | null> = {
+  reclame: claim => claim.claimedAmount,
+  indemnise: claim => claim.indemnifiedAmount,
+  reste: claim => claim.outOfPocketAmount
+};
+
+function colonnesExport(tenantId: string): ColumnsType<InsuranceClaimDto> {
+  return claimColumns(tenantId).map(colonne => {
+    const valeur = colonne.key !== undefined ? VALEURS_EXPORT[String(colonne.key)] : undefined;
+    return valeur ? { ...colonne, exportValue: valeur } : colonne;
+  });
+}
 
 function sousTitre(total: number, tronque: boolean): string {
   if (total <= 0) return t('Déclarations et suivi des sinistres');
@@ -160,6 +175,8 @@ export const InsuranceClaimsPage: React.FC = () => {
       </FilterSheet>
 
       <DataView<InsuranceClaimDto>
+        // La liste (plafonnée à 500) est déjà chargée en entier : l'export couvre tous les sinistres filtrés, pas la seule page.
+        export={{ filename: t('Sinistres'), columns: colonnesExport(agence), fetchAll: async () => tous }}
         items={sinistres}
         total={tous.length}
         page={list.page}

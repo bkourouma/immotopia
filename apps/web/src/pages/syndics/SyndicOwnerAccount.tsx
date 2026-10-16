@@ -14,13 +14,12 @@ import {
   Select,
   Space,
   Spin,
-  Table,
   Tag,
   Typography
 } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { MoneyValue, StatCard } from '../../components/primitives';
+import { MoneyValue, StatCard, Table } from '../../components/primitives';
 import {
   createLotOwnerAccountAdjustment,
   downloadLotOwnerAccountStatement,
@@ -297,6 +296,7 @@ export const SyndicOwnerAccount: React.FC = () => {
 
             <Card title={t('Historique des transactions')}>
               <Table
+                exportFilename={t('Historique des transactions')}
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={transactions}
@@ -329,6 +329,12 @@ export const SyndicOwnerAccount: React.FC = () => {
                     title: t('Solde'),
                     dataIndex: 'balanceAfter',
                     align: 'end',
+                    // Le rendu accole le montant et l'étiquette Débiteur/Créditeur : on les sépare.
+                    exportTitle: t('Solde (+ débiteur, − créditeur)'),
+                    exportValue: (row: OwnerAccountTransaction) => {
+                      const info = describeOwnerBalance(row.balanceAfter);
+                      return info.tone === 'creditor' ? -info.amount : info.amount;
+                    },
                     render: (value: number | string) => {
                       const info = describeOwnerBalance(value);
                       return (
@@ -345,6 +351,7 @@ export const SyndicOwnerAccount: React.FC = () => {
 
             <Card title={t('Reçus et quittances')}>
               <Table
+                exportFilename={t('Reçus et quittances')}
                 rowKey="id"
                 loading={receiptsLoading}
                 dataSource={receipts}
@@ -367,12 +374,14 @@ export const SyndicOwnerAccount: React.FC = () => {
                   {
                     title: t('Montant'),
                     align: 'end',
+                    exportValue: (row: ReceiptView) => Number(row.amount),
                     render: (_: unknown, row: ReceiptView) => (
                       <MoneyValue value={row.amount} currency={displayCurrency(row.currency)} />
                     )
                   },
                   {
                     title: t('Actions'),
+                    exportable: false,
                     render: (_: unknown, row: ReceiptView) => (
                       <Button
                         size="small"

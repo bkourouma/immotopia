@@ -38,6 +38,16 @@ describe('<ChargeCallTable> — bouton avis d’appel (lot S4)', () => {
     expect(onDownloadNotice).toHaveBeenCalledWith(CHARGE);
   });
 
+  it("affiche « Avis d'appel (Word) » et appelle onDownloadNoticeWord avec l'appel concerné", () => {
+    const onDownloadNoticeWord = vi.fn();
+    render(<ChargeCallTable items={[CHARGE]} onDownloadNoticeWord={onDownloadNoticeWord} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Avis d'appel \(Word\)/ }));
+
+    expect(onDownloadNoticeWord).toHaveBeenCalledWith(CHARGE);
+    expect(screen.queryByRole('button', { name: /Avis d'appel \(PDF\)/ })).not.toBeInTheDocument();
+  });
+
   it('affiche les deux actions côte à côte quand les deux callbacks sont fournis', () => {
     const onRecordPayment = vi.fn();
     const onDownloadNotice = vi.fn();

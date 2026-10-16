@@ -8,6 +8,7 @@
   "<p><strong>Caractéristiques :</strong> {{value}}</p>": "<p><strong>Features:</strong> {{value}}</p>",
   "✓ Un email de confirmation vous a été envoyé. Cliquez sur le lien pour valider votre inscription.": "✓ A confirmation email has been sent to you. Click the link to confirm your subscription.",
   "Abonné retiré": "Subscriber removed",
+  "Abonnés": "Subscribers",
   "accepté(s),": "accepted,",
   "Actifs": "Active",
   "Ajouter des contacts (recherche CRM)": "Add contacts (CRM search)",

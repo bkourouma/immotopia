@@ -18,6 +18,7 @@ import {
   resumeChargeScheduleHandler,
   updateChargeScheduleHandler
 } from '../controllers/syndic-charge-schedules-controller';
+import { downloadChargeCallNoticeDocxHandler } from '../controllers/syndic-word-documents-controller';
 
 /**
  * Programmations des appels de charges automatiques et avis d'appel PDF
@@ -64,6 +65,14 @@ router.get(
   canView,
   chargeCallNoticeRateLimiter,
   downloadChargeCallNoticeHandler
+);
+// Avis d'appel en Word : mêmes gardes et même limiteur que l'avis PDF.
+router.get(
+  `${SYNDIC}/charges/:chargeId/avis.docx`,
+  ...guards,
+  canView,
+  chargeCallNoticeRateLimiter,
+  downloadChargeCallNoticeDocxHandler
 );
 
 export default router;

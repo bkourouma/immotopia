@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Drawer, Spin, Table, Tag, Typography } from 'antd';
+import { Alert, Drawer, Spin, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { listFundMovements } from '../../services/syndic-provider-invoice-service';
 import { FundMovement } from '../../types/syndic-types';
 import { dateFormat } from '../../i18n/format';
@@ -85,6 +87,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
       dataIndex: 'amount',
       key: 'amount',
       align: 'end',
+      exportValue: row => Number(row.amount),
       render: (_: number, row) => <MoneyValue value={row.amount} currency={displayCurrency(currency)} />
     },
     {
@@ -92,6 +95,7 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
       dataIndex: 'balanceAfter',
       key: 'balanceAfter',
       align: 'end',
+      exportValue: row => Number(row.balanceAfter),
       render: (_: number, row) => (
         <Text type={row.balanceAfter < 0 ? 'danger' : undefined}>
           <MoneyValue value={row.balanceAfter} currency={displayCurrency(currency)} />
@@ -121,6 +125,14 @@ export const FundMovementsDrawer: React.FC<FundMovementsDrawerProps> = ({ tenant
         </div>
       ) : (
         <Table
+          exportFilename={t('Mouvements du fonds')}
+          // Tous les mouvements du fonds, pas seulement la page affichée.
+          exportFetchAll={() =>
+            collectAllPages<FundMovement>(async (exportPage, limit) => {
+              const data = await listFundMovements(tenantId, syndicId, fund?.id ?? '', { page: exportPage, limit });
+              return { items: data.items, total: data.total };
+            })
+          }
           rowKey="id"
           loading={loading}
           dataSource={items}

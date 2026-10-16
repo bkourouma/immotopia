@@ -55,7 +55,16 @@ function withPrefix(prefixPath: string) {
  * Routes publiques volontaires — chacune commentee avec sa raison d'etre.
  * Toute route absente d'ici doit porter une garde d'agence ou de plateforme.
  */
+const PUBLIC_MEETING_LIVE_REASON =
+  "AG en direct par lien personnel (spec 043, lib/secure-links) : public par nature, le copropriétaire n'a pas de " +
+  'session. Le jeton (256 bits, SHA-256 seul en base, expirant, revocable) est dans le corps (4 Ko max) ; il ne donne ' +
+  "acces qu'aux lots du participant (votants a la date de l'AG + pouvoirs), jamais au vote des autres. Limiteurs par IP " +
+  'et par empreinte de jeton, refus uniforme 404, en-tetes no-store/noindex/no-referrer.';
+
 const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
+  { method: 'POST', test: exact('/api/public/assemblees/etat'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/rejoindre'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/voter'), reason: PUBLIC_MEETING_LIVE_REASON },
   {
     method: '*',
     test: withPrefix('/api/auth'),
@@ -248,6 +257,23 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
       "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/signature-provider/yousign'),
+    reason:
+      'Webhook du prestataire de signature (spec 044, lot S6) : HMAC du prestataire verifie sur le corps brut, aucune session ' +
+      "par nature ; l'etat est relu chez le prestataire, jamais deduit du corps. Limiteur par IP, 404 si le fournisseur actif n'est pas externe."
+  },
+  {
+    method: '*',
+    test: withPrefix('/api/public/signatures/:token'),
+    reason:
+      "Page publique de signature electronique (spec 044, lot S1) : le signataire n'a pas de compte, le jeton (32 octets " +
+      "aleatoires, SHA-256 seul en base, expirant, lie a UNE demande et UN signataire) est la seule preuve d'acces. " +
+      "Aucun identifiant d'agence ne vient de la requete : l'agence se deduit du jeton. Limiteur par IP avant toute " +
+      'verification, refus uniforme 404 pour jeton inconnu, expire, revoque ou demande close, en-tetes no-store/noindex, ' +
+      'jeton masque des journaux, code a usage unique (5 essais) exige pour signer hors presence.'
   }
 ];
 

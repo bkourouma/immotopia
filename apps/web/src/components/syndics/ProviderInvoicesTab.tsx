@@ -11,7 +11,6 @@ import {
   Modal,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
   Upload
@@ -20,6 +19,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import {
   createProviderInvoice,
   listProviderBalances,
@@ -221,18 +222,21 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       title: t('Montant TTC'),
       key: 'amountTTC',
       align: 'end',
+      exportValue: row => Number(row.amountTTC),
       render: (_: unknown, row) => <MoneyValue value={row.amountTTC} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Payé'),
       key: 'amountPaid',
       align: 'end',
+      exportValue: row => Number(row.amountPaid),
       render: (_: unknown, row) => <MoneyValue value={row.amountPaid} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Reste dû'),
       key: 'amountDue',
       align: 'end',
+      exportValue: row => Number(row.amountDue),
       render: (_: unknown, row) => <MoneyValue value={row.amountDue} currency={displayCurrency(row.currency)} />
     },
     {
@@ -266,24 +270,28 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
       title: t('Total facturé'),
       key: 'totalInvoiced',
       align: 'end',
+      exportValue: row => Number(row.totalInvoiced),
       render: (_: unknown, row) => <MoneyValue value={row.totalInvoiced} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Total payé'),
       key: 'totalPaid',
       align: 'end',
+      exportValue: row => Number(row.totalPaid),
       render: (_: unknown, row) => <MoneyValue value={row.totalPaid} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Reste dû'),
       key: 'totalDue',
       align: 'end',
+      exportValue: row => Number(row.totalDue),
       render: (_: unknown, row) => <MoneyValue value={row.totalDue} currency={displayCurrency(row.currency)} />
     },
     {
       title: t('Dont en retard'),
       key: 'overdueDue',
       align: 'end',
+      exportValue: row => Number(row.overdueDue),
       render: (_: unknown, row) => (
         <Text type={row.overdueDue > 0 ? 'danger' : undefined}>
           <MoneyValue value={row.overdueDue} currency={displayCurrency(row.currency)} />
@@ -317,6 +325,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
 
       <Card title={t('Soldes par prestataire')}>
         <Table
+          exportFilename={t('Soldes par prestataire')}
           rowKey="providerId"
           dataSource={balances}
           columns={balanceColumns}
@@ -366,6 +375,21 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
 
       <Card>
         <Table
+          exportFilename={t('Factures des prestataires')}
+          // Toutes les factures, avec les mêmes filtres que la liste affichée.
+          exportFetchAll={() =>
+            collectAllPages<ProviderInvoice>(async (exportPage, limit) => {
+              const data = await listProviderInvoices(tenantId, syndicId, {
+                providerId: providerFilter,
+                status: statusFilter,
+                from: range?.[0]?.startOf('day').toISOString(),
+                to: range?.[1]?.endOf('day').toISOString(),
+                page: exportPage,
+                limit
+              });
+              return { items: data.items, total: data.total };
+            })
+          }
           rowKey="id"
           loading={loading}
           dataSource={items}

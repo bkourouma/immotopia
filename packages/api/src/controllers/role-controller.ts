@@ -331,8 +331,11 @@ export const listMenuAccessHandler = asyncHandler(async (req: Request, res: Resp
  *
  * L'interface n'a pas besoin de connaître les rôles de la personne connectée
  * pour masquer une entrée : elle a besoin de savoir quelles entrées masquer.
- * On renvoie donc ces clés, plus les permissions effectives dans l'agence
- * (l'interface masque aussi les entrées que le rôle ne peut pas ouvrir).
+ * On renvoie donc ces clés (`disabledMenuKeys`), les clés ouvertes
+ * explicitement par l'agence (`enabledMenuKeys`) et les permissions effectives
+ * dans l'agence (`permissionKeys`, `null` si pas de filtrage). L'interface
+ * masque aussi les entrées que le rôle ne peut pas ouvrir, SAUF celles que
+ * l'agence a ouvertes explicitement : le choix de l'agence prime.
  * Les surcharges de l'agence demandée l'emportent sur les défauts (lignes null).
  */
 export const getMyMenuAccessHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -358,23 +361,17 @@ export const getMyMenuAccessHandler = asyncHandler(async (req: Request, res: Res
 
   const tenantId = queryTenantId ?? req.tenantContext?.tenantId;
 
-  const { getDisabledMenusForUser, getMenuPermissionKeysForUser } = await import('../services/role-menu-service');
-  const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);
-  // `null` : ne pas filtrer par permission (admin d'agence, super-admin).
+  const { getMenuDecisionsForUser, getMenuPermissionKeysForUser } = await import('../services/role-menu-service');
+  const { disabledMenuKeys, enabledMenuKeys } = await getMenuDecisionsForUser(req.user.userId, tenantId);
+  // `null` : ne pas filtrer par permission (admin d'agence, super-admin, hors
+  // agence). Sinon, les permissions effectives dans l'agence : l'interface en
+  // déduit les entrées que le rôle ne peut de toute façon pas ouvrir
+  // (BUG-2026-10-02-010), sauf celles que l'agence a ouvertes explicitement.
   const permissionKeys = await getMenuPermissionKeysForUser(req.user.userId, tenantId, req.user.globalRole);
-
-  // Permissions effectives dans l'agence : l'interface en déduit les entrées
-  // que le rôle ne peut de toute façon pas ouvrir (BUG-2026-10-02-010). Sans
-  // agence (utilisateur plateforme), le champ est absent : rien n'est déduit.
-  let permissions: string[] | undefined;
-  if (tenantId) {
-    const { getUserPermissions } = await import('../services/permission-service');
-    permissions = await getUserPermissions(req.user.userId, tenantId);
-  }
 
   res.status(200).json({
     success: true,
-    data: { disabledMenuKeys, permissionKeys, ...(permissions ? { permissions } : {}) }
+    data: { disabledMenuKeys, enabledMenuKeys, permissionKeys }
   });
 });
 

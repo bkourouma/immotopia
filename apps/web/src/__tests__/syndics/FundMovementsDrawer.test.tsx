@@ -15,6 +15,9 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
+// Le bouton « Exporter » des tableaux a ses propres tests (primitives/export-menu) : ici il est neutralisé.
+vi.mock('../../components/primitives/ExportMenu', () => ({ ExportMenu: () => null }));
+
 vi.mock('antd', async () => {
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =

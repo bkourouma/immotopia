@@ -135,7 +135,8 @@ export default function Account() {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, p) => <MoneyValue value={p.amount} />
+      render: (_, p) => <MoneyValue value={p.amount} />,
+      exportValue: p => p.amount
     },
     { title: t('Statut'), key: 'statut', render: (_, p) => statutReversement(p) }
   ];
@@ -149,12 +150,14 @@ export default function Account() {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
-      render: (_, m) => <MontantMouvement movement={m} />
+      render: (_, m) => <MontantMouvement movement={m} />,
+      exportValue: m => (m.credit > 0 ? m.credit : -m.debit)
     },
     {
       title: t('Solde après'),
       key: 'solde',
       align: 'end',
+      exportValue: m => m.balanceAfter,
       render: (_, m) => (
         <strong>
           <MoneyValue value={m.balanceAfter} />
@@ -240,6 +243,7 @@ export default function Account() {
 
       <Card title={t('Reversements reçus')}>
         <DataView<OwnerPayout>
+          export={{ filename: t('Reversements reçus') }}
           paginated={false}
           items={compte.payouts}
           total={compte.payouts.length}
@@ -264,6 +268,7 @@ export default function Account() {
 
       <Card title={t('Détail des mouvements')}>
         <DataView<OwnerMovement>
+          export={{ filename: t('Détail des mouvements') }}
           paginated={false}
           items={compte.movements}
           total={compte.movements.length}

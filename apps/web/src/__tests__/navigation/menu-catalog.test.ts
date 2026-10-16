@@ -7,7 +7,6 @@ import {
   isMenuKeyDisabled,
   legacyMenuKeysFor,
   menuKeyFor,
-  menuKeysDeniedByPermissions,
   menuKeysForPersona,
   personaForRoleKey,
   resolveMenuMap,
@@ -326,8 +325,9 @@ describe('Chantiers et stock — lot 040 (ecrans §2.3)', () => {
   });
 
   it('la coquille rend au magasinier « Gestion du stock » sans « Suivi des chantiers »', () => {
-    const denied = menuKeysDeniedByPermissions(persona, MAGASINIER);
-    const nav = renderHook(() => useFilteredNavigation(NAVIGATION.collaborateur, new Set(denied))).result.current;
+    const nav = renderHook(() =>
+      useFilteredNavigation(NAVIGATION.collaborateur, new Set(), null, false, new Set(MAGASINIER))
+    ).result.current;
     const entree = nav?.tree.find(group => group.key === 'finance-chantiers-stock');
     expect(entree?.children?.map(child => child.key)).toEqual(['finance-stock']);
   });

@@ -1,10 +1,15 @@
-import React from 'react';
-import { Card, Descriptions, List, Space, Tag, Typography } from 'antd';
+import React, { useState } from 'react';
+import { Alert, Button, Card, Descriptions, List, Space, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { SkeletonList, StateBlock } from '../../components/primitives';
 import { t } from '../../i18n/t';
-import { listMyMeetings, type CoOwnerMeeting, type CoOwnerResolution } from '../../services/coowner-portal-service';
+import {
+  listMyMeetings,
+  requestLiveAccess,
+  type CoOwnerMeeting,
+  type CoOwnerResolution
+} from '../../services/coowner-portal-service';
 import { majorityRuleLabel, meetingStatusLabel, meetingTypeLabel, ResolutionResultTag, voteLabel } from './labels';
 import { portalErrorMessage } from './portal-error';
 
@@ -46,6 +51,45 @@ function ResolutionResult({ resolution }: { resolution: CoOwnerResolution }) {
   );
 }
 
+/** Le lien reçu du serveur n'est suivi que s'il est en http(s) : jamais `javascript:` ni `data:`. */
+function isNavigableLiveUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value === '') return false;
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+/** Bouton « Rejoindre l'AG en direct » : délivre le lien personnel puis y navigue. */
+function JoinLiveButton({ meetingId }: { meetingId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const join = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { url } = await requestLiveAccess(meetingId);
+      if (!isNavigableLiveUrl(url)) throw new Error('invalid-url');
+      window.location.assign(url);
+    } catch (err) {
+      setError(portalErrorMessage(err, t("Impossible de rejoindre l'assemblée en direct pour le moment.")));
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+      <Button type="primary" loading={loading} onClick={() => void join()}>
+        {t("Rejoindre l'AG en direct")}
+      </Button>
+      {error ? <Alert type="error" showIcon message={error} /> : null}
+    </Space>
+  );
+}
+
 function MeetingCard({ meeting }: { meeting: CoOwnerMeeting }) {
   return (
     <Card
@@ -76,6 +120,8 @@ function MeetingCard({ meeting }: { meeting: CoOwnerMeeting }) {
             </ol>
           )}
         </div>
+
+        {meeting.liveAvailable ? <JoinLiveButton meetingId={meeting.id} /> : null}
 
         {meeting.status === 'COMPLETED' ? (
           <div>

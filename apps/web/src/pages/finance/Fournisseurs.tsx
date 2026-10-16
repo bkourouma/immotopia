@@ -176,6 +176,7 @@ export const Fournisseurs: React.FC = () => {
       </FilterSheet>
 
       <DataView<Supplier>
+        export={{ filename: t('Fournisseurs') }}
         paginated={false}
         items={lignes}
         total={lignes.length}

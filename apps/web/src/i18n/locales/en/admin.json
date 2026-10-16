@@ -552,6 +552,7 @@
   "Sélectionnez un rôle pour gérer ses permissions": "Select a role to manage its permissions",
   "Sélectionnez un rôle pour régler ses menus": "Select a role to configure its menus",
   "Ses collaborateurs perdent l'accès jusqu'à réactivation.": "Its team members lose access until it is reactivated.",
+  "Signatures électroniques (par mois)": "Electronic signatures (per month)",
   "Site web": "Website",
   "Source": "Source",
   "Sous-domaine": "Subdomain",
@@ -656,7 +657,6 @@
   "Une invitation sera envoyée par e-mail au collaborateur.": "An invitation will be emailed to the team member.",
   "Veuillez sélectionner au moins un rôle": "Please select at least one role",
   "Vue d'ensemble de la plateforme": "Platform overview",
-  "Vue d'ensemble": "Overview",
   "Abandonner les modifications ?": "Discard changes?",
   "Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre.": "The edited menus are not saved: switching agency will discard them.",
   "Changer d'agence": "Switch agency",
@@ -671,5 +671,6 @@
   "Hérite du défaut": "Inherits the default",
   "Revenir au défaut": "Revert to default",
   "Revenir au défaut ?": "Revert to default?",
-  "Cette agence reprendra le réglage par défaut : son réglage propre sera supprimé.": "This agency will use the default setting again: its own setting will be deleted."
+  "Cette agence reprendra le réglage par défaut : son réglage propre sera supprimé.": "This agency will use the default setting again: its own setting will be deleted.",
+  "Vue d'ensemble": "Overview"
 }

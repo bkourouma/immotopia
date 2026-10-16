@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { App, Alert, Button, Spin, Table, Tag } from 'antd';
+import { App, Alert, Button, Spin, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
 import { listProviderInvoices } from '../../services/syndic-provider-invoice-service';
 import { listSyndicateFunds } from '../../services/syndic-service';
 import { ProviderInvoice, SyndicateFund } from '../../types/syndic-types';
@@ -116,6 +117,8 @@ export const LinkedProviderInvoices: React.FC<LinkedProviderInvoicesProps> = ({
   return (
     <>
       <Table
+        // Sous-tableau d'une ligne dépliée (contrat, incident) : pas d'export propre.
+        exportable={false}
         rowKey="id"
         size="small"
         dataSource={items}

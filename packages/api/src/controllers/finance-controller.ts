@@ -210,9 +210,9 @@ export const getAccountStatementHandler = asyncHandler(async (req: Request, res:
 /**
  * Plafond de lignes pour l'impression : le PDF montre les mêmes lignes que
  * l'écran JSON sur la même période (US2, scénario 3), jamais une seule page
- * paginée. `buildAccountStatementPdf` s'arrête de toute façon à la première
- * page pleine (voir son en-tête) : ce plafond n'existe que pour ne pas
- * charger un historique sans borne en mémoire.
+ * paginée. `buildAccountStatementPdf` poursuit sur autant de pages que
+ * nécessaire : ce plafond n'existe que pour ne pas charger un historique
+ * sans borne en mémoire.
  */
 const PDF_STATEMENT_ROW_LIMIT = 5000;
 
@@ -229,6 +229,7 @@ export const printAccountStatementHandler = asyncHandler(async (req: Request, re
   });
 
   const pdfBuffer = await buildAccountStatementPdf({
+    tenantId,
     accountLabel: statement.label,
     currency: statement.currency,
     openingBalance: statement.openingBalance,

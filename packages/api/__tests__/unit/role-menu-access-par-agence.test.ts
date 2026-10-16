@@ -61,7 +61,12 @@ jest.mock('../../src/utils/database', () => ({ prisma: prismaMock }));
 jest.mock('../../src/utils/tenant-access', () => ({ userHasTenantAccess: jest.fn().mockResolvedValue(true) }));
 jest.mock('../../src/services/permission-service', () => ({ getUserPermissions: jest.fn().mockResolvedValue([]) }));
 
-import { getDisabledMenusForUser, getMenuAccess, replaceMenuAccessForRole } from '../../src/services/role-menu-service';
+import {
+  getDisabledMenusForUser,
+  getMenuAccess,
+  getMenuDecisionsForUser,
+  replaceMenuAccessForRole
+} from '../../src/services/role-menu-service';
 import {
   getMyMenuAccessHandler,
   listMenuAccessHandler,
@@ -191,6 +196,44 @@ describe('service — périmètre par agence', () => {
     userRoleKeys = ['TENANT_ADMIN', 'AGENT'];
 
     expect(await getDisabledMenusForUser('u1', 'tenant-A')).toEqual([]);
+  });
+
+  it("ouvertures explicites : valeur effective à true (agence > défaut), jamais l'absence de décision", async () => {
+    store = [
+      { tenantId: null, roleKey: 'AGENT', menuKey: 'finance', enabled: true },
+      { tenantId: null, roleKey: 'AGENT', menuKey: 'crm', enabled: false },
+      { tenantId: 'tenant-A', roleKey: 'AGENT', menuKey: 'crm', enabled: true },
+      { tenantId: 'tenant-A', roleKey: 'AGENT', menuKey: 'finance', enabled: false }
+    ];
+    userRoleKeys = ['AGENT'];
+
+    // Agence A : crm rouvert par la surcharge, finance coupé par la surcharge.
+    const chezA = await getMenuDecisionsForUser('u1', 'tenant-A');
+    expect(chezA.enabledMenuKeys).toEqual(['crm']);
+    expect(chezA.disabledMenuKeys).toEqual(['finance']);
+    // Agence B (défaut seul) : finance ouvert, crm coupé.
+    const chezB = await getMenuDecisionsForUser('u1', 'tenant-B');
+    expect(chezB.enabledMenuKeys).toEqual(['finance']);
+    expect(chezB.disabledMenuKeys).toEqual(['crm']);
+  });
+
+  it('sans aucune ligne : aucune décision, ni coupure ni ouverture', async () => {
+    userRoleKeys = ['AGENT'];
+    expect(await getMenuDecisionsForUser('u1', 'tenant-A')).toEqual({ disabledMenuKeys: [], enabledMenuKeys: [] });
+    userRoleKeys = [];
+    expect(await getMenuDecisionsForUser('u1', 'tenant-A')).toEqual({ disabledMenuKeys: [], enabledMenuKeys: [] });
+  });
+
+  it("cumul de rôles : un menu autorisé par un rôle est ouvert même si l'autre le coupe", async () => {
+    store = [
+      { tenantId: 'tenant-A', roleKey: 'TENANT_ADMIN', menuKey: 'finance', enabled: false },
+      { tenantId: 'tenant-A', roleKey: 'AGENT', menuKey: 'finance', enabled: true }
+    ];
+    userRoleKeys = ['TENANT_ADMIN', 'AGENT'];
+    expect(await getMenuDecisionsForUser('u1', 'tenant-A')).toEqual({
+      disabledMenuKeys: [],
+      enabledMenuKeys: ['finance']
+    });
   });
 
   it("replace n'efface que le périmètre visé", async () => {
@@ -338,7 +381,7 @@ describe('GET /api/roles/menu-access/me', () => {
 
     expect(res.json).toHaveBeenCalledWith({
       success: true,
-      data: { disabledMenuKeys: ['crm'], permissionKeys: null, permissions: [] }
+      data: { disabledMenuKeys: ['crm'], enabledMenuKeys: [], permissionKeys: null }
     });
   });
 
@@ -351,7 +394,10 @@ describe('GET /api/roles/menu-access/me', () => {
       query: {}
     });
 
-    expect(res.json).toHaveBeenCalledWith({ success: true, data: { disabledMenuKeys: [], permissionKeys: null } });
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { disabledMenuKeys: [], enabledMenuKeys: [], permissionKeys: null }
+    });
   });
 
   it('401 sans utilisateur', async () => {

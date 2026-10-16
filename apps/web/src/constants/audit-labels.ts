@@ -165,6 +165,18 @@ export const AUDIT_ACTION_LABELS_FR: Record<string, string> = {
   SYNDIC_PROVIDER_INVOICE_FILE_REPLACED: t("Remplacement du fichier d'une facture de prestataire"),
   SYNDIC_PROVIDER_INVOICE_FILE_REMOVED: t("Retrait du fichier d'une facture de prestataire"),
 
+  // Prélèvement bancaire (spec 042, lot P1)
+  DIRECT_DEBIT_CREDITOR_CREATED: t("Création d'un créancier de prélèvement bancaire"),
+  DIRECT_DEBIT_CREDITOR_UPDATED: t("Modification d'un créancier de prélèvement bancaire"),
+  DIRECT_DEBIT_MANDATE_CREATED: t("Création d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_UPDATED: t("Modification d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_ACTIVATED: t("Activation d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_SUSPENDED: t("Suspension d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_REACTIVATED: t("Réactivation d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_REVOKED: t("Révocation d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_SCAN_UPLOADED: t("Dépôt du scan signé d'un mandat de prélèvement"),
+  DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED: t("Téléchargement de l'autorisation de prélèvement"),
+
   // Stock de chantier (lot 040, spec B6-R1, ecrans §10.6)
   STOCK_RECEIPT_RECORDED: t("Enregistrement d'une réception de stock (bon de réception)"),
   STOCK_ISSUE_RECORDED: t("Enregistrement d'une sortie de stock (bon de sortie)"),

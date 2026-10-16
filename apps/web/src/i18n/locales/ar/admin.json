@@ -552,6 +552,7 @@
   "Sélectionnez un rôle pour gérer ses permissions": "اختر دورًا لإدارة صلاحياته",
   "Sélectionnez un rôle pour régler ses menus": "اختر دورًا لضبط قوائمه",
   "Ses collaborateurs perdent l'accès jusqu'à réactivation.": "يفقد موظفوها الوصول حتى إعادة التفعيل.",
+  "Signatures électroniques (par mois)": "التوقيعات الإلكترونية (شهريًا)",
   "Site web": "الموقع الإلكتروني",
   "Source": "المصدر",
   "Sous-domaine": "نطاق فرعي",
@@ -656,7 +657,6 @@
   "Une invitation sera envoyée par e-mail au collaborateur.": "سيتم إرسال دعوة إلى المتعاون عبر البريد الإلكتروني.",
   "Veuillez sélectionner au moins un rôle": "يُرجى اختيار دور واحد على الأقل",
   "Vue d'ensemble de la plateforme": "نظرة عامة على المنصة",
-  "Vue d'ensemble": "نظرة عامة",
   "Abandonner les modifications ?": "التخلي عن التعديلات؟",
   "Les menus modifiés ne sont pas enregistrés : changer d'agence les fera perdre.": "لم يتم حفظ القوائم المعدلة: سيؤدي تغيير الوكالة إلى فقدانها.",
   "Changer d'agence": "تغيير الوكالة",
@@ -671,5 +671,6 @@
   "Hérite du défaut": "يرث الإعداد الافتراضي",
   "Revenir au défaut": "العودة إلى الافتراضي",
   "Revenir au défaut ?": "العودة إلى الافتراضي؟",
-  "Cette agence reprendra le réglage par défaut : son réglage propre sera supprimé.": "ستستعيد هذه الوكالة الإعداد الافتراضي وسيُحذف إعدادها الخاص."
+  "Cette agence reprendra le réglage par défaut : son réglage propre sera supprimé.": "ستستعيد هذه الوكالة الإعداد الافتراضي وسيُحذف إعدادها الخاص.",
+  "Vue d'ensemble": "نظرة عامة"
 }

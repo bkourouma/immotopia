@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useParams, useSearchParams } from 'react-router-dom';
 import { App as AntApp, ConfigProvider } from 'antd';
 import { buildAntdTheme } from './theme/antd-theme';
 import './i18n';
@@ -51,6 +51,18 @@ const OwnerMonthlyReportPage = lazy(() =>
 );
 // Paiement d'un loyer par lien sécurisé (spec 039) : pages publiques, sans session,
 // hors AppShell et hors ProtectedRoute ; chunks lazy, rien dans le budget d'entrée.
+// AG en direct (spec 043) : page publique à lien personnel (jeton dans le fragment), sans session.
+const MeetingLivePage = lazy(() =>
+  import(/* webpackChunkName: "public-meeting-live" */ './pages/public/MeetingLivePage').then(m => ({
+    default: m.MeetingLivePage
+  }))
+);
+// Projection de salle d'une AG : plein écran, gestionnaire connecté, hors AppShell.
+const SyndicMeetingProjection = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMeetingProjection').then(m => ({
+    default: m.SyndicMeetingProjection
+  }))
+);
 const InstallmentPaymentPage = lazy(() =>
   import(/* webpackChunkName: "public-payment" */ './pages/public/InstallmentPaymentPage').then(m => ({
     default: m.InstallmentPaymentPage
@@ -59,6 +71,12 @@ const InstallmentPaymentPage = lazy(() =>
 const InstallmentPaymentStatusPage = lazy(() =>
   import(/* webpackChunkName: "public-payment" */ './pages/public/InstallmentPaymentStatusPage').then(m => ({
     default: m.InstallmentPaymentStatusPage
+  }))
+);
+// Signature électronique (spec 044) : page publique à jeton dans le chemin, hors AppShell.
+const SignaturePage = lazy(() =>
+  import(/* webpackChunkName: "public-signature" */ './pages/public/SignaturePage').then(m => ({
+    default: m.SignaturePage
   }))
 );
 const Dashboard = lazy(() =>
@@ -518,6 +536,11 @@ const InstallmentDetailPage = lazy(() =>
     default: m.InstallmentDetailPage
   }))
 );
+const DirectDebitMandates = lazy(() =>
+  import(/* webpackChunkName: "rental" */ './pages/rental/DirectDebitMandates').then(m => ({
+    default: m.DirectDebitMandates
+  }))
+);
 const Payments = lazy(() =>
   import(/* webpackChunkName: "rental" */ './pages/rental/Payments').then(m => ({ default: m.Payments }))
 );
@@ -618,6 +641,7 @@ const DocumentTemplates = lazy(() =>
     default: m.DocumentTemplates
   }))
 );
+const SignaturesPage = lazy(() => import(/* webpackChunkName: "signatures" */ './pages/signatures/SignaturesPage'));
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -820,6 +844,21 @@ function App() {
                         <Route path="/payer" element={<InstallmentPaymentPage />} />
                         <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
                         <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
+                        <Route path="/signer/:token" element={<SignaturePage />} />
+                        <Route path="/ag-direct" element={<MeetingLivePage />} />
+                        {/* Projection de salle : session et agence exigées, mais sans coquille (plein écran). */}
+                        <Route
+                          element={
+                            <ProtectedRoute requireTenant>
+                              <Outlet />
+                            </ProtectedRoute>
+                          }
+                        >
+                          <Route
+                            path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId/projection"
+                            element={<SyndicMeetingProjection />}
+                          />
+                        </Route>
                         {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}
@@ -981,6 +1020,7 @@ function App() {
                             element={<TenantSubscriptionSettings />}
                           />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
+                          <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />
@@ -1003,6 +1043,7 @@ function App() {
                             element={<InstallmentDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
+                          <Route path="/tenant/:tenantId/rental/direct-debit" element={<DirectDebitMandates />} />
                           <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
                           {/*
                         Finance. Les écrans d'un même flux partagent une route

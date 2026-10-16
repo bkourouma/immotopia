@@ -15,7 +15,9 @@ import { getUserPermissions } from './permission-service';
  *      administrateur n'a rien décidé, le menu reste visible : une table vide
  *      ne doit pas vider l'application de sa navigation.
  *
- * Conséquence directe : seul un `enabled = false` explicite masque un menu.
+ * Conséquence directe : seul un `enabled = false` explicite coupe un menu. Un
+ * `enabled = true` explicite, lui, dispense le menu du filtre par permission de
+ * l'interface (le choix de l'agence prime) ; sans décision, le filtre s'applique.
  *
  * Défaut + surcharge par agence : une décision porte un `tenantId` nullable.
  * `null` sur un rôle d'agence ou de portail = défaut valable pour TOUTES les
@@ -40,7 +42,7 @@ export interface RoleMenuAccessEntry {
  * `null` (défaut de toutes les agences pour un rôle d'agence ou de portail,
  * périmètre plateforme pour un rôle PLATFORM). Les fonctions de lecture et
  * d'écriture ci-dessous manipulent les lignes EXACTES d'un périmètre ; la
- * résolution défaut/surcharge n'a lieu que dans `getDisabledMenusForUser`.
+ * résolution défaut/surcharge n'a lieu que dans `getMenuDecisionsForUser`.
  */
 export type MenuAccessScope = string | null;
 
@@ -155,8 +157,20 @@ export async function resolveRoleKeysForUser(userId: string, tenantId?: string):
   return Array.from(keys);
 }
 
+/** Décisions de menus d'un utilisateur : coupures et ouvertures explicites. */
+export interface MenuDecisionsForUser {
+  /** Menus coupés (au moins un rôle les coupe, aucun ne les ouvre). */
+  disabledMenuKeys: string[];
+  /**
+   * Menus ouverts EXPLICITEMENT (ligne `enabled = true` pour au moins un rôle,
+   * surcharge d'agence ou défaut commun). L'interface ne leur applique pas le
+   * filtre par permission : le choix de l'agence prime sur la permission.
+   */
+  enabledMenuKeys: string[];
+}
+
 /**
- * Menus coupés pour un utilisateur.
+ * Décisions de menus pour un utilisateur.
  *
  * Étape 1 : pour chaque rôle, valeur effective par menu. Avec une agence, la
  * ligne de l'agence l'emporte sur la ligne `null` (défaut) ; sans agence, seules
@@ -165,11 +179,12 @@ export async function resolveRoleKeysForUser(userId: string, tenantId?: string):
  * Étape 2 : un compte qui cumule plusieurs rôles garde le menu dès qu'**un
  * seul** de ses rôles l'autorise : le cumul de rôles élargit les droits, il ne
  * les restreint pas. Un menu n'est donc coupé que si au moins un rôle le coupe
- * (valeur effective) et qu'aucun ne l'autorise.
+ * (valeur effective) et qu'aucun ne l'autorise. Un menu est « ouvert
+ * explicitement » dès qu'un rôle l'autorise (valeur effective `true`).
  */
-export async function getDisabledMenusForUser(userId: string, tenantId?: string): Promise<string[]> {
+export async function getMenuDecisionsForUser(userId: string, tenantId?: string): Promise<MenuDecisionsForUser> {
   const roleKeys = await resolveRoleKeysForUser(userId, tenantId);
-  if (roleKeys.length === 0) return [];
+  if (roleKeys.length === 0) return { disabledMenuKeys: [], enabledMenuKeys: [] };
 
   const rows = await prisma.roleMenuAccess.findMany({
     where: {
@@ -196,7 +211,15 @@ export async function getDisabledMenusForUser(userId: string, tenantId?: string)
     (enabled ? allowedSomewhere : deniedSomewhere).add(menuKey);
   }
 
-  return Array.from(deniedSomewhere).filter(menuKey => !allowedSomewhere.has(menuKey));
+  return {
+    disabledMenuKeys: Array.from(deniedSomewhere).filter(menuKey => !allowedSomewhere.has(menuKey)),
+    enabledMenuKeys: Array.from(allowedSomewhere)
+  };
+}
+
+/** Menus coupés pour un utilisateur (voir `getMenuDecisionsForUser`). */
+export async function getDisabledMenusForUser(userId: string, tenantId?: string): Promise<string[]> {
+  return (await getMenuDecisionsForUser(userId, tenantId)).disabledMenuKeys;
 }
 
 /**

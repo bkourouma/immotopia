@@ -67,6 +67,7 @@ import { isModuleNotIncludedError } from '../../utils/module-not-included';
 import { describeDownloadError } from '../../utils/download-error';
 import { saveBlob } from '../../utils/save-blob';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { EXPORT_MAX_ROWS } from '../../utils/table-export/collect';
 import {
   DataCard,
   DataView,
@@ -1928,6 +1929,7 @@ function OngletEtat(props: {
     {
       title: t('Article'),
       key: 'article',
+      exportValue: b => `${b.itemLabel} — ${b.itemReference}`,
       render: (_, b) => (
         <Space orientation="vertical" size={0}>
           <span>{b.itemLabel}</span>
@@ -1940,6 +1942,8 @@ function OngletEtat(props: {
     {
       title: t('Lieu'),
       key: 'lieu',
+      exportValue: b =>
+        aveugles.has(b.locationId) ? `${b.locationLabel} — ${t('Comptage en cours')}` : b.locationLabel,
       render: (_, b) => (
         <Space size={4} wrap>
           <span>{b.locationLabel}</span>
@@ -1966,13 +1970,15 @@ function OngletEtat(props: {
             title: t('Coût moyen unitaire'),
             key: 'cout-moyen',
             align: 'end',
-            render: (_, b) => valeurOuComptage(b, b.averageUnitCost, true)
+            render: (_, b) => valeurOuComptage(b, b.averageUnitCost, true),
+            exportValue: b => b.averageUnitCost
           },
           {
             title: t('Valeur'),
             key: 'valeur',
             align: 'end',
-            render: (_, b) => valeurOuComptage(b, b.value)
+            render: (_, b) => valeurOuComptage(b, b.value),
+            exportValue: b => b.value
           }
         ] as ColumnsType<StockBalanceView>)
       : [])
@@ -2017,6 +2023,7 @@ function OngletEtat(props: {
       </FilterSheet>
 
       <DataView<StockBalanceView>
+        export={{ filename: t('État du stock') }}
         paginated={false}
         scrollX={1000}
         items={liste}
@@ -2263,12 +2270,21 @@ function OngletJournal(props: {
 
   const colonnes: ColumnsType<StockMovementView> = [
     { title: t('Date'), key: 'date', render: (_, m) => date(m.movementDate) },
-    { title: t('Saisi le'), key: 'saisi-le', render: (_, m) => saisiLe(m) },
+    {
+      title: t('Saisi le'),
+      key: 'saisi-le',
+      render: (_, m) => saisiLe(m),
+      exportValue: m =>
+        m.entryLagDays > 0
+          ? `${dateHeure(m.createdAt)} — ${t('+{{n}} j', { n: m.entryLagDays })}`
+          : dateHeure(m.createdAt)
+    },
     { title: t('Nature'), key: 'nature', render: (_, m) => nature_(m) },
-    { title: t('Bon'), key: 'bon', render: (_, m) => bonDe(m) },
+    { title: t('Bon'), key: 'bon', render: (_, m) => bonDe(m), exportValue: m => m.slipNumber ?? '' },
     {
       title: t('Article'),
       key: 'article',
+      exportValue: m => `${m.itemLabel} — ${m.itemReference}`,
       render: (_, m) => (
         <Space orientation="vertical" size={0}>
           <span>{m.itemLabel}</span>
@@ -2284,6 +2300,11 @@ function OngletJournal(props: {
       title: t('Reste après'),
       key: 'reste',
       align: 'end',
+      exportValue: m => {
+        if (m.quantityAfter === null) return t('Comptage en cours');
+        const reste = quantite(m.quantityAfter, m.itemUnit);
+        return valeursVisibles && m.valueAfter !== null ? `${reste} — ${formatMoney(m.valueAfter)}` : reste;
+      },
       render: (_, m) =>
         m.quantityAfter === null ? (
           MASQUE_COMPTAGE()
@@ -2305,13 +2326,15 @@ function OngletJournal(props: {
             key: 'prix-unitaire',
             align: 'end',
             render: (_, m) =>
-              m.unitCost === null ? masque(m) ? MASQUE_COMPTAGE() : null : <MoneyValue value={m.unitCost} />
+              m.unitCost === null ? masque(m) ? MASQUE_COMPTAGE() : null : <MoneyValue value={m.unitCost} />,
+            exportValue: m => m.unitCost
           },
           {
             // `totalValue` TEL QUEL, jamais `quantity × unitCost`.
             title: t('Valeur du mouvement'),
             key: 'valeur',
             align: 'end',
+            exportValue: m => m.totalValue,
             render: (_, m) =>
               m.totalValue === null ? (
                 masque(m) ? (
@@ -2336,6 +2359,8 @@ function OngletJournal(props: {
     {
       title: t('Chantier imputé'),
       key: 'chantier',
+      exportValue: m =>
+        m.siteLabel ? `${m.siteLabel} — ${m.costCategoryLabel ?? t('Poste non renseigné')}` : t('Aucune imputation'),
       render: (_, m) =>
         m.siteLabel ? (
           <Space orientation="vertical" size={0}>
@@ -2348,11 +2373,22 @@ function OngletJournal(props: {
           <Text type="secondary">{t('Aucune imputation')}</Text>
         )
     },
-    { title: t('Preneur ou demandeur'), key: 'preneur', render: (_, m) => preneurOuDemandeur(m) },
+    {
+      title: t('Preneur ou demandeur'),
+      key: 'preneur',
+      render: (_, m) => preneurOuDemandeur(m),
+      exportValue: m =>
+        m.requestedBy
+          ? m.takerLabel && m.takerLabel !== m.requestedBy
+            ? `${m.requestedBy} — ${t('(aujourd’hui : {{takerLabel}})', { takerLabel: m.takerLabel })}`
+            : m.requestedBy
+          : ''
+    },
     { title: t('Motif'), key: 'motif', render: (_, m) => motifDe(m) },
     {
       title: t('Pièce'),
       key: 'piece',
+      exportValue: m => m.supplierInvoiceReference ?? '',
       render: (_, m) =>
         m.supplierInvoiceReference && m.supplierInvoiceId ? (
           <Button
@@ -2367,7 +2403,12 @@ function OngletJournal(props: {
         )
     },
     { title: t('Saisi par'), key: 'auteur', render: (_, m) => m.createdByLabel },
-    { title: t('Pièces jointes'), key: 'pieces-jointes', render: (_, m) => piecesJointes(m) }
+    {
+      title: t('Pièces jointes'),
+      key: 'pieces-jointes',
+      render: (_, m) => piecesJointes(m),
+      exportValue: m => m.attachmentsCount
+    }
   ];
 
   const mouvementFiltre = mouvementId ? mouvements.find(m => m.id === mouvementId) : undefined;
@@ -2513,6 +2554,31 @@ function OngletJournal(props: {
       </Space>
 
       <DataView<StockMovementView>
+        // Le journal se lit par curseur : l'export reparcourt toutes les pages,
+        // avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t('Journal des mouvements de stock'),
+          fetchAll: async () => {
+            const items: StockMovementView[] = [];
+            let curseur: string | undefined;
+            let tronque = false;
+            do {
+              const page = await listStockMovements(tenantId, {
+                ...filtres,
+                ...(curseur ? { cursor: curseur } : {}),
+                limit: 200
+              });
+              items.push(...page.data);
+              curseur = page.meta.nextCursor ?? undefined;
+              if (curseur && items.length >= EXPORT_MAX_ROWS) {
+                tronque = true;
+                items.length = EXPORT_MAX_ROWS;
+                break;
+              }
+            } while (curseur);
+            return { items, truncated: tronque };
+          }
+        }}
         paginated={false}
         scrollX={2200}
         items={mouvements}

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Table, Card, Button, Tag, Space, Popconfirm, Alert, Empty, Typography } from 'antd';
+import { App, Card, Button, Tag, Space, Popconfirm, Alert, Empty, Typography } from 'antd';
 import { MailOutlined, PlusOutlined, ReloadOutlined, CloseOutlined } from '@ant-design/icons';
 import { resendInvitation, revokeInvitation } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import type { ColumnsType } from 'antd/es/table';
+import { Table } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -187,6 +188,7 @@ export const InvitationsList: React.FC = () => {
         <Card>
           <div style={{ overflowX: 'auto' }}>
             <Table
+              exportFilename={t('Invitations')}
               columns={columns}
               dataSource={invitations}
               rowKey="id"

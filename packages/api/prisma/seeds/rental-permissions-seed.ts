@@ -48,7 +48,11 @@ async function seedRentalPermissions() {
     // Document permissions
     { key: 'RENTAL_DOCUMENTS_VIEW', description: 'View rental documents' },
     { key: 'RENTAL_DOCUMENTS_GENERATE', description: 'Generate rental documents' },
-    { key: 'RENTAL_DOCUMENTS_EDIT', description: 'Edit rental documents' }
+    { key: 'RENTAL_DOCUMENTS_EDIT', description: 'Edit rental documents' },
+
+    // Direct debit permissions (spec 042)
+    { key: 'RENTAL_DIRECT_DEBIT_VIEW', description: 'View direct debit creditors and mandates (masked IBAN)' },
+    { key: 'RENTAL_DIRECT_DEBIT_MANAGE', description: 'Manage direct debit creditors and mandates' }
   ];
 
   console.log('  Creating Rental permissions...');

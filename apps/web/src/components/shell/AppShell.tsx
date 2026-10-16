@@ -152,7 +152,7 @@ export const AppShell: React.FC = () => {
    * decide de montrer a ce role. Sans ce filtrage, l'ecran d'administration ne
    * serait qu'une declaration d'intention.
    */
-  const { disabled: disabledMenuKeys, permissions } = useMyMenuAccess(navContext.tenantId);
+  const { disabled: disabledMenuKeys, enabled: enabledMenuKeys, permissions } = useMyMenuAccess(navContext.tenantId);
   // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
   const { access: featureAccess, loading: featureAccessLoading } = useFeatureAccessState(
     navContext.tenantId,
@@ -220,7 +220,8 @@ export const AppShell: React.FC = () => {
     // Pendant la lecture des droits : socle seul, pas de menu complet qui clignote.
     featureAccessLoading ? CORE_ONLY_ACCESS : featureAccess,
     ownAssetsOnly,
-    permissions
+    permissions,
+    enabledMenuKeys
   );
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /

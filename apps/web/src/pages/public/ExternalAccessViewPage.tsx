@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Result, Space, Spin, Table, Typography } from 'antd';
+import { Alert, Button, Card, Descriptions, Result, Space, Spin, Typography } from 'antd';
 import {
   downloadPublicExternalAccessDocument,
   fetchPublicExternalAccessView
 } from '../../services/external-access-service';
 import type { ExternalAccessViewDto, ExternalAccessViewProperty } from '../../types/external-access';
-import { MoneyValue, statusLabel } from '../../components/primitives';
+import { MoneyValue, Table, statusLabel } from '../../components/primitives';
 import { accessSectionLabel, accessTypeLabel } from '../patrimoine/external-access/external-access-labels';
 import {
   documentTypeLabel,
@@ -59,6 +59,8 @@ function installMeta(entries: Array<{ name: string; content: string }>): () => v
 const PRINT_CSS = `
 @media print {
   .external-access-no-print { display: none !important; }
+  .external-access-page div:has(> button[aria-haspopup="menu"]) { display: none !important; }
+  .external-access-page button[aria-haspopup="menu"] { display: none !important; }
   .external-access-page { padding: 0 !important; background: #fff !important; }
   .external-access-page .ant-card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; }
 }
@@ -120,6 +122,7 @@ const ValuationBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['v
     </Descriptions>
     {data.history.length > 0 ? (
       <Table
+        exportFilename={accessSectionLabel('VALUATIONS')}
         size="small"
         rowKey="rowKey"
         pagination={false}
@@ -175,6 +178,7 @@ const LoansBlock: React.FC<{ loans: NonNullable<ExternalAccessViewProperty['loan
       <Text type="secondary">{t('Aucun emprunt.')}</Text>
     ) : (
       <Table
+        exportFilename={accessSectionLabel('LOANS')}
         size="small"
         rowKey="rowKey"
         pagination={false}
@@ -240,6 +244,7 @@ const ExpensesBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['ex
     ) : null}
     {data.items.length > 0 ? (
       <Table
+        exportFilename={accessSectionLabel('EXPENSES')}
         size="small"
         rowKey="rowKey"
         pagination={false}
@@ -273,6 +278,7 @@ const RentsBlock: React.FC<{ rents: NonNullable<ExternalAccessViewProperty['rent
       <Text type="secondary">{t('Aucun bail.')}</Text>
     ) : (
       <Table
+        exportFilename={accessSectionLabel('RENTS')}
         size="small"
         rowKey="rowKey"
         pagination={false}
@@ -323,6 +329,7 @@ const TitlesBlock: React.FC<{ data: NonNullable<ExternalAccessViewProperty['titl
     </Descriptions>
     {data.holdings.length > 0 ? (
       <Table
+        exportFilename={accessSectionLabel('TITLES_OWNERSHIP')}
         size="small"
         rowKey="rowKey"
         pagination={false}
@@ -361,6 +368,7 @@ const DocumentsBlock: React.FC<DocumentsBlockProps> = ({ documents, busyRef, onD
       <Text type="secondary">{t('Aucun document partagé.')}</Text>
     ) : (
       <Table
+        exportFilename={accessSectionLabel('DOCUMENTS')}
         size="small"
         rowKey="ref"
         pagination={false}
@@ -372,6 +380,7 @@ const DocumentsBlock: React.FC<DocumentsBlockProps> = ({ documents, busyRef, onD
           { title: t('Taille'), dataIndex: 'fileSize', render: (value: number | null) => fileSizeLabel(value) },
           {
             title: t('Action'),
+            exportable: false,
             align: 'end' as const,
             render: (_: unknown, row) => (
               <span className="external-access-no-print">

@@ -152,6 +152,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   encaisser: ['RENTAL_INSTALLMENTS_VIEW', 'RENTAL_PAYMENTS_VIEW'],
   'rental-installments': ['RENTAL_INSTALLMENTS_VIEW'],
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
+  'rental-direct-debit': ['RENTAL_DIRECT_DEBIT_VIEW'],
 
   // Finance. Permissions reprises des routes API de chaque écran (voir
   // `finance-rbac-middleware.ts`) : les listes exigent FINANCE_ACCOUNTS_READ,
@@ -235,6 +236,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Paramétrage.
   documents: ['RENTAL_DOCUMENTS_VIEW'],
   'documents-templates': ['RENTAL_DOCUMENTS_VIEW'],
+  // Signatures : l'API ne renvoie que les types de documents que l'utilisateur peut lire (bail, mandat, vente).
+  signatures: ['RENTAL_LEASES_VIEW', 'PROPERTIES_VIEW', 'CRM_DEALS_VIEW'],
   agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW', 'TENANT_AUDIT_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
@@ -401,44 +404,23 @@ export function defaultMenuEnabled(requires: string[], rolePermissionKeys: Set<s
 }
 
 /**
- * Groupes du menu d'agence que la coquille masque d'après les permissions
- * RÉELLES du compte, sans attendre qu'un administrateur ait coupé l'entrée.
+ * Vrai si l'agence a ouvert `menuKey` EXPLICITEMENT (ligne `enabled = true`
+ * pour le rôle : surcharge d'agence ou défaut commun), directement ou via l'une
+ * de ses anciennes clés. Une ouverture explicite dispense l'entrée du filtre
+ * par permission de la coquille (`useFilteredNavigation`) : le choix de
+ * l'agence prime. Sans décision, ce sont les permissions réelles du compte qui
+ * masquent l'entrée (`MENU_REQUIREMENTS`) : un rôle sans `PROPERTIES_VIEW` ne
+ * voit pas Biens et Patrimoine (BUG-2026-10-02-010 / -004), ni la Finance sans
+ * droit financier.
  *
- * Le serveur ne connaît que des clés opaques et « l'absence de décision vaut
- * autorisé » : un rôle sans `PROPERTIES_VIEW` voyait donc Biens et Patrimoine,
- * et tombait sur un écran en erreur générique (BUG-2026-10-02-010 / -004).
- * La liste est volontairement bornée ; l'étendre à d'autres groupes se décide
- * avec leurs propres permissions (voir `MENU_REQUIREMENTS`).
- *
- * Lot 040 (ecrans §2.3) : « Chantiers et stock » s'y ajoute, pour que le
- * Magasinier, qui n'a que des droits `STOCK_*`, voie « Gestion du stock » sans
- * « Suivi des chantiers ». Les menus hors stock de ce rôle ne sont PAS coupés
- * ici (Q14) : la plateforme les coupe une fois, dans l'écran « Rôles et
- * menus ».
+ * Lot 040 (ecrans §2.3, Q14) : le Magasinier, qui n'a que des droits
+ * `STOCK_*`, voit « Gestion du stock » sans « Suivi des chantiers » ; ses menus
+ * sans exigence de permission (CRM…) ne sont pas coupés d'office, la plateforme
+ * les coupe une fois dans « Rôles et menus ».
  */
-const PERMISSION_GATED_GROUPS: readonly string[] = ['biens', 'patrimoine', 'finance-chantiers-stock'];
-
-/**
- * Clés de menu que les permissions du compte ne permettent pas d'ouvrir
- * (groupes de `PERMISSION_GATED_GROUPS`, entrée par entrée : une feuille
- * suit sa propre exigence, un groupe fermé emporte toutes ses feuilles).
- */
-export function menuKeysDeniedByPermissions(persona: PersonaId, permissionKeys: Iterable<string>): string[] {
-  const held = new Set(permissionKeys);
-  const denied: string[] = [];
-  for (const group of getNavigation()[persona].tree) {
-    if (!PERMISSION_GATED_GROUPS.includes(group.key)) continue;
-    if (!defaultMenuEnabled(requirementsFor(group.key), held)) {
-      denied.push(menuKeyFor(persona, group.key));
-      continue;
-    }
-    for (const leaf of group.children ?? []) {
-      if (!defaultMenuEnabled(requirementsFor(leaf.key), held)) {
-        denied.push(menuKeyFor(persona, group.key, leaf.key));
-      }
-    }
-  }
-  return denied;
+export function isMenuKeyExplicitlyEnabled(menuKey: string, enabled: ReadonlySet<string>): boolean {
+  if (enabled.has(menuKey)) return true;
+  return legacyMenuKeysFor(menuKey).some(key => enabled.has(key));
 }
 
 /** Carte complète des états par défaut d'un rôle. */

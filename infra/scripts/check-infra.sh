@@ -6,6 +6,8 @@
 #
 #  1. `bash -n` sur tous les scripts de infra/scripts ;
 #  2. les scripts a environnement refusent un argument absent ou inconnu ;
+#     ci-deploy.sh refuse en code 2, avant toute action, toute commande SSH ou
+#     tout argument hors de sa liste blanche ;
 #  3. pour staging et prod : rendu `docker compose config` avec un fichier
 #     d'environnement factice, puis assertions sur les noms, ports et volumes
 #     (les deux piles doivent rester etanches ; tout port publie est lie a
@@ -44,6 +46,56 @@ for arg in "" "dev" "prod" "production"; do
 done
 rc=0; bash infra/scripts/restore-check.sh >/dev/null 2>&1 || rc=$?
 [[ "$rc" == "2" ]] && ok "restore-check.sh sans argument -> usage (2)" || ko "restore-check.sh sans argument devrait sortir en 2, code $rc"
+
+# ci-deploy.sh : point d'entree des cles SSH de la CI. Chaque entree invalide doit
+# etre refusee en code 2 AVANT toute action : on place devant le PATH de faux git,
+# docker, flock, setsid et nohup qui laissent une trace s'ils sont appeles, et on
+# verifie qu'aucun dossier de journaux n'a ete cree dans le HOME factice.
+CI_STUBS="$(mktemp -d)"
+mkdir -p "$CI_STUBS/bin" "$CI_STUBS/home"
+for cmd in git docker flock setsid nohup tail find mkdir; do
+  printf '#!/bin/sh\necho "%s" >> "%s/called"\nexit 99\n' "$cmd" "$CI_STUBS" > "$CI_STUBS/bin/$cmd"
+  chmod +x "$CI_STUBS/bin/$cmd"
+done
+CI_SHA="0123456789abcdef0123456789abcdef01234567"
+ci_refuse() { # $1 = libelle, $2 = SSH_ORIGINAL_COMMAND (ou __absent__), reste = arguments du script
+  local label="$1" soc="$2" rc=0
+  shift 2
+  rm -f "$CI_STUBS/called"
+  if [[ "$soc" == "__absent__" ]]; then
+    env -u SSH_ORIGINAL_COMMAND HOME="$CI_STUBS/home" PATH="$CI_STUBS/bin:$PATH" \
+      bash infra/scripts/ci-deploy.sh "$@" >/dev/null 2>&1 || rc=$?
+  else
+    env SSH_ORIGINAL_COMMAND="$soc" HOME="$CI_STUBS/home" PATH="$CI_STUBS/bin:$PATH" \
+      bash infra/scripts/ci-deploy.sh "$@" >/dev/null 2>&1 || rc=$?
+  fi
+  if [[ "$rc" != "2" ]]; then
+    ko "ci-deploy.sh $label devrait sortir en 2, code $rc"
+  elif [[ -e "$CI_STUBS/called" || -e "$CI_STUBS/home/ci-deploy-logs" ]]; then
+    ko "ci-deploy.sh $label : une action (git, docker, journal...) a precede le refus"
+  else
+    ok "ci-deploy.sh $label -> refus (2), aucune action"
+  fi
+}
+ci_refuse "sans argument"                        __absent__
+ci_refuse "'dev'"                                __absent__ dev
+ci_refuse "'production'"                         __absent__ production
+ci_refuse "'staging' sans SHA ni commande SSH"   __absent__ staging
+ci_refuse "'staging' + SHA de 39 caracteres"     __absent__ staging "${CI_SHA:0:39}"
+ci_refuse "'staging' + SHA de 41 caracteres"     __absent__ staging "${CI_SHA}0"
+ci_refuse "'staging' + SHA en majuscules"        __absent__ staging "${CI_SHA^^}"
+ci_refuse "'staging' + SHA + argument en trop"   __absent__ staging "$CI_SHA" extra
+ci_refuse "cle staging, commande « deploy prod »" "deploy prod $CI_SHA" staging
+ci_refuse "commande SSH avec « ; id »"           "deploy staging $CI_SHA; id" staging
+ci_refuse "commande SSH « rm -rf / »"            "rm -rf /" staging
+ci_refuse "commande SSH, SHA en majuscules"      "deploy staging ${CI_SHA^^}" staging
+ci_refuse "commande SSH + retour a la ligne"     $'deploy staging '"$CI_SHA"$'\n' staging
+ci_refuse "commande SSH + ligne « id »"          $'deploy staging '"$CI_SHA"$'\nid' staging
+ci_refuse "commande SSH + retour chariot"        $'deploy staging '"$CI_SHA"$'\r' staging
+ci_refuse "commande SSH vide"                    "" staging
+ci_refuse "commande SSH + argument en trop"      "deploy staging $CI_SHA" staging extra
+ci_refuse "--worker hors de ce script"           __absent__ --worker staging "$CI_SHA"
+rm -rf "$CI_STUBS"
 
 # --- 3. Rendu Compose -------------------------------------------------------
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then

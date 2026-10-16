@@ -1,8 +1,10 @@
 import React from 'react';
-import { TeamPerformance } from '../../../../types/crmDashboard';
+import type { ColumnsType } from 'antd/es/table';
+import { TeamPerformance, TeamMemberPerformance } from '../../../../types/crmDashboard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../ui/table';
 import { Badge } from '../../../ui/badge';
 import { TrendingUp, TrendingDown, Award } from 'lucide-react';
+import { ExportMenu } from '../../../primitives/ExportMenu';
 import { t } from '../../../../i18n/t';
 
 interface TeamPerformanceTableProps {
@@ -25,6 +27,18 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
     return `${value.toFixed(1)}%`;
   };
 
+  // Ce tableau est en HTML (pas Ant Design) : l'export déclare ses colonnes à part,
+  // avec des valeurs brutes (nombres pour Excel).
+  const colonnesExport: ColumnsType<TeamMemberPerformance> = [
+    { title: '#', key: 'rang', exportValue: (_, index) => index + 1 },
+    { title: t('Membre'), key: 'membre', exportValue: member => member.userName },
+    { title: t('Email'), key: 'email', exportValue: member => member.userEmail },
+    { title: t('Activités'), key: 'activites', exportValue: member => member.activitiesCount },
+    { title: t('Affaires gagnées'), key: 'gagnees', exportValue: member => member.wonDealsCount },
+    { title: t('Taux de conversion'), key: 'conversion', exportValue: member => member.conversionRate },
+    { title: t('Temps réponse'), key: 'reponse', exportValue: member => formatTime(member.avgResponseTimeHours) }
+  ];
+
   if (sortedMembers.length === 0) {
     return <div className="text-center py-8 text-slate-500">{t('Aucune donnée de performance disponible')}</div>;
   }
@@ -40,11 +54,18 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
             {t('Total affaires gagnées:')} {data.totalWonDeals}
           </p>
         </div>
-        {data.avgResponseTimeHours && (
-          <Badge variant="outline">
-            {t('Temps de réponse moyen:')} {formatTime(data.avgResponseTimeHours)}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {data.avgResponseTimeHours && (
+            <Badge variant="outline">
+              {t('Temps de réponse moyen:')} {formatTime(data.avgResponseTimeHours)}
+            </Badge>
+          )}
+          <ExportMenu<TeamMemberPerformance>
+            columns={colonnesExport}
+            rows={sortedMembers}
+            filename={t("Performance de l'équipe")}
+          />
+        </div>
       </div>
 
       <div className="border rounded-lg overflow-x-auto">

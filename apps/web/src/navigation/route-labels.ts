@@ -52,6 +52,7 @@ function buildRouteLabels(): Record<string, string> {
     // et le fil d'Ariane doit dire la même chose que l'onglet actif.
     installments: t('Encaisser'),
     payments: t('Paiements'),
+    'direct-debit': t('Prélèvements'),
     penalties: t('Pénalités'),
     deposits: t('Dépôts de garantie'),
     documents: t('Documents'),

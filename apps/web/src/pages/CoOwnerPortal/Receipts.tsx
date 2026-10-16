@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, StateBlock } from '../../components/primitives';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import {
@@ -90,6 +91,7 @@ export default function CoOwnerReceipts() {
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: row => Number(row.amount),
       render: (_, row) => <MoneyValue value={row.amount} currency={row.currency} />
     },
     { title: t('Émise le'), key: 'issuedAt', render: (_, row) => dayjs(row.issuedAt).format('DD/MM/YYYY') },
@@ -167,6 +169,15 @@ export default function CoOwnerReceipts() {
             isReloading={receipts.isFetching && !receipts.isPending}
             rowKey={row => row.id}
             aria-label={t('Mes quittances')}
+            // Toutes les quittances, avec les mêmes filtres que la liste affichée.
+            export={{
+              filename: t('Mes quittances'),
+              fetchAll: () =>
+                collectAllPages<CoOwnerReceipt>(async (exportPage, limit) => {
+                  const result = await listMyReceipts({ lotId, kind, from, to, page: exportPage, limit });
+                  return { items: result.items, total: result.pagination.total };
+                })
+            }}
             emptyDescription={t("Aucun document n'a encore été émis pour vos lots.")}
             columns={columns}
             renderCard={row => (

@@ -249,6 +249,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       title: t('Montant calculé'),
       key: 'montant',
       align: 'end',
+      exportValue: p => Number(montantCalcule(p) || 0),
       render: (_, p) =>
         montantCalcule(p) == null ? '—' : <MoneyValue value={montantCalcule(p) as number} currency={p.currency} />
     },
@@ -256,6 +257,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       title: t('Montant retenu'),
       key: 'retenu',
       align: 'end',
+      exportValue: p => Number(montantRetenu(p) || 0),
       render: (_, p) => (
         <>
           <MoneyValue value={montantRetenu(p)} currency={p.currency} />
@@ -417,6 +419,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       />
 
       <DataView<RentalPenalty>
+        // L'API ne pagine pas : tout est déjà chargé, la page courante est l'ensemble.
+        export={{ filename: t('Pénalités de retard') }}
         items={penalites}
         // L'API ne pagine pas les pénalités : elle renvoie tout. Annoncer
         // `items.length` n'est donc pas un raccourci, c'est le total réel de ce
