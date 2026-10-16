@@ -1538,20 +1538,24 @@ staging seulement.
 | `YOUSIGN_API_KEY`        | clé de la **sandbox** Yousign                     | clé de production, distincte                                            |
 | `YOUSIGN_WEBHOOK_SECRET` | secret du webhook sandbox (32 caractères)         | secret du webhook de production, distinct                               |
 
-**Écart constaté sur le staging réel (2026-10-16).** Relevé par l'utilisateur sur le
-serveur, non revérifié depuis le dépôt : dans `/home/deployer/immotopia-saas.env`, parmi
-`NODE_ENV`, `BACKEND_URL`, `SIGNATURE_PROVIDER`, `SMS_PROVIDER` et
-`PAYMENT_GATEWAY_SIMULATOR`, seules `NODE_ENV=production` et
-`BACKEND_URL=https://app.immotopia.cloud` sont présentes. Donc, en l'état :
+**État du staging réel (relevé du 2026-10-16, soir).** Relevé par l'utilisateur sur le
+serveur, non revérifié depuis le dépôt. Le fichier `/home/deployer/immotopia-saas.env`
+est antérieur à `make-env.sh` : il ne portait ni `SIGNATURE_PROVIDER`, ni
+`PAYMENT_GATEWAY_SIMULATOR`, ni configuration e-mail, alors que le tableau « Vue
+d'ensemble » les donne pour acquis (il décrit la cible que `make-env.sh staging`
+écrit, pas l'état d'un fichier plus ancien). Corrigé le jour même, à la main :
 
-- la signature est **désactivée** (`SIGNATURE_PROVIDER` absent, défaut `disabled`) ;
-  rien de ce lot ne se teste avant d'ajouter les lignes ci-dessous ;
-- le **simulateur de paiement est indisponible** (`PAYMENT_GATEWAY_SIMULATOR` absent),
-  alors que le tableau « Vue d'ensemble » le donne pour actif : ce tableau décrit la
-  cible que `make-env.sh staging` écrit, pas l'état de ce fichier. Les essais de
-  paiement en ligne (loyers, mobile money des copropriétaires) ne peuvent pas se jouer
-  au simulateur tant que `PAYMENT_GATEWAY_SIMULATOR=1` et
-  `PLATFORM_PAYSECUREHUB_MODE=SIMULATOR` n'y sont pas ajoutés.
+- `SIGNATURE_PROVIDER=internal` : la signature interne est active, **Yousign ne l'est
+  pas encore** (ce lot : passer à `yousign` avec les lignes ci-dessous) ;
+- `PAYMENT_GATEWAY_SIMULATOR=1` : le simulateur de paiement est disponible ;
+- e-mail : boîte dédiée au staging, configurée par `set-email-smtp.sh` (port 465) ;
+  `deploy.sh staging --no-build` passé, test `verify()` de nodemailer : « SMTP OK » ;
+- `SMS_PROVIDER` reste **absent** (donc `disabled`) : pas de canal SMS sur le staging.
+
+Piège à retenir : un fichier de secrets plus ancien que `make-env.sh` ne reçoit
+jamais les réglages que le script écrit aujourd'hui pour un fichier neuf. Pour un
+fichier existant, comparer ses clés à celles du gabarit (`grep -E '^(...)='`, voir
+« Différences de configuration, staging et production »), sans afficher les secrets.
 
 **Brancher la sandbox**, dans `/home/deployer/immotopia-saas.env` (édité à la main
 sur le serveur, en **modifiant les lignes existantes**, sans les doubler) :
@@ -2014,12 +2018,12 @@ conservation et l'accès (rotation courte, lecture réservée à root).
 
 Non résolus à la date de rédaction :
 
-- **Fichier de secrets du staging en retrait sur la cible (relevé du 2026-10-16).**
-  Ni `SIGNATURE_PROVIDER`, ni `SMS_PROVIDER`, ni `PAYMENT_GATEWAY_SIMULATOR` n'y
-  figurent : signature désactivée, simulateur de paiement indisponible, contrairement
-  au tableau « Vue d'ensemble ». À corriger à la main sur le serveur
-  ([Lot 044](#lot-044--signature-électronique--yousign-sandbox-sur-le-staging)), puis
-  `deploy.sh staging --no-build`.
+- **Staging : Yousign sandbox et SMS pas encore branchés (relevé du 2026-10-16).** Le
+  fichier de secrets du staging, antérieur à `make-env.sh`, a été mis à niveau à la
+  main le jour même (`SIGNATURE_PROVIDER=internal`, `PAYMENT_GATEWAY_SIMULATOR=1`,
+  e-mail). Restent : Yousign sandbox (cette PR, puis
+  [Lot 044](#lot-044--signature-électronique--yousign-sandbox-sur-le-staging)) et
+  `SMS_PROVIDER`, absent donc `disabled`.
 - **Déploiement continu non éprouvé.** Aucun essai réel du workflow
   `deploy.yml` ni de `ci-deploy.sh` (clés, `known_hosts`, environnements GitHub,
   détachement de la session, filtre de sortie, étiquettes d'images). Le premier
