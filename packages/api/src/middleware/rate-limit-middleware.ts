@@ -292,6 +292,26 @@ export const meetingVisioRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/** Discussion de la visio (spec 046, M4) : lecture de l'historique, 30/min par jeton. */
+export const meetingDiscussionReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => meetingLiveTokenKey(req, 'discussion'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Discussion de la visio (spec 046, M4) : envoi d'un message, 10/min par jeton. */
+export const meetingDiscussionSendRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => meetingLiveTokenKey(req, 'discussion-envoi'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /**
  * Webhook LiveKit (spec 045, R4) : 3000/min par IP, applique AVANT la lecture du corps et
  * la verification de signature (qui reste toujours exigee). LiveKit envoie TOUS ses

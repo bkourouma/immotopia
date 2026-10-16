@@ -34,12 +34,15 @@ const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso',
  *   retirée, exclusion d'un participant ; `visio/enregistrement` (démarrer, arrêter) et le fichier d'un
  *   enregistrement (`enregistrements/:id/...`, flux vidéo de l'assemblée). Jamais proposés à l'assistant
  *   comme actions ordinaires.
+ * - `visio/discussion` (spec 046) : messages saisis par des copropriétaires (risque d'injection d'instructions
+ *   pour l'assistant qui les lirait) ; et l'assistant n'écrit jamais dans une salle en direct.
  */
 const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['whatsapp', 'registrations'],
   ['whatsapp', 'sessions'],
   ['visio', 'jeton'],
   ['visio', 'participants'],
+  ['visio', 'discussion'],
   ['visio', 'enregistrement'],
   ['enregistrements', ':recordingid']
 ];

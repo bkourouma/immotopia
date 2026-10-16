@@ -2,7 +2,13 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../middleware/error-middleware';
 import { invalidSecureLinkError } from '../lib/secure-links';
 import { castPublicVotes, getPublicLiveState, joinPublicMeeting } from '../lib/syndics/meeting-live-public';
-import { publicHandSchema, publicTokenSchema, publicVoteSchema } from '../lib/syndics/meeting-live-schemas';
+import {
+  publicDiscussionSendSchema,
+  publicHandSchema,
+  publicTokenSchema,
+  publicVoteSchema
+} from '../lib/syndics/meeting-live-schemas';
+import { getPublicDiscussion, sendPublicDiscussionMessage } from '../lib/syndics/meeting-discussion';
 import { issuePublicVisioToken, setPublicHandRaised } from '../lib/syndics/meeting-visio';
 
 /**
@@ -50,5 +56,22 @@ export const meetingVisioHandHandler = asyncHandler(async (req: Request, res: Re
   if (!token.success) throw invalidSecureLinkError();
   const parsed = publicHandSchema.parse(req.body);
   const data = await setPublicHandRaised(parsed.token, parsed.raised);
+  res.status(200).json({ success: true, data });
+});
+
+/** Spec 046 : etat de la discussion et 200 derniers messages. */
+export const meetingDiscussionReadHandler = asyncHandler(async (req: Request, res: Response) => {
+  const parsed = publicTokenSchema.safeParse(req.body);
+  if (!parsed.success) throw invalidSecureLinkError();
+  const data = await getPublicDiscussion(parsed.data.token);
+  res.status(200).json({ success: true, data });
+});
+
+/** Spec 046 : envoi d'un message. Jeton absent ou mal forme : 404 uniforme ; texte vide ou trop long : 400. */
+export const meetingDiscussionSendHandler = asyncHandler(async (req: Request, res: Response) => {
+  const token = publicTokenSchema.safeParse(req.body);
+  if (!token.success) throw invalidSecureLinkError();
+  const parsed = publicDiscussionSendSchema.parse(req.body);
+  const data = await sendPublicDiscussionMessage(parsed.token, parsed.body);
   res.status(200).json({ success: true, data });
 });

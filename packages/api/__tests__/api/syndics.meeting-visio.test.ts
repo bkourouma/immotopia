@@ -458,7 +458,8 @@ describe('GET /visio (console)', () => {
         name: 'Awa Traore',
         handRaisedAt: '2026-10-10T09:05:00.000Z',
         canSpeak: false,
-        joinedAt: '2026-10-10T09:01:00.000Z'
+        joinedAt: '2026-10-10T09:01:00.000Z',
+        chatMuted: false
       },
       expect.objectContaining({ kind: 'COOWNER', name: 'Bakary Diallo', handRaisedAt: null, canSpeak: true }),
       {
@@ -469,7 +470,8 @@ describe('GET /visio (console)', () => {
         name: 'Marie Syndic',
         handRaisedAt: null,
         canSpeak: true,
-        joinedAt: '2026-10-10T09:01:00.000Z'
+        joinedAt: '2026-10-10T09:01:00.000Z',
+        chatMuted: false
       }
     ]);
     expect(JSON.stringify(res.body)).not.toContain('@example.test');

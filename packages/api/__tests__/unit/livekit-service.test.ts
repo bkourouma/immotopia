@@ -217,6 +217,33 @@ describe('salles et modération', () => {
     mockRoom.sendData.mockRejectedValueOnce(notFound());
     await expect(livekit.sendRefreshSignal('r')).resolves.toBeUndefined();
   });
+
+  it('discussion (spec 046) : sujet ag-discussion, message fiable, à toute la salle sans destinataire', async () => {
+    await livekit.sendDiscussionEvent('r', { type: 'hidden', id: 'm1' });
+    const [room, data, kind, options] = mockRoom.sendData.mock.calls[0];
+    expect(room).toBe('r');
+    expect(JSON.parse(Buffer.from(data).toString('utf8'))).toEqual({ type: 'hidden', id: 'm1' });
+    expect(kind).toBe(DataPacket_Kind.RELIABLE);
+    expect(options).toEqual({ topic: 'ag-discussion' });
+    expect(options).not.toHaveProperty('destinationIdentities');
+  });
+
+  it('discussion : message ciblé = destinationIdentities, salle inexistante ignorée', async () => {
+    await livekit.sendDiscussionEvent('r', { type: 'muted', muted: true }, ['participant-1']);
+    expect(mockRoom.sendData.mock.calls[0][3]).toEqual({
+      topic: 'ag-discussion',
+      destinationIdentities: ['participant-1']
+    });
+    mockRoom.sendData.mockRejectedValueOnce(notFound());
+    await expect(livekit.sendDiscussionEvent('r', { type: 'state', open: false })).resolves.toBeUndefined();
+  });
+
+  it('discussion : un autre échec LiveKit devient une VisioUnavailableError 503', async () => {
+    mockRoom.sendData.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+    await expect(livekit.sendDiscussionEvent('r', { type: 'state', open: true })).rejects.toBeInstanceOf(
+      livekit.VisioUnavailableError
+    );
+  });
 });
 
 describe('erreurs', () => {

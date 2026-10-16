@@ -39,7 +39,7 @@ import { findActiveRecording, type MeetingRecordingView } from './meeting-record
  * l'autre est ignoree de la vue du gestionnaire.
  */
 
-const MANAGER_IDENTITY_PREFIX = 'gestionnaire-';
+export const MANAGER_IDENTITY_PREFIX = 'gestionnaire-';
 
 export interface MeetingVisioParticipantView {
   identity: string;
@@ -50,6 +50,8 @@ export interface MeetingVisioParticipantView {
   handRaisedAt: string | null;
   canSpeak: boolean;
   joinedAt: string | null;
+  /** Ecriture coupee dans la discussion (spec 046, M6) ; toujours `false` pour un gestionnaire. */
+  chatMuted: boolean;
 }
 
 export interface MeetingVisioAdminView {
@@ -188,7 +190,7 @@ async function coownerViews(
   if (coowners.size === 0) return [];
   const participants = await prisma.gMParticipant.findMany({
     where: { tenantId, meetingId, id: { in: [...coowners.keys()] } },
-    select: { id: true, contactId: true }
+    select: { id: true, contactId: true, chatMutedAt: true }
   });
   const contacts =
     participants.length > 0
@@ -211,7 +213,8 @@ async function coownerViews(
       name: contact ? contactDisplayName(contact) : '',
       handRaisedAt: handRaisedAtOf(info),
       canSpeak: info.permission?.canPublish ?? false,
-      joinedAt: joinedAtIso(info)
+      joinedAt: joinedAtIso(info),
+      chatMuted: row.chatMutedAt != null
     });
   }
   return views;
@@ -290,7 +293,8 @@ async function reconcile(
       name: name || info.name || '',
       handRaisedAt: null,
       canSpeak: info.permission?.canPublish ?? false,
-      joinedAt: joinedAtIso(info)
+      joinedAt: joinedAtIso(info),
+      chatMuted: false
     });
   }
   await evictStrangers(roomName, strangers);

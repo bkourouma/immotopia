@@ -67,6 +67,8 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   { method: 'POST', test: exact('/api/public/assemblees/voter'), reason: PUBLIC_MEETING_LIVE_REASON },
   { method: 'POST', test: exact('/api/public/assemblees/visio'), reason: PUBLIC_MEETING_LIVE_REASON },
   { method: 'POST', test: exact('/api/public/assemblees/visio/main'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/discussion'), reason: PUBLIC_MEETING_LIVE_REASON },
+  { method: 'POST', test: exact('/api/public/assemblees/discussion/envoyer'), reason: PUBLIC_MEETING_LIVE_REASON },
   {
     method: '*',
     test: withPrefix('/api/auth'),

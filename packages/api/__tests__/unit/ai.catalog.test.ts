@@ -117,18 +117,27 @@ describe('catalogue de la passerelle IA', () => {
     expect(isSensitivePath('/api/tenants/:tenantId/whatsapp-notifications')).toBe(false);
   });
 
-  it('marque sensibles le jeton de visio, la parole et l’exclusion (spec 045), pas la lecture', () => {
+  it('marque sensibles le jeton de visio, la parole, l’exclusion (spec 045) et la discussion (spec 046), pas la lecture de la salle', () => {
     const visio = built.entries.filter(entry => entry.path.split('/').includes('visio'));
     expect(visio.length).toBeGreaterThanOrEqual(4);
     const sensitive = visio.filter(entry => entry.sensitive).map(entry => entry.path.split('/:meetingId/')[1]);
     expect(sensitive.sort()).toEqual([
+      'visio/discussion',
+      'visio/discussion/etat',
+      'visio/discussion/messages',
+      'visio/discussion/messages/:messageId/masquer',
       'visio/enregistrement/arreter',
       'visio/enregistrement/demarrer',
       'visio/jeton',
+      'visio/participants/:participantId/ecriture',
       'visio/participants/:participantId/exclure',
       'visio/participants/:participantId/parole'
     ]);
-    expect(visio.find(entry => entry.method === 'GET')?.sensitive).toBe(false);
+    // Lecture de la salle : jamais sensible ; lecture de la discussion : messages saisis par des tiers (injection).
+    expect(visio.find(entry => entry.method === 'GET' && entry.path.endsWith('/visio'))?.sensitive).toBe(false);
+    expect(visio.find(entry => entry.method === 'GET' && entry.path.endsWith('/visio/discussion'))?.sensitive).toBe(
+      true
+    );
   });
 
   it("marque sensibles le démarrage, l'arrêt et le fichier d'un enregistrement d'AG (spec 045), pas la liste", () => {

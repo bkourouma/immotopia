@@ -2059,5 +2059,9 @@
   "Enregistrement introuvable ou inaccessible": "التسجيل غير موجود أو لا يمكن الوصول إليه",
   "Cet enregistrement ne peut pas être supprimé dans son état actuel": "لا يمكن حذف هذا التسجيل في حالته الحالية",
   "Le fichier dépasse la taille maximale : il est conservé sur le stockage de la visio": "الملف يتجاوز الحجم الأقصى: وهو محفوظ على تخزين المؤتمر المرئي",
-  "Cet enregistrement ne peut pas être relancé dans son état actuel": "لا يمكن إعادة محاولة هذا التسجيل في حالته الحالية"
+  "Cet enregistrement ne peut pas être relancé dans son état actuel": "لا يمكن إعادة محاولة هذا التسجيل في حالته الحالية",
+  "La discussion est fermée par le gestionnaire": "أغلق المدير النقاش",
+  "Le gestionnaire a suspendu votre droit d'écrire": "علّق المدير حقك في الكتابة",
+  "Message introuvable ou inaccessible": "الرسالة غير موجودة أو لا يمكن الوصول إليها",
+  "L'assemblée est close ou annulée : la discussion ne peut plus être modifiée": "الجمعية مغلقة أو ملغاة: لم يعد بالإمكان تعديل النقاش"
 }
