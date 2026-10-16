@@ -275,12 +275,18 @@ serveur avec deux clés ed25519 distinctes, une par environnement, stockées com
 `staging` et `production`), jamais comme secrets de dépôt. Côté serveur, chaque clé
 est limitée dans `authorized_keys` par `command="…/ci-deploy.sh <env>",restrict` :
 ni shell, ni terminal, ni redirection ; elle ne lance que ce script, qui n'accepte
-que `deploy <env> <sha>` pour son propre environnement et un commit d'`origin/main`.
+que `deploy <env> <sha>` pour son propre environnement et un commit d'`origin/main` ;
+pour la production, le commit doit déjà avoir été déployé avec succès sur le staging
+et ne peut pas être un retour arrière. Écrire sur `main` valant exécution de code sur
+le serveur partagé, `main` doit être protégée (PR relue, status checks requis, pas de
+contournement, CODEOWNERS sur `.github/`, `infra/` et les Dockerfile : prérequis de
+la mise en service). `workflow_dispatch` exécute le fichier de la branche choisie ;
+la barrière est la règle « Deployment branches : main » des environnements.
 Rotation : regénérer la paire, remplacer la ligne `authorized_keys` et le secret
 d'environnement, supprimer l'ancienne clé privée ; retirer la ligne coupe l'accès
 immédiatement. Le dépôt étant public, les journaux des workflows le sont aussi : le
-serveur ne renvoie que les lignes d'étape (le journal complet reste dans
-`~/ci-deploy-logs/`, mode 600), et aucune entrée n'est interpolée dans un script
+serveur ne renvoie qu'un canal public dédié (messages de `ci-deploy.sh` et titres
+d'étapes de `deploy.sh` ; le journal complet reste dans `~/ci-deploy-logs/`, mode 600), et aucune entrée n'est interpolée dans un script
 `run:`. Procédure : [DEPLOIEMENT.md](../workflows/DEPLOIEMENT.md), « Déploiement
 continu (GitHub Actions) ».
 

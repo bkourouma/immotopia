@@ -89,6 +89,9 @@ ci_refuse "cle staging, commande « deploy prod »" "deploy prod $CI_SHA" stagin
 ci_refuse "commande SSH avec « ; id »"           "deploy staging $CI_SHA; id" staging
 ci_refuse "commande SSH « rm -rf / »"            "rm -rf /" staging
 ci_refuse "commande SSH, SHA en majuscules"      "deploy staging ${CI_SHA^^}" staging
+ci_refuse "commande SSH + retour a la ligne"     $'deploy staging '"$CI_SHA"$'\n' staging
+ci_refuse "commande SSH + ligne « id »"          $'deploy staging '"$CI_SHA"$'\nid' staging
+ci_refuse "commande SSH + retour chariot"        $'deploy staging '"$CI_SHA"$'\r' staging
 ci_refuse "commande SSH vide"                    "" staging
 ci_refuse "commande SSH + argument en trop"      "deploy staging $CI_SHA" staging extra
 ci_refuse "--worker hors de ce script"           __absent__ --worker staging "$CI_SHA"

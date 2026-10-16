@@ -47,13 +47,24 @@ Faits qui pèsent sur la décision :
 <env>",restrict` : elle ne peut lancer que ce script, qui n'accepte que
    `deploy <env> <sha>` (40 hexadécimaux), pour l'environnement de la clé, sur un
    commit d'`origin/main`.
-4. **`ci-deploy.sh` ajoute ses propres garde-fous** : verrou propre à la CI,
-   attente d'un `deploy.sh` manuel, arbre propre, refus de déplacer un checkout
-   resté sur un commit hors de `main` (essai manuel), travail **détaché de la
-   session SSH** (une connexion coupée ne tue jamais une migration), code de sortie
-   conservé dans un fichier.
-5. **Journaux filtrés.** Seules les lignes d'étape reviennent à GitHub ; le
+4. **`ci-deploy.sh` ajoute ses propres garde-fous** : file d'attente d'une place et
+   verrou propre à la CI (dans `~/ci-deploy-logs/`), abandon sans rien déployer si
+   le client SSH a disparu avant le début, attente d'un `deploy.sh` manuel, commit
+   obligatoirement dans `origin/main` et porteur de `ci-deploy.sh`, arbre propre,
+   refus de déplacer un checkout resté sur un commit hors de `main` (essai manuel),
+   travail **détaché de la session SSH** une fois commencé (une connexion coupée ne
+   tue jamais une migration), code de sortie conservé dans un fichier. **Pour la
+   production, côté serveur** : le commit doit avoir été déployé avec succès sur le
+   staging (journal des déploiements) et ne doit pas être un retour arrière ; la clé
+   de production ne contourne donc pas la validation du workflow. Un retour arrière
+   reste manuel.
+5. **Canal public dédié, pas un filtre.** Le worker écrit un fichier `.public` à part
+   (messages de `ci-deploy.sh` et titres d'étapes de `deploy.sh`) que seule l'entrée
+   suit ; la sortie de `deploy.sh`, `backup.sh`, `git` et `docker` n'y va jamais. Le
    journal complet reste sur le serveur (`~/ci-deploy-logs/`, mode 600, 30 jours).
+   Un filtre sur un flux mélangé a été écarté : il publiait des lignes `OK` de
+   `deploy.sh` qui citent chemins de secrets et noms d'intégrations, et une ligne de
+   journal de conteneur pouvait imiter une ligne d'étape.
 6. **Jamais annulé en cours** : un groupe `concurrency` par environnement, sans
    `cancel-in-progress` (un groupe commun laisserait un push sur `main` annuler
    un déploiement de production en attente) ; le verrou de `ci-deploy.sh` garde
@@ -61,6 +72,14 @@ Faits qui pèsent sur la décision :
    tête de `main` est écartée : on ne recule jamais le staging.
 7. Le déploiement automatique n'accepte que le même dépôt, un `push`, la branche
    `main` et une CI réussie (un fork ne déclenche rien avec les secrets).
+   `workflow_dispatch` exécute le fichier de la branche choisie : la barrière est la
+   règle « Deployment branches : main » des environnements GitHub.
+8. **Prérequis : `main` est protégée** (ruleset : PR relue, status checks requis,
+   pas de force-push, pas de contournement ; CODEOWNERS sur `.github/`, `infra/`,
+   `**/Dockerfile*` et `docs/governance/`, décision du propriétaire). Avec le
+   déploiement continu, écrire sur `main` revient à exécuter du code sur le serveur
+   partagé (Docker y est un accès administrateur de l'hôte), et la CI étant définie
+   par le commit poussé, « CI verte » n'est pas une frontière de confiance.
 
 ## Conséquences positives
 
@@ -69,9 +88,11 @@ Faits qui pèsent sur la décision :
 - La production reste une décision humaine, tracée (qui, quand, quel commit), sur
   un commit déjà validé en staging, avec sauvegarde et étiquettes de retour arrière
   faites à chaque fois.
-- La clé de la CI ne vaut presque rien si elle fuit : un seul script, un seul
-  environnement, aucun shell. La couper est immédiat (retirer une ligne ou mettre
-  la variable à `false`).
+- Une clé de la CI **seule** qui fuit ne vaut presque rien : un seul script, un seul
+  environnement, aucun shell, et pour la production un commit déjà validé en staging.
+  La couper est immédiat (retirer une ligne ou mettre la variable à `false`). En
+  revanche **l'écriture sur `main` vaut accès au serveur** : c'est pourquoi la
+  protection de `main` est un prérequis.
 - Aucun nouveau logiciel sur le serveur : `ssh`, `git`, `flock`, `docker` existent
   déjà ; le déploiement manuel reste utilisable en repli.
 
@@ -84,8 +105,18 @@ Faits qui pèsent sur la décision :
   checkout n'est pas remis sur `origin/main` : c'est voulu (on n'écrase pas un
   travail manuel), mais il faut le savoir.
 - **Le staging est déployé sans sauvegarde préalable** par ce chemin.
-- **Journaux publics** : le filtre réduit le risque sans le supprimer (un message
-  `ECHEC` de `deploy.sh` peut citer une URL ou un nom de variable).
+- **Journaux publics** : le canal dédié supprime le risque de fuite par la sortie de
+  `deploy.sh`, mais suppose que les titres d'étapes de `deploy.sh` restent des chaînes
+  fixes.
+- **Risque résiduel : approbation formelle.** Si le propriétaire est seul relecteur de
+  l'environnement `production` avec « Prevent self-review » désactivé, il approuve
+  ses propres exécutions ; la protection de `main` (PR obligatoire, contrôles
+  requis, ni force-push ni contournement) est alors la vraie barrière. Tant que le
+  propriétaire est seul, aucune seconde personne ne relit ce qui part en production :
+  la relecture obligatoire des PR ne s'active qu'avec un second mainteneur.
+- **Retour arrière uniquement manuel** : la CI le refuse (version de la production
+  lue dans son journal des déploiements).
+- **Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.**
 - **Dépendance à GitHub** (disponibilité, registre des déploiements) pour le
   chemin automatique ; le chemin manuel par SSH reste disponible.
 - Le serveur fait son `git fetch` en HTTPS sans identifiant : il suppose un dépôt

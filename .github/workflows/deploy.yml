@@ -12,12 +12,18 @@ name: Déploiement
 #
 # Le workflow ne fait que se connecter en SSH avec une clé dont le seul pouvoir
 # est de lancer infra/scripts/ci-deploy.sh (commande imposée côté serveur). Le
-# dépôt est PUBLIC : les journaux de ce workflow sont lisibles par tous. Aucune
-# sortie du serveur n'y arrive sans filtre, et aucun secret n'est interpolé dans
-# un script `run:` (toutes les entrées passent par `env:`).
+# dépôt est PUBLIC : les journaux de ce workflow sont lisibles par tous. Le
+# serveur n'y envoie qu'un canal public dédié (messages de ci-deploy.sh et titres
+# d'étapes de deploy.sh), jamais la sortie brute de deploy.sh, et aucun secret
+# n'est interpolé dans un script `run:` (toutes les entrées passent par `env:`).
 #
-# `workflow_run` et `workflow_dispatch` ne lisent que le fichier de la branche
-# par défaut : ce workflow n'agit qu'après sa fusion dans `main`.
+# `workflow_run` lit le fichier de la branche par défaut : le déploiement
+# automatique n'agit qu'après la fusion de ce fichier dans `main`.
+# `workflow_dispatch`, lui, exécute le fichier de la branche choisie (« Use
+# workflow from » ou `--ref`) : le contrôle `REF == refs/heads/main` ci-dessous
+# n'est qu'un confort. La vraie barrière est la règle « Deployment branches :
+# main » des environnements GitHub `staging` et `production`, qui refuse le job
+# (et donc l'accès aux secrets) pour toute autre branche.
 
 on:
   workflow_run:
@@ -187,7 +193,10 @@ jobs:
     name: Déployer
     needs: cible
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 90 min = attente du verrou CI (20 min au plus) + attente d'un deploy.sh
+    # manuel (20 min au plus) + déploiement lui-même (construction des images,
+    # migrations, tests de fumée : une trentaine de minutes au plus) + marge.
+    timeout-minutes: 90
     # Même garde que `cible` (défense en profondeur), et rien à faire si la cible
     # a été écartée.
     if: >-
@@ -229,11 +238,18 @@ jobs:
           set -euo pipefail
           umask 077
           install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
-          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/deploy_known_hosts"
+          # La clé a été générée sur un poste Windows : on retire les CR (fins de
+          # ligne CRLF) en l'écrivant, comme pour known_hosts.
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" | tr -d '\r' > "$HOME/.ssh/deploy_known_hosts"
           chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/deploy_known_hosts"
+          # Valide la clé sans rien afficher d'elle.
+          if ! ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null 2>&1; then
+            echo "::error::Clé privée invalide (DEPLOY_SSH_KEY n'est pas une clé privée SSH lisible)."
+            exit 1
+          fi
           # Le serveur n'exécute que ci-deploy.sh (commande imposée par la clé) et
-          # ne renvoie que les lignes d'étape : le journal complet reste sur lui.
+          # ne renvoie que son canal public : le journal complet reste sur lui.
           ssh -i "$HOME/.ssh/deploy_key" \
             -p "$DEPLOY_PORT" \
             -o BatchMode=yes \
@@ -296,5 +312,5 @@ jobs:
             fi
             echo "| Résultat | \`$RESULT\` |"
             echo
-            echo "Le journal complet est sur le serveur, dans \`~/ci-deploy-logs/\` (ici, seules les lignes d'étape sont reprises)."
+            echo "Le journal complet est sur le serveur, dans \`~/ci-deploy-logs/\` (ici, seul le canal public est repris)."
           } >> "$GITHUB_STEP_SUMMARY"
