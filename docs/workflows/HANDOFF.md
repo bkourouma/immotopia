@@ -47,6 +47,28 @@ Pièges et décisions :
 - …
 ```
 
+## Branche `fix/syndic-ag-enregistrements-orphelins` — 2026-10-16
+
+**État :** prêt à relire — PR empilée sur `feat/syndic-ag-visio` (PR 144) ; à recibler sur `main` une fois la 144 fusionnée.
+**Dernier commit :** voir `git log` de la branche (nettoyage des enregistrements d'AG en cascade).
+**Worktree :** `.claude/worktrees/sweet-kilby-b1ed43`, `node_modules` = trois JONCTIONS vers ceux du worktree `suspicious-cartwright-fc4a4c` (le seul dont le client Prisma connaît `GMRecording`) : les retirer avec `rmdir` AVANT tout `git worktree remove`.
+
+Fait :
+
+- `lib/syndics/meeting-recording-cleanup.ts` : `collectRecordingsForCascade` (dans la transaction : AG du périmètre filtrées par agence, verrou `ag-rec:` par AG, 409 si `RECORDING`/`PROCESSING`) et `purgeCascadedRecordings` (après commit : fichier privé, objet S3, audit `SYNDIC_MEETING_RECORDING_DELETED` avec `cause` ; ne lève jamais, journaux sans chemin ni clé).
+- Branché dans `deleteEmptySyndicateByTenant` (acteur transmis par le contrôleur). `resolveRecordingPath`, `unlinkIfPresent`, `lockRecordingTx` déplacés dans `meeting-recording-shared.ts`.
+- Spec 045 R12, `SECURITY.md` § 12 quater (limite « MP4 d'une AG supprimée » retirée), traductions en/ar à la main.
+
+Reste à faire :
+
+- Lire la CI de la PR et la recibler sur `main` après la fusion de la 144.
+- Le jour où une suppression d'AG ou une purge d'agence (R10) est créée : l'appeler avec `{ kind: 'MEETING' }` ou `{ kind: 'TENANT' }`.
+
+Pièges et décisions :
+
+- Il n'existe aujourd'hui ni route de suppression d'AG ni purge d'agence ; la suppression de copropriété refuse déjà dès qu'une AG existe : le branchement est défensif (comptage hors transaction).
+- `prisma/seed.ts` et une suppression SQL manuelle d'agence contournent ce code et laissent les MP4.
+
 ## Branche `feat/syndic-ag-visio` — 2026-10-16
 
 **État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/144 (base `main`), CI à lire ; la fusion reste à l'utilisateur.

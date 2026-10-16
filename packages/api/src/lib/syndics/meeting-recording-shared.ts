@@ -1,10 +1,14 @@
-import { prisma } from '../../utils/database';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { prisma, type PrismaTransactionClient } from '../../utils/database';
+import { env } from '../../config/env';
 import { t } from '../../i18n';
+import { getUploadsRoot } from '../../utils/project-root';
 
 /**
  * Types, lecture et vue des enregistrements d'AG (spec 045) partages par
  * `meeting-recording.ts` (gestionnaire) et `meeting-recording-ingest.ts` (fin
- * d'egress, rapatriement, reprise). Aucune ecriture ici.
+ * d'egress, rapatriement, reprise). Aucune ecriture en base ici.
  */
 
 export type MeetingRecordingStatus = 'RECORDING' | 'PROCESSING' | 'AVAILABLE' | 'FAILED' | 'DELETED';
@@ -96,6 +100,40 @@ export function nameOf(error: unknown): string {
 /** Dossier prive des enregistrements d'une AG, relatif a la racine des fichiers deposes. */
 export function recordingFolder(syndicateId: string, meetingId: string): string[] {
   return ['syndics', syndicateId, 'assemblees', meetingId, 'enregistrements'];
+}
+
+/**
+ * Chemin disque du fichier, verifie : sous la racine des fichiers deposes, dans le
+ * dossier attendu de CETTE AG, nomme d'apres l'enregistrement. `null` sinon.
+ */
+export function resolveRecordingPath(
+  row: Pick<RecordingRow, 'id' | 'meetingId' | 'fileUrl'>,
+  syndicateId: string
+): string | null {
+  const prefix = '/uploads/';
+  if (!row.fileUrl?.startsWith(prefix) || row.fileUrl.includes('\0')) return null;
+  const root = path.resolve(getUploadsRoot(env.UPLOADS_DIR));
+  const folder = path.resolve(root, ...recordingFolder(syndicateId, row.meetingId));
+  const absolute = path.resolve(root, row.fileUrl.slice(prefix.length));
+  if (path.dirname(absolute) !== folder || path.basename(absolute) !== `${row.id}.mp4`) return null;
+  return absolute;
+}
+
+/** Efface un fichier ; seul « deja absent » est toléré (toute autre erreur laisse la ligne inchangée). */
+export async function unlinkIfPresent(absolutePath: string): Promise<void> {
+  try {
+    await fs.unlink(absolutePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+}
+
+/**
+ * Verrou consultatif PROPRE a l'enregistrement : le verrou de vote de l'AG
+ * (`lockMeetingTx`) ne doit pas rester tenu pendant des appels reseau LiveKit.
+ */
+export async function lockRecordingTx(tx: PrismaTransactionClient, meetingId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ag-rec:${meetingId}`}))`;
 }
 
 async function loadNames(userIds: Array<string | null>): Promise<Map<string, string>> {

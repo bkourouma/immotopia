@@ -69,6 +69,16 @@ jest.mock('../../src/lib/documents/branding-storage', () => ({
 const mockBrandingStorage = jest.requireMock('../../src/lib/documents/branding-storage') as {
   deleteBrandingImage: jest.Mock;
 };
+// Spec 045 (R12) : releve et purge des enregistrements d'AG, testes dans
+// meeting-recording-cleanup.test.ts ; ici, seulement leur branchement.
+jest.mock('../../src/lib/syndics/meeting-recording-cleanup', () => ({
+  collectRecordingsForCascade: jest.fn(async () => []),
+  purgeCascadedRecordings: jest.fn(async () => undefined)
+}));
+const mockRecordingCleanup = jest.requireMock('../../src/lib/syndics/meeting-recording-cleanup') as {
+  collectRecordingsForCascade: jest.Mock;
+  purgeCascadedRecordings: jest.Mock;
+};
 const mockLotRegistry = jest.requireMock('../../src/services/lot-registry-service') as {
   syncLotActivationsTx: jest.Mock;
   assertCapacityTx: jest.Mock;
@@ -85,6 +95,7 @@ import {
   importLotsFromPropertiesBySyndicate,
   listSyndicatesByTenant
 } from '../../src/lib/syndics/queries';
+import { ConflictError } from '../../src/middleware/error-middleware';
 
 // Typage volontairement large (`any`) au-dela des champs deja types : ce mock
 // gagne un modele a chaque ecart couvert, et dupliquer son type ici a chaque
@@ -529,6 +540,46 @@ describe('Suppression d une copropriete vide uniquement (ecart recette #8)', () 
       'tenant-a',
       'branding/tenant-a/syndicates/syn-1/logo-abc.png'
     );
+  });
+
+  it('releve les enregistrements d AG dans la transaction AVANT la suppression, et les purge APRES', async () => {
+    const recordings = [{ id: 'rec-1', tenantId: 'tenant-a', meetingId: 'm-1', syndicateId: 'syn-1' }];
+    mockRecordingCleanup.collectRecordingsForCascade.mockResolvedValueOnce(recordings);
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.syndicate.delete.mockResolvedValueOnce({ id: 'syn-1' });
+
+    await deleteEmptySyndicateByTenant('tenant-a', 'syn-1', 'user-1');
+
+    expect(mockRecordingCleanup.collectRecordingsForCascade).toHaveBeenCalledWith(expect.anything(), 'tenant-a', {
+      kind: 'SYNDICATE',
+      syndicateId: 'syn-1'
+    });
+    expect(mockRecordingCleanup.purgeCascadedRecordings).toHaveBeenCalledWith(
+      recordings,
+      'user-1',
+      'SYNDICATE_DELETED'
+    );
+    const order = (mock: jest.Mock) => mock.mock.invocationCallOrder[0];
+    expect(order(mockRecordingCleanup.collectRecordingsForCascade)).toBeLessThan(order(mockPrisma.syndicate.delete));
+    expect(order(mockPrisma.syndicate.delete)).toBeLessThan(order(mockRecordingCleanup.purgeCascadedRecordings));
+    expect(order(mockRecordingCleanup.purgeCascadedRecordings)).toBeLessThan(
+      order(mockBrandingStorage.deleteBrandingImage)
+    );
+  });
+
+  it('refuse (409) sans rien supprimer ni purger si un enregistrement d AG est en cours', async () => {
+    mockRecordingCleanup.collectRecordingsForCascade.mockRejectedValueOnce(
+      new ConflictError('Enregistrement en cours')
+    );
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1', logoPath: 'branding/x.png' });
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1', 'user-1')).rejects.toMatchObject({
+      statusCode: 409
+    });
+
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+    expect(mockRecordingCleanup.purgeCascadedRecordings).not.toHaveBeenCalled();
+    expect(mockBrandingStorage.deleteBrandingImage).not.toHaveBeenCalled();
   });
 });
 
