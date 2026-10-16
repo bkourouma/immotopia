@@ -307,6 +307,14 @@ export const meetingLiveActionRateLimiter = rateLimit({
  * Sized well above normal single-user traffic; the per-endpoint limiters above
  * remain the tight ones on sensitive routes.
  */
+/**
+ * Le webhook LiveKit (spec 045) a son propre limiteur (`livekitWebhookRateLimiter`) : le plancher
+ * global (1000/15 min par IP) couperait des evenements legitimes d'un meme serveur LiveKit.
+ */
+export function isLivekitWebhookPath(path: string): boolean {
+  return path === '/api/webhooks/livekit' || path.startsWith('/api/webhooks/livekit/');
+}
+
 export const globalApiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
@@ -320,7 +328,10 @@ export const globalApiRateLimiter = rateLimit({
   // L'AG en direct (spec 043) interroge toutes les 3 s depuis une IP souvent partagee : elle a ses
   // propres limiteurs (600/min par IP, 60/min par jeton), le plancher global la couperait trop tot.
   skip: req =>
-    req.path === '/health' || req.path.startsWith('/uploads/') || req.path.startsWith('/api/public/assemblees/')
+    req.path === '/health' ||
+    req.path.startsWith('/uploads/') ||
+    req.path.startsWith('/api/public/assemblees/') ||
+    isLivekitWebhookPath(req.path)
 });
 
 /**

@@ -12,7 +12,7 @@
 const nodeOs = require('os');
 const nodePath = require('path');
 const nodeFs = require('fs');
-const UPLOADS_ROOT: string = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), 'immotopia-ag-rec-'));
+const UPLOADS_ROOT: string = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), '.immotopia-ag-rec-'));
 process.env.UPLOADS_DIR = UPLOADS_ROOT;
 
 import express from 'express';
@@ -104,6 +104,8 @@ import livekitWebhookRoutes from '../../src/routes/livekit-webhook-routes';
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { uploadsAccessGuard } from '../../src/middleware/uploads-access-middleware';
 import { errorHandler } from '../../src/middleware/error-middleware';
+import { RecordingTooLargeError } from '../../src/lib/syndics/meeting-recording-errors';
+import { invalidateActiveRecordingCache, repatriateRecording } from '../../src/lib/syndics/meeting-recording';
 
 const app = express();
 app.use('/api/webhooks/livekit', livekitWebhookRoutes);
@@ -250,6 +252,7 @@ function seedRecording(overrides: Record<string, unknown> = {}): any {
     ...overrides
   };
   mockPrisma.gMRecording.rows.push(row);
+  invalidateActiveRecordingCache();
   return row;
 }
 
@@ -290,7 +293,10 @@ const webhook = (body: unknown, auth: string | null = 'valid') => {
 const auditKeys = () => mockAudit.mock.calls.map(([entry]) => entry.actionKey);
 const rowOf = (recordingId: string): any => mockPrisma.gMRecording.rows.find((row: any) => row.id === recordingId);
 
-beforeEach(() => resetWorld());
+beforeEach(() => {
+  resetWorld();
+  invalidateActiveRecordingCache();
+});
 afterAll(() => nodeFs.rmSync(UPLOADS_ROOT, { recursive: true, force: true }));
 
 // ---------------------------------------------------------------------------
@@ -784,9 +790,291 @@ describe('vues', () => {
     const running = seedRecording({ id: id(981) });
     expect((await etat()).body.data.visio).toEqual({ enabled: true, recording: true });
     rowOf(running.id).status = 'PROCESSING';
+    invalidateActiveRecordingCache();
     expect((await etat()).body.data.visio.recording).toBe(false);
     rowOf(running.id).status = 'RECORDING';
+    invalidateActiveRecordingCache();
     mockLk.enabled = false;
     expect((await etat()).body.data.visio).toEqual({ enabled: false, recording: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Correctifs de recette, de revue et d'audit (phase 3)
+// ---------------------------------------------------------------------------
+
+describe('fichier : dossier caché, erreurs sans chemin disque', () => {
+  it('le stockage de test est sous un dossier caché (.claude/worktrees...) et le fichier se lit quand même', async () => {
+    expect(UPLOADS_ROOT.split(nodePath.sep).some(part => part.startsWith('.'))).toBe(true);
+    const rec = seedAvailable({ id: id(1000) });
+    const res = await request(app).get(url(M1, `/enregistrements/${rec.id}/fichier`));
+    expect(res.status).toBe(200);
+  });
+
+  it('fichier disparu entre le contrôle et l envoi : 404, jamais le chemin disque', async () => {
+    const rec = seedAvailable({ id: id(1001) });
+    nodeFs.unlinkSync(nodePath.join(UPLOADS_ROOT, rec.fileUrl.replace('/uploads/', '')));
+    const stat = jest.spyOn(nodeFs.promises, 'stat').mockResolvedValueOnce({ isFile: () => true } as any);
+    const res = await request(app).get(url(M1, `/enregistrements/${rec.id}/fichier`));
+    stat.mockRestore();
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain(UPLOADS_ROOT);
+    expect(JSON.stringify(res.body)).not.toContain('ENOENT');
+  });
+});
+
+describe('audit de la lecture (SYNDIC_MEETING_RECORDING_ACCESSED)', () => {
+  const accessed = () =>
+    mockAudit.mock.calls.map(([entry]) => entry).filter(e => e.actionKey === 'SYNDIC_MEETING_RECORDING_ACCESSED');
+
+  it('audité au début de la lecture (sans Range ou Range à 0), pas aux requêtes suivantes', async () => {
+    const rec = seedAvailable({ id: id(1010) });
+    const file = url(M1, `/enregistrements/${rec.id}/fichier`);
+    await request(app).get(file);
+    await request(app).get(file).set('Range', 'bytes=0-9');
+    await request(app).get(file).set('Range', 'bytes=0-');
+    expect(accessed()).toHaveLength(3);
+    await request(app).get(file).set('Range', 'bytes=10-19');
+    await request(app).get(file).set('Range', 'bytes=-5');
+    expect(accessed()).toHaveLength(3);
+    expect(accessed()[0]).toMatchObject({
+      tenantId: TENANT_A,
+      actorUserId: 'user-manager',
+      entityId: rec.id,
+      payload: { meetingId: M1, recordingId: rec.id, mode: 'STREAM' }
+    });
+  });
+
+  it('un téléchargement est toujours audité, même avec un Range qui ne commence pas à 0', async () => {
+    const rec = seedAvailable({ id: id(1011) });
+    await request(app)
+      .get(url(M1, `/enregistrements/${rec.id}/fichier?telecharger=1`))
+      .set('Range', 'bytes=10-19');
+    expect(accessed()).toHaveLength(1);
+    expect(accessed()[0].payload.mode).toBe('DOWNLOAD');
+  });
+
+  it('charge sans chemin ni clé de stockage ; aucun audit si le fichier n est pas servi (404)', async () => {
+    const rec = seedAvailable({ id: id(1012) });
+    await request(app).get(url(M1, `/enregistrements/${rec.id}/fichier`));
+    const raw = JSON.stringify(accessed());
+    for (const leak of [UPLOADS_ROOT, 'ag-enregistrements', '/uploads/', '.mp4']) expect(raw).not.toContain(leak);
+    mockAudit.mockClear();
+    const processing = seedRecording({ id: id(1013), status: 'PROCESSING' });
+    expect((await request(app).get(url(M1, `/enregistrements/${processing.id}/fichier`))).status).toBe(404);
+    expect(accessed()).toHaveLength(0);
+  });
+});
+
+describe('POST /enregistrements/:recordingId/reessayer', () => {
+  it('relance le rapatriement d un échec DOWNLOAD_FAILED : PROCESSING, puis AVAILABLE', async () => {
+    const failed = seedRecording({ id: id(1020), status: 'FAILED', failureReason: 'DOWNLOAD_FAILED' });
+    const res = await request(app)
+      .post(url(M1, `/enregistrements/${failed.id}/reessayer`))
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body.data).toMatchObject({ id: failed.id, status: 'PROCESSING', failureReason: null });
+    await flush();
+    expect(rowOf(failed.id)).toMatchObject({ status: 'AVAILABLE', failureReason: null });
+    expect(mockStorage.download).toHaveBeenCalledTimes(1);
+  });
+
+  it('un autre état ou un autre motif = 409 ; autre agence ou autre AG = 404 ; id invalide = 400', async () => {
+    const tooLarge = seedRecording({ id: id(1021), status: 'FAILED', failureReason: 'TOO_LARGE' });
+    const available = seedAvailable({ id: id(1022) });
+    const running = seedRecording({ id: id(1023) });
+    const foreign = seedRecording({
+      id: id(1024),
+      tenantId: TENANT_B,
+      status: 'FAILED',
+      failureReason: 'DOWNLOAD_FAILED'
+    });
+    const otherMeeting = seedRecording({
+      id: id(1025),
+      meetingId: M_PLANNED,
+      status: 'FAILED',
+      failureReason: 'DOWNLOAD_FAILED'
+    });
+    const retry = (recordingId: string) =>
+      request(app)
+        .post(url(M1, `/enregistrements/${recordingId}/reessayer`))
+        .send({});
+    for (const rec of [tooLarge, available, running]) expect((await retry(rec.id)).status).toBe(409);
+    for (const rec of [foreign, otherMeeting]) expect((await retry(rec.id)).status).toBe(404);
+    expect((await retry('pas-un-uuid')).status).toBe(400);
+    await flush();
+    expect(mockStorage.download).not.toHaveBeenCalled();
+  });
+});
+
+describe('reprise d un rapatriement interrompu', () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+  it('PROCESSING sans progrès depuis plus de 10 min : relancé à la lecture de la liste, une seule fois', async () => {
+    const stuck = seedRecording({ id: id(1030), status: 'PROCESSING', updatedAt: minutesAgo(11) });
+    const fresh = seedRecording({ id: id(1031), status: 'PROCESSING', updatedAt: minutesAgo(2) });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    mockStorage.download.mockImplementation(async (_key: string, destination: string) => {
+      await gate;
+      nodeFs.mkdirSync(nodePath.dirname(destination), { recursive: true });
+      nodeFs.writeFileSync(destination, FILE_BYTES);
+      return FILE_BYTES.length;
+    });
+    await request(app).get(url(M1, '/enregistrements'));
+    await request(app).get(url(M1, '/enregistrements'));
+    await flush();
+    release();
+    await flush();
+    expect(mockStorage.download).toHaveBeenCalledTimes(1);
+    expect(rowOf(stuck.id).status).toBe('AVAILABLE');
+    expect(rowOf(fresh.id).status).toBe('PROCESSING');
+  });
+
+  it('jamais deux rapatriements simultanés du même enregistrement dans le processus', async () => {
+    const rec = seedRecording({ id: id(1032), status: 'PROCESSING' });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>(resolve => (release = resolve));
+    mockStorage.download.mockImplementation(async (_key: string, destination: string) => {
+      await gate;
+      nodeFs.mkdirSync(nodePath.dirname(destination), { recursive: true });
+      nodeFs.writeFileSync(destination, FILE_BYTES);
+      return FILE_BYTES.length;
+    });
+    const first = repatriateRecording(TENANT_A, rec.id);
+    const second = repatriateRecording(TENANT_A, rec.id);
+    release();
+    await Promise.all([first, second]);
+    expect(mockStorage.download).toHaveBeenCalledTimes(1);
+  });
+
+  it('un .part résiduel est supprimé avant de recommencer', async () => {
+    const rec = seedRecording({ id: id(1033), status: 'PROCESSING' });
+    const folder = nodePath.join(UPLOADS_ROOT, 'syndics', S1, 'assemblees', M1, 'enregistrements');
+    nodeFs.mkdirSync(folder, { recursive: true });
+    const part = nodePath.join(folder, `${rec.id}.mp4.part`);
+    nodeFs.writeFileSync(part, 'reste');
+    mockStorage.download.mockImplementation(async () => {
+      expect(nodeFs.existsSync(part)).toBe(false);
+      throw new Error('S3 down');
+    });
+    await repatriateRecording(TENANT_A, rec.id);
+    expect(rowOf(rec.id).status).toBe('FAILED');
+  });
+
+  it('une erreur à la lecture de la ligne est capturée (la fonction ne lève jamais)', async () => {
+    const original = mockPrisma.gMRecording.findFirst;
+    mockPrisma.gMRecording.findFirst = (async () => {
+      throw new Error('db down');
+    }) as any;
+    await expect(repatriateRecording(TENANT_A, id(1034))).resolves.toBeUndefined();
+    mockPrisma.gMRecording.findFirst = original;
+  });
+
+  it('objet trop gros : FAILED / TOO_LARGE (texte traduit), objet S3 conservé', async () => {
+    const rec = seedRecording({ id: id(1035), status: 'PROCESSING' });
+    mockStorage.download.mockRejectedValueOnce(new RecordingTooLargeError());
+    await repatriateRecording(TENANT_A, rec.id);
+    expect(rowOf(rec.id)).toMatchObject({ status: 'FAILED', failureReason: 'TOO_LARGE' });
+    expect(mockStorage.remove).not.toHaveBeenCalled();
+    const list = await request(app).get(url(M1, '/enregistrements'));
+    expect(list.body.data[0].failureReason).toBe(
+      'Le fichier dépasse la taille maximale : il est conservé sur le stockage de la visio'
+    );
+  });
+});
+
+describe('suppression : seul ENOENT est toléré', () => {
+  it('fichier déjà absent : suppression normale', async () => {
+    const rec = seedAvailable({ id: id(1040) });
+    nodeFs.unlinkSync(nodePath.join(UPLOADS_ROOT, rec.fileUrl.replace('/uploads/', '')));
+    expect((await request(app).delete(url(M1, `/enregistrements/${rec.id}`))).status).toBe(200);
+    expect(rowOf(rec.id).status).toBe('DELETED');
+  });
+
+  it('autre erreur d effacement : erreur, ligne inchangée, objet S3 non touché', async () => {
+    const rec = seedAvailable({ id: id(1041) });
+    const unlink = jest
+      .spyOn(nodeFs.promises, 'unlink')
+      .mockRejectedValueOnce(Object.assign(new Error('permission'), { code: 'EACCES' }));
+    const res = await request(app).delete(url(M1, `/enregistrements/${rec.id}`));
+    unlink.mockRestore();
+    expect(res.status).toBe(500);
+    expect(rowOf(rec.id)).toMatchObject({ status: 'AVAILABLE', fileUrl: rec.fileUrl });
+    expect(mockStorage.remove).not.toHaveBeenCalled();
+    expect(mockAudit.mock.calls.some(([entry]) => entry.actionKey === 'SYNDIC_MEETING_RECORDING_DELETED')).toBe(false);
+  });
+});
+
+describe('arrêt idempotent', () => {
+  it('un second arrêt rend la vue sans arrêter l egress, réécrire ni auditer', async () => {
+    const running = seedRecording({ id: id(1050) });
+    const first = await request(app).post(url(M1, '/visio/enregistrement/arreter')).send({});
+    const stoppedAt = rowOf(running.id).stoppedAt;
+    const second = await request(app).post(url(M1, '/visio/enregistrement/arreter')).send({});
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.body.data.stoppedAt).toBe(first.body.data.stoppedAt);
+    expect(rowOf(running.id).stoppedAt).toBe(stoppedAt);
+    expect(mockLk.stopEgress).toHaveBeenCalledTimes(1);
+    expect(auditKeys().filter(key => key === 'SYNDIC_MEETING_RECORDING_STOPPED')).toHaveLength(1);
+  });
+});
+
+describe('démarrage : verrou dédié, AG close pendant l appel LiveKit, audits après validation', () => {
+  it('le verrou consultatif est celui de l enregistrement (jamais celui du vote de l AG)', async () => {
+    const res = await request(app).post(url(M1, '/visio/enregistrement/demarrer')).send({});
+    expect(res.status).toBe(200);
+    const lockValues = mockPrisma.$executeRaw.mock.calls.map(([, ...values]: any[]) => values[0]);
+    expect(lockValues).toContain(`ag-rec:${M1}`);
+    expect(lockValues).not.toContain(M1);
+  });
+
+  it('AG close pendant le démarrage de l egress : 409, l egress est arrêté, aucune ligne', async () => {
+    mockLk.startMeetingRecording.mockImplementation(async () => {
+      mockPrisma.generalMeeting.rows.find((row: any) => row.id === M1)!.status = 'COMPLETED';
+      return 'EG_TARDIF';
+    });
+    const res = await request(app).post(url(M1, '/visio/enregistrement/demarrer')).send({});
+    expect(res.status).toBe(409);
+    expect(mockLk.stopEgress).toHaveBeenCalledWith('EG_TARDIF');
+    expect(mockPrisma.gMRecording.rows).toHaveLength(0);
+  });
+
+  it('l audit « échec » de la réconciliation n est émis qu après validation (rien si la transaction échoue)', async () => {
+    seedRecording({ id: id(1060) });
+    mockLk.getEgressStatus.mockResolvedValue(null);
+    const create = jest.spyOn(mockPrisma.gMRecording, 'create').mockRejectedValueOnce(new Error('insert failed'));
+    const failed = await request(app).post(url(M1, '/visio/enregistrement/demarrer')).send({});
+    create.mockRestore();
+    expect(failed.status).toBe(500);
+    expect(auditKeys()).not.toContain('SYNDIC_MEETING_RECORDING_AVAILABLE');
+  });
+});
+
+describe('cache de 3 s de « enregistrement en cours » (page publique)', () => {
+  it('deux lectures rapprochées ne comptent qu une fois', async () => {
+    const link = await request(app)
+      .post(url(M1, `/participants/${AWA}/lien`))
+      .send({});
+    const token = String(link.body.data.url).split('#')[1];
+    const count = mockPrisma.gMRecording.count;
+    count.mockClear();
+    await request(app).post('/api/public/assemblees/etat').send({ token });
+    await request(app).post('/api/public/assemblees/etat').send({ token });
+    await request(app).post('/api/public/assemblees/etat').send({ token });
+    expect(count).toHaveBeenCalledTimes(1);
+  });
+
+  it('démarrer un enregistrement invalide le cache aussitôt', async () => {
+    const link = await request(app)
+      .post(url(M1, `/participants/${AWA}/lien`))
+      .send({});
+    const token = String(link.body.data.url).split('#')[1];
+    const etat = () => request(app).post('/api/public/assemblees/etat').send({ token });
+    expect((await etat()).body.data.visio.recording).toBe(false);
+    await request(app).post(url(M1, '/visio/enregistrement/demarrer')).send({});
+    expect((await etat()).body.data.visio.recording).toBe(true);
   });
 });

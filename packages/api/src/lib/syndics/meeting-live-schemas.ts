@@ -48,5 +48,5 @@ export const publicVoteSchema = z.object({
 export const publicHandSchema = publicTokenSchema.extend({ raised: z.boolean() });
 
 /** Corps des routes de visio du gestionnaire (spec 045). */
-export const visioSpeakSchema = z.object({ allowed: z.boolean() });
-export const visioRemoveSchema = z.object({ revokeLinks: z.boolean().optional() });
+export const visioSpeakSchema = z.object({ allowed: z.boolean() }).strict();
+export const visioRemoveSchema = z.object({ revokeLinks: z.boolean().optional() }).strict();

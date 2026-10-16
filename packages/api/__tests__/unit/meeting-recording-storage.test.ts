@@ -7,13 +7,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
 
-const mockEnv: Record<string, string | undefined> = {
+const mockEnv: Record<string, string | number | undefined> = {
   LIVEKIT_RECORDING_S3_BUCKET: 'bucket-ag',
   LIVEKIT_RECORDING_S3_REGION: 'us-east-1',
   LIVEKIT_RECORDING_S3_ENDPOINT: 'http://minio.test:9000',
   LIVEKIT_RECORDING_S3_ACCESS_KEY: 'AKIATEST',
   LIVEKIT_RECORDING_S3_SECRET: 'secret-s3-ne-doit-jamais-fuiter',
-  LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: '1'
+  LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: '1',
+  LIVEKIT_RECORDING_MAX_BYTES: 1000
 };
 jest.mock('../../src/config/env', () => ({ env: mockEnv }));
 
@@ -32,6 +33,7 @@ jest.mock('@aws-sdk/client-s3', () => ({
   }
 }));
 
+import { RecordingTooLargeError } from '../../src/lib/syndics/meeting-recording-errors';
 import {
   _resetRecordingStorageForTests,
   deleteRecordingObject,
@@ -94,6 +96,23 @@ describe('downloadRecordingObject', () => {
     mockSend.mockResolvedValueOnce({ Body: Readable.from([]) });
     await expect(downloadRecordingObject('k', destination)).rejects.toThrow();
     expect(await fs.readdir(dir)).toEqual([]);
+  });
+});
+
+describe('plafond de taille', () => {
+  it("taille annoncée par S3 au-dessus du plafond : refusée AVANT de télécharger, flux fermé, rien n'est écrit", async () => {
+    const body = Readable.from([Buffer.alloc(10)]);
+    mockSend.mockResolvedValue({ Body: body, ContentLength: 1001 });
+    const destination = path.join(dir, 'rec.mp4');
+    await expect(downloadRecordingObject('k', destination)).rejects.toBeInstanceOf(RecordingTooLargeError);
+    expect(body.destroyed).toBe(true);
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it('exactement au plafond : accepté', async () => {
+    mockSend.mockResolvedValue({ Body: Readable.from([Buffer.alloc(1000, 1)]), ContentLength: 1000 });
+    const destination = path.join(dir, 'rec.mp4');
+    await expect(downloadRecordingObject('k', destination)).resolves.toBe(1000);
   });
 });
 

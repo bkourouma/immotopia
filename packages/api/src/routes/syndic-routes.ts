@@ -27,6 +27,7 @@ import {
 import {
   deleteRecordingHandler,
   listRecordingsHandler,
+  retryRecordingHandler,
   startRecordingHandler,
   stopRecordingHandler,
   streamRecordingHandler
@@ -528,6 +529,11 @@ router.get(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier',
   requireAnyPropertyPermission(['SYNDIC_VIEW']),
   streamRecordingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  retryRecordingHandler
 );
 router.delete(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId',

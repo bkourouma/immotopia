@@ -180,7 +180,8 @@ describe('catalogue d’audit', () => {
       'SYNDIC_MEETING_RECORDING_STARTED',
       'SYNDIC_MEETING_RECORDING_STOPPED',
       'SYNDIC_MEETING_RECORDING_AVAILABLE',
-      'SYNDIC_MEETING_RECORDING_DELETED'
+      'SYNDIC_MEETING_RECORDING_DELETED',
+      'SYNDIC_MEETING_RECORDING_ACCESSED'
     ];
     const fromCatalog = Object.fromEntries(
       Object.entries(AUDIT_CATALOG)

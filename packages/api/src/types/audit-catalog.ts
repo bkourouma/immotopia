@@ -151,6 +151,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_MEETING_RECORDING_STOPPED]: tenant('DATA'),
   [AuditActionKey.SYNDIC_MEETING_RECORDING_AVAILABLE]: tenant('DATA'),
   [AuditActionKey.SYNDIC_MEETING_RECORDING_DELETED]: tenant('SECURITY', { critical: true }),
+  [AuditActionKey.SYNDIC_MEETING_RECORDING_ACCESSED]: tenant('SECURITY'),
   [AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT]: tenant('DATA'),
 
   // Patrimoine : rapport propriétaire, sinistres, régularisation foncière.

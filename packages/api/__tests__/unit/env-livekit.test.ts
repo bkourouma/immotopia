@@ -173,7 +173,7 @@ describe('LIVEKIT_RECORDING_S3_* (spec 045, R3)', () => {
     const r = loadRecording({
       ...VISIO,
       ...S3,
-      LIVEKIT_RECORDING_S3_ENDPOINT: 'http://localhost:9000',
+      LIVEKIT_RECORDING_S3_ENDPOINT: 'https://localhost:9000',
       LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: '1'
     });
     expect(r.exited).toBe(false);
@@ -204,5 +204,53 @@ describe('LIVEKIT_RECORDING_S3_* (spec 045, R3)', () => {
   it('refuse un endpoint qui n est pas http(s) et un FORCE_PATH_STYLE hors 0/1', () => {
     expect(loadRecording({ ...VISIO, ...S3, LIVEKIT_RECORDING_S3_ENDPOINT: 'ftp://x' }).exited).toBe(true);
     expect(loadRecording({ ...VISIO, ...S3, LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: 'oui' }).exited).toBe(true);
+  });
+});
+
+describe('LIVEKIT_RECORDING_* : durcissements (phase 3)', () => {
+  const BASE = {
+    LIVEKIT_URL: 'wss://x.livekit.cloud',
+    LIVEKIT_API_KEY: 'k',
+    LIVEKIT_API_SECRET: SECRET,
+    LIVEKIT_RECORDING_S3_BUCKET: 'bucket-ag',
+    LIVEKIT_RECORDING_S3_ACCESS_KEY: 'AK',
+    LIVEKIT_RECORDING_S3_SECRET: 's3'
+  };
+
+  it('endpoint http:// refusé hors development et test, https:// accepté', () => {
+    const insecure = { ...BASE, LIVEKIT_RECORDING_S3_ENDPOINT: 'http://minio.example.com:9000' };
+    for (const nodeEnv of ['production', undefined]) {
+      const r = loadWith({ ...insecure, NODE_ENV: nodeEnv });
+      expect(r.exited).toBe(true);
+      expect(r.errors).toContain('https://');
+    }
+    expect(loadWith({ ...insecure, NODE_ENV: 'development' }).exited).toBe(false);
+    expect(loadWith({ ...insecure, NODE_ENV: 'test' }).exited).toBe(false);
+    expect(
+      loadWith({ ...BASE, NODE_ENV: 'production', LIVEKIT_RECORDING_S3_ENDPOINT: 'https://s3.example.com' }).exited
+    ).toBe(false);
+  });
+
+  it.each(['/ag-enregistrements/', '../hors', 'ag/../hors/', 'a\\b/'])('préfixe %s refusé', prefix => {
+    const r = loadWith({ ...BASE, NODE_ENV: 'production', LIVEKIT_RECORDING_S3_PREFIX: prefix });
+    expect(r.exited).toBe(true);
+    expect(r.errors).toContain('relatif');
+  });
+
+  it('préfixe relatif accepté', () => {
+    const r = loadWith({ ...BASE, NODE_ENV: 'production', LIVEKIT_RECORDING_S3_PREFIX: 'prod/ag-enregistrements/' });
+    expect(r.exited).toBe(false);
+    expect(r.env?.LIVEKIT_RECORDING_S3_PREFIX).toBe('prod/ag-enregistrements/');
+  });
+
+  it('LIVEKIT_RECORDING_MAX_BYTES : 8 Gio par défaut, entier positif seulement', () => {
+    expect(loadWith({ ...BASE, NODE_ENV: 'production' }).env?.LIVEKIT_RECORDING_MAX_BYTES).toBe(8 * 1024 ** 3);
+    expect(
+      loadWith({ ...BASE, NODE_ENV: 'production', LIVEKIT_RECORDING_MAX_BYTES: '1048576' }).env
+        ?.LIVEKIT_RECORDING_MAX_BYTES
+    ).toBe(1048576);
+    for (const bad of ['0', '-5', 'beaucoup', '1.5']) {
+      expect(loadWith({ ...BASE, NODE_ENV: 'production', LIVEKIT_RECORDING_MAX_BYTES: bad }).exited).toBe(true);
+    }
   });
 });

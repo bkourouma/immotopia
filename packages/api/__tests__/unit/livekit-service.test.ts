@@ -200,7 +200,7 @@ describe('salles et modération', () => {
     mockRoom.deleteRoom.mockRejectedValueOnce(notFound());
     await expect(livekit.removeParticipant('r', 'p')).resolves.toBeUndefined();
     await expect(livekit.deleteRoom('r')).resolves.toBeUndefined();
-    expect(mockRoom.removeParticipant).toHaveBeenCalledWith('r', 'p');
+    expect(mockRoom.removeParticipant).toHaveBeenCalledWith('r', 'p', undefined);
     expect(mockRoom.deleteRoom).toHaveBeenCalledWith('r');
   });
 
@@ -319,5 +319,33 @@ describe('webhook LiveKit : signature réelle', () => {
     await expect(livekit.verifyWebhook(body + ' ', await sign(body))).rejects.toBeDefined();
     const jwt = await sign(body);
     await expect(livekit.verifyWebhook(body, jwt.slice(0, -4) + 'AAAA')).rejects.toBeDefined();
+  });
+});
+
+describe('correctifs de revue (phase 3)', () => {
+  it('removeParticipant avec révocation : revokeTokenTs = secondes actuelles (jetons antérieurs invalidés)', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    await livekit.removeParticipant('r', 'p', { revokeTokens: true });
+    const options = mockRoom.removeParticipant.mock.calls[0][2];
+    expect(typeof options.revokeTokenTs).toBe('bigint');
+    expect(Number(options.revokeTokenTs)).toBeGreaterThanOrEqual(before);
+    expect(Number(options.revokeTokenTs)).toBeLessThanOrEqual(before + 5);
+  });
+
+  it("main levée et parole : un participant parti entre la lecture et l'écriture rend false (pas un 503)", async () => {
+    mockRoom.updateParticipant.mockRejectedValueOnce(notFound());
+    await expect(livekit.setHandRaised('r', 'p', true)).resolves.toBe(false);
+    mockRoom.updateParticipant.mockRejectedValueOnce(notFound());
+    await expect(livekit.setCanSpeak('r', 'p', true)).resolves.toBe(false);
+    await expect(livekit.setHandRaised('r', 'p', true)).resolves.toBe(true);
+    await expect(livekit.setCanSpeak('r', 'p', false)).resolves.toBe(true);
+    mockRoom.updateParticipant.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+    await expect(livekit.setHandRaised('r', 'p', true)).rejects.toBeInstanceOf(livekit.VisioUnavailableError);
+  });
+
+  it('Egress : pas de manifeste <egressId>.json à côté du MP4', async () => {
+    mockEgress.startRoomCompositeEgress.mockResolvedValue({ egressId: 'EG_2' });
+    await livekit.startMeetingRecording('room-1', 'ag-enregistrements/t1/m1/r1.mp4');
+    expect(mockEgress.startRoomCompositeEgress.mock.calls[0][1].file.disableManifest).toBe(true);
   });
 });

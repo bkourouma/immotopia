@@ -22,8 +22,10 @@ import { logger } from '../utils/logger';
 
 /**
  * Visio integree a l'AG en direct (spec 045) : enveloppe mince du SDK serveur
- * LiveKit, portee d'Ecole Digitale (`livekit.service.ts`) et reduite aux salles,
- * jetons et moderation. Ni enregistrement (Egress), ni stockage S3, ni webhook.
+ * LiveKit, portee d'Ecole Digitale (`livekit.service.ts`) : salles, jetons,
+ * moderation, enregistrement (Egress composite MP4 vers un stockage S3 ; la
+ * lecture et la suppression de l'objet sont dans `meeting-recording-storage`)
+ * et verification de la signature des webhooks.
  *
  * Les identifiants viennent de `config/env.ts` (jamais de `process.env`). Ni le
  * secret ni un jeton ne sont journalises.
@@ -210,34 +212,56 @@ export async function getRoomParticipant(roomName: string, identity: string): Pr
 }
 
 /** Lève ou baisse la main : attribut visible de tous, posé par le serveur seulement. */
-export async function setHandRaised(roomName: string, identity: string, raised: boolean): Promise<void> {
-  await call('updateParticipant', () =>
-    roomClient().updateParticipant(roomName, identity, {
-      attributes: { [HAND_RAISED_ATTRIBUTE]: raised ? new Date().toISOString() : '' }
-    })
+export async function setHandRaised(roomName: string, identity: string, raised: boolean): Promise<boolean> {
+  return call(
+    'updateParticipant',
+    async () => {
+      await roomClient().updateParticipant(roomName, identity, {
+        attributes: { [HAND_RAISED_ATTRIBUTE]: raised ? new Date().toISOString() : '' }
+      });
+      return true;
+    },
+    // Parti entre la lecture et l'ecriture : l'appelant repond 409, pas 503.
+    { value: false }
   );
 }
 
 /** Donne (micro et caméra) ou retire le droit de publier ; la main est baissée dans les deux cas. */
-export async function setCanSpeak(roomName: string, identity: string, allowed: boolean): Promise<void> {
-  await call('updateParticipant', () =>
-    roomClient().updateParticipant(roomName, identity, {
-      permission: {
-        canSubscribe: true,
-        canPublish: allowed,
-        canPublishData: false,
-        canPublishSources: allowed ? [TrackSource.MICROPHONE, TrackSource.CAMERA] : []
-      },
-      attributes: { [HAND_RAISED_ATTRIBUTE]: '' }
-    })
+export async function setCanSpeak(roomName: string, identity: string, allowed: boolean): Promise<boolean> {
+  return call(
+    'updateParticipant',
+    async () => {
+      await roomClient().updateParticipant(roomName, identity, {
+        permission: {
+          canSubscribe: true,
+          canPublish: allowed,
+          canPublishData: false,
+          canPublishSources: allowed ? [TrackSource.MICROPHONE, TrackSource.CAMERA] : []
+        },
+        attributes: { [HAND_RAISED_ATTRIBUTE]: '' }
+      });
+      return true;
+    },
+    { value: false }
   );
 }
 
-/** Retire un participant de la salle (absent = rien à faire). */
-export async function removeParticipant(roomName: string, identity: string): Promise<void> {
-  await call('removeParticipant', () => roomClient().removeParticipant(roomName, identity), {
-    value: undefined
-  });
+/**
+ * Retire un participant de la salle (absent = rien à faire). Avec `revokeTokens`, les jetons de
+ * connexion émis avant maintenant sont invalidés (`revokeTokenTs`) : il ne peut pas rentrer avec
+ * celui qu'il détient déjà.
+ */
+export async function removeParticipant(
+  roomName: string,
+  identity: string,
+  options: { revokeTokens?: boolean } = {}
+): Promise<void> {
+  const revokeTokenTs = options.revokeTokens ? BigInt(Math.floor(Date.now() / 1000)) : undefined;
+  await call(
+    'removeParticipant',
+    () => roomClient().removeParticipant(roomName, identity, revokeTokenTs ? { revokeTokenTs } : undefined),
+    { value: undefined }
+  );
 }
 
 /** Ferme la salle (inexistante = rien à faire). */
@@ -301,6 +325,8 @@ export async function startMeetingRecording(roomName: string, storageKey: string
   const output = new EncodedFileOutput({
     fileType: EncodedFileType.MP4,
     filepath: storageKey,
+    // Pas de manifeste <egressId>.json a cote du MP4 dans le bucket.
+    disableManifest: true,
     output: {
       case: 's3',
       value: new S3Upload({

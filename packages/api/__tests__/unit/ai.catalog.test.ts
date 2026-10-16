@@ -136,6 +136,7 @@ describe('catalogue de la passerelle IA', () => {
     expect(rec('/visio/enregistrement/demarrer')?.sensitive).toBe(true);
     expect(rec('/visio/enregistrement/arreter')?.sensitive).toBe(true);
     expect(rec('/enregistrements/:recordingId/fichier')?.sensitive).toBe(true);
+    expect(rec('/enregistrements/:recordingId/reessayer')?.sensitive).toBe(true);
     expect(rec('/assemblees/:meetingId/enregistrements')?.sensitive).toBe(false);
     // La suppression est destructrice : exclue du catalogue.
     expect(built.entries.some(entry => entry.method === 'DELETE' && entry.path.includes('/enregistrements'))).toBe(

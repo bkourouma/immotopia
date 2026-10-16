@@ -4,6 +4,7 @@ import { pipeline } from 'stream/promises';
 import type { Readable } from 'stream';
 import { DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { env } from '../../config/env';
+import { RecordingTooLargeError } from './meeting-recording-errors';
 
 /**
  * Stockage S3 (ou compatible) des enregistrements d'AG (spec 045, R3 et R5) :
@@ -49,6 +50,11 @@ export async function downloadRecordingObject(storageKey: string, destination: s
   try {
     const response = await s3().send(new GetObjectCommand({ Bucket: bucket, Key: storageKey }));
     if (!response.Body) throw new Error('Empty recording object');
+    // Taille annoncee par S3 : plafond verifie AVANT de telecharger quoi que ce soit.
+    if ((response.ContentLength ?? 0) > env.LIVEKIT_RECORDING_MAX_BYTES) {
+      (response.Body as Readable).destroy();
+      throw new RecordingTooLargeError();
+    }
     await pipeline(response.Body as Readable, createWriteStream(temporary));
     const { size } = await fs.stat(temporary);
     if (size === 0) throw new Error('Empty recording object');

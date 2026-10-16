@@ -1,6 +1,7 @@
 import type { ParticipantInfo } from 'livekit-server-sdk';
 import { prisma } from '../../utils/database';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
+import { invalidSecureLinkError } from '../secure-links';
 import { t } from '../../i18n';
 import { logger } from '../../utils/logger';
 import { logAuditEvent } from '../../services/audit-service';
@@ -66,6 +67,26 @@ function assertEnabled(): void {
 
 // --- Copropriétaire (lien personnel) ----------------------------------------
 
+/**
+ * Le jeton de salle se redemande (reconnexion, onglet rechargé) : un seul audit par participant et par
+ * 10 min, mémoire du processus (best effort, perdu au redémarrage).
+ */
+const TOKEN_AUDIT_INTERVAL_MS = 10 * 60_000;
+const lastTokenAudit = new Map<string, number>();
+
+function shouldAuditPublicToken(participantId: string, now = Date.now()): boolean {
+  const last = lastTokenAudit.get(participantId);
+  if (last !== undefined && now - last < TOKEN_AUDIT_INTERVAL_MS) return false;
+  if (lastTokenAudit.size > 5000) lastTokenAudit.clear();
+  lastTokenAudit.set(participantId, now);
+  return true;
+}
+
+/** Remise à zéro de la mémoire d'audit (tests). */
+export function _resetVisioAuditThrottleForTests(): void {
+  lastTokenAudit.clear();
+}
+
 /** POST /public/assemblees/visio : jeton de salle du copropriétaire qui a rejoint l'AG en cours. */
 export async function issuePublicVisioToken(token: string): Promise<VisioToken> {
   return withAccess(token, async access => {
@@ -79,7 +100,8 @@ export async function issuePublicVisioToken(token: string): Promise<VisioToken> 
       where: { id: access.participant.id, tenantId },
       select: { id: true, contactId: true, joinedAt: true }
     });
-    if (!participant) throw new NotFoundError(t('Participant introuvable ou inaccessible'));
+    // Participant disparu : la 404 uniforme du lien, pas un message qui distingue le cas.
+    if (!participant) throw invalidSecureLinkError();
     if (!participant.joinedAt) throw new ConflictError(t("Rejoignez l'assemblée avant d'entrer en visio"));
 
     // Select limite au nom : aucune coordonnee ne part dans la salle.
@@ -96,14 +118,16 @@ export async function issuePublicVisioToken(token: string): Promise<VisioToken> 
       name: contact ? contactDisplayName(contact) : ''
     });
 
-    logAuditEvent({
-      actorUserId: null,
-      tenantId,
-      actionKey: AuditActionKey.SYNDIC_MEETING_VISIO_TOKEN_ISSUED,
-      entityType: 'GMParticipant',
-      entityId: participant.id,
-      payload: { meetingId: meeting.id, role: 'PARTICIPANT', participantId: participant.id }
-    });
+    if (shouldAuditPublicToken(participant.id)) {
+      logAuditEvent({
+        actorUserId: null,
+        tenantId,
+        actionKey: AuditActionKey.SYNDIC_MEETING_VISIO_TOKEN_ISSUED,
+        entityType: 'GMParticipant',
+        entityId: participant.id,
+        payload: { meetingId: meeting.id, role: 'PARTICIPANT', participantId: participant.id }
+      });
+    }
     return visioToken;
   });
 }
@@ -119,8 +143,10 @@ export async function setPublicHandRaised(token: string, raised: boolean): Promi
     }
     const roomName = buildMeetingRoomName(tenantId, meeting.id);
     const present = await getRoomParticipant(roomName, access.participant.id);
-    if (!present) throw new ConflictError(t("Vous n'êtes pas dans la visio"));
-    await setHandRaised(roomName, access.participant.id, raised);
+    // Parti entre la lecture et l'écriture (`false`) : même 409 que s'il n'était pas là.
+    if (!present || (await setHandRaised(roomName, access.participant.id, raised)) === false) {
+      throw new ConflictError(t("Vous n'êtes pas dans la visio"));
+    }
     return { raised };
   });
 }
@@ -136,36 +162,34 @@ function handRaisedAtOf(info: ParticipantInfo): string | null {
   return info.attributes?.[HAND_RAISED_ATTRIBUTE] || null;
 }
 
-/** Rapproche les participants LiveKit des GMParticipant de CETTE AG et des membres de CETTE agence. */
-async function reconcile(
-  tenantId: string,
-  meetingId: string,
-  infos: ParticipantInfo[]
-): Promise<MeetingVisioParticipantView[]> {
-  const managerIds = new Map<string, ParticipantInfo>();
-  const coownerIds = new Map<string, ParticipantInfo>();
+interface RoomIdentities {
+  managers: Map<string, ParticipantInfo>;
+  coowners: Map<string, ParticipantInfo>;
+}
+
+function splitIdentities(infos: ParticipantInfo[]): RoomIdentities {
+  const managers = new Map<string, ParticipantInfo>();
+  const coowners = new Map<string, ParticipantInfo>();
   for (const info of infos) {
     if (info.identity.startsWith(MANAGER_IDENTITY_PREFIX)) {
-      managerIds.set(info.identity.slice(MANAGER_IDENTITY_PREFIX.length), info);
+      managers.set(info.identity.slice(MANAGER_IDENTITY_PREFIX.length), info);
     } else {
-      coownerIds.set(info.identity, info);
+      coowners.set(info.identity, info);
     }
   }
+  return { managers, coowners };
+}
 
-  const [participants, memberships] = await Promise.all([
-    coownerIds.size > 0
-      ? prisma.gMParticipant.findMany({
-          where: { tenantId, meetingId, id: { in: [...coownerIds.keys()] } },
-          select: { id: true, contactId: true }
-        })
-      : Promise.resolve([]),
-    managerIds.size > 0
-      ? prisma.membership.findMany({
-          where: { tenantId, status: 'ACTIVE', userId: { in: [...managerIds.keys()] } },
-          select: { userId: true, user: { select: { fullName: true } } }
-        })
-      : Promise.resolve([])
-  ]);
+async function coownerViews(
+  tenantId: string,
+  meetingId: string,
+  coowners: Map<string, ParticipantInfo>
+): Promise<MeetingVisioParticipantView[]> {
+  if (coowners.size === 0) return [];
+  const participants = await prisma.gMParticipant.findMany({
+    where: { tenantId, meetingId, id: { in: [...coowners.keys()] } },
+    select: { id: true, contactId: true }
+  });
   const contacts =
     participants.length > 0
       ? await prisma.crmContact.findMany({
@@ -174,10 +198,9 @@ async function reconcile(
         })
       : [];
   const contactById = new Map(contacts.map(contact => [contact.id, contact]));
-
   const views: MeetingVisioParticipantView[] = [];
   for (const row of participants) {
-    const info = coownerIds.get(row.id);
+    const info = coowners.get(row.id);
     if (!info) continue;
     const contact = contactById.get(row.contactId);
     views.push({
@@ -191,21 +214,46 @@ async function reconcile(
       joinedAt: joinedAtIso(info)
     });
   }
-  for (const membership of memberships) {
-    const info = managerIds.get(membership.userId);
-    if (!info) continue;
-    views.push({
-      identity: info.identity,
-      kind: 'MANAGER',
-      participantId: null,
-      contactId: null,
-      name: membership.user?.fullName?.trim() || info.name || '',
-      handRaisedAt: null,
-      canSpeak: info.permission?.canPublish ?? false,
-      joinedAt: joinedAtIso(info)
-    });
-  }
+  return views;
+}
 
+/** Utilisateurs autorisés à animer la salle de cette agence : membres ACTIFS, et le super-administrateur. */
+async function authorizedManagers(tenantId: string, userIds: string[]): Promise<Map<string, string>> {
+  const known = new Map<string, string>();
+  if (userIds.length === 0) return known;
+  const memberships = await prisma.membership.findMany({
+    where: { tenantId, status: 'ACTIVE', userId: { in: userIds } },
+    select: { userId: true, user: { select: { fullName: true } } }
+  });
+  for (const membership of memberships) known.set(membership.userId, membership.user?.fullName?.trim() ?? '');
+  const others = userIds.filter(userId => !known.has(userId));
+  if (others.length > 0) {
+    // Select explicite : l'objet User complet porte `passwordHash`.
+    const admins = await prisma.user.findMany({
+      where: { id: { in: others }, globalRole: 'SUPER_ADMIN' },
+      select: { id: true, fullName: true }
+    });
+    for (const admin of admins) known.set(admin.id, admin.fullName?.trim() ?? '');
+  }
+  return known;
+}
+
+/** Une identité gestionnaire sans droit sur cette agence n'a rien à faire dans la salle : retirée, au mieux. */
+async function evictStrangers(roomName: string, strangers: ParticipantInfo[]): Promise<void> {
+  for (const info of strangers) {
+    try {
+      await removeParticipant(roomName, info.identity, { revokeTokens: true });
+      logger.warn('Visio participant without right on this agency was removed', { roomName });
+    } catch (error) {
+      logger.warn('Visio participant without right could not be removed', {
+        roomName,
+        name: error instanceof Error ? error.name : 'Error'
+      });
+    }
+  }
+}
+
+function sortViews(views: MeetingVisioParticipantView[]): MeetingVisioParticipantView[] {
   // Mains levées d'abord (la plus ancienne en tête), puis ordre alphabétique.
   return views.sort((a, b) => {
     if (a.handRaisedAt && b.handRaisedAt) return a.handRaisedAt.localeCompare(b.handRaisedAt);
@@ -213,6 +261,40 @@ async function reconcile(
     if (b.handRaisedAt) return 1;
     return a.name.localeCompare(b.name, 'fr');
   });
+}
+
+/** Rapproche les participants LiveKit des GMParticipant de CETTE AG et des utilisateurs autorisés de CETTE agence. */
+async function reconcile(
+  tenantId: string,
+  meetingId: string,
+  roomName: string,
+  infos: ParticipantInfo[]
+): Promise<MeetingVisioParticipantView[]> {
+  const { managers, coowners } = splitIdentities(infos);
+  const [views, allowed] = await Promise.all([
+    coownerViews(tenantId, meetingId, coowners),
+    authorizedManagers(tenantId, [...managers.keys()])
+  ]);
+  const strangers: ParticipantInfo[] = [];
+  for (const [userId, info] of managers) {
+    const name = allowed.get(userId);
+    if (name === undefined) {
+      strangers.push(info);
+      continue;
+    }
+    views.push({
+      identity: info.identity,
+      kind: 'MANAGER',
+      participantId: null,
+      contactId: null,
+      name: name || info.name || '',
+      handRaisedAt: null,
+      canSpeak: info.permission?.canPublish ?? false,
+      joinedAt: joinedAtIso(info)
+    });
+  }
+  await evictStrangers(roomName, strangers);
+  return sortViews(views);
 }
 
 /** GET /visio */
@@ -235,7 +317,7 @@ export async function getVisioAdminView(
   const roomName = buildMeetingRoomName(tenantId, meeting.id);
   const infos = await listRoomParticipants(roomName);
   const roomActive = infos.length > 0 || (await roomExists(roomName));
-  const participants = await reconcile(tenantId, meeting.id, infos);
+  const participants = await reconcile(tenantId, meeting.id, roomName, infos);
   const active = await findActiveRecording(tenantId, meeting.id);
   return { enabled: true, roomName, roomActive, participants, recording: { enabled: isRecordingEnabled(), active } };
 }
@@ -300,7 +382,10 @@ export async function setParticipantSpeaking(
   const roomName = buildMeetingRoomName(tenantId, meeting.id);
   const present = await getRoomParticipant(roomName, participant.id);
   if (!present) throw new ConflictError(t("Ce participant n'est pas dans la visio"));
-  await setCanSpeak(roomName, participant.id, allowed);
+  // Parti entre la lecture et l'écriture (`false`) : même 409 que s'il n'était pas là.
+  if ((await setCanSpeak(roomName, participant.id, allowed)) === false) {
+    throw new ConflictError(t("Ce participant n'est pas dans la visio"));
+  }
 
   logAuditEvent({
     actorUserId,
@@ -329,10 +414,12 @@ export async function removeVisioParticipant(
   assertEnabled();
   const roomName = buildMeetingRoomName(tenantId, meeting.id);
 
-  await removeParticipant(roomName, participant.id);
+  // Liens révoqués AVANT le retrait : sinon il rentre aussitôt avec le lien qu'il détient encore.
   const revokedLinks = revokeLinks
     ? (await revokeParticipantLinks(tenantId, syndicateId, meetingId, participant.contactId, actorUserId)).revoked
     : 0;
+  // Avec la révocation, le jeton de salle déjà détenu est invalidé aussi.
+  await removeParticipant(roomName, participant.id, { revokeTokens: revokeLinks });
 
   logAuditEvent({
     actorUserId,

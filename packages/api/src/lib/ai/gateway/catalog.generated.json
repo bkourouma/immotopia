@@ -6526,6 +6526,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/reessayer",
+      "pathParams": ["syndicId", "meetingId", "recordingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / enregistrements / {recordingId} / reessayer",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour",

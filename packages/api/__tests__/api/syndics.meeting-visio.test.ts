@@ -89,6 +89,7 @@ import meetingLivePublicRoutes from '../../src/routes/meeting-live-public-routes
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
 import { VisioUnavailableError } from '../../src/services/livekit-service';
+import { _resetVisioAuditThrottleForTests } from '../../src/lib/syndics/meeting-visio';
 
 const app = express();
 app.use('/api', meetingLivePublicRoutes);
@@ -253,7 +254,10 @@ const lkInfo = (identity: string, extra: Record<string, unknown> = {}) => ({
   ...extra
 });
 
-beforeEach(() => resetWorld());
+beforeEach(() => {
+  resetWorld();
+  _resetVisioAuditThrottleForTests();
+});
 
 // ---------------------------------------------------------------------------
 // Public
@@ -602,7 +606,7 @@ describe('POST /visio/participants/:participantId/exclure', () => {
       .send({});
     expect(res.status).toBe(200);
     expect(res.body.data.revokedLinks).toBe(0);
-    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, awa.participantId);
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, awa.participantId, { revokeTokens: false });
     expect((await pub('/etat', { token: awa.token })).status).toBe(200);
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -620,7 +624,7 @@ describe('POST /visio/participants/:participantId/exclure', () => {
       .send({ revokeLinks: true });
     expect(res.status).toBe(200);
     expect(res.body.data.revokedLinks).toBe(2);
-    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, awa.participantId);
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, awa.participantId, { revokeTokens: true });
     expect((await pub('/etat', { token: awa.token })).status).toBe(404);
     expect((await pub('/visio', { token: awa.token })).status).toBe(404);
     expect(mockAudit).toHaveBeenCalledWith(
@@ -704,5 +708,125 @@ describe('fermeture de la salle', () => {
     expect(res.status).toBe(200);
     await flush();
     expect(mockLk.deleteRoom).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Correctifs de revue et d'audit (phase 3)
+// ---------------------------------------------------------------------------
+
+describe('exclusion : liens révoqués avant le retrait, jeton de salle invalidé', () => {
+  it('à l instant du retrait, les liens sont déjà révoqués', async () => {
+    const awa = await joinedToken(AWA);
+    let linksRevokedAtRemoval: boolean | null = null;
+    mockLk.removeParticipant.mockImplementation(async () => {
+      linksRevokedAtRemoval = mockPrisma.secureLink.rows.every((row: any) => Boolean(row.revokedAt));
+    });
+    const res = await request(app)
+      .post(url(M1, `/visio/participants/${awa.participantId}/exclure`))
+      .send({ revokeLinks: true });
+    expect(res.status).toBe(200);
+    expect(linksRevokedAtRemoval).toBe(true);
+  });
+});
+
+describe('GET /visio : identité gestionnaire sans droit sur l agence', () => {
+  it('retirée de la salle (jetons invalidés), le super-administrateur et les membres restent', async () => {
+    mockPrisma.user.rows.push({
+      id: 'user-root',
+      fullName: 'Root Admin',
+      globalRole: 'SUPER_ADMIN',
+      passwordHash: 'h'
+    });
+    mockLk.listRoomParticipants.mockResolvedValue([
+      lkInfo('gestionnaire-user-manager'),
+      lkInfo('gestionnaire-user-root'),
+      lkInfo('gestionnaire-user-other'),
+      lkInfo('gestionnaire-inconnu')
+    ]);
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants.map((p: any) => p.name).sort()).toEqual(['Marie Syndic', 'Root Admin']);
+    expect(mockLk.removeParticipant).toHaveBeenCalledTimes(2);
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, 'gestionnaire-user-other', { revokeTokens: true });
+    expect(mockLk.removeParticipant).toHaveBeenCalledWith(ROOM, 'gestionnaire-inconnu', { revokeTokens: true });
+    expect(JSON.stringify(res.body)).not.toContain('passwordHash');
+  });
+
+  it('un échec du retrait ne casse pas la lecture', async () => {
+    mockLk.listRoomParticipants.mockResolvedValue([lkInfo('gestionnaire-user-other')]);
+    mockLk.removeParticipant.mockRejectedValue(new VisioUnavailableError());
+    const res = await request(app).get(url(M1, '/visio'));
+    expect(res.status).toBe(200);
+    expect(res.body.data.participants).toEqual([]);
+  });
+});
+
+describe('courses LiveKit : participant parti entre la lecture et l écriture', () => {
+  it('main levée : 409 « Vous n êtes pas dans la visio » (pas 503)', async () => {
+    const { token, participantId } = await joinedToken(AWA);
+    mockLk.getRoomParticipant.mockResolvedValue(lkInfo(participantId));
+    mockLk.setHandRaised.mockResolvedValue(false);
+    const res = await pub('/visio/main', { token, raised: true });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Vous n'êtes pas dans la visio");
+  });
+
+  it('parole : 409 « Ce participant n est pas dans la visio » (pas 503)', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.getRoomParticipant.mockResolvedValue(lkInfo(awa.participantId));
+    mockLk.setCanSpeak.mockResolvedValue(false);
+    const res = await request(app)
+      .post(url(M1, `/visio/participants/${awa.participantId}/parole`))
+      .send({ allowed: true });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Ce participant n'est pas dans la visio");
+    expect(mockAudit.mock.calls.some(([entry]) => String(entry.actionKey).includes('SPEAK'))).toBe(false);
+  });
+});
+
+describe('jeton public : un seul audit par participant et par 10 minutes', () => {
+  it('trois demandes de jeton, un audit', async () => {
+    const { token } = await joinedToken(AWA);
+    for (let i = 0; i < 3; i += 1) expect((await pub('/visio', { token })).status).toBe(200);
+    const audits = mockAudit.mock.calls.filter(([entry]) => entry.actionKey === 'SYNDIC_MEETING_VISIO_TOKEN_ISSUED');
+    expect(audits).toHaveLength(1);
+  });
+
+  it('participant disparu entre le lien et le jeton : la 404 uniforme du lien', async () => {
+    const { token, participantId } = await joinedToken(AWA);
+    const unknown = await pub('/visio', { token: 'x'.repeat(43) });
+    const real = mockPrisma.gMParticipant.rows.find((row: any) => row.id === participantId);
+    const original = mockPrisma.gMParticipant.findFirst;
+    const calls = [{ ...real }, null];
+    mockPrisma.gMParticipant.findFirst = (async () => calls.shift() ?? null) as any;
+    const res = await pub('/visio', { token });
+    mockPrisma.gMParticipant.findFirst = original;
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual(unknown.body);
+    expect(res.body.message).not.toContain('Participant');
+  });
+});
+
+describe('corps des routes du gestionnaire : champs inconnus refusés', () => {
+  it('parole et exclusion en .strict()', async () => {
+    const awa = await joinedToken(AWA);
+    mockLk.getRoomParticipant.mockResolvedValue(lkInfo(awa.participantId));
+    expect(
+      (
+        await request(app)
+          .post(url(M1, `/visio/participants/${awa.participantId}/parole`))
+          .send({ allowed: true, extra: 1 })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .post(url(M1, `/visio/participants/${awa.participantId}/exclure`))
+          .send({ revokeLinks: true, extra: 1 })
+      ).status
+    ).toBe(400);
+    expect(mockLk.setCanSpeak).not.toHaveBeenCalled();
+    expect(mockLk.removeParticipant).not.toHaveBeenCalled();
   });
 });

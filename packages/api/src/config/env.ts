@@ -309,7 +309,25 @@ const envSchema = z
     LIVEKIT_RECORDING_S3_ACCESS_KEY: emptyAsUndefined(z.string().min(1).optional()),
     LIVEKIT_RECORDING_S3_SECRET: emptyAsUndefined(z.string().min(1).optional()),
     LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: z.enum(['0', '1']).default('0'),
-    LIVEKIT_RECORDING_S3_PREFIX: emptyAsUndefined(z.string().min(1).max(200).default('ag-enregistrements/')),
+    // Prefixe des objets : relatif (pas de / initial) et sans « .. ».
+    LIVEKIT_RECORDING_S3_PREFIX: emptyAsUndefined(
+      z
+        .string()
+        .min(1)
+        .max(200)
+        .refine(value => !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\\'), {
+          message: 'doit être relatif : pas de / initial, pas de « .. »'
+        })
+        .default('ag-enregistrements/')
+    ),
+    // Taille maximale (octets) d'un enregistrement rapatrie ; au-dela : echec `TOO_LARGE`, objet conserve.
+    LIVEKIT_RECORDING_MAX_BYTES: emptyAsUndefined(
+      z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(8 * 1024 ** 3)
+    ),
     META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
     // [A verifier au deploiement] : derniere version stable de l'API Graph.
     META_WA_GRAPH_VERSION: z
@@ -434,6 +452,14 @@ const envSchema = z
           });
         }
       }
+    }
+    // Comme ws:// : un endpoint S3 en clair (http://) n'est accepte qu'en developpement et en test.
+    if (value.LIVEKIT_RECORDING_S3_ENDPOINT?.startsWith('http://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_ENDPOINT'],
+        message: "http:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez https://"
+      });
     }
     if (value.LIVEKIT_URL?.startsWith('ws://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
       ctx.addIssue({
