@@ -18,6 +18,7 @@
 .PARAMETER DatabaseUrl    URL PostgreSQL a utiliser (defaut : la base du docker-compose).
 .PARAMETER WebPort        Port du serveur web de developpement (defaut 3002, reglage de ce poste).
 .PARAMETER SkipSeed       Ne lancer aucun seed.
+.PARAMETER SkipGenerate   Ne pas lancer prisma generate (client deja a jour, ou moteur Prisma verrouille).
 .PARAMETER WithSuperAdmin Creer/mettre a jour un compte super-admin (email et mot de passe demandes).
 .PARAMETER Force          Regenerer les secrets et reecrire les valeurs meme si elles existent deja.
 
@@ -32,6 +33,7 @@ param(
   [string]$DatabaseUrl = '',
   [int]$WebPort = 3002,
   [switch]$SkipSeed,
+  [switch]$SkipGenerate,
   [switch]$WithSuperAdmin,
   [switch]$Force
 )
@@ -162,7 +164,17 @@ Step 'Dependances et schema'
 if (-not (Test-Path (Join-Path $Root 'node_modules\.bin'))) {
   Run 'npm install (a la racine)' { npm install --no-audit --no-fund }
 } else { Info 'node_modules present (npm install saute)' }
-Run 'prisma generate' { npm run prisma:generate -w '@immotopia/api' }
+if (-not $SkipGenerate) {
+  Info 'prisma generate'
+  npm run prisma:generate -w '@immotopia/api'
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host '    ERREUR  prisma generate a echoue. Cause la plus frequente (EPERM sur query_engine) :' -ForegroundColor Red
+    Write-Host "            un processus Node utilise encore le moteur Prisma (npm run dev, tests, autre session)." -ForegroundColor Red
+    Write-Host "            Arretez-les (Ctrl+C dans leurs terminaux), puis relancez le script." -ForegroundColor Red
+    Write-Host "            Si le client Prisma est deja a jour, relancez avec -SkipGenerate." -ForegroundColor Red
+    exit 1
+  }
+}
 Run 'prisma migrate deploy' { npx prisma migrate deploy --schema packages/api/prisma/schema.prisma }
 Ok 'schema applique'
 
