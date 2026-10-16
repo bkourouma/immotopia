@@ -1,5 +1,5 @@
 import { prisma } from '../../utils/database';
-import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
+import { ConflictError, NotFoundError, TooManyRequestsError } from '../../middleware/error-middleware';
 import { invalidSecureLinkError } from '../secure-links';
 import { t } from '../../i18n';
 import { logger } from '../../utils/logger';
@@ -201,6 +201,41 @@ async function broadcast(
   }
 }
 
+// --- Plafond par assemblée ----------------------------------------------------
+
+/** Envois autorisés par minute et par AG, copropriétaires et gestionnaire confondus (spec 046). */
+export const DISCUSSION_MEETING_LIMIT_PER_MINUTE = 120;
+const MEETING_WINDOW_MS = 60_000;
+const MEETING_COUNTER_MAX_ENTRIES = 5000;
+
+/** Compteur en mémoire du processus, fenêtre fixe d'une minute, par `tenantId:meetingId`. */
+const meetingSendCounters = new Map<string, { windowStart: number; count: number }>();
+
+/** Compte un envoi pour l'AG ; au-delà du plafond de la minute : 429 (`TooManyRequestsError`). */
+function consumeMeetingSendSlot(tenantId: string, meetingId: string, now = Date.now()): void {
+  const key = `${tenantId}:${meetingId}`;
+  const entry = meetingSendCounters.get(key);
+  if (!entry || now - entry.windowStart >= MEETING_WINDOW_MS) {
+    if (meetingSendCounters.size >= MEETING_COUNTER_MAX_ENTRIES) {
+      for (const [k, v] of meetingSendCounters) {
+        if (now - v.windowStart >= MEETING_WINDOW_MS) meetingSendCounters.delete(k);
+      }
+      if (meetingSendCounters.size >= MEETING_COUNTER_MAX_ENTRIES) meetingSendCounters.clear();
+    }
+    meetingSendCounters.set(key, { windowStart: now, count: 1 });
+    return;
+  }
+  if (entry.count >= DISCUSSION_MEETING_LIMIT_PER_MINUTE) {
+    throw new TooManyRequestsError(t('Trop de messages dans cette assemblée, patientez un instant'));
+  }
+  entry.count += 1;
+}
+
+/** Remise à zéro des compteurs par AG (tests). */
+export function _resetDiscussionMeetingLimitForTests(): void {
+  meetingSendCounters.clear();
+}
+
 // --- Copropriétaire (lien personnel) ----------------------------------------
 
 interface PublicParticipant {
@@ -274,16 +309,36 @@ export async function sendPublicDiscussionMessage(token: string, body: string): 
       where: { id: participant.contactId, tenantId },
       select: { firstName: true, lastName: true, legalName: true }
     });
-    const created = await prisma.gMChatMessage.create({
-      data: {
-        tenantId,
-        meetingId,
-        authorKind: 'COOWNER',
-        participantId: participant.id,
-        authorName: (contact ? contactDisplayName(contact) : '') || t('Copropriétaire'),
-        body
-      },
-      select: MESSAGE_SELECT
+    consumeMeetingSendSlot(tenantId, meetingId);
+    // Fermeture et coupure relues dans la transaction de création : un envoi en vol après l'une ou l'autre
+    // (le contrôle de présence ci-dessus est un appel réseau, hors transaction) est refusé.
+    const created = await prisma.$transaction(async tx => {
+      const [meetingState, fresh] = await Promise.all([
+        tx.generalMeeting.findFirst({
+          where: { id: meetingId, syndicate: { tenantId } },
+          select: { chatClosedAt: true }
+        }),
+        tx.gMParticipant.findFirst({
+          where: { id: participant.id, tenantId, meetingId },
+          select: { chatMutedAt: true }
+        })
+      ]);
+      if (!fresh) throw invalidSecureLinkError();
+      if (meetingState?.chatClosedAt != null) {
+        throw new ConflictError(t('La discussion est fermée par le gestionnaire'));
+      }
+      if (fresh.chatMutedAt) throw new ConflictError(t("Le gestionnaire a suspendu votre droit d'écrire"));
+      return tx.gMChatMessage.create({
+        data: {
+          tenantId,
+          meetingId,
+          authorKind: 'COOWNER',
+          participantId: participant.id,
+          authorName: (contact ? contactDisplayName(contact) : '') || t('Copropriétaire'),
+          body
+        },
+        select: MESSAGE_SELECT
+      });
     });
     const view = toPublicMessage(created as MessageRow);
     await broadcast(tenantId, meetingId, { type: 'message', message: view });
@@ -336,6 +391,7 @@ export async function sendManagerDiscussionMessage(
   const user = await prisma.user.findFirst({ where: { id: userId }, select: { id: true, fullName: true } });
   if (!user) throw new NotFoundError(t('Utilisateur introuvable ou inaccessible'));
 
+  consumeMeetingSendSlot(tenantId, meeting.id);
   const created = await prisma.gMChatMessage.create({
     data: {
       tenantId,

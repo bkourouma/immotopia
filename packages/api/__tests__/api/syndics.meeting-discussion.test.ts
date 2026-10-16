@@ -92,6 +92,10 @@ import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
 import { VisioUnavailableError } from '../../src/services/livekit-service';
 import { _resetVisioAuditThrottleForTests } from '../../src/lib/syndics/meeting-visio';
+import {
+  DISCUSSION_MEETING_LIMIT_PER_MINUTE,
+  _resetDiscussionMeetingLimitForTests
+} from '../../src/lib/syndics/meeting-discussion';
 
 const app = express();
 app.use('/api', meetingLivePublicRoutes);
@@ -260,6 +264,7 @@ const lkInfo = (identity: string, extra: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   resetWorld();
   _resetVisioAuditThrottleForTests();
+  _resetDiscussionMeetingLimitForTests();
 });
 
 const disc = (suffix = '') => url(M1, `/visio/discussion${suffix}`);
@@ -589,6 +594,58 @@ describe('POST /public/assemblees/discussion/envoyer', () => {
     // L'autre lien n'est pas touché ; la lecture a son propre compteur.
     expect((await pub('/discussion/envoyer', { token: other.token, body: 'Bonjour' })).status).toBe(200);
     expect((await pub('/discussion', { token })).status).toBe(200);
+  });
+
+  it('une coupure intercalée entre le contrôle de présence et la création = 409, rien d’enregistré', async () => {
+    const { token, participantId } = await inRoom();
+    mockLk.getRoomParticipant.mockImplementation(async (_room: string, identity: string) => {
+      mockPrisma.gMParticipant.rows.find((row: any) => row.id === participantId)!.chatMutedAt = new Date();
+      return lkInfo(identity);
+    });
+    const res = await pub('/discussion/envoyer', { token, body: 'Bonjour' });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Le gestionnaire a suspendu votre droit d'écrire");
+    expect(mockPrisma.gMChatMessage.rows).toHaveLength(0);
+    expect(mockLk.sendDiscussionEvent).not.toHaveBeenCalled();
+  });
+
+  it('une fermeture intercalée entre le contrôle de présence et la création = 409, rien d’enregistré', async () => {
+    const { token, participantId } = await inRoom();
+    mockLk.getRoomParticipant.mockImplementation(async (_room: string, identity: string) => {
+      meetingRow().chatClosedAt = new Date();
+      return lkInfo(identity);
+    });
+    const res = await pub('/discussion/envoyer', { token, body: 'Bonjour' });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe('La discussion est fermée par le gestionnaire');
+    expect(participantId).toBeTruthy();
+    expect(mockPrisma.gMChatMessage.rows).toHaveLength(0);
+  });
+
+  it('le plafond par AG coupe au 121e envoi de la minute (429), une autre AG n’est pas touchée', async () => {
+    const OTHER = id(206);
+    mockPrisma.generalMeeting.rows.push({ ...meetingRow(), id: OTHER });
+    const { token } = await inRoom();
+    for (let n = 1; n <= DISCUSSION_MEETING_LIMIT_PER_MINUTE; n++) {
+      const sent = await request(app)
+        .post(disc('/messages'))
+        .send({ body: `annonce ${n}` });
+      expect(sent.status).toBe(200);
+    }
+    // Copropriétaires et gestionnaire confondus : le 121e envoi est refusé, quel qu'en soit l'auteur.
+    const blocked = await pub('/discussion/envoyer', { token, body: 'trop tard' });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.code).toBe('TOO_MANY_REQUESTS');
+    expect(blocked.body.message).toBe('Trop de messages dans cette assemblée, patientez un instant');
+    const blockedManager = await request(app).post(disc('/messages')).send({ body: 'encore' });
+    expect(blockedManager.status).toBe(429);
+    expect(mockPrisma.gMChatMessage.rows).toHaveLength(DISCUSSION_MEETING_LIMIT_PER_MINUTE);
+    // Une autre AG a son propre compteur.
+    const other = await request(app).post(url(OTHER, '/visio/discussion/messages')).send({ body: 'Bonjour' });
+    expect(other.status).toBe(200);
+    // La fenêtre se referme : après remise à zéro, l'AG écrit de nouveau.
+    _resetDiscussionMeetingLimitForTests();
+    expect((await request(app).post(disc('/messages')).send({ body: 'reprise' })).status).toBe(200);
   });
 
   it('le limiteur de lecture coupe au 31e appel de la minute (429)', async () => {

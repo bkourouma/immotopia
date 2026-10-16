@@ -62,3 +62,65 @@ describe('discussionBodySchema', () => {
     expect(discussionBodySchema.safeParse(null).success).toBe(false);
   });
 });
+
+/** Caractères construits par point de code : le source ne contient aucun invisible. */
+const ch = (...codes: number[]) => String.fromCodePoint(...codes);
+
+describe('normalizeDiscussionText : invisibles, bidirectionnel, bien formé (spec 046)', () => {
+  it('retire les contrôles bidirectionnels U+202A-202E et U+2066-2069', () => {
+    const bidi = [0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069];
+    for (const code of bidi) expect(normalizeDiscussionText(`a${ch(code)}b`)).toBe('ab');
+  });
+
+  it('retire les invisibles U+200B, U+2060, U+FEFF, U+00AD', () => {
+    for (const code of [0x200b, 0x2060, 0xfeff, 0x00ad]) {
+      expect(normalizeDiscussionText(`a${ch(code)}b`)).toBe('ab');
+    }
+  });
+
+  it('retire les caractères « tag » U+E0000-E007F', () => {
+    expect(normalizeDiscussionText(`a${ch(0xe0001, 0xe0020, 0xe007f)}b`)).toBe('ab');
+  });
+
+  it('garde ZWNJ et ZWJ (persan, ourdou, emojis composés)', () => {
+    const persian = `می${ch(0x200c)}خواهم`;
+    expect(normalizeDiscussionText(persian)).toBe(persian);
+    const family = `${ch(0x1f469)}${ch(0x200d)}${ch(0x1f467)}`;
+    expect(normalizeDiscussionText(`Bravo ${family}`)).toBe(`Bravo ${family}`);
+  });
+
+  it('garde LRM, RLM et ALM dans un texte arabe', () => {
+    const arabic = `مرحبا${ch(0x200f)} بكم (2026)${ch(0x200e)}${ch(0x061c)}`;
+    expect(normalizeDiscussionText(arabic)).toBe(arabic);
+  });
+
+  it('remplace les surrogates isolés par U+FFFD (chaîne bien formée)', () => {
+    expect(normalizeDiscussionText(`a${ch(0xd800)}b`)).toBe(`a${ch(0xfffd)}b`);
+    expect(normalizeDiscussionText(`a${ch(0xdc00)}b`)).toBe(`a${ch(0xfffd)}b`);
+    expect(normalizeDiscussionText(`a${ch(0x1f600)}b`)).toBe(`a${ch(0x1f600)}b`);
+  });
+
+  it('réduit les lignes faites d’espaces avant la règle des deux sauts de ligne', () => {
+    expect(normalizeDiscussionText('a\n \n \n \nb')).toBe('a\n\nb');
+    expect(normalizeDiscussionText('a\n  \n\n   \nb')).toBe('a\n\nb');
+    expect(normalizeDiscussionText('a   \nb')).toBe('a\nb');
+  });
+
+  it('un texte sans caractère visible devient vide', () => {
+    expect(normalizeDiscussionText(`  ${ch(0x200b)} ${ch(0x202e)}`)).toBe('');
+    expect(normalizeDiscussionText(`${ch(0x200d)}${ch(0x200e)}${ch(0x061c)}`)).toBe('');
+    expect(normalizeDiscussionText(ch(0xe0041, 0xe0042))).toBe('');
+  });
+});
+
+describe('discussionBodySchema : texte sans caractère visible', () => {
+  it('refuse comme le texte vide (même détail zod)', () => {
+    const empty = discussionBodySchema.safeParse('');
+    expect(empty.success).toBe(false);
+    for (const text of ['   \n ', ch(0x200b, 0x202e), ch(0x200d, 0x200e), ch(0xe0041)]) {
+      const res = discussionBodySchema.safeParse(text);
+      expect(res.success).toBe(false);
+      if (!res.success && !empty.success) expect(res.error.issues).toEqual(empty.error.issues);
+    }
+  });
+});
