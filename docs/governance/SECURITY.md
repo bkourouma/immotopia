@@ -1150,6 +1150,22 @@ non encore décidées (spec 045, R10) ; aucune purge automatique des enregistrem
 langue pendant la visio remonte l'application et déconnecte de la salle. Les MP4 d'une AG
 supprimée ne sont pas effacés du disque par la cascade de la base.
 
+**Discussion écrite (spec 046).** Personne n'obtient `canPublishData`, ni copropriétaire ni
+gestionnaire : un message part à l'API d'ImmoTopia (`POST /api/public/assemblees/discussion/envoyer`
+par lien personnel, même 404 uniforme, limiteur de 10 envois/min par empreinte de jeton ; console
+en `SYNDIC_EDIT`), est validé (zod, texte brut normalisé, 500 caractères au plus), stocké avec
+`tenantId` (`GMChatMessage`), puis diffusé par le serveur (`sendData`, sujet `ag-discussion`). Le
+client ignore tout message de ce sujet qui porte un émetteur participant. L'écriture exige l'AG en
+cours, le participant ayant rejoint et **présent dans la salle**, la discussion ouverte et son
+écriture non coupée. Le texte est **contenu saisi par un tiers** : il n'est jamais rendu en HTML
+ni en Markdown (texte React, pas de `dangerouslySetInnerHTML`), les adresses web ne sont pas
+cliquables, et la route `visio/discussion` est exclue du catalogue de l'assistant IA (injection
+d'instructions, et l'IA n'écrit jamais dans une salle en direct). Un message masqué n'est plus
+servi aux copropriétaires mais reste en base pour le gestionnaire ; masquer, rétablir, couper
+l'écriture, ouvrir ou fermer la discussion sont audités sans le texte. `messageId` ou
+`participantId` d'une autre AG ou d'une autre agence : même 404 qu'un objet inexistant. Les
+messages sont conservés avec l'AG, sans purge automatique (même régime que R10).
+
 ## 13. Points ouverts
 
 Ce qui suit n'a pas pu être vérifié comme couvert dans le code au moment

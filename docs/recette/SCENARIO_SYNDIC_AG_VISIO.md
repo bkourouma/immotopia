@@ -106,8 +106,7 @@ fonctionne.
 E2. « Exclure » A en révoquant ses liens. Attendu : A ne peut plus revenir
 ni voter (lien invalide).
 
-E3. Jeton visio gestionnaire demandé pour une AG d'une autre agence :
-404.
+E3. Jeton visio gestionnaire demandé pour une AG d'une autre agence : 404.
 
 ## Enregistrement
 
@@ -131,7 +130,55 @@ webhook : sans effet. Un webhook à signature fausse : 401.
 
 R5. « Supprimer » (confirmation) : statut « Supprimé », lecture impossible.
 
+## Discussion écrite (spec 046)
+
+Deux copropriétaires A et B dans la salle (deux onglets, liens personnels),
+gestionnaire dans la console avec la salle ouverte.
+
+D1. A ouvre « Discussion » : mention « Vos messages sont visibles de tous
+les participants de la visio et conservés par le syndic. Un message ne vaut
+pas vote. », historique vide. A écrit « Bonjour » (Entrée). Attendu : le
+message apparaît chez A, chez B (sans recharger, pastille de non-lus si son
+panneau est fermé) et dans la carte « Discussion » de la console, avec le nom
+de A.
+
+D2. A envoie `<img src=x onerror=alert(1)> <b>gras</b> https://exemple.test`.
+Attendu : le texte s'affiche tel quel chez tous, aucune image, aucun gras,
+aucun lien cliquable, aucune alerte.
+
+D3. Maj+Entrée revient à la ligne ; le compteur bloque à 500 caractères ;
+11 envois en moins d'une minute : « Vous écrivez trop vite, patientez un
+instant. »
+
+D4. Gestionnaire écrit depuis la console : message marqué « Gestionnaire »
+chez A et B.
+
+D5. Gestionnaire masque le message de A : chez A et B, « Message masqué par
+le gestionnaire » ; dans la console, texte grisé marqué « masqué ». Recharger
+la page de B et rouvrir la discussion : le texte masqué n'est pas servi
+(réponse de `POST /api/public/assemblees/discussion` : `body: null`).
+« Rétablir » : le message réapparaît chez tous.
+
+D6. Gestionnaire : « Couper l'écriture » de A. Attendu : A voit « Le
+gestionnaire a suspendu votre droit d'écrire. », son envoi est refusé ; B
+écrit toujours ; marque « écriture coupée » dans la console. « Rétablir
+l'écriture » : A écrit de nouveau.
+
+D7. Gestionnaire ferme la discussion. Attendu : A et B voient « Le
+gestionnaire a fermé la discussion. » et ne peuvent plus écrire ; le
+gestionnaire écrit encore. Il la rouvre.
+
+D8. A quitte la visio puis tente un envoi par l'API : 409 « Vous n'êtes pas
+dans la visio ». Lien inconnu : 404. `messageId` d'une AG d'une autre agence
+dans la route « masquer » : 404.
+
+D9. 375 px : le panneau remplace la grille, « Retour à la vidéo » ; la salle
+reste connectée. Arabe : panneau retourné, textes traduits.
+
 ## Clôture
 
 F1. Clore l'AG. Attendu : la salle est fermée, les participants voient
 « La visio est terminée. »
+
+F2. Après la clôture : la console relit toute la discussion (lecture seule) ;
+`POST /api/public/assemblees/discussion` répond 409.
