@@ -531,7 +531,9 @@ Il contrôle, dans l'ordre :
      l'unicité des secrets (mode 600, propriétaire `deployer` : l'utilisateur
      courant doit pouvoir le lire) ;
    - `JWT_SECRET`, `POSTGRES_PASSWORD` **et `PAYMENT_SECRETS_KEY`** différents de
-     ceux du staging (comparaison d'empreintes, rien n'est affiché).
+     ceux du staging (comparaison d'empreintes, rien n'est affiché) ;
+   - `YOUSIGN_ALLOW_SANDBOX` valant `1` (base sandbox de Yousign, signatures sans
+     valeur : réservée au staging), même écriture tolérante.
 
    Il **avertit**, sans bloquer, si une clé d'intégration (e-mail, SMTP, Twilio,
    WaSender, Google, Anthropic, OpenRouter, PaySecureHub) est identique à celle du
@@ -1518,6 +1520,60 @@ journal ; celui d'un expéditeur inconnu n'est gardé qu'en empreinte HMAC. Les
 photos sont des fichiers privés (`uploads/stock-whatsapp/<agence>/…`), jamais
 servis en statique, et partent avec l'export d'agence.
 
+### Lot 044 — Signature électronique : Yousign sandbox sur le staging
+
+Spec `specs/044-signature-electronique/`, détail de l'adaptateur dans
+[signature-prestataire.md](../integrations/signature-prestataire.md). Le staging
+tourne en `NODE_ENV=production` comme la production : sans réglage, `env.ts` refuse
+au démarrage `SIGNATURE_PROVIDER=yousign` avec une base « sandbox » (le refus est
+voulu pour la production), et la base de production Yousign y produirait de vraies
+signatures facturées. Le drapeau `YOUSIGN_ALLOW_SANDBOX=1` lève ce seul refus, sur le
+staging seulement.
+
+| Variable                 | Staging                                           | Production                                                              |
+| ------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| `SIGNATURE_PROVIDER`     | `yousign` pour essayer Yousign ; sinon `internal` | `yousign` (ou `internal`) selon le choix produit; `disabled` par défaut |
+| `YOUSIGN_API_BASE_URL`   | `https://api-sandbox.yousign.app/v3` (défaut)     | `https://api.yousign.app/v3`                                            |
+| `YOUSIGN_ALLOW_SANDBOX`  | `1`                                               | absent (`0`) : `deploy.sh prod` refuse `1`                              |
+| `YOUSIGN_API_KEY`        | clé de la **sandbox** Yousign                     | clé de production, distincte                                            |
+| `YOUSIGN_WEBHOOK_SECRET` | secret du webhook sandbox (32 caractères)         | secret du webhook de production, distinct                               |
+
+**Brancher la sandbox**, dans `/home/deployer/immotopia-saas.env` (édité à la main
+sur le serveur, en **modifiant les lignes existantes**, sans les doubler) :
+
+```bash
+SIGNATURE_PROVIDER=yousign
+YOUSIGN_API_KEY=…            # clé API de la sandbox, jamais celle de la production
+YOUSIGN_WEBHOOK_SECRET=…     # 32 caractères, le même que celui déclaré chez Yousign
+YOUSIGN_API_BASE_URL=https://api-sandbox.yousign.app/v3
+YOUSIGN_ALLOW_SANDBOX=1
+```
+
+Puis [modifier une variable](#modifier-une-variable-denvironnement) :
+`./infra/scripts/deploy.sh staging --no-build`. Le journal de l'API doit porter
+l'avertissement « les signatures n'ont aucune valeur ». Webhook à déclarer chez
+Yousign, dans la sandbox : `https://app.immotopia.cloud/api/public/signature-provider/yousign`
+(événements et secret : [signature-prestataire.md](../integrations/signature-prestataire.md#créer-le-webhook-chez-yousign)).
+
+**`SIGNATURE_PROVIDER` est unique.** Un seul fournisseur sert tout le serveur :
+
+- avec `yousign`, **le canal SMS est refusé** (ainsi que WhatsApp et « sur place ») :
+  Yousign n'invite que par e-mail ;
+- tester le SMS (Orange CI) exige `SIGNATURE_PROVIDER=internal` (ou `log`) et
+  `SMS_PROVIDER=orange` avec un compte Orange CI **dédié au staging** ;
+- **`SMS_PROVIDER=log` est refusé sur le staging** : `NODE_ENV=production` et le
+  transport `log` n'est accepté que si `NODE_ENV` vaut `development` ou `test`. Le
+  staging n'a donc pas de SMS « à blanc » : `orange` ou `disabled`.
+
+Passer d'un essai à l'autre revient à modifier le fichier de secrets et à
+redéployer avec `--no-build`.
+
+**Refus de `deploy.sh prod`.** Le script refuse la production si le fichier de
+secrets porte `YOUSIGN_ALLOW_SANDBOX=1`, quelle que soit l'écriture (`export`,
+guillemets, espaces), comme `PAYMENT_GATEWAY_SIMULATOR`. Sans le drapeau, `env.ts`
+refuse de toute façon une base « sandbox » en production : deux barrières
+indépendantes. Ne pas copier le fichier de secrets du staging vers la production.
+
 ## Sauvegarde et restauration
 
 ### Ce que produit `backup.sh` (non éprouvé)
@@ -1708,6 +1764,7 @@ neuf, puis reprendre les étapes 2 à 8 ci-dessus.
 | `PAYMENT_GATEWAY_SIMULATOR`                                 | `1`                                                           | absent, `deploy.sh prod` refuse `1`                                 |
 | `PLATFORM_PAYSECUREHUB_MODE`                                | `SIMULATOR`                                                   | `SIMULATOR` à la création, puis `LIVE` (avertissement tant que non) |
 | E-mail, WhatsApp, Google OAuth                              | vides ou bac à sable, client OAuth propre                     | identifiants réels dédiés, client OAuth propre                      |
+| Signature (`SIGNATURE_PROVIDER`, `YOUSIGN_ALLOW_SANDBOX`)   | Yousign sandbox : `YOUSIGN_ALLOW_SANDBOX=1`                   | base de production, `deploy.sh prod` refuse le drapeau              |
 | Clés d'intégration (contrôle de `deploy.sh`)                | avertissement si l'une est renseignée                         | avertissement si l'une est identique à celle du staging             |
 | Assistant IA (`AI_PROVIDER`)                                | `disabled`, ou clé propre au staging                          | selon le choix produit ; `fake` refusé sur les deux                 |
 | `TENANT_GUARD_MODE`, `SUBSCRIPTION_ENFORCEMENT`             | `warn` à la création ; on bascule ici d'abord                 | `warn` à la création ; `enforce` seulement après le staging         |
@@ -1722,7 +1779,7 @@ Comment vérifier, en lecture seule, depuis le serveur :
 
 ```bash
 # Réglages non secrets des deux fichiers (aucun secret dans cette liste).
-grep -E '^(NODE_ENV|FRONTEND_URL|BACKEND_URL|CLIENT_URL|PUBLIC_ORIGIN|PAYMENT_GATEWAY_SIMULATOR|PLATFORM_PAYSECUREHUB_MODE|AI_PROVIDER|TENANT_GUARD_MODE|SUBSCRIPTION_ENFORCEMENT)=' \
+grep -E '^(NODE_ENV|FRONTEND_URL|BACKEND_URL|CLIENT_URL|PUBLIC_ORIGIN|PAYMENT_GATEWAY_SIMULATOR|PLATFORM_PAYSECUREHUB_MODE|AI_PROVIDER|SIGNATURE_PROVIDER|YOUSIGN_API_BASE_URL|YOUSIGN_ALLOW_SANDBOX|SMS_PROVIDER|TENANT_GUARD_MODE|SUBSCRIPTION_ENFORCEMENT)=' \
   /home/deployer/immotopia-saas.env /home/deployer/immotopia-prod.env
 
 # PAYMENT_SECRETS_KEY distincte : deux empreintes différentes (pas la clé).
