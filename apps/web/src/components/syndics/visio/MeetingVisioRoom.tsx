@@ -409,6 +409,29 @@ function useVisioSession(getToken: () => Promise<VisioJoinInfo>, onLeave?: () =>
  * direct d'École Digitale. Chargée par `React.lazy` : `livekit-client` n'entre pas
  * dans le paquet initial. La hauteur vient du parent (`height: 100%`).
  */
+/**
+ * Vrai un tick après le montage. Un montage aussitôt défait (double montage de
+ * `React.StrictMode` en développement, navigation rapide) ne déclenche donc
+ * aucune connexion : sans ce délai, deux connexions de la même identité
+ * partent coup sur coup et LiveKit refuse la seconde (« a participant with the
+ * same identity is already in the room ») pendant que la première se ferme,
+ * laissant la salle sans connexion.
+ */
+function useConnectAfterMount(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setReady(true), 0);
+    return () => clearTimeout(timer);
+  }, []);
+  return ready;
+}
+
+/** `LiveKitRoom` qui ne se connecte qu'une fois son montage confirmé (voir `useConnectAfterMount`). */
+const StableLiveKitRoom: React.FC<React.ComponentProps<typeof LiveKitRoom>> = props => {
+  const ready = useConnectAfterMount();
+  return <LiveKitRoom {...props} connect={ready && props.connect !== false} />;
+};
+
 export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
   role,
   getToken,
@@ -464,7 +487,7 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
   const { info } = phase;
   return (
     <div style={CONTAINER_STYLE}>
-      <LiveKitRoom
+      <StableLiveKitRoom
         serverUrl={info.serverUrl}
         token={info.token}
         connect
@@ -485,7 +508,7 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
           onRaiseHand={onRaiseHand}
           onRefreshSignal={onRefreshSignal}
         />
-      </LiveKitRoom>
+      </StableLiveKitRoom>
     </div>
   );
 };

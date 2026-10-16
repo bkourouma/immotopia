@@ -12,6 +12,7 @@ interface FakeParticipant {
 
 const lk = vi.hoisted(() => ({
   roomProps: null as null | Record<string, unknown>,
+  connectHistory: [] as unknown[],
   dataHandler: null as null | ((message: { payload: Uint8Array; from?: unknown }) => void),
   permissions: { canPublish: false } as { canPublish: boolean },
   recording: false,
@@ -40,6 +41,7 @@ vi.mock('@livekit/components-react', async () => {
   return {
     LiveKitRoom: (props: Record<string, unknown> & { children?: React.ReactNode }) => {
       lk.roomProps = props;
+      lk.connectHistory.push(props.connect);
       return <div data-testid="lk-room">{props.children}</div>;
     },
     GridLayout: ({
@@ -105,6 +107,7 @@ async function mount(props: Partial<React.ComponentProps<typeof MeetingVisioRoom
 beforeEach(() => {
   vi.clearAllMocks();
   lk.roomProps = null;
+  lk.connectHistory = [];
   lk.dataHandler = null;
   lk.toggles = {};
   lk.permissions = { canPublish: false };
@@ -117,14 +120,38 @@ describe('MeetingVisioRoom', () => {
   it('demande un jeton au montage et connecte la salle sans publier au départ', async () => {
     const { getToken } = await mount();
     expect(getToken).toHaveBeenCalledTimes(1);
+    // La connexion part un tick après le montage (double montage de StrictMode).
+    await waitFor(() => expect(lk.roomProps?.connect).toBe(true));
     expect(lk.roomProps).toMatchObject({
       serverUrl: 'wss://lk.example.com',
       token: 'jwt-token',
-      connect: true,
       audio: false,
       video: false,
       'data-lk-theme': 'default'
     });
+  });
+
+  it('un montage aussitôt défait ne connecte pas la salle', async () => {
+    vi.useFakeTimers();
+    try {
+      const getToken = vi.fn().mockResolvedValue(INFO);
+      const view = render(<MeetingVisioRoom role="participant" getToken={getToken} />);
+      // Le jeton arrive (micro-tâches) : la salle est montée, sans demander de connexion.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(lk.connectHistory.length).toBeGreaterThan(0);
+      expect(lk.connectHistory.every(value => value === false)).toBe(true);
+      // Démontée avant le tick : aucune connexion ne part, même après coup.
+      view.unmount();
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(lk.connectHistory.every(value => value === false)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('lève puis baisse la main selon l’attribut du participant local', async () => {
