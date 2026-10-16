@@ -49,7 +49,7 @@ Pièges et décisions :
 
 ## Branche `fix/seed-fichiers-volume` — 2026-10-16
 
-**État :** prêt à relire (PR vers `main`) ; worktree `.claude/worktrees/distracted-wu-7f2ca7`, `node_modules` = jonctions vers le checkout principal.
+**État :** prêt à relire (PR https://github.com/bkourouma/immotopia/pull/149, base `main`, CI en cours) ; worktree `.claude/worktrees/distracted-wu-7f2ca7`, `node_modules` = jonctions vers le checkout principal.
 **Dernier commit :** voir `git log` (poussé sur origin).
 
 Anomalie de recette du staging : sur « Pack Agence · 3 ans », « Envoyer pour signature » du bail BAIL-2026-0052 répondait « Fichier du document invalide » (`getDocumentFile`).
