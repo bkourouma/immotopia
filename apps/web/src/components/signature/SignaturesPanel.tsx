@@ -28,6 +28,8 @@ interface SignaturesPanelProps {
   fileLabel: string;
   /** SG-R1 : le type de document exige un prestataire qualifié ; l'envoi est alors désactivé. */
   providerRequired?: boolean;
+  /** S6 : le fournisseur actif est un prestataire externe (invitations par e-mail du prestataire, ni code ni signature sur place). */
+  externalProvider?: boolean;
   /** Le statut de la cible interdit un nouvel envoi (ex. compromis déjà signé) ; l'historique reste visible. */
   sendDisabled?: boolean;
   /** Appelé quand l'état des demandes a changé (envoi, annulation, signature, scellement) : le parent peut se rafraîchir. */
@@ -53,6 +55,7 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
   defaultSigners,
   fileLabel,
   providerRequired = false,
+  externalProvider = false,
   sendDisabled = false,
   onChanged,
   onOpenChange
@@ -155,6 +158,16 @@ export const SignaturesPanel: React.FC<SignaturesPanelProps> = ({
           type="warning"
           showIcon
           message={t('Signature électronique indisponible pour ce document : un prestataire qualifié est requis')}
+        />
+      )}
+      {externalProvider && !providerRequired && (
+        <Alert
+          type="info"
+          showIcon
+          data-testid="signature-external-provider"
+          message={t(
+            'Signature en ligne via le prestataire : les signataires reçoivent l’invitation par e-mail du prestataire.'
+          )}
         />
       )}
       {error && <Alert type="error" showIcon message={error} />}

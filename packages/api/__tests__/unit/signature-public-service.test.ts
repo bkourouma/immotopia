@@ -151,6 +151,7 @@ function reset(overrides: { signer?: Row; request?: Row } = {}): void {
     title: 'Contrat de bail',
     language: 'fr',
     status: 'SENT',
+    providerId: 'internal',
     sequential: false,
     expiresAt: future,
     sourceFileKey: '/uploads/signatures/t1/r1/source.pdf',
@@ -194,6 +195,13 @@ describe('jeton : refus uniforme', () => {
       await expectInvalidLink(() => sendPublicOtp(token));
     }
     reset({ request: { expiresAt: new Date(Date.now() - 1000) } });
+    await expectInvalidLink(() => signPublic(token, { consent: true, code: '123456', signature: typed }, {}));
+  });
+
+  it('même 404 quand la demande est confiée à un prestataire externe', async () => {
+    reset({ request: { providerId: 'yousign' } });
+    await expectInvalidLink(() => getPublicSignature(token));
+    await expectInvalidLink(() => sendPublicOtp(token));
     await expectInvalidLink(() => signPublic(token, { consent: true, code: '123456', signature: typed }, {}));
   });
 

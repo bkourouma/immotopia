@@ -8,7 +8,7 @@ export type SignatureKind =
 export type SignatureRequestStatus =
   'DRAFT' | 'SENT' | 'PARTIALLY_SIGNED' | 'COMPLETED' | 'DECLINED' | 'EXPIRED' | 'CANCELED';
 export type SignerStatus = 'PENDING' | 'OPENED' | 'SIGNED' | 'DECLINED';
-export type SignerChannel = 'EMAIL' | 'WHATSAPP' | 'IN_PERSON';
+export type SignerChannel = 'EMAIL' | 'WHATSAPP' | 'SMS' | 'IN_PERSON';
 export type SignatureMode = 'TYPED' | 'DRAWN';
 
 export interface SignerDto {
@@ -39,7 +39,7 @@ export interface SignerInput {
   fullName: string;
   channel: SignerChannel;
   contact: string;
-  /** Contact CRM du signataire : exigé par l'API pour le canal WHATSAPP. */
+  /** Contact CRM du signataire : exigé par l'API pour les canaux WHATSAPP et SMS. */
   contactId?: string;
   /** Indication d'affichage (jamais envoyée) : faux quand le téléphone du contact est inconnu ou masqué. */
   phoneKnown?: boolean;
@@ -114,5 +114,8 @@ export interface SignatureTargetContext {
   kind: SignatureKind;
   targetType: string;
   providerRequired: boolean;
+  externalProvider?: boolean;
+  /** Faux quand le fournisseur SMS n'est pas configuré sur ce serveur. */
+  smsAvailable?: boolean;
   signers: DefaultSignerDto[];
 }

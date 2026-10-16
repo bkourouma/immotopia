@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { hasPermission, hasAnyPermission, hasAllPermissions } from '../services/permission-service';
 import { checkSubscriptionAccess } from '../services/subscription-service';
+import { t } from '../i18n';
 
 // Extend Express Request type to include user and tenant context
 declare module 'express-serve-static-core' {
@@ -62,7 +63,9 @@ export function requirePermission(permissionKey: string) {
         res.status(403).json({
           success: false,
           error: 'Forbidden',
-          message: `Permission denied: ${permissionKey}`
+          message: t("Vous n'avez pas les droits nécessaires pour effectuer cette action."),
+          // Code technique, hors du texte affiché.
+          requiredPermission: permissionKey
         });
         return;
       }
@@ -108,7 +111,8 @@ export function requireAnyPermission(permissionKeys: string[]) {
         res.status(403).json({
           success: false,
           error: 'Forbidden',
-          message: `Permission denied: requires one of [${permissionKeys.join(', ')}]`
+          message: t("Vous n'avez pas les droits nécessaires pour effectuer cette action."),
+          requiredPermissions: permissionKeys
         });
         return;
       }
@@ -152,7 +156,8 @@ export function requireAllPermissions(permissionKeys: string[]) {
         res.status(403).json({
           success: false,
           error: 'Forbidden',
-          message: `Permission denied: requires all of [${permissionKeys.join(', ')}]`
+          message: t("Vous n'avez pas les droits nécessaires pour effectuer cette action."),
+          requiredPermissions: permissionKeys
         });
         return;
       }

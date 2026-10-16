@@ -18,6 +18,7 @@ import contactSearchRoutes from './routes/contact-search-routes';
 import propertyRoutes from './routes/property-routes';
 import syndicRoutes from './routes/syndic-routes';
 import syndicLotPaymentsRoutes from './routes/syndic-lot-payments-routes';
+import syndicOnlinePaymentRoutes from './routes/syndic-online-payment-routes';
 import syndicReceiptsRoutes from './routes/syndic-receipts-routes';
 import syndicChargeSchedulesRoutes from './routes/syndic-charge-schedules-routes';
 import syndicProviderInvoiceRoutes from './routes/syndic-provider-invoice-routes';
@@ -58,6 +59,9 @@ import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './rou
 import livekitWebhookRoutes, { LIVEKIT_WEBHOOK_PREFIX } from './routes/livekit-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
+import signatureProviderWebhookRoutes, {
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
+} from './routes/signature-provider-webhook-routes';
 import signaturePublicRoutes, { PUBLIC_SIGNATURES_PREFIX } from './routes/signature-public-routes';
 import signatureRoutes from './routes/signature-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
@@ -147,7 +151,8 @@ const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_MEETING_LIVE_PREFIX,
   WHATSAPP_CLOUD_WEBHOOK_PREFIX,
   // Spec 045 : webhook LiveKit, corps BRUT pour verifier la signature.
-  LIVEKIT_WEBHOOK_PREFIX
+  LIVEKIT_WEBHOOK_PREFIX,
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
 ];
 const skipSecureLinkPublic =
   (parser: express.RequestHandler): express.RequestHandler =>
@@ -259,6 +264,8 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
+// Spec 044 (S6) : webhook du prestataire de signature, corps brut, signature verifiee, etat relu chez le prestataire.
+app.use(PUBLIC_SIGNATURE_PROVIDER_PREFIX, signatureProviderWebhookRoutes);
 // Spec 044 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
 app.use('/api', signaturePublicRoutes);
 // Spec 043 : AG en direct par lien personnel (jeton dans le corps, JSON 4 Ko, limiteurs par IP et par jeton).
@@ -336,6 +343,7 @@ app.use('/api', propertyRoutes); // Property routes (tenant-scoped)
 app.use('/api', syndicProviderInvoiceRoutes); // Syndic S6 : factures et paiements des prestataires
 app.use('/api', documentBrandingRoutes); // Identite des documents : mandants, logos, signature et cachet (lot S1)
 app.use('/api', syndicLotPaymentsRoutes); // Paiements par lot, avance et suivi mensuel des charges (lot S2)
+app.use('/api', syndicOnlinePaymentRoutes); // Paiement mobile des coproprietaires, cote gestionnaire (spec 042)
 app.use('/api', syndicReceiptsRoutes); // Recus de paiement et quittances de charges, impression groupee (lot S3)
 app.use('/api', syndicChargeSchedulesRoutes); // Programmations d'appels automatiques et avis d'appel PDF (lot S4)
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)

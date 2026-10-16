@@ -91,6 +91,20 @@ describe('SaleAgreementSignatures', () => {
     expect((send as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('prestataire externe : la signature en ligne via le prestataire est annoncée, l’envoi reste possible', async () => {
+    fetchSignatureContext.mockResolvedValue({
+      kind: 'SALE_AGREEMENT',
+      targetType: 'SaleAgreement',
+      providerRequired: false,
+      externalProvider: true,
+      signers: SIGNERS
+    });
+    renderCard();
+    expect(await screen.findByText(/Signature en ligne via le prestataire/)).toBeTruthy();
+    const send = screen.getByRole('button', { name: /Envoyer pour signature/ });
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('compromis déjà signé : contexte non demandé, historique visible, envoi désactivé', async () => {
     renderCard(false);
     const send = await screen.findByRole('button', { name: /Envoyer pour signature/ });

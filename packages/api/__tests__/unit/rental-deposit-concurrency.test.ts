@@ -40,8 +40,15 @@ function makeTx(release: { fn: (() => void) | null }): Row {
       locksAcquired.push(1);
     }),
     rentalPayment: {
-      findFirst: jest.fn(async () => ({ id: 'pay-1', lease_id: 'lease-1', renter_client_id: 'client-1' }))
+      findFirst: jest.fn(async () => ({
+        id: 'pay-1',
+        lease_id: 'lease-1',
+        renter_client_id: 'client-1',
+        status: 'SUCCESS',
+        amount: 500000
+      }))
     },
+    rentalPaymentAllocation: { findMany: jest.fn(async () => []) },
     rentalSecurityDeposit: {
       findFirst: jest.fn(async ({ where }: Row) => {
         await tick(); // fenêtre d'entrelacement
@@ -56,7 +63,9 @@ function makeTx(release: { fn: (() => void) | null }): Row {
       })
     },
     rentalDepositMovement: {
-      findMany: jest.fn(async ({ where }: Row) => store.movements.filter(m => m.type === where.type)),
+      findMany: jest.fn(async ({ where }: Row) =>
+        store.movements.filter(m => m.type === where.type && (!where.payment_id || m.payment_id === where.payment_id))
+      ),
       create: jest.fn(async ({ data }: Row) => {
         const created = { id: `mv-${++store.seq}`, ...data };
         store.movements.push(created);

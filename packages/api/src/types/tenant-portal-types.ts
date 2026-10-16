@@ -39,7 +39,12 @@ export interface InstallmentOverview {
   id: string;
   period: string; // Format: "YYYY-MM"
   dueDate: Date;
+  /** Reste dû sur l'échéance. */
   amount: number;
+  /** Montant total de l'échéance. */
+  totalAmount?: number;
+  /** Déjà réglé sur l'échéance. */
+  amountPaid?: number;
   status: string;
 }
 

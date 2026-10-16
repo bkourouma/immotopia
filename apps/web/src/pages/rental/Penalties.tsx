@@ -85,9 +85,18 @@ function justificatif(penalite: RentalPenalty): Justificatif | null {
   }
 }
 
-/** Montant réellement retenu : l'ajustement s'il existe, le calcul sinon. */
+/**
+ * Montant réellement retenu : `amount` côté API (l'ajustement s'il existe, le
+ * calcul sinon).
+ */
 function montantRetenu(penalite: RentalPenalty): number {
   return penalite.adjusted_amount ?? penalite.amount;
+}
+
+/** Montant calculé d'origine ; null quand un ajustement ancien l'a perdu. */
+function montantCalcule(penalite: RentalPenalty): number | null {
+  if (penalite.adjusted_amount == null) return penalite.amount;
+  return penalite.calculated_amount ?? null;
 }
 
 function dateCourte(iso: string): string {
@@ -240,8 +249,9 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       title: t('Montant calculé'),
       key: 'montant',
       align: 'end',
-      exportValue: p => Number(p.amount || 0),
-      render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
+      exportValue: p => Number(montantCalcule(p) || 0),
+      render: (_, p) =>
+        montantCalcule(p) == null ? '—' : <MoneyValue value={montantCalcule(p) as number} currency={p.currency} />
     },
     {
       title: t('Montant retenu'),
@@ -292,7 +302,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     <Form form={form} layout="vertical" onFinish={handleAdjust}>
       {ajustePour && (
         <Text type="secondary">
-          {t('Montant calculé :')} <MoneyValue value={ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
+          {t('Montant calculé :')}{' '}
+          <MoneyValue value={montantCalcule(ajustePour) ?? ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
           {ajustePour.days_late} jour{ajustePour.days_late > 1 ? 's' : ''} de retard
         </Text>
       )}
@@ -444,7 +455,15 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
               fields={[
                 ...(p.adjusted_amount != null
                   ? [
-                      { label: t('Montant calculé'), value: <MoneyValue value={p.amount} currency={p.currency} /> },
+                      {
+                        label: t('Montant calculé'),
+                        value:
+                          montantCalcule(p) == null ? (
+                            '—'
+                          ) : (
+                            <MoneyValue value={montantCalcule(p) as number} currency={p.currency} />
+                          )
+                      },
                       { label: t('Raison'), value: raisonAjustement(p) || '—' }
                     ]
                   : []),

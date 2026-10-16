@@ -33,10 +33,23 @@ import {
   DatabaseBackup
 } from 'lucide-react';
 import { App } from 'antd';
-import { useConfirmAction } from '../../components/primitives';
+import { StatusTag, useConfirmAction } from '../../components/primitives';
+import { getModuleKeyLabelFr } from '../../constants/module-labels';
+import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return t('Jamais');
+  return new Date(value).toLocaleDateString(activeLocale(), {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 export const TenantDetail: React.FC = () => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
@@ -328,20 +341,30 @@ export const TenantDetail: React.FC = () => {
           {activeTab === 'stats' && stats && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('Propriétés')}</label>
-                <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalProperties}</p>
+                <label className="block text-sm font-medium text-gray-700">{t('Collaborateurs actifs')}</label>
+                <p className="mt-1 text-2xl font-bold text-gray-900">{stats.activeCollaborators}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">{t('Clients')}</label>
-                <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalClients}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">{t('Collaborateurs')}</label>
-                <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalCollaborators}</p>
+                <label className="block text-sm font-medium text-gray-700">{t('Collaborateurs désactivés')}</label>
+                <p className="mt-1 text-2xl font-bold text-gray-900">{stats.disabledCollaborators}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('Modules actifs')}</label>
-                <p className="mt-1 text-2xl font-bold text-gray-900">{stats.activeModules}</p>
+                <p className="mt-1 text-sm text-gray-900">
+                  {stats.enabledModules.length > 0
+                    ? stats.enabledModules.map(key => getModuleKeyLabelFr(key)).join(', ')
+                    : '—'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('Abonnement')}</label>
+                <p className="mt-1 text-sm text-gray-900">
+                  {stats.subscription ? <StatusTag status={stats.subscription.status} /> : t('Aucun abonnement')}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t('Dernière connexion')}</label>
+                <p className="mt-1 text-sm text-gray-900">{formatDateTime(stats.lastLoginAt)}</p>
               </div>
             </div>
           )}
@@ -411,7 +434,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   };
 
   if (loading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return <div className="text-center py-8">{t('Chargement...')}</div>;
   }
 
   if (error) {
@@ -426,8 +449,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium text-gray-900">
-          {t('Collaborateurs (')}
-          {members.length})
+          {t('Collaborateurs ({{count}})', { count: members.length })}
         </h3>
         <button
           onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/invite`)}
@@ -490,7 +512,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                           key={role.id}
                           className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-bg text-primary-active"
                         >
-                          {role.name}
+                          {getRoleLabelFr(role.key, role.name).name}
                         </span>
                       ))}
                     </div>

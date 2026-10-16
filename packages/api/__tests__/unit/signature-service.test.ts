@@ -32,6 +32,9 @@ const prismaMock: Row = {
   rentalDocument: { findFirst: jest.fn(async () => db.contract) },
   crmContact: { findFirst: jest.fn(async () => ({ consentWhatsapp: true })) },
   signatureRequest: {
+    findMany: jest.fn(async () => []),
+    count: jest.fn(async () => 0),
+    groupBy: jest.fn(async () => []),
     findFirst: jest.fn(async ({ where }: Row) => {
       if (where.status) return db.open;
       return db.created ? { ...db.created, signers: db.signers } : null;
@@ -113,7 +116,9 @@ import { AuditActionKey } from '../../src/types/audit-types';
 import { recordAuditEvent } from '../../src/services/audit-service';
 import {
   createSignatureRequest,
+  getSignatureSummary,
   getSignatureTargetContext,
+  listSignatureRequests,
   normalizeSigners
 } from '../../src/services/signature-service';
 import { registerSignatureSource, resetSignatureSourcesForTests } from '../../src/lib/signature/sources';
@@ -513,10 +518,11 @@ describe('contexte d’une cible', () => {
     registerSignatureSource(source);
     const context = await getSignatureTargetContext(ctx, 'LEASE_INSPECTION', 'x1');
     expect(source.assertTarget).toHaveBeenCalledWith(ctx, 'x1');
-    expect(context).toEqual({
+    expect(context).toMatchObject({
       kind: 'LEASE_INSPECTION',
       targetType: 'LeaseInspection',
       providerRequired: false,
+      smsAvailable: false,
       signers: [{ role: 'ACHETEUR', fullName: 'Awa Koné', email: 'awa@exemple.ci', contactId: 'c1', phone: null }]
     });
   });
@@ -525,5 +531,55 @@ describe('contexte d’une cible', () => {
     registerSignatureSource(fakeSource());
     expect((await getSignatureTargetContext(ctx, 'LEASE_INSPECTION', 'x1')).signers).toEqual([]);
     await expect(getSignatureTargetContext(ctx, 'SALE_MANDATE', 'x1')).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe('liste et synthèse', () => {
+  it('liste : pagination, tri, recherche, dates, total sur le même where, agence toujours filtrée', async () => {
+    prismaMock.signatureRequest.findMany.mockResolvedValueOnce([]);
+    prismaMock.signatureRequest.count.mockResolvedValueOnce(42);
+    const result = await listSignatureRequests(
+      't1',
+      { page: 3, pageSize: 10, q: 'kone', from: '2026-01-01', to: '2026-01-31', sortBy: 'title', sortDir: 'asc' },
+      ['LEASE_CONTRACT']
+    );
+    expect(result).toEqual({ items: [], total: 42 });
+    const args = prismaMock.signatureRequest.findMany.mock.calls.at(-1)[0];
+    expect(args.skip).toBe(20);
+    expect(args.take).toBe(10);
+    expect(args.orderBy[0]).toEqual({ title: 'asc' });
+    expect(args.where.tenantId).toBe('t1');
+    expect(args.where.kind).toEqual({ in: ['LEASE_CONTRACT'] });
+    expect(args.where.createdAt.gte).toEqual(new Date('2026-01-01'));
+    expect(args.where.createdAt.lte).toEqual(new Date('2026-01-31T23:59:59.999Z'));
+    expect(args.where.OR).toEqual([
+      { title: { contains: 'kone', mode: 'insensitive' } },
+      { signers: { some: { fullName: { contains: 'kone', mode: 'insensitive' } } } }
+    ]);
+    expect(prismaMock.signatureRequest.count).toHaveBeenLastCalledWith({ where: args.where });
+  });
+
+  it('liste : un type demandé hors des types permis ne les élargit jamais', async () => {
+    await listSignatureRequests('t1', { kind: 'SALE_AGREEMENT' as any }, ['LEASE_CONTRACT']);
+    expect(prismaMock.signatureRequest.findMany.mock.calls.at(-1)[0].where.kind).toEqual({ in: [] });
+    await listSignatureRequests('t1', { kind: 'LEASE_CONTRACT' as any }, ['LEASE_CONTRACT']);
+    expect(prismaMock.signatureRequest.findMany.mock.calls.at(-1)[0].where.kind).toEqual({ equals: 'LEASE_CONTRACT' });
+  });
+
+  it('synthèse : tous les statuts à 0 par défaut, types permis et agence filtrés', async () => {
+    prismaMock.signatureRequest.groupBy.mockResolvedValueOnce([
+      { status: 'SENT', _count: { _all: 2 } },
+      { status: 'COMPLETED', _count: { _all: 1 } }
+    ]);
+    const summary = await getSignatureSummary('t1', { to: '2026-01-31' }, ['LEASE_CONTRACT']);
+    expect(summary).toEqual({
+      total: 3,
+      byStatus: { DRAFT: 0, SENT: 2, PARTIALLY_SIGNED: 0, COMPLETED: 1, DECLINED: 0, EXPIRED: 0, CANCELED: 0 }
+    });
+    const args = prismaMock.signatureRequest.groupBy.mock.calls.at(-1)[0];
+    expect(args.by).toEqual(['status']);
+    expect(args.where.tenantId).toBe('t1');
+    expect(args.where.kind).toEqual({ in: ['LEASE_CONTRACT'] });
+    expect(args.where.createdAt.lte).toEqual(new Date('2026-01-31T23:59:59.999Z'));
   });
 });

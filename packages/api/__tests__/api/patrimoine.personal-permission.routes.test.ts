@@ -138,7 +138,9 @@ describe('données personnelles du patrimoine : PATRIMOINE_PERSONAL_VIEW / _EDIT
     async (method, path) => {
       const res = await send(method, path, AGENCY_ADMIN);
       expect(res.status).toBe(403);
-      expect(res.body.message).toMatch(/PATRIMOINE_PERSONAL_(VIEW|EDIT)/);
+      expect(String(res.body.requiredPermission ?? res.body.requiredPermissions)).toMatch(
+        /PATRIMOINE_PERSONAL_(VIEW|EDIT)/
+      );
     }
   );
 

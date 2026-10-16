@@ -192,3 +192,5 @@ les mêler aux essais.
   neuve de la production n'a pas sa ligne orpheline.
 - [ADR-004](ADR-004-assistant-ia-immocopilot.md) : `AI_PROVIDER` et le refus de
   `fake` en production.
+- [ADR-008](ADR-008-deploiement-continu.md) : déploiement continu du staging
+  depuis `main` et production sur bouton avec approbation (GitHub Actions).

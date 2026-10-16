@@ -64,7 +64,8 @@ export interface TenantActivity {
   memberships: { total: number; active: number; disabled: number };
   modules: { enabled: number; modules: Array<{ key: string; enabledAt: string }> };
   subscription: {
-    plan: SubscriptionPlanKey;
+    /** `null` pour une agence créée avec des packs (planKey déprécié, BUG-2026-09-28-002). */
+    plan: SubscriptionPlanKey | null;
     status: SubscriptionStatus;
     billingCycle: SubscriptionBillingCycle;
     currentPeriodEnd: string;

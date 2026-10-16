@@ -205,6 +205,22 @@ export async function createProperty(
   // Priority: data.ownerUserId > data.ownerEmail > ownerUserId parameter
   let finalOwnerUserId = data.ownerUserId || ownerUserId;
   let masquerNomProprietaire = false;
+  const isManagedForClient = data.ownershipType === PropertyOwnershipType.CLIENT;
+
+  if (isManagedForClient && tenantId && data.ownerUserId) {
+    // Mandat de gestion : un propriétaire désigné par identifiant est un client
+    // de CETTE agence (TenantClient). Un compte d'une autre agence, ou inconnu,
+    // lève la même NotFoundError qu'un compte inexistant. (Un propriétaire
+    // désigné par e-mail passe par `resoudreProprietaireParEmail`, ci-dessous.)
+    const ownerClient = await prisma.tenantClient.findFirst({
+      where: { tenantId, userId: data.ownerUserId },
+      select: { id: true }
+    });
+    if (!ownerClient) {
+      throw new NotFoundError(t('Propriétaire introuvable.'));
+    }
+  }
+
   if (data.ownerEmail && !finalOwnerUserId) {
     const resolu = await resoudreProprietaireParEmail(tenantId, data.ownerEmail);
     finalOwnerUserId = resolu.id;
@@ -313,6 +329,17 @@ export async function createProperty(
             }
           }
         });
+        if (isManagedForClient && tenantId && finalOwnerUserId) {
+          await tx.propertyMandate.create({
+            data: {
+              propertyId: created.id,
+              tenantId,
+              ownerUserId: finalOwnerUserId,
+              startDate: new Date(),
+              isActive: true
+            }
+          });
+        }
         if (tenantId) {
           await syncLotActivationsTx(
             tx,
@@ -550,6 +577,12 @@ export async function updateProperty(
   const existing = await getPropertyById(propertyId, tenantId, userId);
   if (!existing) {
     throw new NotFoundError(t('Bien introuvable ou accès refusé'));
+  }
+
+  // Seul un bien de l'agence peut n'avoir aucun proprietaire : retirer celui
+  // d'un bien prive ou sous mandat le rendrait orphelin.
+  if (data.ownerUserId === null && existing.ownershipType !== PropertyOwnershipType.TENANT) {
+    throw new BadRequestError(t('Le propriétaire de ce bien ne peut pas être retiré.'));
   }
 
   // Validate against template if typeSpecificData is provided

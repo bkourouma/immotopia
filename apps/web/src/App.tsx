@@ -73,6 +73,14 @@ const InstallmentPaymentStatusPage = lazy(() =>
     default: m.InstallmentPaymentStatusPage
   }))
 );
+// Paiement des charges de copropriété par lien sécurisé (spec 042) : mêmes règles que ci-dessus.
+// Pages écrites par un autre agent, export par défaut.
+const ChargeCallPaymentPage = lazy(
+  () => import(/* webpackChunkName: "public-payment" */ './pages/public/ChargeCallPaymentPage')
+);
+const ChargeCallPaymentStatusPage = lazy(
+  () => import(/* webpackChunkName: "public-payment" */ './pages/public/ChargeCallPaymentStatusPage')
+);
 // Signature électronique (spec 044) : page publique à jeton dans le chemin, hors AppShell.
 const SignaturePage = lazy(() =>
   import(/* webpackChunkName: "public-signature" */ './pages/public/SignaturePage').then(m => ({
@@ -378,6 +386,11 @@ const SyndicProfilesIncidents = lazy(() =>
     default: m.SyndicProfilesIncidents
   }))
 );
+const SyndicOnlinePayments = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOnlinePayments').then(m => ({
+    default: m.SyndicOnlinePayments
+  }))
+);
 const SyndicMandatingAgencies = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMandatingAgencies').then(m => ({
     default: m.SyndicMandatingAgencies
@@ -641,6 +654,7 @@ const DocumentTemplates = lazy(() =>
     default: m.DocumentTemplates
   }))
 );
+const SignaturesPage = lazy(() => import(/* webpackChunkName: "signatures" */ './pages/signatures/SignaturesPage'));
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -842,6 +856,8 @@ function App() {
                         <Route path="/rapport-proprietaire" element={<OwnerMonthlyReportPage />} />
                         <Route path="/payer" element={<InstallmentPaymentPage />} />
                         <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
+                        <Route path="/payer-charges" element={<ChargeCallPaymentPage />} />
+                        <Route path="/payer-charges/statut" element={<ChargeCallPaymentStatusPage />} />
                         <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
                         <Route path="/signer/:token" element={<SignaturePage />} />
                         <Route path="/ag-direct" element={<MeetingLivePage />} />
@@ -993,6 +1009,10 @@ function App() {
                             />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
                             <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/paiements-en-ligne"
+                              element={<SyndicOnlinePayments />}
+                            />
+                            <Route
                               path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
                               element={<SyndicAccounting />}
                             />
@@ -1019,6 +1039,7 @@ function App() {
                             element={<TenantSubscriptionSettings />}
                           />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
+                          <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />

@@ -30,6 +30,7 @@ import { AppError, asyncHandler, BadRequestError } from '../middleware/error-mid
 import { t } from '../i18n';
 import { httpUrl } from '../lib/safe-url';
 import { parsePagination } from '../utils/pagination-helper';
+import { syncOwnerClients } from '../services/owner-client-service';
 
 /**
  * Register as a client of a tenant
@@ -598,6 +599,16 @@ export async function getTenantClientsHandler(req: Request, res: Response): Prom
     res.status(400).json({ success: false, message: errorMessage });
   }
 }
+
+/**
+ * Rattrapage des propriétaires clients : crée le TenantClient OWNER de chaque
+ * contact CRM au rôle Propriétaire qui n'en a pas encore (idempotent).
+ * POST /api/tenants/:tenantId/clients/sync-owners
+ */
+export const syncOwnerClientsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const result = await syncOwnerClients(req.params.tenantId);
+  res.status(200).json({ success: true, data: result });
+});
 
 /**
  * Get user's tenant memberships

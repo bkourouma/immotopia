@@ -363,7 +363,8 @@ export async function updateVisitStatus(
     where: { id: visitId },
     data: {
       status,
-      notes: notes !== undefined ? notes : visit.notes
+      // `null` comme `undefined` : pas de compte-rendu fourni, la note existante est conservée.
+      notes: notes !== undefined && notes !== null ? notes : visit.notes
     },
     include: {
       property: {

@@ -18,6 +18,17 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/finance-fournisseurs-tresorerie` — 2026-10-16
+
+**État :** prêt à relire (PR 142), CI à relire après la fusion de main.
+**Dernier commit :** fusion de `main` (PR 126 et 132 fusionnées le 2026-10-16).
+
+**Fait :** règlements fournisseurs (mode de règlement, compte de trésorerie), refus des sorties à solde insuffisant, route `GET .../suppliers/:supplierId/payments`, boutons masqués selon les permissions. `useMyMenuAccess` de main reprend un champ `ready`. Catalogue IA régénéré.
+
+**Reste :** compléter `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` (classeur non relisible par exceljs : à faire à la main) pour les règlements fournisseurs, le refus à solde insuffisant et les boutons selon permissions ; idem côté paiement mobile copropriétaires (PR 132, fusionnée sans lignes de classeur).
+
+**Pièges :** `node_modules` des worktrees = jonction vers le checkout principal, ne jamais la supprimer avec `rm -rf` ; en CI, deux tests sans `import` se partagent le portée globale TS (`export {}` en tête). Le worktree `port-oi` garde du travail finance non commité déjà repris ici.
+
 ## Branche `type/sujet` — AAAA-MM-JJ
 
 **État :** en cours | prêt à relire | bloqué
@@ -35,6 +46,71 @@ Pièges et décisions :
 
 - …
 ```
+
+## Branche `feat/syndic-paiement-mobile` — 2026-10-15
+
+**État :** PR brouillon https://github.com/bkourouma/immotopia/pull/132 (base `main`) (worktree `.claude/worktrees/syndic-paiement-mobile`, `node_modules` propre par `npm ci`, pas de jonction)
+**Dernier commit :** voir `git log` (poussé sur origin) — arrêt de session à ~90 % de la limite de 5 h, à la demande de l'utilisateur
+
+Paiement mobile money des appels de charges par les copropriétaires (spec `specs/042-syndic-paiement-mobile/`, contrat d'API dans `contracts.md`). Décisions de l'utilisateur : un compte PaySecureHub PAR COPROPRIÉTÉ, sans repli vers le compte du cabinet ; appels entiers seulement ; frais selon le `feesPaidBy` de l'agence ; lien « Payer cet appel » sans connexion dans les avis et relances.
+
+Fait (commité, tsc API et web à 0 erreur, tests ciblés verts) :
+
+- Spec et contrats ; schéma et 2 migrations (`SyndicPaymentGatewayConfig`, `SyndicOnlineCheckout`, idempotence de `ChargePayment`, portée `CHARGE_CALL_PAYMENT`).
+- `lib/payment-gateway/checkout-core.ts` (cœur commun, loyers inchangés).
+- Moteur `lib/syndics/online-payment/` (démarrage, rapprochement IPN/simulateur/tâche, REVIEW, décision ACCEPT/REJECT), encaissement au 5525 et reversements 5525 → 521.
+- API gestionnaire `/syndics/:id/paiement-en-ligne/*` et `/paiements-en-ligne/*` (configuration, test, solde, suivi, vérifier, trancher, reversements).
+- Lien « Payer cet appel » (M6 API) : routes publiques `/api/public/secure-links/charge-call-payment[/start|/status]`, routes gestionnaire du lien, résolveur branché dans avis et relances, événement `CHARGE_CALL_PAYMENT_LINK_SENT`.
+- Écrans : portail (bouton Payer, sélection, retour), onglet gestionnaire « Paiements en ligne », pages publiques `/payer-charges`.
+
+- API du portail (M3) : `/api/portal/copropriete/paiements-en-ligne[/disponibilite|/:codePaiement]`, champs `onlinePayable`, `onlineCheckout`, `syndicateId`, `onlineCheckoutCode` sur `GET /appels` ; écran : copropriété par `syndicateId`, « Reprendre le paiement », onglet Finances actif.
+
+Vérifié le 2026-10-15 : tsc API et web à 0 erreur ; jest 92 suites / 1463 tests verts (syndic, portail, paiement, inventaires) ; vitest portail, navigation, gestionnaire et pages publiques verts.
+
+Reste à faire :
+
+- Le GET de statut du portail ne revérifie pas le droit SYNDIC (voulu : un paiement lancé doit pouvoir se rapprocher) ; contrat §2 à aligner.
+- Web : variables `CHARGE_CALL_PAYMENT_LINK_SENT` dans `apps/web/src/constants/whatsapp-notification-variables.ts` ; boutons du lien « Payer cet appel » côté gestionnaire (service déjà prêt, route 1.10).
+- `npm run i18n:extract` dans `packages/api` ET `apps/web` (en une fois, aucun agent ne l'a lancé), puis traductions en/ar.
+- Classeur des fonctionnalités + `npm run wiki:export` (sous-fonctionnalités listées dans les rapports : configuration marchande par copropriété, paiement portail, lien, suivi/vérifier/trancher, reversements, événement de notification).
+- Mutualiser `isCurrentLotOwner` (dupliqué dans `notifications.ts` et `charge-call-link.ts`).
+- Rejouer les tests sur PostgreSQL réel (conteneur `immotopia-smm-test` : Docker était arrêté, tout a tourné sur doubles en mémoire ; verrous consultatifs et P2002 non prouvés), `npm run test:isolation`.
+- Audit `security-auditor` fait le 2026-10-15 : 0 critique, 0 haute ; la moyenne (double encaissement après la fenêtre de reprise) et 4 basses corrigées (succès sans montant → REVIEW, succès après expiration → REVIEW, simulateur coupé → plus de règlement, liens automatiques précédents révoqués). Reste la basse n° 4, à décider : reversements et décision REVIEW n'exigent que `SYNDIC_EDIT` ; `merchantId` et `apiKeyLast4` visibles avec `SYNDIC_VIEW`.
+- Relecture `code-reviewer` non faite ; recette démo au simulateur non faite ; sortir la PR #132 du brouillon après i18n, classeur et recette.
+- Changement de comportement à valider : un succès automatique dont les appels sont déjà soldés (paiement manuel entre-temps) passe en REVIEW `CALLS_UNAVAILABLE` au lieu d'être mis en avance ; le gestionnaire peut l'accepter (excédent en avance).
+
+Pièges et décisions :
+
+- Ne pas lancer `prisma format` : il réécrit ~600 lignes du schéma.
+- Exercice clos : `assertFiscalYearOpenTx` lève une `ConflictError` 409 (le contrat §0.2/§1.7 dit 400) : corriger le contrat.
+- Pas de colonne `mode` sur `SyndicOnlineCheckout` : le mode affiché vient de la configuration actuelle.
+- À trancher par l'utilisateur : langue du libellé « Payer en ligne » dans les messages ; numéro du reçu absent du statut public (§3.3) ; WhatsApp `CHARGE_CALL_PAYMENT_LINK_SENT` activé par défaut (le lien loyer est en opt-in) ; règle « lot revendu » (copropriétaire de plus fort pourcentage, `ownedSince` > début de période) ; permission `TENANT_SETTINGS_EDIT` exigée en plus de `SYNDIC_EDIT` pour la configuration ; deux copropriétés peuvent partager un compte marchand ; mode LIVE non validé (le montant BMI inclut-il les frais ? sinon REVIEW à tort).
+
+## Branche `ci/deploiement-continu-staging` — 2026-10-16
+
+**État :** prêt à relire — PR ouverte vers `main`, à fusionner par l'utilisateur ; rien n'agit avant la mise en service par le propriétaire
+**Dernier commit :** `42707962` correctifs de l'audit de sécurité (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/deploiement-continu` (jonction `node_modules` vers le checkout principal)
+
+Fait :
+
+- `.github/workflows/deploy.yml` : staging automatique sur CI verte de `main` (interrupteur `AUTO_DEPLOY_STAGING`), production par « Run workflow » derrière l'environnement `production`, sur le commit du dernier staging réussi. Un groupe de concurrence par environnement.
+- `infra/scripts/ci-deploy.sh` : commande imposée des clés SSH (`command=…,restrict`), worker détaché, canal public dédié (`<journal>.public`), journal complet dans `~/ci-deploy-logs/`. Prod : exige un commit déjà déployé avec succès en staging, refuse les retours arrière, sauvegarde et étiquette les images.
+- `check-infra.sh` : 18 cas de refus d'arguments. Docs : section « Déploiement continu » de `DEPLOIEMENT.md` (mise en service en 11 étapes), ADR-008, SECURITY.md §8.
+- Audit `security-auditor` (1 haute, 4 moyennes, 6 basses) : tout corrigé ou documenté. Simulation Linux réelle (conteneur ubuntu, vrais setsid/flock/tail, faux deploy.sh) : 42/42, dont coupure SSH en plein déploiement, client parti avant le début, file bornée, réécriture du script par son propre `git merge`.
+
+Reste à faire (propriétaire) :
+
+- FAIT le 2026-10-16 par le propriétaire : ruleset « Protection de main » (id 25223655, actif, aucun contournement) : PR obligatoire à 0 relecture, 7 contrôles CI requis, ni force-push ni suppression. Plus aucun push direct sur `main`.
+- Fusionner la PR, puis suivre la suite de la mise en service de `DEPLOIEMENT.md` : `sshd`, clés ed25519, `authorized_keys`, `known_hosts`, environnements GitHub, secrets, tests négatifs, premier essai staging, puis `AUTO_DEPLOY_STAGING=true`.
+- Rien n'a tourné sur le serveur ni chez GitHub : tout est « non éprouvé ».
+
+Pièges :
+
+- `workflow_dispatch` exécute le fichier de la branche choisie : seule la règle « Deployment branches : main » des environnements protège les secrets.
+- Un essai manuel sur le serveur (checkout hors `origin/main`) bloque le déploiement CI : c'est voulu.
+- Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement suivant.
+- Python lancé par heredoc depuis Git Bash lit le texte en cp1252 : pour une retouche de texte accentué, passer par l'outil d'édition.
 
 ## Branche `feat/prelevement-bancaire` — 2026-10-15
 
@@ -180,13 +256,13 @@ qui reste vrai et ouvert.
 
 ### Dépôt et environnements
 
-- `main` = `f80662c4` (PR #121 et #124 fusionnées le 2026-10-13). Aucune PR ouverte.
+- `main` = `7effd904` (PR #121, #124 et #125 fusionnées les 2026-10-13 et 14). PR ouverte : #126 (brouillon), voir ci-dessous.
 - Staging (app.immotopia.cloud) : code identique à `main`. Le serveur est sur `90de4895` ou plus récent ; depuis, seuls des tests et des docs ont changé, exclus des images par `.dockerignore`. Seed « 3 ans » passé le 2026-10-11. `/health` OK vérifié le 2026-10-13.
 - Déploiements : la protection automatique de l'outil refuse aux agents toute commande SSH sur ce serveur (il héberge aussi la production). Ils sont lancés par l'utilisateur : `git fetch && git merge --ff-only origin/main && ./infra/scripts/deploy.sh staging` dans le checkout du serveur.
 - Production (clients.immotopia.cloud) : n'a pas reçu les lots 040/041 ni les correctifs postérieurs. Ne pas déployer sans décision. Cycle : `backup.sh prod`, étiquette `avant-AAAAMMJJ`, `deploy.sh prod` sur le même commit que le staging ([DEPLOIEMENT.md](DEPLOIEMENT.md)). Relire avant la prod les migrations d'audit, de patrimoine et de réécriture des paiements Syndic (sauvegarde de base avant).
-- Branche LOCALE non poussée `fix/recette-operateur-integre` (worktree `.claude/worktrees/port-oi`) : 9 commits absents de tout distant (correctifs locatif, CRM, propriétaires, biens, navigation, admin, invitations, plus le scénario Opérateur intégré). Décision de l'utilisateur : pousser et ouvrir une PR, ou abandonner. Distincte de `origin/test/recette-operateur-integre` (17 commits hors `main`, non fusionnée : un essai de fusion d'un bloc donnait ~100 fichiers en conflit, à reporter commit par commit).
+- PR #126 `fix/recette-operateur-integre` (brouillon), poussée le 2026-10-14 : 9 commits de la recette Opérateur intégré (2026-10-03 ; invitations, admin, navigation par permissions, biens, propriétaires, CRM, locatif), fusion de `main` (`d21a7145`, 16 conflits résolus : catalogues par union des clés, StatusTag, permissions-labels, menu-catalog, role-controller), puis correctifs des relectures (`32d1e156`). Travaillée dans le worktree `.claude/worktrees/oi-integration` (branche locale `integ/recette-oi`, jonctions `node_modules`). **Décisions produit en attente avant fusion :** (1) `useMenuAccess` masque côté web tout menu sans permission, même si l'agence l'a ouvert explicitement dans « Rôles et menus » (contredit Q14 du lot 040 et le commentaire de `PERMISSION_GATED_GROUPS`) ; (2) `MENU_REQUIREMENTS` Finance retire par défaut « Caisse et trésorerie » et « Reversements » aux rôles sans droit financier ; (3) `feeTermsApplyToAllocation` : les encaissements antérieurs aux conditions d'honoraires n'en reçoivent plus jamais (rattrapage `freezeManagementFees` à prévoir). Migration `20261014090000_comptable_lecture_locatif` à appliquer au déploiement. Sauvegarde brute du travail finance non commité de `port-oi` : branche distante `wip/port-oi-finance` (30 fichiers, non vérifiée). Distincte de `origin/test/recette-operateur-integre` (17 commits hors `main`, non fusionnée).
 - Autre branche non intégrée : `origin/feat/sms-lot-1` (fondations SMS, fournisseur Orange CI, sans PR). À reprendre ou archiver.
-- Worktrees restants sous `.claude/worktrees/` : `port-oi`, `recette-packs` (354 fichiers de recette hors dépôt, ne pas le supprimer avec `--force`), `w4-recette`, `w5-recette` (recettes, modifications non commitées), `wiki-patrimoine` (modifications locales du classeur), `seed-3ans` et `youthful-elbakyan-3df131` (PR fusionnées : à supprimer par l'utilisateur). Tous les autres anciens worktrees ont été supprimés le 2026-10-13 ; `youthful-elbakyan-3df131` n'a plus ses jonctions `node_modules`, `seed-3ans` a son propre `node_modules`.
+- Worktrees restants sous `.claude/worktrees/` : `oi-integration` (PR #126), `port-oi` (ancien emplacement de la branche, travail finance non commité sauvegardé dans `wip/port-oi-finance`), `recette-packs` (354 fichiers de recette hors dépôt, ne pas le supprimer avec `--force`), `w4-recette`, `w5-recette` (recettes, modifications non commitées), `wiki-patrimoine` (modifications locales du classeur). Les autres ont été supprimés les 2026-10-13 et 14.
 - Nettoyage git à décider : branches distantes déjà fusionnées (`feat/controle-stock`, `feat/inventaire-whatsapp`) et branches de passation périmées (`docs/handoff-reprise-2026-09-29`, `docs/spec-fournisseur-sms`, `chore/i18n-syndic-orphelins`, `docs/wiki-fonctionnalites`, anciennes `00x-*`, `salvage/*`, `archive/*`). `HANDOFF_PLAN_2026-09-29.md` est un plan périmé à archiver.
 - Fichiers locaux volontairement non commités : `.claude/launch.json` (entrées de recette `rec-*`, `*-oi`, `rec-wa-*` vers des scripts du scratchpad ; ne pas les commiter) et `docs/ImmoTopia_Wiki_Fonctionnalites.xlsx` à la racine de `docs/` (copie périmée ; le classeur de référence est `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx`).
 
@@ -204,7 +280,7 @@ qui reste vrai et ouvert.
 
 ### Produit et décisions métier
 
-- Signature électronique (2026-10-16) : spec `specs/044-signature-electronique/` (PR 127) ; lots S0+S1 (noyau + bail) en PR 134 (`feat/signature-noyau`) ; lots S2 (mandats de gestion et de vente), S3 (état des lieux : PDF + signature sur place dessinée) et S4 (compromis) sur `feat/signature-s2-s4`, PR empilée sur la 134. Noyau extensible par `lib/signature/sources/` (registre `SignatureDocumentSource`, un fichier par type, droits et module par type, `snapshotHash`/`isSourceIntact`/`onSealed`). Quotas par pack provisoires (Agence 20, Syndic 50, Promoteur 20, Intégré 100) + extension « bloc de 50 » non vendable (prix à fixer). Compromis : refusé avec le fournisseur interne tant que `SALE_AGREEMENT` est dans `SIGNATURE_PROVIDER_REQUIRED_KINDS` (défaut) ; à retirer seulement après avis juridique ou branchement d'un prestataire `qualified`. Reste : lot S5 (écran Signatures global, rappels), S6 (adaptateur prestataire), S7 (SMS, lot SMS-1) ; écrans catalogue/achat de l'extension (PR suivante) ; avis juridique sur la signature simple pour la vente ; relecture juridique des clauses types des mandats et du compromis. À faire avant déploiement : appliquer les 4 migrations signature (noyau, enums, durcissement, mandats) sur une base dédiée et lancer `test:isolation` (`signature.db.test.ts` jamais exécuté) ; poser le masquage du jeton dans les vhosts nginx déjà réécrits (voir DEPLOIEMENT.md) ; tester LibreOffice et l'image Docker réels (+450 à 600 Mo estimés) ; envois réels e-mail/WhatsApp ; rendu navigateur (mobile, tactile, arabe) et rendu visuel des PDF (jamais ouverts à l'écran). Pièges : noms arabes imprimés en « ? » dans les PDF (police WinAnsi) ; la clé i18n « signatures électroniques ce mois-ci » (tableau dans subscription-denial-notice.ts) repart en orphelin à chaque `i18n:extract` ; le hook de commit refuse `no-control-regex` (prettier déplace le commentaire de désactivation : utiliser `lib/signature/text.ts`) ; 042 réservé au paiement mobile Syndic ; `ai.write-plan.test.ts` échoue (6 tests, fichiers IA non touchés, probablement antérieur) ; export d'agence (`tenant-data-export/storage.ts`) et seeds de gabarits globaux ne suivent pas encore les nouveaux chemins `assets`.
+- Signature électronique (2026-10-16) : spec `specs/044-signature-electronique/` ; S0-S4 (noyau, bail, mandats, état des lieux, compromis) fusionnés dans main (PR 127). Lots S5-S7 sur `feat/signature-s5-s7` (PR ouverte, non fusionnée) : S5 écran global « Signatures » (`/tenant/:tenantId/signatures`, liste paginée `GET /api/signatures` + `/summary`, relance/annulation/téléchargement, tiroir de détail) et rappels automatiques J-3/J-1 (`SIGNATURE_REMINDER_DAYS_BEFORE`, événement `REMINDER_AUTO`) ; S6 prestataire externe Yousign v3 provisoire (`SIGNATURE_PROVIDER=yousign`, webhook `POST /api/public/signature-provider/yousign` à HMAC, fin de signature, preuve `?variant=evidence`) ; S7 canal SMS (`SMS_PROVIDER` disabled|log|orange, contact CRM requis et numéro identique au contact, indicatifs `SMS_ALLOWED_DIAL_CODES`, plafond `SIGNATURE_SMS_DAILY_LIMIT`). Audit sécurité fait (0 critique/haut), points moyens corrigés. Décisions : Yousign est NON qualifié par défaut (`YOUSIGN_SIGNATURE_LEVEL=electronic_signature`) donc le compromis reste refusé tant que `SALE_AGREEMENT` est dans `SIGNATURE_PROVIDER_REQUIRED_KINDS` et que le niveau n'est pas avancé/qualifié (avis juridique requis) ; quotas par pack provisoires (Agence 20, Syndic 50, Promoteur 20, Intégré 100) et extension « bloc de 50 » non vendable (prix à fixer). Reste : comparaison de prestataires et avis juridique ; recette sandbox Yousign (coordonnées du champ, PDF ou ZIP, preuve à activer auprès du support, date de signature) ; recette réelle Orange CI ; unicité `(providerId, providerRef)` (migration) ; marqueur `REMINDER_AUTO` écrit après l'envoi (renvoi possible après plantage) ; consentement SMS absent du CRM ; entrée de menu Signatures sans contrôle de fonctionnalité ; écrans catalogue/achat de l'extension ; liens de l'écran global vers état des lieux et mandat de gestion ; les 4 migrations de signature jamais appliquées sur une base de test (`test:isolation`, `signature.db.test.ts` jamais exécuté) ; masquage du jeton dans les vhosts nginx (DEPLOIEMENT.md) ; LibreOffice/Docker réels ; rendu des PDF et navigateur (mobile, tactile, arabe) jamais vus. Pièges : noms arabes imprimés en « ? » dans les PDF ; l'extracteur i18n ne voit pas « signatures électroniques ce mois-ci » (tableau) ; le hook de commit refuse `no-control-regex` (utiliser `lib/signature/text.ts`) ; ne jamais retirer une jonction de worktree avec `git worktree remove` ni `rd /s` (incident du 2026-10-16 : le checkout principal a été vidé via les jonctions node_modules) ; `ai.write-plan.test.ts` échoue (6 tests, hors signature).
 - Signature électronique, intégration (2026-10-16) : spec renumérotée 044 (043 = AG en direct Syndic ; migrations SQL non retouchées) ; #134 et #136 fusionnées dans leurs bases, S2-S4 ramené dans la branche de la PR 127 (avance rapide `92db7438`) ; `main` fusionné dans la PR 127 (`2639cd4d`, 17 conflits : catalogues i18n réunis — la branche avait perdu 34 traductions API, remises —, wiki fusionné à trois voies, code réuni). Reste : CI de la PR 127, puis fusion. Points : deux migrations au même horodatage `20261015100000` (`signature_enums` et `syndic_ag_en_direct`, indépendantes, ordre alphabétique) ; `prisma generate` du `node_modules` partagé du checkout principal interrompu en EPERM (moteur verrouillé par un serveur) : le relancer serveurs arrêtés ; `@types/archiver` absent du `node_modules` partagé (`npm install` à la racine). Une fusion abandonnée de `main` traîne dans `.claude/worktrees/sig-spec` (base périmée `80da0ba7`) : à abandonner par son auteur.
 - Paiement mobile des copropriétaires (2026-10-15) : plan proposé en conversation (lots M0–M6, spec à créer en `specs/042-syndic-paiement-mobile/`), rien de codé, aucune branche. Décisions de l'utilisateur du 2026-10-15 : un compte marchand PaySecureHub PAR COPROPRIÉTÉ (pas celui du cabinet, aucun repli vers lui) ; appels entiers seulement (pas de montant libre) ; frais selon le réglage `feesPaidBy` de l'agence ; lien « Payer cet appel » sans connexion dans les avis et relances inclus dans la livraison (M6). Reste à valider : le compte comptable du solde PaySecureHub de la copropriété et l'écriture de reversement vers le 521. Faits d'ancrage : `OnlinePaymentCheckout` est lié en 1-1 à `RentalPayment` (inutilisable tel quel) ; `ChargePayment` n'a ni clé d'idempotence ni référence fournisseur unique ; le portail `/api/portal/copropriete` échappe au garde d'abonnement ; point d'écriture unique `recordLotPaymentTx` (`lib/syndics/charge-allocation.ts:374`).
 - rec040-01 (chantier transverse, non fait) : un magasinier qui saisit l'URL d'une page financière voit une erreur générique au lieu d'un refus. Le web ignore les permissions (`useAuth` ne porte que `globalRole`) et `DataView` ne reçoit qu'un texte. Pistes : exposer les permissions dans `/auth/me`, ou faire passer le 403 jusqu'aux 37 pages financières. Même cause : boutons d'écriture visibles pour un rôle en lecture seule, bouton « Exporter en CSV » du journal d'audit réservé aux `SUPER_ADMIN`.
@@ -231,7 +307,7 @@ qui reste vrai et ouvert.
 - `npm run test:isolation` jamais rejoué sur l'ensemble depuis les dernières intégrations (pas de `DATABASE_URL_TEST` sur le poste).
 - Deux ADR numérotés 005 (`environnements-staging-production` et `patrimoine-multi-actifs`) : renuméroter l'un. L'ADR-006 est l'audit à deux niveaux.
 - Lint API : 1 erreur locale `no-irregular-whitespace` (`src/lib/audit/platform-audit-csv.ts:70`, BOM littéral à remplacer par l'échappement) ; verte en CI. Le backend garde des erreurs TypeScript préexistantes (dont `archiver`) : ne pas en ajouter.
-- Budget d'entrée du web (`npm run measure:entry`, 227 328 octets gzip, marge ~626 octets, relevé deux fois en une semaine) : alléger l'entrée de façon structurelle (routes et menus du patrimoine, moteur de formulaires d'Ant Design via `ConfigProvider`). Toujours remesurer avant de pousser du web.
+- Budget d'entrée du web (`npm run measure:entry`, 228 352 octets gzip depuis le 2026-10-16, relevé trois fois en trois semaines) : alléger l'entrée de façon structurelle (routes et menus du patrimoine, moteur de formulaires d'Ant Design via `ConfigProvider`). Toujours remesurer avant de pousser du web.
 - Classeur des fonctionnalités : les annotations « À vérifier (en développement, PR n°X non fusionnée) » ajoutées pour les PR aujourd'hui fusionnées sont à retirer s'il en reste.
 - Test web instable, non élucidé : un échec isolé du test « gabarit » de l'import patrimoine après 22,8 s en local (piste non prouvée : premier chargement d'`exceljs`). Les 4 tests `ai.write-plan` « miroir du front » n'échouent que sous Windows (CRLF).
 

@@ -28,9 +28,9 @@ const getMenuEntitlements = vi.fn();
 vi.mock('../../services/entitlements-service', () => ({
   getMenuEntitlements: (...a: unknown[]) => getMenuEntitlements(...a)
 }));
-const getMyDisabledMenus = vi.fn();
+const getMyMenuAccess = vi.fn();
 vi.mock('../../services/role-menu-service', () => ({
-  getMyDisabledMenus: (...a: unknown[]) => getMyDisabledMenus(...a),
+  getMyMenuAccess: (...a: unknown[]) => getMyMenuAccess(...a),
   listMenuAccess: vi.fn(),
   updateMenuAccess: vi.fn()
 }));
@@ -130,7 +130,7 @@ beforeEach(() => {
     phase: 'ACTIVE',
     enforcement: 'enforce'
   });
-  getMyDisabledMenus.mockResolvedValue([]);
+  getMyMenuAccess.mockResolvedValue({ disabledMenuKeys: [], permissionKeys: null });
   listSaleCommissions.mockResolvedValue({
     items: [commission],
     totals: { amountInclTax: 4_000_000, paidAmount: 0, remainingAmount: 4_000_000 }
@@ -165,7 +165,7 @@ describe('Commissions de vente dans la coquille', () => {
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       expect(getMenuEntitlements.mock.calls.length).toBeLessThanOrEqual(3);
-      expect(getMyDisabledMenus.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(getMyMenuAccess.mock.calls.length).toBeLessThanOrEqual(3);
       expect(aiStatus.mock.calls.length).toBeLessThanOrEqual(3);
       expect(listSaleCommissions.mock.calls.length).toBeLessThanOrEqual(2);
     },

@@ -646,7 +646,8 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
                 '/tenant/:tenantId/syndics/:syndicId/quittances',
                 '/tenant/:tenantId/syndics/:syndicId/recouvrement',
                 '/tenant/:tenantId/syndics/:syndicId/finances',
-                '/tenant/:tenantId/syndics/:syndicId/comptabilite'
+                '/tenant/:tenantId/syndics/:syndicId/comptabilite',
+                '/tenant/:tenantId/syndics/:syndicId/paiements-en-ligne'
               ]
             },
             {
@@ -671,6 +672,14 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
               href: '/tenant/:tenantId/documents/templates'
             }
           ]
+        },
+        {
+          key: 'signatures',
+          label: t('Signatures'),
+          icon: <FileTextOutlined />,
+          zone: 'more',
+          section: 'parametrage',
+          href: '/tenant/:tenantId/signatures'
         },
         {
           key: 'agence',

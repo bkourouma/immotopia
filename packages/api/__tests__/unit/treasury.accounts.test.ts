@@ -13,6 +13,8 @@ const {
   allowedKindsForMethod,
   defaultKindForMethod,
   ensureDefaultTreasuryAccountTx,
+  outflowKindsForMethod,
+  resolveOutflowTreasuryAccountTx,
   resolveTreasuryAccountTx
 } = require('../../src/lib/treasury/accounts');
 
@@ -151,6 +153,86 @@ describe('resolveTreasuryAccountTx', () => {
     await expect(resolveTreasuryAccountTx(tx, 'tenant-1', { method: 'CASH', treasuryAccountId: 't0' })).rejects.toThrow(
       'Compte de trésorerie introuvable'
     );
+  });
+});
+
+describe('resolveOutflowTreasuryAccountTx — d’où sort un règlement fournisseur (BUG-2026-09-29-002)', () => {
+  const agence = [
+    { kind: 'CASH', accountNumber: '5711', label: 'Caisse principale', isDefault: true },
+    { kind: 'BANK', accountNumber: '5211', label: 'Banque principale', isDefault: true },
+    { kind: 'BANK', accountNumber: '52112', label: 'Ecobank', isDefault: false },
+    { kind: 'MOBILE_MONEY', accountNumber: '5522', label: 'Orange Money', isDefault: true, mmOperator: 'ORANGE' },
+    { kind: 'CHECKS_TO_CASH', accountNumber: '513', label: 'Chèques à encaisser', isDefault: true }
+  ];
+
+  it.each([
+    ['CASH', ['CASH']],
+    ['BANK_TRANSFER', ['BANK']],
+    ['CHECK', ['BANK']],
+    ['CARD', ['BANK']],
+    ['MOBILE_MONEY', ['MOBILE_MONEY']],
+    ['OTHER', ['CASH', 'BANK', 'MOBILE_MONEY']]
+  ])('%s sort de %j', (method, kinds) => {
+    expect(outflowKindsForMethod(method)).toEqual(kinds);
+  });
+
+  it.each([
+    ['BANK_TRANSFER', '5211'],
+    ['CHECK', '5211'],
+    ['CASH', '5711'],
+    ['MOBILE_MONEY', '5522']
+  ])(
+    'sans compte désigné, un règlement en %s sort du compte %s, pas de la caisse par défaut',
+    async (method, number) => {
+      const tx = fakeTx({ treasury: agence });
+      const resolved = await resolveOutflowTreasuryAccountTx(tx, 'tenant-1', { method });
+      expect(resolved.accountNumber).toBe(number);
+    }
+  );
+
+  it('prend le compte désigné quand il correspond au mode (une seconde banque)', async () => {
+    const tx = fakeTx({ treasury: agence });
+    const ecobank = tx.treasury.find((r: any) => r.accountNumber === '52112')!;
+    const resolved = await resolveOutflowTreasuryAccountTx(tx, 'tenant-1', {
+      method: 'BANK_TRANSFER',
+      treasuryAccountId: ecobank.id
+    });
+    expect(resolved).toMatchObject({ accountNumber: '52112', journal: 'BANK' });
+  });
+
+  it('refuse la caisse pour un virement, et la banque pour des espèces', async () => {
+    const tx = fakeTx({ treasury: agence });
+    const caisse = tx.treasury.find((r: any) => r.kind === 'CASH')!;
+    const banque = tx.treasury.find((r: any) => r.accountNumber === '5211')!;
+    await expect(
+      resolveOutflowTreasuryAccountTx(tx, 'tenant-1', { method: 'BANK_TRANSFER', treasuryAccountId: caisse.id })
+    ).rejects.toThrow('ne correspond pas au mode de règlement');
+    await expect(
+      resolveOutflowTreasuryAccountTx(tx, 'tenant-1', { method: 'CASH', treasuryAccountId: banque.id })
+    ).rejects.toThrow('ne correspond pas au mode de règlement');
+  });
+
+  it('un chèque émis ne sort pas des « chèques à encaisser »', async () => {
+    const tx = fakeTx({ treasury: agence });
+    const cheques = tx.treasury.find((r: any) => r.kind === 'CHECKS_TO_CASH')!;
+    await expect(
+      resolveOutflowTreasuryAccountTx(tx, 'tenant-1', { method: 'CHECK', treasuryAccountId: cheques.id })
+    ).rejects.toThrow('ne correspond pas au mode de règlement');
+  });
+
+  it('refuse un compte désactivé et un compte d’une autre agence', async () => {
+    const tx = fakeTx({
+      treasury: [
+        { kind: 'CASH', isActive: false },
+        { kind: 'CASH', tenantId: 'autre' }
+      ]
+    });
+    await expect(
+      resolveOutflowTreasuryAccountTx(tx, 'tenant-1', { method: 'CASH', treasuryAccountId: 't0' })
+    ).rejects.toThrow('désactivé');
+    await expect(
+      resolveOutflowTreasuryAccountTx(tx, 'tenant-1', { method: 'CASH', treasuryAccountId: 't1' })
+    ).rejects.toThrow('Compte de trésorerie introuvable');
   });
 });
 

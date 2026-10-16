@@ -13,6 +13,7 @@ import {
 } from '../middleware/error-middleware';
 import { assertBelongsToTenant } from '../utils/tenant-ownership';
 import crypto from 'crypto';
+import { t } from '../i18n';
 
 export function getFrontendBaseUrl(): string {
   return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -281,8 +282,10 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     })
   );
 
-  // Send invitation email (don't fail if email fails)
+  // Send invitation email (don't fail if email fails ; on remonte l'echec au
+  // lieu d'annoncer un succes qui n'a pas eu lieu — BUG-2026-09-28-004)
   const roleLabels = await resolveRoleLabels(data.roleIds);
+  let emailSent = true;
   try {
     await emailService.sendInviteEmail(
       email,
@@ -298,6 +301,7 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
       tenantId: data.tenantId
     });
   } catch (error) {
+    emailSent = false;
     logger.error('Failed to send invitation email', {
       invitationId: invitation.id,
       email,
@@ -334,7 +338,8 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
       email: invitation.email,
       expiresAt: invitation.expiresAt,
       status: invitation.status
-    }
+    },
+    emailSent
   };
 }
 
@@ -702,18 +707,14 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
     throw new ConflictError('Cette invitation a expiré.');
   }
 
-  // Generate new token (invalidate old one)
+  // Nouveau jeton PREPARE mais pas encore persiste : tant que l'e-mail n'est
+  // pas parti, l'ancien jeton (toujours en base) doit rester valable. Avant
+  // ce correctif, le tokenHash etait ecrase avant l'envoi : un echec d'envoi
+  // invalidait l'ancien lien sans qu'aucun lien nouveau ne soit connu de
+  // personne (BUG-2026-09-28-004).
   const { token, hash } = generateInvitationToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7); // Reset to 7 days
-
-  await prisma.invitation.update({
-    where: { id: invitationId },
-    data: {
-      tokenHash: hash,
-      expiresAt
-    }
-  });
 
   // Send email
   try {
@@ -738,8 +739,18 @@ export async function resendInvitation(invitationId: string, tenantId: string, a
       error,
       actorUserId
     });
-    throw new BadRequestError("Échec de l'envoi de l'email. L'invitation a été mise à jour.");
+    throw new BadRequestError(t("Échec de l'envoi de l'email. L'ancien lien d'invitation reste valable."));
   }
+
+  // L'e-mail est parti : on peut maintenant invalider l'ancien jeton et
+  // persister le nouveau, sans risque de perdre un lien valide en route.
+  await prisma.invitation.update({
+    where: { id: invitationId },
+    data: {
+      tokenHash: hash,
+      expiresAt
+    }
+  });
 
   await sendInvitationWhatsapp({
     tenantId: invitation.tenantId,

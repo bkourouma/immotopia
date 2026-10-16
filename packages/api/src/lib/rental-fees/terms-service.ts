@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../utils/database';
 import { badRequest, notFound } from '../errors';
 import { agencyFeeTerms, getAgencyFinanceSettings } from '../settings/finance-settings';
+import { freezeManagementFees } from './materialize';
 import { FeeTerms, feeTermsFromRow, feeTermsSchema, ResolvedFeeTerms, resolveFeeTerms } from './fee-terms';
 
 /**
@@ -81,6 +82,8 @@ export async function setOwnerFeeTerms(
   const ownerTaxStatus = rawOwnerTaxStatus === undefined ? undefined : ownerTaxStatusSchema.parse(rawOwnerTaxStatus);
 
   await assertOwnerInTenant(tenantId, ownerClientId);
+  // Les encaissements déjà faits gardent les honoraires de leurs conditions d'alors.
+  await freezeManagementFees(tenantId);
   const data = { ...feeTermsData(terms), updatedByUserId: userId ?? null };
   const row = await prisma.$transaction(async tx => {
     const upserted = await tx.ownerManagementTerms.upsert({
@@ -98,6 +101,7 @@ export async function setOwnerFeeTerms(
 
 export async function clearOwnerFeeTerms(tenantId: string, ownerClientId: string): Promise<void> {
   await assertOwnerInTenant(tenantId, ownerClientId);
+  await freezeManagementFees(tenantId);
   await prisma.ownerManagementTerms.deleteMany({ where: { tenantId, ownerClientId } });
 }
 
@@ -205,6 +209,8 @@ export async function setLeaseManagementTerms(
     ? feeTermsData(input.override)
     : { managementFeeMode: null, managementFeeRate: null, managementFeeFixedAmount: null, managementFeeBase: null };
   const data = { ...fee, agentUserId: input.agentUserId, updatedByUserId: userId ?? null };
+  // Les encaissements déjà faits gardent les honoraires de leurs conditions d'alors.
+  await freezeManagementFees(tenantId);
   await prisma.leaseManagementTerms.upsert({
     where: { leaseId, tenantId },
     create: { tenantId, leaseId, ...data },

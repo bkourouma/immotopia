@@ -45,6 +45,7 @@ export const SaleAgreementSignatures: React.FC<SaleAgreementSignaturesProps> = (
 }) => {
   const [signers, setSigners] = useState<SignerInput[] | null>(null);
   const [providerRequired, setProviderRequired] = useState(false);
+  const [externalProvider, setExternalProvider] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export const SaleAgreementSignatures: React.FC<SaleAgreementSignaturesProps> = (
     // La cible n'est servie (contexte) que tant que le compromis peut être envoyé ; sinon, seul l'historique s'affiche.
     if (!canSend) {
       setProviderRequired(false);
+      setExternalProvider(false);
       setSigners([]);
       return undefined;
     }
@@ -61,6 +63,7 @@ export const SaleAgreementSignatures: React.FC<SaleAgreementSignaturesProps> = (
       .then(context => {
         if (canceled) return;
         setProviderRequired(Boolean(context.providerRequired));
+        setExternalProvider(Boolean(context.externalProvider));
         setSigners(toSignerInputs(context.signers ?? []));
       })
       .catch((err: any) => {
@@ -85,6 +88,7 @@ export const SaleAgreementSignatures: React.FC<SaleAgreementSignaturesProps> = (
           defaultSigners={signers}
           fileLabel={`compromis-${number}`}
           providerRequired={providerRequired}
+          externalProvider={externalProvider}
           sendDisabled={!canSend}
           onChanged={onChanged}
           onOpenChange={onOpenChange}

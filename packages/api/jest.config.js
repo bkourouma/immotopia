@@ -39,7 +39,8 @@ const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/api/newsletter-validation.test.ts',
   '<rootDir>/__tests__/api/owner-portal-patrimoine.test.ts',
   '<rootDir>/__tests__/api/owner-portal-mandate-scope.test.ts',
-  '<rootDir>/__tests__/api/owner-portal-reports-filename.test.ts'
+  '<rootDir>/__tests__/api/owner-portal-reports-filename.test.ts',
+  '<rootDir>/__tests__/unit/property-visit-notes.test.ts'
 ];
 
 const base = {

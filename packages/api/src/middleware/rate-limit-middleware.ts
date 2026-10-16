@@ -159,6 +159,22 @@ export const whatsappCloudWebhookRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook du prestataire de signature (spec 044, lot S6) : 600 requetes par
+ * minute et par IP, AVANT la lecture du corps et la verification de signature.
+ */
+export const signatureProviderWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  keyGenerator: req => `sig-provider:${req.ip ?? 'inconnue'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Routes publiques des liens securises (lib/secure-links) : 30 requetes par
  * minute et par IP, appliquees AVANT toute verification du jeton. La reponse
  * 429 est la meme quel que soit le jeton ; elle porte les memes en-tetes
@@ -298,6 +314,106 @@ export const meetingLiveActionRateLimiter = rateLimit({
   max: 30,
   keyGenerator: req => meetingLiveTokenKey(req, 'action'),
   handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ---------------------------------------------------------------------------
+// Paiement mobile des copropriétaires (spec 042)
+// ---------------------------------------------------------------------------
+
+/** Test de connexion PaySecureHub d'une copropriété : appelle le fournisseur. 10 par minute et par utilisateur. */
+export const syndicGatewayTestRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `syndic-gw-test:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Solde fournisseur d'une copropriété : appelle le fournisseur. 10 par minute et par utilisateur. */
+export const syndicGatewayBalanceRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `syndic-gw-balance:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Écritures gestionnaire du paiement en ligne (configuration, vérification, décision, reversement, lien). 20 par minute et par utilisateur. */
+export const syndicGatewayWriteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => `syndic-gw-write:${userTenantKey(req)}`,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: t('Trop de requêtes. Veuillez réessayer dans une minute.')
+    });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien « Payer cet appel » (spec 042), consultation : 30 par minute et par IP, avant toute vérification du jeton. Mêmes en-têtes anti-cache que les liens sécurisés. */
+export const chargePaymentViewRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => `charge-payment-view:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien « Payer cet appel », démarrage du paiement : 10 par minute et par IP (chaque appel peut créer un paiement chez l'agrégateur). */
+export const chargePaymentStartRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `charge-payment-start:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lien « Payer cet appel », statut : la page interroge toutes les 3 s ; seau dédié de 90 par minute et par IP. */
+export const chargePaymentStatusRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 90,
+  keyGenerator: req => `charge-payment-status:${req.ip ?? 'inconnue'}`,
+  handler: (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+  },
   standardHeaders: true,
   legacyHeaders: false
 });

@@ -9,7 +9,11 @@ import { generateToken, hashToken, hashesMatch, looksLikeToken } from './token';
 import { invalidSecureLinkError } from './errors';
 
 export type SecureLinkScope =
-  'OWNER_MONTHLY_REPORT' | 'EXTERNAL_ACCESS_GRANT' | 'INSTALLMENT_PAYMENT' | 'GENERAL_MEETING_ACCESS'; // = enum Prisma
+  | 'OWNER_MONTHLY_REPORT'
+  | 'EXTERNAL_ACCESS_GRANT'
+  | 'INSTALLMENT_PAYMENT'
+  | 'GENERAL_MEETING_ACCESS'
+  | 'CHARGE_CALL_PAYMENT'; // = enum Prisma
 
 export interface CreateSecureLinkInput {
   tenantId: string;
@@ -72,6 +76,8 @@ export function buildSecureLinkUrl(scope: SecureLinkScope, token: string): strin
       return `${base}/payer#${token}`;
     case 'EXTERNAL_ACCESS_GRANT':
       return `${base}/acces-partage#${token}`;
+    case 'CHARGE_CALL_PAYMENT':
+      return `${base}/payer-charges#${token}`;
     case 'GENERAL_MEETING_ACCESS':
       return `${base}/ag-direct#${token}`;
   }

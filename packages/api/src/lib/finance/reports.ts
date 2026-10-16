@@ -96,7 +96,9 @@ async function loadPropertyLabelsByClient(tenantId: string, tenantClientIds: str
   });
 
   for (const lease of leases) {
-    const label = lease.property?.internalReference || lease.property?.title;
+    // Le titre d'abord : c'est le nom que l'agence donne au bien ; une référence
+    // technique (PROP-2026…) ne dit rien à personne (BUG-2026-09-29-005).
+    const label = lease.property?.title || lease.property?.internalReference;
     if (!label) {
       continue;
     }

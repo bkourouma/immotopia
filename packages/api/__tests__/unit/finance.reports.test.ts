@@ -38,6 +38,9 @@ jest.mock('@prisma/client', () => {
     }
     if (where.type !== undefined && m.type !== where.type) return false;
     if (where.leaseId && !inFilter(where.leaseId, m.leaseId)) return false;
+    if (where.type !== undefined && m.type !== where.type) return false;
+    if (where.sourceType !== undefined && m.sourceType !== where.sourceType) return false;
+    if (where.sourceId && typeof where.sourceId === 'object' && !inFilter(where.sourceId, m.sourceId)) return false;
     if (where.movementDate && !matchesMovementDate(m.movementDate, where.movementDate)) return false;
     return true;
   };
@@ -74,9 +77,28 @@ jest.mock('@prisma/client', () => {
     thirdPartyMovement: {
       groupBy: jest.fn(async (args: Row) => {
         const rows = store.movements.filter(m => matchesMovement(m, args.where ?? {}));
-        const sums = new Map<string, { debitSum: number; hasDebit: boolean; creditSum: number; hasCredit: boolean }>();
+        const byType = (args.by ?? []).includes('type');
+        const sums = new Map<
+          string,
+          {
+            accountId: string;
+            type?: string;
+            debitSum: number;
+            hasDebit: boolean;
+            creditSum: number;
+            hasCredit: boolean;
+          }
+        >();
         for (const m of rows) {
-          const entry = sums.get(m.accountId) ?? { debitSum: 0, hasDebit: false, creditSum: 0, hasCredit: false };
+          const key = byType ? `${m.accountId}|${m.type}` : m.accountId;
+          const entry = sums.get(key) ?? {
+            accountId: m.accountId,
+            type: byType ? m.type : undefined,
+            debitSum: 0,
+            hasDebit: false,
+            creditSum: 0,
+            hasCredit: false
+          };
           if (m.debit !== null && m.debit !== undefined) {
             entry.debitSum += Number(m.debit);
             entry.hasDebit = true;
@@ -85,10 +107,11 @@ jest.mock('@prisma/client', () => {
             entry.creditSum += Number(m.credit);
             entry.hasCredit = true;
           }
-          sums.set(m.accountId, entry);
+          sums.set(key, entry);
         }
-        return Array.from(sums.entries()).map(([accountId, e]) => ({
-          accountId,
+        return Array.from(sums.values()).map(e => ({
+          accountId: e.accountId,
+          ...(byType ? { type: e.type } : {}),
           _sum: { debit: e.hasDebit ? e.debitSum : null, credit: e.hasCredit ? e.creditSum : null }
         }));
       }),
@@ -238,7 +261,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
         property: { title: 'Appartement Plateau', internalReference: 'REF-B' }
       });
 
-      seedAccount({ id: 'acc-a', tenantClientId: 'client-a', label: 'Awa Diop', balance: 40000 });
+      seedAccount({ id: 'acc-a', tenantClientId: 'client-a', label: 'Awa Diop', balance: 90000 });
       seedAccount({ id: 'acc-b', tenantClientId: 'client-b', label: 'Moussa Ba', balance: -20000 });
 
       seedMovement({
@@ -294,7 +317,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       });
     });
 
-    it('renvoie une ligne par locataire, avec le solde courant du compte et un total de controle', async () => {
+    it('renvoie une ligne par locataire, avec le solde de cloture (releve) et un total de controle', async () => {
       const result = await getClientsBalance(TENANT_ID);
 
       const lineA = result.lines.find(l => l.accountId === 'acc-a')!;
@@ -303,7 +326,8 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
       expect(lineA.totalBilled).toBe(150000);
       expect(lineA.totalSettled).toBe(60000);
       expect(lineA.balance).toBe(90000); // Σ facturé − Σ réglé à date (plus le solde stocké)
-      expect(lineA.propertyLabels).toEqual(['REF-A']);
+      // Le nom du bien, pas sa reference technique.
+      expect(lineA.propertyLabels).toEqual(['Villa Almadies']);
 
       expect(lineB.totalBilled).toBe(30000);
       expect(lineB.totalSettled).toBe(50000);
@@ -334,7 +358,7 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
 
       expect(result.lines).toHaveLength(1);
       expect(result.lines[0].accountId).toBe('acc-b');
-      expect(result.lines[0].propertyLabels).toEqual(['REF-B']);
+      expect(result.lines[0].propertyLabels).toEqual(['Appartement Plateau']);
     });
 
     it('renvoie une balance vide quand rien ne correspond au filtre', async () => {
@@ -707,6 +731,79 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
     });
   });
 
+  describe('getAccountStatement — relevé à la date du jour (BUG-2026-09-28-026)', () => {
+    const AS_OF = new Date('2026-09-28T12:00:00.000Z');
+
+    beforeEach(() => {
+      seedAccount({ id: 'acc-d', tenantClientId: 'client-d', label: 'Aminata Traore', balance: 320000 });
+
+      // Ordre d'insertion : l'échéance d'octobre (future) est écrite AVANT le
+      // règlement, comme lors d'un « Recalculer les statuts » qui crée toutes
+      // les échéances d'un coup. Les balanceAfter stockés suivent l'insertion.
+      seedMovement({
+        id: 'd1',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-09-05T00:00:00.000Z'),
+        createdAt: new Date('2026-09-01T10:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 160000,
+        balanceAfter: 160000,
+        label: 'Loyer de septembre 2026'
+      });
+      seedMovement({
+        id: 'd2',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-10-05T00:00:00.000Z'),
+        createdAt: new Date('2026-09-02T10:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 160000,
+        balanceAfter: 320000,
+        label: "Loyer d'octobre 2026"
+      });
+      seedMovement({
+        id: 'd3',
+        accountId: 'acc-d',
+        movementDate: new Date('2026-09-28T09:00:00.000Z'),
+        createdAt: new Date('2026-09-28T09:00:00.000Z'),
+        type: 'PAYMENT',
+        credit: 150000,
+        balanceAfter: 170000,
+        label: 'Reglement'
+      });
+    });
+
+    it("n'affiche que les mouvements échus et solde chronologiquement", async () => {
+      const statement = await getAccountStatement(TENANT_ID, 'acc-d', { asOf: AS_OF });
+
+      expect(statement.movements.map(m => m.id)).toEqual(['d1', 'd3']);
+      expect(statement.movements.map(m => m.balanceAfter)).toEqual([160000, 10000]);
+      expect(statement.openingBalance).toBe(0);
+      expect(statement.closingBalance).toBe(10000);
+      expect(statement.total).toBe(2);
+    });
+
+    it("l'ouverture d'une période est la somme chronologique des mouvements antérieurs", async () => {
+      const statement = await getAccountStatement(TENANT_ID, 'acc-d', {
+        asOf: AS_OF,
+        range: { from: new Date('2026-09-20T00:00:00.000Z') }
+      });
+
+      expect(statement.movements.map(m => m.id)).toEqual(['d3']);
+      expect(statement.openingBalance).toBe(160000);
+      expect(statement.movements[0].balanceAfter).toBe(10000);
+      expect(statement.closingBalance).toBe(10000);
+    });
+
+    it('la pagination garde les soldes cumulés', async () => {
+      const statement = await getAccountStatement(TENANT_ID, 'acc-d', { asOf: AS_OF, skip: 1, take: 1 });
+
+      expect(statement.movements.map(m => m.id)).toEqual(['d3']);
+      expect(statement.movements[0].balanceAfter).toBe(10000);
+      expect(statement.total).toBe(2);
+      expect(statement.closingBalance).toBe(10000);
+    });
+  });
+
   describe('Vocabulaire (principe P-1) : ni "debit" ni "credit" dans les reponses', () => {
     beforeEach(() => {
       seedLease({
@@ -762,6 +859,60 @@ describe('Restitution financiere - balance, balance agee, releve', () => {
         expect(normalized).not.toContain('debit');
         expect(normalized).not.toContain('credit');
       }
+    });
+  });
+
+  // BUG-2026-09-29-005 : la balance et le relevé d'un même locataire doivent
+  // dire la même chose (échu à ce jour).
+  describe('règle commune balance / relevé (exigibilité)', () => {
+    const ASOF = new Date('2026-09-29T12:00:00.000Z');
+
+    it("par défaut (sans asOf), le relevé d'un locataire ne compte que l'échu, comme la balance", async () => {
+      seedAccount({ id: 'acc-z', tenantClientId: 'client-z', label: 'Aminata Traoré', balance: 200000 });
+      seedMovement({
+        id: 'z1',
+        accountId: 'acc-z',
+        movementDate: new Date('2020-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 100000,
+        label: 'Loyer échu'
+      });
+      seedMovement({
+        id: 'z2',
+        accountId: 'acc-z',
+        movementDate: new Date('2999-01-05T00:00:00.000Z'),
+        type: 'INSTALLMENT',
+        debit: 100000,
+        label: 'Loyer futur'
+      });
+
+      const statement = await getAccountStatement(TENANT_ID, 'acc-z');
+      const balance = await getClientsBalance(TENANT_ID);
+      const line = balance.lines.find(l => l.accountId === 'acc-z')!;
+
+      expect(statement.movements.map(m => m.id)).toEqual(['z1']);
+      expect(statement.closingBalance).toBe(100000);
+      expect(line.balance).toBe(100000);
+      expect(line.totalBilled).toBe(100000);
+    });
+
+    it("les imputations d'avance ne sont pas comptées comme des factures", async () => {
+      seedAccount({ id: 'acc-v', tenantClientId: 'client-v', label: 'Aminata', balance: 0 });
+      const d = (day: number) => new Date(`2026-08-${String(day).padStart(2, '0')}T00:00:00.000Z`);
+      const move = (row: Record<string, any>) =>
+        seedMovement({ accountId: 'acc-v', sourceType: 'RENTAL_PAYMENT', ...row });
+      move({ id: 'v1', movementDate: d(1), type: 'INSTALLMENT', debit: 300000, sourceId: 'i1', label: 'Loyer' });
+      move({ id: 'v2', movementDate: d(2), type: 'ADVANCE_RECEIVED', credit: 300000, sourceId: 'p1', label: 'Avance' });
+      move({ id: 'v3', movementDate: d(3), type: 'ADVANCE_APPLIED', debit: 300000, sourceId: 'a1', label: 'Imputée' });
+      move({ id: 'v4', movementDate: d(3), type: 'PAYMENT', credit: 300000, sourceId: 'a1', label: 'Règlement' });
+
+      const balance = await getClientsBalance(TENANT_ID, { asOf: ASOF });
+      const line = balance.lines.find(l => l.accountId === 'acc-v')!;
+
+      expect(line.totalBilled).toBe(300000);
+      expect(line.totalSettled).toBe(300000);
+      expect(line.balance).toBe(0);
+      expect(line.totalBilled - line.totalSettled).toBe(line.balance);
     });
   });
 });

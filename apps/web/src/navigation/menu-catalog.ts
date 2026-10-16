@@ -114,6 +114,12 @@ export interface MenuCatalogSection {
   entries: MenuCatalogEntry[];
 }
 
+const FINANCE_ACCOUNTS_OR_REPORTS = ['FINANCE_ACCOUNTS_READ', 'FINANCE_REPORTS_READ'];
+// Caisse et trésorerie : lecture des comptes, ou création d'une pièce de caisse.
+const FINANCE_TREASURY = ['FINANCE_ACCOUNTS_READ', 'FINANCE_DOCUMENTS_CREATE'];
+// File de validation (VALIDATE) et importation (création de pièces).
+const FINANCE_VALIDATION = ['FINANCE_DOCUMENTS_VALIDATE', 'FINANCE_DOCUMENTS_CREATE'];
+
 /**
  * Permissions ouvrant chaque entrée **par défaut**.
  *
@@ -148,23 +154,32 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
   'rental-direct-debit': ['RENTAL_DIRECT_DEBIT_VIEW'],
 
-  // Finance. Une entrée à onglets ouvre plusieurs écrans : elle n'exige une
-  // permission que si CHACUN de ses écrans en exigeait une, sinon un rôle
-  // perdrait par défaut un écran qu'il voyait. D'où l'absence volontaire de
-  // `finance-tresorerie` (Caisse exigeait FINANCE_DOCUMENTS_CREATE, Trésorerie
-  // rien) et de `finance-owner-accounts` (Comptes propriétaires exigeait
-  // FINANCE_ACCOUNTS_READ, Associations rien). Les cinq groupes, comme
-  // l'ancien groupe « Finance », ne sont conditionnés par rien — sauf
-  // « Chantiers et stock » depuis le lot 040 (ecrans §2.3) : ses deux entrées
-  // exigent chacune une permission sur TOUS leurs onglets, si bien que la
-  // règle ci-dessus est tenue. Les six onglets du stock exigent STOCK_VIEW,
-  // les trois du suivi des chantiers FINANCE_ACCOUNTS_READ. Le groupe s'ouvre
-  // avec l'une ou l'autre : un magasinier voit la Gestion du stock et pas le
-  // Suivi des chantiers, un comptable voit les deux.
+  // Finance. Permissions reprises des routes API de chaque écran (voir
+  // `finance-rbac-middleware.ts`) : les listes exigent FINANCE_ACCOUNTS_READ,
+  // les balances et rapports FINANCE_REPORTS_READ, la file de validation
+  // FINANCE_DOCUMENTS_VALIDATE, les créations FINANCE_DOCUMENTS_CREATE. Une
+  // entrée à onglets regroupe plusieurs écrans : elle s'ouvre dès qu'UNE de
+  // ces permissions est détenue, l'écran refusé restant protégé par l'API.
+  // Un groupe exige l'union des permissions de ses feuilles.
+  'finance-caisse-compta': [...FINANCE_TREASURY, ...FINANCE_VALIDATION, 'FINANCE_REPORTS_READ'],
+  'finance-tresorerie': FINANCE_TREASURY,
+  'finance-validation': FINANCE_VALIDATION,
   'finance-comptabilite': ['FINANCE_REPORTS_READ'],
+  'finance-clients-proprietaires': [...FINANCE_ACCOUNTS_OR_REPORTS, 'FINANCE_DOCUMENTS_CREATE'],
+  'finance-clients': [...FINANCE_ACCOUNTS_OR_REPORTS, 'FINANCE_DOCUMENTS_CREATE'],
+  'finance-owner-accounts': ['FINANCE_ACCOUNTS_READ'],
+  'finance-achats': FINANCE_ACCOUNTS_OR_REPORTS,
+  'finance-fournisseurs': FINANCE_ACCOUNTS_OR_REPORTS,
+  'finance-retenues': ['FINANCE_ACCOUNTS_READ'],
+  // Chantiers et stock (lot 040, écrans §2.3) : les six onglets du stock exigent
+  // STOCK_VIEW, les trois du suivi des chantiers FINANCE_ACCOUNTS_READ ; le
+  // groupe s'ouvre avec l'une ou l'autre (un magasinier ne voit que le stock).
   'finance-chantiers-stock': ['STOCK_VIEW', 'FINANCE_ACCOUNTS_READ'],
   'finance-chantiers': ['FINANCE_ACCOUNTS_READ'],
   'finance-stock': ['STOCK_VIEW'],
+  'finance-main-oeuvre': ['FINANCE_ACCOUNTS_READ'],
+  'finance-salaires': ['FINANCE_ACCOUNTS_READ'],
+  'finance-tacherons': ['FINANCE_ACCOUNTS_READ'],
 
   // Patrimoine et entretien.
   patrimoine: ['PROPERTIES_VIEW', 'PATRIMOINE_PERSONAL_VIEW'],
@@ -221,6 +236,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Paramétrage.
   documents: ['RENTAL_DOCUMENTS_VIEW'],
   'documents-templates': ['RENTAL_DOCUMENTS_VIEW'],
+  // Signatures : l'API ne renvoie que les types de documents que l'utilisateur peut lire (bail, mandat, vente).
+  signatures: ['RENTAL_LEASES_VIEW', 'PROPERTIES_VIEW', 'CRM_DEALS_VIEW'],
   agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW', 'TENANT_AUDIT_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
@@ -229,7 +246,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'agence-activity': ['TENANT_AUDIT_VIEW']
 };
 
-function requirementsFor(navKey: string): string[] {
+/** Permissions ouvrant une entrée de navigation (`[]` : ouverte à tous). */
+export function requirementsFor(navKey: string): string[] {
   return MENU_REQUIREMENTS[navKey] ?? [];
 }
 
@@ -386,44 +404,23 @@ export function defaultMenuEnabled(requires: string[], rolePermissionKeys: Set<s
 }
 
 /**
- * Groupes du menu d'agence que la coquille masque d'après les permissions
- * RÉELLES du compte, sans attendre qu'un administrateur ait coupé l'entrée.
+ * Vrai si l'agence a ouvert `menuKey` EXPLICITEMENT (ligne `enabled = true`
+ * pour le rôle : surcharge d'agence ou défaut commun), directement ou via l'une
+ * de ses anciennes clés. Une ouverture explicite dispense l'entrée du filtre
+ * par permission de la coquille (`useFilteredNavigation`) : le choix de
+ * l'agence prime. Sans décision, ce sont les permissions réelles du compte qui
+ * masquent l'entrée (`MENU_REQUIREMENTS`) : un rôle sans `PROPERTIES_VIEW` ne
+ * voit pas Biens et Patrimoine (BUG-2026-10-02-010 / -004), ni la Finance sans
+ * droit financier.
  *
- * Le serveur ne connaît que des clés opaques et « l'absence de décision vaut
- * autorisé » : un rôle sans `PROPERTIES_VIEW` voyait donc Biens et Patrimoine,
- * et tombait sur un écran en erreur générique (BUG-2026-10-02-010 / -004).
- * La liste est volontairement bornée ; l'étendre à d'autres groupes se décide
- * avec leurs propres permissions (voir `MENU_REQUIREMENTS`).
- *
- * Lot 040 (ecrans §2.3) : « Chantiers et stock » s'y ajoute, pour que le
- * Magasinier, qui n'a que des droits `STOCK_*`, voie « Gestion du stock » sans
- * « Suivi des chantiers ». Les menus hors stock de ce rôle ne sont PAS coupés
- * ici (Q14) : la plateforme les coupe une fois, dans l'écran « Rôles et
- * menus ».
+ * Lot 040 (ecrans §2.3, Q14) : le Magasinier, qui n'a que des droits
+ * `STOCK_*`, voit « Gestion du stock » sans « Suivi des chantiers » ; ses menus
+ * sans exigence de permission (CRM…) ne sont pas coupés d'office, la plateforme
+ * les coupe une fois dans « Rôles et menus ».
  */
-const PERMISSION_GATED_GROUPS: readonly string[] = ['biens', 'patrimoine', 'finance-chantiers-stock'];
-
-/**
- * Clés de menu que les permissions du compte ne permettent pas d'ouvrir
- * (groupes de `PERMISSION_GATED_GROUPS`, entrée par entrée : une feuille
- * suit sa propre exigence, un groupe fermé emporte toutes ses feuilles).
- */
-export function menuKeysDeniedByPermissions(persona: PersonaId, permissionKeys: Iterable<string>): string[] {
-  const held = new Set(permissionKeys);
-  const denied: string[] = [];
-  for (const group of getNavigation()[persona].tree) {
-    if (!PERMISSION_GATED_GROUPS.includes(group.key)) continue;
-    if (!defaultMenuEnabled(requirementsFor(group.key), held)) {
-      denied.push(menuKeyFor(persona, group.key));
-      continue;
-    }
-    for (const leaf of group.children ?? []) {
-      if (!defaultMenuEnabled(requirementsFor(leaf.key), held)) {
-        denied.push(menuKeyFor(persona, group.key, leaf.key));
-      }
-    }
-  }
-  return denied;
+export function isMenuKeyExplicitlyEnabled(menuKey: string, enabled: ReadonlySet<string>): boolean {
+  if (enabled.has(menuKey)) return true;
+  return legacyMenuKeysFor(menuKey).some(key => enabled.has(key));
 }
 
 /** Carte complète des états par défaut d'un rôle. */

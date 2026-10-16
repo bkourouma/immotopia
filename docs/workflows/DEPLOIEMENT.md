@@ -19,6 +19,7 @@ produisent ; ce qui n'a jamais tourné sur le serveur est marqué **non éprouv�
 Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
 [règle d'or](#règle-dor) · [vue d'ensemble](#vue-densemble) ·
 [première mise en service de la production](#première-mise-en-service-de-la-production) ·
+[déploiement continu](#déploiement-continu-github-actions) ·
 [cycle courant](#cycle-courant) ·
 [sauvegarde et restauration](#sauvegarde-et-restauration) ·
 [différences de configuration](#différences-de-configuration-staging-et-production) ·
@@ -108,6 +109,8 @@ Dans ce document : [éprouvé ou non](#éprouvé-et-non-éprouvé) ·
     exécutées avec un `DATABASE_URL` invalide, sortie en code 1 avant toute
     connexion.
 - **Non éprouvé** (à la date de rédaction) :
+  - le déploiement continu (`deploy.yml`, `ci-deploy.sh`, clés SSH de la CI,
+    environnements et secrets GitHub) : écrit et testé en local seulement ;
   - la copie hors serveur (rclone), la restauration réelle d'une sauvegarde, le
     retour arrière par étiquette d'image, le fichier temporaire de
     `set-google-oauth.sh`, la connexion Google et le paiement en mode `LIVE` ;
@@ -216,6 +219,7 @@ de paiement) : un essai y enverrait de vrais messages à de vrais clients.
 | `backup.sh <staging\|prod>`                   | Sauvegarde la base et le volume des documents, avec rotation et copie hors serveur facultative.                                                                                             |
 | `restore-check.sh <dump.sql.gz>`              | Vérifie qu'un dump se restaure, dans un conteneur jetable sans réseau. Ne touche aucune pile.                                                                                               |
 | `seed-pack-tests.sh staging [--dry-run]`      | Crée ou resynchronise 12 agences de test (deux par pack, avec 6 mois ou 3 ans de données) à mot de passe public. Refuse `prod`. Voir « Comptes de test par pack ».                          |
+| `ci-deploy.sh <staging\|prod> [sha]`          | Entrée imposée aux clés SSH de la CI (`command=`, `restrict`) : contrôles git, sauvegarde (prod), `deploy.sh`, détaché de SSH. **Non éprouvé.** Voir « Déploiement continu ».               |
 | `check-infra.sh`                              | Contrôle statique sans secret (syntaxe, rendu Compose, ports, modes 100755), lancé par la CI (`bash infra/scripts/check-infra.sh` aussi en local).                                          |
 
 Les scripts doivent porter le **mode 100755 dans le dépôt** (voir le piège
@@ -821,44 +825,360 @@ durée de fonctionnement inchangée (pas « Up 2 minutes » alors que personne n
 déployé le staging), `127.0.0.1:3019->80` et `127.0.0.1:5436->5432`, et `200`.
 `deploy.sh prod` a déjà comparé la liste des conteneurs voisins avant et après.
 
+## Déploiement continu (GitHub Actions)
+
+**Non éprouvé : aucun essai réel n'a eu lieu.** Le workflow
+`.github/workflows/deploy.yml` et le script `infra/scripts/ci-deploy.sh` sont
+écrits et contrôlés en local (refus d'arguments, enchaînement sur un faux dépôt),
+mais jamais exécutés par GitHub ni sur le serveur. Décision :
+[ADR-008](../architecture/adr/ADR-008-deploiement-continu.md). Tant que la mise en
+service ci-dessous n'est pas faite, rien ne change : le déploiement manuel
+(« Cycle courant ») reste la référence.
+
+### Ce qui part tout seul, ce qui reste manuel
+
+| Cas                                                                | Déclencheur                                                    | Approbation                                                  |
+| ------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Staging** (https://app.immotopia.cloud), à chaque push de `main` | automatique si la variable `AUTO_DEPLOY_STAGING` vaut `true`   | aucune                                                       |
+| **Staging**, à la demande                                          | « Run workflow », environnement `staging`                      | aucune                                                       |
+| **Production** (https://clients.immotopia.cloud)                   | « Run workflow », environnement `prod`, **jamais automatique** | relecteur obligatoire de l'environnement GitHub `production` |
+| Toute autre branche                                                | rien ne se déploie (la CI reste inchangée)                     |                                                              |
+
+La production se déploie, par défaut, sur le **commit du dernier déploiement
+réussi du staging** (registre des déploiements de GitHub) : on promeut ce qui a
+été validé. Le champ « commit » du formulaire permet d'en choisir un autre pour
+la production (40 caractères hexadécimaux) ; pour le staging, il doit rester vide
+(tête de `main`). Avant `deploy.sh prod`, le déploiement fait la sauvegarde
+(`backup.sh prod`) et étiquette les images actuelles (`immotopia-prod-api` et
+`-web` en `avant-<date>-<version de la production>`, voir « Retour arrière »). Le staging se
+déploie **sans sauvegarde préalable**.
+
+### Cheminement
+
+1. **Workflow `Déploiement`** (GitHub) : sur `workflow_run` du workflow `CI` (branche
+   `main`, push du même dépôt, conclusion `success`, interrupteur actif) ou sur
+   `workflow_dispatch` (lancé depuis `main`). Un premier job résout la cible
+   (environnement et commit) ; si un commit plus récent est déjà sur `main`, le
+   déploiement est écarté sans erreur (on ne recule jamais le staging, le commit
+   plus récent a le sien). Un second job, rattaché à l'environnement GitHub
+   `staging` ou `production`, ouvre la connexion SSH.
+2. **SSH** : `ssh -p 2222 deployer@147.93.44.169 "deploy <env> <sha>"` avec une clé
+   propre à l'environnement, vérification stricte de l'hôte (`known_hosts` fourni
+   par un secret).
+3. **`ci-deploy.sh <env>`** : imposé par la clé (`command=…`), il valide la commande
+   reçue (`^deploy (staging|prod) ([0-9a-f]{40})$`, environnement égal à celui de la
+   clé), puis lance un worker **détaché de la session SSH** et ne suit que le
+   **canal public** de ce worker. Le worker : place d'attente et verrou CI,
+   attente d'un `deploy.sh` manuel, `git fetch`, contrôles (commit dans
+   `origin/main` et portant `ci-deploy.sh`, arbre propre, HEAD actuel dans
+   `origin/main`) ; pour la production, commit déjà déployé avec succès sur le
+   staging et refus du retour arrière ; placement du checkout ; puis (production)
+   sauvegarde et étiquettes ; enfin `./infra/scripts/deploy.sh <env>`. Le code de
+   sortie de `deploy.sh` est celui du job (l'entrée le lit dans `<journal>.rc`,
+   jamais dans un journal).
+4. **`deploy.sh`** : inchangé (contrôles, construction, migrations, tests de fumée,
+   empreinte des voisins). Seuls les titres de ses étapes `==>` sont recopiés sur le
+   canal public.
+5. **Contrôle externe** du workflow : `<url>/health` et `<url>/` doivent répondre
+   200 (quelques essais espacés).
+
+### Garde-fous
+
+- **Clé limitée** : la ligne `authorized_keys` porte `command="…ci-deploy.sh <env>"` et
+  `restrict` (ni shell, ni terminal, ni redirection de port, ni agent). Elle ne sait
+  rien faire d'autre que ce script ; **une clé par environnement** : la clé du
+  staging ne peut pas déployer la production (le script compare l'environnement de
+  la commande à celui de la clé, code de sortie 2 sinon).
+- **Seul un commit d'`origin/main`** se déploie, et il doit **embarquer
+  `infra/scripts/ci-deploy.sh`** (sinon `command=` pointerait sur un fichier
+  disparu et la CI deviendrait inutilisable). **L'arbre du serveur doit être
+  propre** (fichiers non suivis compris) ; le **checkout actuel doit déjà être dans
+  `origin/main`** : un essai manuel sur le serveur (autre branche, commit non
+  fusionné) n'est jamais déplacé, le déploiement s'arrête avec un message. Remettre
+  le checkout sur `origin/main`, puis relancer.
+- **La clé de production ne contourne pas la validation, côté serveur.** Pour
+  `prod`, `ci-deploy.sh` exige (fermé par défaut : fichier absent ou illisible =
+  refus) que le commit figure, avec l'environnement `staging`, dans
+  `~/deploy-history-immotopia-saas.log` (déployé **avec succès** sur le staging), et
+  **refuse un retour arrière** : si la version de la production (3e colonne de la
+  dernière ligne de `~/deploy-history-immotopia-prod.log`) descend du commit demandé,
+  le déploiement s'arrête. Un retour arrière ne se fait **que par la voie manuelle**
+  (« Retour arrière »). Le tout premier déploiement de la production se fait aussi à
+  la main (la production existe depuis le 2026-09-30).
+- **File d'attente bornée, verrous dans `~/ci-deploy-logs/`** (dossier 700, hors de
+  `/tmp`) : `.attente.lock` (une seule place d'attente : un second déploiement CI
+  qui arrive s'arrête tout de suite, « réessayer plus tard ») et `.ci.lock` (un seul
+  déploiement CI à la fois). Puis l'attente du verrou de `deploy.sh`
+  (`/tmp/immotopia-deploy.lock`) quand un déploiement manuel est en cours. Chaque
+  attente se fait par tranches de 30 s (20 min au plus) et le worker **abandonne
+  sans rien déployer si la connexion SSH a disparu avant le début** (job GitHub
+  annulé, réseau) : contrôle à chaque tour d'attente et une dernière fois, après
+  deux messages publics espacés, une fois les verrous obtenus (une coupure ne tue
+  l'entrée qu'en écrivant ; l'entrée pose alors un marqueur `<journal>.parti` que le
+  worker consulte). Une toute petite fenêtre reste : un `deploy.sh` manuel lancé
+  entre l'attente et la prise du verrou par le `deploy.sh` de la CI fait échouer ce
+  dernier aussitôt, sans rien abîmer.
+- **Session détachée une fois le travail commencé** : à partir du placement du
+  checkout, si la connexion tombe ou si le job est annulé, le worker continue
+  jusqu'au bout (une migration n'est jamais interrompue à mi-course) ; son code de
+  sortie est écrit dans `<journal>.rc`.
+- **Un changement de `ci-deploy.sh` ne s'applique qu'au déploiement SUIVANT** : le
+  worker en cours exécute la version du script d'avant le placement du checkout
+  (aucune ré-exécution). À savoir quand on corrige ce script.
+- **Jamais annulé en cours** : un groupe `concurrency` par environnement
+  (`deploiement-staging`, `deploiement-production`), sans annulation. Un groupe
+  commun laisserait un push sur `main` remplacer, donc annuler, un déploiement de
+  production en attente. Sur le serveur, un seul déploiement à la fois quel que
+  soit l'environnement (verrou de `ci-deploy.sh`). Le job `deploy` a un plafond de
+  90 minutes : 20 d'attente du verrou CI, 20 d'attente d'un `deploy.sh` manuel, le
+  déploiement lui-même et une marge.
+- **Dépôt public, journaux publics : un canal public dédié, pas un filtre.** Le
+  worker écrit, à côté du journal complet, un fichier `<journal>.public` que l'entrée
+  seule suit (ANSI et caractères de contrôle retirés). Il ne reçoit que les messages
+  de `ci-deploy.sh` lui-même et, de `deploy.sh`, les titres des étapes `==> ` (chaînes
+  fixes, forme exacte vérifiée). Rien d'autre de `deploy.sh`, `backup.sh`, `git` ou
+  `docker` n'y va : ni les contrôles `OK …` de `deploy.sh` (qui citent des chemins de
+  secrets et des noms d'intégrations), ni les journaux de conteneurs (falsifiables),
+  ni le `diff` des voisins. En cas d'échec de `deploy.sh`, le canal public ne porte
+  que « `ECHEC deploy.sh a echoue (code N) : raison dans le journal complet du
+serveur` ». Le **journal complet** est sur le serveur :
+  `~/ci-deploy-logs/<AAAAMMJJ-HHMMSS>-<env>-<commit>-<pid>.log` (dossier 700,
+  fichiers 600, purge à 30 jours, hors du checkout pour ne pas le salir). Le workflow
+  n'interpole jamais d'entrée dans un script `run:`.
+- **Pas de déclenchement par un fork** : le déploiement automatique exige le même
+  dépôt, un `push`, la branche `main` et une CI réussie.
+- **`workflow_dispatch` exécute le fichier de la branche choisie** (« Use workflow
+  from », `--ref`), pas seulement celui de la branche par défaut (seul
+  `workflow_run` lit la branche par défaut). Le contrôle `REF == refs/heads/main` du
+  workflow n'est qu'un confort : la vraie barrière est la règle « Deployment
+  branches : main » des environnements `staging` et `production`.
+- **Écrire sur `main` vaut exécuter du code sur le serveur partagé** (Docker y est un
+  accès administrateur de l'hôte), et la CI est définie par le commit poussé : « CI
+  verte » n'est pas une frontière de confiance. D'où le prérequis bloquant de la
+  mise en service (protection de `main`).
+
+### Mise en service (par le propriétaire, pas à pas)
+
+À faire **après la fusion** de ce changement dans `main` : `workflow_run` ne lit que
+le fichier de la branche par défaut, donc le premier déploiement automatique
+n'arrive qu'ensuite, et le workflow n'existe pas avant pour `workflow_dispatch` sur
+`main`. Chaque étape sur le serveur suit la [règle d'or](#règle-dor).
+
+1. **Prérequis bloquant : protéger `main`, avant tout essai et avant d'activer
+   `AUTO_DEPLOY_STAGING`.** Avec le déploiement continu, quiconque peut écrire sur
+   `main` exécute du code sur le serveur partagé, et la CI étant définie par le
+   commit poussé, une CI verte ne prouve rien sur l'auteur. Créer un _ruleset_
+   GitHub (Settings → Rules) sur `main` : pull request obligatoire (plus aucun
+   push direct), avec au moins une relecture approuvée **dès qu'un second
+   mainteneur existe** (un propriétaire seul ne peut pas approuver ses propres
+   pull requests : avec une relecture exigée et aucun contournement, il ne
+   pourrait plus rien fusionner ; tant qu'il est seul, mettre 0 relecture et
+   garder le reste) ; _status checks_ requis :
+   `API — typecheck, lint, test`, les 4 lots `Web — tests`,
+   `Web — typecheck, lint, build` et `Infra — scripts et compose` ; ni
+   _force-push_ ni suppression ; **aucun contournement, pas même par les
+   administrateurs**. Décision du propriétaire, **non créée par ce dépôt** :
+   un fichier `CODEOWNERS` couvrant `.github/`, `infra/`, `**/Dockerfile*` et
+   `docs/governance/`, avec relecture du propriétaire obligatoire dans le ruleset.
+   Sans cela, ne pas activer le staging automatique.
+
+2. **Contrôler le serveur** : checkout sur `origin/main` à jour, arbre propre,
+   `ci-deploy.sh` exécutable ; et configuration `sshd` : un porteur de clé ne doit
+   pas pouvoir passer d'environnement (`BASH_ENV` exécuterait du code avant toute
+   validation).
+
+   ```bash
+   cd /home/deployer/immotopia-saas
+   git fetch origin && git merge --ff-only origin/main
+   git status -sb
+   ls -l infra/scripts/ci-deploy.sh
+   sudo sshd -T -C user=deployer,host=x,addr=127.0.0.1 | grep -iE 'acceptenv|permituserenvironment'
+   ```
+
+   `git status -sb` n'affiche que la ligne de branche ; le fichier porte
+   `-rwxr-xr-x` ; `sshd` n'affiche **au plus** `acceptenv LANG LC_*` et
+   `permituserenvironment no`. Sinon, corriger `sshd_config` avant de continuer.
+
+3. **Générer deux paires de clés ed25519 sur SON poste** (jamais sur le serveur,
+   jamais dans une conversation) :
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C github-actions-immotopia-staging -f immotopia-ci-staging
+   ssh-keygen -t ed25519 -N "" -C github-actions-immotopia-prod -f immotopia-ci-prod
+   ```
+
+4. **Poser les clés PUBLIQUES** dans `/home/deployer/.ssh/authorized_keys` (en
+   sauvegardant le fichier d'abord), chacune sur **une seule ligne**, avec son
+   préfixe :
+
+   ```text
+   command="/home/deployer/immotopia-saas/infra/scripts/ci-deploy.sh staging",restrict <contenu de immotopia-ci-staging.pub>
+   command="/home/deployer/immotopia-saas/infra/scripts/ci-deploy.sh prod",restrict <contenu de immotopia-ci-prod.pub>
+   ```
+
+5. **Obtenir la ligne `known_hosts`** et la comparer à l'empreinte lue **sur le
+   serveur** :
+
+   ```bash
+   # Sur le poste
+   ssh-keyscan -p 2222 -t ed25519 147.93.44.169 > known_hosts_ci
+   ssh-keygen -lf known_hosts_ci
+   # Sur le serveur
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   Les deux empreintes (`SHA256:…`) doivent être identiques ; sinon, s'arrêter.
+
+6. **Créer les environnements GitHub** (Settings → Environments) : `staging` et
+   `production`, chacun avec « Deployment branches : main seulement » ; pour
+   `production`, « Required reviewers » = le propriétaire (laisser « Prevent
+   self-review » désactivé s'il est seul, sinon il ne pourrait pas approuver sa
+   propre exécution ; voir le risque résiduel de l'ADR-008).
+
+7. **Poser les secrets d'environnement**, **tester les refus de la clé**, puis
+   supprimer les clés privées du poste :
+
+   ```bash
+   gh secret set DEPLOY_SSH_KEY --env staging < immotopia-ci-staging
+   gh secret set DEPLOY_SSH_KNOWN_HOSTS --env staging < known_hosts_ci
+   gh secret set DEPLOY_SSH_KEY --env production < immotopia-ci-prod
+   gh secret set DEPLOY_SSH_KNOWN_HOSTS --env production < known_hosts_ci
+   ```
+
+   **Tests négatifs obligatoires, AVANT de supprimer les clés privées** (SHA
+   quelconque de 40 caractères hexadécimaux) : chacun doit être refusé, avec le
+   code de sortie 2 de `ci-deploy.sh`, et ne rien déployer.
+
+   ```bash
+   # Clé du staging qui demande la production : refus (2)
+   ssh -i immotopia-ci-staging -o IdentitiesOnly=yes -p 2222 deployer@147.93.44.169 "deploy prod 0123456789abcdef0123456789abcdef01234567"; echo $?
+   # Commande hors liste blanche : refus (2)
+   ssh -i immotopia-ci-staging -o IdentitiesOnly=yes -p 2222 deployer@147.93.44.169 "id"; echo $?
+   # Aucune commande (pas de shell interactif) : refus (2)
+   ssh -i immotopia-ci-staging -o IdentitiesOnly=yes -p 2222 deployer@147.93.44.169; echo $?
+   ```
+
+   Puis seulement : `rm -f immotopia-ci-staging immotopia-ci-prod`.
+
+8. **Tester les refus du workflow** (après la création des environnements) : un
+   `workflow_dispatch` lancé depuis une autre branche ne doit pas atteindre les
+   secrets. Depuis une branche d'essai (créée à partir de `main`, donc portant
+   `deploy.yml`) :
+
+   ```bash
+   gh workflow run deploy.yml --ref <autre-branche> -f environment=staging
+   gh workflow run deploy.yml --ref <autre-branche> -f environment=prod
+   ```
+
+   Le contrôle de branche du premier job refuse déjà ; pour éprouver **la règle de
+   l'environnement elle-même**, refaire l'essai sur une branche d'essai où ce
+   contrôle est retiré : le job `deploy` doit être refusé (« branch not allowed »)
+   avant l'étape « Contrôle des secrets ». Supprimer la branche d'essai ensuite.
+
+9. **Premier essai manuel du staging** : onglet Actions → « Déploiement » → « Run
+   workflow » (environnement `staging`, commit vide), ou
+   `gh workflow run deploy.yml -f environment=staging`. Lire les lignes `ci-deploy:`
+   et `==>` du journal GitHub, puis le journal complet sur le serveur
+   (`ls -t ~/ci-deploy-logs | head -3`). Vérifier qu'aucune ligne du journal
+   GitHub ne cite un secret, un chemin de fichier de secrets ou un nom d'intégration.
+
+10. **Activer le staging automatique** (seulement si l'étape 1 est faite) :
+
+    ```bash
+    gh variable set AUTO_DEPLOY_STAGING --body true
+    ```
+
+11. **Premier essai de la production** : le premier déploiement de la production
+    par la CI suppose une version déjà inscrite dans son journal (la production
+    existe depuis le 2026-09-30). « Run workflow », environnement `prod` (commit
+    vide : celui du dernier staging réussi) ; vérifier l'environnement et le commit
+    dans le résumé du job « Cible du déploiement » **avant** d'approuver
+    l'environnement `production` (l'approbation précède la connexion au serveur),
+    puis constater `Deploiement prod termine`.
+
+### Arrêt d'urgence, rotation
+
+- **Couper le staging automatique** :
+  `gh variable set AUTO_DEPLOY_STAGING --body false` (n'empêche pas un « Run
+  workflow » manuel).
+- **Annuler un run GitHub** (bouton « Cancel ») : si le worker n'a pas encore
+  commencé (il attend un verrou), il abandonne tout seul dans les 30 secondes et rien
+  n'est déployé. S'il a commencé, il va au bout.
+- **Couper tout accès CI à un environnement** : retirer sa ligne de
+  `/home/deployer/.ssh/authorized_keys`.
+- **Un worker déjà en cours** : le repérer avec `pgrep -af 'ci-deploy.sh --worker'` et
+  lire le journal le plus récent (`ls -t ~/ci-deploy-logs | head -3`). **Ne JAMAIS le
+  tuer pendant les migrations** : une migration à moitié appliquée est pire qu'un
+  déploiement terminé.
+- **Retour arrière** : uniquement par la voie manuelle (« Retour arrière »). La CI
+  refuse un commit antérieur à la version de la production.
+- **Rotation** : regénérer la paire, remplacer la ligne `authorized_keys`, remplacer
+  le secret d'environnement, supprimer l'ancienne clé privée. Voir
+  [SECURITY.md](../governance/SECURITY.md), section 8.
+- **Un déploiement échoue sur « le checkout est sur un commit hors de main »** : un
+  essai manuel a laissé le serveur sur un autre commit. Le remettre sur
+  `origin/main` à la main, puis relancer le workflow.
+
 ## Cycle courant
 
-Le staging d'abord, la production ensuite, **sur le même commit**.
+Le staging d'abord, la production ensuite, **sur le même commit**. Deux voies
+coexistent : la voie automatisée par GitHub Actions
+([Déploiement continu](#déploiement-continu-github-actions), **non éprouvée**) et
+la voie manuelle par SSH, qui reste valable et qui sert de repli.
 
 1. **Fusionner** la pull request dans `main` (décision de l'utilisateur), CI
    verte, job `infra` compris.
-2. **Placer le checkout** sur le commit voulu d'`origin/main`
-   (`git fetch origin`, puis `git merge --ff-only origin/main` si le checkout
-   suit `main`) et noter `git rev-parse --short HEAD`. Si la fusion a créé un
-   nouveau commit, c'est lui qui se valide, pas celui de la branche.
-3. **Déployer le staging** : `./infra/scripts/deploy.sh staging`. Il n'exige ni
-   arbre propre ni commit dans `origin/main` (un essai avant fusion reste
-   possible), mais le checkout étant partagé, le déplacer change ce que la
-   prochaine construction de la production emploierait : avant tout déploiement
-   de production, le remettre sur le commit validé.
+2. **Le staging part tout seul** après la fusion, si la CI du push est verte et si
+   l'interrupteur `AUTO_DEPLOY_STAGING` vaut `true` : suivre l'exécution
+   « Déploiement » dans l'onglet Actions de GitHub, noter le commit déployé (lignes
+   `ci-deploy:`). Interrupteur à `false`, ou besoin de le lancer à la main :
+   « Run workflow » (environnement `staging`). **Un essai manuel sur le staging
+   avant la fusion bloque ce déploiement automatique** : tant que le checkout du
+   serveur n'est pas remis sur `origin/main`, `ci-deploy.sh` s'arrête (« le
+   checkout est sur un commit hors de main »). Remettre le checkout sur
+   `origin/main` avant la fusion, ou juste après l'essai.
+3. **Voie manuelle du staging** : placer le checkout sur le commit voulu
+   d'`origin/main` (`git fetch origin`, puis `git merge --ff-only origin/main` si
+   le checkout suit `main`), noter `git rev-parse --short HEAD` (si la fusion a créé
+   un nouveau commit, c'est lui qui se valide, pas celui de la branche), puis
+   `./infra/scripts/deploy.sh staging`. Il n'exige ni arbre propre ni commit dans
+   `origin/main` (un essai avant fusion reste possible), mais le checkout étant
+   partagé, le déplacer change ce que la prochaine construction de la production
+   emploierait : avant tout déploiement de production, le remettre sur le commit
+   validé.
 4. **Valider sur le staging** (liste ci-dessous).
-5. **Sauvegarder la production, juste avant** : `./infra/scripts/backup.sh prod`.
-   Les migrations ne se défont pas : c'est cette sauvegarde qui permet de revenir
-   en arrière. Ce n'est plus seulement une bonne pratique : **`deploy.sh prod`
-   échoue** si la base est déjà initialisée et qu'aucun `db-*.sql.gz` de moins de
-   24 heures n'existe dans `BACKUP_DIR` (contrôle fait après la construction des
-   images, juste avant les migrations).
-6. **Étiqueter les images actuelles** pour un retour arrière (`deploy.sh` les
-   reconstruit sous l'étiquette `latest`, l'ancienne image serait perdue) :
+5. **Déployer la production, voie recommandée** : « Run workflow », environnement
+   `prod`, champ « commit » vide (le dernier commit déployé avec succès sur le
+   staging). Le workflow fait, dans l'ordre : sauvegarde (`backup.sh prod`),
+   étiquetage des images actuelles (`avant-<date>-<version de la production>`), puis
+   `deploy.sh prod` sur ce commit, après l'approbation de l'environnement GitHub
+   `production`. Hors heures de pointe. Le serveur refuse, côté `ci-deploy.sh`, un
+   commit jamais déployé avec succès sur le staging et tout retour arrière. Passer
+   ensuite à l'étape 8.
+6. **Voie manuelle de la production : sauvegarder, juste avant** :
+   `./infra/scripts/backup.sh prod`. Les migrations ne se défont pas : c'est cette
+   sauvegarde qui permet de revenir en arrière. Ce n'est plus seulement une bonne
+   pratique : **`deploy.sh prod` échoue** si la base est déjà initialisée et
+   qu'aucun `db-*.sql.gz` de moins de 24 heures n'existe dans `BACKUP_DIR`
+   (contrôle fait après la construction des images, juste avant les migrations).
+7. **Voie manuelle : étiqueter les images actuelles** pour un retour arrière
+   (`deploy.sh` les reconstruit sous l'étiquette `latest`, l'ancienne image serait
+   perdue), puis **déployer la production** sur le même commit, hors heures de
+   pointe :
 
    ```bash
    docker tag immotopia-prod-api:latest immotopia-prod-api:avant-AAAAMMJJ
    docker tag immotopia-prod-web:latest immotopia-prod-web:avant-AAAAMMJJ
+   ./infra/scripts/deploy.sh prod
    ```
 
-7. **Déployer la production** sur le même commit, hors heures de pointe :
-   `./infra/scripts/deploy.sh prod`. Vérifier que le commit affiché est celui du
-   staging : `tail -n 1 /home/deployer/deploy-history-immotopia-saas.log`
-   (troisième colonne) doit égaler `git rev-parse --short HEAD`. Ne rien faire
-   d'autre dans le checkout pendant ce temps (pas de `git checkout`, pas de
-   fichier créé, pas de second `deploy.sh`) : le script vérifie que `HEAD` et
-   l'arbre n'ont pas bougé juste avant la construction et juste avant les
-   migrations, et s'arrête sinon.
+   Vérifier que le commit affiché est celui du staging :
+   `tail -n 1 /home/deployer/deploy-history-immotopia-saas.log` (troisième colonne)
+   doit égaler `git rev-parse --short HEAD`. Ne rien faire d'autre dans le checkout
+   pendant ce temps (pas de `git checkout`, pas de fichier créé, pas de second
+   `deploy.sh`) : le script vérifie que `HEAD` et l'arbre n'ont pas bougé juste
+   avant la construction et juste avant les migrations, et s'arrête sinon.
+
 8. **Constater** : `Deploiement prod termine`, « aucun conteneur voisin n'a
    bougé », `https://clients.immotopia.cloud/ -> 200`, puis un parcours rapide
    des écrans touchés.
@@ -982,7 +1302,9 @@ touche pas le statut d'une agence existante.
 ### Retour arrière (non éprouvé)
 
 Les images se remettent à l'étiquette précédente ; la base, elle, n'est pas
-défaite.
+défaite. **Le retour arrière se fait uniquement par cette voie manuelle** : le
+déploiement continu (`ci-deploy.sh`) refuse un commit antérieur à la version de la
+production.
 
 ```bash
 docker tag immotopia-prod-api:avant-AAAAMMJJ immotopia-prod-api:latest
@@ -991,7 +1313,7 @@ docker tag immotopia-prod-web:avant-AAAAMMJJ immotopia-prod-web:latest
 ```
 
 - **Une sauvegarde de moins de 24 heures doit exister**, même avec `--no-build` :
-  celle qui a précédé le déploiement (étape 5 du cycle) convient tant qu'elle a
+  celle qui a précédé le déploiement (étape 5 ou 6 du cycle) convient tant qu'elle a
   moins de 24 heures ; sinon `./infra/scripts/backup.sh prod` d'abord.
 - **Laisser le checkout sur le commit déployé.** Le remettre sur l'ancien commit
   ferait voir à `deploy.sh prod` les migrations déjà appliquées comme
@@ -1039,6 +1361,42 @@ seul le journal dit ce qui aurait été refusé. `make-env.sh` livre `warn` dans
 deux environnements : tant que la bascule n'est pas faite, le filet
 multi-tenant et les quotas d'abonnement de la production ne bloquent rien (voir
 les [points ouverts](#points-ouverts)).
+
+### Rattrapage des honoraires de gestion (PR « Opérateur intégré »)
+
+À faire **une fois, APRÈS la migration et AVANT d'ouvrir la version aux
+utilisateurs**, sur le staging puis sur la production. Un niveau de conditions
+d'honoraires (bail, propriétaire, agence) ne vaut que pour les encaissements
+enregistrés après son dernier enregistrement (`feeTermsApplyToAllocation`) :
+un encaissement antérieur dont les honoraires ne sont pas encore figés n'en
+recevrait **jamais**. Le script fige l'historique de chaque agence avec les
+conditions encore en vigueur (`freezeManagementFees`, le même appel que celui
+qui précède chaque changement de conditions).
+
+```bash
+C=immotopia-prod-api; T=dist/scripts/backfill-management-fees.js   # staging : immotopia-saas-api
+# 1. Simulation (rien n'est écrit) : encaissements et honoraires qui seraient figés, par agence.
+docker exec $C node $T --allow-production
+# 2. Lire le rapport, puis appliquer (idempotent : on peut le relancer).
+docker exec $C node $T --allow-production --apply
+# Une seule agence : --tenant <id>. Sortie machine : --json.
+```
+
+- **Simulation par défaut.** `--apply` écrit ; `--allow-production` est exigé
+  dans le conteneur (`NODE_ENV=production`). Une agence en échec est signalée
+  sans arrêter les autres (code de sortie 1).
+- **Idempotent.** Seuls les encaissements sans honoraires sont traités (unicité
+  sur l'affectation) : un second passage, ou un passage concurrent, ne crée
+  rien. Un nouvel `--apply` après coup ne touche que les encaissements arrivés
+  entre-temps.
+- **Sauvegarde d'abord** en production (`./infra/scripts/backup.sh prod`), comme
+  pour tout déploiement. Le rattrapage ne modifie ni ne supprime aucune ligne
+  existante : il ajoute des lignes d'honoraires.
+- Le fichier est compilé dans l'image (`src/scripts/`) ; en développement :
+  `npm run ops:backfill-management-fees -w @immotopia/api -- [options]`.
+- Après `--apply`, la simulation doit afficher 0 encaissement pour chaque agence
+  (les encaissements sans condition d'honoraires applicable restent sans
+  honoraires, ce qui est voulu : ils n'apparaissent pas non plus en simulation).
 
 ### Lot 040 — contrôle du stock de chantier
 
@@ -1584,6 +1942,47 @@ conservation et l'accès (rotation courte, lecture réservée à root).
 
 Non résolus à la date de rédaction :
 
+- **Déploiement continu non éprouvé.** Aucun essai réel du workflow
+  `deploy.yml` ni de `ci-deploy.sh` (clés, `known_hosts`, environnements GitHub,
+  détachement de la session, filtre de sortie, étiquettes d'images). Le premier
+  essai se fait à la main, staging d'abord ([mise en service](#mise-en-service-par-le-propriétaire-pas-à-pas)).
+- **Le staging se déploie sans sauvegarde préalable** par le déploiement continu
+  (seule la production en fait une). Une migration destructrice ou mal écrite se
+  verrait sur le staging avant la production, mais ses données de test ne seraient
+  pas restaurables : à décider si cela gêne.
+- **Canal public : hypothèse sur `deploy.sh`.** Le canal public ne reçoit des
+  étapes de `deploy.sh` que leurs titres `==> `, supposés fixes (chaînes sans
+  variable : vérifié à la rédaction) et vérifiés contre une forme et un jeu de
+  caractères stricts. Un titre d'étape futur qui contiendrait une donnée variable
+  la publierait : relire les `step` de `deploy.sh` à chaque modification. Le titre est
+  limité à `^[A-Za-z0-9 ,.()'_-]{1,100}$` (ni `/` ni `:` : aucun chemin ni URL). **Risque
+  résiduel** : une ligne de journal de conteneur qui imiterait exactement la séquence
+  de couleur d'une étape pourrait publier un faux titre de 100 caractères ordinaires
+  au plus.
+- **Protection de `main` et CODEOWNERS : décisions du propriétaire, non créées par
+  le dépôt.** Sans ruleset (PR relue, status checks requis, pas de contournement) ni
+  CODEOWNERS sur `.github/`, `infra/`, `**/Dockerfile*` et `docs/governance/`,
+  l'écriture sur `main` vaut exécution de code sur le serveur partagé : ne pas
+  activer `AUTO_DEPLOY_STAGING` avant.
+- **Propriétaire seul relecteur de `production`.** Avec « Prevent self-review »
+  désactivé, il approuve ses propres exécutions : l'approbation est formelle, pas un
+  second regard.
+- **Retour arrière : manuel uniquement.** La CI refuse tout commit antérieur à la
+  version de la production et tout commit jamais déployé avec succès sur le staging
+  (journaux `~/deploy-history-*.log`). Ce garde-fou lit ces journaux : s'ils sont
+  absents ou illisibles, la CI refuse (fermé par défaut).
+- **Version du script.** Un changement de `ci-deploy.sh` ne s'applique qu'au
+  déploiement suivant (le worker en cours exécute l'ancienne version).
+- **File d'attente d'une seule place.** Un troisième déploiement CI qui arrive
+  pendant qu'un autre attend est refusé (« réessayer plus tard ») ; GitHub marque
+  le job en échec.
+- **Registre des déploiements de GitHub.** La promotion en production lit le
+  dernier déploiement réussi de l'environnement `staging` ; ce registre garde le
+  SHA de l'exécution. Pour cette raison le staging refuse un commit saisi à la main
+  différent de la tête de `main`.
+- **Dépôt privé.** Le serveur fait son `git fetch` en HTTPS sans identifiant : si le
+  dépôt devenait privé, le déploiement continu échouerait (il faudrait une clé de
+  déploiement en lecture seule).
 - **Géographie de la Côte d'Ivoire non amorcée.** `bootstrap.sh` ne lance pas
   `db:seed:geographic` : la recherche de communes est vide. Non bloquant.
 - **34 paramètres fiscaux livrés en statut `A_VALIDER`** (référentiel

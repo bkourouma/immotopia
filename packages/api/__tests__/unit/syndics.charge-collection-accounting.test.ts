@@ -33,6 +33,7 @@ import {
   reverseChargePaymentEntryTx
 } from '../../src/lib/syndics/charge-collection-accounting';
 import { createChargeCallAndUpdateStatus } from '../../src/lib/syndics/queries';
+import { ConflictError } from '../../src/middleware/error-middleware';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const TENANT_A = 'tenant-a';
@@ -249,5 +250,83 @@ describe('encaissement d un appel de charges — ecriture de la copropriete', ()
     expect(mockPrisma.journalEntry.rows.filter(entry => entry.tenantId === TENANT_A)).toHaveLength(1);
     expect(mockPrisma.journalEntry.rows.filter(entry => entry.tenantId === TENANT_B)).toHaveLength(1);
     expect(linesOf('450', TENANT_B, SB).every(line => line.lotId === LB)).toBe(true);
+  });
+});
+
+describe('encaissement en ligne — compte 5525 et champs de paiement (spec 042)', () => {
+  const online = (extra: Partial<LotPaymentInput> = {}) =>
+    pay(10000, '2026-03-10', {
+      method: 'MOBILE_MONEY',
+      reference: 'IMS-ABCDEF',
+      actorUserId: undefined,
+      idempotencyKey: 'IMS-ABCDEF',
+      providerTransactionId: 'TX-1',
+      origin: 'ONLINE',
+      treasuryAccountNumber: '5525',
+      ...extra
+    });
+
+  it('debite le 5525 (journal banque), cree a la demande, avec le libelle du lot et du code', async () => {
+    await createCall(L1, '2026-03', 10000);
+
+    const recorded = await recordLotPayment(online());
+
+    expect(balance('5525')).toBe(10000);
+    expect(balance('521')).toBe(0);
+    expect(balance('450')).toBe(-10000);
+    expect(mockPrisma.accountingJournal.rows.map(row => row.code)).toEqual(['BQ']);
+    const account = mockPrisma.chartOfAccount.rows.find(row => row.accountNumber === '5525');
+    expect(account).toMatchObject({
+      accountName: 'PaySecureHub (mobile money)',
+      accountClass: 5,
+      accountType: 'ASSET'
+    });
+    const entry = mockPrisma.journalEntry.rows[0];
+    expect(entry.description).toContain('lot A-01');
+    expect(entry.description).toContain('(IMS-ABCDEF)');
+    expect(recorded.payment.id).toBeTruthy();
+  });
+
+  it('ecrit cle d idempotence, transaction fournisseur, provenance, et createdById nul sans acteur', async () => {
+    await createCall(L1, '2026-03', 10000);
+
+    await recordLotPayment(online());
+
+    expect(mockPrisma.chargePayment.rows[0]).toMatchObject({
+      idempotencyKey: 'IMS-ABCDEF',
+      providerTransactionId: 'TX-1',
+      origin: 'ONLINE',
+      createdById: null
+    });
+  });
+
+  it('sans ces champs, le comportement est inchange (521, aucune cle, provenance par defaut)', async () => {
+    await createCall(L1, '2026-03', 10000);
+
+    await recordLotPayment(pay(10000, '2026-03-10'));
+
+    expect(balance('521')).toBe(10000);
+    expect(mockPrisma.chartOfAccount.rows.some(row => row.accountNumber === '5525')).toBe(false);
+    const payment = mockPrisma.chargePayment.rows[0];
+    expect(payment.idempotencyKey).toBeUndefined();
+    expect(payment.providerTransactionId).toBeUndefined();
+    expect(payment.origin).toBeUndefined();
+  });
+
+  it('un acteur facultatif : le compte explicite l emporte sur method=ESPECES', async () => {
+    await createCall(L1, '2026-03', 10000);
+
+    await recordLotPayment(online({ method: 'ESPECES' }));
+
+    expect(balance('5525')).toBe(10000);
+    expect(balance('571')).toBe(0);
+  });
+
+  it('exercice clos : ConflictError 409 reconnaissable, rien d ecrit', async () => {
+    await createCall(L1, '2026-03', 10000);
+    mockPrisma.syndicateBudget.rows.push({ id: id(90), syndicateId: S1, fiscalYear: 2026, status: 'CLOSED' });
+
+    await expect(recordLotPayment(online())).rejects.toBeInstanceOf(ConflictError);
+    expect(mockPrisma.journalEntry.rows).toHaveLength(0);
   });
 });

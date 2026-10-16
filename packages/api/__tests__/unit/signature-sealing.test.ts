@@ -14,6 +14,7 @@ const request: Row = {
   targetId: 'l1',
   title: 'Bail',
   language: 'fr',
+  providerId: 'internal',
   sourceFileKey: '/uploads/signatures/t1/r1/source.pdf',
   sourceHash: '',
   createdByUserId: 'u1',
@@ -84,6 +85,16 @@ beforeEach(() => {
 });
 
 describe('scellement et piste de preuve', () => {
+  it('demande externe sans client configuré : FAILED, jamais de scellement pdf-lib', async () => {
+    request.providerId = 'yousign';
+    try {
+      expect(await sealRequest('t1', 'r1')).toBe('FAILED');
+      expect(sealSignedPdf).not.toHaveBeenCalled();
+    } finally {
+      request.providerId = 'internal';
+    }
+  });
+
   it('scelle quand la piste est intacte', async () => {
     expect(await sealRequest('t1', 'r1')).toBe('SEALED');
     expect(sealSignedPdf).toHaveBeenCalledTimes(1);

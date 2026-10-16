@@ -28,9 +28,9 @@ vi.mock('../../services/entitlements-service', () => ({
   getMenuEntitlements: (...a: unknown[]) => getMenuEntitlements(...a)
 }));
 
-const getMyDisabledMenus = vi.fn();
+const getMyMenuAccess = vi.fn();
 vi.mock('../../services/role-menu-service', () => ({
-  getMyDisabledMenus: (...a: unknown[]) => getMyDisabledMenus(...a)
+  getMyMenuAccess: (...a: unknown[]) => getMyMenuAccess(...a)
 }));
 
 const getTenantIdentity = vi.fn();
@@ -98,7 +98,7 @@ beforeEach(() => {
   resetTenantTypeCache();
   // Mode global `warn` : l'abonnement ne masque rien, seul le type décide.
   getMenuEntitlements.mockResolvedValue({ enforcement: 'warn', moduleAccess: {}, readOnly: false, phase: 'ACTIVE' });
-  getMyDisabledMenus.mockResolvedValue([]);
+  getMyMenuAccess.mockResolvedValue({ disabledMenuKeys: [], permissionKeys: null });
   getTenantIdentity.mockResolvedValue({ type: 'AGENCY', contactPhone: null });
 });
 

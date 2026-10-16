@@ -10,6 +10,7 @@ import {
   ClockCircleOutlined,
   FolderOutlined,
   IdcardOutlined,
+  MobileOutlined,
   SendOutlined,
   TeamOutlined,
   ToolOutlined,
@@ -84,6 +85,12 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
         },
         { key: 'recouvrement', label: t('Recouvrement'), href: `${base}/recouvrement`, icon: <AlertOutlined /> },
         { key: 'tresorerie', label: t('Trésorerie'), href: `${base}/finances`, icon: <BankOutlined /> },
+        {
+          key: 'paiements-en-ligne',
+          label: t('Paiements en ligne'),
+          href: `${base}/paiements-en-ligne`,
+          icon: <MobileOutlined />
+        },
         {
           key: 'comptabilite',
           label: t('Comptabilité'),

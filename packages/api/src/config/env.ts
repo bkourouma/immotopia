@@ -359,7 +359,56 @@ const envSchema = z
     // demande est refusee. `log` : rien ne part, seules des metadonnees sont
     // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
     // usage unique geres par le noyau (e-mail, WhatsApp).
-    SIGNATURE_PROVIDER: z.enum(['disabled', 'log', 'internal']).default('disabled'),
+    SIGNATURE_PROVIDER: z.enum(['disabled', 'log', 'internal', 'yousign']).default('disabled'),
+    // Prestataire externe Yousign API v3 (lot S6). Base par defaut = SANDBOX, jamais la
+    // production. Cle et secret de webhook : aucun defaut, requis si SIGNATURE_PROVIDER=yousign.
+    YOUSIGN_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    YOUSIGN_API_BASE_URL: emptyAsUndefined(z.string().url().default('https://api-sandbox.yousign.app/v3')),
+    YOUSIGN_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(16).optional()),
+    // Niveau de signature demande a Yousign. Seuls `advanced` et `qualified` rendent le
+    // fournisseur « qualifie » (SG-R1) ; le defaut (simple) ne leve donc pas l'exigence.
+    YOUSIGN_SIGNATURE_LEVEL: z
+      .enum(['electronic_signature', 'advanced_electronic_signature', 'qualified_electronic_signature'])
+      .default('electronic_signature'),
+    SIGNATURE_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+
+    // Transport SMS (signature, lot S7). `disabled` par defaut ; `log` n'envoie
+    // rien (development/test seulement) ; `orange` = SMS API Orange CI. Aucun
+    // secret n'a de valeur par defaut ; requis seulement si `orange` (superRefine).
+    SMS_PROVIDER: z.enum(['disabled', 'log', 'orange']).default('disabled'),
+    ORANGE_SMS_CLIENT_ID: emptyAsUndefined(z.string().min(1).optional()),
+    ORANGE_SMS_CLIENT_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+    ORANGE_SMS_API_BASE_URL: z.string().url().default('https://api.orange.com'),
+    // Indicatifs pays (sans +) autorises pour un SMS de signature : UEMOA + Guinee.
+    SMS_ALLOWED_DIAL_CODES: z
+      .string()
+      .default('225,221,223,226,227,228,229,245,224')
+      .transform(value =>
+        value
+          .split(',')
+          .map(item => item.trim().replace(/^\+/, ''))
+          .filter(Boolean)
+      )
+      .refine(list => list.length > 0 && list.every(code => /^\d{1,4}$/.test(code)), {
+        message: 'liste d’indicatifs numériques séparés par des virgules'
+      }),
+    // Plafond de SMS de signature par agence et par jour (invitations, relances, codes).
+    SIGNATURE_SMS_DAILY_LIMIT: z.coerce.number().int().min(1).max(100000).default(200),
+    // Adresse d'expediteur Orange, forme `tel:+<numero>` (a confirmer avec le compte).
+    ORANGE_SMS_SENDER_ADDRESS: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^tel:\+\d{6,15}$/, 'forme attendue : tel:+225...')
+        .optional()
+    ),
+    // Nom d'expediteur facultatif : 11 caracteres alphanumeriques ou espaces,
+    // approuve au prealable par Orange (sinon l'envoi est refuse).
+    ORANGE_SMS_SENDER_NAME: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^[A-Za-z0-9 ]{1,11}$/, '11 caracteres alphanumeriques ou espaces au plus')
+        .optional()
+    ),
     // Types de document dont la signature exige un prestataire qualifie (SG-R1) :
     // liste separee par des virgules de SignatureDocumentKind. Le fournisseur
     // `internal` (signature simple) est refuse pour ces types tant que le type
@@ -394,6 +443,31 @@ const envSchema = z
     // Quota de secours (demandes par agence et par mois) sans capacite
     // SIGNATURES_MENSUELLES, en SUBSCRIPTION_ENFORCEMENT=warn ou off (SG-R12).
     SIGNATURE_WARN_QUOTA: z.coerce.number().int().min(0).max(100000).default(50),
+    // Rappels automatiques avant expiration (spec 044, SG-R11) : seuils en jours
+    // restants, entiers de 1 a 30 separes par des virgules ("3,1" : a 3 jours puis a
+    // 1 jour de l'echeance). "" ou "off" desactive. Dedoublonnes, tries decroissant.
+    // Une valeur invalide bloque le demarrage.
+    SIGNATURE_REMINDER_DAYS_BEFORE: z
+      .string()
+      .default('3,1')
+      .transform((value, ctx): number[] => {
+        const raw = value.trim().toLowerCase();
+        if (raw === '' || raw === 'off') return [];
+        const days = new Set<number>();
+        for (const part of raw.split(',')) {
+          const item = part.trim();
+          const n = Number(item);
+          if (!/^\d+$/.test(item) || n < 1 || n > 30) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `seuil invalide ${JSON.stringify(item)} (entiers de 1 a 30 separes par des virgules, ou "off")`
+            });
+            return z.NEVER;
+          }
+          days.add(n);
+        }
+        return [...days].sort((a, b) => b - a);
+      }),
     // Conversion DOCX -> PDF (lib/pdf-convert), necessaire au bail signable.
     DOCX_PDF_CONVERTER: z.enum(['libreoffice', 'disabled']).default('disabled')
   })
@@ -495,6 +569,71 @@ const envSchema = z
         path: ['LIVEKIT_RECORDING_S3_BUCKET'],
         message: "l'enregistrement exige la visio configurée (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"
       });
+    }
+    // Transport SMS (signature, lot S7).
+    if (value.SMS_PROVIDER === 'orange') {
+      const requisSms = [
+        ['ORANGE_SMS_CLIENT_ID', value.ORANGE_SMS_CLIENT_ID],
+        ['ORANGE_SMS_CLIENT_SECRET', value.ORANGE_SMS_CLIENT_SECRET],
+        ['ORANGE_SMS_SENDER_ADDRESS', value.ORANGE_SMS_SENDER_ADDRESS]
+      ] as const;
+      for (const [name, present] of requisSms) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'variable requise quand SMS_PROVIDER=orange'
+          });
+        }
+      }
+    }
+    if (value.SMS_PROVIDER === 'log' && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMS_PROVIDER'],
+        message: "le transport 'log' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
+      });
+    }
+
+    // Lot S6 — prestataire de signature externe Yousign.
+    if (!value.ORANGE_SMS_API_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ORANGE_SMS_API_BASE_URL'],
+        message: "l'URL doit être en https"
+      });
+    }
+    if (
+      value.NODE_ENV === 'production' &&
+      value.SIGNATURE_PROVIDER === 'yousign' &&
+      value.YOUSIGN_API_BASE_URL.includes('sandbox')
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['YOUSIGN_API_BASE_URL'],
+        message: 'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3)'
+      });
+    }
+    if (!value.YOUSIGN_API_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['YOUSIGN_API_BASE_URL'],
+        message: "l'URL doit être en https"
+      });
+    }
+    if (value.SIGNATURE_PROVIDER === 'yousign') {
+      for (const [name, present] of [
+        ['YOUSIGN_API_KEY', value.YOUSIGN_API_KEY],
+        ['YOUSIGN_WEBHOOK_SECRET', value.YOUSIGN_WEBHOOK_SECRET]
+      ] as const) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'variable requise quand SIGNATURE_PROVIDER=yousign'
+          });
+        }
+      }
     }
 
     // Lot 041 — inventaire par WhatsApp (data-model §7).
@@ -612,6 +751,17 @@ function loadEnv(): Env {
     // eslint-disable-next-line no-console
     console.warn(
       `⚠️  ${perInstanceLimitersWarning({ tenantMinute: env.AI_TENANT_MINUTE_LIMIT, tenantDaily: env.AI_TENANT_DAILY_LIMIT })}`
+    );
+  }
+
+  if (
+    env.NODE_ENV === 'production' &&
+    env.SIGNATURE_PROVIDER === 'yousign' &&
+    env.YOUSIGN_API_BASE_URL.includes('api-sandbox.yousign.app')
+  ) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
     );
   }
 

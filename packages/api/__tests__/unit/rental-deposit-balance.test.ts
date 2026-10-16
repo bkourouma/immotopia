@@ -31,10 +31,15 @@ const mockPrisma: Row = {
       return { ...store.deposit };
     })
   },
-  rentalPayment: { findFirst: jest.fn(async () => ({ id: 'pay-1' })) },
+  rentalPayment: {
+    findFirst: jest.fn(async () => ({ id: 'pay-1', status: 'SUCCESS', amount: 900000, lease_id: null }))
+  },
+  rentalPaymentAllocation: { findMany: jest.fn(async () => []) },
   rentalInstallment: { findFirst: jest.fn(async () => null) },
   rentalDepositMovement: {
-    findMany: jest.fn(async ({ where }: Row) => store.movements.filter(m => m.type === where.type)),
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.movements.filter(m => m.type === where.type && (!where.payment_id || m.payment_id === where.payment_id))
+    ),
     create: jest.fn(async ({ data }: Row) => {
       const created = { id: `mv-${++store.seq}`, ...data };
       store.movements.push(created);

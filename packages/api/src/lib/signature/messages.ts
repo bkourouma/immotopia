@@ -22,6 +22,41 @@ function formatDate(date: Date, language: Language): string {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' }).format(date);
 }
 
+export type MessageChannel = 'EMAIL' | 'WHATSAPP' | 'SMS';
+
+/** Raccourcit un texte libre (titre, agence) à `max` caractères, avec « … » ; jamais appliqué au lien. */
+function shorten(value: string, max: number): string {
+  const chars = Array.from(value.replace(/\s+/g, ' ').trim());
+  return chars.length <= max
+    ? chars.join('')
+    : `${chars
+        .slice(0, max - 1)
+        .join('')
+        .trimEnd()}…`;
+}
+
+const SMS_TITLE_MAX = 40;
+const SMS_AGENCY_MAX = 24;
+
+/** SMS court, sans HTML : le titre et l'agence sont raccourcis AVANT insertion, le lien reste entier. */
+function buildSmsInvite(input: InviteMessageInput): { subject: string; text: string } {
+  const { language } = input;
+  const vars = {
+    agency: shorten(input.agencyName, SMS_AGENCY_MAX),
+    title: shorten(input.title, SMS_TITLE_MAX),
+    url: input.url,
+    date: formatDate(input.expiresAt, language)
+  };
+  const text = input.reminder
+    ? t(
+        'Rappel {{agency}} : « {{title}} » attend votre signature : {{url}} (valable jusqu’au {{date}}). Lien personnel.',
+        vars,
+        language
+      )
+    : t('{{agency}} : signez « {{title}} » ici : {{url}} (valable jusqu’au {{date}}). Lien personnel.', vars, language);
+  return { subject: '', text };
+}
+
 export type InviteMessageInput = {
   signerName: string;
   agencyName: string;
@@ -31,9 +66,12 @@ export type InviteMessageInput = {
   language: Language;
   /** Relance plutôt que première invitation. */
   reminder?: boolean;
+  /** Canal de remise : SMS donne un texte court sans HTML ; e-mail par défaut. */
+  channel?: MessageChannel;
 };
 
-export function buildInviteMessage(input: InviteMessageInput): { subject: string; text: string; html: string } {
+export function buildInviteMessage(input: InviteMessageInput): { subject: string; text: string; html?: string } {
+  if (input.channel === 'SMS') return buildSmsInvite(input);
   const { language } = input;
   const vars = {
     name: input.signerName,
@@ -69,8 +107,16 @@ export function buildOtpMessage(input: {
   code: string;
   ttlMinutes: number;
   language: Language;
-}): { subject: string; text: string; html: string } {
+  channel?: MessageChannel;
+}): { subject: string; text: string; html?: string } {
   const { language } = input;
+  if (input.channel === 'SMS') {
+    const smsVars = { agency: shorten(input.agencyName, SMS_AGENCY_MAX), code: input.code, minutes: input.ttlMinutes };
+    return {
+      subject: '',
+      text: t('Code {{agency}} : {{code}} (valable {{minutes}} min). Ne le communiquez à personne.', smsVars, language)
+    };
+  }
   const vars = { agency: input.agencyName, title: input.title, code: input.code, minutes: input.ttlMinutes };
   const subject = t('Votre code de signature', undefined, language);
   const text = t(

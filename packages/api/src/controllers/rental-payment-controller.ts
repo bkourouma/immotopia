@@ -10,10 +10,9 @@ import {
 } from '../services/rental-payment-service';
 import { RentalPaymentStatus, RentalPaymentMethod } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
-import { asyncHandler, NotFoundError } from '../middleware/error-middleware';
+import { asyncHandler, NotFoundError, UnauthorizedError } from '../middleware/error-middleware';
 import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } from '../lib/payment-gateway/checkout';
 import { parsePagination } from '../utils/pagination-helper';
-import { respondWithAppError } from '../utils/app-error-response';
 
 /**
  * Lot 7 : `onlineCheckout` sort en `OnlineCheckoutSummary` (contrat §3.2),
@@ -61,243 +60,150 @@ const updatePaymentStatusSchema = z.object({
 });
 
 /**
+ * Les handlers lèvent des erreurs typées (`asyncHandler`) : le middleware
+ * d'erreurs fixe le statut (404 introuvable, 409 conflit, 400 validation) et
+ * traduit le message ; un `ZodError` y devient un 400 détaillé champ par champ.
+ */
+
+/**
  * Create a new payment
  * POST /tenants/:tenantId/rental/payments
  */
-export async function createPaymentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const actorUserId = req.user?.userId;
+export const createPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const actorUserId = req.user?.userId;
 
-    // Validate request body
-    const validatedData = createPaymentSchema.parse(req.body);
+  // Validate request body
+  const validatedData = createPaymentSchema.parse(req.body);
 
-    // Generate idempotency key if not provided
-    const idempotencyKey = validatedData.idempotencyKey || uuidv4();
+  // Generate idempotency key if not provided
+  const idempotencyKey = validatedData.idempotencyKey || uuidv4();
 
-    const paymentData = {
-      ...validatedData,
-      idempotencyKey
-    };
+  const paymentData = {
+    ...validatedData,
+    idempotencyKey
+  };
 
-    const payment = await createPayment(tenantId, paymentData, actorUserId);
+  const payment = await createPayment(tenantId, paymentData, actorUserId);
 
-    res.status(201).json({
-      success: true,
-      data: payment
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de l'enregistrement du paiement"
-    });
-  }
-}
+  res.status(201).json({
+    success: true,
+    data: payment
+  });
+});
 
 /**
  * Allocate payment to installments
  * POST /tenants/:tenantId/rental/payments/:paymentId/allocate
  */
-export async function allocatePaymentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { paymentId } = req.params;
-    const actorUserId = req.user?.userId;
+export const allocatePaymentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { paymentId } = req.params;
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    // Validate request body
-    const validatedData = allocatePaymentSchema.parse(req.body);
-
-    const result = await allocatePayment(tenantId, paymentId, validatedData, actorUserId);
-
-    res.json({
-      success: true,
-      data: result,
-      message: `Paiement alloué à ${result.allocations.length} échéance(s)`
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de l'allocation du paiement"
-    });
+  if (!actorUserId) {
+    throw new UnauthorizedError();
   }
-}
+
+  // Validate request body
+  const validatedData = allocatePaymentSchema.parse(req.body);
+
+  const result = await allocatePayment(tenantId, paymentId, validatedData, actorUserId);
+
+  res.json({
+    success: true,
+    data: result,
+    message: `Paiement alloué à ${result.allocations.length} échéance(s)`
+  });
+});
 
 /**
  * Update payment status
  * PATCH /tenants/:tenantId/rental/payments/:paymentId/status
  */
-export async function updatePaymentStatusHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { paymentId } = req.params;
-    const actorUserId = req.user?.userId;
+export const updatePaymentStatusHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { paymentId } = req.params;
+  const actorUserId = req.user?.userId;
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
-
-    // Validate request body
-    const validatedData = updatePaymentStatusSchema.parse(req.body);
-
-    const payment = await updatePaymentStatus(
-      tenantId,
-      paymentId,
-      validatedData.status as RentalPaymentStatus,
-      actorUserId
-    );
-
-    res.json({
-      success: true,
-      data: payment
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la mise à jour du statut du paiement'
-    });
+  if (!actorUserId) {
+    throw new UnauthorizedError();
   }
-}
+
+  // Validate request body
+  const validatedData = updatePaymentStatusSchema.parse(req.body);
+
+  const payment = await updatePaymentStatus(
+    tenantId,
+    paymentId,
+    validatedData.status as RentalPaymentStatus,
+    actorUserId
+  );
+
+  res.json({
+    success: true,
+    data: payment
+  });
+});
 
 /**
  * Get payment by ID
  * GET /tenants/:tenantId/rental/payments/:paymentId
  */
-export async function getPaymentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { paymentId } = req.params;
+export const getPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { paymentId } = req.params;
 
-    const payment = await getPaymentById(tenantId, paymentId);
+  const payment = await getPaymentById(tenantId, paymentId);
 
-    if (!payment) {
-      res.status(404).json({
-        success: false,
-        message: 'Paiement non trouvé'
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: withOnlineCheckoutSummary(payment)
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération du paiement'
-    });
+  if (!payment) {
+    throw new NotFoundError('Paiement introuvable');
   }
-}
+
+  res.json({
+    success: true,
+    data: withOnlineCheckoutSummary(payment)
+  });
+});
 
 /**
  * List payments
  * GET /tenants/:tenantId/rental/payments
  */
-export async function listPaymentsHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId, renterClientId, status, method, startDate, endDate } = req.query;
+export const listPaymentsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId, renterClientId, status, method, startDate, endDate } = req.query;
 
-    const filters: any = {};
-    if (leaseId) {
-      filters.leaseId = leaseId as string;
-    }
-    if (renterClientId) {
-      filters.renterClientId = renterClientId as string;
-    }
-    if (status) {
-      filters.status = status as RentalPaymentStatus;
-    }
-    if (method) {
-      filters.method = method as RentalPaymentMethod;
-    }
-    if (startDate) {
-      filters.startDate = new Date(startDate as string);
-    }
-    if (endDate) {
-      filters.endDate = new Date(endDate as string);
-    }
-
-    const { page, limit } = parsePagination(req.query);
-
-    const result = await listPayments(tenantId, filters, { page, limit });
-
-    res.json({
-      success: true,
-      ...result,
-      data: (result.data as any[]).map(withOnlineCheckoutSummary)
-    });
-  } catch (error) {
-    if (respondWithAppError(res, error)) return;
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des paiements'
-    });
+  const filters: any = {};
+  if (leaseId) {
+    filters.leaseId = leaseId as string;
   }
-}
+  if (renterClientId) {
+    filters.renterClientId = renterClientId as string;
+  }
+  if (status) {
+    filters.status = status as RentalPaymentStatus;
+  }
+  if (method) {
+    filters.method = method as RentalPaymentMethod;
+  }
+  if (startDate) {
+    filters.startDate = new Date(startDate as string);
+  }
+  if (endDate) {
+    filters.endDate = new Date(endDate as string);
+  }
+
+  const { page, limit } = parsePagination(req.query);
+
+  const result = await listPayments(tenantId, filters, { page, limit });
+
+  res.json({
+    success: true,
+    ...result,
+    data: (result.data as any[]).map(withOnlineCheckoutSummary)
+  });
+});
 
 /**
  * Relance le rapprochement d'un paiement en ligne — contrat §3.2.

@@ -185,6 +185,38 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   },
   {
     method: 'POST',
+    test: exact('/api/public/secure-links/charge-call-payment'),
+    reason:
+      'Appel de charges de copropriete a payer, lu par son lien securise (spec 042, lib/secure-links, portee CHARGE_CALL_PAYMENT) : ' +
+      "public par nature, le coproprietaire n'a pas de session. Le jeton (32 octets aleatoires, 256 bits, SHA-256 seul en base, " +
+      "expirant, revocable) est dans le corps du POST (1 Ko max) et designe un unique appel, lu dans l'agence du lien : aucun " +
+      'identifiant, montant ou agence ne vient de la requete (reste du recalcule cote serveur). Lecture seule. Limiteur par IP ' +
+      '(30/min, cle propre) avant verification, refus uniforme 404 (lien inconnu, expire, revoque, appel solde, copropriete non ' +
+      'configuree, lot revendu), en-tetes no-store/noindex/no-referrer, consultation journalisee (SECURE_LINK_VIEWED).'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/secure-links/charge-call-payment/start'),
+    reason:
+      "Demarrage du paiement Mobile Money d'un appel de charges par son lien securise (spec 042) : public par nature, le " +
+      "coproprietaire n'a pas de session. Meme jeton secret a 256 bits dans le corps (1 Ko max), objet unique ; le montant " +
+      "n'est jamais lu de l'appelant (recalcule cote serveur par le moteur) et l'URL de paiement est fournie par le " +
+      'fournisseur, jamais construite a partir de la requete. Limiteur par IP plus strict (10/min, cle propre) avant ' +
+      'verification, refus uniforme 404, en-tetes no-store/noindex/no-referrer, audit SECURE_LINK_CHARGE_PAYMENT_STARTED.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/secure-links/charge-call-payment/status'),
+    reason:
+      "Statut d'un paiement issu d'un lien d'appel de charges (spec 042) : public par nature (retour du fournisseur de " +
+      'paiement, sans session). Le corps (1 Ko max) porte la reference IMS-<20 alphanumeriques>, imprevisible, qui ne sert que ' +
+      "les paiements d'origine lien securise d'une agence non suspendue (un code du portail repond 404). Lecture seule, le " +
+      "statut vient de l'agregateur (une verification par fenetre de 10 s), aucun identifiant ni montant lu de l'appelant. " +
+      'Limiteur par IP dedie (90/min, la page interroge toutes les 3 s) avant verification, refus uniforme 404, en-tetes ' +
+      'no-store/noindex/no-referrer.'
+  },
+  {
+    method: 'POST',
     test: exact('/api/public/external-access/patrimoine'),
     reason:
       "Vue en lecture seule d'un tiers de confiance (notaire, expert-comptable, banquier ; lot B3, spec 034), lue par " +
@@ -265,6 +297,13 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
     test: exact('/api/tenants/:tenantId/unregister'),
     reason:
       "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
+  },
+  {
+    method: 'POST',
+    test: exact('/api/public/signature-provider/yousign'),
+    reason:
+      'Webhook du prestataire de signature (spec 044, lot S6) : HMAC du prestataire verifie sur le corps brut, aucune session ' +
+      "par nature ; l'etat est relu chez le prestataire, jamais deduit du corps. Limiteur par IP, 404 si le fournisseur actif n'est pas externe."
   },
   {
     method: '*',

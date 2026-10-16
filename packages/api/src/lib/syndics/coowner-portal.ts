@@ -7,6 +7,9 @@ import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from
 import { sumAllocationsByCall } from './charge-allocation';
 import { fromCents } from './charge-allocation-plan';
 import { applyChronologicalBalances } from './owner-account-running-balance';
+import { getSyndicOnlineAvailabilities } from './online-payment/gateway-config';
+import { PENDING_REUSE_WINDOW_MS } from './online-payment/checkout-start';
+import { isSupportedCurrency } from './online-payment/types';
 
 /**
  * Portail copropriétaire — lectures, en lecture seule.
@@ -177,7 +180,7 @@ function toNumberOrNull(value: unknown): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
 
-function scopeOrThrow(scope: CoOwnerPortalScope, lotId: string): CoOwnerLotScope {
+export function scopeOrThrow(scope: CoOwnerPortalScope, lotId: string): CoOwnerLotScope {
   const lot = scope.lots.find(candidate => candidate.lotId === lotId);
   if (!lot) {
     // Même réponse qu'un lot inexistant : ne rien dire de l'existence d'un
@@ -187,7 +190,7 @@ function scopeOrThrow(scope: CoOwnerPortalScope, lotId: string): CoOwnerLotScope
   return lot;
 }
 
-async function loadSyndicates(scope: CoOwnerPortalScope, syndicateIds: string[] = scope.syndicateIds) {
+export async function loadSyndicates(scope: CoOwnerPortalScope, syndicateIds: string[] = scope.syndicateIds) {
   if (syndicateIds.length === 0) return new Map<string, { id: string; name: string; address: string }>();
   const syndicates = await prisma.syndicate.findMany({
     where: { tenantId: scope.tenantId, id: { in: syndicateIds } },
@@ -350,7 +353,50 @@ export function ownedChargeCallsWhere(scope: CoOwnerPortalScope, lotIds: string[
   };
 }
 
-export async function listCoOwnerChargeCalls(scope: CoOwnerPortalScope, filters: { lotId?: string } = {}) {
+export type CoOwnerOnlineCheckoutState = 'NONE' | 'IN_PROGRESS' | 'REVIEW';
+
+/**
+ * Paiements en ligne ouverts (`PENDING` récent ou `REVIEW`) couvrant les appels
+ * donnés : UNE requête. Pour chaque appel, l'état et, si le paiement est celui
+ * de CE compte portail, son code (pour « Reprendre le paiement »). Un paiement
+ * d'un autre compte, ou d'un lien sécurisé, bloque l'appel sans livrer son code.
+ */
+async function loadOpenCheckoutsByCall(
+  scope: CoOwnerPortalScope,
+  lotIds: string[],
+  callIds: string[],
+  tenantClientId: string | null
+) {
+  const byCall = new Map<string, { state: CoOwnerOnlineCheckoutState; code: string | null }>();
+  if (callIds.length === 0) return byCall;
+  const since = new Date(Date.now() - PENDING_REUSE_WINDOW_MS);
+  const open = await prisma.syndicOnlineCheckout.findMany({
+    where: {
+      tenantId: scope.tenantId,
+      lotId: { in: lotIds },
+      chargeCallIds: { hasSome: callIds },
+      OR: [{ status: 'PENDING', createdAt: { gte: since } }, { status: 'REVIEW' }]
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { status: true, codePaiement: true, chargeCallIds: true, origin: true, tenantClientId: true }
+  });
+  for (const checkout of open) {
+    const state: CoOwnerOnlineCheckoutState = checkout.status === 'REVIEW' ? 'REVIEW' : 'IN_PROGRESS';
+    const mine = checkout.origin === 'PORTAL' && tenantClientId !== null && checkout.tenantClientId === tenantClientId;
+    for (const callId of checkout.chargeCallIds) {
+      const known = byCall.get(callId);
+      // REVIEW l'emporte sur un paiement en cours ; à état égal, le plus récent (tri décroissant) reste.
+      if (known && (known.state === 'REVIEW' || state !== 'REVIEW')) continue;
+      byCall.set(callId, { state, code: mine ? checkout.codePaiement : null });
+    }
+  }
+  return byCall;
+}
+
+export async function listCoOwnerChargeCalls(
+  scope: CoOwnerPortalScope,
+  filters: { lotId?: string; tenantClientId?: string | null } = {}
+) {
   const lotIds = filters.lotId ? [scopeOrThrow(scope, filters.lotId).lotId] : scope.lotIds;
   if (lotIds.length === 0) return [];
 
@@ -373,29 +419,43 @@ export async function listCoOwnerChargeCalls(scope: CoOwnerPortalScope, filters:
     }
   });
   // Lot S2 : regle d'un appel = somme de ses affectations (paiements et avances).
-  const paidCentsByCall = await sumAllocationsByCall(
-    prisma,
-    calls.map(call => call.id)
-  );
+  const callIds = calls.map(call => call.id);
+  const paidCentsByCall = await sumAllocationsByCall(prisma, callIds);
+  // Paiement en ligne : UNE disponibilité par copropriété du périmètre, UNE requête de tentatives ouvertes.
+  const [availabilities, openByCall] = await Promise.all([
+    getSyndicOnlineAvailabilities(scope.tenantId, Array.from(new Set(calls.map(call => call.syndicateId)))),
+    loadOpenCheckoutsByCall(scope, lotIds, callIds, filters.tenantClientId ?? null)
+  ]);
 
   const now = new Date();
   return calls.map(call => {
     const amount = roundMoney(Number(call.amount));
     const paid = fromCents(paidCentsByCall.get(call.id) ?? 0);
+    const outstanding = computeOutstanding(amount, paid);
     const lot = lotById.get(call.lotId);
+    const open = openByCall.get(call.id);
     return {
       id: call.id,
+      syndicateId: call.syndicateId,
       period: call.period,
       amount,
       paid,
-      outstanding: computeOutstanding(amount, paid),
+      outstanding,
       currency: call.currency,
       dueDate: call.dueDate,
       // « En retard » n'est jamais stocké : dérivé à la lecture, comme sur
       // l'écran gestionnaire (finance-utils.ts).
       status: deriveChargeCallStatus(call.status as ChargeCallStatusValue, call.dueDate, now),
       lot: lot ? { id: lot.id, lotNumber: lot.lotNumber, lotType: lot.lotType } : null,
-      syndicate: syndicates.get(call.syndicateId)?.name ?? null
+      syndicate: syndicates.get(call.syndicateId)?.name ?? null,
+      // Copropriété payable en ligne ET reste dû > 0 ET devise FCFA (contracts §2.2).
+      onlinePayable:
+        availabilities.get(call.syndicateId)?.available === true &&
+        outstanding > 0 &&
+        isSupportedCurrency(call.currency),
+      onlineCheckout: open?.state ?? ('NONE' as CoOwnerOnlineCheckoutState),
+      // Code du paiement ouvert DE CE COMPTE (reprise), sinon null.
+      onlineCheckoutCode: open?.code ?? null
     };
   });
 }

@@ -81,6 +81,7 @@ describe('catalogue d’audit', () => {
       'SIGNATURE_OTP_LOCKED',
       'SIGNATURE_CANCELED',
       'SIGNATURE_EXPIRED',
+      'SIGNATURE_REMINDER_AUTO',
       'SIGNATURE_QUOTA_REFUSED',
       'SIGNATURE_IN_PERSON_TOKEN_ISSUED',
       'SIGNATURE_CHAIN_BROKEN',
@@ -118,6 +119,8 @@ describe('catalogue d’audit', () => {
       // Refus d'un plan d'écriture de l'assistant (POST /ai/actions/reject).
       'AI_PROPOSAL_REJECTED',
       // Contrôle du stock de chantier (spec 040, B6-R4).
+      // Collecte de dépôt défaite par l'annulation du paiement qui l'a financée.
+      'RENTAL_DEPOSIT_MOVEMENT_DELETED',
       'STOCK_RECEIPT_RECORDED',
       'STOCK_ISSUE_RECORDED',
       'STOCK_TRANSFER_RECORDED',
@@ -155,6 +158,15 @@ describe('catalogue d’audit', () => {
       'STOCK_WHATSAPP_COUNT_CLOSED',
       'STOCK_WHATSAPP_QUOTA_REACHED',
       'STOCK_WHATSAPP_PHOTO_REMOVED',
+      // Paiement mobile des copropriétaires (spec 042).
+      'SYNDIC_GATEWAY_CONFIG_UPDATED',
+      'SYNDIC_ONLINE_PAYMENT_STARTED',
+      'SYNDIC_ONLINE_PAYMENT_CONFIRMED',
+      'SYNDIC_ONLINE_PAYMENT_REVIEW',
+      'SYNDIC_ONLINE_PAYMENT_RESOLVED',
+      'SYNDIC_GATEWAY_PAYOUT_RECORDED',
+      'SYNDIC_CHARGE_PAYMENT_LINK_SENT',
+      'SECURE_LINK_CHARGE_PAYMENT_STARTED',
       // Prélèvement bancaire (spec 042, P1).
       'DIRECT_DEBIT_CREDITOR_CREATED',
       'DIRECT_DEBIT_CREDITOR_UPDATED',

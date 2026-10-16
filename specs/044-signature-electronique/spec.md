@@ -28,7 +28,7 @@ et un dossier de preuve, sans que le signataire ait besoin d'un compte.
   audit (`audit-service`, `audit-catalog`), quotas d'abonnement
   (`subscription/catalog.ts`, modèle `StockWhatsappUsage`), transport
   pluggable (`lib/stock-whatsapp/transport`), `pdf-lib`.
-- Pas d'envoi SMS implémenté (le lot SMS-1 est sur une branche non intégrée).
+- Envoi SMS : transport minimal `lib/sms/` (lot S7) ; le lot SMS-1 complet reste sur une branche non intégrée.
 
 ## 3. Périmètre
 
@@ -55,6 +55,9 @@ prestataire, lot S6).
   **l'avis juridique n'est pas rendu** : ce retrait est une décision du fondateur,
   après cet avis. Les clauses du PDF du compromis sont des clauses types à faire
   valider par un juriste.
+  Lot S6 : le fournisseur externe `yousign` déclare `qualified: true`
+  (provisoire : prestataire et avis juridique non rendus) ; il satisfait donc
+  `providerRequired`. Voir `docs/integrations/signature-prestataire.md`.
 - **SG-R2 Immutabilité.** Le document source est figé par son SHA-256 à
   l'envoi. Toute modification après envoi annule la demande (`CANCELED`) et
   en crée une nouvelle.
@@ -66,8 +69,19 @@ prestataire, lot S6).
   code.
 - **SG-R4 Code à usage unique.** 6 chiffres, HMAC-SHA256, comparaison à temps
   constant, 5 essais, validité 10 minutes, renvoi limité (3). Canaux : e-mail,
-  WhatsApp (consentement CRM), SMS quand le lot SMS-1 sera intégré. Le code
-  n'est jamais journalisé.
+  WhatsApp (consentement CRM), SMS (lot S7, ci-dessous). Le code n'est jamais
+  journalisé.
+- **SG-R4 / S7 Canal SMS.** Livré par un transport minimal `lib/sms/`
+  (`SMS_PROVIDER` = `disabled` par défaut, `log`, `orange` ; compte Orange CI
+  unique d'ImmoTopia), sans reprendre les réglages d'agence ni la migration du
+  lot SMS-1 (branche non fusionnée). Le signataire SMS exige un numéro E.164 et
+  un contact CRM de l'agence (`contactId`) ; le CRM ne porte pas de
+  consentement SMS (seulement `consentWhatsapp`) : limite connue, à lever par un
+  champ `consentSms` hors de ce sprint. Lien et code partent en texte court
+  (lien jamais tronqué) ; mêmes règles HMAC, essais et renvois que pour les
+  autres canaux ; contact masqué dans les réponses. Un SMS n'ajoute aucune
+  capacité d'abonnement : le quota compte les demandes de signature, le coût
+  du SMS reste à la charge de la plateforme (compte unique).
 - **SG-R5 Consentement.** Case explicite « Je reconnais avoir lu le document et
   je consens à le signer électroniquement » ; le texte affiché est haché et
   conservé avec l'événement.
@@ -104,6 +118,10 @@ prestataire, lot S6).
 - **SG-R13 Fournisseur.** Variable `SIGNATURE_PROVIDER` =
   `disabled` | `log` | `internal` (défaut `disabled`), plus tard un nom de
   prestataire ; passe par `config/env.ts` et `env.example`.
+  Lot S6 : `yousign` (Yousign API v3) est un fournisseur externe ; il déclare
+  `qualified: true` à titre **provisoire** (choix de prestataire et avis
+  juridique non rendus). Voir
+  [docs/integrations/signature-prestataire.md](../../docs/integrations/signature-prestataire.md).
 - **SG-R14 Libellés.** Tous les textes passent par `t()`, trilingue fr/en/ar,
   marges logiques ; le certificat est produit dans la langue du document.
   **Limite acceptée** : les PDF générés à la volée (mandats, compromis, état des
@@ -132,6 +150,6 @@ prestataire, lot S6).
 4. **Valeur juridique** par document et pays : avis juridique requis.
 5. **Prestataire** : comparaison à faire (couverture Afrique francophone,
    tarifs, hébergement des données) avant le lot S6.
-6. **SMS** : dépend de l'intégration du lot SMS-1 ; en attendant, e-mail et
-   WhatsApp.
+6. **SMS** : transport minimal livré au lot S7 ; réglages d'agence et quota SMS
+   du lot SMS-1 non intégrés ; consentement SMS du CRM à créer.
 7. **Numérotation spec** : 044 (042 est réservé au paiement mobile Syndic, 043 à l'AG en direct Syndic ; renumérotée de 043 en 044 le 2026-10-15).

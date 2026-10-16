@@ -44,8 +44,7 @@ import { GeographicLocation } from '../../services/geographic-service';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
-import { contactDisplayName } from '../../utils/contact-display';
-import { listContacts, CrmContact } from '../../services/crm-service';
+import { getOwnerClients, TenantClient } from '../../services/tenant-service';
 import { t } from '../../i18n/t';
 import { isQuotaExceededResponse } from '../../utils/subscription-denial-notice';
 
@@ -148,16 +147,12 @@ function aDesCaracteristiquesGenerales(type: PropertyType): boolean {
 }
 
 /**
- * Le nom affiché d'un propriétaire dans la liste.
- *
- * L'adresse e-mail suivait le nom entre parenthèses ; elle reste la valeur
- * envoyée, mais n'a plus à être lue. Le repli n'est pas décoratif : un contact
- * de type `COMPANY` porte sa raison sociale et peut n'avoir ni prénom ni nom,
- * et une option vide serait impossible à choisir. Il n'y en a aucun dans le
- * jeu actuel — le type en autorise.
+ * Le nom affiché d'un propriétaire dans la liste : le nom du compte, jamais
+ * l'adresse seule tant qu'un nom existe. La valeur envoyée est l'identifiant
+ * du compte (`userId`) — le même que sur la fiche d'un bien.
  */
-function nomProprietaire(owner: CrmContact): string {
-  return contactDisplayName(owner);
+function nomProprietaire(owner: TenantClient): string {
+  return owner.user.fullName?.trim() || owner.user.email || t('Contact sans nom');
 }
 
 interface PropertyFormWizardProps {
@@ -190,7 +185,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   // chargement : le second repartirait avec un POST de creation.
   const finishInFlightRef = useRef(false);
   const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
-  const [owners, setOwners] = useState<Array<CrmContact & { userId?: string }>>([]);
+  const [owners, setOwners] = useState<TenantClient[]>([]);
   const [loadingOwners, setLoadingOwners] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -262,13 +257,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   const loadOwners = async () => {
     setLoadingOwners(true);
     try {
-      const response = await listContacts(tenantId, { limit: 1000 });
-      if (response.success) {
-        const clientContacts = response.contacts.filter(
-          contact => contact.roles && contact.roles.length > 0 && contact.roles.some(r => r.active)
-        );
-        setOwners(clientContacts);
-      }
+      // Clients Propriétaire de l'agence, contacts CRM convertis compris : même
+      // liste que la fiche d'un bien, le vendeur d'un mandat et l'indivision.
+      setOwners(await getOwnerClients(tenantId));
     } catch (error) {
       console.error('Error loading owners:', error);
     } finally {
@@ -351,8 +342,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
    */
   const construireCorpsBien = (pourCreation: boolean): CreatePropertyRequest | UpdatePropertyRequest => ({
     ...(pourCreation ? { propertyType: formData.propertyType, ownershipType: typeDeDetention } : {}),
-    ownerUserId: proprietaireChoisi && !String(proprietaireChoisi).includes('@') ? proprietaireChoisi : undefined,
-    ownerEmail: proprietaireChoisi && String(proprietaireChoisi).includes('@') ? proprietaireChoisi : undefined,
+    ownerUserId: proprietaireChoisi || undefined,
     title: formData.title.trim(),
     description: formData.description.trim(),
     address: formData.address.trim() || undefined,
@@ -895,10 +885,18 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 status={errors.ownerUserId ? 'error' : ''}
               >
                 {owners.map(owner => (
-                  <Select.Option key={owner.id} value={owner.email}>
+                  <Select.Option key={owner.id} value={owner.userId}>
                     {nomProprietaire(owner)}
                   </Select.Option>
                 ))}
+                {/* Propriétaire déjà enregistré mais absent de la liste : son nom, jamais son identifiant. */}
+                {property?.ownerUserId &&
+                  property.owner &&
+                  !owners.some(owner => owner.userId === property.ownerUserId) && (
+                    <Select.Option key={property.ownerUserId} value={property.ownerUserId}>
+                      {property.owner.fullName || property.owner.email}
+                    </Select.Option>
+                  )}
               </Select>
             )}
             {errors.ownerUserId && (
@@ -912,7 +910,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               </Text>
             ) : (
               <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                {t('Bien de client : un mandat de gestion se crée depuis la fiche du bien.')}
+                {t(
+                  "Bien de client : le propriétaire est un client de l'agence (contact converti au rôle Propriétaire) et un mandat de gestion est créé avec le bien."
+                )}
               </Text>
             )}
           </div>
