@@ -25,6 +25,7 @@ const TARGET_TYPES = { MANAGEMENT_MANDATE: 'PropertyMandate', SALE_MANDATE: 'Sal
 export const MandateSignatures: React.FC<MandateSignaturesProps> = ({ kind, mandateId, fileLabel }) => {
   const [signers, setSigners] = useState<SignerInput[] | null>(null);
   const [providerRequired, setProviderRequired] = useState(false);
+  const [externalProvider, setExternalProvider] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export const MandateSignatures: React.FC<MandateSignaturesProps> = ({ kind, mand
       .then(context => {
         if (!active) return;
         setProviderRequired(Boolean(context.providerRequired));
+        setExternalProvider(Boolean(context.externalProvider));
         setSigners(
           (context.signers ?? [])
             .filter(signer => Boolean(signer.fullName?.trim()))
@@ -70,6 +72,7 @@ export const MandateSignatures: React.FC<MandateSignaturesProps> = ({ kind, mand
         defaultSigners={signers}
         fileLabel={fileLabel}
         providerRequired={providerRequired}
+        externalProvider={externalProvider}
         sendDisabled={Boolean(error)}
       />
     </Space>

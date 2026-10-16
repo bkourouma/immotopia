@@ -641,6 +641,7 @@ const DocumentTemplates = lazy(() =>
     default: m.DocumentTemplates
   }))
 );
+const SignaturesPage = lazy(() => import(/* webpackChunkName: "signatures" */ './pages/signatures/SignaturesPage'));
 // Transactions page
 // Reports page
 // Tenant Portal pages
@@ -1019,6 +1020,7 @@ function App() {
                             element={<TenantSubscriptionSettings />}
                           />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
+                          <Route path="/tenant/:tenantId/signatures" element={<SignaturesPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
                           <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />

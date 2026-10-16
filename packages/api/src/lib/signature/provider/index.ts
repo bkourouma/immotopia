@@ -3,6 +3,10 @@ import type { SignatureProvider } from '../types';
 import { createDisabledProvider, signatureDisabledError } from './disabled';
 import { createInternalProvider } from './internal';
 import { createLogProvider } from './log';
+import { createExternalProvider, isExternalProvider } from './external/provider';
+import { getExternalSignatureClient, isQualifiedSignatureLevel } from './external';
+
+export { isExternalProvider };
 
 /**
  * Choix du fournisseur de signature (spec 044, SG-R13), selon
@@ -12,11 +16,21 @@ import { createLogProvider } from './log';
 
 let cached: { id: string; provider: SignatureProvider } | null = null;
 
+function buildProvider(id: string): SignatureProvider {
+  if (id === 'internal') return createInternalProvider();
+  if (id === 'log') return createLogProvider();
+  if (id === 'yousign') {
+    const client = getExternalSignatureClient();
+    if (!client) throw new Error('Prestataire de signature ' + id + ' : configuration incomplète (clé API absente).');
+    return createExternalProvider(client, { qualified: isQualifiedSignatureLevel(env.YOUSIGN_SIGNATURE_LEVEL) });
+  }
+  return createDisabledProvider();
+}
+
 export function getSignatureProvider(): SignatureProvider {
   const id = env.SIGNATURE_PROVIDER;
   if (cached && cached.id === id) return cached.provider;
-  const provider =
-    id === 'internal' ? createInternalProvider() : id === 'log' ? createLogProvider() : createDisabledProvider();
+  const provider = buildProvider(id);
   cached = { id, provider };
   return provider;
 }

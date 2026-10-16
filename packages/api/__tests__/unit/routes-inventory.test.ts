@@ -259,6 +259,13 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
       "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
   },
   {
+    method: 'POST',
+    test: exact('/api/public/signature-provider/yousign'),
+    reason:
+      'Webhook du prestataire de signature (spec 044, lot S6) : HMAC du prestataire verifie sur le corps brut, aucune session ' +
+      "par nature ; l'etat est relu chez le prestataire, jamais deduit du corps. Limiteur par IP, 404 si le fournisseur actif n'est pas externe."
+  },
+  {
     method: '*',
     test: withPrefix('/api/public/signatures/:token'),
     reason:

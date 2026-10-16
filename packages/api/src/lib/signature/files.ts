@@ -29,7 +29,7 @@ export function signatureFileKey(tenantId: string, requestId: string, fileName: 
 export async function writeSignatureFile(
   tenantId: string,
   requestId: string,
-  fileName: 'source.pdf' | 'signed.pdf' | `signer-${string}.png`,
+  fileName: 'source.pdf' | 'signed.pdf' | 'evidence.pdf' | `signer-${string}.png`,
   buffer: Buffer,
   options: { exclusive?: boolean } = {}
 ): Promise<string> {

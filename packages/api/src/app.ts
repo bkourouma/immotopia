@@ -57,6 +57,9 @@ import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './routes/whatsapp-cloud-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
+import signatureProviderWebhookRoutes, {
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
+} from './routes/signature-provider-webhook-routes';
 import signaturePublicRoutes, { PUBLIC_SIGNATURES_PREFIX } from './routes/signature-public-routes';
 import signatureRoutes from './routes/signature-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
@@ -144,7 +147,8 @@ const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_EXTERNAL_ACCESS_PREFIX,
   PUBLIC_SIGNATURES_PREFIX,
   PUBLIC_MEETING_LIVE_PREFIX,
-  WHATSAPP_CLOUD_WEBHOOK_PREFIX
+  WHATSAPP_CLOUD_WEBHOOK_PREFIX,
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
 ];
 const skipSecureLinkPublic =
   (parser: express.RequestHandler): express.RequestHandler =>
@@ -252,6 +256,8 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
+// Spec 044 (S6) : webhook du prestataire de signature, corps brut, signature verifiee, etat relu chez le prestataire.
+app.use(PUBLIC_SIGNATURE_PROVIDER_PREFIX, signatureProviderWebhookRoutes);
 // Spec 044 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
 app.use('/api', signaturePublicRoutes);
 // Spec 043 : AG en direct par lien personnel (jeton dans le corps, JSON 4 Ko, limiteurs par IP et par jeton).

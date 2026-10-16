@@ -4,7 +4,7 @@
  * fournisseur et les formes de sortie.
  */
 export type SignatureDocumentKindCode = import('@prisma/client').SignatureDocumentKind;
-export type SignatureChannelCode = 'EMAIL' | 'WHATSAPP' | 'IN_PERSON';
+export type SignatureChannelCode = 'EMAIL' | 'WHATSAPP' | 'SMS' | 'IN_PERSON';
 export type SignatureLanguage = 'fr' | 'en' | 'ar';
 
 /** Identifiant d'un fournisseur : `disabled`, `log`, `internal`, ou le nom d'un prestataire (lot S6). */
@@ -15,6 +15,15 @@ export interface CreateRequestInput {
   requestId: string;
   kind: SignatureDocumentKindCode;
   signerCount: number;
+  /** Prestataire externe (S6) : document figé et signataires à transmettre au prestataire. */
+  external?: {
+    title: string;
+    pdf: Buffer;
+    language: import('./provider/external/types').ExternalLocale;
+    sequential: boolean;
+    expiresAt: Date;
+    signers: import('./provider/external/types').ExternalSignerInput[];
+  };
 }
 
 /** Message à remettre à un signataire. Jamais journalisé. */
@@ -23,7 +32,7 @@ export interface OutboundSignatureMessage {
   channel: 'EMAIL' | 'WHATSAPP' | 'SMS';
   /** Adresse e-mail ou numéro (E.164 pour WhatsApp). */
   to: string;
-  /** Contact CRM dont le consentement WhatsApp est exigé, s'il est connu. */
+  /** Contact CRM : consentement WhatsApp exigé s'il est connu ; obligatoire (et de l'agence) pour SMS. */
   contactId?: string | null;
   subject: string;
   text: string;
@@ -31,7 +40,7 @@ export interface OutboundSignatureMessage {
 }
 
 export type DeliveryResult =
-  { ok: true } | { ok: false; reason: 'DISABLED' | 'UNSUPPORTED' | 'NO_CONSENT' | 'SEND_FAILED' };
+  { ok: true } | { ok: false; reason: 'DISABLED' | 'UNSUPPORTED' | 'NO_CONSENT' | 'SEND_FAILED' | 'RATE_LIMITED' };
 
 /**
  * Contrat d'un fournisseur de signature. `internal` : le noyau gère jeton, code
@@ -47,8 +56,10 @@ export interface SignatureProvider {
    * un prestataire. `internal`, `log` et `disabled` ne le sont pas.
    */
   readonly qualified: boolean;
-  createRequest(input: CreateRequestInput): Promise<{ providerRef?: string }>;
-  cancel(requestId: string): Promise<void>;
+  /** Prestataire externe (S6) : client qui porte invitation, signature et preuve. Absent pour `internal`. */
+  readonly external?: import('./provider/external/types').ExternalSignatureClient;
+  createRequest(input: CreateRequestInput): Promise<{ providerRef?: string; signerRefs?: string[] }>;
+  cancel(requestId: string, ctx?: { tenantId: string; providerRef: string | null }): Promise<void>;
   deliver(message: OutboundSignatureMessage): Promise<DeliveryResult>;
 }
 
@@ -72,4 +83,12 @@ export type SignatureEventType =
   | 'EXPIRED'
   | 'CANCELED'
   | 'REMINDER_SENT'
+  | 'REMINDER_AUTO'
   | 'IN_PERSON_TOKEN_ISSUED';
+
+/** Fournisseurs dont le noyau gère lui-même jeton, code, relance et scellement (jamais un prestataire externe). */
+export const INTERNAL_PROVIDER_IDS = ['internal', 'log'] as const;
+
+export function isInternalSignatureProvider(providerId: string | null | undefined): boolean {
+  return typeof providerId === 'string' && (INTERNAL_PROVIDER_IDS as readonly string[]).includes(providerId);
+}

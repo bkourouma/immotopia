@@ -11,6 +11,7 @@ import {
   reissueInPersonTokenHandler,
   remindSignatureHandler,
   signatureFileHandler,
+  signatureSummaryHandler,
   signatureTargetContextHandler
 } from '../controllers/signature-controller';
 
@@ -32,6 +33,7 @@ const view = (origin: 'request') => [...tenantScoped, requireSignatureKindAccess
 
 router.post('/', ...edit('body'), createSignatureHandler);
 router.get('/', ...tenantScoped, listSignaturesHandler);
+router.get('/summary', ...tenantScoped, signatureSummaryHandler);
 router.get('/targets/:kind/:targetId/context', ...edit('param'), signatureTargetContextHandler);
 router.get('/:id', ...view('request'), getSignatureHandler);
 router.get('/:id/file', ...view('request'), signatureFileHandler);

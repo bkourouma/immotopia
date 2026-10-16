@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { App, Alert, Button, Input, InputNumber, Modal, Select, Space, Switch, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { createSignatureRequest } from '../../services/signature-service';
+import { createSignatureRequest, fetchSignatureContext } from '../../services/signature-service';
 import type { SignatureKind, SignatureRequestDto, SignerChannel, SignerInput } from '../../types/signature-types';
 import { channelLabel, roleLabel, SIGNER_ROLES } from './signature-labels';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
-const CHANNELS: SignerChannel[] = ['EMAIL', 'WHATSAPP', 'IN_PERSON'];
+const CHANNELS: SignerChannel[] = ['EMAIL', 'WHATSAPP', 'SMS', 'IN_PERSON'];
 
 interface SendForSignatureModalProps {
   open: boolean;
@@ -16,6 +16,8 @@ interface SendForSignatureModalProps {
   targetId: string;
   /** Signataires préremplis à partir du document (locataire, co-locataires, bailleur…). */
   defaultSigners: SignerInput[];
+  /** Faux quand le SMS n'est pas activé sur le serveur (`SignatureTargetContext.smsAvailable`). */
+  smsAvailable?: boolean;
   onClose: () => void;
   onCreated: (request: SignatureRequestDto) => void;
 }
@@ -35,6 +37,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
   kind,
   targetId,
   defaultSigners,
+  smsAvailable: smsAvailableProp,
   onClose,
   onCreated
 }) => {
@@ -44,6 +47,25 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
   const [expiresInDays, setExpiresInDays] = useState<number>(14);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [smsFromContext, setSmsFromContext] = useState<boolean | undefined>(undefined);
+  // La prop explicite prime ; sinon on lit le contexte de la cible.
+  const smsAvailable = smsAvailableProp ?? smsFromContext;
+
+  useEffect(() => {
+    if (!open || smsAvailableProp !== undefined) return undefined;
+    let active = true;
+    (async () => {
+      try {
+        const context = await fetchSignatureContext(kind, targetId);
+        if (active && typeof context?.smsAvailable === 'boolean') setSmsFromContext(context.smsAvailable);
+      } catch {
+        // Échec : SMS reste proposé, le serveur refusera clairement si besoin.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [open, kind, targetId, smsAvailableProp]);
 
   useEffect(() => {
     if (open) {
@@ -66,7 +88,7 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
       const request = await createSignatureRequest({
         kind,
         targetId,
-        // `contactId` (si connu) part avec le signataire : l'API l'exige pour WHATSAPP.
+        // `contactId` (si connu) part avec le signataire : l'API l'exige pour WHATSAPP et SMS.
         signers: signers.map(({ phoneKnown: _phoneKnown, ...signer }) => ({
           ...signer,
           fullName: signer.fullName.trim(),
@@ -128,15 +150,20 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
               aria-label={t('Canal')}
               style={{ width: 120 }}
               options={CHANNELS.map(channel => {
-                // WhatsApp n'est offert que pour un signataire lié à un contact CRM.
-                const noPhone = channel === 'WHATSAPP' && Boolean(signer.contactId) && signer.phoneKnown === false;
-                const blocked = channel === 'WHATSAPP' && (!signer.contactId || noPhone);
+                // WhatsApp et SMS ne sont offerts que pour un signataire lié à un contact CRM.
+                const phoneChannel = channel === 'WHATSAPP' || channel === 'SMS';
+                const noPhone = phoneChannel && Boolean(signer.contactId) && signer.phoneKnown === false;
+                const smsOff = channel === 'SMS' && smsAvailable === false;
+                const blocked = phoneChannel && (!signer.contactId || noPhone);
+                const reason = smsOff
+                  ? t("Le SMS n'est pas activé sur ce serveur.")
+                  : noPhone
+                    ? t('Numéro indisponible')
+                    : t('Lier à un contact CRM');
                 return {
                   value: channel,
-                  disabled: blocked,
-                  label: blocked
-                    ? `${channelLabel(channel)} — ${noPhone ? t('Numéro indisponible') : t('Lier à un contact CRM')}`
-                    : channelLabel(channel)
+                  disabled: blocked || smsOff,
+                  label: blocked || smsOff ? `${channelLabel(channel)} — ${reason}` : channelLabel(channel)
                 };
               })}
             />
@@ -144,7 +171,15 @@ export const SendForSignatureModal: React.FC<SendForSignatureModalProps> = ({
               <Input
                 value={signer.contact}
                 onChange={event => update(index, { contact: event.target.value })}
-                placeholder={signer.channel === 'EMAIL' ? t('Adresse e-mail') : t('Numéro WhatsApp')}
+                placeholder={
+                  signer.channel === 'EMAIL'
+                    ? t('Adresse e-mail')
+                    : signer.phoneKnown === false
+                      ? t('Numéro masqué')
+                      : signer.channel === 'SMS'
+                        ? t('Numéro de téléphone (SMS)')
+                        : t('Numéro WhatsApp')
+                }
                 aria-label={t('Contact')}
                 inputMode={signer.channel === 'EMAIL' ? 'email' : 'tel'}
                 style={{ flex: '1 1 180px', minWidth: 150 }}

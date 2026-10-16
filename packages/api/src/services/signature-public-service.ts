@@ -23,7 +23,11 @@ import { generateOtpCode, normalizeOtpInput, otpHash, otpLimits, otpMatches } fr
 import { sealRequest } from '../lib/signature/sealing';
 import { assertReadablePng, parseSignatureInput } from '../lib/signature/signature-input';
 import { hashToken, looksLikeToken } from '../lib/signature/token';
-import { ACTIONABLE_SIGNER_STATUSES, ACTIVE_REQUEST_STATUSES } from '../lib/signature/types';
+import {
+  ACTIONABLE_SIGNER_STATUSES,
+  ACTIVE_REQUEST_STATUSES,
+  isInternalSignatureProvider
+} from '../lib/signature/types';
 import { cancelRequestInternal } from '../lib/signature/cancel';
 import { findSignatureSource } from '../lib/signature/sources';
 
@@ -62,6 +66,7 @@ const SIGNER_SELECT = {
       title: true,
       language: true,
       status: true,
+      providerId: true,
       sequential: true,
       expiresAt: true,
       sourceFileKey: true,
@@ -90,6 +95,8 @@ async function resolveToken(token: string, options: { readOnly?: boolean } = {})
   if (!signer || signer.tokenExpiresAt.getTime() <= now || signer.request.expiresAt.getTime() <= now) {
     throw invalidSecureLinkError();
   }
+  // Demande confiée à un prestataire externe : aucun jeton interne n'agit, même refus uniforme.
+  if (!isInternalSignatureProvider(signer.request.providerId)) throw invalidSecureLinkError();
   const { status } = signer.request;
   const requestOk =
     (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(status) || (options.readOnly && status === 'COMPLETED');

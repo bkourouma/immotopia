@@ -1,4 +1,5 @@
 import { prisma } from '../../utils/database';
+import { logger } from '../../utils/logger';
 import { recordAuditEvent, AuditActionKey } from '../../services/audit-service';
 import { appendSignatureEvent } from './events';
 import { getSignatureProvider } from './provider';
@@ -24,6 +25,7 @@ export async function cancelRequestInternal(
   options: { refundMonth?: string } = {}
 ): Promise<boolean> {
   const now = new Date();
+  let providerRef: string | null = null;
   const canceled = await prisma.$transaction(async tx => {
     const request = await tx.signatureRequest.findFirst({
       where: { id: requestId, tenantId: ctx.tenantId },
@@ -34,9 +36,11 @@ export async function cancelRequestInternal(
         targetType: true,
         targetId: true,
         sourceDocumentId: true,
-        sourceDocHash: true
+        sourceDocHash: true,
+        providerRef: true
       }
     });
+    providerRef = request?.providerRef ?? null;
     const updated = await tx.signatureRequest.updateMany({
       where: { id: requestId, tenantId: ctx.tenantId, status: { in: [...OPEN_REQUEST_STATUSES] } },
       data: { status: 'CANCELED', canceledAt: now }
@@ -63,9 +67,15 @@ export async function cancelRequestInternal(
   });
   if (canceled) {
     if (options.refundMonth) await releaseSignature(ctx.tenantId, options.refundMonth);
+    // Le prestataire est prévenu hors transaction ; son échec n'annule pas l'annulation locale.
     await getSignatureProvider()
-      .cancel(requestId)
-      .catch(() => undefined);
+      .cancel(requestId, { tenantId: ctx.tenantId, providerRef })
+      .catch(error => {
+        logger.warn("Signature : prestataire non prévenu de l'annulation", {
+          requestId,
+          error: error instanceof Error ? error.name : 'inconnue'
+        });
+      });
   }
   return canceled;
 }

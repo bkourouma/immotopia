@@ -159,6 +159,22 @@ export const whatsappCloudWebhookRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook du prestataire de signature (spec 044, lot S6) : 600 requetes par
+ * minute et par IP, AVANT la lecture du corps et la verification de signature.
+ */
+export const signatureProviderWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  keyGenerator: req => `sig-provider:${req.ip ?? 'inconnue'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Routes publiques des liens securises (lib/secure-links) : 30 requetes par
  * minute et par IP, appliquees AVANT toute verification du jeton. La reponse
  * 429 est la meme quel que soit le jeton ; elle porte les memes en-tetes

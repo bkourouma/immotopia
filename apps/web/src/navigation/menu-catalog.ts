@@ -221,6 +221,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   // Paramétrage.
   documents: ['RENTAL_DOCUMENTS_VIEW'],
   'documents-templates': ['RENTAL_DOCUMENTS_VIEW'],
+  // Signatures : l'API ne renvoie que les types de documents que l'utilisateur peut lire (bail, mandat, vente).
+  signatures: ['RENTAL_LEASES_VIEW', 'PROPERTIES_VIEW', 'CRM_DEALS_VIEW'],
   agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW', 'TENANT_AUDIT_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
