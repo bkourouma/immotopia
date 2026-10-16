@@ -66,6 +66,8 @@ export type ListSignaturesFilters = z.infer<typeof listSignaturesSchema>;
 export const signatureSummarySchema = z
   .object({
     kind: z.nativeEnum(SignatureDocumentKind).optional(),
+    /** Même recherche que la liste : titre ou nom d'un signataire. */
+    q: z.string().trim().min(1).max(100).optional(),
     from: isoDateSchema.optional(),
     to: isoDateSchema.optional()
   })

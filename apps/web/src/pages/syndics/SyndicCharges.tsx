@@ -6,6 +6,7 @@ import {
   Card,
   Col,
   DatePicker,
+  Drawer,
   Form,
   Input,
   InputNumber,
@@ -20,6 +21,8 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
+import { ChargeCallPaymentLinksPanel } from '../../components/syndics/ChargeCallPaymentLinksPanel';
+import { useMyMenuAccess } from '../../hooks/useMenuAccess';
 import { MoneyValue, StatCard, formatMoney } from '../../components/primitives';
 import {
   assignChargeCallFund,
@@ -77,6 +80,13 @@ export const SyndicCharges: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+
+  // Lien « Payer cet appel » : création et révocation exigent SYNDIC_EDIT, la liste SYNDIC_VIEW.
+  // `permissions === null` : aucune restriction (administrateur d'agence, échec réseau).
+  const { permissions, ready: permissionsReady } = useMyMenuAccess(effectiveTenantId);
+  const canEditLinks = permissionsReady && (permissions === null || permissions.has('SYNDIC_EDIT'));
+  const canViewLinks = permissionsReady && (permissions === null || permissions.has('SYNDIC_VIEW'));
+  const [linksTarget, setLinksTarget] = useState<ChargeCall | null>(null);
 
   const [syndicate, setSyndicate] = useState<Syndicate | null>(null);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
@@ -394,6 +404,17 @@ export const SyndicCharges: React.FC = () => {
                 onDownloadNoticeWord={charge => void handleDownloadNoticeWord(charge)}
                 funds={funds}
                 onAssignFund={funds.length > 0 ? handleOpenAssignFund : undefined}
+                paymentLinks={
+                  effectiveTenantId && syndicId && (canEditLinks || canViewLinks)
+                    ? {
+                        tenantId: effectiveTenantId,
+                        syndicId,
+                        canCreate: canEditLinks,
+                        canView: canViewLinks,
+                        onOpenLinks: setLinksTarget
+                      }
+                    : undefined
+                }
               />
             </Card>
           </>
@@ -621,6 +642,34 @@ export const SyndicCharges: React.FC = () => {
           options={fundSelectOptions}
         />
       </Modal>
+
+      {/* Monté seulement à l'ouverture : la liste des liens ne se charge que sur demande. */}
+      {linksTarget && effectiveTenantId && syndicId ? (
+        <Drawer
+          open
+          onClose={() => setLinksTarget(null)}
+          width={760}
+          destroyOnHidden
+          title={t('Liens de paiement · {{period}}', { period: linksTarget.period })}
+        >
+          <ChargeCallPaymentLinksPanel
+            tenantId={effectiveTenantId}
+            syndicId={syndicId}
+            chargeId={linksTarget.id}
+            remaining={
+              linksTarget.outstandingAmount !== undefined
+                ? Number(linksTarget.outstandingAmount)
+                : Number(linksTarget.amount) - Number(linksTarget.paidAmount ?? 0)
+            }
+            status={linksTarget.status}
+            periodLabel={linksTarget.period}
+            currency={linksTarget.currency}
+            canView={canViewLinks}
+            canCreate={canEditLinks}
+            onChanged={() => void loadCharges()}
+          />
+        </Drawer>
+      ) : null}
 
       {effectiveTenantId && syndicId ? (
         <LotPaymentModal

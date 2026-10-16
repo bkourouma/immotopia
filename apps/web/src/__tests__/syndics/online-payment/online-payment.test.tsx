@@ -49,7 +49,7 @@ const SETTINGS = {
   updatedAt: null
 };
 
-function review(kind: SyndicOnlineCheckoutRow['reviewKind']): SyndicOnlineCheckoutRow {
+function review(kind: SyndicOnlineCheckoutRow['reviewKind'], lateSuccess = false): SyndicOnlineCheckoutRow {
   return {
     id: 'co-1',
     codePaiement: 'IMS-ABCDEFGHIJ0123456789',
@@ -72,7 +72,7 @@ function review(kind: SyndicOnlineCheckoutRow['reviewKind']): SyndicOnlineChecko
     resolutionNote: null,
     resolvedAt: null,
     resolvedByName: null,
-    chargePaymentId: kind === 'CONTRARY_STATE' ? 'pay-1' : null,
+    chargePaymentId: kind === 'CONTRARY_STATE' && !lateSuccess ? 'pay-1' : null,
     lastCheckedAt: null,
     createdAt: '2026-10-01T10:00:00.000Z',
     completedAt: null
@@ -91,7 +91,7 @@ beforeEach(() => {
 describe('GatewayConfigCard', () => {
   it('ne préremplit jamais la clé et affiche seulement ses 4 derniers caractères', async () => {
     getSyndicGatewaySettings.mockResolvedValue(SETTINGS);
-    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" />);
+    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" canEditSettings />);
 
     const field = (await screen.findByPlaceholderText('•••• 1234')) as HTMLInputElement;
     expect(field.value).toBe('');
@@ -101,7 +101,7 @@ describe('GatewayConfigCard', () => {
   it("n'envoie pas la clé tant qu'elle n'est pas remplacée", async () => {
     getSyndicGatewaySettings.mockResolvedValue(SETTINGS);
     updateSyndicGatewaySettings.mockResolvedValue(SETTINGS);
-    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" />);
+    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" canEditSettings />);
 
     await screen.findByPlaceholderText('•••• 1234');
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
@@ -116,7 +116,7 @@ describe('GatewayConfigCard', () => {
   it('envoie la nouvelle clé après « Remplacer la clé »', async () => {
     getSyndicGatewaySettings.mockResolvedValue(SETTINGS);
     updateSyndicGatewaySettings.mockResolvedValue(SETTINGS);
-    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" />);
+    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" canEditSettings />);
 
     await screen.findByPlaceholderText('•••• 1234');
     fireEvent.click(screen.getByRole('button', { name: 'Remplacer la clé' }));
@@ -134,7 +134,7 @@ describe('GatewayConfigCard', () => {
     updateSyndicGatewaySettings.mockRejectedValue({
       response: { status: 409, data: { code: 'GATEWAY_CHECKOUTS_PENDING', message: 'Un paiement est en cours.' } }
     });
-    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" />);
+    wrap(<GatewayConfigCard tenantId="t1" syndicId="s1" canEditSettings />);
 
     await screen.findByPlaceholderText('•••• 1234');
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
@@ -173,6 +173,88 @@ describe('ReviewDecisionModal', () => {
     const reject = (await screen.findByLabelText(/^Refuser/)) as HTMLInputElement;
     expect(reject.disabled).toBe(true);
     expect((screen.getByLabelText(/^Accepter/) as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it('propose accepter (encaisser) et refuser pour un succès tardif sans encaissement', async () => {
+    wrap(
+      <ReviewDecisionModal
+        tenantId="t1"
+        syndicId="s1"
+        checkout={review('CONTRARY_STATE', true)}
+        onClose={vi.fn()}
+        onDecided={vi.fn()}
+      />
+    );
+    const accept = (await screen.findByLabelText(/^Accepter/)) as HTMLInputElement;
+    const reject = screen.getByLabelText(/^Refuser/) as HTMLInputElement;
+    expect(accept.disabled).toBe(false);
+    expect(reject.disabled).toBe(false);
+    expect(screen.getByText('Succès du fournisseur après expiration de la tentative')).toBeTruthy();
+
+    fireEvent.click(accept);
+    expect(screen.getByText(/enregistrer l’encaissement du montant reçu/)).toBeTruthy();
+    expect(screen.getByLabelText('Date d’encaissement')).toBeTruthy();
+    // Le fournisseur a rapporté un montant (45 000) : aucun avertissement sur le montant demandé.
+    expect(screen.queryByText(/sera enregistré/)).toBeNull();
+  });
+
+  it.each([
+    ['CONTRARY_STATE' as const, true],
+    ['AMOUNT_MISMATCH' as const, false]
+  ])(
+    'prévient que le montant demandé sera enregistré quand le fournisseur n’a rapporté aucun montant (%s)',
+    async (kind, lateSuccess) => {
+      wrap(
+        <ReviewDecisionModal
+          tenantId="t1"
+          syndicId="s1"
+          checkout={{ ...review(kind, lateSuccess), receivedAmount: null }}
+          onClose={vi.fn()}
+          onDecided={vi.fn()}
+        />
+      );
+      expect(await screen.findByText('Non rapporté')).toBeTruthy();
+      // Rien n'est encaissé tant que « Accepter » n'est pas choisi.
+      expect(screen.queryByText(/sera enregistré/)).toBeNull();
+
+      fireEvent.click(screen.getByLabelText(/^Accepter/));
+      const warning = screen.getByText(/le montant demandé .* sera enregistré/);
+      expect(warning.textContent).toContain('Montant non rapporté par le fournisseur');
+      expect(warning.textContent).toContain('50');
+      expect(warning.textContent).toContain('FCFA');
+
+      fireEvent.click(screen.getByLabelText(/^Refuser/));
+      expect(screen.queryByText(/sera enregistré/)).toBeNull();
+    }
+  );
+
+  it('n’avertit pas du montant demandé quand l’encaissement est déjà enregistré (clôture du suivi)', async () => {
+    wrap(
+      <ReviewDecisionModal
+        tenantId="t1"
+        syndicId="s1"
+        checkout={{ ...review('CONTRARY_STATE'), receivedAmount: null }}
+        onClose={vi.fn()}
+        onDecided={vi.fn()}
+      />
+    );
+    fireEvent.click(await screen.findByLabelText(/^Accepter/));
+    expect(screen.queryByText(/sera enregistré/)).toBeNull();
+  });
+
+  it('clôt seulement le suivi quand l’état contraire a déjà été encaissé', async () => {
+    wrap(
+      <ReviewDecisionModal
+        tenantId="t1"
+        syndicId="s1"
+        checkout={review('CONTRARY_STATE')}
+        onClose={vi.fn()}
+        onDecided={vi.fn()}
+      />
+    );
+    fireEvent.click(await screen.findByLabelText(/^Accepter/));
+    expect(screen.getByText(/l’encaissement est déjà enregistré, clore le suivi/)).toBeTruthy();
+    expect(screen.queryByLabelText('Date d’encaissement')).toBeNull();
   });
 
   it('exige une note, envoie la décision et rappelle que refuser ne rembourse pas', async () => {
@@ -221,7 +303,7 @@ describe('PayoutsPanel', () => {
       collectionBalanceAfter: 50000
     });
     const onRecorded = vi.fn();
-    wrap(<PayoutsPanel tenantId="t1" syndicId="s1" collectionBalance={150000} onRecorded={onRecorded} />);
+    wrap(<PayoutsPanel tenantId="t1" syndicId="s1" collectionBalance={150000} onRecorded={onRecorded} canEdit />);
 
     await screen.findByText('Aucun reversement enregistré');
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer un reversement/ }));

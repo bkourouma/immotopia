@@ -10,6 +10,7 @@ import {
 } from '../../services/signature-service';
 import type { PublicFailure, PublicSignatureDto, SignatureMode } from '../../types/signature-types';
 import { SignaturePad } from './SignaturePad';
+import { roleLabel } from './signature-labels';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -257,7 +258,7 @@ export const PublicSigningFlow: React.FC<PublicSigningFlowProps> = ({ token, onD
           {request.title}
         </Title>
         <Text type="secondary">
-          {t('Signataire : {{nom}} ({{role}})', { nom: signer.fullName, role: signer.role })}
+          {t('Signataire : {{nom}} ({{role}})', { nom: signer.fullName, role: roleLabel(signer.role) })}
         </Text>
       </div>
 
