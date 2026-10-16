@@ -364,6 +364,11 @@ const envSchema = z
     // production. Cle et secret de webhook : aucun defaut, requis si SIGNATURE_PROVIDER=yousign.
     YOUSIGN_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     YOUSIGN_API_BASE_URL: emptyAsUndefined(z.string().url().default('https://api-sandbox.yousign.app/v3')),
+    // '1' autorise la base SANDBOX de Yousign quand NODE_ENV=production : le staging
+    // tourne en production (make-env.sh) mais ne doit pas produire de vraies signatures
+    // facturees. Sans ce drapeau, une base « sandbox » en production est refusee au
+    // demarrage. deploy.sh prod refuse YOUSIGN_ALLOW_SANDBOX=1.
+    YOUSIGN_ALLOW_SANDBOX: emptyAsUndefined(z.enum(['0', '1']).default('0')),
     YOUSIGN_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(16).optional()),
     // Niveau de signature demande a Yousign. Seuls `advanced` et `qualified` rendent le
     // fournisseur « qualifie » (SG-R1) ; le defaut (simple) ne leve donc pas l'exigence.
@@ -606,12 +611,14 @@ const envSchema = z
     if (
       value.NODE_ENV === 'production' &&
       value.SIGNATURE_PROVIDER === 'yousign' &&
-      value.YOUSIGN_API_BASE_URL.includes('sandbox')
+      value.YOUSIGN_API_BASE_URL.includes('sandbox') &&
+      value.YOUSIGN_ALLOW_SANDBOX !== '1'
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['YOUSIGN_API_BASE_URL'],
-        message: 'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3)'
+        message:
+          'la base SANDBOX Yousign est refusée en production (https://api.yousign.app/v3) ; seul le staging l’autorise, avec YOUSIGN_ALLOW_SANDBOX=1'
       });
     }
     if (!value.YOUSIGN_API_BASE_URL.startsWith('https://')) {
@@ -757,11 +764,11 @@ function loadEnv(): Env {
   if (
     env.NODE_ENV === 'production' &&
     env.SIGNATURE_PROVIDER === 'yousign' &&
-    env.YOUSIGN_API_BASE_URL.includes('api-sandbox.yousign.app')
+    env.YOUSIGN_API_BASE_URL.includes('sandbox')
   ) {
     // eslint-disable-next-line no-console
     console.warn(
-      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
+      '⚠️  SIGNATURE_PROVIDER=yousign en production avec la base SANDBOX (YOUSIGN_ALLOW_SANDBOX=1, staging seulement) : les signatures n’ont aucune valeur. Renseignez YOUSIGN_API_BASE_URL (production) après recette.'
     );
   }
 

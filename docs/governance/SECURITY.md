@@ -240,7 +240,8 @@ sauvegarder hors serveur, sa perte les rend illisibles). `deploy.sh prod` refuse
 un `JWT_SECRET`, un mot de passe Postgres ou une `PAYMENT_SECRETS_KEY` identique
 à celui du staging (comparaison d'empreintes, rien n'est affiché), et refuse de
 déployer si le fichier du staging est illisible (l'unicité ne serait pas
-prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1`, **quelle que soit son
+prouvée). Il refuse aussi `PAYMENT_GATEWAY_SIMULATOR=1` et `YOUSIGN_ALLOW_SANDBOX=1`
+(base sandbox de Yousign, réservée au staging), **quelle que soit leur
 écriture** (`export … = "1"` compris), un fichier où une clé critique est
 définie plusieurs fois (Compose applique la dernière occurrence : les contrôles
 lisent la même, et un doublon ajouté en fin de fichier ne les contourne pas), un

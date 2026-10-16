@@ -297,6 +297,14 @@ if [[ "$ENV_NAME" == "prod" ]]; then
   fi
   ok "simulateur de l'inventaire WhatsApp, transport log et vision fake non actives"
 
+  # Signature electronique (spec 044) : la base SANDBOX de Yousign (signatures sans
+  # valeur juridique) est reservee au staging, qui tourne lui aussi en NODE_ENV=production.
+  # Meme expression tolerante (export, guillemets, espaces) que ci-dessus.
+  if grep -Eq "^[[:space:]]*(export[[:space:]]+)?YOUSIGN_ALLOW_SANDBOX[[:space:]]*=[[:space:]]*[\"']?1" "$ENV_FILE"; then
+    fail "YOUSIGN_ALLOW_SANDBOX=1 dans $ENV_FILE : la base SANDBOX de Yousign (signatures sans valeur) est interdite en production."
+  fi
+  ok "base sandbox de Yousign non autorisee"
+
   # Fichier d'environnement du staging : deduit UNIQUEMENT de staging.conf (lu dans
   # un sous-shell sans IMMOTOPIA_ENV_FILE, sinon := garderait celui de la prod),
   # jamais d'une variable de l'appelant.
