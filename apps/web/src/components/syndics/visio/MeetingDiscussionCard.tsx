@@ -3,7 +3,7 @@ import { Button, Card, Space, Switch, Tag, Typography } from 'antd';
 import type { ManagerDiscussionMessageView, ManagerDiscussionView } from '../../../types/syndic-live-types';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
-import { DiscussionComposer } from './VisioDiscussionPanel';
+import { BidiText, DiscussionComposer } from './VisioDiscussionPanel';
 
 const { Text } = Typography;
 
@@ -24,7 +24,9 @@ interface MessageRowProps {
 const MessageRow: React.FC<MessageRowProps> = ({ message, readOnly, busy, onHide }) => (
   <li style={{ listStyle: 'none', marginBlockEnd: 10 }}>
     <Space size={6} wrap align="center">
-      <Text strong>{message.authorName}</Text>
+      <Text strong>
+        <BidiText>{message.authorName}</BidiText>
+      </Text>
       {message.authorKind === 'MANAGER' ? <Tag style={{ margin: 0 }}>{t('Gestionnaire')}</Tag> : null}
       <Text type="secondary">
         <time dateTime={message.createdAt}>{formatStamp(message.createdAt)}</time>
@@ -57,7 +59,7 @@ const MessageRow: React.FC<MessageRowProps> = ({ message, readOnly, busy, onHide
         opacity: message.hidden ? 0.55 : undefined
       }}
     >
-      {message.body}
+      <BidiText>{message.body}</BidiText>
     </div>
   </li>
 );
@@ -115,7 +117,11 @@ export const MeetingDiscussionCard: React.FC<MeetingDiscussionCardProps> = ({
         {frozen ? (
           <Text type="secondary">{t('Séance terminée : la discussion est en lecture seule.')}</Text>
         ) : !discussion.open ? (
-          <Text type="secondary">{t('Le gestionnaire a fermé la discussion.')}</Text>
+          <Text type="secondary">
+            {inProgress
+              ? t('Discussion fermée aux copropriétaires : vous pouvez encore écrire.')
+              : t('Discussion fermée aux copropriétaires')}
+          </Text>
         ) : null}
 
         <div

@@ -11,14 +11,15 @@ const lk = vi.hoisted(() => ({
   handlers: {} as Record<string, (message: { payload: Uint8Array; from?: unknown }) => void>,
   roomListeners: {} as Record<string, Array<() => void>>,
   local: { identity: 'me', attributes: {} } as { identity: string; attributes: Record<string, string> },
-  roomMounts: 0
+  roomMounts: 0,
+  gridMounts: 0
 }));
 
 vi.mock('@livekit/components-styles', () => ({}));
 
 vi.mock('livekit-client', () => ({
   Track: { Source: { Microphone: 'microphone', Camera: 'camera', ScreenShare: 'screen_share' } },
-  RoomEvent: { Reconnected: 'reconnected' },
+  RoomEvent: { Reconnected: 'reconnected', Connected: 'connected' },
   DisconnectReason: { CLIENT_INITIATED: 1, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5, ROOM_CLOSED: 10 },
   MediaDeviceFailure: { PermissionDenied: 'PermissionDenied', NotFound: 'NotFound', DeviceInUse: 'DeviceInUse' }
 }));
@@ -41,7 +42,12 @@ vi.mock('@livekit/components-react', async () => {
       }, []);
       return <div data-testid="lk-room">{props.children}</div>;
     },
-    GridLayout: () => <div data-testid="grid" />,
+    GridLayout: () => {
+      react.useEffect(() => {
+        lk.gridMounts += 1;
+      }, []);
+      return <div data-testid="grid" />;
+    },
     ParticipantTile: () => <div data-testid="tile" />,
     RoomAudioRenderer: () => null,
     StartAudio: () => null,
@@ -132,6 +138,7 @@ beforeEach(() => {
   lk.roomListeners = {};
   lk.local = { identity: 'me', attributes: {} };
   lk.roomMounts = 0;
+  lk.gridMounts = 0;
   Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 });
 });
 
@@ -140,10 +147,54 @@ afterEach(() => {
 });
 
 describe('salle de visio : bouton et panneau de discussion', () => {
-  it('sans adaptateur, aucun bouton « Discussion » et aucun abonnement au sujet', async () => {
+  it('sans adaptateur, aucun bouton « Discussion », aucun panneau et aucun message pris en compte', async () => {
     await mount();
     expect(screen.queryByRole('button', { name: /Discussion/ })).toBeNull();
-    expect(lk.handlers['ag-discussion']).toBeUndefined();
+    expect(screen.queryByRole('log', { hidden: true })).toBeNull();
+    // Le hook est toujours appelé (arbre stable) mais ne fait rien sans adaptateur.
+    emit({ type: 'message', message: msg('a', 'ignoré') });
+    expect(screen.queryByText('ignoré')).toBeNull();
+  });
+
+  it('un adaptateur qui apparaît ne remonte ni la grille ni la salle et ne redemande pas de jeton', async () => {
+    const { adapter, load } = makeAdapter({ messages: [msg('a', 'déjà là')] });
+    const getToken = vi.fn().mockResolvedValue(INFO);
+    const view = render(<MeetingVisioRoom role="participant" getToken={getToken} />);
+    await screen.findByTestId('lk-room');
+    await waitFor(() => expect(lk.gridMounts).toBe(1));
+    const grid = screen.getByTestId('grid');
+
+    view.rerender(<MeetingVisioRoom role="participant" getToken={getToken} discussion={adapter} />);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('grid')).toBe(grid);
+    expect(lk.gridMounts).toBe(1);
+    expect(lk.roomMounts).toBe(1);
+    expect(getToken).toHaveBeenCalledTimes(1);
+    const log = await openPanel();
+    expect(await within(log).findByText('déjà là')).toBeTruthy();
+  });
+
+  it('à l’ouverture, la liste se place sur les derniers messages (sauf si on avait remonté)', async () => {
+    const { adapter } = makeAdapter({ messages: [msg('a', 'un')] });
+    await mount(adapter);
+    const list = screen.getByRole('log', { hidden: true });
+    let top = 0;
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 500 });
+    Object.defineProperty(list, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(list, 'scrollTop', { configurable: true, get: () => top, set: value => (top = value) });
+
+    emit({ type: 'message', message: msg('bb', 'deux') });
+    top = 0;
+    const button = screen.getByRole('button', { name: /^Discussion/ });
+    fireEvent.click(button);
+    expect(top).toBe(500);
+
+    // L'utilisateur remonte lire plus haut, ferme, rouvre : sa position est respectée.
+    top = 10;
+    fireEvent.scroll(list);
+    fireEvent.click(screen.getByRole('button', { name: /^Discussion/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Discussion/ }));
+    expect(top).toBe(10);
   });
 
   it('avec adaptateur : bouton aria-pressed, historique chargé une fois, mention M10 en tête', async () => {
@@ -243,7 +294,7 @@ describe('panneau de discussion : contenu des messages', () => {
     await mount(adapter);
     const log = await openPanel();
     emit({ type: 'message', message: msg('a', 'ligne 1\nligne 2') });
-    const body = (await within(log).findByText(/ligne 1/)) as HTMLElement;
+    const body = (await within(log).findByText(/ligne 1/)).parentElement as HTMLElement;
     expect(body.style.whiteSpace).toBe('pre-wrap');
     expect(body.style.overflowWrap).toBe('anywhere');
   });
@@ -351,7 +402,8 @@ describe('panneau de discussion : messages de données', () => {
     const { adapter } = makeAdapter({ open: false, manager: true });
     await mount(adapter);
     await openPanel();
-    expect(await screen.findByText('Le gestionnaire a fermé la discussion.')).toBeTruthy();
+    expect(await screen.findByText('Discussion fermée aux copropriétaires : vous pouvez encore écrire.')).toBeTruthy();
+    expect(screen.queryByText('Le gestionnaire a fermé la discussion.')).toBeNull();
     expect((screen.getByLabelText('Votre message') as HTMLTextAreaElement).disabled).toBe(false);
   });
 
@@ -362,6 +414,85 @@ describe('panneau de discussion : messages de données', () => {
     expect(lk.roomListeners.reconnected).toHaveLength(1);
     act(() => lk.roomListeners.reconnected[0]());
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  });
+
+  it('relit l’historique quand la salle passe à l’état connecté (messages passés avant la connexion)', async () => {
+    const { adapter, load } = makeAdapter();
+    await mount(adapter);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    expect(lk.roomListeners.connected).toHaveLength(1);
+    load.mockResolvedValueOnce({ open: true, muted: false, maxLength: 500, messages: [msg('a', 'écrit avant')] });
+    act(() => lk.roomListeners.connected[0]());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    const log = await openPanel();
+    expect(await within(log).findByText('écrit avant')).toBeTruthy();
+  });
+
+  it('un historique tardif n’annule pas un événement plus récent mais apporte les messages inconnus', async () => {
+    const { adapter, load } = makeAdapter({ messages: [msg('a', 'à masquer')] });
+    await mount(adapter);
+    const log = await openPanel();
+    expect(await within(log).findByText('à masquer')).toBeTruthy();
+
+    let resolve: (value: unknown) => void = () => undefined;
+    load.mockReturnValueOnce(new Promise(done => (resolve = done)));
+    act(() => lk.roomListeners.reconnected[0]());
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+
+    // Pendant la requête : la discussion est fermée, coupée, et un message masqué.
+    emit({ type: 'state', open: false });
+    emit({ type: 'muted', muted: true });
+    emit({ type: 'hidden', id: 'a' });
+    emit({ type: 'message', message: msg('bb', 'reçu en direct') });
+
+    await act(async () => {
+      resolve({
+        open: true,
+        muted: false,
+        maxLength: 500,
+        messages: [msg('a', 'à masquer'), msg('cc', 'seulement dans l’historique')]
+      });
+    });
+    expect(screen.getByText('Le gestionnaire a fermé la discussion.')).toBeTruthy();
+    expect(screen.getByText("Le gestionnaire a suspendu votre droit d'écrire.")).toBeTruthy();
+    expect(within(log).queryByText('à masquer')).toBeNull();
+    expect(within(log).getByText('Message masqué par le gestionnaire')).toBeTruthy();
+    expect(within(log).getByText('reçu en direct')).toBeTruthy();
+    expect(within(log).getByText('seulement dans l’historique')).toBeTruthy();
+  });
+
+  it('les messages nouveaux d’une relecture comptent comme non lus, pas ceux du premier chargement', async () => {
+    const { adapter, load } = makeAdapter({ messages: [msg('a', 'premier chargement')] });
+    await mount(adapter);
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    await act(async () => undefined);
+    expect(screen.getByRole('button', { name: 'Discussion' })).toBeTruthy();
+
+    load.mockResolvedValueOnce({
+      open: true,
+      muted: false,
+      maxLength: 500,
+      messages: [
+        msg('a', 'premier chargement'),
+        msg('bb', 'manqué'),
+        msg('mine', 'le mien', { authorIdentity: 'me' }),
+        msg('hh', 'masqué', { hidden: true })
+      ]
+    });
+    act(() => lk.roomListeners.reconnected[0]());
+    expect(await screen.findByRole('button', { name: 'Discussion, 1 message(s) non lu(s)' })).toBeTruthy();
+  });
+
+  it('isole le nom et le texte de chaque message (bidirectionnel)', async () => {
+    const { adapter } = makeAdapter({ messages: [msg('a', 'مرحبا', { authorName: 'علي' })] });
+    await mount(adapter);
+    const log = await openPanel();
+    for (const text of ['مرحبا', 'علي']) {
+      const element = await within(log).findByText(text);
+      expect(element.tagName).toBe('BDI');
+      expect(element.getAttribute('dir')).toBe('auto');
+      expect(element.style.unicodeBidi).toBe('isolate');
+    }
   });
 });
 
@@ -381,6 +512,22 @@ describe('panneau de discussion : saisie', () => {
     fireEvent.keyDown(screen.getByLabelText('Votre message'), { key: 'Enter' });
     await waitFor(() => expect(send).toHaveBeenCalledWith('Bonjour'));
     await waitFor(() => expect((screen.getByLabelText('Votre message') as HTMLTextAreaElement).value).toBe(''));
+  });
+
+  it('ne vide pas ce qui a été tapé pendant l’envoi', async () => {
+    const { adapter, send } = makeAdapter();
+    let finish: (value: DiscussionMessageView) => void = () => undefined;
+    send.mockReturnValueOnce(new Promise<DiscussionMessageView>(done => (finish = done)));
+    await mount(adapter);
+    await openPanel();
+    await waitFor(() => expect((screen.getByLabelText('Votre message') as HTMLTextAreaElement).disabled).toBe(false));
+
+    type('Bonjour');
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith('Bonjour'));
+    type('Bonjour, et aussi');
+    await act(async () => finish(msg('sent', 'Bonjour', { authorIdentity: 'me' })));
+    expect((screen.getByLabelText('Votre message') as HTMLTextAreaElement).value).toBe('Bonjour, et aussi');
   });
 
   it('le bouton « Envoyer » est désactivé tant que le texte est vide', async () => {

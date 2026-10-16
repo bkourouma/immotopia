@@ -280,7 +280,7 @@ describe('MeetingVisioRoom', () => {
   it('sans adaptateur de discussion, n’offre ni bouton ni panneau', async () => {
     await mount();
     expect(screen.queryByRole('button', { name: /Discussion/ })).toBeNull();
-    expect(lk.handlers['ag-discussion']).toBeUndefined();
+    expect(screen.queryByRole('log', { hidden: true })).toBeNull();
   });
 
   it('quitte la salle sur « Quitter la visio »', async () => {

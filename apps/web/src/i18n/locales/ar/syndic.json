@@ -405,6 +405,7 @@
   "Discussion": "النقاش",
   "Discussion, {{count}} message(s) non lu(s)": "النقاش، {{count}} رسالة (رسائل) غير مقروءة",
   "Discussion fermée aux copropriétaires": "أُغلق النقاش أمام الملاك المشتركين",
+  "Discussion fermée aux copropriétaires : vous pouvez encore écrire.": "أُغلق النقاش أمام الملاك المشتركين: يمكنك الاستمرار في الكتابة.",
   "Discussion ouverte aux copropriétaires": "النقاش مفتوح للملاك المشتركين",
   "Discussion rouverte aux copropriétaires": "أُعيد فتح النقاش للملاك المشتركين",
   "Discussions (une ligne par discussion)": "المناقشات (سطر لكل مناقشة)",

@@ -49,9 +49,22 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
   const inProgress = meetingStatus === 'IN_PROGRESS';
 
+  // Compte les actions du gestionnaire : une lecture partie avant l'une d'elles est périmée et ne l'écrase pas.
+  const writeSeqRef = useRef(0);
+  const refreshRef = useRef<() => void>(() => undefined);
+
   const loadDiscussion = useCallback(async (): Promise<number | false | void> => {
+    const seq = writeSeqRef.current;
     try {
-      setDiscussion(await getMeetingDiscussion(tenantId, syndicId, meetingId));
+      const view = await getMeetingDiscussion(tenantId, syndicId, meetingId);
+      if (seq !== writeSeqRef.current) {
+        // Une action est passée entre-temps : cette lecture est relue plutôt qu'appliquée.
+        refreshRef.current();
+      } else {
+        setDiscussion(view);
+        // Visio non activée et rien à relire : plus rien à surveiller.
+        if (!view.enabled && view.messages.length === 0) return false;
+      }
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       // Droit manquant ou API plus ancienne : rien à surveiller.
@@ -65,17 +78,19 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
     intervalMs: DISCUSSION_POLL_INTERVAL_MS,
     resetKey: meetingStatus
   });
-  const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
   const toggleOpen = async (open: boolean) => {
     setBusyOpen(true);
+    writeSeqRef.current += 1;
     try {
       await setMeetingDiscussionOpen(tenantId, syndicId, meetingId, open);
+      writeSeqRef.current += 1;
       setDiscussion(view => (view ? { ...view, open } : view));
       message.success(open ? t('Discussion rouverte aux copropriétaires') : t('Discussion fermée aux copropriétaires'));
     } catch (err) {
       message.error(apiErrorText(err, t('Action impossible, réessayez.')));
+      writeSeqRef.current += 1;
       refresh();
     } finally {
       setBusyOpen(false);
@@ -84,12 +99,15 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
 
   const setHidden = async (messageId: string, hidden: boolean) => {
     setBusyMessageId(messageId);
+    writeSeqRef.current += 1;
     try {
       const updated = await setMeetingDiscussionMessageHidden(tenantId, syndicId, meetingId, messageId, hidden);
+      writeSeqRef.current += 1;
       setDiscussion(view => withMessage(view, updated));
       message.success(hidden ? t('Message masqué') : t('Message rétabli'));
     } catch (err) {
       message.error(apiErrorText(err, t('Action impossible, réessayez.')));
+      writeSeqRef.current += 1;
       refresh();
     } finally {
       setBusyMessageId(null);
@@ -98,8 +116,10 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
 
   /** Envoi du gestionnaire depuis la carte ; l'erreur remonte au champ de saisie, qui garde le texte. */
   const send = async (body: string) => {
+    writeSeqRef.current += 1;
     try {
       const sent = await postMeetingDiscussionMessage(tenantId, syndicId, meetingId, body);
+      writeSeqRef.current += 1;
       setDiscussion(view => withMessage(view, sent));
     } catch (err) {
       throw new Error(apiErrorText(err, t('Message non envoyé, réessayez.')));
@@ -119,8 +139,10 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
         }
       },
       send: async body => {
+        writeSeqRef.current += 1;
         try {
           const sent = await postMeetingDiscussionMessage(tenantId, syndicId, meetingId, body);
+          writeSeqRef.current += 1;
           refreshRef.current();
           return sent;
         } catch (err) {
@@ -129,8 +151,10 @@ export function useMeetingDiscussion({ tenantId, syndicId, meetingId, meetingSta
       },
       moderation: {
         setHidden: async (messageId, hidden) => {
+          writeSeqRef.current += 1;
           try {
             await setMeetingDiscussionMessageHidden(tenantId, syndicId, meetingId, messageId, hidden);
+            writeSeqRef.current += 1;
             refreshRef.current();
           } catch (err) {
             throw new Error(apiErrorText(err, t('Action impossible, réessayez.')));

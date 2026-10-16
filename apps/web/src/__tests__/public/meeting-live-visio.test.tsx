@@ -461,7 +461,7 @@ describe('MeetingLivePage : visio intégrée', () => {
         'La discussion est fermée par le gestionnaire'
       ],
       [{ status: 'rejected', message: 'Message trop long' }, 'Message trop long'],
-      [{ status: 'unavailable' }, 'Message non envoyé, réessayez.'],
+      [{ status: 'unavailable' }, 'La visio est momentanément indisponible, réessayez.'],
       [{ status: 'invalid' }, "Accès à la discussion impossible. Votre lien n'est peut-être plus valide."]
     ])('traduit l’échec %j en un message affichable', async (result, expected) => {
       sendDiscussion.mockResolvedValue(result);

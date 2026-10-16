@@ -345,22 +345,19 @@ interface RoomBodyProps {
   role: 'moderator' | 'participant';
   canPublish: boolean;
   onRaiseHand?: (raised: boolean) => Promise<void>;
-  /** Contrôleur de discussion ; absent quand l'écran n'en fournit pas. */
-  discussion: ReturnType<typeof useVisioDiscussion> | null;
-  panelOpen: boolean;
-  onTogglePanel: () => void;
+  /** Adaptateur de discussion ; absent quand l'écran n'en fournit pas (ni bouton ni panneau). */
+  adapter?: VisioDiscussionAdapter;
 }
 
-/** Grille, panneau de discussion et barre du bas. La grille reste montée quand le panneau la remplace. */
-const RoomBody: React.FC<RoomBodyProps> = ({
-  tracks,
-  role,
-  canPublish,
-  onRaiseHand,
-  discussion,
-  panelOpen,
-  onTogglePanel
-}) => {
+/**
+ * Grille, panneau de discussion et barre du bas. Toujours le même arbre, adaptateur ou non : un
+ * adaptateur qui apparaît ne remonte ni la grille vidéo ni l'état du panneau. La grille reste
+ * montée quand le panneau la remplace ; l'état du panneau vit ici.
+ */
+const RoomBody: React.FC<RoomBodyProps> = ({ tracks, role, canPublish, onRaiseHand, adapter }) => {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const discussion = useVisioDiscussion(adapter, panelOpen);
+  const onTogglePanel = () => setPanelOpen(o => !o);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(bodyRef);
   const wide = width >= DISCUSSION_WIDE_MIN_PX;
@@ -385,7 +382,11 @@ const RoomBody: React.FC<RoomBodyProps> = ({
                 : { flex: 1 })
             }}
           >
-            <VisioDiscussionPanel controller={discussion} onBack={wide ? undefined : onTogglePanel} />
+            <VisioDiscussionPanel
+              controller={discussion}
+              visible={showPanel}
+              onBack={wide ? undefined : onTogglePanel}
+            />
           </div>
         ) : null}
       </div>
@@ -401,19 +402,6 @@ const RoomBody: React.FC<RoomBodyProps> = ({
     </>
   );
 };
-
-/** Branche la discussion (hook LiveKit) puis rend le corps de la salle ; l'état du panneau vit ici. */
-const RoomBodyWithDiscussion: React.FC<
-  Omit<RoomBodyProps, 'discussion' | 'panelOpen' | 'onTogglePanel'> & { adapter: VisioDiscussionAdapter }
-> = ({ adapter, ...props }) => {
-  const [panelOpen, setPanelOpen] = useState(false);
-  const discussion = useVisioDiscussion(adapter, panelOpen);
-  return (
-    <RoomBody {...props} discussion={discussion} panelOpen={panelOpen} onTogglePanel={() => setPanelOpen(o => !o)} />
-  );
-};
-
-const noop = () => undefined;
 
 interface RoomShellProps {
   role: 'moderator' | 'participant';
@@ -454,11 +442,7 @@ const RoomShell: React.FC<RoomShellProps> = ({
       {deviceError ? (
         <Alert type="warning" showIcon closable onClose={onDismissDeviceError} message={deviceError} />
       ) : null}
-      {discussion ? (
-        <RoomBodyWithDiscussion {...bodyProps} adapter={discussion} />
-      ) : (
-        <RoomBody {...bodyProps} discussion={null} panelOpen={false} onTogglePanel={noop} />
-      )}
+      <RoomBody {...bodyProps} adapter={discussion} />
       <RoomAudioRenderer />
     </div>
   );

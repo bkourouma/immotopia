@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, Tag, Typography } from 'antd';
 import type { DiscussionMessageView } from '../../../types/syndic-live-types';
 import { activeLocale } from '../../../i18n/format';
@@ -16,6 +16,13 @@ function formatClock(iso: string): string {
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' });
 }
+
+/** Texte d'un utilisateur isolé de la page : un nom ou un message arabe (ou un caractère de contrôle) ne retourne pas le voisinage. */
+export const BidiText: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <bdi dir="auto" style={{ unicodeBidi: 'isolate' }}>
+    {children}
+  </bdi>
+);
 
 /* ------------------------------------------------------------------ message */
 
@@ -38,7 +45,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, canModerate, busy, o
     <li style={{ listStyle: 'none', marginBlockEnd: 12 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         <Text strong style={{ color: 'inherit', overflowWrap: 'anywhere' }}>
-          {message.authorName}
+          <BidiText>{message.authorName}</BidiText>
         </Text>
         {message.authorKind === 'MANAGER' ? <Tag style={{ margin: 0 }}>{t('Gestionnaire')}</Tag> : null}
         <time dateTime={message.createdAt} style={{ color: MUTED_COLOR, fontSize: 12 }}>
@@ -75,7 +82,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, canModerate, busy, o
             color: dimmed ? MUTED_COLOR : undefined
           }}
         >
-          {message.body}
+          <BidiText>{message.body}</BidiText>
         </div>
       )}
     </li>
@@ -112,9 +119,11 @@ export const DiscussionComposer: React.FC<DiscussionComposerProps> = ({
     sendingRef.current = true;
     setSending(true);
     setError(null);
+    const sentText = draft;
     try {
-      await send(draft);
-      setDraft('');
+      await send(sentText);
+      // Ce qui a été tapé pendant l'envoi n'est pas effacé.
+      setDraft(current => (current === sentText ? '' : current));
     } catch (err) {
       // Le texte est conservé pour une nouvelle tentative.
       const message = (err as { message?: unknown } | null)?.message;
@@ -172,25 +181,22 @@ export interface VisioDiscussionPanelProps {
   controller: VisioDiscussionController;
   /** Salle étroite : le panneau remplace la grille et propose de revenir à la vidéo. */
   onBack?: () => void;
+  /** Le panneau reste monté (masqué) quand il est fermé : à l'ouverture, la liste se replace sur les derniers messages. */
+  visible?: boolean;
 }
 
-export const VisioDiscussionPanel: React.FC<VisioDiscussionPanelProps> = ({ controller, onBack }) => {
+export const VisioDiscussionPanel: React.FC<VisioDiscussionPanelProps> = ({ controller, onBack, visible = true }) => {
   const { messages, canModerate, setHidden, loaded, loadError, open, muted, reload } = controller;
   const listRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  // Suit le bas de la liste, sauf si l'utilisateur est remonté lire plus haut.
+  // Suit le bas de la liste (nouveaux messages, ouverture du panneau), sauf si l'utilisateur est remonté lire plus haut.
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (list && stickRef.current) list.scrollTop = list.scrollHeight;
-  }, [messages]);
-
-  useEffect(() => {
-    const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, []);
+    if (visible && list && stickRef.current) list.scrollTop = list.scrollHeight;
+  }, [messages, visible]);
 
   const toggleHidden = async (message: DiscussionMessageView) => {
     setBusyId(message.id);
@@ -234,7 +240,17 @@ export const VisioDiscussionPanel: React.FC<VisioDiscussionPanelProps> = ({ cont
           'Vos messages sont visibles de tous les participants de la visio et conservés par le syndic. Un message ne vaut pas vote.'
         )}
       </div>
-      {!open ? <Alert type="info" banner message={t('Le gestionnaire a fermé la discussion.')} /> : null}
+      {!open ? (
+        <Alert
+          type="info"
+          banner
+          message={
+            canModerate
+              ? t('Discussion fermée aux copropriétaires : vous pouvez encore écrire.')
+              : t('Le gestionnaire a fermé la discussion.')
+          }
+        />
+      ) : null}
       {muted ? <Alert type="warning" banner message={t("Le gestionnaire a suspendu votre droit d'écrire.")} /> : null}
       {loadError ? (
         <Alert

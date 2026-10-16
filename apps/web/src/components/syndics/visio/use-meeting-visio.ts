@@ -64,12 +64,22 @@ export function useMeetingVisio({
   const [busyWritingId, setBusyWritingId] = useState<string | null>(null);
   const inProgress = meetingStatus === 'IN_PROGRESS';
 
+  // Compte les actions du gestionnaire : une lecture partie avant l'une d'elles est périmée et ne l'écrase pas.
+  const writeSeqRef = useRef(0);
+  const refreshRef = useRef<() => void>(() => undefined);
+
   const loadVisio = useCallback(async (): Promise<number | false | void> => {
+    const seq = writeSeqRef.current;
     try {
       const view = await getMeetingVisio(tenantId, syndicId, meetingId);
-      setVisio(view);
-      // Contrat : 200 `enabled: false` quand LiveKit n'est pas configuré, rien à surveiller.
-      if (!view.enabled) return false;
+      if (seq !== writeSeqRef.current) {
+        // Une action est passée entre-temps : cette lecture est relue plutôt qu'appliquée.
+        refreshRef.current();
+      } else {
+        setVisio(view);
+        // Contrat : 200 `enabled: false` quand LiveKit n'est pas configuré, rien à surveiller.
+        if (!view.enabled) return false;
+      }
     } catch (err) {
       // Compatibilité avec une API plus ancienne, qui répondait 409 « visio non activée ».
       if ((err as { response?: { status?: number } })?.response?.status === 409) {
@@ -82,6 +92,7 @@ export function useMeetingVisio({
   }, [tenantId, syndicId, meetingId, inProgress]);
 
   const { refresh: refreshVisio } = useVisiblePolling(loadVisio, { resetKey: meetingStatus });
+  refreshRef.current = refreshVisio;
 
   const inVisioContactIds = useMemo(
     () =>
@@ -102,8 +113,17 @@ export function useMeetingVisio({
   const speak = async (participant: MeetingVisioParticipant, allowed: boolean) => {
     if (!participant.participantId) return;
     setBusyVisioId(participant.participantId);
+    writeSeqRef.current += 1;
     try {
-      setVisio(await setVisioParticipantSpeaking(tenantId, syndicId, meetingId, participant.participantId, allowed));
+      const updated = await setVisioParticipantSpeaking(
+        tenantId,
+        syndicId,
+        meetingId,
+        participant.participantId,
+        allowed
+      );
+      writeSeqRef.current += 1;
+      setVisio(updated);
       message.success(
         allowed
           ? t('Parole donnée à {{name}}', { name: participant.name })
@@ -111,6 +131,7 @@ export function useMeetingVisio({
       );
     } catch (err) {
       message.error(apiErrorText(err, t('Action impossible, réessayez.')));
+      writeSeqRef.current += 1;
       refreshVisio();
     } finally {
       setBusyVisioId(null);
@@ -121,6 +142,7 @@ export function useMeetingVisio({
   const writing = async (participant: MeetingVisioParticipant, allowed: boolean) => {
     if (!participant.participantId) return;
     setBusyWritingId(participant.participantId);
+    writeSeqRef.current += 1;
     try {
       await setVisioParticipantWriting(tenantId, syndicId, meetingId, participant.participantId, allowed);
       message.success(
@@ -132,6 +154,7 @@ export function useMeetingVisio({
       message.error(apiErrorText(err, t('Action impossible, réessayez.')));
     } finally {
       setBusyWritingId(null);
+      writeSeqRef.current += 1;
       refreshVisio();
     }
   };
@@ -139,6 +162,7 @@ export function useMeetingVisio({
   /** Exclut le participant ; en cas d'échec l'erreur remonte à la modale, qui reste ouverte. */
   const remove = async (participant: MeetingVisioParticipant, revokeLinks: boolean) => {
     if (!participant.participantId) return;
+    writeSeqRef.current += 1;
     try {
       const { revokedLinks, ...view } = await removeVisioParticipant(
         tenantId,
@@ -147,6 +171,7 @@ export function useMeetingVisio({
         participant.participantId,
         revokeLinks
       );
+      writeSeqRef.current += 1;
       setVisio(view);
       message.success(
         revokeLinks
@@ -155,6 +180,7 @@ export function useMeetingVisio({
       );
       if (revokeLinks) onLinksRevoked();
     } catch (err) {
+      writeSeqRef.current += 1;
       refreshVisio();
       throw new Error(apiErrorText(err, t('Exclusion impossible, réessayez.')));
     }

@@ -142,7 +142,9 @@ function discussionFailureMessage(result: { status: string; message?: string }, 
   if (result.status === 'conflict') return result.message || t("La discussion n'est pas disponible pour le moment.");
   if (result.status === 'rejected') return result.message || t('Message refusé : il est vide ou trop long.');
   if (result.status === 'unavailable') {
-    return sending ? t('Message non envoyé, réessayez.') : t('Impossible de charger la discussion, réessayez.');
+    return sending
+      ? t('La visio est momentanément indisponible, réessayez.')
+      : t('Impossible de charger la discussion, réessayez.');
   }
   return t("Accès à la discussion impossible. Votre lien n'est peut-être plus valide.");
 }
