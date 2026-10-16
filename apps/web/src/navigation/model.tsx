@@ -10,7 +10,6 @@ import {
   EllipsisOutlined,
   FileTextOutlined,
   FolderOutlined,
-  FormOutlined,
   GoldOutlined,
   MailOutlined,
   MenuOutlined,
@@ -676,7 +675,7 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
         {
           key: 'signatures',
           label: t('Signatures'),
-          icon: <FormOutlined />,
+          icon: <FileTextOutlined />,
           zone: 'more',
           section: 'parametrage',
           href: '/tenant/:tenantId/signatures'
