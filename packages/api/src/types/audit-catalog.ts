@@ -225,6 +225,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.RENTAL_DOCUMENT_STATUS_UPDATED]: tenant('DATA'),
   [AuditActionKey.RENTAL_DEPOSIT_CREATED]: tenant('DATA'),
   [AuditActionKey.RENTAL_DEPOSIT_MOVEMENT_CREATED]: tenant('DATA', { critical: true }),
+  [AuditActionKey.RENTAL_DEPOSIT_MOVEMENT_DELETED]: tenant('DATA', { critical: true }),
   [AuditActionKey.RENTAL_INSTALLMENT_MARKED_OVERDUE]: tenant('SYSTEM'),
   [AuditActionKey.RENTAL_PENALTY_CALCULATED]: tenant('SYSTEM'),
   [AuditActionKey.RENTAL_PENALTY_UPDATED]: tenant('DATA'),

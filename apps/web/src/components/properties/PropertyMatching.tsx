@@ -5,6 +5,7 @@ import { CheckCircleOutlined, EyeOutlined, PlusOutlined, SearchOutlined, StarFil
 import { Property } from '../../types/property-types';
 import { addPropertyToShortlist, matchPropertiesForDeal } from '../../services/property-service';
 import { t } from '../../i18n/t';
+import { writeErrorMessage } from '../../utils/error-handler';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title, Paragraph } = Typography;
@@ -60,11 +61,17 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
       const results = await matchPropertiesForDeal(tenantId, dealId);
       setMatches(results as PropertyMatchResult[]);
       if (!results.length) {
-        message.info(t('Aucune correspondance trouvee'));
+        message.info(t('Aucune correspondance trouvée'));
       }
     } catch (error: any) {
       console.error('Error matching properties:', error);
-      message.error(error?.response?.data?.error || t('Erreur lors de la recherche de correspondances'));
+      message.error(
+        writeErrorMessage(
+          error,
+          t('Erreur lors de la recherche de correspondances'),
+          t("Vous n'avez pas les droits nécessaires pour lancer le matching.")
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -74,11 +81,17 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
     try {
       await addPropertyToShortlist(tenantId, dealId, propertyId, matchScore, explanation);
       setShortlistedProperties(previous => new Set([...previous, propertyId]));
-      message.success(t('Propriete ajoutee a la shortlist'));
+      message.success(t('Propriété ajoutée à la shortlist'));
       if (onPropertyAdded) onPropertyAdded();
     } catch (error: any) {
       console.error('Error adding to shortlist:', error);
-      message.error(error?.response?.data?.error || t("Erreur lors de l'ajout a la shortlist"));
+      message.error(
+        writeErrorMessage(
+          error,
+          t("Erreur lors de l'ajout à la shortlist"),
+          t("Vous n'avez pas les droits nécessaires pour modifier la shortlist.")
+        )
+      );
     }
   };
 
@@ -91,7 +104,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
               {t('Recherche de correspondances')}
             </Title>
             <Text type="secondary">
-              {t('Trouvez automatiquement les proprietes correspondant aux criteres de cette affaire.')}
+              {t('Trouvez automatiquement les propriétés correspondant aux critères de cette affaire.')}
             </Text>
           </Col>
           <Col>
@@ -160,7 +173,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                   }
                 />
 
-                <Card size="small" type="inner" title={t('Details de correspondance')}>
+                <Card size="small" type="inner" title={t('Détails de correspondance')}>
                   <Paragraph style={{ marginBottom: 12 }}>{match.explanationText}</Paragraph>
                   <Row gutter={[12, 12]}>
                     <Col xs={12} md={8} lg={4}>
@@ -182,13 +195,13 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                       </div>
                     </Col>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">{t('Caracteristiques')}</Text>
+                      <Text type="secondary">{t('Caractéristiques')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.featuresScore)}</Text>
                       </div>
                     </Col>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">{t('Coherence prix')}</Text>
+                      <Text type="secondary">{t('Cohérence prix')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.priceCoherenceScore)}</Text>
                       </div>
@@ -201,12 +214,12 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                     icon={<EyeOutlined />}
                     onClick={() => navigate(`/tenant/${tenantId}/properties/${match.propertyId}`)}
                   >
-                    {t('Voir les details')}
+                    {t('Voir les détails')}
                   </Button>
 
                   {shortlistedProperties.has(match.propertyId) ? (
                     <Button icon={<CheckCircleOutlined />} disabled>
-                      {t('Ajoute a la shortlist')}
+                      {t('Ajouté à la shortlist')}
                     </Button>
                   ) : (
                     <Button
@@ -214,7 +227,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                       icon={<PlusOutlined />}
                       onClick={() => handleAddToShortlist(match.propertyId, match.matchScore, match.explanation)}
                     >
-                      {t('Ajouter a la shortlist')}
+                      {t('Ajouter à la shortlist')}
                     </Button>
                   )}
                 </Space>
@@ -227,7 +240,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
       {matches.length === 0 && !loading ? (
         <Card>
           <Empty
-            description={t('Aucune correspondance. Lancez une recherche pour proposer des proprietes.')}
+            description={t('Aucune correspondance. Lancez une recherche pour proposer des propriétés.')}
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         </Card>

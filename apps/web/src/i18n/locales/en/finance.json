@@ -2275,6 +2275,7 @@
   "Vous n'avez pas le droit de valider une caisse.": "You are not allowed to approve a cash session.",
   "Vous n'avez pas le droit de valider une facture fournisseur.": "You do not have permission to validate a supplier invoice.",
   "Vous pouvez consulter l'historique des caisses depuis l'onglet « Historique ».": "You can view the cash session history from the “History” tab.",
+  "Vous n'avez pas le droit d'annuler un reversement. Demandez à un responsable de le faire.": "You are not allowed to cancel a payout. Ask a manager to do it.",
   "Vous voyez le stock de ce lieu : les lignes que vous saisirez seront marquées « comptées sans aveugle » sur le procès-verbal.": "You can see this location's stock: the lines you enter will be marked « counted without blind » on the report.",
   "Wave": "Wave",
   "Web": "Web",

@@ -805,6 +805,9 @@
   "Virement bancaire": "Bank transfer",
   "Voir": "View",
   "Voir la preuve de paiement": "View the proof of payment",
+  "Annuler ce paiement ?": "Cancel this payment?",
+  "Confirmer": "Confirm",
+  "Les affectations aux échéances et la collecte du dépôt de garantie rattachées à ce paiement seront défaites.": "The allocations to instalments and the security deposit collection linked to this payment will be undone.",
   "Voir le scan": "View the scan",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "Do you want to regenerate it from the lease's current data? The previous version will be replaced.",
   "Vous n'avez pas l'autorisation d'effectuer cette action.": "You are not allowed to perform this action."

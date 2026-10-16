@@ -22,6 +22,7 @@ import {
 } from '../../services/document-branding-service';
 import { OwnerPortalSettingsCard } from '../../components/settings/OwnerPortalSettingsCard';
 import { t } from '../../i18n/t';
+import { writeErrorMessage } from '../../utils/error-handler';
 
 const { Title, Text } = Typography;
 
@@ -145,8 +146,13 @@ export const TenantSettings: React.FC = () => {
         setError(t('Erreur lors de la sauvegarde'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || t('Erreur lors de la sauvegarde'));
-      message.error(t('Erreur lors de la sauvegarde'));
+      const text = writeErrorMessage(
+        err,
+        t('Erreur lors de la sauvegarde'),
+        t("Vous n'avez pas les droits nécessaires pour modifier les paramètres de l'agence.")
+      );
+      setError(text);
+      message.error(text);
     } finally {
       setSaving(false);
     }

@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Plus } from 'lucide-react';
 import { t } from '../../i18n/t';
 import { dealStageLabel, dealTypeLabel } from '../../utils/crm-labels';
+import { formatFcfa } from '../../utils/crm-utils';
 
 import { activeLocale } from '../../i18n/format';
 interface DealKanbanProps {
@@ -30,7 +31,8 @@ const formatDate = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   const now = new Date();
   const diffTime = now.getTime() - d.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  // Jamais négatif : l'horloge du navigateur peut avancer sur celle du serveur.
+  const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 
   if (diffDays === 0) {
     return d.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' });
@@ -203,9 +205,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
 
                         {/* Budget */}
                         {deal.budgetMax && (
-                          <div className="text-xs font-semibold text-gray-900 mb-1">
-                            {deal.budgetMax.toLocaleString(activeLocale())} FCFA
-                          </div>
+                          <div className="text-xs font-semibold text-gray-900 mb-1">{formatFcfa(deal.budgetMax)}</div>
                         )}
 
                         {/* Location */}

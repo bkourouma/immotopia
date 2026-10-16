@@ -4,6 +4,9 @@
  * type sans la protection attendue) et un avertissement signale l'absence du compromis.
  * `env` est un singleton évalué à l'import : chaque scénario recharge le module isolé.
  */
+// Module (et non script global) : évite « Cannot redeclare block-scoped variable » avec env-ai-provider.test.ts.
+export {};
+
 jest.mock('dotenv/config', () => ({}));
 
 const BASE_ENV: Record<string, string> = {

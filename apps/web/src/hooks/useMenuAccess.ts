@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MORE_TAB_HREF } from '../navigation/model';
 import type { NavGroup, PersonaNav } from '../navigation/model';
-import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
+import {
+  defaultMenuEnabled,
+  isMenuKeyDisabled,
+  isMenuKeyExplicitlyEnabled,
+  menuKeyFor,
+  requirementsFor
+} from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
-import { getMyDisabledMenus, getMyMenuAccess } from '../services/role-menu-service';
+import { getMyMenuAccess } from '../services/role-menu-service';
 import { getMenuEntitlements } from '../services/entitlements-service';
 import { applyFeatureAccess, applyOwnAssetsOnly, featureAccessFromModules } from '../navigation/feature-access';
 import type { FeatureAccessMap } from '../navigation/feature-access';
@@ -15,6 +21,13 @@ import type { FeatureAccessMap } from '../navigation/feature-access';
  * la coquille n'en tenait pas compte. Ce hook fait le lien : il demande au
  * serveur les clés de menu coupées, puis élague l'arbre du persona.
  *
+ * En plus des clés coupées, le serveur renvoie les permissions de la personne :
+ * une entrée dont le catalogue exige une permission qu'elle n'a pas est masquée
+ * (l'API lui répondrait 403). Les administrateurs d'agence ne sont pas filtrés.
+ * **Le choix de l'agence prime** : ce filtre ne s'applique qu'aux entrées SANS
+ * décision explicite ; une entrée que l'agence a ouverte dans « Rôles et menus »
+ * (`enabled`, clés `enabledMenuKeys`) reste visible même sans la permission.
+ *
  * Deux garde-fous :
  *
  *   - **Tant que la réponse n'est pas arrivée, rien n'est coupé.** Masquer par
@@ -24,34 +37,14 @@ import type { FeatureAccessMap } from '../navigation/feature-access';
  *     traduire par une application qui perd la moitié de sa navigation ; c'est
  *     le contraire d'un mode dégradé utilisable.
  */
-export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
-  const [disabled, setDisabled] = useState<Set<string>>(() => new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-
-    getMyDisabledMenus(tenantId)
-      .then(keys => {
-        if (!cancelled) setDisabled(new Set(keys));
-      })
-      .catch(() => {
-        if (!cancelled) setDisabled(new Set());
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId]);
-
-  return disabled;
-}
-
 export interface MyMenuAccessState {
   /** Clés de menu coupées par un administrateur pour ce compte. */
   disabled: Set<string>;
+  /** Clés de menu ouvertes explicitement par l'agence : dispensées du filtre par permission. */
+  enabled: Set<string>;
   /**
    * Permissions détenues dans l'agence, ou `null` : pas de filtrage par
-   * permission (pas d'agence, chargement, échec réseau).
+   * permission (administrateur d'agence, super-admin, chargement, échec réseau).
    */
   permissions: Set<string> | null;
   /**
@@ -63,7 +56,9 @@ export interface MyMenuAccessState {
   ready: boolean;
 }
 
-const NO_RESTRICTION: MyMenuAccessState = { disabled: new Set(), permissions: null, ready: false };
+const NO_DECISION: ReadonlySet<string> = new Set();
+
+const NO_RESTRICTION: MyMenuAccessState = { disabled: new Set(), enabled: new Set(), permissions: null, ready: false };
 
 export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
   const [state, setState] = useState<MyMenuAccessState>(NO_RESTRICTION);
@@ -76,6 +71,7 @@ export function useMyMenuAccess(tenantId?: string | null): MyMenuAccessState {
         if (cancelled) return;
         setState({
           disabled: new Set(access.disabledMenuKeys),
+          enabled: new Set(access.enabledMenuKeys),
           permissions: access.permissionKeys ? new Set(access.permissionKeys) : null,
           ready: true
         });
@@ -202,19 +198,38 @@ export function useOwnAssetsOnly(tenantId: string | null | undefined, enabled: b
  * accordéon vide est pire qu'une entrée absente : il promet un contenu qui
  * n'existe plus.
  */
-function pruneGroup(persona: PersonaId, group: NavGroup, disabled: Set<string>): NavGroup | null {
+function pruneGroup(
+  persona: PersonaId,
+  group: NavGroup,
+  disabled: Set<string>,
+  permissions: Set<string> | null,
+  enabled: ReadonlySet<string>
+): NavGroup | null {
+  // Le filtre par permission ne vaut que pour une entrée SANS décision
+  // explicite de l'agence : une ouverture dans « Rôles et menus » l'emporte.
+  const lacksPermission = (menuKey: string, navKey: string) =>
+    permissions !== null &&
+    !isMenuKeyExplicitlyEnabled(menuKey, enabled) &&
+    !defaultMenuEnabled(requirementsFor(navKey), permissions);
+
   // `isMenuKeyDisabled` et non `disabled.has` : une entrée issue d'une
   // réorganisation du menu hérite des coupures posées sur ses anciennes clés.
-  if (isMenuKeyDisabled(menuKeyFor(persona, group.key), disabled)) return null;
+  const groupKey = menuKeyFor(persona, group.key);
+  if (isMenuKeyDisabled(groupKey, disabled)) return null;
+  if (lacksPermission(groupKey, group.key)) return null;
 
   if (!group.children || group.children.length === 0) return group;
 
-  const children = group.children.filter(
-    leaf => !isMenuKeyDisabled(menuKeyFor(persona, group.key, leaf.key), disabled)
-  );
+  const children = group.children.filter(leaf => {
+    const leafKey = menuKeyFor(persona, group.key, leaf.key);
+    return !isMenuKeyDisabled(leafKey, disabled) && !lacksPermission(leafKey, leaf.key);
+  });
   if (children.length === 0) return null;
+  if (children.length === group.children.length) return group;
 
-  return { ...group, children };
+  // La destination du groupe ne doit pas être une feuille masquée.
+  const href = group.href && !children.some(c => c.href === group.href) ? children[0].href : group.href;
+  return { ...group, href, children };
 }
 
 /**
@@ -229,11 +244,16 @@ export function useFilteredNavigation(
   nav: PersonaNav | null,
   disabled: Set<string>,
   featureAccess: FeatureAccessMap | null = null,
-  ownAssetsOnly = false
+  ownAssetsOnly = false,
+  permissions: Set<string> | null = null,
+  enabled: ReadonlySet<string> = NO_DECISION
 ): PersonaNav | null {
   return useMemo(() => {
     if (!nav) return null;
-    if (disabled.size === 0 && !featureAccess && !ownAssetsOnly) return nav;
+    // Le filtrage par permission ne vaut que pour le collaborateur : les portails
+    // et le super-admin n'ont pas de permissions d'agence.
+    const perms = nav.id === 'collaborateur' ? permissions : null;
+    if (disabled.size === 0 && !featureAccess && !ownAssetsOnly && !perms) return nav;
 
     // Abonnement, puis barrière « détenu en propre », puis rôle : une entrée
     // non comprise disparaît, une entrée réservée à la gestion pour un tiers
@@ -244,7 +264,7 @@ export function useFilteredNavigation(
       .filter((group): group is NavGroup => group !== null)
       .map(group => applyOwnAssetsOnly(group, ownAssetsOnly))
       .filter((group): group is NavGroup => group !== null)
-      .map(group => pruneGroup(nav.id, group, disabled))
+      .map(group => pruneGroup(nav.id, group, disabled, perms, enabled))
       .filter((group): group is NavGroup => group !== null);
 
     const remainingHrefs = new Set<string>();
@@ -256,5 +276,5 @@ export function useFilteredNavigation(
     const tabs = nav.tabs.filter(tab => tab.href === MORE_TAB_HREF || remainingHrefs.has(tab.href));
 
     return { ...nav, tree, tabs };
-  }, [nav, disabled, featureAccess, ownAssetsOnly]);
+  }, [nav, disabled, featureAccess, ownAssetsOnly, permissions, enabled]);
 }

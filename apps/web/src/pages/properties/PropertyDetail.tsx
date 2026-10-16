@@ -42,6 +42,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAgencyFeatures } from '../../hooks/useAgencyFeatures';
 import { useOwnAssetsOnly } from '../../hooks/useMenuAccess';
 import { PropertyVisitScheduler } from '../../components/properties/PropertyVisitScheduler';
+import { PropertyVisitsList } from '../../components/properties/PropertyVisitsList';
 import { PropertyMaintenanceTab } from '../../components/properties/PropertyMaintenanceTab';
 import { PropertyApartments } from '../../components/properties/PropertyApartments';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
@@ -663,9 +664,12 @@ export const PropertyDetail: React.FC = () => {
             </Space>
           ),
           children: (
-            <Card title={t('Planifier une visite')}>
-              <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
-            </Card>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <PropertyVisitsList propertyId={id!} tenantId={effectiveTenantId} />
+              <Card title={t('Planifier une visite')}>
+                <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
+              </Card>
+            </Space>
           )
         }
       : null

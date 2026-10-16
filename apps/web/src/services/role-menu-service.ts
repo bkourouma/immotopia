@@ -1,5 +1,4 @@
 import apiClient from '../utils/api-client';
-import { menuKeysDeniedByPermissions } from '../navigation/menu-catalog';
 
 /** Décisions enregistrées, indexées par clé de rôle puis par clé de menu. */
 export type MenuAccessMap = Record<string, Record<string, boolean>>;
@@ -35,29 +34,44 @@ export async function updateMenuAccess(
   return response.data.data ?? {};
 }
 
+/** Accès aux menus de la personne connectée, tel que le serveur le calcule. */
+export interface MyMenuAccess {
+  disabledMenuKeys: string[];
+  /**
+   * Clés de menu ouvertes EXPLICITEMENT pour ce compte (décision de l'agence ou
+   * défaut commun dans « Rôles et menus »). Le filtre par permission ne leur
+   * est pas appliqué : le choix de l'agence prime. Vide avec un ancien serveur.
+   */
+  enabledMenuKeys: string[];
+  /**
+   * Permissions détenues dans l'agence, ou `null` quand la navigation n'est
+   * pas filtrée par permission (administrateur d'agence, super-admin, hors agence).
+   */
+  permissionKeys: string[] | null;
+}
+
 /**
- * Menus coupés pour la personne connectée.
+ * Menus coupés, menus ouverts explicitement et permissions de la personne
+ * connectée.
  *
- * Le serveur renvoie des clés de menu, pas des rôles : la coquille n'a pas à
- * savoir de quels rôles elle hérite pour masquer une entrée. Il renvoie aussi
- * les permissions effectives du compte dans l'agence : les entrées que ces
- * permissions ne permettent pas d'ouvrir (Biens et Patrimoine sans
- * `PROPERTIES_VIEW`) s'ajoutent aux coupures explicites.
+ * Le serveur renvoie des clés de menu et des permissions, pas des rôles : la
+ * coquille n'a pas à savoir de quels rôles elle hérite pour masquer une entrée.
+ * Les entrées que les permissions ne permettent pas d'ouvrir sont masquées par
+ * la coquille (`useFilteredNavigation`), sauf celles ouvertes explicitement.
  */
-export async function getMyMenuAccess(
-  tenantId?: string | null
-): Promise<{ disabledMenuKeys: string[]; permissionKeys: string[] | null }> {
+export async function getMyMenuAccess(tenantId?: string | null): Promise<MyMenuAccess> {
   const response = await apiClient.get('/roles/menu-access/me', {
     params: tenantId ? { tenantId } : {}
   });
-  const disabled: string[] = response.data.data?.disabledMenuKeys ?? [];
-  const permissions: unknown = response.data.data?.permissions;
-  if (!Array.isArray(permissions)) return { disabledMenuKeys: disabled, permissionKeys: null };
-  const permissionKeys = permissions.filter((p): p is string => typeof p === 'string');
-  const denied = menuKeysDeniedByPermissions('collaborateur', permissionKeys);
-  return { disabledMenuKeys: Array.from(new Set([...disabled, ...denied])), permissionKeys };
+  const data = response.data?.data;
+  return {
+    disabledMenuKeys: data?.disabledMenuKeys ?? [],
+    enabledMenuKeys: Array.isArray(data?.enabledMenuKeys) ? data.enabledMenuKeys : [],
+    permissionKeys: Array.isArray(data?.permissionKeys) ? data.permissionKeys : null
+  };
 }
 
+/** Menus coupés pour la personne connectée. */
 export async function getMyDisabledMenus(tenantId?: string | null): Promise<string[]> {
   return (await getMyMenuAccess(tenantId)).disabledMenuKeys;
 }

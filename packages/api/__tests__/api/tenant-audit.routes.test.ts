@@ -84,7 +84,7 @@ describe('droit TENANT_AUDIT_VIEW', () => {
   it.each(['manager', 'agent', 'accountant'])('%s : refusé (403), rien n’est lu', async role => {
     const res = await request(app).get(url('tenant-A')).set('x-role', role);
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain('TENANT_AUDIT_VIEW');
+    expect(res.body.requiredPermission).toBe('TENANT_AUDIT_VIEW');
     expect(getTenantAuditLogs).not.toHaveBeenCalled();
   });
 

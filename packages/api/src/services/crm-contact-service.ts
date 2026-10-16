@@ -6,6 +6,7 @@ import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
 import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
 import { autoInviteContactToWhatsappGroup } from './whatsapp-group-automation-service';
+import { ensureOwnerClientIfOwnerRole } from './owner-client-service';
 import { t } from '../i18n';
 import { BadRequestError, ConflictError, NotFoundError } from '../middleware/error-middleware';
 
@@ -947,6 +948,10 @@ export async function convertLeadToClient(tenantId: string, contactId: string, r
     roles
   });
 
+  // Rôle Propriétaire : le contact devient proposable comme propriétaire
+  // (TenantClient OWNER), sans passer par un bail. BUG-2026-09-28-019.
+  await ensureOwnerClientIfOwnerRole(tenantId, contactId, roles);
+
   // Audit log
   if (actorUserId) {
     logAuditEvent({
@@ -1006,6 +1011,8 @@ export async function addContactRole(tenantId: string, contactId: string, roleTy
     tenantId,
     roleType
   });
+
+  await ensureOwnerClientIfOwnerRole(tenantId, contactId, [roleType]);
 
   return role;
 }
@@ -1221,6 +1228,8 @@ export async function updateContactRoles(
     });
     statusUpdated = true;
   }
+
+  await ensureOwnerClientIfOwnerRole(tenantId, contactId, desiredRoles);
 
   logger.info('Contact roles updated', {
     contactId,

@@ -1245,6 +1245,17 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/finance/suppliers/:supplierId/payments",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/finance/suppliers/:supplierId/payments",
+      "pathParams": ["supplierId"],
+      "module": "finance",
+      "summary": "finance / suppliers / {supplierId} / payments",
+      "permissions": ["FINANCE_ACCOUNTS_READ"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/finance/suppliers/balance",
       "method": "GET",
       "path": "/api/tenants/:tenantId/finance/suppliers/balance",
@@ -2239,7 +2250,7 @@
       "path": "/api/tenants/:tenantId/rental/deposits/:depositId/movements",
       "pathParams": ["depositId"],
       "module": "rental",
-      "summary": "list deposit movements (rental / deposits / {depositId} / movements)",
+      "summary": "rental / deposits / {depositId} / movements",
       "permissions": ["RENTAL_DEPOSITS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2393,7 +2404,7 @@
       "path": "/api/tenants/:tenantId/rental/leases/:leaseId/deposit",
       "pathParams": ["leaseId"],
       "module": "rental",
-      "summary": "get deposit (rental / leases / {leaseId} / deposit)",
+      "summary": "rental / leases / {leaseId} / deposit",
       "permissions": ["RENTAL_DEPOSITS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2514,7 +2525,7 @@
       "path": "/api/tenants/:tenantId/rental/payments",
       "pathParams": [],
       "module": "rental",
-      "summary": "list payments (rental / payments)",
+      "summary": "rental / payments",
       "permissions": ["RENTAL_PAYMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -2525,7 +2536,7 @@
       "path": "/api/tenants/:tenantId/rental/payments/:paymentId",
       "pathParams": ["paymentId"],
       "module": "rental",
-      "summary": "get payment (rental / payments / {paymentId})",
+      "summary": "rental / payments / {paymentId}",
       "permissions": ["RENTAL_PAYMENTS_VIEW"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -3988,7 +3999,7 @@
       "path": "/api/tenants/:tenantId/rental/payments/:paymentId/status",
       "pathParams": ["paymentId"],
       "module": "rental",
-      "summary": "update payment status (rental / payments / {paymentId} / status)",
+      "summary": "rental / payments / {paymentId} / status",
       "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -4298,6 +4309,17 @@
       "module": "cash-sessions",
       "summary": "cash-sessions / {sessionId} / validate",
       "permissions": ["FINANCE_DOCUMENTS_VALIDATE"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/clients/sync-owners",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/clients/sync-owners",
+      "pathParams": [],
+      "module": "clients",
+      "summary": "clients / sync-owners",
+      "permissions": ["CRM_CONTACTS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
     },
@@ -5948,7 +5970,7 @@
       "path": "/api/tenants/:tenantId/rental/deposits/:depositId/movements",
       "pathParams": ["depositId"],
       "module": "rental",
-      "summary": "create deposit movement (rental / deposits / {depositId} / movements)",
+      "summary": "rental / deposits / {depositId} / movements",
       "permissions": ["RENTAL_DEPOSITS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6091,7 +6113,7 @@
       "path": "/api/tenants/:tenantId/rental/leases/:leaseId/deposit",
       "pathParams": ["leaseId"],
       "module": "rental",
-      "summary": "create deposit (rental / leases / {leaseId} / deposit)",
+      "summary": "rental / leases / {leaseId} / deposit",
       "permissions": ["RENTAL_DEPOSITS_CREATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6223,7 +6245,7 @@
       "path": "/api/tenants/:tenantId/rental/payments",
       "pathParams": [],
       "module": "rental",
-      "summary": "create payment (rental / payments)",
+      "summary": "rental / payments",
       "permissions": ["RENTAL_PAYMENTS_CREATE"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6234,7 +6256,7 @@
       "path": "/api/tenants/:tenantId/rental/payments/:paymentId/allocate",
       "pathParams": ["paymentId"],
       "module": "rental",
-      "summary": "allocate payment (rental / payments / {paymentId} / allocate)",
+      "summary": "rental / payments / {paymentId} / allocate",
       "permissions": ["RENTAL_PAYMENTS_ALLOCATE"],
       "anyOfPermissions": null,
       "sensitive": false

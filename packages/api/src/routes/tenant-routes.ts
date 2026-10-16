@@ -5,6 +5,7 @@ import {
   getTenantBySlugHandler,
   listTenants,
   getTenantClientsHandler,
+  syncOwnerClientsHandler,
   getMyMemberships,
   updateClientDetails,
   unregisterFromTenant,
@@ -147,6 +148,20 @@ router.post('/:tenantId/register', authenticate, registerAsTenantClient);
 // this tenant (used by the property form to pick an owner). Any authenticated
 // user could previously read any tenant's client list.
 router.get('/:tenantId/clients', authenticate, requireTenantAccess, requireTenantCollaborator, getTenantClientsHandler);
+
+// Rattrapage idempotent des propriétaires : les contacts convertis au rôle
+// Propriétaire avant que la conversion ne crée leur TenantClient. Écriture,
+// donc POST (jamais dans le GET de la liste). Elle peut créer des comptes
+// (sans aucune notification) : réservée à qui peut modifier les contacts (les
+// appels du web tolèrent le refus et lisent alors la liste existante).
+router.post(
+  '/:tenantId/clients/sync-owners',
+  authenticate,
+  requireTenantAccess,
+  requireTenantCollaborator,
+  requirePermission('CRM_CONTACTS_EDIT'),
+  syncOwnerClientsHandler
+);
 
 router.patch('/:tenantId/client-details', authenticate, requireTenantAccess, updateClientDetails);
 router.delete('/:tenantId/unregister', authenticate, unregisterFromTenant);
