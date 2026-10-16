@@ -1500,6 +1500,19 @@ export async function deleteMeetingRecording(
   return response.data.data;
 }
 
+/** Relance le rapatriement d'un enregistrement en échec (409 si ce n'est pas possible). */
+export async function retryMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/reessayer`
+  );
+  return response.data.data;
+}
+
 /**
  * URL du flux vidéo (lecteur) ou du téléchargement. La route est authentifiée par
  * le cookie de session : jamais de jeton dans l'adresse, jamais de chemin disque.

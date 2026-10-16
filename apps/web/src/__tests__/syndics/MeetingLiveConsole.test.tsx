@@ -28,7 +28,8 @@ const api = {
   getMeetingRecordings: vi.fn(),
   startMeetingRecording: vi.fn(),
   stopMeetingRecording: vi.fn(),
-  deleteMeetingRecording: vi.fn()
+  deleteMeetingRecording: vi.fn(),
+  retryMeetingRecording: vi.fn()
 };
 
 vi.mock('../../services/syndic-service', async () => {
@@ -51,7 +52,8 @@ vi.mock('../../services/syndic-service', async () => {
     getMeetingRecordings: (...a: unknown[]) => api.getMeetingRecordings(...a),
     startMeetingRecording: (...a: unknown[]) => api.startMeetingRecording(...a),
     stopMeetingRecording: (...a: unknown[]) => api.stopMeetingRecording(...a),
-    deleteMeetingRecording: (...a: unknown[]) => api.deleteMeetingRecording(...a)
+    deleteMeetingRecording: (...a: unknown[]) => api.deleteMeetingRecording(...a),
+    retryMeetingRecording: (...a: unknown[]) => api.retryMeetingRecording(...a)
   };
 });
 
@@ -738,5 +740,93 @@ describe('MeetingLiveConsole : enregistrement', () => {
     const confirm = (await screen.findAllByRole('button', { name: 'Supprimer' })).pop() as HTMLElement;
     fireEvent.click(confirm);
     await waitFor(() => expect(api.deleteMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1', 'rec1'));
+  });
+});
+
+describe('MeetingLiveConsole : correctifs de l enregistrement et de l exclusion', () => {
+  beforeEach(() => {
+    api.getMeetingRecordings.mockResolvedValue([]);
+  });
+
+  it('alerte durablement quand le dernier enregistrement a échoué et qu aucun n est actif', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([
+      recording({ status: 'FAILED', failureReason: 'Egress interrompu', durationSeconds: null, fileSize: null })
+    ]);
+    mount();
+    expect(await screen.findByText("L'enregistrement a échoué : cette séance n'est pas enregistrée.")).toBeTruthy();
+    expect(screen.getAllByText('Egress interrompu').length).toBeGreaterThan(0);
+  });
+
+  it('n alerte pas quand un enregistrement est actif malgré un ancien échec', async () => {
+    const active = recording({ id: 'rec9', status: 'RECORDING', stoppedAt: null, endedAt: null });
+    api.getMeetingVisio.mockResolvedValue(withRecording(active));
+    api.getMeetingRecordings.mockResolvedValue([
+      active,
+      recording({ id: 'old', status: 'FAILED', failureReason: 'x' })
+    ]);
+    mount();
+    await screen.findByText('Enregistrement en cours');
+    expect(screen.queryByText("L'enregistrement a échoué : cette séance n'est pas enregistrée.")).toBeNull();
+  });
+
+  it('relance le traitement d un enregistrement en échec', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([
+      recording({ status: 'FAILED', failureReason: 'Rapatriement impossible' })
+    ]);
+    api.retryMeetingRecording.mockResolvedValue(recording({ status: 'PROCESSING' }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Réessayer le traitement de l'enregistrement/ }));
+    await waitFor(() => expect(api.retryMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1', 'rec1'));
+  });
+
+  it('précise que supprimer un enregistrement en échec efface aussi la copie du stockage de la visio', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording({ status: 'FAILED', failureReason: 'x' })]);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Supprimer l'enregistrement du/ }));
+    expect(await screen.findByText(/ainsi que la copie conservée sur le stockage de la visio/)).toBeTruthy();
+  });
+
+  it('affiche « Arrêt en cours… » désactivé quand l arrêt est déjà demandé', async () => {
+    const stopping = recording({ status: 'RECORDING', endedAt: null });
+    api.getMeetingVisio.mockResolvedValue(withRecording(stopping));
+    api.getMeetingRecordings.mockResolvedValue([stopping]);
+    mount();
+    const button = await screen.findByRole('button', { name: 'Arrêt en cours…' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: "Arrêter l'enregistrement" })).toBeNull();
+  });
+
+  it('signale un traitement trop long et cesse d interroger', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    const old = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    api.getMeetingRecordings.mockResolvedValue([
+      recording({ status: 'PROCESSING', stoppedAt: old, endedAt: old, durationSeconds: null, fileSize: null })
+    ]);
+    mount();
+    expect(await screen.findByText('Le traitement prend plus de temps que prévu')).toBeTruthy();
+  });
+
+  it('relit la liste quand l enregistrement actif change (autre session)', async () => {
+    const started = recording({ id: 'recZ', status: 'RECORDING', stoppedAt: null, endedAt: null });
+    api.getMeetingVisio.mockResolvedValueOnce(withRecording(null)).mockResolvedValue(withRecording(started));
+    mount();
+    await screen.findByText('Enregistrements');
+    const before = api.getMeetingRecordings.mock.calls.length;
+    await waitFor(() => expect(api.getMeetingRecordings.mock.calls.length).toBeGreaterThan(before), {
+      timeout: 10000
+    });
+  }, 30000);
+
+  it('garde la modale d exclusion ouverte avec l erreur quand l exclusion échoue', async () => {
+    api.getMeetingVisio.mockResolvedValue(visioView());
+    api.removeVisioParticipant.mockRejectedValue({ response: { data: { error: 'Participant absent de la salle' } } });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Exclure Ibrahim Koné' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Exclure' }));
+    expect(await screen.findByText('Participant absent de la salle')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });

@@ -1,8 +1,13 @@
 import React, { Suspense, useState } from 'react';
-import { Button, Card, Checkbox, Modal, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Modal, Space, Spin, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { BellFilled } from '@ant-design/icons';
-import type { MeetingVisioAdminView, MeetingVisioParticipant, VisioJoinInfo } from '../../../types/syndic-live-types';
+import type {
+  MeetingRecordingView,
+  MeetingVisioAdminView,
+  MeetingVisioParticipant,
+  VisioJoinInfo
+} from '../../../types/syndic-live-types';
 import { formatDateTime } from '../live/live-labels';
 import { t } from '../../../i18n/t';
 
@@ -21,6 +26,107 @@ export function sortVisioParticipants(participants: MeetingVisioParticipant[]): 
   });
 }
 
+/* ------------------------------------------------------- enregistrement (R1-R2) */
+
+interface RecordingControlsProps {
+  active: MeetingRecordingView | null;
+  frozen: boolean;
+  inProgress: boolean;
+  busy: boolean;
+  onStart?: () => void;
+  onStop?: () => void;
+}
+
+/** Voyant « Enregistrement en cours » et bouton démarrer / arrêter. */
+const RecordingControls: React.FC<RecordingControlsProps> = ({ active, frozen, inProgress, busy, onStart, onStop }) => {
+  if (!active) {
+    return (
+      <Space wrap align="center">
+        <Button loading={busy} disabled={frozen || !inProgress} onClick={onStart}>
+          {t('Enregistrer la séance')}
+        </Button>
+        {!inProgress && !frozen ? (
+          <Text type="secondary">{t("L'enregistrement démarre une fois la séance ouverte.")}</Text>
+        ) : null}
+      </Space>
+    );
+  }
+  // L'arrêt est demandé (ici ou depuis une autre session) : le fichier est en cours de finalisation.
+  const stopping = Boolean(active.stoppedAt);
+  return (
+    <Space wrap align="center">
+      <Tag color="red" icon={<span aria-hidden="true">● </span>}>
+        {t('Enregistrement en cours')}
+      </Tag>
+      <Text type="secondary">{t('depuis {{date}}', { date: formatDateTime(active.startedAt) })}</Text>
+      <Button danger loading={busy} disabled={frozen || stopping} onClick={onStop}>
+        {stopping ? t('Arrêt en cours…') : t("Arrêter l'enregistrement")}
+      </Button>
+    </Space>
+  );
+};
+
+/* ------------------------------------------------------------------ exclusion */
+
+interface RemoveModalProps {
+  participant: MeetingVisioParticipant | null;
+  onConfirm: (participant: MeetingVisioParticipant, revokeLinks: boolean) => Promise<void>;
+  onClose: () => void;
+}
+
+/** Confirmation d'exclusion : en cas d'échec la modale reste ouverte avec l'erreur. */
+const RemoveModal: React.FC<RemoveModalProps> = ({ participant, onConfirm, onClose }) => {
+  const [revokeLinks, setRevokeLinks] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setRevokeLinks(false);
+    setError(null);
+    onClose();
+  };
+
+  const confirm = async () => {
+    if (!participant) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm(participant, revokeLinks);
+      close();
+    } catch (err) {
+      setError((err as Error)?.message || t('Exclusion impossible, réessayez.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={participant !== null}
+      title={t('Exclure de la visio')}
+      okText={t('Exclure')}
+      cancelText={t('Annuler')}
+      okButtonProps={{ danger: true, loading: busy }}
+      onOk={() => void confirm()}
+      onCancel={close}
+    >
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Text>
+          {t('{{name}} sera retiré de la salle. Sans autre action, il pourra y revenir, mais sans la parole.', {
+            name: participant?.name ?? ''
+          })}
+        </Text>
+        <Checkbox checked={revokeLinks} onChange={event => setRevokeLinks(event.target.checked)}>
+          {t('Révoquer aussi ses liens personnels')}
+        </Checkbox>
+        {error ? <Alert type="error" showIcon message={error} /> : null}
+      </Space>
+    </Modal>
+  );
+};
+
+/* ----------------------------------------------------------------------- carte */
+
 interface MeetingVisioCardProps {
   visio: MeetingVisioAdminView;
   /** AG terminée ou annulée : plus de salle à ouvrir, plus d'action de modération. */
@@ -36,45 +142,17 @@ interface MeetingVisioCardProps {
   recordingBusy?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
+  /** Dernier enregistrement en échec, aucun n'étant actif : la séance n'est pas enregistrée. */
+  failedRecording?: MeetingRecordingView | null;
 }
 
-export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
-  visio,
-  frozen,
-  roomOpen,
-  onToggleRoom,
-  getToken,
-  busyParticipantId,
-  onSpeak,
-  onRemove,
-  inProgress = false,
-  recordingBusy = false,
-  onStartRecording,
-  onStopRecording
-}) => {
-  const recording = visio.recording;
-  const activeRecording = recording?.enabled ? recording.active : null;
-  const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
-  const [revokeLinks, setRevokeLinks] = useState(false);
-  const [removeBusy, setRemoveBusy] = useState(false);
-
-  const closeRemoval = () => {
-    setRemoving(null);
-    setRevokeLinks(false);
-  };
-
-  const confirmRemoval = async () => {
-    if (!removing) return;
-    setRemoveBusy(true);
-    try {
-      await onRemove(removing, revokeLinks);
-      closeRemoval();
-    } finally {
-      setRemoveBusy(false);
-    }
-  };
-
-  const columns: ColumnsType<MeetingVisioParticipant> = [
+function participantColumns(
+  frozen: boolean,
+  busyParticipantId: string | null,
+  onSpeak: MeetingVisioCardProps['onSpeak'],
+  onAskRemove: (participant: MeetingVisioParticipant) => void
+): ColumnsType<MeetingVisioParticipant> {
+  return [
     {
       title: t('Participant'),
       key: 'name',
@@ -109,14 +187,14 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
       key: 'actions',
       render: (_: unknown, participant) => {
         if (participant.kind !== 'COOWNER' || !participant.participantId) return null;
-        const busy = busyParticipantId === participant.participantId;
+        const disabled = frozen || busyParticipantId !== null;
         return (
           <Space wrap>
             <Button
               size="small"
               type={participant.canSpeak ? 'default' : 'primary'}
-              disabled={frozen || busyParticipantId !== null}
-              loading={busy}
+              disabled={disabled}
+              loading={busyParticipantId === participant.participantId}
               aria-label={
                 participant.canSpeak
                   ? t('Retirer la parole à {{name}}', { name: participant.name })
@@ -129,9 +207,9 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
             <Button
               size="small"
               danger
-              disabled={frozen || busyParticipantId !== null}
+              disabled={disabled}
               aria-label={t('Exclure {{name}}', { name: participant.name })}
-              onClick={() => setRemoving(participant)}
+              onClick={() => onAskRemove(participant)}
             >
               {t('Exclure')}
             </Button>
@@ -140,6 +218,26 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
       }
     }
   ];
+}
+
+export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
+  visio,
+  frozen,
+  roomOpen,
+  onToggleRoom,
+  getToken,
+  busyParticipantId,
+  onSpeak,
+  onRemove,
+  inProgress = false,
+  recordingBusy = false,
+  onStartRecording,
+  onStopRecording,
+  failedRecording = null
+}) => {
+  const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
+  const recording = visio.recording;
+  const activeRecording = recording?.enabled ? recording.active : null;
 
   return (
     <Card
@@ -154,29 +252,24 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
       }
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        {failedRecording ? (
+          <Alert
+            type="error"
+            showIcon
+            message={t("L'enregistrement a échoué : cette séance n'est pas enregistrée.")}
+            description={failedRecording.failureReason}
+          />
+        ) : null}
+
         {recording?.enabled ? (
-          <Space wrap align="center">
-            {activeRecording ? (
-              <>
-                <Tag color="red" icon={<span aria-hidden="true">● </span>}>
-                  {t('Enregistrement en cours')}
-                </Tag>
-                <Text type="secondary">
-                  {t('depuis {{date}}', { date: formatDateTime(activeRecording.startedAt) })}
-                </Text>
-                <Button danger loading={recordingBusy} disabled={frozen} onClick={onStopRecording}>
-                  {t("Arrêter l'enregistrement")}
-                </Button>
-              </>
-            ) : (
-              <Button loading={recordingBusy} disabled={frozen || !inProgress} onClick={onStartRecording}>
-                {t('Enregistrer la séance')}
-              </Button>
-            )}
-            {!activeRecording && !inProgress && !frozen ? (
-              <Text type="secondary">{t("L'enregistrement démarre une fois la séance ouverte.")}</Text>
-            ) : null}
-          </Space>
+          <RecordingControls
+            active={activeRecording}
+            frozen={frozen}
+            inProgress={inProgress}
+            busy={recordingBusy}
+            onStart={onStartRecording}
+            onStop={onStopRecording}
+          />
         ) : null}
 
         {roomOpen && !frozen ? (
@@ -197,33 +290,14 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
           size="small"
           rowKey="identity"
           dataSource={sortVisioParticipants(visio.participants)}
-          columns={columns}
+          columns={participantColumns(frozen, busyParticipantId, onSpeak, setRemoving)}
           scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
           locale={{ emptyText: t("Personne n'est en visio pour le moment") }}
         />
       </Space>
 
-      <Modal
-        open={removing !== null}
-        title={t('Exclure de la visio')}
-        okText={t('Exclure')}
-        cancelText={t('Annuler')}
-        okButtonProps={{ danger: true, loading: removeBusy }}
-        onOk={() => void confirmRemoval()}
-        onCancel={closeRemoval}
-      >
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Text>
-            {t('{{name}} sera retiré de la salle. Sans autre action, il pourra y revenir, mais sans la parole.', {
-              name: removing?.name ?? ''
-            })}
-          </Text>
-          <Checkbox checked={revokeLinks} onChange={event => setRevokeLinks(event.target.checked)}>
-            {t('Révoquer aussi ses liens personnels')}
-          </Checkbox>
-        </Space>
-      </Modal>
+      <RemoveModal participant={removing} onConfirm={onRemove} onClose={() => setRemoving(null)} />
     </Card>
   );
 };

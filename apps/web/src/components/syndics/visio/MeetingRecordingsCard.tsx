@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Button, Card, Modal, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Modal, Popconfirm, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { MeetingRecordingStatus, MeetingRecordingView } from '../../../types/syndic-live-types';
 import { formatDateTime } from '../live/live-labels';
+import { formatNumber } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -30,30 +31,34 @@ export function recordingStatusLabel(status: MeetingRecordingStatus): string {
   }
 }
 
-/** « 1 h 02 min 05 s », « 12 min 03 s » ou « 45 s » ; tiret si inconnue. */
+/** « 1 h 02 min 05 s », « 12 min 03 s » ou « 45 s » (unités traduites) ; tiret si inconnue. */
 export function formatRecordingDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '-';
   const total = Math.round(seconds);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min ${String(s).padStart(2, '0')} s`;
-  if (m > 0) return `${m} min ${String(s).padStart(2, '0')} s`;
-  return `${s} s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  const secs = String(total % 60).padStart(2, '0');
+  if (hours > 0) return t('{{hours}} h {{minutes}} min {{seconds}} s', { hours, minutes, seconds: secs });
+  if (total >= 60) return t('{{minutes}} min {{seconds}} s', { minutes: Math.floor(total / 60), seconds: secs });
+  return t('{{seconds}} s', { seconds: total });
 }
 
-/** Taille lisible (Ko, Mo, Go) ; tiret si inconnue. */
+/** Taille lisible (o, Ko, Mo, Go : unités traduites, nombre selon la langue) ; tiret si inconnue. */
 export function formatRecordingSize(bytes: number | null): string {
   if (bytes === null || !Number.isFinite(bytes) || bytes < 0) return '-';
-  const units = ['o', 'Ko', 'Mo', 'Go'];
   let value = bytes;
   let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
+  while (value >= 1024 && unit < 3) {
     value /= 1024;
     unit += 1;
   }
-  const text = unit === 0 ? String(Math.round(value)) : value.toFixed(value >= 10 ? 0 : 1);
-  return `${text} ${units[unit]}`;
+  const text = formatNumber(unit === 0 ? Math.round(value) : value, {
+    maximumFractionDigits: unit === 0 || value >= 10 ? 0 : 1
+  });
+  if (unit === 0) return t('{{value}} o', { value: text });
+  if (unit === 1) return t('{{value}} Ko', { value: text });
+  if (unit === 2) return t('{{value}} Mo', { value: text });
+  return t('{{value}} Go', { value: text });
 }
 
 interface MeetingRecordingsCardProps {
@@ -62,13 +67,19 @@ interface MeetingRecordingsCardProps {
   fileUrl: (recordingId: string, download: boolean) => string;
   busyRecordingId: string | null;
   onDelete: (recording: MeetingRecordingView) => void;
+  /** Relance le rapatriement d'un enregistrement en échec. */
+  onRetry: (recording: MeetingRecordingView) => void;
+  /** Un traitement dure plus de 10 minutes : l'interrogation automatique est arrêtée. */
+  processingSlow?: boolean;
 }
 
 export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
   recordings,
   fileUrl,
   busyRecordingId,
-  onDelete
+  onDelete,
+  onRetry,
+  processingSlow = false
 }) => {
   const [playing, setPlaying] = useState<MeetingRecordingView | null>(null);
 
@@ -122,10 +133,29 @@ export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
                 </Button>
               </>
             ) : null}
+            {recording.status === 'FAILED' ? (
+              <Button
+                size="small"
+                loading={busy}
+                disabled={busyRecordingId !== null}
+                aria-label={t("Réessayer le traitement de l'enregistrement du {{date}}", {
+                  date: formatDateTime(recording.startedAt)
+                })}
+                onClick={() => onRetry(recording)}
+              >
+                {t('Réessayer')}
+              </Button>
+            ) : null}
             {recording.status === 'AVAILABLE' || recording.status === 'FAILED' ? (
               <Popconfirm
                 title={t("Supprimer l'enregistrement ?")}
-                description={t('Le fichier sera effacé définitivement. Cette action est irréversible.')}
+                description={
+                  recording.status === 'FAILED'
+                    ? t(
+                        'Le fichier sera effacé définitivement, ainsi que la copie conservée sur le stockage de la visio. Cette action est irréversible.'
+                      )
+                    : t('Le fichier sera effacé définitivement. Cette action est irréversible.')
+                }
                 okText={t('Supprimer')}
                 cancelText={t('Annuler')}
                 okButtonProps={{ danger: true }}
@@ -152,6 +182,15 @@ export const MeetingRecordingsCard: React.FC<MeetingRecordingsCardProps> = ({
 
   return (
     <Card size="small" title={t('Enregistrements')}>
+      {processingSlow ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBlockEnd: 12 }}
+          message={t('Le traitement prend plus de temps que prévu')}
+          description={t("La liste n'est plus actualisée automatiquement. Rechargez la page pour la relire.")}
+        />
+      ) : null}
       <Table<MeetingRecordingView>
         size="small"
         rowKey="id"

@@ -15,7 +15,7 @@ const lk = vi.hoisted(() => ({
   dataHandler: null as null | ((message: { payload: Uint8Array; from?: unknown }) => void),
   permissions: { canPublish: false } as { canPublish: boolean },
   recording: false,
-  controls: null as null | Record<string, boolean>,
+  toggles: {} as Record<string, { enabled: boolean; toggle: ReturnType<typeof vi.fn> }>,
   disconnect: vi.fn(),
   local: { identity: 'me', attributes: {} } as { identity: string; attributes: Record<string, string> },
   tracks: [] as Array<{ participant: { identity: string; attributes: Record<string, string> } }>
@@ -24,7 +24,7 @@ const lk = vi.hoisted(() => ({
 vi.mock('@livekit/components-styles', () => ({}));
 
 vi.mock('livekit-client', () => ({
-  Track: { Source: { Camera: 'camera', ScreenShare: 'screen_share' } },
+  Track: { Source: { Microphone: 'microphone', Camera: 'camera', ScreenShare: 'screen_share' } },
   DisconnectReason: { CLIENT_INITIATED: 1, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5, ROOM_CLOSED: 10 },
   MediaDeviceFailure: {
     PermissionDenied: 'PermissionDenied',
@@ -59,9 +59,10 @@ vi.mock('@livekit/components-react', async () => {
     ),
     ParticipantTile: () => <div data-testid="tile" />,
     RoomAudioRenderer: () => null,
-    ControlBar: ({ controls }: { controls: Record<string, boolean> }) => {
-      lk.controls = controls;
-      return <div data-testid="control-bar" />;
+    StartAudio: ({ label }: { label: string }) => <button type="button">{label}</button>,
+    useTrackToggle: ({ source }: { source: string }) => {
+      lk.toggles[source] ??= { enabled: false, toggle: vi.fn() };
+      return { ...lk.toggles[source], pending: false };
     },
     useDataChannel: (_topic: string, onMessage: (message: { payload: Uint8Array; from?: unknown }) => void) => {
       lk.dataHandler = onMessage;
@@ -105,7 +106,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   lk.roomProps = null;
   lk.dataHandler = null;
-  lk.controls = null;
+  lk.toggles = {};
   lk.permissions = { canPublish: false };
   lk.recording = false;
   lk.local = { identity: 'me', attributes: {} };
@@ -172,21 +173,40 @@ describe('MeetingVisioRoom', () => {
     expect(onRefreshSignal).toHaveBeenCalledTimes(1);
   });
 
-  it('ne montre micro et caméra que si le participant a le droit de publier', async () => {
+  it('ne montre micro, caméra et partage que si le participant a le droit de publier', async () => {
     await mount();
-    expect(lk.controls).toMatchObject({ microphone: false, camera: false, screenShare: false, chat: false });
+    expect(screen.queryByRole('button', { name: 'Activer le micro' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Activer la caméra' })).toBeNull();
+    expect(screen.queryByRole('button', { name: "Partager l'écran" })).toBeNull();
   });
 
-  it('un copropriétaire à qui l’on a donné la parole publie sans partage d’écran', async () => {
+  it('un copropriétaire à qui l’on a donné la parole publie sans partage d’écran, boutons nommés et traduits', async () => {
     lk.permissions = { canPublish: true };
     await mount();
-    expect(lk.controls).toMatchObject({ microphone: true, camera: true, screenShare: false, chat: false });
+    const mic = screen.getByRole('button', { name: 'Activer le micro' });
+    expect(mic.getAttribute('title')).toBe('Activer le micro');
+    expect(screen.getByRole('button', { name: 'Activer la caméra' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: "Partager l'écran" })).toBeNull();
+    fireEvent.click(mic);
+    expect(lk.toggles.microphone.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('propose de couper un micro actif', async () => {
+    lk.permissions = { canPublish: true };
+    lk.toggles.microphone = { enabled: true, toggle: vi.fn() };
+    await mount();
+    expect(screen.getByRole('button', { name: 'Couper le micro' })).toBeTruthy();
   });
 
   it('réserve le partage d’écran au modérateur', async () => {
     lk.permissions = { canPublish: true };
     await mount({ role: 'moderator' });
-    expect(lk.controls).toMatchObject({ microphone: true, camera: true, screenShare: true, chat: false });
+    expect(screen.getByRole('button', { name: "Partager l'écran" })).toBeTruthy();
+  });
+
+  it('offre un bouton « Activer le son » traduit pour le repli de lecture audio', async () => {
+    await mount();
+    expect(screen.getByRole('button', { name: 'Activer le son' })).toBeTruthy();
   });
 
   it('annonce le retrait par le gestionnaire', async () => {

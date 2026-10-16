@@ -127,21 +127,58 @@ async function tick() {
   });
 }
 
-function setWide(wide: boolean) {
+// Écran simulé : les requêtes `(min-width: N px)` / `(max-width: N px)` suivent la largeur courante,
+// et un changement de largeur prévient les abonnés comme le ferait le navigateur.
+const screenMock = {
+  width: 500,
+  listeners: new Set<{ query: string; listener: (event: { matches: boolean; media: string }) => void }>()
+};
+
+function queryMatches(query: string): boolean {
+  const min = /min-width:\s*(\d+)px/.exec(query);
+  const max = /max-width:\s*(\d+)px/.exec(query);
+  return (!min || screenMock.width >= Number(min[1])) && (!max || screenMock.width <= Number(max[1]));
+}
+
+function installMatchMedia() {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     configurable: true,
-    value: (query: string) => ({
-      matches: wide,
-      media: query,
-      onchange: null,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      dispatchEvent: () => false
-    })
+    value: (query: string) => {
+      const entry = (listener: (event: { matches: boolean; media: string }) => void) => ({ query, listener });
+      const registered = new Map<unknown, { query: string; listener: (event: never) => void }>();
+      const add = (listener: (event: { matches: boolean; media: string }) => void) => {
+        const item = entry(listener);
+        registered.set(listener, item as never);
+        screenMock.listeners.add(item);
+      };
+      const remove = (listener: unknown) => {
+        const item = registered.get(listener);
+        if (item) screenMock.listeners.delete(item as never);
+      };
+      return {
+        get matches() {
+          return queryMatches(query);
+        },
+        media: query,
+        onchange: null,
+        addListener: add,
+        removeListener: remove,
+        addEventListener: (_type: string, listener: never) => add(listener),
+        removeEventListener: (_type: string, listener: never) => remove(listener),
+        dispatchEvent: () => false
+      };
+    }
   });
+}
+
+function setViewport(width: number) {
+  screenMock.width = width;
+  screenMock.listeners.forEach(({ query, listener }) => listener({ matches: queryMatches(query), media: query }));
+}
+
+function setWide(wide: boolean) {
+  screenMock.width = wide ? 1200 : 500;
 }
 
 const originalMatchMedia = window.matchMedia;
@@ -151,6 +188,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   room.mounts = 0;
   room.unmounts = 0;
+  screenMock.listeners.clear();
+  installMatchMedia();
   setWide(false);
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   window.sessionStorage.clear();
@@ -303,8 +342,8 @@ describe('MeetingLivePage : visio intégrée', () => {
     expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Rejoindre la visio' }));
     await flush();
-    // Sur mobile l avis reste dans l onglet Votes, la salle ayant son propre bandeau.
-    expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
+    // Dans la salle, son propre bandeau prend le relais : l avis de la page ne fait pas doublon.
+    expect(screen.queryAllByText('Cette assemblée est enregistrée.')).toHaveLength(0);
   });
 
   it('n affiche aucun avis quand la séance n est pas enregistrée', async () => {
@@ -312,5 +351,28 @@ describe('MeetingLivePage : visio intégrée', () => {
     render(<MeetingLivePage />);
     await flush();
     expect(screen.queryByText('Cette assemblée est enregistrée.')).toBeNull();
+  });
+
+  it('ne remonte jamais la salle quand la largeur franchit 992 px', async () => {
+    fetchState.mockResolvedValue(ok(view()));
+    render(<MeetingLivePage />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Rejoindre la visio' }));
+    await flush();
+    const roomNode = screen.getByTestId('visio-room');
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(room.mounts).toBe(1);
+
+    act(() => setViewport(1200));
+    await flush();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.getByTestId('visio-room')).toBe(roomNode);
+
+    act(() => setViewport(500));
+    await flush();
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByTestId('visio-room')).toBe(roomNode);
+    expect(room.mounts).toBe(1);
+    expect(room.unmounts).toBe(0);
   });
 });

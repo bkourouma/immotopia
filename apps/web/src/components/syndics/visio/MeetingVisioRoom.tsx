@@ -1,12 +1,22 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Space, Spin, Tag, Typography } from 'antd';
-import { BellFilled, BellOutlined, LogoutOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
-  ControlBar,
+  AudioMutedOutlined,
+  AudioOutlined,
+  BellFilled,
+  BellOutlined,
+  DesktopOutlined,
+  LogoutOutlined,
+  ReloadOutlined,
+  VideoCameraAddOutlined,
+  VideoCameraOutlined
+} from '@ant-design/icons';
+import {
   GridLayout,
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
+  StartAudio,
   useDataChannel,
   useIsRecording,
   useLocalParticipant,
@@ -14,6 +24,7 @@ import {
   useParticipantAttribute,
   useRoomContext,
   useTrackRefContext,
+  useTrackToggle,
   useTracks
 } from '@livekit/components-react';
 import { DisconnectReason, MediaDeviceFailure, Track } from 'livekit-client';
@@ -163,7 +174,114 @@ const HandButton: React.FC<{ onRaiseHand: (raised: boolean) => Promise<void> }> 
   );
 };
 
+/* ------------------------------------------------------------------ commandes */
+
+interface MediaToggleProps {
+  source: Track.Source.Microphone | Track.Source.Camera | Track.Source.ScreenShare;
+  /** Libellé de l'action quand la source est coupée. */
+  enableLabel: string;
+  /** Libellé de l'action quand la source est active. */
+  disableLabel: string;
+  icons: { on: React.ReactNode; off: React.ReactNode };
+}
+
+/** Bouton micro, caméra ou partage d'écran : nom accessible et infobulle traduits, aucun texte LiveKit. */
+const MediaToggle: React.FC<MediaToggleProps> = ({ source, enableLabel, disableLabel, icons }) => {
+  const { toggle, enabled, pending } = useTrackToggle({ source });
+  const label = enabled ? disableLabel : enableLabel;
+  return (
+    <Button
+      aria-label={label}
+      title={label}
+      aria-pressed={enabled}
+      icon={enabled ? icons.on : icons.off}
+      type={enabled ? 'primary' : 'default'}
+      loading={pending}
+      onClick={() => void Promise.resolve(toggle()).catch(() => undefined)}
+    />
+  );
+};
+
+/**
+ * Micro et caméra n'apparaissent que si le participant a le droit de publier ; le
+ * partage d'écran est réservé au modérateur. Le bouton de reprise du son s'affiche
+ * seulement quand le navigateur bloque la lecture audio.
+ */
+const RoomMediaControls: React.FC<{ role: 'moderator' | 'participant'; canPublish: boolean }> = ({
+  role,
+  canPublish
+}) => (
+  <Space size={8} wrap>
+    <StartAudio label={t('Activer le son')} />
+    {canPublish ? (
+      <>
+        <MediaToggle
+          source={Track.Source.Microphone}
+          enableLabel={t('Activer le micro')}
+          disableLabel={t('Couper le micro')}
+          icons={{ on: <AudioOutlined />, off: <AudioMutedOutlined /> }}
+        />
+        <MediaToggle
+          source={Track.Source.Camera}
+          enableLabel={t('Activer la caméra')}
+          disableLabel={t('Couper la caméra')}
+          icons={{ on: <VideoCameraOutlined />, off: <VideoCameraAddOutlined /> }}
+        />
+        {role === 'moderator' ? (
+          <MediaToggle
+            source={Track.Source.ScreenShare}
+            enableLabel={t("Partager l'écran")}
+            disableLabel={t('Arrêter le partage')}
+            icons={{ on: <DesktopOutlined />, off: <DesktopOutlined /> }}
+          />
+        ) : null}
+      </>
+    ) : null}
+  </Space>
+);
+
 /* -------------------------------------------------------------------- salle */
+
+const BAR_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  flexWrap: 'wrap',
+  gap: 8,
+  padding: '8px 12px'
+};
+
+const RoomHeader: React.FC<{ role: 'moderator' | 'participant'; title?: string }> = ({ role, title }) => {
+  const room = useRoomContext();
+  return (
+    <div style={{ ...BAR_STYLE, borderBlockEnd: '1px solid #262a33' }}>
+      <Space size={8}>
+        <Text strong style={{ color: 'inherit' }}>
+          {title ?? t("Visio de l'assemblée")}
+        </Text>
+        <Tag style={{ margin: 0 }}>{role === 'moderator' ? t('Gestionnaire') : t('Participant')}</Tag>
+      </Space>
+      <Button size="small" danger icon={<LogoutOutlined />} onClick={() => room.disconnect()}>
+        {t('Quitter la visio')}
+      </Button>
+    </div>
+  );
+};
+
+/** Seul le serveur peut signaler un vote : un message venant d'un participant est ignoré. */
+function useRefreshSignal(onRefreshSignal?: () => void): void {
+  const refreshRef = useRef(onRefreshSignal);
+  refreshRef.current = onRefreshSignal;
+  useDataChannel(REFRESH_TOPIC, message => {
+    if (message.from) return;
+    try {
+      const payload = JSON.parse(new TextDecoder().decode(message.payload)) as { type?: unknown };
+      if (payload?.type === 'refresh') refreshRef.current?.();
+    } catch {
+      // Message illisible : ignoré.
+    }
+  });
+}
 
 interface RoomShellProps {
   role: 'moderator' | 'participant';
@@ -182,9 +300,7 @@ const RoomShell: React.FC<RoomShellProps> = ({
   onRaiseHand,
   onRefreshSignal
 }) => {
-  const room = useRoomContext();
-  const permissions = useLocalParticipantPermissions();
-  const canPublish = Boolean(permissions?.canPublish);
+  const canPublish = Boolean(useLocalParticipantPermissions()?.canPublish);
   // État tenu par LiveKit : l'avis suit l'enregistrement réel, pour le modérateur comme pour le participant.
   const recording = useIsRecording();
   const tracks = useTracks(
@@ -194,98 +310,37 @@ const RoomShell: React.FC<RoomShellProps> = ({
     ],
     { onlySubscribed: false }
   );
-
-  const refreshRef = useRef(onRefreshSignal);
-  refreshRef.current = onRefreshSignal;
-  // Seul le serveur peut signaler un vote : un message venant d'un participant est ignoré.
-  useDataChannel(REFRESH_TOPIC, message => {
-    if (message.from) return;
-    try {
-      const payload = JSON.parse(new TextDecoder().decode(message.payload)) as { type?: unknown };
-      if (payload?.type === 'refresh') refreshRef.current?.();
-    } catch {
-      // Message illisible : ignoré.
-    }
-  });
+  useRefreshSignal(onRefreshSignal);
 
   return (
     <div style={{ ...CONTAINER_STYLE, borderRadius: 0 }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          padding: '8px 12px',
-          borderBlockEnd: '1px solid #262a33'
-        }}
-      >
-        <Space size={8}>
-          <Text strong style={{ color: 'inherit' }}>
-            {title ?? t("Visio de l'assemblée")}
-          </Text>
-          <Tag style={{ margin: 0 }}>{role === 'moderator' ? t('Gestionnaire') : t('Participant')}</Tag>
-        </Space>
-        <Button size="small" danger icon={<LogoutOutlined />} onClick={() => room.disconnect()}>
-          {t('Quitter la visio')}
-        </Button>
-      </div>
-
+      <RoomHeader role={role} title={title} />
       {recording ? <Alert type="warning" showIcon banner message={t('Cette assemblée est enregistrée.')} /> : null}
-
       {deviceError ? (
         <Alert type="warning" showIcon closable onClose={onDismissDeviceError} message={deviceError} />
       ) : null}
-
       <div style={{ flex: 1, minHeight: 0 }}>
         <GridLayout tracks={tracks}>
           <TileWithHand />
         </GridLayout>
       </div>
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-          padding: '8px 12px',
-          borderBlockStart: '1px solid #262a33'
-        }}
-      >
+      <div style={{ ...BAR_STYLE, borderBlockStart: '1px solid #262a33' }}>
         {role === 'participant' && onRaiseHand ? <HandButton onRaiseHand={onRaiseHand} /> : <span />}
-        <ControlBar
-          variation="minimal"
-          saveUserChoices={false}
-          controls={{
-            microphone: canPublish,
-            camera: canPublish,
-            screenShare: role === 'moderator' && canPublish,
-            chat: false,
-            leave: false,
-            settings: false
-          }}
-        />
+        <RoomMediaControls role={role} canPublish={canPublish} />
       </div>
       <RoomAudioRenderer />
     </div>
   );
 };
 
+/* ------------------------------------------------------------------- session */
+
 /**
- * Salle de visio de l'AG en direct (spec 045), portée du composant de classes en
- * direct d'École Digitale. Chargée par `React.lazy` : `livekit-client` n'entre pas
- * dans le paquet initial. La hauteur vient du parent (`height: 100%`).
+ * Cycle de vie de la connexion : jeton (au montage et sur « Revenir »), connexion,
+ * fin de séance. Une déconnexion déjà traitée, ou provoquée par notre propre
+ * démontage, ne repasse pas par ici.
  */
-export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
-  role,
-  getToken,
-  onRaiseHand,
-  onRefreshSignal,
-  onLeave,
-  title
-}) => {
+function useVisioSession(getToken: () => Promise<VisioJoinInfo>, onLeave?: () => void) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const getTokenRef = useRef(getToken);
@@ -323,7 +378,6 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
   }, [connect]);
 
   const handleDisconnected = (reason?: DisconnectReason) => {
-    // Une déconnexion déjà traitée (ou provoquée par notre propre démontage) ne repasse pas par ici.
     if (!liveRef.current) return;
     liveRef.current = false;
     setPhase({ kind: 'ended', reason: endReasonFor(reason) });
@@ -336,6 +390,35 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
     liveRef.current = false;
     setPhase({ kind: 'error', message: t('Connexion à la visio impossible, réessayez.') });
   };
+
+  return {
+    phase,
+    deviceError,
+    setDeviceError,
+    connect,
+    handleDisconnected,
+    handleError,
+    handleConnected: () => {
+      connectedRef.current = true;
+    }
+  };
+}
+
+/**
+ * Salle de visio de l'AG en direct (spec 045), portée du composant de classes en
+ * direct d'École Digitale. Chargée par `React.lazy` : `livekit-client` n'entre pas
+ * dans le paquet initial. La hauteur vient du parent (`height: 100%`).
+ */
+export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
+  role,
+  getToken,
+  onRaiseHand,
+  onRefreshSignal,
+  onLeave,
+  title
+}) => {
+  const session = useVisioSession(getToken, onLeave);
+  const { phase, connect } = session;
 
   if (phase.kind === 'loading') {
     return (
@@ -389,18 +472,16 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
         video={false}
         data-lk-theme="default"
         style={{ height: '100%' }}
-        onConnected={() => {
-          connectedRef.current = true;
-        }}
-        onDisconnected={handleDisconnected}
-        onError={handleError}
-        onMediaDeviceFailure={failure => setDeviceError(deviceFailureMessage(failure))}
+        onConnected={session.handleConnected}
+        onDisconnected={session.handleDisconnected}
+        onError={session.handleError}
+        onMediaDeviceFailure={failure => session.setDeviceError(deviceFailureMessage(failure))}
       >
         <RoomShell
           role={role}
           title={title}
-          deviceError={deviceError}
-          onDismissDeviceError={() => setDeviceError(null)}
+          deviceError={session.deviceError}
+          onDismissDeviceError={() => session.setDeviceError(null)}
           onRaiseHand={onRaiseHand}
           onRefreshSignal={onRefreshSignal}
         />
