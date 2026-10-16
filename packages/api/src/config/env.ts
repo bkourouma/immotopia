@@ -284,6 +284,17 @@ const envSchema = z
     META_WA_PHONE_NUMBER_ID: emptyAsUndefined(
       z.string().regex(/^\d+$/, 'chiffres seulement (phone_number_id de Meta)').optional()
     ),
+    // Visio integree a l'AG en direct (spec 045). Projet LiveKit DEDIE a
+    // ImmoTopia : les trois variables ou aucune (verifie dans le superRefine).
+    // `ws://` n'est accepte qu'en developpement et en test.
+    LIVEKIT_URL: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^wss?:\/\/\S+$/, 'doit commencer par wss:// (ou ws:// en développement)')
+        .optional()
+    ),
+    LIVEKIT_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_API_SECRET: optionalSecretSchema,
     META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
     // [A verifier au deploiement] : derniere version stable de l'API Graph.
     META_WA_GRAPH_VERSION: z
@@ -389,6 +400,31 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['AI_PROVIDER'],
         message: "le faux fournisseur 'fake' n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test'"
+      });
+    }
+
+    // Spec 045 : visio LiveKit, les trois variables ou aucune ; `wss://` hors développement et test.
+    const livekit = [
+      ['LIVEKIT_URL', value.LIVEKIT_URL],
+      ['LIVEKIT_API_KEY', value.LIVEKIT_API_KEY],
+      ['LIVEKIT_API_SECRET', value.LIVEKIT_API_SECRET]
+    ] as const;
+    if (livekit.some(([, present]) => present) && !livekit.every(([, present]) => present)) {
+      for (const [name, present] of livekit) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_URL, LIVEKIT_API_KEY et LIVEKIT_API_SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    if (value.LIVEKIT_URL?.startsWith('ws://') && !fakeProviderAllowed(process.env.NODE_ENV)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_URL'],
+        message: "ws:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez wss://"
       });
     }
 

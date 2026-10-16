@@ -1977,5 +1977,15 @@
   "Un seuil d'alerte doit être supérieur à zéro. Laissez-le vide pour désactiver l'alerte.": "An alert threshold must be greater than zero. Leave it empty to disable the alert.",
   "Une facture de ce prestataire porte déjà ce numéro pour cette copropriété": "An invoice from this service provider already has this number for this condominium",
   "Vous avez atteint la limite d’actifs de votre formule. Passez au palier payant pour en ajouter davantage.": "You have reached the asset limit of your plan. Upgrade to the paid tier to add more.",
-  "Vous avez déjà un espace personnel.": "You already have a personal space."
+  "Vous avez déjà un espace personnel.": "You already have a personal space.",
+  "La visio est momentanément indisponible": "Video conferencing is temporarily unavailable",
+  "La visio intégrée n'est pas activée": "Built-in video conferencing is not enabled",
+  "Rejoignez l'assemblée avant d'entrer en visio": "Join the meeting before entering the video call",
+  "Vous n'êtes pas dans la visio": "You are not in the video call",
+  "Ce participant n'est pas dans la visio": "This participant is not in the video call",
+  "L'assemblée n'est pas en cours : la visio est fermée": "The meeting is not in progress: the video call is closed",
+  "L'assemblée est close ou annulée : la visio est fermée": "The meeting is closed or cancelled: the video call is closed",
+  "Participant introuvable ou inaccessible": "Participant not found or inaccessible",
+  "Utilisateur introuvable ou inaccessible": "User not found or inaccessible",
+  "Gestionnaire": "Manager"
 }

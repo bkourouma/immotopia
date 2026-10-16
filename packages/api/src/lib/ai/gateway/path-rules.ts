@@ -30,10 +30,14 @@ const SENSITIVE_EXACT_SEGMENTS = new Set(['session', 'sessions', 'login', 'sso',
  * - `whatsapp/sessions` : sessions et conversations du bot, avec le numéro et les messages du
  *   chef de chantier. Le mot générique `sessions` (`SENSITIVE_EXACT_SEGMENTS`) les couvre
  *   déjà ; la paire les garde sensibles s'il quitte un jour cette liste.
+ * - `visio/jeton` et `visio/participants` (spec 045) : délivrance d'un jeton de salle, parole donnée ou
+ *   retirée, exclusion d'un participant. Jamais proposées à l'assistant comme actions ordinaires.
  */
 const SENSITIVE_SEGMENT_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['whatsapp', 'registrations'],
-  ['whatsapp', 'sessions']
+  ['whatsapp', 'sessions'],
+  ['visio', 'jeton'],
+  ['visio', 'participants']
 ];
 
 export function isSensitivePath(path: string): boolean {

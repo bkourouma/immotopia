@@ -43,3 +43,10 @@ export const publicVoteSchema = z.object({
     .min(1)
     .max(200)
 });
+
+/** POST /public/assemblees/visio/main (spec 045) : le jeton et l'état de la main. */
+export const publicHandSchema = publicTokenSchema.extend({ raised: z.boolean() });
+
+/** Corps des routes de visio du gestionnaire (spec 045). */
+export const visioSpeakSchema = z.object({ allowed: z.boolean() });
+export const visioRemoveSchema = z.object({ revokeLinks: z.boolean().optional() });

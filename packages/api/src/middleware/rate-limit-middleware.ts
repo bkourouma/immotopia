@@ -266,6 +266,16 @@ export const meetingLiveStateRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/** Visio (jeton de salle et main levee ensemble) : 20/min par jeton (spec 045). */
+export const meetingVisioRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => meetingLiveTokenKey(req, 'visio'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /** Rejoindre et voter : 30/min par jeton. */
 export const meetingLiveActionRateLimiter = rateLimit({
   windowMs: 60 * 1000,

@@ -1977,5 +1977,15 @@
   "Un seuil d'alerte doit être supérieur à zéro. Laissez-le vide pour désactiver l'alerte.": "يجب أن يكون حدّ التنبيه أكبر من صفر. اتركه فارغًا لتعطيل التنبيه.",
   "Une facture de ce prestataire porte déjà ce numéro pour cette copropriété": "توجد بالفعل فاتورة من مقدم الخدمة هذا بهذا الرقم لهذه الملكية المشتركة",
   "Vous avez atteint la limite d’actifs de votre formule. Passez au palier payant pour en ajouter davantage.": "لقد بلغت حد الأصول في خطتك. انتقل إلى المستوى المدفوع لإضافة المزيد.",
-  "Vous avez déjà un espace personnel.": "لديك مساحة شخصية بالفعل."
+  "Vous avez déjà un espace personnel.": "لديك مساحة شخصية بالفعل.",
+  "La visio est momentanément indisponible": "المؤتمر المرئي غير متاح مؤقتًا",
+  "La visio intégrée n'est pas activée": "المؤتمر المرئي المدمج غير مفعّل",
+  "Rejoignez l'assemblée avant d'entrer en visio": "انضم إلى الجمعية قبل الدخول إلى المؤتمر المرئي",
+  "Vous n'êtes pas dans la visio": "أنت لست في المؤتمر المرئي",
+  "Ce participant n'est pas dans la visio": "هذا المشارك ليس في المؤتمر المرئي",
+  "L'assemblée n'est pas en cours : la visio est fermée": "الجمعية ليست قيد الانعقاد: المؤتمر المرئي مغلق",
+  "L'assemblée est close ou annulée : la visio est fermée": "الجمعية مغلقة أو ملغاة: المؤتمر المرئي مغلق",
+  "Participant introuvable ou inaccessible": "المشارك غير موجود أو لا يمكن الوصول إليه",
+  "Utilisateur introuvable ou inaccessible": "المستخدم غير موجود أو لا يمكن الوصول إليه",
+  "Gestionnaire": "المدير"
 }

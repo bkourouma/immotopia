@@ -19,6 +19,12 @@ import {
   setLotAttendanceHandler
 } from '../controllers/syndic-meeting-live-controller';
 import {
+  getMeetingVisioHandler,
+  issueMeetingVisioTokenHandler,
+  removeVisioParticipantHandler,
+  setVisioParticipantSpeakingHandler
+} from '../controllers/syndic-meeting-visio-controller';
+import {
   inviteCoOwnerToPortalHandler,
   revokeCoOwnerPortalAccessHandler
 } from '../controllers/syndic-coowner-portal-controller';
@@ -473,6 +479,27 @@ router.delete(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/liens',
   requirePropertyPermission('SYNDIC_EDIT'),
   revokeParticipantLinksHandler
+);
+// Spec 045 : visio integree a l'AG en direct.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  getMeetingVisioHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/jeton',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  issueMeetingVisioTokenHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/parole',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  setVisioParticipantSpeakingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  removeVisioParticipantHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',

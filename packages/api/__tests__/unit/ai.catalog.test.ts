@@ -117,6 +117,18 @@ describe('catalogue de la passerelle IA', () => {
     expect(isSensitivePath('/api/tenants/:tenantId/whatsapp-notifications')).toBe(false);
   });
 
+  it('marque sensibles le jeton de visio, la parole et l’exclusion (spec 045), pas la lecture', () => {
+    const visio = built.entries.filter(entry => entry.path.split('/').includes('visio'));
+    expect(visio.length).toBeGreaterThanOrEqual(4);
+    const sensitive = visio.filter(entry => entry.sensitive).map(entry => entry.path.split('/:meetingId/')[1]);
+    expect(sensitive.sort()).toEqual([
+      'visio/jeton',
+      'visio/participants/:participantId/exclure',
+      'visio/participants/:participantId/parole'
+    ]);
+    expect(visio.find(entry => entry.method === 'GET')?.sensitive).toBe(false);
+  });
+
   it('marque sensibles les sessions et conversations du bot WhatsApp (numéro et messages du chef)', () => {
     expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:id')).toBe(true);
     expect(isSensitivePath('/api/tenants/:tenantId/finance/stock/whatsapp/sessions/:sessionId/messages')).toBe(true);

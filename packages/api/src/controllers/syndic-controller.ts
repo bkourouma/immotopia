@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { t } from '../i18n';
+import { closeMeetingRoom } from '../lib/syndics/meeting-visio';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import {
@@ -859,6 +860,11 @@ export const updateMeetingHandler = asyncHandler(async (req: Request, res: Respo
 
   const parsed = updateMeetingSchema.parse(req.body);
   const updatedMeeting = await updateMeetingByTenant(tenantId, syndicateId, meetingId, parsed);
+
+  // Spec 045 : la cloture ou l'annulation ferme la salle de visio (au mieux, ne bloque pas la reponse).
+  if (parsed.status === 'COMPLETED' || parsed.status === 'CANCELLED') {
+    void closeMeetingRoom(tenantId, meetingId);
+  }
 
   res.json({
     success: true,

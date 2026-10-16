@@ -3,13 +3,16 @@ import { invalidSecureLinkError } from '../lib/secure-links';
 import {
   meetingLiveActionRateLimiter,
   meetingLiveIpRateLimiter,
-  meetingLiveStateRateLimiter
+  meetingLiveStateRateLimiter,
+  meetingVisioRateLimiter
 } from '../middleware/rate-limit-middleware';
 import { secureLinkNoStoreHeaders } from '../controllers/secure-link-public-controller';
 import {
   meetingLiveJoinHandler,
   meetingLiveStateHandler,
-  meetingLiveVoteHandler
+  meetingLiveVoteHandler,
+  meetingVisioHandHandler,
+  meetingVisioTokenHandler
 } from '../controllers/meeting-live-public-controller';
 
 /**
@@ -61,6 +64,24 @@ router.post(
   express.json({ limit: MAX_BODY }),
   meetingLiveActionRateLimiter,
   meetingLiveVoteHandler
+);
+
+router.post(
+  '/public/assemblees/visio',
+  meetingLiveIpRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  meetingVisioRateLimiter,
+  meetingVisioTokenHandler
+);
+
+router.post(
+  '/public/assemblees/visio/main',
+  meetingLiveIpRateLimiter,
+  secureLinkNoStoreHeaders,
+  express.json({ limit: MAX_BODY }),
+  meetingVisioRateLimiter,
+  meetingVisioHandHandler
 );
 
 router.use('/public/assemblees', (err: unknown, _req: Request, _res: Response, next: NextFunction) => {
