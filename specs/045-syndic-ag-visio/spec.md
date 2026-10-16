@@ -1,6 +1,6 @@
 # 045 — Visio intégrée à l'AG en direct (Syndic)
 
-**Statut :** en cours de réalisation (branche `feat/syndic-ag-visio`)
+**Statut :** réalisé, recette jouée, PR à relire (branche `feat/syndic-ag-visio`)
 **Date :** 2026-10-16
 **Module :** Syndic (spec 013), AG en direct (spec 043)
 **Numéro :** 044 étant pris par la signature électronique, ce lot porte le 045.
@@ -274,6 +274,36 @@ participant ou utilisateur, jamais le jeton), `SYNDIC_MEETING_VISIO_SPEAK_GRANTE
 Jouée dans le navigateur sur l'instance de démo avec une pile locale gratuite
 (LiveKit 1.9.1, Egress 1.15, Redis, SeaweedFS pour le S3 — les images MinIO ne
 sont plus publiées librement) : voir `docs/recette/SCENARIO_SYNDIC_AG_VISIO.md`.
+Caméra et micro remplacés par une source de synthèse (le navigateur de recette
+n'a pas de périphérique).
+
+Passés : jeton refusé avant « Rejoindre » (409) et pour un lien inconnu (404) ;
+le copropriétaire voit la vidéo du gestionnaire et entend son son (niveau
+mesuré), sans micro ni caméra ; main levée visible dans la salle et en tête de
+la console ; parole donnée puis retirée (le gestionnaire entend le
+copropriétaire) ; boutons de vote affichés 162 ms après l'ouverture du vote
+(signal du serveur), vote `CO_OWNER` enregistré, résultat à la clôture, sans
+coupure de la visio ; enregistrement démarré, avis unique dans la salle,
+arrêt, webhook, « Disponible » en moins de 5 s, lecture (206, MP4 H.264
+1280×720 + AAC, image de la séance), téléchargement, suppression (fichier et
+objet S3 effacés) ; `/uploads/…` direct 404, lecture sans session 401,
+webhook sans signature ou faux 401 ; exclusion simple puis retour, exclusion
+avec révocation (3 liens révoqués, lien invalide ensuite) ; isolation par
+l'API (AG, participant ou enregistrement d'une autre AG ou agence : 404) ;
+mobile 375 px (onglets, une seule salle conservée), arabe en RTL ; clôture de
+l'AG qui ferme la salle.
+
+Corrigé pendant la recette : lecture du MP4 en 403 sous un dossier caché,
+manifeste JSON de l'Egress laissé dans le bucket, avis d'enregistrement en
+double, boutons micro/caméra sans nom accessible, et double connexion de la
+salle sous `React.StrictMode` (« same identity is already in the room »).
+
+Non vérifié : le changement de point de rupture à chaud (l'émulation du
+panneau ne le déclenche pas sans rechargement ; couvert par un test), le refus
+par LiveKit d'un jeton déjà émis après exclusion (`revokeTokenTs`), le bouton
+« Activer le son » sur un vrai blocage d'autoplay, un vrai périphérique, la
+charge (300 participants), LiveKit Cloud.
+
 Limite constatée, non corrigée dans ce lot : changer de langue pendant la visio
 remonte toute l'application (`key={language}` dans `App.tsx`) et déconnecte de
 la salle ; il faut la rouvrir.
