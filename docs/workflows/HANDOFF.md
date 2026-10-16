@@ -51,7 +51,8 @@ Fait :
 
 Reste à faire (propriétaire) :
 
-- Fusionner la PR, puis suivre la mise en service de `DEPLOIEMENT.md` : protéger `main` (ruleset) AVANT tout, clés ed25519, `authorized_keys`, `known_hosts`, environnements GitHub, secrets, tests négatifs, premier essai staging, puis `AUTO_DEPLOY_STAGING=true`.
+- FAIT le 2026-10-16 par le propriétaire : ruleset « Protection de main » (id 25223655, actif, aucun contournement) : PR obligatoire à 0 relecture, 7 contrôles CI requis, ni force-push ni suppression. Plus aucun push direct sur `main`.
+- Fusionner la PR, puis suivre la suite de la mise en service de `DEPLOIEMENT.md` : `sshd`, clés ed25519, `authorized_keys`, `known_hosts`, environnements GitHub, secrets, tests négatifs, premier essai staging, puis `AUTO_DEPLOY_STAGING=true`.
 - Rien n'a tourné sur le serveur ni chez GitHub : tout est « non éprouvé ».
 
 Pièges :
