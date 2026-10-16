@@ -122,11 +122,25 @@ describe('catalogue de la passerelle IA', () => {
     expect(visio.length).toBeGreaterThanOrEqual(4);
     const sensitive = visio.filter(entry => entry.sensitive).map(entry => entry.path.split('/:meetingId/')[1]);
     expect(sensitive.sort()).toEqual([
+      'visio/enregistrement/arreter',
+      'visio/enregistrement/demarrer',
       'visio/jeton',
       'visio/participants/:participantId/exclure',
       'visio/participants/:participantId/parole'
     ]);
     expect(visio.find(entry => entry.method === 'GET')?.sensitive).toBe(false);
+  });
+
+  it("marque sensibles le démarrage, l'arrêt et le fichier d'un enregistrement d'AG (spec 045), pas la liste", () => {
+    const rec = (suffix: string) => built.entries.find(entry => entry.path.endsWith(suffix));
+    expect(rec('/visio/enregistrement/demarrer')?.sensitive).toBe(true);
+    expect(rec('/visio/enregistrement/arreter')?.sensitive).toBe(true);
+    expect(rec('/enregistrements/:recordingId/fichier')?.sensitive).toBe(true);
+    expect(rec('/assemblees/:meetingId/enregistrements')?.sensitive).toBe(false);
+    // La suppression est destructrice : exclue du catalogue.
+    expect(built.entries.some(entry => entry.method === 'DELETE' && entry.path.includes('/enregistrements'))).toBe(
+      false
+    );
   });
 
   it('marque sensibles les sessions et conversations du bot WhatsApp (numéro et messages du chef)', () => {

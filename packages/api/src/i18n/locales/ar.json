@@ -1987,5 +1987,17 @@
   "L'assemblée est close ou annulée : la visio est fermée": "الجمعية مغلقة أو ملغاة: المؤتمر المرئي مغلق",
   "Participant introuvable ou inaccessible": "المشارك غير موجود أو لا يمكن الوصول إليه",
   "Utilisateur introuvable ou inaccessible": "المستخدم غير موجود أو لا يمكن الوصول إليه",
-  "Gestionnaire": "المدير"
+  "Gestionnaire": "المدير",
+  "L'enregistrement n'est pas activé": "التسجيل غير مفعّل",
+  "L'enregistrement a échoué côté visio": "فشل التسجيل من جهة المؤتمر المرئي",
+  "La limite de durée de l'enregistrement a été atteinte": "تم بلوغ الحد الأقصى لمدة التسجيل",
+  "Aucun fichier n'a été produit par l'enregistrement": "لم ينتج التسجيل أي ملف",
+  "Le fichier n'a pas pu être rapatrié : il est conservé sur le stockage de la visio": "تعذّر استرجاع الملف: وهو محفوظ على تخزين المؤتمر المرئي",
+  "L'enregistrement a été perdu côté visio": "فُقد التسجيل من جهة المؤتمر المرئي",
+  "L'enregistrement a échoué": "فشل التسجيل",
+  "L'assemblée n'est pas en cours : l'enregistrement est impossible": "الجمعية ليست قيد الانعقاد: التسجيل غير ممكن",
+  "Un enregistrement est déjà en cours": "هناك تسجيل قيد التنفيذ بالفعل",
+  "Aucun enregistrement n'est en cours": "لا يوجد تسجيل قيد التنفيذ",
+  "Enregistrement introuvable ou inaccessible": "التسجيل غير موجود أو لا يمكن الوصول إليه",
+  "Cet enregistrement ne peut pas être supprimé dans son état actuel": "لا يمكن حذف هذا التسجيل في حالته الحالية"
 }

@@ -11,6 +11,7 @@ import {
   ensureRoom,
   getRoomParticipant,
   HAND_RAISED_ATTRIBUTE,
+  isRecordingEnabled,
   isVisioEnabled,
   listRoomParticipants,
   mintModeratorToken,
@@ -26,6 +27,7 @@ import { contactDisplayName } from './meeting-live-rules';
 import { loadMeetingBase, loadMeetingBaseById } from './meeting-live-context';
 import { withAccess } from './meeting-live-public';
 import { revokeParticipantLinks } from './meeting-participants';
+import { findActiveRecording, type MeetingRecordingView } from './meeting-recording';
 
 /**
  * Visio integree a l'AG en direct (spec 045), cote metier : jetons de salle,
@@ -54,6 +56,8 @@ export interface MeetingVisioAdminView {
   roomName: string | null;
   roomActive: boolean;
   participants: MeetingVisioParticipantView[];
+  /** Enregistrement (spec 045, R1) : configuré ? et celui qui est en cours. */
+  recording: { enabled: boolean; active: MeetingRecordingView | null };
 }
 
 function assertEnabled(): void {
@@ -217,13 +221,23 @@ export async function getVisioAdminView(
   syndicateId: string,
   meetingId: string
 ): Promise<MeetingVisioAdminView> {
+  // La portée (agence, copropriété, AG) est vérifiée d'abord : 404 inchangé.
   const meeting = await loadMeetingBase(prisma, tenantId, syndicateId, meetingId);
-  assertEnabled();
+  if (!isVisioEnabled()) {
+    return {
+      enabled: false,
+      roomName: null,
+      roomActive: false,
+      participants: [],
+      recording: { enabled: false, active: null }
+    };
+  }
   const roomName = buildMeetingRoomName(tenantId, meeting.id);
   const infos = await listRoomParticipants(roomName);
   const roomActive = infos.length > 0 || (await roomExists(roomName));
   const participants = await reconcile(tenantId, meeting.id, infos);
-  return { enabled: true, roomName, roomActive, participants };
+  const active = await findActiveRecording(tenantId, meeting.id);
+  return { enabled: true, roomName, roomActive, participants, recording: { enabled: isRecordingEnabled(), active } };
 }
 
 /** POST /visio/jeton : jeton de modérateur (AG planifiée ou en cours). */

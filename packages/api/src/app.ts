@@ -55,6 +55,7 @@ import newsletterRoutes from './routes/newsletter-routes';
 import newsletterPublicRoutes from './routes/newsletter-public-routes';
 import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './routes/whatsapp-cloud-webhook-routes';
+import livekitWebhookRoutes, { LIVEKIT_WEBHOOK_PREFIX } from './routes/livekit-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
 import signaturePublicRoutes, { PUBLIC_SIGNATURES_PREFIX } from './routes/signature-public-routes';
@@ -144,12 +145,16 @@ const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_EXTERNAL_ACCESS_PREFIX,
   PUBLIC_SIGNATURES_PREFIX,
   PUBLIC_MEETING_LIVE_PREFIX,
-  WHATSAPP_CLOUD_WEBHOOK_PREFIX
+  WHATSAPP_CLOUD_WEBHOOK_PREFIX,
+  // Spec 045 : webhook LiveKit, corps BRUT pour verifier la signature.
+  LIVEKIT_WEBHOOK_PREFIX
 ];
 const skipSecureLinkPublic =
   (parser: express.RequestHandler): express.RequestHandler =>
   (req, res, next) =>
-    PUBLIC_TOKEN_PREFIXES.some(prefix => req.path.startsWith(`${prefix}/`)) ? next() : parser(req, res, next);
+    PUBLIC_TOKEN_PREFIXES.some(prefix => req.path === prefix || req.path.startsWith(`${prefix}/`))
+      ? next()
+      : parser(req, res, next);
 app.use(skipSecureLinkPublic(express.json({ limit: '10mb' })));
 app.use(cookieParser());
 app.use(skipSecureLinkPublic(express.urlencoded({ extended: true, limit: '10mb' })));
@@ -240,6 +245,8 @@ app.get('/health', (_req, res) => {
 // router.use(express.urlencoded...) traverse toute requete /api/* : le corps
 // doit arriver brut jusqu'a la verification de signature.
 app.use(WHATSAPP_CLOUD_WEBHOOK_PREFIX, whatsappCloudWebhookRoutes);
+// Spec 045 : webhook LiveKit (fin d'enregistrement), public et signe, corps brut.
+app.use(LIVEKIT_WEBHOOK_PREFIX, livekitWebhookRoutes);
 // WhatsApp incoming webhook must be mounted before any /api router
 // that applies auth middleware globally (router.use(authenticate)).
 app.use('/api', whatsappWebhookRoutes);

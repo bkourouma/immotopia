@@ -1,10 +1,19 @@
 import {
   AccessToken,
   DataPacket_Kind,
+  EgressClient,
+  EgressStatus,
+  EncodedFileOutput,
+  EncodedFileType,
+  EncodingOptionsPreset,
   RoomServiceClient,
+  S3Upload,
   TrackSource,
+  WebhookReceiver,
+  type EgressInfo,
   type ParticipantInfo,
-  type VideoGrant
+  type VideoGrant,
+  type WebhookEvent
 } from 'livekit-server-sdk';
 import { env } from '../config/env';
 import { t } from '../i18n';
@@ -32,8 +41,11 @@ export const REFRESH_TOPIC = 'ag-refresh';
 
 /** LiveKit injoignable ou en erreur inattendue (503). */
 export class VisioUnavailableError extends AppError {
-  constructor() {
+  /** Cause d'origine (statut LiveKit), jamais serialisee dans la reponse ni journalisee. */
+  readonly cause?: unknown;
+  constructor(cause?: unknown) {
     super(t('La visio est momentanément indisponible'), 503, ErrorCode.VISIO_UNAVAILABLE);
+    this.cause = cause;
   }
 }
 
@@ -88,9 +100,20 @@ function roomClient(): RoomServiceClient {
   return client;
 }
 
-/** Remise a zero de l'instance paresseuse (tests). */
+let egressClient: EgressClient | null = null;
+
+function egress(): EgressClient {
+  if (!egressClient) {
+    const cfg = config();
+    egressClient = new EgressClient(restUrl(cfg.url), cfg.apiKey, cfg.apiSecret);
+  }
+  return egressClient;
+}
+
+/** Remise a zero des instances paresseuses (tests). */
 export function _resetLiveKitServiceForTests(): void {
   client = null;
+  egressClient = null;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -114,7 +137,7 @@ async function call<T>(label: string, run: () => Promise<T>, notFoundValue?: { v
       errorName: error instanceof Error ? error.name : 'UnknownError',
       status: (error as { status?: number } | null)?.status
     });
-    throw new VisioUnavailableError();
+    throw new VisioUnavailableError(error);
   }
 }
 
@@ -238,4 +261,89 @@ export async function sendRefreshSignal(roomName: string): Promise<void> {
 export async function roomExists(roomName: string): Promise<boolean> {
   const rooms = await call('listRooms', () => roomClient().listRooms([roomName]));
   return rooms.some(room => room.name === roomName);
+}
+
+// --- Enregistrement (spec 045, R3) ------------------------------------------
+
+/** Enregistrement possible : visio configuree ET stockage S3 (bucket et cles). */
+export function isRecordingEnabled(): boolean {
+  return Boolean(
+    isVisioEnabled() &&
+    env.LIVEKIT_RECORDING_S3_BUCKET &&
+    env.LIVEKIT_RECORDING_S3_ACCESS_KEY &&
+    env.LIVEKIT_RECORDING_S3_SECRET
+  );
+}
+
+/** Prefixe des objets, termine par « / ». */
+export function recordingKeyPrefix(): string {
+  const prefix = env.LIVEKIT_RECORDING_S3_PREFIX ?? 'ag-enregistrements/';
+  return prefix.endsWith('/') ? prefix : `${prefix}/`;
+}
+
+/** Cle S3 de l'objet : <prefixe><agence>/<assemblee>/<enregistrement>.mp4 */
+export function buildRecordingStorageKey(tenantId: string, meetingId: string, recordingId: string): string {
+  return `${recordingKeyPrefix()}${tenantId}/${meetingId}/${recordingId}.mp4`;
+}
+
+/** Etats d'un egress encore en cours cote LiveKit. */
+export function isEgressActive(info: Pick<EgressInfo, 'status'>): boolean {
+  return (
+    info.status === EgressStatus.EGRESS_STARTING ||
+    info.status === EgressStatus.EGRESS_ACTIVE ||
+    info.status === EgressStatus.EGRESS_ENDING
+  );
+}
+
+/** Demarre l'egress composite MP4 (grille) vers le stockage S3 ; rend l'identifiant de l'egress. */
+export async function startMeetingRecording(roomName: string, storageKey: string): Promise<string> {
+  if (!isRecordingEnabled()) throw new ConflictError(t("L'enregistrement n'est pas activé"));
+  const output = new EncodedFileOutput({
+    fileType: EncodedFileType.MP4,
+    filepath: storageKey,
+    output: {
+      case: 's3',
+      value: new S3Upload({
+        accessKey: env.LIVEKIT_RECORDING_S3_ACCESS_KEY,
+        secret: env.LIVEKIT_RECORDING_S3_SECRET,
+        region: env.LIVEKIT_RECORDING_S3_REGION,
+        bucket: env.LIVEKIT_RECORDING_S3_BUCKET,
+        endpoint: env.LIVEKIT_RECORDING_S3_ENDPOINT ?? '',
+        forcePathStyle: env.LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE === '1'
+      })
+    }
+  });
+  const info = await call('startRoomCompositeEgress', () =>
+    egress().startRoomCompositeEgress(
+      roomName,
+      { file: output },
+      { layout: 'grid', encodingOptions: EncodingOptionsPreset.H264_720P_30 }
+    )
+  );
+  return info.egressId;
+}
+
+/** Arrete l'egress ; un egress deja termine (412) ou inconnu (404) n'est pas une erreur. */
+export async function stopEgress(egressId: string): Promise<void> {
+  return call('stopEgress', async () => {
+    try {
+      await egress().stopEgress(egressId);
+    } catch (error) {
+      if (isNotFound(error) || (error as { status?: number } | null)?.status === 412) return;
+      throw error;
+    }
+  });
+}
+
+/** Etat d'un egress, ou `null` s'il est inconnu de LiveKit. */
+export async function getEgressStatus(egressId: string): Promise<EgressInfo | null> {
+  const list = await call<EgressInfo[]>('listEgress', () => egress().listEgress({ egressId }), { value: [] });
+  return list.find(item => item.egressId === egressId) ?? null;
+}
+
+/** Verifie la signature d'un webhook LiveKit (corps brut) ; leve si absente ou invalide. */
+export async function verifyWebhook(rawBody: string, authHeader: string | undefined): Promise<WebhookEvent> {
+  const cfg = config();
+  if (!authHeader) throw new Error('missing authorization');
+  return new WebhookReceiver(cfg.apiKey, cfg.apiSecret).receive(rawBody, authHeader);
 }

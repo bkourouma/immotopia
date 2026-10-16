@@ -17,14 +17,19 @@ const mockRoom = {
   sendData: jest.fn()
 };
 const mockRoomCtor = jest.fn(() => mockRoom);
+const mockEgress = { startRoomCompositeEgress: jest.fn(), stopEgress: jest.fn(), listEgress: jest.fn() };
+const mockEgressCtor = jest.fn(() => mockEgress);
 jest.mock('livekit-server-sdk', () => ({
   ...jest.requireActual('livekit-server-sdk'),
   RoomServiceClient: function (...args: unknown[]) {
     return (mockRoomCtor as any)(...args);
+  },
+  EgressClient: function (...args: unknown[]) {
+    return (mockEgressCtor as any)(...args);
   }
 }));
 
-import { DataPacket_Kind, TrackSource } from 'livekit-server-sdk';
+import { AccessToken, DataPacket_Kind, EgressStatus, EncodedFileType, TrackSource } from 'livekit-server-sdk';
 import * as livekit from '../../src/services/livekit-service';
 import { ConflictError } from '../../src/middleware/error-middleware';
 
@@ -44,6 +49,14 @@ beforeEach(() => {
   mockEnv.LIVEKIT_URL = 'wss://visio.example.test';
   mockEnv.LIVEKIT_API_KEY = 'APIkey';
   mockEnv.LIVEKIT_API_SECRET = SECRET;
+  mockEnv.LIVEKIT_RECORDING_S3_BUCKET = 'bucket-ag';
+  mockEnv.LIVEKIT_RECORDING_S3_REGION = 'us-east-1';
+  mockEnv.LIVEKIT_RECORDING_S3_ENDPOINT = 'http://minio.test:9000';
+  mockEnv.LIVEKIT_RECORDING_S3_ACCESS_KEY = 'AKIATEST';
+  mockEnv.LIVEKIT_RECORDING_S3_SECRET = 'secret-s3';
+  mockEnv.LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE = '1';
+  mockEnv.LIVEKIT_RECORDING_S3_PREFIX = 'ag-enregistrements';
+  for (const fn of Object.values(mockEgress)) fn.mockReset();
   for (const fn of Object.values(mockRoom)) fn.mockResolvedValue(undefined);
 });
 
@@ -220,5 +233,91 @@ describe('erreurs', () => {
   it('une erreur inattendue sur une lecture reste un 503 (seul not_found est toléré)', async () => {
     mockRoom.listParticipants.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
     await expect(livekit.listRoomParticipants('r')).rejects.toBeInstanceOf(livekit.VisioUnavailableError);
+  });
+});
+
+describe('enregistrement (Egress)', () => {
+  it('isRecordingEnabled : visio ET bucket et clés', () => {
+    expect(livekit.isRecordingEnabled()).toBe(true);
+    mockEnv.LIVEKIT_RECORDING_S3_SECRET = undefined;
+    expect(livekit.isRecordingEnabled()).toBe(false);
+    mockEnv.LIVEKIT_RECORDING_S3_SECRET = 'x';
+    mockEnv.LIVEKIT_URL = undefined;
+    expect(livekit.isRecordingEnabled()).toBe(false);
+  });
+
+  it("clé de l'objet : <préfixe>/<agence>/<assemblée>/<enregistrement>.mp4, préfixe complété par un /", () => {
+    expect(livekit.buildRecordingStorageKey('t1', 'm1', 'r1')).toBe('ag-enregistrements/t1/m1/r1.mp4');
+  });
+
+  it('startMeetingRecording : composite MP4 en grille 720p vers S3, clé et identifiants du stockage', async () => {
+    mockEgress.startRoomCompositeEgress.mockResolvedValue({ egressId: 'EG_1' });
+    const id = await livekit.startMeetingRecording('room-1', 'ag-enregistrements/t1/m1/r1.mp4');
+    expect(id).toBe('EG_1');
+    expect(mockEgressCtor).toHaveBeenCalledWith('https://visio.example.test', 'APIkey', SECRET);
+    const [room, output, options] = mockEgress.startRoomCompositeEgress.mock.calls[0];
+    expect(room).toBe('room-1');
+    expect(options).toMatchObject({ layout: 'grid' });
+    expect(output.file.filepath).toBe('ag-enregistrements/t1/m1/r1.mp4');
+    expect(output.file.fileType).toBe(EncodedFileType.MP4);
+    expect(output.file.output.case).toBe('s3');
+    expect(output.file.output.value).toMatchObject({
+      bucket: 'bucket-ag',
+      region: 'us-east-1',
+      endpoint: 'http://minio.test:9000',
+      accessKey: 'AKIATEST',
+      secret: 'secret-s3',
+      forcePathStyle: true
+    });
+  });
+
+  it('startMeetingRecording : enregistrement non configuré = 409, aucun appel', async () => {
+    mockEnv.LIVEKIT_RECORDING_S3_BUCKET = undefined;
+    await expect(livekit.startMeetingRecording('r', 'k')).rejects.toBeInstanceOf(ConflictError);
+    expect(mockEgress.startRoomCompositeEgress).not.toHaveBeenCalled();
+  });
+
+  it("stopEgress : un egress déjà terminé (412) ou inconnu (404) n'est pas une erreur ; le reste est un 503", async () => {
+    mockEgress.stopEgress.mockRejectedValueOnce(Object.assign(new Error('x'), { status: 412 }));
+    await expect(livekit.stopEgress('EG')).resolves.toBeUndefined();
+    mockEgress.stopEgress.mockRejectedValueOnce(notFound());
+    await expect(livekit.stopEgress('EG')).resolves.toBeUndefined();
+    mockEgress.stopEgress.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+    await expect(livekit.stopEgress('EG')).rejects.toBeInstanceOf(livekit.VisioUnavailableError);
+  });
+
+  it('getEgressStatus : listEgress({ egressId }) ; inconnu = null ; isEgressActive', async () => {
+    mockEgress.listEgress.mockResolvedValueOnce([{ egressId: 'EG', status: EgressStatus.EGRESS_ACTIVE }]);
+    const info = await livekit.getEgressStatus('EG');
+    expect(mockEgress.listEgress).toHaveBeenCalledWith({ egressId: 'EG' });
+    expect(livekit.isEgressActive(info as any)).toBe(true);
+    mockEgress.listEgress.mockResolvedValueOnce([]);
+    expect(await livekit.getEgressStatus('EG')).toBeNull();
+    expect(livekit.isEgressActive({ status: EgressStatus.EGRESS_COMPLETE })).toBe(false);
+  });
+});
+
+describe('webhook LiveKit : signature réelle', () => {
+  async function sign(body: string, secret = SECRET) {
+    const { createHash } = await import('crypto');
+    const token = new AccessToken('APIkey', secret, { ttl: 300 });
+    token.sha256 = createHash('sha256').update(body).digest('base64');
+    return token.toJwt();
+  }
+  const body = JSON.stringify({ event: 'egress_ended', id: 'EV_1', egressInfo: { egressId: 'EG_1', status: 3 } });
+
+  it('acceptée : événement décodé', async () => {
+    const event = await livekit.verifyWebhook(body, await sign(body));
+    expect(event.event).toBe('egress_ended');
+    expect(event.id).toBe('EV_1');
+    expect(event.egressInfo?.egressId).toBe('EG_1');
+  });
+
+  it('refusée : en-tête absent, autre secret, corps altéré, jeton altéré', async () => {
+    await expect(livekit.verifyWebhook(body, undefined)).rejects.toBeDefined();
+    await expect(livekit.verifyWebhook(body, await sign(body, 'x'.repeat(40)))).rejects.toBeDefined();
+    await expect(livekit.verifyWebhook(body + ' ', await sign(body))).rejects.toBeDefined();
+    const jwt = await sign(body);
+    await expect(livekit.verifyWebhook(body, jwt.slice(0, -4) + 'AAAA')).rejects.toBeDefined();
   });
 });

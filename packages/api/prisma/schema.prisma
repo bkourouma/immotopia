@@ -632,6 +632,7 @@ model Tenant {
   secureLinks                   SecureLink[]
   gmParticipants                GMParticipant[]
   gmAttendances                 GMAttendance[]
+  gmRecordings                  GMRecording[]
   externalAccessGrants          ExternalAccessGrant[]
   externalAccessGrantProperties ExternalAccessGrantProperty[]
   externalAccessGrantEntities   ExternalAccessGrantEntity[]
@@ -4385,6 +4386,7 @@ model GeneralMeeting {
   proxies     GMProxy[]
   participants GMParticipant[]
   attendances  GMAttendance[]
+  recordings   GMRecording[]
 
   @@index([syndicateId])
   @@index([status])
@@ -4501,6 +4503,49 @@ model GMParticipant {
   @@index([tenantId])
   @@index([contactId])
   @@map("gm_participants")
+}
+
+enum GMRecordingStatus {
+  RECORDING
+  PROCESSING
+  AVAILABLE
+  FAILED
+  DELETED
+}
+
+/// Enregistrement d'une AG en visio (spec 045, R1-R10). Le fichier MP4 est rapatrie
+/// depuis le stockage S3 de LiveKit vers le stockage prive d'ImmoTopia.
+model GMRecording {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id")
+  meetingId       String            @map("meeting_id") @db.Uuid
+  egressId        String            @unique @map("egress_id")
+  status          GMRecordingStatus @default(RECORDING)
+  /// Cle S3 de l'objet produit par LiveKit.
+  storageKey      String            @map("storage_key")
+  /// Identifiant de stockage prive (/uploads/...), jamais servi en statique.
+  fileUrl         String?           @map("file_url")
+  fileSize        BigInt?           @map("file_size")
+  durationSeconds Int?              @map("duration_seconds")
+  failureReason   String?           @map("failure_reason")
+  /// Identifiant de l'evenement egress_ended traite (idempotence du webhook).
+  webhookEventId  String?           @unique @map("webhook_event_id")
+  startedAt       DateTime          @default(now()) @map("started_at")
+  startedByUserId String?           @map("started_by_user_id")
+  stoppedAt       DateTime?         @map("stopped_at")
+  stoppedByUserId String?           @map("stopped_by_user_id")
+  endedAt         DateTime?         @map("ended_at")
+  deletedAt       DateTime?         @map("deleted_at")
+  deletedByUserId String?           @map("deleted_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  meeting GeneralMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([meetingId])
+  @@map("gm_recordings")
 }
 
 /// Emargement d'un lot a une AG (spec 043). Absence de ligne = absent.

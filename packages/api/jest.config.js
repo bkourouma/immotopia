@@ -20,6 +20,8 @@ const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/unit/route-features.test.ts',
   // Régénère le catalogue de la passerelle IA depuis la pile Express réelle (npm run ai:catalog).
   '<rootDir>/__tests__/unit/ai.catalog.test.ts',
+  // Webhook LiveKit (spec 045) : verifie le corps brut sur l'app entiere.
+  '<rootDir>/__tests__/unit/livekit-webhook-app.test.ts',
   '<rootDir>/__tests__/unit/particulier-routes.test.ts',
   '<rootDir>/__tests__/unit/no-secret-in-responses.test.ts',
   '<rootDir>/__tests__/integration/isolation.test.ts',

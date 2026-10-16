@@ -295,6 +295,21 @@ const envSchema = z
     ),
     LIVEKIT_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
     LIVEKIT_API_SECRET: optionalSecretSchema,
+    // Enregistrement des AG (spec 045, R3) : stockage S3 (ou compatible) vers lequel LiveKit
+    // Egress ecrit le MP4. Bucket et cles : tous ou aucun, et la visio doit etre configuree.
+    LIVEKIT_RECORDING_S3_BUCKET: emptyAsUndefined(z.string().min(3).max(255).optional()),
+    LIVEKIT_RECORDING_S3_REGION: emptyAsUndefined(z.string().min(1).default('us-east-1')),
+    LIVEKIT_RECORDING_S3_ENDPOINT: emptyAsUndefined(
+      z
+        .string()
+        .regex(/^https?:\/\/\S+$/, 'doit commencer par http:// ou https://')
+        .optional()
+    ),
+    // Cles d'acces S3 : pas de minimum de 32 caracteres (ce ne sont pas des secrets applicatifs).
+    LIVEKIT_RECORDING_S3_ACCESS_KEY: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+    LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: z.enum(['0', '1']).default('0'),
+    LIVEKIT_RECORDING_S3_PREFIX: emptyAsUndefined(z.string().min(1).max(200).default('ag-enregistrements/')),
     META_WA_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
     // [A verifier au deploiement] : derniere version stable de l'API Graph.
     META_WA_GRAPH_VERSION: z
@@ -425,6 +440,34 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['LIVEKIT_URL'],
         message: "ws:// n'est accepté que si NODE_ENV vaut explicitement 'development' ou 'test' : utilisez wss://"
+      });
+    }
+
+    // Spec 045 (R3) : enregistrement, bucket et cles ensemble, et seulement avec la visio.
+    const recording = [
+      ['LIVEKIT_RECORDING_S3_BUCKET', value.LIVEKIT_RECORDING_S3_BUCKET],
+      ['LIVEKIT_RECORDING_S3_ACCESS_KEY', value.LIVEKIT_RECORDING_S3_ACCESS_KEY],
+      ['LIVEKIT_RECORDING_S3_SECRET', value.LIVEKIT_RECORDING_S3_SECRET]
+    ] as const;
+    if (recording.some(([, present]) => present) && !recording.every(([, present]) => present)) {
+      for (const [name, present] of recording) {
+        if (!present) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: 'LIVEKIT_RECORDING_S3_BUCKET, _ACCESS_KEY et _SECRET vont ensemble : les trois ou aucune'
+          });
+        }
+      }
+    }
+    if (
+      value.LIVEKIT_RECORDING_S3_BUCKET &&
+      !(value.LIVEKIT_URL && value.LIVEKIT_API_KEY && value.LIVEKIT_API_SECRET)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LIVEKIT_RECORDING_S3_BUCKET'],
+        message: "l'enregistrement exige la visio configurée (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"
       });
     }
 

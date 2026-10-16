@@ -144,3 +144,65 @@ describe('LIVEKIT_* (spec 045)', () => {
     expect(r.exited).toBe(true);
   });
 });
+
+describe('LIVEKIT_RECORDING_S3_* (spec 045, R3)', () => {
+  const VISIO = { LIVEKIT_URL: 'wss://x.livekit.cloud', LIVEKIT_API_KEY: 'k', LIVEKIT_API_SECRET: SECRET };
+  const S3 = {
+    LIVEKIT_RECORDING_S3_BUCKET: 'bucket-ag',
+    LIVEKIT_RECORDING_S3_ACCESS_KEY: 'AK',
+    LIVEKIT_RECORDING_S3_SECRET: 's3'
+  };
+
+  function loadRecording(vars: Record<string, string | undefined>) {
+    for (const key of Object.keys(saved).filter(k => k.startsWith('LIVEKIT_RECORDING_S3_'))) delete saved[key];
+    return loadWith({ NODE_ENV: 'production', ...vars });
+  }
+
+  it('défauts : région us-east-1, chemin virtuel (0), préfixe ag-enregistrements/', () => {
+    const r = loadRecording({ ...VISIO, ...S3 });
+    expect(r.exited).toBe(false);
+    expect(r.env).toMatchObject({
+      LIVEKIT_RECORDING_S3_REGION: 'us-east-1',
+      LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: '0',
+      LIVEKIT_RECORDING_S3_PREFIX: 'ag-enregistrements/'
+    });
+    expect(r.env?.LIVEKIT_RECORDING_S3_ENDPOINT).toBeUndefined();
+  });
+
+  it('clés S3 courtes acceptées (pas de minimum de 32 caractères), endpoint http(s) et chemin forcé', () => {
+    const r = loadRecording({
+      ...VISIO,
+      ...S3,
+      LIVEKIT_RECORDING_S3_ENDPOINT: 'http://localhost:9000',
+      LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: '1'
+    });
+    expect(r.exited).toBe(false);
+    expect(r.env?.LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE).toBe('1');
+  });
+
+  it('rien du tout : accepté (visio sans enregistrement)', () => {
+    expect(loadRecording({ ...VISIO }).exited).toBe(false);
+    expect(loadRecording({}).exited).toBe(false);
+  });
+
+  it.each([
+    ['bucket seul', { LIVEKIT_RECORDING_S3_BUCKET: 'bucket-ag' }],
+    ['clés sans bucket', { LIVEKIT_RECORDING_S3_ACCESS_KEY: 'AK', LIVEKIT_RECORDING_S3_SECRET: 's3' }],
+    ['bucket et clé sans secret', { LIVEKIT_RECORDING_S3_BUCKET: 'bucket-ag', LIVEKIT_RECORDING_S3_ACCESS_KEY: 'AK' }]
+  ])('refuse un jeu incomplet : %s', (_label, vars) => {
+    const r = loadRecording({ ...VISIO, ...vars });
+    expect(r.exited).toBe(true);
+    expect(r.errors).toContain('les trois ou aucune');
+  });
+
+  it('refuse l enregistrement sans la visio configurée', () => {
+    const r = loadRecording({ ...S3 });
+    expect(r.exited).toBe(true);
+    expect(r.errors).toContain('exige la visio');
+  });
+
+  it('refuse un endpoint qui n est pas http(s) et un FORCE_PATH_STYLE hors 0/1', () => {
+    expect(loadRecording({ ...VISIO, ...S3, LIVEKIT_RECORDING_S3_ENDPOINT: 'ftp://x' }).exited).toBe(true);
+    expect(loadRecording({ ...VISIO, ...S3, LIVEKIT_RECORDING_S3_FORCE_PATH_STYLE: 'oui' }).exited).toBe(true);
+  });
+});

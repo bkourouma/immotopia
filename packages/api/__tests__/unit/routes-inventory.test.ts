@@ -109,6 +109,12 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   },
   {
     method: 'POST',
+    test: exact('/api/webhooks/livekit'),
+    reason:
+      'Webhook LiveKit (spec 045) : signature du projet LiveKit toujours vérifiée sur le corps brut, aucune session par nature.'
+  },
+  {
+    method: 'POST',
     test: exact('/api/payment-gateway/paysecurehub/ipn'),
     reason:
       'IPN PaySecureHub (lot 7) : notification serveur-a-serveur, sans session par nature. Jamais crue sur parole : ' +

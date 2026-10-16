@@ -263,10 +263,10 @@ describe('vue publique : visio.enabled', () => {
   it('reflète la configuration LiveKit, rien d autre', async () => {
     const token = await issueToken(AWA);
     let res = await pub('/etat', { token });
-    expect(res.body.data.visio).toEqual({ enabled: true });
+    expect(res.body.data.visio).toEqual({ enabled: true, recording: false });
     mockLk.enabled = false;
     res = await pub('/etat', { token });
-    expect(res.body.data.visio).toEqual({ enabled: false });
+    expect(res.body.data.visio).toEqual({ enabled: false, recording: false });
   });
 });
 
@@ -407,10 +407,19 @@ describe('POST /public/assemblees/visio/main', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /visio (console)', () => {
-  it('visio non configurée = 409', async () => {
+  it('visio non configurée = 200 « désactivée » (la portée reste vérifiée d abord)', async () => {
     mockLk.enabled = false;
     const res = await request(app).get(url(M1, '/visio'));
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      enabled: false,
+      roomName: null,
+      roomActive: false,
+      participants: [],
+      recording: { enabled: false, active: null }
+    });
+    expect(mockLk.listRoomParticipants).not.toHaveBeenCalled();
+    expect((await request(app).get(`/api/tenants/${TENANT_A}/syndics/${S1}/assemblees/${MB}/visio`)).status).toBe(404);
   });
 
   it('rapproche les participants de CETTE AG et de CETTE agence ; mains levées en tête', async () => {

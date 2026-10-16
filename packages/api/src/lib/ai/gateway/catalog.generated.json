@@ -2861,6 +2861,28 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / enregistrements",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier",
+      "pathParams": ["syndicId", "meetingId", "recordingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / enregistrements / {recordingId} / fichier",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
@@ -6590,6 +6612,28 @@
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / enregistrement / arreter",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / visio / enregistrement / demarrer",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/jeton",

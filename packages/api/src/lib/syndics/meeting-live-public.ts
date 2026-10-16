@@ -26,6 +26,7 @@ import {
 } from './meeting-live-context';
 import { MEETING_LINK_OBJECT_TYPE } from './meeting-participants';
 import { isVisioEnabled } from '../../services/livekit-service';
+import { hasActiveRecording } from './meeting-recording';
 
 /**
  * AG en direct, cote copropriétaire, par lien personnel sans connexion
@@ -91,7 +92,7 @@ export interface LiveMeetingPublicView {
   }>;
   canVote: boolean;
   /** Visio integree (spec 045) : LiveKit est-il configure ? Rien d'autre n'est expose. */
-  visio: { enabled: boolean };
+  visio: { enabled: boolean; recording: boolean };
   serverTime: string;
 }
 
@@ -189,6 +190,8 @@ async function buildPublicView(
   const allVotes = ctx.resolutions.flatMap(resolution => resolution.votes);
   const attendance = computeMeetingAttendance(ctx.majorityLots, allVotes, ctx.attendances);
   const joined = Boolean(participant.joinedAt);
+  // Avis « cette assemblée est enregistrée » (spec 045, R2) : seulement si la visio est configurée.
+  const recordingActive = isVisioEnabled() && (await hasActiveRecording(tenantId, meeting.id));
 
   return {
     meeting: {
@@ -251,7 +254,7 @@ async function buildPublicView(
       };
     }),
     canVote: meeting.status === 'IN_PROGRESS' && myLots.length > 0 && joined,
-    visio: { enabled: isVisioEnabled() },
+    visio: { enabled: isVisioEnabled(), recording: recordingActive },
     serverTime: now.toISOString()
   };
 }

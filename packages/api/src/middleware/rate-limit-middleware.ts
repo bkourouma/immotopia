@@ -276,6 +276,22 @@ export const meetingVisioRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/**
+ * Webhook LiveKit (spec 045, R4) : 3000/min par IP, applique AVANT la lecture du corps et
+ * la verification de signature (qui reste toujours exigee). LiveKit envoie TOUS ses
+ * evenements (entrees, sorties, pistes) a cette URL depuis une seule IP : une AG de
+ * 300 participants en produit des centaines par minute, et un `egress_ended` refuse
+ * ici ne serait rattrape que par la reconciliation de la liste des enregistrements.
+ */
+export const livekitWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3000,
+  keyGenerator: req => `livekit-webhook:${req.ip ?? 'inconnue'}`,
+  message: { success: false, message: 'Trop de requêtes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /** Rejoindre et voter : 30/min par jeton. */
 export const meetingLiveActionRateLimiter = rateLimit({
   windowMs: 60 * 1000,

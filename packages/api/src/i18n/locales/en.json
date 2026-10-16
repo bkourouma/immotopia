@@ -1987,5 +1987,17 @@
   "L'assemblée est close ou annulée : la visio est fermée": "The meeting is closed or cancelled: the video call is closed",
   "Participant introuvable ou inaccessible": "Participant not found or inaccessible",
   "Utilisateur introuvable ou inaccessible": "User not found or inaccessible",
-  "Gestionnaire": "Manager"
+  "Gestionnaire": "Manager",
+  "L'enregistrement n'est pas activé": "Recording is not enabled",
+  "L'enregistrement a échoué côté visio": "The recording failed on the video side",
+  "La limite de durée de l'enregistrement a été atteinte": "The recording duration limit was reached",
+  "Aucun fichier n'a été produit par l'enregistrement": "The recording produced no file",
+  "Le fichier n'a pas pu être rapatrié : il est conservé sur le stockage de la visio": "The file could not be retrieved: it is kept on the video storage",
+  "L'enregistrement a été perdu côté visio": "The recording was lost on the video side",
+  "L'enregistrement a échoué": "The recording failed",
+  "L'assemblée n'est pas en cours : l'enregistrement est impossible": "The meeting is not in progress: recording is not possible",
+  "Un enregistrement est déjà en cours": "A recording is already in progress",
+  "Aucun enregistrement n'est en cours": "No recording is in progress",
+  "Enregistrement introuvable ou inaccessible": "Recording not found or inaccessible",
+  "Cet enregistrement ne peut pas être supprimé dans son état actuel": "This recording cannot be deleted in its current state"
 }

@@ -25,6 +25,13 @@ import {
   setVisioParticipantSpeakingHandler
 } from '../controllers/syndic-meeting-visio-controller';
 import {
+  deleteRecordingHandler,
+  listRecordingsHandler,
+  startRecordingHandler,
+  stopRecordingHandler,
+  streamRecordingHandler
+} from '../controllers/syndic-meeting-recording-controller';
+import {
   inviteCoOwnerToPortalHandler,
   revokeCoOwnerPortalAccessHandler
 } from '../controllers/syndic-coowner-portal-controller';
@@ -500,6 +507,32 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/participants/:participantId/exclure',
   requirePropertyPermission('SYNDIC_EDIT'),
   removeVisioParticipantHandler
+);
+// Spec 045 : enregistrement de l'AG (le fichier ne sort que par la route authentifiee ci-dessous).
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/demarrer',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  startRecordingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/visio/enregistrement/arreter',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  stopRecordingHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  listRecordingsHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId/fichier',
+  requireAnyPropertyPermission(['SYNDIC_VIEW']),
+  streamRecordingHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/enregistrements/:recordingId',
+  requirePropertyPermission('SYNDIC_EDIT'),
+  deleteRecordingHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',
