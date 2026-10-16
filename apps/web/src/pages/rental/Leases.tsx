@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listLeases, deleteLease, RentalLease, RentalLeaseStatus } from '../../services/rental-service';
 import { PropertyTransactionMode } from '../../types/property-types';
 import { useListParams } from '../../hooks/useListParams';
+import { collectAllPages } from '../../utils/table-export/collect';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
 import {
@@ -188,6 +189,8 @@ export const Leases: React.FC = () => {
       title: t('Bail'),
       key: 'bail',
       width: 260,
+      // Le rendu empile deux lignes sans séparateur : on l'écrit en une.
+      exportValue: bail => `${bail.lease_number} — ${nomDuBien(bail.property)}`,
       render: (_, bail) => (
         <>
           <div style={{ fontWeight: 600 }}>{bail.lease_number}</div>
@@ -214,6 +217,8 @@ export const Leases: React.FC = () => {
       title: t('Montant'),
       key: 'montant',
       align: 'end',
+      // Nombre pur : Excel peut le sommer ; la devise vit dans la liste.
+      exportValue: bail => montantDeReference(bail).montant,
       render: (_, bail) => {
         const { montant, devise } = montantDeReference(bail);
         return <MoneyValue value={montant} currency={devise} />;
@@ -307,6 +312,21 @@ export const Leases: React.FC = () => {
       </FilterSheet>
 
       <DataView<RentalLease>
+        // Export de TOUS les baux, avec les mêmes filtres que la liste affichée.
+        export={{
+          filename: t('Baux'),
+          fetchAll: () =>
+            collectAllPages<RentalLease>(async (page, limit) => {
+              const reponse = await listLeases(tenantId, {
+                search: list.filters.q || undefined,
+                status: (list.filters.status as RentalLeaseStatus) || undefined,
+                primaryRenterClientId: list.filters.primaryRenterClientId || undefined,
+                page,
+                limit
+              });
+              return { items: reponse.data ?? [], total: reponse.pagination?.total ?? 0 };
+            })
+        }}
         // Six colonnes depuis que le locataire a la sienne : elles ne tiennent
         // plus dans les ~690 px utiles au plancher du desktop.
         scrollX={1080}

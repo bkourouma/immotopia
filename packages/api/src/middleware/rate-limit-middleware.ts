@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
 import { t } from '../i18n';
 import { assertSignupAllowed } from '../services/signup-guard-service';
+import { hashToken } from '../lib/secure-links/token';
 
 /**
  * Limiteur d'inscription : 3 par heure et par IP (fenêtre glissante).
@@ -158,6 +159,22 @@ export const whatsappCloudWebhookRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook du prestataire de signature (spec 044, lot S6) : 600 requetes par
+ * minute et par IP, AVANT la lecture du corps et la verification de signature.
+ */
+export const signatureProviderWebhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  keyGenerator: req => `sig-provider:${req.ip ?? 'inconnue'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Routes publiques des liens securises (lib/secure-links) : 30 requetes par
  * minute et par IP, appliquees AVANT toute verification du jeton. La reponse
  * 429 est la meme quel que soit le jeton ; elle porte les memes en-tetes
@@ -215,6 +232,62 @@ export const secureLinkStatusRateLimiter = rateLimit({
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
   },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** 429 des routes publiques de l'AG en direct : memes en-tetes anti-cache que la route. */
+function meetingLiveTooMany(_req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+}
+
+/**
+ * Cle d'un limiteur par jeton : l'EMPREINTE du jeton lu dans le corps, jamais
+ * le jeton en clair (le magasin du limiteur et ses journaux ne le voient pas).
+ * Sans jeton exploitable, repli sur l'IP.
+ */
+export function meetingLiveTokenKey(req: Request, bucket: string): string {
+  const token = (req.body as { token?: unknown } | undefined)?.token;
+  if (typeof token === 'string' && token.length > 0 && token.length <= 256) {
+    return `meeting-live-${bucket}:${hashToken(token)}`;
+  }
+  return `meeting-live-${bucket}:ip:${req.ip ?? 'inconnue'}`;
+}
+
+/**
+ * AG en direct, routes publiques (spec 043) : 3000/min par IP (une salle
+ * derriere une seule IP : 20 requetes/min par participant), applique AVANT
+ * toute lecture du corps.
+ */
+export const meetingLiveIpRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3000,
+  keyGenerator: req => `meeting-live-ip:${req.ip ?? 'inconnue'}`,
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Interrogation de l'etat : 60/min par jeton (toutes les 3 s = 20/min, marge pour plusieurs onglets). */
+export const meetingLiveStateRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => meetingLiveTokenKey(req, 'etat'),
+  handler: meetingLiveTooMany,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Rejoindre et voter : 30/min par jeton. */
+export const meetingLiveActionRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: req => meetingLiveTokenKey(req, 'action'),
+  handler: meetingLiveTooMany,
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -334,7 +407,10 @@ export const globalApiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   // Health checks and static uploads must not consume the budget.
-  skip: req => req.path === '/health' || req.path.startsWith('/uploads/')
+  // L'AG en direct (spec 043) interroge toutes les 3 s depuis une IP souvent partagee : elle a ses
+  // propres limiteurs (600/min par IP, 60/min par jeton), le plancher global la couperait trop tot.
+  skip: req =>
+    req.path === '/health' || req.path.startsWith('/uploads/') || req.path.startsWith('/api/public/assemblees/')
 });
 
 /**
@@ -347,6 +423,22 @@ export const coOwnerPortalPdfRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 30,
   keyGenerator: req => `coowner-pdf:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * Portail copropriétaire : délivrance d'un lien personnel d'AG en direct
+ * (spec 043). Chaque appel crée un lien : 10 par minute et par compte.
+ */
+export const coOwnerMeetingAccessRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: req => `coowner-meeting-access:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
   message: {
     success: false,
     message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
@@ -620,6 +712,48 @@ export const auditIntegrityRateLimiter = rateLimit({
     code: 'RATE_LIMITED',
     message: "Trop de vérifications d'intégrité du journal en peu de temps. Réessayez dans quelques minutes."
   },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ---------------------------------------------------------------------------
+// Signature électronique publique (spec 044) : /api/public/signatures/:token
+// ---------------------------------------------------------------------------
+
+function signatureLimitHandler(_req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.status(429).json({ success: false, message: t('Trop de requêtes. Veuillez réessayer dans une minute.') });
+}
+
+/** Consultation de la page de signature et du PDF : 60 par minute et par IP, avant toute vérification du jeton. */
+export const signaturePublicRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyGenerator: req => `signature-public:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Envoi de code (coûte un message) : 10 par 15 minutes et par IP. */
+export const signatureOtpRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: req => `signature-otp:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Signature et refus (devinette du code) : 20 par 15 minutes et par IP, en plus du plafond d'essais par code. */
+export const signatureActionRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: req => `signature-action:${req.ip ?? 'inconnue'}`,
+  handler: signatureLimitHandler,
   standardHeaders: true,
   legacyHeaders: false
 });

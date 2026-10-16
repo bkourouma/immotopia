@@ -8,6 +8,7 @@
   "<p><strong>Caractéristiques :</strong> {{value}}</p>": "<p><strong>المواصفات:</strong> {{value}}</p>",
   "✓ Un email de confirmation vous a été envoyé. Cliquez sur le lien pour valider votre inscription.": "✓ أُرسل إليك بريد تأكيد. انقر على الرابط لتأكيد اشتراكك.",
   "Abonné retiré": "تمت إزالة المشترك",
+  "Abonnés": "المشتركون",
   "accepté(s),": "مقبول،",
   "Actifs": "نشطون",
   "Ajouter des contacts (recherche CRM)": "إضافة جهات اتصال (بحث في إدارة العلاقات)",

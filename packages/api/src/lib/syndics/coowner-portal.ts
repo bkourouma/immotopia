@@ -518,6 +518,12 @@ export async function getCoOwnerDocumentFile(scope: CoOwnerPortalScope, document
 // 5. Assemblées générales
 // ---------------------------------------------------------------------------
 
+/** AG planifiee ou en cours, a J-1 ou plus tard (spec 043). */
+export function isLiveAvailable(status: string, scheduledAt: Date | string, now: number = Date.now()): boolean {
+  if (status !== 'PLANNED' && status !== 'IN_PROGRESS') return false;
+  return new Date(scheduledAt).getTime() - 24 * 60 * 60 * 1000 <= now;
+}
+
 export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
   if (scope.syndicateIds.length === 0) return [];
   const syndicates = await loadSyndicates(scope);
@@ -535,6 +541,7 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
     }
   });
   if (meetings.length === 0) return [];
+  const now = Date.now();
 
   const meetingIds = meetings.map(meeting => meeting.id);
   const agendaItems = await prisma.gMAgendaItem.findMany({
@@ -590,6 +597,8 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
       scheduledAt: meeting.scheduledAt,
       location: meeting.location,
       status: meeting.status,
+      // Spec 043 : « Rejoindre l'AG en direct » des J-1 et jusqu'a la cloture.
+      liveAvailable: isLiveAvailable(meeting.status, meeting.scheduledAt, now),
       syndicate: syndicates.get(meeting.syndicateId)?.name ?? null,
       agenda: agendaItems
         .filter(item => item.meetingId === meeting.id)

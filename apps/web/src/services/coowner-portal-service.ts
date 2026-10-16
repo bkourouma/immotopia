@@ -118,6 +118,8 @@ export interface CoOwnerMeeting {
   location: string | null;
   status: CoOwnerMeetingStatus;
   syndicate: string | null;
+  /** AG planifiée ou en cours, à J-1 ou plus tard : le lien en direct peut être délivré (spec 043). */
+  liveAvailable?: boolean;
   agenda: Array<{ id: string; orderIndex: number; title: string }>;
   /** Vide tant que l'assemblée n'est pas clôturée. */
   resolutions: CoOwnerResolution[];
@@ -153,6 +155,14 @@ export async function listMyDocuments(): Promise<CoOwnerDocument[]> {
 
 export async function listMyMeetings(): Promise<CoOwnerMeeting[]> {
   const response = await apiClient.get<ApiResponse<CoOwnerMeeting[]>>(`${BASE}/assemblees`);
+  return response.data.data;
+}
+
+/** Délivre le lien personnel de l'AG en direct pour le copropriétaire connecté. */
+export async function requestLiveAccess(meetingId: string): Promise<{ url: string }> {
+  const response = await apiClient.post<ApiResponse<{ url: string }>>(
+    `${BASE}/assemblees/${encodeURIComponent(meetingId)}/acces`
+  );
   return response.data.data;
 }
 

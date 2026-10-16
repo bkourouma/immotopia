@@ -1,9 +1,10 @@
 ﻿import React from 'react';
-import { Button, Space, Table, Tag, Typography } from 'antd';
-import { FilePdfOutlined } from '@ant-design/icons';
+import { Button, Space, Tag, Typography } from 'antd';
+import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
+import { Table } from '../primitives';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
@@ -57,6 +58,7 @@ interface ChargeCallTableProps {
   onRecordPayment?: (charge: ChargeCall) => void;
   /** Callback pour l'action « Avis d'appel (PDF) » (lot S4). Optionnel, même règle que ci-dessus. */
   onDownloadNotice?: (charge: ChargeCall) => void;
+  onDownloadNoticeWord?: (charge: ChargeCall) => void;
   /**
    * Fonds de la copropriété : quand la liste est fournie, une colonne « Fonds »
    * affiche le fonds qui reçoit en entier ce qui est payé sur l'appel.
@@ -71,6 +73,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
   loading = false,
   onRecordPayment,
   onDownloadNotice,
+  onDownloadNoticeWord,
   funds,
   onAssignFund
 }) => {
@@ -92,6 +95,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Montant'),
       key: 'amount',
       align: 'end',
+      exportValue: (item: ChargeCall) => Number(item.amount),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={item.amount} />
     },
     {
@@ -112,12 +116,14 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
       title: t('Payé'),
       key: 'paid',
       align: 'end',
+      exportValue: (item: ChargeCall) => computePaidAmount(item),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={computePaidAmount(item)} />
     },
     {
       title: t('Reste'),
       key: 'outstanding',
       align: 'end',
+      exportValue: (item: ChargeCall) => computeOutstandingAmount(item),
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={computeOutstandingAmount(item)} />
     },
     {
@@ -139,7 +145,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
           }
         ]
       : []),
-    ...(onRecordPayment || onDownloadNotice || onAssignFund
+    ...(onRecordPayment || onDownloadNotice || onDownloadNoticeWord || onAssignFund
       ? [
           {
             title: t('Actions'),
@@ -156,6 +162,11 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
                     {t("Avis d'appel (PDF)")}
                   </Button>
                 ) : null}
+                {onDownloadNoticeWord ? (
+                  <Button size="small" icon={<FileWordOutlined />} onClick={() => onDownloadNoticeWord(item)}>
+                    {t("Avis d'appel (Word)")}
+                  </Button>
+                ) : null}
                 {onAssignFund ? (
                   <Button size="small" onClick={() => onAssignFund(item)}>
                     {t('Affecter à un fonds')}
@@ -170,6 +181,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({
 
   return (
     <Table
+      exportFilename={t('Appels de charges')}
       rowKey="id"
       columns={columns}
       dataSource={items}

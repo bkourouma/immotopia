@@ -146,18 +146,21 @@ export const BalanceClients: React.FC = () => {
       title: t('Facturé'),
       key: 'facture',
       align: 'end',
+      exportValue: l => l.totalBilled,
       render: (_, l) => <MoneyValue value={l.totalBilled} />
     },
     {
       title: t('Réglé'),
       key: 'regle',
       align: 'end',
+      exportValue: l => l.totalSettled,
       render: (_, l) => <MoneyValue value={l.totalSettled} />
     },
     {
       title: t('Solde'),
       key: 'solde',
       align: 'end',
+      exportValue: l => l.balance,
       render: (_, l) => <MoneyValue value={l.balance} signed />
     },
     {
@@ -245,6 +248,7 @@ export const BalanceClients: React.FC = () => {
         columns={colonnes}
         rowKey={l => l.accountId}
         aria-label={t('Balance clients')}
+        export={{ filename: t('Balance clients') }}
         renderCard={l => (
           <DataCard
             title={l.label}

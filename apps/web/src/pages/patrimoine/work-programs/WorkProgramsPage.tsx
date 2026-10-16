@@ -8,6 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useListParams } from '../../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../../components/primitives';
+import { collectAllPages } from '../../../utils/table-export/collect';
 import { t } from '../../../i18n/t';
 
 import { activeLocale } from '../../../i18n/format';
@@ -84,6 +85,10 @@ export const WorkProgramsPage: React.FC = () => {
     {
       title: t('Bien'),
       key: 'bien',
+      exportValue: programme =>
+        programme.property?.internalReference
+          ? `${programme.property.title || '—'} — ${programme.property.internalReference}`
+          : programme.property?.title || '—',
       render: (_, programme) => (
         <>
           <div style={{ fontWeight: 600 }}>{programme.property?.title || '—'}</div>
@@ -130,6 +135,19 @@ export const WorkProgramsPage: React.FC = () => {
       </FilterSheet>
 
       <DataView<WorkProgramAvecBien>
+        // Export de TOUS les programmes, avec le même filtre de statut que la liste affichée.
+        export={{
+          filename: t('Programmes de travaux'),
+          fetchAll: () =>
+            collectAllPages<WorkProgramAvecBien>(async (page, limit) => {
+              const reponse = await listTenantWorkPrograms(agence, {
+                status: list.filters.status || undefined,
+                page,
+                limit
+              });
+              return { items: reponse.items ?? [], total: reponse.total ?? 0 };
+            })
+        }}
         items={programmes}
         total={total}
         page={list.page}

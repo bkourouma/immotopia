@@ -66,7 +66,7 @@ export const finalizeInspectionHandler = asyncHandler(async (req: Request, res: 
 export const deleteInspectionHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);
   const leaseId = requireLeaseId(req);
-  await deleteInspection(tenantId, leaseId, req.params.id);
+  await deleteInspection(tenantId, leaseId, req.params.id, req.user?.userId);
   res.json({ success: true, data: null });
 });
 

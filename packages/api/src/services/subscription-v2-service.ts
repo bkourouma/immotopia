@@ -234,7 +234,8 @@ const usageProviders: Record<CapacityKeyCode, UsageProvider> = {
   CHANTIERS: countActiveSites,
   BIENS_DETENUS: countHeldProperties,
   ACTIFS: countActiveAssets,
-  PHOTOS_INVENTAIRE: countInventoryPhotosThisMonth
+  PHOTOS_INVENTAIRE: countInventoryPhotosThisMonth,
+  SIGNATURES_MENSUELLES: countSignaturesThisMonth
 };
 
 /**
@@ -258,6 +259,17 @@ export async function countInventoryPhotosThisMonth(db: Db, tenantId: string, no
     where: { tenantId, month },
     select: { used: true }
   });
+  return row?.used ?? 0;
+}
+
+/**
+ * Demandes de signature electronique du MOIS CIVIL UTC (capacite
+ * SIGNATURES_MENSUELLES, spec 044 SG-R12) : `SignatureUsage.used` du mois, 0
+ * sans ligne. Ecrit par la seule reservation atomique de lib/signature/quota.ts.
+ */
+export async function countSignaturesThisMonth(db: Db, tenantId: string, now: Date = new Date()): Promise<number> {
+  const month = now.toISOString().slice(0, 7);
+  const row = await db.signatureUsage.findFirst({ where: { tenantId, month }, select: { used: true } });
   return row?.used ?? 0;
 }
 

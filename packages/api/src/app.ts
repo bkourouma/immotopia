@@ -58,7 +58,13 @@ import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import whatsappCloudWebhookRoutes, { WHATSAPP_CLOUD_WEBHOOK_PREFIX } from './routes/whatsapp-cloud-webhook-routes';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import secureLinkPublicRoutes, { PUBLIC_SECURE_LINKS_PREFIX } from './routes/secure-link-public-routes';
+import signatureProviderWebhookRoutes, {
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
+} from './routes/signature-provider-webhook-routes';
+import signaturePublicRoutes, { PUBLIC_SIGNATURES_PREFIX } from './routes/signature-public-routes';
+import signatureRoutes from './routes/signature-routes';
 import externalAccessPublicRoutes, { PUBLIC_EXTERNAL_ACCESS_PREFIX } from './routes/external-access-public-routes';
+import meetingLivePublicRoutes, { PUBLIC_MEETING_LIVE_PREFIX } from './routes/meeting-live-public-routes';
 import externalAccessRoutes from './routes/external-access-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
@@ -78,6 +84,7 @@ import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
 import leaseInspectionRoutes from './routes/lease-inspection-routes';
+import directDebitRoutes from './routes/direct-debit-routes';
 import accountingExportsRoutes from './routes/accounting-exports-routes';
 import propertyOwnershipRoutes from './routes/property-ownership-routes';
 import cashSessionRoutes from './routes/cash-session-routes';
@@ -139,7 +146,10 @@ app.use(compressionMiddleware);
 const PUBLIC_TOKEN_PREFIXES = [
   PUBLIC_SECURE_LINKS_PREFIX,
   PUBLIC_EXTERNAL_ACCESS_PREFIX,
-  WHATSAPP_CLOUD_WEBHOOK_PREFIX
+  PUBLIC_SIGNATURES_PREFIX,
+  PUBLIC_MEETING_LIVE_PREFIX,
+  WHATSAPP_CLOUD_WEBHOOK_PREFIX,
+  PUBLIC_SIGNATURE_PROVIDER_PREFIX
 ];
 const skipSecureLinkPublic =
   (parser: express.RequestHandler): express.RequestHandler =>
@@ -247,6 +257,12 @@ app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api', secureLinkPublicRoutes);
 // Lot B3 : acces en lecture seule des tiers de confiance (meme gabarit, jeton dans le corps).
 app.use('/api', externalAccessPublicRoutes);
+// Spec 044 (S6) : webhook du prestataire de signature, corps brut, signature verifiee, etat relu chez le prestataire.
+app.use(PUBLIC_SIGNATURE_PROVIDER_PREFIX, signatureProviderWebhookRoutes);
+// Spec 044 : signature electronique, page publique du signataire (jeton dans le chemin, masque du journal).
+app.use('/api', signaturePublicRoutes);
+// Spec 043 : AG en direct par lien personnel (jeton dans le corps, JSON 4 Ko, limiteurs par IP et par jeton).
+app.use('/api', meetingLivePublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess
@@ -256,6 +272,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/platform/ai-settings', platformAiSettingsRoutes); // Réglage ImmoCopilot (super-admin)
 app.use('/api/roles', roleRoutes);
+app.use('/api/signatures', signatureRoutes); // Signature electronique, cote agence (spec 044)
 app.use('/api', personalSpaceRoutes); // Espace personnel en libre-service (lot 4B, hors tenant : authentifié seulement)
 // Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
 // d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
@@ -338,6 +355,7 @@ app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, ges
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation
 app.use('/api', leaseInspectionRoutes); // Etats des lieux d'entree et de sortie
+app.use('/api', directDebitRoutes); // Prelevement bancaire : creanciers et mandats (spec 042)
 app.use('/api', accountingExportsRoutes); // Exports comptables : journal, grand livre, balance
 app.use('/api', propertyOwnershipRoutes); // Indivision : quotes-parts des proprietaires d'un bien
 app.use('/api', cashSessionRoutes); // Caisse d'agence : sessions, comptage, validation

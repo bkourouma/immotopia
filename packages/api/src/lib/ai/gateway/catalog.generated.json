@@ -2245,6 +2245,61 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/creditors",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/creditors",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / creditors",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_VIEW"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/authorization-pdf",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/authorization-pdf",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / authorization-pdf",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / signed-scan",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "GET /api/tenants/:tenantId/rental/documents",
       "method": "GET",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -2795,6 +2850,39 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/direct",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/direct",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / direct",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/lots/:lotId/convocation.docx",
+      "pathParams": ["syndicId", "meetingId", "lotId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / lots / {lotId} / convocation.docx",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / participants",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
@@ -2845,6 +2933,28 @@
       "pathParams": ["syndicId", "chargeId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / charges / {chargeId} / avis",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/avis.docx",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/avis.docx",
+      "pathParams": ["syndicId", "chargeId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / charges / {chargeId} / avis.docx",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/liens-paiement",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/liens-paiement",
+      "pathParams": ["syndicId", "chargeId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / charges / {chargeId} / liens-paiement",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -3136,6 +3246,50 @@
       "sensitive": false
     },
     {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / configuration",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / reversements",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/solde",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/solde",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / solde",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-en-ligne",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
       "id": "GET /api/tenants/:tenantId/syndics/:syndicId/penalites",
       "method": "GET",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/penalites",
@@ -3252,6 +3406,17 @@
       "pathParams": ["syndicId", "receiptId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / quittances / {receiptId} / fichier",
+      "permissions": null,
+      "anyOfPermissions": [["SYNDIC_VIEW"]],
+      "sensitive": false
+    },
+    {
+      "id": "GET /api/tenants/:tenantId/syndics/:syndicId/quittances/:receiptId/fichier.docx",
+      "method": "GET",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/quittances/:receiptId/fichier.docx",
+      "pathParams": ["syndicId", "receiptId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / quittances / {receiptId} / fichier.docx",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_VIEW"]],
       "sensitive": false
@@ -3816,6 +3981,28 @@
       "permissions": ["PROPERTIES_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/rental/direct-debit/creditors/:creditorId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/creditors/:creditorId",
+      "pathParams": ["creditorId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / creditors / {creditorId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "PATCH /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "method": "PATCH",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId}",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
     },
     {
       "id": "PATCH /api/tenants/:tenantId/rental/documents/:documentId",
@@ -5822,6 +6009,94 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/creditors",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/creditors",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / creditors",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/iban-check",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/iban-check",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / iban-check",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates",
+      "pathParams": [],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/activate",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/activate",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / activate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/reactivate",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/reactivate",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / reactivate",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/revoke",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/revoke",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / revoke",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/signed-scan",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / signed-scan",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/suspend",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/rental/direct-debit/mandates/:mandateId/suspend",
+      "pathParams": ["mandateId"],
+      "module": "rental",
+      "summary": "rental / direct-debit / mandates / {mandateId} / suspend",
+      "permissions": ["RENTAL_DIRECT_DEBIT_MANAGE"],
+      "anyOfPermissions": null,
+      "sensitive": true
+    },
+    {
       "id": "POST /api/tenants/:tenantId/rental/documents",
       "method": "POST",
       "path": "/api/tenants/:tenantId/rental/documents",
@@ -6284,6 +6559,17 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/lien",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/participants/:contactId/lien",
+      "pathParams": ["syndicId", "meetingId", "contactId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / participants / {contactId} / lien",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs",
@@ -6295,12 +6581,45 @@
       "sensitive": false
     },
     {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences",
+      "pathParams": ["syndicId", "meetingId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / presences",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions",
       "method": "POST",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions",
       "pathParams": ["syndicId", "meetingId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / assemblees / {meetingId} / resolutions",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/clore-vote",
+      "pathParams": ["syndicId", "meetingId", "resolutionId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / resolutions / {resolutionId} / clore-vote",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/ouvrir-vote",
+      "pathParams": ["syndicId", "meetingId", "resolutionId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / resolutions / {resolutionId} / ouvrir-vote",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6367,6 +6686,17 @@
       "pathParams": ["syndicId", "chargeId"],
       "module": "syndics",
       "summary": "syndics / {syndicId} / charges / {chargeId} / echeancier",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/lien-paiement",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/lien-paiement",
+      "pathParams": ["syndicId", "chargeId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / charges / {chargeId} / lien-paiement",
       "permissions": ["SYNDIC_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
@@ -6655,6 +6985,50 @@
       "summary": "syndics / {syndicId} / lots / import-properties",
       "permissions": null,
       "anyOfPermissions": [["SYNDIC_CREATE"]],
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration/test",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / configuration / test",
+      "permissions": ["SYNDIC_EDIT", "TENANT_SETTINGS_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/reversements",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / reversements",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/trancher",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/trancher",
+      "pathParams": ["syndicId", "checkoutId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-en-ligne / {checkoutId} / trancher",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "POST /api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/verifier",
+      "method": "POST",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiements-en-ligne/:checkoutId/verifier",
+      "pathParams": ["syndicId", "checkoutId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiements-en-ligne / {checkoutId} / verifier",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
       "sensitive": false
     },
     {
@@ -7230,6 +7604,17 @@
       "sensitive": false
     },
     {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences/:lotId",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/presences/:lotId",
+      "pathParams": ["syndicId", "meetingId", "lotId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / assemblees / {meetingId} / presences / {lotId}",
+      "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
       "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/logo",
       "method": "PUT",
       "path": "/api/tenants/:tenantId/syndics/:syndicId/logo",
@@ -7237,6 +7622,17 @@
       "module": "syndics",
       "summary": "syndics / {syndicId} / logo",
       "permissions": ["SYNDIC_EDIT"],
+      "anyOfPermissions": null,
+      "sensitive": false
+    },
+    {
+      "id": "PUT /api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "method": "PUT",
+      "path": "/api/tenants/:tenantId/syndics/:syndicId/paiement-en-ligne/configuration",
+      "pathParams": ["syndicId"],
+      "module": "syndics",
+      "summary": "syndics / {syndicId} / paiement-en-ligne / configuration",
+      "permissions": ["SYNDIC_EDIT", "TENANT_SETTINGS_EDIT"],
       "anyOfPermissions": null,
       "sensitive": false
     }

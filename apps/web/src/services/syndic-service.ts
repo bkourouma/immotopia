@@ -1,5 +1,12 @@
 import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
+import type {
+  LiveMeetingAdminView,
+  MeetingParticipantView,
+  ParticipantLink,
+  SetBulkAttendanceRequest,
+  SetLotAttendanceRequest
+} from '../types/syndic-live-types';
 import {
   CreateAgendaItemRequest,
   ChargeCall,
@@ -518,6 +525,24 @@ export async function deleteMeetingAgendaItem(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/ordre-du-jour/${agendaItemId}`
   );
   return response.data.data;
+}
+
+/** Convocation Word d'un lot à l'assemblée (`GET .../assemblees/:meetingId/lots/:lotId/convocation.docx`). */
+export async function downloadMeetingConvocationWord(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  lotId: string,
+  fallbackName = 'convocation.docx'
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${encodeURIComponent(meetingId)}/lots/${encodeURIComponent(lotId)}/convocation.docx`,
+    { responseType: 'blob' }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }
 
 export async function generateMeetingMinutesDocx(tenantId: string, syndicId: string, meetingId: string): Promise<Blob> {
@@ -1254,6 +1279,112 @@ export async function assignBudgetLineFund(
   const response = await apiClient.patch<{ success: boolean; data: { id: string; fundId: string | null } }>(
     `/tenants/${tenantId}/syndics/${syndicId}/budgets/${budgetId}/lignes/${lineId}/fonds`,
     data
+  );
+  return response.data.data;
+}
+
+/* ---------------------------------------------------------------- AG en direct (spec 043) */
+
+const liveBase = (tenantId: string, syndicId: string, meetingId: string) =>
+  `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}`;
+
+/** Photographie de la séance : quorum, lots émargés, résolutions, participation. */
+export async function getLiveMeeting(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.get<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/direct`
+  );
+  return response.data.data;
+}
+
+/** Émarge un lot : présent, représenté (par un contact) ou absent. */
+export async function setLotAttendance(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  lotId: string,
+  data: SetLotAttendanceRequest
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.put<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/presences/${lotId}`,
+    data
+  );
+  return response.data.data;
+}
+
+/** Émargement en masse (500 lots au plus). */
+export async function setBulkAttendance(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  data: SetBulkAttendanceRequest
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/presences`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function openResolutionVote(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/resolutions/${resolutionId}/ouvrir-vote`
+  );
+  return response.data.data;
+}
+
+export async function closeResolutionVote(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  resolutionId: string
+): Promise<LiveMeetingAdminView> {
+  const response = await apiClient.post<{ success: boolean; data: LiveMeetingAdminView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/resolutions/${resolutionId}/clore-vote`
+  );
+  return response.data.data;
+}
+
+export async function listMeetingParticipants(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingParticipantView[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingParticipantView[] }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/participants`
+  );
+  return response.data.data;
+}
+
+/** Délivre un lien personnel (le jeton n'est remis qu'une fois, dans l'URL). */
+export async function issueParticipantLink(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  contactId: string
+): Promise<ParticipantLink> {
+  const response = await apiClient.post<{ success: boolean; data: ParticipantLink }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/participants/${contactId}/lien`
+  );
+  return response.data.data;
+}
+
+export async function revokeParticipantLinks(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  contactId: string
+): Promise<{ revoked: number }> {
+  const response = await apiClient.delete<{ success: boolean; data: { revoked: number } }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/participants/${contactId}/liens`
   );
   return response.data.data;
 }

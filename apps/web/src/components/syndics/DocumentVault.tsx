@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Button, Table, Tag, Typography } from 'antd';
+import { Button, Tag, Typography } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { Table } from '../primitives';
 import { SyndicateDocument } from '../../types/syndic-types';
 import { downloadSyndicDocument } from '../../services/syndic-service';
 import { feedback } from '../../lib/feedback';
@@ -77,6 +78,8 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
     {
       title: t('Document'),
       key: 'fileUrl',
+      // Bouton « Ouvrir » / « Télécharger » : rien à exporter.
+      exportable: false,
       render: (_: unknown, item: SyndicateDocument) =>
         isExternalUrl(item.fileUrl) ? (
           <Link href={item.fileUrl} target="_blank" rel="noopener noreferrer">
@@ -97,6 +100,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, tenantI
 
   return (
     <Table
+      exportFilename={t('Documents')}
       scroll={{ x: 'max-content' }}
       rowKey="id"
       dataSource={documents}

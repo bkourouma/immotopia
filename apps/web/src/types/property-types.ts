@@ -261,6 +261,8 @@ export interface PropertyMandate {
   isActive: boolean;
   revokedAt?: string;
   revokedByUserId?: string;
+  /** Spec 044 : date de signature électronique par toutes les parties (ISO). */
+  signedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

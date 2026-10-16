@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Descriptions, Typography, Spin, Alert, Table, Tag, Space, Card, Empty, Row, Col } from 'antd';
+import { Descriptions, Typography, Spin, Alert, Tag, Space, Card, Empty, Row, Col } from 'antd';
 import { DollarOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { Table } from '../primitives';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -302,6 +303,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
           }
         >
           <Table
+            exportFilename={t('Détail des éléments')}
             scroll={{ x: 'max-content' }}
             columns={itemsColumns}
             dataSource={installment.items}
@@ -331,6 +333,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       {installment.penalties && installment.penalties.length > 0 && (
         <Card title={t('Pénalités appliquées')}>
           <Table
+            exportFilename={t('Pénalités appliquées')}
             scroll={{ x: 'max-content' }}
             columns={[
               {
@@ -364,6 +367,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       <Card title={t('Historique des paiements')}>
         {installment.payments && installment.payments.length > 0 ? (
           <Table
+            exportFilename={t('Historique des paiements')}
             scroll={{ x: 'max-content' }}
             columns={paymentsColumns}
             dataSource={installment.payments}

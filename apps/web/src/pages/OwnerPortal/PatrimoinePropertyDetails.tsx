@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { App, Button, Card, Col, Descriptions, List, Row, Space, Statistic, Table, Typography } from 'antd';
+import { App, Button, Card, Col, Descriptions, List, Row, Space, Statistic, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -12,7 +12,7 @@ import {
   type PatrimoineValuationHistoryEntry,
   type PatrimoineWork
 } from '../../services/owner-portal-patrimoine-service';
-import { StateBlock, formatMoney } from '../../components/primitives';
+import { StateBlock, Table, formatMoney } from '../../components/primitives';
 import {
   DASH,
   deviseAffichee,
@@ -139,6 +139,7 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Valeur estimée'),
       key: 'estimatedValue',
+      exportValue: record => record.estimatedValue,
       render: (_: unknown, record) => formatMoney(record.estimatedValue, { currency: deviseAffichee(record.currency) })
     },
     { title: t('Méthode'), dataIndex: 'method', key: 'method', render: valuationMethodLabel }
@@ -149,11 +150,13 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Capital emprunté'),
       key: 'capitalAmount',
+      exportValue: record => record.capitalAmount,
       render: (_: unknown, record) => formatMoney(record.capitalAmount, { currency: deviseAffichee(record.currency) })
     },
     {
       title: t('Capital restant dû'),
       key: 'remainingCapital',
+      exportValue: record => record.remainingCapital,
       render: (_: unknown, record) =>
         formatMoney(record.remainingCapital, { currency: deviseAffichee(record.currency) })
     },
@@ -161,6 +164,7 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Mensualité'),
       key: 'monthlyPayment',
+      exportValue: record => record.monthlyPayment,
       render: (_: unknown, record) => formatMoney(record.monthlyPayment, { currency: deviseAffichee(record.currency) })
     },
     { title: t('Début'), dataIndex: 'startDate', key: 'startDate', render: formatDate },
@@ -176,6 +180,7 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Coût estimé'),
       key: 'estimatedCost',
+      exportValue: record => record.estimatedCost,
       render: (_: unknown, record) =>
         record.estimatedCost === null
           ? t('Non renseigné')
@@ -184,6 +189,7 @@ export default function PatrimoinePropertyDetails() {
     {
       title: t('Coût réel'),
       key: 'actualCost',
+      exportValue: record => record.actualCost,
       render: (_: unknown, record) =>
         record.actualCost === null
           ? t('Non renseigné')
@@ -238,6 +244,7 @@ export default function PatrimoinePropertyDetails() {
             <div style={{ marginTop: 24 }}>
               <Title level={4}>{t('Historique des valorisations')}</Title>
               <Table
+                exportFilename={t('Historique des valorisations')}
                 scroll={{ x: 'max-content' }}
                 columns={valuationColumns}
                 dataSource={valuations}
@@ -280,6 +287,7 @@ export default function PatrimoinePropertyDetails() {
         <Card title={t('Emprunts')}>
           {loans && loans.length > 0 ? (
             <Table
+              exportFilename={t('Emprunts')}
               scroll={{ x: 'max-content' }}
               columns={loanColumns}
               dataSource={loans}
@@ -296,6 +304,7 @@ export default function PatrimoinePropertyDetails() {
         <Card title={t('Travaux')}>
           {works && works.length > 0 ? (
             <Table
+              exportFilename={t('Travaux')}
               scroll={{ x: 'max-content' }}
               columns={workColumns}
               dataSource={works}

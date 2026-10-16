@@ -28,6 +28,9 @@ type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 /** Lot 041 : le numero du chef de chantier n'apparait jamais en clair dans l'audit. */
 const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
 
+/** Spec 044 : contact (e-mail, numero), IP et signature ne figurent jamais en clair dans l'audit. */
+const SIGNATURE_REDACT = ['contact', 'email', 'phone', 'phoneE164', 'ip', 'ipAddress', 'signature'];
+
 /** Visible de l'agence concernée. */
 const tenant = (category: AuditCategoryValue, extra: Extra = {}): AuditCatalogEntry => ({
   category,
@@ -133,6 +136,13 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SYNDIC_PROVIDER_INVOICE_FILE_REMOVED]: tenant('DATA'),
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_INVITED]: tenant('ADMIN'),
   [AuditActionKey.SYNDIC_COOWNER_PORTAL_REVOKED]: tenant('SECURITY', { critical: true }),
+  [AuditActionKey.SYNDIC_MEETING_JOINED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_VOTE_CAST]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_ATTENDANCE_SET]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_VOTE_OPENED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_VOTE_CLOSED]: tenant('DATA'),
+  [AuditActionKey.SYNDIC_MEETING_LINK_ISSUED]: tenant('SECURITY'),
+  [AuditActionKey.SYNDIC_MEETING_LINKS_REVOKED]: tenant('SECURITY'),
   [AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT]: tenant('DATA'),
   // Paiement mobile des copropriétaires (spec 042).
   [AuditActionKey.SYNDIC_GATEWAY_CONFIG_UPDATED]: tenant('SECURITY'),
@@ -230,6 +240,18 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.RENTAL_PENALTY_DELETED]: tenant('DATA', { critical: true }),
   [AuditActionKey.RENTAL_PENALTY_JUSTIFICATION_UPLOADED]: tenant('DATA'),
 
+  // Prélèvement bancaire (spec 042, data-model §5) : visible de l'agence ; les transitions sont critiques.
+  [AuditActionKey.DIRECT_DEBIT_CREDITOR_CREATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_CREDITOR_UPDATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_CREATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_UPDATED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_ACTIVATED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_SUSPENDED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_REACTIVATED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_REVOKED]: tenant('BILLING', { critical: true }),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_SCAN_UPLOADED]: tenant('BILLING'),
+  [AuditActionKey.DIRECT_DEBIT_MANDATE_AUTHORIZATION_DOWNLOADED]: tenant('BILLING', { critical: true }),
+
   // Contrôle du stock de chantier (spec 040, B6-R1) : visibles de l'agence.
   [AuditActionKey.STOCK_RECEIPT_RECORDED]: tenant('DATA', { critical: true }),
   [AuditActionKey.STOCK_ISSUE_RECORDED]: tenant('DATA', { critical: true }),
@@ -280,6 +302,20 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.STOCK_WHATSAPP_COUNT_CLOSED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
   [AuditActionKey.STOCK_WHATSAPP_QUOTA_REACHED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
   [AuditActionKey.STOCK_WHATSAPP_PHOTO_REMOVED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
+
+  // Signature electronique (spec 044). Critiques : ecrites DANS la transaction metier.
+  [AuditActionKey.SIGNATURE_REQUEST_SENT]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_SIGNED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_DECLINED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_SEALED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_OTP_LOCKED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_CANCELED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_EXPIRED]: tenant('DATA', { redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_REMINDER_AUTO]: tenant('DATA', { redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_QUOTA_REFUSED]: tenant('BILLING', { redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_IN_PERSON_TOKEN_ISSUED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_CHAIN_BROKEN]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_PROPERTY_STATUS_TO_REVIEW]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
 
   // Divers
   [AuditActionKey.LOT_REGISTRY_RECONCILED]: internal('SYSTEM'),

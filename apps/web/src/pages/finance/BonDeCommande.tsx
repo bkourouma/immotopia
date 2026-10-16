@@ -543,15 +543,23 @@ export const BonDeCommande: React.FC = () => {
       title: t('Quantité'),
       key: 'quantite',
       align: 'end',
+      exportValue: l => l.quantity ?? null,
       render: (_, l) => (l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale()))
     },
     {
       title: t('Prix unitaire'),
       key: 'prix-unitaire',
       align: 'end',
+      exportValue: l => l.unitPrice ?? null,
       render: (_, l) => (l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />)
     },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, l) => <MoneyValue value={l.amount} /> }
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      exportValue: l => l.amount,
+      render: (_, l) => <MoneyValue value={l.amount} />
+    }
   ];
 
   return (
@@ -658,6 +666,7 @@ export const BonDeCommande: React.FC = () => {
         columns={colonnesLignes}
         rowKey={l => l.id}
         aria-label={t('Lignes du bon de commande')}
+        export={{ filename: t('Lignes du bon') }}
         renderCard={l => (
           <DataCard
             title={l.label}

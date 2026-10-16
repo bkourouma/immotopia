@@ -1,7 +1,8 @@
 import React from 'react';
-import { Modal, Descriptions, Table, Tag, Typography, Space } from 'antd';
+import { Modal, Descriptions, Tag, Typography, Space } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { Table } from '../primitives';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -59,6 +60,12 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
     {
       title: t('Échéance'),
       key: 'installment',
+      exportValue: (record: any) => {
+        const inst = record.installment;
+        if (!inst) return '-';
+        const period = `${inst.period_month.toString().padStart(2, '0')}/${inst.period_year}`;
+        return t('Échéance {{period}}', { period: period });
+      },
       render: (record: any) => {
         const inst = record.installment;
         if (!inst) return '-';
@@ -69,6 +76,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
     {
       title: t('Propriété'),
       key: 'property',
+      exportValue: (record: any) => record.installment?.lease?.property?.address || '-',
       render: (record: any) => {
         return record.installment?.lease?.property?.address || '-';
       }
@@ -139,6 +147,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
           <div>
             <Title level={4}>{t('Allocations aux échéances')}</Title>
             <Table
+              exportFilename={t('Allocations aux échéances')}
               scroll={{ x: 'max-content' }}
               columns={allocationColumns}
               dataSource={payment.allocations}

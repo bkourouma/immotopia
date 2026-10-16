@@ -15,7 +15,6 @@ import {
   Select,
   Space,
   Steps,
-  Table,
   Tooltip,
   Typography
 } from 'antd';
@@ -41,12 +40,13 @@ import type {
   SaleMilestoneDto
 } from '../../services/sales-service';
 import { detailKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, PageHeader, StateBlock, StatusTag } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { DEPOSIT_HOLDER_LABELS, dateCourte } from './helpers';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
+import { SaleAgreementSignatures } from './SaleAgreementSignatures';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -156,6 +156,8 @@ export const SaleAgreementDetail: React.FC = () => {
   const [signOpen, setSignOpen] = useState(false);
   const [signedAt, setSignedAt] = useState<dayjs.Dayjs>(() => dayjs());
   const [signing, setSigning] = useState(false);
+  // Une demande de signature électronique ouverte : `signAgreement` l'annulerait.
+  const [signatureOpen, setSignatureOpen] = useState(false);
 
   const signer = async () => {
     if (!tenantId || !id) return;
@@ -355,6 +357,8 @@ export const SaleAgreementDetail: React.FC = () => {
     {
       title: t('Statut'),
       key: 'statut',
+      // Le menu de changement de statut n'a pas de texte : on exporte le libellé du statut.
+      exportValue: c => CONDITION_STATUS_OPTIONS.find(option => option.value === c.status)?.label ?? c.status,
       render: (_, c) =>
         peutModifier ? (
           <Select
@@ -467,9 +471,21 @@ export const SaleAgreementDetail: React.FC = () => {
 
         <Space wrap style={{ marginTop: 'var(--space-6)' }}>
           {peutSigner && (
-            <Button type="primary" onClick={() => setSignOpen(true)}>
-              {t('Signer le compromis')}
-            </Button>
+            <Tooltip
+              title={
+                signatureOpen
+                  ? t(
+                      'Une demande de signature électronique est en cours : annulez-la avant de marquer le compromis signé.'
+                    )
+                  : undefined
+              }
+            >
+              <span>
+                <Button type="primary" disabled={signatureOpen} onClick={() => setSignOpen(true)}>
+                  {t('Signer le compromis')}
+                </Button>
+              </span>
+            </Tooltip>
           )}
           {peutPasserActe && (
             <Tooltip
@@ -489,6 +505,16 @@ export const SaleAgreementDetail: React.FC = () => {
         </Space>
       </Card>
 
+      {agreement.status !== 'CANCELLED' && (
+        <SaleAgreementSignatures
+          agreementId={agreement.id}
+          number={agreement.number}
+          canSend={agreement.status === 'DRAFT'}
+          onChanged={() => void rafraichirApresMutation()}
+          onOpenChange={setSignatureOpen}
+        />
+      )}
+
       <Card
         title={t('Conditions suspensives')}
         style={{ marginBottom: 'var(--space-6)' }}
@@ -501,6 +527,7 @@ export const SaleAgreementDetail: React.FC = () => {
         }
       >
         <Table<SaleConditionDto>
+          exportFilename={t('Conditions suspensives')}
           size="small"
           dataSource={agreement.conditions}
           columns={colonnesConditions}
@@ -520,6 +547,8 @@ export const SaleAgreementDetail: React.FC = () => {
           />
         )}
         <Table<MilestoneRow>
+          // Cellules de saisie : un formulaire éditable, pas une liste à exporter.
+          exportable={false}
           size="small"
           dataSource={milestoneRows}
           rowKey={r => r.id}

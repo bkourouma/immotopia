@@ -1,4 +1,5 @@
 import { prisma } from '../utils/database';
+import { cancelOpenRequestsForTarget } from '../lib/signature/cancel';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { RentalDocumentType, RentalDocumentStatus } from '@prisma/client';
@@ -237,6 +238,18 @@ export async function updateDocumentStatus(
       }
     }
   });
+
+  // SG-R2 : un contrat qui n'est plus en vigueur annule la demande de signature en cours.
+  if (status !== RentalDocumentStatus.FINAL && document.type === 'LEASE_CONTRACT' && document.lease_id) {
+    try {
+      await cancelOpenRequestsForTarget({ tenantId, userId: actorUserId }, 'RentalLease', document.lease_id);
+    } catch (error) {
+      logger.error('Signature : annulation des demandes du bail en échec', {
+        tenantId,
+        error: error instanceof Error ? error.name : 'inconnue'
+      });
+    }
+  }
 
   logger.info('Document status updated', {
     documentId,

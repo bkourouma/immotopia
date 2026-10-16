@@ -41,6 +41,8 @@
     "exceljs": "^4.4.0",
     "framer-motion": "^12.23.26",
     "i18next": "^23.16.8",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "lucide-react": "^0.556.0",
     "prismjs": "^1.30.0",
     "react": "^18.2.0",

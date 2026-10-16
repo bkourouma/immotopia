@@ -293,7 +293,13 @@ export const Tresorerie: React.FC = () => {
         <StatusTag status={c.isActive ? 'ACTIVE' : 'INACTIVE'} tone={c.isActive ? 'success' : 'neutral'} />
       )
     },
-    { title: t('Solde'), key: 'solde', align: 'end', render: (_, c) => <MoneyValue value={c.balance} /> },
+    {
+      title: t('Solde'),
+      key: 'solde',
+      align: 'end',
+      render: (_, c) => <MoneyValue value={c.balance} />,
+      exportValue: c => c.balance
+    },
     {
       title: t('Actions'),
       key: 'actions',
@@ -329,6 +335,7 @@ export const Tresorerie: React.FC = () => {
       </div>
 
       <DataView<TreasuryAccountDto>
+        export={{ filename: t('Comptes de trésorerie') }}
         paginated={false}
         items={comptes}
         total={comptes.length}
@@ -427,7 +434,13 @@ export const Tresorerie: React.FC = () => {
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
     { title: t('De'), key: 'de', render: (_, v) => v.fromLabel },
     { title: t('Vers'), key: 'vers', render: (_, v) => v.toLabel },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, v) => <MoneyValue value={v.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, v) => <MoneyValue value={v.amount} />,
+      exportValue: v => v.amount
+    },
     { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.transferredAt) },
     {
       title: t('Statut'),
@@ -470,6 +483,7 @@ export const Tresorerie: React.FC = () => {
       </div>
 
       <DataView<TreasuryTransferDto>
+        export={{ filename: t('Virements internes') }}
         paginated={false}
         items={virements}
         total={virements.length}
@@ -567,7 +581,13 @@ export const Tresorerie: React.FC = () => {
   const colonnesVersements: ColumnsType<TaxRemittanceDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, v) => v.number },
     { title: t('Période'), key: 'periode', render: (_, v) => v.periodLabel },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, v) => <MoneyValue value={v.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      render: (_, v) => <MoneyValue value={v.amount} />,
+      exportValue: v => v.amount
+    },
     { title: t('Date'), key: 'date', render: (_, v) => dateJour(v.paidAt) },
     { title: t('Compte'), key: 'compte', render: (_, v) => v.treasuryLabel },
     {
@@ -645,6 +665,7 @@ export const Tresorerie: React.FC = () => {
           </div>
 
           <DataView<TaxRemittanceDto>
+            export={{ filename: t('Versements à la DGI') }}
             paginated={false}
             items={versements}
             total={versements.length}

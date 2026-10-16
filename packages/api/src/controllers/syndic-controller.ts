@@ -163,6 +163,8 @@ import {
   syndicateDocumentsDir
 } from '../lib/syndics/document-files';
 import { parsePagination } from '../utils/pagination-helper';
+import { logAuditEvent } from '../services/audit-service';
+import { AuditActionKey } from '../types/audit-types';
 
 export const listSyndicsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -983,8 +985,24 @@ export const castVoteHandler = asyncHandler(async (req: Request, res: Response) 
     syndicateId,
     parsed.resolutionId,
     parsed.lotId,
-    parsed.vote
+    parsed.vote,
+    { userId: req.user?.userId ?? null }
   );
+
+  // Le sens du vote n'entre pas dans l'audit (spec 043).
+  logAuditEvent({
+    actorUserId: req.user?.userId ?? null,
+    tenantId,
+    actionKey: AuditActionKey.SYNDIC_MEETING_VOTE_CAST,
+    entityType: 'GMResolution',
+    entityId: parsed.resolutionId,
+    payload: {
+      meetingId: req.params.meetingId,
+      resolutionId: parsed.resolutionId,
+      lotId: parsed.lotId,
+      source: 'MANAGER'
+    }
+  });
 
   res.json({
     success: true,

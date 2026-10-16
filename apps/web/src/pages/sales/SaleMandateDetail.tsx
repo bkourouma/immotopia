@@ -12,7 +12,6 @@ import {
   Modal,
   Radio,
   Space,
-  Table,
   Tabs,
   Typography
 } from 'antd';
@@ -34,7 +33,7 @@ import type {
   SaleOfferDto
 } from '../../services/sales-service';
 import { detailKey, STALE_TIME } from '../../lib/query-keys';
-import { MoneyValue, PageHeader, StateBlock, StatusTag } from '../../components/primitives';
+import { MoneyValue, PageHeader, StateBlock, StatusTag, Table } from '../../components/primitives';
 import { montantSaisiProps } from '../../utils/montant-saisi';
 import { BuyerContactSelect, DealSelect } from './selectors';
 import {
@@ -47,6 +46,7 @@ import {
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
+import { MandateSignatures } from '../../components/signature/MandateSignatures';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -258,11 +258,18 @@ export const SaleMandateDetail: React.FC = () => {
   const colonnesOffres: ColumnsType<SaleOfferDto> = [
     { title: t('Numéro'), key: 'numero', render: (_, o) => o.number },
     { title: t('Acquéreur'), key: 'acquereur', render: (_, o) => o.buyerName },
-    { title: t('Montant'), key: 'montant', align: 'end', render: (_, o) => <MoneyValue value={o.amount} /> },
+    {
+      title: t('Montant'),
+      key: 'montant',
+      align: 'end',
+      exportValue: o => o.amount,
+      render: (_, o) => <MoneyValue value={o.amount} />
+    },
     {
       title: t('Contre-offre'),
       key: 'contre-offre',
       align: 'end',
+      exportValue: o => o.counterAmount,
       render: (_, o) => (o.counterAmount != null ? <MoneyValue value={o.counterAmount} /> : '—')
     },
     { title: t('Financement'), key: 'financement', render: (_, o) => FINANCING_LABELS[o.financing] },
@@ -325,6 +332,7 @@ export const SaleMandateDetail: React.FC = () => {
             </Button>
           </div>
           <Table<SaleOfferDto>
+            exportFilename={t('Offres')}
             dataSource={mandate.offers}
             columns={colonnesOffres}
             rowKey={o => o.id}
@@ -365,6 +373,13 @@ export const SaleMandateDetail: React.FC = () => {
             ))}
           </Space>
         )
+    },
+    {
+      key: 'signatures',
+      label: t('Signatures'),
+      children: (
+        <MandateSignatures kind="SALE_MANDATE" mandateId={mandate.id} fileLabel={`mandat-vente-${mandate.number}`} />
+      )
     },
     {
       key: 'historique',
@@ -427,6 +442,9 @@ export const SaleMandateDetail: React.FC = () => {
                 })}
           </Descriptions.Item>
           <Descriptions.Item label={t('Négociateur')}>{mandate.agentName ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label={t('Signature')}>
+            {mandate.signedAt ? t('Signé le {{date}}', { date: dateCourte(mandate.signedAt) }) : t('Non signé')}
+          </Descriptions.Item>
           <Descriptions.Item label={t('Début')}>{dateCourte(mandate.startDate)}</Descriptions.Item>
           <Descriptions.Item label={t('Échéance')}>{dateCourte(mandate.endDate)}</Descriptions.Item>
           {mandate.notes && (
@@ -442,6 +460,7 @@ export const SaleMandateDetail: React.FC = () => {
               {t('Co-vendeurs (indivision)')}
             </Title>
             <Table
+              exportFilename={t('Co-vendeurs (indivision)')}
               size="small"
               pagination={false}
               dataSource={mandate.coSellers}

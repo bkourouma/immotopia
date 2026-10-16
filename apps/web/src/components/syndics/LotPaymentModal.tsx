@@ -1,22 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Button,
-  DatePicker,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Spin,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
+import { Alert, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Spin, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { MoneyValue } from '../primitives';
+import { MoneyValue, Table } from '../primitives';
 import {
   getLotAdvance,
   listOpenLotCharges,
@@ -232,6 +219,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       title: t('Montant affecté'),
       key: 'amount',
       align: 'end',
+      exportValue: (row: LotPaymentAllocationView) => Number(row.amount),
       render: (_: unknown, row) => <MoneyValue value={row.amount} currency={displayCurrency(preview?.currency)} />
     },
     {
@@ -312,6 +300,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           {submitError ? <Alert type="error" message={submitError} showIcon /> : null}
 
           <Table<LotPaymentAllocationView>
+            exportFilename={t('Paiement enregistré')}
             rowKey={(row, index) => `${row.chargeCallId}-${index}`}
             size="small"
             dataSource={recordedResult.allocations}
@@ -328,6 +317,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             <Text strong>{t('Documents émis')}</Text>
             {recordedResult.documents && recordedResult.documents.length > 0 ? (
               <Table<IssuedReceiptRef>
+                exportFilename={t('Documents émis')}
                 rowKey="id"
                 size="small"
                 style={{ marginTop: 4 }}
@@ -346,6 +336,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
                   },
                   {
                     title: t('Actions'),
+                    exportable: false,
                     render: (_: unknown, doc: IssuedReceiptRef) => (
                       <Button
                         size="small"
@@ -468,6 +459,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         </Paragraph>
 
         <Table<LotOpenChargeCall>
+          // Tableau de sélection des appels à couvrir : rien à exporter.
+          exportable={false}
           rowKey="id"
           size="small"
           loading={callsLoading}
@@ -497,6 +490,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           ) : preview ? (
             <>
               <Table<LotPaymentAllocationView>
+                // Aperçu avant enregistrement : pas d'export.
+                exportable={false}
                 rowKey={(row, index) => `${row.chargeCallId}-${index}`}
                 size="small"
                 dataSource={preview.allocations}
