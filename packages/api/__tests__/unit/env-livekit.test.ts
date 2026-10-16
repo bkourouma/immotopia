@@ -3,6 +3,10 @@
  * `wss://` hors développement et test, secret de 32 caractères au moins.
  * `dotenv/config` est neutralisé pour qu'aucun fichier local n'influence le résultat.
  */
+// Module, pas script global : ses constantes ne doivent pas entrer en collision avec
+// celles des autres tests d'environnement compiles dans le meme lot ts-jest (TS2451).
+export {};
+
 jest.mock('dotenv/config', () => ({}));
 
 const BASE_ENV: Record<string, string> = {
