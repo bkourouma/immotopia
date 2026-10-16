@@ -46,6 +46,7 @@ import {
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 import { SaleStatusTag } from './SaleStatusTag';
+import { MandateSignatures } from '../../components/signature/MandateSignatures';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -374,6 +375,13 @@ export const SaleMandateDetail: React.FC = () => {
         )
     },
     {
+      key: 'signatures',
+      label: t('Signatures'),
+      children: (
+        <MandateSignatures kind="SALE_MANDATE" mandateId={mandate.id} fileLabel={`mandat-vente-${mandate.number}`} />
+      )
+    },
+    {
       key: 'historique',
       label: t('Historique'),
       children: (
@@ -434,6 +442,9 @@ export const SaleMandateDetail: React.FC = () => {
                 })}
           </Descriptions.Item>
           <Descriptions.Item label={t('Négociateur')}>{mandate.agentName ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label={t('Signature')}>
+            {mandate.signedAt ? t('Signé le {{date}}', { date: dateCourte(mandate.signedAt) }) : t('Non signé')}
+          </Descriptions.Item>
           <Descriptions.Item label={t('Début')}>{dateCourte(mandate.startDate)}</Descriptions.Item>
           <Descriptions.Item label={t('Échéance')}>{dateCourte(mandate.endDate)}</Descriptions.Item>
           {mandate.notes && (

@@ -802,5 +802,9 @@
   "Voir le scan": "عرض النسخة الممسوحة",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "هل تريدون إعادة إنشائه انطلاقًا من البيانات الحالية لعقد الإيجار؟ سيتم استبدال النسخة السابقة.",
   "Vous n'avez pas l'autorisation d'effectuer cette action.": "ليست لديكم صلاحية تنفيذ هذا الإجراء.",
-  "Déclarations de paiement": "إقرارات الدفع"
+  "Déclarations de paiement": "إقرارات الدفع",
+  "Chaque signataire présent dessine sa signature ; les absents reçoivent un lien par e-mail.": "يرسم كل موقّع حاضر توقيعه بنفسه، ويتلقى الغائبون رابطًا عبر البريد الإلكتروني.",
+  "Impossible de charger les signataires de cet état des lieux": "تعذّر تحميل الموقّعين على محضر المعاينة هذا",
+  "Le locataire est présent : faites-le signer sur place, directement sur cet écran.": "المستأجر حاضر: اجعله يوقّع في المكان مباشرة على هذه الشاشة.",
+  "Signatures de l’état des lieux": "توقيعات محضر المعاينة"
 }

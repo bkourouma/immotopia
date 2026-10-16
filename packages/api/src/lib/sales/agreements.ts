@@ -23,6 +23,9 @@ import {
   updateAgreementSchema
 } from './schemas';
 import { setPropertyStatusTx } from './property-status';
+import { markAgreementSignedTx } from './agreement-sign';
+import { cancelOpenRequestsForTarget } from '../signature/cancel';
+import { logger } from '../../utils/logger';
 import { commissionDto, createCommissionForAgreementTx } from './commissions';
 import { closeOpenOffersTx } from './offers';
 import type { SaleAgreementDetailDto, SaleAgreementDto, SaleConditionDto, SaleMilestoneDto } from './types';
@@ -171,7 +174,46 @@ async function loadEditableAgreement(tenantId: string, id: string) {
   return row;
 }
 
-export async function updateAgreement(tenantId: string, agreementId: string, body: unknown): Promise<SaleAgreementDto> {
+/**
+ * SG-R2 : toute modification du compromis après l'envoi en signature annule la
+ * demande en cours (le signataire reçoit alors le 404 uniforme). Un échec ici ne
+ * défait pas la modification déjà enregistrée : `isSourceIntact` refuse de toute
+ * façon la signature d'un compromis qui a changé.
+ */
+async function invalidateSignatureRequests(
+  tenantId: string,
+  userId: string | undefined,
+  agreementId: string
+): Promise<void> {
+  try {
+    await cancelOpenRequestsForTarget({ tenantId, userId: userId ?? null }, 'SaleAgreement', agreementId);
+  } catch (error) {
+    logger.warn('Annulation des demandes de signature du compromis impossible', {
+      agreementId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+/** Un champ imprimé dans le PDF du compromis a-t-il changé ? (enregistrer sans rien changer n'annule rien) */
+function printedFieldsChanged(before: AgreementRow, after: AgreementRow): boolean {
+  const day = (value: Date | null) => (value ? value.toISOString().slice(0, 10) : null);
+  const money = (value: AgreementRow['price'] | null) => (value == null ? null : Number(value));
+  return (
+    money(before.price) !== money(after.price) ||
+    money(before.depositAmount) !== money(after.depositAmount) ||
+    before.depositHolder !== after.depositHolder ||
+    before.notaryName !== after.notaryName ||
+    day(before.expectedDeedDate) !== day(after.expectedDeedDate)
+  );
+}
+
+export async function updateAgreement(
+  tenantId: string,
+  agreementId: string,
+  body: unknown,
+  userId?: string
+): Promise<SaleAgreementDto> {
   const input = updateAgreementSchema.parse(body);
   const row = await loadEditableAgreement(tenantId, agreementId);
   if (row.status === SaleAgreementStatus.COMPLETED || row.status === SaleAgreementStatus.CANCELLED) {
@@ -188,6 +230,7 @@ export async function updateAgreement(tenantId: string, agreementId: string, bod
       expectedDeedDate: input.expectedDeedDate !== undefined ? input.expectedDeedDate : undefined
     }
   });
+  if (printedFieldsChanged(row, updated)) await invalidateSignatureRequests(tenantId, userId, row.id);
   return agreementDto(prisma, tenantId, updated);
 }
 
@@ -204,20 +247,18 @@ export async function signAgreement(
   }
 
   const updated = await prisma.$transaction(async tx => {
-    const result = await tx.saleAgreement.update({
-      where: { id: row.id, tenantId },
-      data: { status: SaleAgreementStatus.SIGNED, signedAt: input.signedAt }
-    });
-    await setPropertyStatusTx(tx, {
-      propertyId: row.propertyId,
+    const result = await markAgreementSignedTx(tx, {
       tenantId,
-      newStatus: PropertyStatus.UNDER_OFFER,
+      agreementId: row.id,
       actorUserId: userId ?? 'system',
-      notes: `Compromis ${agreementNumber(row.year, row.sequence)} signé`
+      signedAt: input.signedAt
     });
+    if (!result) throw conflict('Seul un compromis en brouillon peut être signé.');
     return result;
   });
 
+  // Signé à la main : une demande de signature électronique encore ouverte n'a plus d'objet.
+  await invalidateSignatureRequests(tenantId, userId, row.id);
   return agreementDto(prisma, tenantId, updated);
 }
 
@@ -298,8 +339,13 @@ export async function cancelAgreement(
   }
 
   const updated = await prisma.$transaction(async tx => {
-    const result = await tx.saleAgreement.update({
-      where: { id: row.id, tenantId },
+    // Transition conditionnelle : une annulation concurrente, ou un compromis conclu entre-temps, n'est pas écrasé.
+    const claimed = await tx.saleAgreement.updateMany({
+      where: {
+        id: row.id,
+        tenantId,
+        status: { in: [SaleAgreementStatus.DRAFT, SaleAgreementStatus.SIGNED] }
+      },
       data: {
         status: SaleAgreementStatus.CANCELLED,
         cancelledAt: new Date(),
@@ -307,6 +353,8 @@ export async function cancelAgreement(
         cancelledByUserId: userId ?? null
       }
     });
+    if (claimed.count !== 1) throw conflict('Seul un compromis en brouillon ou signé peut être annulé.');
+    const result = await tx.saleAgreement.findFirstOrThrow({ where: { id: row.id, tenantId } });
     await setPropertyStatusTx(tx, {
       propertyId: row.propertyId,
       tenantId,
@@ -317,6 +365,7 @@ export async function cancelAgreement(
     return result;
   });
 
+  await invalidateSignatureRequests(tenantId, userId, row.id);
   return agreementDto(prisma, tenantId, updated);
 }
 
@@ -324,7 +373,12 @@ export async function cancelAgreement(
 // Conditions suspensives
 // ---------------------------------------------------------------------------
 
-export async function addCondition(tenantId: string, agreementId: string, body: unknown): Promise<SaleConditionDto> {
+export async function addCondition(
+  tenantId: string,
+  agreementId: string,
+  body: unknown,
+  userId?: string
+): Promise<SaleConditionDto> {
   const input = conditionInputSchema.parse(body);
   const agreement = await loadEditableAgreement(tenantId, agreementId);
   if (agreement.status === SaleAgreementStatus.COMPLETED || agreement.status === SaleAgreementStatus.CANCELLED) {
@@ -340,10 +394,16 @@ export async function addCondition(tenantId: string, agreementId: string, body: 
       resolvedAt: input.status && input.status !== SaleConditionStatus.PENDING ? new Date() : null
     }
   });
+  await invalidateSignatureRequests(tenantId, userId, agreement.id);
   return conditionDto(created);
 }
 
-export async function patchCondition(tenantId: string, conditionId: string, body: unknown): Promise<SaleConditionDto> {
+export async function patchCondition(
+  tenantId: string,
+  conditionId: string,
+  body: unknown,
+  userId?: string
+): Promise<SaleConditionDto> {
   const input = conditionPatchSchema.parse(body);
   const row = await prisma.saleAgreementCondition.findFirst({ where: { id: conditionId, tenantId } });
   if (!row) throw notFound('Condition suspensive introuvable');
@@ -365,10 +425,16 @@ export async function patchCondition(tenantId: string, conditionId: string, body
       resolvedAt: statusChanged ? (input.status === SaleConditionStatus.PENDING ? null : new Date()) : undefined
     }
   });
+  // Seuls le libellé et l'échéance sont imprimés : un changement de statut seul n'invalide rien.
+  const printedChanged =
+    updated.label !== row.label ||
+    (updated.dueDate ? updated.dueDate.toISOString().slice(0, 10) : null) !==
+      (row.dueDate ? row.dueDate.toISOString().slice(0, 10) : null);
+  if (printedChanged) await invalidateSignatureRequests(tenantId, userId, row.agreementId);
   return conditionDto(updated);
 }
 
-export async function deleteCondition(tenantId: string, conditionId: string): Promise<void> {
+export async function deleteCondition(tenantId: string, conditionId: string, userId?: string): Promise<void> {
   const row = await prisma.saleAgreementCondition.findFirst({ where: { id: conditionId, tenantId } });
   if (!row) throw notFound('Condition suspensive introuvable');
   const agreement = await prisma.saleAgreement.findFirst({ where: { id: row.agreementId, tenantId } });
@@ -376,6 +442,7 @@ export async function deleteCondition(tenantId: string, conditionId: string): Pr
     throw conflict('Une condition ne se supprime que tant que le compromis est en brouillon.');
   }
   await prisma.saleAgreementCondition.delete({ where: { id: row.id, tenantId } });
+  await invalidateSignatureRequests(tenantId, userId, agreement.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -385,7 +452,8 @@ export async function deleteCondition(tenantId: string, conditionId: string): Pr
 export async function replaceMilestones(
   tenantId: string,
   agreementId: string,
-  body: unknown
+  body: unknown,
+  userId?: string
 ): Promise<SaleMilestoneDto[]> {
   const input = milestonesReplaceSchema.parse(body);
   const agreement = await loadEditableAgreement(tenantId, agreementId);
@@ -393,7 +461,18 @@ export async function replaceMilestones(
     throw conflict('Ce compromis est annulé : son échéancier ne se modifie plus.');
   }
 
+  // Ce que le PDF imprime d'un échéancier, dans l'ordre : libellé, échéance, montant (pas la date de paiement).
+  const printed = (list: Array<{ label: string; dueDate: Date | null; amount: unknown }>) =>
+    JSON.stringify(list.map(m => [m.label, m.dueDate ? m.dueDate.toISOString().slice(0, 10) : null, Number(m.amount)]));
+  let before = '';
   const rows = await prisma.$transaction(async tx => {
+    before = printed(
+      await tx.salePaymentMilestone.findMany({
+        where: { tenantId, agreementId: agreement.id },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: { label: true, dueDate: true, amount: true }
+      })
+    );
     await tx.salePaymentMilestone.deleteMany({ where: { tenantId, agreementId: agreement.id } });
     if (!input.length) return [];
     await tx.salePaymentMilestone.createMany({
@@ -413,5 +492,6 @@ export async function replaceMilestones(
     });
   });
 
+  if (printed(rows) !== before) await invalidateSignatureRequests(tenantId, userId, agreement.id);
   return rows.map(milestoneDto);
 }

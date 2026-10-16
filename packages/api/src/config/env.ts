@@ -119,6 +119,19 @@ const paymentSecretsKeySchema = z
     { message: 'doit être 32 octets encodés en base64 (`openssl rand -base64 32`)' }
   );
 
+/**
+ * Types de document signables (miroir de l'enum Prisma `SignatureDocumentKind`, gardé
+ * aligné par `__tests__/unit/env-signature-kinds.test.ts`). Liste littérale : la
+ * configuration ne dépend pas du client Prisma, que de nombreux tests simulent.
+ */
+export const SIGNATURE_DOCUMENT_KINDS = [
+  'LEASE_CONTRACT',
+  'MANAGEMENT_MANDATE',
+  'SALE_MANDATE',
+  'LEASE_INSPECTION',
+  'SALE_AGREEMENT'
+] as const;
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -296,7 +309,49 @@ const envSchema = z
     // (https://openrouter.ai/google/gemini-3.8-flash, meme date).
     STOCK_VISION_MODEL: z.string().min(1).default('gemini-3.8-flash'),
     GEMINI_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000)
+    STOCK_VISION_TIMEOUT_MS: z.coerce.number().int().min(2000).max(60000).default(20000),
+
+    // Signature electronique (spec 044, SG-R13). `disabled` par defaut : toute
+    // demande est refusee. `log` : rien ne part, seules des metadonnees sont
+    // journalisees (jamais lien, jeton ni code). `internal` : jeton + code a
+    // usage unique geres par le noyau (e-mail, WhatsApp).
+    SIGNATURE_PROVIDER: z.enum(['disabled', 'log', 'internal']).default('disabled'),
+    // Types de document dont la signature exige un prestataire qualifie (SG-R1) :
+    // liste separee par des virgules de SignatureDocumentKind. Le fournisseur
+    // `internal` (signature simple) est refuse pour ces types tant que le type
+    // n'est pas retire de la liste, apres avis juridique. Defaut : le compromis de vente.
+    // Chaque element est valide : une valeur inconnue (faute de frappe) bloque le
+    // demarrage, au lieu de laisser un type sans la protection attendue.
+    SIGNATURE_PROVIDER_REQUIRED_KINDS: z
+      .string()
+      .default('SALE_AGREEMENT')
+      .transform(value =>
+        value
+          .split(',')
+          .map(kind => kind.trim().toUpperCase())
+          .filter(Boolean)
+      )
+      .pipe(
+        z.array(
+          z.enum(SIGNATURE_DOCUMENT_KINDS, {
+            errorMap: (issue, ctx) => ({
+              message: `type de document inconnu ${JSON.stringify((issue as { received?: unknown }).received ?? ctx.data)} (valeurs : ${SIGNATURE_DOCUMENT_KINDS.join(', ')})`
+            })
+          })
+        )
+      ),
+    // Duree de validite par defaut d'une demande (et donc des jetons), en jours ; 30 au plus.
+    SIGNATURE_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+    // Code a usage unique (SG-R4) : validite, essais, renvois, delai entre deux envois.
+    SIGNATURE_OTP_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+    SIGNATURE_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+    SIGNATURE_OTP_MAX_RESENDS: z.coerce.number().int().min(0).max(10).default(3),
+    SIGNATURE_OTP_RESEND_DELAY_SECONDS: z.coerce.number().int().min(0).max(600).default(30),
+    // Quota de secours (demandes par agence et par mois) sans capacite
+    // SIGNATURES_MENSUELLES, en SUBSCRIPTION_ENFORCEMENT=warn ou off (SG-R12).
+    SIGNATURE_WARN_QUOTA: z.coerce.number().int().min(0).max(100000).default(50),
+    // Conversion DOCX -> PDF (lib/pdf-convert), necessaire au bail signable.
+    DOCX_PDF_CONVERTER: z.enum(['libreoffice', 'disabled']).default('disabled')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
@@ -452,6 +507,13 @@ function loadEnv(): Env {
     // eslint-disable-next-line no-console
     console.warn(
       `⚠️  ${perInstanceLimitersWarning({ tenantMinute: env.AI_TENANT_MINUTE_LIMIT, tenantDaily: env.AI_TENANT_DAILY_LIMIT })}`
+    );
+  }
+
+  if (!env.SIGNATURE_PROVIDER_REQUIRED_KINDS.includes('SALE_AGREEMENT')) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "⚠️  SIGNATURE_PROVIDER_REQUIRED_KINDS ne contient pas SALE_AGREEMENT : le compromis de vente peut être signé par la signature simple (sans prestataire qualifié). À ne faire qu'après avis juridique."
     );
   }
 

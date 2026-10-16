@@ -73,6 +73,12 @@ const InstallmentPaymentStatusPage = lazy(() =>
     default: m.InstallmentPaymentStatusPage
   }))
 );
+// Signature électronique (spec 044) : page publique à jeton dans le chemin, hors AppShell.
+const SignaturePage = lazy(() =>
+  import(/* webpackChunkName: "public-signature" */ './pages/public/SignaturePage').then(m => ({
+    default: m.SignaturePage
+  }))
+);
 const Dashboard = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Dashboard').then(m => ({ default: m.Dashboard }))
 );
@@ -837,6 +843,7 @@ function App() {
                         <Route path="/payer" element={<InstallmentPaymentPage />} />
                         <Route path="/payer/statut" element={<InstallmentPaymentStatusPage />} />
                         <Route path="/acces-partage" element={<ExternalAccessViewPage />} />
+                        <Route path="/signer/:token" element={<SignaturePage />} />
                         <Route path="/ag-direct" element={<MeetingLivePage />} />
                         {/* Projection de salle : session et agence exigées, mais sans coquille (plein écran). */}
                         <Route

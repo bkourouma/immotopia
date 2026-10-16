@@ -43,7 +43,8 @@ const CAPACITY_LABEL: Record<CapacityKeyCode, string> = {
   CHANTIERS: t('Chantiers'),
   BIENS_DETENUS: t('Biens détenus'),
   ACTIFS: t('Actifs'),
-  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)')
+  PHOTOS_INVENTAIRE: t('Photos d’inventaire analysées (par mois)'),
+  SIGNATURES_MENSUELLES: t('Signatures électroniques (par mois)')
 };
 
 // Fonction et non constante : un `t()` évalué à l'import resterait figé dans la langue

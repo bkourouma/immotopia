@@ -24,6 +24,8 @@ import { Documents } from './Documents';
 import { LeaseManagementTermsCard } from '../../components/rental/LeaseManagementTermsCard';
 import { LeaseLifecyclePanel } from '../../components/rental/LeaseLifecyclePanel';
 import { LeaseInspectionsPanel } from '../../components/rental/inspections/LeaseInspectionsPanel';
+import { SignaturesPanel } from '../../components/signature/SignaturesPanel';
+import type { SignerInput } from '../../types/signature-types';
 import { LeaseDirectDebitPanel } from '../../components/rental/direct-debit/LeaseDirectDebitPanel';
 import { t as translate } from '../../i18n/t';
 
@@ -215,6 +217,30 @@ export const LeaseDetailPage: React.FC = () => {
     lease.ownerClient?.user?.fullName?.trim() ||
     (lease.ownerClient?.crmContactId ? contactNameById[lease.ownerClient.crmContactId] : '') ||
     '-';
+
+  // Signataires proposés à l'envoi du bail : locataire, co-locataires (nom à saisir), bailleur.
+  const signatureSigners: SignerInput[] = [
+    {
+      role: 'LOCATAIRE',
+      fullName: renterDisplayName === '-' ? '' : renterDisplayName,
+      channel: 'EMAIL',
+      contact: lease.primaryRenter?.user?.email ?? '',
+      contactId: lease.primaryRenter?.crmContactId
+    },
+    ...(lease.coRenters ?? []).map(() => ({
+      role: 'CO_LOCATAIRE',
+      fullName: '',
+      channel: 'EMAIL' as const,
+      contact: ''
+    })),
+    {
+      role: 'BAILLEUR',
+      fullName: ownerDisplayName === '-' ? '' : ownerDisplayName,
+      channel: 'EMAIL',
+      contact: lease.ownerClient?.user?.email ?? '',
+      contactId: lease.ownerClient?.crmContactId
+    }
+  ];
 
   return (
     <>
@@ -538,6 +564,24 @@ export const LeaseDetailPage: React.FC = () => {
                       propertyFurnishingStatus={lease?.property?.furnishingStatus}
                     />
                   ) : null
+              },
+              {
+                key: 'signatures',
+                label: (
+                  <span>
+                    <EditOutlined />
+                    {translate('Signatures')}
+                  </span>
+                ),
+                children: leaseId ? (
+                  <SignaturesPanel
+                    kind="LEASE_CONTRACT"
+                    targetType="RentalLease"
+                    targetId={leaseId}
+                    defaultSigners={signatureSigners}
+                    fileLabel={`bail-${lease.lease_number}`}
+                  />
+                ) : null
               },
               {
                 key: 'direct-debit',

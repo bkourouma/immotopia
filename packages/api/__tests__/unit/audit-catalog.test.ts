@@ -73,6 +73,18 @@ describe('catalogue d’audit', () => {
     // ici, et nulle part ailleurs : la migration est figée.
     const postMigrationKeys = [
       'AUDIT_VIEWED',
+      // Spec 044 : signature électronique.
+      'SIGNATURE_REQUEST_SENT',
+      'SIGNATURE_SIGNED',
+      'SIGNATURE_DECLINED',
+      'SIGNATURE_SEALED',
+      'SIGNATURE_OTP_LOCKED',
+      'SIGNATURE_CANCELED',
+      'SIGNATURE_EXPIRED',
+      'SIGNATURE_QUOTA_REFUSED',
+      'SIGNATURE_IN_PERSON_TOKEN_ISSUED',
+      'SIGNATURE_CHAIN_BROKEN',
+      'SIGNATURE_PROPERTY_STATUS_TO_REVIEW',
       'AUDIT_EXPORTED',
       'AUDIT_SEALED',
       'AUDIT_PURGED',

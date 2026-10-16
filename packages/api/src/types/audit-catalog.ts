@@ -28,6 +28,9 @@ type Extra = Pick<AuditCatalogEntry, 'critical' | 'redact'>;
 /** Lot 041 : le numero du chef de chantier n'apparait jamais en clair dans l'audit. */
 const STOCK_WHATSAPP_REDACT = ['phone', 'phoneE164'];
 
+/** Spec 044 : contact (e-mail, numero), IP et signature ne figurent jamais en clair dans l'audit. */
+const SIGNATURE_REDACT = ['contact', 'email', 'phone', 'phoneE164', 'ip', 'ipAddress', 'signature'];
+
 /** Visible de l'agence concernée. */
 const tenant = (category: AuditCategoryValue, extra: Extra = {}): AuditCatalogEntry => ({
   category,
@@ -290,6 +293,19 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.STOCK_WHATSAPP_COUNT_CLOSED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
   [AuditActionKey.STOCK_WHATSAPP_QUOTA_REACHED]: tenant('DATA', { redact: STOCK_WHATSAPP_REDACT }),
   [AuditActionKey.STOCK_WHATSAPP_PHOTO_REMOVED]: tenant('DATA', { critical: true, redact: STOCK_WHATSAPP_REDACT }),
+
+  // Signature electronique (spec 044). Critiques : ecrites DANS la transaction metier.
+  [AuditActionKey.SIGNATURE_REQUEST_SENT]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_SIGNED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_DECLINED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_SEALED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_OTP_LOCKED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_CANCELED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_EXPIRED]: tenant('DATA', { redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_QUOTA_REFUSED]: tenant('BILLING', { redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_IN_PERSON_TOKEN_ISSUED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_CHAIN_BROKEN]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_PROPERTY_STATUS_TO_REVIEW]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
 
   // Divers
   [AuditActionKey.LOT_REGISTRY_RECONCILED]: internal('SYSTEM'),

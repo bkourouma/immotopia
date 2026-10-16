@@ -802,5 +802,9 @@
   "Voir le scan": "View the scan",
   "Voulez-vous le régénérer à partir des données actuelles du bail ? La version précédente est remplacée.": "Do you want to regenerate it from the lease's current data? The previous version will be replaced.",
   "Vous n'avez pas l'autorisation d'effectuer cette action.": "You are not allowed to perform this action.",
-  "Déclarations de paiement": "Payment declarations"
+  "Déclarations de paiement": "Payment declarations",
+  "Chaque signataire présent dessine sa signature ; les absents reçoivent un lien par e-mail.": "Each signer who is present draws their signature; absent signers receive a link by email.",
+  "Impossible de charger les signataires de cet état des lieux": "Unable to load the signers of this condition report",
+  "Le locataire est présent : faites-le signer sur place, directement sur cet écran.": "The tenant is present: have them sign on the spot, directly on this screen.",
+  "Signatures de l’état des lieux": "Condition report signatures"
 }

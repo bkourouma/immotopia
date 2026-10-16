@@ -109,6 +109,9 @@ enum CapacityKey {
   /// Lot 041 (W11). Photos analysees par l'IA dans le MOIS CIVIL UTC
   /// (consommation, pas stock). Sans facturation de depassement.
   PHOTOS_INVENTAIRE
+  /// Spec 044 (SG-R12). Demandes de signature electronique envoyees dans le
+  /// MOIS CIVIL UTC (consommation, pas stock). Sans facturation de depassement.
+  SIGNATURES_MENSUELLES
 }
 
 enum SubscriptionItemStatus {
@@ -793,6 +796,11 @@ model Tenant {
   stockWhatsappMessages          StockWhatsappMessage[]
   stockFieldCaptures             StockFieldCapture[]
   stockWhatsappUsages            StockWhatsappUsage[]
+  // Spec 044 : signature electronique.
+  signatureRequests              SignatureRequest[]
+  signatureSigners               SignatureSigner[]
+  signatureEvents                SignatureEvent[]
+  signatureUsages                SignatureUsage[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts          ChartOfAccount[]
@@ -2426,6 +2434,10 @@ model PropertyMandate {
   isActive        Boolean   @default(true) @map("is_active")
   revokedAt       DateTime? @map("revoked_at")
   revokedByUserId String?   @map("revoked_by_user_id")
+  /// Spec 044 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
+  signedAt        DateTime? @map("signed_at")
+  signatureRequestId String? @map("signature_request_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -2721,6 +2733,12 @@ model RentalLease {
   notes                    String?                @db.Text
   terms_json               Json?                  @map("terms_json")
   created_by_user_id       String                 @map("created_by_user_id")
+  /// Spec 044 : bail signe electroniquement par toutes les parties. Renseigne au
+  /// scellement ; `signature_request_id` designe la demande (SignatureRequest)
+  /// dont le PDF scelle fait foi. Sans relation Prisma : le PDF scelle n'est PAS
+  /// un RentalDocument (il vit dans uploads/signatures, jamais en statique).
+  signed_at                DateTime?              @map("signed_at")
+  signature_request_id     String?                @map("signature_request_id") @db.Uuid
   created_at               DateTime               @default(now()) @map("created_at")
   updated_at               DateTime               @updatedAt @map("updated_at")
 
@@ -8955,6 +8973,10 @@ model SaleMandate {
   revokedByUserId       String?             @map("revoked_by_user_id")
   revokeReason          String?             @map("revoke_reason") @db.Text
   notes                 String?             @db.Text
+  /// Spec 044 : mandat signe electroniquement par toutes les parties (renseigne au
+  /// scellement ; `signature_request_id` designe la SignatureRequest, sans relation).
+  signedAt              DateTime?           @map("signed_at")
+  signatureRequestId    String?             @map("signature_request_id") @db.Uuid
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
@@ -10100,6 +10122,183 @@ model WhatsappCloudEvent {
   @@index([senderHash, unknownReplySentAt])
   @@index([receivedAt])
   @@map("whatsapp_cloud_events")
+}
+
+// =============================================================
+// SIGNATURE ELECTRONIQUE (spec 044, lot S1)
+// =============================================================
+
+enum SignatureDocumentKind {
+  LEASE_CONTRACT
+  MANAGEMENT_MANDATE
+  SALE_MANDATE
+  LEASE_INSPECTION
+  SALE_AGREEMENT
+}
+
+enum SignatureRequestStatus {
+  DRAFT
+  SENT
+  PARTIALLY_SIGNED
+  COMPLETED
+  DECLINED
+  EXPIRED
+  CANCELED
+}
+
+enum SignatureSignerStatus {
+  PENDING
+  OPENED
+  SIGNED
+  DECLINED
+}
+
+enum SignatureChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  IN_PERSON
+}
+
+/// Spec 044 (SG-R2, SG-R7). Demande de signature d'UN document. `sourceHash`
+/// est le SHA-256 du PDF source fige a l'envoi ; `signedHash` celui du PDF
+/// scelle. Les deux fichiers sont PRIVES (uploads/signatures/<agence>/<demande>/),
+/// jamais servis en statique : la cle stockee est un identifiant, pas une URL.
+model SignatureRequest {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  kind             SignatureDocumentKind
+  /// Modele cible (RentalLease, ...) ; `targetId` est verifie par assertBelongsToTenant.
+  targetType       String                 @map("target_type")
+  targetId         String                 @map("target_id")
+  /// Titre affiche au signataire (ex. « Contrat de bail BAIL-2026-0012 »).
+  title            String
+  /// Langue du document et du certificat : fr | en | ar.
+  language         String                 @default("fr") @db.VarChar(2)
+  status           SignatureRequestStatus @default(DRAFT)
+  /// internal | log | nom d'un prestataire.
+  providerId       String                 @map("provider_id")
+  providerRef      String?                @map("provider_ref")
+  /// Document source dans son module (RentalDocument.id pour un bail).
+  sourceDocumentId String?                @map("source_document_id")
+  sourceFileKey    String                 @map("source_file_key")
+  sourceHash       String                 @map("source_hash") @db.Char(64)
+  /// SHA-256 du fichier DOCX source (RentalDocument.file_hash) : SG-R2, le contrat ne doit pas avoir change depuis l'envoi.
+  sourceDocHash    String?                @map("source_doc_hash") @db.Char(64)
+  signedFileKey    String?                @map("signed_file_key")
+  signedHash       String?                @map("signed_hash") @db.Char(64)
+  sequential       Boolean                @default(false)
+  expiresAt        DateTime               @map("expires_at")
+  createdByUserId  String                 @map("created_by_user_id")
+  /// Reserve du scellement : une seule instance scelle a la fois (perime apres 5 min).
+  sealingAt        DateTime?              @map("sealing_at")
+  completedAt      DateTime?              @map("completed_at")
+  canceledAt       DateTime?              @map("canceled_at")
+  lastReminderAt   DateTime?              @map("last_reminder_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  signers SignatureSigner[]
+  events  SignatureEvent[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, targetType, targetId])
+  @@index([status, expiresAt])
+  @@map("signature_requests")
+}
+
+/// Spec 044 (SG-R3, SG-R4, SG-R5). Un signataire = un jeton. Seul le SHA-256 du
+/// jeton est stocke (`tokenHash`), comme SecureLink ; le code a usage unique
+/// n'est stocke qu'en HMAC-SHA256 a cle serveur (`otpHash`). `contact` (e-mail
+/// ou numero) n'est JAMAIS renvoye en clair : masque en sortie, absent des
+/// journaux et de l'audit.
+model SignatureSigner {
+  id                String                @id @default(uuid()) @db.Uuid
+  tenantId          String                @map("tenant_id")
+  requestId         String                @map("request_id") @db.Uuid
+  /// LOCATAIRE, BAILLEUR, AGENT...
+  role              String                @db.VarChar(40)
+  position          Int
+  fullName          String                @map("full_name")
+  channel           SignatureChannel
+  contact           String
+  /// CrmContact.id facultatif : s'il est fourni, le consentement WhatsApp du CRM est exige.
+  contactId         String?               @map("contact_id")
+  status            SignatureSignerStatus @default(PENDING)
+  tokenHash         String                @unique @map("token_hash") @db.Char(64)
+  tokenExpiresAt    DateTime              @map("token_expires_at")
+  otpHash           String?               @map("otp_hash") @db.Char(64)
+  otpExpiresAt      DateTime?             @map("otp_expires_at")
+  otpAttempts       Int                   @default(0) @map("otp_attempts")
+  otpSends          Int                   @default(0) @map("otp_sends")
+  otpLastSentAt     DateTime?             @map("otp_last_sent_at")
+  /// Dernier envoi du lien : SENT | FAILED | NOT_APPLICABLE (sur place) | WAITING (tour de signature).
+  inviteStatus      String                @default("WAITING") @map("invite_status") @db.VarChar(20)
+  openedAt          DateTime?             @map("opened_at")
+  /// TYPED | DRAWN ; `signatureTyped` porte le nom saisi, `signatureImageKey` le PNG dessine (fichier prive).
+  signatureMode     String?               @map("signature_mode") @db.VarChar(10)
+  signatureTyped    String?               @map("signature_typed")
+  signatureImageKey String?               @map("signature_image_key")
+  consentTextHash   String?               @map("consent_text_hash") @db.Char(64)
+  signedAt          DateTime?             @map("signed_at")
+  /// IP : HMAC-SHA256 a cle serveur, jamais en clair. `ipTruncated` : /24 (IPv4) ou /48 (IPv6) pour le certificat.
+  ipHash            String?               @map("ip_hash") @db.Char(64)
+  ipTruncated       String?               @map("ip_truncated") @db.VarChar(64)
+  userAgent         String?               @map("user_agent") @db.VarChar(200)
+  declineReason     String?               @map("decline_reason") @db.VarChar(500)
+  /// Signature sur place : utilisateur de l'agence qui a remis le jeton (creation ou reemission), consigne a la signature.
+  inPersonIssuedBy  String?               @map("in_person_issued_by")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, requestId])
+  @@map("signature_signers")
+}
+
+/// Spec 044 (SG-R8). Piste de preuve APPEND-ONLY et chainee : `eventHash` =
+/// SHA-256 de (prevHash, seq, type, signataire, payload, date) ; `seq` est
+/// unique par demande, donc deux ajouts simultanes ne peuvent pas bifurquer la
+/// chaine. Un declencheur SQL refuse toute modification (migration).
+model SignatureEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id")
+  requestId String   @map("request_id") @db.Uuid
+  signerId  String?  @map("signer_id") @db.Uuid
+  seq       Int
+  /// CREATED, INVITE_SENT, INVITE_FAILED, OPENED, OTP_SENT, OTP_FAILED, OTP_LOCKED, SIGNED, DECLINED, SEALED, EXPIRED, CANCELED, REMINDER_SENT.
+  type      String   @db.VarChar(40)
+  payload   Json?
+  prevHash  String?  @map("prev_hash") @db.Char(64)
+  eventHash String   @map("event_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, seq])
+  @@index([tenantId, requestId])
+  @@map("signature_events")
+}
+
+/// Spec 044 (SG-R12). Consommation mensuelle (mois civil UTC `AAAA-MM`) de la
+/// capacite SIGNATURES_MENSUELLES. Ecrit par la seule reservation atomique de
+/// `lib/signature/quota.ts` (jamais lu puis reecrit) ; rendu si l'envoi echoue.
+/// CHECK `signature_usages_used_non_negative` en SQL.
+model SignatureUsage {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id")
+  month     String   @db.Char(7)
+  used      Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@map("signature_usages")
 }
 
 enum DirectDebitFileFormat {

@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { DocumentTemplate } from '@prisma/client';
 import { AppError, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { t } from '../i18n';
+import { getGeneratedDocumentsDir, getShippedTemplatesDir, getTemplatesWriteDir } from '../utils/assets-paths';
 import {
   DOCX_IMAGES_CONTEXT_KEY,
   injectDocxImages,
@@ -46,16 +47,6 @@ function sanitizeContext(context: Record<string, any>): Record<string, any> {
 }
 
 /**
- * Get project root directory
- */
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
-}
-
-/**
  * Resolve template file path
  * Tries the stored path first, then reconstructs it if needed
  */
@@ -75,15 +66,22 @@ async function resolveTemplatePath(template: DocumentTemplate): Promise<string> 
     }
   }
 
-  // Reconstruct path from stored filename
-  const projectRoot = getProjectRoot();
-  const templatesBasePath = path.join(projectRoot, 'assets', 'modeles_documents');
+  // Reconstruct path from stored filename : dossier d'ecriture (volume), puis
+  // modeles livres / ancien emplacement sous `<racine>/assets/modeles_documents`.
+  const relative = template.tenant_id
+    ? path.join('tenants', template.tenant_id, template.stored_filename)
+    : path.join('default', template.stored_filename);
+  const candidates = [path.join(getTemplatesWriteDir(), relative), path.join(getShippedTemplatesDir(), relative)];
 
-  let templatePath: string;
-  if (template.tenant_id) {
-    templatePath = path.join(templatesBasePath, 'tenants', template.tenant_id, template.stored_filename);
-  } else {
-    templatePath = path.join(templatesBasePath, 'default', template.stored_filename);
+  let templatePath = candidates[0];
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      templatePath = candidate;
+      break;
+    } catch {
+      // essayer le suivant
+    }
   }
 
   // Verify the reconstructed path exists
@@ -207,14 +205,9 @@ export async function saveGeneratedDocument(
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
 
-  // Build path: assets/generated_documents/{tenantId}/{docType}/{YYYY}/{MM}/
-  // Use same project root detection as in index.ts
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
-  const basePath = path.join(projectRoot, 'assets', 'generated_documents');
+  // Build path: <UPLOADS_DIR>/generated_documents/{tenantId}/{docType}/{YYYY}/{MM}/
+  // (ancien emplacement `assets/generated_documents` hors UPLOADS_DIR, voir utils/assets-paths.ts)
+  const basePath = getGeneratedDocumentsDir();
   const dirPath = path.join(basePath, tenantId, docType, String(year), month);
 
   // Create directory if it doesn't exist

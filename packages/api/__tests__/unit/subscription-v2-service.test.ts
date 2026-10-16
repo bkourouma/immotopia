@@ -178,6 +178,7 @@ const fake: Row = {
   asset: { count: jest.fn(async () => 0) },
   // Capacite PHOTOS_INVENTAIRE (lot 041) : `countInventoryPhotosThisMonth`, 0 sans ligne du mois.
   stockWhatsappUsage: { findFirst: jest.fn(async () => null) },
+  signatureUsage: { findFirst: jest.fn(async () => null) },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
 
@@ -701,7 +702,8 @@ describe('capacite ACTIFS (lot 4A, packs Particulier)', () => {
       'CHANTIERS',
       'COPROPRIETES',
       'LOTS',
-      'PHOTOS_INVENTAIRE'
+      'PHOTOS_INVENTAIRE',
+      'SIGNATURES_MENSUELLES'
     ]);
     expect(usage.ACTIFS).toBe(3);
   });

@@ -45,6 +45,8 @@ export interface SaleMandateDto {
   isExpired: boolean;
   revokedAt: string | null;
   revokeReason: string | null;
+  /** Spec 044 : date de signature électronique par toutes les parties (ISO), sinon null. */
+  signedAt: string | null;
   notes: string | null;
   /** Offres SUBMITTED ou COUNTERED non expirées. */
   openOffersCount: number;
