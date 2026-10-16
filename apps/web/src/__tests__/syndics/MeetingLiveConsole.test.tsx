@@ -6,6 +6,7 @@ import { MeetingLiveConsole } from '../../components/syndics/MeetingLiveConsole'
 import type {
   LiveMeetingAdminView,
   MeetingParticipantView,
+  MeetingRecordingView,
   MeetingVisioAdminView
 } from '../../types/syndic-live-types';
 import type { MeetingStatus } from '../../types/syndic-types';
@@ -23,7 +24,11 @@ const api = {
   getMeetingVisio: vi.fn(),
   issueMeetingVisioToken: vi.fn(),
   setVisioParticipantSpeaking: vi.fn(),
-  removeVisioParticipant: vi.fn()
+  removeVisioParticipant: vi.fn(),
+  getMeetingRecordings: vi.fn(),
+  startMeetingRecording: vi.fn(),
+  stopMeetingRecording: vi.fn(),
+  deleteMeetingRecording: vi.fn()
 };
 
 vi.mock('../../services/syndic-service', async () => {
@@ -42,7 +47,11 @@ vi.mock('../../services/syndic-service', async () => {
     getMeetingVisio: (...a: unknown[]) => api.getMeetingVisio(...a),
     issueMeetingVisioToken: (...a: unknown[]) => api.issueMeetingVisioToken(...a),
     setVisioParticipantSpeaking: (...a: unknown[]) => api.setVisioParticipantSpeaking(...a),
-    removeVisioParticipant: (...a: unknown[]) => api.removeVisioParticipant(...a)
+    removeVisioParticipant: (...a: unknown[]) => api.removeVisioParticipant(...a),
+    getMeetingRecordings: (...a: unknown[]) => api.getMeetingRecordings(...a),
+    startMeetingRecording: (...a: unknown[]) => api.startMeetingRecording(...a),
+    stopMeetingRecording: (...a: unknown[]) => api.stopMeetingRecording(...a),
+    deleteMeetingRecording: (...a: unknown[]) => api.deleteMeetingRecording(...a)
   };
 });
 
@@ -606,5 +615,128 @@ describe('MeetingLiveConsole : visio intégrée', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Exclure Awa Traoré' }));
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Exclure' }));
     await waitFor(() => expect(api.removeVisioParticipant).toHaveBeenCalledWith('t1', 's1', 'm1', 'p1', false));
+  });
+});
+
+const recording = (overrides: Partial<MeetingRecordingView> = {}): MeetingRecordingView => ({
+  id: 'rec1',
+  status: 'AVAILABLE',
+  startedAt: '2026-10-20T10:00:00.000Z',
+  stoppedAt: '2026-10-20T11:00:00.000Z',
+  endedAt: '2026-10-20T11:00:05.000Z',
+  durationSeconds: 3725,
+  fileSize: 52428800,
+  failureReason: null,
+  startedByName: 'Syndic Dupont',
+  ...overrides
+});
+
+const withRecording = (active: MeetingRecordingView | null, enabled = true) =>
+  visioView({ recording: { enabled, active } });
+
+describe('MeetingLiveConsole : enregistrement', () => {
+  beforeEach(() => {
+    api.getMeetingRecordings.mockResolvedValue([]);
+  });
+
+  it('ne montre rien quand l enregistrement n est pas configuré', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null, false));
+    mount();
+    await screen.findByText('Visio intégrée');
+    expect(screen.queryByRole('button', { name: 'Enregistrer la séance' })).toBeNull();
+    expect(screen.queryByText('Enregistrements')).toBeNull();
+    expect(api.getMeetingRecordings).not.toHaveBeenCalled();
+  });
+
+  it('démarre l enregistrement quand l AG est en cours', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.startMeetingRecording.mockResolvedValue(recording({ status: 'RECORDING' }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Enregistrer la séance' }));
+    await waitFor(() => expect(api.startMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1'));
+  });
+
+  it('ne permet pas de démarrer avant l ouverture de la séance', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    mount('PLANNED');
+    const button = await screen.findByRole('button', { name: 'Enregistrer la séance' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('montre le voyant et arrête l enregistrement en cours', async () => {
+    const active = recording({
+      status: 'RECORDING',
+      stoppedAt: null,
+      endedAt: null,
+      durationSeconds: null,
+      fileSize: null
+    });
+    api.getMeetingVisio.mockResolvedValue(withRecording(active));
+    api.getMeetingRecordings.mockResolvedValue([active]);
+    api.stopMeetingRecording.mockResolvedValue({ ...active, status: 'PROCESSING' });
+    mount();
+    expect(await screen.findByText('Enregistrement en cours')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Enregistrer la séance' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: "Arrêter l'enregistrement" }));
+    await waitFor(() => expect(api.stopMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1'));
+  });
+
+  it('liste les enregistrements avec statut, durée et taille lisibles', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([
+      recording(),
+      recording({
+        id: 'rec2',
+        status: 'FAILED',
+        failureReason: 'Stockage indisponible',
+        durationSeconds: null,
+        fileSize: null
+      }),
+      recording({ id: 'rec3', status: 'PROCESSING', durationSeconds: null, fileSize: null }),
+      recording({ id: 'rec4', status: 'DELETED' })
+    ]);
+    mount();
+    expect(await screen.findByText('Stockage indisponible')).toBeTruthy();
+    const card = screen.getByText('Enregistrements').closest('.ant-card') as HTMLElement;
+    const rows = Array.from(card.querySelectorAll('tbody tr.ant-table-row')).map(row => row.textContent ?? '');
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toContain('Disponible');
+    expect(rows[0]).toContain('1 h 02 min 05 s');
+    expect(rows[0]).toContain('50 Mo');
+    expect(rows[1]).toContain('Échec');
+    expect(rows[2]).toContain('En traitement');
+    expect(rows[3]).toContain('Supprimé');
+  });
+
+  it('lit l enregistrement dans une modale avec l URL authentifiée du flux et propose le téléchargement', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording()]);
+    mount();
+    const download = (await screen.findByRole('link', { name: /Télécharger l'enregistrement/ })) as HTMLAnchorElement;
+    expect(download.getAttribute('href')).toMatch(
+      /\/tenants\/t1\/syndics\/s1\/assemblees\/m1\/enregistrements\/rec1\/fichier\?telecharger=1$/
+    );
+    expect(download.hasAttribute('download')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lire' }));
+    const dialog = await screen.findByRole('dialog');
+    const video = dialog.querySelector('video') as HTMLVideoElement;
+    expect(video.getAttribute('src')).toMatch(
+      /\/tenants\/t1\/syndics\/s1\/assemblees\/m1\/enregistrements\/rec1\/fichier$/
+    );
+    expect(video.hasAttribute('controls')).toBe(true);
+    expect(video.getAttribute('preload')).toBe('metadata');
+  });
+
+  it('supprime après confirmation', async () => {
+    api.getMeetingVisio.mockResolvedValue(withRecording(null));
+    api.getMeetingRecordings.mockResolvedValue([recording()]);
+    api.deleteMeetingRecording.mockResolvedValue(recording({ status: 'DELETED' }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Supprimer l'enregistrement du/ }));
+    expect(api.deleteMeetingRecording).not.toHaveBeenCalled();
+    const confirm = (await screen.findAllByRole('button', { name: 'Supprimer' })).pop() as HTMLElement;
+    fireEvent.click(confirm);
+    await waitFor(() => expect(api.deleteMeetingRecording).toHaveBeenCalledWith('t1', 's1', 'm1', 'rec1'));
   });
 });

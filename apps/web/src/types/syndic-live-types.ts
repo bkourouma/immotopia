@@ -180,7 +180,7 @@ export interface LiveMeetingPublicView {
   }>;
   canVote: boolean;
   /** Visio intégrée (spec 045). Une réponse sans ce champ vaut `enabled: false`. */
-  visio?: { enabled: boolean };
+  visio?: { enabled: boolean; /** Une séance est enregistrée en ce moment (avis R2). */ recording?: boolean };
   serverTime: string;
 }
 
@@ -210,9 +210,25 @@ export interface MeetingVisioParticipant {
   joinedAt: string | null;
 }
 
+export type MeetingRecordingStatus = 'RECORDING' | 'PROCESSING' | 'AVAILABLE' | 'FAILED' | 'DELETED';
+
+export interface MeetingRecordingView {
+  id: string;
+  status: MeetingRecordingStatus;
+  startedAt: string;
+  stoppedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  fileSize: number | null;
+  failureReason: string | null;
+  startedByName: string | null;
+}
+
 export interface MeetingVisioAdminView {
   enabled: boolean;
   roomName: string | null;
   roomActive: boolean;
   participants: MeetingVisioParticipant[];
+  /** Absent d'une API plus ancienne : traité comme « enregistrement non configuré ». */
+  recording?: { enabled: boolean; active: MeetingRecordingView | null };
 }

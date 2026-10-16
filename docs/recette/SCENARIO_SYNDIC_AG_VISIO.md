@@ -1,17 +1,41 @@
 # Recette — Visio intégrée à l'AG en direct (spec 045)
 
 Instance de démo figée : web http://localhost:3300, API http://localhost:8800.
-Base de démo dédiée uniquement. Serveur LiveKit **local** en mode
-développement (Docker, aucune dépense) :
+Base de démo dédiée uniquement.
+
+## Pile locale gratuite (Docker Desktop sous Windows)
+
+LiveKit, Redis, un stockage compatible S3 et l'Egress partagent **un seul
+espace réseau** : tout s'y adresse en `localhost`, ce qui donne les mêmes
+adresses au navigateur de l'hôte, à l'API (sur l'hôte) et à l'Egress. Les
+images MinIO ne sont plus publiées librement : SeaweedFS (S3 compatible)
+les remplace.
 
 ```bash
-docker run -d --name immotopia-livekit-dev -p 7880:7880 -p 7881:7881 -p 7882:7882/udp -e LIVEKIT_KEYS="devkey: <secret aléatoire de 32 caractères ou plus>" livekit/livekit-server:v1.9.1 --dev --bind 0.0.0.0 --node-ip 127.0.0.1
+# Propriétaire de l'espace réseau (publie tous les ports) : Redis
+docker run -d --name immotopia-visio-net -p 7880:7880 -p 7881:7881 -p 7882:7882/udp -p 8333:8333 --add-host host.docker.internal:host-gateway redis:7-alpine
+docker run -d --name immotopia-livekit-dev --network container:immotopia-visio-net -v <dossier de config>:/etc/visio livekit/livekit-server:v1.9.1 --config /etc/visio/livekit.yaml
+docker run -d --name immotopia-visio-s3 --network container:immotopia-visio-net -v <dossier de config>:/etc/visio chrislusf/seaweedfs server -s3 -s3.port=8333 -s3.config=/etc/visio/s3.json -dir=/data -ip=localhost -ip.bind=0.0.0.0
+docker run -d --name immotopia-visio-egress --network container:immotopia-visio-net --cap-add SYS_ADMIN --shm-size=1g -e EGRESS_CONFIG_FILE=/etc/visio/egress.yaml -v <dossier de config>:/etc/visio livekit/egress
 ```
 
+`livekit.yaml` : `rtc` avec `tcp_port: 7881`, `udp_port: 7882`,
+`use_external_ip: false` et **`enable_loopback_candidate: true` sans
+`node_ip`** (avec `node_ip: 127.0.0.1`, le Chrome de l'Egress refuse le
+candidat de boucle locale et l'enregistrement échoue en « Start signal not
+received ») ; `redis.address: localhost:6379` ; `keys` avec la clé de
+développement ; `webhook.api_key` et
+`webhook.urls: [http://host.docker.internal:8800/api/webhooks/livekit]`.
+`egress.yaml` : mêmes clés, `ws_url: ws://localhost:7880`,
+`redis.address: localhost:6379`, `insecure: true`. `s3.json` : une identité
+SeaweedFS avec sa clé d'accès. Le bucket se crée par l'API S3
+(`CreateBucket`).
+
 L'API de démo est lancée avec `LIVEKIT_URL=ws://localhost:7880`,
-`LIVEKIT_API_KEY=devkey` et le même secret, passés en variables du
-processus (jamais écrits dans un `.env`). Sans ces variables, le scénario
-V0 s'applique.
+`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` et les `LIVEKIT_RECORDING_S3_*`
+(endpoint `http://localhost:8333`, `FORCE_PATH_STYLE=1`), passés en
+variables du processus, jamais écrits dans un `.env` ni dans ce dépôt.
+Sans ces variables, le scénario V0 s'applique.
 
 Comptes : agence « Horizon Syndic Gestion » (`SCENARIO_SYNDIC_MODULES_V2.md`
 § 1.1), copropriété « Résidence Les Flamboyants », AG de recette de
@@ -84,6 +108,28 @@ ni voter (lien invalide).
 
 E3. Jeton visio gestionnaire demandé pour une AG d'une autre agence :
 404.
+
+## Enregistrement
+
+R1. Gestionnaire, AG en cours, visio ouverte : « Enregistrer la séance ».
+Attendu : voyant « Enregistrement en cours » dans la console ; chez A,
+bandeau « Cette assemblée est enregistrée. » dans la salle et avis sur la
+page ; un copropriétaire B qui ouvre son lien voit l'avis AVANT d'entrer en
+visio.
+
+R2. Laisser tourner 20 s avec la caméra du gestionnaire, puis « Arrêter
+l'enregistrement ». Attendu : le bandeau disparaît ; la carte
+« Enregistrements » passe « En traitement » puis « Disponible » (webhook
+`egress_ended`, rapatriement), avec durée et taille.
+
+R3. « Lire » : la vidéo démarre dans la modale (requêtes `Range`, réponses
+206). « Télécharger » : un fichier `.mp4` est obtenu.
+
+R4. L'adresse `/uploads/…/enregistrements/…` ouverte directement : 404.
+L'URL de lecture appelée sans session : 401. Un second envoi du même
+webhook : sans effet. Un webhook à signature fausse : 401.
+
+R5. « Supprimer » (confirmation) : statut « Supprimé », lecture impossible.
 
 ## Clôture
 

@@ -2,8 +2,11 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { App, Alert, Button, Card, Col, Input, Modal, Progress, Row, Space, Statistic, Typography } from 'antd';
 import {
   closeResolutionVote,
+  deleteMeetingRecording,
   getLiveMeeting,
+  getMeetingRecordings,
   getMeetingVisio,
+  meetingRecordingFileUrl,
   issueMeetingVisioToken,
   issueParticipantLink,
   listMeetingParticipants,
@@ -13,12 +16,15 @@ import {
   setBulkAttendance,
   setLotAttendance,
   setVisioParticipantSpeaking,
+  startMeetingRecording,
+  stopMeetingRecording,
   updateMeeting
 } from '../../services/syndic-service';
 import { isSafeVideoUrl } from '../../services/public-meeting-live-service';
 import type {
   LiveMeetingAdminView,
   MeetingParticipantView,
+  MeetingRecordingView,
   MeetingVisioAdminView,
   MeetingVisioParticipant,
   VisioJoinInfo
@@ -29,6 +35,7 @@ import { LiveLotsTable, type ContactOption, type LotAttendanceChange } from './l
 import { LiveParticipantsTable } from './live/LiveParticipantsTable';
 import { LiveResolutionsPanel } from './live/LiveResolutionsPanel';
 import { MeetingVisioCard } from './visio/MeetingVisioCard';
+import { MeetingRecordingsCard } from './visio/MeetingRecordingsCard';
 import { clampPercent } from './live/live-labels';
 import { t } from '../../i18n/t';
 
@@ -70,6 +77,7 @@ function liveSignature(view: LiveMeetingAdminView): string {
 }
 
 const CLIPBOARD_TIMEOUT_MS = 2000;
+const RECORDING_POLL_INTERVAL_MS = 5000;
 
 /** Copie dans le presse-papiers ; faux si indisponible, refusé ou sans réponse (jamais de journal du texte). */
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -170,6 +178,9 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const [visio, setVisio] = useState<MeetingVisioAdminView | null>(null);
   const [visioRoomOpen, setVisioRoomOpen] = useState(false);
   const [busyVisioId, setBusyVisioId] = useState<string | null>(null);
+  const [recordings, setRecordings] = useState<MeetingRecordingView[]>([]);
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const [busyRecordingId, setBusyRecordingId] = useState<string | null>(null);
 
   const frozen = meetingStatus === 'COMPLETED' || meetingStatus === 'CANCELLED';
   const inProgress = meetingStatus === 'IN_PROGRESS';
@@ -204,7 +215,10 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   // Visio intégrée (spec 045) : 409 = non configurée, on n'interroge plus et rien ne s'affiche.
   const loadVisio = useCallback(async (): Promise<number | false | void> => {
     try {
-      setVisio(await getMeetingVisio(tenantId, syndicId, meetingId));
+      const view = await getMeetingVisio(tenantId, syndicId, meetingId);
+      setVisio(view);
+      // Visio non configurée (200 `enabled: false`) : rien à surveiller.
+      if (!view.enabled) return false;
     } catch (err) {
       if ((err as { response?: { status?: number } })?.response?.status === 409) {
         setVisio(null);
@@ -218,6 +232,59 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
   const { refresh: refreshVisio } = useVisiblePolling(loadVisio, { resetKey: meetingStatus });
 
   const visioEnabled = visio?.enabled === true;
+  const recordingEnabled = visioEnabled && visio?.recording?.enabled === true;
+
+  // Enregistrements (spec 045, R6) : toutes les 5 s tant que l'un d'eux est en cours ou en traitement.
+  const loadRecordings = useCallback(async (): Promise<number | false | void> => {
+    try {
+      const list = await getMeetingRecordings(tenantId, syndicId, meetingId);
+      setRecordings(list);
+      return list.some(item => item.status === 'RECORDING' || item.status === 'PROCESSING')
+        ? RECORDING_POLL_INTERVAL_MS
+        : false;
+    } catch {
+      // Échec passager (ou droit manquant) : on garde la liste et on réessaie plus tard.
+      return RECORDING_POLL_INTERVAL_MS * 2;
+    }
+  }, [tenantId, syndicId, meetingId]);
+
+  const { refresh: refreshRecordings } = useVisiblePolling(loadRecordings, {
+    enabled: recordingEnabled,
+    resetKey: meetingStatus
+  });
+
+  const handleRecordingToggle = async (start: boolean) => {
+    setRecordingBusy(true);
+    try {
+      const call = start ? startMeetingRecording : stopMeetingRecording;
+      await call(tenantId, syndicId, meetingId);
+      message.success(start ? t('Enregistrement démarré') : t('Enregistrement arrêté'));
+    } catch (err) {
+      message.error(
+        errorText(
+          err,
+          start ? t("Impossible de démarrer l'enregistrement") : t("Impossible d'arrêter l'enregistrement")
+        )
+      );
+    } finally {
+      setRecordingBusy(false);
+      refreshVisio();
+      refreshRecordings();
+    }
+  };
+
+  const handleRecordingDelete = async (recording: MeetingRecordingView) => {
+    setBusyRecordingId(recording.id);
+    try {
+      await deleteMeetingRecording(tenantId, syndicId, meetingId, recording.id);
+      message.success(t('Enregistrement supprimé'));
+    } catch (err) {
+      message.error(errorText(err, t("Suppression de l'enregistrement impossible")));
+    } finally {
+      setBusyRecordingId(null);
+      refreshRecordings();
+    }
+  };
   const inVisioContactIds = useMemo(
     () =>
       new Set(
@@ -435,6 +502,21 @@ export const MeetingLiveConsole: React.FC<MeetingLiveConsoleProps> = ({
           busyParticipantId={busyVisioId}
           onSpeak={(participant, allowed) => void handleVisioSpeak(participant, allowed)}
           onRemove={handleVisioRemove}
+          inProgress={inProgress}
+          recordingBusy={recordingBusy}
+          onStartRecording={() => void handleRecordingToggle(true)}
+          onStopRecording={() => void handleRecordingToggle(false)}
+        />
+      ) : null}
+
+      {recordingEnabled ? (
+        <MeetingRecordingsCard
+          recordings={recordings}
+          fileUrl={(recordingId, download) =>
+            meetingRecordingFileUrl(tenantId, syndicId, meetingId, recordingId, download)
+          }
+          busyRecordingId={busyRecordingId}
+          onDelete={recording => void handleRecordingDelete(recording)}
         />
       ) : null}
 

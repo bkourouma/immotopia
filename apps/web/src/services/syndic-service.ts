@@ -1,8 +1,10 @@
 import apiClient from '../utils/api-client';
 import { filenameFromDisposition } from '../utils/save-blob';
+import { API_URL } from '../config/api';
 import type {
   LiveMeetingAdminView,
   MeetingParticipantView,
+  MeetingRecordingView,
   MeetingVisioAdminView,
   ParticipantLink,
   SetBulkAttendanceRequest,
@@ -1445,4 +1447,70 @@ export async function removeVisioParticipant(
     data: MeetingVisioAdminView & { revokedLinks: number };
   }>(`${liveBase(tenantId, syndicId, meetingId)}/visio/participants/${participantId}/exclure`, { revokeLinks });
   return response.data.data;
+}
+
+/* ---------------------------------------------------------------- enregistrement (spec 045, R1-R10) */
+
+/** Démarre l'enregistrement de la séance (un seul actif par AG). */
+export async function startMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/enregistrement/demarrer`
+  );
+  return response.data.data;
+}
+
+/** Arrête l'enregistrement en cours ; le fichier est ensuite traité côté serveur. */
+export async function stopMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/visio/enregistrement/arreter`
+  );
+  return response.data.data;
+}
+
+/** Enregistrements de l'AG, le plus récent d'abord. */
+export async function getMeetingRecordings(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingRecordingView[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingRecordingView[] }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements`
+  );
+  return response.data.data;
+}
+
+/** Efface le fichier ; la ligne reste en `DELETED` (trace). */
+export async function deleteMeetingRecording(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string
+): Promise<MeetingRecordingView> {
+  const response = await apiClient.delete<{ success: boolean; data: MeetingRecordingView }>(
+    `${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}`
+  );
+  return response.data.data;
+}
+
+/**
+ * URL du flux vidéo (lecteur) ou du téléchargement. La route est authentifiée par
+ * le cookie de session : jamais de jeton dans l'adresse, jamais de chemin disque.
+ */
+export function meetingRecordingFileUrl(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  recordingId: string,
+  download = false
+): string {
+  const base = `${API_URL}${liveBase(tenantId, syndicId, meetingId)}/enregistrements/${recordingId}/fichier`;
+  return download ? `${base}?telecharger=1` : base;
 }

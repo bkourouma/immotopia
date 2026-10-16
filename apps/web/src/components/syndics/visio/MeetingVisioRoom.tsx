@@ -8,6 +8,7 @@ import {
   ParticipantTile,
   RoomAudioRenderer,
   useDataChannel,
+  useIsRecording,
   useLocalParticipant,
   useLocalParticipantPermissions,
   useParticipantAttribute,
@@ -184,6 +185,8 @@ const RoomShell: React.FC<RoomShellProps> = ({
   const room = useRoomContext();
   const permissions = useLocalParticipantPermissions();
   const canPublish = Boolean(permissions?.canPublish);
+  // État tenu par LiveKit : l'avis suit l'enregistrement réel, pour le modérateur comme pour le participant.
+  const recording = useIsRecording();
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -227,6 +230,8 @@ const RoomShell: React.FC<RoomShellProps> = ({
           {t('Quitter la visio')}
         </Button>
       </div>
+
+      {recording ? <Alert type="warning" showIcon banner message={t('Cette assemblée est enregistrée.')} /> : null}
 
       {deviceError ? (
         <Alert type="warning" showIcon closable onClose={onDismissDeviceError} message={deviceError} />

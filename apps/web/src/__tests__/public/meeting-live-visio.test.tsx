@@ -295,4 +295,22 @@ describe('MeetingLivePage : visio intégrée', () => {
     expect(room.unmounts).toBe(1);
     expect(screen.getByText('Assemblée terminée')).toBeTruthy();
   });
+
+  it('affiche l avis d enregistrement avant l entrée en visio puis pendant', async () => {
+    fetchState.mockResolvedValue(ok(view({ visio: { enabled: true, recording: true } })));
+    render(<MeetingLivePage />);
+    await flush();
+    expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Rejoindre la visio' }));
+    await flush();
+    // Sur mobile l avis reste dans l onglet Votes, la salle ayant son propre bandeau.
+    expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
+  });
+
+  it('n affiche aucun avis quand la séance n est pas enregistrée', async () => {
+    fetchState.mockResolvedValue(ok(view({ visio: { enabled: true, recording: false } })));
+    render(<MeetingLivePage />);
+    await flush();
+    expect(screen.queryByText('Cette assemblée est enregistrée.')).toBeNull();
+  });
 });

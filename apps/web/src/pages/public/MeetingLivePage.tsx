@@ -525,6 +525,12 @@ export const MeetingLivePage: React.FC = () => {
   // Fin de l'AG ou lien perdu : la salle est démontée (donc déconnectée).
   const showRoom = visioOn && visioAvailable;
 
+  // Avis R2 : visible avant l'entrée en visio et pendant, tant que la séance est enregistrée.
+  const recordingNotice =
+    view?.visio?.recording && status === 'IN_PROGRESS' ? (
+      <Alert type="warning" showIcon message={t('Cette assemblée est enregistrée.')} />
+    ) : null;
+
   const visioCard =
     visioAvailable && !showRoom ? (
       <Card size="small" title={t("Visio de l'assemblée")}>
@@ -596,6 +602,7 @@ export const MeetingLivePage: React.FC = () => {
         />
       ) : null}
 
+      {recordingNotice}
       {visioCard}
 
       {status !== 'CANCELLED' ? <QuorumCard view={view} /> : null}

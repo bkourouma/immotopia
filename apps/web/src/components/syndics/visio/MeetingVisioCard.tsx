@@ -31,6 +31,11 @@ interface MeetingVisioCardProps {
   busyParticipantId: string | null;
   onSpeak: (participant: MeetingVisioParticipant, allowed: boolean) => void;
   onRemove: (participant: MeetingVisioParticipant, revokeLinks: boolean) => Promise<void>;
+  /** L'AG est en cours : seul moment où l'on peut démarrer un enregistrement. */
+  inProgress?: boolean;
+  recordingBusy?: boolean;
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
 }
 
 export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
@@ -41,8 +46,14 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
   getToken,
   busyParticipantId,
   onSpeak,
-  onRemove
+  onRemove,
+  inProgress = false,
+  recordingBusy = false,
+  onStartRecording,
+  onStopRecording
 }) => {
+  const recording = visio.recording;
+  const activeRecording = recording?.enabled ? recording.active : null;
   const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
   const [revokeLinks, setRevokeLinks] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
@@ -143,6 +154,31 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
       }
     >
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        {recording?.enabled ? (
+          <Space wrap align="center">
+            {activeRecording ? (
+              <>
+                <Tag color="red" icon={<span aria-hidden="true">● </span>}>
+                  {t('Enregistrement en cours')}
+                </Tag>
+                <Text type="secondary">
+                  {t('depuis {{date}}', { date: formatDateTime(activeRecording.startedAt) })}
+                </Text>
+                <Button danger loading={recordingBusy} disabled={frozen} onClick={onStopRecording}>
+                  {t("Arrêter l'enregistrement")}
+                </Button>
+              </>
+            ) : (
+              <Button loading={recordingBusy} disabled={frozen || !inProgress} onClick={onStartRecording}>
+                {t('Enregistrer la séance')}
+              </Button>
+            )}
+            {!activeRecording && !inProgress && !frozen ? (
+              <Text type="secondary">{t("L'enregistrement démarre une fois la séance ouverte.")}</Text>
+            ) : null}
+          </Space>
+        ) : null}
+
         {roomOpen && !frozen ? (
           <div style={{ height: 'min(70vh, 560px)', minHeight: 360 }}>
             <Suspense

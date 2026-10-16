@@ -14,6 +14,7 @@ const lk = vi.hoisted(() => ({
   roomProps: null as null | Record<string, unknown>,
   dataHandler: null as null | ((message: { payload: Uint8Array; from?: unknown }) => void),
   permissions: { canPublish: false } as { canPublish: boolean },
+  recording: false,
   controls: null as null | Record<string, boolean>,
   disconnect: vi.fn(),
   local: { identity: 'me', attributes: {} } as { identity: string; attributes: Record<string, string> },
@@ -66,6 +67,7 @@ vi.mock('@livekit/components-react', async () => {
       lk.dataHandler = onMessage;
       return {};
     },
+    useIsRecording: () => lk.recording,
     useLocalParticipant: () => ({ localParticipant: lk.local }),
     useLocalParticipantPermissions: () => lk.permissions,
     useParticipantAttribute: (key: string, options: { participant: FakeParticipant }) =>
@@ -105,6 +107,7 @@ beforeEach(() => {
   lk.dataHandler = null;
   lk.controls = null;
   lk.permissions = { canPublish: false };
+  lk.recording = false;
   lk.local = { identity: 'me', attributes: {} };
   lk.tracks = [];
 });
@@ -227,5 +230,19 @@ describe('MeetingVisioRoom', () => {
     await mount();
     fireEvent.click(screen.getByRole('button', { name: /Quitter la visio/ }));
     expect(lk.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['participant', 'moderator'] as const)(
+    'affiche le bandeau d enregistrement (%s) tant que LiveKit enregistre',
+    async role => {
+      lk.recording = true;
+      await mount({ role });
+      expect(screen.getByText('Cette assemblée est enregistrée.')).toBeTruthy();
+    }
+  );
+
+  it('n affiche pas le bandeau quand la salle n est pas enregistrée', async () => {
+    await mount();
+    expect(screen.queryByText('Cette assemblée est enregistrée.')).toBeNull();
   });
 });
