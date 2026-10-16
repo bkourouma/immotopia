@@ -120,8 +120,9 @@ describe('Indivision — répartition à parts égales', () => {
     await utilisateur.click(await screen.findByRole('button', { name: "Définir l'indivision" }));
 
     // L'indivision démarre avec le propriétaire des baux à 100 % (une ligne) :
-    // on ajoute les deux autres avant de répartir.
-    await utilisateur.click(screen.getByRole('button', { name: /Ajouter un propriétaire/ }));
+    // on ajoute les deux autres avant de répartir. L'éditeur s'affiche après une
+    // mise à jour asynchrone : on attend son premier bouton.
+    await utilisateur.click(await screen.findByRole('button', { name: /Ajouter un propriétaire/ }));
     await utilisateur.click(screen.getByRole('button', { name: /Ajouter un propriétaire/ }));
 
     await choisirProprietaire(1, 'Boubacar Traoré');
@@ -144,7 +145,7 @@ describe('Indivision — bouton Enregistrer', () => {
     await utilisateur.click(await screen.findByRole('button', { name: "Définir l'indivision" }));
 
     // Démarre à 100 % (prop-1 seul) : le bouton est activé.
-    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Enregistrer' })).toBeEnabled();
 
     const part = screen.getByLabelText('Part en % (ligne 1)');
     fireEvent.change(part, { target: { value: '50' } });
@@ -170,7 +171,7 @@ describe('Indivision — envoi', () => {
     monter();
 
     await utilisateur.click(await screen.findByRole('button', { name: "Définir l'indivision" }));
-    await utilisateur.click(screen.getByRole('button', { name: /Ajouter un propriétaire/ }));
+    await utilisateur.click(await screen.findByRole('button', { name: /Ajouter un propriétaire/ }));
     await choisirProprietaire(1, 'Boubacar Traoré');
 
     const part1 = screen.getByLabelText('Part en % (ligne 1)');
