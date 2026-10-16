@@ -1082,6 +1082,52 @@ d'un lien `build-away` non utilisé inconnue (point 7 de
 [paysecurehub.md](../integrations/paysecurehub.md)). **Mode `LIVE` non validé** et envoi réel non
 vérifié.
 
+## 12 quater. Visio et enregistrement des AG (LiveKit, spec 045)
+
+**Surface.** Salle LiveKit par AG (`t_<tenantId>__ag_<meetingId>`), jetons délivrés par
+ImmoTopia (`services/livekit-service.ts`) : par lien personnel (`POST /api/public/assemblees/visio`,
+même résolution de jeton et même 404 uniforme que la spec 043, limiteur de 20/min par empreinte
+de jeton) et par la console (`SYNDIC_EDIT`). Enregistrement Egress vers un stockage S3 dédié,
+webhook public signé `POST /api/webhooks/livekit`, fichier MP4 rapatrié dans le stockage privé.
+
+**Droits dans la salle.** Le copropriétaire n'a ni `canPublish`, ni `canPublishData`, ni
+`canUpdateOwnMetadata` : il ne peut ni parler, ni envoyer de données, ni changer de nom ; la
+main levée et la parole passent par l'API (attribut et permission posés côté serveur). Le
+gestionnaire publie micro, caméra et écran mais **n'a pas `roomAdmin`** : toute modération
+(parole, exclusion) passe par une route vérifiée, filtrée par agence et par AG, et auditée. Aucun
+vote ne passe par la vidéo ; le seul message de données est le signal `ag-refresh` envoyé par le
+serveur, que le client n'accepte que sans émetteur participant. Le jeton porte l'identité (id du
+`GMParticipant` ou `gestionnaire-<userId>`) et le nom, jamais une coordonnée ; les noms des
+présents sont visibles des autres participants de la salle, comme en séance.
+
+**Exclusion.** Retire de la salle ; avec « Révoquer aussi ses liens », les liens sont révoqués
+d'abord et le retrait invalide les jetons déjà émis (`revokeTokenTs`). Un identifiant
+`gestionnaire-` dont l'utilisateur n'est plus membre actif de l'agence est retiré à la lecture
+de la console.
+
+**Webhook.** Corps brut (préfixe exclu des parseurs globaux et du plancher de débit global),
+signature LiveKit vérifiée (`WebhookReceiver` : JWT et `sha256` du corps) avant tout traitement,
+401 sans détail sinon ; seul `egress_ended` agit ; idempotent par `event.id` (colonne unique) et
+par la mise à jour conditionnelle sur le statut ; la clé S3 vient de la base, jamais du corps.
+Un webhook manquant est rattrapé par la réconciliation auprès de LiveKit à la lecture de la
+liste des enregistrements.
+
+**Fichiers.** Le MP4 n'est jamais servi par `/uploads` (refusé par `uploadsAccessGuard`) ; la
+lecture (`Range`) et le téléchargement passent par une route `SYNDIC_VIEW` qui résout le chemin
+sous la racine attendue, auditée (`SYNDIC_MEETING_RECORDING_ACCESSED`) ; les réponses ne portent
+ni clé S3, ni identifiant d'egress, ni chemin disque. La suppression (`SYNDIC_EDIT`) efface le
+fichier et l'objet S3 restant ; la ligne reste en `DELETED`.
+
+**Configuration.** `LIVEKIT_*` : les trois ou aucune, secret de 32 caractères au moins, `wss://`
+hors développement ; `LIVEKIT_RECORDING_S3_*` : tous ou aucun, `https://` hors développement,
+taille maximale rapatriée bornée. Projet LiveKit **dédié** à ImmoTopia.
+
+**Limites connues.** Les jetons LiveKit durent 10 minutes et sont renouvelés par LiveKit tant que
+la connexion vit. Enregistrer une AG relève d'une base juridique et d'une information préalable
+non encore décidées (spec 045, R10) ; aucune purge automatique des enregistrements. Changer de
+langue pendant la visio remonte l'application et déconnecte de la salle. Les MP4 d'une AG
+supprimée ne sont pas effacés du disque par la cascade de la base.
+
 ## 13. Points ouverts
 
 Ce qui suit n'a pas pu être vérifié comme couvert dans le code au moment
