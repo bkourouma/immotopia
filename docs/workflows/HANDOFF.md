@@ -18,6 +18,17 @@ plusieurs étapes (règle posée dans AGENTS.md et CLAUDE.md).
 Modèle de section :
 
 ```markdown
+## Branche `feat/finance-fournisseurs-tresorerie` — 2026-10-16
+
+**État :** prêt à relire (PR 142), CI à relire après la fusion de main.
+**Dernier commit :** fusion de `main` (PR 126 et 132 fusionnées le 2026-10-16).
+
+**Fait :** règlements fournisseurs (mode de règlement, compte de trésorerie), refus des sorties à solde insuffisant, route `GET .../suppliers/:supplierId/payments`, boutons masqués selon les permissions. `useMyMenuAccess` de main reprend un champ `ready`. Catalogue IA régénéré.
+
+**Reste :** compléter `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` (classeur non relisible par exceljs : à faire à la main) pour les règlements fournisseurs, le refus à solde insuffisant et les boutons selon permissions ; idem côté paiement mobile copropriétaires (PR 132, fusionnée sans lignes de classeur).
+
+**Pièges :** `node_modules` des worktrees = jonction vers le checkout principal, ne jamais la supprimer avec `rm -rf` ; en CI, deux tests sans `import` se partagent le portée globale TS (`export {}` en tête). Le worktree `port-oi` garde du travail finance non commité déjà repris ici.
+
 ## Branche `type/sujet` — AAAA-MM-JJ
 
 **État :** en cours | prêt à relire | bloqué
