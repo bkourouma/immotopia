@@ -280,6 +280,8 @@ export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId
               ownedSince: true,
               ownedUntil: true,
               isActive: true,
+              // Acces au portail copropriétaire : meme champ que « Profils et incidents », sans requete en plus.
+              portalAccessEnabled: true,
               contact: { select: { id: true, firstName: true, lastName: true, legalName: true, email: true } }
             }
           },

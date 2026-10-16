@@ -62,7 +62,7 @@ Fait :
 
 Reste à faire :
 
-- CI de la PR 144 : verte depuis `d33c4698` (premier passage : tests d'enregistrement trop pressés et collision TS2451, corrigés dans `6bdd050a` ; second : `property-ownership.test.tsx` instable, corrigé dans `eea79613`). Conflit avec `main` sur ce seul fichier résolu par fusion le 2026-10-16. Auto-fix actif sur la PR.
+- CI de la PR 144 : verte depuis `d33c4698` (premier passage : tests d'enregistrement trop pressés et collision TS2451, corrigés dans `6bdd050a` ; second : `property-ownership.test.tsx` instable, corrigé dans `eea79613`). Conflits avec `main` résolus par deux fusions le 2026-10-16 (HANDOFF, puis classeur des fonctionnalités : fusion ligne à ligne de la version de `main` et des lignes de la visio, miroir régénéré). Auto-fix actif sur la PR.
 - Décisions du fondateur du 2026-10-16, consignées dans la spec : LiveKit Cloud (V1), information dans la convocation (R2, fait : variable `{{recordingNotice}}`), conservation jusqu'à suppression manuelle (R10), chat modéré dans un lot suivant (V10). Restent à valider : base juridique de l'enregistrement, V2–V4, V7–V9, V11–V13.
 - Mise en service par l'utilisateur : créer le projet LiveKit Cloud dédié (compte et dépense), poser `LIVEKIT_*` et `LIVEKIT_RECORDING_S3_*` en staging puis production (déploiement avec son accord), déclarer le webhook `<BACKEND_URL>/api/webhooks/livekit`, bucket S3 dédié, CSP `connect-src` vers le `wss://`.
 - Sessions filles, PR empilées sur la 144 : « Effacer les enregistrements d'AG à la suppression » (PR https://github.com/bkourouma/immotopia/pull/145) et « Chat modéré dans la visio de l'AG » (spec 046, PR https://github.com/bkourouma/immotopia/pull/148, branche `feat/syndic-ag-visio-discussion`). Ordre de fusion : 144, puis 145 et 148 (à l'utilisateur).
@@ -76,6 +76,25 @@ Pièges et décisions :
 - Instance de démo : worktree `.claude/worktrees/demo` à `6c923267` (avant la fusion de `main`), dépendances propres (`npm ci`), migrations appliquées sur `immotopia_demo` jusqu'à `20261016120000` ; serveurs arrêtés. `demo:sync` exige `packages/api/.env.demo` (absent) : la démo a été mise à jour à la main (`git checkout --detach`, `npm ci`, `prisma migrate deploy` lisant le `.env` du worktree de démo), API lancée avec les `LIVEKIT_*` en variables du processus. Données ajoutées : deux AG de recette « recette visio » (clôturée et en cours) dans « Horizon Syndic Gestion », un enregistrement disponible, liens révoqués pour Awa Traoré.
 - Un agent a reformaté par erreur ~840 fichiers puis les a restaurés en LF : `git status` les montrait modifiés sans diff ; remis en CRLF par script avant commit. Vérifier `git diff --numstat` avant tout `git add -u`.
 - Changer de langue pendant la visio remonte l'application (`key={language}`) et coupe la salle : limite documentée, non corrigée.
+
+## Branche `feat/syndic-acces-portail-visible` — 2026-10-16
+
+**État :** prêt à relire — PR https://github.com/bkourouma/immotopia/pull/147 (base `main`), CI en cours à l'ouverture ; fusion par l'utilisateur
+**Dernier commit :** `76d61ad7` feat(syndic): afficher l'accès au portail copropriétaire par lot (+ ce commit de passation)
+**Worktree :** `.claude/worktrees/serene-hawking-f4a5a3` (jonctions `node_modules` retirées en fin de session : les reposer pour retester)
+
+Fait : recette du 2026-10-16 (staging) — un testeur ne voyait pas quels copropriétaires ont un accès au portail. Aucune route ajoutée : `GET .../syndics/:id` et `GET .../lots` chargent `portalAccessEnabled` avec les profils propriétaires déjà lus et renvoient `portalAccess` { status NONE/INACTIVE/PARTIAL/ACTIVE, activeCount, ownerCount } par lot (`presentSyndicateLots`, `lib/syndics/lot-owner.ts`). La fiche renvoie maintenant `owners`/`ownersLabel` comme la page « Lots » (plus de profils bruts). Colonne « Portail » dans `LotTable` (fiche + page « Lots »), lien « Gérer l'accès » vers `/profils-incidents`, indicateur « Lots avec accès au portail ». Six clés en/ar, classeur (992 lignes) et miroir à jour. Tests : `SyndicLotPortalAccess.test.tsx`, `syndics.lots-portal-access.test.ts`, `syndics.lot-owner.test.ts`.
+
+Reste à faire :
+
+- Regarder le rendu sur le staging après déploiement (fiche et page « Lots », arabe/RTL) : aucune recette visuelle n'a été jouée (pas d'API ni de base dans la session).
+- Dette hors périmètre : `npm run i18n:extract` à lancer pour le paiement mobile (PR 132) — plusieurs centaines de clés sans traduction dans `syndic.json` et remaniements d'autres catalogues ; ne pas le lancer « pour ajouter une clé » dans une PR de fonctionnalité.
+
+Pièges :
+
+- Jonctions `node_modules` vers le checkout principal = client Prisma partagé, plus ancien que le schéma d'origin/main (scope `CHARGE_CALL_PAYMENT`) : les suites Jest d'API qui montent `syndic-routes` échouent en ts-jest sur `lib/secure-links/service.ts`. Vérification locale avec une config Jest `isolatedModules` (comme le projet `api-app`) ; la CI régénère le client.
+- Le motif `__tests__/unit/syndics` capte aussi `syndics.*-fixtures.ts` (fichiers sans test : « must contain at least one test »), faux échecs.
+- Retirer les jonctions sans jamais suivre leur cible (jamais `rm -rf`), avant de supprimer le worktree : sous PowerShell, `[System.IO.Directory]::Delete($chemin, $false)` après avoir vérifié `LinkType -eq 'Junction'`. `cmd /c rmdir` lancé depuis Git Bash est mal interprété (`/c` converti en chemin) et ne retire rien.
 
 ## Branche `fix/seed-fichiers-volume` — 2026-10-16
 

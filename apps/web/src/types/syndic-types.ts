@@ -10,6 +10,21 @@ export type VoteSource = 'MANAGER' | 'CO_OWNER' | 'PROXY_HOLDER';
 
 export type LotType = 'APARTMENT' | 'PARKING' | 'CELLAR' | 'OFFICE' | 'COMMERCIAL' | 'OTHER';
 
+/**
+ * Accès au portail copropriétaire d'un lot, calculé par l'API sur ses
+ * propriétaires actuels : `NONE` sans profil propriétaire, `ACTIVE` quand
+ * tous y ont accès, `INACTIVE` quand aucun, `PARTIAL` en indivision.
+ */
+export type LotPortalAccessStatus = 'NONE' | 'INACTIVE' | 'PARTIAL' | 'ACTIVE';
+
+export interface LotPortalAccess {
+  status: LotPortalAccessStatus;
+  /** Propriétaires actuels dont l'accès au portail est ouvert. */
+  activeCount: number;
+  /** Propriétaires actuels du lot. */
+  ownerCount: number;
+}
+
 export interface SyndicateLot {
   id: string;
   syndicateId: string;
@@ -40,9 +55,18 @@ export interface SyndicateLot {
   specialShares?: number | null;
   ownerSince?: string | null;
   /** Propriétaires actuels (profils actifs, indivision incluse), calculés par l'API. */
-  owners?: Array<{ contactId: string; name: string; percentage: number; ownedSince: string }>;
+  owners?: Array<{
+    contactId: string;
+    name: string;
+    percentage: number;
+    ownedSince: string;
+    /** Accès au portail copropriétaire ouvert pour ce propriétaire (lots de la fiche et de la page « Lots »). */
+    portalAccessEnabled?: boolean;
+  }>;
   /** « Nom » ou « Nom 1 (50 %), Nom 2 (50 %) » ; vide sans profil propriétaire. */
   ownersLabel?: string;
+  /** Accès au portail copropriétaire des propriétaires actuels (absent des lectures qui ne le chargent pas). */
+  portalAccess?: LotPortalAccess;
   tenantAssignments?: Array<{
     id: string;
     tenantId: string;

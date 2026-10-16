@@ -147,7 +147,7 @@ import { deliverReminderNotification } from '../lib/syndics/reminder-delivery';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
-import { presentLotOwners } from '../lib/syndics/lot-owner';
+import { presentSyndicateLots } from '../lib/syndics/lot-owner';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
 import {
   addAgendaItemGuarded,
@@ -217,9 +217,11 @@ export const getSyndicHandler = asyncHandler(async (req: Request, res: Response)
     throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
+  // Memes lots que `GET .../lots` : proprietaires actuels et etat d'acces au portail (« Résumé des lots »).
+  const response = toSyndicateResponse(syndic);
   res.json({
     success: true,
-    data: toSyndicateResponse(syndic)
+    data: syndic.lots ? { ...response, lots: presentSyndicateLots(syndic.lots) } : response
   });
 });
 
@@ -271,11 +273,9 @@ export const listSyndicLotsHandler = asyncHandler(async (req: Request, res: Resp
     throw notFound(t('Copropriété introuvable ou inaccessible'));
   }
 
-  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`) : indivision incluse.
-  const lots = (syndic.lots || []).map(({ ownerProfiles, ...lot }) => ({
-    ...lot,
-    ...presentLotOwners(ownerProfiles ?? [])
-  }));
+  // Chaque lot porte ses proprietaires actuels (`owners`, `ownersLabel`, indivision incluse)
+  // et l'etat de leur acces au portail (`portalAccess`).
+  const lots = presentSyndicateLots(syndic.lots || []);
 
   res.json({
     success: true,
