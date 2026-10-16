@@ -1,8 +1,8 @@
 # Spécification 042 — Prélèvement bancaire
 
 > **Branche** : `feat/prelevement-bancaire` · **Créée** : 15/10/2026 ·
-> **Statut** : P0 (cadrage) et P1 (mandats) en cours ; P2 à P6 décrits, non
-> réalisés.
+> **Statut** : P0 (cadrage), P1 (mandats) et P2 (remises, contrat dans
+> data-model.md §7) réalisés ; P3 à P6 décrits, non réalisés.
 > **Documents liés** : [data-model.md](data-model.md) (schéma),
 > [plan.md](plan.md) (lots, territoires, vérifications),
 > [ADR-007](../../docs/architecture/adr/ADR-007-prelevement-bancaire-fichier-et-reglement-confirme.md)
