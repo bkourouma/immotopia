@@ -1,5 +1,10 @@
 import apiClient from '../utils/api-client';
-import type { LiveMeetingPublicView, VisioJoinInfo } from '../types/syndic-live-types';
+import type {
+  DiscussionMessageView,
+  LiveMeetingPublicView,
+  PublicDiscussionView,
+  VisioJoinInfo
+} from '../types/syndic-live-types';
 import type { VoteChoice } from '../types/syndic-types';
 
 type ApiResponse<T> = { success: boolean; data: T };
@@ -107,4 +112,51 @@ export async function setPublicHandRaised(
   raised: boolean
 ): Promise<PublicVisioResult<{ raised: boolean }>> {
   return postVisio<{ raised: boolean }>('/visio/main', { token, raised });
+}
+
+/* -------------------------------------------------------------- discussion (spec 046) */
+
+/** Résultat d'un appel de discussion : un 400 (texte refusé) se distingue d'un lien invalide. */
+export type PublicDiscussionResult<T> =
+  | { status: 'ok'; data: T }
+  | { status: PublicMeetingFailure }
+  | { status: 'conflict'; message?: string }
+  | { status: 'rejected'; message?: string };
+
+function serverMessage(response: { data?: unknown }): string | undefined {
+  const message = (response.data as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' && message.trim() ? message : undefined;
+}
+
+async function postDiscussion<T>(path: string, body: Record<string, unknown>): Promise<PublicDiscussionResult<T>> {
+  try {
+    const response = await apiClient.post<ApiResponse<T>>(`${BASE}${path}`, body, PUBLIC_CONFIG);
+    if (response.status === 200 && response.data?.success && response.data.data) {
+      return { status: 'ok', data: response.data.data };
+    }
+    if (response.status === 409) {
+      const message = serverMessage(response);
+      return message ? { status: 'conflict', message } : { status: 'conflict' };
+    }
+    if (response.status === 400) {
+      const message = serverMessage(response);
+      return message ? { status: 'rejected', message } : { status: 'rejected' };
+    }
+    return { status: failureFor(response.status) };
+  } catch {
+    return { status: 'unavailable' };
+  }
+}
+
+/** Historique de la discussion (200 derniers messages) et droits d'écriture du porteur du lien. */
+export async function fetchPublicDiscussion(token: string): Promise<PublicDiscussionResult<PublicDiscussionView>> {
+  return postDiscussion<PublicDiscussionView>('/discussion', { token });
+}
+
+/** Envoie un message ; le serveur le diffuse à la salle. */
+export async function sendPublicDiscussionMessage(
+  token: string,
+  body: string
+): Promise<PublicDiscussionResult<DiscussionMessageView>> {
+  return postDiscussion<DiscussionMessageView>('/discussion/envoyer', { token, body });
 }

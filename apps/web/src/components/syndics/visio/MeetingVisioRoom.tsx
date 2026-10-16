@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Badge, Button, Space, Spin, Tag, Typography } from 'antd';
 import {
   AudioMutedOutlined,
   AudioOutlined,
@@ -7,6 +7,7 @@ import {
   BellOutlined,
   DesktopOutlined,
   LogoutOutlined,
+  MessageOutlined,
   ReloadOutlined,
   VideoCameraAddOutlined,
   VideoCameraOutlined
@@ -31,6 +32,10 @@ import { DisconnectReason, MediaDeviceFailure, Track } from 'livekit-client';
 import '@livekit/components-styles';
 import type { VisioJoinInfo } from '../../../types/syndic-live-types';
 import { t } from '../../../i18n/t';
+import { useVisioDiscussion, type VisioDiscussionAdapter } from './use-visio-discussion';
+import { VisioDiscussionPanel } from './VisioDiscussionPanel';
+
+export type { VisioDiscussionAdapter } from './use-visio-discussion';
 
 const { Text } = Typography;
 
@@ -50,6 +55,8 @@ export interface MeetingVisioRoomProps {
   /** Appelé quand la connexion à la salle prend fin, quelle qu'en soit la raison. */
   onLeave?: () => void;
   title?: string;
+  /** Discussion écrite (spec 046). Sans elle, la salle n'offre ni bouton ni panneau. */
+  discussion?: VisioDiscussionAdapter;
 }
 
 type EndReason = 'removed' | 'ended' | 'left';
@@ -283,6 +290,131 @@ function useRefreshSignal(onRefreshSignal?: () => void): void {
   });
 }
 
+/** Largeur à partir de laquelle le panneau se place à côté de la grille (sinon à sa place). */
+export const DISCUSSION_WIDE_MIN_PX = 768;
+const DISCUSSION_PANEL_WIDTH = 340;
+
+/**
+ * Largeur du conteneur, suivie par `ResizeObserver`. Absent (jsdom, vieux navigateurs) :
+ * repli sur la largeur de la fenêtre, relue à chaque redimensionnement.
+ */
+function useContainerWidth(ref: React.RefObject<HTMLElement>): number {
+  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth));
+  useEffect(() => {
+    const element = ref.current;
+    const measure = () => {
+      const measured = element?.getBoundingClientRect().width ?? 0;
+      setWidth(measured > 0 ? measured : window.innerWidth);
+    };
+    measure();
+    if (typeof ResizeObserver !== 'undefined' && element) {
+      const observer = new ResizeObserver(measure);
+      observer.observe(element);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [ref]);
+  return width;
+}
+
+/** Bouton « Discussion » de la barre du bas : pastille des messages non lus tant que le panneau est fermé. */
+const DiscussionButton: React.FC<{ open: boolean; unread: number; onToggle: () => void }> = ({
+  open,
+  unread,
+  onToggle
+}) => {
+  const count = open ? 0 : unread;
+  return (
+    <Badge count={count} size="small" overflowCount={99}>
+      <Button
+        icon={<MessageOutlined />}
+        type={open ? 'primary' : 'default'}
+        aria-pressed={open}
+        aria-label={count > 0 ? t('Discussion, {{count}} message(s) non lu(s)', { count }) : t('Discussion')}
+        onClick={onToggle}
+      >
+        {t('Discussion')}
+      </Button>
+    </Badge>
+  );
+};
+
+interface RoomBodyProps {
+  tracks: ReturnType<typeof useTracks>;
+  role: 'moderator' | 'participant';
+  canPublish: boolean;
+  onRaiseHand?: (raised: boolean) => Promise<void>;
+  /** Contrôleur de discussion ; absent quand l'écran n'en fournit pas. */
+  discussion: ReturnType<typeof useVisioDiscussion> | null;
+  panelOpen: boolean;
+  onTogglePanel: () => void;
+}
+
+/** Grille, panneau de discussion et barre du bas. La grille reste montée quand le panneau la remplace. */
+const RoomBody: React.FC<RoomBodyProps> = ({
+  tracks,
+  role,
+  canPublish,
+  onRaiseHand,
+  discussion,
+  panelOpen,
+  onTogglePanel
+}) => {
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const width = useContainerWidth(bodyRef);
+  const wide = width >= DISCUSSION_WIDE_MIN_PX;
+  const showPanel = Boolean(discussion) && panelOpen;
+  const gridHidden = showPanel && !wide;
+  return (
+    <>
+      <div ref={bodyRef} style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: gridHidden ? 'none' : undefined }}>
+          <GridLayout tracks={tracks}>
+            <TileWithHand />
+          </GridLayout>
+        </div>
+        {discussion ? (
+          <div
+            style={{
+              display: showPanel ? 'block' : 'none',
+              minHeight: 0,
+              minWidth: 0,
+              ...(wide
+                ? { width: DISCUSSION_PANEL_WIDTH, flexShrink: 0, borderInlineStart: '1px solid #262a33' }
+                : { flex: 1 })
+            }}
+          >
+            <VisioDiscussionPanel controller={discussion} onBack={wide ? undefined : onTogglePanel} />
+          </div>
+        ) : null}
+      </div>
+      <div style={{ ...BAR_STYLE, borderBlockStart: '1px solid #262a33' }}>
+        {role === 'participant' && onRaiseHand ? <HandButton onRaiseHand={onRaiseHand} /> : <span />}
+        <Space size={8} wrap>
+          {discussion ? (
+            <DiscussionButton open={panelOpen} unread={discussion.unread} onToggle={onTogglePanel} />
+          ) : null}
+          <RoomMediaControls role={role} canPublish={canPublish} />
+        </Space>
+      </div>
+    </>
+  );
+};
+
+/** Branche la discussion (hook LiveKit) puis rend le corps de la salle ; l'état du panneau vit ici. */
+const RoomBodyWithDiscussion: React.FC<
+  Omit<RoomBodyProps, 'discussion' | 'panelOpen' | 'onTogglePanel'> & { adapter: VisioDiscussionAdapter }
+> = ({ adapter, ...props }) => {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const discussion = useVisioDiscussion(adapter, panelOpen);
+  return (
+    <RoomBody {...props} discussion={discussion} panelOpen={panelOpen} onTogglePanel={() => setPanelOpen(o => !o)} />
+  );
+};
+
+const noop = () => undefined;
+
 interface RoomShellProps {
   role: 'moderator' | 'participant';
   title?: string;
@@ -290,6 +422,7 @@ interface RoomShellProps {
   onDismissDeviceError: () => void;
   onRaiseHand?: (raised: boolean) => Promise<void>;
   onRefreshSignal?: () => void;
+  discussion?: VisioDiscussionAdapter;
 }
 
 const RoomShell: React.FC<RoomShellProps> = ({
@@ -298,7 +431,8 @@ const RoomShell: React.FC<RoomShellProps> = ({
   deviceError,
   onDismissDeviceError,
   onRaiseHand,
-  onRefreshSignal
+  onRefreshSignal,
+  discussion
 }) => {
   const canPublish = Boolean(useLocalParticipantPermissions()?.canPublish);
   // État tenu par LiveKit : l'avis suit l'enregistrement réel, pour le modérateur comme pour le participant.
@@ -311,6 +445,7 @@ const RoomShell: React.FC<RoomShellProps> = ({
     { onlySubscribed: false }
   );
   useRefreshSignal(onRefreshSignal);
+  const bodyProps = { tracks, role, canPublish, onRaiseHand };
 
   return (
     <div style={{ ...CONTAINER_STYLE, borderRadius: 0 }}>
@@ -319,15 +454,11 @@ const RoomShell: React.FC<RoomShellProps> = ({
       {deviceError ? (
         <Alert type="warning" showIcon closable onClose={onDismissDeviceError} message={deviceError} />
       ) : null}
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <GridLayout tracks={tracks}>
-          <TileWithHand />
-        </GridLayout>
-      </div>
-      <div style={{ ...BAR_STYLE, borderBlockStart: '1px solid #262a33' }}>
-        {role === 'participant' && onRaiseHand ? <HandButton onRaiseHand={onRaiseHand} /> : <span />}
-        <RoomMediaControls role={role} canPublish={canPublish} />
-      </div>
+      {discussion ? (
+        <RoomBodyWithDiscussion {...bodyProps} adapter={discussion} />
+      ) : (
+        <RoomBody {...bodyProps} discussion={null} panelOpen={false} onTogglePanel={noop} />
+      )}
       <RoomAudioRenderer />
     </div>
   );
@@ -438,7 +569,8 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
   onRaiseHand,
   onRefreshSignal,
   onLeave,
-  title
+  title,
+  discussion
 }) => {
   const session = useVisioSession(getToken, onLeave);
   const { phase, connect } = session;
@@ -507,6 +639,7 @@ export const MeetingVisioRoom: React.FC<MeetingVisioRoomProps> = ({
           onDismissDeviceError={() => session.setDeviceError(null)}
           onRaiseHand={onRaiseHand}
           onRefreshSignal={onRefreshSignal}
+          discussion={discussion}
         />
       </StableLiveKitRoom>
     </div>

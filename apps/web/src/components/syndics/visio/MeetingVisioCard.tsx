@@ -9,6 +9,7 @@ import type {
   VisioJoinInfo
 } from '../../../types/syndic-live-types';
 import { formatDateTime } from '../live/live-labels';
+import type { VisioDiscussionAdapter } from './use-visio-discussion';
 import { t } from '../../../i18n/t';
 
 const { Text } = Typography;
@@ -144,13 +145,20 @@ interface MeetingVisioCardProps {
   onStopRecording?: () => void;
   /** Dernier enregistrement en échec, aucun n'étant actif : la séance n'est pas enregistrée. */
   failedRecording?: MeetingRecordingView | null;
+  /** Discussion écrite de la salle (spec 046) ; absente : la salle n'a pas de panneau. */
+  discussion?: VisioDiscussionAdapter;
+  /** Coupe ou rétablit l'écriture d'un copropriétaire dans la discussion. */
+  onWriting?: (participant: MeetingVisioParticipant, allowed: boolean) => void;
+  busyWritingParticipantId?: string | null;
 }
 
 function participantColumns(
   frozen: boolean,
   busyParticipantId: string | null,
   onSpeak: MeetingVisioCardProps['onSpeak'],
-  onAskRemove: (participant: MeetingVisioParticipant) => void
+  onAskRemove: (participant: MeetingVisioParticipant) => void,
+  onWriting?: MeetingVisioCardProps['onWriting'],
+  busyWritingParticipantId: string | null = null
 ): ColumnsType<MeetingVisioParticipant> {
   return [
     {
@@ -174,6 +182,9 @@ function participantColumns(
             </Tag>
           ) : null}
           {participant.kind === 'COOWNER' && participant.canSpeak ? <Tag color="green">{t('A la parole')}</Tag> : null}
+          {participant.kind === 'COOWNER' && participant.chatMuted ? (
+            <Tag color="volcano">{t('écriture coupée')}</Tag>
+          ) : null}
         </Space>
       )
     },
@@ -187,7 +198,7 @@ function participantColumns(
       key: 'actions',
       render: (_: unknown, participant) => {
         if (participant.kind !== 'COOWNER' || !participant.participantId) return null;
-        const disabled = frozen || busyParticipantId !== null;
+        const disabled = frozen || busyParticipantId !== null || busyWritingParticipantId !== null;
         return (
           <Space wrap>
             <Button
@@ -204,6 +215,21 @@ function participantColumns(
             >
               {participant.canSpeak ? t('Retirer la parole') : t('Donner la parole')}
             </Button>
+            {onWriting ? (
+              <Button
+                size="small"
+                disabled={disabled}
+                loading={busyWritingParticipantId === participant.participantId}
+                aria-label={
+                  participant.chatMuted
+                    ? t("Rétablir l'écriture de {{name}}", { name: participant.name })
+                    : t("Couper l'écriture de {{name}}", { name: participant.name })
+                }
+                onClick={() => onWriting(participant, Boolean(participant.chatMuted))}
+              >
+                {participant.chatMuted ? t("Rétablir l'écriture") : t("Couper l'écriture")}
+              </Button>
+            ) : null}
             <Button
               size="small"
               danger
@@ -233,7 +259,10 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
   recordingBusy = false,
   onStartRecording,
   onStopRecording,
-  failedRecording = null
+  failedRecording = null,
+  discussion,
+  onWriting,
+  busyWritingParticipantId = null
 }) => {
   const [removing, setRemoving] = useState<MeetingVisioParticipant | null>(null);
   const recording = visio.recording;
@@ -281,7 +310,12 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
                 </div>
               }
             >
-              <MeetingVisioRoom role="moderator" getToken={getToken} title={t("Visio de l'assemblée")} />
+              <MeetingVisioRoom
+                role="moderator"
+                getToken={getToken}
+                title={t("Visio de l'assemblée")}
+                discussion={discussion}
+              />
             </Suspense>
           </div>
         ) : null}
@@ -290,7 +324,14 @@ export const MeetingVisioCard: React.FC<MeetingVisioCardProps> = ({
           size="small"
           rowKey="identity"
           dataSource={sortVisioParticipants(visio.participants)}
-          columns={participantColumns(frozen, busyParticipantId, onSpeak, setRemoving)}
+          columns={participantColumns(
+            frozen,
+            busyParticipantId,
+            onSpeak,
+            setRemoving,
+            onWriting,
+            busyWritingParticipantId
+          )}
           scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
           locale={{ emptyText: t("Personne n'est en visio pour le moment") }}

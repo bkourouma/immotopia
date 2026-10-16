@@ -8,6 +8,7 @@ import {
   removeVisioParticipant,
   retryMeetingRecording,
   setVisioParticipantSpeaking,
+  setVisioParticipantWriting,
   startMeetingRecording,
   stopMeetingRecording
 } from '../../../services/syndic-service';
@@ -60,6 +61,7 @@ export function useMeetingVisio({
   const { message } = App.useApp();
   const [visio, setVisio] = useState<MeetingVisioAdminView | null>(null);
   const [busyVisioId, setBusyVisioId] = useState<string | null>(null);
+  const [busyWritingId, setBusyWritingId] = useState<string | null>(null);
   const inProgress = meetingStatus === 'IN_PROGRESS';
 
   const loadVisio = useCallback(async (): Promise<number | false | void> => {
@@ -115,6 +117,25 @@ export function useMeetingVisio({
     }
   };
 
+  /** Coupe (`allowed: false`) ou rétablit l'écriture d'un copropriétaire dans la discussion (spec 046, M6). */
+  const writing = async (participant: MeetingVisioParticipant, allowed: boolean) => {
+    if (!participant.participantId) return;
+    setBusyWritingId(participant.participantId);
+    try {
+      await setVisioParticipantWriting(tenantId, syndicId, meetingId, participant.participantId, allowed);
+      message.success(
+        allowed
+          ? t('Écriture rétablie pour {{name}}', { name: participant.name })
+          : t('Écriture coupée pour {{name}}', { name: participant.name })
+      );
+    } catch (err) {
+      message.error(apiErrorText(err, t('Action impossible, réessayez.')));
+    } finally {
+      setBusyWritingId(null);
+      refreshVisio();
+    }
+  };
+
   /** Exclut le participant ; en cas d'échec l'erreur remonte à la modale, qui reste ouverte. */
   const remove = async (participant: MeetingVisioParticipant, revokeLinks: boolean) => {
     if (!participant.participantId) return;
@@ -147,9 +168,11 @@ export function useMeetingVisio({
     inProgress,
     refreshVisio,
     busyVisioId,
+    busyWritingId,
     inVisioContactIds,
     getToken,
     speak,
+    writing,
     remove
   };
 }

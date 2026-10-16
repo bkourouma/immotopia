@@ -14,6 +14,7 @@ const lk = vi.hoisted(() => ({
   roomProps: null as null | Record<string, unknown>,
   connectHistory: [] as unknown[],
   dataHandler: null as null | ((message: { payload: Uint8Array; from?: unknown }) => void),
+  handlers: {} as Record<string, (message: { payload: Uint8Array; from?: unknown }) => void>,
   permissions: { canPublish: false } as { canPublish: boolean },
   recording: false,
   toggles: {} as Record<string, { enabled: boolean; toggle: ReturnType<typeof vi.fn> }>,
@@ -26,6 +27,7 @@ vi.mock('@livekit/components-styles', () => ({}));
 
 vi.mock('livekit-client', () => ({
   Track: { Source: { Microphone: 'microphone', Camera: 'camera', ScreenShare: 'screen_share' } },
+  RoomEvent: { Reconnected: 'reconnected' },
   DisconnectReason: { CLIENT_INITIATED: 1, PARTICIPANT_REMOVED: 4, ROOM_DELETED: 5, ROOM_CLOSED: 10 },
   MediaDeviceFailure: {
     PermissionDenied: 'PermissionDenied',
@@ -66,8 +68,9 @@ vi.mock('@livekit/components-react', async () => {
       lk.toggles[source] ??= { enabled: false, toggle: vi.fn() };
       return { ...lk.toggles[source], pending: false };
     },
-    useDataChannel: (_topic: string, onMessage: (message: { payload: Uint8Array; from?: unknown }) => void) => {
-      lk.dataHandler = onMessage;
+    useDataChannel: (topic: string, onMessage: (message: { payload: Uint8Array; from?: unknown }) => void) => {
+      lk.handlers[topic] = onMessage;
+      if (topic === 'ag-refresh') lk.dataHandler = onMessage;
       return {};
     },
     useIsRecording: () => lk.recording,
@@ -75,7 +78,7 @@ vi.mock('@livekit/components-react', async () => {
     useLocalParticipantPermissions: () => lk.permissions,
     useParticipantAttribute: (key: string, options: { participant: FakeParticipant }) =>
       options.participant.attributes[key] ?? '',
-    useRoomContext: () => ({ disconnect: lk.disconnect }),
+    useRoomContext: () => ({ disconnect: lk.disconnect, on: vi.fn(), off: vi.fn() }),
     useTrackRefContext: () => react.useContext(TrackContext),
     useTracks: () => lk.tracks
   };
@@ -109,6 +112,7 @@ beforeEach(() => {
   lk.roomProps = null;
   lk.connectHistory = [];
   lk.dataHandler = null;
+  lk.handlers = {};
   lk.toggles = {};
   lk.permissions = { canPublish: false };
   lk.recording = false;
@@ -271,6 +275,12 @@ describe('MeetingVisioRoom', () => {
     await mount();
     act(() => (lk.roomProps?.onMediaDeviceFailure as (failure: string) => void)('PermissionDenied'));
     expect(await screen.findByText(/L'accès au micro ou à la caméra a été refusé/)).toBeTruthy();
+  });
+
+  it('sans adaptateur de discussion, n’offre ni bouton ni panneau', async () => {
+    await mount();
+    expect(screen.queryByRole('button', { name: /Discussion/ })).toBeNull();
+    expect(lk.handlers['ag-discussion']).toBeUndefined();
   });
 
   it('quitte la salle sur « Quitter la visio »', async () => {
