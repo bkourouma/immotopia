@@ -9,9 +9,9 @@ const signerInputSchema = z
   .object({
     role: z.string().trim().min(1).max(40),
     fullName: z.string().trim().min(2).max(120),
-    channel: z.enum(['EMAIL', 'WHATSAPP', 'IN_PERSON']),
+    channel: z.enum(['EMAIL', 'WHATSAPP', 'SMS', 'IN_PERSON']),
     contact: z.string().trim().max(254).default(''),
-    /** CrmContact.id facultatif : le consentement WhatsApp du CRM est alors exigé. */
+    /** CrmContact.id : exigé pour WhatsApp (consentement du CRM) et pour SMS (contact de l'agence). */
     contactId: z.string().trim().min(1).max(64).optional()
   })
   .strict();
@@ -30,11 +30,44 @@ export const createSignatureSchema = z
   .strict();
 export type CreateSignatureInput = z.infer<typeof createSignatureSchema>;
 
+export const SIGNATURE_STATUSES = [
+  'DRAFT',
+  'SENT',
+  'PARTIALLY_SIGNED',
+  'COMPLETED',
+  'DECLINED',
+  'EXPIRED',
+  'CANCELED'
+] as const;
+
+/** Date ISO (jour seul ou date-heure) ; un jour seul est repris tel quel pour que `to` couvre la journée. */
+const isoDateSchema = z
+  .string()
+  .trim()
+  .refine(value => !Number.isNaN(new Date(value).getTime()), { message: 'Date ISO invalide.' });
+
 export const listSignaturesSchema = z
   .object({
-    status: z.enum(['DRAFT', 'SENT', 'PARTIALLY_SIGNED', 'COMPLETED', 'DECLINED', 'EXPIRED', 'CANCELED']).optional(),
+    status: z.enum(SIGNATURE_STATUSES).optional(),
     targetType: z.string().trim().min(1).max(40).optional(),
-    targetId: z.string().trim().min(1).max(64).optional()
+    targetId: z.string().trim().min(1).max(64).optional(),
+    page: z.coerce.number().int().min(1).max(10000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25),
+    kind: z.nativeEnum(SignatureDocumentKind).optional(),
+    q: z.string().trim().min(1).max(100).optional(),
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional(),
+    sortBy: z.enum(['createdAt', 'expiresAt', 'status', 'title']).default('createdAt'),
+    sortDir: z.enum(['asc', 'desc']).default('desc')
   })
   .strict();
 export type ListSignaturesFilters = z.infer<typeof listSignaturesSchema>;
+
+export const signatureSummarySchema = z
+  .object({
+    kind: z.nativeEnum(SignatureDocumentKind).optional(),
+    from: isoDateSchema.optional(),
+    to: isoDateSchema.optional()
+  })
+  .strict();
+export type SignatureSummaryFilters = z.infer<typeof signatureSummarySchema>;

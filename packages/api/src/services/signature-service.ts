@@ -16,7 +16,7 @@ import { runWithTenantContext } from '../utils/tenant-context';
 import { logAuditEvent, recordAuditEvent, AuditActionKey } from './audit-service';
 import { countSignaturesThisMonth } from './subscription-v2-service';
 import { cancelOpenRequestsForTarget, cancelRequestInternal } from '../lib/signature/cancel';
-import type { CreateSignatureInput, ListSignaturesFilters } from '../lib/signature/schemas';
+import type { CreateSignatureInput, ListSignaturesFilters, SignatureSummaryFilters } from '../lib/signature/schemas';
 import { toRequestDto } from '../lib/signature/dto';
 import {
   appendSignatureEvent,
@@ -25,7 +25,7 @@ import {
   verifyEventChain
 } from '../lib/signature/events';
 import { sha256Hex } from '../lib/signature/evidence';
-import { readSignatureFile, removeSignatureFolder, writeSignatureFile } from '../lib/signature/files';
+import { readSignatureFile, removeSignatureFolder, signatureFileKey, writeSignatureFile } from '../lib/signature/files';
 import {
   agencyNameOf,
   commitSignerToken,
@@ -40,9 +40,12 @@ import type { DefaultSigner, LoadedSource } from '../lib/signature/sources';
 import { hasPermission } from './permission-service';
 import { releaseSignature, reserveSignature, resolveSignatureQuotaPolicy } from '../lib/signature/quota';
 import { sealRequest } from '../lib/signature/sealing';
+import { isInternalSignatureProvider } from '../lib/signature/types';
 import { generateToken, hashToken } from '../lib/signature/token';
 import { ACTIVE_REQUEST_STATUSES, OPEN_REQUEST_STATUSES } from '../lib/signature/types';
 import { normalizePhoneE164 } from '../lib/phone/e164';
+import { isSmsAvailable } from '../lib/sms';
+import { assertSmsBudget, contactOwnsPhone, isAllowedSmsDialCode } from '../lib/signature/sms-guard';
 import { sendPrivateFile } from '../lib/files/private-files';
 import type { Response } from 'express';
 
@@ -94,7 +97,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type NormalizedSigner = {
   role: string;
   fullName: string;
-  channel: 'EMAIL' | 'WHATSAPP' | 'IN_PERSON';
+  channel: 'EMAIL' | 'WHATSAPP' | 'SMS' | 'IN_PERSON';
   contact: string;
   contactId: string | null;
 };
@@ -123,6 +126,24 @@ export function normalizeSigners(signers: CreateSignatureInput['signers']): Norm
         );
       }
       contact = phone;
+    } else if (signer.channel === 'SMS') {
+      // Le CRM n'a pas de consentement SMS : on exige un contact de l'agence, sans consentement WhatsApp.
+      // Ni le numéro ni le contenu ne figurent dans les messages d'erreur.
+      const phone = normalizePhoneE164(contact);
+      if (!phone) {
+        throw new BadRequestError(t('Numéro de téléphone invalide pour {{name}} (SMS).', { name: signer.fullName }));
+      }
+      if (!signer.contactId) {
+        throw new BadRequestError(t('Le canal SMS exige un contact du CRM ({{name}}).', { name: signer.fullName }));
+      }
+      if (!isAllowedSmsDialCode(phone)) {
+        throw new BadRequestError(
+          t("L'indicatif du numéro de {{name}} n'est pas autorisé pour les SMS de signature.", {
+            name: signer.fullName
+          })
+        );
+      }
+      contact = phone;
     } else {
       contact = '';
     }
@@ -131,15 +152,31 @@ export function normalizeSigners(signers: CreateSignatureInput['signers']): Norm
       fullName: signer.fullName,
       channel: signer.channel,
       contact,
-      contactId: signer.channel === 'WHATSAPP' ? (signer.contactId ?? null) : null
+      contactId: signer.channel === 'WHATSAPP' || signer.channel === 'SMS' ? (signer.contactId ?? null) : null
     };
   });
 }
 
-/** Le contact CRM désigné appartient à l'agence ET a consenti à WhatsApp. */
-async function assertWhatsappContact(tenantId: string, signer: NormalizedSigner): Promise<void> {
+/**
+ * Le contact CRM désigné appartient à l'agence ; pour WhatsApp, il a de plus consenti.
+ * SMS : refusé d'emblée si le transport SMS est désactivé sur ce serveur.
+ */
+async function assertSignerContact(tenantId: string, signer: NormalizedSigner): Promise<void> {
+  if (signer.channel === 'SMS' && !isSmsAvailable()) {
+    throw new BadRequestError(t("Le canal SMS n'est pas disponible sur ce serveur."));
+  }
   if (!signer.contactId) return;
   await assertBelongsToTenant(prisma, 'crmContact', signer.contactId, tenantId);
+  if (signer.channel === 'SMS') {
+    if (!(await contactOwnsPhone(tenantId, signer.contactId, signer.contact))) {
+      throw new BadRequestError(
+        t("Le numéro de {{name}} n'est pas celui du contact du CRM désigné (SMS).", { name: signer.fullName })
+      );
+    }
+    await assertSmsBudget(tenantId);
+    return;
+  }
+  if (signer.channel !== 'WHATSAPP') return;
   const contact = await prisma.crmContact.findFirst({
     where: { id: signer.contactId, tenantId },
     select: { consentWhatsapp: true }
@@ -214,6 +251,7 @@ async function persistRequest(args: {
   expiresAt: Date;
   providerId: string;
   providerRef?: string;
+  providerSignerRefs?: string[];
   now: Date;
 }): Promise<void> {
   const { ctx, requestId } = args;
@@ -255,7 +293,8 @@ async function persistRequest(args: {
             signer.channel === 'IN_PERSON'
               ? new Date(Math.min(args.expiresAt.getTime(), args.now.getTime() + 24 * 60 * 60 * 1000))
               : args.expiresAt,
-          inviteStatus: signer.channel === 'IN_PERSON' ? 'NOT_APPLICABLE' : 'WAITING',
+          inviteStatus:
+            signer.channel === 'IN_PERSON' ? 'NOT_APPLICABLE' : args.providerSignerRefs ? 'SENT' : 'WAITING',
           inPersonIssuedBy: signer.channel === 'IN_PERSON' ? ctx.userId : null
         }))
       });
@@ -268,7 +307,8 @@ async function persistRequest(args: {
           signers: args.signers.length,
           sequential: args.input.sequential ?? false,
           sourceHash: args.sourceHash,
-          byUserId: ctx.userId
+          byUserId: ctx.userId,
+          ...(args.providerSignerRefs ? { providerSignerRefs: args.providerSignerRefs } : {})
         },
         now: args.now
       });
@@ -319,7 +359,11 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
   }
   await source.assertTarget(ctx, input.targetId);
   const signers = normalizeSigners(input.signers);
-  for (const signer of signers) await assertWhatsappContact(ctx.tenantId, signer);
+  for (const signer of signers) await assertSignerContact(ctx.tenantId, signer);
+  // Prestataire externe (S6) : il invite par e-mail ; ni WhatsApp, ni SMS, ni signature sur place.
+  if (provider.external && signers.some(signer => signer.channel !== 'EMAIL')) {
+    throw new BadRequestError(t('Ce prestataire de signature n’accepte que des signataires joignables par e-mail.'));
+  }
   const open = await prisma.signatureRequest.findFirst({
     where: {
       tenantId: ctx.tenantId,
@@ -341,6 +385,7 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (input.expiresInDays ?? env.SIGNATURE_TOKEN_TTL_DAYS) * 86_400_000);
   const tokens = signers.map(() => generateToken());
+  let created: { providerRef?: string; signerRefs?: string[] } | null = null;
   try {
     const fetched = await source.loadSource(ctx, input.targetId);
     // Document généré à la volée : l'empreinte des données sert de repère (isSourceIntact).
@@ -349,11 +394,28 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
       documentHash: fetched.documentHash ?? (await source.snapshotHash?.(ctx, input.targetId)) ?? null
     };
     const sourceHash = sha256Hex(loaded.pdf);
-    const created = await provider.createRequest({
+    created = await provider.createRequest({
       tenantId: ctx.tenantId,
       requestId,
       kind: input.kind,
-      signerCount: signers.length
+      signerCount: signers.length,
+      ...(provider.external
+        ? {
+            external: {
+              title: loaded.title,
+              pdf: loaded.pdf,
+              language: languageOf(currentLanguage()),
+              sequential: input.sequential ?? false,
+              expiresAt,
+              signers: signers.map((signer, position) => ({
+                position,
+                fullName: signer.fullName,
+                email: signer.contact,
+                role: signer.role
+              }))
+            }
+          }
+        : {})
     });
     const sourceFileKey = await writeSignatureFile(ctx.tenantId, requestId, 'source.pdf', loaded.pdf);
     await persistRequest({
@@ -369,15 +431,22 @@ export async function createSignatureRequest(ctx: Ctx, input: CreateSignatureInp
       expiresAt,
       providerId: provider.id,
       providerRef: created.providerRef,
+      providerSignerRefs: created.signerRefs,
       now
     });
   } catch (error) {
+    // Créée chez le prestataire mais non persistée : annulation au mieux, sans masquer l'erreur d'origine.
+    if (created?.providerRef) {
+      await provider
+        .cancel(requestId, { tenantId: ctx.tenantId, providerRef: created.providerRef })
+        .catch(() => undefined);
+    }
     await releaseSignature(ctx.tenantId, month);
     await removeSignatureFolder(ctx.tenantId, requestId);
     throw error;
   }
 
-  return finalizeCreation({ ctx, requestId, signers, tokens, month });
+  return finalizeCreation({ ctx, requestId, signers, tokens, month, external: Boolean(provider.external) });
 }
 
 async function finalizeCreation(args: {
@@ -386,6 +455,7 @@ async function finalizeCreation(args: {
   signers: NormalizedSigner[];
   tokens: string[];
   month: string;
+  external?: boolean;
 }) {
   const { ctx, requestId } = args;
   const rows = await prisma.signatureRequest.findFirst({
@@ -393,6 +463,8 @@ async function finalizeCreation(args: {
     select: requestSelect
   });
   if (!rows) throw new NotFoundError(t('Demande de signature introuvable.'));
+  // Prestataire externe : il invite lui-même les signataires, aucun lien interne n'est envoyé.
+  if (args.external) return toRequestDto(rows, { inPersonTokens: new Map<string, string>() });
   const agencyName = await agencyNameOf(ctx.tenantId);
   const inPersonTokens = new Map<string, string>();
   const ordered = [...rows.signers].sort((a, b) => a.position - b.position);
@@ -446,25 +518,89 @@ async function finalizeCreation(args: {
 
 // ------------------------------------------------------------ lecture
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Fenêtre sur `createdAt` ; `to` en jour seul est inclusif jusqu'à la fin de la journée (UTC). */
+function createdAtRange(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
+  if (!from && !to) return undefined;
+  const range: Prisma.DateTimeFilter = {};
+  if (from) range.gte = new Date(from);
+  if (to) range.lte = DATE_ONLY.test(to) ? new Date(`${to}T23:59:59.999Z`) : new Date(to);
+  return range;
+}
+
+/**
+ * Types lisibles combinés au type demandé : un type demandé hors périmètre ne
+ * l'élargit jamais (liste vide). `undefined` = aucun filtre de type.
+ */
+function kindFilter(kinds: readonly string[] | undefined, kind?: SignatureDocumentKind) {
+  if (kind) return !kinds || kinds.includes(kind) ? { equals: kind } : { in: [] as SignatureDocumentKind[] };
+  return kinds ? { in: [...kinds] as SignatureDocumentKind[] } : undefined;
+}
+
 export async function listSignatureRequests(
   tenantId: string,
-  filters: ListSignaturesFilters,
+  filters: Partial<ListSignaturesFilters>,
   /** Types que l'utilisateur peut lire (permission du type) ; absent = tous. */
   kinds?: readonly string[]
 ) {
-  const rows = await prisma.signatureRequest.findMany({
-    where: {
-      tenantId,
-      ...(kinds ? { kind: { in: [...kinds] as SignatureDocumentKind[] } } : {}),
-      ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.targetType ? { targetType: filters.targetType } : {}),
-      ...(filters.targetId ? { targetId: filters.targetId } : {})
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-    select: requestSelect
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 25;
+  const kind = kindFilter(kinds, filters.kind);
+  const createdAt = createdAtRange(filters.from, filters.to);
+  const where: Prisma.SignatureRequestWhereInput = {
+    tenantId,
+    ...(kind ? { kind } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.targetType ? { targetType: filters.targetType } : {}),
+    ...(filters.targetId ? { targetId: filters.targetId } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(filters.q
+      ? {
+          OR: [
+            { title: { contains: filters.q, mode: 'insensitive' } },
+            { signers: { some: { fullName: { contains: filters.q, mode: 'insensitive' } } } }
+          ]
+        }
+      : {})
+  };
+  const sortBy = filters.sortBy ?? 'createdAt';
+  const sortDir = filters.sortDir ?? 'desc';
+  const [rows, total] = await Promise.all([
+    prisma.signatureRequest.findMany({
+      where,
+      orderBy: [{ [sortBy]: sortDir }, { id: 'asc' }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: requestSelect
+    }),
+    prisma.signatureRequest.count({ where })
+  ]);
+  return { items: rows.map(row => toRequestDto(row)), total };
+}
+
+const SUMMARY_STATUSES = ['DRAFT', 'SENT', 'PARTIALLY_SIGNED', 'COMPLETED', 'DECLINED', 'EXPIRED', 'CANCELED'] as const;
+
+/** Compteurs par statut de l'agence, limités aux types lisibles (même règle que la liste). */
+export async function getSignatureSummary(
+  tenantId: string,
+  filters: Partial<SignatureSummaryFilters>,
+  kinds?: readonly string[]
+) {
+  const kind = kindFilter(kinds, filters.kind);
+  const createdAt = createdAtRange(filters.from, filters.to);
+  const groups = await prisma.signatureRequest.groupBy({
+    by: ['status'],
+    where: { tenantId, ...(kind ? { kind } : {}), ...(createdAt ? { createdAt } : {}) },
+    _count: { _all: true }
   });
-  return rows.map(row => toRequestDto(row));
+  const byStatus = Object.fromEntries(SUMMARY_STATUSES.map(status => [status, 0])) as Record<
+    (typeof SUMMARY_STATUSES)[number],
+    number
+  >;
+  for (const group of groups) byStatus[group.status as keyof typeof byStatus] = group._count._all;
+  const total = Object.values(byStatus).reduce((sum, count) => sum + count, 0);
+  return { total, byStatus };
 }
 
 async function findRequest(tenantId: string, id: string) {
@@ -502,6 +638,9 @@ export async function getSignatureTargetContext(ctx: Ctx, kind: string, targetId
     targetType: source.targetType,
     // Vrai seulement si le fournisseur actif ne peut pas signer ce type (R-2).
     providerRequired: isProviderRequiredForSource(source) && !getSignatureProvider().qualified,
+    // Le fournisseur actif est un prestataire externe : signataires par e-mail uniquement.
+    externalProvider: Boolean(getSignatureProvider().external),
+    smsAvailable: isSmsAvailable(),
     signers: await visibleSigners(ctx, source.defaultSigners ? await source.defaultSigners(ctx, targetId) : [])
   };
 }
@@ -532,6 +671,7 @@ export async function remindSignatureRequest(ctx: Ctx, id: string) {
       title: true,
       language: true,
       status: true,
+      providerId: true,
       sequential: true,
       expiresAt: true,
       signers: {
@@ -551,6 +691,12 @@ export async function remindSignatureRequest(ctx: Ctx, id: string) {
   if (!request) throw new NotFoundError(t('Demande de signature introuvable.'));
   if (!(ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status)) {
     throw new ConflictError(t('Cette demande de signature n’est plus en cours.'));
+  }
+  // Demande confiée à un prestataire externe : lui seul peut relancer (jamais de lien interne).
+  if (!isInternalSignatureProvider(request.providerId)) {
+    throw new ConflictError(
+      t('Ce document est géré par le prestataire de signature : relancez-le depuis le prestataire.')
+    );
   }
   const now = new Date();
   const claimed = await prisma.signatureRequest.updateMany({
@@ -632,18 +778,31 @@ export async function reissueInPersonToken(ctx: Ctx, id: string, signerId: strin
 // -------------------------------------------------------------- fichiers
 
 /** PDF source ou scellé d'une demande de l'agence, en flux, sans cache. */
-export async function sendSignatureFile(tenantId: string, id: string, variant: 'source' | 'signed', res: Response) {
+export async function sendSignatureFile(
+  tenantId: string,
+  id: string,
+  variant: 'source' | 'signed' | 'evidence',
+  res: Response
+) {
   const request = await prisma.signatureRequest.findFirst({
     where: { id, tenantId },
     select: { id: true, title: true, sourceFileKey: true, signedFileKey: true }
   });
   if (!request) throw new NotFoundError(t('Demande de signature introuvable.'));
-  const key = variant === 'signed' ? request.signedFileKey : request.sourceFileKey;
+  // Dossier de preuve du prestataire : clé déduite (fichier privé de la demande), 404 s'il n'existe pas.
+  const key =
+    variant === 'evidence'
+      ? request.signedFileKey
+        ? signatureFileKey(tenantId, id, 'evidence.pdf')
+        : null
+      : variant === 'signed'
+        ? request.signedFileKey
+        : request.sourceFileKey;
   if (!key) throw new NotFoundError(t("Le PDF scellé n'est pas encore disponible."));
   const file = await readSignatureFile(tenantId, id, key);
   sendPrivateFile(res, {
     ...file,
-    fileName: `${request.title.replace(/[^\p{L}\p{N} ._-]/gu, '')}${variant === 'signed' ? ' - signé' : ''}.pdf`
+    fileName: `${request.title.replace(/[^\p{L}\p{N} ._-]/gu, '')}${variant === 'signed' ? ' - signé' : variant === 'evidence' ? ' - preuve' : ''}.pdf`
   });
 }
 

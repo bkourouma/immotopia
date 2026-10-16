@@ -55,7 +55,8 @@ export async function inviteSigner(args: {
     url: signingUrl(args.token),
     expiresAt: request.expiresAt,
     language: languageOf(request.language),
-    reminder: args.reminder
+    reminder: args.reminder,
+    channel
   });
   const result: DeliveryResult = await getSignatureProvider().deliver({
     tenantId: request.tenantId,
@@ -123,7 +124,8 @@ export async function deliverOtp(args: {
     title: args.title,
     code: args.code,
     ttlMinutes: args.ttlMinutes,
-    language: languageOf(args.language)
+    language: languageOf(args.language),
+    channel
   });
   return getSignatureProvider().deliver({
     tenantId: args.tenantId,

@@ -1,13 +1,15 @@
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
-import { t } from '../../i18n';
 import { recordAuditEvent, AuditActionKey } from '../../services/audit-service';
 import { appendSignatureEvent, listChainedEvents, verifyEventChain } from './events';
 import { sha256Hex } from './evidence';
 import { readSignatureFile, writeSignatureFile } from './files';
-import { agencyNameOf, languageOf, notifyIssuer } from './notify';
+import { languageOf } from './notify';
 import { cancelRequestInternal } from './cancel';
 import { findSignatureSource, SourceChangedError } from './sources';
+import { completeExternalRequest, notifySealed } from './provider/external/complete';
+import { getExternalSignatureClientById } from './provider/external';
+import { isInternalSignatureProvider } from './types';
 import { sealSignedPdf, type SealSigner } from './seal';
 
 /**
@@ -118,6 +120,8 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
         language: true,
         sourceFileKey: true,
         sourceHash: true,
+        providerId: true,
+        providerRef: true,
         createdByUserId: true,
         signers: {
           orderBy: { position: 'asc' },
@@ -159,6 +163,25 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
       await reportBrokenChain(tenantId, requestId, chain.brokenAtSeq);
       await release(tenantId, requestId);
       return 'FAILED';
+    }
+    // Prestataire externe (S6) : le PDF signé et la preuve viennent du prestataire, pas de scellement pdf-lib.
+    // Une demande externe n'est jamais scellée par pdf-lib : sans client configuré, échec (réessayé par la tâche).
+    const externalClient = request.providerId ? getExternalSignatureClientById(request.providerId) : null;
+    if (!externalClient && !isInternalSignatureProvider(request.providerId)) {
+      logger.error('Signature : client du prestataire externe absent, scellement refusé', { tenantId, requestId });
+      await release(tenantId, requestId);
+      return 'FAILED';
+    }
+    if (externalClient) {
+      const outcome = await completeExternalRequest({
+        client: externalClient,
+        tenantId,
+        requestId,
+        request,
+        now
+      });
+      if (outcome !== 'SEALED') await release(tenantId, requestId);
+      return outcome;
     }
     const sealed = await sealSignedPdf({
       sourcePdf: source.buffer,
@@ -208,17 +231,7 @@ export async function sealRequest(tenantId: string, requestId: string, now: Date
     }
     if (!done) return 'SKIPPED';
 
-    await notifyIssuer({
-      tenantId,
-      userId: request.createdByUserId,
-      language: request.language,
-      subject: t('Document signé — {{title}}', { title: request.title }, languageOf(request.language)),
-      text: t(
-        'Toutes les parties ont signé « {{title}} » ({{agency}}). Le PDF scellé est disponible dans ImmoTopia.',
-        { title: request.title, agency: await agencyNameOf(tenantId) },
-        languageOf(request.language)
-      )
-    });
+    await notifySealed(tenantId, request);
     return 'SEALED';
   } catch (error) {
     logger.error('Signature : scellement en échec', {

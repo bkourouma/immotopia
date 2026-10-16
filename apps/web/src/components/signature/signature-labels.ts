@@ -42,6 +42,8 @@ export function channelLabel(channel: SignerChannel): string {
       return t('E-mail');
     case 'WHATSAPP':
       return t('WhatsApp');
+    case 'SMS':
+      return t('SMS');
     default:
       return t('Sur place');
   }

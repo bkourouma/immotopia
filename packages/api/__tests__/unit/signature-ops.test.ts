@@ -106,6 +106,7 @@ const baseRequest = (extra: Row = {}) => ({
   title: 'Bail',
   language: 'fr',
   status: 'SENT',
+  providerId: 'internal',
   sequential: false,
   expiresAt: future,
   createdAt: new Date(),
@@ -179,6 +180,16 @@ describe('relance', () => {
     db.request = baseRequest({ status: 'COMPLETED' });
     await expect(remindSignatureRequest(ctx, 'r1')).rejects.toMatchObject({ statusCode: 409 });
   });
+
+  it('refuse (409) la relance d’une demande confiée à un prestataire externe, sans réservation ni envoi', async () => {
+    db.request = baseRequest({ providerId: 'yousign', signers: [signer('a', 'PENDING')] });
+    await expect(remindSignatureRequest(ctx, 'r1')).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining('prestataire')
+    });
+    expect(prismaMock.signatureRequest.updateMany).not.toHaveBeenCalled();
+    expect(inviteSigner).not.toHaveBeenCalled();
+  });
 });
 
 describe('jeton de signature sur place', () => {
@@ -241,12 +252,12 @@ describe('tâche planifiée', () => {
   it("scelle AVANT d'expirer", async () => {
     const order: string[] = [];
     prismaMock.signatureRequest.findMany.mockImplementation(async ({ where }: Row) => {
-      order.push(where.signedFileKey === null ? 'scellement' : 'expiration');
+      order.push(where.signedFileKey === null ? 'scellement' : where.expiresAt?.gt ? 'rappels' : 'expiration');
       return [];
     });
     const { runSignatureMaintenance } = await import('../../src/jobs/signature-job');
     await runSignatureMaintenance(new Date());
-    expect(order).toEqual(['scellement', 'expiration']);
+    expect(order).toEqual(['scellement', 'expiration', 'rappels']);
     expect(sealRequestMock).not.toHaveBeenCalled();
     await sealPendingSignatureRequests();
   });

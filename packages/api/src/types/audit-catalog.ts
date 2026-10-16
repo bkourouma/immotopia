@@ -302,6 +302,7 @@ export const AUDIT_CATALOG: Record<AuditActionKey, AuditCatalogEntry> = {
   [AuditActionKey.SIGNATURE_OTP_LOCKED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_CANCELED]: tenant('DATA', { critical: true, redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_EXPIRED]: tenant('DATA', { redact: SIGNATURE_REDACT }),
+  [AuditActionKey.SIGNATURE_REMINDER_AUTO]: tenant('DATA', { redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_QUOTA_REFUSED]: tenant('BILLING', { redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_IN_PERSON_TOKEN_ISSUED]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),
   [AuditActionKey.SIGNATURE_CHAIN_BROKEN]: tenant('SECURITY', { critical: true, redact: SIGNATURE_REDACT }),

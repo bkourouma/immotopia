@@ -5,7 +5,8 @@
  * - rejoue le scellement des demandes entièrement signées dont le scellement
  *   a échoué (`sealPendingSignatureRequests`), EN PREMIER ;
  * - marque `EXPIRED` les demandes échues qui attendent encore une signature et
- *   prévient l'émetteur (`expireDueSignatureRequests`).
+ *   prévient l'émetteur (`expireDueSignatureRequests`) ;
+ * - envoie les rappels avant expiration (`sendDueSignatureReminders`), EN DERNIER.
  *
  * Lecture transverse assumée hors contexte (même parti pris que
  * `stock-whatsapp-job.ts`) ; chaque demande est ensuite traitée dans le
@@ -15,14 +16,17 @@
  */
 import * as cron from 'node-cron';
 import { logger } from '../utils/logger';
+import { sendDueSignatureReminders } from '../lib/signature/reminders';
 import { expireDueSignatureRequests, sealPendingSignatureRequests } from '../services/signature-service';
 
 let job: cron.ScheduledTask | null = null;
 let running = false;
 
 /** Le travail d'un passage. Une étape en échec n'empêche pas l'autre. */
-export async function runSignatureMaintenance(now: Date = new Date()): Promise<{ expired: number; sealed: number }> {
-  const result = { expired: 0, sealed: 0 };
+export async function runSignatureMaintenance(
+  now: Date = new Date()
+): Promise<{ expired: number; sealed: number; reminded: number }> {
+  const result = { expired: 0, sealed: 0, reminded: 0 };
   // Scellement d'abord : une demande entièrement signée avant son échéance ne doit pas expirer.
   try {
     result.sealed = await sealPendingSignatureRequests(now);
@@ -35,6 +39,14 @@ export async function runSignatureMaintenance(now: Date = new Date()): Promise<{
     result.expired = await expireDueSignatureRequests(now);
   } catch (error) {
     logger.error('Signature : expiration en échec', { error: error instanceof Error ? error.name : 'inconnue' });
+  }
+  // Rappels après l'expiration : une demande échue ne reçoit plus de rappel.
+  try {
+    result.reminded = (await sendDueSignatureReminders(now)).reminded;
+  } catch (error) {
+    logger.error('Signature : rappels automatiques en échec', {
+      error: error instanceof Error ? error.name : 'inconnue'
+    });
   }
   return result;
 }

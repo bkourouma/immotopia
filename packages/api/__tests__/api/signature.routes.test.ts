@@ -34,6 +34,7 @@ jest.mock('../../src/middleware/signature-tenant-middleware', () => ({
 
 const createSignatureRequest = jest.fn();
 const listSignatureRequests = jest.fn();
+const getSignatureSummary = jest.fn();
 const getSignatureRequest = jest.fn();
 const cancelSignatureRequest = jest.fn();
 const remindSignatureRequest = jest.fn();
@@ -43,6 +44,7 @@ const getSignatureTargetContext = jest.fn();
 jest.mock('../../src/services/signature-service', () => ({
   createSignatureRequest: (...a: unknown[]) => createSignatureRequest(...a),
   listSignatureRequests: (...a: unknown[]) => listSignatureRequests(...a),
+  getSignatureSummary: (...a: unknown[]) => getSignatureSummary(...a),
   getSignatureRequest: (...a: unknown[]) => getSignatureRequest(...a),
   cancelSignatureRequest: (...a: unknown[]) => cancelSignatureRequest(...a),
   remindSignatureRequest: (...a: unknown[]) => remindSignatureRequest(...a),
@@ -118,17 +120,79 @@ describe('agence : /api/signatures', () => {
   });
 
   it('GET liste filtre par statut et cible, sans laisser passer tenantId au service', async () => {
-    listSignatureRequests.mockResolvedValue([]);
+    listSignatureRequests.mockResolvedValue({ items: [], total: 0 });
     const response = await request(app).get(
       '/api/signatures?status=SENT&targetType=RentalLease&targetId=l1&tenantId=tenant-2'
     );
     expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({ items: [], total: 0 });
     expect(listSignatureRequests).toHaveBeenCalledWith(
       'tenant-2',
-      { status: 'SENT', targetType: 'RentalLease', targetId: 'l1' },
+      expect.objectContaining({
+        status: 'SENT',
+        targetType: 'RentalLease',
+        targetId: 'l1',
+        page: 1,
+        pageSize: 25,
+        sortBy: 'createdAt',
+        sortDir: 'desc'
+      }),
       ['LEASE_CONTRACT']
     );
+    expect(listSignatureRequests.mock.calls[0][1]).not.toHaveProperty('tenantId');
     expect((await request(app).get('/api/signatures?status=NOPE')).status).toBe(400);
+  });
+
+  it('GET liste : pagination, tri, recherche et dates validés', async () => {
+    listSignatureRequests.mockResolvedValue({ items: [], total: 0 });
+    const ok = await request(app).get(
+      '/api/signatures?page=2&pageSize=50&kind=LEASE_CONTRACT&q=Kone&from=2026-01-01&to=2026-01-31&sortBy=title&sortDir=asc'
+    );
+    expect(ok.status).toBe(200);
+    expect(listSignatureRequests).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({
+        page: 2,
+        pageSize: 50,
+        kind: 'LEASE_CONTRACT',
+        q: 'Kone',
+        from: '2026-01-01',
+        to: '2026-01-31',
+        sortBy: 'title',
+        sortDir: 'asc'
+      }),
+      ['LEASE_CONTRACT']
+    );
+    for (const qs of [
+      'page=0',
+      'pageSize=101',
+      'kind=PIGEON',
+      'q=',
+      'from=pas-une-date',
+      'sortBy=x',
+      'sortDir=up',
+      'foo=1'
+    ]) {
+      expect((await request(app).get(`/api/signatures?${qs}`)).status).toBe(400);
+    }
+  });
+
+  it('GET summary : compteurs par statut, déclaré avant /:id, filtres limités', async () => {
+    const data = {
+      total: 3,
+      byStatus: { DRAFT: 0, SENT: 2, PARTIALLY_SIGNED: 0, COMPLETED: 1, DECLINED: 0, EXPIRED: 0, CANCELED: 0 }
+    };
+    getSignatureSummary.mockResolvedValue(data);
+    const response = await request(app).get(
+      '/api/signatures/summary?kind=LEASE_CONTRACT&from=2026-01-01&tenantId=tenant-5'
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data });
+    expect(getSignatureSummary).toHaveBeenCalledWith('tenant-5', { kind: 'LEASE_CONTRACT', from: '2026-01-01' }, [
+      'LEASE_CONTRACT'
+    ]);
+    expect(getSignatureRequest).not.toHaveBeenCalled();
+    expect((await request(app).get('/api/signatures/summary?q=abc')).status).toBe(400);
   });
 
   it('GET détail, annulation, relance et réémission du jeton sur place', async () => {

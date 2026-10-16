@@ -673,6 +673,14 @@ function buildNavigation(): Record<PersonaId, PersonaNav> {
           ]
         },
         {
+          key: 'signatures',
+          label: t('Signatures'),
+          icon: <FileTextOutlined />,
+          zone: 'more',
+          section: 'parametrage',
+          href: '/tenant/:tenantId/signatures'
+        },
+        {
           key: 'agence',
           label: t('Agence'),
           icon: <TeamOutlined />,

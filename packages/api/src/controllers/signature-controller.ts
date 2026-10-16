@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { SignatureDocumentKind } from '@prisma/client';
 import { z } from 'zod';
-import { createSignatureSchema, listSignaturesSchema } from '../lib/signature/schemas';
+import { createSignatureSchema, listSignaturesSchema, signatureSummarySchema } from '../lib/signature/schemas';
 import { permittedSignatureKinds } from '../middleware/signature-access-middleware';
 import { asyncHandler, BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 import {
   cancelSignatureRequest,
   createSignatureRequest,
   getSignatureRequest,
+  getSignatureSummary,
   getSignatureTargetContext,
   listSignatureRequests,
   reissueInPersonToken,
@@ -29,7 +30,7 @@ function ctxOf(req: Request) {
 }
 
 const idSchema = z.string().uuid();
-const fileQuerySchema = z.object({ variant: z.enum(['source', 'signed']).default('source') });
+const fileQuerySchema = z.object({ variant: z.enum(['source', 'signed', 'evidence']).default('source') });
 
 export const createSignatureHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = createSignatureSchema.parse(req.body ?? {});
@@ -46,6 +47,15 @@ export const listSignaturesHandler = asyncHandler(async (req: Request, res: Resp
   const { tenantId, userId } = ctxOf(req);
   // La liste ne montre que les types de document que l'utilisateur a le droit de lire.
   const data = await listSignatureRequests(tenantId, filters, await permittedSignatureKinds(userId, tenantId));
+  res.json({ success: true, data });
+});
+
+export const signatureSummaryHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { tenantId: _ignored, ...query } = req.query as Record<string, unknown>;
+  void _ignored;
+  const filters = signatureSummarySchema.parse(query);
+  const { tenantId, userId } = ctxOf(req);
+  const data = await getSignatureSummary(tenantId, filters, await permittedSignatureKinds(userId, tenantId));
   res.json({ success: true, data });
 });
 

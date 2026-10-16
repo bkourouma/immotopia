@@ -198,9 +198,9 @@ maybeDescribe('Signature électronique du bail — base réelle', () => {
       )
     ).rejects.toMatchObject({ statusCode: 404 });
     const listedB = await runWithTenantContext({ tenantId: tenantB.id }, () => listSignatureRequests(tenantB.id, {}));
-    expect(listedB).toEqual([]);
+    expect(listedB.items).toEqual([]);
     const listedA = await runWithTenantContext({ tenantId: tenantA.id }, () => listSignatureRequests(tenantA.id, {}));
-    expect(listedA.map(r => r.id)).toContain(requestA.id);
+    expect(listedA.items.map(r => r.id)).toContain(requestA.id);
   });
 
   it("isolation : B ne peut pas créer une demande sur le bail de A (même 404 qu'un bail inexistant)", async () => {
